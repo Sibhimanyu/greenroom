@@ -487,27 +487,60 @@ final class CoordinatorController: ObservableObject {
         }
 
         let name = userDisplayName.isEmpty ? NSFullUserName() : userDisplayName
-        do {
-            try await zoomChatClient.join(meetingNumber: meetingNumber, password: meetingPassword, displayName: name, enableMedia: true)
-        } catch {
-            if (error as? ZoomMeetingSDKError)?.isCrossAccountRejection == true {
-                log("That meeting is hosted on another Zoom account, which Greenroom's built-in client can't join \u{2014} using the Zoom app instead.")
-                ZoomLauncher.join(meetingNumber: meetingNumber, password: meetingPassword)
-                joinChatOnly()
-                return
+
+        // The account's OWN meetings (the Scheduled list) must be STARTED
+        // with a fresh ZAK, not joined: the SDK authenticates the app,
+        // not the Zoom user, so a plain join arrives as an anonymous
+        // participant and Zoom throws up a "Claim host" key prompt
+        // instead of promoting (seen live). Falls back to a normal join
+        // if the ZAK fetch fails (e.g. missing user-token scope).
+        var startedAsHost = false
+        if isOwnScheduledMeeting {
+            do {
+                log("This meeting is yours \u{2014} starting it as host\u{2026}")
+                let zak = try await ZoomServerToServerClient.fetchZAK(
+                    accountID: s2sAccountID, clientID: s2sClientID, clientSecret: s2sClientSecret)
+                try await zoomChatClient.startAsHost(meetingNumber: meetingNumber, zak: zak, displayName: name, enableMedia: true)
+                startedAsHost = true
+            } catch {
+                log("\(error.localizedDescription) \u{2014} joining as a participant instead.")
             }
-            throw error
+        }
+
+        if !startedAsHost {
+            do {
+                try await zoomChatClient.join(meetingNumber: meetingNumber, password: meetingPassword, displayName: name, enableMedia: true)
+            } catch {
+                if (error as? ZoomMeetingSDKError)?.isCrossAccountRejection == true {
+                    log("That meeting is hosted on another Zoom account, which Greenroom's built-in client can't join \u{2014} using the Zoom app instead.")
+                    ZoomLauncher.join(meetingNumber: meetingNumber, password: meetingPassword)
+                    joinChatOnly()
+                    return
+                }
+                throw error
+            }
         }
 
         if let controller = zoomChatClient.chatController() {
             zoomChatBridge.attach(to: controller)
         }
         ChatWindowController.show(chat: zoomChatBridge, layout: workspaceLayout)
-        log("In the meeting \u{2014} no second Zoom app, no ghost participant.")
+        log(startedAsHost
+            ? "Meeting is live \u{2014} you're hosting from Greenroom."
+            : "In the meeting \u{2014} no second Zoom app, no ghost participant.")
 
         parkBuiltInMeetingWindow()
         placePeopleViewWindow()
         finalizeLayout()
+    }
+
+    /// Whether the Join Existing target is one of the account's own
+    /// meetings - i.e. it appears in the Scheduled list fetched with the
+    /// S2S credentials. Own meetings get host-started; everything else
+    /// gets a plain join.
+    private var isOwnScheduledMeeting: Bool {
+        !s2sAccountID.isEmpty && !s2sClientID.isEmpty && !s2sClientSecret.isEmpty
+            && scheduledMeetings.contains { String($0.id) == meetingNumber }
     }
 
     /// Parks the built-in client's meeting window into the side column's

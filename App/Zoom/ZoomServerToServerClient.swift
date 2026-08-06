@@ -165,6 +165,25 @@ enum ZoomServerToServerClient {
         return (meetings, warning)
     }
 
+    /// The account owner's ZAK (host key token) - what startMeetingWithZAK
+    /// needs to START an existing meeting as its host. The create flow
+    /// gets one embedded in the fresh meeting's start_url; meetings that
+    /// already exist (the Scheduled list) need this endpoint. ZAKs are
+    /// short-lived, so fetch fresh per start rather than caching.
+    static func fetchZAK(accountID: String, clientID: String, clientSecret: String) async throws -> String {
+        let token = try await fetchAccessToken(accountID: accountID, clientID: clientID, clientSecret: clientSecret)
+
+        var request = URLRequest(url: URL(string: "https://api.zoom.us/v2/users/me/token?type=zak")!)
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
+            throw ZoomServerToServerError.zakRequestFailed(String(data: data, encoding: .utf8) ?? "unknown error")
+        }
+        struct ZAKResponse: Decodable { let token: String }
+        return try JSONDecoder().decode(ZAKResponse.self, from: data).token
+    }
+
     /// The next upcoming occurrence of a recurring meeting, from
     /// GET /meetings/{id}'s `occurrences` array (chronological, future
     /// only). nil for "no fixed time" meetings, which have none.
@@ -191,6 +210,7 @@ enum ZoomServerToServerError: LocalizedError {
     case createMeetingFailed(String)
     case listMeetingsFailed(String)
     case meetingDetailsFailed(String)
+    case zakRequestFailed(String)
     case unexpectedResponse
 
     var errorDescription: String? {
@@ -207,6 +227,12 @@ enum ZoomServerToServerError: LocalizedError {
             var message = "Couldn't fetch recurring meetings' next times: \(body)"
             if body.contains("scopes") {
                 message += " \u{2014} add the \u{201C}View a meeting\u{201D} scope (meeting:read:meeting:admin) on your Server-to-Server app's Scopes page. The list still works; recurring meetings just show without a time."
+            }
+            return message
+        case .zakRequestFailed(let body):
+            var message = "Couldn't fetch a host key (ZAK): \(body)"
+            if body.contains("scopes") {
+                message += " \u{2014} add the user token scope (user:read:token:admin) on your Server-to-Server app's Scopes page."
             }
             return message
         case .unexpectedResponse: return "Zoom's response didn't look like a meeting list."

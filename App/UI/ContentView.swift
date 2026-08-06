@@ -180,19 +180,21 @@ struct ContentView: View {
         .fixedSize()
     }
 
-    /// Recurring meetings deliberately show NO timestamp: Zoom's list
-    /// endpoint reports the series' ORIGINAL start time, not the next
-    /// occurrence (confirmed live - a daily 4 PM class listed a months-old
-    /// anchor date), and the real next occurrence would cost a details
-    /// call per meeting plus another Marketplace scope. One-off scheduled
-    /// meetings' timestamps are reliable and shown in local time.
+    /// Recurring meetings' times come from the per-meeting details call
+    /// (their real next occurrence) - never from the list endpoint, whose
+    /// recurring timestamps are the series' original anchor (confirmed
+    /// live: a daily 4 PM class listed a months-old date). No time means
+    /// "no fixed time", no upcoming occurrence, or a missing details
+    /// scope (the status log explains that one).
     private func scheduledMeetingLabel(_ meeting: ZoomServerToServerClient.ScheduledMeeting) -> String {
-        if meeting.isRecurring { return "\(meeting.topic) \u{2014} recurring" }
-        if let start = meeting.startTime {
-            let when = start.formatted(.dateTime.weekday(.abbreviated).day().month(.abbreviated).hour().minute())
-            return "\(meeting.topic) \u{2014} \(when)"
+        let when = meeting.startTime?.formatted(
+            .dateTime.weekday(.abbreviated).day().month(.abbreviated).hour().minute())
+        switch (meeting.isRecurring, when) {
+        case (true, let when?): return "\(meeting.topic) \u{2014} recurring, next \(when)"
+        case (true, nil): return "\(meeting.topic) \u{2014} recurring"
+        case (false, let when?): return "\(meeting.topic) \u{2014} \(when)"
+        case (false, nil): return meeting.topic
         }
-        return meeting.topic
     }
 
     /// The pieces of the session as individual actions - out of the way,

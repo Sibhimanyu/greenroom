@@ -95,24 +95,31 @@ enum ZoomServerToServerClient {
     struct ScheduledMeeting: Identifiable, Hashable {
         let id: Int64
         let topic: String
-        /// nil for "recurring, no fixed time" meetings - the standing-
-        /// meeting kind, startable any time.
-        let startTime: Date?
+        /// For one-off meetings: the scheduled time (reliable straight
+        /// from the list). For recurring ones: the TRUE next occurrence
+        /// from the per-meeting details call - the list endpoint only
+        /// knows the series' original anchor time (confirmed live: a
+        /// daily 4 PM class listed a months-old date), so it's never
+        /// used for recurring meetings. nil when there's no upcoming
+        /// occurrence, the meeting is "no fixed time", or the details
+        /// scope is missing.
+        var startTime: Date?
         let isRecurring: Bool
         let joinURL: String
     }
 
     /// Lists the account's scheduled meetings (GET /users/me/meetings,
     /// `type=scheduled` - upcoming ones plus recurring meetings with no
-    /// fixed time). Needs a meeting READ scope on the Server-to-Server
-    /// app, additional to the write scope creating uses - if Zoom answers
-    /// with a "does not contain scopes" error, add the list-meetings read
-    /// scope on the app's Scopes page.
+    /// fixed time), then enriches recurring ones with their real next
+    /// occurrence via per-meeting details. Listing needs a list-meetings
+    /// READ scope; the details enrichment needs the view-a-meeting scope
+    /// on top. A missing details scope doesn't fail the list - it comes
+    /// back as `warning` and recurring meetings simply carry no time.
     static func listScheduledMeetings(
         accountID: String,
         clientID: String,
         clientSecret: String
-    ) async throws -> [ScheduledMeeting] {
+    ) async throws -> (meetings: [ScheduledMeeting], warning: String?) {
         let token = try await fetchAccessToken(accountID: accountID, clientID: clientID, clientSecret: clientSecret)
 
         var request = URLRequest(url: URL(string: "https://api.zoom.us/v2/users/me/meetings?type=scheduled&page_size=30")!)
@@ -128,20 +135,54 @@ enum ZoomServerToServerClient {
         }
 
         let iso = ISO8601DateFormatter()
-        return items.compactMap { item in
+        var meetings: [ScheduledMeeting] = items.compactMap { item in
             guard let id = item["id"] as? Int64,
                   let joinURL = item["join_url"] as? String else { return nil }
             // Zoom meeting types: 2 scheduled, 3 recurring/no fixed time,
             // 8 recurring/fixed time.
             let type = (item["type"] as? Int) ?? 2
+            let isRecurring = type == 3 || type == 8
             return ScheduledMeeting(
                 id: id,
                 topic: (item["topic"] as? String) ?? "Untitled meeting",
-                startTime: (item["start_time"] as? String).flatMap { iso.date(from: $0) },
-                isRecurring: type == 3 || type == 8,
+                startTime: isRecurring ? nil : (item["start_time"] as? String).flatMap { iso.date(from: $0) },
+                isRecurring: isRecurring,
                 joinURL: joinURL
             )
         }
+
+        var warning: String? = nil
+        for index in meetings.indices where meetings[index].isRecurring {
+            do {
+                meetings[index].startTime = try await nextOccurrence(meetingID: meetings[index].id, token: token, iso: iso)
+            } catch {
+                // One scope covers all details calls - if the first one is
+                // rejected the rest will be too, so stop and report once.
+                warning = error.localizedDescription
+                break
+            }
+        }
+        return (meetings, warning)
+    }
+
+    /// The next upcoming occurrence of a recurring meeting, from
+    /// GET /meetings/{id}'s `occurrences` array (chronological, future
+    /// only). nil for "no fixed time" meetings, which have none.
+    private static func nextOccurrence(meetingID: Int64, token: String, iso: ISO8601DateFormatter) async throws -> Date? {
+        var request = URLRequest(url: URL(string: "https://api.zoom.us/v2/meetings/\(meetingID)")!)
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
+            throw ZoomServerToServerError.meetingDetailsFailed(String(data: data, encoding: .utf8) ?? "unknown error")
+        }
+        guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            throw ZoomServerToServerError.unexpectedResponse
+        }
+        let occurrences = (json["occurrences"] as? [[String: Any]]) ?? []
+        return occurrences
+            .first { ($0["status"] as? String ?? "available") == "available" }
+            .flatMap { ($0["start_time"] as? String).flatMap { iso.date(from: $0) } }
     }
 }
 
@@ -149,6 +190,7 @@ enum ZoomServerToServerError: LocalizedError {
     case tokenRequestFailed(String)
     case createMeetingFailed(String)
     case listMeetingsFailed(String)
+    case meetingDetailsFailed(String)
     case unexpectedResponse
 
     var errorDescription: String? {
@@ -159,6 +201,12 @@ enum ZoomServerToServerError: LocalizedError {
             var message = "Couldn't list your Zoom meetings: \(body)"
             if body.contains("scopes") {
                 message += " \u{2014} add a meeting READ scope (search \u{201C}meeting\u{201D}, pick the list/view one) on your Server-to-Server app's Scopes page at marketplace.zoom.us."
+            }
+            return message
+        case .meetingDetailsFailed(let body):
+            var message = "Couldn't fetch recurring meetings' next times: \(body)"
+            if body.contains("scopes") {
+                message += " \u{2014} add the \u{201C}View a meeting\u{201D} scope (meeting:read:meeting:admin) on your Server-to-Server app's Scopes page. The list still works; recurring meetings just show without a time."
             }
             return message
         case .unexpectedResponse: return "Zoom's response didn't look like a meeting list."

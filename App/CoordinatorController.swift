@@ -621,8 +621,10 @@ final class CoordinatorController: ObservableObject {
         isLoadingScheduled = true
         Task {
             do {
-                scheduledMeetings = try await ZoomServerToServerClient.listScheduledMeetings(
+                let result = try await ZoomServerToServerClient.listScheduledMeetings(
                     accountID: s2sAccountID, clientID: s2sClientID, clientSecret: s2sClientSecret)
+                scheduledMeetings = result.meetings
+                if let warning = result.warning { log(warning) }
                 if scheduledMeetings.isEmpty {
                     log("No scheduled meetings on this Zoom account. Recurring ones scheduled at zoom.us/meeting/schedule will show up here.")
                 }

@@ -21,6 +21,7 @@ enum GreenroomScene {
     static let webcamSourceName = "Greenroom Webcam"
     static let chromaKeyFilterName = "Greenroom Chroma Key"
     static let shapeMaskFilterName = "Greenroom Shape Mask"
+    static let screenMaskFilterName = "Greenroom Screen Panel Mask"
 
     struct BubbleLayout {
         var widthFraction: Double = 0.24
@@ -97,7 +98,7 @@ enum GreenroomScene {
         // size, so only its top-left corner was visible within the frame),
         // then position the bubble off that real size rather than a guess.
         let canvas = try await fitCanvasToScreenSource(client: client)
-        try await positionBubble(client: client, layout: bubble, canvasWidth: canvas.width, canvasHeight: canvas.height)
+        try await layoutScene(client: client, layout: bubble, canvasWidth: canvas.width, canvasHeight: canvas.height)
 
         try await client.request("SetCurrentProgramScene", data: ["sceneName": sceneName])
     }
@@ -324,6 +325,21 @@ enum GreenroomScene {
         }
     }
 
+    /// Routes to the shape's scene arrangement. The bubble shapes keep the
+    /// screen full-bleed (fitCanvasToScreenSource already stretched it)
+    /// with the webcam parked as a corner bubble; Presenter mode reshapes
+    /// the whole scene instead. Both paths reset what the other one
+    /// changes, so switching shapes between sessions never leaves stale
+    /// transforms or masks behind.
+    private static func layoutScene(client: OBSWebSocketClient, layout: BubbleLayout, canvasWidth: Int, canvasHeight: Int) async throws {
+        if layout.shape.isPresenterStyle {
+            try await layoutPresenter(client: client, canvasWidth: canvasWidth, canvasHeight: canvasHeight)
+        } else {
+            try await ensureScreenPanelMask(client: client, enabled: false, canvasWidth: canvasWidth, canvasHeight: canvasHeight)
+            try await positionBubble(client: client, layout: layout, canvasWidth: canvasWidth, canvasHeight: canvasHeight)
+        }
+    }
+
     private static func positionBubble(client: OBSWebSocketClient, layout: BubbleLayout, canvasWidth: Int, canvasHeight: Int) async throws {
         let items = try await sceneItems(client: client)
         guard let item = items.first(where: { ($0["sourceName"] as? String) == webcamSourceName }),
@@ -346,5 +362,97 @@ enum GreenroomScene {
                 "boundsHeight": diameter
             ]
         ])
+    }
+
+    /// The "Presenter Overlay (Large)" arrangement, rebuilt in OBS: the
+    /// shared screen shrinks into a rounded panel hugging the right edge,
+    /// and the chroma-keyed person stands at (beyond) full frame height
+    /// around the left third, lower body cropped by the canvas edge - the
+    /// same silhouette Apple's overlay produces. The webcam scene item was
+    /// created after the screen's, so it already draws on top.
+    private static func layoutPresenter(client: OBSWebSocketClient, canvasWidth: Int, canvasHeight: Int) async throws {
+        let items = try await sceneItems(client: client)
+        let width = Double(canvasWidth)
+        let height = Double(canvasHeight)
+
+        // Screen -> inset panel. Canvas and screen share an aspect ratio
+        // (fitCanvasToScreenSource made the canvas the screen's native
+        // size), so scaling both axes by the same fraction keeps it true.
+        if let screen = items.first(where: { ($0["sourceName"] as? String) == screenSourceName }),
+           let screenId = screen["sceneItemId"] as? Int {
+            let panelWidth = width * 0.78
+            let panelHeight = height * 0.78
+            _ = try await client.request("SetSceneItemTransform", data: [
+                "sceneName": sceneName,
+                "sceneItemId": screenId,
+                "sceneItemTransform": [
+                    "positionX": width - width * 0.025 - panelWidth,
+                    "positionY": (height - panelHeight) / 2,
+                    "boundsType": "OBS_BOUNDS_STRETCH",
+                    "boundsWidth": panelWidth,
+                    "boundsHeight": panelHeight
+                ]
+            ])
+        }
+        try await ensureScreenPanelMask(client: client, enabled: true, canvasWidth: canvasWidth, canvasHeight: canvasHeight)
+
+        // Webcam -> big keyed person. Scale the frame past full canvas
+        // height (the canvas edge crops the overflow, so the waist-down
+        // disappears exactly like Apple's Large overlay) and center it
+        // around the left third, where a centered subject ends up standing.
+        if let webcam = items.first(where: { ($0["sourceName"] as? String) == webcamSourceName }),
+           let webcamId = webcam["sceneItemId"] as? Int {
+            let transform = webcam["sceneItemTransform"] as? [String: Any]
+            let sourceWidth = (transform?["sourceWidth"] as? Double) ?? 0
+            let sourceHeight = (transform?["sourceHeight"] as? Double) ?? 0
+            let aspect = (sourceWidth > 0 && sourceHeight > 0) ? sourceWidth / sourceHeight : 16.0 / 9.0
+
+            let frameHeight = height * 1.12
+            let frameWidth = frameHeight * aspect
+            _ = try await client.request("SetSceneItemTransform", data: [
+                "sceneName": sceneName,
+                "sceneItemId": webcamId,
+                "sceneItemTransform": [
+                    "positionX": width * 0.24 - frameWidth / 2,
+                    "positionY": -height * 0.02,
+                    "boundsType": "OBS_BOUNDS_STRETCH",
+                    "boundsWidth": frameWidth,
+                    "boundsHeight": frameHeight
+                ]
+            ])
+        }
+    }
+
+    /// Adds (Presenter mode) or removes (every other shape) the rounded
+    /// panel mask on the SCREEN source - same Image Mask/Blend mechanism
+    /// as the webcam's bubble shapes, with a canvas-aspect mask image so
+    /// the corner radii don't distort.
+    private static func ensureScreenPanelMask(client: OBSWebSocketClient, enabled: Bool, canvasWidth: Int, canvasHeight: Int) async throws {
+        let list = try await client.request("GetSourceFilterList", data: ["sourceName": screenSourceName])
+        let filters = (list["filters"] as? [[String: Any]]) ?? []
+        let exists = filters.contains { ($0["filterName"] as? String) == screenMaskFilterName }
+
+        guard enabled,
+              let maskURL = MaskImageGenerator.screenPanelMaskURL(canvasWidth: canvasWidth, canvasHeight: canvasHeight) else {
+            if exists {
+                _ = try? await client.request("RemoveSourceFilter", data: [
+                    "sourceName": screenSourceName, "filterName": screenMaskFilterName
+                ])
+            }
+            return
+        }
+
+        let settings: [String: Any] = ["type": "mask_alpha_filter.effect", "image_path": maskURL.path]
+        if exists {
+            _ = try await client.request("SetSourceFilterSettings", data: [
+                "sourceName": screenSourceName, "filterName": screenMaskFilterName,
+                "filterSettings": settings, "overlay": false
+            ])
+        } else {
+            _ = try await client.request("CreateSourceFilter", data: [
+                "sourceName": screenSourceName, "filterName": screenMaskFilterName,
+                "filterKind": "mask_filter_v2", "filterSettings": settings
+            ])
+        }
     }
 }

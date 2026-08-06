@@ -119,10 +119,16 @@ Also available:
 ## Settings (⌘,)
 
 ### Webcam
-Bubble shape for your webcam in the composite: **square**, **circle**,
-**rounded rectangle**, or **cutout**. Cutout chroma-keys your background away — it
-needs a real green screen behind you; tune the key in OBS → webcam source
-→ Filters if edges look rough. Shape changes apply on the next Start.
+How you appear in the composite: **square**, **circle**, **rounded
+rectangle**, **cutout**, or **presenter**. Cutout chroma-keys your
+background away so you float over the shared screen; Presenter rebuilds
+the macOS "Presenter Overlay (Large)" look inside the composite — the
+shared screen shrinks into a rounded panel and you stand keyed at full
+height in front of it. (Apple's own Presenter Overlay can't be triggered
+programmatically and is Apple-silicon-only; this one works on any Mac and
+needs no per-meeting toggle.) Both keyed modes need a real green screen
+behind you; tune the key in OBS → webcam source → Filters if edges look
+rough. Shape changes apply on the next Start.
 
 ### Layout
 The tiled-workspace arrangement, with a live schematic that previews

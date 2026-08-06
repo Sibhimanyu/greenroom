@@ -14,6 +14,13 @@ enum WebcamShape: String, CaseIterable, Identifiable {
     /// as a background-free cutout standing over the shared screen.
     /// Requires an actual green screen behind them.
     case cutout
+    /// The macOS "Presenter Overlay (Large)" look, rebuilt inside the OBS
+    /// composite (Apple's own can't be triggered programmatically, is
+    /// Apple-silicon-only, and wouldn't ride our virtual-camera pipeline):
+    /// the shared screen shrinks into a rounded inset panel and the person
+    /// stands keyed at full height in front of it. Same green-screen
+    /// requirement as Cutout.
+    case presenterLarge
 
     var id: String { rawValue }
 
@@ -23,9 +30,14 @@ enum WebcamShape: String, CaseIterable, Identifiable {
         case .circle: return "Circle"
         case .roundedRectangle: return "Rounded"
         case .cutout: return "Cutout"
+        case .presenterLarge: return "Presenter"
         }
     }
 
-    /// Cutout keys the background out instead of masking a bubble shape.
-    var usesChromaKey: Bool { self == .cutout }
+    /// These key the background out instead of masking a bubble shape.
+    var usesChromaKey: Bool { self == .cutout || self == .presenterLarge }
+
+    /// Presenter mode reshapes the whole scene (screen panel + big keyed
+    /// person), not just the webcam item.
+    var isPresenterStyle: Bool { self == .presenterLarge }
 }

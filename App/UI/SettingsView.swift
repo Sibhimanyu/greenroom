@@ -51,13 +51,22 @@ private struct WebcamSettingsTab: View {
             }
             .pickerStyle(.segmented)
 
-            Text(coordinator.webcamShape == .cutout
-                 ? "Cutout removes your background with a chroma key, so you appear as a cutout over the shared screen \u{2014} needs a real green screen behind you. Tune the key in OBS \u{2192} the webcam source \u{2192} Filters if the edges look rough."
-                 : "Pick a shape, then Start/Restart on the main window to apply it.")
+            Text(shapeCaption)
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
         .padding(20)
+    }
+
+    private var shapeCaption: String {
+        switch coordinator.webcamShape {
+        case .cutout:
+            return "Cutout removes your background with a chroma key, so you appear as a cutout over the shared screen \u{2014} needs a real green screen behind you. Tune the key in OBS \u{2192} the webcam source \u{2192} Filters if the edges look rough."
+        case .presenterLarge:
+            return "The macOS Presenter Overlay (Large) look, built into the composite: the shared screen becomes a rounded panel and you stand in front of it at full height. Needs a real green screen behind you, like Cutout. Works on any Mac and needs no manual toggle each meeting."
+        case .square, .circle, .roundedRectangle:
+            return "Pick a shape, then Start/Restart on the main window to apply it."
+        }
     }
 }
 

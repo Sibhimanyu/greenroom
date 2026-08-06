@@ -29,12 +29,21 @@ struct GreenroomApp: App {
         // leaves an invisible item, and text makes the item's presence
         // unambiguous when diagnosing "it's not showing up". (A template
         // image of the brand mark was tried and reverted - at 16pt the
-        // mark reads worse than plain "GR".)
+        // mark reads worse than plain "GR".) While recording, the label
+        // flips to a record glyph + REC - the menu bar renders extras
+        // monochrome, so the SHAPE change is the indicator, not color.
         MenuBarExtra {
             MenuBarView()
                 .environmentObject(coordinator)
         } label: {
-            Text("GR")
+            if coordinator.isRecording {
+                HStack(spacing: 3) {
+                    Image(systemName: "record.circle.fill")
+                    Text("REC")
+                }
+            } else {
+                Text("GR")
+            }
         }
         .menuBarExtraStyle(.menu)
     }

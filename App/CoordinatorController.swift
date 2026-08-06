@@ -371,6 +371,8 @@ final class CoordinatorController: ObservableObject {
             if isRecording {
                 if let path = (try? await client.request("StopRecord"))?["outputPath"] as? String {
                     log("Recording saved: \(path)")
+                    Notifier.post(title: "Recording saved",
+                                  body: "\((path as NSString).lastPathComponent) \u{2014} in Documents/Greenroom.")
                 }
                 isRecording = false
             }
@@ -403,6 +405,8 @@ final class CoordinatorController: ObservableObject {
                     isRecording = false
                     if let path = response["outputPath"] as? String {
                         log("Recording saved: \(path)")
+                        Notifier.post(title: "Recording saved",
+                                      body: "\((path as NSString).lastPathComponent) \u{2014} in Documents/Greenroom.")
                     } else {
                         log("Recording stopped.")
                     }
@@ -410,6 +414,11 @@ final class CoordinatorController: ObservableObject {
                     _ = try await client.request("StartRecord")
                     isRecording = true
                     log("Recording\u{2026} (screen + webcam composite)")
+                    // Confirmation where it can be seen - mid-session the
+                    // main window is buried behind the main app. The menu
+                    // bar's GR also flips to a REC glyph via isRecording.
+                    Notifier.post(title: "Recording started",
+                                  body: "Greenroom is recording the composite. \u{2303}\u{2325}\u{2318}R stops it.")
                 }
             } catch {
                 log("Recording failed: \(error.localizedDescription) \u{2014} press Start first if the session isn't running.")

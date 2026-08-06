@@ -180,12 +180,19 @@ struct ContentView: View {
         .fixedSize()
     }
 
+    /// Recurring meetings deliberately show NO timestamp: Zoom's list
+    /// endpoint reports the series' ORIGINAL start time, not the next
+    /// occurrence (confirmed live - a daily 4 PM class listed a months-old
+    /// anchor date), and the real next occurrence would cost a details
+    /// call per meeting plus another Marketplace scope. One-off scheduled
+    /// meetings' timestamps are reliable and shown in local time.
     private func scheduledMeetingLabel(_ meeting: ZoomServerToServerClient.ScheduledMeeting) -> String {
+        if meeting.isRecurring { return "\(meeting.topic) \u{2014} recurring" }
         if let start = meeting.startTime {
             let when = start.formatted(.dateTime.weekday(.abbreviated).day().month(.abbreviated).hour().minute())
-            return meeting.isRecurring ? "\(meeting.topic) \u{2014} recurring, next \(when)" : "\(meeting.topic) \u{2014} \(when)"
+            return "\(meeting.topic) \u{2014} \(when)"
         }
-        return "\(meeting.topic) \u{2014} recurring, any time"
+        return meeting.topic
     }
 
     /// The pieces of the session as individual actions - out of the way,

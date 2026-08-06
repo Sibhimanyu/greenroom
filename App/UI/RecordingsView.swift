@@ -85,7 +85,7 @@ struct RecordingsView: View {
 
                     Group {
                         if let player {
-                            VideoPlayer(player: player)
+                            PlayerView(player: player)
                         } else {
                             Text("Select a recording to play it")
                                 .foregroundStyle(.secondary)
@@ -121,6 +121,29 @@ struct RecordingsView: View {
                                  sizeBytes: Int64(values?.fileSize ?? 0))
             }
             .sorted { $0.date > $1.date }
+    }
+
+    /// AppKit's AVPlayerView wrapped for SwiftUI - deliberately NOT the
+    /// SwiftUI VideoPlayer. That type (the _AVKit_SwiftUI overlay)
+    /// crashed this app at generic-metadata instantiation the moment a
+    /// recording was selected (swift getSuperclassMetadata fatalError,
+    /// confirmed in three crash reports) - most plausibly one of the ~80
+    /// embedded Zoom SDK libraries shadowing something the overlay's
+    /// metadata resolution needs. AVPlayerView is a plain ObjC class and
+    /// sidesteps that machinery entirely.
+    private struct PlayerView: NSViewRepresentable {
+        let player: AVPlayer
+
+        func makeNSView(context: Context) -> AVPlayerView {
+            let view = AVPlayerView()
+            view.controlsStyle = .floating
+            view.player = player
+            return view
+        }
+
+        func updateNSView(_ view: AVPlayerView, context: Context) {
+            view.player = player
+        }
     }
 
     private func trash(_ recording: Recording) {

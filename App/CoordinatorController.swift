@@ -603,6 +603,51 @@ final class CoordinatorController: ObservableObject {
         finalizeLayout()
     }
 
+    // MARK: Scheduled meetings - pulled from the Zoom account with the
+    // same S2S credentials that create meetings, so "Join Existing" can
+    // offer the account's recurring class meeting instead of making the
+    // user paste an ID every morning.
+
+    @Published private(set) var scheduledMeetings: [ZoomServerToServerClient.ScheduledMeeting] = []
+    @Published private(set) var isLoadingScheduled = false
+
+    func refreshScheduledMeetings() {
+        loadSecretsIfNeeded()
+        guard !isLoadingScheduled else { return }
+        guard !s2sAccountID.isEmpty, !s2sClientID.isEmpty, !s2sClientSecret.isEmpty else {
+            log("Can't list your Zoom meetings \u{2014} add the Start Meeting credentials in Settings (\u{2318},) first.")
+            return
+        }
+        isLoadingScheduled = true
+        Task {
+            do {
+                scheduledMeetings = try await ZoomServerToServerClient.listScheduledMeetings(
+                    accountID: s2sAccountID, clientID: s2sClientID, clientSecret: s2sClientSecret)
+                if scheduledMeetings.isEmpty {
+                    log("No scheduled meetings on this Zoom account. Recurring ones scheduled at zoom.us/meeting/schedule will show up here.")
+                }
+            } catch {
+                log(error.localizedDescription)
+            }
+            isLoadingScheduled = false
+        }
+    }
+
+    /// Fills the Join Existing fields from a picked scheduled meeting.
+    /// The list endpoint omits the raw passcode, but the join URL carries
+    /// it in the encrypted pwd= form joins accept - the same parsing as
+    /// Paste Link.
+    func selectScheduledMeeting(_ meeting: ZoomServerToServerClient.ScheduledMeeting) {
+        if let parsed = ZoomMeetingLinkParser.parse(meeting.joinURL) {
+            meetingNumber = parsed.number
+            meetingPassword = parsed.password
+        } else {
+            meetingNumber = String(meeting.id)
+            meetingPassword = ""
+        }
+        log("Selected \u{201C}\(meeting.topic)\u{201D} (\(meetingNumber)).")
+    }
+
     /// Fills Meeting ID/Passcode from whatever's on the clipboard - a
     /// pasted zoom.us/zoommtg:// link, or the plain text block Zoom's
     /// calendar invites use. Beats manually copying two separate fields

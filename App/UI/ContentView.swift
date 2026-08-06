@@ -137,6 +137,7 @@ struct ContentView: View {
                 }
             case .join:
                 HStack {
+                    scheduledMeetingsMenu
                     Button {
                         coordinator.fillMeetingFromClipboard()
                     } label: {
@@ -145,8 +146,46 @@ struct ContentView: View {
                     TextField("Meeting ID", text: $coordinator.meetingNumber)
                     TextField("Passcode (optional)", text: $coordinator.meetingPassword)
                 }
+                .onAppear {
+                    // Pre-fetch so the menu is ready by the time it's
+                    // opened - skipped silently when credentials or a
+                    // read scope are missing (refresh logs the reason).
+                    if coordinator.scheduledMeetings.isEmpty && !coordinator.s2sAccountID.isEmpty {
+                        coordinator.refreshScheduledMeetings()
+                    }
+                }
             }
         }
+    }
+
+    /// The account's scheduled/recurring meetings, one click to fill the
+    /// Join fields - the daily-class flow: schedule a recurring meeting
+    /// once at zoom.us, then it's always right here.
+    private var scheduledMeetingsMenu: some View {
+        Menu {
+            if coordinator.scheduledMeetings.isEmpty {
+                Text(coordinator.isLoadingScheduled ? "Loading\u{2026}" : "No scheduled meetings found")
+            } else {
+                ForEach(coordinator.scheduledMeetings) { meeting in
+                    Button(scheduledMeetingLabel(meeting)) {
+                        coordinator.selectScheduledMeeting(meeting)
+                    }
+                }
+            }
+            Divider()
+            Button("Refresh") { coordinator.refreshScheduledMeetings() }
+        } label: {
+            Label("Scheduled", systemImage: "calendar")
+        }
+        .fixedSize()
+    }
+
+    private func scheduledMeetingLabel(_ meeting: ZoomServerToServerClient.ScheduledMeeting) -> String {
+        if let start = meeting.startTime {
+            let when = start.formatted(.dateTime.weekday(.abbreviated).day().month(.abbreviated).hour().minute())
+            return meeting.isRecurring ? "\(meeting.topic) \u{2014} recurring, next \(when)" : "\(meeting.topic) \u{2014} \(when)"
+        }
+        return "\(meeting.topic) \u{2014} recurring, any time"
     }
 
     /// The pieces of the session as individual actions - out of the way,

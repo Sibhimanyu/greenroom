@@ -87,18 +87,81 @@ enum ZoomServerToServerClient {
             .queryItems?.first { $0.name == "zak" }?.value
         return CreatedMeeting(number: String(id), password: password, startURL: startURL, zak: zak)
     }
+
+    /// One meeting from the account's scheduled list. The list endpoint
+    /// deliberately omits the passcode, but `joinURL` carries it in
+    /// encrypted `pwd=` form - which is exactly what joins accept, and
+    /// what ZoomMeetingLinkParser already extracts.
+    struct ScheduledMeeting: Identifiable, Hashable {
+        let id: Int64
+        let topic: String
+        /// nil for "recurring, no fixed time" meetings - the standing-
+        /// meeting kind, startable any time.
+        let startTime: Date?
+        let isRecurring: Bool
+        let joinURL: String
+    }
+
+    /// Lists the account's scheduled meetings (GET /users/me/meetings,
+    /// `type=scheduled` - upcoming ones plus recurring meetings with no
+    /// fixed time). Needs a meeting READ scope on the Server-to-Server
+    /// app, additional to the write scope creating uses - if Zoom answers
+    /// with a "does not contain scopes" error, add the list-meetings read
+    /// scope on the app's Scopes page.
+    static func listScheduledMeetings(
+        accountID: String,
+        clientID: String,
+        clientSecret: String
+    ) async throws -> [ScheduledMeeting] {
+        let token = try await fetchAccessToken(accountID: accountID, clientID: clientID, clientSecret: clientSecret)
+
+        var request = URLRequest(url: URL(string: "https://api.zoom.us/v2/users/me/meetings?type=scheduled&page_size=30")!)
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
+            throw ZoomServerToServerError.listMeetingsFailed(String(data: data, encoding: .utf8) ?? "unknown error")
+        }
+        guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let items = json["meetings"] as? [[String: Any]] else {
+            throw ZoomServerToServerError.unexpectedResponse
+        }
+
+        let iso = ISO8601DateFormatter()
+        return items.compactMap { item in
+            guard let id = item["id"] as? Int64,
+                  let joinURL = item["join_url"] as? String else { return nil }
+            // Zoom meeting types: 2 scheduled, 3 recurring/no fixed time,
+            // 8 recurring/fixed time.
+            let type = (item["type"] as? Int) ?? 2
+            return ScheduledMeeting(
+                id: id,
+                topic: (item["topic"] as? String) ?? "Untitled meeting",
+                startTime: (item["start_time"] as? String).flatMap { iso.date(from: $0) },
+                isRecurring: type == 3 || type == 8,
+                joinURL: joinURL
+            )
+        }
+    }
 }
 
 enum ZoomServerToServerError: LocalizedError {
     case tokenRequestFailed(String)
     case createMeetingFailed(String)
+    case listMeetingsFailed(String)
     case unexpectedResponse
 
     var errorDescription: String? {
         switch self {
         case .tokenRequestFailed(let body): return "Couldn't get a Zoom API token: \(body)"
         case .createMeetingFailed(let body): return "Couldn't create the meeting: \(body)"
-        case .unexpectedResponse: return "Zoom's response didn't look like a created meeting."
+        case .listMeetingsFailed(let body):
+            var message = "Couldn't list your Zoom meetings: \(body)"
+            if body.contains("scopes") {
+                message += " \u{2014} add a meeting READ scope (search \u{201C}meeting\u{201D}, pick the list/view one) on your Server-to-Server app's Scopes page at marketplace.zoom.us."
+            }
+            return message
+        case .unexpectedResponse: return "Zoom's response didn't look like a meeting list."
         }
     }
 }

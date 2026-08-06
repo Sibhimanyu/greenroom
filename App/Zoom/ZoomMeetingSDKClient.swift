@@ -81,8 +81,28 @@ final class ZoomMeetingSDKClient: NSObject, ObservableObject {
     /// window hiding (confirmed live: the dialog appeared, got hidden
     /// half a second later, and the start sat waiting forever on an
     /// invisible button). Suppress it before every connect.
+    ///
+    /// Also strips the meeting window down ahead of time: the parked
+    /// side-column tile should be a simple current-speaker view, so the
+    /// self-thumbnail strip and the info button overlay are hidden here
+    /// (configuration is read at join; see simplifyMeetingView() for the
+    /// part that can only happen once the window exists).
     private func suppressInteractiveJoinUI() {
-        ZoomSDK.shared().getMeetingService()?.getMeetingUIController().isShowVideoPreview(whenJoinMeeting: false)
+        guard let meetingService = ZoomSDK.shared().getMeetingService() else { return }
+        meetingService.getMeetingUIController().isShowVideoPreview(whenJoinMeeting: false)
+        let configuration = meetingService.getMeetingConfiguration()
+        configuration.hideThumbnailVideoWindow = true
+        configuration.hideMeetingInfoButtonOnVideo = true
+    }
+
+    /// Switches the built-in client's meeting window to the plain
+    /// current-speaker layout (confirmed against
+    /// ZoomSDKMeetingUIController.h: switchToActiveSpeakerView, the
+    /// counterpart of switchToVideoWallView). Only meaningful once the
+    /// meeting window actually exists, i.e. after InMeeting - callers
+    /// invoke it when parking the window, not at connect time.
+    func simplifyMeetingView() {
+        ZoomSDK.shared().getMeetingService()?.getMeetingUIController().switchToActiveSpeakerView()
     }
 
     /// Joins as a second, muted/camera-off participant purely for chat -

@@ -491,6 +491,10 @@ final class CoordinatorController: ObservableObject {
                 if let window = sdkMeetingWindows().first {
                     if !parked, let slot = ChatWindowController.zoomSlotNSFrame(for: workspaceLayout) {
                         window.setFrame(slot, display: true)
+                        // The parked tile should be a plain current-speaker
+                        // view - done here (not at connect) because the
+                        // view switch needs the meeting window to exist.
+                        zoomChatClient.simplifyMeetingView()
                         parked = true
                     }
                     let frame = window.frame

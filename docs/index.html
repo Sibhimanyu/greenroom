@@ -363,17 +363,26 @@
   html, body { overflow-x: clip; }
 
   @media (max-width: 700px) {
-    .hero { padding: 44px 0 52px; gap: 40px; }
+    .hero { padding: 44px 0 52px; gap: 44px; }
     section { padding: 60px 0; }
     .sec-head { margin-bottom: 32px; }
     .lede { font-size: 17px; }
     .nav-inner { gap: 16px; }
-    .nav-cta { gap: 12px; }
+    /* With .nav-links hidden, its auto margins vanish - push the
+       buttons back to the right edge ourselves. */
+    .nav-cta { gap: 12px; margin-left: auto; }
     .hero-actions { gap: 16px; }
-    .chip { font-size: 12px; padding: 7px 12px; }
-    .chip-cam { right: 2%; }
+    /* The floating decorations were designed for a wide two-column
+       hero: the blob reads as a stray shape on a narrow screen, and
+       the overhanging chips collide with the mock's browser bar. Drop
+       the blob, tuck the chips INSIDE the mock's corners as overlay
+       badges. */
+    .blob { display: none; }
+    .chip { font-size: 12px; padding: 6px 11px; }
+    .chip-cam { top: 48px; right: 10px; }
+    .chip-time { bottom: 10px; left: 10px; }
+    .mock-desk { min-height: 260px; padding: 12px; gap: 10px; }
     .story-grid { gap: 28px; }
-    .mock-desk { min-height: 300px; }
   }
 
   @media (prefers-reduced-motion: reduce) {

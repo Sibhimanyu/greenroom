@@ -59,6 +59,14 @@ private struct WebcamSettingsTab: View {
             Text(shapeCaption)
                 .font(.caption)
                 .foregroundStyle(.secondary)
+
+            Divider()
+
+            Toggle("Start recording automatically with the meeting", isOn: $coordinator.autoRecordOnStart)
+
+            Text("Off: record manually with the Record button or \u{2303}\u{2325}\u{2318}R. Either way, recordings save to Documents/Greenroom and stop safely when the session ends.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
         .padding(20)
     }

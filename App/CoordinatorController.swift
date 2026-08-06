@@ -156,6 +156,12 @@ final class CoordinatorController: ObservableObject {
     @Published var peopleViewOnStart: Bool {
         didSet { defaults.set(peopleViewOnStart, forKey: "peopleViewOnStart") }
     }
+    /// Recording starts by itself once the meeting is up (the Record
+    /// button and \u{2303}\u{2325}\u{2318}R stay available as the manual
+    /// trigger either way).
+    @Published var autoRecordOnStart: Bool {
+        didSet { defaults.set(autoRecordOnStart, forKey: "autoRecordOnStart") }
+    }
 
     private let defaults = UserDefaults.standard
 
@@ -176,6 +182,7 @@ final class CoordinatorController: ObservableObject {
             ?? (defaults.object(forKey: "chromeOnStart") as? Bool)
             ?? true
         peopleViewOnStart = defaults.bool(forKey: "peopleViewOnStart")
+        autoRecordOnStart = defaults.bool(forKey: "autoRecordOnStart")
         meetingMode = MeetingMode(rawValue: defaults.string(forKey: "meetingMode") ?? "") ?? .create
         showOnboarding = !defaults.bool(forKey: "hasCompletedOnboarding")
         sdkClientID = defaults.string(forKey: "zoomSDKClientID") ?? ""
@@ -300,6 +307,15 @@ final class CoordinatorController: ObservableObject {
                 }
 
                 try Task.checkCancellation()
+
+                // The meeting flow above has returned, so the session is
+                // live - start the tape if the setting says so. Uses the
+                // same path as the Record button, so End Session's
+                // finalize-before-quitting-OBS still applies.
+                if autoRecordOnStart && !isRecording {
+                    log("Starting the recording automatically (Settings \u{2192} Webcam).")
+                    toggleRecording()
+                }
 
                 if mainAppOnStart {
                     log("Opening the \(mainAppDisplayName) window (\(workspaceLayout.label))\u{2026}")
@@ -1031,6 +1047,7 @@ struct SettingsTransfer: Codable {
     var mainAppURL: String?
     var mainAppOnStart: Bool?
     var peopleViewOnStart: Bool?
+    var autoRecordOnStart: Bool?
     var workspaceLayout: WorkspaceLayout?
     // Legacy fields from Chrome-only-era exports - still imported, never
     // written anymore.
@@ -1054,6 +1071,7 @@ extension CoordinatorController {
             mainAppURL: mainAppURL,
             mainAppOnStart: mainAppOnStart,
             peopleViewOnStart: peopleViewOnStart,
+            autoRecordOnStart: autoRecordOnStart,
             workspaceLayout: workspaceLayout
         )
         let encoder = JSONEncoder()
@@ -1079,6 +1097,7 @@ extension CoordinatorController {
         if let value = transfer.mainAppURL ?? transfer.chromeURL { mainAppURL = value }
         if let value = transfer.mainAppOnStart ?? transfer.chromeOnStart { mainAppOnStart = value }
         if let value = transfer.peopleViewOnStart { peopleViewOnStart = value }
+        if let value = transfer.autoRecordOnStart { autoRecordOnStart = value }
         if let value = transfer.workspaceLayout {
             workspaceLayout = value
         } else if let raw = transfer.chromeLayout, let migrated = WorkspaceLayout(legacyChromeLayout: raw) {

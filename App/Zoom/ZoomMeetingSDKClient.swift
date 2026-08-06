@@ -117,6 +117,20 @@ final class ZoomMeetingSDKClient: NSObject, ObservableObject {
         authedClientID = clientID
     }
 
+    /// Orderly SDK teardown for process exit. The SDK's in-process video
+    /// and audio engines (zVideoUIBridge, viper) SEGV in their own
+    /// destructors when the process simply exits around them - every
+    /// "Greenroom quit unexpectedly" dialog was one of those, confirmed
+    /// against the crash reports. unInitSDK (ZoomSDK.h) lets them shut
+    /// down while the runtime is still intact.
+    func shutdown() {
+        guard didInit else { return }
+        ZoomSDK.shared().unInitSDK()
+        didInit = false
+        isAuthed = false
+        authedClientID = nil
+    }
+
     /// The SDK's join/start flow pops a video-preview dialog by default -
     /// a modal that needs a click. Deadly in combination with the ghost
     /// window hiding (confirmed live: the dialog appeared, got hidden

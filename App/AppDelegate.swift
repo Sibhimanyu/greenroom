@@ -57,6 +57,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        MainActor.assumeIsolated {
+            CoordinatorController.shared?.zoomChatClient.shutdown()
+        }
         OBSProcessManager.terminateAnyRunningInstance()
+        // Belt and braces on top of the SDK shutdown above: whatever
+        // teardown the Zoom SDK's ~80 dylibs still run at process exit
+        // SEGV'd reliably (zVideoUIBridge/viper destructors - see the
+        // crash reports), putting a "Greenroom quit unexpectedly" dialog
+        // on EVERY quit of an SDK-touched session. By this point the
+        // meeting is left, the SDK is uninited, and OBS has been told to
+        // quit - there is nothing left worth crashing over. _exit skips
+        // the remaining static destructors outright.
+        usleep(300_000) // let the OBS terminate Apple Event leave the process
+        _exit(0)
     }
 }

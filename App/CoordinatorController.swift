@@ -427,6 +427,10 @@ final class CoordinatorController: ObservableObject {
             virtualCamActive = false
             isRunning = false
             isStopping = false
+            // The session pushed Greenroom to the back (finalizeLayout) so
+            // the main app could take the stage - with the meeting over,
+            // bring it home to front for the next thing.
+            showMainWindow()
         }
     }
 

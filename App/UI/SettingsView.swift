@@ -65,7 +65,7 @@ private struct WebcamSettingsTab: View {
         case .presenterLarge:
             return "The macOS Presenter Overlay (Large) look, built into the composite: the shared screen becomes a rounded panel and you stand in front of it at full height. Needs a real green screen behind you, like Cutout. Works on any Mac and needs no manual toggle each meeting."
         case .square, .circle, .roundedRectangle:
-            return "Pick a shape, then Start/Restart on the main window to apply it."
+            return "Pick a shape, then start a session to apply it (Stop first if one is running)."
         }
     }
 }

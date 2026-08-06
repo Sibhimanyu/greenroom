@@ -13,18 +13,24 @@ struct MenuBarView: View {
     @EnvironmentObject private var coordinator: CoordinatorController
 
     var body: some View {
-        Button(coordinator.isRunning ? "Starting\u{2026}" : "Start Session") {
+        // Same enable/disable logic as the main window's buttons: Start
+        // only when idle, Stop only when starting or live, Record only
+        // with a live OBS session (or to stop an active recording).
+        Button(coordinator.isRunning ? "Starting\u{2026}"
+               : coordinator.virtualCamActive ? "Session Running" : "Start Session") {
             coordinator.start()
         }
-        .disabled(coordinator.isRunning)
+        .disabled(coordinator.isRunning || coordinator.virtualCamActive || coordinator.isStopping)
 
-        Button("Stop Session") {
+        Button(coordinator.isStopping ? "Stopping\u{2026}" : "Stop Session") {
             coordinator.stop()
         }
+        .disabled(coordinator.isStopping || (!coordinator.isRunning && !coordinator.virtualCamActive))
 
         Button(coordinator.isRecording ? "Stop Recording" : "Start Recording") {
             coordinator.toggleRecording()
         }
+        .disabled(!coordinator.virtualCamActive && !coordinator.isRecording)
 
         Divider()
 

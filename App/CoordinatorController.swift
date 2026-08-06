@@ -32,9 +32,13 @@ final class CoordinatorController: ObservableObject {
     }
 
     @Published private(set) var statusLines: [String] = []
+    /// True only during the Start transition (pipeline + meeting setup).
+    /// `virtualCamActive` is the "session is live" flag the buttons key
+    /// off once starting completes.
     @Published private(set) var isRunning = false
     @Published private(set) var virtualCamActive = false
-    private var isStopping = false
+    @Published private(set) var isStopping = false
+    private var startTask: Task<Void, Never>?
 
     @Published var meetingNumber = ""
     @Published var meetingPassword = ""
@@ -240,9 +244,14 @@ final class CoordinatorController: ObservableObject {
         virtualCamActive = false
         statusLines = []
 
-        Task {
+        startTask = Task {
             do {
                 try await runPipeline()
+                // Checkpoints between the big phases let Stop abandon a
+                // start cleanly (its OBS teardown otherwise races the
+                // meeting setup still running here). The steps themselves
+                // aren't cancellation-aware; between-steps is enough.
+                try Task.checkCancellation()
 
                 switch meetingMode {
                 case .create where useBuiltInClient:
@@ -272,6 +281,8 @@ final class CoordinatorController: ObservableObject {
                     joinChatOnly() // logs its own reason if skipped (e.g. no SDK credentials)
                 }
 
+                try Task.checkCancellation()
+
                 if mainAppOnStart {
                     log("Opening the \(mainAppDisplayName) window (\(workspaceLayout.label))\u{2026}")
                     openMainAppWindow()
@@ -287,6 +298,8 @@ final class CoordinatorController: ObservableObject {
                 if sdkMeetingWindows().isEmpty {
                     parkZoomWindow()
                 }
+            } catch is CancellationError {
+                log("Start cancelled.")
             } catch {
                 log("Failed: \(error.localizedDescription)")
             }
@@ -301,6 +314,9 @@ final class CoordinatorController: ObservableObject {
     func stop() {
         guard !isStopping else { return }
         isStopping = true
+        // A start still in flight gets abandoned at its next checkpoint -
+        // without this, its meeting setup raced the OBS teardown below.
+        startTask?.cancel()
         Task {
             log("Stopping\u{2026}")
             // Chat teardown first: close the window before leave() flips

@@ -15,12 +15,33 @@ struct ContentView: View {
     @EnvironmentObject private var coordinator: CoordinatorController
     @Environment(\.openSettings) private var openSettings
 
+    /// Start is for starting: disabled while a start is in flight AND
+    /// while the session is live (Stop first, then Start - pressing Start
+    /// mid-session used to happily build a second meeting on top).
     private var startDisabled: Bool {
-        if coordinator.isRunning { return true }
+        if coordinator.isRunning || coordinator.virtualCamActive || coordinator.isStopping { return true }
         switch coordinator.meetingMode {
         case .create: return coordinator.s2sAccountID.isEmpty || coordinator.s2sClientID.isEmpty
         case .join: return coordinator.meetingNumber.isEmpty
         }
+    }
+
+    private var startLabel: String {
+        if coordinator.isRunning { return "Starting\u{2026}" }
+        if coordinator.virtualCamActive { return "Running" }
+        return "Start"
+    }
+
+    /// Stop needs something to stop: a live session, or a start in
+    /// flight (which it cancels at the next checkpoint).
+    private var stopDisabled: Bool {
+        coordinator.isStopping || (!coordinator.isRunning && !coordinator.virtualCamActive)
+    }
+
+    /// Recording needs a live OBS session - except when already
+    /// recording, where the button must stay pressable to stop it.
+    private var recordDisabled: Bool {
+        !coordinator.virtualCamActive && !coordinator.isRecording
     }
 
     var body: some View {
@@ -33,17 +54,18 @@ struct ContentView: View {
                 Button {
                     coordinator.start()
                 } label: {
-                    Label(coordinator.isRunning ? "Starting\u{2026}" : "Start", systemImage: "play.fill")
+                    Label(startLabel, systemImage: "play.fill")
                         .frame(minWidth: 120)
                 }
                 .buttonStyle(.borderedProminent)
                 .controlSize(.large)
                 .disabled(startDisabled)
 
-                Button("Stop") {
+                Button(coordinator.isStopping ? "Stopping\u{2026}" : "Stop") {
                     coordinator.stop()
                 }
                 .controlSize(.large)
+                .disabled(stopDisabled)
 
                 Spacer()
 
@@ -55,6 +77,7 @@ struct ContentView: View {
                 }
                 .controlSize(.large)
                 .tint(coordinator.isRecording ? .red : nil)
+                .disabled(recordDisabled)
             }
 
             manualControls

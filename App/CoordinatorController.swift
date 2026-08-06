@@ -466,6 +466,66 @@ final class CoordinatorController: ObservableObject {
     }
 
     /// The chosen main-pane app's user-facing name, for buttons and logs.
+    // MARK: Live shape preview (Settings -> Webcam) - when OBS is around
+    // (the keep-warm setting's bonus), the shape picker shows the REAL
+    // composite instead of a schematic: actual screen, actual camera,
+    // the chroma key as tuned.
+
+    @Published private(set) var shapePreviewFrame: NSImage?
+    private var shapePreviewTask: Task<Void, Never>?
+
+    /// Starts polling OBS for frames of the composited scene. Outside a
+    /// session the scene is first (re)configured for the chosen shape, so
+    /// the preview shows what the NEXT session will send; during a live
+    /// session it simply mirrors the output. Falls back silently (frame
+    /// stays nil -> the schematic renders) when OBS isn't running.
+    func startShapePreview() {
+        guard shapePreviewTask == nil else { return }
+        shapePreviewTask = Task {
+            defer { shapePreviewFrame = nil }
+            if !virtualCamActive {
+                guard !NSRunningApplication.runningApplications(withBundleIdentifier: OBSProcessManager.bundleIdentifier).isEmpty else { return }
+                if (try? await client.request("GetVersion")) == nil {
+                    client.disconnect()
+                    guard (try? await client.connect(port: OBSProcessManager.websocketPort,
+                                                     password: OBSProcessManager.websocketPassword)) != nil else { return }
+                }
+                await applyShapeForPreview()
+            }
+            while !Task.isCancelled {
+                if let response = try? await client.request("GetSourceScreenshot", data: [
+                    "sourceName": GreenroomScene.sceneName,
+                    "imageFormat": "jpg",
+                    "imageWidth": 640
+                ]),
+                   let dataString = response["imageData"] as? String,
+                   let comma = dataString.firstIndex(of: ","),
+                   let imageData = Data(base64Encoded: String(dataString[dataString.index(after: comma)...])),
+                   let frame = NSImage(data: imageData) {
+                    shapePreviewFrame = frame
+                }
+                try? await Task.sleep(nanoseconds: 150_000_000)
+            }
+        }
+    }
+
+    /// Stops the frame polling. The connection deliberately stays up -
+    /// Start verifies and reuses it (see connectWithRetry), and a warm
+    /// idle OBS holds no session state to corrupt.
+    func stopShapePreview() {
+        shapePreviewTask?.cancel()
+        shapePreviewTask = nil
+        shapePreviewFrame = nil
+    }
+
+    /// Re-applies the chosen shape to the warm OBS scene so the live
+    /// preview tracks the picker immediately. NEVER during a session -
+    /// ensureConfigured's first step stops the virtual camera.
+    func applyShapeForPreview() async {
+        guard shapePreviewTask != nil, !virtualCamActive, !isRunning else { return }
+        try? await GreenroomScene.ensureConfigured(client: client, bubble: .init(shape: webcamShape))
+    }
+
     var mainAppDisplayName: String {
         AppCatalog.displayName(forBundleID: mainAppBundleID) ?? "Main App"
     }
@@ -1083,6 +1143,13 @@ final class CoordinatorController: ObservableObject {
     /// transition used to waste up to half a second just waiting out the
     /// interval, and with OBS prewarmed the first attempt usually lands.
     private func connectWithRetry(attempts: Int = 30) async throws {
+        // The Settings live preview may already hold a working connection
+        // - reuse it (verified, not trusted: a lingering dead socket gets
+        // torn down and rebuilt).
+        if client.isConnected {
+            if (try? await client.request("GetVersion")) != nil { return }
+            client.disconnect()
+        }
         for attempt in 1...attempts {
             do {
                 try await client.connect(port: OBSProcessManager.websocketPort, password: OBSProcessManager.websocketPassword)

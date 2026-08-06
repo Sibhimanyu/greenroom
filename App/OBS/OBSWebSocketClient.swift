@@ -28,6 +28,11 @@ final class OBSWebSocketClient: NSObject {
     private var pendingRequests: [String: CheckedContinuation<[String: Any], Error>] = [:]
     private let lock = NSLock()
 
+    /// A socket exists - says nothing about liveness (a dead one lingers
+    /// until disconnect()). Callers verify with a cheap request (e.g.
+    /// GetVersion) before trusting it.
+    var isConnected: Bool { webSocketTask != nil }
+
     /// Connects, performs the handshake, and returns once obs-websocket has
     /// confirmed authentication ("Identified"). Throws if the socket can't
     /// be opened (e.g. OBS isn't up yet) or auth is rejected.

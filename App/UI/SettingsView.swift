@@ -51,10 +51,39 @@ private struct WebcamSettingsTab: View {
             }
             .pickerStyle(.segmented)
 
-            WebcamShapePreview(shape: coordinator.webcamShape)
-                .frame(maxWidth: .infinity)
-                .frame(height: 190)
-                .padding(.vertical, 6)
+            // Live preview of the real composite when OBS is warm;
+            // schematic fallback otherwise. Shape changes while idle are
+            // applied to the warm scene immediately, so the live picture
+            // tracks the picker.
+            Group {
+                if let frame = coordinator.shapePreviewFrame {
+                    Image(nsImage: frame)
+                        .resizable()
+                        .scaledToFit()
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                        .overlay(alignment: .topLeading) {
+                            HStack(spacing: 4) {
+                                Circle().fill(.green).frame(width: 6, height: 6)
+                                Text("LIVE").font(.caption2.bold())
+                            }
+                            .padding(.horizontal, 7)
+                            .padding(.vertical, 3)
+                            .background(.black.opacity(0.55), in: Capsule())
+                            .foregroundStyle(.white)
+                            .padding(6)
+                        }
+                } else {
+                    WebcamShapePreview(shape: coordinator.webcamShape)
+                }
+            }
+            .frame(maxWidth: .infinity)
+            .frame(height: 190)
+            .padding(.vertical, 6)
+            .onAppear { coordinator.startShapePreview() }
+            .onDisappear { coordinator.stopShapePreview() }
+            .onChange(of: coordinator.webcamShape) { _ in
+                Task { await coordinator.applyShapeForPreview() }
+            }
 
             Text(shapeCaption)
                 .font(.caption)

@@ -162,6 +162,18 @@ final class CoordinatorController: ObservableObject {
     @Published var autoRecordOnStart: Bool {
         didSet { defaults.set(autoRecordOnStart, forKey: "autoRecordOnStart") }
     }
+    /// OBS launches with Greenroom and survives End Session (quitting
+    /// only with the app), so Start skips OBS's multi-second cold launch.
+    /// Safe against the stale-state lesson that made stop() quit OBS in
+    /// the first place: ensureConfigured is fully idempotent now (virtual
+    /// cam stopped, canvas/sources/filters reset on every start). Default
+    /// ON - this is most of the "make Start fast" win.
+    @Published var keepOBSWarm: Bool {
+        didSet {
+            defaults.set(keepOBSWarm, forKey: "keepOBSWarm")
+            if keepOBSWarm { prewarmOBSIfEnabled() }
+        }
+    }
 
     private let defaults = UserDefaults.standard
 
@@ -183,6 +195,7 @@ final class CoordinatorController: ObservableObject {
             ?? true
         peopleViewOnStart = defaults.bool(forKey: "peopleViewOnStart")
         autoRecordOnStart = defaults.bool(forKey: "autoRecordOnStart")
+        keepOBSWarm = (defaults.object(forKey: "keepOBSWarm") as? Bool) ?? true
         meetingMode = MeetingMode(rawValue: defaults.string(forKey: "meetingMode") ?? "") ?? .create
         showOnboarding = !defaults.bool(forKey: "hasCompletedOnboarding")
         sdkClientID = defaults.string(forKey: "zoomSDKClientID") ?? ""
@@ -271,7 +284,26 @@ final class CoordinatorController: ObservableObject {
 
         startTask = Task {
             do {
-                try await runPipeline()
+                // Perceived speed: the main app doesn't depend on
+                // anything else - open it first so something visibly
+                // happens the instant Start is pressed.
+                if mainAppOnStart {
+                    log("Opening the \(mainAppDisplayName) window (\(workspaceLayout.label))\u{2026}")
+                    openMainAppWindow()
+                }
+
+                // Overlap everything that doesn't need OBS with OBS's own
+                // spin-up: the REST meeting creation and the Zoom SDK
+                // auth are pure network/SDK time. The one true dependency
+                // in the whole start is "virtual camera live before the
+                // meeting client starts", enforced by awaiting the
+                // pipeline before the meeting flows below.
+                async let pipelineDone: Void = runPipeline()
+                async let preparedMeeting = prepareMeetingIfNeeded()
+                async let sdkPrefetched: Void = prefetchSDKAuth()
+
+                try await pipelineDone
+                await sdkPrefetched
                 // Checkpoints between the big phases let Stop abandon a
                 // start cleanly (its OBS teardown otherwise races the
                 // meeting setup still running here). The steps themselves
@@ -283,13 +315,21 @@ final class CoordinatorController: ObservableObject {
                     // All-in-one: the SDK IS the meeting client. One
                     // participant (you), hosting directly, camera/mic
                     // live, chat sent as you. No native Zoom app at all.
-                    let meeting = try await createMeetingViaAPI()
+                    guard let meeting = try await preparedMeeting else {
+                        throw NSError(domain: "Greenroom", code: 30, userInfo: [
+                            NSLocalizedDescriptionKey: "Internal: the meeting wasn't prepared."
+                        ])
+                    }
                     try await hostAllInOne(meeting: meeting)
                 case .create:
                     // Hybrid fallback: the SDK connection hosts the
                     // meeting invisibly, then the native Zoom app JOINS,
                     // and host gets handed over once you're in.
-                    let meeting = try await createMeetingViaAPI()
+                    guard let meeting = try await preparedMeeting else {
+                        throw NSError(domain: "Greenroom", code: 30, userInfo: [
+                            NSLocalizedDescriptionKey: "Internal: the meeting wasn't prepared."
+                        ])
+                    }
                     try await hostChatSession(meeting: meeting)
                     log("Joining the meeting in Zoom\u{2026}")
                     ZoomLauncher.join(meetingNumber: meeting.number, password: meeting.password)
@@ -315,11 +355,6 @@ final class CoordinatorController: ObservableObject {
                 if autoRecordOnStart && !isRecording {
                     log("Starting the recording automatically (Settings \u{2192} Webcam).")
                     toggleRecording()
-                }
-
-                if mainAppOnStart {
-                    log("Opening the \(mainAppDisplayName) window (\(workspaceLayout.label))\u{2026}")
-                    openMainAppWindow()
                 }
 
                 // The built-in client's window is parked in-process (see
@@ -378,11 +413,15 @@ final class CoordinatorController: ObservableObject {
             }
             _ = try? await client.request("StopVirtualCam")
             client.disconnect()
-            await processManager.quitAndWait() // clean exit = OBS clears its own sentinel
+            if keepOBSWarm {
+                log("Session ended \u{2014} OBS stays ready for a fast next start (it quits with Greenroom).")
+            } else {
+                await processManager.quitAndWait() // clean exit = OBS clears its own sentinel
+                log("Stopped OBS and its virtual camera.")
+            }
             virtualCamActive = false
             isRunning = false
             isStopping = false
-            log("Stopped OBS and its virtual camera.")
         }
     }
 
@@ -537,8 +576,16 @@ final class CoordinatorController: ObservableObject {
         if isOwnScheduledMeeting {
             do {
                 log("This meeting is yours \u{2014} starting it as host\u{2026}")
-                let zak = try await ZoomServerToServerClient.fetchZAK(
-                    accountID: s2sAccountID, clientID: s2sClientID, clientSecret: s2sClientSecret)
+                let zak: String
+                if let prefetched = prefetchedZAK, prefetched.meetingNumber == meetingNumber,
+                   Date().timeIntervalSince(prefetched.fetchedAt) < 600 {
+                    // Warmed when the meeting was picked from the
+                    // Scheduled menu - saves the fetch's network time.
+                    zak = prefetched.zak
+                } else {
+                    zak = try await ZoomServerToServerClient.fetchZAK(
+                        accountID: s2sAccountID, clientID: s2sClientID, clientSecret: s2sClientSecret)
+                }
                 try await zoomChatClient.startAsHost(meetingNumber: meetingNumber, zak: zak, displayName: name, enableMedia: true)
                 startedAsHost = true
             } catch {
@@ -647,6 +694,23 @@ final class CoordinatorController: ObservableObject {
         NSApp.windows.first { $0.title == "Greenroom" }?.makeKeyAndOrderFront(nil)
     }
 
+    /// The create-mode meeting, made WHILE OBS spins up (see the async
+    /// lets in start()). nil in join mode - the guard at the use site is
+    /// unreachable by construction.
+    private func prepareMeetingIfNeeded() async throws -> ZoomServerToServerClient.CreatedMeeting? {
+        guard meetingMode == .create else { return nil }
+        return try await createMeetingViaAPI()
+    }
+
+    /// Warms the Zoom SDK auth in parallel with the OBS pipeline.
+    /// Errors are swallowed here on purpose: the meeting flows call
+    /// ensureReady again (now a no-op on success), and THEIR failure
+    /// path carries the real error to the log.
+    private func prefetchSDKAuth() async {
+        guard !sdkClientID.isEmpty, !sdkClientSecret.isEmpty else { return }
+        try? await zoomChatClient.ensureReady(clientID: sdkClientID, clientSecret: sdkClientSecret)
+    }
+
     private func createMeetingViaAPI() async throws -> ZoomServerToServerClient.CreatedMeeting {
         log("Creating a new meeting\u{2026}")
         let meeting = try await ZoomServerToServerClient.startInstantMeeting(
@@ -740,6 +804,22 @@ final class CoordinatorController: ObservableObject {
             meetingPassword = ""
         }
         log("Selected \u{201C}\(meeting.topic)\u{201D} (\(meetingNumber)).")
+        // Warm the host key while the human reaches for Start - own
+        // meetings get host-started with a ZAK, and this fetch is pure
+        // network time otherwise sitting inside the start.
+        prefetchZAK(for: meetingNumber)
+    }
+
+    private var prefetchedZAK: (meetingNumber: String, zak: String, fetchedAt: Date)?
+
+    private func prefetchZAK(for number: String) {
+        guard !s2sAccountID.isEmpty, !s2sClientID.isEmpty, !s2sClientSecret.isEmpty else { return }
+        Task {
+            if let zak = try? await ZoomServerToServerClient.fetchZAK(
+                accountID: s2sAccountID, clientID: s2sClientID, clientSecret: s2sClientSecret) {
+                prefetchedZAK = (number, zak, Date())
+            }
+        }
     }
 
     /// Fills Meeting ID/Passcode from whatever's on the clipboard - a
@@ -999,16 +1079,28 @@ final class CoordinatorController: ObservableObject {
 
     /// OBS takes a moment to come up after launch, so the first few connect
     /// attempts are expected to fail - this isn't a sign of a real problem.
-    private func connectWithRetry(attempts: Int = 12) async throws {
+    /// 200ms polls (same ~6s total budget as the old 12x500ms): each
+    /// transition used to waste up to half a second just waiting out the
+    /// interval, and with OBS prewarmed the first attempt usually lands.
+    private func connectWithRetry(attempts: Int = 30) async throws {
         for attempt in 1...attempts {
             do {
                 try await client.connect(port: OBSProcessManager.websocketPort, password: OBSProcessManager.websocketPassword)
                 return
             } catch {
                 if attempt == attempts { throw error }
-                try? await Task.sleep(nanoseconds: 500_000_000)
+                try? await Task.sleep(nanoseconds: 200_000_000)
             }
         }
+    }
+
+    /// Launches OBS hidden ahead of need - at app launch and when the
+    /// keep-warm toggle flips on - so Start begins at "connect" instead
+    /// of OBS's multi-second cold launch. No-op mid-session, when OBS
+    /// isn't installed, or when the setting is off.
+    func prewarmOBSIfEnabled() {
+        guard keepOBSWarm, processManager.isInstalled, !isRunning, !virtualCamActive else { return }
+        Task { try? await processManager.launch() }
     }
 
     private func log(_ message: String) {
@@ -1057,6 +1149,7 @@ struct SettingsTransfer: Codable {
     var mainAppOnStart: Bool?
     var peopleViewOnStart: Bool?
     var autoRecordOnStart: Bool?
+    var keepOBSWarm: Bool?
     var workspaceLayout: WorkspaceLayout?
     // Legacy fields from Chrome-only-era exports - still imported, never
     // written anymore.
@@ -1081,6 +1174,7 @@ extension CoordinatorController {
             mainAppOnStart: mainAppOnStart,
             peopleViewOnStart: peopleViewOnStart,
             autoRecordOnStart: autoRecordOnStart,
+            keepOBSWarm: keepOBSWarm,
             workspaceLayout: workspaceLayout
         )
         let encoder = JSONEncoder()
@@ -1107,6 +1201,7 @@ extension CoordinatorController {
         if let value = transfer.mainAppOnStart ?? transfer.chromeOnStart { mainAppOnStart = value }
         if let value = transfer.peopleViewOnStart { peopleViewOnStart = value }
         if let value = transfer.autoRecordOnStart { autoRecordOnStart = value }
+        if let value = transfer.keepOBSWarm { keepOBSWarm = value }
         if let value = transfer.workspaceLayout {
             workspaceLayout = value
         } else if let raw = transfer.chromeLayout, let migrated = WorkspaceLayout(legacyChromeLayout: raw) {

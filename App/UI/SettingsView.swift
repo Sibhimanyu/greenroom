@@ -67,6 +67,12 @@ private struct WebcamSettingsTab: View {
             Text("Off: record manually with the Record button or \u{2303}\u{2325}\u{2318}R. Either way, recordings save to Documents/Greenroom and stop safely when the session ends.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
+
+            Toggle("Keep OBS ready in the background", isOn: $coordinator.keepOBSWarm)
+
+            Text("Launches OBS with Greenroom and leaves it running between sessions, so Start skips OBS's slow cold launch. OBS still quits when Greenroom quits.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
         .padding(20)
     }

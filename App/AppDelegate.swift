@@ -42,6 +42,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     CoordinatorController.shared?.snapWindowsBack()
                 },
             ])
+
+            // OBS's cold launch is most of Start's wait - warm it now so
+            // Start begins at "connect" (keep-warm setting gates this).
+            CoordinatorController.shared?.prewarmOBSIfEnabled()
         }
     }
 

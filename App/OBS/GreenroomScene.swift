@@ -114,7 +114,7 @@ enum GreenroomScene {
         try await client.request("SetCurrentProgramScene", data: ["sceneName": sceneName])
     }
 
-    static func startVirtualCam(client: OBSWebSocketClient, pollAttempts: Int = 6) async throws {
+    static func startVirtualCam(client: OBSWebSocketClient, pollAttempts: Int = 14) async throws {
         if let status = try? await client.request("GetVirtualCamStatus"),
            (status["outputActive"] as? Bool) == true {
             return
@@ -129,7 +129,7 @@ enum GreenroomScene {
         _ = try? await client.request("StartVirtualCam")
 
         for _ in 1...pollAttempts {
-            try? await Task.sleep(nanoseconds: 700_000_000)
+            try? await Task.sleep(nanoseconds: 300_000_000)
             if let status = try? await client.request("GetVirtualCamStatus"),
                (status["outputActive"] as? Bool) == true {
                 return

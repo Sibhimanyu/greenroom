@@ -36,12 +36,18 @@ final class ZoomMeetingSDKClient: NSObject, ObservableObject {
     private(set) var isHosting = false
 
     private var didInit = false
+    private var isAuthed = false
+    private var authedClientID: String?
     private var authCompletion: ((Result<Void, Error>) -> Void)?
     private var joinCompletion: ((Result<Void, Error>) -> Void)?
 
-    /// Brings the SDK up and authorizes it. Idempotent - safe to call every
-    /// time before joining.
+    /// Brings the SDK up and authorizes it. Genuinely idempotent: a repeat
+    /// call with the same credentials returns immediately instead of
+    /// re-running the ~1-2s SDK auth round trip - which lets the start
+    /// flow prefetch this in parallel with the OBS pipeline and lets the
+    /// meeting flows call it again for free.
     func ensureReady(clientID: String, clientSecret: String) async throws {
+        if isAuthed && authedClientID == clientID { return }
         if !didInit {
             let params = ZoomSDKInitParams()
             params.enableLog = true
@@ -74,6 +80,8 @@ final class ZoomMeetingSDKClient: NSObject, ObservableObject {
             }
             // On success, onZoomSDKAuthReturn below resolves this, not here.
         }
+        isAuthed = true
+        authedClientID = clientID
     }
 
     /// The SDK's join/start flow pops a video-preview dialog by default -

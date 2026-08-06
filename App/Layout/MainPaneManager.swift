@@ -26,7 +26,7 @@ enum MainPaneManager {
     /// convention).
     static func openWindow(bundleID: String, urlString: String, layout: WorkspaceLayout) async -> String? {
         if bundleID == ChromeWindowManager.chromeBundleID {
-            return ChromeWindowManager.openWindow(occupying: layout, urlString: urlString)
+            return await ChromeWindowManager.openWindow(occupying: layout, urlString: urlString)
         }
 
         let name = AppCatalog.displayName(forBundleID: bundleID) ?? bundleID
@@ -63,9 +63,9 @@ enum MainPaneManager {
     /// anything or touching URLs - the "snap back" case after the user
     /// has dragged things around. No-op when the app isn't running.
     @discardableResult
-    static func repositionFrontWindow(bundleID: String, layout: WorkspaceLayout) -> String? {
+    static func repositionFrontWindow(bundleID: String, layout: WorkspaceLayout) async -> String? {
         if bundleID == ChromeWindowManager.chromeBundleID {
-            return ChromeWindowManager.repositionFrontWindow(occupying: layout)
+            return await ChromeWindowManager.repositionFrontWindow(occupying: layout)
         }
 
         guard !NSRunningApplication.runningApplications(withBundleIdentifier: bundleID).isEmpty else { return nil }

@@ -29,7 +29,7 @@ enum ChromeWindowManager {
     /// when Chrome was already running; on a cold start, wait for Chrome's
     /// own startup window to appear and take that one over instead.
     @discardableResult
-    static func openWindow(occupying layout: WorkspaceLayout, urlString: String = "") -> String? {
+    static func openWindow(occupying layout: WorkspaceLayout, urlString: String = "") async -> String? {
         guard let rect = layout.mainPaneTopLeftFrame() else {
             return "Couldn't read the main screen's size."
         }
@@ -65,16 +65,11 @@ enum ChromeWindowManager {
         end tell
         """
 
-        var error: NSDictionary?
-        NSAppleScript(source: source)?.executeAndReturnError(&error)
-        guard let error else { return nil }
-
-        let code = (error[NSAppleScript.errorNumber] as? Int) ?? 0
-        if code == -1743 {
+        guard let failure = await runAppleScript(source) else { return nil }
+        if failure.code == -1743 {
             return "Greenroom isn't authorized to control Google Chrome yet. Approve it in System Settings \u{2192} Privacy & Security \u{2192} Automation, then try again."
         }
-        let message = (error[NSAppleScript.errorMessage] as? String) ?? "unknown error"
-        return "Couldn't position the Chrome window: \(message) (code \(code))"
+        return "Couldn't position the Chrome window: \(failure.message) (code \(failure.code))"
     }
 
     /// Re-tiles Chrome's existing front window to its slice WITHOUT
@@ -82,7 +77,7 @@ enum ChromeWindowManager {
     /// after the user has dragged things around. No-op when Chrome isn't
     /// running.
     @discardableResult
-    static func repositionFrontWindow(occupying layout: WorkspaceLayout) -> String? {
+    static func repositionFrontWindow(occupying layout: WorkspaceLayout) async -> String? {
         guard !NSRunningApplication.runningApplications(withBundleIdentifier: chromeBundleID).isEmpty else { return nil }
         guard let rect = layout.mainPaneTopLeftFrame() else {
             return "Couldn't read the main screen's size."
@@ -94,13 +89,54 @@ enum ChromeWindowManager {
             end if
         end tell
         """
-        var error: NSDictionary?
-        NSAppleScript(source: source)?.executeAndReturnError(&error)
-        guard let error else { return nil }
-        let code = (error[NSAppleScript.errorNumber] as? Int) ?? 0
-        if code == -1743 {
+        guard let failure = await runAppleScript(source) else { return nil }
+        if failure.code == -1743 {
             return "Greenroom isn't authorized to control Google Chrome yet. Approve it in System Settings \u{2192} Privacy & Security \u{2192} Automation, then try again."
         }
-        return "Couldn't reposition the Chrome window: \((error[NSAppleScript.errorMessage] as? String) ?? "unknown error") (code \(code))"
+        return "Couldn't reposition the Chrome window: \(failure.message) (code \(failure.code))"
+    }
+
+    /// Runs a script via /usr/bin/osascript OFF the main thread.
+    /// NSAppleScript.executeAndReturnError blocked whatever thread called
+    /// it - and the cold-start script (repeat 25 / delay 0.2, plus
+    /// activate) held the MAIN thread for multi-second stretches: a
+    /// beachball users reasonably read as a crash. The subprocess also
+    /// gets a kill-timeout, so a wedged Chrome can't hang callers.
+    /// Returns nil on success, or (code, stderr text) on failure - with
+    /// osascript's "(-1743)" automation-permission marker surfaced as the
+    /// code so callers keep their specific guidance.
+    private static func runAppleScript(_ source: String, timeout: TimeInterval = 30) async -> (code: Int, message: String)? {
+        await withCheckedContinuation { continuation in
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
+            process.arguments = ["-e", source]
+            let stderrPipe = Pipe()
+            process.standardError = stderrPipe
+            process.standardOutput = Pipe()
+
+            let watchdog = DispatchWorkItem { [weak process] in
+                if process?.isRunning == true { process?.terminate() }
+            }
+            DispatchQueue.global().asyncAfter(deadline: .now() + timeout, execute: watchdog)
+
+            process.terminationHandler = { finished in
+                watchdog.cancel()
+                let data = stderrPipe.fileHandleForReading.readDataToEndOfFile()
+                let message = String(data: data, encoding: .utf8)?
+                    .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                if finished.terminationStatus == 0 {
+                    continuation.resume(returning: nil)
+                } else {
+                    let code = message.contains("-1743") ? -1743 : Int(finished.terminationStatus)
+                    continuation.resume(returning: (code, message.isEmpty ? "script timed out or was killed" : message))
+                }
+            }
+            do {
+                try process.run()
+            } catch {
+                watchdog.cancel()
+                continuation.resume(returning: (-1, error.localizedDescription))
+            }
+        }
     }
 }

@@ -399,6 +399,11 @@ final class CoordinatorController: ObservableObject {
                 zoomChatBridge.reset()
                 log("Left the meeting chat.")
             }
+            // A beat between cancelling the window-follow loops and the
+            // SDK tearing its meeting windows down: the crash logs' seven
+            // zVideoUIBridge dealloc SEGVs look like that teardown racing
+            // in-flight window manipulation.
+            try? await Task.sleep(nanoseconds: 300_000_000)
             zoomChatClient.leave()
 
             // Finalize any in-progress recording BEFORE OBS is quit -
@@ -734,8 +739,10 @@ final class CoordinatorController: ObservableObject {
     /// plain NSWindow) or the native Zoom app's (Accessibility API) - and
     /// the follow loops those restart re-align the chat automatically.
     func snapWindowsBack() {
-        if let error = MainPaneManager.repositionFrontWindow(bundleID: mainAppBundleID, layout: workspaceLayout) {
-            log(error)
+        Task {
+            if let error = await MainPaneManager.repositionFrontWindow(bundleID: mainAppBundleID, layout: workspaceLayout) {
+                log(error)
+            }
         }
         if ChatWindowController.isOpen {
             ChatWindowController.show(chat: zoomChatBridge, layout: workspaceLayout)

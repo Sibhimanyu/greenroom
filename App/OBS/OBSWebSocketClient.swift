@@ -48,13 +48,32 @@ final class OBSWebSocketClient: NSObject {
         listen()
 
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            lock.lock()
             self.readyContinuation = continuation
+            lock.unlock()
+            // Handshake watchdog: a socket that opens but never completes
+            // Identify must throw, not park connect() forever.
+            DispatchQueue.global().asyncAfter(deadline: .now() + 10) { [weak self] in
+                self?.takeReadyContinuation()?
+                    .resume(throwing: RequestError(code: -2, comment: "OBS websocket handshake timed out"))
+            }
         }
+    }
+
+    private func takeReadyContinuation() -> CheckedContinuation<Void, Error>? {
+        lock.lock()
+        defer { lock.unlock() }
+        let continuation = readyContinuation
+        readyContinuation = nil
+        return continuation
     }
 
     func disconnect() {
         webSocketTask?.cancel(with: .goingAway, reason: nil)
         webSocketTask = nil
+        // Anyone mid-await must unblock NOW - a request parked on a dead
+        // socket once froze stop() (and with it every button) forever.
+        failAllPending(with: RequestError(code: -5, comment: "Disconnected from OBS"))
     }
 
     /// obs-websocket's documented code for "the server is not ready to
@@ -91,8 +110,35 @@ final class OBSWebSocketClient: NSObject {
             lock.lock()
             pendingRequests[requestId] = continuation
             lock.unlock()
-            send(message)
+
+            guard let task = webSocketTask,
+                  let payload = try? JSONSerialization.data(withJSONObject: message),
+                  let text = String(data: payload, encoding: .utf8) else {
+                failRequest(requestId, with: RequestError(code: -3, comment: "Not connected to OBS"))
+                return
+            }
+            // Send errors were silently ignored before - a request written
+            // to a dead socket never resumed its continuation, wedging the
+            // caller (stop() froze the whole UI this way).
+            task.send(.string(text)) { [weak self] error in
+                if let error { self?.failRequest(requestId, with: error) }
+            }
+            // Watchdog: an answer OBS never sends must become a thrown
+            // error, not an eternal await.
+            DispatchQueue.global().asyncAfter(deadline: .now() + 15) { [weak self] in
+                self?.failRequest(requestId, with: RequestError(code: -4, comment: "OBS didn't answer within 15 seconds"))
+            }
         }
+    }
+
+    /// Resolves a pending request with an error - exactly once, whichever
+    /// of response/send-failure/watchdog/teardown gets there first (the
+    /// dictionary removal under lock is the once-guarantee).
+    private func failRequest(_ requestId: String, with error: Error) {
+        lock.lock()
+        let continuation = pendingRequests.removeValue(forKey: requestId)
+        lock.unlock()
+        continuation?.resume(throwing: error)
     }
 
     // MARK: - Wire handling
@@ -119,8 +165,7 @@ final class OBSWebSocketClient: NSObject {
         switch op {
         case 0: handleHello(d)              // Hello
         case 2:                              // Identified
-            readyContinuation?.resume()
-            readyContinuation = nil
+            takeReadyContinuation()?.resume()
         case 7: handleRequestResponse(d)     // RequestResponse
         default: break
         }
@@ -159,10 +204,7 @@ final class OBSWebSocketClient: NSObject {
         lock.unlock()
         all.values.forEach { $0.resume(throwing: error) }
 
-        if let readyContinuation {
-            readyContinuation.resume(throwing: error)
-            self.readyContinuation = nil
-        }
+        takeReadyContinuation()?.resume(throwing: error)
     }
 
     private func send(_ object: [String: Any]) {

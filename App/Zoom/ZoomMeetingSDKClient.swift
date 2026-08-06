@@ -40,6 +40,38 @@ final class ZoomMeetingSDKClient: NSObject, ObservableObject {
     private var authedClientID: String?
     private var authCompletion: ((Result<Void, Error>) -> Void)?
     private var joinCompletion: ((Result<Void, Error>) -> Void)?
+    /// Bumped every time a completion slot is armed, so a watchdog from
+    /// an earlier attempt can never fire into a later attempt's slot.
+    private var callbackGeneration = 0
+
+    /// Watchdogs for the single-slot SDK callbacks: when the delegate
+    /// never fires (a wedged SDK - it happens), the waiting continuation
+    /// must FAIL, not leave Start stuck on "Starting..." until force
+    /// quit. Safe against double-resume: whoever takes the slot first
+    /// (delegate or watchdog) nils it, and both run on the main thread.
+    private func armAuthWatchdog(seconds: TimeInterval = 30) {
+        callbackGeneration += 1
+        let generation = callbackGeneration
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
+            guard let self, self.callbackGeneration == generation,
+                  let completion = self.authCompletion else { return }
+            self.authCompletion = nil
+            completion(.failure(ZoomMeetingSDKError.timedOut("Zoom SDK authorization")))
+        }
+    }
+
+    private func armJoinWatchdog(seconds: TimeInterval = 120) {
+        callbackGeneration += 1
+        let generation = callbackGeneration
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
+            guard let self, self.callbackGeneration == generation,
+                  let completion = self.joinCompletion else { return }
+            self.joinCompletion = nil
+            completion(.failure(ZoomMeetingSDKError.timedOut("Connecting to the meeting")))
+        }
+    }
 
     /// Brings the SDK up and authorizes it. Genuinely idempotent: a repeat
     /// call with the same credentials returns immediately instead of
@@ -70,6 +102,7 @@ final class ZoomMeetingSDKClient: NSObject, ObservableObject {
             // guard-let here.
             let authService = ZoomSDK.shared().getAuthService()
             authCompletion = { result in continuation.resume(with: result) }
+            armAuthWatchdog()
             authService.delegate = self
             let context = ZoomSDKAuthContext()
             context.jwtToken = jwt
@@ -151,6 +184,7 @@ final class ZoomMeetingSDKClient: NSObject, ObservableObject {
                 return
             }
             joinCompletion = { result in continuation.resume(with: result) }
+            armJoinWatchdog()
             meetingService.delegate = self
             suppressInteractiveJoinUI()
 
@@ -206,6 +240,7 @@ final class ZoomMeetingSDKClient: NSObject, ObservableObject {
                 return
             }
             joinCompletion = { result in continuation.resume(with: result) }
+            armJoinWatchdog()
             meetingService.delegate = self
             suppressInteractiveJoinUI()
 
@@ -292,6 +327,7 @@ enum ZoomMeetingSDKError: LocalizedError {
     case meetingServiceUnavailable
     case invalidMeetingNumber
     case joinFailed(ZoomSDKError)
+    case timedOut(String)
     /// The real, specific reason from ZoomSDKMeetingServiceDelegate's
     /// `meetingError` - this is the one that actually matters (e.g.
     /// `ZoomSDKMeetingError_UnableToJoinExternalMeeting = 63` or
@@ -326,6 +362,7 @@ enum ZoomMeetingSDKError: LocalizedError {
         case .invalidMeetingNumber: return "Meeting number must be numeric."
         case .joinFailed(let error): return "Zoom Meeting SDK join call failed immediately (\(error))."
         case .joinRejected(let error): return "Zoom Meeting SDK join was rejected (\(error))."
+        case .timedOut(let what): return "\(what) timed out \u{2014} the Zoom SDK never called back. Press End Session and try again."
         }
     }
 }

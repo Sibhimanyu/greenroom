@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="Branding/greenroom-logo.png" alt="Greenroom" width="540">
+</p>
+
 # Greenroom
 
 One click sets up your whole morning-meeting workspace:

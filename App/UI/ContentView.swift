@@ -71,10 +71,23 @@ struct ContentView: View {
         }
     }
 
+    /// The brand's bright green (#5EC93F) - matches Branding/greenroom-logo.png
+    /// and the generated app icon.
+    private static let brandGreen = Color(red: 0.369, green: 0.788, blue: 0.247)
+
     private var header: some View {
         HStack(alignment: .top) {
             VStack(alignment: .leading, spacing: 4) {
-                Text("Greenroom").font(.largeTitle.bold())
+                HStack(spacing: 10) {
+                    Image("LogoMark")
+                        .resizable()
+                        .scaledToFit()
+                        .frame(height: 40)
+                    // Two-tone wordmark, as in the logo: "Green" bright,
+                    // "room" in the label color so it works on both themes.
+                    (Text("Green").foregroundColor(Self.brandGreen) + Text("room"))
+                        .font(.largeTitle.bold())
+                }
                 Text("One click: virtual camera on, Zoom in the meeting, your main app and chat tiled side by side.")
                     .foregroundStyle(.secondary)
             }

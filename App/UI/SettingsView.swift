@@ -51,6 +51,11 @@ private struct WebcamSettingsTab: View {
             }
             .pickerStyle(.segmented)
 
+            WebcamShapePreview(shape: coordinator.webcamShape)
+                .frame(maxWidth: .infinity)
+                .frame(height: 190)
+                .padding(.vertical, 6)
+
             Text(shapeCaption)
                 .font(.caption)
                 .foregroundStyle(.secondary)
@@ -67,6 +72,110 @@ private struct WebcamSettingsTab: View {
         case .square, .circle, .roundedRectangle:
             return "Pick a shape, then start a session to apply it (Stop first if one is running)."
         }
+    }
+}
+
+/// A miniature of what the virtual camera will actually send for the
+/// chosen shape: the shared screen, with "you" composited the way OBS
+/// will do it - bubble in the corner, keyed cutout, or the Presenter
+/// panel arrangement. Mirrors the geometry in GreenroomScene.
+private struct WebcamShapePreview: View {
+    let shape: WebcamShape
+
+    private static let personGreen = Color(red: 0.373, green: 0.659, blue: 0.235)
+
+    var body: some View {
+        GeometryReader { geo in
+            let w = geo.size.width
+            let h = geo.size.height
+            ZStack {
+                // The canvas - only visible around the Presenter panel.
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(Color.black.opacity(0.82))
+
+                if shape.isPresenterStyle {
+                    screenPanel(cornerRadius: 7)
+                        .frame(width: w * 0.78, height: h * 0.78)
+                        .position(x: w - w * 0.025 - (w * 0.78) / 2, y: h / 2)
+                    person(height: h * 1.1)
+                        .position(x: w * 0.24, y: h - (h * 1.1) / 2 + h * 0.04)
+                } else {
+                    screenPanel(cornerRadius: 8)
+                        .frame(width: w, height: h)
+                        .position(x: w / 2, y: h / 2)
+                    if shape == .cutout {
+                        person(height: h * 0.6)
+                            .position(x: w - w * 0.16, y: h - (h * 0.6) / 2 + h * 0.03)
+                    } else {
+                        bubble(size: h * 0.44)
+                            .position(x: w - w * 0.05 - (h * 0.44) / 2,
+                                      y: h - h * 0.07 - (h * 0.44) / 2)
+                    }
+                }
+            }
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+        }
+        .aspectRatio(16.0 / 10.0, contentMode: .fit)
+        .animation(.snappy(duration: 0.25), value: shape)
+    }
+
+    /// The shared screen, mocked as a document.
+    private func screenPanel(cornerRadius: CGFloat) -> some View {
+        RoundedRectangle(cornerRadius: cornerRadius)
+            .fill(Color(nsColor: .controlBackgroundColor))
+            .overlay(
+                VStack(alignment: .leading, spacing: 7) {
+                    bar(width: 0.42, emphasis: true)
+                    bar(width: 0.9)
+                    bar(width: 0.84)
+                    bar(width: 0.88)
+                    bar(width: 0.58)
+                    bar(width: 0.86)
+                }
+                .padding(14),
+                alignment: .topLeading
+            )
+            .overlay(RoundedRectangle(cornerRadius: cornerRadius).strokeBorder(.separator, lineWidth: 1))
+    }
+
+    private func bar(width fraction: CGFloat, emphasis: Bool = false) -> some View {
+        GeometryReader { geo in
+            RoundedRectangle(cornerRadius: 2)
+                .fill(emphasis ? Color.secondary.opacity(0.55) : Color.secondary.opacity(0.22))
+                .frame(width: geo.size.width * fraction)
+        }
+        .frame(height: 7)
+    }
+
+    /// "You" - keyed, no background.
+    private func person(height: CGFloat) -> some View {
+        Image(systemName: "person.fill")
+            .resizable()
+            .scaledToFit()
+            .frame(height: height)
+            .foregroundStyle(Self.personGreen.gradient)
+    }
+
+    /// "You" in a corner bubble - the webcam frame, background included.
+    private func bubble(size: CGFloat) -> some View {
+        let clip: AnyShape
+        switch shape {
+        case .circle: clip = AnyShape(Circle())
+        case .roundedRectangle: clip = AnyShape(RoundedRectangle(cornerRadius: size * 0.18))
+        default: clip = AnyShape(Rectangle())
+        }
+        return ZStack {
+            clip.fill(Self.personGreen.opacity(0.22))
+            Image(systemName: "person.fill")
+                .resizable()
+                .scaledToFit()
+                .frame(height: size * 0.62)
+                .foregroundStyle(Self.personGreen.gradient)
+                .offset(y: size * 0.12)
+        }
+        .frame(width: size, height: size)
+        .clipShape(clip)
+        .overlay(clip.stroke(Self.personGreen.opacity(0.7), lineWidth: 1.5))
     }
 }
 

@@ -206,10 +206,24 @@ final class CoordinatorController: ObservableObject {
         layoutFollowTask?.cancel()
         ghostWindowPolice?.cancel()
         peopleViewTask?.cancel()
-        guard ChatWindowController.isOpen else { return }
-        ChatWindowController.close()
-        zoomChatBridge.reset()
-        log("Meeting over \u{2014} chat window closed.")
+        if ChatWindowController.isOpen {
+            ChatWindowController.close()
+            zoomChatBridge.reset()
+        }
+        // The meeting is over no matter WHERE it was ended - Zoom's own
+        // End button inside the meeting tile included - so wind the whole
+        // session down. Without this, ending from the tile closed the
+        // chat but left OBS and the virtual camera running invisibly,
+        // making End-in-the-tile and End Session confusingly different.
+        // (When stop() itself triggered this observer, isStopping blocks
+        // the re-entry.)
+        guard !isStopping else { return }
+        if virtualCamActive || isRunning {
+            log("Meeting over \u{2014} ending the session.")
+            stop()
+        } else {
+            log("Meeting over \u{2014} chat window closed.")
+        }
     }
 
     private let processManager = OBSProcessManager()

@@ -26,10 +26,18 @@ struct ContentView: View {
         }
     }
 
+    /// Says what it does: which meeting action Start performs depends on
+    /// the mode picker right above it.
     private var startLabel: String {
         if coordinator.isRunning { return "Starting\u{2026}" }
-        if coordinator.virtualCamActive { return "Running" }
-        return "Start"
+        if coordinator.virtualCamActive { return "In Session" }
+        return coordinator.meetingMode == .create ? "Start Meeting" : "Join Meeting"
+    }
+
+    private var startHelp: String {
+        coordinator.meetingMode == .create
+            ? "Turns on the virtual camera, creates a fresh meeting under your Zoom account with you as host, and tiles your windows \u{2014} the whole session in one click."
+            : "Turns on the virtual camera, joins the meeting above (starting it as host if it's yours), and tiles your windows."
     }
 
     /// Stop needs something to stop: a live session, or a start in
@@ -55,17 +63,19 @@ struct ContentView: View {
                     coordinator.start()
                 } label: {
                     Label(startLabel, systemImage: "play.fill")
-                        .frame(minWidth: 120)
+                        .frame(minWidth: 130)
                 }
                 .buttonStyle(.borderedProminent)
                 .controlSize(.large)
                 .disabled(startDisabled)
+                .help(startHelp)
 
-                Button(coordinator.isStopping ? "Stopping\u{2026}" : "Stop") {
+                Button(coordinator.isStopping ? "Ending\u{2026}" : "End Session") {
                     coordinator.stop()
                 }
                 .controlSize(.large)
                 .disabled(stopDisabled)
+                .help("Ends the meeting for everyone when you're hosting (leaves it otherwise), closes the chat window, and stops the camera and OBS. Ending the meeting from the Zoom window does the same \u{2014} both roads end the whole session.")
 
                 Spacer()
 
@@ -78,6 +88,7 @@ struct ContentView: View {
                 .controlSize(.large)
                 .tint(coordinator.isRecording ? .red : nil)
                 .disabled(recordDisabled)
+                .help("Records exactly what participants see \u{2014} your shared screen with you in it. Saved as a file when stopped.")
             }
 
             manualControls

@@ -22,13 +22,14 @@ struct MenuBarView: View {
         // these menu items, so the hints below are documentation, not a
         // second trigger.
         Button(coordinator.isRunning ? "Starting\u{2026}"
-               : coordinator.virtualCamActive ? "Session Running" : "Start Session") {
+               : coordinator.virtualCamActive ? "In Session"
+               : coordinator.meetingMode == .create ? "Start Meeting" : "Join Meeting") {
             coordinator.start()
         }
         .keyboardShortcut("g", modifiers: [.control, .option, .command])
         .disabled(coordinator.isRunning || coordinator.virtualCamActive || coordinator.isStopping)
 
-        Button(coordinator.isStopping ? "Stopping\u{2026}" : "Stop Session") {
+        Button(coordinator.isStopping ? "Ending\u{2026}" : "End Session") {
             coordinator.stop()
         }
         .keyboardShortcut("x", modifiers: [.control, .option, .command])

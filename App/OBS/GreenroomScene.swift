@@ -19,6 +19,15 @@ enum GreenroomScene {
     static let sceneName = "Greenroom"
     static let screenSourceName = "Greenroom Screen"
     static let webcamSourceName = "Greenroom Webcam"
+
+    /// Where recordings land on every Mac: ~/Documents/Greenroom, created
+    /// on demand. Written into OBS's profile on each session start (see
+    /// configureRecordingPath) so it holds regardless of what OBS's own
+    /// settings said before.
+    static var recordingsDirectory: URL {
+        FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("Greenroom", isDirectory: true)
+    }
     static let chromaKeyFilterName = "Greenroom Chroma Key"
     static let shapeMaskFilterName = "Greenroom Shape Mask"
     static let screenMaskFilterName = "Greenroom Screen Panel Mask"
@@ -99,6 +108,8 @@ enum GreenroomScene {
         // then position the bubble off that real size rather than a guess.
         let canvas = try await fitCanvasToScreenSource(client: client)
         try await layoutScene(client: client, layout: bubble, canvasWidth: canvas.width, canvasHeight: canvas.height)
+
+        await configureRecordingPath(client: client)
 
         try await client.request("SetCurrentProgramScene", data: ["sceneName": sceneName])
     }
@@ -337,6 +348,25 @@ enum GreenroomScene {
         } else {
             try await ensureScreenPanelMask(client: client, enabled: false, canvasWidth: canvasWidth, canvasHeight: canvasHeight)
             try await positionBubble(client: client, layout: layout, canvasWidth: canvasWidth, canvasHeight: canvasHeight)
+        }
+    }
+
+    /// Points OBS's recording output at recordingsDirectory - both the
+    /// Simple and Advanced output modes' keys, since either could be the
+    /// profile's active mode. Config changes only apply to the NEXT
+    /// recording, which is fine: this runs during session setup, before
+    /// Record can be pressed. Best-effort (try?): a failure here should
+    /// never fail the session, it just means OBS's own folder setting
+    /// stays in effect.
+    private static func configureRecordingPath(client: OBSWebSocketClient) async {
+        let directory = recordingsDirectory
+        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        for (category, name) in [("SimpleOutput", "FilePath"), ("AdvOut", "RecFilePath")] {
+            _ = try? await client.request("SetProfileParameter", data: [
+                "parameterCategory": category,
+                "parameterName": name,
+                "parameterValue": directory.path
+            ])
         }
     }
 

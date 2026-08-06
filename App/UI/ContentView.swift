@@ -14,6 +14,7 @@ import AppKit
 struct ContentView: View {
     @EnvironmentObject private var coordinator: CoordinatorController
     @Environment(\.openSettings) private var openSettings
+    @State private var showRecordings = false
 
     /// Start is for starting: disabled while a start is in flight AND
     /// while the session is live (Stop first, then Start - pressing Start
@@ -88,7 +89,15 @@ struct ContentView: View {
                 .controlSize(.large)
                 .tint(coordinator.isRecording ? .red : nil)
                 .disabled(recordDisabled)
-                .help("Records exactly what participants see \u{2014} your shared screen with you in it. Saved as a file when stopped.")
+                .help("Records exactly what participants see \u{2014} your shared screen with you in it. Saved to Documents/Greenroom when stopped.")
+
+                Button {
+                    showRecordings = true
+                } label: {
+                    Label("Recordings", systemImage: "film.stack")
+                }
+                .controlSize(.large)
+                .help("Review past recordings \u{2014} play them right here, or jump to the file in Finder.")
             }
 
             manualControls
@@ -102,6 +111,9 @@ struct ContentView: View {
         .sheet(isPresented: $coordinator.showOnboarding) {
             OnboardingView()
                 .environmentObject(coordinator)
+        }
+        .sheet(isPresented: $showRecordings) {
+            RecordingsView()
         }
     }
 

@@ -13,8 +13,37 @@
 //      without this, a manual `killall OBS` was the only way out.
 //
 import AppKit
+import Carbon.HIToolbox
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
+
+    /// System-wide shortcuts (see HotkeyManager - they work while OTHER
+    /// apps are focused, which is the whole point mid-class). Actions
+    /// resolve the coordinator at press time and guard on session state,
+    /// mirroring the buttons' enabled states.
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        MainActor.assumeIsolated {
+            let mods = UInt32(cmdKey | optionKey | controlKey)
+            HotkeyManager.shared.register([
+                .init(keyCode: UInt32(kVK_ANSI_G), modifiers: mods) {
+                    CoordinatorController.shared?.start() // guards itself when busy/live
+                },
+                .init(keyCode: UInt32(kVK_ANSI_X), modifiers: mods) {
+                    guard let coordinator = CoordinatorController.shared,
+                          coordinator.isRunning || coordinator.virtualCamActive else { return }
+                    coordinator.stop()
+                },
+                .init(keyCode: UInt32(kVK_ANSI_R), modifiers: mods) {
+                    guard let coordinator = CoordinatorController.shared,
+                          coordinator.virtualCamActive || coordinator.isRecording else { return }
+                    coordinator.toggleRecording()
+                },
+                .init(keyCode: UInt32(kVK_ANSI_S), modifiers: mods) {
+                    CoordinatorController.shared?.snapWindowsBack()
+                },
+            ])
+        }
+    }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         MainActor.assumeIsolated {

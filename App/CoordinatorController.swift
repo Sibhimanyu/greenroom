@@ -224,7 +224,11 @@ final class CoordinatorController: ObservableObject {
     /// Prerequisites are checked up front so a missing credential fails
     /// fast instead of after OBS has already spun up.
     func start() {
-        guard !isRunning else { return }
+        // Full lifecycle guard, not just the transition: the UI disables
+        // the button mid-session, but the global hotkey has no disabled
+        // state - without the extra checks it could stack a second
+        // meeting onto a live session.
+        guard !isRunning, !virtualCamActive, !isStopping else { return }
         loadSecretsIfNeeded()
 
         switch meetingMode {

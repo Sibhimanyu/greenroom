@@ -1,199 +1,246 @@
 # Greenroom
 
-Screen capture + green-screen-keyed webcam, composited into one feed and
-published system-wide as a virtual camera ("Greenroom Camera") — pick it in
-Zoom, Meet, Teams, QuickTime, or any app with a camera picker, and whoever
-you're talking to sees your whole screen with you keyed into a bubble in the
-corner.
+One click sets up your whole morning-meeting workspace:
 
-## Status
+- **OBS virtual camera** publishing your screen with your webcam keyed into
+  a bubble (or green-screen cutout) in the corner — pick "OBS Virtual
+  Camera" in Zoom and whoever you're talking to sees your screen with you
+  in it.
+- **The Zoom meeting**, either created fresh under your account (you host)
+  or joined by ID/link — by default through Greenroom's own built-in
+  Meeting SDK client, no separate Zoom app window.
+- **A tiled layout**: your main working app (Chrome by default — any app
+  works) on one side of the screen, with the Zoom meeting tile stacked
+  over a standalone chat window in the remaining column.
 
-Everything below is written and **typechecks cleanly** against the macOS SDK
-(verified with `swiftc -typecheck` in this environment), but **has not been
-built or run** — this environment only has Xcode's Command Line Tools, not
-full Xcode, and building an app + System Extension target needs the real
-thing. Treat this as a strong first draft: open it in Xcode, fix whatever
-Xcode's fuller diagnostics turn up (there will likely be a few small things -
-see "What to expect on first build" below), and tell me what breaks.
+Press **Stop** and it all tears down cleanly.
 
-What's implemented:
-- Chroma-key webcam capture (`ChromaKeyFilter`, `WebcamCaptureManager`) with
-  live key-color/threshold/smoothing controls
-- Full-screen capture via ScreenCaptureKit (`ScreenCaptureManager`)
-- Compositor: screen as background + keyed webcam in a fixed circular bubble
-  (`Compositor`)
-- A working camera extension (`CameraExtensionProvider.swift`) with both a
-  **source** stream (what other apps read) and a **sink** stream (what this
-  app writes into) — CoreMediaIO relays sink → source itself, so there's no
-  custom XPC bridge to maintain
-- The host-side low-level CoreMediaIO client code that actually writes into
-  that sink (`CameraSinkWriter.swift`) — this is the single most
-  under-documented part of the whole project; it's adapted from a verified
-  working reference implementation, not written from guesswork
-- System Extension activation (`SystemExtensionManager.swift`)
-- A 3-pane debug UI (screen / keyed webcam / final composite) with the
-  controls above
+---
 
-Not yet done (see "Next" at the bottom):
-- Draggable/resizable bubble (position is fixed via `Compositor.BubbleLayout`)
-- Audio (mic passthrough, system audio)
-- Recording to disk / streaming
-- App icon, proper packaging for distribution
+## Installing (from a GitHub release)
 
-## One-time setup
+1. Grab `Greenroom-x.y.z.zip` from
+   [Releases](https://github.com/Sibhimanyu/greenroom/releases) and
+   double-click to unzip.
+2. **Drag `Greenroom.app` into `/Applications` before launching it.**
+   (Launching a freshly downloaded app from `~/Downloads` can trigger
+   macOS "app translocation" — a randomized read-only mount that makes the
+   first session behave oddly. Moving it first avoids that.)
+3. First launch — the app is signed with a development certificate but
+   **not notarized**, so macOS blocks the first open:
+   - **macOS 15 (Sequoia) and later:** open it once (it gets blocked),
+     then System Settings → **Privacy & Security** → scroll down →
+     **"Open Anyway"** → confirm. The right-click trick no longer works
+     on Sequoia.
+   - **macOS 14 and earlier:** right-click the app → **Open** → confirm.
 
-1. **Install full Xcode** (not just Command Line Tools) from the App Store,
-   then point the command line at it:
-   ```
-   sudo xcode-select -s /Applications/Xcode.app
-   sudo xcodebuild -license accept
-   ```
-2. **Install xcodegen** (generates the `.xcodeproj` from `project.yml` — this
-   repo doesn't check in the generated project file itself):
-   ```
-   brew install xcodegen
-   ```
-3. **Edit `project.yml`**: set `settings.base.DEVELOPMENT_TEAM` to your Apple
-   Developer Team ID (developer.apple.com → Membership, or Xcode → Settings →
-   Accounts). Do this in `project.yml`, not in Xcode's Signing & Capabilities
-   UI — re-running `xcodegen generate` overwrites project settings from this
-   file, so any change made only in Xcode's UI will get silently discarded.
-   Also change `bundleIdPrefix` / the two `PRODUCT_BUNDLE_IDENTIFIER` values
-   if you want your own reverse-DNS domain instead of `com.sibhimanyu.greenroom`.
-4. **Generate and open the project:**
-   ```
-   xcodegen generate
-   open Greenroom.xcodeproj
-   ```
-5. Select the **Greenroom** scheme and Run.
+   Either way it's a one-time decision; every later launch is a normal
+   double-click.
 
-## First run
+**Why a `.zip` and not a `.dmg`?** Building a DMG mounts a temporary
+volume, and corporate endpoint security (CrowdStrike's data-protection
+module, on the machine these releases are built on) treats mounted disk
+images like removable media and blocks the unmount — DMG creation dies
+mid-pipeline. A `ditto`-made zip is plain file I/O, preserves the code
+signature (verified after a round-trip on every release), and unzips to
+the same drag-to-Applications experience.
 
-- macOS will prompt for **Camera** and **Screen Recording** permission the
-  first time each is used — grant both.
-- The app calls `systemExtension.activate()` on launch automatically, but
-  macOS still requires one manual click: **System Settings → Privacy &
-  Security → Allow** for the Greenroom extension. This is an OS-level gate
-  with no programmatic bypass.
-- Once approved, open **QuickTime Player → File → New Movie Recording**,
-  click the camera dropdown next to the record button, and pick **Greenroom
-  Camera**. You should see your composited feed.
-- If the extension doesn't show up as a camera: quit and relaunch Greenroom
-  (this retries the CoreMediaIO connection in `CameraSinkWriter.connect()`),
-  and as a last resort, reboot — CMIOExtension registration has known cases
-  where it only picks up cleanly after a reboot, which is a macOS quirk, not
-  a sign anything here is wrong.
+### Requirements
 
-## What to expect on first build
+- macOS 14 or later
+- [OBS Studio](https://obsproject.com) (free) — Greenroom launches and
+  drives it in the background; you never touch the OBS UI
+- The Zoom desktop app — only for the classic/hybrid flow; the default
+  built-in meeting client doesn't need it
 
-I derived `CameraExtensionProvider.swift`, the entitlements, and the
-`Info.plist` keys from a verified working open-source reference project
-rather than from memory, specifically because this is the area most prone to
-silent, undebuggable failures (wrong entitlement → extension just doesn't
-load, no error). The typecheck pass confirms the Swift compiles; it can't
-confirm runtime behavior like extension registration, code signing, or the
-CMIODeviceStartStream handshake actually succeeding on your machine. If
-something doesn't work, the most useful things to send back are:
-- Console.app output filtered to "Greenroom" or "CameraExtension"
-- Whether the extension shows up at all in `systemextensionsctl list`
-- Any Xcode build errors verbatim
+---
 
-## Meeting SDK chat (separate window)
+## First-run setup
 
-A standalone chat window (`App/UI/ChatWindow.swift`) that joins your Zoom
-meeting as a **second, camera/mic-off participant** purely to get
-programmatic chat access, via Zoom's native Meeting SDK
-(`App/Zoom/ZoomMeetingSDKClient.swift`, `ZoomChatBridge.swift`,
-`ZoomMeetingSDKJWT.swift`). This is deliberately not accessibility/UI
-scripting on the native Zoom app - it's a real second SDK connection into
-the meeting, so you'll show up twice in the participant list (once from the
-native Zoom app, once as "Greenroom Chat" or whatever display name is set).
+First launch opens a built-in **setup guide** that walks through all of
+this interactively, with live detection of what's already done. Reopen it
+anytime from the **?** button in the main window. The short version:
 
-**Status: builds and launches clean.** `Vendor/ZoomSDK/` now holds the real
-downloaded SDK (7.1.5.84750, ~80 frameworks/dylibs/bundles/helper apps),
-copied in directly rather than via the Marketplace docs' incomplete
-6-dylib list. `xcodebuild` succeeds, and the built app launches and quits
-with no dyld errors in the unified log - meaning every one of those ~80
-embedded binaries resolves and gets signed correctly under Hardened
-Runtime. All the Swift code was rewritten at least once against the real
-headers after the compiler caught several wrong guesses (the singleton is
-`ZoomSDK.shared()` not `.sharedSDK()`, chat lives on
-`ZoomSDKMeetingChatController` not `ZoomSDKMeetingActionController`, the
-mute flags are `isNoVideo`/`isNoAudio` not `isVideoOff`/`isAudioOff`, etc.
-- see git blame / the file headers for specifics if something still looks
-off).
+1. **Install OBS** (link above). Nothing to configure in it — Greenroom
+   creates and manages its own scene.
+2. **Get the Zoom credentials in.** Two paths:
+   - **Someone already set this up** (a teammate sent you the app): have
+     them export their settings — Settings (⌘,) → **Transfer** →
+     *Export Settings…* — and send you the file. Import it in the same
+     tab. Done; skip step 3 knowledge entirely. The file carries the
+     credentials in **plaintext by design** (it's meant for direct
+     hand-off between trusted people, e.g. AirDrop) — delete it after
+     importing.
+   - **You're setting up from scratch:** you need two free Zoom
+     Marketplace apps (one for the chat/meeting client, one for creating
+     meetings). Step-by-step instructions live in
+     [`Vendor/README.md`](Vendor/README.md).
+3. **Grant permissions as macOS asks for them** (the guide tracks each):
 
-**Confirmed by an actual live test:** joining works, but only for meetings
-hosted under the SAME Zoom account as this app's Marketplace credentials.
-Joining a meeting hosted elsewhere fails with
-`ZoomSDKMeetingError_UnableToJoinExternalMeeting` (63) - Zoom requires the
-Marketplace app to be published to lift that, and per Zoom's own dev
-forum, publishing doesn't even reliably fix it (one developer reported it
-still failing post-publish). Decided not to chase that path - **this
-feature is scoped to meetings you host yourself.** Sending/receiving chat
-itself hasn't been exercised yet since every join attempt so far has hit
-this account restriction first.
+   | Permission | When it's asked | What it's for |
+   |---|---|---|
+   | Camera | First Start | The webcam feed OBS composites |
+   | Automation → Google Chrome | First time the Chrome window is tiled | Chrome is positioned via its own AppleScript dictionary |
+   | Accessibility | First time a Zoom/native window is tiled | Moving windows of apps that have no AppleScript dictionary — the native Zoom meeting window, and any non-Chrome main app |
+   | Keychain ("Always Allow") | First time Zoom features are used | The Zoom client secrets are stored in the Keychain, loaded lazily |
 
-## Project layout
+   Screen Recording permission belongs to **OBS**, not Greenroom — OBS
+   asks for it itself the first time it captures your display.
 
+---
+
+## Daily use
+
+1. Pick **New Meeting** (creates a fresh meeting under your Zoom account,
+   you host) or **Join Existing** (paste a link with the **Paste Link**
+   button, or type the meeting ID/passcode).
+2. Press **Start**. In order: OBS launches hidden and the virtual camera
+   goes live → the meeting starts/joins → your main app opens tiled to
+   its slice → the Zoom tile and chat window fill the side column →
+   Greenroom's own window drops to the back and your main app is focused.
+3. Work. The chat window is a real chat client for the meeting — no need
+   to open Zoom's chat panel over your shared screen.
+4. Press **Stop** (main window or menu bar): leaves/ends the meeting,
+   closes the chat, stops the virtual camera, quits OBS.
+
+Also available:
+
+- **Record** (main window or menu bar) — records exactly what the virtual
+  camera is sending (screen + webcam composite, not other participants).
+  The file path is logged when you stop.
+- **Menu bar → Snap Windows Back** — re-tiles everything to the session
+  layout after you've dragged windows around.
+- **Manual controls** (disclosure in the main window) — each piece of the
+  session individually: open just the chat window, just the main-app
+  window, or just Zoom.
+
+---
+
+## Settings (⌘,)
+
+### Webcam
+Bubble shape for your webcam in the composite: **square**, **circle**,
+**rounded rectangle**, or **cutout**. Cutout chroma-keys your background away — it
+needs a real green screen behind you; tune the key in OBS → webcam source
+→ Filters if edges look rough. Shape changes apply on the next Start.
+
+### Layout
+The tiled-workspace arrangement, with a live schematic that previews
+every change:
+
+- **Main app** — dropdown of every installed and running app. Chrome is
+  the default. If the chosen app is a browser (anything registered as an
+  `https` handler), an **Open website** field appears — that URL opens in
+  the tiled window on Start.
+- **Main pane width** — ½, ⅔, or ¾ of the screen — and which **side** it
+  sits on. The side column is whatever's left.
+- **Side column** — toggles for the **Zoom meeting tile** and the **chat
+  window**, plus a slider for how much of the column's height the Zoom
+  tile takes (the chat gets the rest; a lone occupant takes the whole
+  column). Toggle one off and it simply isn't tiled — the window stays
+  wherever it is.
+- **Open the main app automatically on Start** — the opt-out for the
+  one-button flow.
+
+A yellow inline warning appears if you pick a non-Chrome app before
+granting Accessibility permission — Chrome is special-cased through its
+own AppleScript dictionary (lighter per-app Automation permission), but
+every other app can only be moved via the Accessibility API. The warning
+has an *Open Settings…* button and clears itself once you flip the
+switch.
+
+### Meeting Chat
+Client ID + Secret of the Meeting SDK Marketplace app (General App →
+Features → Embed → Meeting SDK). Powers the built-in meeting client and
+the chat window. **Only works in meetings hosted under the same Zoom
+account as these credentials** — see limitations below.
+
+### Start Meeting
+Account ID / Client ID / Secret of the Server-to-Server OAuth Marketplace
+app — powers "New Meeting". Also here:
+
+- **Use built-in meeting client** (default ON): the whole meeting runs
+  inside Greenroom — you appear once, camera/mic live, hosting directly.
+  OFF falls back to the hybrid flow: the native Zoom app plus a hidden
+  "Greenroom Chat" participant carrying the chat.
+- **Your display name** — what you appear as in the built-in client.
+
+### Transfer
+Export/import every setting above as one JSON file — the whole point is
+setting up a teammate's machine without them ever touching the Zoom
+Marketplace. **The export contains the secrets in plaintext**; hand it
+over directly and have them delete it after importing.
+
+---
+
+## Known limitations
+
+- **Cross-account joins fail in the built-in client** (Zoom error 63,
+  `UnableToJoinExternalMeeting`, confirmed by live test): the Meeting SDK
+  can only join meetings hosted under the Zoom account that owns the
+  Marketplace app. Greenroom detects this and falls back to the native
+  Zoom app automatically (chat window skipped). Details and why the
+  documented fixes were abandoned: [`Vendor/README.md`](Vendor/README.md).
+- **"Start New Meeting" hosts under the credential owner's account.**
+  Free Zoom accounts can host one meeting at a time, so two people
+  sharing one settings file can't both start separate meetings at once.
+- **Zoom's meeting window is found by its title** ("Zoom Meeting") — a
+  Zoom client in another language may not be auto-tiled.
+- Single-display layout: everything tiles on the main screen.
+
+---
+
+## Building from source
+
+```sh
+brew install xcodegen
+# one-time: put your Apple Developer Team ID in project.yml
+#   (settings.base.DEVELOPMENT_TEAM - a free personal team works;
+#    set it in project.yml, NOT in Xcode's Signing UI, because
+#    `xcodegen generate` overwrites project settings from that file)
+xcodegen generate
+xcodebuild -project Greenroom.xcodeproj -scheme Greenroom -configuration Debug build
+open ~/Library/Developer/Xcode/DerivedData/Greenroom-*/Build/Products/Debug/Greenroom.app
 ```
-project.yml                      xcodegen spec - source of truth for the .xcodeproj
-Shared/CameraConstants.swift      constants both targets need (compiled into both)
-App/                              main app target
-  GreenroomApp.swift               SwiftUI entry point
-  PipelineController.swift         orchestrates capture -> composite -> camera sink
-  Capture/WebcamCaptureManager.swift
-  Capture/ScreenCaptureManager.swift
-  Compositing/ChromaKeyFilter.swift
-  Compositing/Compositor.swift
-  Camera/SystemExtensionManager.swift
-  Camera/CameraSinkWriter.swift    the low-level CoreMediaIO client code
-  UI/ContentView.swift
-  UI/CIImagePreview.swift
-  Info.plist / App.entitlements
-CameraExtension/                   system extension target
-  main.swift
-  CameraExtensionProvider.swift    device + source stream + sink stream
-  Info.plist / CameraExtension.entitlements
+
+One thing the repo does **not** contain: `Vendor/ZoomSDK/` — the
+proprietary Zoom Meeting SDK for macOS (~600 MB, not redistributable).
+Download it with your own Zoom Marketplace account and copy the zip's
+contents in; [`Vendor/README.md`](Vendor/README.md) documents the layout
+and the rsync/codesign trap to avoid.
+
+Non-obvious build/runtime notes, learned the hard way:
+
+- **Signing identity must stay stable** across rebuilds (hence the team ID
+  in `project.yml`): ad-hoc signing gave every build a fresh identity, so
+  macOS treated each rebuild as a new app trying to read the previous
+  build's Keychain items → password prompt on every launch.
+- **OBS Safe Mode kills the automation socket.** If OBS crashed last time,
+  it shows a "Run in Safe Mode?" dialog on the next launch; Safe Mode
+  disables the websocket server Greenroom drives it with. Always choose
+  "Run in Normal Mode". Greenroom quits OBS cleanly on Stop precisely so
+  this prompt (and stale-state carryover) doesn't happen.
+- **The Zoom SDK's real API names differ from its docs** in several places
+  (`ZoomSDK.shared()` not `.sharedSDK()`, chat on
+  `ZoomSDKMeetingChatController`, mute flags `isNoVideo`/`isNoAudio`, …)
+  — the code was written against the real headers; trust it over the docs.
+- **Window management is two-tiered by design**
+  (`App/Layout/MainPaneManager.swift` routes): Chrome via its AppleScript
+  dictionary (more reliable, handles the URL, per-app Automation
+  permission), everything else via the Accessibility API
+  (`App/Layout/AppWindowManager.swift`). The layout math lives in
+  `App/Layout/WorkspaceLayout.swift`.
+
+## Cutting a release
+
+```sh
+xcodebuild -project Greenroom.xcodeproj -scheme Greenroom -configuration Release build
+cd ~/Library/Developer/Xcode/DerivedData/Greenroom-*/Build/Products/Release
+ditto -c -k --sequesterRsrc --keepParent Greenroom.app Greenroom-x.y.z.zip
+gh release create vx.y.z Greenroom-x.y.z.zip --title "Greenroom x.y.z" --notes-file notes.md
 ```
 
-## Giving this to one other person (no paid Developer Program)
-
-(Rewritten after the OBS pivot - the old version of this section described
-the retired System-Extension design, whose `systemextensionsctl developer on`
-+ reboot steps no longer apply to anything. None of that is needed now.)
-
-What to send: **`Greenroom.app`** plus **one settings file** you export from
-Settings (⌘,) → Transfer → *Export Settings…*. That file carries the Zoom
-app credentials and preferences - the recipient never touches the Zoom
-Marketplace. (The credentials are app-level and shareable by design; the
-export is plaintext, so hand it over directly and have them delete it after
-importing.)
-
-One caveat: "Start New Meeting" on their machine creates meetings hosted
-under *your* Zoom account (the S2S credentials in the settings file are
-account-level), and free accounts can only host one meeting at a time -
-so you can't both start separate meetings simultaneously.
-
-On the recipient's Mac: **copy `Greenroom.app` into `/Applications`,
-right-click → Open → confirm once** (the app isn't notarized; this is the
-standard Gatekeeper bypass - no Terminal needed). First launch opens a
-built-in setup guide that walks through everything else - installing
-OBS/Zoom (with live detection), importing the settings file, and every
-permission prompt macOS will show. The guide is reopenable anytime from
-the main window's **?** button.
-
-Chat-window note: it works in meetings hosted under the credential-owning
-Zoom account - which is exactly the meetings "Start New Meeting" creates,
-so for shared morning meetings both machines' chat windows work. Meetings
-hosted under other Zoom accounts are off-limits (confirmed error 63 - see
-`Vendor/README.md`, including why the OAuth/OBF fix for this was
-deliberately abandoned).
-
-## Next
-
-1. Get it building/running in real Xcode, fix whatever comes up
-2. Draggable/resizable bubble position in the UI
-3. Distribution: Developer ID signing + notarization (System Extensions
-   can't ship via the Mac App Store)
-4. Audio, recording, streaming - only if you want to take this past the MVP
+Use `ditto` (not `zip`) so the code signature survives; verify with
+`ditto -x -k` + `codesign --verify --deep --strict` before uploading.
+Don't bother with a DMG on a corporate-managed Mac — see the install
+section for why.

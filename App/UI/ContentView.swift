@@ -75,7 +75,7 @@ struct ContentView: View {
         HStack(alignment: .top) {
             VStack(alignment: .leading, spacing: 4) {
                 Text("Greenroom").font(.largeTitle.bold())
-                Text("One click: virtual camera on, Zoom in the meeting, Chrome and chat tiled side by side.")
+                Text("One click: virtual camera on, Zoom in the meeting, your main app and chat tiled side by side.")
                     .foregroundStyle(.secondary)
             }
             Spacer()

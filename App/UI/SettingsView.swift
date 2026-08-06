@@ -121,8 +121,9 @@ private struct WebcamSettingsTab: View {
 /// A miniature of what the virtual camera will actually send for the
 /// chosen shape: the shared screen, with "you" composited the way OBS
 /// will do it - bubble in the corner, keyed cutout, or the Presenter
-/// panel arrangement. Mirrors the geometry in GreenroomScene.
-private struct WebcamShapePreview: View {
+/// panel arrangement. Mirrors the geometry in GreenroomScene. Internal
+/// (not private): the onboarding's "Your setup" step reuses it.
+struct WebcamShapePreview: View {
     let shape: WebcamShape
 
     private static let personGreen = Color(red: 0.373, green: 0.659, blue: 0.235)

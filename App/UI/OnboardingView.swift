@@ -22,7 +22,7 @@ struct OnboardingView: View {
     @State private var isTesting = false
     @State private var testResults: [TestResult] = []
 
-    private let stepCount = 5
+    private let stepCount = 6
     private let timer = Timer.publish(every: 1.5, on: .main, in: .common).autoconnect()
 
     var body: some View {
@@ -38,6 +38,9 @@ struct OnboardingView: View {
         }
         .frame(width: 580, height: 600)
         .onReceive(timer) { _ in refreshTick += 1 }
+        // Secrets stay out of the Keychain until needed - the credential
+        // fields in step 2 are that moment.
+        .onAppear { coordinator.loadSecretsIfNeeded() }
     }
 
     @ViewBuilder
@@ -46,7 +49,8 @@ struct OnboardingView: View {
         case 0: welcomeStep
         case 1: essentialsStep
         case 2: credentialsStep
-        case 3: permissionsStep
+        case 3: setupStep
+        case 4: permissionsStep
         default: readyStep
         }
     }
@@ -139,21 +143,32 @@ struct OnboardingView: View {
 
                 StatusRow(
                     ok: !coordinator.sdkClientID.isEmpty,
-                    title: "Meeting chat credentials",
+                    title: "Meeting chat credentials (General App)",
                     detail: coordinator.sdkClientID.isEmpty
-                        ? "Missing \u{2014} powers the built-in meeting client and chat window."
+                        ? "Paste below \u{2014} powers the built-in meeting client and chat window."
                         : "Configured.",
-                    actionTitle: coordinator.sdkClientID.isEmpty ? "Open Settings\u{2026}" : nil
-                ) { openSettings() }
+                    actionTitle: nil, action: {}
+                )
+                HStack {
+                    TextField("Client ID", text: $coordinator.sdkClientID)
+                    SecureField("Client Secret", text: $coordinator.sdkClientSecret)
+                }
+                .textFieldStyle(.roundedBorder)
 
                 StatusRow(
                     ok: !coordinator.s2sAccountID.isEmpty && !coordinator.s2sClientID.isEmpty,
-                    title: "Start-meeting credentials",
+                    title: "Start-meeting credentials (Server-to-Server app)",
                     detail: coordinator.s2sAccountID.isEmpty
-                        ? "Missing \u{2014} powers \u{201C}New Meeting\u{201D}, the Scheduled list, and hosting your own meetings."
-                        : "Configured \u{2014} verify them with the test below.",
-                    actionTitle: coordinator.s2sAccountID.isEmpty ? "Open Settings\u{2026}" : nil
-                ) { openSettings() }
+                        ? "Paste below \u{2014} powers \u{201C}New Meeting\u{201D}, the Scheduled list, and hosting your own meetings."
+                        : "Configured \u{2014} verify with the test below.",
+                    actionTitle: nil, action: {}
+                )
+                HStack {
+                    TextField("Account ID", text: $coordinator.s2sAccountID)
+                    TextField("Client ID", text: $coordinator.s2sClientID)
+                    SecureField("Client Secret", text: $coordinator.s2sClientSecret)
+                }
+                .textFieldStyle(.roundedBorder)
 
                 DisclosureGroup("Setting up from scratch? The full walkthrough (\u{2248}10 minutes, once)", isExpanded: $scratchExpanded) {
                     VStack(alignment: .leading, spacing: 12) {
@@ -261,6 +276,51 @@ struct OnboardingView: View {
             }
             testResults = results
             isTesting = false
+        }
+    }
+
+    // MARK: "Your setup" - the choices that actually differ per person,
+    // inline instead of discovered by wandering into Settings later. All
+    // bound straight to the coordinator, so they persist immediately and
+    // Settings shows the same values.
+
+    @State private var setupApps: [AppInfo] = []
+
+    private var setupStep: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            stepHeader("Your setup", "How mornings should look. Everything here lives in Settings (\u{2318},) too.")
+
+            Picker("Main working app", selection: $coordinator.mainAppBundleID) {
+                ForEach(setupApps) { app in
+                    Text(app.name).tag(app.bundleID)
+                }
+            }
+            Text("Tiled next to the meeting \u{2014} the reading doc's browser, a PDF app, notes. Split sizes and a default website live in Settings \u{2192} Layout.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            Picker("How you appear", selection: $coordinator.webcamShape) {
+                ForEach(WebcamShape.allCases) { shape in
+                    Text(shape.label).tag(shape)
+                }
+            }
+            .pickerStyle(.segmented)
+
+            WebcamShapePreview(shape: coordinator.webcamShape)
+                .frame(maxWidth: .infinity)
+                .frame(height: 150)
+
+            Toggle("Start recording automatically with the meeting", isOn: $coordinator.autoRecordOnStart)
+            Toggle("People view on a second display (classroom projector)", isOn: $coordinator.peopleViewOnStart)
+        }
+        .onAppear {
+            var apps = AppCatalog.installedAndRunning()
+            if !apps.contains(where: { $0.bundleID == coordinator.mainAppBundleID }) {
+                apps.insert(AppInfo(bundleID: coordinator.mainAppBundleID,
+                                    name: AppCatalog.displayName(forBundleID: coordinator.mainAppBundleID) ?? coordinator.mainAppBundleID,
+                                    url: nil), at: 0)
+            }
+            setupApps = apps
         }
     }
 

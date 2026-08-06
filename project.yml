@@ -1,0 +1,82 @@
+name: Greenroom
+options:
+  bundleIdPrefix: com.sibhimanyu.greenroom
+  deploymentTarget:
+    macOS: "14.0"
+  createIntermediateGroups: true
+
+settings:
+  base:
+    # Bumped from 13.0 - only reason was to unlock @Environment(\.openSettings)
+    # (macOS 14+) for a real Settings button instead of the private
+    # `showSettingsWindow:` selector trick it replaced. Nothing else here
+    # needs anything past 13.0.
+    MACOSX_DEPLOYMENT_TARGET: "14.0"
+    SWIFT_VERSION: "5.0"
+    ENABLE_HARDENED_RUNTIME: YES
+    CODE_SIGN_STYLE: Automatic
+    # A free/personal Apple ID team is enough now - this app has no System
+    # Extension entitlement (OBS owns the actual virtual camera), so it
+    # isn't subject to the paid-Developer-Program-only restriction that
+    # blocked the earlier CMIOExtension-based design.
+    #
+    # Set to the personal team (from the Apple Development cert's OU) so
+    # every rebuild carries the SAME signing identity. With the previous
+    # ad-hoc signing, each build had a fresh signature, so macOS treated
+    # every rebuild as a different app trying to read the Keychain item the
+    # last build wrote - hence a password prompt on every single launch.
+    DEVELOPMENT_TEAM: "R5H6Z6H9Y7"
+
+targets:
+  Greenroom:
+    type: application
+    platform: macOS
+    sources:
+      - path: App
+    settings:
+      base:
+        PRODUCT_NAME: Greenroom
+        PRODUCT_BUNDLE_IDENTIFIER: com.sibhimanyu.greenroom
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_FILE: App/Info.plist
+        # Camera + mic entitlements - Hardened Runtime silently blocks both
+        # without them (black video in the built-in meeting client).
+        CODE_SIGN_ENTITLEMENTS: App/App.entitlements
+        # `import ZoomSDK` needs the compiler to find ZoomSDK.framework at
+        # build time - the other ~80 frameworks/dylibs/bundles/apps it
+        # ships alongside (Vendor/ZoomSDK/) are ZoomSDK.framework's own
+        # runtime dependencies, not something Greenroom's code references
+        # directly, so they're embedded via the postbuildScripts step below
+        # instead of being individually declared here.
+        FRAMEWORK_SEARCH_PATHS: ["$(inherited)", "$(SRCROOT)/Vendor/ZoomSDK"]
+        LD_RUNPATH_SEARCH_PATHS: ["$(inherited)", "@executable_path/../Frameworks"]
+    dependencies:
+      - framework: Vendor/ZoomSDK/ZoomSDK.framework
+        embed: true
+    # Confirmed against the real downloaded SDK (7.1.5.84750): it ships
+    # ZoomSDK.framework alongside ~37 more support frameworks, 11 flat
+    # dylibs, 28 resource bundles, and 6 helper .app bundles (screen-share
+    # host, transcode, etc.) that ZoomSDK.framework loads at runtime. Xcode
+    # only auto-embeds+signs what's declared above (ZoomSDK.framework
+    # itself); this script copies everything else into the same
+    # Frameworks folder and signs it, since ENABLE_HARDENED_RUNTIME
+    # requires every embedded binary to carry a valid signature or the
+    # app won't launch. Confirmed working: repeated xcodebuild + launch
+    # cycles with no dyld errors, and a real Meeting SDK join succeeding.
+    postbuildScripts:
+      - name: Embed remaining ZoomSDK support binaries
+        script: |
+          set -euo pipefail
+          DEST="${CODESIGNING_FOLDER_PATH}/Contents/Frameworks"
+          mkdir -p "$DEST"
+          rsync -a --delete --exclude 'ZoomSDK.framework' "${SRCROOT}/Vendor/ZoomSDK/" "$DEST/"
+          find "$DEST" -mindepth 1 -maxdepth 1 \( -name "*.framework" -o -name "*.dylib" -o -name "*.bundle" -o -name "*.app" \) -print0 \
+            | xargs -0 -I{} codesign --force --deep --timestamp=none --sign "${EXPANDED_CODE_SIGN_IDENTITY}" "{}"
+
+schemes:
+  Greenroom:
+    build:
+      targets:
+        Greenroom: all
+    run:
+      config: Debug

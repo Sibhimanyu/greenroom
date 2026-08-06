@@ -1,0 +1,20 @@
+# macOS
+.DS_Store
+
+# Xcode - Greenroom.xcodeproj is generated from project.yml
+# (run `xcodegen generate`), so it's never committed
+Greenroom.xcodeproj/
+xcuserdata/
+DerivedData/
+build/
+
+# Proprietary Zoom Meeting SDK (~600 MB) - not redistributable; download
+# it with your own Zoom Marketplace account. See Vendor/README.md.
+Vendor/ZoomSDK/
+
+# Claude Code local settings
+.claude/settings.local.json
+
+# Exported Greenroom settings files carry Zoom credentials in PLAINTEXT
+# (deliberately - see README) and must never land in the repo
+*Greenroom Settings*.json

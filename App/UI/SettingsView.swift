@@ -434,7 +434,7 @@ private struct StartMeetingSettingsTab: View {
             TextField("Client ID", text: $coordinator.s2sClientID)
             SecureField("Client Secret", text: $coordinator.s2sClientSecret)
 
-            Text("A different Zoom app than Meeting Chat's - create one at marketplace.zoom.us: Build App \u{2192} Server-to-Server OAuth, add a meeting-write scope, then copy its Account ID/Client ID/Secret here. If it's the same Zoom account as your Meeting Chat app, meetings started here automatically satisfy that feature's same-account requirement too.")
+            Text("A different Zoom app than Meeting Chat's - create one at marketplace.zoom.us: Build App \u{2192} Server-to-Server OAuth, then copy its Account ID/Client ID/Secret here. Add all four scopes on its Scopes page: meeting:write:meeting:admin, meeting:read:list_meetings:admin, meeting:read:meeting:admin, user:read:token:admin. The setup guide (? on the main window) walks through it and can test the result. Same Zoom account as the Meeting Chat app = hosting and chat work in every meeting this creates.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
 

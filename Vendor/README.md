@@ -38,13 +38,20 @@ features run off TWO Marketplace apps:
    UserDefaults, harmless; Secret goes to the Keychain - see
    `App/Zoom/KeychainStore.swift` - never put either in this repo).
 
-**App 2 - Server-to-Server OAuth (powers "Start New Meeting"; optional):**
+**App 2 - Server-to-Server OAuth (powers "Start New Meeting", the
+Scheduled-meetings list, and hosting your own meetings):**
 
 1. Build App -> **Server-to-Server OAuth**.
-2. Add a meeting-write scope (search "meeting" on its Scopes page and
-   pick the create-a-meeting one).
+2. On its Scopes page add ALL FOUR scopes (each one's absence was
+   discovered as a live 4711 error; the in-app errors name them too):
+   - `meeting:write:meeting:admin` - create meetings
+   - `meeting:read:list_meetings:admin` - the Scheduled list
+   - `meeting:read:meeting:admin` - recurring meetings' next times
+   - `user:read:token:admin` - the ZAK that host-starts your own meetings
 3. Copy its **Account ID**, **Client ID**, and **Client Secret** into
    Greenroom's Settings -> Start Meeting tab.
+4. Verify with the setup guide's "Test Zoom Connection" button (? on
+   the main window -> credentials step).
 
 **Why two apps?** Zoom's headless `account_credentials` token grant is
 exclusive to the S2S app type, and the Meeting SDK embed is exclusive to

@@ -15,8 +15,12 @@ import UniformTypeIdentifiers
 
 struct OnboardingView: View {
     @EnvironmentObject private var coordinator: CoordinatorController
+    @Environment(\.openSettings) private var openSettings
     @State private var step = 0
     @State private var refreshTick = 0 // bumped by a timer so detected state stays live
+    @State private var scratchExpanded = false
+    @State private var isTesting = false
+    @State private var testResults: [TestResult] = []
 
     private let stepCount = 5
     private let timer = Timer.publish(every: 1.5, on: .main, in: .common).autoconnect()
@@ -32,7 +36,7 @@ struct OnboardingView: View {
             footer
                 .padding(16)
         }
-        .frame(width: 560, height: 540)
+        .frame(width: 580, height: 600)
         .onReceive(timer) { _ in refreshTick += 1 }
     }
 
@@ -63,7 +67,7 @@ struct OnboardingView: View {
             VStack(alignment: .leading, spacing: 12) {
                 Label("A virtual camera showing your screen with you keyed into a bubble", systemImage: "web.camera")
                 Label("Starts a fresh Zoom meeting as host, or joins one from a link", systemImage: "video.badge.plus")
-                Label("Chrome and the meeting chat tiled neatly side by side", systemImage: "rectangle.split.2x1")
+                Label("Your main app and the meeting chat tiled neatly side by side", systemImage: "rectangle.split.2x1")
                 Label("Stop tears the whole thing down again", systemImage: "stop.circle")
             }
             .padding(.top, 12)
@@ -103,49 +107,160 @@ struct OnboardingView: View {
         }
     }
 
+    /// The four scopes the Server-to-Server app needs - every one was
+    /// discovered as a live 4711 error at some point; spare the next
+    /// person that ride by handing them the full list up front.
+    private static let s2sScopes = "meeting:write:meeting:admin, meeting:read:list_meetings:admin, meeting:read:meeting:admin, user:read:token:admin"
+
+    struct TestResult: Identifiable {
+        let id = UUID()
+        let name: String
+        let ok: Bool
+        let detail: String
+    }
+
     private var credentialsStep: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            stepHeader("Zoom credentials", "Greenroom's meeting features run on Zoom Marketplace app credentials.")
+        ScrollView {
+            VStack(alignment: .leading, spacing: 14) {
+                stepHeader("Zoom credentials", "Meeting features run on Zoom Marketplace app credentials. Two ways in:")
 
-            HStack {
-                Button {
-                    importSettingsFile()
-                } label: {
-                    Label("Import Settings File\u{2026}", systemImage: "square.and.arrow.down")
+                HStack {
+                    Button {
+                        importSettingsFile()
+                    } label: {
+                        Label("Import Settings File\u{2026}", systemImage: "square.and.arrow.down")
+                    }
+                    .buttonStyle(.borderedProminent)
+
+                    Text("Got a file from a teammate? This fills in everything at once.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
-                .buttonStyle(.borderedProminent)
 
-                Text("Got a file from a teammate? This fills in everything at once.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                StatusRow(
+                    ok: !coordinator.sdkClientID.isEmpty,
+                    title: "Meeting chat credentials",
+                    detail: coordinator.sdkClientID.isEmpty
+                        ? "Missing \u{2014} powers the built-in meeting client and chat window."
+                        : "Configured.",
+                    actionTitle: coordinator.sdkClientID.isEmpty ? "Open Settings\u{2026}" : nil
+                ) { openSettings() }
+
+                StatusRow(
+                    ok: !coordinator.s2sAccountID.isEmpty && !coordinator.s2sClientID.isEmpty,
+                    title: "Start-meeting credentials",
+                    detail: coordinator.s2sAccountID.isEmpty
+                        ? "Missing \u{2014} powers \u{201C}New Meeting\u{201D}, the Scheduled list, and hosting your own meetings."
+                        : "Configured \u{2014} verify them with the test below.",
+                    actionTitle: coordinator.s2sAccountID.isEmpty ? "Open Settings\u{2026}" : nil
+                ) { openSettings() }
+
+                DisclosureGroup("Setting up from scratch? The full walkthrough (\u{2248}10 minutes, once)", isExpanded: $scratchExpanded) {
+                    VStack(alignment: .leading, spacing: 12) {
+                        scratchStep(1, "Create a **General App** \u{2014} on its **Features \u{2192} Embed** page toggle **Meeting SDK** on, then copy its **Client ID + Secret** into Settings \u{2192} Meeting Chat.",
+                                    buttonTitle: "Create app on marketplace.zoom.us\u{2026}",
+                                    url: "https://marketplace.zoom.us/develop/create")
+                        scratchStep(2, "Create a **Server-to-Server OAuth** app \u{2014} copy its **Account ID, Client ID and Secret** into Settings \u{2192} Start Meeting.",
+                                    buttonTitle: "Create app on marketplace.zoom.us\u{2026}",
+                                    url: "https://marketplace.zoom.us/develop/create")
+                        scratchStep(3, "On the Server-to-Server app's **Scopes** page, add these four (search each name):", buttonTitle: nil, url: nil)
+                        scopesBox
+                        scratchStep(4, "Both apps must belong to the SAME Zoom account \u{2014} that's what lets Greenroom host and chat in the meetings it creates.", buttonTitle: nil, url: nil)
+                    }
+                    .padding(.top, 8)
+                }
+                .font(.callout)
+
+                Divider()
+
+                HStack(spacing: 10) {
+                    Button(isTesting ? "Testing\u{2026}" : "Test Zoom Connection") { runConnectionTest() }
+                        .disabled(isTesting || coordinator.s2sAccountID.isEmpty || coordinator.s2sClientID.isEmpty)
+                    Text("Checks the credentials and every scope, and names anything missing.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                ForEach(testResults) { result in
+                    HStack(alignment: .top, spacing: 8) {
+                        Image(systemName: result.ok ? "checkmark.circle.fill" : "xmark.circle.fill")
+                            .foregroundStyle(result.ok ? .green : .red)
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text(result.name).font(.callout.weight(.medium))
+                            Text(result.detail).font(.caption).foregroundStyle(.secondary)
+                        }
+                    }
+                }
             }
+        }
+    }
 
-            StatusRow(
-                ok: !coordinator.sdkClientID.isEmpty,
-                title: "Meeting chat credentials",
-                detail: coordinator.sdkClientID.isEmpty
-                    ? "Missing \u{2014} powers the side-by-side chat window."
-                    : "Configured.",
-                actionTitle: nil, action: {}
-            )
-
-            StatusRow(
-                ok: !coordinator.s2sAccountID.isEmpty && !coordinator.s2sClientID.isEmpty,
-                title: "Start-meeting credentials (optional)",
-                detail: coordinator.s2sAccountID.isEmpty
-                    ? "Missing \u{2014} powers one-click \u{201C}New Meeting\u{201D}. Joining existing meetings works without it."
-                    : "Configured.",
-                actionTitle: nil, action: {}
-            )
-
-            Divider()
-
-            Text("Setting up from scratch instead? Create the apps at marketplace.zoom.us \u{2014} the exact steps live under each field in Settings (\u{2318},), Meeting Chat and Start Meeting tabs.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            Button("Open Zoom Marketplace") {
-                NSWorkspace.shared.open(URL(string: "https://marketplace.zoom.us")!)
+    private func scratchStep(_ number: Int, _ text: LocalizedStringKey, buttonTitle: String?, url: String?) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Text("\(number).").bold().monospacedDigit()
+            VStack(alignment: .leading, spacing: 5) {
+                Text(text).font(.callout)
+                if let buttonTitle, let url {
+                    Button(buttonTitle) { NSWorkspace.shared.open(URL(string: url)!) }
+                        .controlSize(.small)
+                }
             }
+        }
+    }
+
+    private var scopesBox: some View {
+        HStack(alignment: .top) {
+            Text(Self.s2sScopes)
+                .font(.system(.caption, design: .monospaced))
+                .textSelection(.enabled)
+            Spacer()
+            Button {
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(Self.s2sScopes, forType: .string)
+            } label: {
+                Image(systemName: "doc.on.doc")
+            }
+            .buttonStyle(.plain)
+            .help("Copy all four scope names")
+        }
+        .padding(8)
+        .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 6))
+    }
+
+    /// Exercises the real API calls the app makes, so every check failure
+    /// carries the same self-explanatory scope hint the session errors do.
+    /// The write scope is the one thing not tested (verifying it would
+    /// create an actual meeting) - the caption under the button says so.
+    private func runConnectionTest() {
+        coordinator.loadSecretsIfNeeded()
+        isTesting = true
+        testResults = []
+        let (account, client, secret) = (coordinator.s2sAccountID, coordinator.s2sClientID, coordinator.s2sClientSecret)
+        Task {
+            var results: [TestResult] = []
+            do {
+                let list = try await ZoomServerToServerClient.listScheduledMeetings(
+                    accountID: account, clientID: client, clientSecret: secret)
+                results.append(TestResult(name: "Credentials + scheduled meetings list", ok: true,
+                                          detail: "\(list.meetings.count) scheduled meeting(s) found."))
+                if let warning = list.warning {
+                    results.append(TestResult(name: "Recurring meetings' next times", ok: false, detail: warning))
+                } else {
+                    results.append(TestResult(name: "Recurring meetings' next times", ok: true, detail: "View-a-meeting scope in place."))
+                }
+            } catch {
+                results.append(TestResult(name: "Credentials + scheduled meetings list", ok: false,
+                                          detail: error.localizedDescription))
+            }
+            do {
+                _ = try await ZoomServerToServerClient.fetchZAK(accountID: account, clientID: client, clientSecret: secret)
+                results.append(TestResult(name: "Hosting your own meetings (host key)", ok: true, detail: "User token scope in place."))
+            } catch {
+                results.append(TestResult(name: "Hosting your own meetings (host key)", ok: false,
+                                          detail: error.localizedDescription))
+            }
+            testResults = results
+            isTesting = false
         }
     }
 
@@ -168,7 +283,7 @@ struct OnboardingView: View {
             VStack(alignment: .leading, spacing: 10) {
                 Label("Screen Recording \u{2014} OBS asks on the first Start (it captures your screen)", systemImage: "rectangle.dashed.badge.record")
                 Label("Camera & Microphone \u{2014} asked on the first chat connection", systemImage: "camera")
-                Label("Google Chrome automation \u{2014} asked when the Chrome window is first tiled", systemImage: "globe")
+                Label("Browser automation (Chrome) \u{2014} asked when its window is first tiled; other main apps use Accessibility above", systemImage: "globe")
                 Label("Keychain \u{2014} if asked, always click \u{201C}Always Allow\u{201D}, never plain \u{201C}Allow\u{201D}", systemImage: "key")
             }
             .font(.callout)

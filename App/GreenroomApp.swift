@@ -25,14 +25,16 @@ struct GreenroomApp: App {
                 .environmentObject(coordinator)
         }
 
-        // Text label rather than a systemImage: a glyph that fails to
-        // render leaves an invisible item, and text makes the item's
-        // presence unambiguous when diagnosing "it's not showing up".
+        // The brand mark as a TEMPLATE image (black + alpha, tinted by the
+        // system per menu bar appearance). Unlike the systemImage-name
+        // route this replaced-a-"GR"-text-label to avoid, a catalog asset
+        // can't silently fail to resolve - a missing asset is a build-time
+        // problem, not an invisible menu bar item.
         MenuBarExtra {
             MenuBarView()
                 .environmentObject(coordinator)
         } label: {
-            Text("GR")
+            Image("MenuBarMark")
         }
         .menuBarExtraStyle(.menu)
     }

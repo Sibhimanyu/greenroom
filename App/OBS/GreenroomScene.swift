@@ -41,7 +41,12 @@ enum GreenroomScene {
 
         let screenKind = try await bestInputKind(client: client, containing: ["screen", "display"])
         let webcamKind = try await bestInputKind(client: client, containing: ["av_capture", "dshow", "v4l2"])
-        let chromaKind = try await bestFilterKind(client: client, containing: ["chroma_key"])
+        // v2 first: OBS lists the obsolete v1 kind BEFORE chroma_key_filter_v2
+        // (confirmed against OBS 32 over the wire), and a bare "chroma_key"
+        // needle used to match v1 - whose `opacity` is an int percent, so the
+        // v2-style 1.0 written below rendered the webcam at 1% opacity and
+        // Cutout looked like the webcam simply vanished.
+        let chromaKind = try await bestFilterKind(client: client, containing: ["chroma_key_filter_v2", "chroma_key"])
 
         // Resolve the real display/camera identifiers *before* creating the
         // inputs, and bake them in via CreateInput's inputSettings rather
@@ -70,7 +75,7 @@ enum GreenroomScene {
                                isCorrectlyConfigured: { ($0["uid"] as? String) == webcamUID })
 
         try await ensureFilter(client: client, source: webcamSourceName, name: chromaKeyFilterName, kind: chromaKind)
-        try await setChromaKey(client: client, enabled: bubble.shape.usesChromaKey)
+        try await setChromaKey(client: client, enabled: bubble.shape.usesChromaKey, kind: chromaKind)
         try await ensureShapeMask(client: client, shape: bubble.shape)
 
         // Confirmed by testing: OBS can log "No device selected" for this
@@ -235,8 +240,15 @@ enum GreenroomScene {
     /// bundled shader is tuned for; they're set explicitly rather than
     /// relying on defaults so a previous session's fiddling can't leave
     /// the key mis-tuned.
-    private static func setChromaKey(client: OBSWebSocketClient, enabled: Bool) async throws {
+    ///
+    /// `opacity` means different things per filter version (confirmed via
+    /// GetSourceFilterDefaultSettings against a live OBS 32): v2 takes a
+    /// 0-1 float (default 1), the obsolete v1 an int percent (default
+    /// 100). Writing the v2 value into a v1 filter = 1% opacity = an
+    /// invisible webcam, which is exactly how the Cutout bug shipped.
+    private static func setChromaKey(client: OBSWebSocketClient, enabled: Bool, kind: String) async throws {
         if enabled {
+            let opacity: Any = kind.hasSuffix("_v2") ? 1.0 : 100
             _ = try? await client.request("SetSourceFilterSettings", data: [
                 "sourceName": webcamSourceName,
                 "filterName": chromaKeyFilterName,
@@ -245,7 +257,7 @@ enum GreenroomScene {
                     "similarity": 400,
                     "smoothness": 80,
                     "spill": 100,
-                    "opacity": 1.0
+                    "opacity": opacity
                 ]
             ])
         }
@@ -256,10 +268,20 @@ enum GreenroomScene {
         ])
     }
 
+    /// Creates the filter if missing - and if it exists with the WRONG
+    /// kind, removes and recreates it. Kind mismatches are real: scenes
+    /// configured before the chroma_key_filter_v2 preference above carry
+    /// a legacy-v1 filter under this same name, and merely re-enabling it
+    /// would keep the broken opacity semantics forever.
     private static func ensureFilter(client: OBSWebSocketClient, source: String, name: String, kind: String) async throws {
         let list = try await client.request("GetSourceFilterList", data: ["sourceName": source])
         let filters = (list["filters"] as? [[String: Any]]) ?? []
-        guard !filters.contains(where: { ($0["filterName"] as? String) == name }) else { return }
+        if let existing = filters.first(where: { ($0["filterName"] as? String) == name }) {
+            if (existing["filterKind"] as? String) == kind { return }
+            _ = try? await client.request("RemoveSourceFilter", data: [
+                "sourceName": source, "filterName": name
+            ])
+        }
         _ = try await client.request("CreateSourceFilter", data: [
             "sourceName": source,
             "filterName": name,

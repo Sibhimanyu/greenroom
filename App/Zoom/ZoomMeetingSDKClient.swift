@@ -93,6 +93,11 @@ final class ZoomMeetingSDKClient: NSObject, ObservableObject {
         let configuration = meetingService.getMeetingConfiguration()
         configuration.hideThumbnailVideoWindow = true
         configuration.hideMeetingInfoButtonOnVideo = true
+        // Without this, the active-speaker layout still shows YOU next to
+        // the speaker whenever your camera is on. Same switch as the Zoom
+        // client's "Hide Self View" (ZoomSDKSettingVideoController.h) -
+        // your video keeps sending, it's just not rendered locally.
+        ZoomSDK.shared().getSettingService()?.getVideoSetting()?.enableHideSelfView(true)
     }
 
     /// Switches the built-in client's meeting window to the plain

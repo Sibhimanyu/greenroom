@@ -259,7 +259,16 @@ final class ZoomMeetingSDKClient: NSObject, ObservableObject {
     /// Safe to call when not in one. The isJoined flip also feeds the
     /// coordinator's meeting-ended observer, which closes the chat window.
     func leave() {
-        let cmd = isHosting ? LeaveMeetingCmd_End : LeaveMeetingCmd_Leave
+        // The isHosting flag only knows about explicit host STARTS - but
+        // host can also arrive mid-meeting: joining your OWN meeting (the
+        // Scheduled list flow) has Zoom promote you on arrival, with the
+        // flag still false, so Stop used to merely leave and the meeting
+        // kept running host-less. Ask the SDK who we are RIGHT NOW; the
+        // live answer also covers the hybrid flow's host handoff (host
+        // given away mid-meeting -> just leave, as before).
+        let isHostNow = ZoomSDK.shared().getMeetingService()?
+            .getMeetingActionController().getMyself()?.isHost() ?? false
+        let cmd = (isHosting || isHostNow) ? LeaveMeetingCmd_End : LeaveMeetingCmd_Leave
         ZoomSDK.shared().getMeetingService()?.leaveMeeting(with: cmd)
         isJoined = false
         isHosting = false

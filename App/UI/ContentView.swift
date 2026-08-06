@@ -78,15 +78,15 @@ struct ContentView: View {
     private var header: some View {
         HStack(alignment: .top) {
             VStack(alignment: .leading, spacing: 4) {
-                HStack(spacing: 10) {
+                HStack(spacing: 14) {
                     Image("LogoMark")
                         .resizable()
                         .scaledToFit()
-                        .frame(height: 40)
+                        .frame(height: 64)
                     // Two-tone wordmark, as in the logo: "Green" bright,
                     // "room" in the label color so it works on both themes.
                     (Text("Green").foregroundColor(Self.brandGreen) + Text("room"))
-                        .font(.largeTitle.bold())
+                        .font(.system(size: 40, weight: .bold))
                 }
                 Text("One click: virtual camera on, Zoom in the meeting, your main app and chat tiled side by side.")
                     .foregroundStyle(.secondary)

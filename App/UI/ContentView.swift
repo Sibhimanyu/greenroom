@@ -71,9 +71,9 @@ struct ContentView: View {
         }
     }
 
-    /// The brand's bright green (#5EC93F) - matches Branding/greenroom-logo.png
-    /// and the generated app icon.
-    private static let brandGreen = Color(red: 0.369, green: 0.788, blue: 0.247)
+    /// The brand's leaf green (#5FA83C) - matches the "Control Flow"
+    /// lockup in Branding/greenroom-logo.png and the generated app icon.
+    private static let brandGreen = Color(red: 0.373, green: 0.659, blue: 0.235)
 
     private var header: some View {
         HStack(alignment: .top) {

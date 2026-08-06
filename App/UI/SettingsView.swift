@@ -148,8 +148,10 @@ struct WebcamShapePreview: View {
                         .frame(width: w, height: h)
                         .position(x: w / 2, y: h / 2)
                     if shape == .cutout {
-                        person(height: h * 0.6)
-                            .position(x: w - w * 0.16, y: h - (h * 0.6) / 2 + h * 0.03)
+                        // Flush with the bottom edge, like the real scene -
+                        // the person rises from the screen edge, no float.
+                        person(height: h * 0.62)
+                            .position(x: w - w * 0.16, y: h - (h * 0.62) / 2)
                     } else {
                         bubble(size: h * 0.44)
                             .position(x: w - w * 0.05 - (h * 0.44) / 2,

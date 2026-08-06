@@ -345,10 +345,49 @@ enum GreenroomScene {
     private static func layoutScene(client: OBSWebSocketClient, layout: BubbleLayout, canvasWidth: Int, canvasHeight: Int) async throws {
         if layout.shape.isPresenterStyle {
             try await layoutPresenter(client: client, canvasWidth: canvasWidth, canvasHeight: canvasHeight)
+        } else if layout.shape == .cutout {
+            try await ensureScreenPanelMask(client: client, enabled: false, canvasWidth: canvasWidth, canvasHeight: canvasHeight)
+            try await layoutCutout(client: client, canvasWidth: canvasWidth, canvasHeight: canvasHeight)
         } else {
             try await ensureScreenPanelMask(client: client, enabled: false, canvasWidth: canvasWidth, canvasHeight: canvasHeight)
             try await positionBubble(client: client, layout: layout, canvasWidth: canvasWidth, canvasHeight: canvasHeight)
         }
+    }
+
+    /// Cutout's own arrangement - NOT the bubble's. Reusing the small
+    /// square bubble box had two confirmed-by-use problems: the 16:9
+    /// camera frame got letterboxed inside the square (so the keyed
+    /// person hovered above the box's bottom edge, "floating"), and the
+    /// frame was so small that a raised hand immediately left it and
+    /// visibly clipped. Here the frame keeps its real aspect, is much
+    /// larger (half the canvas height of headroom), and its bottom edge
+    /// sits FLUSH with the canvas bottom - the person rises from the
+    /// screen edge like a news presenter.
+    private static func layoutCutout(client: OBSWebSocketClient, canvasWidth: Int, canvasHeight: Int) async throws {
+        let items = try await sceneItems(client: client)
+        guard let webcam = items.first(where: { ($0["sourceName"] as? String) == webcamSourceName }),
+              let itemId = webcam["sceneItemId"] as? Int else { return }
+
+        let width = Double(canvasWidth)
+        let height = Double(canvasHeight)
+        let transform = webcam["sceneItemTransform"] as? [String: Any]
+        let sourceWidth = (transform?["sourceWidth"] as? Double) ?? 0
+        let sourceHeight = (transform?["sourceHeight"] as? Double) ?? 0
+        let aspect = (sourceWidth > 0 && sourceHeight > 0) ? sourceWidth / sourceHeight : 16.0 / 9.0
+
+        let frameHeight = height * 0.5
+        let frameWidth = frameHeight * aspect
+        _ = try await client.request("SetSceneItemTransform", data: [
+            "sceneName": sceneName,
+            "sceneItemId": itemId,
+            "sceneItemTransform": [
+                "positionX": width - width * 0.02 - frameWidth,
+                "positionY": height - frameHeight,
+                "boundsType": "OBS_BOUNDS_STRETCH",
+                "boundsWidth": frameWidth,
+                "boundsHeight": frameHeight
+            ]
+        ])
     }
 
     /// Points OBS's recording output at recordingsDirectory - both the

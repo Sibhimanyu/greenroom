@@ -2,6 +2,12 @@
   <img src="Branding/greenroom-logo.png" alt="Greenroom" width="540">
 </p>
 
+<p align="center">
+  <a href="https://sibhimanyu.github.io/greenroom/#video"><img src="docs/greenroom-intro-poster.jpg" width="560" alt="The Greenroom intro video"></a>
+  <br>
+  <a href="https://sibhimanyu.github.io/greenroom/#video"><b>&#9654;&#65039; Watch the 37-second intro</b></a>
+</p>
+
 # Greenroom
 
 One click sets up your whole morning-meeting workspace:

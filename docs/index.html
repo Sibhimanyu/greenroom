@@ -243,6 +243,16 @@
   .chip-time { bottom: -16px; left: 4%; animation-delay: 1s; color: var(--body); }
   .chip-time strong { color: var(--ink); }
 
+  .intro-video {
+    display: block;
+    width: 100%;
+    max-width: 920px;
+    margin: 0 auto;
+    border-radius: 14px;
+    border: 1px solid var(--line);
+    box-shadow: var(--card-shadow);
+  }
+
   /* ---------- sections ---------- */
   section { padding: 88px 0; }
   section.soft { background: var(--bg-soft); border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
@@ -364,6 +374,7 @@
       <span><span class="green">Green</span>room</span>
     </a>
     <div class="nav-links">
+      <a href="#video">Video</a>
       <a href="#features">Features</a>
       <a href="#how">How it works</a>
       <a href="#story">The story</a>
@@ -415,6 +426,19 @@
     </div>
   </div>
 </header>
+
+<section id="video">
+  <div class="wrap">
+    <div class="sec-head">
+      <p class="kicker">The intro</p>
+      <h2>The whole idea, in 37 seconds</h2>
+    </div>
+    <video class="intro-video" controls preload="metadata" poster="greenroom-intro-poster.jpg">
+      <source src="greenroom-intro.mp4" type="video/mp4">
+      Your browser can't play this video &mdash; <a href="greenroom-intro.mp4">download it instead</a>.
+    </video>
+  </div>
+</section>
 
 <section class="soft" id="features">
   <div class="wrap">

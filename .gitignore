@@ -18,3 +18,7 @@ Vendor/ZoomSDK/
 # Exported Greenroom settings files carry Zoom credentials in PLAINTEXT
 # (deliberately - see README) and must never land in the repo
 *Greenroom Settings*.json
+
+# HyperFrames video projects - source projects stay local; the
+# rendered mp4 ships via docs/
+videos/

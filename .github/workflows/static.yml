@@ -42,3 +42,8 @@ jobs:
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v5
+        with:
+          # The site ships a 9MB intro video; Pages takes >10min to
+          # process that artifact, and the default timeout made runs
+          # report failure for deployments that then landed anyway.
+          timeout: 1800000

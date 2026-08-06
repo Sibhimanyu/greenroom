@@ -358,6 +358,24 @@
   footer a { color: var(--body); }
   footer a:hover { color: var(--ink); }
 
+  /* The hero mockup's blob and chips intentionally overhang their box -
+     clip at the page level so phones never scroll sideways. */
+  html, body { overflow-x: clip; }
+
+  @media (max-width: 700px) {
+    .hero { padding: 44px 0 52px; gap: 40px; }
+    section { padding: 60px 0; }
+    .sec-head { margin-bottom: 32px; }
+    .lede { font-size: 17px; }
+    .nav-inner { gap: 16px; }
+    .nav-cta { gap: 12px; }
+    .hero-actions { gap: 16px; }
+    .chip { font-size: 12px; padding: 7px 12px; }
+    .chip-cam { right: 2%; }
+    .story-grid { gap: 28px; }
+    .mock-desk { min-height: 300px; }
+  }
+
   @media (prefers-reduced-motion: reduce) {
     .tile, .chip { animation-duration: 0.01s; animation-delay: 0s; }
     .btn:hover { transform: none; }
@@ -433,7 +451,7 @@
       <p class="kicker">The intro</p>
       <h2>The whole idea, in 37 seconds</h2>
     </div>
-    <video class="intro-video" controls preload="metadata" poster="greenroom-intro-poster.jpg">
+    <video class="intro-video" controls muted playsinline preload="metadata" poster="greenroom-intro-poster.jpg">
       <source src="greenroom-intro.mp4" type="video/mp4">
       Your browser can't play this video &mdash; <a href="greenroom-intro.mp4">download it instead</a>.
     </video>
@@ -567,5 +585,26 @@
   </div>
 </footer>
 
+
+<script>
+(function () {
+  var video = document.querySelector(".intro-video");
+  if (!video || !("IntersectionObserver" in window)) return;
+  if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  // Muted autoplay when at least half the player is on screen; pause when
+  // it scrolls away. Muted is what makes autoplay allowed at all - the
+  // controls are right there to unmute.
+  var observer = new IntersectionObserver(function (entries) {
+    entries.forEach(function (entry) {
+      if (entry.intersectionRatio >= 0.5) {
+        video.play().catch(function () {});
+      } else {
+        video.pause();
+      }
+    });
+  }, { threshold: [0, 0.5] });
+  observer.observe(video);
+})();
+</script>
 </body>
 </html>

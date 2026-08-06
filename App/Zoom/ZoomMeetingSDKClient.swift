@@ -110,6 +110,18 @@ final class ZoomMeetingSDKClient: NSObject, ObservableObject {
         ZoomSDK.shared().getMeetingService()?.getMeetingUIController().switchToActiveSpeakerView()
     }
 
+    /// Dual-screen mode: the SDK opens a SECOND meeting window (the
+    /// gallery/"people view", same as the Zoom client's dual-monitor
+    /// option) alongside the primary one. The SDK persists this setting
+    /// across sessions, so it's asserted - or explicitly cleared - before
+    /// every connect rather than trusted. Confirmed against
+    /// ZoomSDKSettingGeneralController.h (enableMeetingSetting:SettingCmd:)
+    /// and MeetingSettingCmd_DualScreenMode in ZoomSDKErrors.h.
+    func setDualScreenMode(_ enabled: Bool) {
+        ZoomSDK.shared().getSettingService()?.getGeneralSetting()?
+            .enableMeetingSetting(enabled, settingCmd: MeetingSettingCmd_DualScreenMode)
+    }
+
     /// Joins as a second, muted/camera-off participant purely for chat -
     /// the actual meeting audio/video is still whatever's running in the
     /// native Zoom app.

@@ -137,6 +137,15 @@ private struct LayoutSettingsTab: View {
                 }
             }
 
+            Section("Second display") {
+                Toggle("People view on the second display", isOn: $coordinator.peopleViewOnStart)
+                Text(NSScreen.screens.count > 1
+                     ? "On Start, a full-screen view of every participant opens on the second display \u{2014} the classroom view. Works with the built-in meeting client."
+                     : "No second display is connected right now \u{2014} this takes effect whenever one is. Works with the built-in meeting client.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
             Toggle("Open the main app automatically on Start", isOn: $coordinator.mainAppOnStart)
 
             Text("The Zoom meeting tile and chat window tile themselves into whatever space the main pane leaves free.")

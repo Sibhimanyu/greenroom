@@ -26,6 +26,7 @@ final class CoordinatorController: ObservableObject {
     func prepareForTermination() {
         layoutFollowTask?.cancel()
         ghostWindowPolice?.cancel()
+        peopleViewTask?.cancel()
         ChatWindowController.close()
         zoomChatClient.leave() // ends the meeting if we're hosting it
     }
@@ -145,6 +146,12 @@ final class CoordinatorController: ObservableObject {
     @Published var mainAppOnStart: Bool {
         didSet { defaults.set(mainAppOnStart, forKey: "mainAppOnStart") }
     }
+    /// People view: on Start, the built-in client's dual-screen gallery
+    /// window (every participant) goes full-screen onto a second display
+    /// - the classroom projector. No-op with a single display.
+    @Published var peopleViewOnStart: Bool {
+        didSet { defaults.set(peopleViewOnStart, forKey: "peopleViewOnStart") }
+    }
 
     private let defaults = UserDefaults.standard
 
@@ -164,6 +171,7 @@ final class CoordinatorController: ObservableObject {
         mainAppOnStart = (defaults.object(forKey: "mainAppOnStart") as? Bool)
             ?? (defaults.object(forKey: "chromeOnStart") as? Bool)
             ?? true
+        peopleViewOnStart = defaults.bool(forKey: "peopleViewOnStart")
         meetingMode = MeetingMode(rawValue: defaults.string(forKey: "meetingMode") ?? "") ?? .create
         showOnboarding = !defaults.bool(forKey: "hasCompletedOnboarding")
         sdkClientID = defaults.string(forKey: "zoomSDKClientID") ?? ""
@@ -193,6 +201,7 @@ final class CoordinatorController: ObservableObject {
     private func chatSessionDidEnd() {
         layoutFollowTask?.cancel()
         ghostWindowPolice?.cancel()
+        peopleViewTask?.cancel()
         guard ChatWindowController.isOpen else { return }
         ChatWindowController.close()
         zoomChatBridge.reset()
@@ -299,6 +308,7 @@ final class CoordinatorController: ObservableObject {
             // closed and doesn't double-log.
             layoutFollowTask?.cancel()
             ghostWindowPolice?.cancel()
+            peopleViewTask?.cancel()
             if ChatWindowController.isOpen {
                 ChatWindowController.close()
                 zoomChatBridge.reset()
@@ -415,6 +425,7 @@ final class CoordinatorController: ObservableObject {
 
         log("Starting the meeting in Greenroom's built-in Zoom client\u{2026}")
         try await zoomChatClient.ensureReady(clientID: sdkClientID, clientSecret: sdkClientSecret)
+        zoomChatClient.setDualScreenMode(peopleViewWanted)
 
         if zoomChatClient.selectCamera(named: "OBS Virtual Camera") {
             log("Camera set to OBS Virtual Camera.")
@@ -432,6 +443,7 @@ final class CoordinatorController: ObservableObject {
         log("Meeting is live \u{2014} you're hosting from Greenroom. No second Zoom app, no ghost participant.")
 
         parkBuiltInMeetingWindow()
+        placePeopleViewWindow()
         finalizeLayout()
     }
 
@@ -448,6 +460,7 @@ final class CoordinatorController: ObservableObject {
 
         log("Joining meeting \(meetingNumber) in Greenroom's built-in Zoom client\u{2026}")
         try await zoomChatClient.ensureReady(clientID: sdkClientID, clientSecret: sdkClientSecret)
+        zoomChatClient.setDualScreenMode(peopleViewWanted)
 
         if zoomChatClient.selectCamera(named: "OBS Virtual Camera") {
             log("Camera set to OBS Virtual Camera.")
@@ -473,6 +486,7 @@ final class CoordinatorController: ObservableObject {
         log("In the meeting \u{2014} no second Zoom app, no ghost participant.")
 
         parkBuiltInMeetingWindow()
+        placePeopleViewWindow()
         finalizeLayout()
     }
 
@@ -495,6 +509,9 @@ final class CoordinatorController: ObservableObject {
                         // view - done here (not at connect) because the
                         // view switch needs the meeting window to exist.
                         zoomChatClient.simplifyMeetingView()
+                        // Remembered so the people-view placer knows which
+                        // window is the tile and which is the gallery.
+                        builtInMeetingWindow = window
                         parked = true
                     }
                     let frame = window.frame
@@ -526,6 +543,7 @@ final class CoordinatorController: ObservableObject {
         }
         if !sdkMeetingWindows().isEmpty {
             parkBuiltInMeetingWindow()
+            placePeopleViewWindow()
         } else if ZoomWindowManager.hasAccessibilityPermission, ZoomWindowManager.currentMeetingWindowFrame() != nil {
             parkZoomWindow()
         }
@@ -682,6 +700,51 @@ final class CoordinatorController: ObservableObject {
 
     private var layoutFollowTask: Task<Void, Never>?
     private var ghostWindowPolice: Task<Void, Never>?
+    private var peopleViewTask: Task<Void, Never>?
+    /// The built-in client's PRIMARY meeting window - the one parked as
+    /// the side-column tile. Weak: the SDK owns its windows.
+    private weak var builtInMeetingWindow: NSWindow?
+
+    /// Whether this session should put the gallery on a second display:
+    /// the toggle is on AND a second display actually exists right now.
+    private var peopleViewWanted: Bool {
+        peopleViewOnStart && NSScreen.screens.count > 1
+    }
+
+    /// Sends the built-in client's dual-screen gallery window full-screen
+    /// onto the external display. Polls for it because the SDK creates it
+    /// a beat after the primary meeting window. The primary is identified
+    /// by `builtInMeetingWindow` (set when the tile parks); the gallery is
+    /// any other SDK meeting window.
+    private func placePeopleViewWindow() {
+        guard peopleViewOnStart else { return }
+        guard let external = NSScreen.screens.first(where: { $0 != NSScreen.screens.first }) else {
+            log("People view skipped \u{2014} no second display connected.")
+            return
+        }
+        peopleViewTask?.cancel()
+        peopleViewTask = Task {
+            for _ in 0..<30 {
+                if Task.isCancelled { return }
+                let candidates = sdkMeetingWindows().filter { $0 !== builtInMeetingWindow }
+                // When the tile is parked, anything else is the gallery;
+                // un-parked (Zoom tile toggled off), the gallery is the
+                // SDK's second window - take the last, the primary was
+                // created first.
+                let gallery = builtInMeetingWindow != nil
+                    ? candidates.first
+                    : (candidates.count > 1 ? candidates.last : nil)
+                if let gallery {
+                    gallery.setFrame(external.frame, display: true)
+                    gallery.orderFront(nil)
+                    log("People view is on the second display.")
+                    return
+                }
+                try? await Task.sleep(nanoseconds: 1_000_000_000)
+            }
+            log("People view: the gallery window never appeared \u{2014} is dual-screen mode supported on this meeting?")
+        }
+    }
 
     /// The Meeting SDK renders a full meeting window of its own inside
     /// Greenroom's process for the chat participant - a second "Zoom
@@ -853,6 +916,7 @@ struct SettingsTransfer: Codable {
     var mainAppBundleID: String?
     var mainAppURL: String?
     var mainAppOnStart: Bool?
+    var peopleViewOnStart: Bool?
     var workspaceLayout: WorkspaceLayout?
     // Legacy fields from Chrome-only-era exports - still imported, never
     // written anymore.
@@ -875,6 +939,7 @@ extension CoordinatorController {
             mainAppBundleID: mainAppBundleID,
             mainAppURL: mainAppURL,
             mainAppOnStart: mainAppOnStart,
+            peopleViewOnStart: peopleViewOnStart,
             workspaceLayout: workspaceLayout
         )
         let encoder = JSONEncoder()
@@ -899,6 +964,7 @@ extension CoordinatorController {
         // app was implicitly Chrome, so the values carry straight over).
         if let value = transfer.mainAppURL ?? transfer.chromeURL { mainAppURL = value }
         if let value = transfer.mainAppOnStart ?? transfer.chromeOnStart { mainAppOnStart = value }
+        if let value = transfer.peopleViewOnStart { peopleViewOnStart = value }
         if let value = transfer.workspaceLayout {
             workspaceLayout = value
         } else if let raw = transfer.chromeLayout, let migrated = WorkspaceLayout(legacyChromeLayout: raw) {

@@ -1,13 +1,16 @@
-# Mirrors docs/ to Netlify (https://greenroom-app.netlify.app) on every
-# push that touches the site - keeps it in lockstep with GitHub Pages.
-# Netlify deploys land in seconds (no Pages-style artifact processing),
-# so this is usually the first host to show a change.
+# Deploys the GENERALIZED site variant to Netlify
+# (https://greenroom-app.netlify.app) on every push that touches the
+# site: docs/ transformed by scripts/netlify-site.py, which swaps the
+# Zoho Schools / Raj San / reading-class story for public-audience
+# phrasing. GitHub Pages keeps the personal version; one source, one
+# transform, so layout fixes never diverge. Netlify deploys land in
+# seconds, so it's usually the first host to show a change.
 name: Deploy to Netlify
 
 on:
   push:
     branches: ["main"]
-    paths: ["docs/**"]
+    paths: ["docs/**", "scripts/netlify-site.py"]
   workflow_dispatch:
 
 jobs:
@@ -16,8 +19,10 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-      - name: Deploy docs/ to Netlify
-        run: npx --yes netlify-cli deploy --dir docs --prod --message "GitHub Actions ${{ github.sha }}"
+      - name: Build generalized variant
+        run: python3 scripts/netlify-site.py netlify-build
+      - name: Deploy to Netlify
+        run: npx --yes netlify-cli deploy --dir netlify-build --prod --message "GitHub Actions ${{ github.sha }}"
         env:
           NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
           NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}

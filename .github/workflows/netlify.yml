@@ -1,0 +1,23 @@
+# Mirrors docs/ to Netlify (https://greenroom-app.netlify.app) on every
+# push that touches the site - keeps it in lockstep with GitHub Pages.
+# Netlify deploys land in seconds (no Pages-style artifact processing),
+# so this is usually the first host to show a change.
+name: Deploy to Netlify
+
+on:
+  push:
+    branches: ["main"]
+    paths: ["docs/**"]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Deploy docs/ to Netlify
+        run: npx --yes netlify-cli deploy --dir docs --prod --message "GitHub Actions ${{ github.sha }}"
+        env:
+          NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+          NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}

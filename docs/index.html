@@ -340,10 +340,22 @@
 
   /* ---------- cta ---------- */
   .cta-band { text-align: center; }
-  .cta-band h2 { margin-bottom: 14px; }
-  .cta-band p { color: var(--body); font-size: 17px; max-width: 52ch; margin: 0 auto 32px; }
+  .cta-band h2 { margin-bottom: 16px; }
+  .cta-band p {
+    color: var(--body);
+    font-size: 17px;
+    max-width: 42ch;
+    margin: 0 auto 40px;
+    text-wrap: balance; /* no orphaned last words on the wrapped lines */
+  }
   .cta-band .hero-actions { justify-content: center; }
-  .cta-note { margin-top: 18px; font-size: 13.5px; color: var(--faint); }
+  .cta-band p.cta-note {
+    margin-top: 36px;
+    margin-bottom: 0;
+    font-size: 13.5px;
+    color: var(--faint);
+    max-width: 46ch;
+  }
 
   footer {
     border-top: 1px solid var(--line);
@@ -357,6 +369,17 @@
   }
   footer a { color: var(--body); }
   footer a:hover { color: var(--ink); }
+  .footer-inner {
+    width: 100%; /* flex shrinks .wrap to content otherwise, killing the spread */
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+  @media (max-width: 700px) {
+    .footer-inner { justify-content: center; text-align: center; }
+  }
 
   /* The hero mockup's blob and chips intentionally overhang their box -
      clip at the page level so phones never scroll sideways. */
@@ -595,7 +618,7 @@
 </section>
 
 <footer>
-  <div class="wrap" style="display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap;padding:0;">
+  <div class="wrap footer-inner">
     <span>Greenroom — built for the morning readers at Zoho Schools.</span>
     <span><a href="https://github.com/Sibhimanyu/greenroom">GitHub</a> · <a href="https://github.com/Sibhimanyu/greenroom/releases">Releases</a> · <a href="https://github.com/Sibhimanyu/greenroom#readme">Guide</a></span>
   </div>

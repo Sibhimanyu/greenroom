@@ -1,0 +1,14 @@
+<?xml version="1.0" standalone="yes"?>
+<rss xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" version="2.0">
+    <channel>
+        <title>Greenroom</title>
+        <item>
+            <title>0.3.0</title>
+            <pubDate>Fri, 07 Aug 2026 17:48:56 +0530</pubDate>
+            <sparkle:version>4</sparkle:version>
+            <sparkle:shortVersionString>0.3.0</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <enclosure url="https://github.com/Sibhimanyu/greenroom/releases/download/v0.3.0/Greenroom-0.3.0.zip" length="288735399" type="application/octet-stream" sparkle:edSignature="3s4G/Jguw/S+0xtfNSTJT/S9WoKQBwdVI018TRcxBq/nkdEiGZltcXM9uK5p9+XNmjkcnBYGt+kz5wvDH+9MCQ=="/>
+        </item>
+    </channel>
+</rss>

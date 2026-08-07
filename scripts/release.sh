@@ -45,7 +45,13 @@ rm -rf "$DIST/verify"
 
 # Appcast: latest release only - Sparkle just needs a newer-than-current
 # entry, and single-entry keeps enclosure URLs per-release-tag simple.
+# The EdDSA key is read from a file: the Keychain copy is inaccessible
+# to non-interactive shells (errSecUserCanceled -128). Export it with
+#   .sparkle-tools/bin/generate_keys -x ~/.greenroom-sparkle-ed25519
+KEY_FILE="$HOME/.greenroom-sparkle-ed25519"
+[ -f "$KEY_FILE" ] || { echo "Missing $KEY_FILE - export it (see comment above)"; exit 1; }
 "$TOOLS/bin/generate_appcast" \
+  --ed-key-file "$KEY_FILE" \
   --download-url-prefix "https://github.com/Sibhimanyu/greenroom/releases/download/v$VERSION/" \
   --embed-release-notes \
   -o docs/appcast.xml "$DIST"

@@ -378,8 +378,15 @@
        the blob, tuck the chips INSIDE the mock's corners as overlay
        badges. */
     .blob { display: none; }
+    /* Centered hero reads better in a single narrow column. */
+    .hero > div:first-child { text-align: center; }
+    .hero h1 { margin-inline: auto; }
+    .lede { margin-inline: auto; }
+    .hero-actions { justify-content: center; }
     .chip { font-size: 12px; padding: 6px 11px; }
-    .chip-cam { top: 48px; right: 10px; }
+    /* No safe corner for the camera chip on a full-width mock (the top
+       row is all content) - the time chip carries the charm alone. */
+    .chip-cam { display: none; }
     .chip-time { bottom: 10px; left: 10px; }
     .mock-desk { min-height: 260px; padding: 12px; gap: 10px; }
     .story-grid { gap: 28px; }

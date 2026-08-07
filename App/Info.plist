@@ -4,6 +4,12 @@
 <dict>
 	<key>LSApplicationCategoryType</key>
 	<string>public.app-category.video</string>
+	<key>SUFeedURL</key>
+	<string>https://sibhimanyu.github.io/greenroom/appcast.xml</string>
+	<key>SUPublicEDKey</key>
+	<string>BaTWPfK1RvQAZv5RWFLbWaVkZ/KEN2umYzl0/Zvmkjw=</string>
+	<key>SUEnableAutomaticChecks</key>
+	<true/>
 	<key>NSAppleEventsUsageDescription</key>
 	<string>Greenroom arranges Google Chrome windows for you (e.g. tiling a new window to half the screen).</string>
 	<key>NSCameraUsageDescription</key>

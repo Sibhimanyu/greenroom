@@ -11,6 +11,10 @@ import AppKit
 
 struct MenuBarView: View {
     @EnvironmentObject private var coordinator: CoordinatorController
+    /// Injected from GreenroomApp's Sparkle updater controller - the
+    /// menu bar is where users live mid-class, so updates are reachable
+    /// here too, not just the app menu.
+    var checkForUpdates: () -> Void = {}
 
     var body: some View {
         // Same enable/disable logic as the main window's buttons: Start
@@ -58,6 +62,8 @@ struct MenuBarView: View {
         Button("Show Greenroom") {
             coordinator.showMainWindow()
         }
+
+        Button("Check for Updates\u{2026}", action: checkForUpdates)
 
         Button("Quit Greenroom") {
             NSApp.terminate(nil)

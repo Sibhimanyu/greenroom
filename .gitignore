@@ -22,3 +22,10 @@ Vendor/ZoomSDK/
 # HyperFrames video projects - source projects stay local; the
 # rendered mp4 ships via docs/
 videos/
+
+# Local Netlify folder
+.netlify
+
+# Sparkle release tooling + build artifacts
+.sparkle-tools/
+dist/

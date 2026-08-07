@@ -8,16 +8,31 @@
 //  behavior, not a separate copy.
 //
 import SwiftUI
+import Sparkle
 
 @main
 struct GreenroomApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @StateObject private var coordinator = CoordinatorController()
 
+    /// Sparkle auto-updater: checks the appcast (SUFeedURL in Info.plist)
+    /// periodically and offers "Install and Relaunch" - installed copies
+    /// stop needing hand-delivered zips. Updates are EdDSA-verified
+    /// against SUPublicEDKey, so only zips signed with our key install.
+    private let updaterController = SPUStandardUpdaterController(
+        startingUpdater: true, updaterDelegate: nil, userDriverDelegate: nil)
+
     var body: some Scene {
         WindowGroup {
             ContentView()
                 .environmentObject(coordinator)
+        }
+        .commands {
+            CommandGroup(after: .appInfo) {
+                Button("Check for Updates\u{2026}") {
+                    updaterController.checkForUpdates(nil)
+                }
+            }
         }
 
         Settings {
@@ -33,7 +48,7 @@ struct GreenroomApp: App {
         // flips to a record glyph + REC - the menu bar renders extras
         // monochrome, so the SHAPE change is the indicator, not color.
         MenuBarExtra {
-            MenuBarView()
+            MenuBarView(checkForUpdates: { updaterController.checkForUpdates(nil) })
                 .environmentObject(coordinator)
         } label: {
             if coordinator.isRecording {

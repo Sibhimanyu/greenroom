@@ -81,7 +81,6 @@
 
   /* ---------- hero ---------- */
   .hero { display: grid; grid-template-columns: minmax(0, 46%) minmax(0, 54%); align-items: center; gap: 32px; padding: 92px 0 100px; }
-  @media (max-width: 900px) { .hero { grid-template-columns: 1fr; padding: 56px 0 64px; } }
 
   .eyebrow {
     display: inline-flex;
@@ -377,6 +376,23 @@
     gap: 16px;
     flex-wrap: wrap;
   }
+  /* Below 1200px the two-column hero gets cramped - stack and center
+     (the "mobile view", starting well before phone widths). */
+  @media (max-width: 1200px) {
+    .hero { grid-template-columns: 1fr; padding: 56px 0 64px; }
+    .hero > div:first-child { text-align: center; }
+    .hero h1 { margin-inline: auto; }
+    .lede { margin-inline: auto; }
+    .hero-actions { justify-content: center; }
+    /* The floating decorations were composed for the wide two-column
+       hero: stacked full-width, the blob reads as a stray shape and the
+       camera chip has no content-free corner. The time chip tucks
+       inside as an overlay badge. */
+    .blob { display: none; }
+    .chip-cam { display: none; }
+    .chip-time { bottom: 10px; left: 10px; }
+  }
+
   @media (max-width: 700px) {
     .footer-inner { justify-content: center; text-align: center; }
   }
@@ -395,22 +411,7 @@
        buttons back to the right edge ourselves. */
     .nav-cta { gap: 12px; margin-left: auto; }
     .hero-actions { gap: 16px; }
-    /* The floating decorations were designed for a wide two-column
-       hero: the blob reads as a stray shape on a narrow screen, and
-       the overhanging chips collide with the mock's browser bar. Drop
-       the blob, tuck the chips INSIDE the mock's corners as overlay
-       badges. */
-    .blob { display: none; }
-    /* Centered hero reads better in a single narrow column. */
-    .hero > div:first-child { text-align: center; }
-    .hero h1 { margin-inline: auto; }
-    .lede { margin-inline: auto; }
-    .hero-actions { justify-content: center; }
     .chip { font-size: 12px; padding: 6px 11px; }
-    /* No safe corner for the camera chip on a full-width mock (the top
-       row is all content) - the time chip carries the charm alone. */
-    .chip-cam { display: none; }
-    .chip-time { bottom: 10px; left: 10px; }
     .mock-desk { min-height: 260px; padding: 12px; gap: 10px; }
     .story-grid { gap: 28px; }
   }

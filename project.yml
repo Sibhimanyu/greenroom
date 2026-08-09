@@ -87,8 +87,15 @@ targets:
           set -euo pipefail
           DEST="${CODESIGNING_FOLDER_PATH}/Contents/Frameworks"
           mkdir -p "$DEST"
-          rsync -a --delete --exclude 'ZoomSDK.framework' "${SRCROOT}/Vendor/ZoomSDK/" "$DEST/"
-          find "$DEST" -mindepth 1 -maxdepth 1 \( -name "*.framework" -o -name "*.dylib" -o -name "*.bundle" -o -name "*.app" \) -print0 \
+          # Every framework Xcode itself embeds must be excluded here, or
+          # --delete erases it and the app dies at launch with a dyld
+          # "Library not loaded" (v0.3.0 shipped that way: Sparkle was
+          # embedded by Xcode, wiped by this rsync, crash on open).
+          rsync -a --delete --exclude 'ZoomSDK.framework' --exclude 'Sparkle.framework' "${SRCROOT}/Vendor/ZoomSDK/" "$DEST/"
+          # Sparkle is excluded from this re-sign too: Xcode already signs
+          # it correctly, and a --deep re-sign would flatten the nested
+          # signatures on its XPC services/helpers (breaking updates).
+          find "$DEST" -mindepth 1 -maxdepth 1 \( -name "*.framework" -o -name "*.dylib" -o -name "*.bundle" -o -name "*.app" \) -not -name "Sparkle.framework" -print0 \
             | xargs -0 -I{} codesign --force --deep --timestamp=none --sign "${EXPANDED_CODE_SIGN_IDENTITY}" "{}"
 
 schemes:

@@ -41,6 +41,32 @@ rm -rf "$DIST" && mkdir -p "$DIST"
 ditto -c -k --sequesterRsrc --keepParent "$APP" "$DIST/Greenroom-$VERSION.zip"
 ditto -x -k "$DIST/Greenroom-$VERSION.zip" "$DIST/verify"
 codesign --verify --deep --strict "$DIST/verify/Greenroom.app"
+
+# Linkage gate: codesign passes on bundles missing frameworks entirely
+# (it verifies what exists, not what the binary needs) - v0.3.0 shipped
+# crashing exactly that way. Resolve every @rpath load command against
+# the bundle and refuse to release if any is unresolvable.
+BINARY="$DIST/verify/Greenroom.app/Contents/MacOS/Greenroom"
+FRAMEWORKS="$DIST/verify/Greenroom.app/Contents/Frameworks"
+MISSING=0
+while read -r lib; do
+  name="${lib#@rpath/}"; top="${name%%/*}"
+  if [ ! -e "$FRAMEWORKS/$top" ]; then
+    echo "LINKAGE ERROR: binary needs $lib but $top is not in Contents/Frameworks"
+    MISSING=1
+  fi
+done < <(otool -L "$BINARY" | awk '/@rpath/ {print $1}')
+[ "$MISSING" -eq 0 ] || exit 1
+
+# Smoke launch: a bundle that dies at startup must never ship. Quit any
+# running copy first (the dev build), launch the exact zip contents,
+# require a live process after 5s.
+pgrep -x Greenroom >/dev/null && osascript -e 'tell application "Greenroom" to quit' >/dev/null 2>&1 && sleep 2
+open "$DIST/verify/Greenroom.app"
+sleep 5
+pgrep -x Greenroom >/dev/null || { echo "SMOKE TEST FAILED: app did not survive launch"; exit 1; }
+osascript -e 'tell application "Greenroom" to quit' >/dev/null 2>&1 || true
+sleep 2
 rm -rf "$DIST/verify"
 
 # Appcast: latest release only - Sparkle just needs a newer-than-current

@@ -5,10 +5,13 @@
 # - Release build, signature verify, ditto zip, round-trip verify
 # - EdDSA-signs the zip and regenerates docs/appcast.xml (Sparkle),
 #   so installed copies self-update
+# - packages the drag-to-install DMG (scripts/make-dmg.sh)
 # - commits the bump + appcast, pushes, creates the GitHub release
+#   with both the zip and the DMG attached
 #
-# Requires: xcodegen, gh (authed), the Sparkle EdDSA private key in the
-# login Keychain (generate_keys created it), and Vendor/ZoomSDK in place.
+# Requires: xcodegen, gh (authed), create-dmg, Pillow (for the DMG
+# backdrop), the Sparkle EdDSA private key in the login Keychain
+# (generate_keys created it), and Vendor/ZoomSDK in place.
 set -euo pipefail
 
 VERSION="${1:?usage: release.sh <version> <notes-file>}"
@@ -82,11 +85,19 @@ KEY_FILE="$HOME/.greenroom-sparkle-ed25519"
   --embed-release-notes \
   -o docs/appcast.xml "$DIST"
 
+# Drag-to-install disk image. Built AFTER generate_appcast on purpose:
+# generate_appcast scans $DIST and treats a .dmg as another update archive,
+# so a DMG sitting there beforehand lands in the appcast as an enclosure.
+# Sparkle updates ship as the zip; the DMG is only for manual installs.
+"$REPO_DIR/scripts/make-dmg.sh" "$APP" "$VERSION" "$DIST"
+
 git add project.yml docs/appcast.xml
 git commit -m "Version $VERSION"
 git push
 
-gh release create "v$VERSION" "$DIST/Greenroom-$VERSION.zip#Greenroom $VERSION (macOS app, zip)" \
+gh release create "v$VERSION" \
+  "$DIST/Greenroom-$VERSION.zip#Greenroom $VERSION (macOS app, zip)" \
+  "$DIST/Greenroom-$VERSION.dmg#Greenroom $VERSION (macOS app, dmg)" \
   --title "Greenroom $VERSION" --latest --notes-file "$NOTES"
 
 echo "Released v$VERSION - installed copies will see it once GitHub Pages serves the new appcast."

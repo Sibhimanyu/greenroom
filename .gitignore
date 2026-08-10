@@ -29,3 +29,6 @@ videos/
 # Sparkle release tooling + build artifacts
 .sparkle-tools/
 dist/
+
+# Byte-cache from scripts/dmg-background.py
+__pycache__/

@@ -89,7 +89,18 @@ KEY_FILE="$HOME/.greenroom-sparkle-ed25519"
 # generate_appcast scans $DIST and treats a .dmg as another update archive,
 # so a DMG sitting there beforehand lands in the appcast as an enclosure.
 # Sparkle updates ship as the zip; the DMG is only for manual installs.
-"$REPO_DIR/scripts/make-dmg.sh" "$APP" "$VERSION" "$DIST"
+#
+# BEST-EFFORT: hdiutil (which create-dmg drives) is blocked by corporate
+# endpoint security on some Macs - it fails "Resource busy" and never
+# succeeds. The zip is the auto-update artifact and the primary
+# download, so a missing DMG must not sink the whole release; it can be
+# built on another machine and uploaded later. Only the zip is required.
+if "$REPO_DIR/scripts/make-dmg.sh" "$APP" "$VERSION" "$DIST"; then
+  DMG_ARG=("$DIST/Greenroom-$VERSION.dmg#Greenroom $VERSION (macOS app, dmg)")
+else
+  echo "WARNING: DMG packaging failed (hdiutil blocked?) - releasing zip only."
+  DMG_ARG=()
+fi
 
 git add project.yml docs/appcast.xml
 git commit -m "Version $VERSION"
@@ -97,7 +108,7 @@ git push
 
 gh release create "v$VERSION" \
   "$DIST/Greenroom-$VERSION.zip#Greenroom $VERSION (macOS app, zip)" \
-  "$DIST/Greenroom-$VERSION.dmg#Greenroom $VERSION (macOS app, dmg)" \
+  "${DMG_ARG[@]}" \
   --title "Greenroom $VERSION" --latest --notes-file "$NOTES"
 
 echo "Released v$VERSION - installed copies will see it once GitHub Pages serves the new appcast."

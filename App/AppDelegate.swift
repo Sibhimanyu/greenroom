@@ -51,9 +51,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         MainActor.assumeIsolated {
-            CoordinatorController.shared?.prepareForTermination()
+            guard let coordinator = CoordinatorController.shared else { return .terminateNow }
+            coordinator.prepareForTermination()
+            // OBS gets a graceful, WAITED-FOR shutdown before this process
+            // exits: stop the virtual camera, ask OBS to quit, wait for
+            // its real exit. Terminating it and _exit()ing from under it
+            // crashed OBS in its own teardown - the "OBS quit
+            // unexpectedly" dialog after every Greenroom quit.
+            Task { @MainActor in
+                await coordinator.windDownForQuit()
+                sender.reply(toApplicationShouldTerminate: true)
+            }
+            return .terminateLater
         }
-        return .terminateNow
     }
 
     func applicationWillTerminate(_ notification: Notification) {

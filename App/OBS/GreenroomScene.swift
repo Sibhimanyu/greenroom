@@ -77,9 +77,21 @@ enum GreenroomScene {
             ])
         }
 
+        // capture_audio: false is load-bearing, not tidiness. OBS's macOS
+        // ScreenCaptureKit source sets up a system-audio receive queue
+        // that segfaults in screen_stream_audio_update during teardown -
+        // the "OBS quit unexpectedly" dialog on every Greenroom quit, and
+        // the same callback named in the reconfigure-crash note above.
+        // Greenroom never uses system audio (composite is screen +
+        // webcam; recordings capture the mic separately), so turning the
+        // queue off removes the crash path entirely. Recreated (not
+        // patched) if an older scene left it on - see isCorrectlyConfigured.
         try await ensureInput(client: client, name: screenSourceName, kind: screenKind,
-                               settings: ["type": 0, "display_uuid": displayUUID],
-                               isCorrectlyConfigured: { ($0["display_uuid"] as? String) == displayUUID })
+                               settings: ["type": 0, "display_uuid": displayUUID, "capture_audio": false],
+                               isCorrectlyConfigured: {
+                                   ($0["display_uuid"] as? String) == displayUUID
+                                       && ($0["capture_audio"] as? Bool) == false
+                               })
         try await ensureInput(client: client, name: webcamSourceName, kind: webcamKind,
                                settings: ["uid": webcamUID],
                                isCorrectlyConfigured: { ($0["uid"] as? String) == webcamUID })

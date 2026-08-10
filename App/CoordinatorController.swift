@@ -27,8 +27,30 @@ final class CoordinatorController: ObservableObject {
         layoutFollowTask?.cancel()
         ghostWindowPolice?.cancel()
         peopleViewTask?.cancel()
+        stopShapePreview()
         ChatWindowController.close()
         zoomChatClient.leave() // ends the meeting if we're hosting it
+    }
+
+    /// Graceful infrastructure teardown for app quit, awaited via
+    /// applicationShouldTerminate's terminateLater. OBS must be wound
+    /// down IN ORDER - virtual camera stopped, then asked to quit, then
+    /// actually waited for - because terminating it with capture and the
+    /// virtual camera still live crashed it during its own shutdown:
+    /// the "OBS quit unexpectedly" dialog after every Greenroom quit.
+    func windDownForQuit() async {
+        if client.isConnected {
+            // Bounded: a dead socket must not stall the quit (the request
+            // watchdog is 15s - too long here). 3s covers the real call.
+            await withTaskGroup(of: Void.self) { group in
+                group.addTask { [client] in _ = try? await client.request("StopVirtualCam") }
+                group.addTask { try? await Task.sleep(nanoseconds: 3_000_000_000) }
+                _ = await group.next()
+                group.cancelAll()
+            }
+            client.disconnect()
+        }
+        await processManager.quitAndWait() // graceful quit, waits for real exit
     }
 
     @Published private(set) var statusLines: [String] = []

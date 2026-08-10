@@ -2,18 +2,21 @@
 //  ChromeWindowManager.swift
 //  Greenroom
 //
-//  Opens a Chrome window tiled to a slice of the main screen, optionally
-//  loading a chosen URL. Uses Chrome's own AppleScript dictionary (it
-//  supports setting a window's `bounds` directly) rather than the
-//  system-wide Accessibility API - all this needs is Chrome's own one-time
-//  "Greenroom wants to control Google Chrome" automation permission
-//  (plus NSAppleEventsUsageDescription in Info.plist, without which macOS
-//  silently denies the events and never even shows that prompt).
+//  Opens a BROWSER window tiled to a slice of the main screen, optionally
+//  loading a chosen URL - for any browser speaking Chrome's AppleScript
+//  dictionary (windows with settable `bounds`, tabs with URL). That's
+//  Chrome and the whole Chromium family: Ulaa ships Chrome's
+//  scripting.sdef verbatim (verified), Edge/Brave/Vivaldi likewise.
+//  Needs only the per-app one-time "Greenroom wants to control X"
+//  Automation permission (plus NSAppleEventsUsageDescription in
+//  Info.plist, without which macOS silently denies the events).
 //
-//  Kept as a deliberate special case of the generic main pane
-//  (MainPaneManager routes Chrome here, every other app through
-//  AppWindowManager's Accessibility path) - this route is more reliable
-//  for Chrome and creates a fresh window instead of grabbing one.
+//  Why scripting instead of the generic NSWorkspace-open + AX path:
+//  handing a URL to a running browser opens a TAB IN THE EXISTING
+//  window (confirmed by a real complaint - the session tiled someone's
+//  whole tab pile), while `make new window` gives the session its own
+//  window. MainPaneManager tries this route for every browser and falls
+//  back to the generic path only when the dictionary isn't understood.
 //
 import AppKit
 
@@ -29,12 +32,13 @@ enum ChromeWindowManager {
     /// when Chrome was already running; on a cold start, wait for Chrome's
     /// own startup window to appear and take that one over instead.
     @discardableResult
-    static func openWindow(occupying layout: WorkspaceLayout, urlString: String = "") async -> String? {
+    static func openWindow(bundleID: String = chromeBundleID, occupying layout: WorkspaceLayout, urlString: String = "") async -> String? {
         guard let rect = layout.mainPaneTopLeftFrame() else {
             return "Couldn't read the main screen's size."
         }
 
-        let wasRunning = !NSRunningApplication.runningApplications(withBundleIdentifier: chromeBundleID).isEmpty
+        let appName = AppCatalog.displayName(forBundleID: bundleID) ?? bundleID
+        let wasRunning = !NSRunningApplication.runningApplications(withBundleIdentifier: bundleID).isEmpty
         let boundsList = "{\(Int(rect.minX)), \(Int(rect.minY)), \(Int(rect.maxX)), \(Int(rect.maxY))}"
 
         let windowLine = wasRunning
@@ -56,7 +60,7 @@ enum ChromeWindowManager {
         } ?? ""
 
         let source = """
-        tell application "Google Chrome"
+        tell application id "\(bundleID)"
             activate
             \(windowLine)
             delay 0.3
@@ -67,9 +71,9 @@ enum ChromeWindowManager {
 
         guard let failure = await runAppleScript(source) else { return nil }
         if failure.code == -1743 {
-            return "Greenroom isn't authorized to control Google Chrome yet. Approve it in System Settings \u{2192} Privacy & Security \u{2192} Automation, then try again."
+            return "Greenroom isn't authorized to control \(appName) yet. Approve it in System Settings \u{2192} Privacy & Security \u{2192} Automation, then try again."
         }
-        return "Couldn't position the Chrome window: \(failure.message) (code \(failure.code))"
+        return "Couldn't position the \(appName) window: \(failure.message) (code \(failure.code))"
     }
 
     /// Re-tiles Chrome's existing front window to its slice WITHOUT
@@ -77,13 +81,14 @@ enum ChromeWindowManager {
     /// after the user has dragged things around. No-op when Chrome isn't
     /// running.
     @discardableResult
-    static func repositionFrontWindow(occupying layout: WorkspaceLayout) async -> String? {
-        guard !NSRunningApplication.runningApplications(withBundleIdentifier: chromeBundleID).isEmpty else { return nil }
+    static func repositionFrontWindow(bundleID: String = chromeBundleID, occupying layout: WorkspaceLayout) async -> String? {
+        guard !NSRunningApplication.runningApplications(withBundleIdentifier: bundleID).isEmpty else { return nil }
         guard let rect = layout.mainPaneTopLeftFrame() else {
             return "Couldn't read the main screen's size."
         }
+        let appName = AppCatalog.displayName(forBundleID: bundleID) ?? bundleID
         let source = """
-        tell application "Google Chrome"
+        tell application id "\(bundleID)"
             if (count of windows) > 0 then
                 set bounds of front window to {\(Int(rect.minX)), \(Int(rect.minY)), \(Int(rect.maxX)), \(Int(rect.maxY))}
             end if
@@ -91,9 +96,9 @@ enum ChromeWindowManager {
         """
         guard let failure = await runAppleScript(source) else { return nil }
         if failure.code == -1743 {
-            return "Greenroom isn't authorized to control Google Chrome yet. Approve it in System Settings \u{2192} Privacy & Security \u{2192} Automation, then try again."
+            return "Greenroom isn't authorized to control \(appName) yet. Approve it in System Settings \u{2192} Privacy & Security \u{2192} Automation, then try again."
         }
-        return "Couldn't reposition the Chrome window: \(failure.message) (code \(failure.code))"
+        return "Couldn't reposition the \(appName) window: \(failure.message) (code \(failure.code))"
     }
 
     /// Runs a script via /usr/bin/osascript OFF the main thread.

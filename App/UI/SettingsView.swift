@@ -314,11 +314,13 @@ private struct LayoutSettingsTab: View {
         }
     }
 
-    /// Chrome is driven through its own AppleScript dictionary (per-app
-    /// Automation permission, prompted on first use) - every other app
-    /// needs the system-wide Accessibility grant to be moved at all.
+    /// Browsers are driven through the Chromium AppleScript dictionary
+    /// (per-app Automation permission, prompted on first use) - only
+    /// non-browser apps need the system-wide Accessibility grant to be
+    /// moved. (A non-Chromium browser would fall back to Accessibility
+    /// too, but that's rare enough to keep this warning simple.)
     private var needsAccessibility: Bool {
-        coordinator.mainAppBundleID != ChromeWindowManager.chromeBundleID
+        !AppCatalog.isBrowser(coordinator.mainAppBundleID)
     }
 
     /// Without this, picking an ungranted app just silently fails to move
@@ -330,7 +332,7 @@ private struct LayoutSettingsTab: View {
             VStack(alignment: .leading, spacing: 3) {
                 Text("Greenroom can't move \(coordinator.mainAppDisplayName)'s window yet.")
                     .font(.callout.weight(.medium))
-                Text("Apps other than Chrome are positioned with the Accessibility API. Allow Greenroom under System Settings \u{2192} Privacy & Security \u{2192} Accessibility \u{2014} until then, \(coordinator.mainAppDisplayName) will open but stay wherever it is.")
+                Text("Non-browser apps are positioned with the Accessibility API. Allow Greenroom under System Settings \u{2192} Privacy & Security \u{2192} Accessibility \u{2014} until then, \(coordinator.mainAppDisplayName) will open but stay wherever it is.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)

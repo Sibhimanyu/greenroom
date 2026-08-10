@@ -25,8 +25,21 @@ enum MainPaneManager {
     /// human-readable error otherwise (matching ChromeWindowManager's
     /// convention).
     static func openWindow(bundleID: String, urlString: String, layout: WorkspaceLayout) async -> String? {
-        if bundleID == ChromeWindowManager.chromeBundleID {
-            return await ChromeWindowManager.openWindow(occupying: layout, urlString: urlString)
+        // Browsers: scripted route first, for EVERY browser. Handing a URL
+        // to a running browser via NSWorkspace opens a tab in the EXISTING
+        // window (and the session then tiles someone's whole tab pile -
+        // seen live with Ulaa); `make new window` via the Chromium
+        // AppleScript dictionary gives the session its own window. Ulaa
+        // ships Chrome's dictionary verbatim; non-Chromium browsers fall
+        // through to the generic path below.
+        if AppCatalog.isBrowser(bundleID) {
+            let scriptError = await ChromeWindowManager.openWindow(bundleID: bundleID, occupying: layout, urlString: urlString)
+            guard let scriptError else { return nil }
+            if scriptError.contains("isn't authorized") {
+                return scriptError // fixable permission problem - surface, don't fall back
+            }
+            // Dictionary not understood (non-Chromium browser) - generic
+            // path below still works, just as a tab in an existing window.
         }
 
         let name = AppCatalog.displayName(forBundleID: bundleID) ?? bundleID
@@ -64,8 +77,11 @@ enum MainPaneManager {
     /// has dragged things around. No-op when the app isn't running.
     @discardableResult
     static func repositionFrontWindow(bundleID: String, layout: WorkspaceLayout) async -> String? {
-        if bundleID == ChromeWindowManager.chromeBundleID {
-            return await ChromeWindowManager.repositionFrontWindow(occupying: layout)
+        if AppCatalog.isBrowser(bundleID) {
+            let scriptError = await ChromeWindowManager.repositionFrontWindow(bundleID: bundleID, occupying: layout)
+            guard let scriptError else { return nil }
+            if scriptError.contains("isn't authorized") { return scriptError }
+            // Non-Chromium browser - fall through to AX repositioning.
         }
 
         guard !NSRunningApplication.runningApplications(withBundleIdentifier: bundleID).isEmpty else { return nil }

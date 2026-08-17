@@ -189,7 +189,7 @@ final class ZoomMeetingSDKClient: NSObject, ObservableObject {
     /// user with camera and mic live, rather than as a hidden chat-only
     /// participant.
     func join(meetingNumber: String, password: String, displayName: String = "Greenroom Chat", onBehalfToken: String? = nil, enableMedia: Bool = false) async throws {
-        guard let number = Int64(meetingNumber) else {
+        guard let number = Int64(ZoomMeetingLinkParser.digits(meetingNumber)) else {
             throw ZoomMeetingSDKError.invalidMeetingNumber
         }
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
@@ -245,7 +245,7 @@ final class ZoomMeetingSDKClient: NSObject, ObservableObject {
     /// meeting client, camera and mic on, the user's own name - no ghost,
     /// no separate Zoom app.
     func startAsHost(meetingNumber: String, zak: String, displayName: String = "Greenroom Chat", enableMedia: Bool = false) async throws {
-        guard let number = Int64(meetingNumber) else {
+        guard let number = Int64(ZoomMeetingLinkParser.digits(meetingNumber)) else {
             throw ZoomMeetingSDKError.invalidMeetingNumber
         }
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in

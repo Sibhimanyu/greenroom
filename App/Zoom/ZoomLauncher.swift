@@ -34,7 +34,7 @@ enum ZoomLauncher {
         components.scheme = "zoommtg"
         components.host = "zoom.us"
         components.path = "/join"
-        var items = [URLQueryItem(name: "confno", value: meetingNumber)]
+        var items = [URLQueryItem(name: "confno", value: ZoomMeetingLinkParser.digits(meetingNumber))]
         if !password.isEmpty {
             items.append(URLQueryItem(name: "pwd", value: password))
         }
@@ -53,7 +53,7 @@ enum ZoomLauncher {
         components.host = "zoom.us"
         components.path = "/start"
         components.queryItems = [
-            URLQueryItem(name: "confno", value: meetingNumber),
+            URLQueryItem(name: "confno", value: ZoomMeetingLinkParser.digits(meetingNumber)),
             URLQueryItem(name: "zak", value: zak)
         ]
         guard let url = components.url else { return }

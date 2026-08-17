@@ -64,8 +64,55 @@ final class CoordinatorController: ObservableObject {
 
     @Published var meetingNumber = ""
     @Published var meetingPassword = ""
+    /// `meetingNumber` with readability spaces/dashes stripped. The field
+    /// keeps whatever the user pasted (e.g. "465 230 8563"); everything
+    /// that acts on the number — guards, comparisons, joins — uses this.
+    var meetingNumberDigits: String { ZoomMeetingLinkParser.digits(meetingNumber) }
     @Published var meetingMode: MeetingMode {
         didSet { defaults.set(meetingMode.rawValue, forKey: "meetingMode") }
+    }
+
+    /// Saved Join Existing shortcuts (name + number + passcode) - one
+    /// click to fill the fields for a meeting you join regularly.
+    /// Persisted as JSON and carried in the settings-transfer file.
+    @Published var meetingPresets: [MeetingPreset] = [] {
+        didSet { persistPresets() } // not called during init (Swift skips observers there)
+    }
+
+    private func persistPresets() {
+        if let data = try? JSONEncoder().encode(meetingPresets) {
+            defaults.set(data, forKey: "meetingPresets")
+        }
+    }
+
+    private static func loadPresets(from defaults: UserDefaults) -> [MeetingPreset] {
+        guard let data = defaults.data(forKey: "meetingPresets"),
+              let presets = try? JSONDecoder().decode([MeetingPreset].self, from: data) else { return [] }
+        return presets
+    }
+
+    /// One-click fill of the Join Existing fields from a saved preset.
+    func applyPreset(_ preset: MeetingPreset) {
+        meetingMode = .join
+        meetingNumber = preset.number
+        meetingPassword = preset.password
+        log("Filled \u{201C}\(preset.name)\u{201D} (\(preset.number)).")
+    }
+
+    /// Saves the current Join Existing fields as a named preset. The
+    /// number is stored normalized (digits only); a blank name falls back
+    /// to the number itself.
+    func saveCurrentAsPreset(name: String) {
+        let digits = meetingNumberDigits
+        guard !digits.isEmpty else { return }
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        meetingPresets.append(MeetingPreset(name: trimmed.isEmpty ? digits : trimmed,
+                                            number: digits, password: meetingPassword))
+        log("Saved preset \u{201C}\(meetingPresets.last?.name ?? digits)\u{201D}.")
+    }
+
+    func deletePreset(_ preset: MeetingPreset) {
+        meetingPresets.removeAll { $0.id == preset.id }
     }
 
     // MARK: First-run onboarding - shown once automatically, reopenable
@@ -218,6 +265,7 @@ final class CoordinatorController: ObservableObject {
         autoRecordOnStart = defaults.bool(forKey: "autoRecordOnStart")
         keepOBSWarm = (defaults.object(forKey: "keepOBSWarm") as? Bool) ?? true
         meetingMode = MeetingMode(rawValue: defaults.string(forKey: "meetingMode") ?? "") ?? .create
+        meetingPresets = Self.loadPresets(from: defaults)
         showOnboarding = !defaults.bool(forKey: "hasCompletedOnboarding")
         sdkClientID = defaults.string(forKey: "zoomSDKClientID") ?? ""
         sdkClientSecret = "" // loaded lazily via loadSecretsIfNeeded() - never at launch
@@ -293,7 +341,7 @@ final class CoordinatorController: ObservableObject {
                 return
             }
         case .join:
-            guard !meetingNumber.isEmpty else {
+            guard !meetingNumberDigits.isEmpty else {
                 log("Paste a meeting link or enter a meeting ID first.")
                 return
             }
@@ -575,7 +623,7 @@ final class CoordinatorController: ObservableObject {
     }
 
     func joinMeeting() {
-        guard !meetingNumber.isEmpty else { return }
+        guard !meetingNumberDigits.isEmpty else { return }
         ZoomLauncher.join(meetingNumber: meetingNumber, password: meetingPassword)
     }
 
@@ -667,7 +715,7 @@ final class CoordinatorController: ObservableObject {
             do {
                 log("This meeting is yours \u{2014} starting it as host\u{2026}")
                 let zak: String
-                if let prefetched = prefetchedZAK, prefetched.meetingNumber == meetingNumber,
+                if let prefetched = prefetchedZAK, prefetched.meetingNumber == meetingNumberDigits,
                    Date().timeIntervalSince(prefetched.fetchedAt) < 600 {
                     // Warmed when the meeting was picked from the
                     // Scheduled menu - saves the fetch's network time.
@@ -716,7 +764,7 @@ final class CoordinatorController: ObservableObject {
     /// gets a plain join.
     private var isOwnScheduledMeeting: Bool {
         !s2sAccountID.isEmpty && !s2sClientID.isEmpty && !s2sClientSecret.isEmpty
-            && scheduledMeetings.contains { String($0.id) == meetingNumber }
+            && scheduledMeetings.contains { String($0.id) == meetingNumberDigits }
     }
 
     /// Parks the built-in client's meeting window into the side column's
@@ -899,7 +947,7 @@ final class CoordinatorController: ObservableObject {
         // Warm the host key while the human reaches for Start - own
         // meetings get host-started with a ZAK, and this fetch is pure
         // network time otherwise sitting inside the start.
-        prefetchZAK(for: meetingNumber)
+        prefetchZAK(for: meetingNumberDigits)
     }
 
     private var prefetchedZAK: (meetingNumber: String, zak: String, fetchedAt: Date)?
@@ -950,7 +998,7 @@ final class CoordinatorController: ObservableObject {
     /// nothing to do with the real failure.
     func joinChatOnly() {
         loadSecretsIfNeeded()
-        guard !isConnectingChat, !meetingNumber.isEmpty else { return }
+        guard !isConnectingChat, !meetingNumberDigits.isEmpty else { return }
         guard !sdkClientID.isEmpty, !sdkClientSecret.isEmpty else {
             // Reached silently-skippable from the one-button session flow -
             // say why the chat window didn't appear instead of nothing.
@@ -1207,6 +1255,23 @@ final class CoordinatorController: ObservableObject {
     }
 }
 
+/// A saved Join Existing shortcut: a friendly name plus the meeting
+/// number (stored as bare digits) and passcode. Codable so it persists
+/// and rides the settings-transfer file.
+struct MeetingPreset: Codable, Identifiable, Hashable {
+    var id: UUID
+    var name: String
+    var number: String
+    var password: String
+
+    init(id: UUID = UUID(), name: String, number: String, password: String) {
+        self.id = id
+        self.name = name
+        self.number = number
+        self.password = password
+    }
+}
+
 /// The one up-front decision in the single-button flow: does Start create
 /// a fresh meeting, or join one you already have a link/ID for?
 enum MeetingMode: String, CaseIterable, Identifiable {
@@ -1249,6 +1314,7 @@ struct SettingsTransfer: Codable {
     var peopleViewOnStart: Bool?
     var autoRecordOnStart: Bool?
     var keepOBSWarm: Bool?
+    var meetingPresets: [MeetingPreset]?
     var workspaceLayout: WorkspaceLayout?
     // Legacy fields from Chrome-only-era exports - still imported, never
     // written anymore.
@@ -1274,6 +1340,7 @@ extension CoordinatorController {
             peopleViewOnStart: peopleViewOnStart,
             autoRecordOnStart: autoRecordOnStart,
             keepOBSWarm: keepOBSWarm,
+            meetingPresets: meetingPresets,
             workspaceLayout: workspaceLayout
         )
         let encoder = JSONEncoder()
@@ -1301,6 +1368,7 @@ extension CoordinatorController {
         if let value = transfer.peopleViewOnStart { peopleViewOnStart = value }
         if let value = transfer.autoRecordOnStart { autoRecordOnStart = value }
         if let value = transfer.keepOBSWarm { keepOBSWarm = value }
+        if let value = transfer.meetingPresets { meetingPresets = value }
         if let value = transfer.workspaceLayout {
             workspaceLayout = value
         } else if let raw = transfer.chromeLayout, let migrated = WorkspaceLayout(legacyChromeLayout: raw) {

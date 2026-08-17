@@ -12,6 +12,12 @@ import Foundation
 
 enum ZoomMeetingLinkParser {
 
+    /// Strips a meeting number down to bare digits - Zoom IDs are often
+    /// pasted/typed with readability spaces or dashes ("465 230 8563"),
+    /// but every Zoom API and the zoommtg:// scheme want digits only.
+    /// The single normalizer used at every join/start site.
+    static func digits(_ raw: String) -> String { raw.filter(\.isNumber) }
+
     /// Returns `nil` if no meeting number could be found anywhere in `raw`.
     /// Password is `""` (not nil) when a number was found but no password
     /// was - some meetings genuinely don't have one.

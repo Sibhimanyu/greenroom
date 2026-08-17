@@ -15,6 +15,8 @@ struct ContentView: View {
     @EnvironmentObject private var coordinator: CoordinatorController
     @Environment(\.openSettings) private var openSettings
     @State private var showRecordings = false
+    @State private var showSavePreset = false
+    @State private var presetNameDraft = ""
 
     /// Start is for starting: disabled while a start is in flight AND
     /// while the session is live (Stop first, then Start - pressing Start
@@ -23,7 +25,7 @@ struct ContentView: View {
         if coordinator.isRunning || coordinator.virtualCamActive || coordinator.isStopping { return true }
         switch coordinator.meetingMode {
         case .create: return coordinator.s2sAccountID.isEmpty || coordinator.s2sClientID.isEmpty
-        case .join: return coordinator.meetingNumber.isEmpty
+        case .join: return coordinator.meetingNumberDigits.isEmpty
         }
     }
 
@@ -183,6 +185,7 @@ struct ContentView: View {
                 }
             case .join:
                 HStack {
+                    presetsMenu
                     scheduledMeetingsMenu
                     Button {
                         coordinator.fillMeetingFromClipboard()
@@ -207,6 +210,48 @@ struct ContentView: View {
     /// The account's scheduled/recurring meetings, one click to fill the
     /// Join fields - the daily-class flow: schedule a recurring meeting
     /// once at zoom.us, then it's always right here.
+    /// Saved meeting shortcuts: click one to fill the ID + passcode, or
+    /// save the current fields as a new preset. Delete via each preset's
+    /// context menu (right-click). Mirrors the Scheduled menu's pattern.
+    private var presetsMenu: some View {
+        Menu {
+            if coordinator.meetingPresets.isEmpty {
+                Text("No saved presets")
+            } else {
+                ForEach(coordinator.meetingPresets) { preset in
+                    Button("\(preset.name) \u{2014} \(preset.number)") {
+                        coordinator.applyPreset(preset)
+                    }
+                }
+            }
+            Divider()
+            Button("Save current as preset\u{2026}") { showSavePreset = true }
+                .disabled(coordinator.meetingNumberDigits.isEmpty)
+            if !coordinator.meetingPresets.isEmpty {
+                Menu("Delete preset") {
+                    ForEach(coordinator.meetingPresets) { preset in
+                        Button("\(preset.name) \u{2014} \(preset.number)", role: .destructive) {
+                            coordinator.deletePreset(preset)
+                        }
+                    }
+                }
+            }
+        } label: {
+            Label("Presets", systemImage: "bookmark")
+        }
+        .fixedSize()
+        .alert("Save meeting preset", isPresented: $showSavePreset) {
+            TextField("Name (e.g. Morning class)", text: $presetNameDraft)
+            Button("Save") {
+                coordinator.saveCurrentAsPreset(name: presetNameDraft)
+                presetNameDraft = ""
+            }
+            Button("Cancel", role: .cancel) { presetNameDraft = "" }
+        } message: {
+            Text("Saves the meeting ID \(coordinator.meetingNumberDigits) and its passcode for one-click filling later.")
+        }
+    }
+
     private var scheduledMeetingsMenu: some View {
         Menu {
             if coordinator.scheduledMeetings.isEmpty {

@@ -106,9 +106,13 @@ git add project.yml docs/appcast.xml
 git commit -m "Version $VERSION"
 git push
 
+# The "${DMG_ARG[@]+...}" form is required: under `set -u`, expanding an
+# empty array as "${DMG_ARG[@]}" is an "unbound variable" error in macOS's
+# bash 3.2, which previously aborted the release AFTER the version bump was
+# already pushed (v0.3.3 shipped that way and had to be finished by hand).
 gh release create "v$VERSION" \
   "$DIST/Greenroom-$VERSION.zip#Greenroom $VERSION (macOS app, zip)" \
-  "${DMG_ARG[@]}" \
+  ${DMG_ARG[@]+"${DMG_ARG[@]}"} \
   --title "Greenroom $VERSION" --latest --notes-file "$NOTES"
 
 echo "Released v$VERSION - installed copies will see it once GitHub Pages serves the new appcast."

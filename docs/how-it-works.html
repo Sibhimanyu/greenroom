@@ -391,7 +391,7 @@
         <li><a href="https://github.com/Sibhimanyu/greenroom/blob/main/App/Chrome/ChromeWindowManager.swift">ChromeWindowManager.swift</a> <span>— browser automation</span></li>
         <li><a href="https://github.com/Sibhimanyu/greenroom/blob/main/App/OBS/OBSWebSocketClient.swift">OBSWebSocketClient.swift</a> <span>— localhost OBS control</span></li>
         <li><a href="https://github.com/Sibhimanyu/greenroom/blob/main/App/Zoom/ZoomServerToServerClient.swift">ZoomServerToServerClient.swift</a> <span>— Zoom API calls</span></li>
-        <li><a href="https://github.com/Sibhimanyu/greenroom/blob/main/App/Zoom/KeychainStore.swift">KeychainStore.swift</a> <span>— credential storage</span></li>
+        <li><a href="https://github.com/Sibhimanyu/greenroom/blob/main/App/Zoom/SecretStore.swift">SecretStore.swift</a> <span>— credential storage</span></li>
       </ul>
     </div>
   </div>
@@ -405,9 +405,9 @@
       <p>A trustworthy explanation names the weak spots too. Both of these are <strong>local-only</strong> — nothing here is exposed over the network.</p>
     </div>
     <div class="caveat">
-      <h3>Zoom credentials are stored in plaintext on your Mac</h3>
-      <p>The Zoom app credentials you enter are saved in Greenroom's local preferences <strong>unencrypted</strong>, rather than in the macOS Keychain. They never leave your Mac except to Zoom itself. The practical risk is purely local: someone who already has access to your Mac user account could read them.</p>
-      <p>Worth keeping in perspective: these are app-level Zoom API keys scoped to running meetings under your account — not your Zoom login password — and you can revoke them anytime in the Zoom Marketplace. Moving them into the encrypted Keychain is a known, planned improvement.</p>
+      <h3>Zoom credentials are stored in plain text on your Mac</h3>
+      <p>The Zoom app credentials you enter are saved in Greenroom's local preferences as <strong>plain text — not encrypted</strong>. (Greenroom doesn't use the macOS Keychain at all.) They never leave your Mac except to Zoom itself. The practical risk is purely local: someone who already has access to your Mac user account could read them.</p>
+      <p>Worth keeping in perspective: these are app-level Zoom API keys scoped to running meetings under your account — not your Zoom login password — and you can revoke them anytime in the Zoom Marketplace.</p>
       <p>Separately, the optional "export settings" file (used to set up a colleague's Mac) also contains these credentials in plaintext by design — hand it over directly and delete it after importing.</p>
     </div>
   </div>

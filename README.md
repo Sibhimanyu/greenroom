@@ -97,11 +97,11 @@ anytime from the **?** button in the main window. The short version:
    asks for it itself the first time it captures your display.
 
    **Credential storage note:** the Zoom app credentials are kept in
-   Greenroom's local preferences (`UserDefaults`) in **plaintext** — not
-   the macOS Keychain (see `App/Zoom/KeychainStore.swift`, whose name is
-   historical). They never leave your Mac except to Zoom itself; the risk
-   is purely local (someone with access to your user account could read
-   them). Moving them into the encrypted Keychain is a known follow-up.
+   Greenroom's local preferences (`UserDefaults`) in **plain text** — not
+   encrypted (see `App/Zoom/SecretStore.swift`). Greenroom does not use
+   the macOS Keychain at all. They never leave your Mac except to Zoom
+   itself; the risk is purely local (someone with access to your user
+   account could read them).
    See the [how-it-works / safety page](https://sibhimanyu.github.io/greenroom/how-it-works.html).
 
 ---
@@ -236,10 +236,9 @@ Non-obvious build/runtime notes, learned the hard way:
 
 - **Signing identity must stay stable** across rebuilds (hence the team ID
   in `project.yml`): ad-hoc signing gave every build a fresh identity, so
-  Gatekeeper treats each rebuild as a different app. (This also caused a
-  password prompt on every launch back when secrets lived in the
-  Keychain — the pain that led to the current plaintext-`UserDefaults`
-  storage in `KeychainStore.swift`.)
+  Gatekeeper treats each rebuild as a different app. (Credentials are kept
+  in plain `UserDefaults` via `App/Zoom/SecretStore.swift` — the app uses
+  no Keychain, so there's no keychain prompt to worry about either way.)
 - **OBS Safe Mode kills the automation socket.** If OBS crashed last time,
   it shows a "Run in Safe Mode?" dialog on the next launch; Safe Mode
   disables the websocket server Greenroom drives it with. Always choose

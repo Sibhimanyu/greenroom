@@ -38,8 +38,8 @@ struct OnboardingView: View {
         }
         .frame(width: 580, height: 600)
         .onReceive(timer) { _ in refreshTick += 1 }
-        // Secrets stay out of the Keychain until needed - the credential
-        // fields in step 2 are that moment.
+        // Load stored secrets lazily - the credential fields in step 2
+        // are the first moment they're needed.
         .onAppear { coordinator.loadSecretsIfNeeded() }
     }
 

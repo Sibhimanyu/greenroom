@@ -83,8 +83,9 @@ final class CoordinatorController: ObservableObject {
     }
 
     // MARK: Meeting SDK chat (separate window, second participant - see
-    // Vendor/ZoomSDK/README.md). Client ID is harmless in UserDefaults;
-    // the Secret is a real credential, so it lives in the Keychain instead.
+    // Vendor/ZoomSDK/README.md). Both the Client ID and Secret are stored
+    // in plain UserDefaults via SecretStore (Greenroom does not use the
+    // Keychain); the secret is loaded lazily.
 
     @Published var sdkClientID: String {
         didSet { defaults.set(sdkClientID, forKey: "zoomSDKClientID") }
@@ -92,24 +93,22 @@ final class CoordinatorController: ObservableObject {
     @Published var sdkClientSecret: String {
         didSet {
             guard !isRestoringSecret else { return }
-            KeychainStore.set(sdkClientSecret, forKey: "zoomSDKClientSecret")
+            SecretStore.set(sdkClientSecret, forKey: "zoomSDKClientSecret")
         }
     }
     private var secretsLoaded = false
     private var isRestoringSecret = false
 
-    /// Reads both Zoom secrets from the Keychain on first use instead of at
-    /// launch. Confirmed by testing: reading them in init() meant a Keychain
-    /// access prompt on every single app launch, even when the Zoom features
-    /// were never touched. Combined with the stable signing identity (see
-    /// project.yml), any remaining prompt appears once, offers "Always
-    /// Allow", and never comes back.
+    /// Loads both Zoom secrets on first use rather than at launch, so the
+    /// stored values are only touched when a Zoom feature is actually
+    /// used. (Storage is plain UserDefaults via SecretStore - see that
+    /// file; no Keychain, so no password prompt was ever involved.)
     func loadSecretsIfNeeded() {
         guard !secretsLoaded else { return }
         secretsLoaded = true
         isRestoringSecret = true
-        sdkClientSecret = KeychainStore.get("zoomSDKClientSecret") ?? ""
-        s2sClientSecret = KeychainStore.get("zoomS2SClientSecret") ?? ""
+        sdkClientSecret = SecretStore.get("zoomSDKClientSecret") ?? ""
+        s2sClientSecret = SecretStore.get("zoomS2SClientSecret") ?? ""
         isRestoringSecret = false
     }
 
@@ -120,9 +119,9 @@ final class CoordinatorController: ObservableObject {
     // MARK: Start-a-meeting (Server-to-Server OAuth app - a SECOND
     // Marketplace app, separate from the Meeting SDK one above; see
     // Vendor/README.md, including why a one-app OAuth consolidation was
-    // built and then abandoned). Account ID + Client ID are harmless in
-    // UserDefaults; the Secret goes to the Keychain, loaded lazily like
-    // the SDK secret.
+    // built and then abandoned). Account ID, Client ID and Secret are all
+    // stored in plain UserDefaults via SecretStore (no Keychain), the
+    // secret loaded lazily like the SDK secret.
 
     @Published var s2sAccountID: String {
         didSet { defaults.set(s2sAccountID, forKey: "zoomS2SAccountID") }
@@ -133,7 +132,7 @@ final class CoordinatorController: ObservableObject {
     @Published var s2sClientSecret: String {
         didSet {
             guard !isRestoringSecret else { return }
-            KeychainStore.set(s2sClientSecret, forKey: "zoomS2SClientSecret")
+            SecretStore.set(s2sClientSecret, forKey: "zoomS2SClientSecret")
         }
     }
 
@@ -1282,7 +1281,7 @@ extension CoordinatorController {
         return try encoder.encode(transfer)
     }
 
-    /// Assigning through the @Published properties (not UserDefaults/Keychain
+    /// Assigning through the @Published properties (not UserDefaults
     /// directly) means every didSet persistence hook fires on its own - the
     /// import needs no separate save step.
     func importSettings(from data: Data) throws {

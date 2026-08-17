@@ -33,8 +33,8 @@ struct SettingsView: View {
                 .tabItem { Label("Transfer", systemImage: "square.and.arrow.up.on.square") }
         }
         .frame(width: 540, height: 520)
-        // Secrets stay out of the Keychain at launch (see loadSecretsIfNeeded)
-        // - opening Settings is the first moment the fields actually need them.
+        // Secrets are loaded lazily (see loadSecretsIfNeeded) - opening
+        // Settings is the first moment the fields actually need them.
         .onAppear { coordinator.loadSecretsIfNeeded() }
     }
 }

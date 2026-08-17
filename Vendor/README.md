@@ -36,8 +36,7 @@ features run off TWO Marketplace apps:
 4. From **App Credentials**, copy the **Client ID** and **Client Secret**
    into Greenroom's Settings -> Meeting Chat tab (both are stored in
    local app preferences / UserDefaults in plaintext - see
-   `App/Zoom/KeychainStore.swift`, whose name is historical; moving the
-   secret to the encrypted Keychain is a known follow-up - never put
+   `App/Zoom/SecretStore.swift`; the app uses no Keychain - never put
    either in this repo).
 
 **App 2 - Server-to-Server OAuth (powers "Start New Meeting", the

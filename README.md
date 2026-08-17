@@ -92,10 +92,17 @@ anytime from the **?** button in the main window. The short version:
    | Camera | First Start | The webcam feed OBS composites |
    | Automation → Google Chrome | First time the Chrome window is tiled | Chrome is positioned via its own AppleScript dictionary |
    | Accessibility | First time a Zoom/native window is tiled | Moving windows of apps that have no AppleScript dictionary — the native Zoom meeting window, and any non-Chrome main app |
-   | Keychain ("Always Allow") | First time Zoom features are used | The Zoom client secrets are stored in the Keychain, loaded lazily |
 
    Screen Recording permission belongs to **OBS**, not Greenroom — OBS
    asks for it itself the first time it captures your display.
+
+   **Credential storage note:** the Zoom app credentials are kept in
+   Greenroom's local preferences (`UserDefaults`) in **plaintext** — not
+   the macOS Keychain (see `App/Zoom/KeychainStore.swift`, whose name is
+   historical). They never leave your Mac except to Zoom itself; the risk
+   is purely local (someone with access to your user account could read
+   them). Moving them into the encrypted Keychain is a known follow-up.
+   See the [how-it-works / safety page](https://sibhimanyu.github.io/greenroom/how-it-works.html).
 
 ---
 
@@ -229,8 +236,10 @@ Non-obvious build/runtime notes, learned the hard way:
 
 - **Signing identity must stay stable** across rebuilds (hence the team ID
   in `project.yml`): ad-hoc signing gave every build a fresh identity, so
-  macOS treated each rebuild as a new app trying to read the previous
-  build's Keychain items → password prompt on every launch.
+  Gatekeeper treats each rebuild as a different app. (This also caused a
+  password prompt on every launch back when secrets lived in the
+  Keychain — the pain that led to the current plaintext-`UserDefaults`
+  storage in `KeychainStore.swift`.)
 - **OBS Safe Mode kills the automation socket.** If OBS crashed last time,
   it shows a "Run in Safe Mode?" dialog on the next launch; Safe Mode
   disables the websocket server Greenroom drives it with. Always choose

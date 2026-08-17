@@ -1,0 +1,435 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>How Greenroom works — and why it's safe</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Exactly what the Greenroom macOS app does, how it talks to your Mac, where your data goes, and why it is not 'AI watching your screen' — in plain language, with a technical appendix for IT.">
+<link rel="icon" type="image/png" href="favicon.png?v=3">
+<link rel="apple-touch-icon" href="apple-touch-icon.png?v=3">
+<style>
+  :root {
+    --ink: #101828;
+    --body: #475467;
+    --faint: #98a2b3;
+    --line: #eaecf0;
+    --bg-soft: #f9fafb;
+    --green: #3d7a22;
+    --green-hover: #2f6118;
+    --green-soft: #e8f3df;
+    --danger: #b42318;
+    --danger-soft: #fef3f2;
+    --card-shadow: 0 1px 2px rgba(16, 24, 40, 0.04), 0 12px 32px rgba(16, 24, 40, 0.08);
+  }
+
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    background: #fff;
+    color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    font-size: 16px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 1120px; margin: 0 auto; padding: 0 24px; }
+  .narrow { max-width: 760px; }
+  a { color: var(--green); text-decoration: none; }
+  a.underline { text-decoration: underline; text-underline-offset: 2px; }
+  :focus-visible { outline: 2px solid var(--green); outline-offset: 3px; border-radius: 4px; }
+
+  h1, h2, h3 { text-wrap: balance; margin: 0; }
+  p { margin: 0; }
+
+  .btn {
+    display: inline-flex; align-items: center; gap: 8px;
+    background: var(--green); color: #fff; font-weight: 600; font-size: 15px;
+    padding: 12px 22px; border-radius: 10px;
+    transition: background 0.2s, transform 0.15s;
+  }
+  .btn:hover { background: var(--green-hover); transform: translateY(-1px); }
+  .textlink { font-weight: 600; font-size: 15px; color: var(--ink); }
+  .textlink:hover { color: var(--green); }
+  .textlink .arrow { display: inline-block; transition: transform 0.2s; }
+  .textlink:hover .arrow { transform: translateX(3px); }
+
+  /* ---------- nav (shared with index) ---------- */
+  nav {
+    position: sticky; top: 0;
+    background: rgba(255, 255, 255, 0.92);
+    backdrop-filter: blur(10px);
+    border-bottom: 1px solid var(--line);
+    z-index: 50;
+  }
+  .nav-inner { display: flex; align-items: center; height: 64px; gap: 32px; }
+  .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 19px; color: var(--ink); }
+  .brand img { display: block; }
+  .brand .green { color: var(--green); }
+  .nav-links { display: flex; gap: 26px; margin: 0 auto; }
+  .nav-links a { color: var(--body); font-size: 14.5px; font-weight: 500; }
+  .nav-links a:hover { color: var(--ink); }
+  .nav-cta { display: flex; align-items: center; gap: 18px; }
+  .nav-cta .btn { padding: 9px 18px; font-size: 14px; }
+  .nav-cta .gh { color: var(--body); font-size: 14.5px; font-weight: 500; }
+  .nav-cta .gh:hover { color: var(--ink); }
+  @media (max-width: 820px) { .nav-links { display: none; } }
+
+  /* ---------- page hero ---------- */
+  .page-hero { padding: 72px 0 8px; text-align: center; }
+  .eyebrow {
+    display: inline-flex; align-items: center; gap: 8px;
+    background: var(--green-soft); color: var(--green);
+    font-size: 13px; font-weight: 600; padding: 5px 12px; border-radius: 999px;
+    margin-bottom: 22px;
+  }
+  h1 { font-size: clamp(32px, 5vw, 48px); line-height: 1.1; font-weight: 800; letter-spacing: -0.025em; max-width: 18ch; margin: 0 auto; }
+  h1 .accent { color: var(--green); }
+  .page-hero .lede { margin: 22px auto 0; font-size: 18px; color: var(--body); max-width: 60ch; }
+
+  /* ---------- sections ---------- */
+  section { padding: 64px 0; }
+  section.soft { background: var(--bg-soft); border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+  .sec-head { max-width: 680px; margin-bottom: 36px; }
+  .sec-head.center { margin-left: auto; margin-right: auto; text-align: center; }
+  .kicker { color: var(--green); font-size: 14px; font-weight: 700; letter-spacing: 0.02em; margin-bottom: 10px; }
+  h2 { font-size: clamp(26px, 3.4vw, 34px); font-weight: 800; letter-spacing: -0.02em; line-height: 1.15; }
+  .sec-head p { margin-top: 14px; color: var(--body); font-size: 17px; }
+  .prose p { color: var(--body); font-size: 17px; margin-bottom: 16px; }
+  .prose p:last-child { margin-bottom: 0; }
+  .prose strong { color: var(--ink); }
+
+  /* ---------- do / don't lists ---------- */
+  .facts { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  @media (max-width: 720px) { .facts { grid-template-columns: 1fr; } }
+  .fact {
+    display: flex; gap: 12px; align-items: flex-start;
+    background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 16px 18px;
+  }
+  .fact .mark {
+    flex: none; width: 24px; height: 24px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 14px; font-weight: 700; margin-top: 1px;
+  }
+  .fact.no .mark { background: var(--danger-soft); color: var(--danger); }
+  .fact.yes .mark { background: var(--green-soft); color: var(--green); }
+  .fact h3 { font-size: 15.5px; font-weight: 700; margin-bottom: 3px; }
+  .fact p { font-size: 14px; color: var(--body); }
+
+  /* ---------- steps ---------- */
+  .steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; counter-reset: step; }
+  @media (max-width: 760px) { .steps { grid-template-columns: 1fr; } }
+  .step { counter-increment: step; }
+  .step .num {
+    width: 34px; height: 34px; border-radius: 50%;
+    background: var(--green); color: #fff; font-weight: 700; font-size: 15px;
+    display: flex; align-items: center; justify-content: center; margin-bottom: 16px;
+  }
+  .step .num::before { content: counter(step); }
+  .step h3 { font-size: 16.5px; font-weight: 700; margin-bottom: 8px; }
+  .step p { font-size: 14.5px; color: var(--body); }
+  .step .perm-tag {
+    display: inline-block; margin-top: 10px;
+    font-size: 12px; font-weight: 600; color: var(--green);
+    background: var(--green-soft); border-radius: 999px; padding: 3px 10px;
+  }
+
+  /* ---------- permissions ---------- */
+  .perm { display: flex; flex-direction: column; gap: 12px; max-width: 820px; }
+  .perm-row {
+    display: grid; grid-template-columns: 190px 1fr; gap: 8px 24px;
+    padding: 18px 0; border-top: 1px solid var(--line);
+  }
+  .perm-row:last-child { border-bottom: 1px solid var(--line); }
+  .perm-row .name { font-weight: 700; font-size: 15.5px; }
+  .perm-row .name span { display: block; font-weight: 500; font-size: 13px; color: var(--faint); margin-top: 2px; }
+  .perm-row .what { font-size: 15px; color: var(--body); }
+  @media (max-width: 640px) { .perm-row { grid-template-columns: 1fr; gap: 6px; } }
+
+  /* ---------- data flow ---------- */
+  .flow { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+  @media (max-width: 820px) { .flow { grid-template-columns: 1fr; } }
+  .flow .card { background: #fff; border: 1px solid var(--line); border-radius: 14px; padding: 24px; box-shadow: 0 1px 2px rgba(16,24,40,0.04); }
+  .flow .card h3 { font-size: 16px; font-weight: 700; margin-bottom: 8px; display: flex; align-items: center; gap: 8px; }
+  .flow .card .tag { font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; padding: 2px 8px; border-radius: 999px; }
+  .flow .card .tag.out { background: var(--green-soft); color: var(--green); }
+  .flow .card .tag.local { background: #eef2f6; color: #475467; }
+  .flow .card p { font-size: 14.5px; color: var(--body); }
+  .flow-note { margin-top: 24px; text-align: center; font-size: 16px; color: var(--ink); font-weight: 600; }
+
+  /* ---------- appendix ---------- */
+  .appendix { max-width: 900px; }
+  .appendix table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  .appendix th, .appendix td { text-align: left; vertical-align: top; padding: 12px 14px; border-bottom: 1px solid var(--line); }
+  .appendix th { font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--faint); font-weight: 700; }
+  .appendix td { color: var(--body); }
+  .appendix td strong { color: var(--ink); }
+  .table-scroll { overflow-x: auto; border: 1px solid var(--line); border-radius: 12px; }
+  .mono { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 13px; }
+  .files { list-style: none; margin: 24px 0 0; padding: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 8px 20px; }
+  @media (max-width: 640px) { .files { grid-template-columns: 1fr; } }
+  .files li { font-size: 14px; }
+  .files a { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 13px; }
+  .files span { color: var(--faint); }
+
+  /* ---------- caveat ---------- */
+  .caveat {
+    background: var(--bg-soft); border: 1px solid var(--line); border-left: 3px solid var(--green);
+    border-radius: 12px; padding: 22px 24px; max-width: 820px;
+  }
+  .caveat h3 { font-size: 16px; font-weight: 700; margin-bottom: 8px; }
+  .caveat p { font-size: 15px; color: var(--body); margin-bottom: 12px; }
+  .caveat p:last-child { margin-bottom: 0; }
+
+  /* ---------- cta ---------- */
+  .cta-band { text-align: center; }
+  .cta-band h2 { margin-bottom: 14px; }
+  .cta-band p { color: var(--body); font-size: 17px; max-width: 48ch; margin: 0 auto 30px; text-wrap: balance; }
+  .cta-actions { display: flex; align-items: center; justify-content: center; gap: 24px; flex-wrap: wrap; }
+
+  footer { border-top: 1px solid var(--line); padding: 32px 0 40px; font-size: 14px; color: var(--faint); }
+  footer a { color: var(--body); }
+  footer a:hover { color: var(--ink); }
+  .footer-inner { width: 100%; display: flex; justify-content: space-between; align-items: baseline; gap: 16px; flex-wrap: wrap; }
+  @media (max-width: 700px) { .footer-inner { justify-content: center; text-align: center; } }
+
+  html, body { overflow-x: clip; }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="wrap nav-inner">
+    <a class="brand" href="index.html">
+      <img src="logo-mark.png" width="40" height="34" alt="">
+      <span><span class="green">Green</span>room</span>
+    </a>
+    <div class="nav-links">
+      <a href="index.html">Home</a>
+      <a href="#what">What it does</a>
+      <a href="#permissions">Permissions</a>
+      <a href="#data">Your data</a>
+      <a href="#it">For IT</a>
+    </div>
+    <div class="nav-cta">
+      <a class="gh" href="https://github.com/Sibhimanyu/greenroom">GitHub</a>
+      <a class="btn" href="https://github.com/Sibhimanyu/greenroom/releases">Download</a>
+    </div>
+  </div>
+</nav>
+
+<header class="wrap page-hero">
+  <span class="eyebrow">Security &amp; privacy</span>
+  <h1>Is Greenroom watching your screen? <span class="accent">No.</span></h1>
+  <p class="lede">Greenroom is not AI, and it doesn't watch what you do. It's an ordinary Mac app
+  that runs a fixed checklist — open a few apps, line up their windows, start your meeting —
+  the same way you would by hand, then gets out of the way. Here is exactly how, in plain
+  language, with the full technical detail below for anyone who wants to verify it.</p>
+</header>
+
+<section>
+  <div class="wrap">
+    <div class="sec-head narrow">
+      <p class="kicker">The short version</p>
+      <h2>Think of it as a stagehand, not a robot</h2>
+    </div>
+    <div class="prose narrow">
+      <p>Before a play, a stagehand sets everything up — moves the furniture, aims the lights,
+      opens the curtain — then steps offstage. They follow the same script every night and make
+      no decisions of their own.</p>
+      <p>That's Greenroom. When you press <strong>Start</strong>, it performs a fixed sequence of
+      ordinary actions — launch OBS, place your windows, start or join your Zoom meeting — and
+      then it's done. <strong>There is no AI in the app.</strong> It doesn't learn, doesn't
+      analyse what's on your screen, and doesn't decide anything for itself. (AI helped
+      <em>write</em> the code, the same way a developer would; it is not running inside the app.)</p>
+      <p>And because the whole app is <a class="underline" href="https://github.com/Sibhimanyu/greenroom">open source</a>,
+      none of this is something you have to take on faith — every line is public and checkable.</p>
+    </div>
+  </div>
+</section>
+
+<section class="soft">
+  <div class="wrap">
+    <div class="sec-head">
+      <p class="kicker">Setting the record straight</p>
+      <h2>What Greenroom never does</h2>
+      <p>The scary version of "an app that arranges your screen" would do these things. Greenroom does none of them — and the source code proves it.</p>
+    </div>
+    <div class="facts">
+      <div class="fact no"><div class="mark">✕</div><div><h3>No AI or "intelligence"</h3><p>No machine-learning models, no cloud AI, no decision-making. It runs a fixed script.</p></div></div>
+      <div class="fact no"><div class="mark">✕</div><div><h3>Doesn't read your screen</h3><p>Greenroom captures zero pixels. Your screen is captured by OBS — a separate app you can see running — only while you're presenting.</p></div></div>
+      <div class="fact no"><div class="mark">✕</div><div><h3>Not a keylogger</h3><p>It registers four specific keyboard shortcuts with macOS and is told only when those exact combos are pressed. It cannot see anything else you type.</p></div></div>
+      <div class="fact no"><div class="mark">✕</div><div><h3>Doesn't read your windows or browsing</h3><p>When it lines up a window it only reads its title, size and position — never its contents, your tabs, or your history.</p></div></div>
+      <div class="fact no"><div class="mark">✕</div><div><h3>No analytics or tracking</h3><p>No telemetry, no usage tracking, no crash-phone-home. Greenroom has no server of its own to send anything to.</p></div></div>
+      <div class="fact no"><div class="mark">✕</div><div><h3>Nothing hidden in the background</h3><p>It acts only when you press Start, a shortcut, or a button — never silently on its own (aside from a routine check for app updates).</p></div></div>
+    </div>
+  </div>
+</section>
+
+<section id="what">
+  <div class="wrap">
+    <div class="sec-head">
+      <p class="kicker">What actually happens</p>
+      <h2>When you press Start</h2>
+      <p>Three ordinary steps. Each uses a specific macOS permission that you grant once and can revoke anytime.</p>
+    </div>
+    <div class="steps">
+      <div class="step">
+        <div class="num"></div>
+        <h3>It sets up your camera view</h3>
+        <p>Greenroom launches <strong>OBS</strong> (a well-known, separate open-source app) and tells it to build the "your screen with you in the corner" layout. <strong>OBS</strong> does the actual screen and webcam capture — Greenroom just configures it over a local connection.</p>
+        <span class="perm-tag">Camera · Screen Recording (OBS's)</span>
+      </div>
+      <div class="step">
+        <div class="num"></div>
+        <h3>It arranges your windows</h3>
+        <p>It opens your chosen app and the meeting, then moves <em>those specific windows</em> into a tidy layout using the same macOS window controls any window-manager uses. It positions named windows only — it never touches their contents.</p>
+        <span class="perm-tag">Accessibility · Automation</span>
+      </div>
+      <div class="step">
+        <div class="num"></div>
+        <h3>It starts your Zoom meeting</h3>
+        <p>It creates or joins <em>your</em> meeting through Zoom's own official software — exactly what happens when you use Zoom normally. By default it joins muted and with your camera off.</p>
+        <span class="perm-tag">Microphone (muted by default)</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="soft" id="permissions">
+  <div class="wrap">
+    <div class="sec-head">
+      <p class="kicker">Permissions</p>
+      <h2>What it asks macOS for — and why each is narrow</h2>
+      <p>macOS forces you to approve each of these yourself, and you can turn any of them off at any time in System Settings → Privacy &amp; Security. Greenroom can't grant itself anything.</p>
+    </div>
+    <div class="perm">
+      <div class="perm-row">
+        <div class="name">Camera &amp; Microphone</div>
+        <div class="what">So your webcam and voice can reach the meeting. Greenroom itself doesn't open a camera session — OBS and Zoom's software do; Greenroom only picks which device to use. It joins meetings muted and camera-off by default.</div>
+      </div>
+      <div class="perm-row">
+        <div class="name">Accessibility <span>System-wide window control</span></div>
+        <div class="what">The standard macOS way to move another app's windows. Greenroom uses it only to read a window's title/size/position and to move <em>specific, named</em> windows (your main app; the "Zoom Meeting" window) into the layout. It reads no window contents and no screen pixels. This permission is broad by design — the honest safeguard is that the code only ever targets those named windows, which you can verify in the source.</div>
+      </div>
+      <div class="perm-row">
+        <div class="name">Automation <span>Apple Events</span></div>
+        <div class="what">Lets Greenroom ask your browser to open a fresh window at the right size and address. It's limited to Chromium-family browsers (Chrome, Edge, Brave, Ulaa…) and does only that — it can't read your history or tabs. macOS asks per-app the first time.</div>
+      </div>
+      <div class="perm-row">
+        <div class="name">Screen Recording <span>Belongs to OBS</span></div>
+        <div class="what">Greenroom does <strong>not</strong> request screen recording. OBS holds that permission and performs the capture itself; Greenroom only hands OBS the identifier of the display to show.</div>
+      </div>
+      <div class="perm-row">
+        <div class="name">Notifications</div>
+        <div class="what">Optional. Used only for local banners like "Recording started / saved." Nothing is sent anywhere.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="data">
+  <div class="wrap">
+    <div class="sec-head center">
+      <p class="kicker">Your data</p>
+      <h2>Where everything goes</h2>
+      <p>Greenroom talks to only two outside parties, and both are ones you'd expect.</p>
+    </div>
+    <div class="flow">
+      <div class="card">
+        <h3>Zoom <span class="tag out">Leaves your Mac</span></h3>
+        <p>Your meeting audio, video and chat, and requests to create or join <em>your own</em> meetings — through Zoom's official software. This is identical to using Zoom directly.</p>
+      </div>
+      <div class="card">
+        <h3>GitHub <span class="tag out">Leaves your Mac</span></h3>
+        <p>A periodic check for app updates, and the download if you accept one. Updates are cryptographically signed, so only genuine Greenroom releases can install.</p>
+      </div>
+      <div class="card">
+        <h3>OBS <span class="tag local">Stays local</span></h3>
+        <p>Greenroom controls OBS over your Mac's internal loopback connection (<span class="mono">127.0.0.1</span>). This never touches the network. Recordings are saved as files in your Documents folder.</p>
+      </div>
+    </div>
+    <p class="flow-note">That's the entire list. No analytics, no tracking, no Greenroom server — because there isn't one.</p>
+  </div>
+</section>
+
+<section class="soft" id="it">
+  <div class="wrap">
+    <div class="sec-head">
+      <p class="kicker">For your IT team</p>
+      <h2>The technical inventory</h2>
+      <p>Every way the app touches the system, with the exact scope. All of it is verifiable in the open-source code — the strongest guarantee is that you don't have to trust this page.</p>
+    </div>
+    <div class="appendix">
+      <div class="table-scroll">
+        <table>
+          <thead><tr><th>Capability</th><th>How it's done</th><th>Scope / limit</th></tr></thead>
+          <tbody>
+            <tr><td><strong>Move windows</strong></td><td>macOS Accessibility API (<span class="mono">AXUIElement</span>)</td><td>Reads title/size/position; sets position/size/minimized. Targets only named apps (chosen main app; Zoom's meeting window). No contents, no pixels.</td></tr>
+            <tr><td><strong>Open browser window</strong></td><td>Apple Events via <span class="mono">osascript</span></td><td>Chromium-family browsers only: <span class="mono">activate</span>, new window, set bounds &amp; the address you configured. No history/tab access.</td></tr>
+            <tr><td><strong>Screen &amp; camera capture</strong></td><td>Performed by <strong>OBS</strong>, not Greenroom</td><td>Greenroom contains no screen-capture code; it only resolves the display/camera identifiers to hand to OBS.</td></tr>
+            <tr><td><strong>Global shortcuts</strong></td><td>Carbon <span class="mono">RegisterEventHotKey</span></td><td>Four fixed combos (⌃⌥⌘ G/X/R/S). Receives only an opaque ID for those combos — no event taps, no key monitoring.</td></tr>
+            <tr><td><strong>Launch/quit apps</strong></td><td><span class="mono">NSWorkspace</span> / <span class="mono">NSRunningApplication</span></td><td>Only OBS, Zoom, and your chosen main app.</td></tr>
+            <tr><td><strong>Meetings</strong></td><td>Zoom Meeting SDK + Zoom REST API</td><td>Creates/lists/joins meetings under your own Zoom account, using your Zoom Marketplace credentials.</td></tr>
+            <tr><td><strong>Updates</strong></td><td>Sparkle, EdDSA-signed</td><td>Checks an appcast on GitHub Pages; installs only releases signed with the developer's key.</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3 style="margin:28px 0 6px;font-size:15px;">Every network endpoint</h3>
+      <div class="prose"><p style="font-size:15px;">
+        <span class="mono">api.zoom.us</span> / <span class="mono">zoom.us</span> — Zoom's official API &amp; meeting servers (your meetings).
+        &nbsp;·&nbsp; <span class="mono">github.com</span> + <span class="mono">sibhimanyu.github.io</span> — app-update check &amp; download.
+        &nbsp;·&nbsp; <span class="mono">ws://127.0.0.1:4455</span> — local OBS control, never leaves the machine.
+        Nothing else. Two entitlements only: camera and microphone. No sandbox-escape or screen-recording entitlement (screen recording is OBS's).
+      </p></div>
+
+      <h3 style="margin:28px 0 6px;font-size:15px;">Read the code yourself</h3>
+      <ul class="files">
+        <li><a href="https://github.com/Sibhimanyu/greenroom/blob/main/App/Layout/AppWindowManager.swift">AppWindowManager.swift</a> <span>— window moves</span></li>
+        <li><a href="https://github.com/Sibhimanyu/greenroom/blob/main/App/HotkeyManager.swift">HotkeyManager.swift</a> <span>— the four shortcuts</span></li>
+        <li><a href="https://github.com/Sibhimanyu/greenroom/blob/main/App/Chrome/ChromeWindowManager.swift">ChromeWindowManager.swift</a> <span>— browser automation</span></li>
+        <li><a href="https://github.com/Sibhimanyu/greenroom/blob/main/App/OBS/OBSWebSocketClient.swift">OBSWebSocketClient.swift</a> <span>— localhost OBS control</span></li>
+        <li><a href="https://github.com/Sibhimanyu/greenroom/blob/main/App/Zoom/ZoomServerToServerClient.swift">ZoomServerToServerClient.swift</a> <span>— Zoom API calls</span></li>
+        <li><a href="https://github.com/Sibhimanyu/greenroom/blob/main/App/Zoom/KeychainStore.swift">KeychainStore.swift</a> <span>— credential storage</span></li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section id="caveats">
+  <div class="wrap">
+    <div class="sec-head">
+      <p class="kicker">Full honesty</p>
+      <h2>What isn't perfect yet</h2>
+      <p>A trustworthy explanation names the weak spots too. Both of these are <strong>local-only</strong> — nothing here is exposed over the network.</p>
+    </div>
+    <div class="caveat">
+      <h3>Zoom credentials are stored in plaintext on your Mac</h3>
+      <p>The Zoom app credentials you enter are saved in Greenroom's local preferences <strong>unencrypted</strong>, rather than in the macOS Keychain. They never leave your Mac except to Zoom itself. The practical risk is purely local: someone who already has access to your Mac user account could read them.</p>
+      <p>Worth keeping in perspective: these are app-level Zoom API keys scoped to running meetings under your account — not your Zoom login password — and you can revoke them anytime in the Zoom Marketplace. Moving them into the encrypted Keychain is a known, planned improvement.</p>
+      <p>Separately, the optional "export settings" file (used to set up a colleague's Mac) also contains these credentials in plaintext by design — hand it over directly and delete it after importing.</p>
+    </div>
+  </div>
+</section>
+
+<section class="soft cta-band">
+  <div class="wrap">
+    <h2>Don't take our word for it</h2>
+    <p>Every claim on this page is checkable in the source. Read it, or hand it to someone technical you trust.</p>
+    <div class="cta-actions">
+      <a class="btn" href="https://github.com/Sibhimanyu/greenroom">Read the source on GitHub</a>
+      <a class="textlink" href="index.html">Back to Greenroom <span class="arrow">→</span></a>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap footer-inner">
+    <span>Greenroom — a one-click classroom setup for macOS.</span>
+    <span><a href="index.html">Home</a> · <a href="https://github.com/Sibhimanyu/greenroom">GitHub</a> · <a href="https://github.com/Sibhimanyu/greenroom#readme">Guide</a></span>
+  </div>
+</footer>
+
+</body>
+</html>

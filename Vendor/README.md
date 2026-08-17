@@ -34,9 +34,11 @@ features run off TWO Marketplace apps:
    inside this, not its own app type anymore).
 3. On its **Features** page -> **Embed** tab, toggle **Meeting SDK** on.
 4. From **App Credentials**, copy the **Client ID** and **Client Secret**
-   into Greenroom's Settings -> Meeting Chat tab (Client ID goes to
-   UserDefaults, harmless; Secret goes to the Keychain - see
-   `App/Zoom/KeychainStore.swift` - never put either in this repo).
+   into Greenroom's Settings -> Meeting Chat tab (both are stored in
+   local app preferences / UserDefaults in plaintext - see
+   `App/Zoom/KeychainStore.swift`, whose name is historical; moving the
+   secret to the encrypted Keychain is a known follow-up - never put
+   either in this repo).
 
 **App 2 - Server-to-Server OAuth (powers "Start New Meeting", the
 Scheduled-meetings list, and hosting your own meetings):**

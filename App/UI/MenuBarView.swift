@@ -65,6 +65,10 @@ struct MenuBarView: View {
 
         Button("Check for Updates\u{2026}", action: checkForUpdates)
 
+        Button("How It Works & Privacy\u{2026}") {
+            NSWorkspace.shared.open(AppLinks.safety)
+        }
+
         Button("Quit Greenroom") {
             NSApp.terminate(nil)
         }

@@ -10,6 +10,13 @@
 import SwiftUI
 import Sparkle
 
+/// App-wide external links, defined once so the in-app entry points and
+/// the site can't drift.
+enum AppLinks {
+    /// The public "how it works & why it's safe" transparency page.
+    static let safety = URL(string: "https://sibhimanyu.github.io/greenroom/how-it-works.html")!
+}
+
 @main
 struct GreenroomApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate

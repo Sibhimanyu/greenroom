@@ -341,16 +341,28 @@ struct OnboardingView: View {
             }
 
             VStack(alignment: .leading, spacing: 10) {
-                Label("Screen Recording \u{2014} OBS asks on the first Start (it captures your screen)", systemImage: "rectangle.dashed.badge.record")
-                Label("Camera & Microphone \u{2014} asked on the first chat connection", systemImage: "camera")
-                Label("Browser automation (Chrome) \u{2014} asked when its window is first tiled; other main apps use Accessibility above", systemImage: "globe")
-                Label("Keychain \u{2014} if asked, always click \u{201C}Always Allow\u{201D}, never plain \u{201C}Allow\u{201D}", systemImage: "key")
+                Label("Screen Recording \u{2014} OBS asks on the first Start (it captures your screen, not Greenroom)", systemImage: "rectangle.dashed.badge.record")
+                Label("Camera & Microphone \u{2014} asked on the first meeting connection (joins muted, camera off)", systemImage: "camera")
+                Label("Browser automation \u{2014} asked when your browser window is first tiled; other main apps use Accessibility above", systemImage: "globe")
             }
             .font(.callout)
 
-            Text("Each appears exactly once if approved \u{2014} approving them all makes every later Start silent.")
+            Text("Each appears exactly once if approved \u{2014} approving them all makes every later Start silent. macOS forces you to grant each one, and you can revoke any of them anytime.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
+
+            Divider()
+
+            // Where the fear is most acute (permission prompts) is the
+            // right place to answer "is this safe?" - links to the public
+            // transparency page rather than duplicating it in-app.
+            Button {
+                NSWorkspace.shared.open(AppLinks.safety)
+            } label: {
+                Label("Worried about privacy? See exactly what Greenroom does \u{2192}", systemImage: "lock.shield")
+            }
+            .buttonStyle(.link)
+            .font(.callout)
         }
     }
 

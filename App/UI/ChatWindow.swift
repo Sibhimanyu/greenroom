@@ -36,8 +36,7 @@ struct ChatWindowView: View {
             Divider()
 
             HStack(spacing: 8) {
-                TextField("Message everyone", text: $draft, onCommit: send)
-                    .textFieldStyle(.plain)
+                MessageField(text: $draft, placeholder: "Message everyone", onSend: send)
                     .padding(.horizontal, 10)
                     .padding(.vertical, 7)
                     .background(.quaternary.opacity(0.5), in: Capsule())
@@ -71,13 +70,65 @@ struct ChatWindowView: View {
     private func send() {
         let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
-        // Clear FIRST, send on the next runloop turn: sending inside the
-        // commit made the bridge publish a messages update mid-commit,
-        // and the in-flight field-editor session wrote the old text back
-        // over the just-cleared binding - the field visibly kept the sent
-        // message (reported live).
         draft = ""
         DispatchQueue.main.async { chat.send(text) }
+    }
+}
+
+/// AppKit-backed message field. SwiftUI's TextField on macOS would NOT
+/// reliably push a cleared binding back into the focused field editor -
+/// the sent text visibly stayed in the box (reported twice, including
+/// after an async-clear workaround). Owning the NSTextField lets the
+/// clear be imperative and unconditional:
+/// - Enter is intercepted via insertNewline (not target/action, which
+///   also fires on focus loss and would send when clicking away),
+/// - after sending, `stringValue = ""` resets both the field and its
+///   live field editor, deterministically,
+/// - the send BUTTON path clears through updateNSView, which pushes a
+///   changed binding into the view (and never fights in-progress typing
+///   because it only writes when the values differ).
+private struct MessageField: NSViewRepresentable {
+    @Binding var text: String
+    let placeholder: String
+    let onSend: () -> Void
+
+    func makeNSView(context: Context) -> NSTextField {
+        let field = NSTextField()
+        field.placeholderString = placeholder
+        field.isBordered = false
+        field.drawsBackground = false
+        field.focusRingType = .none
+        field.font = .systemFont(ofSize: NSFont.systemFontSize)
+        field.delegate = context.coordinator
+        field.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        return field
+    }
+
+    func updateNSView(_ field: NSTextField, context: Context) {
+        context.coordinator.parent = self
+        if field.stringValue != text {
+            field.stringValue = text
+        }
+    }
+
+    func makeCoordinator() -> Coordinator { Coordinator(self) }
+
+    final class Coordinator: NSObject, NSTextFieldDelegate {
+        var parent: MessageField
+        init(_ parent: MessageField) { self.parent = parent }
+
+        func controlTextDidChange(_ notification: Notification) {
+            guard let field = notification.object as? NSTextField else { return }
+            parent.text = field.stringValue
+        }
+
+        func control(_ control: NSControl, textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
+            guard commandSelector == #selector(NSResponder.insertNewline(_:)) else { return false }
+            parent.onSend()
+            control.stringValue = "" // the imperative clear - field AND field editor
+            parent.text = ""
+            return true
+        }
     }
 }
 

@@ -34,7 +34,7 @@ struct MenuBarView: View {
         .disabled(coordinator.isRunning || coordinator.virtualCamActive || coordinator.isStopping)
 
         Button(coordinator.isStopping ? "Ending\u{2026}" : "End Session") {
-            coordinator.stop()
+            coordinator.confirmAndStop()
         }
         .keyboardShortcut("x", modifiers: [.control, .option, .command])
         .disabled(coordinator.isStopping || (!coordinator.isRunning && !coordinator.virtualCamActive))

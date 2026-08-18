@@ -56,7 +56,7 @@ struct ContentView: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 20) {
+        VStack(alignment: .leading, spacing: 16) {
             header
 
             meetingSection
@@ -74,7 +74,7 @@ struct ContentView: View {
                 .help(startHelp)
 
                 Button(coordinator.isStopping ? "Ending\u{2026}" : "End Session") {
-                    coordinator.stop()
+                    coordinator.confirmAndStop()
                 }
                 .controlSize(.large)
                 .disabled(stopDisabled)
@@ -102,14 +102,16 @@ struct ContentView: View {
                 .help("Review past recordings \u{2014} play them right here, or jump to the file in Finder.")
             }
 
-            manualControls
-
             Divider()
 
+            manualControls
+
             statusSection
+
+            Spacer(minLength: 0)
         }
-        .padding(24)
-        .frame(minWidth: 560, minHeight: 480)
+        .padding(20)
+        .frame(minWidth: 580, minHeight: 460)
         .sheet(isPresented: $coordinator.showOnboarding) {
             OnboardingView()
                 .environmentObject(coordinator)
@@ -123,29 +125,32 @@ struct ContentView: View {
     /// lockup in Branding/greenroom-logo.png and the generated app icon.
     private static let brandGreen = Color(red: 0.373, green: 0.659, blue: 0.235)
 
+    /// One compact row: logo + two-tone wordmark with the tagline
+    /// UNDER the wordmark (not under the logo), so everything shares one
+    /// leading edge; window controls vertically centered on the row.
     private var header: some View {
-        HStack(alignment: .top) {
-            VStack(alignment: .leading, spacing: 4) {
-                HStack(spacing: 14) {
-                    Image("LogoMark")
-                        .resizable()
-                        .scaledToFit()
-                        .frame(height: 64)
-                    // Two-tone wordmark, as in the logo: "Green" bright,
-                    // "room" in the label color so it works on both themes.
-                    (Text("Green").foregroundColor(Self.brandGreen) + Text("room"))
-                        .font(.system(size: 40, weight: .bold))
-                }
-                Text("One click: virtual camera on, Zoom in the meeting, your main app and chat tiled side by side.")
+        HStack(alignment: .center, spacing: 12) {
+            Image("LogoMark")
+                .resizable()
+                .scaledToFit()
+                .frame(height: 46)
+            VStack(alignment: .leading, spacing: 2) {
+                // Two-tone wordmark, as in the logo: "Green" bright,
+                // "room" in the label color so it works on both themes.
+                (Text("Green").foregroundColor(Self.brandGreen) + Text("room"))
+                    .font(.system(size: 27, weight: .bold))
+                Text("One click: camera on, Zoom in the meeting, your windows tiled.")
+                    .font(.callout)
                     .foregroundStyle(.secondary)
             }
-            Spacer()
-            HStack(spacing: 14) {
+            Spacer(minLength: 16)
+            HStack(spacing: 12) {
                 Button {
                     coordinator.presentOnboarding()
                 } label: {
                     Image(systemName: "questionmark.circle")
-                        .font(.title2)
+                        .font(.title3)
+                        .foregroundStyle(.secondary)
                 }
                 .buttonStyle(.plain)
                 .help("Setup guide")
@@ -154,7 +159,8 @@ struct ContentView: View {
                     openSettings()
                 } label: {
                     Image(systemName: "gearshape")
-                        .font(.title2)
+                        .font(.title3)
+                        .foregroundStyle(.secondary)
                 }
                 .buttonStyle(.plain)
                 .help("Settings")
@@ -184,16 +190,29 @@ struct ContentView: View {
                         .foregroundStyle(.secondary)
                 }
             case .join:
-                HStack {
-                    presetsMenu
-                    scheduledMeetingsMenu
-                    Button {
-                        coordinator.fillMeetingFromClipboard()
-                    } label: {
-                        Label("Paste Link", systemImage: "doc.on.clipboard")
+                // Two aligned rows instead of one crammed line: the
+                // fields get room to breathe, the fill-from sources sit
+                // together beneath them.
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack(spacing: 8) {
+                        TextField("Meeting ID", text: $coordinator.meetingNumber)
+                            .textFieldStyle(.roundedBorder)
+                            .frame(minWidth: 170)
+                        TextField("Passcode (optional)", text: $coordinator.meetingPassword)
+                            .textFieldStyle(.roundedBorder)
+                            .frame(minWidth: 130)
                     }
-                    TextField("Meeting ID", text: $coordinator.meetingNumber)
-                    TextField("Passcode (optional)", text: $coordinator.meetingPassword)
+                    HStack(spacing: 8) {
+                        presetsMenu
+                        scheduledMeetingsMenu
+                        Button {
+                            coordinator.fillMeetingFromClipboard()
+                        } label: {
+                            Label("Paste Link", systemImage: "doc.on.clipboard")
+                        }
+                        .fixedSize()
+                        Spacer(minLength: 0)
+                    }
                 }
                 .onAppear {
                     // Pre-fetch so the menu is ready by the time it's

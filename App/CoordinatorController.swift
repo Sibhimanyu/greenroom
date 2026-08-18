@@ -1061,6 +1061,27 @@ final class CoordinatorController: ObservableObject {
         return waitedTicks >= 10 ? candidates.first : nil
     }
 
+    /// Confirmation gate in front of stop() for every user-facing trigger
+    /// (End Session button, menu bar item, \u{2303}\u{2325}\u{2318}X):
+    /// ending the session is destructive - it can end the meeting for the
+    /// whole class - and the system-wide hotkey especially is one stray
+    /// keystroke away. Internal/automatic paths (Zoom-side meeting end,
+    /// app quit) still call stop()/prepareForTermination directly: the
+    /// destructive event already happened or is separately confirmed.
+    func confirmAndStop() {
+        guard isRunning || virtualCamActive else { return }
+        NSApp.activate(ignoringOtherApps: true) // the hotkey fires while other apps are focused
+        let alert = NSAlert()
+        alert.messageText = "End the session?"
+        alert.informativeText = "Ends the Zoom meeting for everyone when you're hosting (leaves it otherwise), saves any recording in progress, and stops the camera."
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: "End Session")
+        alert.addButton(withTitle: "Cancel")
+        if alert.runModal() == .alertFirstButtonReturn {
+            stop()
+        }
+    }
+
     /// The menu bar's "Snap Windows Back": re-tiles everything to the
     /// session layout after the user has dragged windows around. Handles
     /// whichever meeting window exists - the built-in client's (ours,

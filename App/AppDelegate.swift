@@ -31,7 +31,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 .init(keyCode: UInt32(kVK_ANSI_X), modifiers: mods) {
                     guard let coordinator = CoordinatorController.shared,
                           coordinator.isRunning || coordinator.virtualCamActive else { return }
-                    coordinator.stop()
+                    coordinator.confirmAndStop() // destructive - always confirms
                 },
                 .init(keyCode: UInt32(kVK_ANSI_R), modifiers: mods) {
                     guard let coordinator = CoordinatorController.shared,

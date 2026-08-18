@@ -282,12 +282,8 @@ private struct LayoutSettingsTab: View {
             Section("Side column") {
                 Toggle("Zoom meeting tile", isOn: $coordinator.workspaceLayout.sideShowsZoomTile)
                 Toggle("Chat window", isOn: $coordinator.workspaceLayout.sideShowsChat)
-
-                if coordinator.workspaceLayout.sideShowsZoomTile && coordinator.workspaceLayout.sideShowsChat {
-                    Slider(value: $coordinator.workspaceLayout.zoomSlotRatio, in: 0.25...0.65) {
-                        Text("Zoom tile height \(Int(coordinator.workspaceLayout.zoomSlotRatio * 100))%")
-                    }
-                }
+                // Tile-vs-chat balance is set by dragging the handle in the
+                // preview above - the old slider duplicated it.
             }
 
             Section("Meeting view") {
@@ -447,19 +443,28 @@ private struct LayoutSchematicView: View {
                     .frame(width: 18, height: geo.size.height)
                     .contentShape(Rectangle())
                     .position(x: dividerX, y: geo.size.height / 2)
+                    // NSCursor.set() rather than push/pop: the push/pop
+                    // stack desynced across enter/exit events and left the
+                    // wrong cursor orientation showing (reported live).
+                    // Re-set every drag tick too - AppKit resets the cursor
+                    // once the pointer leaves the hover area mid-drag.
                     .onHover { inside in
-                        if inside { NSCursor.resizeLeftRight.push() } else { NSCursor.pop() }
+                        (inside ? NSCursor.resizeLeftRight : NSCursor.arrow).set()
                     }
                     .gesture(
                         DragGesture(minimumDistance: 0, coordinateSpace: .named("schematic"))
                             .onChanged { value in
                                 draggingSplit = true
+                                NSCursor.resizeLeftRight.set()
                                 let raw = Double(value.location.x / geo.size.width)
                                 let fraction = layout.mainOnLeft ? raw : 1 - raw
                                 layout.mainFraction = min(max(fraction, WorkspaceLayout.minMainFraction),
                                                           WorkspaceLayout.maxMainFraction)
                             }
-                            .onEnded { _ in draggingSplit = false }
+                            .onEnded { _ in
+                                draggingSplit = false
+                                NSCursor.arrow.set()
+                            }
                     )
 
                 // Horizontal divider: drag to balance Zoom tile vs chat.
@@ -470,16 +475,20 @@ private struct LayoutSchematicView: View {
                         .contentShape(Rectangle())
                         .position(x: sideCenterX, y: slotY)
                         .onHover { inside in
-                            if inside { NSCursor.resizeUpDown.push() } else { NSCursor.pop() }
+                            (inside ? NSCursor.resizeUpDown : NSCursor.arrow).set()
                         }
                         .gesture(
                             DragGesture(minimumDistance: 0, coordinateSpace: .named("schematic"))
                                 .onChanged { value in
                                     draggingSlot = true
+                                    NSCursor.resizeUpDown.set()
                                     let ratio = Double(value.location.y / geo.size.height)
                                     layout.zoomSlotRatio = min(max(ratio, 0.15), 0.85)
                                 }
-                                .onEnded { _ in draggingSlot = false }
+                                .onEnded { _ in
+                                    draggingSlot = false
+                                    NSCursor.arrow.set()
+                                }
                         )
                 }
             }

@@ -262,24 +262,21 @@ private struct LayoutSettingsTab: View {
             }
 
             Section {
-                Picker("Main pane width", selection: $coordinator.workspaceLayout.split) {
-                    ForEach(WorkspaceLayout.Split.allCases) { split in
-                        Text(split.glyph).tag(split)
-                    }
-                }
-                .pickerStyle(.segmented)
-
                 Picker("Main pane side", selection: $coordinator.workspaceLayout.mainOnLeft) {
                     Text("Left").tag(true)
                     Text("Right").tag(false)
                 }
                 .pickerStyle(.segmented)
 
-                LayoutSchematicView(layout: coordinator.workspaceLayout,
+                LayoutSchematicView(layout: $coordinator.workspaceLayout,
                                     appName: coordinator.mainAppDisplayName,
                                     appIcon: AppCatalog.icon(forBundleID: coordinator.mainAppBundleID))
-                    .frame(height: 120)
+                    .frame(height: 140)
                     .padding(.vertical, 4)
+
+                Text("Drag the handle between the panes to set the main app's width; drag the one between Zoom and Chat to balance the side column. A live session re-tiles on Snap Windows Back (\u{2303}\u{2325}\u{2318}S).")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
 
             Section("Side column") {
@@ -418,28 +415,86 @@ private struct LayoutSettingsTab: View {
 /// proportioned exactly as the real layout will be, updating as the
 /// controls above change.
 private struct LayoutSchematicView: View {
-    let layout: WorkspaceLayout
+    @Binding var layout: WorkspaceLayout
     let appName: String
     let appIcon: NSImage?
 
     private let spacing: CGFloat = 4
+    @State private var draggingSplit = false
+    @State private var draggingSlot = false
 
     var body: some View {
         GeometryReader { geo in
-            let mainWidth = (geo.size.width - spacing) * layout.split.fraction
+            let fraction = layout.clampedMainFraction
+            let mainWidth = (geo.size.width - spacing) * fraction
             let sideWidth = geo.size.width - spacing - mainWidth
+            let dividerX = layout.mainOnLeft ? mainWidth + spacing / 2 : sideWidth + spacing / 2
+            let sideCenterX = layout.mainOnLeft ? mainWidth + spacing + sideWidth / 2 : sideWidth / 2
 
-            HStack(spacing: spacing) {
-                if layout.mainOnLeft {
-                    mainPane.frame(width: mainWidth)
-                    sideColumn(height: geo.size.height).frame(width: sideWidth)
-                } else {
-                    sideColumn(height: geo.size.height).frame(width: sideWidth)
-                    mainPane.frame(width: mainWidth)
+            ZStack(alignment: .topLeading) {
+                HStack(spacing: spacing) {
+                    if layout.mainOnLeft {
+                        mainPane.frame(width: mainWidth)
+                        sideColumn(height: geo.size.height).frame(width: sideWidth)
+                    } else {
+                        sideColumn(height: geo.size.height).frame(width: sideWidth)
+                        mainPane.frame(width: mainWidth)
+                    }
+                }
+
+                // Vertical divider: drag to resize main pane vs side column.
+                grabber(width: 5, height: 36, active: draggingSplit)
+                    .frame(width: 18, height: geo.size.height)
+                    .contentShape(Rectangle())
+                    .position(x: dividerX, y: geo.size.height / 2)
+                    .onHover { inside in
+                        if inside { NSCursor.resizeLeftRight.push() } else { NSCursor.pop() }
+                    }
+                    .gesture(
+                        DragGesture(minimumDistance: 0, coordinateSpace: .named("schematic"))
+                            .onChanged { value in
+                                draggingSplit = true
+                                let raw = Double(value.location.x / geo.size.width)
+                                let fraction = layout.mainOnLeft ? raw : 1 - raw
+                                layout.mainFraction = min(max(fraction, WorkspaceLayout.minMainFraction),
+                                                          WorkspaceLayout.maxMainFraction)
+                            }
+                            .onEnded { _ in draggingSplit = false }
+                    )
+
+                // Horizontal divider: drag to balance Zoom tile vs chat.
+                if layout.sideShowsZoomTile && layout.sideShowsChat {
+                    let slotY = (geo.size.height - spacing) * layout.effectiveZoomSlotRatio + spacing / 2
+                    grabber(width: 36, height: 5, active: draggingSlot)
+                        .frame(width: max(sideWidth - 16, 24), height: 18)
+                        .contentShape(Rectangle())
+                        .position(x: sideCenterX, y: slotY)
+                        .onHover { inside in
+                            if inside { NSCursor.resizeUpDown.push() } else { NSCursor.pop() }
+                        }
+                        .gesture(
+                            DragGesture(minimumDistance: 0, coordinateSpace: .named("schematic"))
+                                .onChanged { value in
+                                    draggingSlot = true
+                                    let ratio = Double(value.location.y / geo.size.height)
+                                    layout.zoomSlotRatio = min(max(ratio, 0.15), 0.85)
+                                }
+                                .onEnded { _ in draggingSlot = false }
+                        )
                 }
             }
+            .coordinateSpace(name: "schematic")
         }
-        .animation(.snappy(duration: 0.25), value: layout)
+        // Snappy preset-style animation for external changes only - never
+        // mid-drag, where it would lag the pointer.
+        .animation(draggingSplit || draggingSlot ? nil : .snappy(duration: 0.25), value: layout)
+    }
+
+    private func grabber(width: CGFloat, height: CGFloat, active: Bool) -> some View {
+        Capsule()
+            .fill(active ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(.tertiary))
+            .frame(width: width, height: height)
+            .shadow(radius: active ? 2 : 0)
     }
 
     private var mainPane: some View {
@@ -453,6 +508,11 @@ private struct LayoutSchematicView: View {
                 Text(appName)
                     .font(.caption2.weight(.medium))
                     .lineLimit(1)
+                if draggingSplit {
+                    Text("\(Int((layout.clampedMainFraction * 100).rounded()))%")
+                        .font(.caption2.monospacedDigit())
+                        .foregroundStyle(.secondary)
+                }
             }
         }
     }
@@ -461,8 +521,15 @@ private struct LayoutSchematicView: View {
         VStack(spacing: spacing) {
             if layout.sideShowsZoomTile {
                 pane(tint: .indigo) {
-                    Label("Zoom", systemImage: "video.fill")
-                        .font(.caption2.weight(.medium))
+                    VStack(spacing: 2) {
+                        Label("Zoom", systemImage: "video.fill")
+                            .font(.caption2.weight(.medium))
+                        if draggingSlot {
+                            Text("\(Int((layout.effectiveZoomSlotRatio * 100).rounded()))%")
+                                .font(.caption2.monospacedDigit())
+                                .foregroundStyle(.secondary)
+                        }
+                    }
                 }
                 .frame(height: layout.sideShowsChat
                        ? (height - spacing) * layout.effectiveZoomSlotRatio

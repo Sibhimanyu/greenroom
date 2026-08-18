@@ -12,30 +12,15 @@ import AppKit
 
 struct WorkspaceLayout: Codable, Equatable {
 
-    /// How much of the screen's width the main pane takes.
-    enum Split: String, Codable, CaseIterable, Identifiable {
-        case half, twoThirds, threeQuarters
+    /// Clamp bounds for the main pane's width fraction - neither pane can
+    /// be dragged into uselessness.
+    static let minMainFraction = 0.35
+    static let maxMainFraction = 0.85
 
-        var id: String { rawValue }
-
-        var fraction: Double {
-            switch self {
-            case .half: return 0.5
-            case .twoThirds: return 2.0 / 3.0
-            case .threeQuarters: return 0.75
-            }
-        }
-
-        var glyph: String {
-            switch self {
-            case .half: return "\u{00BD}"
-            case .twoThirds: return "\u{2154}"
-            case .threeQuarters: return "\u{00BE}"
-            }
-        }
-    }
-
-    var split: Split
+    /// How much of the screen's width the main pane takes - CONTINUOUS,
+    /// set by dragging the divider in Settings' layout preview (replaced
+    /// the old fixed \u{00BD}/\u{2154}/\u{00BE} presets).
+    var mainFraction: Double
     var mainOnLeft: Bool
     /// What occupies the side column. Both on: Zoom tile stacked over the
     /// chat. One off: the other takes the full column. Both off: the
@@ -48,24 +33,30 @@ struct WorkspaceLayout: Codable, Equatable {
     /// was cramped - see the old ZoomWindowManager.meetingSlotRatio).
     var zoomSlotRatio: Double
 
-    init(split: Split = .half,
+    init(mainFraction: Double = 0.5,
          mainOnLeft: Bool = true,
          sideShowsZoomTile: Bool = true,
          sideShowsChat: Bool = true,
          zoomSlotRatio: Double = 0.4) {
-        self.split = split
+        self.mainFraction = mainFraction
         self.mainOnLeft = mainOnLeft
         self.sideShowsZoomTile = sideShowsZoomTile
         self.sideShowsChat = sideShowsChat
         self.zoomSlotRatio = zoomSlotRatio
     }
 
-    var label: String { (mainOnLeft ? "Left " : "Right ") + split.glyph }
+    var clampedMainFraction: Double {
+        min(max(mainFraction, Self.minMainFraction), Self.maxMainFraction)
+    }
+
+    var label: String {
+        "\(mainOnLeft ? "Left" : "Right") \(Int((clampedMainFraction * 100).rounded()))%"
+    }
 
     /// The main pane as fractions of the visible width (0 = left edge,
     /// 1 = right edge). Full height always.
     var span: (start: Double, end: Double) {
-        mainOnLeft ? (0, split.fraction) : (1 - split.fraction, 1)
+        mainOnLeft ? (0, clampedMainFraction) : (1 - clampedMainFraction, 1)
     }
 
     /// Whatever's left once the main pane's slice is taken - e.g. Left ¾
@@ -114,13 +105,29 @@ struct WorkspaceLayout: Codable, Equatable {
     // older exported-settings file imports cleanly.
 
     private enum CodingKeys: String, CodingKey {
-        case split, mainOnLeft, sideShowsZoomTile, sideShowsChat, zoomSlotRatio
+        case mainFraction, mainOnLeft, sideShowsZoomTile, sideShowsChat, zoomSlotRatio
+    }
+
+    /// The pre-continuous era stored a three-case enum under "split" -
+    /// decoded here so existing setups keep their width.
+    private enum LegacyKeys: String, CodingKey { case split }
+    private enum LegacySplit: String, Codable {
+        case half, twoThirds, threeQuarters
+        var fraction: Double {
+            switch self {
+            case .half: return 0.5
+            case .twoThirds: return 2.0 / 3.0
+            case .threeQuarters: return 0.75
+            }
+        }
     }
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
+        let legacy = try? decoder.container(keyedBy: LegacyKeys.self)
+        let legacyFraction = (try? legacy?.decodeIfPresent(LegacySplit.self, forKey: .split))??.fraction
         self.init(
-            split: (try? container.decodeIfPresent(Split.self, forKey: .split)) ?? .half,
+            mainFraction: (try? container.decodeIfPresent(Double.self, forKey: .mainFraction)) ?? legacyFraction ?? 0.5,
             mainOnLeft: (try? container.decodeIfPresent(Bool.self, forKey: .mainOnLeft)) ?? true,
             sideShowsZoomTile: (try? container.decodeIfPresent(Bool.self, forKey: .sideShowsZoomTile)) ?? true,
             sideShowsChat: (try? container.decodeIfPresent(Bool.self, forKey: .sideShowsChat)) ?? true,
@@ -139,7 +146,7 @@ struct WorkspaceLayout: Codable, Equatable {
         switch raw {
         case "leftHalf": self.init()
         case "rightHalf": self.init(mainOnLeft: false)
-        case "leftThreeQuarters": self.init(split: .threeQuarters)
+        case "leftThreeQuarters": self.init(mainFraction: 0.75)
         default: return nil
         }
     }

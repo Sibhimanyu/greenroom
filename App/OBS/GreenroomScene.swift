@@ -541,6 +541,19 @@ enum GreenroomScene {
                 "parameterValue": directory.path
             ])
         }
+        // Fragmented MP4: the file is written as self-contained fragments,
+        // so a crash/power-cut mid-recording loses at most the last few
+        // seconds instead of the whole file (a non-fragmented mp4/mov with
+        // no trailer is unplayable). Plays everywhere a normal .mp4 does.
+        // "RecFormat2" is the profile key OBS 29+ uses for the recording
+        // container (both output modes).
+        for category in ["SimpleOutput", "AdvOut"] {
+            _ = try? await client.request("SetProfileParameter", data: [
+                "parameterCategory": category,
+                "parameterName": "RecFormat2",
+                "parameterValue": "fragmented_mp4"
+            ])
+        }
     }
 
     private static func positionBubble(client: OBSWebSocketClient, layout: BubbleLayout, canvasWidth: Int, canvasHeight: Int) async throws {

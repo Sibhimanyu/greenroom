@@ -56,6 +56,10 @@ targets:
         # Brand mark (App/Assets.xcassets) - regenerate the PNGs with the
         # vector script if the logo ever changes; see Branding/.
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        # Brand green (#5FA83C) as the global accent: pills, buttons,
+        # toggles, selection all carry the brand instead of system blue
+        # (design-review F1 - the app had no accent identity).
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
         # Camera + mic entitlements - Hardened Runtime silently blocks both
         # without them (black video in the built-in meeting client).
         CODE_SIGN_ENTITLEMENTS: App/App.entitlements

@@ -404,7 +404,11 @@ final class CoordinatorController: ObservableObject {
         s2sClientSecret = "" // loaded lazily via loadSecretsIfNeeded() - never at launch
         useBuiltInClient = defaults.object(forKey: "useBuiltInClient") == nil ? true : defaults.bool(forKey: "useBuiltInClient")
         userDisplayName = defaults.string(forKey: "userDisplayName") ?? NSFullUserName()
-        hideSelfView = (defaults.object(forKey: "hideSelfView") as? Bool) ?? true
+        // Default OFF (show self): the teacher's own tile belongs in the
+        // extended display's participant grid alongside the students
+        // (explicit request); the speaker tile stays clean regardless
+        // because spotlight-my-video and the thumbnail strip are disabled.
+        hideSelfView = (defaults.object(forKey: "hideSelfView") as? Bool) ?? false
         speakerTileShortcutEnabled = (defaults.object(forKey: "speakerTileShortcutEnabled") as? Bool) ?? true
         // didSet doesn't fire during init, and the SDK isn't up yet anyway
         // - sync just the stored preference; connect-time reads it.

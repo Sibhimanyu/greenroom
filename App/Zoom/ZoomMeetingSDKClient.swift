@@ -178,6 +178,13 @@ final class ZoomMeetingSDKClient: NSObject, ObservableObject {
         // renders backwards to the presenter mid-lesson. Off, the
         // self-view shows exactly what the class sees.
         ZoomSDK.shared().getSettingService()?.getVideoSetting()?.enableMirrorEffect(false)
+        // "Spotlight my video when I speak" OFF (persisted, asserted
+        // every connect): with it stuck on, the active-speaker view LOCKS
+        // ONTO YOUR OWN video whenever you talk - and a teacher talks
+        // most of the class, so the speaker tile showed the presenter
+        // instead of the students (reported live). Off, the speaker view
+        // follows whoever else is talking, Zoom's normal behavior.
+        ZoomSDK.shared().getSettingService()?.getVideoSetting()?.onSpotlightMyVideoWhenISpeaker(false)
         // PERSISTED setting, asserted off before every connect (same
         // never-trust doctrine as DualScreenMode below): when it sticks
         // on, the SDK fullscreens its meeting windows at join - and a

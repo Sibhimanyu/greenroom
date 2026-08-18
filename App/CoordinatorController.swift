@@ -1005,6 +1005,7 @@ final class CoordinatorController: ObservableObject {
                     }
                 }
                 demoteStrayMeetingWindows()
+                maintainPeopleViewPlacement(tick: waitedTicks)
                 // Cheap periodic re-assert (~20s): nothing - OBS-side
                 // edits included - can leave the webcam under the screen
                 // capture for long mid-session.
@@ -1014,6 +1015,31 @@ final class CoordinatorController: ObservableObject {
                 waitedTicks += 1
                 try? await Task.sleep(nanoseconds: 2_000_000_000)
             }
+        }
+    }
+
+    /// Placement is not one-shot: the SDK re-positions its windows on
+    /// meeting state changes, which intermittently dumped the placed
+    /// participant gallery back onto the MAIN display over the workspace
+    /// (reported live: "stuck on the main app window") - and the stray
+    /// guard deliberately ignores the tracked gallery, so nothing fixed
+    /// it. Every follow-loop tick: re-frame the gallery whenever it has
+    /// drifted off its target display, eject it from fullscreen, and if
+    /// its window vanished entirely (SDK recreated it), re-run the placer
+    /// every ~30s.
+    private func maintainPeopleViewPlacement(tick: Int) {
+        guard peopleViewWanted else { return }
+        guard let target = peopleViewTargetScreen() else { return }
+        if let gallery = peopleViewWindow {
+            if gallery.styleMask.contains(.fullScreen) {
+                gallery.toggleFullScreen(nil) // re-framed on a later tick
+            } else if gallery.frame != target.frame {
+                gallery.setFrame(target.frame, display: true)
+                gallery.orderFront(nil)
+                log("Participant grid drifted \u{2014} moved back to \u{201C}\(target.localizedName)\u{201D}.")
+            }
+        } else if tick > 0, tick % 15 == 0 {
+            placePeopleViewWindow() // window gone (SDK recreated it) - re-hunt
         }
     }
 

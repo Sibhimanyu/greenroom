@@ -425,7 +425,9 @@ final class CoordinatorController: ObservableObject {
         // existing setup keeps its layout without re-configuring.
         workspaceLayout = WorkspaceLayout.load(from: defaults)
         mainAppBundleID = defaults.string(forKey: "mainAppBundleID") ?? ChromeWindowManager.chromeBundleID
-        mainAppURL = defaults.string(forKey: "mainAppURL") ?? defaults.string(forKey: "chromeURL") ?? ""
+        // Fresh installs open the Greenroom site until the teacher sets
+        // their own page - a friendly first Start instead of a blank tab.
+        mainAppURL = defaults.string(forKey: "mainAppURL") ?? defaults.string(forKey: "chromeURL") ?? AppLinks.site
         // Defaults to ON for fresh installs (bool(forKey:) alone can't
         // distinguish "never set" from "explicitly off") - the one-button
         // session flow treats the main app window as part of the setup,

@@ -15,6 +15,9 @@ import Sparkle
 enum AppLinks {
     /// The public "how it works & why it's safe" transparency page.
     static let safety = URL(string: "https://sibhimanyu.github.io/greenroom/how-it-works.html")!
+    /// The product site - also the DEFAULT page the main-pane browser
+    /// opens on a fresh install, until the user sets their own URL.
+    static let site = "https://sibhimanyu.github.io/greenroom/index.html"
 }
 
 @main

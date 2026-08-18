@@ -148,11 +148,12 @@ final class ZoomMeetingSDKClient: NSObject, ObservableObject {
         let configuration = meetingService.getMeetingConfiguration()
         configuration.hideThumbnailVideoWindow = true
         configuration.hideMeetingInfoButtonOnVideo = true
-        // Without this, the active-speaker layout still shows YOU next to
-        // the speaker whenever your camera is on. Same switch as the Zoom
-        // client's "Hide Self View" (ZoomSDKSettingVideoController.h) -
-        // your video keeps sending, it's just not rendered locally.
-        ZoomSDK.shared().getSettingService()?.getVideoSetting()?.enableHideSelfView(true)
+        // Zoom's "Hide Self View" - a USER PREFERENCE, not hardcoded:
+        // hidden (the default) keeps the speaker tile and gallery to just
+        // the others; shown puts your tile among them like anyone else's.
+        // Either way your video keeps sending - this only affects local
+        // rendering (ZoomSDKSettingVideoController.h).
+        ZoomSDK.shared().getSettingService()?.getVideoSetting()?.enableHideSelfView(hideSelfViewPreference)
         // "Mirror my video" OFF (persisted setting, asserted every
         // connect): mirroring only affects the LOCAL self-view - others
         // always see the feed un-mirrored - and this feed is the OBS
@@ -169,6 +170,18 @@ final class ZoomMeetingSDKClient: NSObject, ObservableObject {
         // also ignore setFrame, so window parking silently failed too.
         ZoomSDK.shared().getSettingService()?.getGeneralSetting()?
             .enableMeetingSetting(false, settingCmd: MeetingSettingCmd_AutoFullScreenWhenJoinMeeting)
+    }
+
+    /// Whether the local self-view tile is hidden (Zoom's "Hide Self
+    /// View"). Synced from the coordinator's preference; read at connect
+    /// by suppressInteractiveJoinUI.
+    var hideSelfViewPreference = true
+
+    /// Applies the Hide Self View preference - works live mid-meeting
+    /// (it's a settings-service switch, not a join-time-only config).
+    func setHideSelfView(_ hide: Bool) {
+        hideSelfViewPreference = hide
+        ZoomSDK.shared().getSettingService()?.getVideoSetting()?.enableHideSelfView(hide)
     }
 
     /// Kicks BOTH meeting views (primary + dual-screen gallery) out of

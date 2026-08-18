@@ -194,6 +194,16 @@ final class CoordinatorController: ObservableObject {
     @Published var userDisplayName: String {
         didSet { defaults.set(userDisplayName, forKey: "userDisplayName") }
     }
+    /// Zoom's "Hide Self View" for the built-in client. ON (default): the
+    /// speaker tile and participant view show only the others. OFF: your
+    /// own tile appears among them like anyone else's. Local rendering
+    /// only - the class receives your video either way. Applies live.
+    @Published var hideSelfView: Bool {
+        didSet {
+            defaults.set(hideSelfView, forKey: "hideSelfView")
+            zoomChatClient.setHideSelfView(hideSelfView)
+        }
+    }
 
     // MARK: Defaults - persisted so Start reproduces the whole setup every time
 
@@ -283,6 +293,10 @@ final class CoordinatorController: ObservableObject {
         s2sClientSecret = "" // loaded lazily via loadSecretsIfNeeded() - never at launch
         useBuiltInClient = defaults.object(forKey: "useBuiltInClient") == nil ? true : defaults.bool(forKey: "useBuiltInClient")
         userDisplayName = defaults.string(forKey: "userDisplayName") ?? NSFullUserName()
+        hideSelfView = (defaults.object(forKey: "hideSelfView") as? Bool) ?? true
+        // didSet doesn't fire during init, and the SDK isn't up yet anyway
+        // - sync just the stored preference; connect-time reads it.
+        zoomChatClient.hideSelfViewPreference = hideSelfView
 
         // The chat window's lifetime is tied to the meeting's: when the SDK
         // reports the meeting over (host ended it, connection dropped, or
@@ -1416,6 +1430,7 @@ struct SettingsTransfer: Codable {
     var mainAppOnStart: Bool?
     var peopleViewOnStart: Bool?
     var peopleViewDisplayUUID: String?
+    var hideSelfView: Bool?
     var autoRecordOnStart: Bool?
     var keepOBSWarm: Bool?
     var meetingPresets: [MeetingPreset]?
@@ -1443,6 +1458,7 @@ extension CoordinatorController {
             mainAppOnStart: mainAppOnStart,
             peopleViewOnStart: peopleViewOnStart,
             peopleViewDisplayUUID: peopleViewDisplayUUID,
+            hideSelfView: hideSelfView,
             autoRecordOnStart: autoRecordOnStart,
             keepOBSWarm: keepOBSWarm,
             meetingPresets: meetingPresets,
@@ -1472,6 +1488,7 @@ extension CoordinatorController {
         if let value = transfer.mainAppOnStart ?? transfer.chromeOnStart { mainAppOnStart = value }
         if let value = transfer.peopleViewOnStart { peopleViewOnStart = value }
         if let value = transfer.peopleViewDisplayUUID { peopleViewDisplayUUID = value }
+        if let value = transfer.hideSelfView { hideSelfView = value }
         if let value = transfer.autoRecordOnStart { autoRecordOnStart = value }
         if let value = transfer.keepOBSWarm { keepOBSWarm = value }
         if let value = transfer.meetingPresets { meetingPresets = value }

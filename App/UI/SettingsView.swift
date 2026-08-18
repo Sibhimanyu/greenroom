@@ -293,6 +293,13 @@ private struct LayoutSettingsTab: View {
                 }
             }
 
+            Section("Meeting view") {
+                Toggle("Hide my own video tile (Zoom's \u{201C}Hide Self View\u{201D})", isOn: $coordinator.hideSelfView)
+                Text("On: the speaker tile and participant view show only the others. Off: your tile appears among them like anyone else's. The class receives your video either way \u{2014} this only changes what you see. Applies immediately, even mid-meeting.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
             Section("Second display") {
                 Toggle("Show the participant view on another display", isOn: $coordinator.peopleViewOnStart)
 

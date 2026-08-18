@@ -263,41 +263,56 @@ final class CoordinatorController: ObservableObject {
             zoomChatClient.setHideSelfView(hideSelfView)
         }
     }
-    /// Enables the \u{2303}\u{2325}\u{2318}Z speaker-tile quick-hide
-    /// shortcut (the hotkey action checks this before doing anything).
+    /// The \u{2303}\u{2325}\u{2318}Z quick-hide MODE. Off: the normal
+    /// tile-above-chat layout persists and the shortcut is inert. On:
+    /// sessions START with the speaker tile hidden and the chat owning
+    /// the full side column; the shortcut shows the tile (chat resizes
+    /// below it) and hides it again (chat refills the column). Flipping
+    /// the setting mid-session applies immediately.
     @Published var speakerTileShortcutEnabled: Bool {
-        didSet { defaults.set(speakerTileShortcutEnabled, forKey: "speakerTileShortcutEnabled") }
+        didSet {
+            defaults.set(speakerTileShortcutEnabled, forKey: "speakerTileShortcutEnabled")
+            guard ChatWindowController.isOpen else { return }
+            speakerTileQuickHidden = speakerTileShortcutEnabled
+            parkBuiltInMeetingWindow() // restart the loop to assert the new default
+        }
     }
 
-    /// Quick-hide engaged: the tile is off-screen (or summoned as a
-    /// floating overlay) and the chat owns the FULL side column. Reset by
-    /// Snap Windows Back and at each session's parking loop start.
+    /// Quick-hide state: the tile is off-screen and the chat owns the
+    /// FULL side column. Defaults to the setting at each session start
+    /// and after Snap Windows Back; \u{2303}\u{2325}\u{2318}Z flips it.
     private var speakerTileQuickHidden = false
 
-    /// \u{2303}\u{2325}\u{2318}Z: first press hides the parked speaker
-    /// tile and gives the chat its vertical space; the next press summons
-    /// the tile FLOATING IN FRONT of everything at its slot (chat stays
-    /// full-height underneath); pressing again hides it again. Snap
-    /// Windows Back (\u{2303}\u{2325}\u{2318}S) restores the normal
-    /// tile-above-chat layout.
+    /// \u{2303}\u{2325}\u{2318}Z: shows the speaker tile in its slot
+    /// (the chat resizes to sit below it) or hides it again (the chat
+    /// takes the full column back). Only active when the quick-hide mode
+    /// is enabled in Settings.
     func toggleSpeakerTile() {
         guard speakerTileShortcutEnabled else { return }
         guard let window = builtInMeetingWindow, ChatWindowController.isOpen else {
             log("No speaker tile to toggle \u{2014} the shortcut works during a session with the Zoom tile enabled.")
             return
         }
-        if window.isVisible {
+        if speakerTileQuickHidden {
+            speakerTileQuickHidden = false
+            window.level = .normal
+            if let slot = ChatWindowController.zoomSlotNSFrame(for: workspaceLayout) {
+                window.setFrame(slot, display: true)
+                // Chat shrinks below the tile immediately (the follow
+                // loop would also do this, but a beat later).
+                if let screen = NSScreen.main {
+                    let ax = CGRect(x: slot.origin.x, y: screen.frame.height - slot.maxY,
+                                    width: slot.width, height: slot.height)
+                    ChatWindowController.adjustBelowZoom(actualZoomFrameAX: ax, layout: workspaceLayout)
+                }
+            }
+            window.orderFrontRegardless()
+            log("Speaker tile shown \u{2014} \u{2303}\u{2325}\u{2318}Z hides it again.")
+        } else {
             speakerTileQuickHidden = true
             window.orderOut(nil)
             ChatWindowController.fillSideColumn(layout: workspaceLayout)
-            log("Speaker tile hidden \u{2014} chat has the full column. \u{2303}\u{2325}\u{2318}Z floats it back.")
-        } else {
-            if let slot = ChatWindowController.zoomSlotNSFrame(for: workspaceLayout) {
-                window.setFrame(slot, display: true)
-            }
-            window.level = .floating
-            window.orderFrontRegardless()
-            log("Speaker tile floating in front \u{2014} \u{2303}\u{2325}\u{2318}Z hides it again.")
+            log("Speaker tile hidden \u{2014} chat has the full column. \u{2303}\u{2325}\u{2318}Z shows it.")
         }
     }
 
@@ -896,9 +911,13 @@ final class CoordinatorController: ObservableObject {
         layoutFollowTask?.cancel()
         layoutFollowTask = Task {
             var parked = false
+            var quickHideAnnounced = false
             var lastFrame = CGRect.null
             demotedStrayWindowNumbers.removeAll() // fresh session, fresh logs
-            speakerTileQuickHidden = false // parking = the normal layout
+            // The quick-hide MODE's default state: enabled means sessions
+            // begin with the tile hidden and the chat full-height;
+            // \u{2303}\u{2325}\u{2318}Z brings the speaker up on demand.
+            speakerTileQuickHidden = speakerTileShortcutEnabled
             // SDK-level first: both meeting views out of fullscreen. A
             // window in a fullscreen Space ignores setFrame, so nothing
             // below works until this has taken effect.
@@ -908,10 +927,7 @@ final class CoordinatorController: ObservableObject {
                 // The stray guard below must run even with the Zoom tile
                 // toggled off - that's when the primary window has no slot
                 // and is most likely to sit fullscreen over the capture.
-                // Quick-hidden (\u{2303}\u{2325}\u{2318}Z) skips parking
-                // and the chat-follow too: the chat owns the full column
-                // and the tile is deliberately hidden or floating.
-                if workspaceLayout.sideShowsZoomTile, !speakerTileQuickHidden,
+                if workspaceLayout.sideShowsZoomTile,
                    let window = builtInMeetingWindow ?? tileWindowCandidate(waitedTicks: waitedTicks) {
                     if window.styleMask.contains(.fullScreen) {
                         // Still fullscreen (the exit animates out over ~1s,
@@ -919,7 +935,28 @@ final class CoordinatorController: ObservableObject {
                         // later tick once it can actually be framed.
                         window.toggleFullScreen(nil)
                         parked = false
+                    } else if speakerTileQuickHidden {
+                        // Quick-hide mode: the tile stays identified (so
+                        // \u{2303}\u{2325}\u{2318}Z can summon it) but
+                        // HIDDEN, with the chat owning the full column.
+                        // Re-asserts every tick, so the SDK re-showing
+                        // the window (state changes do that) gets undone.
+                        if builtInMeetingWindow == nil {
+                            builtInMeetingWindow = window
+                            if !peopleViewWanted { zoomChatClient.simplifyMeetingView() }
+                        }
+                        if window.isVisible {
+                            window.orderOut(nil)
+                            ChatWindowController.fillSideColumn(layout: workspaceLayout)
+                            if !quickHideAnnounced {
+                                quickHideAnnounced = true
+                                log("Speaker tile starts hidden (quick-hide mode) \u{2014} chat has the full column; \u{2303}\u{2325}\u{2318}Z shows the speaker.")
+                            }
+                        }
+                        parked = false
                     } else if !parked, let slot = ChatWindowController.zoomSlotNSFrame(for: workspaceLayout) {
+                        window.level = .normal // clear any stale floating level
+                        if !window.isVisible { window.orderFront(nil) } // e.g. mode just turned off
                         window.setFrame(slot, display: true)
                         // Single-window sessions: strip the tile down to a
                         // plain current-speaker view (needs the window to
@@ -939,7 +976,10 @@ final class CoordinatorController: ObservableObject {
                         parked = true
                     }
                     let frame = window.frame
-                    if frame != lastFrame, let screen = NSScreen.main {
+                    // Chat-follow only when the tile is actually shown -
+                    // in quick-hide the chat owns the full column and must
+                    // not be re-snapped under a hidden tile's frame.
+                    if !speakerTileQuickHidden, frame != lastFrame, let screen = NSScreen.main {
                         lastFrame = frame
                         let axFrame = CGRect(x: frame.origin.x,
                                              y: screen.frame.height - frame.maxY,
@@ -979,13 +1019,11 @@ final class CoordinatorController: ObservableObject {
     /// plain NSWindow) or the native Zoom app's (Accessibility API) - and
     /// the follow loops those restart re-align the chat automatically.
     func snapWindowsBack() {
-        // Undo the speaker-tile quick-hide: back to the normal
-        // tile-above-chat layout before re-tiling everything.
-        speakerTileQuickHidden = false
-        if let tile = builtInMeetingWindow {
-            tile.level = .normal
-            tile.orderFront(nil)
-        }
+        // Restore the quick-hide mode's DEFAULT state (hidden when the
+        // mode is on, normal tile layout when off) - the parking loop
+        // restarted below asserts it.
+        speakerTileQuickHidden = speakerTileShortcutEnabled
+        builtInMeetingWindow?.level = .normal
         Task {
             if let error = await MainPaneManager.repositionFrontWindow(bundleID: mainAppBundleID, layout: workspaceLayout) {
                 log(error)

@@ -299,8 +299,8 @@ private struct LayoutSettingsTab: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
 
-                Toggle("\u{2303}\u{2325}\u{2318}Z quick-hides the speaker tile", isOn: $coordinator.speakerTileShortcutEnabled)
-                Text("First press hides the tile and gives the chat its full column height. Press again to float the speaker in front of everything; once more hides it again. Snap Windows Back (\u{2303}\u{2325}\u{2318}S) restores the normal layout. Works system-wide, even while another app is focused.")
+                Toggle("Quick-hide mode: speaker tile hidden by default (\u{2303}\u{2325}\u{2318}Z shows it)", isOn: $coordinator.speakerTileShortcutEnabled)
+                Text("On: sessions start with the speaker hidden and the chat using the full column height \u{2014} press \u{2303}\u{2325}\u{2318}Z to show the speaker (the chat shrinks below it), and again to hide it. Off: the normal speaker-above-chat layout stays put and the shortcut does nothing. Applies immediately, works system-wide.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

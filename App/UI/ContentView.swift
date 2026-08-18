@@ -111,7 +111,10 @@ struct ContentView: View {
             Spacer(minLength: 0)
         }
         .padding(20)
-        .frame(minWidth: 580, minHeight: 460)
+        // minHeight sized to the collapsed-disclosures content: 460 left
+        // the bottom ~40% of the window as dead space (design-review F4).
+        // Expanding a disclosure grows the window's content naturally.
+        .frame(minWidth: 580, minHeight: 360)
         .sheet(isPresented: $coordinator.showOnboarding) {
             OnboardingView()
                 .environmentObject(coordinator)

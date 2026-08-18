@@ -32,3 +32,4 @@ dist/
 
 # Byte-cache from scripts/dmg-background.py
 __pycache__/
+.gstack/

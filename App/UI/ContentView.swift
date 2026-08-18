@@ -142,7 +142,7 @@ struct ContentView: View {
             Image("LogoMark")
                 .resizable()
                 .scaledToFit()
-                .frame(height: 46)
+                .frame(height: 64)
             VStack(alignment: .leading, spacing: 2) {
                 // Two-tone wordmark, as in the logo: "Green" bright,
                 // "room" in the label color so it works on both themes.

@@ -223,7 +223,7 @@ enum ChatWindowController {
         if let window {
             targetWindow = window
         } else {
-            let hosting = NSHostingController(rootView: ChatWindowView(chat: chat))
+            let hosting = NSHostingController(rootView: ChatWindowView(chat: chat).tint(Brand.green))
             let newWindow = NSWindow(contentViewController: hosting)
             newWindow.title = "Meeting Chat"
             newWindow.setContentSize(NSSize(width: 340, height: 460))

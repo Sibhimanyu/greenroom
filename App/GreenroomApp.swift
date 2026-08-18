@@ -20,6 +20,15 @@ enum AppLinks {
     static let site = "https://sibhimanyu.github.io/greenroom/index.html"
 }
 
+/// Brand tokens applied EXPLICITLY at every scene root. The asset-catalog
+/// AccentColor + NSAccentColorName cover most controls, but AppKit lets a
+/// user-chosen System Settings accent override the app's - which left
+/// borderedProminent buttons blue while everything else went green
+/// (reported live, twice). An explicit .tint outranks that negotiation.
+enum Brand {
+    static let green = Color("AccentColor")
+}
+
 @main
 struct GreenroomApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
@@ -42,6 +51,7 @@ struct GreenroomApp: App {
         Window("Greenroom", id: "main") {
             ContentView()
                 .environmentObject(coordinator)
+                .tint(Brand.green)
         }
         .commands {
             CommandGroup(after: .appInfo) {
@@ -54,6 +64,7 @@ struct GreenroomApp: App {
         Settings {
             SettingsView()
                 .environmentObject(coordinator)
+                .tint(Brand.green)
         }
 
         // Text label rather than an image: a glyph that fails to render
@@ -66,6 +77,7 @@ struct GreenroomApp: App {
         MenuBarExtra {
             MenuBarView(checkForUpdates: { updaterController.checkForUpdates(nil) })
                 .environmentObject(coordinator)
+                .tint(Brand.green)
         } label: {
             if coordinator.isRecording {
                 HStack(spacing: 3) {

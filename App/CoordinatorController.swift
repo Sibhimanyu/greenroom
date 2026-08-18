@@ -47,23 +47,17 @@ final class CoordinatorController: ObservableObject {
     ///     with capture live crashed it in its own shutdown - the
     ///     "OBS quit unexpectedly" dialog).
     func windDownForQuit() async {
-        // A warm-but-unconnected OBS may still have a recording running
-        // (e.g. started in OBS directly). Quitting it mid-write crashed
-        // OBS in its own shutdown (verified: one crash report per such
-        // quit, though the file itself survived). One quick bounded
-        // connect attempt closes that path; failure just falls through
-        // to the plain quit.
-        if !client.isConnected, processManager.isRunning {
-            _ = try? await withThrowingTaskGroup(of: Void.self) { group in
-                group.addTask { [client] in
-                    try await client.connect(port: OBSProcessManager.websocketPort,
-                                             password: OBSProcessManager.websocketPassword)
-                }
-                group.addTask { try await Task.sleep(nanoseconds: 2_000_000_000) }
-                try await group.next()
-                group.cancelAll()
-            }
-        }
+        // Perceived-instant quit: our windows vanish NOW; the teardown
+        // below finishes headless. Cmd-Q sitting on a visible frozen
+        // window for 4-10s read as a hang (reported live).
+        for window in NSApp.windows { window.orderOut(nil) }
+
+        // NOTE: the old "connect to a warm-but-unconnected OBS to check
+        // for a recording" step is gone. It existed for recordings
+        // started in OBS directly (never through a session), could block
+        // several seconds when OBS was half-started, and fragmented MP4
+        // (RecFormat2) made it redundant: even a hard-killed recording
+        // now loses at most the last few seconds, not the file.
         if client.isConnected {
             // OBS is the authority on whether a recording is live - not
             // just our flag - so even a recording started in OBS directly

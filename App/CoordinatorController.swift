@@ -219,10 +219,18 @@ final class CoordinatorController: ObservableObject {
         didSet { defaults.set(mainAppOnStart, forKey: "mainAppOnStart") }
     }
     /// People view: on Start, the built-in client's dual-screen gallery
-    /// window (every participant) goes full-screen onto a second display
-    /// - the classroom projector. No-op with a single display.
+    /// window (every participant) goes full-screen onto a chosen display
+    /// - your reference monitor, not the class mirror. No-op with a
+    /// single display.
     @Published var peopleViewOnStart: Bool {
         didSet { defaults.set(peopleViewOnStart, forKey: "peopleViewOnStart") }
+    }
+    /// Which display the participant gallery opens on, by stable CGDisplay
+    /// UUID. Empty = Automatic (the first non-main display). Persisted and
+    /// carried in the transfer file so a saved setup targets the same
+    /// physical monitor.
+    @Published var peopleViewDisplayUUID: String {
+        didSet { defaults.set(peopleViewDisplayUUID, forKey: "peopleViewDisplayUUID") }
     }
     /// Recording starts by itself once the meeting is up (the Record
     /// button and \u{2303}\u{2325}\u{2318}R stay available as the manual
@@ -262,6 +270,7 @@ final class CoordinatorController: ObservableObject {
             ?? (defaults.object(forKey: "chromeOnStart") as? Bool)
             ?? true
         peopleViewOnStart = defaults.bool(forKey: "peopleViewOnStart")
+        peopleViewDisplayUUID = defaults.string(forKey: "peopleViewDisplayUUID") ?? ""
         autoRecordOnStart = defaults.bool(forKey: "autoRecordOnStart")
         keepOBSWarm = (defaults.object(forKey: "keepOBSWarm") as? Bool) ?? true
         meetingMode = MeetingMode(rawValue: defaults.string(forKey: "meetingMode") ?? "") ?? .create
@@ -1064,23 +1073,36 @@ final class CoordinatorController: ObservableObject {
     /// the side-column tile. Weak: the SDK owns its windows.
     private weak var builtInMeetingWindow: NSWindow?
 
-    /// Whether this session should put the gallery on a second display:
-    /// the toggle is on AND a second display actually exists right now.
+    /// The display the participant gallery should open on: the chosen one
+    /// if it's connected, otherwise the first non-main display. nil when
+    /// there's nowhere but the main screen to put it (the main screen -
+    /// and any class mirror of it - is already showing the tiled
+    /// workspace, so the gallery must not land there).
+    private func peopleViewTargetScreen() -> NSScreen? {
+        if !peopleViewDisplayUUID.isEmpty, let chosen = DisplayResolver.screen(forUUID: peopleViewDisplayUUID) {
+            return chosen
+        }
+        return DisplayResolver.firstSecondaryScreen()
+    }
+
+    /// Whether this session should put the gallery on another display:
+    /// the toggle is on AND a valid target display exists right now.
     private var peopleViewWanted: Bool {
-        peopleViewOnStart && NSScreen.screens.count > 1
+        peopleViewOnStart && peopleViewTargetScreen() != nil
     }
 
     /// Sends the built-in client's dual-screen gallery window full-screen
-    /// onto the external display. Polls for it because the SDK creates it
-    /// a beat after the primary meeting window. The primary is identified
-    /// by `builtInMeetingWindow` (set when the tile parks); the gallery is
-    /// any other SDK meeting window.
+    /// onto the chosen (or default secondary) display. Polls for it
+    /// because the SDK creates it a beat after the primary meeting window.
+    /// The primary is identified by `builtInMeetingWindow` (set when the
+    /// tile parks); the gallery is any other SDK meeting window.
     private func placePeopleViewWindow() {
         guard peopleViewOnStart else { return }
-        guard let external = NSScreen.screens.first(where: { $0 != NSScreen.screens.first }) else {
-            log("People view skipped \u{2014} no second display connected.")
+        guard let target = peopleViewTargetScreen() else {
+            log("People view skipped \u{2014} no second display to put it on. Connect your reference display, or pick it in Settings (\u{2318},) \u{2192} Layout.")
             return
         }
+        let onChosen = !peopleViewDisplayUUID.isEmpty && DisplayResolver.screen(forUUID: peopleViewDisplayUUID) != nil
         peopleViewTask?.cancel()
         peopleViewTask = Task {
             for _ in 0..<30 {
@@ -1094,9 +1116,11 @@ final class CoordinatorController: ObservableObject {
                     ? candidates.first
                     : (candidates.count > 1 ? candidates.last : nil)
                 if let gallery {
-                    gallery.setFrame(external.frame, display: true)
+                    gallery.setFrame(target.frame, display: true)
                     gallery.orderFront(nil)
-                    log("People view is on the second display.")
+                    log(onChosen
+                        ? "People view is on \u{201C}\(target.localizedName)\u{201D}."
+                        : "People view is on \(target.localizedName) (the secondary display). Pick a specific one in Settings \u{2192} Layout if this isn't your reference monitor.")
                     return
                 }
                 try? await Task.sleep(nanoseconds: 1_000_000_000)
@@ -1312,6 +1336,7 @@ struct SettingsTransfer: Codable {
     var mainAppURL: String?
     var mainAppOnStart: Bool?
     var peopleViewOnStart: Bool?
+    var peopleViewDisplayUUID: String?
     var autoRecordOnStart: Bool?
     var keepOBSWarm: Bool?
     var meetingPresets: [MeetingPreset]?
@@ -1338,6 +1363,7 @@ extension CoordinatorController {
             mainAppURL: mainAppURL,
             mainAppOnStart: mainAppOnStart,
             peopleViewOnStart: peopleViewOnStart,
+            peopleViewDisplayUUID: peopleViewDisplayUUID,
             autoRecordOnStart: autoRecordOnStart,
             keepOBSWarm: keepOBSWarm,
             meetingPresets: meetingPresets,
@@ -1366,6 +1392,7 @@ extension CoordinatorController {
         if let value = transfer.mainAppURL ?? transfer.chromeURL { mainAppURL = value }
         if let value = transfer.mainAppOnStart ?? transfer.chromeOnStart { mainAppOnStart = value }
         if let value = transfer.peopleViewOnStart { peopleViewOnStart = value }
+        if let value = transfer.peopleViewDisplayUUID { peopleViewDisplayUUID = value }
         if let value = transfer.autoRecordOnStart { autoRecordOnStart = value }
         if let value = transfer.keepOBSWarm { keepOBSWarm = value }
         if let value = transfer.meetingPresets { meetingPresets = value }

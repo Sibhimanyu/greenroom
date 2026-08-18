@@ -231,6 +231,7 @@ struct WebcamShapePreview: View {
 private struct LayoutSettingsTab: View {
     @EnvironmentObject private var coordinator: CoordinatorController
     @State private var apps: [AppInfo] = []
+    @State private var displays: [DisplayInfo] = DisplayResolver.connectedDisplays()
     @State private var hasAccessibilityPermission = AppWindowManager.hasAccessibilityPermission
 
     // AXIsProcessTrusted() has no change notification, so poll it while
@@ -293,12 +294,32 @@ private struct LayoutSettingsTab: View {
             }
 
             Section("Second display") {
-                Toggle("People view on the second display", isOn: $coordinator.peopleViewOnStart)
-                Text(NSScreen.screens.count > 1
-                     ? "On Start, a full-screen view of every participant opens on the second display \u{2014} the classroom view. Works with the built-in meeting client."
-                     : "No second display is connected right now \u{2014} this takes effect whenever one is. Works with the built-in meeting client.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                Toggle("Show the participant view on another display", isOn: $coordinator.peopleViewOnStart)
+
+                if coordinator.peopleViewOnStart {
+                    Picker("Participant-view display", selection: $coordinator.peopleViewDisplayUUID) {
+                        Text("Automatic (a non-main display)").tag("")
+                        ForEach(displays) { display in
+                            Text(display.label).tag(display.id)
+                        }
+                        // Keep a saved-but-disconnected choice visible/valid.
+                        if !coordinator.peopleViewDisplayUUID.isEmpty,
+                           !displays.contains(where: { $0.id == coordinator.peopleViewDisplayUUID }) {
+                            Text("Saved display (not connected)").tag(coordinator.peopleViewDisplayUUID)
+                        }
+                    }
+
+                    Text(displayHelp)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                } else {
+                    Text("On Start, a full-screen view of every participant opens on another display \u{2014} your reference monitor. Your tiled workspace, and any display mirroring it (e.g. a class projector), stay on your main screen. Works with the built-in meeting client.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: NSApplication.didChangeScreenParametersNotification)) { _ in
+                displays = DisplayResolver.connectedDisplays()
             }
 
             Toggle("Open the main app automatically on Start", isOn: $coordinator.mainAppOnStart)
@@ -308,10 +329,22 @@ private struct LayoutSettingsTab: View {
                 .foregroundStyle(.secondary)
         }
         .formStyle(.grouped)
-        .onAppear { apps = pickerApps() }
+        .onAppear {
+            apps = pickerApps()
+            displays = DisplayResolver.connectedDisplays()
+        }
         .onReceive(permissionTick) { _ in
             hasAccessibilityPermission = AppWindowManager.hasAccessibilityPermission
         }
+    }
+
+    /// Caption under the participant-view display picker, adapting to how
+    /// many displays are actually connected.
+    private var displayHelp: String {
+        if displays.count <= 1 {
+            return "Only your main display is connected right now \u{2014} plug in your reference display and it will appear here. Mirrored displays show as their main and aren't listed separately, so pick your separate, extended monitor."
+        }
+        return "Pick your reference monitor. Mirrored displays (e.g. a class projector matching your main screen) show as their main and aren't listed separately \u{2014} choose the separate, extended display. \u{201C}Automatic\u{201D} uses the first non-main display."
     }
 
     /// Browsers are driven through the Chromium AppleScript dictionary

@@ -303,9 +303,11 @@ struct ContentView: View {
         .font(.callout)
     }
 
+    /// Collapsed by default, like Manual controls: the log is diagnostic
+    /// detail, not something to read every session - open it when
+    /// something needs explaining.
     private var statusSection: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text("Status").font(.headline)
+        DisclosureGroup("Status") {
             ScrollView {
                 VStack(alignment: .leading, spacing: 4) {
                     ForEach(Array(coordinator.statusLines.enumerated()), id: \.offset) { _, line in
@@ -314,6 +316,9 @@ struct ContentView: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
+            .frame(maxHeight: 180)
+            .padding(.top, 6)
         }
+        .font(.callout)
     }
 }

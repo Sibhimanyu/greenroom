@@ -53,6 +53,7 @@ struct GreenroomApp: App {
                 .environmentObject(coordinator)
                 .tint(Brand.green)
         }
+        .defaultSize(width: 620, height: 400)
         .commands {
             CommandGroup(after: .appInfo) {
                 Button("Check for Updates\u{2026}") {

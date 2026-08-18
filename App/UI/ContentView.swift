@@ -111,6 +111,16 @@ struct ContentView: View {
         // the bottom ~40% of the window as dead space (design-review F4).
         // Expanding a disclosure grows the window's content naturally.
         .frame(minWidth: 580, minHeight: 360)
+        // The window OPENS at the preferred size every time, regardless
+        // of the size it was closed at (explicit request) - SwiftUI
+        // persists scene geometry across launches and defaultSize only
+        // covers the first-ever open, so the size is asserted on appear.
+        .onAppear {
+            DispatchQueue.main.async {
+                NSApp.windows.first { $0.title == "Greenroom" }?
+                    .setContentSize(NSSize(width: 620, height: 400))
+            }
+        }
         .sheet(isPresented: $coordinator.showOnboarding) {
             OnboardingView()
                 .environmentObject(coordinator)

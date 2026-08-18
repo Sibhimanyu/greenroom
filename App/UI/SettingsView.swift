@@ -68,7 +68,7 @@ private struct WebcamSettingsTab: View {
                             }
                             .padding(.horizontal, 7)
                             .padding(.vertical, 3)
-                            .background(.black.opacity(0.55), in: Capsule())
+                            .background(.black.opacity(0.78), in: Capsule()) // opaque enough over any video frame
                             .foregroundStyle(.white)
                             .padding(6)
                         }
@@ -471,6 +471,20 @@ private struct LayoutSchematicView: View {
                                 NSCursor.arrow.set()
                             }
                     )
+                    // Keyboard/VoiceOver path for the mouse-only drag
+                    // (Codex design audit #4).
+                    .accessibilityElement()
+                    .accessibilityLabel("Main pane width")
+                    .accessibilityValue("\(Int((layout.clampedMainFraction * 100).rounded())) percent")
+                    .accessibilityAdjustableAction { direction in
+                        switch direction {
+                        case .increment:
+                            layout.mainFraction = min(layout.clampedMainFraction + 0.05, WorkspaceLayout.maxMainFraction)
+                        case .decrement:
+                            layout.mainFraction = max(layout.clampedMainFraction - 0.05, WorkspaceLayout.minMainFraction)
+                        @unknown default: break
+                        }
+                    }
 
                 // Horizontal divider: drag to balance Zoom tile vs chat.
                 if layout.sideShowsZoomTile && layout.sideShowsChat {
@@ -495,6 +509,16 @@ private struct LayoutSchematicView: View {
                                     NSCursor.arrow.set()
                                 }
                         )
+                        .accessibilityElement()
+                        .accessibilityLabel("Zoom tile height")
+                        .accessibilityValue("\(Int((layout.effectiveZoomSlotRatio * 100).rounded())) percent")
+                        .accessibilityAdjustableAction { direction in
+                            switch direction {
+                            case .increment: layout.zoomSlotRatio = min(layout.zoomSlotRatio + 0.05, 0.85)
+                            case .decrement: layout.zoomSlotRatio = max(layout.zoomSlotRatio - 0.05, 0.15)
+                            @unknown default: break
+                            }
+                        }
                 }
             }
             .coordinateSpace(name: "schematic")
@@ -626,11 +650,22 @@ private struct StartMeetingSettingsTab: View {
 private struct TransferSettingsTab: View {
     @EnvironmentObject private var coordinator: CoordinatorController
     @State private var statusMessage = ""
+    @State private var confirmingExport = false
 
     var body: some View {
         Form {
             HStack {
-                Button("Export Settings\u{2026}") { exportSettings() }
+                // Confirmation before writing secrets in plaintext - the
+                // risk shouldn't live only in small caption text below
+                // (Codex design audit #6).
+                Button("Export Settings\u{2026}") { confirmingExport = true }
+                    .confirmationDialog("This file will contain your Zoom secrets in plain text.",
+                                        isPresented: $confirmingExport, titleVisibility: .visible) {
+                        Button("Export Plaintext File") { exportSettings() }
+                        Button("Cancel", role: .cancel) {}
+                    } message: {
+                        Text("Hand it over directly (e.g. AirDrop) and delete it after importing.")
+                    }
                 Button("Import Settings\u{2026}") { importSettings() }
             }
 

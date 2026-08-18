@@ -21,13 +21,9 @@ struct ContentView: View {
     /// Start is for starting: disabled while a start is in flight AND
     /// while the session is live (Stop first, then Start - pressing Start
     /// mid-session used to happily build a second meeting on top).
-    private var startDisabled: Bool {
-        if coordinator.isRunning || coordinator.virtualCamActive || coordinator.isStopping { return true }
-        switch coordinator.meetingMode {
-        case .create: return coordinator.s2sAccountID.isEmpty || coordinator.s2sClientID.isEmpty
-        case .join: return coordinator.meetingNumberDigits.isEmpty
-        }
-    }
+    /// Centralized on the coordinator so the menu bar shares the SAME
+    /// rules (it used to skip the credential/ID checks).
+    private var startDisabled: Bool { coordinator.startActionDisabled }
 
     /// Says what it does: which meeting action Start performs depends on
     /// the mode picker right above it.
@@ -197,13 +193,22 @@ struct ContentView: View {
                 // fields get room to breathe, the fill-from sources sit
                 // together beneath them.
                 VStack(alignment: .leading, spacing: 8) {
-                    HStack(spacing: 8) {
-                        TextField("Meeting ID", text: $coordinator.meetingNumber)
-                            .textFieldStyle(.roundedBorder)
-                            .frame(minWidth: 170)
-                        TextField("Passcode (optional)", text: $coordinator.meetingPassword)
-                            .textFieldStyle(.roundedBorder)
-                            .frame(minWidth: 130)
+                    // Visible labels, not placeholder-as-label: once
+                    // filled, two bare fields were indistinguishable
+                    // (Codex design audit #2).
+                    HStack(alignment: .top, spacing: 8) {
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text("Meeting ID").font(.caption).foregroundStyle(.secondary)
+                            TextField("", text: $coordinator.meetingNumber, prompt: Text("e.g. 465 230 8563"))
+                                .textFieldStyle(.roundedBorder)
+                                .frame(minWidth: 170)
+                        }
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text("Passcode").font(.caption).foregroundStyle(.secondary)
+                            TextField("", text: $coordinator.meetingPassword, prompt: Text("optional"))
+                                .textFieldStyle(.roundedBorder)
+                                .frame(minWidth: 130)
+                        }
                     }
                     HStack(spacing: 8) {
                         presetsMenu

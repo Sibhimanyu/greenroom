@@ -31,7 +31,7 @@ struct MenuBarView: View {
             coordinator.start()
         }
         .keyboardShortcut("g", modifiers: [.control, .option, .command])
-        .disabled(coordinator.isRunning || coordinator.virtualCamActive || coordinator.isStopping)
+        .disabled(coordinator.startActionDisabled) // same gating as the main window's Start
 
         Button(coordinator.isStopping ? "Ending\u{2026}" : "End Session") {
             coordinator.confirmAndStop()
@@ -52,7 +52,7 @@ struct MenuBarView: View {
         }
         .keyboardShortcut("s", modifiers: [.control, .option, .command])
 
-        Button("Hide/Float Speaker Tile") {
+        Button(coordinator.speakerTileQuickHidden ? "Show Speaker Tile" : "Hide Speaker Tile") {
             coordinator.toggleSpeakerTile()
         }
         .keyboardShortcut("z", modifiers: [.control, .option, .command])

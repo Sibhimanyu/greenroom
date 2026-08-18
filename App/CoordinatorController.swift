@@ -293,7 +293,9 @@ final class CoordinatorController: ObservableObject {
     /// Quick-hide state: the tile is off-screen and the chat owns the
     /// FULL side column. Defaults to the setting at each session start
     /// and after Snap Windows Back; \u{2303}\u{2325}\u{2318}Z flips it.
-    private var speakerTileQuickHidden = false
+    /// Published (read-only) so the menu bar can label its toggle with
+    /// the ACTUAL next action ("Show/Hide Speaker Tile").
+    @Published private(set) var speakerTileQuickHidden = false
 
     /// \u{2303}\u{2325}\u{2318}Z: shows the speaker tile in its slot
     /// (the chat resizes to sit below it) or hides it again (the chat
@@ -1096,6 +1098,19 @@ final class CoordinatorController: ObservableObject {
         guard peopleViewWanted else { return candidates.first }
         if candidates.count >= 2 { return candidates.last }
         return waitedTicks >= 10 ? candidates.first : nil
+    }
+
+    /// Single source of truth for whether the Start action can run. The
+    /// main window and menu bar previously duplicated PARTIAL versions of
+    /// this - the menu bar skipped the credential/meeting-ID checks, so
+    /// "Start Meeting" was clickable with no credentials and "Join
+    /// Meeting" with no meeting ID (Codex design audit #1).
+    var startActionDisabled: Bool {
+        if isRunning || virtualCamActive || isStopping { return true }
+        switch meetingMode {
+        case .create: return s2sAccountID.isEmpty || s2sClientID.isEmpty
+        case .join: return meetingNumberDigits.isEmpty
+        }
     }
 
     /// Confirmation gate in front of stop() for every user-facing trigger

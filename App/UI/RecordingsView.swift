@@ -21,7 +21,9 @@ struct RecordingsView: View {
         var id: URL { url }
 
         var title: String {
-            date.formatted(.dateTime.weekday(.abbreviated).day().month(.abbreviated).hour().minute())
+            // Seconds included: two takes in the same minute were
+            // indistinguishable (Codex design audit #14).
+            date.formatted(.dateTime.weekday(.abbreviated).day().month(.abbreviated).hour().minute().second())
         }
         var sizeLabel: String {
             ByteCountFormatter.string(fromByteCount: sizeBytes, countStyle: .file)
@@ -31,6 +33,7 @@ struct RecordingsView: View {
     @State private var recordings: [Recording] = []
     @State private var selection: Recording?
     @State private var player: AVPlayer?
+    @State private var trashError: String?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -49,6 +52,13 @@ struct RecordingsView: View {
                     .keyboardShortcut(.defaultAction)
             }
             .padding(12)
+            .alert("Couldn't move the recording to the Trash",
+                   isPresented: Binding(get: { trashError != nil },
+                                        set: { if !$0 { trashError = nil } })) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text(trashError ?? "")
+            }
 
             Divider()
 
@@ -152,7 +162,13 @@ struct RecordingsView: View {
             player = nil
             selection = nil
         }
-        try? FileManager.default.trashItem(at: recording.url, resultingItemURL: nil)
+        // Never silent: a failed trash looked identical to success
+        // (Codex design audit #15).
+        do {
+            try FileManager.default.trashItem(at: recording.url, resultingItemURL: nil)
+        } catch {
+            trashError = error.localizedDescription
+        }
         reload()
     }
 }

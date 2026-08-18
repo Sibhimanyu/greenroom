@@ -18,6 +18,8 @@ struct OnboardingView: View {
     @Environment(\.openSettings) private var openSettings
     @State private var step = 0
     @State private var refreshTick = 0 // bumped by a timer so detected state stays live
+    @State private var importStatus = ""
+    @State private var importStatusIsError = false
     @State private var scratchExpanded = false
     @State private var isTesting = false
     @State private var testResults: [TestResult] = []
@@ -139,6 +141,11 @@ struct OnboardingView: View {
                     Text("Got a file from a teammate? This fills in everything at once.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
+                }
+                if !importStatus.isEmpty {
+                    Text(importStatus)
+                        .font(.caption)
+                        .foregroundStyle(importStatusIsError ? AnyShapeStyle(.red) : AnyShapeStyle(.secondary))
                 }
 
                 StatusRow(
@@ -408,6 +415,11 @@ struct OnboardingView: View {
                         .frame(width: 7, height: 7)
                 }
             }
+            // The dots are color-only; VoiceOver gets the real position
+            // (Codex design audit #12).
+            .accessibilityElement()
+            .accessibilityLabel("Setup progress")
+            .accessibilityValue("Step \(step + 1) of \(stepCount)")
 
             Spacer()
 
@@ -426,7 +438,16 @@ struct OnboardingView: View {
         panel.allowedContentTypes = [.json]
         panel.allowsMultipleSelection = false
         guard panel.runModal() == .OK, let url = panel.url else { return }
-        try? coordinator.importSettings(from: Data(contentsOf: url))
+        // Never silent: a failed import with no message read as "nothing
+        // happened" (Codex design audit #5).
+        do {
+            try coordinator.importSettings(from: Data(contentsOf: url))
+            importStatus = "Imported from \(url.lastPathComponent). You can delete that file now."
+            importStatusIsError = false
+        } catch {
+            importStatus = "Import failed: \(error.localizedDescription)"
+            importStatusIsError = true
+        }
     }
 }
 

@@ -16,6 +16,19 @@ struct ChatWindowView: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            if chat.messages.isEmpty {
+                // Empty state: a blank pane read as "broken or not
+                // connected?" (Codex design audit #16).
+                VStack(spacing: 6) {
+                    Image(systemName: "bubble.left.and.bubble.right")
+                        .font(.title2)
+                        .foregroundStyle(.tertiary)
+                    Text("Connected \u{2014} no messages yet")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
             ScrollViewReader { proxy in
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 2) {
@@ -32,6 +45,7 @@ struct ChatWindowView: View {
                     withAnimation { proxy.scrollTo(last.id, anchor: .bottom) }
                 }
             }
+            }
 
             Divider()
 
@@ -45,6 +59,8 @@ struct ChatWindowView: View {
                     Image(systemName: "arrow.up.circle.fill").font(.title2)
                 }
                 .buttonStyle(.plain)
+                .help("Send message")
+                .accessibilityLabel("Send message")
                 .disabled(draft.isEmpty)
                 .foregroundStyle(draft.isEmpty
                     ? AnyShapeStyle(HierarchicalShapeStyle.secondary)
@@ -97,8 +113,10 @@ private struct MessageField: NSViewRepresentable {
         field.placeholderString = placeholder
         field.isBordered = false
         field.drawsBackground = false
-        field.focusRingType = .none
+        // Focus ring stays ON: removing it left keyboard users with no
+        // visible focus state (Codex design audit #3).
         field.font = .systemFont(ofSize: NSFont.systemFontSize)
+        field.setAccessibilityLabel(placeholder)
         field.delegate = context.coordinator
         field.setContentHuggingPriority(.defaultLow, for: .horizontal)
         return field

@@ -4,6 +4,13 @@
 <dict>
 	<key>LSApplicationCategoryType</key>
 	<string>public.app-category.video</string>
+	<!-- AppKit-level accent: SwiftUI reads the asset-catalog AccentColor,
+	     but borderedProminent buttons follow controlAccentColor, which
+	     only honors the asset when this key names it - without it the
+	     Start button stayed system blue while everything else went
+	     brand green (reported live). -->
+	<key>NSAccentColorName</key>
+	<string>AccentColor</string>
 	<key>SUFeedURL</key>
 	<string>https://sibhimanyu.github.io/greenroom/appcast.xml</string>
 	<key>SUPublicEDKey</key>

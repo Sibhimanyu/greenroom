@@ -606,13 +606,21 @@ private struct MeetingSDKSettingsTab: View {
     @EnvironmentObject private var coordinator: CoordinatorController
 
     var body: some View {
-        Form {
-            TextField("Client ID", text: $coordinator.sdkClientID)
-            SecureField("Client Secret", text: $coordinator.sdkClientSecret)
+        // Form centers short content vertically in whatever height the
+        // TabView gives it (fixed at 520 by SettingsView) rather than
+        // pinning to the top - three fields read as floating in a mostly
+        // empty pane (reproduced live, /qa pass). The trailing Spacer
+        // claims the leftover space instead.
+        VStack(alignment: .leading, spacing: 0) {
+            Form {
+                TextField("Client ID", text: $coordinator.sdkClientID)
+                SecureField("Client Secret", text: $coordinator.sdkClientSecret)
 
-            Text("From your Zoom Marketplace app (General App \u{2192} Features \u{2192} Embed \u{2192} Meeting SDK). Only works for meetings hosted under this same Zoom account - joining a meeting hosted elsewhere fails with Zoom's cross-account restriction.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+                Text("From your Zoom Marketplace app (General App \u{2192} Features \u{2192} Embed \u{2192} Meeting SDK). Only works for meetings hosted under this same Zoom account - joining a meeting hosted elsewhere fails with Zoom's cross-account restriction.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer(minLength: 0)
         }
         .padding(20)
     }
@@ -622,23 +630,28 @@ private struct StartMeetingSettingsTab: View {
     @EnvironmentObject private var coordinator: CoordinatorController
 
     var body: some View {
-        Form {
-            TextField("Account ID", text: $coordinator.s2sAccountID)
-            TextField("Client ID", text: $coordinator.s2sClientID)
-            SecureField("Client Secret", text: $coordinator.s2sClientSecret)
+        // See MeetingSDKSettingsTab - same top-align fix for Form's
+        // vertical centering of shorter-than-520pt content.
+        VStack(alignment: .leading, spacing: 0) {
+            Form {
+                TextField("Account ID", text: $coordinator.s2sAccountID)
+                TextField("Client ID", text: $coordinator.s2sClientID)
+                SecureField("Client Secret", text: $coordinator.s2sClientSecret)
 
-            Text("A different Zoom app than Meeting Chat's - create one at marketplace.zoom.us: Build App \u{2192} Server-to-Server OAuth, then copy its Account ID/Client ID/Secret here. Add all four scopes on its Scopes page: meeting:write:meeting:admin, meeting:read:list_meetings:admin, meeting:read:meeting:admin, user:read:token:admin. The setup guide (? on the main window) walks through it and can test the result. Same Zoom account as the Meeting Chat app = hosting and chat work in every meeting this creates.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+                Text("A different Zoom app than Meeting Chat's - create one at marketplace.zoom.us: Build App \u{2192} Server-to-Server OAuth, then copy its Account ID/Client ID/Secret here. Add all four scopes on its Scopes page: meeting:write:meeting:admin, meeting:read:list_meetings:admin, meeting:read:meeting:admin, user:read:token:admin. The setup guide (? on the main window) walks through it and can test the result. Same Zoom account as the Meeting Chat app = hosting and chat work in every meeting this creates.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
 
-            Divider()
+                Divider()
 
-            Toggle("Use built-in meeting client", isOn: $coordinator.useBuiltInClient)
-            TextField("Your display name", text: $coordinator.userDisplayName)
+                Toggle("Use built-in meeting client", isOn: $coordinator.useBuiltInClient)
+                TextField("Your display name", text: $coordinator.userDisplayName)
 
-            Text("On (default): New Meeting runs entirely inside Greenroom's built-in Zoom client \u{2014} one participant (you), hosting directly, chat sent as you, no separate Zoom app. Off: the classic flow \u{2014} the native Zoom app plus a hidden \u{201C}Greenroom Chat\u{201D} participant carrying the chat.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+                Text("On (default): New Meeting runs entirely inside Greenroom's built-in Zoom client \u{2014} one participant (you), hosting directly, chat sent as you, no separate Zoom app. Off: the classic flow \u{2014} the native Zoom app plus a hidden \u{201C}Greenroom Chat\u{201D} participant carrying the chat.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer(minLength: 0)
         }
         .padding(20)
     }
@@ -653,29 +666,35 @@ private struct TransferSettingsTab: View {
     @State private var confirmingExport = false
 
     var body: some View {
-        Form {
-            HStack {
-                // Confirmation before writing secrets in plaintext - the
-                // risk shouldn't live only in small caption text below
-                // (Codex design audit #6).
-                Button("Export Settings\u{2026}") { confirmingExport = true }
-                    .confirmationDialog("This file will contain your Zoom secrets in plain text.",
-                                        isPresented: $confirmingExport, titleVisibility: .visible) {
-                        Button("Export Plaintext File") { exportSettings() }
-                        Button("Cancel", role: .cancel) {}
-                    } message: {
-                        Text("Hand it over directly (e.g. AirDrop) and delete it after importing.")
-                    }
-                Button("Import Settings\u{2026}") { importSettings() }
-            }
+        // See MeetingSDKSettingsTab - same top-align fix; this tab's two
+        // buttons were the most visibly stranded of the three (reproduced
+        // live: a near-empty pane with buttons floating mid-height).
+        VStack(alignment: .leading, spacing: 0) {
+            Form {
+                HStack {
+                    // Confirmation before writing secrets in plaintext - the
+                    // risk shouldn't live only in small caption text below
+                    // (Codex design audit #6).
+                    Button("Export Settings\u{2026}") { confirmingExport = true }
+                        .confirmationDialog("This file will contain your Zoom secrets in plain text.",
+                                            isPresented: $confirmingExport, titleVisibility: .visible) {
+                            Button("Export Plaintext File") { exportSettings() }
+                            Button("Cancel", role: .cancel) {}
+                        } message: {
+                            Text("Hand it over directly (e.g. AirDrop) and delete it after importing.")
+                        }
+                    Button("Import Settings\u{2026}") { importSettings() }
+                }
 
-            Text("One file with every setting on this screen, Zoom credentials included \u{2014} in plaintext. Hand it over directly (e.g. AirDrop) and delete it once imported.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+                Text("One file with every setting on this screen, Zoom credentials included \u{2014} in plaintext. Hand it over directly (e.g. AirDrop) and delete it once imported.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
 
-            if !statusMessage.isEmpty {
-                Text(statusMessage).font(.caption)
+                if !statusMessage.isEmpty {
+                    Text(statusMessage).font(.caption)
+                }
             }
+            Spacer(minLength: 0)
         }
         .padding(20)
     }

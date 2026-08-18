@@ -1070,6 +1070,13 @@ final class CoordinatorController: ObservableObject {
         guard peopleViewWanted else { return }
         guard let target = peopleViewTargetScreen() else { return }
         if let gallery = peopleViewWindow {
+            // Never fight the user's live interaction: clicking the grid
+            // makes the SDK re-home it toward the main screen, and
+            // re-framing it while it's still the KEY window produced a
+            // visible tug-of-war (reported live). Leave the focused
+            // window alone; it snaps back on the first tick after focus
+            // moves on.
+            if gallery.isKeyWindow { return }
             if gallery.styleMask.contains(.fullScreen) {
                 gallery.toggleFullScreen(nil) // re-framed on a later tick
             } else if gallery.frame != target.frame {

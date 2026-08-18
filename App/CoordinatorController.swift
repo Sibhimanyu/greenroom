@@ -337,7 +337,38 @@ final class CoordinatorController: ObservableObject {
     /// Stored as one JSON blob (it's several coupled fields, not a flat
     /// value like the keys around it).
     @Published var workspaceLayout: WorkspaceLayout {
-        didSet { workspaceLayout.save(to: defaults) }
+        didSet {
+            workspaceLayout.save(to: defaults)
+            scheduleLiveLayoutApply()
+        }
+    }
+
+    private var layoutApplyTask: Task<Void, Never>?
+
+    /// Layout edits made mid-session (dragging the divider in Settings)
+    /// apply to the LIVE windows automatically - no Snap Windows Back
+    /// needed. Debounced: a drag emits dozens of changes a second, and
+    /// re-tiling real windows (AppleScript/AX calls) at that rate would
+    /// thrash; 400ms after the last change, everything re-tiles once.
+    private func scheduleLiveLayoutApply() {
+        guard ChatWindowController.isOpen || virtualCamActive else { return }
+        layoutApplyTask?.cancel()
+        layoutApplyTask = Task {
+            try? await Task.sleep(nanoseconds: 400_000_000)
+            if Task.isCancelled { return }
+            _ = await MainPaneManager.repositionFrontWindow(bundleID: mainAppBundleID, layout: workspaceLayout)
+            if ChatWindowController.isOpen {
+                if speakerTileQuickHidden {
+                    ChatWindowController.fillSideColumn(layout: workspaceLayout)
+                } else {
+                    ChatWindowController.show(chat: zoomChatBridge, layout: workspaceLayout)
+                }
+            }
+            // Re-parks the tile into the resized slot; preserves the
+            // current quick-hide state (a mid-class toggle must not be
+            // undone by resizing a pane).
+            parkBuiltInMeetingWindow()
+        }
     }
     /// Which app occupies the main pane. Chrome (the default, and what
     /// this used to hardcode) goes through its AppleScript special case;
@@ -829,7 +860,7 @@ final class CoordinatorController: ObservableObject {
         ChatWindowController.show(chat: zoomChatBridge, layout: workspaceLayout)
         log("Meeting is live \u{2014} you're hosting from Greenroom. No second Zoom app, no ghost participant.")
 
-        parkBuiltInMeetingWindow()
+        parkBuiltInMeetingWindow(resetQuickHideToDefault: true) // session start = the mode's default state
         placePeopleViewWindow()
         finalizeLayout()
     }
@@ -904,7 +935,7 @@ final class CoordinatorController: ObservableObject {
             ? "Meeting is live \u{2014} you're hosting from Greenroom."
             : "In the meeting \u{2014} no second Zoom app, no ghost participant.")
 
-        parkBuiltInMeetingWindow()
+        parkBuiltInMeetingWindow(resetQuickHideToDefault: true) // session start = the mode's default state
         placePeopleViewWindow()
         finalizeLayout()
     }
@@ -923,7 +954,7 @@ final class CoordinatorController: ObservableObject {
     /// work, since the window belongs to this process. Skipped entirely
     /// when the Zoom tile is toggled out of the side column: the meeting
     /// window then stays wherever it is.
-    private func parkBuiltInMeetingWindow() {
+    private func parkBuiltInMeetingWindow(resetQuickHideToDefault: Bool = false) {
         layoutFollowTask?.cancel()
         layoutFollowTask = Task {
             var parked = false
@@ -933,7 +964,11 @@ final class CoordinatorController: ObservableObject {
             // The quick-hide MODE's default state: enabled means sessions
             // begin with the tile hidden and the chat full-height;
             // \u{2303}\u{2325}\u{2318}Z brings the speaker up on demand.
-            speakerTileQuickHidden = speakerTileShortcutEnabled
+            // Only SESSION STARTS reset to the default - a live layout
+            // re-apply or snap-back must not undo a mid-class toggle.
+            if resetQuickHideToDefault {
+                speakerTileQuickHidden = speakerTileShortcutEnabled
+            }
             // SDK-level first: both meeting views out of fullscreen. A
             // window in a fullscreen Space ignores setFrame, so nothing
             // below works until this has taken effect.

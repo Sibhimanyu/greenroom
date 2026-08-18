@@ -1468,7 +1468,10 @@ final class CoordinatorController: ObservableObject {
         }
 
         log("Configuring the Greenroom scene (screen + keyed webcam bubble)\u{2026}")
-        try await GreenroomScene.ensureConfigured(client: client, bubble: .init(shape: webcamShape))
+        let webcamActive = try await GreenroomScene.ensureConfigured(client: client, bubble: .init(shape: webcamShape))
+        if !webcamActive {
+            log("No webcam connected \u{2014} running screen-only. Plug a camera in and press Start (or Snap Windows Back) to bring your video back.")
+        }
 
         log("Starting the virtual camera\u{2026}")
         try await GreenroomScene.startVirtualCam(client: client)

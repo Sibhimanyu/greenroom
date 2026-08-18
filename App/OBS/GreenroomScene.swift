@@ -39,7 +39,10 @@ enum GreenroomScene {
         var shape: WebcamShape = .circle
     }
 
-    static func ensureConfigured(client: OBSWebSocketClient, bubble: BubbleLayout = BubbleLayout()) async throws {
+    /// Returns true when the webcam made it into the composite, false for
+    /// a screen-only session (no physical camera connected).
+    @discardableResult
+    static func ensureConfigured(client: OBSWebSocketClient, bubble: BubbleLayout = BubbleLayout()) async throws -> Bool {
         // OBS remembers whether the virtual cam was running when it last
         // quit and auto-resumes it on launch - confirmed by testing, that
         // left an active output blocking SetVideoSettings below ("Video
@@ -71,11 +74,11 @@ enum GreenroomScene {
                 NSLocalizedDescriptionKey: "Couldn't resolve the main display's UUID."
             ])
         }
-        guard let webcamUID = LocalDeviceResolver.physicalCameraUID() else {
-            throw NSError(domain: "Greenroom", code: 24, userInfo: [
-                NSLocalizedDescriptionKey: "No physical webcam was found (only \u{201C}OBS Virtual Camera\u{201D} itself, or nothing)."
-            ])
-        }
+        // No webcam is NOT an error anymore: the session runs screen-only
+        // (the class still gets the shared screen; the teacher's video
+        // returns next Start once a camera is back). Reported to the
+        // caller via the return value so the status log can say so.
+        let webcamUID = LocalDeviceResolver.physicalCameraUID()
 
         // capture_audio: false is load-bearing, not tidiness. OBS's macOS
         // ScreenCaptureKit source sets up a system-audio receive queue
@@ -92,26 +95,34 @@ enum GreenroomScene {
                                    ($0["display_uuid"] as? String) == displayUUID
                                        && ($0["capture_audio"] as? Bool) == false
                                })
-        try await ensureInput(client: client, name: webcamSourceName, kind: webcamKind,
-                               settings: ["uid": webcamUID],
-                               isCorrectlyConfigured: { ($0["uid"] as? String) == webcamUID })
+        if let webcamUID {
+            try await ensureInput(client: client, name: webcamSourceName, kind: webcamKind,
+                                   settings: ["uid": webcamUID],
+                                   isCorrectlyConfigured: { ($0["uid"] as? String) == webcamUID })
 
-        try await ensureFilter(client: client, source: webcamSourceName, name: chromaKeyFilterName, kind: chromaKind)
-        try await setChromaKey(client: client, enabled: bubble.shape.usesChromaKey, kind: chromaKind)
-        try await ensureShapeMask(client: client, shape: bubble.shape)
+            try await ensureFilter(client: client, source: webcamSourceName, name: chromaKeyFilterName, kind: chromaKind)
+            try await setChromaKey(client: client, enabled: bubble.shape.usesChromaKey, kind: chromaKind)
+            try await ensureShapeMask(client: client, shape: bubble.shape)
 
-        // Confirmed by testing: OBS can log "No device selected" for this
-        // source at startup even though its saved settings already have the
-        // right uid - a startup race where AVFoundation's device list isn't
-        // populated yet at the exact moment OBS deserializes the scene
-        // collection, and it never retries on its own. Re-applying the same
-        // uid here (well after startup, unlike the screen source this one
-        // isn't implicated in any crash) forces OBS to re-attempt opening it.
-        _ = try? await client.request("SetInputSettings", data: [
-            "inputName": webcamSourceName,
-            "inputSettings": ["uid": webcamUID],
-            "overlay": true
-        ])
+            // Confirmed by testing: OBS can log "No device selected" for this
+            // source at startup even though its saved settings already have the
+            // right uid - a startup race where AVFoundation's device list isn't
+            // populated yet at the exact moment OBS deserializes the scene
+            // collection, and it never retries on its own. Re-applying the same
+            // uid here (well after startup, unlike the screen source this one
+            // isn't implicated in any crash) forces OBS to re-attempt opening it.
+            _ = try? await client.request("SetInputSettings", data: [
+                "inputName": webcamSourceName,
+                "inputSettings": ["uid": webcamUID],
+                "overlay": true
+            ])
+            try await setWebcamItemEnabled(client: client, enabled: true)
+        } else {
+            // Screen-only: a leftover webcam source (its device now gone)
+            // must not sit as a frozen/black box in the frame - disable
+            // its scene item; re-enabled next Start with a camera.
+            try await setWebcamItemEnabled(client: client, enabled: false)
+        }
 
         try await enforceLayerOrder(client: client)
 
@@ -126,6 +137,18 @@ enum GreenroomScene {
         await configureRecordingPath(client: client)
 
         try await client.request("SetCurrentProgramScene", data: ["sceneName": sceneName])
+        return webcamUID != nil
+    }
+
+    /// Shows/hides the webcam's scene item - screen-only sessions (no
+    /// camera connected) hide it so a dead device isn't a black box.
+    private static func setWebcamItemEnabled(client: OBSWebSocketClient, enabled: Bool) async throws {
+        let items = try await sceneItems(client: client)
+        guard let webcam = items.first(where: { ($0["sourceName"] as? String) == webcamSourceName }),
+              let itemId = webcam["sceneItemId"] as? Int else { return }
+        _ = try? await client.request("SetSceneItemEnabled", data: [
+            "sceneName": sceneName, "sceneItemId": itemId, "sceneItemEnabled": enabled
+        ])
     }
 
     static func startVirtualCam(client: OBSWebSocketClient, pollAttempts: Int = 14) async throws {
@@ -321,7 +344,20 @@ enum GreenroomScene {
         } catch let error as OBSWebSocketClient.RequestError
                     where (error.comment ?? "").localizedCaseInsensitiveContains("already exists") {
             await removeInputAndWait(client: client, name: name)
-            _ = try await client.request("CreateInput", data: data)
+            do {
+                _ = try await client.request("CreateInput", data: data)
+            } catch let second as OBSWebSocketClient.RequestError
+                        where (second.comment ?? "").localizedCaseInsensitiveContains("already exists") {
+                // The name is STUCK - RemoveInput isn't taking effect
+                // (seen when a source's device vanished under OBS). Last
+                // resort: REUSE the existing input rather than failing
+                // the whole Start. Its settings may lag one session;
+                // structurally the session works, and the next Start
+                // with devices back reconciles it.
+                _ = try? await client.request("CreateSceneItem", data: [
+                    "sceneName": sceneName, "sourceName": name
+                ])
+            }
         }
     }
 

@@ -903,6 +903,7 @@ final class CoordinatorController: ObservableObject {
             // window in a fullscreen Space ignores setFrame, so nothing
             // below works until this has taken effect.
             zoomChatClient.exitFullScreen()
+            var waitedTicks = 0
             while !Task.isCancelled, ChatWindowController.isOpen {
                 // The stray guard below must run even with the Zoom tile
                 // toggled off - that's when the primary window has no slot
@@ -911,7 +912,7 @@ final class CoordinatorController: ObservableObject {
                 // and the chat-follow too: the chat owns the full column
                 // and the tile is deliberately hidden or floating.
                 if workspaceLayout.sideShowsZoomTile, !speakerTileQuickHidden,
-                   let window = builtInMeetingWindow ?? meetingVideoWindowCandidates().first {
+                   let window = builtInMeetingWindow ?? tileWindowCandidate(waitedTicks: waitedTicks) {
                     if window.styleMask.contains(.fullScreen) {
                         // Still fullscreen (the exit animates out over ~1s,
                         // or the SDK re-entered it) - kick again, park on a
@@ -920,12 +921,20 @@ final class CoordinatorController: ObservableObject {
                         parked = false
                     } else if !parked, let slot = ChatWindowController.zoomSlotNSFrame(for: workspaceLayout) {
                         window.setFrame(slot, display: true)
-                        // The parked tile should be a plain current-speaker
-                        // view - done here (not at connect) because the
-                        // view switch needs the meeting window to exist.
-                        zoomChatClient.simplifyMeetingView()
+                        // Single-window sessions: strip the tile down to a
+                        // plain current-speaker view (needs the window to
+                        // exist, hence here and not at connect). DUAL-SCREEN
+                        // sessions must NOT do this - the primary view is
+                        // switched to the gallery grid by the people-view
+                        // placer, and switching to speaker here would flip
+                        // it back; the tile (the secondary window) already
+                        // shows Zoom's complementary clean speaker view.
+                        if !peopleViewWanted {
+                            zoomChatClient.simplifyMeetingView()
+                        }
                         // Remembered so the people-view placer knows which
-                        // window is the tile and which is the gallery.
+                        // window is the tile and which goes to the extended
+                        // display.
                         builtInMeetingWindow = window
                         parked = true
                     }
@@ -940,9 +949,28 @@ final class CoordinatorController: ObservableObject {
                     }
                 }
                 demoteStrayMeetingWindows()
+                waitedTicks += 1
                 try? await Task.sleep(nanoseconds: 2_000_000_000)
             }
         }
+    }
+
+    /// Which SDK window becomes the parked side-column tile.
+    /// Single-screen sessions: the primary (only) meeting window.
+    /// Dual-screen (people view) sessions: the SECONDARY window - Zoom
+    /// puts the meeting controls/toolbar on the PRIMARY, so the primary
+    /// belongs full-screen on the extended display (gallery grid +
+    /// controls) and the clean video-only secondary makes the tile.
+    /// (Parking the primary put a control-cluttered tile on the main
+    /// display and the clean speaker view on the extended one - exactly
+    /// backwards, reported live.) Falls back to the primary if the
+    /// secondary hasn't appeared after ~20s, so the tile never stays
+    /// unparked.
+    private func tileWindowCandidate(waitedTicks: Int) -> NSWindow? {
+        let candidates = meetingVideoWindowCandidates()
+        guard peopleViewWanted else { return candidates.first }
+        if candidates.count >= 2 { return candidates.last }
+        return waitedTicks >= 10 ? candidates.first : nil
     }
 
     /// The menu bar's "Snap Windows Back": re-tiles everything to the
@@ -1249,14 +1277,18 @@ final class CoordinatorController: ObservableObject {
         peopleViewTask = Task {
             for _ in 0..<30 {
                 if Task.isCancelled { return }
-                // The gallery is the meeting-video window created AFTER
-                // the primary (dual-screen opens it second), so take the
-                // NEWEST candidate - never "anything that isn't the tile",
-                // which grabbed whatever the SDK happened to open.
+                // The extended display gets the PRIMARY meeting window -
+                // the oldest candidate, the one carrying Zoom's meeting
+                // controls - switched to the gallery grid below. The
+                // secondary (newest) window is the clean video-only view
+                // and becomes the tile (tileWindowCandidate). Placing the
+                // secondary here instead put the clean speaker view on
+                // the extended display and the control clutter in the
+                // tile - exactly backwards, reported live.
                 let candidates = meetingVideoWindowCandidates().filter { $0 !== builtInMeetingWindow }
                 let gallery = builtInMeetingWindow != nil
-                    ? candidates.last
-                    : (candidates.count > 1 ? candidates.last : nil)
+                    ? candidates.first
+                    : (candidates.count > 1 ? candidates.first : nil)
                 if let gallery {
                     if gallery.styleMask.contains(.fullScreen) {
                         // Can't be framed while in a fullscreen Space -
@@ -1266,9 +1298,13 @@ final class CoordinatorController: ObservableObject {
                         gallery.setFrame(target.frame, display: true)
                         gallery.orderFront(nil)
                         peopleViewWindow = gallery
+                        // Grid on the extended display; the secondary tile
+                        // then shows Zoom's complementary clean speaker
+                        // view (its dual-monitor pairing).
+                        zoomChatClient.showGalleryOnPrimaryView()
                         log(onChosen
-                            ? "People view is on \u{201C}\(target.localizedName)\u{201D}."
-                            : "People view is on \(target.localizedName) (the secondary display). Pick a specific one in Settings \u{2192} Layout if this isn't your reference monitor.")
+                            ? "Participant grid (with the meeting controls) is on \u{201C}\(target.localizedName)\u{201D}."
+                            : "Participant grid is on \(target.localizedName) (the secondary display). Pick a specific one in Settings \u{2192} Layout if this isn't your reference monitor.")
                         return
                     }
                 }

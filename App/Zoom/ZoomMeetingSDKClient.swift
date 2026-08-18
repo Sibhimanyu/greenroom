@@ -221,6 +221,16 @@ final class ZoomMeetingSDKClient: NSObject, ObservableObject {
         ZoomSDK.shared().getMeetingService()?.getMeetingUIController().switchToActiveSpeakerView()
     }
 
+    /// Switches the PRIMARY meeting view to the gallery/video-wall grid -
+    /// used in dual-screen sessions, where the primary window (the one
+    /// carrying Zoom's meeting controls) lives full-screen on the
+    /// extended display: grid + controls there, while the SECONDARY
+    /// video-only window shows Zoom's complementary clean active-speaker
+    /// view and makes the parked tile.
+    func showGalleryOnPrimaryView() {
+        ZoomSDK.shared().getMeetingService()?.getMeetingUIController().switchToVideoWallView()
+    }
+
     /// Dual-screen mode: the SDK opens a SECOND meeting window (the
     /// gallery/"people view", same as the Zoom client's dual-monitor
     /// option) alongside the primary one. The SDK persists this setting

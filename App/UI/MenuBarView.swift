@@ -11,6 +11,7 @@ import AppKit
 
 struct MenuBarView: View {
     @EnvironmentObject private var coordinator: CoordinatorController
+    @Environment(\.openWindow) private var openWindow
     /// Injected from GreenroomApp's Sparkle updater controller - the
     /// menu bar is where users live mid-class, so updates are reachable
     /// here too, not just the app menu.
@@ -66,6 +67,10 @@ struct MenuBarView: View {
         Divider()
 
         Button("Show Greenroom") {
+            // openWindow RECREATES the window when it was closed -
+            // ordering front an existing window (showMainWindow) found
+            // nothing and silently did nothing (reproduced live).
+            openWindow(id: "main")
             coordinator.showMainWindow()
         }
 

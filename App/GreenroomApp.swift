@@ -33,7 +33,13 @@ struct GreenroomApp: App {
         startingUpdater: true, updaterDelegate: nil, userDriverDelegate: nil)
 
     var body: some Scene {
-        WindowGroup {
+        // Window (single, id-addressable), not WindowGroup: closing the
+        // WindowGroup window destroyed it with NO recreation path - dock
+        // reopen, the reopen Apple event, and "Show Greenroom" (which can
+        // only order front an EXISTING window) all failed, leaving the
+        // app running windowless (reproduced live). A Window scene
+        // recreates via openWindow(id:) and dock reopen reliably.
+        Window("Greenroom", id: "main") {
             ContentView()
                 .environmentObject(coordinator)
         }

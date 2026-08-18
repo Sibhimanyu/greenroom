@@ -153,6 +153,13 @@ final class ZoomMeetingSDKClient: NSObject, ObservableObject {
         // client's "Hide Self View" (ZoomSDKSettingVideoController.h) -
         // your video keeps sending, it's just not rendered locally.
         ZoomSDK.shared().getSettingService()?.getVideoSetting()?.enableHideSelfView(true)
+        // "Mirror my video" OFF (persisted setting, asserted every
+        // connect): mirroring only affects the LOCAL self-view - others
+        // always see the feed un-mirrored - and this feed is the OBS
+        // composite with the shared screen's TEXT in it, which mirroring
+        // renders backwards to the presenter mid-lesson. Off, the
+        // self-view shows exactly what the class sees.
+        ZoomSDK.shared().getSettingService()?.getVideoSetting()?.enableMirrorEffect(false)
         // PERSISTED setting, asserted off before every connect (same
         // never-trust doctrine as DualScreenMode below): when it sticks
         // on, the SDK fullscreens its meeting windows at join - and a

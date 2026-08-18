@@ -254,7 +254,12 @@ private struct LayoutSettingsTab: View {
             }
 
             if AppCatalog.isBrowser(coordinator.mainAppBundleID) {
+                // .roundedBorder, not the Form default borderless: the
+                // borderless field rendered as an apparently-dead empty
+                // row (macOS hides the prompt until focus), so nothing
+                // signalled "type a URL here" (design-review F2).
                 TextField("Open website", text: $coordinator.mainAppURL, prompt: Text("e.g. docs.google.com"))
+                    .textFieldStyle(.roundedBorder)
             }
 
             if needsAccessibility && !hasAccessibilityPermission {
@@ -439,7 +444,7 @@ private struct LayoutSchematicView: View {
                 }
 
                 // Vertical divider: drag to resize main pane vs side column.
-                grabber(width: 5, height: 36, active: draggingSplit)
+                grabber(width: 6, height: 44, active: draggingSplit)
                     .frame(width: 18, height: geo.size.height)
                     .contentShape(Rectangle())
                     .position(x: dividerX, y: geo.size.height / 2)
@@ -470,7 +475,7 @@ private struct LayoutSchematicView: View {
                 // Horizontal divider: drag to balance Zoom tile vs chat.
                 if layout.sideShowsZoomTile && layout.sideShowsChat {
                     let slotY = (geo.size.height - spacing) * layout.effectiveZoomSlotRatio + spacing / 2
-                    grabber(width: 36, height: 5, active: draggingSlot)
+                    grabber(width: 44, height: 6, active: draggingSlot)
                         .frame(width: max(sideWidth - 16, 24), height: 18)
                         .contentShape(Rectangle())
                         .position(x: sideCenterX, y: slotY)
@@ -499,11 +504,14 @@ private struct LayoutSchematicView: View {
         .animation(draggingSplit || draggingSlot ? nil : .snappy(duration: 0.25), value: layout)
     }
 
+    /// Deliberately assertive, not decorative: the handles ARE the width
+    /// controls now (the preset picker and slider are gone), so they must
+    /// read as grabbable at a glance (design-review F5).
     private func grabber(width: CGFloat, height: CGFloat, active: Bool) -> some View {
         Capsule()
-            .fill(active ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(.tertiary))
+            .fill(active ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(Color.secondary.opacity(0.85)))
             .frame(width: width, height: height)
-            .shadow(radius: active ? 2 : 0)
+            .shadow(color: .black.opacity(0.35), radius: active ? 3 : 1.5)
     }
 
     private var mainPane: some View {

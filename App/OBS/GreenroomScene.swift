@@ -113,6 +113,8 @@ enum GreenroomScene {
             "overlay": true
         ])
 
+        try await enforceLayerOrder(client: client)
+
         // Match the OBS canvas to the screen source's actual native pixel
         // size and stretch the source to exactly fill it (confirmed by
         // testing: a mismatched canvas left the source unscaled at native
@@ -225,6 +227,30 @@ enum GreenroomScene {
     private static func sceneItems(client: OBSWebSocketClient) async throws -> [[String: Any]] {
         let list = try await client.request("GetSceneItemList", data: ["sceneName": sceneName])
         return (list["sceneItems"] as? [[String: Any]]) ?? []
+    }
+
+    /// The webcam must RENDER ABOVE the screen capture. OBS stacks scene
+    /// items by index (0 = bottom) and creation order sets the initial
+    /// stacking - so any repair path that recreates or re-adds one of the
+    /// two sources (a misconfigured screen recreated after the webcam
+    /// already existed, a leftover webcam reused from a warm OBS) leaves
+    /// the webcam UNDERNEATH the screen: the overlay vanishes behind the
+    /// shared screen. Asserted explicitly at every session setup instead
+    /// of ever trusting creation order.
+    private static func enforceLayerOrder(client: OBSWebSocketClient) async throws {
+        let items = try await sceneItems(client: client)
+        guard
+            let webcam = items.first(where: { ($0["sourceName"] as? String) == webcamSourceName }),
+            let webcamID = webcam["sceneItemId"] as? Int,
+            let webcamIndex = webcam["sceneItemIndex"] as? Int
+        else { return }
+        let topIndex = items.count - 1
+        guard webcamIndex != topIndex else { return }
+        _ = try await client.request("SetSceneItemIndex", data: [
+            "sceneName": sceneName,
+            "sceneItemId": webcamID,
+            "sceneItemIndex": topIndex
+        ])
     }
 
     /// Names of ALL inputs OBS knows about, scene-membership aside. OBS

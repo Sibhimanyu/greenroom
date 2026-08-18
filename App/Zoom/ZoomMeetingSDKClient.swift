@@ -153,6 +153,25 @@ final class ZoomMeetingSDKClient: NSObject, ObservableObject {
         // client's "Hide Self View" (ZoomSDKSettingVideoController.h) -
         // your video keeps sending, it's just not rendered locally.
         ZoomSDK.shared().getSettingService()?.getVideoSetting()?.enableHideSelfView(true)
+        // PERSISTED setting, asserted off before every connect (same
+        // never-trust doctrine as DualScreenMode below): when it sticks
+        // on, the SDK fullscreens its meeting windows at join - and a
+        // fullscreen meeting window on the main display gets filmed by
+        // OBS's screen capture, feeding the meeting back into itself
+        // (the "cascading" camera feed seen live). Fullscreen windows
+        // also ignore setFrame, so window parking silently failed too.
+        ZoomSDK.shared().getSettingService()?.getGeneralSetting()?
+            .enableMeetingSetting(false, settingCmd: MeetingSettingCmd_AutoFullScreenWhenJoinMeeting)
+    }
+
+    /// Kicks BOTH meeting views (primary + dual-screen gallery) out of
+    /// fullscreen via the SDK's own control (ZoomSDKMeetingUIController.h
+    /// enterFullScreen:firstMonitor:DualMonitor:). The window parker calls
+    /// this before tiling: a window in a fullscreen Space ignores
+    /// setFrame, so nothing can be positioned until this has run.
+    func exitFullScreen() {
+        ZoomSDK.shared().getMeetingService()?.getMeetingUIController()
+            .enterFullScreen(false, firstMonitor: true, dualMonitor: true)
     }
 
     /// Switches the built-in client's meeting window to the plain

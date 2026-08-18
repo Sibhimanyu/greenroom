@@ -782,14 +782,28 @@ final class CoordinatorController: ObservableObject {
     /// when the Zoom tile is toggled out of the side column: the meeting
     /// window then stays wherever it is.
     private func parkBuiltInMeetingWindow() {
-        guard workspaceLayout.sideShowsZoomTile else { return }
         layoutFollowTask?.cancel()
         layoutFollowTask = Task {
             var parked = false
             var lastFrame = CGRect.null
+            demotedStrayWindowNumbers.removeAll() // fresh session, fresh logs
+            // SDK-level first: both meeting views out of fullscreen. A
+            // window in a fullscreen Space ignores setFrame, so nothing
+            // below works until this has taken effect.
+            zoomChatClient.exitFullScreen()
             while !Task.isCancelled, ChatWindowController.isOpen {
-                if let window = sdkMeetingWindows().first {
-                    if !parked, let slot = ChatWindowController.zoomSlotNSFrame(for: workspaceLayout) {
+                // The stray guard below must run even with the Zoom tile
+                // toggled off - that's when the primary window has no slot
+                // and is most likely to sit fullscreen over the capture.
+                if workspaceLayout.sideShowsZoomTile,
+                   let window = builtInMeetingWindow ?? meetingVideoWindowCandidates().first {
+                    if window.styleMask.contains(.fullScreen) {
+                        // Still fullscreen (the exit animates out over ~1s,
+                        // or the SDK re-entered it) - kick again, park on a
+                        // later tick once it can actually be framed.
+                        window.toggleFullScreen(nil)
+                        parked = false
+                    } else if !parked, let slot = ChatWindowController.zoomSlotNSFrame(for: workspaceLayout) {
                         window.setFrame(slot, display: true)
                         // The parked tile should be a plain current-speaker
                         // view - done here (not at connect) because the
@@ -810,6 +824,7 @@ final class CoordinatorController: ObservableObject {
                         ChatWindowController.adjustBelowZoom(actualZoomFrameAX: axFrame, layout: workspaceLayout)
                     }
                 }
+                demoteStrayMeetingWindows()
                 try? await Task.sleep(nanoseconds: 2_000_000_000)
             }
         }
@@ -1073,6 +1088,11 @@ final class CoordinatorController: ObservableObject {
     /// the side-column tile. Weak: the SDK owns its windows.
     private weak var builtInMeetingWindow: NSWindow?
 
+    /// The dual-screen gallery window the people-view placer positioned,
+    /// so the stray-window guard knows it's accounted for. Weak: the SDK
+    /// owns it.
+    private weak var peopleViewWindow: NSWindow?
+
     /// The display the participant gallery should open on: the chosen one
     /// if it's connected, otherwise the first non-main display. nil when
     /// there's nowhere but the main screen to put it (the main screen -
@@ -1107,21 +1127,28 @@ final class CoordinatorController: ObservableObject {
         peopleViewTask = Task {
             for _ in 0..<30 {
                 if Task.isCancelled { return }
-                let candidates = sdkMeetingWindows().filter { $0 !== builtInMeetingWindow }
-                // When the tile is parked, anything else is the gallery;
-                // un-parked (Zoom tile toggled off), the gallery is the
-                // SDK's second window - take the last, the primary was
-                // created first.
+                // The gallery is the meeting-video window created AFTER
+                // the primary (dual-screen opens it second), so take the
+                // NEWEST candidate - never "anything that isn't the tile",
+                // which grabbed whatever the SDK happened to open.
+                let candidates = meetingVideoWindowCandidates().filter { $0 !== builtInMeetingWindow }
                 let gallery = builtInMeetingWindow != nil
-                    ? candidates.first
+                    ? candidates.last
                     : (candidates.count > 1 ? candidates.last : nil)
                 if let gallery {
-                    gallery.setFrame(target.frame, display: true)
-                    gallery.orderFront(nil)
-                    log(onChosen
-                        ? "People view is on \u{201C}\(target.localizedName)\u{201D}."
-                        : "People view is on \(target.localizedName) (the secondary display). Pick a specific one in Settings \u{2192} Layout if this isn't your reference monitor.")
-                    return
+                    if gallery.styleMask.contains(.fullScreen) {
+                        // Can't be framed while in a fullscreen Space -
+                        // kick it out and place on a later tick.
+                        gallery.toggleFullScreen(nil)
+                    } else {
+                        gallery.setFrame(target.frame, display: true)
+                        gallery.orderFront(nil)
+                        peopleViewWindow = gallery
+                        log(onChosen
+                            ? "People view is on \u{201C}\(target.localizedName)\u{201D}."
+                            : "People view is on \(target.localizedName) (the secondary display). Pick a specific one in Settings \u{2192} Layout if this isn't your reference monitor.")
+                        return
+                    }
                 }
                 try? await Task.sleep(nanoseconds: 1_000_000_000)
             }
@@ -1171,6 +1198,58 @@ final class CoordinatorController: ObservableObject {
 
     private func hideSDKMeetingWindows() {
         sdkMeetingWindows().forEach { $0.orderOut(nil) }
+    }
+
+    /// The windows eligible to be the meeting TILE or the people-view
+    /// GALLERY: SDK meeting windows minus side panels the SDK pops open
+    /// alongside (its own chat window, etc. - anything "chat"-titled).
+    /// Sorted by windowNumber, i.e. creation order: the primary meeting
+    /// window is created at join, the dual-screen gallery after it - so
+    /// the primary sorts first, deterministically, instead of trusting
+    /// NSApp.windows' arbitrary order (which shuffled the tile, gallery
+    /// and chat into random slots when several appeared together).
+    private func meetingVideoWindowCandidates() -> [NSWindow] {
+        sdkMeetingWindows()
+            .filter { !$0.title.localizedCaseInsensitiveContains("chat") }
+            .sorted { $0.windowNumber < $1.windowNumber }
+    }
+
+    /// Windows already demoted, so each is logged (and re-shrunk) once.
+    private var demotedStrayWindowNumbers = Set<Int>()
+
+    /// Anything the SDK opens beyond the tracked tile + gallery must never
+    /// blanket the MAIN display: OBS's screen capture films that display,
+    /// so a meeting-video window sitting there feeds the meeting back into
+    /// itself - the recursive "cascading" camera feed seen live. Strays in
+    /// native fullscreen are kicked out of it; strays covering most of the
+    /// main screen are miniaturized (recoverable from the Dock). Small
+    /// windows (dialogs like "Claim Host") are left alone.
+    private func demoteStrayMeetingWindows() {
+        guard let main = NSScreen.main else { return }
+        // While the people-view placer is still hunting for the gallery,
+        // don't demote any tile/gallery candidate out from under it -
+        // only obvious side panels (e.g. the SDK's chat window).
+        let placerHunting = peopleViewWanted && peopleViewWindow == nil
+        let protected = placerHunting ? Set(meetingVideoWindowCandidates().map(\.windowNumber)) : []
+        let mainArea = main.frame.width * main.frame.height
+        for window in sdkMeetingWindows() {
+            if window === builtInMeetingWindow || window === peopleViewWindow { continue }
+            if protected.contains(window.windowNumber) { continue }
+            if window.styleMask.contains(.fullScreen) {
+                window.toggleFullScreen(nil)
+                continue
+            }
+            let overlap = window.frame.intersection(main.frame)
+            guard !overlap.isNull, mainArea > 0 else { continue }
+            let coverage = (overlap.width * overlap.height) / mainArea
+            if coverage > 0.6 {
+                window.miniaturize(nil)
+                if demotedStrayWindowNumbers.insert(window.windowNumber).inserted {
+                    let name = window.title.isEmpty ? "an extra meeting window" : "\u{201C}\(window.title)\u{201D}"
+                    log("Tucked \(name) into the Dock \u{2014} it was covering the shared screen.")
+                }
+            }
+        }
     }
 
     /// Zoom reshapes its own window mid-meeting (screen share starting or

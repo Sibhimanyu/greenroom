@@ -131,6 +131,23 @@ final class ZoomMeetingSDKClient: NSObject, ObservableObject {
         authedClientID = nil
     }
 
+    /// Waits (bounded) for the meeting to actually reach a closed state
+    /// after leave() - so a hosted meeting's END lands at Zoom before
+    /// unInitSDK/_exit tears the SDK down mid-send. Returns the moment
+    /// the status is terminal; no-op when the SDK never initialized.
+    func awaitMeetingClosed(timeout: TimeInterval = 5) async {
+        guard didInit, let service = ZoomSDK.shared().getMeetingService() else { return }
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            switch service.getMeetingStatus() {
+            case ZoomSDKMeetingStatus_Idle, ZoomSDKMeetingStatus_Ended, ZoomSDKMeetingStatus_Failed:
+                return
+            default:
+                try? await Task.sleep(nanoseconds: 200_000_000)
+            }
+        }
+    }
+
     /// The SDK's join/start flow pops a video-preview dialog by default -
     /// a modal that needs a click. Deadly in combination with the ghost
     /// window hiding (confirmed live: the dialog appeared, got hidden

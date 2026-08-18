@@ -33,24 +33,83 @@ final class CoordinatorController: ObservableObject {
     }
 
     /// Graceful infrastructure teardown for app quit, awaited via
-    /// applicationShouldTerminate's terminateLater. OBS must be wound
-    /// down IN ORDER - virtual camera stopped, then asked to quit, then
-    /// actually waited for - because terminating it with capture and the
-    /// virtual camera still live crashed it during its own shutdown:
-    /// the "OBS quit unexpectedly" dialog after every Greenroom quit.
+    /// applicationShouldTerminate's terminateLater. Order matters, and
+    /// every step is BOUNDED so a wedged component can never hang the
+    /// quit:
+    ///  1. finalize any live recording (quitting OBS mid-write - worse,
+    ///     force-terminating it 5s later - risks a truncated file),
+    ///  2. stop the virtual camera, disconnect the socket,
+    ///  3. wait for the SDK meeting to actually CLOSE - the leave/end
+    ///     posted by prepareForTermination must reach Zoom before
+    ///     unInitSDK/_exit tears the SDK down mid-send, or a hosted
+    ///     meeting lingers for the whole class,
+    ///  4. ask OBS to quit and wait for its real exit (terminating it
+    ///     with capture live crashed it in its own shutdown - the
+    ///     "OBS quit unexpectedly" dialog).
     func windDownForQuit() async {
-        if client.isConnected {
-            // Bounded: a dead socket must not stall the quit (the request
-            // watchdog is 15s - too long here). 3s covers the real call.
-            await withTaskGroup(of: Void.self) { group in
-                group.addTask { [client] in _ = try? await client.request("StopVirtualCam") }
-                group.addTask { try? await Task.sleep(nanoseconds: 3_000_000_000) }
-                _ = await group.next()
+        // A warm-but-unconnected OBS may still have a recording running
+        // (e.g. started in OBS directly). Quitting it mid-write crashed
+        // OBS in its own shutdown (verified: one crash report per such
+        // quit, though the file itself survived). One quick bounded
+        // connect attempt closes that path; failure just falls through
+        // to the plain quit.
+        if !client.isConnected, processManager.isRunning {
+            _ = try? await withThrowingTaskGroup(of: Void.self) { group in
+                group.addTask { [client] in
+                    try await client.connect(port: OBSProcessManager.websocketPort,
+                                             password: OBSProcessManager.websocketPassword)
+                }
+                group.addTask { try await Task.sleep(nanoseconds: 2_000_000_000) }
+                try await group.next()
                 group.cancelAll()
             }
+        }
+        if client.isConnected {
+            // OBS is the authority on whether a recording is live - not
+            // just our flag - so even a recording started in OBS directly
+            // (or left over from a recovered session) gets finalized.
+            let obsRecording = (await boundedOBSRequest("GetRecordStatus", seconds: 2)?["outputActive"] as? Bool) == true
+            if isRecording || obsRecording {
+                if let path = await boundedOBSRequest("StopRecord", seconds: 4)?["outputPath"] as? String {
+                    Notifier.post(title: "Recording saved",
+                                  body: "\((path as NSString).lastPathComponent) \u{2014} in Documents/Greenroom.")
+                }
+                isRecording = false
+            }
+            _ = await boundedOBSRequest("StopVirtualCam", seconds: 3)
+            // Park OBS on an EMPTY scene so the screen capture deactivates
+            // through OBS's normal scene-switch path before the process
+            // exits. Rationale: the ScreenCaptureKit stream registers a
+            // system-audio handler even with capture_audio off (proven by
+            // crash stacks), and tearing it down during process exit
+            // SEGV'd OBS ("quit unexpectedly" after recording sessions).
+            // NOTE: RemoveInput was tried first and DEADLOCKED OBS's main
+            // thread in the same teardown (beachball, Apple Events dead) -
+            // the scene switch is the gentle, well-tested path instead.
+            // The next Start switches back via SetCurrentProgramScene.
+            _ = await boundedOBSRequest("CreateScene", data: ["sceneName": "Greenroom Idle"], seconds: 2)
+            _ = await boundedOBSRequest("SetCurrentProgramScene", data: ["sceneName": "Greenroom Idle"], seconds: 2)
+            try? await Task.sleep(nanoseconds: 500_000_000) // let the capture wind down
             client.disconnect()
         }
+        await zoomChatClient.awaitMeetingClosed(timeout: 5)
         await processManager.quitAndWait() // graceful quit, waits for real exit
+    }
+
+    /// An OBS request that never waits longer than `seconds` - quit paths
+    /// must stay bounded even when the socket is wedged (the client's own
+    /// per-request watchdog is 15s, far too long here).
+    private func boundedOBSRequest(_ type: String, data: [String: Any] = [:], seconds: Double) async -> [String: Any]? {
+        await withTaskGroup(of: [String: Any]?.self) { group in
+            group.addTask { [client] in try? await client.request(type, data: data) }
+            group.addTask {
+                try? await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
+                return nil
+            }
+            let first = await group.next() ?? nil
+            group.cancelAll()
+            return first
+        }
     }
 
     @Published private(set) var statusLines: [String] = []

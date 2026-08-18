@@ -30,6 +30,10 @@ final class OBSProcessManager {
 
     var isInstalled: Bool { Self.obsAppURL != nil }
 
+    var isRunning: Bool {
+        !NSRunningApplication.runningApplications(withBundleIdentifier: Self.bundleIdentifier).isEmpty
+    }
+
     /// obs-websocket's own persisted settings file. Its `server_enabled` flag
     /// defaults to false on a fresh install, and - confirmed by testing - the
     /// `--websocket_port`/`--websocket_password` launch flags configure
@@ -123,14 +127,26 @@ final class OBSProcessManager {
     /// launch - see clearStaleSentinels().
     func quitAndWait() async {
         let instances = NSRunningApplication.runningApplications(withBundleIdentifier: Self.bundleIdentifier)
+        guard !instances.isEmpty else { runningApp = nil; return }
         instances.forEach { $0.terminate() }
+        // Liveness via POSIX kill(pid, 0), NOT by re-querying the
+        // workspace list: during Greenroom's own final moments the
+        // running-app snapshot goes stale (it refreshes on the main run
+        // loop), and a re-query returned empty while OBS was demonstrably
+        // still alive - forceTerminate then targeted nothing and a wedged
+        // OBS lingered after quit (seen live).
+        let pids = instances.map(\.processIdentifier)
         for _ in 0..<25 {
-            if NSRunningApplication.runningApplications(withBundleIdentifier: Self.bundleIdentifier).isEmpty { break }
+            if pids.allSatisfy({ kill($0, 0) != 0 }) { break } // ESRCH = exited
             try? await Task.sleep(nanoseconds: 200_000_000)
         }
-        // Anything still alive after the grace period gets forced, then
-        // its sentinel cleared on the next launch.
-        NSRunningApplication.runningApplications(withBundleIdentifier: Self.bundleIdentifier).forEach { $0.forceTerminate() }
+        // SIGKILL directly for stragglers: always deliverable (a wedged
+        // main thread ignores Apple Events forever), produces neither a
+        // crash report nor a "quit unexpectedly" dialog, and the sentinel
+        // it leaves is cleared on the next launch (clearStaleSentinels).
+        for pid in pids where kill(pid, 0) == 0 {
+            kill(pid, SIGKILL)
+        }
         runningApp = nil
     }
 

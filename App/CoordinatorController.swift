@@ -88,6 +88,18 @@ final class CoordinatorController: ObservableObject {
             // the scene switch is the gentle, well-tested path instead.
             // The next Start switches back via SetCurrentProgramScene.
             _ = await boundedOBSRequest("CreateScene", data: ["sceneName": "Greenroom Idle"], seconds: 2)
+            // A bare-black idle scene reads as "OBS is broken" to anyone
+            // opening OBS between sessions (reported live) - label it so
+            // it explains itself. Fails harmlessly if it already exists.
+            _ = await boundedOBSRequest("CreateInput", data: [
+                "sceneName": "Greenroom Idle",
+                "inputName": "Greenroom Idle Label",
+                "inputKind": "text_ft2_source_v2",
+                "inputSettings": [
+                    "text": "Greenroom is between sessions.\nPress Start in the Greenroom app \u{2014} the scene switches back automatically.",
+                    "font": ["face": "Helvetica", "size": 48]
+                ]
+            ], seconds: 2)
             _ = await boundedOBSRequest("SetCurrentProgramScene", data: ["sceneName": "Greenroom Idle"], seconds: 2)
             try? await Task.sleep(nanoseconds: 500_000_000) // let the capture wind down
             client.disconnect()

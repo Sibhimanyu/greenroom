@@ -1070,13 +1070,12 @@ final class CoordinatorController: ObservableObject {
         guard peopleViewWanted else { return }
         guard let target = peopleViewTargetScreen() else { return }
         if let gallery = peopleViewWindow {
-            // Never fight the user's live interaction: clicking the grid
-            // makes the SDK re-home it toward the main screen, and
-            // re-framing it while it's still the KEY window produced a
-            // visible tug-of-war (reported live). Leave the focused
-            // window alone; it snaps back on the first tick after focus
-            // moves on.
-            if gallery.isKeyWindow { return }
+            // The grid STAYS on its display, focused or not (explicit
+            // requirement) - clicking it must not strand it wherever the
+            // SDK re-homed it. The only interaction respected is an
+            // active mouse-drag on the window itself; everything else
+            // gets corrected immediately.
+            if gallery.isKeyWindow && NSEvent.pressedMouseButtons != 0 { return }
             if gallery.styleMask.contains(.fullScreen) {
                 gallery.toggleFullScreen(nil) // re-framed on a later tick
             } else if gallery.frame != target.frame {
@@ -1101,7 +1100,13 @@ final class CoordinatorController: ObservableObject {
     /// secondary hasn't appeared after ~20s, so the tile never stays
     /// unparked.
     private func tileWindowCandidate(waitedTicks: Int) -> NSWindow? {
-        let candidates = meetingVideoWindowCandidates()
+        // NEVER the placed participant grid: when the (hidden) tile's weak
+        // reference died - the SDK recreates windows on activation - the
+        // single-candidate fallback grabbed the GRID and parked it into
+        // the tile slot on the main screen, while the pinning loop dragged
+        // it back to the reference display: a visible 2s tug-of-war
+        // (reported live; the root cause, not the SDK alone).
+        let candidates = meetingVideoWindowCandidates().filter { $0 !== peopleViewWindow }
         guard peopleViewWanted else { return candidates.first }
         if candidates.count >= 2 { return candidates.last }
         return waitedTicks >= 10 ? candidates.first : nil

@@ -227,30 +227,87 @@ enum GreenroomScene {
         return (list["sceneItems"] as? [[String: Any]]) ?? []
     }
 
+    /// Names of ALL inputs OBS knows about, scene-membership aside. OBS
+    /// inputs are global, so this - not the scene's item list - is what
+    /// decides whether CreateInput would collide.
+    private static func inputNames(client: OBSWebSocketClient) async throws -> Set<String> {
+        let list = try await client.request("GetInputList")
+        let inputs = (list["inputs"] as? [[String: Any]]) ?? []
+        return Set(inputs.compactMap { $0["inputName"] as? String })
+    }
+
     /// Creates `name` with `settings` baked in if it doesn't exist yet. If it
     /// already exists but `isCorrectlyConfigured` says its current settings
     /// are wrong (e.g. left over from before this app resolved a real
     /// display/camera), removes and recreates it from scratch rather than
     /// patching a potentially-live source in place - see the crash note in
     /// `ensureConfigured` for why that distinction matters.
+    ///
+    /// Existence is judged against the GLOBAL input list, not the Greenroom
+    /// scene's items: an input can exist in OBS without being in this scene
+    /// (a warm OBS carrying it over between sessions, or it living in
+    /// another scene), and CreateInput fails "a source already exists by
+    /// that input name" whenever the name is globally taken. So an input
+    /// that exists but isn't in the scene - or is misconfigured - is
+    /// removed and recreated cleanly.
     private static func ensureInput(
         client: OBSWebSocketClient, name: String, kind: String, settings: [String: Any],
         isCorrectlyConfigured: ([String: Any]) -> Bool
     ) async throws {
-        let items = try await sceneItems(client: client)
-        if items.contains(where: { ($0["sourceName"] as? String) == name }) {
+        if try await inputNames(client: client).contains(name) {
+            let inScene = try await sceneItems(client: client)
+                .contains { ($0["sourceName"] as? String) == name }
             let current = try await client.request("GetInputSettings", data: ["inputName": name])
-            if isCorrectlyConfigured((current["inputSettings"] as? [String: Any]) ?? [:]) {
+            let ok = isCorrectlyConfigured((current["inputSettings"] as? [String: Any]) ?? [:])
+
+            if ok {
+                if inScene { return }
+                // Correctly-configured input that just isn't in this scene
+                // (a warm OBS carried it over): REUSE it by adding it to
+                // the scene, rather than remove-and-recreate. That reuse
+                // also avoids re-triggering OBS's ScreenCaptureKit
+                // audio-teardown crash that a screen-source removal risks.
+                _ = try? await client.request("CreateSceneItem", data: [
+                    "sceneName": sceneName, "sourceName": name
+                ])
                 return
             }
-            _ = try? await client.request("RemoveInput", data: ["inputName": name])
+            // Misconfigured: remove it entirely and wait until it's really
+            // gone before recreating - RemoveInput returns before OBS has
+            // actually dropped the source, so an immediate CreateInput
+            // still collides with "a source already exists by that name".
+            await removeInputAndWait(client: client, name: name)
         }
-        _ = try await client.request("CreateInput", data: [
-            "sceneName": sceneName,
-            "inputName": name,
-            "inputKind": kind,
-            "inputSettings": settings
-        ])
+        try await createInput(client: client, name: name, kind: kind, settings: settings)
+    }
+
+    /// CreateInput, resilient to a residual name collision: if OBS still
+    /// reports the name as taken (a very fast warm restart, or removal
+    /// lag our checks didn't catch), remove-and-wait once more and retry.
+    private static func createInput(
+        client: OBSWebSocketClient, name: String, kind: String, settings: [String: Any]
+    ) async throws {
+        let data: [String: Any] = [
+            "sceneName": sceneName, "inputName": name, "inputKind": kind, "inputSettings": settings
+        ]
+        do {
+            _ = try await client.request("CreateInput", data: data)
+        } catch let error as OBSWebSocketClient.RequestError
+                    where (error.comment ?? "").localizedCaseInsensitiveContains("already exists") {
+            await removeInputAndWait(client: client, name: name)
+            _ = try await client.request("CreateInput", data: data)
+        }
+    }
+
+    /// Removes an input and waits until it actually disappears from the
+    /// input list (up to ~2s). Necessary because obs-websocket's
+    /// RemoveInput acknowledges before OBS finishes destroying the source.
+    private static func removeInputAndWait(client: OBSWebSocketClient, name: String) async {
+        _ = try? await client.request("RemoveInput", data: ["inputName": name])
+        for _ in 0..<20 {
+            if let names = try? await inputNames(client: client), !names.contains(name) { return }
+            try? await Task.sleep(nanoseconds: 100_000_000)
+        }
     }
 
     /// Turns the chroma key on for Cutout mode (green-screen removal, so

@@ -69,9 +69,15 @@ struct ChatWindowView: View {
     }
 
     private func send() {
-        guard !draft.isEmpty else { return }
-        chat.send(draft)
+        let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return }
+        // Clear FIRST, send on the next runloop turn: sending inside the
+        // commit made the bridge publish a messages update mid-commit,
+        // and the in-flight field-editor session wrote the old text back
+        // over the just-cleared binding - the field visibly kept the sent
+        // message (reported live).
         draft = ""
+        DispatchQueue.main.async { chat.send(text) }
     }
 }
 

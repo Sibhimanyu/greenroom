@@ -989,6 +989,12 @@ final class CoordinatorController: ObservableObject {
                     }
                 }
                 demoteStrayMeetingWindows()
+                // Cheap periodic re-assert (~20s): nothing - OBS-side
+                // edits included - can leave the webcam under the screen
+                // capture for long mid-session.
+                if waitedTicks % 10 == 0, client.isConnected {
+                    try? await GreenroomScene.enforceLayerOrder(client: client)
+                }
                 waitedTicks += 1
                 try? await Task.sleep(nanoseconds: 2_000_000_000)
             }
@@ -1031,6 +1037,11 @@ final class CoordinatorController: ObservableObject {
         }
         if ChatWindowController.isOpen {
             ChatWindowController.show(chat: zoomChatBridge, layout: workspaceLayout)
+        }
+        // Snap Back is also the manual "fix the composite" action: re-assert
+        // webcam-above-screen in the OBS scene alongside the window re-tiling.
+        if client.isConnected {
+            Task { try? await GreenroomScene.enforceLayerOrder(client: client) }
         }
         if !sdkMeetingWindows().isEmpty {
             parkBuiltInMeetingWindow()

@@ -124,8 +124,6 @@ enum GreenroomScene {
             try await setWebcamItemEnabled(client: client, enabled: false)
         }
 
-        try await enforceLayerOrder(client: client)
-
         // Match the OBS canvas to the screen source's actual native pixel
         // size and stretch the source to exactly fill it (confirmed by
         // testing: a mismatched canvas left the source unscaled at native
@@ -135,6 +133,11 @@ enum GreenroomScene {
         try await layoutScene(client: client, layout: bubble, canvasWidth: canvas.width, canvasHeight: canvas.height)
 
         await configureRecordingPath(client: client)
+
+        // LAST, so nothing in setup can run after it and reorder: the
+        // webcam must render above the screen capture, whatever the
+        // creation/reuse paths above did to the stacking.
+        try await enforceLayerOrder(client: client)
 
         try await client.request("SetCurrentProgramScene", data: ["sceneName": sceneName])
         return webcamUID != nil
@@ -260,7 +263,7 @@ enum GreenroomScene {
     /// the webcam UNDERNEATH the screen: the overlay vanishes behind the
     /// shared screen. Asserted explicitly at every session setup instead
     /// of ever trusting creation order.
-    private static func enforceLayerOrder(client: OBSWebSocketClient) async throws {
+    static func enforceLayerOrder(client: OBSWebSocketClient) async throws {
         let items = try await sceneItems(client: client)
         guard
             let webcam = items.first(where: { ($0["sourceName"] as? String) == webcamSourceName }),

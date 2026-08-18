@@ -41,6 +41,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 .init(keyCode: UInt32(kVK_ANSI_S), modifiers: mods) {
                     CoordinatorController.shared?.snapWindowsBack()
                 },
+                // Speaker-tile quick-hide/float. Pref-gated in the action
+                // (toggleSpeakerTile checks speakerTileShortcutEnabled),
+                // so flipping the setting needs no re-registration.
+                .init(keyCode: UInt32(kVK_ANSI_Z), modifiers: mods) {
+                    CoordinatorController.shared?.toggleSpeakerTile()
+                },
             ])
 
             // OBS's cold launch is most of Start's wait - warm it now so

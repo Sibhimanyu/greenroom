@@ -298,6 +298,11 @@ private struct LayoutSettingsTab: View {
                 Text("On: the speaker tile and participant view show only the others. Off: your tile appears among them like anyone else's. The class receives your video either way \u{2014} this only changes what you see. Applies immediately, even mid-meeting.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+
+                Toggle("\u{2303}\u{2325}\u{2318}Z quick-hides the speaker tile", isOn: $coordinator.speakerTileShortcutEnabled)
+                Text("First press hides the tile and gives the chat its full column height. Press again to float the speaker in front of everything; once more hides it again. Snap Windows Back (\u{2303}\u{2325}\u{2318}S) restores the normal layout. Works system-wide, even while another app is focused.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
 
             Section("Second display") {

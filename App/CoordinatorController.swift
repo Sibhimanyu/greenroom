@@ -204,6 +204,43 @@ final class CoordinatorController: ObservableObject {
             zoomChatClient.setHideSelfView(hideSelfView)
         }
     }
+    /// Enables the \u{2303}\u{2325}\u{2318}Z speaker-tile quick-hide
+    /// shortcut (the hotkey action checks this before doing anything).
+    @Published var speakerTileShortcutEnabled: Bool {
+        didSet { defaults.set(speakerTileShortcutEnabled, forKey: "speakerTileShortcutEnabled") }
+    }
+
+    /// Quick-hide engaged: the tile is off-screen (or summoned as a
+    /// floating overlay) and the chat owns the FULL side column. Reset by
+    /// Snap Windows Back and at each session's parking loop start.
+    private var speakerTileQuickHidden = false
+
+    /// \u{2303}\u{2325}\u{2318}Z: first press hides the parked speaker
+    /// tile and gives the chat its vertical space; the next press summons
+    /// the tile FLOATING IN FRONT of everything at its slot (chat stays
+    /// full-height underneath); pressing again hides it again. Snap
+    /// Windows Back (\u{2303}\u{2325}\u{2318}S) restores the normal
+    /// tile-above-chat layout.
+    func toggleSpeakerTile() {
+        guard speakerTileShortcutEnabled else { return }
+        guard let window = builtInMeetingWindow, ChatWindowController.isOpen else {
+            log("No speaker tile to toggle \u{2014} the shortcut works during a session with the Zoom tile enabled.")
+            return
+        }
+        if window.isVisible {
+            speakerTileQuickHidden = true
+            window.orderOut(nil)
+            ChatWindowController.fillSideColumn(layout: workspaceLayout)
+            log("Speaker tile hidden \u{2014} chat has the full column. \u{2303}\u{2325}\u{2318}Z floats it back.")
+        } else {
+            if let slot = ChatWindowController.zoomSlotNSFrame(for: workspaceLayout) {
+                window.setFrame(slot, display: true)
+            }
+            window.level = .floating
+            window.orderFrontRegardless()
+            log("Speaker tile floating in front \u{2014} \u{2303}\u{2325}\u{2318}Z hides it again.")
+        }
+    }
 
     // MARK: Defaults - persisted so Start reproduces the whole setup every time
 
@@ -294,6 +331,7 @@ final class CoordinatorController: ObservableObject {
         useBuiltInClient = defaults.object(forKey: "useBuiltInClient") == nil ? true : defaults.bool(forKey: "useBuiltInClient")
         userDisplayName = defaults.string(forKey: "userDisplayName") ?? NSFullUserName()
         hideSelfView = (defaults.object(forKey: "hideSelfView") as? Bool) ?? true
+        speakerTileShortcutEnabled = (defaults.object(forKey: "speakerTileShortcutEnabled") as? Bool) ?? true
         // didSet doesn't fire during init, and the SDK isn't up yet anyway
         // - sync just the stored preference; connect-time reads it.
         zoomChatClient.hideSelfViewPreference = hideSelfView
@@ -801,6 +839,7 @@ final class CoordinatorController: ObservableObject {
             var parked = false
             var lastFrame = CGRect.null
             demotedStrayWindowNumbers.removeAll() // fresh session, fresh logs
+            speakerTileQuickHidden = false // parking = the normal layout
             // SDK-level first: both meeting views out of fullscreen. A
             // window in a fullscreen Space ignores setFrame, so nothing
             // below works until this has taken effect.
@@ -809,7 +848,10 @@ final class CoordinatorController: ObservableObject {
                 // The stray guard below must run even with the Zoom tile
                 // toggled off - that's when the primary window has no slot
                 // and is most likely to sit fullscreen over the capture.
-                if workspaceLayout.sideShowsZoomTile,
+                // Quick-hidden (\u{2303}\u{2325}\u{2318}Z) skips parking
+                // and the chat-follow too: the chat owns the full column
+                // and the tile is deliberately hidden or floating.
+                if workspaceLayout.sideShowsZoomTile, !speakerTileQuickHidden,
                    let window = builtInMeetingWindow ?? meetingVideoWindowCandidates().first {
                     if window.styleMask.contains(.fullScreen) {
                         // Still fullscreen (the exit animates out over ~1s,
@@ -850,6 +892,13 @@ final class CoordinatorController: ObservableObject {
     /// plain NSWindow) or the native Zoom app's (Accessibility API) - and
     /// the follow loops those restart re-align the chat automatically.
     func snapWindowsBack() {
+        // Undo the speaker-tile quick-hide: back to the normal
+        // tile-above-chat layout before re-tiling everything.
+        speakerTileQuickHidden = false
+        if let tile = builtInMeetingWindow {
+            tile.level = .normal
+            tile.orderFront(nil)
+        }
         Task {
             if let error = await MainPaneManager.repositionFrontWindow(bundleID: mainAppBundleID, layout: workspaceLayout) {
                 log(error)
@@ -1431,6 +1480,7 @@ struct SettingsTransfer: Codable {
     var peopleViewOnStart: Bool?
     var peopleViewDisplayUUID: String?
     var hideSelfView: Bool?
+    var speakerTileShortcutEnabled: Bool?
     var autoRecordOnStart: Bool?
     var keepOBSWarm: Bool?
     var meetingPresets: [MeetingPreset]?
@@ -1459,6 +1509,7 @@ extension CoordinatorController {
             peopleViewOnStart: peopleViewOnStart,
             peopleViewDisplayUUID: peopleViewDisplayUUID,
             hideSelfView: hideSelfView,
+            speakerTileShortcutEnabled: speakerTileShortcutEnabled,
             autoRecordOnStart: autoRecordOnStart,
             keepOBSWarm: keepOBSWarm,
             meetingPresets: meetingPresets,
@@ -1489,6 +1540,7 @@ extension CoordinatorController {
         if let value = transfer.peopleViewOnStart { peopleViewOnStart = value }
         if let value = transfer.peopleViewDisplayUUID { peopleViewDisplayUUID = value }
         if let value = transfer.hideSelfView { hideSelfView = value }
+        if let value = transfer.speakerTileShortcutEnabled { speakerTileShortcutEnabled = value }
         if let value = transfer.autoRecordOnStart { autoRecordOnStart = value }
         if let value = transfer.keepOBSWarm { keepOBSWarm = value }
         if let value = transfer.meetingPresets { meetingPresets = value }

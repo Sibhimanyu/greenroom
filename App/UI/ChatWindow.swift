@@ -215,6 +215,14 @@ enum ChatWindowController {
     /// Re-tucks the chat window to start exactly below Zoom's ACTUAL
     /// parked frame (AX coordinates) - Zoom clamps resizes to its minimum
     /// window size, so the planned slot and reality can differ.
+    /// The chat expanded to the FULL side column - the speaker-tile
+    /// quick-hide (\u{2303}\u{2325}\u{2318}Z) gives the chat the tile's
+    /// vertical space while the tile is hidden.
+    static func fillSideColumn(layout: WorkspaceLayout) {
+        guard layout.sideShowsChat, let window, let column = layout.sideColumnNSFrame() else { return }
+        window.setFrame(column, display: true)
+    }
+
     static func adjustBelowZoom(actualZoomFrameAX zoomFrame: CGRect, layout: WorkspaceLayout) {
         guard layout.sideShowsChat, let window, let screen = NSScreen.main,
               let column = layout.sideColumnNSFrame() else { return }

@@ -52,6 +52,12 @@ struct MenuBarView: View {
         }
         .keyboardShortcut("s", modifiers: [.control, .option, .command])
 
+        Button("Hide/Float Speaker Tile") {
+            coordinator.toggleSpeakerTile()
+        }
+        .keyboardShortcut("z", modifiers: [.control, .option, .command])
+        .disabled(!coordinator.speakerTileShortcutEnabled || !coordinator.virtualCamActive)
+
         Button("Open Chat Window") {
             coordinator.joinChatOnly()
         }

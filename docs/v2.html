@@ -1,0 +1,471 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="favicon.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<title>Greenroom — your morning class, set up in one click</title>
+<meta name="description" content="Greenroom starts the virtual camera, opens the Zoom meeting, and tiles every window into place. The ten-minute morning ritual becomes a button.">
+<style>
+:root{
+  --ground:#fff; --surface:#f7f8f7; --line:#e4e7e4;
+  --faint:#98a2b3; --muted:#475467; --ink:#101828;
+  --evergreen:#2f6118; --evergreen-deep:#00401c; --lime:#78c000;
+  --alpenglow:#96600a;
+  --display:ui-serif,"New York","Iowan Old Style",Georgia,serif;
+  --sans:-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  --mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,monospace;
+  --page:1160px;
+  --ease:cubic-bezier(.22,.7,.25,1);
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{
+  margin:0;background:var(--ground);color:var(--ink);
+  font-family:var(--sans);font-size:16px;line-height:1.62;
+  -webkit-font-smoothing:antialiased;
+  overflow-x:hidden;
+}
+h1,h2,h3,p{margin:0}
+a{color:var(--evergreen);text-decoration:none}
+:focus-visible{outline:2px solid var(--evergreen);outline-offset:3px;border-radius:4px}
+.wrap{max-width:var(--page);margin:0 auto;padding:0 32px}
+.mono{font-family:var(--mono);font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--faint)}
+
+/* ---------- nav ---------- */
+nav{position:sticky;top:0;z-index:60;background:rgba(255,255,255,.82);backdrop-filter:saturate(180%) blur(14px);border-bottom:1px solid transparent;transition:border-color .3s}
+nav.stuck{border-bottom-color:var(--line)}
+.nav-in{display:flex;align-items:center;height:66px;gap:36px}
+.brand{display:flex;align-items:center;gap:9px;font-weight:650;font-size:18px;letter-spacing:-.01em;color:var(--ink)}
+.brand-mark{width:26px;height:26px;display:block;flex:0 0 auto}
+.nav-links{display:flex;gap:28px;margin-left:auto}
+.nav-links a{color:var(--muted);font-size:14px;font-weight:500}
+.nav-links a:hover{color:var(--ink)}
+.btn{display:inline-flex;align-items:center;gap:8px;background:var(--evergreen);color:#fff;font-weight:600;font-size:15px;padding:12px 22px;border-radius:10px;transition:background .2s,transform .15s}
+.btn:hover{background:var(--evergreen-deep);transform:translateY(-1px)}
+.btn-sm{padding:8px 16px;font-size:13.5px}
+.progress{position:absolute;left:0;bottom:-1px;height:2px;width:0;background:var(--lime)}
+@media(max-width:820px){.nav-links{display:none}}
+
+/* ---------- hero ---------- */
+.hero{position:relative;padding:132px 0 120px;text-align:center;overflow:hidden}
+.hero-shader{position:absolute;inset:0;z-index:0;
+  background:linear-gradient(178deg,#eef5e9 0%,#f8fbf6 42%,#fff 78%);
+  -webkit-mask-image:linear-gradient(#000 55%,transparent);mask-image:linear-gradient(#000 55%,transparent)}
+.hero-shader canvas{display:block;width:100%;height:100%}
+.hero .wrap{position:relative;z-index:1}
+.eyebrow{display:inline-block;font-family:var(--mono);font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:var(--evergreen);margin-bottom:26px}
+h1{font-family:var(--display);font-weight:400;font-size:clamp(46px,7.2vw,92px);line-height:1.02;letter-spacing:-.025em}
+h1 span{display:block}
+.lede{margin:28px auto 0;max-width:52ch;font-size:19px;color:var(--muted)}
+.hero-actions{display:flex;justify-content:center;align-items:center;gap:24px;margin-top:38px;flex-wrap:wrap}
+.textlink{font-weight:600;font-size:15px;color:var(--ink)}
+.textlink:hover{color:var(--evergreen)}
+.textlink .arw{display:inline-block;transition:transform .2s}
+.textlink:hover .arw{transform:translateX(3px)}
+.hero-note{margin-top:22px;font-size:13px;color:var(--faint)}
+
+/* load-in */
+.rise{opacity:0;transform:translateY(18px);animation:rise .9s var(--ease) forwards}
+@keyframes rise{to{opacity:1;transform:none}}
+.d1{animation-delay:.05s}.d2{animation-delay:.16s}.d3{animation-delay:.27s}
+.d4{animation-delay:.42s}.d5{animation-delay:.54s}.d6{animation-delay:.66s}
+
+/* ---------- the collapse ---------- */
+.collapse{background:var(--ground)}
+.track{height:300vh;position:relative}
+.stage{position:sticky;top:0;height:100vh;display:flex;align-items:center;overflow:hidden}
+.stage .wrap{width:100%}
+.before-block{transform-origin:left top;will-change:transform,opacity}
+.before-label{color:var(--alpenglow)}
+.before-h{font-family:var(--display);font-weight:400;font-size:30px;letter-spacing:-.02em;color:var(--muted);margin-top:10px}
+.chores{list-style:none;margin:26px 0 0;padding:0;max-width:460px}
+.chores li{position:relative;padding:9px 0;font-size:16.5px;color:var(--muted);border-bottom:1px solid var(--line);will-change:opacity}
+.chores li .bar{position:absolute;left:0;top:50%;height:1.5px;width:0;background:var(--alpenglow);opacity:.75}
+.rule{height:2px;background:var(--evergreen);margin:42px 0 0;transform:scaleX(0);transform-origin:left;will-change:transform}
+.now-block{margin-top:34px;will-change:transform,opacity}
+.now-label{color:var(--evergreen);opacity:0}
+.now-h{font-family:var(--display);font-weight:400;font-size:clamp(48px,7vw,84px);line-height:1;letter-spacing:-.03em;color:var(--evergreen);margin-top:8px;opacity:0;transform-origin:left center;will-change:transform,opacity}
+.now-row{display:flex;align-items:center;gap:26px;margin-top:30px;flex-wrap:wrap;opacity:0}
+.start{position:relative;display:inline-flex;align-items:center;gap:10px;background:var(--evergreen);color:#fff;font-weight:600;font-size:16px;padding:15px 30px;border-radius:12px;isolation:isolate}
+.start-glow{position:absolute;inset:-14px;z-index:-1;border-radius:22px;pointer-events:none;
+  box-shadow:0 0 0 4px rgba(120,192,0,.24)}
+.start-glow canvas{display:block;width:100%;height:100%;border-radius:22px}
+.now-sub{font-size:16px;color:var(--muted);max-width:34ch}
+
+/* ---------- reveal ---------- */
+.rv{opacity:0;transform:translateY(26px);transition:opacity .8s var(--ease),transform .8s var(--ease)}
+.rv.in{opacity:1;transform:none}
+
+/* ---------- run log ---------- */
+.band{padding:120px 0;border-top:1px solid var(--line)}
+.band.soft{background:var(--surface)}
+.sec-head{max-width:56ch}
+.sec-head h2{font-family:var(--display);font-weight:400;font-size:clamp(34px,4.4vw,52px);line-height:1.08;letter-spacing:-.025em;margin-top:14px}
+.sec-head p{margin-top:18px;font-size:18px;color:var(--muted)}
+.log{margin-top:56px;border-top:1px solid var(--line)}
+.log-row{display:grid;grid-template-columns:64px 1fr;gap:0 28px;padding:26px 0;border-bottom:1px solid var(--line);align-items:baseline}
+.log-n{font-family:var(--mono);font-size:12.5px;color:var(--lime);letter-spacing:.06em;padding-top:4px}
+.log-row h3{font-size:19px;font-weight:600;letter-spacing:-.01em}
+.log-row p{margin-top:7px;color:var(--muted);max-width:62ch}
+.log-row p code{font-family:var(--mono);font-size:13px;background:#fff;border:1px solid var(--line);border-radius:5px;padding:1px 5px}
+@media(max-width:640px){.log-row{grid-template-columns:1fr;gap:6px}}
+
+/* ---------- proof ---------- */
+.proof{padding:120px 0 130px;border-top:1px solid var(--line)}
+.frame{margin-top:44px;border:1px solid var(--line);border-radius:14px;overflow:hidden;background:var(--surface);box-shadow:0 1px 2px rgba(16,24,40,.04),0 24px 60px rgba(16,24,40,.09);transform:scale(.975);opacity:0;transition:opacity 1s var(--ease),transform 1s var(--ease)}
+.frame.in{opacity:1;transform:none}
+.frame video,.frame img{display:block;width:100%;height:auto}
+.cap{margin-top:16px;font-size:13.5px;color:var(--faint)}
+
+/* ---------- setup ---------- */
+.steps{margin-top:52px;display:grid;grid-template-columns:repeat(3,1fr);gap:0}
+.step{padding:0 32px;border-left:1px solid var(--line)}
+.step:first-child{padding-left:0;border-left:0}
+.step .mono{color:var(--evergreen)}
+.step h3{margin-top:12px;font-size:18px;font-weight:600}
+.step p{margin-top:9px;color:var(--muted);font-size:15.5px}
+@media(max-width:820px){.steps{grid-template-columns:1fr;gap:34px}.step{padding:0;border-left:0}}
+
+/* ---------- safety ---------- */
+.safe{display:grid;grid-template-columns:1.1fr 1fr;gap:56px;align-items:center}
+.scope{border:1px solid var(--line);border-radius:12px;background:#fff;overflow:hidden}
+.scope-row{display:flex;align-items:center;gap:14px;padding:14px 18px;border-bottom:1px solid var(--line);font-size:14.5px}
+.scope-row:last-child{border-bottom:0}
+.dotm{width:8px;height:8px;border-radius:50%;flex:0 0 auto}
+.dotm.local{background:var(--lime)}
+.dotm.net{background:var(--alpenglow)}
+.scope-row b{font-weight:600}
+.scope-row span{margin-left:auto;font-family:var(--mono);font-size:11.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--faint)}
+@media(max-width:900px){.safe{grid-template-columns:1fr;gap:36px}}
+
+/* ---------- cta / footer ---------- */
+.cta{padding:130px 0;text-align:center;border-top:1px solid var(--line)}
+.cta h2{font-family:var(--display);font-weight:400;font-size:clamp(36px,5vw,64px);line-height:1.06;letter-spacing:-.03em}
+.cta p{margin:22px auto 0;max-width:46ch;color:var(--muted)}
+.cta-actions{display:flex;justify-content:center;gap:22px;margin-top:34px;align-items:center;flex-wrap:wrap}
+footer{border-top:1px solid var(--line);padding:34px 0;font-size:13.5px;color:var(--faint)}
+.foot-in{display:flex;gap:18px;flex-wrap:wrap;align-items:center}
+.foot-in nav{all:unset;display:flex;gap:16px;margin-left:auto}
+footer a{color:var(--muted)}
+
+@media (prefers-reduced-motion: reduce){
+  .track{height:auto}
+  .stage{position:static;height:auto;padding:110px 0}
+  .rise,.rv,.frame{animation:none!important;opacity:1!important;transform:none!important;transition:none!important}
+  .progress{display:none}
+}
+</style>
+</head>
+<body>
+
+<nav id="nav">
+  <div class="wrap nav-in">
+    <a class="brand" href="v2.html"><img class="brand-mark" src="logo-mark.png" alt="" width="26" height="26">Greenroom</a>
+    <div class="nav-links">
+      <a href="#does">What it does</a>
+      <a href="#watch">Watch</a>
+      <a href="#setup">Setup</a>
+      <a href="how-it-works.html">Is it safe</a>
+      <a href="https://github.com/sibhimanyu/greenroom">Source</a>
+    </div>
+    <a class="btn btn-sm" href="https://github.com/sibhimanyu/greenroom/releases/latest">Download</a>
+  </div>
+  <div class="progress" id="progress"></div>
+</nav>
+
+<header class="hero">
+  <div class="hero-shader" id="heroShader"></div>
+  <div class="wrap">
+    <p class="eyebrow rise d1">macOS · free · open source</p>
+    <h1><span class="rise d2">Mornings are for reading,</span><span class="rise d3">not window management.</span></h1>
+    <p class="lede rise d4">One button starts the virtual camera, opens the Zoom meeting, and puts every window where it belongs.</p>
+    <div class="hero-actions rise d5">
+      <a class="btn" href="https://github.com/sibhimanyu/greenroom/releases/latest">Download for Mac</a>
+      <a class="textlink" href="#watch">Watch it run <span class="arw">→</span></a>
+    </div>
+    <p class="hero-note rise d6">Built for a morning reading class at Zoho Schools.</p>
+  </div>
+</header>
+
+<!-- ===== the collapse ===== -->
+<section class="collapse" id="collapse">
+  <div class="track" id="track">
+    <div class="stage">
+      <div class="wrap">
+        <div class="before-block" id="beforeBlock">
+          <p class="mono before-label">Before · 7:50 every morning</p>
+          <p class="before-h">Ten minutes of this.</p>
+          <ul class="chores" id="chores">
+            <li>Launch OBS, start the virtual camera<i class="bar"></i></li>
+            <li>Key the webcam over the shared screen<i class="bar"></i></li>
+            <li>Start the meeting, re-pick the camera<i class="bar"></i></li>
+            <li>Drag the reading doc left, Zoom to its corner<i class="bar"></i></li>
+            <li>Find somewhere for the chat to fit<i class="bar"></i></li>
+          </ul>
+        </div>
+        <div class="rule" id="rule"></div>
+        <div class="now-block" id="nowBlock">
+          <p class="mono now-label" id="nowLabel">↓&nbsp;&nbsp;Now</p>
+          <p class="now-h" id="nowH">One button.</p>
+          <div class="now-row" id="nowRow">
+            <span class="start">
+              <span class="start-glow" id="startGlow"></span>
+              Start
+            </span>
+            <p class="now-sub">Camera live, meeting open, every window in place. Press it and walk on.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ===== run log ===== -->
+<section class="band soft" id="does">
+  <div class="wrap">
+    <div class="sec-head rv">
+      <p class="mono">What one press does</p>
+      <h2>Five things, in order, in about six seconds.</h2>
+      <p>Nothing here is hard on its own. All of it, every single morning, is the problem.</p>
+    </div>
+    <div class="log">
+      <div class="log-row rv"><div class="log-n">01</div><div>
+        <h3>OBS starts hidden</h3>
+        <p>A virtual camera publishes the whole screen with you keyed into a corner bubble — or cut out of your background entirely. Students see the book <em>and</em> you.</p>
+      </div></div>
+      <div class="log-row rv"><div class="log-n">02</div><div>
+        <h3>The meeting opens itself</h3>
+        <p>A fresh Zoom meeting is created under your own account and hosted from Greenroom's built-in client. No second app to click through. Joining an existing meeting by link works the same way.</p>
+      </div></div>
+      <div class="log-row rv"><div class="log-n">03</div><div>
+        <h3>Windows take their places</h3>
+        <p>Your reading doc fills the main pane at ½, ⅔ or ¾ of the screen; the meeting tile and chat stack into what's left. Dragged something out of place mid-class? <code>⌃⌥⌘S</code> snaps it all back.</p>
+      </div></div>
+      <div class="log-row rv"><div class="log-n">04</div><div>
+        <h3>Chat sits beside the book</h3>
+        <p>A standalone chat window in its own tile, so Zoom's panel never slides over the page you're reading from.</p>
+      </div></div>
+      <div class="log-row rv"><div class="log-n">05</div><div>
+        <h3>Recording, if you want it</h3>
+        <p>One press records exactly what the class saw — the composited screen with you in the corner — straight to a file for whoever missed the morning.</p>
+      </div></div>
+      <div class="log-row rv"><div class="log-n">—</div><div>
+        <h3>Set it up once, hand it on</h3>
+        <p>Every credential and preference exports as a single file. A colleague imports it and their Mac is ready. Nobody else touches the Zoom Marketplace.</p>
+      </div></div>
+    </div>
+  </div>
+</section>
+
+<!-- ===== proof ===== -->
+<section class="proof" id="watch">
+  <div class="wrap">
+    <div class="sec-head rv">
+      <p class="mono">Watch</p>
+      <h2>The whole idea, in 37 seconds.</h2>
+    </div>
+    <div class="frame" id="proofFrame">
+      <video controls preload="metadata" poster="greenroom-intro-poster.jpg" playsinline>
+        <source src="greenroom-intro.mp4" type="video/mp4">
+      </video>
+    </div>
+    <p class="cap rv">No narration. Press Start at 0:04 and watch the desk assemble itself.</p>
+  </div>
+</section>
+
+<!-- ===== setup ===== -->
+<section class="band" id="setup">
+  <div class="wrap">
+    <div class="sec-head rv">
+      <p class="mono">Setup</p>
+      <h2>On a Mac, in three steps. Once.</h2>
+    </div>
+    <div class="steps">
+      <div class="step rv"><p class="mono">Step 01</p><h3>Download &amp; drag in</h3>
+        <p>Grab the zip from the <a href="https://github.com/sibhimanyu/greenroom/releases/latest">latest release</a>, unzip, and drag <b>Greenroom.app</b> into Applications.</p></div>
+      <div class="step rv"><p class="mono">Step 02</p><h3>Open Anyway, once</h3>
+        <p>The app isn't notarized, so macOS balks the first time. System Settings → Privacy &amp; Security → <b>Open Anyway</b>. On macOS 14 and earlier, right-click → Open.</p></div>
+      <div class="step rv"><p class="mono">Step 03</p><h3>Import &amp; go</h3>
+        <p>Import the settings file from whoever set it up, install the free <a href="https://obsproject.com">OBS Studio</a> when the built-in guide asks, and grant each permission as it appears.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- ===== safety ===== -->
+<section class="band soft">
+  <div class="wrap safe">
+    <div class="rv">
+      <p class="mono">Is it safe</p>
+      <h2 style="font-family:var(--display);font-weight:400;font-size:clamp(32px,4vw,46px);line-height:1.1;letter-spacing:-.025em;margin-top:14px">Everything stays on your Mac, except the one thing that can't.</h2>
+      <p style="margin-top:18px;color:var(--muted);font-size:17px">Greenroom composites video locally and drives your windows through macOS's own Accessibility API. The only traffic that leaves is the Zoom call itself — which was always going to Zoom.</p>
+      <p style="margin-top:24px"><a class="textlink" href="how-it-works.html">Read the full breakdown <span class="arw">→</span></a></p>
+    </div>
+    <div class="scope rv">
+      <div class="scope-row"><i class="dotm local"></i><b>Screen &amp; webcam compositing</b><span>Your Mac</span></div>
+      <div class="scope-row"><i class="dotm local"></i><b>Window placement</b><span>Your Mac</span></div>
+      <div class="scope-row"><i class="dotm local"></i><b>Recordings</b><span>Your Mac</span></div>
+      <div class="scope-row"><i class="dotm local"></i><b>Credentials &amp; preferences</b><span>Your Mac</span></div>
+      <div class="scope-row"><i class="dotm net"></i><b>The Zoom meeting</b><span>Zoom</span></div>
+      <div class="scope-row"><i class="dotm net"></i><b>Update check</b><span>GitHub</span></div>
+    </div>
+  </div>
+</section>
+
+<!-- ===== cta ===== -->
+<section class="cta">
+  <div class="wrap">
+    <h2 class="rv">Ten minutes back,<br>every morning.</h2>
+    <p class="rv">Free and open source. macOS 14 or newer, with the free OBS Studio alongside.</p>
+    <div class="cta-actions rv">
+      <a class="btn" href="https://github.com/sibhimanyu/greenroom/releases/latest">Download for Mac</a>
+      <a class="textlink" href="https://github.com/sibhimanyu/greenroom">View on GitHub <span class="arw">→</span></a>
+    </div>
+    <p class="cap rv" style="margin-top:26px">Zoom features need a one-time credentials file — the full guide is in the README.</p>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap foot-in">
+    <span>Greenroom — built for the morning readers at Zoho Schools.</span>
+    <nav>
+      <a href="how-it-works.html">Is it safe</a>
+      <a href="https://github.com/sibhimanyu/greenroom">GitHub</a>
+      <a href="https://github.com/sibhimanyu/greenroom/releases">Releases</a>
+    </nav>
+  </div>
+</footer>
+
+<script>
+(function(){
+  var reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  /* ---- nav state + progress ---- */
+  var nav = document.getElementById('nav'), bar = document.getElementById('progress');
+
+  /* ---- the collapse ---- */
+  var track = document.getElementById('track'),
+      chores = Array.prototype.slice.call(document.querySelectorAll('#chores li')),
+      beforeBlock = document.getElementById('beforeBlock'),
+      rule = document.getElementById('rule'),
+      nowLabel = document.getElementById('nowLabel'),
+      nowH = document.getElementById('nowH'),
+      nowRow = document.getElementById('nowRow');
+
+  function span(p,a,b){ var t=(p-a)/(b-a); return t<0?0:t>1?1:t; }
+  function ease(t){ return t<.5 ? 4*t*t*t : 1-Math.pow(-2*t+2,3)/2; }
+
+  function paintCollapse(p){
+    /* chores strike through one at a time */
+    for(var i=0;i<chores.length;i++){
+      var t = ease(span(p, 0.05 + i*0.082, 0.05 + i*0.082 + 0.09));
+      chores[i].querySelector('.bar').style.width = (t*100)+'%';
+      chores[i].style.opacity = (1 - 0.62*t).toFixed(3);
+    }
+    /* the green rule draws across */
+    rule.style.transform = 'scaleX(' + ease(span(p,0.50,0.66)).toFixed(3) + ')';
+    /* the before block recedes */
+    var r = ease(span(p,0.60,0.86));
+    beforeBlock.style.opacity = (1 - 0.72*r).toFixed(3);
+    beforeBlock.style.transform = 'translateY(' + (-22*r).toFixed(1) + 'px) scale(' + (1-0.04*r).toFixed(3) + ')';
+    /* the payoff arrives */
+    var nl = ease(span(p,0.58,0.70));
+    nowLabel.style.opacity = nl.toFixed(3);
+    nowLabel.style.transform = 'translateY(' + (10*(1-nl)).toFixed(1) + 'px)';
+    var nh = ease(span(p,0.64,0.86));
+    nowH.style.opacity = nh.toFixed(3);
+    nowH.style.transform = 'scale(' + (0.93 + 0.07*nh).toFixed(3) + ')';
+    var nr = ease(span(p,0.78,0.96));
+    nowRow.style.opacity = nr.toFixed(3);
+    nowRow.style.transform = 'translateY(' + (14*(1-nr)).toFixed(1) + 'px)';
+  }
+
+  function frame(){
+    var y = window.pageYOffset || document.documentElement.scrollTop;
+    nav.classList.toggle('stuck', y > 8);
+    var doc = document.documentElement.scrollHeight - window.innerHeight;
+    bar.style.width = (doc > 0 ? (y/doc)*100 : 0) + '%';
+
+    var r = track.getBoundingClientRect();
+    var total = r.height - window.innerHeight;
+    var p = total > 0 ? (-r.top) / total : 1;
+    paintCollapse(p < 0 ? 0 : p > 1 ? 1 : p);
+    queued = false;
+  }
+
+  var queued = false;
+  function onScroll(){ if(!queued){ queued = true; requestAnimationFrame(frame); } }
+
+  if(reduce){
+    paintCollapse(1);
+  } else {
+    window.addEventListener('scroll', onScroll, {passive:true});
+    window.addEventListener('resize', onScroll);
+    frame();
+  }
+
+  /* ---- reveal on enter ---- */
+  var rv = document.querySelectorAll('.rv, #proofFrame');
+  if(reduce || !('IntersectionObserver' in window)){
+    Array.prototype.forEach.call(rv, function(el){ el.classList.add('in'); });
+  } else {
+    var io = new IntersectionObserver(function(entries){
+      entries.forEach(function(e){
+        if(e.isIntersecting){ e.target.classList.add('in'); io.unobserve(e.target); }
+      });
+    }, {rootMargin:'0px 0px -12% 0px', threshold:0.12});
+    /* stagger siblings inside a group */
+    Array.prototype.forEach.call(rv, function(el, i){
+      var sibs = el.parentElement ? Array.prototype.indexOf.call(el.parentElement.children, el) : 0;
+      el.style.transitionDelay = Math.min(sibs, 6) * 70 + 'ms';
+      io.observe(el);
+    });
+  }
+})();
+</script>
+
+<script type="module">
+/* Paper shaders, vendored locally — the page makes no third-party requests. */
+if(!window.matchMedia('(prefers-reduced-motion: reduce)').matches){
+  try{
+    const m = await import('./vendor/shaders/index.js');
+    const c = m.getShaderColorFromString;
+
+    /* hero: a slow grain wash instead of a gradient blob */
+    new m.ShaderMount(
+      document.getElementById('heroShader'),
+      m.grainGradientFragmentShader,
+      {
+        u_noiseTexture: m.getShaderNoiseTexture(),
+        u_colorBack: c('#ffffff'),
+        u_colors: [c('#e6f2da'), c('#f3f8ef'), c('#ffffff')],
+        u_colorsCount: 3,
+        u_softness: 0.85, u_intensity: 0.16, u_noise: 0.22, u_shape: 1,
+        u_fit: 0, u_scale: 1.35, u_rotation: 0,
+        u_offsetX: 0, u_offsetY: 0, u_originX: 0.5, u_originY: 0.2,
+        u_worldWidth: 0, u_worldHeight: 0
+      },
+      undefined, 0.22
+    );
+
+    /* the Start button — the one button that starts everything, pulsing */
+    new m.ShaderMount(
+      document.getElementById('startGlow'),
+      m.pulsingBorderFragmentShader,
+      {
+        u_colorBack: c('#00000000'),
+        u_colors: [c('#78c000'), c('#2f6118'), c('#a8e63a')],
+        u_colorsCount: 3,
+        u_roundness: 0.55, u_thickness: 0.06, u_softness: 0.7,
+        u_marginLeft: 0.08, u_marginRight: 0.08, u_marginTop: 0.14, u_marginBottom: 0.14,
+        u_intensity: 0.42, u_bloom: 0.5, u_spotSize: 0.28, u_spots: 3,
+        u_pulse: 0.25, u_smoke: 0.25, u_smokeSize: 0.5
+      },
+      {premultipliedAlpha:true, alpha:true}, 0.9
+    );
+  }catch(e){ /* CSS gradient fallback already in place */ }
+}
+</script>
+</body>
+</html>

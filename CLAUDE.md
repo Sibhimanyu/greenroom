@@ -58,3 +58,18 @@ Key routing rules:
 - Save progress → invoke /context-save
 - Resume context → invoke /context-restore
 - Author a backlog-ready spec/issue → invoke /spec
+
+## Design System
+
+Always read DESIGN.md before making any visual or UI decision, on either
+surface: the site in `docs/` and the SwiftUI app in `App/UI/`.
+
+- Fonts, colours, spacing, radii, motion and the diagram grammar are defined
+  there. Do not deviate without explicit user approval.
+- Brand colour comes from tokens only. Never hardcode a green in Swift or CSS;
+  the app reads `Brand.green` (backed by `AccentColor.colorset`).
+- `--accent-lime` is a fill colour and fails contrast as text at every size.
+  Green text uses `--brand-green`.
+- Amber text under 14px uses `--net-text`, not `--net`.
+- In QA or review mode, flag any code that does not match DESIGN.md, and check
+  the "Open drift to fix" list before adding new visual code.

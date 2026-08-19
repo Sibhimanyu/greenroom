@@ -128,15 +128,26 @@ final class OBSProcessManager {
     func quitAndWait() async {
         let instances = NSRunningApplication.runningApplications(withBundleIdentifier: Self.bundleIdentifier)
         guard !instances.isEmpty else { runningApp = nil; return }
-        instances.forEach { $0.terminate() }
         // Liveness via POSIX kill(pid, 0), NOT by re-querying the
         // workspace list: during Greenroom's own final moments the
         // running-app snapshot goes stale (it refreshes on the main run
         // loop), and a re-query returned empty while OBS was demonstrably
         // still alive - forceTerminate then targeted nothing and a wedged
-        // OBS lingered after quit (seen live).
+        // OBS lingered after quit (seen live). The NSRunningApplication
+        // objects themselves stay valid, which is why terminate() below
+        // reuses this snapshot rather than re-querying.
         let pids = instances.map(\.processIdentifier)
-        for _ in 0..<25 {
+        // Re-ask once a second instead of once, total. A single quit Apple
+        // Event gets DROPPED when OBS's main thread isn't in a state to
+        // answer it, and nothing retries - so the loop used to wait out its
+        // whole grace period and then SIGKILL. Measured on this machine: a
+        // settled OBS honours the event in ~200ms, but quitting while OBS
+        // was still starting up cost 5.8s. The scene-switch that parks OBS
+        // on its idle scene (see windDownForQuit) tears down
+        // ScreenCaptureKit immediately before this runs, which is exactly
+        // when OBS is least able to answer, so one shot is not enough.
+        for tick in 0..<25 {
+            if tick % 5 == 0 { instances.forEach { $0.terminate() } }
             if pids.allSatisfy({ kill($0, 0) != 0 }) { break } // ESRCH = exited
             try? await Task.sleep(nanoseconds: 200_000_000)
         }

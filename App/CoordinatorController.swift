@@ -52,6 +52,30 @@ final class CoordinatorController: ObservableObject {
         // window for 4-10s read as a hang (reported live).
         for window in NSApp.windows { window.orderOut(nil) }
 
+        // Quit-cost breakdown, one line per quit to
+        // ~/Library/Logs/Greenroom-quit.log (written at the end of this
+        // function). Every step here waits on a DIFFERENT process (OBS, the
+        // Zoom SDK), so when quit feels slow the only useful question is
+        // which one was slow - and quit is not a moment anyone can watch a
+        // debugger through. scripts/measure-quit.sh drives the whole thing.
+        let quitStarted = Date()
+        var phases: [String] = []
+        func mark(_ label: String, from start: Date) {
+            phases.append("\(label)=\(Int(Date().timeIntervalSince(start) * 1000))ms")
+        }
+
+        // prepareForTermination already POSTED the leave/end and Zoom
+        // confirms it on its own clock. Nothing in the OBS teardown below
+        // reads that confirmation and nothing OBS does affects it, so it
+        // rides ALONGSIDE the OBS work. Awaiting it in sequence (as this
+        // did from 0.3.4 through 0.3.7) charged its whole timeout to every
+        // quit even though the leave had already landed.
+        let meetingClosed = Task { () -> Double in
+            let started = Date()
+            await self.zoomChatClient.awaitMeetingClosed(timeout: 5)
+            return Date().timeIntervalSince(started)
+        }
+
         // NOTE: the old "connect to a warm-but-unconnected OBS to check
         // for a recording" step is gone. It existed for recordings
         // started in OBS directly (never through a session), could block
@@ -62,6 +86,7 @@ final class CoordinatorController: ObservableObject {
             // OBS is the authority on whether a recording is live - not
             // just our flag - so even a recording started in OBS directly
             // (or left over from a recovered session) gets finalized.
+            let recordStart = Date()
             let obsRecording = (await boundedOBSRequest("GetRecordStatus", seconds: 2)?["outputActive"] as? Bool) == true
             if isRecording || obsRecording {
                 if let path = await boundedOBSRequest("StopRecord", seconds: 4)?["outputPath"] as? String {
@@ -70,7 +95,10 @@ final class CoordinatorController: ObservableObject {
                 }
                 isRecording = false
             }
+            mark("obs-record", from: recordStart)
+            let vcamStart = Date()
             _ = await boundedOBSRequest("StopVirtualCam", seconds: 3)
+            mark("obs-vcam", from: vcamStart)
             // Park OBS on an EMPTY scene so the screen capture deactivates
             // through OBS's normal scene-switch path before the process
             // exits. Rationale: the ScreenCaptureKit stream registers a
@@ -81,6 +109,7 @@ final class CoordinatorController: ObservableObject {
             // thread in the same teardown (beachball, Apple Events dead) -
             // the scene switch is the gentle, well-tested path instead.
             // The next Start switches back via SetCurrentProgramScene.
+            let parkStart = Date()
             _ = await boundedOBSRequest("CreateScene", data: ["sceneName": "Greenroom Idle"], seconds: 2)
             // A bare-black idle scene reads as "OBS is broken" to anyone
             // opening OBS between sessions (reported live) - label it so
@@ -95,12 +124,50 @@ final class CoordinatorController: ObservableObject {
                 ]
             ], seconds: 2)
             _ = await boundedOBSRequest("SetCurrentProgramScene", data: ["sceneName": "Greenroom Idle"], seconds: 2)
+            mark("obs-park", from: parkStart)
+            let settleStart = Date()
             try? await Task.sleep(nanoseconds: 500_000_000) // let the capture wind down
+            mark("obs-settle", from: settleStart)
             client.disconnect()
         }
-        await zoomChatClient.awaitMeetingClosed(timeout: 5)
-        await processManager.quitAndWait() // graceful quit, waits for real exit
+
+        // Two independent waits on two other processes: Zoom acknowledging
+        // the meeting closed, and the OBS process actually exiting. Neither
+        // observes the other, so they overlap and the quit costs the SLOWER
+        // of the two rather than their sum.
+        let obsExit = Task { () -> Double in
+            let started = Date()
+            await self.processManager.quitAndWait() // graceful quit, waits for real exit
+            return Date().timeIntervalSince(started)
+        }
+        phases.append("meeting-close=\(Int(await meetingClosed.value * 1000))ms")
+        phases.append("obs-exit=\(Int(await obsExit.value * 1000))ms")
+
+        // Appended to a file rather than NSLog'd: applicationWillTerminate
+        // ends in _exit(0), which skips the unified log's flush - verified
+        // live, an NSLog here produced nothing at all in `log show`. A
+        // synchronous write survives.
+        let line = "\(Self.quitLogStamp.string(from: quitStarted)) "
+            + phases.joined(separator: " ")
+            + " total=\(Int(Date().timeIntervalSince(quitStarted) * 1000))ms\n"
+        let logURL = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Library/Logs/Greenroom-quit.log")
+        if let handle = try? FileHandle(forWritingTo: logURL) {
+            handle.seekToEndOfFile()
+            try? handle.write(contentsOf: Data(line.utf8))
+            try? handle.close()
+        } else {
+            try? Data(line.utf8).write(to: logURL)
+        }
     }
+
+    /// Timestamp format for the quit-cost log. Held statically because
+    /// building a formatter is not free and quit is latency-sensitive.
+    private static let quitLogStamp: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
+        return formatter
+    }()
 
     /// An OBS request that never waits longer than `seconds` - quit paths
     /// must stay bounded even when the socket is wedged (the client's own

@@ -17,6 +17,10 @@ struct ContentView: View {
     @State private var showRecordings = false
     @State private var showSavePreset = false
     @State private var presetNameDraft = ""
+    /// Bound (rather than left to the DisclosureGroup) because opening the
+    /// log has to do two things beyond showing it: grow the window to make
+    /// room, and jump to the newest line.
+    @State private var statusExpanded = false
 
     /// Start is for starting: disabled while a start is in flight AND
     /// while the session is live (Stop first, then Start - pressing Start
@@ -109,8 +113,11 @@ struct ContentView: View {
         .padding(20)
         // minHeight sized to the collapsed-disclosures content: 460 left
         // the bottom ~40% of the window as dead space (design-review F4).
-        // Expanding a disclosure grows the window's content naturally.
-        .frame(minWidth: 580, minHeight: 360)
+        // The open status log needs real room, so the minimum grows with it.
+        // That growth is what makes the WINDOW taller; without it the log
+        // was squeezed into whatever slack the trailing Spacer left.
+        // 360 + 180 (log) + 8 (its top padding) = 548, on the 4px scale.
+        .frame(minWidth: 580, minHeight: statusExpanded ? 548 : 360)
         // The window OPENS at the preferred size every time, regardless
         // of the size it was closed at (explicit request) - SwiftUI
         // persists scene geometry across launches and defaultSize only
@@ -120,6 +127,18 @@ struct ContentView: View {
                 NSApp.windows.first { $0.title == "Greenroom" }?
                     .setContentSize(NSSize(width: 620, height: 400))
             }
+        }
+        // Growing is automatic (the minHeight above). Shrinking is not:
+        // AppKit leaves the window at whatever height it reached, which is
+        // exactly the dead space F4 called out - so closing the log hands
+        // those points back. Width is preserved; only the log's rows came
+        // and went.
+        .onChange(of: statusExpanded) { _, expanded in
+            guard !expanded,
+                  let window = NSApp.windows.first(where: { $0.title == "Greenroom" })
+            else { return }
+            let width = window.contentRect(forFrameRect: window.frame).width
+            window.setContentSize(NSSize(width: width, height: 400))
         }
         .sheet(isPresented: $coordinator.showOnboarding) {
             OnboardingView()
@@ -343,19 +362,53 @@ struct ContentView: View {
     /// Collapsed by default, like Manual controls: the log is diagnostic
     /// detail, not something to read every session - open it when
     /// something needs explaining.
+    ///
+    /// The height is DEFINITE, not a maximum. As `maxHeight: 180` the
+    /// ScrollView was the only flexible child left in the body's VStack, so
+    /// with the window pinned to 400pt it got compressed to whatever slack
+    /// the trailing Spacer wasn't using - about two lines, with the rest
+    /// clipped instead of scrollable. A definite height makes the body's
+    /// ideal height grow instead, which the taller `minHeight` below turns
+    /// into a taller window.
     private var statusSection: some View {
-        DisclosureGroup("Status") {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 4) {
-                    ForEach(Array(coordinator.statusLines.enumerated()), id: \.offset) { _, line in
-                        Text(line).font(.callout).textSelection(.enabled)
+        DisclosureGroup("Status", isExpanded: $statusExpanded) {
+            ScrollViewReader { proxy in
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 4) {
+                        ForEach(Array(coordinator.statusLines.enumerated()), id: \.offset) { index, line in
+                            Text(line)
+                                .font(.callout)
+                                .textSelection(.enabled)
+                                .id(index)
+                        }
                     }
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
+                .frame(height: Self.statusLogHeight)
+                .padding(.top, 8)
+                // Opening the log lands on the NEWEST line: the interesting
+                // entry is always the last one, and the log is long enough
+                // by mid-session to open well above it.
+                .onAppear { scrollToNewestStatus(proxy) }
+                // While it is open, follow the tail as the session talks.
+                .onChange(of: coordinator.statusLines.count) { _, _ in
+                    scrollToNewestStatus(proxy)
+                }
             }
-            .frame(maxHeight: 180)
-            .padding(.top, 6)
         }
         .font(.callout)
+    }
+
+    /// Height of the open status log. On the 4px scale (DESIGN.md).
+    private static let statusLogHeight: CGFloat = 180
+
+    private func scrollToNewestStatus(_ proxy: ScrollViewProxy) {
+        guard let newest = coordinator.statusLines.indices.last else { return }
+        // Next runloop pass, not this one: on expand the rows are created in
+        // the same layout pass that runs this, and scrollTo cannot target a
+        // row that does not exist yet.
+        DispatchQueue.main.async {
+            proxy.scrollTo(newest, anchor: .bottom)
+        }
     }
 }

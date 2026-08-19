@@ -972,12 +972,36 @@ final class CoordinatorController: ObservableObject {
             // below works until this has taken effect.
             zoomChatClient.exitFullScreen()
             var waitedTicks = 0
+            gridCorrectionStreak = 0
+            gridCorrectionHoldUntilTick = 0
             while !Task.isCancelled, ChatWindowController.isOpen {
+                // Ref death (the SDK recreates its windows on activation -
+                // a CLICK does it) leaves `parked` stale-true, so the
+                // recreated tile would never re-park and camps wherever
+                // the SDK put it - usually over the main screen's capture.
+                if builtInMeetingWindow == nil { parked = false }
                 // The stray guard below must run even with the Zoom tile
                 // toggled off - that's when the primary window has no slot
                 // and is most likely to sit fullscreen over the capture.
-                if workspaceLayout.sideShowsZoomTile,
-                   let window = builtInMeetingWindow ?? tileWindowCandidate(waitedTicks: waitedTicks) {
+                var tile: NSWindow? = workspaceLayout.sideShowsZoomTile
+                    ? builtInMeetingWindow ?? tileWindowCandidate(waitedTicks: waitedTicks)
+                    : nil
+                // Geometry sanity: a "tile" living on the people-view
+                // display IS the participant grid - stale identity after
+                // the SDK recreated its windows, or the SDK swapped roles.
+                // Parking/hiding it from here while the pinning loop drags
+                // it back was the visible 2s tug-of-war (reported live
+                // twice; the identity-only exclusion in
+                // tileWindowCandidate dies with the weak ref, this check
+                // doesn't).
+                if peopleViewWanted, let candidate = tile, windowIsOnPeopleViewTarget(candidate) {
+                    if candidate === builtInMeetingWindow {
+                        builtInMeetingWindow = nil
+                        parked = false
+                    }
+                    tile = nil
+                }
+                if let window = tile {
                     if window.styleMask.contains(.fullScreen) {
                         // Still fullscreen (the exit animates out over ~1s,
                         // or the SDK re-entered it) - kick again, park on a
@@ -1070,12 +1094,41 @@ final class CoordinatorController: ObservableObject {
             // active mouse-drag on the window itself; everything else
             // gets corrected immediately.
             if gallery.isKeyWindow && NSEvent.pressedMouseButtons != 0 { return }
+            if tick < gridCorrectionHoldUntilTick { return } // standing down (see below)
             if gallery.styleMask.contains(.fullScreen) {
                 gallery.toggleFullScreen(nil) // re-framed on a later tick
             } else if gallery.frame != target.frame {
-                gallery.setFrame(target.frame, display: true)
-                gallery.orderFront(nil)
-                log("Participant grid drifted \u{2014} moved back to \u{201C}\(target.localizedName)\u{201D}.")
+                gridCorrectionStreak += 1
+                if gridCorrectionStreak >= 6 {
+                    // Corrected 6 consecutive ticks and something moved it
+                    // right back each time - with the tile-seizure paths
+                    // closed, that mover is the SDK's own dual-monitor
+                    // manager, which offers NO placement API to override
+                    // (ZoomSDKMeetingConfiguration.monitorID is a
+                    // screen-share knob, checked). Endless correction is a
+                    // visible 2s bounce - worse than either stable state.
+                    // Stand down, retry in ~2 minutes; Snap Windows Back
+                    // restarts the loop and re-arms immediately.
+                    gridCorrectionHoldUntilTick = tick + 60
+                    gridCorrectionStreak = 0
+                    log("Something keeps re-placing the participant grid within seconds \u{2014} pausing the tug-of-war for 2 minutes. Snap Windows Back (\u{2303}\u{2325}\u{2318}S) re-places it now.")
+                } else if gridCorrectionStreak == 3 {
+                    // Raw re-framing isn't sticking: the SDK likely lost or
+                    // changed its dual-screen state when it recreated the
+                    // window. Re-run the FULL placement once - it re-frames
+                    // AND re-asserts gallery-on-primary via the SDK's own
+                    // API, resyncing its bookkeeping instead of fighting it.
+                    placePeopleViewWindow()
+                } else {
+                    gallery.setFrame(target.frame, display: true)
+                    // orderFront only when actually hidden: ordering an SDK
+                    // window front on every correction can itself provoke
+                    // the SDK's re-layout, feeding the very loop this fixes.
+                    if !gallery.isVisible { gallery.orderFront(nil) }
+                    log("Participant grid drifted \u{2014} moved back to \u{201C}\(target.localizedName)\u{201D}.")
+                }
+            } else {
+                gridCorrectionStreak = 0 // stable tick - not a fight
             }
         } else if tick > 0, tick % 15 == 0 {
             placePeopleViewWindow() // window gone (SDK recreated it) - re-hunt
@@ -1094,17 +1147,41 @@ final class CoordinatorController: ObservableObject {
     /// secondary hasn't appeared after ~20s, so the tile never stays
     /// unparked.
     private func tileWindowCandidate(waitedTicks: Int) -> NSWindow? {
-        // NEVER the placed participant grid: when the (hidden) tile's weak
-        // reference died - the SDK recreates windows on activation - the
-        // single-candidate fallback grabbed the GRID and parked it into
-        // the tile slot on the main screen, while the pinning loop dragged
-        // it back to the reference display: a visible 2s tug-of-war
-        // (reported live; the root cause, not the SDK alone).
-        let candidates = meetingVideoWindowCandidates().filter { $0 !== peopleViewWindow }
+        // NEVER the placed participant grid. Two filters, because identity
+        // alone failed live: `!== peopleViewWindow` dies the moment the SDK
+        // recreates its windows (a click on the grid does exactly that),
+        // and the recreated grid then got seized as the tile and parked on
+        // the main screen while the pinning loop dragged it back - the 2s
+        // tug-of-war, twice reported. Geometry survives recreation: a
+        // window living on the people-view display is the grid's, never
+        // the tile's, no matter what our weak refs say.
+        let candidates = meetingVideoWindowCandidates().filter {
+            $0 !== peopleViewWindow && !(peopleViewWanted && windowIsOnPeopleViewTarget($0))
+        }
         guard peopleViewWanted else { return candidates.first }
         if candidates.count >= 2 { return candidates.last }
         return waitedTicks >= 10 ? candidates.first : nil
     }
+
+    /// Whether a window currently lives on the people-view target display,
+    /// judged by its frame's center. This is the recreation-proof role
+    /// test: weak identity dies whenever the SDK rebuilds its windows -
+    /// which is exactly when roles need re-deriving - but a recreated
+    /// window reappears at its old frame, so geometry still knows which
+    /// job it had. Both the tile picker and the gallery picker derive
+    /// roles from THIS same rule, so they can no longer claim the same
+    /// window for opposite placements.
+    private func windowIsOnPeopleViewTarget(_ window: NSWindow) -> Bool {
+        guard let target = peopleViewTargetScreen() else { return false }
+        return target.frame.contains(CGPoint(x: window.frame.midX, y: window.frame.midY))
+    }
+
+    /// Consecutive pinning corrections with no stable tick in between -
+    /// the fight detector for maintainPeopleViewPlacement. Reset whenever
+    /// the follow loop (re)starts: session start, layout re-apply, Snap
+    /// Windows Back - each of those is an explicit re-arm.
+    private var gridCorrectionStreak = 0
+    private var gridCorrectionHoldUntilTick = 0
 
     /// Single source of truth for whether the Start action can run. The
     /// main window and menu bar previously duplicated PARTIAL versions of
@@ -1456,9 +1533,15 @@ final class CoordinatorController: ObservableObject {
                 // the extended display and the control clutter in the
                 // tile - exactly backwards, reported live.
                 let candidates = meetingVideoWindowCandidates().filter { $0 !== builtInMeetingWindow }
-                let gallery = builtInMeetingWindow != nil
-                    ? candidates.first
-                    : (candidates.count > 1 ? candidates.first : nil)
+                // A candidate ALREADY on the target display is the grid -
+                // the SDK recreated it in place (weak ref died, frame
+                // survived). Preferring it keeps the re-hunt from grabbing
+                // the tile by creation order and pinning THAT to the
+                // extended display while the parking loop drags it back.
+                let gallery = candidates.first(where: windowIsOnPeopleViewTarget)
+                    ?? (builtInMeetingWindow != nil
+                        ? candidates.first
+                        : (candidates.count > 1 ? candidates.first : nil))
                 if let gallery {
                     if gallery.styleMask.contains(.fullScreen) {
                         // Can't be framed while in a fullscreen Space -

@@ -400,7 +400,12 @@ final class CoordinatorController: ObservableObject {
     func toggleSpeakerTile() {
         guard speakerTileShortcutEnabled else { return }
         guard let window = builtInMeetingWindow, ChatWindowController.isOpen else {
-            log("No speaker tile to toggle \u{2014} the shortcut works during a session with the Zoom tile enabled.")
+            // Surfaced, not just logged: the status log is collapsed by
+            // default, so pressing the shortcut before the tile exists looked
+            // like the shortcut was simply broken.
+            log("No speaker tile to toggle yet \u{2014} waiting for Zoom's meeting window.")
+            Notifier.post(title: "Speaker tile isn't ready yet",
+                          body: "Zoom's meeting window is still coming up. Try \u{2303}\u{2325}\u{2318}Z again in a moment.")
             return
         }
         if speakerTileQuickHidden {
@@ -1070,6 +1075,9 @@ final class CoordinatorController: ObservableObject {
             var parked = false
             var quickHideAnnounced = false
             var lastFrame = CGRect.null
+            // True while the tile in use is only a stand-in, adopted because
+            // the ideal window had not appeared yet. Drives the handoff below.
+            var tileIsFallback = false
             demotedStrayWindowNumbers.removeAll() // fresh session, fresh logs
             // The quick-hide MODE's default state: enabled means sessions
             // begin with the tile hidden and the chat full-height;
@@ -1092,6 +1100,22 @@ final class CoordinatorController: ObservableObject {
                 // recreated tile would never re-park and camps wherever
                 // the SDK put it - usually over the main screen's capture.
                 if builtInMeetingWindow == nil { parked = false }
+                // Hand off from a stand-in to the real thing. `tile` below
+                // short-circuits on builtInMeetingWindow, so without this a
+                // stand-in adopted at the 4s mark would stay the tile for the
+                // whole session.
+                if tileIsFallback, workspaceLayout.sideShowsZoomTile,
+                   let preferred = preferredTileWindow(), preferred !== builtInMeetingWindow {
+                    let wasStandingIn = builtInMeetingWindow != nil
+                    builtInMeetingWindow = preferred
+                    tileIsFallback = false
+                    parked = false
+                    // Only a real swap is worth announcing; reaching here with
+                    // nothing adopted yet is just a first pick.
+                    if wasStandingIn {
+                        log("Speaker tile switched to Zoom's clean speaker view.")
+                    }
+                }
                 // The stray guard below must run even with the Zoom tile
                 // toggled off - that's when the primary window has no slot
                 // and is most likely to sit fullscreen over the capture.
@@ -1112,6 +1136,9 @@ final class CoordinatorController: ObservableObject {
                         parked = false
                     }
                     tile = nil
+                }
+                if tile != nil, builtInMeetingWindow == nil {
+                    tileIsFallback = preferredTileWindow() == nil
                 }
                 if let window = tile {
                     if window.styleMask.contains(.fullScreen) {
@@ -1293,12 +1320,41 @@ final class CoordinatorController: ObservableObject {
         // tug-of-war, twice reported. Geometry survives recreation: a
         // window living on the people-view display is the grid's, never
         // the tile's, no matter what our weak refs say.
-        let candidates = meetingVideoWindowCandidates().filter {
+        if let preferred = preferredTileWindow() { return preferred }
+        // Nothing ideal yet. Fall back to whatever video window we have after
+        // ~4s (2 ticks) rather than the old ~20s.
+        //
+        // The old wait left the feature DEAD for 20s of every multi-display
+        // session: no tile identified means builtInMeetingWindow stays nil,
+        // so toggleSpeakerTile bailed out and the column was never parked -
+        // about a minute from launch, counting the pipeline. Shortening it is
+        // only safe because the follow loop now hands off to the ideal window
+        // if it shows up later (see tileIsFallback); without that handoff a
+        // short wait would lock the WRONG window in permanently, which is the
+        // control-cluttered-tile bug this wait was originally added to avoid.
+        return waitedTicks >= 2 ? tileCandidates().first : nil
+    }
+
+    /// Video windows that could serve as the tile, newest last. Never the
+    /// placed participant grid: identity alone failed live (the weak ref dies
+    /// when the SDK recreates its windows, which a click does), so geometry
+    /// backs it up - a window on the people-view display is the grid's.
+    private func tileCandidates() -> [NSWindow] {
+        meetingVideoWindowCandidates().filter {
             $0 !== peopleViewWindow && !(peopleViewWanted && windowIsOnPeopleViewTarget($0))
         }
+    }
+
+    /// The window we actually WANT as the tile, or nil if it does not exist
+    /// yet. Single-screen: the only meeting window. Dual-screen: the SECONDARY
+    /// one, because Zoom puts the meeting controls on the primary and the
+    /// clean video-only view on the secondary - taking the primary put a
+    /// control-cluttered tile on the main display and the clean speaker view
+    /// on the extended one, exactly backwards, reported live.
+    private func preferredTileWindow() -> NSWindow? {
+        let candidates = tileCandidates()
         guard peopleViewWanted else { return candidates.first }
-        if candidates.count >= 2 { return candidates.last }
-        return waitedTicks >= 10 ? candidates.first : nil
+        return candidates.count >= 2 ? candidates.last : nil
     }
 
     /// Whether a window currently lives on the people-view target display,

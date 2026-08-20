@@ -195,6 +195,13 @@ final class CoordinatorController: ObservableObject {
         _ = await boundedOBSRequest("CreateScene", data: ["sceneName": "Greenroom Standby"], seconds: 2)
         _ = await boundedOBSRequest("SetCurrentProgramScene", data: ["sceneName": "Greenroom Standby"], seconds: 2)
         try? await Task.sleep(nanoseconds: 500_000_000) // let the capture wind down
+
+        // Deliberately NOT removing the capture inputs here. Releasing them
+        // was tried, and it worked (no deadlock, sources gone from the
+        // collection) but OBS still SEGV'd on exit - just somewhere else.
+        // Since OBS is now stopped rather than asked to quit (see
+        // quitAndWait), its exit path never runs, so paying ~1.7s and a
+        // from-nothing source rebuild on the next Start buys nothing.
     }
 
     /// An OBS request that never waits longer than `seconds` - quit paths

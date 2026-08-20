@@ -121,10 +121,31 @@ final class OBSProcessManager {
         runningApp = nil
     }
 
-    /// Graceful quit that WAITS for OBS to actually exit (up to ~5s) so it
-    /// can delete its own sentinel file. Fire-and-forget termination left
-    /// sentinels behind, which produced the Safe Mode prompt on the next
-    /// launch - see clearStaleSentinels().
+    /// Stops OBS with SIGKILL rather than asking it to quit, and waits for
+    /// the process to actually be gone.
+    ///
+    /// This looks brutal and is the kinder option, because OBS 32.2.1 does
+    /// not survive its own shutdown. Asking it to quit produced a SIGSEGV on
+    /// every single quit and therefore a "OBS quit unexpectedly" dialog in
+    /// the user's face - 40+ crash reports. Four separate causes were found
+    /// and fixed (a text_ft2 source Greenroom created with an incomplete
+    /// font spec; the screen capture being left active; its ScreenCaptureKit
+    /// and CoreAudio teardown races) and it still crashed, finally as a bare
+    /// null deref inside libobs on its own task thread. That one is not
+    /// reachable from out here.
+    ///
+    /// The graceful path existed for exactly one benefit: letting OBS delete
+    /// its own sentinel file, so its "did not shut down properly / Run in
+    /// Safe Mode?" prompt stays away (Safe Mode disables the websocket this
+    /// app needs). It was not delivering that benefit - OBS crashed BEFORE
+    /// the cleanup, leaving the sentinel anyway, measured every time. So the
+    /// trade is: same sentinel outcome, minus the crash report, minus the
+    /// dialog. clearStaleSentinels() wipes the leftover on the next launch,
+    /// verified.
+    ///
+    /// Cost, stated plainly: OBS no longer saves its config on exit. That is
+    /// acceptable here because ensureConfigured rebuilds Greenroom's scene
+    /// and sources every Start, and OBS also saves periodically on its own.
     func quitAndWait() async {
         let instances = NSRunningApplication.runningApplications(withBundleIdentifier: Self.bundleIdentifier)
         guard !instances.isEmpty else { runningApp = nil; return }
@@ -137,26 +158,21 @@ final class OBSProcessManager {
         // objects themselves stay valid, which is why terminate() below
         // reuses this snapshot rather than re-querying.
         let pids = instances.map(\.processIdentifier)
-        // Re-ask once a second instead of once, total. A single quit Apple
-        // Event gets DROPPED when OBS's main thread isn't in a state to
-        // answer it, and nothing retries - so the loop used to wait out its
-        // whole grace period and then SIGKILL. Measured on this machine: a
-        // settled OBS honours the event in ~200ms, but quitting while OBS
-        // was still starting up cost 5.8s. The scene-switch that parks OBS
-        // on its idle scene (see windDownForQuit) tears down
-        // ScreenCaptureKit immediately before this runs, which is exactly
-        // when OBS is least able to answer, so one shot is not enough.
-        for tick in 0..<25 {
-            if tick % 5 == 0 { instances.forEach { $0.terminate() } }
-            if pids.allSatisfy({ kill($0, 0) != 0 }) { break } // ESRCH = exited
-            try? await Task.sleep(nanoseconds: 200_000_000)
-        }
-        // SIGKILL directly for stragglers: always deliverable (a wedged
-        // main thread ignores Apple Events forever), produces neither a
-        // crash report nor a "quit unexpectedly" dialog, and the sentinel
-        // it leaves is cleared on the next launch (clearStaleSentinels).
-        for pid in pids where kill(pid, 0) == 0 {
+        // SIGKILL, first and only. Always deliverable, so it also covers the
+        // case a quit Apple Event used to miss entirely: a wedged or
+        // still-starting OBS ignores Apple Events, which made a graceful
+        // quit wait out its whole grace period (measured 5.8s) before
+        // resorting to this anyway.
+        for pid in pids {
             kill(pid, SIGKILL)
+        }
+        // Confirm it is really gone before returning. Liveness via POSIX
+        // kill(pid, 0), never by re-querying the workspace list: during
+        // Greenroom's own final moments that snapshot goes stale and
+        // returned empty while OBS was demonstrably still alive.
+        for _ in 0..<25 {
+            if pids.allSatisfy({ kill($0, 0) != 0 }) { break } // ESRCH = gone
+            try? await Task.sleep(nanoseconds: 100_000_000)
         }
         runningApp = nil
     }

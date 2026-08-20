@@ -16,6 +16,18 @@ import Foundation
 
 enum GreenroomScene {
 
+    /// What setting up the scene actually achieved, so the caller can tell the
+    /// user rather than leaving them to notice a black picture themselves.
+    struct SetupResult {
+        var webcamActive: Bool
+        /// The screen capture is present AND producing frames.
+        var screenCaptureLive: Bool
+        /// A saved display choice was abandoned because it is not plugged in.
+        var displayFellBack: Bool
+        /// The display actually being captured, for the status log.
+        var displayLabel: String?
+    }
+
     static let sceneName = "Greenroom"
     static let screenSourceName = "Greenroom Screen"
     static let webcamSourceName = "Greenroom Webcam"
@@ -99,7 +111,9 @@ enum GreenroomScene {
     /// Returns true when the webcam made it into the composite, false for
     /// a screen-only session (no physical camera connected).
     @discardableResult
-    static func ensureConfigured(client: OBSWebSocketClient, bubble: BubbleLayout = BubbleLayout()) async throws -> Bool {
+    static func ensureConfigured(client: OBSWebSocketClient,
+                                 bubble: BubbleLayout = BubbleLayout(),
+                                 preferredDisplayUUID: String = "") async throws -> SetupResult {
         // OBS remembers whether the virtual cam was running when it last
         // quit and auto-resumes it on launch - confirmed by testing, that
         // left an active output blocking SetVideoSettings below ("Video
@@ -126,11 +140,18 @@ enum GreenroomScene {
         // callback and segfaulted OBS entirely (EXC_BAD_ACCESS in
         // screen_stream_audio_update). Only ever reconfigure a source that
         // isn't alive yet - remove-and-recreate instead of patch-in-place.
-        guard let displayUUID = LocalDeviceResolver.mainDisplayUUID else {
+        // An explicit choice wins, but only while that display is actually
+        // plugged in. Capturing a display that is not there is what produced
+        // a black picture, so an absent choice falls back to the main display
+        // and says so rather than failing silently.
+        let resolved = LocalDeviceResolver.resolveCaptureDisplay(preferred: preferredDisplayUUID)
+        guard let displayUUID = resolved.uuid else {
             throw NSError(domain: "Greenroom", code: 23, userInfo: [
-                NSLocalizedDescriptionKey: "Couldn't resolve the main display's UUID."
+                NSLocalizedDescriptionKey: "Couldn't resolve a display to capture."
             ])
         }
+        let displayLabel = LocalDeviceResolver.activeDisplays()
+            .first { $0.id == displayUUID }?.label
         // No webcam is NOT an error anymore: the session runs screen-only
         // (the class still gets the shared screen; the teacher's video
         // returns next Start once a camera is back). Reported to the
@@ -146,12 +167,26 @@ enum GreenroomScene {
         // webcam; recordings capture the mic separately), so turning the
         // queue off removes the crash path entirely. Recreated (not
         // patched) if an older scene left it on - see isCorrectlyConfigured.
+        let screenSettings: [String: Any] = ["type": 0, "display_uuid": displayUUID, "capture_audio": false]
         try await ensureInput(client: client, name: screenSourceName, kind: screenKind,
-                               settings: ["type": 0, "display_uuid": displayUUID, "capture_audio": false],
+                               settings: screenSettings,
                                isCorrectlyConfigured: {
                                    ($0["display_uuid"] as? String) == displayUUID
                                        && ($0["capture_audio"] as? Bool) == false
                                })
+
+        // Verify, then repair once. ensureInput can only check what OBS
+        // REPORTS about a source; this checks whether the thing actually
+        // produces pixels. A source that exists by name, matches on settings,
+        // and yields nothing is precisely the state that showed a black
+        // capture with the webcam still visible.
+        var screenLive = try await screenCaptureIsLive(client: client)
+        if !screenLive {
+            await removeInputAndWait(client: client, name: screenSourceName)
+            try await createInput(client: client, name: screenSourceName,
+                                  kind: screenKind, settings: screenSettings)
+            screenLive = try await screenCaptureIsLive(client: client)
+        }
         if let webcamUID {
             try await ensureInput(client: client, name: webcamSourceName, kind: webcamKind,
                                    settings: ["uid": webcamUID],
@@ -197,7 +232,10 @@ enum GreenroomScene {
         try await enforceLayerOrder(client: client)
 
         try await client.request("SetCurrentProgramScene", data: ["sceneName": sceneName])
-        return webcamUID != nil
+        return SetupResult(webcamActive: webcamUID != nil,
+                           screenCaptureLive: screenLive,
+                           displayFellBack: resolved.fellBack,
+                           displayLabel: displayLabel)
     }
 
     /// Shows/hides the webcam's scene item - screen-only sessions (no
@@ -273,6 +311,27 @@ enum GreenroomScene {
     /// second scaling/distortion pass between them) to the screen source's
     /// real native pixel size, and stretches that source to exactly fill it.
     /// Since destination == source size, "stretch" introduces no distortion.
+    /// Whether the screen capture is actually ALIVE: present in the scene and
+    /// reporting real dimensions.
+    ///
+    /// Polls rather than judging on one read, because a freshly created
+    /// source honestly reports 0x0 until ScreenCaptureKit delivers its first
+    /// frame. Checking dimensions and not just the source list is the point:
+    /// the failure mode being caught here is a source that exists by name,
+    /// passes a settings comparison, and produces nothing.
+    static func screenCaptureIsLive(client: OBSWebSocketClient) async throws -> Bool {
+        for _ in 0..<12 {
+            let items = try await sceneItems(client: client)
+            if let item = items.first(where: { ($0["sourceName"] as? String) == screenSourceName }),
+               let transform = item["sceneItemTransform"] as? [String: Any],
+               let width = transform["sourceWidth"] as? Double, width > 0 {
+                return true
+            }
+            try? await Task.sleep(nanoseconds: 250_000_000)
+        }
+        return false
+    }
+
     private static func fitCanvasToScreenSource(client: OBSWebSocketClient) async throws -> (width: Int, height: Int) {
         let items = try await sceneItems(client: client)
         guard let screenItem = items.first(where: { ($0["sourceName"] as? String) == screenSourceName }),
@@ -376,10 +435,25 @@ enum GreenroomScene {
                 // the scene, rather than remove-and-recreate. That reuse
                 // also avoids re-triggering OBS's ScreenCaptureKit
                 // audio-teardown crash that a screen-source removal risks.
-                _ = try? await client.request("CreateSceneItem", data: [
-                    "sceneName": sceneName, "sourceName": name
-                ])
-                return
+                //
+                // The result is CHECKED, and that matters. It used to be
+                // `try?`, and the error it threw away was the whole bug:
+                // unplug the captured display and OBS keeps the source's
+                // NAME while marking the source removed, so this call comes
+                // back "Tried to add a removed source to a scene". Returning
+                // as though it had worked left the scene with no screen
+                // capture at all - a black picture with the webcam still
+                // showing, reported live on a single-display setup. A
+                // surviving name is not a surviving source, so fall through
+                // and rebuild instead of trusting it.
+                do {
+                    _ = try await client.request("CreateSceneItem", data: [
+                        "sceneName": sceneName, "sourceName": name
+                    ])
+                    return
+                } catch {
+                    // Zombie: fall through to remove-and-recreate below.
+                }
             }
             // Misconfigured: remove it entirely and wait until it's really
             // gone before recreating - RemoveInput returns before OBS has

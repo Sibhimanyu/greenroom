@@ -496,6 +496,14 @@ final class CoordinatorController: ObservableObject {
     /// UUID. Empty = Automatic (the first non-main display). Persisted and
     /// carried in the transfer file so a saved setup targets the same
     /// physical monitor.
+    /// Which display the screen capture shares. Empty means "the main one",
+    /// which is what almost everyone wants and what this always did. Stored by
+    /// display UUID so the choice survives unplugging and reconnecting, the
+    /// same way peopleViewDisplayUUID does.
+    @Published var screenCaptureDisplayUUID: String {
+        didSet { defaults.set(screenCaptureDisplayUUID, forKey: "screenCaptureDisplayUUID") }
+    }
+
     @Published var peopleViewDisplayUUID: String {
         didSet { defaults.set(peopleViewDisplayUUID, forKey: "peopleViewDisplayUUID") }
     }
@@ -540,6 +548,7 @@ final class CoordinatorController: ObservableObject {
             ?? true
         peopleViewOnStart = defaults.bool(forKey: "peopleViewOnStart")
         peopleViewDisplayUUID = defaults.string(forKey: "peopleViewDisplayUUID") ?? ""
+        screenCaptureDisplayUUID = defaults.string(forKey: "screenCaptureDisplayUUID") ?? ""
         autoRecordOnStart = defaults.bool(forKey: "autoRecordOnStart")
         keepOBSWarm = (defaults.object(forKey: "keepOBSWarm") as? Bool) ?? true
         meetingMode = MeetingMode(rawValue: defaults.string(forKey: "meetingMode") ?? "") ?? .create
@@ -917,7 +926,9 @@ final class CoordinatorController: ObservableObject {
     /// ensureConfigured's first step stops the virtual camera.
     func applyShapeForPreview() async {
         guard shapePreviewTask != nil, !virtualCamActive, !isRunning else { return }
-        try? await GreenroomScene.ensureConfigured(client: client, bubble: .init(shape: webcamShape))
+        _ = try? await GreenroomScene.ensureConfigured(client: client,
+                                                       bubble: .init(shape: webcamShape),
+                                                       preferredDisplayUUID: screenCaptureDisplayUUID)
     }
 
     var mainAppDisplayName: String {
@@ -2042,9 +2053,27 @@ final class CoordinatorController: ObservableObject {
                                     seconds: 2)
 
         log("Configuring the Greenroom scene (screen + keyed webcam bubble)\u{2026}")
-        let webcamActive = try await GreenroomScene.ensureConfigured(client: client, bubble: .init(shape: webcamShape))
-        if !webcamActive {
+        let setup = try await GreenroomScene.ensureConfigured(
+            client: client,
+            bubble: .init(shape: webcamShape),
+            preferredDisplayUUID: screenCaptureDisplayUUID)
+        if !setup.webcamActive {
             log("No webcam connected \u{2014} running screen-only. Plug a camera in and press Start (or Snap Windows Back) to bring your video back.")
+        }
+        if setup.displayFellBack {
+            log("The screen you picked to share isn't plugged in \u{2014} sharing \u{201C}\(setup.displayLabel ?? "the main display")\u{201D} instead. Change it in Settings (\u{2318},) \u{2192} Layout.")
+        }
+        // Never let a black picture ship silently: this is the one thing a
+        // class cannot work without, and it used to fail with no message at
+        // all while the webcam kept showing.
+        if !setup.screenCaptureLive {
+            // Recovery deliberately does NOT claim Snap Windows Back fixes
+            // this: Snap Back only re-asserts layer order, it does not rebuild
+            // a source. Rebuilding happens in ensureConfigured, which runs on
+            // Start, so ending and restarting the session is the honest advice.
+            log("The screen capture came up blank \u{2014} OBS couldn't open \u{201C}\(setup.displayLabel ?? "that display")\u{201D}. End the session and press Start to rebuild it, or pick a different screen in Settings (\u{2318},) \u{2192} Layout.")
+            Notifier.post(title: "Screen sharing is blank",
+                          body: "OBS couldn't capture that display. Check Settings \u{2192} Layout.")
         }
 
         log("Starting the virtual camera\u{2026}")
@@ -2159,6 +2188,7 @@ struct SettingsTransfer: Codable {
     var mainAppOnStart: Bool?
     var peopleViewOnStart: Bool?
     var peopleViewDisplayUUID: String?
+    var screenCaptureDisplayUUID: String?
     var hideSelfView: Bool?
     var speakerTileShortcutEnabled: Bool?
     var autoRecordOnStart: Bool?
@@ -2188,6 +2218,7 @@ extension CoordinatorController {
             mainAppOnStart: mainAppOnStart,
             peopleViewOnStart: peopleViewOnStart,
             peopleViewDisplayUUID: peopleViewDisplayUUID,
+            screenCaptureDisplayUUID: screenCaptureDisplayUUID,
             hideSelfView: hideSelfView,
             speakerTileShortcutEnabled: speakerTileShortcutEnabled,
             autoRecordOnStart: autoRecordOnStart,
@@ -2219,6 +2250,7 @@ extension CoordinatorController {
         if let value = transfer.mainAppOnStart ?? transfer.chromeOnStart { mainAppOnStart = value }
         if let value = transfer.peopleViewOnStart { peopleViewOnStart = value }
         if let value = transfer.peopleViewDisplayUUID { peopleViewDisplayUUID = value }
+        if let value = transfer.screenCaptureDisplayUUID { screenCaptureDisplayUUID = value }
         if let value = transfer.hideSelfView { hideSelfView = value }
         if let value = transfer.speakerTileShortcutEnabled { speakerTileShortcutEnabled = value }
         if let value = transfer.autoRecordOnStart { autoRecordOnStart = value }

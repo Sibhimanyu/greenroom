@@ -303,6 +303,25 @@ private struct LayoutSettingsTab: View {
                     .foregroundStyle(.secondary)
             }
 
+            Section("Shared screen") {
+                Picker("Screen to share", selection: $coordinator.screenCaptureDisplayUUID) {
+                    Text("Automatic (your main display)").tag("")
+                    ForEach(displays) { display in
+                        Text(display.label).tag(display.id)
+                    }
+                    // Keep a saved-but-disconnected choice visible and valid,
+                    // so unplugging a monitor does not silently reset it.
+                    if !coordinator.screenCaptureDisplayUUID.isEmpty,
+                       !displays.contains(where: { $0.id == coordinator.screenCaptureDisplayUUID }) {
+                        Text("Saved display (not connected)").tag(coordinator.screenCaptureDisplayUUID)
+                    }
+                }
+
+                Text("This is the screen your class sees. Automatic follows your main display, which is what you want unless you teach from a second monitor. If the display you pick isn't plugged in when a session starts, Greenroom shares your main one and says so in the status log.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
             Section("Second display") {
                 Toggle("Show the participant view on another display", isOn: $coordinator.peopleViewOnStart)
 

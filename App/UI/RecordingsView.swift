@@ -31,6 +31,8 @@ struct RecordingsView: View {
     }
 
     @State private var recordings: [Recording] = []
+    @State private var freeBytes: Int64?
+    @State private var usedBytes: Int64 = 0
     @State private var selection: Recording?
     @State private var player: AVPlayer?
     @State private var trashError: String?
@@ -39,10 +41,14 @@ struct RecordingsView: View {
         VStack(spacing: 0) {
             HStack {
                 Text("Recordings").font(.title3.bold())
-                Text(GreenroomScene.recordingsDirectory.path.replacingOccurrences(
-                    of: NSHomeDirectory(), with: "~"))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(GreenroomScene.recordingsDirectory.path.replacingOccurrences(
+                        of: NSHomeDirectory(), with: "~"))
+                    Text(storageSummary)
+                        .foregroundStyle(spaceLevel == .ok ? AnyShapeStyle(.secondary)
+                                                           : AnyShapeStyle(spaceColor))
+                }
+                .font(.caption)
                 Spacer()
                 Button("Show in Finder") {
                     NSWorkspace.shared.activateFileViewerSelecting(
@@ -58,6 +64,22 @@ struct RecordingsView: View {
                 Button("OK", role: .cancel) {}
             } message: {
                 Text(trashError ?? "")
+            }
+
+            if spaceLevel != .ok, let freeBytes {
+                HStack(spacing: 8) {
+                    Image(systemName: spaceLevel == .critical
+                          ? "exclamationmark.triangle.fill" : "exclamationmark.circle")
+                    Text(spaceLevel == .critical
+                         ? "Only \(ByteCountFormatter.string(fromByteCount: freeBytes, countStyle: .file)) left \u{2014} that may not fit a full class. Move or delete a few recordings before your next session."
+                         : "\(ByteCountFormatter.string(fromByteCount: freeBytes, countStyle: .file)) left \u{2014} room for about two more classes.")
+                    Spacer()
+                }
+                .font(.callout)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background(spaceColor.opacity(0.12))
+                .foregroundStyle(spaceColor)
             }
 
             Divider()
@@ -116,7 +138,27 @@ struct RecordingsView: View {
         .onDisappear { player?.pause() }
     }
 
+    private var spaceLevel: GreenroomScene.SpaceLevel {
+        freeBytes.map(GreenroomScene.spaceLevel(freeBytes:)) ?? .ok
+    }
+
+    /// Amber for "plan ahead", red for "this class may not fit". Semantic
+    /// system colours, not brand tokens - these adapt to light and dark, and
+    /// DESIGN.md's amber/danger values are site CSS, not app colours.
+    private var spaceColor: Color {
+        spaceLevel == .critical ? .red : .orange
+    }
+
+    private var storageSummary: String {
+        let used = ByteCountFormatter.string(fromByteCount: usedBytes, countStyle: .file)
+        guard let freeBytes else { return "\(used) in recordings" }
+        let free = ByteCountFormatter.string(fromByteCount: freeBytes, countStyle: .file)
+        return "\(used) in recordings \u{2022} \(free) free"
+    }
+
     private func reload() {
+        freeBytes = GreenroomScene.recordingsFreeBytes
+        usedBytes = GreenroomScene.recordingsUsedBytes
         let directory = GreenroomScene.recordingsDirectory
         try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         let keys: [URLResourceKey] = [.contentModificationDateKey, .fileSizeKey]

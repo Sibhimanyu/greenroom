@@ -28,6 +28,63 @@ enum GreenroomScene {
         FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("Greenroom", isDirectory: true)
     }
+    // MARK: Recording disk space
+
+    /// How much room is left for recordings, in bytes, on the volume that
+    /// actually holds them.
+    ///
+    /// `volumeAvailableCapacityForImportantUsage` rather than the raw free
+    /// count or the "opportunistic" variant: it is the number macOS will
+    /// really let a foreground write consume, because it counts purgeable
+    /// caches the system is willing to evict. The raw count understates what
+    /// is available and would cry wolf.
+    static var recordingsFreeBytes: Int64? {
+        let directory = recordingsDirectory
+        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let values = try? directory.resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey])
+        return values?.volumeAvailableCapacityForImportantUsage
+    }
+
+    /// What the recordings themselves currently occupy.
+    static var recordingsUsedBytes: Int64 {
+        let directory = recordingsDirectory
+        let urls = (try? FileManager.default.contentsOfDirectory(
+            at: directory,
+            includingPropertiesForKeys: [.fileSizeKey],
+            options: [.skipsHiddenFiles])) ?? []
+        return urls.reduce(into: Int64(0)) { total, url in
+            total += Int64((try? url.resourceValues(forKeys: [.fileSizeKey]))?.fileSize ?? 0)
+        }
+    }
+
+    /// How worried to be about the space left.
+    ///
+    /// The thresholds are sized in CLASSES, not abstract gigabytes. A 1080p
+    /// composite runs roughly 60 MB a minute, so an hour-long class costs
+    /// about 3.5 GB: `critical` is therefore "this class might not fit" and
+    /// `low` is "you have a couple left before it won't". Deliberately
+    /// generous, since running out mid-class is unrecoverable and a warning
+    /// that arrives too late is no warning at all.
+    enum SpaceLevel {
+        case ok, low, critical
+
+        /// Roughly one class of recording.
+        static let criticalBytes: Int64 = 4 * 1_000_000_000
+        /// Roughly three.
+        static let lowBytes: Int64 = 12 * 1_000_000_000
+    }
+
+    static func spaceLevel(freeBytes: Int64) -> SpaceLevel {
+        if freeBytes < SpaceLevel.criticalBytes { return .critical }
+        if freeBytes < SpaceLevel.lowBytes { return .low }
+        return .ok
+    }
+
+    /// Human-readable free space, or nil when the volume could not be read.
+    static var recordingsFreeLabel: String? {
+        recordingsFreeBytes.map { ByteCountFormatter.string(fromByteCount: $0, countStyle: .file) }
+    }
+
     static let chromaKeyFilterName = "Greenroom Chroma Key"
     static let shapeMaskFilterName = "Greenroom Shape Mask"
     static let screenMaskFilterName = "Greenroom Screen Panel Mask"

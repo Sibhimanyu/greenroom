@@ -825,6 +825,25 @@ final class CoordinatorController: ObservableObject {
                         log("Recording stopped.")
                     }
                 } else {
+                    // Warn about space BEFORE the tape rolls, and warn rather
+                    // than refuse: running out mid-class loses the tail of a
+                    // recording, but blocking the button loses the whole
+                    // thing, and only the teacher knows whether this class is
+                    // worth the risk. Auto-record comes through here too, so
+                    // this covers the case nobody pressed anything.
+                    if let free = GreenroomScene.recordingsFreeBytes {
+                        let readable = ByteCountFormatter.string(fromByteCount: free, countStyle: .file)
+                        switch GreenroomScene.spaceLevel(freeBytes: free) {
+                        case .critical:
+                            log("Only \(readable) free \u{2014} that may not last a full class. Recordings live in Documents/Greenroom.")
+                            Notifier.post(title: "Low disk space for recording",
+                                          body: "Only \(readable) free, which may not fit a full class.")
+                        case .low:
+                            log("\(readable) free \u{2014} room for roughly two more classes.")
+                        case .ok:
+                            break
+                        }
+                    }
                     _ = try await client.request("StartRecord")
                     isRecording = true
                     log("Recording\u{2026} (screen + webcam composite)")

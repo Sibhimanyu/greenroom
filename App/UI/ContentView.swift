@@ -117,7 +117,8 @@ struct ContentView: View {
         // That growth is what makes the WINDOW taller; without it the log
         // was squeezed into whatever slack the trailing Spacer left.
         // 360 + 180 (log) + 8 (its top padding) = 548, on the 4px scale.
-        .frame(minWidth: 580, minHeight: statusExpanded ? 548 : 360)
+        .frame(minWidth: 580,
+               minHeight: statusExpanded && !coordinator.statusLines.isEmpty ? 548 : 360)
         // The window OPENS at the preferred size every time, regardless
         // of the size it was closed at (explicit request) - SwiftUI
         // persists scene geometry across launches and defaultSize only
@@ -275,7 +276,7 @@ struct ContentView: View {
                 Text("No saved presets")
             } else {
                 ForEach(coordinator.meetingPresets) { preset in
-                    Button("\(preset.name) \u{2014} \(preset.number)") {
+                    Button(preset.menuLabel) {
                         coordinator.applyPreset(preset)
                     }
                 }
@@ -286,7 +287,7 @@ struct ContentView: View {
             if !coordinator.meetingPresets.isEmpty {
                 Menu("Delete preset") {
                     ForEach(coordinator.meetingPresets) { preset in
-                        Button("\(preset.name) \u{2014} \(preset.number)", role: .destructive) {
+                        Button(preset.menuLabel, role: .destructive) {
                             coordinator.deletePreset(preset)
                         }
                     }
@@ -372,27 +373,38 @@ struct ContentView: View {
     /// into a taller window.
     private var statusSection: some View {
         DisclosureGroup("Status", isExpanded: $statusExpanded) {
-            ScrollViewReader { proxy in
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 4) {
-                        ForEach(Array(coordinator.statusLines.enumerated()), id: \.offset) { index, line in
-                            Text(line)
-                                .font(.callout)
-                                .textSelection(.enabled)
-                                .id(index)
-                        }
-                    }
+            if coordinator.statusLines.isEmpty {
+                // Before the first session there is nothing to scroll, and a
+                // definite-height box would be 180pt of blank. Say why it is
+                // empty instead - an empty state, not dead space.
+                Text("Nothing logged yet. Start a session and each step shows up here.")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                }
-                .frame(height: Self.statusLogHeight)
-                .padding(.top, 8)
-                // Opening the log lands on the NEWEST line: the interesting
-                // entry is always the last one, and the log is long enough
-                // by mid-session to open well above it.
-                .onAppear { scrollToNewestStatus(proxy) }
-                // While it is open, follow the tail as the session talks.
-                .onChange(of: coordinator.statusLines.count) { _, _ in
-                    scrollToNewestStatus(proxy)
+                    .padding(.top, 8)
+            } else {
+                ScrollViewReader { proxy in
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 4) {
+                            ForEach(Array(coordinator.statusLines.enumerated()), id: \.offset) { index, line in
+                                Text(line)
+                                    .font(.callout)
+                                    .textSelection(.enabled)
+                                    .id(index)
+                            }
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .frame(height: Self.statusLogHeight)
+                    .padding(.top, 8)
+                    // Opening the log lands on the NEWEST line: the interesting
+                    // entry is always the last one, and the log is long enough
+                    // by mid-session to open well above it.
+                    .onAppear { scrollToNewestStatus(proxy) }
+                    // While it is open, follow the tail as the session talks.
+                    .onChange(of: coordinator.statusLines.count) { _, _ in
+                        scrollToNewestStatus(proxy)
+                    }
                 }
             }
         }

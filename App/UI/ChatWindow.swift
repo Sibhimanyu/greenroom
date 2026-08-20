@@ -271,7 +271,7 @@ enum ChatWindowController {
     /// `effectiveZoomSlotRatio` of the column's height (the whole column
     /// when the chat is toggled off; nil when the tile itself is off).
     static func zoomWindowAXFrame(for layout: WorkspaceLayout) -> CGRect? {
-        guard layout.sideShowsZoomTile, let screen = NSScreen.main,
+        guard layout.sideShowsZoomTile, let screen = DisplayResolver.mainDisplayScreen(),
               let column = layout.sideColumnNSFrame() else { return nil }
         let topY = screen.frame.height - (column.origin.y + column.height)
         let height = column.height * layout.effectiveZoomSlotRatio
@@ -299,7 +299,7 @@ enum ChatWindowController {
     }
 
     static func adjustBelowZoom(actualZoomFrameAX zoomFrame: CGRect, layout: WorkspaceLayout) {
-        guard layout.sideShowsChat, let window, let screen = NSScreen.main,
+        guard layout.sideShowsChat, let window, let screen = DisplayResolver.mainDisplayScreen(),
               let column = layout.sideColumnNSFrame() else { return }
         let zoomBottomNS = screen.frame.height - (zoomFrame.origin.y + zoomFrame.height)
         let height = max(zoomBottomNS - column.origin.y, 200) // never collapse the chat entirely

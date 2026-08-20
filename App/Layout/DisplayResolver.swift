@@ -72,10 +72,40 @@ enum DisplayResolver {
         }
     }
 
+    /// The display carrying the menu bar - the fixed stage every layout
+    /// frame is measured against.
+    ///
+    /// This exists because `NSScreen.main` is NOT that display. AppKit
+    /// defines it as the screen holding the KEYBOARD-FOCUSED window, so it
+    /// follows the user's clicks between monitors. Every frame computed from
+    /// it therefore retargets itself silently: with focus on the extended
+    /// display, the side column was placed at that display's origin plus the
+    /// column offset (measured live: x=3335 instead of 1415), the main pane
+    /// tiled to the wrong monitor, and the participant grid's own target
+    /// flipped between monitors tick to tick, so the maintain loop moved the
+    /// grid to one display and then the other.
+    ///
+    /// That flip was one of two self-inflicted halves of the "tug-of-war".
+    /// The other was the drift test comparing against a frame AppKit will
+    /// never grant - see `peopleViewGrantedFrame` in CoordinatorController.
+    /// Whether an external mover ALSO exists is still unproven.
+    static func mainDisplayScreen() -> NSScreen? {
+        let mainID = CGMainDisplayID()
+        return NSScreen.screens.first { displayID(of: $0) == mainID }
+            ?? NSScreen.screens.first
+    }
+
     /// The default People-view target: the first display that isn't the
     /// main one (the main being what the tiled workspace - and any class
     /// mirror of it - already uses). nil when only the main display exists.
+    ///
+    /// Keyed to the MENU-BAR display, not `NSScreen.main`: comparing against
+    /// the focused screen made this return the menu-bar display itself the
+    /// moment the grid (which lives on the secondary) took focus, so the
+    /// maintain loop dutifully "corrected" the grid onto the main display and
+    /// back again forever.
     static func firstSecondaryScreen() -> NSScreen? {
-        NSScreen.screens.first { $0 != NSScreen.main }
+        let mainID = CGMainDisplayID()
+        return NSScreen.screens.first { displayID(of: $0) != mainID }
     }
 }

@@ -109,25 +109,32 @@ final class CoordinatorController: ObservableObject {
             // thread in the same teardown (beachball, Apple Events dead) -
             // the scene switch is the gentle, well-tested path instead.
             // The next Start switches back via SetCurrentProgramScene.
+            // The park scene must hold NO sources. It used to carry a
+            // text_ft2_source_v2 label explaining itself to anyone opening
+            // OBS between sessions, and that label CRASHED OBS on every
+            // quit: making a freetype source the active scene ~700ms before
+            // OBS exits leaves its render thread drawing text through
+            // shutdown, and it SEGVs in libfreetype (11 crash reports on
+            // the dev machine, all libfreetype -> text-freetype2 -> libobs,
+            // every one of them after the label was introduced). The crash
+            // also skipped OBS's sentinel cleanup, which is what arms its
+            // "Run in Safe Mode?" prompt - and Safe Mode disables
+            // websockets, the only channel Greenroom has to OBS.
+            //
+            // The label was also pointless HERE: this path quits OBS
+            // immediately afterwards, so nobody is left looking at the idle
+            // scene. If it should explain itself, that belongs on the
+            // End-Session path, where keep-warm leaves OBS running.
+            //
+            // A NEW scene name, because "Greenroom Idle" still holds that
+            // label in every OBS profile that ever quit Greenroom, and
+            // switching to it would re-activate the crash. The stale label
+            // itself is deleted at SETUP time instead (see runPipeline):
+            // RemoveInput is safe there, with OBS connected and idle, but
+            // not here - it deadlocked OBS's main thread mid-teardown.
             let parkStart = Date()
-            _ = await boundedOBSRequest("CreateScene", data: ["sceneName": "Greenroom Idle"], seconds: 2)
-            // A bare-black idle scene reads as "OBS is broken" to anyone
-            // opening OBS between sessions (reported live) - label it so
-            // it explains itself. Fails harmlessly if it already exists.
-            _ = await boundedOBSRequest("CreateInput", data: [
-                "sceneName": "Greenroom Idle",
-                "inputName": "Greenroom Idle Label",
-                "inputKind": "text_ft2_source_v2",
-                "inputSettings": [
-                    "text": "Greenroom is between sessions.\nPress Start in the Greenroom app \u{2014} the scene switches back automatically.",
-                    "font": ["face": "Helvetica", "size": 48]
-                ]
-            ], seconds: 2)
-            _ = await boundedOBSRequest("SetCurrentProgramScene", data: ["sceneName": "Greenroom Idle"], seconds: 2)
+            await parkOBSOnStandbyScene()
             mark("obs-park", from: parkStart)
-            let settleStart = Date()
-            try? await Task.sleep(nanoseconds: 500_000_000) // let the capture wind down
-            mark("obs-settle", from: settleStart)
             client.disconnect()
         }
 
@@ -168,6 +175,27 @@ final class CoordinatorController: ObservableObject {
         formatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
         return formatter
     }()
+
+    /// Deactivate the screen capture through OBS's normal scene-switch path
+    /// and leave OBS sitting on a bare scene.
+    ///
+    /// This is the only thing between a warm OBS and a SIGSEGV in
+    /// ScreenCaptureKit's teardown when OBS later quits: the capture stream
+    /// registers a system-audio handler even with capture_audio off, and
+    /// tearing that down during process exit crashes on
+    /// com.screenCaptureKit.audioSampleHandlerQueue (verified - that is the
+    /// crash the park was introduced to prevent, and the crash that came
+    /// back the moment the park stopped running).
+    ///
+    /// It MUST run while the websocket is still connected, because after
+    /// disconnect there is no channel left to ask. RemoveInput is
+    /// deliberately not used anywhere near this: it deadlocked OBS's main
+    /// thread mid-teardown.
+    private func parkOBSOnStandbyScene() async {
+        _ = await boundedOBSRequest("CreateScene", data: ["sceneName": "Greenroom Standby"], seconds: 2)
+        _ = await boundedOBSRequest("SetCurrentProgramScene", data: ["sceneName": "Greenroom Standby"], seconds: 2)
+        try? await Task.sleep(nanoseconds: 500_000_000) // let the capture wind down
+    }
 
     /// An OBS request that never waits longer than `seconds` - quit paths
     /// must stay bounded even when the socket is wedged (the client's own
@@ -375,7 +403,7 @@ final class CoordinatorController: ObservableObject {
                 window.setFrame(slot, display: true)
                 // Chat shrinks below the tile immediately (the follow
                 // loop would also do this, but a beat later).
-                if let screen = NSScreen.main {
+                if let screen = DisplayResolver.mainDisplayScreen() {
                     let ax = CGRect(x: slot.origin.x, y: screen.frame.height - slot.maxY,
                                     width: slot.width, height: slot.height)
                     ChatWindowController.adjustBelowZoom(actualZoomFrameAX: ax, layout: workspaceLayout)
@@ -733,6 +761,16 @@ final class CoordinatorController: ObservableObject {
                 isRecording = false
             }
             _ = try? await client.request("StopVirtualCam")
+            // Park BEFORE disconnecting. windDownForQuit parks too, but it
+            // is gated on `client.isConnected` and the disconnect below is
+            // exactly what makes that false - so "End Session, then quit",
+            // the ordinary way a class ends, skipped the protection and
+            // crashed OBS on the way out every single time. Verified: the
+            // ScreenCaptureKit crash returned the moment the freetype one
+            // was fixed, with no Standby scene ever created.
+            if client.isConnected {
+                await parkOBSOnStandbyScene()
+            }
             client.disconnect()
             if keepOBSWarm {
                 log("Session ended \u{2014} OBS stays ready for a fast next start (it quits with Greenroom).")
@@ -1119,7 +1157,15 @@ final class CoordinatorController: ObservableObject {
                     // Chat-follow only when the tile is actually shown -
                     // in quick-hide the chat owns the full column and must
                     // not be re-snapped under a hidden tile's frame.
-                    if !speakerTileQuickHidden, frame != lastFrame, let screen = NSScreen.main {
+                    // Tolerant compare, for the same reason the grid's is:
+                    // an exact != on a frame the SDK reports back with
+                    // sub-point jitter would re-snap the chat every tick
+                    // forever.
+                    let tileMoved = abs(frame.origin.x - lastFrame.origin.x) > 2
+                        || abs(frame.origin.y - lastFrame.origin.y) > 2
+                        || abs(frame.width - lastFrame.width) > 2
+                        || abs(frame.height - lastFrame.height) > 2
+                    if !speakerTileQuickHidden, tileMoved, let screen = DisplayResolver.mainDisplayScreen() {
                         lastFrame = frame
                         let axFrame = CGRect(x: frame.origin.x,
                                              y: screen.frame.height - frame.maxY,
@@ -1164,18 +1210,27 @@ final class CoordinatorController: ObservableObject {
             if tick < gridCorrectionHoldUntilTick { return } // standing down (see below)
             if gallery.styleMask.contains(.fullScreen) {
                 gallery.toggleFullScreen(nil) // re-framed on a later tick
-            } else if gallery.frame != target.frame {
+            } else if peopleViewHasDrifted(gallery) {
                 gridCorrectionStreak += 1
                 if gridCorrectionStreak >= 6 {
                     // Corrected 6 consecutive ticks and something moved it
-                    // right back each time - with the tile-seizure paths
-                    // closed, that mover is the SDK's own dual-monitor
-                    // manager, which offers NO placement API to override
-                    // (ZoomSDKMeetingConfiguration.monitorID is a
-                    // screen-share knob, checked). Endless correction is a
-                    // visible 2s bounce - worse than either stable state.
-                    // Stand down, retry in ~2 minutes; Snap Windows Back
-                    // restarts the loop and re-arms immediately.
+                    // right back each time.
+                    //
+                    // History worth keeping: this backstop used to fire in
+                    // EVERY session about 12s in, and the cause was not an
+                    // external mover at all - the drift test compared the
+                    // window against the display's full frame, which AppKit
+                    // will never grant a titled window (it reserves the
+                    // menu-bar strip), so every tick read as drift. That is
+                    // fixed; see peopleViewGrantedFrame. Reaching six here
+                    // now means a real mover, most likely the SDK's own
+                    // dual-monitor manager, which exposes no placement API
+                    // to override (ZoomSDKMeetingConfiguration.monitorID is
+                    // a screen-share knob, checked).
+                    //
+                    // Endless correction is a visible bounce - worse than
+                    // either stable state. Stand down, retry in ~2 minutes;
+                    // Snap Windows Back restarts the loop and re-arms.
                     gridCorrectionHoldUntilTick = tick + 60
                     gridCorrectionStreak = 0
                     log("Something keeps re-placing the participant grid within seconds \u{2014} pausing the tug-of-war for 2 minutes. Snap Windows Back (\u{2303}\u{2325}\u{2318}S) re-places it now.")
@@ -1188,6 +1243,15 @@ final class CoordinatorController: ObservableObject {
                     placePeopleViewWindow()
                 } else {
                     gallery.setFrame(target.frame, display: true)
+                    // Record what we actually GOT, not what we asked for -
+                    // see peopleViewGrantedFrame. Only trust the readback if
+                    // the window really landed on the target display: if
+                    // something yanked it away inside this same tick,
+                    // adopting that frame as "correct" would make the loop
+                    // stop correcting a genuinely misplaced grid.
+                    if windowIsOnPeopleViewTarget(gallery) {
+                        peopleViewGrantedFrame = gallery.frame
+                    }
                     // orderFront only when actually hidden: ordering an SDK
                     // window front on every correction can itself provoke
                     // the SDK's re-layout, feeding the very loop this fixes.
@@ -1250,6 +1314,72 @@ final class CoordinatorController: ObservableObject {
     private var gridCorrectionStreak = 0
     private var gridCorrectionHoldUntilTick = 0
 
+    /// The frame the window server actually GRANTED the grid, which is not
+    /// the frame we asked for. AppKit's constrainFrameRect keeps a titled
+    /// window out of the menu-bar strip, so requesting a display's full
+    /// frame comes back shorter - measured on this 1920x1080 display: asked
+    /// for 1920x1080 at the origin, got 1920x1050 inset 30pt from the top.
+    ///
+    /// The maintain loop compares against THIS. It used to compare against
+    /// the requested `screen.frame`, which therefore NEVER matched: every
+    /// tick read as drift, "corrected" a window already sitting where it
+    /// was allowed to sit, and tripped the six-strike backstop about 12s
+    /// into every session. No external mover was needed to produce that:
+    /// the loop did it alone.
+    ///
+    /// This was one of two self-inflicted halves; the other was the target
+    /// display itself flipping with focus (see
+    /// DisplayResolver.mainDisplayScreen). With both fixed, a backstop
+    /// firing is evidence of a REAL mover - which has not been ruled out.
+    private var peopleViewGrantedFrame: NSRect?
+
+    /// Drift worth correcting: the grid left the display it belongs on, or
+    /// it moved measurably away from the frame the window server granted
+    /// it. Deliberately tolerant - a sub-point difference or the menu-bar
+    /// clamp is not drift, and treating it as drift is what made this loop
+    /// fight itself.
+    private func peopleViewHasDrifted(_ window: NSWindow) -> Bool {
+        let f = window.frame
+        guard windowIsOnPeopleViewTarget(window) else {
+            logGridDrift("left-display", found: f)
+            return true
+        }
+        guard let granted = peopleViewGrantedFrame else { return false }
+        let tolerance: CGFloat = 2
+        let moved = abs(f.origin.x - granted.origin.x) > tolerance
+            || abs(f.origin.y - granted.origin.y) > tolerance
+            || abs(f.width - granted.width) > tolerance
+            || abs(f.height - granted.height) > tolerance
+        if moved { logGridDrift("reframed", found: f) }
+        return moved
+    }
+
+    /// Diagnostic for the grid fight, to a FILE rather than the status log:
+    /// the status log is user-facing and this is per-tick detail. Records
+    /// where the grid was FOUND, which is the one thing the old logging
+    /// never captured - it reported only where the grid was moved TO, so a
+    /// persisting fight could not be attributed to anything.
+    private func logGridDrift(_ kind: String, found: NSRect) {
+        let granted = peopleViewGrantedFrame
+        let line = "\(Self.quitLogStamp.string(from: Date())) grid-drift \(kind)"
+            + " found=\(Int(found.origin.x)),\(Int(found.origin.y))"
+            + " \(Int(found.width))x\(Int(found.height))"
+            + " granted=" + (granted.map {
+                "\(Int($0.origin.x)),\(Int($0.origin.y)) \(Int($0.width))x\(Int($0.height))"
+            } ?? "none")
+            + " target=\(peopleViewTargetScreen()?.localizedName ?? "none")"
+            + " streak=\(gridCorrectionStreak)\n"
+        let url = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Library/Logs/Greenroom-quit.log")
+        if let handle = try? FileHandle(forWritingTo: url) {
+            handle.seekToEndOfFile()
+            try? handle.write(contentsOf: Data(line.utf8))
+            try? handle.close()
+        } else {
+            try? Data(line.utf8).write(to: url)
+        }
+    }
+
     /// Single source of truth for whether the Start action can run. The
     /// main window and menu bar previously duplicated PARTIAL versions of
     /// this - the menu bar skipped the credential/meeting-ID checks, so
@@ -1259,7 +1389,11 @@ final class CoordinatorController: ObservableObject {
         if isRunning || virtualCamActive || isStopping { return true }
         switch meetingMode {
         case .create: return s2sAccountID.isEmpty || s2sClientID.isEmpty
-        case .join: return meetingNumberDigits.isEmpty
+        // Zoom meeting IDs are 9-11 digits. Gating only on "not empty" let
+        // "12345" arm Start, which then ran the whole pipeline - OBS launch,
+        // scene build, virtual camera - before failing at the join, leaving
+        // a half-started session to clean up.
+        case .join: return meetingNumberDigits.count < 9
         }
     }
 
@@ -1302,6 +1436,13 @@ final class CoordinatorController: ObservableObject {
         }
         if ChatWindowController.isOpen {
             ChatWindowController.show(chat: zoomChatBridge, layout: workspaceLayout)
+            // show() lays the chat out with the tile's slot reserved, which is
+            // wrong when the quick-hide default just hid the tile: the column
+            // kept a ~350pt hole where no tile was coming. Every other
+            // quick-hide path pairs the two calls; this one did not.
+            if speakerTileQuickHidden {
+                ChatWindowController.fillSideColumn(layout: workspaceLayout)
+            }
         }
         // Snap Back is also the manual "fix the composite" action: re-assert
         // webcam-above-screen in the OBS scene alongside the window re-tiling.
@@ -1457,7 +1598,12 @@ final class CoordinatorController: ObservableObject {
     func fillMeetingFromClipboard() {
         guard let clipboard = NSPasteboard.general.string(forType: .string),
               let parsed = ZoomMeetingLinkParser.parse(clipboard) else {
+            // Logged AND surfaced: the status log is collapsed by default,
+            // so on the log alone this button looked like it did nothing at
+            // all when the clipboard held no meeting.
             log("Clipboard doesn't look like a Zoom meeting link/invite.")
+            Notifier.post(title: "No meeting in the clipboard",
+                          body: "Copy a Zoom invite or meeting link, then try again.")
             return
         }
         meetingNumber = parsed.number
@@ -1616,6 +1762,12 @@ final class CoordinatorController: ObservableObject {
                         gallery.toggleFullScreen(nil)
                     } else {
                         gallery.setFrame(target.frame, display: true)
+                        // What we GOT, not what we asked for, and only when
+                        // it actually landed on the target (see the same
+                        // guard in maintainPeopleViewPlacement).
+                        if windowIsOnPeopleViewTarget(gallery) {
+                            peopleViewGrantedFrame = gallery.frame
+                        }
                         gallery.orderFront(nil)
                         peopleViewWindow = gallery
                         // Grid on the extended display; the secondary tile
@@ -1703,7 +1855,7 @@ final class CoordinatorController: ObservableObject {
     /// main screen are miniaturized (recoverable from the Dock). Small
     /// windows (dialogs like "Claim Host") are left alone.
     private func demoteStrayMeetingWindows() {
-        guard let main = NSScreen.main else { return }
+        guard let main = DisplayResolver.mainDisplayScreen() else { return }
         // While the people-view placer is still hunting for the gallery,
         // don't demote any tile/gallery candidate out from under it -
         // only obvious side panels (e.g. the SDK's chat window).
@@ -1787,6 +1939,26 @@ final class CoordinatorController: ObservableObject {
             ])
         }
 
+        // Self-heal an old install. Versions 0.3.5 through 0.3.7 parked OBS
+        // on an idle scene carrying a `text_ft2_source` label whose font
+        // spec was incomplete (face + size, no flags/style). That source
+        // SEGV'd OBS in libfreetype on EVERY shutdown - 11 crash reports on
+        // this machine, all libfreetype -> text-freetype2 -> libobs - and
+        // the crash skipped OBS's sentinel cleanup, which is what arms its
+        // "Run in Safe Mode?" prompt, and Safe Mode disables the websocket
+        // this app depends on entirely.
+        //
+        // No longer creating it (see windDownForQuit) does not help a
+        // profile that already HAS one: OBS instantiates every source in the
+        // scene collection at startup, not just the active scene's. So it
+        // has to be removed. Here is the safe moment - OBS is connected,
+        // idle and fully started. The RemoveInput deadlock the teardown
+        // comment warns about happened mid-quit, not during setup. Bounded
+        // and best-effort: if it fails, Start proceeds exactly as before.
+        _ = await boundedOBSRequest("RemoveInput",
+                                    data: ["inputName": "Greenroom Idle Label"],
+                                    seconds: 2)
+
         log("Configuring the Greenroom scene (screen + keyed webcam bubble)\u{2026}")
         let webcamActive = try await GreenroomScene.ensureConfigured(client: client, bubble: .init(shape: webcamShape))
         if !webcamActive {
@@ -1853,6 +2025,14 @@ struct MeetingPreset: Codable, Identifiable, Hashable {
         self.name = name
         self.number = number
         self.password = password
+    }
+
+    /// How the preset reads in a menu. Saving with the name left blank
+    /// falls the name back to the meeting number, and the old
+    /// "name - number" format then rendered that twice
+    /// ("78904918702 - 78904918702"). Collapse it to the number alone.
+    var menuLabel: String {
+        name == number ? number : "\(name) \u{2014} \(number)"
     }
 }
 

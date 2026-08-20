@@ -81,7 +81,7 @@ struct WorkspaceLayout: Codable, Equatable {
     /// both AppleScript window `bounds` and the Accessibility API speak,
     /// unlike AppKit's NSScreen (bottom-left-origin).
     func mainPaneTopLeftFrame() -> CGRect? {
-        guard let screen = NSScreen.main else { return nil }
+        guard let screen = DisplayResolver.mainDisplayScreen() else { return nil }
         let visible = screen.visibleFrame
         let top = screen.frame.height - visible.origin.y - visible.height
         let x = visible.origin.x + visible.width * span.start
@@ -93,7 +93,7 @@ struct WorkspaceLayout: Codable, Equatable {
     /// NSWindow.setFrame and NSScreen.visibleFrame already share that
     /// space, so no conversion needed there.
     func sideColumnNSFrame() -> CGRect? {
-        guard let screen = NSScreen.main else { return nil }
+        guard let screen = DisplayResolver.mainDisplayScreen() else { return nil }
         let visible = screen.visibleFrame
         let remainder = remainderSpan
         let x = visible.origin.x + visible.width * remainder.start

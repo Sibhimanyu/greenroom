@@ -1109,6 +1109,7 @@ final class CoordinatorController: ObservableObject {
             // the ideal window had not appeared yet. Drives the handoff below.
             var tileIsFallback = false
             demotedStrayWindowNumbers.removeAll() // fresh session, fresh logs
+            rejectedVideoCandidateNumbers.removeAll()
             // The quick-hide MODE's default state: enabled means sessions
             // begin with the tile hidden and the chat full-height;
             // \u{2303}\u{2325}\u{2318}Z brings the speaker up on demand.
@@ -1934,8 +1935,69 @@ final class CoordinatorController: ObservableObject {
     private func meetingVideoWindowCandidates() -> [NSWindow] {
         sdkMeetingWindows()
             .filter { !$0.title.localizedCaseInsensitiveContains("chat") }
+            .filter(isPlausibleVideoWindow)
             .sorted { $0.windowNumber < $1.windowNumber }
     }
+
+    /// Whether an SDK window is plausibly one of Zoom's VIDEO windows, as
+    /// opposed to a panel it popped up.
+    ///
+    /// This gate exists because a panel must never be adopted as the speaker
+    /// tile or pinned to the people-view display. Reported live: clicking the
+    /// info "i" on the tile made the SDK recreate its windows, which killed
+    /// the tile's weak reference; the re-hunt then took the newest candidate -
+    /// the just-opened popup - parked it in the side column, and the follow
+    /// loop re-asserted that every two seconds. A stuck window that also stole
+    /// the quick-hide shortcut, since it had become `builtInMeetingWindow`.
+    ///
+    /// Geometry is the discriminator on purpose: it survives the window
+    /// recreation that destroys identity, the same reason the gallery is
+    /// excluded geometrically rather than by reference.
+    ///
+    /// The floor is a HEURISTIC, and an honest one - Zoom's panel sizes are
+    /// not documented and this machine could not open one to measure. It sits
+    /// under any real video window (the side-column tile measured 505x351)
+    /// while excluding small panels. `logRejectedVideoCandidate` records what
+    /// it turns away with title and size, so the first time this is wrong the
+    /// log says so and the rule can be tightened from a measurement instead of
+    /// another guess.
+    private func isPlausibleVideoWindow(_ window: NSWindow) -> Bool {
+        let title = window.title
+        for panel in ["information", "participant", "invite", "security", "keypad", "poll", "breakout"]
+        where title.localizedCaseInsensitiveContains(panel) {
+            logRejectedVideoCandidate(window, reason: "title looks like the \(panel) panel")
+            return false
+        }
+        let size = window.frame.size
+        if size.width < 300 || size.height < 220 {
+            logRejectedVideoCandidate(window, reason: "too small for a video window")
+            return false
+        }
+        return true
+    }
+
+    /// Logged once per window, to a file rather than the status log: this runs
+    /// on every follow-loop tick, so the user-facing log would drown.
+    private func logRejectedVideoCandidate(_ window: NSWindow, reason: String) {
+        guard rejectedVideoCandidateNumbers.insert(window.windowNumber).inserted else { return }
+        let size = window.frame.size
+        let line = "\(Self.quitLogStamp.string(from: Date())) ignored-sdk-window"
+            + " title=\"\(window.title)\""
+            + " \(Int(size.width))x\(Int(size.height))"
+            + " class=\(String(describing: type(of: window)))"
+            + " reason=\(reason)\n"
+        let url = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Library/Logs/Greenroom-quit.log")
+        if let handle = try? FileHandle(forWritingTo: url) {
+            handle.seekToEndOfFile()
+            try? handle.write(contentsOf: Data(line.utf8))
+            try? handle.close()
+        } else {
+            try? Data(line.utf8).write(to: url)
+        }
+    }
+
+    private var rejectedVideoCandidateNumbers = Set<Int>()
 
     /// Windows already demoted, so each is logged (and re-shrunk) once.
     private var demotedStrayWindowNumbers = Set<Int>()

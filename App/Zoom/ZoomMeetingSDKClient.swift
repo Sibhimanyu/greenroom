@@ -73,6 +73,54 @@ final class ZoomMeetingSDKClient: NSObject, ObservableObject {
         return element.getVideoView()
     }
 
+    /// One render element per participant, keyed by user ID. Cached because a
+    /// layout pass runs every couple of seconds: recreating elements each time
+    /// would unsubscribe and resubscribe every student's video continuously.
+    private var participantElements: [UInt32: ZoomSDKNormalVideoElement] = [:]
+
+    /// Who is in the meeting. `excludingSelf` follows the same Hide Self View
+    /// preference the default UI honours, so the gallery matches what the
+    /// teacher already chose rather than inventing a second rule.
+    func participantUserIDs(excludingSelf: Bool) -> [UInt32] {
+        guard let action = ZoomSDK.shared().getMeetingService()?.getMeetingActionController() else { return [] }
+        let ids = (action.getParticipantsList() as? [NSNumber])?.map { $0.uint32Value } ?? []
+        guard excludingSelf, let me = action.getMyself()?.getUserID() else { return ids }
+        return ids.filter { $0 != me }
+    }
+
+    func participantName(userID: UInt32) -> String? {
+        ZoomSDK.shared().getMeetingService()?.getMeetingActionController()
+            .getUserByUserID(userID)?.getUserName()
+    }
+
+    /// A view rendering one participant, reused across layout passes.
+    func participantView(userID: UInt32, frame: NSRect) -> NSView? {
+        guard didUseCustomUI else { return nil }
+        if let existing = participantElements[userID] {
+            _ = existing.resize(frame)
+            return existing.getVideoView()
+        }
+        guard let container = ZoomSDK.shared().getMeetingService()?.getVideoContainer() else { return nil }
+        videoContainer = container
+        var element = ZoomSDKNormalVideoElement(frame: frame)
+        guard container.createNormalVideoElement(&element) == ZoomSDKError_Success else { return nil }
+        element.userid = userID
+        _ = element.subscribeVideo(true)
+        _ = element.showVideo(true)
+        participantElements[userID] = element
+        return element.getVideoView()
+    }
+
+    /// Unsubscribes and drops elements for anyone no longer in the list, so a
+    /// class that churns all morning does not accumulate dead subscriptions.
+    func pruneParticipantViews(keeping keep: Set<UInt32>) {
+        for (userID, element) in participantElements where !keep.contains(userID) {
+            _ = element.subscribeVideo(false)
+            _ = videoContainer?.clean(element)
+            participantElements.removeValue(forKey: userID)
+        }
+    }
+
     /// Releases the render elements. Called on leave so the SDK is not left
     /// drawing into views that are about to disappear.
     func releaseCustomUIVideo() {
@@ -80,6 +128,11 @@ final class ZoomMeetingSDKClient: NSObject, ObservableObject {
             _ = videoContainer?.clean(element)
         }
         activeSpeakerElement = nil
+        for (_, element) in participantElements {
+            _ = element.subscribeVideo(false)
+            _ = videoContainer?.clean(element)
+        }
+        participantElements.removeAll()
         videoContainer = nil
     }
     private var isAuthed = false

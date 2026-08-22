@@ -29,7 +29,9 @@ final class CoordinatorController: ObservableObject {
         peopleViewTask?.cancel()
         stopShapePreview()
         ChatWindowController.close()
+        customUIGridTask?.cancel()
         SpeakerWindowController.close()
+        ParticipantGridWindowController.close()
         zoomChatClient.releaseCustomUIVideo()
         zoomChatClient.leave() // ends the meeting if we're hosting it
     }
@@ -802,7 +804,9 @@ final class CoordinatorController: ObservableObject {
             }
             // Custom UI: stop the SDK rendering into views that are about to
             // go away, then drop our window.
+            customUIGridTask?.cancel()
             SpeakerWindowController.close()
+            ParticipantGridWindowController.close()
             zoomChatClient.releaseCustomUIVideo()
             // A beat between cancelling the window-follow loops and the
             // SDK tearing its meeting windows down: the crash logs' seven
@@ -1165,12 +1169,41 @@ final class CoordinatorController: ObservableObject {
             return
         }
         SpeakerWindowController.show(videoView: videoView, layout: workspaceLayout)
+        startCustomUIGridFollow()
         if speakerTileQuickHidden {
             SpeakerWindowController.hide()
             ChatWindowController.fillSideColumn(layout: workspaceLayout)
             log("Speaker starts hidden (quick-hide mode) \u{2014} chat has the full column; \u{2303}\u{2325}\u{2318}Z shows it.")
         }
         log("Custom UI: the speaker view is Greenroom's own window \u{2014} no Zoom chrome, nothing to park.")
+    }
+
+    /// Keeps the custom-UI gallery in step with who is actually in the meeting.
+    ///
+    /// Polled rather than driven by onUserJoin/onUserLeft because the video
+    /// element for a brand-new participant is not necessarily renderable the
+    /// instant the join callback fires, and a poll is idempotent - it converges
+    /// whether or not any single event was missed. Two seconds matches the
+    /// default-UI follow loop, so the two modes feel the same.
+    private func startCustomUIGridFollow() {
+        customUIGridTask?.cancel()
+        guard peopleViewWanted else { return }
+        customUIGridTask = Task { [weak self] in
+            while !Task.isCancelled {
+                guard let self, let screen = self.peopleViewTargetScreen() else { return }
+                let ids = self.zoomChatClient.participantUserIDs(excludingSelf: self.hideSelfView)
+                self.zoomChatClient.pruneParticipantViews(keeping: Set(ids))
+                let cellHint = NSRect(x: 0, y: 0, width: 640, height: 360)
+                let views = ids.compactMap {
+                    self.zoomChatClient.participantView(userID: $0, frame: cellHint)
+                }
+                // show() hides itself when the list is empty, which is the
+                // right behaviour for a teacher who opened the room early:
+                // nothing on the wall rather than last session's faces.
+                ParticipantGridWindowController.show(views: views, on: screen)
+                try? await Task.sleep(nanoseconds: 2_000_000_000)
+            }
+        }
     }
 
     private func parkBuiltInMeetingWindow(resetQuickHideToDefault: Bool = false) {
@@ -1479,6 +1512,8 @@ final class CoordinatorController: ObservableObject {
     /// the fight detector for maintainPeopleViewPlacement. Reset whenever
     /// the follow loop (re)starts: session start, layout re-apply, Snap
     /// Windows Back - each of those is an explicit re-arm.
+    /// Custom-UI gallery refresh. Cancelled with the session.
+    private var customUIGridTask: Task<Void, Never>?
     private var gridCorrectionStreak = 0
     private var gridCorrectionHoldUntilTick = 0
 
@@ -1983,6 +2018,7 @@ final class CoordinatorController: ObservableObject {
             guard window.isVisible, !window.isSheet else { return false }
             if ChatWindowController.owns(window) { return false } // "Meeting Chat" - ours
             if SpeakerWindowController.owns(window) { return false } // custom-UI speaker - also ours
+            if ParticipantGridWindowController.owns(window) { return false } // custom-UI gallery - ours
             if window.title == "Greenroom" { return false } // main window
             if window.title.localizedCaseInsensitiveContains("settings") { return false }
 

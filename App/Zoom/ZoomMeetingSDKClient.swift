@@ -364,6 +364,17 @@ final class ZoomMeetingSDKClient: NSObject, ObservableObject {
         // instead of the students (reported live). Off, the speaker view
         // follows whoever else is talking, Zoom's normal behavior.
         ZoomSDK.shared().getSettingService()?.getVideoSetting()?.onSpotlightMyVideo(whenISpeaker: false)
+        // Zoom draws its own name label INTO each video view. In default-UI mode
+        // that is Zoom's own chrome and belongs there. In custom-UI mode our
+        // participant panel draws a richer label of its own - name plus host or
+        // co-host role - a few points away, so both rendered on top of each
+        // other. Confirmed live in the accessibility tree: two overlapping
+        // labels, "Sibhimanyu V" and "Sibhimanyu V (you) - host".
+        // Local rendering only; it does not touch what the class sees or what
+        // OBS records.
+        if didUseCustomUI {
+            _ = ZoomSDK.shared().getSettingService()?.getVideoSetting()?.displayUserName(onVideo: false)
+        }
         // PERSISTED setting, asserted off before every connect (same
         // never-trust doctrine as DualScreenMode below): when it sticks
         // on, the SDK fullscreens its meeting windows at join - and a

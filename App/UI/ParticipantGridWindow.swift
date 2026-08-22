@@ -110,8 +110,13 @@ enum ParticipantGridWindowController {
             isNewWindow = false
         } else {
             isNewWindow = true
-            panel?.orderOut(nil)
+            // Closed, not merely ordered out. orderOut leaves the window in
+            // NSApp.windows for the life of the process, so swapping between the
+            // windowed and full-screen forms would strand one there on every
+            // switch - invisible, but still walked by the 500ms SDK-window
+            // sweep and never freed.
             root?.detachAllVideo()
+            panel?.close()
             hosting = makePanel(on: screen, windowed: windowed)
             let view = RootView(frame: hosting.contentLayoutRect)
             view.autoresizingMask = [.width, .height]
@@ -159,9 +164,9 @@ enum ParticipantGridWindowController {
     static func hide() { panel?.orderOut(nil) }
 
     static func close() {
-        panel?.orderOut(nil)
         root?.detachAllVideo()
         panel?.contentView = NSView()
+        panel?.close()
         panel = nil
         root = nil
         client = nil

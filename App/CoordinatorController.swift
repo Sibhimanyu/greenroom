@@ -556,6 +556,15 @@ final class CoordinatorController: ObservableObject {
     @Published var customUIMode: Bool {
         didSet { defaults.set(customUIMode, forKey: "customUIMode") }
     }
+    /// True when the toggle no longer matches the mode actually running.
+    ///
+    /// `needCustomizedUI` is an initSDK parameter and the SDK initialises once
+    /// per process, at the first session start. Change the toggle after that and
+    /// nothing happens until relaunch - which looked exactly like a broken
+    /// switch until Settings started saying so.
+    var customUIModeNeedsRelaunch: Bool {
+        zoomChatClient.didInit && zoomChatClient.didUseCustomUI != customUIMode
+    }
 
     @Published var screenCaptureDisplayUUID: String {
         didSet { defaults.set(screenCaptureDisplayUUID, forKey: "screenCaptureDisplayUUID") }

@@ -35,7 +35,11 @@ final class ZoomMeetingSDKClient: NSObject, ObservableObject {
     /// the meeting for everyone.
     private(set) var isHosting = false
 
-    private var didInit = false
+    /// True once initSDK has run in this process. `needCustomizedUI` is an init
+    /// parameter, so after this point the UI mode cannot change until relaunch -
+    /// which Settings needs to know so it can say so rather than letting the
+    /// toggle look broken.
+    private(set) var didInit = false
 
     /// Whether this process initialised the SDK in custom-UI mode. Recorded at
     /// init because the flag could be flipped in defaults afterwards, and what

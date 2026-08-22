@@ -664,7 +664,16 @@ private struct MeetingSDKSettingsTab: View {
 
                 Toggle("Custom meeting UI (experimental)", isOn: $coordinator.customUIMode)
 
-                Text("Renders the speaker inside a Greenroom window instead of using Zoom's own meeting windows, so there is no Zoom toolbar or info button to manage. Quit and reopen Greenroom to switch \u{2014} Zoom decides this when it starts up, not per session. The participant view isn't built for this mode yet.")
+                if coordinator.customUIModeNeedsRelaunch {
+                    HStack(alignment: .firstTextBaseline, spacing: 6) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                        Text("Not active yet \u{2014} quit and reopen Greenroom. Zoom fixes the meeting UI when it first starts a session, and this launch has already started one.")
+                    }
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+                }
+
+                Text("Renders the speaker inside a Greenroom window instead of using Zoom's own meeting windows, so there is no Zoom toolbar or info button to manage, and the participant view becomes a full control surface with mute, spotlight and the rest. Zoom fixes the meeting UI when it first starts a session, so changing this only takes effect after you quit and reopen Greenroom.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

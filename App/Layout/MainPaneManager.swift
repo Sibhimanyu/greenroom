@@ -57,6 +57,14 @@ enum MainPaneManager {
                 try await NSWorkspace.shared.open([url], withApplicationAt: appURL, configuration: configuration)
             } else {
                 try await NSWorkspace.shared.openApplication(at: appURL, configuration: configuration)
+                // Say so when a browser was asked to open an address and the
+                // address could not be parsed. This branch used to be silent, so
+                // an unusable URL looked exactly like a browser that opens on a
+                // blank tab by preference.
+                if AppCatalog.isBrowser(bundleID),
+                   !urlString.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    return "Opened \(name) without a page \u{2014} \u{201C}\(urlString)\u{201D} is not a usable address. Retype it in Settings (\u{2318},)."
+                }
             }
         } catch {
             return "Couldn't open \(name): \(error.localizedDescription)"

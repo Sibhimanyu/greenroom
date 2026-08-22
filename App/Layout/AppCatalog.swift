@@ -87,10 +87,27 @@ enum AppCatalog {
     /// "docs.google.com" -> https://docs.google.com; empty/whitespace ->
     /// nil. Shared by the Chrome AppleScript path and the generic
     /// open-in-browser path.
+    /// Turns whatever is in the Settings field into a URL, or nil.
+    ///
+    /// Control characters are stripped, not just trimmed, and that is the whole
+    /// point. A saved address ending in U+001A - which is Ctrl-Z, and reaches the
+    /// field far too easily given the app registers a global
+    /// Control-Option-Command-Z - survived `trimmingCharacters(in:
+    /// .whitespacesAndNewlines)` untouched, because a control character is
+    /// neither whitespace nor a newline. `URL(string:)` then returned nil, the
+    /// caller quietly fell back to launching the browser with no URL, and the
+    /// result was a blank tab with nothing anywhere saying why.
+    ///
+    /// Stripped from anywhere in the string rather than only the ends: a URL
+    /// cannot legally contain a control character in any position, so finding one
+    /// in the middle means the same thing.
     static func normalizedWebURL(from raw: String) -> URL? {
-        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return nil }
-        let absolute = trimmed.contains("://") ? trimmed : "https://\(trimmed)"
+        let cleaned = String(raw.unicodeScalars.filter {
+            $0.properties.generalCategory != .control
+                && !$0.properties.isDefaultIgnorableCodePoint
+        }).trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cleaned.isEmpty else { return nil }
+        let absolute = cleaned.contains("://") ? cleaned : "https://\(cleaned)"
         return URL(string: absolute)
     }
 

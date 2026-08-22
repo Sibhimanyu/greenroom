@@ -103,10 +103,13 @@ enum ParticipantGridWindowController {
         if !includeSelf { roster.removeAll { $0.isMyself } }
 
         let hosting: ControlPanel
+        let isNewWindow: Bool
         if let existing = panel, isWindowed == windowed,
            windowed || existing.screen === screen {
             hosting = existing
+            isNewWindow = false
         } else {
+            isNewWindow = true
             panel?.orderOut(nil)
             root?.detachAllVideo()
             hosting = makePanel(on: screen, windowed: windowed)
@@ -117,10 +120,12 @@ enum ParticipantGridWindowController {
             root = view
             isWindowed = windowed
         }
-        // Only the full-screen form is re-framed. Once the teacher has moved or
-        // resized the windowed form, pinning it back every second would make it
-        // impossible to place.
-        if !windowed { hosting.setFrame(screen.frame, display: true) }
+        // Only the full-screen form is re-framed, and only when it has actually
+        // drifted. Once the teacher has moved or resized the windowed form,
+        // pinning it back every second would make it impossible to place.
+        if !windowed, hosting.frame != screen.frame {
+            hosting.setFrame(screen.frame, display: true)
+        }
 
         root?.update(roster: roster,
                      flags: client.roomFlags(),
@@ -128,10 +133,19 @@ enum ParticipantGridWindowController {
                      session: session,
                      videoProvider: { id, frame in client.participantView(userID: id, frame: frame) })
         client.pruneParticipantViews(keeping: Set(roster.map(\.id)))
-        // Minimising is the one way to dismiss the windowed form, so the poll
-        // has to respect it. Ordering it front every second otherwise would
-        // make it impossible to put away.
-        if !hosting.isMiniaturized { hosting.orderFrontRegardless() }
+
+        // Raise it only when it is new, or when it has gone away and was not
+        // deliberately minimised. Placement here is CONVERGENT, not assertive.
+        //
+        // The first version ordered the panel front on every tick of a
+        // one-second poll, which meant clicking any other window sent it behind
+        // and then had it jump back on top a second later - a tug-of-war with
+        // the person using the Mac, and indistinguishable from the SDK-window
+        // fighting that custom UI exists to end. A window that is merely BEHIND
+        // another is still `isVisible`, so this leaves it where the user put it.
+        if isNewWindow || (!hosting.isVisible && !hosting.isMiniaturized) {
+            hosting.orderFrontRegardless()
+        }
     }
 
     private static var isWindowed = false

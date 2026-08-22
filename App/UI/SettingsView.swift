@@ -326,6 +326,14 @@ private struct LayoutSettingsTab: View {
                 Toggle("Show the participant view on another display", isOn: $coordinator.peopleViewOnStart)
 
                 if coordinator.peopleViewOnStart, coordinator.customUIMode {
+                    Toggle("Allow it on this screen when no second display is connected",
+                           isOn: $coordinator.participantPanelOnMainDisplay)
+                    Text("Off by default. The panel is large and meant for a display only you can see, so on a single screen it covers the tiled workspace. Turn it on to try the panel without a reference monitor.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                if coordinator.peopleViewOnStart, coordinator.customUIMode {
                     Text("With the custom meeting UI on, this view also carries the host controls \u{2014} mute, spotlight, admit, rename, remove. It is meant for a display only you can see. With no second display it opens as an ordinary window you can move and resize.")
                         .font(.caption)
                         .foregroundStyle(.secondary)

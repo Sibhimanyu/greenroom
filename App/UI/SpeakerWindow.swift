@@ -33,14 +33,23 @@ enum SpeakerWindowController {
     /// flicker.
     private static var shownVideo: NSView?
 
-    static func show(videoView: NSView, layout: WorkspaceLayout) {
+    /// `visible` is the caller's quick-hide state, passed in rather than tracked
+    /// here so there is one source of truth.
+    ///
+    /// It has to be a parameter because this is called from a two-second poll.
+    /// The first version raised the window on every one of those calls, so the
+    /// caller had to hide it again immediately afterwards - its own comment said
+    /// as much - which made a quick-hidden tile flicker open and shut every two
+    /// seconds. Now visibility is stated once and simply obeyed.
+    static func show(videoView: NSView, layout: WorkspaceLayout, visible: Bool = true) {
         let slot = ChatWindowController.zoomSlotNSFrame(for: layout)
 
         if shownVideo === videoView, let existing = window {
-            // Same content, nothing to rebuild. Still re-frame, which is cheap
-            // and absorbs a layout change.
-            if let slot { existing.setFrame(slot, display: true) }
-            existing.orderFrontRegardless()
+            // Same content, nothing to rebuild. Re-frame only on an actual
+            // drift; assigning an identical frame every tick is a wasted layout
+            // pass.
+            if let slot, existing.frame != slot { existing.setFrame(slot, display: true) }
+            applyVisibility(visible, to: existing)
             return
         }
 
@@ -98,8 +107,19 @@ enum SpeakerWindowController {
         ])
 
         shownVideo = videoView
-        if let slot { hosting.setFrame(slot, display: true) }
-        hosting.orderFrontRegardless()
+        if let slot, hosting.frame != slot { hosting.setFrame(slot, display: true) }
+        applyVisibility(visible, to: hosting)
+    }
+
+    /// Never re-raises a window that is already on screen. A window sitting
+    /// BEHIND another is still `isVisible`, so this leaves it where the user put
+    /// it instead of yanking it forward on the next poll.
+    private static func applyVisibility(_ visible: Bool, to window: NSWindow) {
+        if visible {
+            if !window.isVisible { window.orderFrontRegardless() }
+        } else if window.isVisible {
+            window.orderOut(nil)
+        }
     }
 
     static var isOpen: Bool { window?.isVisible ?? false }

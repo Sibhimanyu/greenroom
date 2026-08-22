@@ -523,6 +523,17 @@ final class CoordinatorController: ObservableObject {
     @Published var peopleViewOnStart: Bool {
         didSet { defaults.set(peopleViewOnStart, forKey: "peopleViewOnStart") }
     }
+    /// Whether the custom-UI participants panel may open on the MAIN display
+    /// when no second display is attached.
+    ///
+    /// Off by default, and it should stay off for normal use. The panel is a
+    /// private control surface for a display the teacher alone can see; on a
+    /// single screen it covers the tiled workspace the whole app exists to
+    /// arrange. It is here so the panel can be exercised without a reference
+    /// monitor plugged in, not as a way to work.
+    @Published var participantPanelOnMainDisplay: Bool {
+        didSet { defaults.set(participantPanelOnMainDisplay, forKey: "participantPanelOnMainDisplay") }
+    }
     /// Which display the participant gallery opens on, by stable CGDisplay
     /// UUID. Empty = Automatic (the first non-main display). Persisted and
     /// carried in the transfer file so a saved setup targets the same
@@ -585,6 +596,7 @@ final class CoordinatorController: ObservableObject {
             ?? (defaults.object(forKey: "chromeOnStart") as? Bool)
             ?? true
         peopleViewOnStart = defaults.bool(forKey: "peopleViewOnStart")
+        participantPanelOnMainDisplay = defaults.bool(forKey: "participantPanelOnMainDisplay")
         peopleViewDisplayUUID = defaults.string(forKey: "peopleViewDisplayUUID") ?? ""
         screenCaptureDisplayUUID = defaults.string(forKey: "screenCaptureDisplayUUID") ?? ""
         customUIMode = defaults.bool(forKey: "customUIMode")
@@ -1212,20 +1224,22 @@ final class CoordinatorController: ObservableObject {
                 guard let self else { return }
                 let slot = ChatWindowController.zoomSlotNSFrame(for: self.workspaceLayout)
                     ?? NSRect(x: 0, y: 0, width: 505, height: 351)
+                let wantVisible = !self.speakerTileQuickHidden
                 if self.zoomChatClient.hasOtherParticipants {
                     if let view = self.zoomChatClient.makeActiveSpeakerView(frame: slot).view {
-                        SpeakerWindowController.show(videoView: view, layout: self.workspaceLayout)
+                        SpeakerWindowController.show(videoView: view,
+                                                     layout: self.workspaceLayout,
+                                                     visible: wantVisible)
                     }
                 } else if let selfView = self.zoomChatClient.makeSelfView(frame: slot) {
-                    SpeakerWindowController.show(videoView: selfView, layout: self.workspaceLayout)
+                    SpeakerWindowController.show(videoView: selfView,
+                                                 layout: self.workspaceLayout,
+                                                 visible: wantVisible)
                     if !announcedSelfView {
                         announcedSelfView = true
                         self.log("Nobody else here yet \u{2014} showing your own camera until someone joins.")
                     }
                 }
-                // Swapping content orders the window front, which would undo a
-                // quick-hide, so re-assert it.
-                if self.speakerTileQuickHidden { SpeakerWindowController.hide() }
                 try? await Task.sleep(nanoseconds: 2_000_000_000)
             }
         }
@@ -1240,19 +1254,25 @@ final class CoordinatorController: ObservableObject {
     /// default-UI follow loop, so the two modes feel the same.
     private func startCustomUIGridFollow() {
         customUIGridTask?.cancel()
-        // Deliberately gated on the toggle alone, not on `peopleViewWanted`,
-        // which also requires a second display. In custom-UI mode the surface
-        // is a control panel as much as a video wall, so on a single screen it
-        // opens as an ordinary window rather than not at all - which is also
-        // the only way this is testable without the reference display attached.
+        // Needs the toggle AND somewhere sensible to go.
+        //
+        // An earlier version opened on the main display whenever no second one
+        // was attached, reasoning that a laptop teacher still wants the roster.
+        // Tried live, that is wrong: the panel is big, it is a private control
+        // surface, and on one screen it lands on top of the tiled workspace this
+        // app exists to build. Now the main display is opt-in, off by default.
         guard peopleViewOnStart else { return }
+        guard peopleViewWanted || participantPanelOnMainDisplay else {
+            log("Participants panel skipped \u{2014} no second display to put it on. Connect your reference display, or allow it on this screen in Settings (\u{2318},) \u{2192} Second display.")
+            return
+        }
         ParticipantGridWindowController.configure(
             client: zoomChatClient,
             log: { [weak self] message in self?.log(message) },
             endSession: { [weak self] in self?.stop() })
         let startedAt = Date()
         if peopleViewTargetScreen() == nil {
-            log("Participants panel opened as a window \u{2014} no second display to give it. Connect your reference display for the full-screen version.")
+            log("Participants panel opened as a window on this display \u{2014} no second display to give it. It will not be full-screen, and you can move it.")
         }
         customUIGridTask = Task { [weak self] in
             while !Task.isCancelled {

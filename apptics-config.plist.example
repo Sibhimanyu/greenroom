@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Template. Copy to `apptics-config.plist` (gitignored) and fill in the two
+  values Apptics gives you when you finish creating the macOS app identifier.
+
+    cp apptics-config.plist.example apptics-config.plist
+
+  The real file is NOT committed: API_KEY is a live credential that can register
+  app versions and upload dSYMs to the Apptics project, and this repository is
+  public. The build script also writes an APP_VERSION_META dictionary back into
+  the real file, so it changes on its own as versions are registered.
+
+  BUNDLE_ID must match PRODUCT_BUNDLE_IDENTIFIER in project.yml exactly, or the
+  build prints a warning and events attribute to nothing.
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>BUNDLE_ID</key>
+	<string>com.sibhimanyu.greenroom</string>
+	<key>API_KEY</key>
+	<string>PASTE_YOUR_APPTICS_API_KEY_HERE</string>
+	<key>SERVER_URL</key>
+	<string>https://apptics.zoho.com</string>
+</dict>
+</plist>

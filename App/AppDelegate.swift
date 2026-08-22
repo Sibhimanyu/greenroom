@@ -13,15 +13,36 @@
 //      without this, a manual `killall OBS` was the only way out.
 //
 import AppKit
+import Apptics
 import Carbon.HIToolbox
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
+
+    /// Zoho Apptics: sessions, screens and events.
+    ///
+    /// Gated on AP_INFOPLIST_FILE, which the Apptics pre-build script writes
+    /// into Info.plist only when apptics-config.plist exists. That makes the
+    /// key an honest signal for "this build was actually wired up", so a clone
+    /// without an API key launches silently instead of logging SDK errors at
+    /// every start.
+    ///
+    /// No crash reporting on this platform: AppticsMXCrashKit is gated to iOS
+    /// in the package, so OBS's teardown crashes will not appear here.
+    private func startAnalytics() {
+        guard Bundle.main.object(forInfoDictionaryKey: "AP_INFOPLIST_FILE") != nil else { return }
+        #if DEBUG
+        Apptics.initialize(withVerbose: true)
+        #else
+        Apptics.initialize(withVerbose: false)
+        #endif
+    }
 
     /// System-wide shortcuts (see HotkeyManager - they work while OTHER
     /// apps are focused, which is the whole point mid-class). Actions
     /// resolve the coordinator at press time and guard on session state,
     /// mirroring the buttons' enabled states.
     func applicationDidFinishLaunching(_ notification: Notification) {
+        startAnalytics()
         MainActor.assumeIsolated {
             let mods = UInt32(cmdKey | optionKey | controlKey)
             HotkeyManager.shared.register([

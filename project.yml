@@ -37,6 +37,16 @@ packages:
   Sparkle:
     url: https://github.com/sparkle-project/Sparkle
     from: 2.6.0
+  # Zoho Apptics, via SPM rather than the CocoaPods integration its docs
+  # recommend. CocoaPods writes into Greenroom.xcodeproj, which is gitignored
+  # and regenerated from this file - scripts/release.sh runs `xcodegen
+  # generate` immediately before building, so a Pods integration would be
+  # silently erased and release builds would ship with no analytics in them.
+  # Pinned to an exact tag: the repo's default branch carries a Package.swift
+  # whose version string disagrees with its own tags.
+  Apptics:
+    url: https://github.com/zoho/Apptics
+    exactVersion: 3.3.17
 
 targets:
   Greenroom:
@@ -75,6 +85,25 @@ targets:
       - framework: Vendor/ZoomSDK/ZoomSDK.framework
         embed: true
       - package: Sparkle
+      - package: Apptics
+        product: AppticsAnalytics
+    # Apptics needs a build-time step, which is what its CocoaPods
+    # `script_phase` provides. SPM has no equivalent, so the vendored copy of
+    # the same script runs here instead (see Vendor/Apptics/README.md).
+    #
+    # Guarded on the config file existing. Without the guard, anyone who has
+    # not created apptics-config.plist - a fresh clone, or CI - gets a hard
+    # build failure from inside a third-party script, which is a miserable way
+    # to discover a missing credential.
+    preBuildScripts:
+      - name: Apptics pre build
+        basedOnDependencyAnalysis: false
+        script: |
+          if [ ! -f "${SRCROOT}/apptics-config.plist" ]; then
+            echo "warning: apptics-config.plist not found - skipping Apptics registration. Copy apptics-config.plist.example and add your API key to enable analytics."
+            exit 0
+          fi
+          sh "${SRCROOT}/Vendor/Apptics/scripts/run" --upload-symbols-for-configurations="Release"
     # Confirmed against the real downloaded SDK (7.1.5.84750): it ships
     # ZoomSDK.framework alongside ~37 more support frameworks, 11 flat
     # dylibs, 28 resource bundles, and 6 helper .app bundles (screen-share
@@ -86,20 +115,62 @@ targets:
     # app won't launch. Confirmed working: repeated xcodebuild + launch
     # cycles with no dyld errors, and a real Meeting SDK join succeeding.
     postbuildScripts:
+      # Not declared as a resource in `sources`: the file is gitignored, and
+      # xcodegen's `optional` only suppresses the generate-time error - the
+      # copy phase still fails the build when it is missing. Copying it here
+      # keeps a clone without an API key buildable.
+      #
+      # It has to reach the bundle because the SDK reads it at runtime, by the
+      # name the pre-build script wrote into Info.plist as AP_INFOPLIST_FILE.
+      # That also means API_KEY ships inside every released app - confirmed by
+      # the runtime binary referencing the key, so it cannot be stripped. It is
+      # how Apptics is designed; treat that key as public once you ship.
+      - name: Copy Apptics config into the bundle
+        script: |
+          set -eu
+          if [ -f "${SRCROOT}/apptics-config.plist" ]; then
+            cp "${SRCROOT}/apptics-config.plist" "${CODESIGNING_FOLDER_PATH}/Contents/Resources/apptics-config.plist"
+          fi
       - name: Embed remaining ZoomSDK support binaries
         script: |
-          set -euo pipefail
+          set -eu
           DEST="${CODESIGNING_FOLDER_PATH}/Contents/Frameworks"
+          SRC="${SRCROOT}/Vendor/ZoomSDK"
           mkdir -p "$DEST"
-          # Every framework Xcode itself embeds must be excluded here, or
+          # Every framework Xcode itself embeds must be listed here, or
           # --delete erases it and the app dies at launch with a dyld
           # "Library not loaded" (v0.3.0 shipped that way: Sparkle was
           # embedded by Xcode, wiped by this rsync, crash on open).
-          rsync -a --delete --exclude 'ZoomSDK.framework' --exclude 'Sparkle.framework' "${SRCROOT}/Vendor/ZoomSDK/" "$DEST/"
-          # Sparkle is excluded from this re-sign too: Xcode already signs
-          # it correctly, and a --deep re-sign would flatten the nested
-          # signatures on its XPC services/helpers (breaking updates).
-          find "$DEST" -mindepth 1 -maxdepth 1 \( -name "*.framework" -o -name "*.dylib" -o -name "*.bundle" -o -name "*.app" \) -not -name "Sparkle.framework" -print0 \
+          # Apptics contributes four: AppticsAnalytics pulls Apptics, JWT,
+          # AppticsEventTracker and AppticsScreenTracker as binary targets
+          # (AppticsMXCrashKit is iOS-only, so it never appears here).
+          XCODE_EMBEDS=" ZoomSDK.framework Sparkle.framework Apptics.framework JWT.framework AppticsEventTracker.framework AppticsScreenTracker.framework "
+          # Fail the build rather than repeat that bug silently. Anything in
+          # the bundle that neither came from Vendor/ZoomSDK nor is on the
+          # list above is about to be deleted, so say so now instead of
+          # letting it crash on someone's Mac at launch.
+          for existing in "$DEST"/*.framework; do
+            [ -e "$existing" ] || continue
+            name=$(basename "$existing")
+            case "$XCODE_EMBEDS" in
+              *" $name "*) continue ;;
+            esac
+            if [ ! -e "$SRC/$name" ]; then
+              echo "error: $name is embedded by Xcode but missing from XCODE_EMBEDS in project.yml. The rsync below would delete it and the app would crash at launch with a dyld error. Add it to the list."
+              exit 1
+            fi
+          done
+          EXCLUDES=""
+          for name in $XCODE_EMBEDS; do EXCLUDES="$EXCLUDES --exclude $name"; done
+          rsync -a --delete $EXCLUDES "$SRC/" "$DEST/"
+          # Sparkle and the Apptics frameworks are excluded from this re-sign:
+          # Xcode already signs them correctly, and a --deep re-sign flattens
+          # the nested signatures on Sparkle's XPC services/helpers, which
+          # breaks updates.
+          find "$DEST" -mindepth 1 -maxdepth 1 \( -name "*.framework" -o -name "*.dylib" -o -name "*.bundle" -o -name "*.app" \) \
+            -not -name "Sparkle.framework" \
+            -not -name "Apptics.framework" -not -name "JWT.framework" \
+            -not -name "AppticsEventTracker.framework" -not -name "AppticsScreenTracker.framework" -print0 \
             | xargs -0 -I{} codesign --force --deep --timestamp=none --sign "${EXPANDED_CODE_SIGN_IDENTITY}" "{}"
 
 schemes:

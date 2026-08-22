@@ -99,10 +99,22 @@ targets:
       - name: Apptics pre build
         basedOnDependencyAnalysis: false
         script: |
-          if [ ! -f "${SRCROOT}/apptics-config.plist" ]; then
+          CONFIG="${SRCROOT}/apptics-config.plist"
+          if [ ! -f "$CONFIG" ]; then
             echo "warning: apptics-config.plist not found - skipping Apptics registration. Copy apptics-config.plist.example and add your API key to enable analytics."
             exit 0
           fi
+          # Also skip while the key is still the placeholder. Apptics' script
+          # treats any non-empty API_KEY as real, calls the register endpoint,
+          # gets a non-200 and exits 1 - so without this check, merely creating
+          # the config file from the template breaks the build.
+          AP_KEY=$(/usr/libexec/PlistBuddy -c "Print API_KEY" "$CONFIG" 2>/dev/null || true)
+          case "$AP_KEY" in
+            ""|PASTE_YOUR_APPTICS_API_KEY_HERE)
+              echo "warning: apptics-config.plist still holds the placeholder API_KEY - skipping Apptics registration. Paste your real key to turn analytics on."
+              exit 0
+              ;;
+          esac
           sh "${SRCROOT}/Vendor/Apptics/scripts/run" --upload-symbols-for-configurations="Release"
     # Confirmed against the real downloaded SDK (7.1.5.84750): it ships
     # ZoomSDK.framework alongside ~37 more support frameworks, 11 flat

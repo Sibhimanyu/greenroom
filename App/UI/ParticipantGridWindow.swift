@@ -37,6 +37,11 @@ enum ParticipantGridWindowController {
         var speakerHidden: Bool = false
     }
 
+    /// Started with the panel and stopped with it, so nothing taps the
+    /// microphone outside a session.
+    private static let micMonitor = MicLevelMonitor()
+    private static var micTimer: Timer?
+
     private static weak var client: ZoomMeetingSDKClient?
     private static var log: (@MainActor (String) -> Void)?
     private static var endSession: (@MainActor () -> Void)?
@@ -65,6 +70,16 @@ enum ParticipantGridWindowController {
         self.snapBack = snapBack
         self.toggleSpeaker = toggleSpeaker
         self.showMainWindow = showMainWindow
+
+        // Driven on its own timer, not the one-second roster poll: a meter that
+        // updated once a second would not be a meter.
+        micMonitor.start()
+        micTimer?.invalidate()
+        micTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 20.0, repeats: true) { _ in
+            Task { @MainActor in
+                root?.applyMicLevel(micMonitor.level, running: micMonitor.isRunning)
+            }
+        }
     }
 
     // MARK: - Window
@@ -203,6 +218,9 @@ enum ParticipantGridWindowController {
         snapBack = nil
         toggleSpeaker = nil
         showMainWindow = nil
+        micTimer?.invalidate()
+        micTimer = nil
+        micMonitor.stop()
     }
 
     fileprivate static func report(_ message: String) { log?(message) }
@@ -255,6 +273,10 @@ private final class RootView: NSView {
     private let selfViewLabel = NSTextField(labelWithString: "You, as the class sees you")
     private var selfVideo: NSView?
     private var railControls: [NSView] = []
+    private let micMeter = LevelMeterView()
+    private let micLabel = NSTextField(labelWithString: "Your microphone")
+    private let micHint = NSTextField(labelWithString: "")
+    private let statsLabel = NSTextField(labelWithString: "")
     private let pageLabel = NSTextField(labelWithString: "")
     private var pagePrev: NSButton?
     private var pageNext: NSButton?
@@ -266,12 +288,12 @@ private final class RootView: NSView {
     /// asked for, and it also settles a technical problem - with a dedicated
     /// self view on the left there is no reason for the grid to include you, so
     /// nothing fights over a single SDK render element.
-    private static let railWidth: CGFloat = 300
+    private static let railWidth: CGFloat = 380
     /// How many students fit on one page before the carousel appears. Fixed
     /// rather than computed from the area: a page size that changed as people
     /// joined would reshuffle faces mid-lesson, which is exactly when a teacher
     /// is relying on their position.
-    private static let perPage = 12
+    private static let perPage = 9
     private static let barHeight: CGFloat = 44
     /// Zero: the rail carries every control now, so there is no bottom toolbar
     /// to reserve space for. Kept as a constant because the body layout reads it.
@@ -282,9 +304,18 @@ private final class RootView: NSView {
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
         wantsLayer = true
-        layer?.backgroundColor = NSColor.black.cgColor
+        // NOT pure black. Reported live as "the external display goes dark when
+        // I start the meeting", and that was exactly right: a borderless
+        // full-screen window painted #000 with an empty grid is
+        // indistinguishable from a monitor that has lost signal. It got worse
+        // when self left the grid, because alone in a room there was then
+        // nothing on the right at all. A real surface colour reads as a panel
+        // that is ready, which is what it is.
+        layer?.backgroundColor = NSColor.windowBackgroundColor.cgColor
 
         for bar in [topBar, rail, contextBar, bottomBar] { addSubview(bar) }
+        gridHost.wantsLayer = true
+        gridHost.layer?.backgroundColor = NSColor.underPageBackgroundColor.cgColor
         addSubview(gridHost)
 
         selfViewHost.wantsLayer = true
@@ -296,6 +327,26 @@ private final class RootView: NSView {
         selfViewLabel.font = .systemFont(ofSize: 11)
         selfViewLabel.textColor = .secondaryLabelColor
         rail.addSubview(selfViewLabel)
+
+        micLabel.font = .monospacedSystemFont(ofSize: 10, weight: .semibold)
+        micLabel.textColor = .tertiaryLabelColor
+        micLabel.stringValue = "YOUR MICROPHONE"
+        rail.addSubview(micLabel)
+        rail.addSubview(micMeter)
+
+        micHint.font = .systemFont(ofSize: 10)
+        micHint.textColor = .secondaryLabelColor
+        micHint.maximumNumberOfLines = 2
+        micHint.usesSingleLineMode = false
+        micHint.lineBreakMode = .byWordWrapping
+        rail.addSubview(micHint)
+
+        statsLabel.font = .monospacedSystemFont(ofSize: 10, weight: .regular)
+        statsLabel.textColor = .tertiaryLabelColor
+        statsLabel.maximumNumberOfLines = 3
+        statsLabel.usesSingleLineMode = false
+        statsLabel.lineBreakMode = .byWordWrapping
+        rail.addSubview(statsLabel)
 
         pageLabel.font = .monospacedSystemFont(ofSize: 11, weight: .regular)
         pageLabel.textColor = .secondaryLabelColor
@@ -421,6 +472,25 @@ private final class RootView: NSView {
         lastBarSignature = barSignature()
         rebuildBars()
         layoutEverything()
+    }
+
+    /// Fed at 20Hz from the mic monitor, independent of the roster poll.
+    func applyMicLevel(_ level: Double, running: Bool) {
+        micMeter.isHidden = !running
+        micLabel.isHidden = !running
+        micHint.isHidden = !running
+        guard running else { return }
+        micMeter.level = level
+        let muted = ParticipantGridWindowController.sdk?.iAmMuted ?? false
+        micMeter.muted = muted
+        // The one sentence worth saying about a live meter: whether the room can
+        // actually hear it. "Muted but talking" is the commonest confusion in a
+        // video call, and a meter alone does not resolve it.
+        let speaking = level > 0.12
+        micHint.stringValue = muted
+            ? (speaking ? "You are muted \u{2014} the class cannot hear this." : "Muted.")
+            : (speaking ? "The class can hear you." : "Live, but quiet.")
+        micHint.textColor = muted && speaking ? .systemOrange : .secondaryLabelColor
     }
 
     /// Who is on screen right now, for the caller's stream pruning.
@@ -622,8 +692,18 @@ private final class RootView: NSView {
         recordingLabel.textColor = .labelColor
 
         emptyState.stringValue = waiting.isEmpty
-            ? "No one has joined yet.\nThis display will fill as students arrive."
-            : "\(waiting.count) waiting to be let in.\nUse Admit all below."
+            ? "Waiting for students.\nThey will appear here as they join."
+            : "\(waiting.count) waiting to be let in.\nUse Participants \u{2192} Admit all waiting."
+
+        var stats: [String] = []
+        let raisedCount = roster.filter(\.isRaisingHand).count
+        let mutedCount = roster.filter(\.isMuted).count
+        let cameraOff = roster.filter { !$0.videoOn }.count
+        stats.append("students   \(roster.count)")
+        if raisedCount > 0 { stats.append("hands up   \(raisedCount)") }
+        if mutedCount > 0 { stats.append("muted      \(mutedCount)") }
+        if cameraOff > 0 { stats.append("no camera  \(cameraOff)") }
+        statsLabel.stringValue = stats.joined(separator: "\n")
     }
 
     /// Everything the toolbar and context strip render from, flattened.
@@ -759,13 +839,27 @@ private final class RootView: NSView {
         selfViewLabel.sizeToFit()
         selfViewLabel.frame = NSRect(x: pad, y: y, width: width, height: 16)
 
-        y -= 8
+        // Microphone block, directly under your own picture: the two things you
+        // check about yourself in one place.
+        y -= 22
+        micLabel.frame = NSRect(x: pad, y: y, width: width, height: 14)
+        y -= 16
+        micMeter.frame = NSRect(x: pad, y: y, width: width, height: 12)
+        y -= 26
+        micHint.frame = NSRect(x: pad, y: y, width: width, height: 24)
+
+        y -= 10
         for control in railControls {
             let height: CGFloat = control is NSTextField ? 20 : 28
             y -= height
             control.frame = NSRect(x: pad, y: y, width: width, height: height)
             y -= 2
         }
+
+        // Session facts at the foot of the rail, in mono because they are
+        // machine facts - the split DESIGN.md asks for.
+        y -= 10
+        statsLabel.frame = NSRect(x: pad, y: max(6, y - 30), width: width, height: 36)
     }
 
     /// The students-overflow carousel. Only drawn when there is a second page.
@@ -1237,6 +1331,7 @@ private final class TileView: NSView {
     private let nameLabel = NSTextField(labelWithString: "")
     private let statusLabel = NSTextField(labelWithString: "")
     private let handDot = DotView()
+    private let speaking = SpeakingIndicatorView()
     private var isSelected = false
     private var isTalking = false
 
@@ -1263,6 +1358,9 @@ private final class TileView: NSView {
 
         handDot.isHidden = true
         addSubview(handDot)
+
+        speaking.isHidden = true
+        addSubview(speaking)
     }
 
     required init?(coder: NSCoder) { nil }
@@ -1310,6 +1408,10 @@ private final class TileView: NSView {
         statusLabel.textColor = .white
         handDot.isHidden = !entry.isRaisingHand
         handDot.fill = RootView.accent
+        // Bars, not a level: the SDK reports only that this person is talking,
+        // so animating a height against a number we do not have would be
+        // fiction. See SpeakingIndicatorView.
+        speaking.talking = entry.isTalking
 
         needsLayout = true
         needsDisplay = true
@@ -1337,6 +1439,9 @@ private final class TileView: NSView {
         let dotSize: CGFloat = 8
         handDot.frame = NSRect(x: statusLabel.frame.minX - dotSize - 6,
                                y: (barHeight - dotSize) / 2, width: dotSize, height: dotSize)
+        // Top-left, away from the name bar, so a talking student is obvious
+        // without reading anything.
+        speaking.frame = NSRect(x: inset, y: bounds.height - inset - 14, width: 18, height: 14)
 
         // Speaking is the one thing worth a colour on the tile itself, and
         // accent-lime is a fill token, so a stroke is a legitimate use of it.
@@ -1378,6 +1483,105 @@ private final class TileView: NSView {
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
     override func mouseDown(with event: NSEvent) { onSelect?(userID) }
+}
+
+// MARK: - Meters
+
+/// A segmented level bar, the shape of a hardware meter rather than a progress
+/// view - discrete segments read as "loud enough" at a glance, where a smooth
+/// fill has to be measured against its own track.
+///
+/// Green through most of the travel, amber near the top. Both are system
+/// colours: DESIGN.md keeps the brand accent out of anything text-like and
+/// reserves its amber for "leaves your Mac", which a microphone level is not.
+@MainActor
+private final class LevelMeterView: NSView {
+
+    var level: Double = 0 { didSet { if abs(level - oldValue) > 0.01 { needsDisplay = true } } }
+    /// Drawn hollow when the mic is muted in Zoom, so a moving meter never
+    /// implies the class can hear you.
+    var muted = false { didSet { needsDisplay = true } }
+
+    private let segments = 20
+
+    override func draw(_ dirtyRect: NSRect) {
+        let gap: CGFloat = 2
+        let unit = (bounds.width - CGFloat(segments - 1) * gap) / CGFloat(segments)
+        let lit = Int((Double(segments) * level).rounded())
+
+        for index in 0..<segments {
+            let rect = NSRect(x: CGFloat(index) * (unit + gap), y: 0, width: unit, height: bounds.height)
+            let path = NSBezierPath(roundedRect: rect, xRadius: 1.5, yRadius: 1.5)
+            let hot = index >= segments - 3
+            if index < lit && !muted {
+                (hot ? NSColor.systemOrange : NSColor.systemGreen).setFill()
+                path.fill()
+            } else if index < lit && muted {
+                // Muted: outline only. The level is still real, but it is going
+                // nowhere, and the drawing should say so.
+                (hot ? NSColor.systemOrange : NSColor.systemGreen).withAlphaComponent(0.5).setStroke()
+                path.lineWidth = 1
+                path.stroke()
+            } else {
+                NSColor.tertiaryLabelColor.withAlphaComponent(0.25).setFill()
+                path.fill()
+            }
+        }
+    }
+}
+
+/// Three bars that animate while someone is talking.
+///
+/// Deliberately NOT presented as a level. The SDK gives `isTalking` and nothing
+/// else for other participants - no amplitude at all - so a bar whose height
+/// tracked a number would be inventing one. These bounce on a fixed loop to say
+/// "this person is speaking", which is the whole of what is actually known.
+@MainActor
+private final class SpeakingIndicatorView: NSView {
+
+    var talking = false {
+        didSet {
+            guard talking != oldValue else { return }
+            isHidden = !talking
+            talking ? start() : stop()
+        }
+    }
+
+    private var phase = 0.0
+    private var timer: Timer?
+
+    private func start() {
+        stop()
+        timer = Timer.scheduledTimer(withTimeInterval: 1.0 / 12.0, repeats: true) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                self.phase += 0.28
+                self.needsDisplay = true
+            }
+        }
+    }
+
+    private func stop() {
+        timer?.invalidate()
+        timer = nil
+    }
+
+    deinit { timer?.invalidate() }
+
+    override func draw(_ dirtyRect: NSRect) {
+        NSColor.systemGreen.setFill()
+        let count = 3
+        let gap: CGFloat = 2
+        let unit = (bounds.width - CGFloat(count - 1) * gap) / CGFloat(count)
+        for index in 0..<count {
+            let wave = (sin(phase + Double(index) * 1.1) + 1) / 2
+            let height = bounds.height * CGFloat(0.35 + 0.65 * wave)
+            let rect = NSRect(x: CGFloat(index) * (unit + gap),
+                              y: (bounds.height - height) / 2,
+                              width: unit, height: height)
+            NSBezierPath(roundedRect: rect, xRadius: 1, yRadius: 1).fill()
+        }
+    }
 }
 
 // MARK: - A filled indicator

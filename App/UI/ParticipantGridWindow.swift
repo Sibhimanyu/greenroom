@@ -540,7 +540,7 @@ private final class RootView: NSView {
     /// They are set once at the start of a term, not reached for mid-lesson, and
     /// a control surface earns its density by ranking what is urgent.
     private func roomSettingsMenu() -> NSView {
-        let popUp = NSPopUpButton(frame: NSRect(x: 0, y: 0, width: 132, height: 26), pullsDown: true)
+        let popUp = FirstClickPopUpButton(frame: NSRect(x: 0, y: 0, width: 132, height: 26), pullsDown: true)
         popUp.bezelStyle = .rounded
         popUp.addItem(withTitle: "Room settings")
         popUp.item(at: 0)?.image = NSImage(systemSymbolName: "slider.horizontal.3", accessibilityDescription: nil)
@@ -919,6 +919,16 @@ private final class TileView: NSView {
         frame.contains(point) ? self : nil
     }
 
+    /// Accept the very first click.
+    ///
+    /// AppKit swallows the click that brings a non-key window forward unless the
+    /// view under the cursor opts in, and this panel is deliberately
+    /// non-activating so it never steals focus from the main screen - so it is
+    /// almost never key. Without this, EVERY control needed two clicks: one
+    /// discarded to make the panel key, one to act. Found live on a three-display
+    /// setup; the second click worked, which is what identified it.
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+
     override func mouseDown(with event: NSEvent) { onSelect?(userID) }
 }
 
@@ -952,6 +962,18 @@ private final class ClosureButton: NSButton {
     }
     required init?(coder: NSCoder) { nil }
     @objc private func fire() { body() }
+
+    /// See TileView.acceptsFirstMouse - the panel is rarely key, so without this
+    /// every button press was discarded the first time.
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+}
+
+/// A pop-up that also answers the first click. NSPopUpButton has the same
+/// first-mouse problem as every other control in a non-activating panel, and
+/// no way to opt in without subclassing.
+@MainActor
+private final class FirstClickPopUpButton: NSPopUpButton {
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 }
 
 private final class BlockMenuItem: NSObject {

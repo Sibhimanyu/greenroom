@@ -115,7 +115,16 @@ targets:
               exit 0
               ;;
           esac
-          sh "${SRCROOT}/Vendor/Apptics/scripts/run" --upload-symbols-for-configurations="Release"
+          # --preserve-app-metadata-in-config=1: keep APP_VERSION_META in the
+          # config after the build. Apptics defaults to stripping it, which
+          # makes sense for teams who COMMIT their config and do not want build
+          # metadata churning in git. Ours is gitignored, so there is nothing to
+          # churn - and stripping it means the script re-registers the version
+          # against Apptics' server on every single build, which costs a network
+          # round trip each time and fails the build when offline.
+          sh "${SRCROOT}/Vendor/Apptics/scripts/run" \
+            --upload-symbols-for-configurations="Release" \
+            --preserve-app-metadata-in-config=1
     # Confirmed against the real downloaded SDK (7.1.5.84750): it ships
     # ZoomSDK.framework alongside ~37 more support frameworks, 11 flat
     # dylibs, 28 resource bundles, and 6 helper .app bundles (screen-share

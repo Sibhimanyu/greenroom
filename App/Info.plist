@@ -2,26 +2,23 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key>AP_INFOPLIST_FILE</key>
+	<string>apptics-config.plist</string>
 	<key>LSApplicationCategoryType</key>
 	<string>public.app-category.video</string>
-	<!-- AppKit-level accent: SwiftUI reads the asset-catalog AccentColor,
-	     but borderedProminent buttons follow controlAccentColor, which
-	     only honors the asset when this key names it - without it the
-	     Start button stayed system blue while everything else went
-	     brand green (reported live). -->
 	<key>NSAccentColorName</key>
 	<string>AccentColor</string>
-	<key>SUFeedURL</key>
-	<string>https://sibhimanyu.github.io/greenroom/appcast.xml</string>
-	<key>SUPublicEDKey</key>
-	<string>BaTWPfK1RvQAZv5RWFLbWaVkZ/KEN2umYzl0/Zvmkjw=</string>
-	<key>SUEnableAutomaticChecks</key>
-	<true/>
 	<key>NSAppleEventsUsageDescription</key>
 	<string>Greenroom arranges Google Chrome windows for you (e.g. tiling a new window to half the screen).</string>
 	<key>NSCameraUsageDescription</key>
 	<string>The Meeting SDK chat connection may request camera access even though Greenroom always joins with video off.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>The Meeting SDK chat connection may request microphone access even though Greenroom always joins muted.</string>
+	<key>SUEnableAutomaticChecks</key>
+	<true/>
+	<key>SUFeedURL</key>
+	<string>https://sibhimanyu.github.io/greenroom/appcast.xml</string>
+	<key>SUPublicEDKey</key>
+	<string>BaTWPfK1RvQAZv5RWFLbWaVkZ/KEN2umYzl0/Zvmkjw=</string>
 </dict>
 </plist>

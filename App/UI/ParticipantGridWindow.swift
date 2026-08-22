@@ -195,6 +195,7 @@ private final class RootView: NSView {
     private let titleLabel = NSTextField(labelWithString: "")
     private let factsLabel = NSTextField(labelWithString: "")
     private let recordingLabel = NSTextField(labelWithString: "")
+    private let recordingDot = DotView()
 
     private var tiles: [UInt32: TileView] = [:]
     private var selected: UInt32?
@@ -226,6 +227,7 @@ private final class RootView: NSView {
         factsLabel.textColor = .secondaryLabelColor
         recordingLabel.font = .systemFont(ofSize: 12, weight: .semibold)
         for label in [titleLabel, factsLabel, recordingLabel] { topBar.addSubview(label) }
+        topBar.addSubview(recordingDot)
 
         emptyState.font = .systemFont(ofSize: 15)
         emptyState.textColor = .secondaryLabelColor
@@ -352,6 +354,10 @@ private final class RootView: NSView {
                                       y: (Self.barHeight - recordingLabel.frame.height) / 2,
                                       width: recordingLabel.frame.width,
                                       height: recordingLabel.frame.height)
+        let dotSize: CGFloat = 8
+        recordingDot.frame = NSRect(x: recordingLabel.frame.minX - dotSize - 6,
+                                    y: (Self.barHeight - dotSize) / 2,
+                                    width: dotSize, height: dotSize)
     }
 
     private func layoutTiles() {
@@ -447,9 +453,18 @@ private final class RootView: NSView {
         // that it never leaves this Mac. So it reads in the brand green that
         // means local throughout the app, not the red that means "broadcasting"
         // - and it says which recorder it is, since Zoom has one too.
+        // The dot carries the colour, the words do not. DESIGN.md bars the
+        // accent from text outright. The measured reason is that it fails AA on
+        // white, and although this chrome is dark enough that it would pass here
+        // (~7:1 against the HUD material), the substitute the rule points at,
+        // --brand-green #2F6118, would be far LESS legible on a dark surface.
+        // Painting the indicator and leaving the label in the system label
+        // colour satisfies the rule as written and reads better either way.
         recordingLabel.isHidden = !session.obsRecording
-        recordingLabel.stringValue = "● Recording locally"
-        recordingLabel.textColor = Self.accent
+        recordingDot.isHidden = !session.obsRecording
+        recordingDot.fill = Self.accent
+        recordingLabel.stringValue = "Recording locally"
+        recordingLabel.textColor = .labelColor
 
         emptyState.stringValue = waiting.isEmpty
             ? "No one has joined yet.\nThis display will fill as students arrive."
@@ -763,9 +778,9 @@ private final class TileView: NSView {
     private let scrim = NSView()
     private let nameLabel = NSTextField(labelWithString: "")
     private let statusLabel = NSTextField(labelWithString: "")
+    private let handDot = DotView()
     private var isSelected = false
     private var isTalking = false
-    private var isSpotlighted = false
 
     init(userID: UInt32) {
         self.userID = userID
@@ -787,6 +802,9 @@ private final class TileView: NSView {
         statusLabel.font = .systemFont(ofSize: 13, weight: .medium)
         statusLabel.alignment = .right
         addSubview(statusLabel)
+
+        handDot.isHidden = true
+        addSubview(handDot)
     }
 
     required init?(coder: NSCoder) { nil }
@@ -812,7 +830,6 @@ private final class TileView: NSView {
     func apply(entry: ZoomMeetingSDKClient.RosterEntry, isSelected: Bool) {
         self.isSelected = isSelected
         isTalking = entry.isTalking
-        isSpotlighted = entry.isSpotlighted
 
         var name = entry.name
         if entry.isMyself { name += " (you)" }
@@ -830,7 +847,11 @@ private final class TileView: NSView {
         else if entry.isMuted { badges.append("muted") }
         if !entry.videoOn { badges.append("camera off") }
         statusLabel.stringValue = badges.joined(separator: " · ")
-        statusLabel.textColor = entry.isRaisingHand ? RootView.accent : .white
+        // Always white. The accent marks a raised hand as a filled dot instead
+        // of tinting the words - see the note on the recording indicator.
+        statusLabel.textColor = .white
+        handDot.isHidden = !entry.isRaisingHand
+        handDot.fill = RootView.accent
 
         needsLayout = true
         needsDisplay = true
@@ -855,20 +876,27 @@ private final class TileView: NSView {
         statusLabel.frame = NSRect(x: bounds.width - statusLabel.frame.width - inset,
                                    y: (barHeight - statusLabel.frame.height) / 2,
                                    width: statusLabel.frame.width, height: statusLabel.frame.height)
+        let dotSize: CGFloat = 8
+        handDot.frame = NSRect(x: statusLabel.frame.minX - dotSize - 6,
+                               y: (barHeight - dotSize) / 2, width: dotSize, height: dotSize)
 
         // Speaking is the one thing worth a colour on the tile itself, and
         // accent-lime is a fill token, so a stroke is a legitimate use of it.
         // Selection outranks it: the teacher needs to see what their next click
         // will act on more than who is talking.
+        // Two ring states, not three. Selection is white rather than
+        // controlAccentColor: that follows whatever hue the user picked in System
+        // Settings, which can land on a blue or pink that fights the brand on a
+        // surface this saturated. Speaking gets the accent, which is a stroke and
+        // therefore a legitimate fill use of a token barred from text.
+        // Spotlighting needs no ring - the badge already reads "spotlit", and a
+        // third ring style would make all three harder to tell apart.
         if isSelected {
             layer?.borderWidth = 3
-            layer?.borderColor = NSColor.controlAccentColor.cgColor
+            layer?.borderColor = NSColor.white.cgColor
         } else if isTalking {
             layer?.borderWidth = 3
             layer?.borderColor = RootView.accent.cgColor
-        } else if isSpotlighted {
-            layer?.borderWidth = 2
-            layer?.borderColor = NSColor.white.withAlphaComponent(0.5).cgColor
         } else {
             layer?.borderWidth = 0
         }
@@ -882,6 +910,19 @@ private final class TileView: NSView {
     }
 
     override func mouseDown(with event: NSEvent) { onSelect?(userID) }
+}
+
+// MARK: - A filled indicator
+
+/// A small filled circle. Exists so the brand accent can mark state without ever
+/// becoming text, which DESIGN.md forbids.
+@MainActor
+private final class DotView: NSView {
+    var fill: NSColor = .white { didSet { needsDisplay = true } }
+    override func draw(_ dirtyRect: NSRect) {
+        fill.setFill()
+        NSBezierPath(ovalIn: bounds).fill()
+    }
 }
 
 // MARK: - Target carriers

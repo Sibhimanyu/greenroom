@@ -1240,21 +1240,40 @@ final class CoordinatorController: ObservableObject {
     /// default-UI follow loop, so the two modes feel the same.
     private func startCustomUIGridFollow() {
         customUIGridTask?.cancel()
-        guard peopleViewWanted else { return }
+        // Deliberately gated on the toggle alone, not on `peopleViewWanted`,
+        // which also requires a second display. In custom-UI mode the surface
+        // is a control panel as much as a video wall, so on a single screen it
+        // opens as an ordinary window rather than not at all - which is also
+        // the only way this is testable without the reference display attached.
+        guard peopleViewOnStart else { return }
+        ParticipantGridWindowController.configure(
+            client: zoomChatClient,
+            log: { [weak self] message in self?.log(message) },
+            endSession: { [weak self] in self?.stop() })
+        let startedAt = Date()
+        if peopleViewTargetScreen() == nil {
+            log("Participants panel opened as a window \u{2014} no second display to give it. Connect your reference display for the full-screen version.")
+        }
         customUIGridTask = Task { [weak self] in
             while !Task.isCancelled {
-                guard let self, let screen = self.peopleViewTargetScreen() else { return }
-                let ids = self.zoomChatClient.participantUserIDs(excludingSelf: self.hideSelfView)
-                self.zoomChatClient.pruneParticipantViews(keeping: Set(ids))
-                let cellHint = NSRect(x: 0, y: 0, width: 640, height: 360)
-                let views = ids.compactMap {
-                    self.zoomChatClient.participantView(userID: $0, frame: cellHint)
-                }
-                // show() hides itself when the list is empty, which is the
-                // right behaviour for a teacher who opened the room early:
-                // nothing on the wall rather than last session's faces.
-                ParticipantGridWindowController.show(views: views, on: screen)
-                try? await Task.sleep(nanoseconds: 2_000_000_000)
+                guard let self else { return }
+                let reference = self.peopleViewTargetScreen()
+                guard let screen = reference ?? DisplayResolver.mainDisplayScreen() else { return }
+                let digits = self.meetingNumberDigits
+                let session = ParticipantGridWindowController.SessionInfo(
+                    meetingNumber: digits,
+                    startedAt: startedAt,
+                    obsRecording: self.isRecording,
+                    presetName: self.meetingPresets.first { $0.number == digits }?.name ?? "")
+                ParticipantGridWindowController.refresh(on: screen,
+                                                       session: session,
+                                                       includeSelf: !self.hideSelfView,
+                                                       windowed: reference == nil)
+                // One second rather than the gallery's old two: this roster now
+                // carries live state - who is talking, whose hand is up - and a
+                // two-second lag on a raised hand is long enough for a student
+                // to give up and put it down again.
+                try? await Task.sleep(nanoseconds: 1_000_000_000)
             }
         }
     }

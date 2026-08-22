@@ -325,6 +325,12 @@ private struct LayoutSettingsTab: View {
             Section("Second display") {
                 Toggle("Show the participant view on another display", isOn: $coordinator.peopleViewOnStart)
 
+                if coordinator.peopleViewOnStart, coordinator.customUIMode {
+                    Text("With the custom meeting UI on, this view also carries the host controls \u{2014} mute, spotlight, admit, rename, remove. It is meant for a display only you can see. With no second display it opens as an ordinary window you can move and resize.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
                 if coordinator.peopleViewOnStart {
                     Picker("Participant-view display", selection: $coordinator.peopleViewDisplayUUID) {
                         Text("Automatic (a non-main display)").tag("")

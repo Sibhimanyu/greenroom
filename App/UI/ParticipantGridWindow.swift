@@ -162,6 +162,9 @@ enum ParticipantGridWindowController {
             root = view
             isWindowed = windowed
         }
+        lastScreen = screen
+        lastSession = session
+
         // Only the full-screen form is re-framed, and only when it has actually
         // drifted. Once the teacher has moved or resized the windowed form,
         // pinning it back every second would make it impossible to place.
@@ -195,6 +198,22 @@ enum ParticipantGridWindowController {
     }
 
     private static var isWindowed = false
+    /// The last inputs to `refresh`, so a control can redraw the panel the
+    /// instant it acts instead of waiting for the next poll tick.
+    private static var lastScreen: NSScreen?
+    private static var lastSession = SessionInfo()
+
+    /// Re-reads SDK state and redraws now.
+    ///
+    /// Without this every control had up to a full second of dead time: the
+    /// roster poll runs at 1Hz, so pressing "Mute me" left the button still
+    /// saying "Mute me" until the next tick. Nothing was broken, but nothing
+    /// acknowledged the press either, which is the whole of what "unresponsive"
+    /// meant here.
+    fileprivate static func refreshNow() {
+        guard let screen = lastScreen else { return }
+        refresh(on: screen, session: lastSession, windowed: isWindowed)
+    }
 
     static var isOpen: Bool { panel?.isVisible ?? false }
 
@@ -269,6 +288,14 @@ private final class RootView: NSView {
     private var roster: [ZoomMeetingSDKClient.RosterEntry] = []
     private var page = 0
     private let rail = BarView()
+    /// The rail scrolls.
+    ///
+    /// Without this the controls were laid downward from a fixed origin, so a
+    /// short window pushed End session and the session facts to negative
+    /// coordinates - off the rail entirely, unreachable, and invisible even to
+    /// the accessibility tree. Reproduced by resizing the window to 620x520.
+    private let railScroll = NSScrollView()
+    private let railContent = NSView()
     private let selfViewHost = NSView()
     private let selfViewLabel = NSTextField(labelWithString: "You, as the class sees you")
     private var selfVideo: NSView?
@@ -308,7 +335,12 @@ private final class RootView: NSView {
     /// Never narrower than the controls need, never wider than two thirds.
     private var railWidth: CGFloat {
         let ideal = bounds.width * Self.railFraction(students: roster.count)
-        return max(340, min(ideal, bounds.width * 0.66)).rounded()
+        // The floor is a floor only while there is room for it. On a narrow
+        // window a hard 340pt minimum used to swallow the whole width and leave
+        // the grid at zero, so it yields once the window is small enough that
+        // something has to give.
+        let floor = min(300, bounds.width * 0.45)
+        return max(floor, min(ideal, bounds.width * 0.66)).rounded()
     }
 
     /// Controls are laid in as many columns as the rail can hold at a readable
@@ -319,7 +351,27 @@ private final class RootView: NSView {
     /// rather than computed from the area: a page size that changed as people
     /// joined would reshuffle faces mid-lesson, which is exactly when a teacher
     /// is relying on their position.
-    private static let perPage = 9
+    /// How many students fit before the carousel appears, derived from the grid's
+    /// real size rather than fixed.
+    ///
+    /// It was a flat 9, which on a small window meant nine unreadable slivers and
+    /// on a large one wasted room. Quantised into a few steps rather than computed
+    /// exactly, because a page size that changed by one on every few pixels of
+    /// resize would reshuffle faces while a teacher was looking at them.
+    private var perPage: Int {
+        let area = gridHost.bounds
+        guard area.width > 0, area.height > 0 else { return 9 }
+        // ~260x150 is the smallest tile a face and a name label stay legible in.
+        let fits = Int(area.width / 260) * Int(area.height / 150)
+        switch fits {
+        case ..<2: return 1
+        case ..<4: return 2
+        case ..<6: return 4
+        case ..<9: return 6
+        case ..<12: return 9
+        default: return 12
+        }
+    }
     private static let barHeight: CGFloat = 44
     /// Zero: the rail carries every control now, so there is no bottom toolbar
     /// to reserve space for. Kept as a constant because the body layout reads it.
@@ -344,35 +396,44 @@ private final class RootView: NSView {
         gridHost.layer?.backgroundColor = NSColor.underPageBackgroundColor.cgColor
         addSubview(gridHost)
 
+        railScroll.drawsBackground = false
+        railScroll.hasVerticalScroller = true
+        // Overlay style so the scroller does not permanently steal width from a
+        // rail that usually does not need one.
+        railScroll.scrollerStyle = .overlay
+        railScroll.autohidesScrollers = true
+        railScroll.documentView = railContent
+        rail.addSubview(railScroll)
+
         selfViewHost.wantsLayer = true
         selfViewHost.layer?.backgroundColor = NSColor.black.cgColor
         selfViewHost.layer?.cornerRadius = 10        // DESIGN.md radius-md
         selfViewHost.layer?.masksToBounds = true
-        rail.addSubview(selfViewHost)
+        railContent.addSubview(selfViewHost)
 
         selfViewLabel.font = .systemFont(ofSize: 11)
         selfViewLabel.textColor = .secondaryLabelColor
-        rail.addSubview(selfViewLabel)
+        railContent.addSubview(selfViewLabel)
 
         micLabel.font = .monospacedSystemFont(ofSize: 10, weight: .semibold)
         micLabel.textColor = .tertiaryLabelColor
         micLabel.stringValue = "YOUR MICROPHONE"
-        rail.addSubview(micLabel)
-        rail.addSubview(micMeter)
+        railContent.addSubview(micLabel)
+        railContent.addSubview(micMeter)
 
         micHint.font = .systemFont(ofSize: 10)
         micHint.textColor = .secondaryLabelColor
         micHint.maximumNumberOfLines = 2
         micHint.usesSingleLineMode = false
         micHint.lineBreakMode = .byWordWrapping
-        rail.addSubview(micHint)
+        railContent.addSubview(micHint)
 
         statsLabel.font = .monospacedSystemFont(ofSize: 10, weight: .regular)
         statsLabel.textColor = .tertiaryLabelColor
         statsLabel.maximumNumberOfLines = 3
         statsLabel.usesSingleLineMode = false
         statsLabel.lineBreakMode = .byWordWrapping
-        rail.addSubview(statsLabel)
+        railContent.addSubview(statsLabel)
 
         pageLabel.font = .monospacedSystemFont(ofSize: 11, weight: .regular)
         pageLabel.textColor = .secondaryLabelColor
@@ -421,7 +482,7 @@ private final class RootView: NSView {
         // Clamp rather than reset. If someone leaves while the teacher is on the
         // last page, dropping them to page one would lose their place; this only
         // moves them when the page they are on no longer exists.
-        let pages = max(1, Int(ceil(Double(roster.count) / Double(Self.perPage))))
+        let pages = max(1, Int(ceil(Double(roster.count) / Double(perPage))))
         page = min(page, pages - 1)
 
         syncTiles()
@@ -569,7 +630,16 @@ private final class RootView: NSView {
 
         let gridBottom = Self.bottomHeight + (showContext ? Self.contextHeight : 0)
         let bodyHeight = max(0, bounds.height - Self.barHeight - gridBottom)
-        let pages = max(1, Int(ceil(Double(roster.count) / Double(Self.perPage))))
+
+        // perPage is derived from gridHost's size, and gridHost's height depends
+        // on whether the carousel is shown, which depends on perPage. The cycle
+        // is broken by measuring against the full body height first: the carousel
+        // is 24pt, far less than one quantisation step, so including it or not
+        // cannot change the answer.
+        gridHost.frame = NSRect(x: railWidth, y: gridBottom + 24,
+                                width: max(0, width - railWidth),
+                                height: max(0, bodyHeight - 24))
+        let pages = max(1, Int(ceil(Double(roster.count) / Double(perPage))))
         let pagerHeight: CGFloat = pages > 1 ? 24 : 0
 
         let railTarget = NSRect(x: 0, y: gridBottom, width: railWidth, height: bodyHeight)
@@ -630,9 +700,9 @@ private final class RootView: NSView {
     /// subscription, ring state - works from this rather than the whole roster,
     /// so a class of forty does not mean forty live video streams.
     private var pageRoster: [ZoomMeetingSDKClient.RosterEntry] {
-        let start = page * Self.perPage
+        let start = page * perPage
         guard start < roster.count else { return [] }
-        return Array(roster[start..<min(start + Self.perPage, roster.count)])
+        return Array(roster[start..<min(start + perPage, roster.count)])
     }
 
     private func layoutTiles() {
@@ -873,7 +943,7 @@ private final class RootView: NSView {
             }
         })
 
-        railControls.forEach { rail.addSubview($0) }
+        railControls.forEach { railContent.addSubview($0) }
     }
 
     /// Two shapes, chosen by how much width the rail has.
@@ -889,24 +959,70 @@ private final class RootView: NSView {
     /// of nothing beside it.
     private func layoutRail() {
         let pad: CGFloat = 12
+        railScroll.frame = rail.bounds
         let available = rail.bounds.width - pad * 2
         guard available > 0, rail.bounds.height > 0 else { return }
 
         let controlWidth = Self.railColumnWidth
         let sideBySide = available >= controlWidth + 320 + pad
 
+        // Two passes. The document view has to be told its height before its
+        // children can be placed against the top of it, and the height depends on
+        // how the children wrap - so it is measured first with a throwaway
+        // origin, then everything is placed for real.
+        let contentHeight: CGFloat
         if sideBySide {
-            // Controls hug the right edge; the picture takes everything left.
             let mediaWidth = available - controlWidth - pad
-            layoutSelfBlock(x: pad, width: mediaWidth, top: rail.bounds.height - pad)
-            layoutControlColumn(x: pad + mediaWidth + pad,
-                                width: controlWidth,
-                                top: rail.bounds.height - pad)
+            let mediaHeight = selfBlockHeight(width: mediaWidth)
+            let controlsHeight = controlColumnHeight(width: controlWidth)
+            contentHeight = max(mediaHeight, controlsHeight) + pad * 2
         } else {
-            let afterMedia = layoutSelfBlock(x: pad, width: available,
-                                             top: rail.bounds.height - pad)
+            contentHeight = selfBlockHeight(width: available)
+                + controlColumnHeight(width: available) + 10 + pad * 2
+        }
+
+        // Never shorter than the rail itself, or a short list would float.
+        let documentHeight = max(contentHeight, rail.bounds.height)
+        railContent.frame = NSRect(x: 0, y: 0, width: rail.bounds.width, height: documentHeight)
+
+        let top = documentHeight - pad
+        if sideBySide {
+            let mediaWidth = available - controlWidth - pad
+            layoutSelfBlock(x: pad, width: mediaWidth, top: top)
+            layoutControlColumn(x: pad + mediaWidth + pad, width: controlWidth, top: top)
+        } else {
+            let afterMedia = layoutSelfBlock(x: pad, width: available, top: top)
             layoutControlColumn(x: pad, width: available, top: afterMedia - 10)
         }
+
+        // Start at the top, which is where the self view and the mic are.
+        railContent.scroll(NSPoint(x: 0, y: documentHeight))
+    }
+
+    /// How tall the self-view block will be at a given width, without placing it.
+    private func selfBlockHeight(width: CGFloat) -> CGFloat {
+        let media = min((width * 9 / 16).rounded(), max(120, rail.bounds.height * 0.55))
+        return media + 18 + 22 + 16 + 26 + 24
+    }
+
+    /// How tall the wrapped cells will be at a given width, without placing them.
+    private func controlColumnHeight(width: CGFloat) -> CGFloat {
+        let cell = CGSize(width: 76, height: 54)
+        let gap: CGFloat = 4
+        let perRow = max(1, Int((width + gap) / (cell.width + gap)))
+        var height: CGFloat = 0
+        var column = 0
+        for control in railControls {
+            if control is NSTextField {
+                if column != 0 { height += cell.height + gap; column = 0 }
+                height += 22
+                continue
+            }
+            if column == perRow { column = 0; height += cell.height + gap }
+            column += 1
+        }
+        if column != 0 { height += cell.height + gap }
+        return height + 12 + 36
     }
 
     /// Your picture, its caption, and the microphone meter, as one block.
@@ -915,7 +1031,10 @@ private final class RootView: NSView {
     private func layoutSelfBlock(x: CGFloat, width: CGFloat, top: CGFloat) -> CGFloat {
         // 16:9, capped so a very wide rail does not push the meter off the
         // bottom.
-        let height = min((width * 9 / 16).rounded(), rail.bounds.height * 0.55)
+        // Same expression as selfBlockHeight, deliberately - if the measuring
+        // pass and the placing pass disagree the content scrolls to the wrong
+        // offset or clips.
+        let height = min((width * 9 / 16).rounded(), max(120, rail.bounds.height * 0.55))
         let mediaWidth = min((height * 16 / 9).rounded(), width)
         var y = top - height
         selfViewHost.frame = NSRect(x: x, y: y, width: mediaWidth, height: height)
@@ -935,18 +1054,42 @@ private final class RootView: NSView {
         return y
     }
 
-    private func layoutControlColumn(x: CGFloat, width: CGFloat, top: CGFloat) {
+    /// Icon cells wrapped into rows, section headers spanning the full width.
+    ///
+    /// Wrapping is what makes the rail survive a resize: the cells reflow to
+    /// however many fit, where fixed full-width rows could only clip. Laid out
+    /// downward from `top` and the total height returned, so the caller knows
+    /// whether it overflowed.
+    @discardableResult
+    private func layoutControlColumn(x: CGFloat, width: CGFloat, top: CGFloat) -> CGFloat {
+        let cell = CGSize(width: 76, height: 54)
+        let gap: CGFloat = 4
+        let perRow = max(1, Int((width + gap) / (cell.width + gap)))
         var y = top
+        var column = 0
+
         for control in railControls {
-            let height: CGFloat = control is NSTextField ? 20 : 28
-            y -= height
-            control.frame = NSRect(x: x, y: y, width: width, height: height)
-            y -= 2
+            if control is NSTextField {
+                // A section eyebrow always starts its own row.
+                if column != 0 { y -= cell.height + gap; column = 0 }
+                y -= 18
+                control.frame = NSRect(x: x, y: y, width: width, height: 16)
+                y -= 4
+                continue
+            }
+            if column == perRow { column = 0; y -= cell.height + gap }
+            if column == 0 { y -= cell.height }
+            control.frame = NSRect(x: x + CGFloat(column) * (cell.width + gap),
+                                   y: y, width: cell.width, height: cell.height)
+            column += 1
         }
-        // Session facts directly under the controls rather than pinned to the
-        // floor, so they stay attached to the column they belong to.
+        if column != 0 { y -= gap }
+
+        // Session facts under the cells rather than pinned to the floor, so they
+        // stay attached to what they describe.
         y -= 12
-        statsLabel.frame = NSRect(x: x, y: max(6, y - 36), width: width, height: 36)
+        statsLabel.frame = NSRect(x: x, y: y - 36, width: width, height: 36)
+        return top - (y - 36)
     }
 
     /// The students-overflow carousel. Only drawn when there is a second page.
@@ -983,7 +1126,7 @@ private final class RootView: NSView {
     }
 
     private var pageCount: Int? {
-        roster.isEmpty ? nil : max(1, Int(ceil(Double(roster.count) / Double(Self.perPage))))
+        roster.isEmpty ? nil : max(1, Int(ceil(Double(roster.count) / Double(perPage))))
     }
 
     /// A page change swaps which students are on screen, so tiles, video
@@ -1219,17 +1362,12 @@ private final class RootView: NSView {
                                 alert: Bool = false,
                                 destructive: Bool = false,
                                 action: @escaping () -> Void) -> NSButton {
-        let button = ClosureButton(action)
-        button.title = " " + title
-        button.image = NSImage(systemSymbolName: symbol, accessibilityDescription: title)
-        button.imagePosition = .imageLeading
-        button.alignment = .left
-        button.bezelStyle = .rounded
-        button.font = .systemFont(ofSize: 12)
         // systemRed, not the brand accent: DESIGN.md bars the accent from text,
         // and red-for-muted is the convention being matched anyway.
-        button.contentTintColor = destructive || alert ? .systemRed : .labelColor
-        return button
+        IconCellButton(symbol: symbol,
+                       caption: title,
+                       tint: destructive || alert ? .systemRed : .labelColor,
+                       action: action)
     }
 
     private static func railMenuRow(_ title: String,
@@ -1243,14 +1381,10 @@ private final class RootView: NSView {
             item.representedObject = carrier   // NSMenuItem.target is weak
             menu.addItem(item)
         }
-        let button = ToolMenuButton(menu: menu)
-        button.title = " " + title + "\u{2026}"
-        button.image = NSImage(systemSymbolName: symbol, accessibilityDescription: title)
-        button.imagePosition = .imageLeading
-        button.alignment = .left
-        button.bezelStyle = .rounded
-        button.font = .systemFont(ofSize: 12)
-        button.contentTintColor = .labelColor
+        // An icon cell that pops the menu, so a menu and an action look and
+        // behave alike in the grid.
+        let button = IconCellButton(symbol: symbol, caption: title, tint: .labelColor) {}
+        button.attachedMenu = menu
         return button
     }
 
@@ -1343,6 +1477,9 @@ private final class RootView: NSView {
         // The success string is a sentence for the status log and can name a
         // student, so it is NEVER the event. Only the outcome travels.
         Analytics.track(.controlAction, [.refused: ok ? "no" : "yes"])
+        // Redraw immediately rather than at the next poll tick, so the control
+        // that was just pressed reflects what it did.
+        ParticipantGridWindowController.refreshNow()
         if ok {
             ParticipantGridWindowController.report(success)
         } else {
@@ -1570,6 +1707,86 @@ private final class TileView: NSView {
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
     override func mouseDown(with event: NSEvent) { onSelect?(userID) }
+}
+
+// MARK: - An icon control
+
+/// A compact icon cell: symbol above a short caption, no border until you point
+/// at it.
+///
+/// Replaces full-width bordered rows. Those read as a settings form - a stack of
+/// long identical buttons where only the text distinguishes them - which is wrong
+/// for something glanced at and hit mid-lesson. An icon is recognised by shape
+/// before it is read, and cells wrap, so the rail reflows instead of clipping
+/// when the window changes size.
+@MainActor
+private final class IconCellButton: NSButton {
+
+    private let body: () -> Void
+    private var hovering = false { didSet { needsDisplay = true } }
+    private var tint: NSColor = .labelColor
+    /// Set instead of an action when this cell opens a menu.
+    var attachedMenu: NSMenu?
+
+    init(symbol: String, caption: String, tint: NSColor, action: @escaping () -> Void) {
+        self.body = action
+        super.init(frame: .zero)
+        self.tint = tint
+        target = self
+        self.action = #selector(fire)
+        isBordered = false
+        imagePosition = .imageAbove
+        title = caption
+        font = .systemFont(ofSize: 9)
+        // A slightly heavier symbol so a 17pt glyph still reads at a glance.
+        let config = NSImage.SymbolConfiguration(pointSize: 17, weight: .medium)
+        image = NSImage(systemSymbolName: symbol, accessibilityDescription: caption)?
+            .withSymbolConfiguration(config)
+        contentTintColor = tint
+        wantsLayer = true
+        layer?.cornerRadius = 8            // DESIGN.md radius, one step below md
+        toolTip = caption
+    }
+
+    required init?(coder: NSCoder) { nil }
+
+    @objc private func fire() {
+        if let attachedMenu {
+            // Above the cell: the rail is tall and a menu dropping downward off
+            // the bottom would be clipped.
+            attachedMenu.popUp(positioning: nil, at: NSPoint(x: 0, y: bounds.height + 4), in: self)
+            return
+        }
+        body()
+    }
+
+    /// See TileView.acceptsFirstMouse - the panel is rarely key.
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        trackingAreas.forEach(removeTrackingArea)
+        addTrackingArea(NSTrackingArea(rect: bounds,
+                                       options: [.mouseEnteredAndExited, .activeAlways],
+                                       owner: self))
+    }
+
+    override func mouseEntered(with event: NSEvent) { hovering = true }
+    override func mouseExited(with event: NSEvent) { hovering = false }
+
+    /// Hover and press are drawn here rather than left to the bezel, because a
+    /// borderless button gives no feedback at all otherwise - and feedback on
+    /// press is most of what makes a control feel like it worked.
+    override func draw(_ dirtyRect: NSRect) {
+        let background: NSColor? = isHighlighted
+            ? tint.withAlphaComponent(0.28)
+            : hovering ? NSColor.white.withAlphaComponent(0.10) : nil
+        if let background {
+            background.setFill()
+            NSBezierPath(roundedRect: bounds, xRadius: 8, yRadius: 8).fill()
+        }
+        super.draw(dirtyRect)
+    }
 }
 
 // MARK: - Meters

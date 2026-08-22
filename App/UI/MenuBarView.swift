@@ -21,7 +21,7 @@ struct MenuBarView: View {
         // Same enable/disable logic as the main window's buttons: Start
         // only when idle, Stop only when starting or live, Record only
         // with a live OBS session (or to stop an active recording).
-        // The ⌃⌥⌘ shortcuts shown here are registered as SYSTEM-WIDE
+        // The ⌥⌘ shortcuts shown here are registered as SYSTEM-WIDE
         // hotkeys (HotkeyManager) - they work while other apps are
         // focused, and macOS swallows the keypress before it could reach
         // these menu items, so the hints below are documentation, not a
@@ -31,19 +31,19 @@ struct MenuBarView: View {
                : coordinator.meetingMode == .create ? "Start Meeting" : "Join Meeting") {
             coordinator.start()
         }
-        .keyboardShortcut("g", modifiers: [.control, .option, .command])
+        .keyboardShortcut("g", modifiers: [.option, .command])
         .disabled(coordinator.startActionDisabled) // same gating as the main window's Start
 
         Button(coordinator.isStopping ? "Ending\u{2026}" : "End Session") {
             coordinator.confirmAndStop()
         }
-        .keyboardShortcut("x", modifiers: [.control, .option, .command])
+        .keyboardShortcut("x", modifiers: [.option, .command])
         .disabled(coordinator.isStopping || (!coordinator.isRunning && !coordinator.virtualCamActive))
 
         Button(coordinator.isRecording ? "Stop Recording" : "Start Recording") {
             coordinator.toggleRecording()
         }
-        .keyboardShortcut("r", modifiers: [.control, .option, .command])
+        .keyboardShortcut("r", modifiers: [.option, .command])
         .disabled(!coordinator.virtualCamActive && !coordinator.isRecording)
 
         Divider()
@@ -51,12 +51,12 @@ struct MenuBarView: View {
         Button("Snap Windows Back") {
             coordinator.snapWindowsBack()
         }
-        .keyboardShortcut("s", modifiers: [.control, .option, .command])
+        .keyboardShortcut("s", modifiers: [.option, .command])
 
         Button(coordinator.speakerTileQuickHidden ? "Show Speaker Tile" : "Hide Speaker Tile") {
             coordinator.toggleSpeakerTile()
         }
-        .keyboardShortcut("z", modifiers: [.control, .option, .command])
+        .keyboardShortcut("z", modifiers: [.option, .command])
         .disabled(!coordinator.speakerTileShortcutEnabled || !coordinator.virtualCamActive)
 
         Button("Open Chat Window") {

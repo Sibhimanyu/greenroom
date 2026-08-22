@@ -376,7 +376,7 @@ final class CoordinatorController: ObservableObject {
             zoomChatClient.setHideSelfView(hideSelfView)
         }
     }
-    /// The \u{2303}\u{2325}\u{2318}Z quick-hide MODE. Off: the normal
+    /// The \u{2325}\u{2318}Z quick-hide MODE. Off: the normal
     /// tile-above-chat layout persists and the shortcut is inert. On:
     /// sessions START with the speaker tile hidden and the chat owning
     /// the full side column; the shortcut shows the tile (chat resizes
@@ -393,12 +393,12 @@ final class CoordinatorController: ObservableObject {
 
     /// Quick-hide state: the tile is off-screen and the chat owns the
     /// FULL side column. Defaults to the setting at each session start
-    /// and after Snap Windows Back; \u{2303}\u{2325}\u{2318}Z flips it.
+    /// and after Snap Windows Back; \u{2325}\u{2318}Z flips it.
     /// Published (read-only) so the menu bar can label its toggle with
     /// the ACTUAL next action ("Show/Hide Speaker Tile").
     @Published private(set) var speakerTileQuickHidden = false
 
-    /// \u{2303}\u{2325}\u{2318}Z: shows the speaker tile in its slot
+    /// \u{2325}\u{2318}Z: shows the speaker tile in its slot
     /// (the chat resizes to sit below it) or hides it again (the chat
     /// takes the full column back). Only active when the quick-hide mode
     /// is enabled in Settings.
@@ -421,12 +421,12 @@ final class CoordinatorController: ObservableObject {
                                     width: slot.width, height: slot.height)
                     ChatWindowController.adjustBelowZoom(actualZoomFrameAX: ax, layout: workspaceLayout)
                 }
-                log("Speaker shown \u{2014} \u{2303}\u{2325}\u{2318}Z hides it again.")
+                log("Speaker shown \u{2014} \u{2325}\u{2318}Z hides it again.")
             } else {
                 speakerTileQuickHidden = true
                 SpeakerWindowController.hide()
                 ChatWindowController.fillSideColumn(layout: workspaceLayout)
-                log("Speaker hidden \u{2014} chat has the full column. \u{2303}\u{2325}\u{2318}Z shows it.")
+                log("Speaker hidden \u{2014} chat has the full column. \u{2325}\u{2318}Z shows it.")
             }
             return
         }
@@ -436,7 +436,7 @@ final class CoordinatorController: ObservableObject {
             // like the shortcut was simply broken.
             log("No speaker tile to toggle yet \u{2014} waiting for Zoom's meeting window.")
             Notifier.post(title: "Speaker tile isn't ready yet",
-                          body: "Zoom's meeting window is still coming up. Try \u{2303}\u{2325}\u{2318}Z again in a moment.")
+                          body: "Zoom's meeting window is still coming up. Try \u{2325}\u{2318}Z again in a moment.")
             return
         }
         if speakerTileQuickHidden {
@@ -453,12 +453,12 @@ final class CoordinatorController: ObservableObject {
                 }
             }
             window.orderFrontRegardless()
-            log("Speaker tile shown \u{2014} \u{2303}\u{2325}\u{2318}Z hides it again.")
+            log("Speaker tile shown \u{2014} \u{2325}\u{2318}Z hides it again.")
         } else {
             speakerTileQuickHidden = true
             window.orderOut(nil)
             ChatWindowController.fillSideColumn(layout: workspaceLayout)
-            log("Speaker tile hidden \u{2014} chat has the full column. \u{2303}\u{2325}\u{2318}Z shows it.")
+            log("Speaker tile hidden \u{2014} chat has the full column. \u{2325}\u{2318}Z shows it.")
         }
     }
 
@@ -511,7 +511,9 @@ final class CoordinatorController: ObservableObject {
         didSet { defaults.set(mainAppBundleID, forKey: "mainAppBundleID") }
     }
     @Published var mainAppURL: String {
-        didSet { defaults.set(mainAppURL, forKey: "mainAppURL") }
+        // Stored sanitised. A control character typed in here once made the
+        // preferences plist unparseable as XML, and the address unopenable.
+        didSet { defaults.set(AppCatalog.sanitizedURLText(mainAppURL), forKey: "mainAppURL") }
     }
     @Published var mainAppOnStart: Bool {
         didSet { defaults.set(mainAppOnStart, forKey: "mainAppOnStart") }
@@ -574,7 +576,7 @@ final class CoordinatorController: ObservableObject {
         didSet { defaults.set(peopleViewDisplayUUID, forKey: "peopleViewDisplayUUID") }
     }
     /// Recording starts by itself once the meeting is up (the Record
-    /// button and \u{2303}\u{2325}\u{2318}R stay available as the manual
+    /// button and \u{2325}\u{2318}R stay available as the manual
     /// trigger either way).
     @Published var autoRecordOnStart: Bool {
         didSet { defaults.set(autoRecordOnStart, forKey: "autoRecordOnStart") }
@@ -604,7 +606,8 @@ final class CoordinatorController: ObservableObject {
         mainAppBundleID = defaults.string(forKey: "mainAppBundleID") ?? ChromeWindowManager.chromeBundleID
         // Fresh installs open the Greenroom site until the teacher sets
         // their own page - a friendly first Start instead of a blank tab.
-        mainAppURL = defaults.string(forKey: "mainAppURL") ?? defaults.string(forKey: "chromeURL") ?? AppLinks.site
+        mainAppURL = AppCatalog.sanitizedURLText(
+            defaults.string(forKey: "mainAppURL") ?? defaults.string(forKey: "chromeURL") ?? AppLinks.site)
         // Defaults to ON for fresh installs (bool(forKey:) alone can't
         // distinguish "never set" from "explicitly off") - the one-button
         // session flow treats the main app window as part of the setup,
@@ -958,7 +961,7 @@ final class CoordinatorController: ObservableObject {
                     // main window is buried behind the main app. The menu
                     // bar's GR also flips to a REC glyph via isRecording.
                     Notifier.post(title: "Recording started",
-                                  body: "Greenroom is recording the composite. \u{2303}\u{2325}\u{2318}R stops it.")
+                                  body: "Greenroom is recording the composite. \u{2325}\u{2318}R stops it.")
                 }
             } catch {
                 log("Recording failed: \(error.localizedDescription) \u{2014} press Start first if the session isn't running.")
@@ -1229,7 +1232,7 @@ final class CoordinatorController: ObservableObject {
         if speakerTileQuickHidden {
             SpeakerWindowController.hide()
             ChatWindowController.fillSideColumn(layout: workspaceLayout)
-            log("Speaker starts hidden (quick-hide mode) \u{2014} chat has the full column; \u{2303}\u{2325}\u{2318}Z shows it.")
+            log("Speaker starts hidden (quick-hide mode) \u{2014} chat has the full column; \u{2325}\u{2318}Z shows it.")
         }
         // The SDK's own return codes go in the log too, not just on failure.
         // A view that exists but renders nothing looks identical to a working
@@ -1364,7 +1367,7 @@ final class CoordinatorController: ObservableObject {
             rejectedVideoCandidateNumbers.removeAll()
             // The quick-hide MODE's default state: enabled means sessions
             // begin with the tile hidden and the chat full-height;
-            // \u{2303}\u{2325}\u{2318}Z brings the speaker up on demand.
+            // \u{2325}\u{2318}Z brings the speaker up on demand.
             // Only SESSION STARTS reset to the default - a live layout
             // re-apply or snap-back must not undo a mid-class toggle.
             if resetQuickHideToDefault {
@@ -1432,7 +1435,7 @@ final class CoordinatorController: ObservableObject {
                         parked = false
                     } else if speakerTileQuickHidden {
                         // Quick-hide mode: the tile stays identified (so
-                        // \u{2303}\u{2325}\u{2318}Z can summon it) but
+                        // \u{2325}\u{2318}Z can summon it) but
                         // HIDDEN, with the chat owning the full column.
                         // Re-asserts every tick, so the SDK re-showing
                         // the window (state changes do that) gets undone.
@@ -1445,7 +1448,7 @@ final class CoordinatorController: ObservableObject {
                             ChatWindowController.fillSideColumn(layout: workspaceLayout)
                             if !quickHideAnnounced {
                                 quickHideAnnounced = true
-                                log("Speaker tile starts hidden (quick-hide mode) \u{2014} chat has the full column; \u{2303}\u{2325}\u{2318}Z shows the speaker.")
+                                log("Speaker tile starts hidden (quick-hide mode) \u{2014} chat has the full column; \u{2325}\u{2318}Z shows the speaker.")
                             }
                         }
                         parked = false
@@ -1550,7 +1553,7 @@ final class CoordinatorController: ObservableObject {
                     // Snap Windows Back restarts the loop and re-arms.
                     gridCorrectionHoldUntilTick = tick + 60
                     gridCorrectionStreak = 0
-                    log("Something keeps re-placing the participant grid within seconds \u{2014} pausing the tug-of-war for 2 minutes. Snap Windows Back (\u{2303}\u{2325}\u{2318}S) re-places it now.")
+                    log("Something keeps re-placing the participant grid within seconds \u{2014} pausing the tug-of-war for 2 minutes. Snap Windows Back (\u{2325}\u{2318}S) re-places it now.")
                 } else if gridCorrectionStreak == 3 {
                     // Raw re-framing isn't sticking: the SDK likely lost or
                     // changed its dual-screen state when it recreated the
@@ -1751,7 +1754,7 @@ final class CoordinatorController: ObservableObject {
     }
 
     /// Confirmation gate in front of stop() for every user-facing trigger
-    /// (End Session button, menu bar item, \u{2303}\u{2325}\u{2318}X):
+    /// (End Session button, menu bar item, \u{2325}\u{2318}X):
     /// ending the session is destructive - it can end the meeting for the
     /// whole class - and the system-wide hotkey especially is one stray
     /// keystroke away. Internal/automatic paths (Zoom-side meeting end,
@@ -2438,6 +2441,13 @@ final class CoordinatorController: ObservableObject {
     /// keep-warm toggle flips on - so Start begins at "connect" instead
     /// of OBS's multi-second cold launch. No-op mid-session, when OBS
     /// isn't installed, or when the setting is off.
+    /// Names shortcuts another app has already claimed, so a dead key is
+    /// explained rather than just dead.
+    func reportUnavailableShortcuts(_ labels: [String]) {
+        let list = labels.joined(separator: ", ")
+        log("These shortcuts are already taken by another app and will not work: \(list). Quit whatever owns them, or use the menu bar icon instead.")
+    }
+
     func prewarmOBSIfEnabled() {
         guard keepOBSWarm, processManager.isInstalled, !isRunning, !virtualCamActive else { return }
         Task { try? await processManager.launch() }

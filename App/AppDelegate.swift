@@ -66,31 +66,52 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// mirroring the buttons' enabled states.
     func applicationDidFinishLaunching(_ notification: Notification) {
         MainActor.assumeIsolated {
-            let mods = UInt32(cmdKey | optionKey | controlKey)
-            HotkeyManager.shared.register([
-                .init(keyCode: UInt32(kVK_ANSI_G), modifiers: mods) {
+            // Option+Command, not Control+Option+Command.
+            //
+            // Three modifiers was chosen for collision safety and is genuinely
+            // hard to hit one-handed - reported as such. Option and Command are
+            // ADJACENT at the bottom left, so one thumb covers both and the
+            // other fingers are free for the letter; Control+Option needs the
+            // pinky as well.
+            //
+            // Control is the one dropped rather than Command, deliberately:
+            // Control+Option is VoiceOver's own modifier, so those combinations
+            // are swallowed whenever VoiceOver is running. Option+Command has no
+            // such owner, and none of the letters used here (G X R S Z) collide
+            // with the system's Option+Command shortcuts - those are H (Hide
+            // Others), D (Dock), Space (Finder search) and Escape (Force Quit).
+            let mods = UInt32(cmdKey | optionKey)
+            let unavailable = HotkeyManager.shared.register([
+                .init(keyCode: UInt32(kVK_ANSI_G), modifiers: mods, label: "\u{2325}\u{2318}G") {
                     CoordinatorController.shared?.start() // guards itself when busy/live
                 },
-                .init(keyCode: UInt32(kVK_ANSI_X), modifiers: mods) {
+                .init(keyCode: UInt32(kVK_ANSI_X), modifiers: mods, label: "\u{2325}\u{2318}X") {
                     guard let coordinator = CoordinatorController.shared,
                           coordinator.isRunning || coordinator.virtualCamActive else { return }
                     coordinator.confirmAndStop() // destructive - always confirms
                 },
-                .init(keyCode: UInt32(kVK_ANSI_R), modifiers: mods) {
+                .init(keyCode: UInt32(kVK_ANSI_R), modifiers: mods, label: "\u{2325}\u{2318}R") {
                     guard let coordinator = CoordinatorController.shared,
                           coordinator.virtualCamActive || coordinator.isRecording else { return }
                     coordinator.toggleRecording()
                 },
-                .init(keyCode: UInt32(kVK_ANSI_S), modifiers: mods) {
+                .init(keyCode: UInt32(kVK_ANSI_S), modifiers: mods, label: "\u{2325}\u{2318}S") {
                     CoordinatorController.shared?.snapWindowsBack()
                 },
                 // Speaker-tile quick-hide/float. Pref-gated in the action
                 // (toggleSpeakerTile checks speakerTileShortcutEnabled),
                 // so flipping the setting needs no re-registration.
-                .init(keyCode: UInt32(kVK_ANSI_Z), modifiers: mods) {
+                .init(keyCode: UInt32(kVK_ANSI_Z), modifiers: mods, label: "\u{2325}\u{2318}Z") {
                     CoordinatorController.shared?.toggleSpeakerTile()
                 },
             ])
+
+            // Another running app already owning a combination is the one way
+            // these silently do nothing, so say it out loud rather than leaving
+            // the user pressing a dead key.
+            if !unavailable.isEmpty {
+                CoordinatorController.shared?.reportUnavailableShortcuts(unavailable)
+            }
 
             // OBS's cold launch is most of Start's wait - warm it now so
             // Start begins at "connect" (keep-warm setting gates this).

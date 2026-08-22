@@ -93,7 +93,7 @@ private struct WebcamSettingsTab: View {
 
             Toggle("Start recording automatically with the meeting", isOn: $coordinator.autoRecordOnStart)
 
-            Text("Off: record manually with the Record button or \u{2303}\u{2325}\u{2318}R. Either way, recordings save to Documents/Greenroom and stop safely when the session ends.")
+            Text("Off: record manually with the Record button or \u{2325}\u{2318}R. Either way, recordings save to Documents/Greenroom and stop safely when the session ends.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
@@ -228,8 +228,20 @@ struct WebcamShapePreview: View {
 /// The generalized main-pane + side-column arrangement: pick any app for
 /// the main pane, choose how much of the screen it takes, and toggle what
 /// fills the leftover column - with a live schematic of the result.
+/// What can hold keyboard focus in this tab.
+///
+/// Exists so that NOTHING does by default. The website field was the tab's only
+/// text field, so SwiftUI made it the initial first responder - and macOS Tab
+/// moves between text fields, of which there was exactly one, so focus could not
+/// be moved off it at all. Every keystroke went into it, which is how a control
+/// character ended up in a saved URL.
+private enum LayoutSettingsFocus: Hashable {
+    case websiteURL
+}
+
 private struct LayoutSettingsTab: View {
     @EnvironmentObject private var coordinator: CoordinatorController
+    @FocusState private var focus: LayoutSettingsFocus?
     @State private var apps: [AppInfo] = []
     @State private var displays: [DisplayInfo] = DisplayResolver.connectedDisplays()
     @State private var hasAccessibilityPermission = AppWindowManager.hasAccessibilityPermission
@@ -260,6 +272,7 @@ private struct LayoutSettingsTab: View {
                 // signalled "type a URL here" (design-review F2).
                 TextField("Open website", text: $coordinator.mainAppURL, prompt: Text("e.g. docs.google.com"))
                     .textFieldStyle(.roundedBorder)
+                    .focused($focus, equals: .websiteURL)
             }
 
             if needsAccessibility && !hasAccessibilityPermission {
@@ -279,7 +292,7 @@ private struct LayoutSettingsTab: View {
                     .frame(height: 140)
                     .padding(.vertical, 4)
 
-                Text("Drag the handle between the panes to set the main app's width; drag the one between Zoom and Chat to balance the side column. A live session re-tiles on Snap Windows Back (\u{2303}\u{2325}\u{2318}S).")
+                Text("Drag the handle between the panes to set the main app's width; drag the one between Zoom and Chat to balance the side column. A live session re-tiles on Snap Windows Back (\u{2325}\u{2318}S).")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -297,8 +310,8 @@ private struct LayoutSettingsTab: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
 
-                Toggle("Quick-hide mode: speaker tile hidden by default (\u{2303}\u{2325}\u{2318}Z shows it)", isOn: $coordinator.speakerTileShortcutEnabled)
-                Text("On: sessions start with the speaker hidden and the chat using the full column height \u{2014} press \u{2303}\u{2325}\u{2318}Z to show the speaker (the chat shrinks below it), and again to hide it. Off: the normal speaker-above-chat layout stays put and the shortcut does nothing. Applies immediately, works system-wide.")
+                Toggle("Quick-hide mode: speaker tile hidden by default (\u{2325}\u{2318}Z shows it)", isOn: $coordinator.speakerTileShortcutEnabled)
+                Text("On: sessions start with the speaker hidden and the chat using the full column height \u{2014} press \u{2325}\u{2318}Z to show the speaker (the chat shrinks below it), and again to hide it. Off: the normal speaker-above-chat layout stays put and the shortcut does nothing. Applies immediately, works system-wide.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -379,9 +392,17 @@ private struct LayoutSettingsTab: View {
                 .foregroundStyle(.secondary)
         }
         .formStyle(.grouped)
+        // Nothing focused when the tab opens. Without this the website field
+        // claimed focus immediately and could not be escaped, because macOS Tab
+        // cycles text fields and this tab has only one.
+        .defaultFocus($focus, nil)
+        // Escape always releases it, which is the habit people already have and
+        // the only way out when Tab has nowhere to go.
+        .onExitCommand { focus = nil }
         .onAppear {
             apps = pickerApps()
             displays = DisplayResolver.connectedDisplays()
+            focus = nil
         }
         .onReceive(permissionTick) { _ in
             hasAccessibilityPermission = AppWindowManager.hasAccessibilityPermission

@@ -26,6 +26,8 @@ final class HotkeyManager {
         let keyCode: UInt32
         /// Carbon modifier mask (cmdKey | optionKey | controlKey | shiftKey).
         let modifiers: UInt32
+        /// How to name this shortcut if it cannot be claimed, e.g. "\u{2325}\u{2318}Z".
+        let label: String
         let action: () -> Void
     }
 
@@ -35,19 +37,35 @@ final class HotkeyManager {
     private var nextID: UInt32 = 1
 
     /// Registers all hotkeys at once. Call once at launch.
-    func register(_ hotkeys: [Hotkey]) {
+    ///
+    /// Returns the labels of any that could not be claimed. RegisterEventHotKey
+    /// fails when another running application already owns the combination, and
+    /// its status used to be discarded - so a shortcut that had been taken simply
+    /// did nothing, forever, with nothing anywhere explaining why. That was
+    /// tolerable while these used three modifiers and collisions were unlikely;
+    /// it is not tolerable now they use two.
+    @discardableResult
+    func register(_ hotkeys: [Hotkey]) -> [String] {
         installHandlerIfNeeded()
+        var unavailable: [String] = []
         for hotkey in hotkeys {
             let id = nextID
             nextID += 1
-            actions[id] = hotkey.action
 
             var ref: EventHotKeyRef?
             let hotKeyID = EventHotKeyID(signature: OSType(0x4752_4B59) /* 'GRKY' */, id: id)
-            RegisterEventHotKey(hotkey.keyCode, hotkey.modifiers, hotKeyID,
-                                GetApplicationEventTarget(), 0, &ref)
+            let status = RegisterEventHotKey(hotkey.keyCode, hotkey.modifiers, hotKeyID,
+                                             GetApplicationEventTarget(), 0, &ref)
+            guard status == noErr, ref != nil else {
+                unavailable.append(hotkey.label)
+                continue
+            }
+            // Only recorded once the registration actually succeeded, so a
+            // failed key cannot leave an orphaned action behind.
+            actions[id] = hotkey.action
             hotKeyRefs.append(ref)
         }
+        return unavailable
     }
 
     private func installHandlerIfNeeded() {

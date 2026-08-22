@@ -607,6 +607,30 @@ enum GreenroomScene {
     /// the whole scene instead. Both paths reset what the other one
     /// changes, so switching shapes between sessions never leaves stale
     /// transforms or masks behind.
+    /// Re-places the webcam DURING a live session.
+    ///
+    /// ensureConfigured cannot be used mid-session: its first act is
+    /// StopVirtualCam, because SetVideoSettings is refused while an output is
+    /// active. That is why changing the shape used to do nothing until the next
+    /// Start - the whole call was gated off while running.
+    ///
+    /// Everything that actually moves or reshapes the webcam is a filter or a
+    /// scene-item transform, and OBS accepts both with the virtual camera
+    /// running. This is that subset and nothing else: no StopVirtualCam, no
+    /// SetVideoSettings, no source creation. The canvas is read rather than set.
+    static func applyLiveLayout(client: OBSWebSocketClient, bubble: BubbleLayout) async throws {
+        let video = try await client.request("GetVideoSettings")
+        let width = (video["baseWidth"] as? Int) ?? 1920
+        let height = (video["baseHeight"] as? Int) ?? 1080
+
+        let chromaKind = try await bestFilterKind(client: client,
+                                                  containing: ["chroma_key_filter_v2", "chroma_key"])
+        try await setChromaKey(client: client, enabled: bubble.shape.usesChromaKey, kind: chromaKind)
+        try await ensureShapeMask(client: client, shape: bubble.shape)
+        try await layoutScene(client: client, layout: bubble, canvasWidth: width, canvasHeight: height)
+        try await enforceLayerOrder(client: client)
+    }
+
     private static func layoutScene(client: OBSWebSocketClient, layout: BubbleLayout, canvasWidth: Int, canvasHeight: Int) async throws {
         if layout.shape.isPresenterStyle {
             try await layoutPresenter(client: client, canvasWidth: canvasWidth, canvasHeight: canvasHeight)

@@ -40,6 +40,22 @@ struct SettingsView: View {
 }
 
 private struct WebcamSettingsTab: View {
+    /// Bridges the coordinator's three separate published fractions to the one
+    /// binding the preview wants.
+    private var bubbleGeometry: Binding<WebcamShapePreview.BubbleGeometry> {
+        Binding(
+            get: {
+                .init(widthFraction: coordinator.bubbleWidthFraction,
+                      rightInset: coordinator.bubbleRightInset,
+                      bottomInset: coordinator.bubbleBottomInset)
+            },
+            set: { updated in
+                coordinator.bubbleWidthFraction = updated.widthFraction
+                coordinator.bubbleRightInset = updated.rightInset
+                coordinator.bubbleBottomInset = updated.bottomInset
+            })
+    }
+
     @EnvironmentObject private var coordinator: CoordinatorController
 
     var body: some View {
@@ -73,7 +89,11 @@ private struct WebcamSettingsTab: View {
                             .padding(6)
                         }
                 } else {
-                    WebcamShapePreview(shape: coordinator.webcamShape)
+                    WebcamShapePreview(shape: coordinator.webcamShape,
+                                       geometry: bubbleGeometry,
+                                       onCommit: {
+                                           Task { await coordinator.applyShapeForPreview() }
+                                       })
                 }
             }
             .frame(maxWidth: .infinity)
@@ -88,6 +108,24 @@ private struct WebcamSettingsTab: View {
             Text(shapeCaption)
                 .font(.caption)
                 .foregroundStyle(.secondary)
+
+            // Only the bubble shapes have a bubble to move. Cutout and Presenter
+            // key the background out and place a full-height figure by another
+            // rule, so there is nothing here to drag.
+            if !coordinator.webcamShape.usesChromaKey {
+                HStack {
+                    Text("Drag the bubble to move it, or its corner to resize.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    Button("Reset position") {
+                        coordinator.resetBubbleLayout()
+                        Task { await coordinator.applyShapeForPreview() }
+                    }
+                    .controlSize(.small)
+                    .disabled(coordinator.bubbleIsAtDefault)
+                }
+            }
 
             Divider()
 
@@ -123,8 +161,32 @@ private struct WebcamSettingsTab: View {
 /// will do it - bubble in the corner, keyed cutout, or the Presenter
 /// panel arrangement. Mirrors the geometry in GreenroomScene. Internal
 /// (not private): the onboarding's "Your setup" step reuses it.
+/// The shape schematic, and for bubble shapes a draggable one.
+///
+/// Drag the bubble to move it, drag its corner handle to resize. The numbers
+/// behind it - widthFraction, rightInset, bottomInset - are the same three
+/// GreenroomScene has always sent to OBS, so what is dragged here is literally
+/// the scene transform rather than a picture of one.
+///
+/// Only the bubble shapes are adjustable. Cutout and Presenter key the background
+/// out and place a full-height figure by a different rule, so there is no bubble
+/// to move; the schematic stays a preview for those.
 struct WebcamShapePreview: View {
     let shape: WebcamShape
+    /// Nil for a read-only schematic, as used by the onboarding screen.
+    var geometry: Binding<BubbleGeometry>?
+    /// Called when a drag finishes, so OBS is asked to re-place once rather
+    /// than on every frame of the gesture.
+    var onCommit: (() -> Void)?
+
+    /// The three fractions, bundled so the view takes one binding.
+    struct BubbleGeometry: Equatable {
+        var widthFraction: Double
+        var rightInset: Double
+        var bottomInset: Double
+    }
+
+    @State private var dragStart: BubbleGeometry?
 
     private static let personGreen = Color(red: 0.373, green: 0.659, blue: 0.235)
 
@@ -153,9 +215,24 @@ struct WebcamShapePreview: View {
                         person(height: h * 0.62)
                             .position(x: w - w * 0.16, y: h - (h * 0.62) / 2)
                     } else {
-                        bubble(size: h * 0.44)
-                            .position(x: w - w * 0.05 - (h * 0.44) / 2,
-                                      y: h - h * 0.07 - (h * 0.44) / 2)
+                        // Sized off the WIDTH, matching positionBubble in
+                        // GreenroomScene - the bubble is a square whose side is a
+                        // fraction of canvas width, not height.
+                        let live = geometry?.wrappedValue
+                            ?? BubbleGeometry(widthFraction: 0.24, rightInset: 0.045, bottomInset: 0.06)
+                        let side = w * live.widthFraction
+                        let centreX = w - w * live.rightInset - side / 2
+                        let centreY = h - h * live.bottomInset - side / 2
+                        bubble(size: side)
+                            .position(x: centreX, y: centreY)
+                            .overlay {
+                                if geometry != nil {
+                                    resizeHandle(side: side)
+                                        .position(x: centreX - side / 2 + 3,
+                                                  y: centreY - side / 2 + 3)
+                                }
+                            }
+                            .gesture(geometry == nil ? nil : moveGesture(canvas: geo.size, side: side))
                     }
                 }
             }
@@ -163,6 +240,65 @@ struct WebcamShapePreview: View {
         }
         .aspectRatio(16.0 / 10.0, contentMode: .fit)
         .animation(.snappy(duration: 0.25), value: shape)
+    }
+
+    /// Drag anywhere on the bubble to move it.
+    ///
+    /// Insets are measured from the right and bottom edges, so a drag right
+    /// DECREASES rightInset. Working in the scene's own coordinates rather than
+    /// converting at the end keeps this and OBS in agreement.
+    private func moveGesture(canvas: CGSize, side: CGFloat) -> some Gesture {
+        DragGesture(minimumDistance: 1)
+            .onChanged { value in
+                guard let geometry else { return }
+                let start = dragStart ?? geometry.wrappedValue
+                if dragStart == nil { dragStart = start }
+                geometry.wrappedValue = BubbleGeometry(
+                    widthFraction: start.widthFraction,
+                    rightInset: clamp(start.rightInset - value.translation.width / canvas.width,
+                                      upper: 1 - start.widthFraction),
+                    bottomInset: clamp(start.bottomInset - value.translation.height / canvas.height,
+                                       upper: 1 - start.widthFraction))
+            }
+            .onEnded { _ in
+                dragStart = nil
+                onCommit?()
+            }
+    }
+
+    /// A corner grip, at the top-left of the bubble: dragging it away from the
+    /// bottom-right corner grows the bubble, which keeps that corner - the one
+    /// pinned by the insets - still.
+    private func resizeHandle(side: CGFloat) -> some View {
+        Circle()
+            .fill(Self.personGreen)
+            .overlay(Circle().strokeBorder(.white.opacity(0.9), lineWidth: 1.5))
+            .frame(width: 14, height: 14)
+            .gesture(
+                DragGesture(minimumDistance: 1)
+                    .onChanged { value in
+                        guard let geometry else { return }
+                        let start = dragStart ?? geometry.wrappedValue
+                        if dragStart == nil { dragStart = start }
+                        // Up-and-left is bigger, so both deltas are negated.
+                        let delta = (-value.translation.width - value.translation.height) / 2
+                        let widthDelta = delta / 200
+                        geometry.wrappedValue = BubbleGeometry(
+                            widthFraction: clamp(start.widthFraction + widthDelta,
+                                                 lower: 0.08, upper: 0.6),
+                            rightInset: start.rightInset,
+                            bottomInset: start.bottomInset)
+                    }
+                    .onEnded { _ in
+                        dragStart = nil
+                        onCommit?()
+                    }
+            )
+            .help("Drag to resize")
+    }
+
+    private func clamp(_ value: Double, lower: Double = 0, upper: Double) -> Double {
+        min(max(value, lower), max(lower, upper))
     }
 
     /// The shared screen, mocked as a document.

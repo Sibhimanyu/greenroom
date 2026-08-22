@@ -464,6 +464,61 @@ final class CoordinatorController: ObservableObject {
 
     // MARK: Defaults - persisted so Start reproduces the whole setup every time
 
+    /// Where the webcam bubble sits and how big it is, as fractions of the
+    /// canvas so it survives a resolution change.
+    ///
+    /// GreenroomScene.BubbleLayout has carried these three numbers all along;
+    /// nothing ever set them, so every session used the defaults and the only
+    /// adjustable thing was the shape. Clamped on the way in: OBS will happily
+    /// place a source off-canvas, and a bubble nobody can see is indistinguishable
+    /// from a camera that stopped working.
+    @Published var bubbleWidthFraction: Double {
+        didSet {
+            let clamped = min(max(bubbleWidthFraction, 0.08), 0.6)
+            if clamped != bubbleWidthFraction { bubbleWidthFraction = clamped; return }
+            defaults.set(bubbleWidthFraction, forKey: "bubbleWidthFraction")
+        }
+    }
+    @Published var bubbleRightInset: Double {
+        didSet {
+            let clamped = min(max(bubbleRightInset, 0), 0.9)
+            if clamped != bubbleRightInset { bubbleRightInset = clamped; return }
+            defaults.set(bubbleRightInset, forKey: "bubbleRightInset")
+        }
+    }
+    @Published var bubbleBottomInset: Double {
+        didSet {
+            let clamped = min(max(bubbleBottomInset, 0), 0.9)
+            if clamped != bubbleBottomInset { bubbleBottomInset = clamped; return }
+            defaults.set(bubbleBottomInset, forKey: "bubbleBottomInset")
+        }
+    }
+
+    /// The three numbers plus the shape, ready for OBS.
+    var bubbleLayout: GreenroomScene.BubbleLayout {
+        .init(widthFraction: bubbleWidthFraction,
+              rightInset: bubbleRightInset,
+              bottomInset: bubbleBottomInset,
+              shape: webcamShape)
+    }
+
+    /// Whether the bubble is still where it shipped, so Reset can be disabled
+    /// rather than offered as a no-op.
+    var bubbleIsAtDefault: Bool {
+        let shipped = GreenroomScene.BubbleLayout()
+        return abs(bubbleWidthFraction - shipped.widthFraction) < 0.001
+            && abs(bubbleRightInset - shipped.rightInset) < 0.001
+            && abs(bubbleBottomInset - shipped.bottomInset) < 0.001
+    }
+
+    /// Back to the values the app shipped with.
+    func resetBubbleLayout() {
+        let defaultsLayout = GreenroomScene.BubbleLayout()
+        bubbleWidthFraction = defaultsLayout.widthFraction
+        bubbleRightInset = defaultsLayout.rightInset
+        bubbleBottomInset = defaultsLayout.bottomInset
+    }
+
     @Published var webcamShape: WebcamShape {
         didSet { defaults.set(webcamShape.rawValue, forKey: "webcamShape") }
     }
@@ -606,6 +661,10 @@ final class CoordinatorController: ObservableObject {
         mainAppBundleID = defaults.string(forKey: "mainAppBundleID") ?? ChromeWindowManager.chromeBundleID
         // Fresh installs open the Greenroom site until the teacher sets
         // their own page - a friendly first Start instead of a blank tab.
+        let bubbleDefaults = GreenroomScene.BubbleLayout()
+        bubbleWidthFraction = (defaults.object(forKey: "bubbleWidthFraction") as? Double) ?? bubbleDefaults.widthFraction
+        bubbleRightInset = (defaults.object(forKey: "bubbleRightInset") as? Double) ?? bubbleDefaults.rightInset
+        bubbleBottomInset = (defaults.object(forKey: "bubbleBottomInset") as? Double) ?? bubbleDefaults.bottomInset
         mainAppURL = AppCatalog.sanitizedURLText(
             defaults.string(forKey: "mainAppURL") ?? defaults.string(forKey: "chromeURL") ?? AppLinks.site)
         // Defaults to ON for fresh installs (bool(forKey:) alone can't
@@ -1025,10 +1084,28 @@ final class CoordinatorController: ObservableObject {
     /// Re-applies the chosen shape to the warm OBS scene so the live
     /// preview tracks the picker immediately. NEVER during a session -
     /// ensureConfigured's first step stops the virtual camera.
+    /// Applies a webcam change, live if a session is running.
+    ///
+    /// This used to give up entirely during a session - `guard !virtualCamActive,
+    /// !isRunning` - so changing the shape or the bubble mid-class did nothing
+    /// until the next Start, with nothing saying so. The reason was real but
+    /// narrower than the guard: ensureConfigured begins with StopVirtualCam,
+    /// because SetVideoSettings is refused while an output is active. Moving,
+    /// resizing and reshaping the webcam are filter and transform calls, which
+    /// OBS accepts perfectly well with the virtual camera running, so a live
+    /// session now takes that path instead of being refused.
     func applyShapeForPreview() async {
-        guard shapePreviewTask != nil, !virtualCamActive, !isRunning else { return }
+        if virtualCamActive || isRunning {
+            do {
+                try await GreenroomScene.applyLiveLayout(client: client, bubble: bubbleLayout)
+            } catch {
+                log("Couldn't update the webcam overlay: \(error.localizedDescription)")
+            }
+            return
+        }
+        guard shapePreviewTask != nil else { return }
         _ = try? await GreenroomScene.ensureConfigured(client: client,
-                                                       bubble: .init(shape: webcamShape),
+                                                       bubble: bubbleLayout,
                                                        preferredDisplayUUID: screenCaptureDisplayUUID)
     }
 
@@ -2384,7 +2461,7 @@ final class CoordinatorController: ObservableObject {
         log("Configuring the Greenroom scene (screen + keyed webcam bubble)\u{2026}")
         let setup = try await GreenroomScene.ensureConfigured(
             client: client,
-            bubble: .init(shape: webcamShape),
+            bubble: bubbleLayout,
             preferredDisplayUUID: screenCaptureDisplayUUID)
         if !setup.webcamActive {
             log("No webcam connected \u{2014} running screen-only. Plug a camera in and press Start (or Snap Windows Back) to bring your video back.")

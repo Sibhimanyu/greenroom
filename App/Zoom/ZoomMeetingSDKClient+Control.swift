@@ -128,6 +128,103 @@ extension ZoomMeetingSDKClient {
 
     func expel(userID: UInt32) -> Bool { run { $0.expelUser(userID) } }
 
+    // MARK: - Yourself
+
+    /// The controls a teacher reaches for constantly, and the ones the first
+    /// version of the panel simply did not have.
+    ///
+    /// There is no self-audio controller in this SDK; muting yourself is the
+    /// same generic command used on anyone else, addressed to your own user ID.
+    /// The panel used to hide every per-person control for `isMyself`, which is
+    /// right for "make host" and wrong for the two buttons Zoom puts first.
+    var myUserID: UInt32? { actionController?.getMyself()?.getUserID() }
+
+    var iAmMuted: Bool {
+        guard let me = actionController?.getMyself() else { return false }
+        let status = me.getAudioStatus()
+        return status == ZoomSDKAudioStatus_Muted
+            || status == ZoomSDKAudioStatus_MutedByHost
+            || status == ZoomSDKAudioStatus_MutedAllByHost
+    }
+
+    var myVideoIsOn: Bool { actionController?.getMyself()?.isVideoOn() ?? false }
+    var myHandIsRaised: Bool { actionController?.getMyself()?.isRaisingHand() ?? false }
+
+    func setMyMute(_ muted: Bool) -> Bool {
+        guard let me = myUserID else { return false }
+        return setMuted(muted, userID: me)
+    }
+
+    func setMyVideo(on: Bool) -> Bool {
+        guard let me = myUserID else { return false }
+        return setVideoMuted(!on, userID: me)
+    }
+
+    func setMyHand(raised: Bool) -> Bool {
+        guard let me = myUserID else { return false }
+        return run { $0.raiseHand(raised, userID: me) }
+    }
+
+    // MARK: - Sharing
+
+    /// Zoom's own screen share, which is separate from the OBS composite this
+    /// app sends as its camera. Both can run; they are different things, and the
+    /// toolbar label has to say which.
+    private var shareController: ZoomSDKASController? {
+        ZoomSDK.shared().getMeetingService()?.getASController()
+    }
+
+    func shareableDisplays() -> [(id: CGDirectDisplayID, label: String)] {
+        NSScreen.screens.enumerated().compactMap { index, screen in
+            guard let number = screen.deviceDescription[
+                NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber else { return nil }
+            let size = screen.frame.size
+            return (CGDirectDisplayID(number.uint32Value),
+                    "Display \(index + 1) \u{2014} \(Int(size.width))\u{00D7}\(Int(size.height))")
+        }
+    }
+
+    func startShare(displayID: CGDirectDisplayID) -> Bool {
+        shareController?.startMonitorShare(displayID) == ZoomSDKError_Success
+    }
+
+    func stopShare() -> Bool {
+        shareController?.stopShare() == ZoomSDKError_Success
+    }
+
+    // MARK: - Reactions
+
+    /// Kept as a Swift enum so the UI never has to import ZoomSDK. The panel
+    /// should know about students and actions, not about SDK constants.
+    enum Reaction: String, CaseIterable {
+        case thumbsUp   = "Thumbs up"
+        case clap       = "Clap"
+        case heart      = "Heart"
+        case joy        = "Joy"
+        case openMouth  = "Open mouth"
+        case tada       = "Tada"
+
+        fileprivate var sdkValue: ZoomSDKEmojiReactionType {
+            switch self {
+            case .thumbsUp:  return ZoomSDKEmojiReactionType_Thumbsup
+            case .clap:      return ZoomSDKEmojiReactionType_Clap
+            case .heart:     return ZoomSDKEmojiReactionType_Heart
+            case .joy:       return ZoomSDKEmojiReactionType_Joy
+            case .openMouth: return ZoomSDKEmojiReactionType_Openmouth
+            case .tada:      return ZoomSDKEmojiReactionType_Tada
+            }
+        }
+    }
+
+    func send(_ reaction: Reaction) -> Bool {
+        sendReaction(reaction.sdkValue)
+    }
+
+    private func sendReaction(_ type: ZoomSDKEmojiReactionType) -> Bool {
+        ZoomSDK.shared().getMeetingService()?.getReactionController()
+            .send(type) == ZoomSDKError_Success
+    }
+
     // MARK: - Room-wide actions
 
     func muteEveryone() -> Bool {

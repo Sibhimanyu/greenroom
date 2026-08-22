@@ -260,6 +260,18 @@ enum ChatWindowController {
     /// "Meeting").
     static func owns(_ candidate: NSWindow) -> Bool { candidate == window }
 
+    /// Brings the chat forward without rebuilding it, for the Chat button on the
+    /// participant panel's toolbar. Zoom's toolbar has one; Greenroom's chat
+    /// lives in its own window, so the button raises that rather than opening a
+    /// panel inside the meeting view.
+    static func reveal(layout: WorkspaceLayout) {
+        guard let window else { return }
+        if let slot = zoomSlotNSFrame(for: layout), window.frame == .zero {
+            window.setFrame(slot, display: true)
+        }
+        window.orderFrontRegardless()
+    }
+
     static func close() {
         window?.close()
         window = nil

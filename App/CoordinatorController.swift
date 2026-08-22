@@ -1301,7 +1301,12 @@ final class CoordinatorController: ObservableObject {
         ParticipantGridWindowController.configure(
             client: zoomChatClient,
             log: { [weak self] message in self?.log(message) },
-            endSession: { [weak self] in self?.stop() })
+            endSession: { [weak self] in self?.stop() },
+            showChat: { [weak self] in
+                guard let self else { return }
+                ChatWindowController.reveal(layout: self.workspaceLayout)
+            },
+            toggleRecording: { [weak self] in self?.toggleRecording() })
         let startedAt = Date()
         Analytics.track(.surfaceShown, [
             .surface: "participants",

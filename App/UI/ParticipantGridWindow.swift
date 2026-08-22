@@ -37,16 +37,22 @@ enum ParticipantGridWindowController {
     private static weak var client: ZoomMeetingSDKClient?
     private static var log: (@MainActor (String) -> Void)?
     private static var endSession: (@MainActor () -> Void)?
+    private static var showChat: (@MainActor () -> Void)?
+    private static var toggleRecording: (@MainActor () -> Void)?
 
     /// Wired once at session start. The window talks to the SDK directly rather
     /// than routing every button through the coordinator: the coordinator owns
     /// placement and session lifecycle, not what a host does to a roster.
     static func configure(client: ZoomMeetingSDKClient,
                           log: @escaping @MainActor (String) -> Void,
-                          endSession: @escaping @MainActor () -> Void) {
+                          endSession: @escaping @MainActor () -> Void,
+                          showChat: @escaping @MainActor () -> Void,
+                          toggleRecording: @escaping @MainActor () -> Void) {
         self.client = client
         self.log = log
         self.endSession = endSession
+        self.showChat = showChat
+        self.toggleRecording = toggleRecording
     }
 
     // MARK: - Window
@@ -172,10 +178,14 @@ enum ParticipantGridWindowController {
         client = nil
         log = nil
         endSession = nil
+        showChat = nil
+        toggleRecording = nil
     }
 
     fileprivate static func report(_ message: String) { log?(message) }
     fileprivate static func requestEndSession() { endSession?() }
+    fileprivate static func requestShowChat() { showChat?() }
+    fileprivate static func requestToggleRecording() { toggleRecording?() }
     fileprivate static var sdk: ZoomMeetingSDKClient? { client }
     fileprivate static var hostWindow: NSWindow? { panel }
 }
@@ -205,6 +215,9 @@ private final class RootView: NSView {
     private var tiles: [UInt32: TileView] = [:]
     private var selected: UInt32?
     private var lastGridShape: (cols: Int, rows: Int, count: Int) = (0, 0, -1)
+    /// What the bars were last built from. Deliberately excludes who is TALKING:
+    /// that changes constantly and only affects tile rings, never a button.
+    private var lastBarSignature = ""
 
     private var roster: [ZoomMeetingSDKClient.RosterEntry] = []
     private var flags = ZoomMeetingSDKClient.RoomFlags()
@@ -212,7 +225,8 @@ private final class RootView: NSView {
     private var session = ParticipantGridWindowController.SessionInfo()
 
     private static let barHeight: CGFloat = 44
-    private static let bottomHeight: CGFloat = 56
+    /// Tall enough for Zoom's icon-above-label toolbar buttons.
+    private static let bottomHeight: CGFloat = 64
     private static let contextHeight: CGFloat = 48
     private static let gutter: CGFloat = 4
 
@@ -264,7 +278,19 @@ private final class RootView: NSView {
 
         syncTiles()
         updateChromeText()
-        rebuildBars()
+        // Rebuilt ONLY when something a bar actually shows has changed.
+        //
+        // The first version tore every button down and recreated it on each tick
+        // of a one-second poll. That is wasteful, it makes the toolbar unreadable
+        // to accessibility (enumerating it raced the teardown and returned a
+        // different answer each time), and worst of all a click landing during a
+        // rebuild hits a button that no longer exists - so controls would
+        // occasionally just do nothing.
+        let signature = barSignature()
+        if signature != lastBarSignature {
+            lastBarSignature = signature
+            rebuildBars()
+        }
         layoutEverything()
         // Video is attached only once the tiles have real frames. The SDK
         // resizes its render element to whatever rect it is handed, and handing
@@ -315,6 +341,7 @@ private final class RootView: NSView {
         for entry in roster {
             tiles[entry.id]?.apply(entry: entry, isSelected: selected == entry.id)
         }
+        lastBarSignature = barSignature()
         rebuildBars()
         layoutEverything()
     }
@@ -476,6 +503,35 @@ private final class RootView: NSView {
             : "\(waiting.count) waiting to be let in.\nUse Admit all below."
     }
 
+    /// Everything the toolbar and context strip render from, flattened.
+    private func barSignature() -> String {
+        let sdk = ParticipantGridWindowController.sdk
+        var parts: [String] = [
+            selected.map(String.init) ?? "-",
+            String(roster.count),
+            String(waiting.count),
+            session.obsRecording ? "rec" : "-",
+            (sdk?.iAmMuted ?? false) ? "me-muted" : "-",
+            (sdk?.myVideoIsOn ?? false) ? "me-video" : "-",
+            (sdk?.myHandIsRaised ?? false) ? "me-hand" : "-",
+            flags.chatAllowed ? "c" : "-",
+            flags.shareAllowed ? "s" : "-",
+            flags.renameAllowed ? "r" : "-",
+            flags.startVideoAllowed ? "v" : "-",
+            flags.unmuteSelfAllowed ? "u" : "-",
+            flags.focusModeOn ? "f" : "-",
+            flags.incomingAudioStopped ? "q" : "-",
+            flags.canSuspend ? "z" : "-",
+            roster.contains(where: \.isRaisingHand) ? "hands" : "-",
+            roster.contains(where: \.isSpotlighted) ? "spots" : "-"
+        ]
+        // The context strip mirrors one student, so its state belongs here too.
+        if let id = selected, let entry = roster.first(where: { $0.id == id }) {
+            parts.append("\(entry.name)|\(entry.isMuted)|\(entry.videoOn)|\(entry.isSpotlighted)|\(entry.isPinned)|\(entry.isRaisingHand)|\(entry.isCoHost)|\(entry.isMyself)")
+        }
+        return parts.joined(separator: ";")
+    }
+
     private func rebuildBars() {
         rebuildBottomBar()
         rebuildContextBar()
@@ -483,77 +539,164 @@ private final class RootView: NSView {
 
     static var accent: NSColor { NSColor(named: "AccentColor") ?? .systemGreen }
 
-    // MARK: Bottom bar - room-wide
+    // MARK: Toolbar - shaped like Zoom's, because that is the muscle memory
 
+    /// Zoom's own bottom toolbar, as closely as this SDK allows.
+    ///
+    /// The first version of this bar carried only host actions, which meant the
+    /// two buttons a teacher presses most - mute yourself, stop your video - had
+    /// no home at all. Everything per-person was hidden for `isMyself`, correct
+    /// for "make host" and wrong for those.
+    ///
+    /// The grouping follows Zoom rather than inventing one: self-controls on the
+    /// left, room actions in the middle behind the button they belong to
+    /// (mute-all lives under Participants in Zoom, permissions live under
+    /// Security), and Leave on the right in red. Anyone who has run a Zoom class
+    /// should not have to learn this.
     private func rebuildBottomBar() {
         bottomBar.subviews.forEach { $0.removeFromSuperview() }
-        var controls: [NSView] = []
+        guard let sdk = ParticipantGridWindowController.sdk else { return }
+
+        var left: [NSView] = []
+        var mid: [NSView] = []
+
+        // --- self: the two most-used buttons in Zoom ---
+        let muted = sdk.iAmMuted
+        left.append(Self.toolButton(muted ? "Unmute" : "Mute",
+                                    symbol: muted ? "mic.slash.fill" : "mic.fill",
+                                    alert: muted) {
+            Self.perform(muted ? "Unmuted yourself" : "Muted yourself") { $0.setMyMute(!muted) }
+        })
+        let videoOn = sdk.myVideoIsOn
+        left.append(Self.toolButton(videoOn ? "Stop Video" : "Start Video",
+                                    symbol: videoOn ? "video.fill" : "video.slash.fill",
+                                    alert: !videoOn) {
+            Self.perform(videoOn ? "Stopped your video" : "Started your video") { $0.setMyVideo(on: !videoOn) }
+        })
+
+        // --- Participants: the room-wide host actions, where Zoom keeps them ---
+        mid.append(participantsMenu(count: roster.count))
+
+        // --- Chat: Greenroom owns this window, so the toolbar just raises it ---
+        mid.append(Self.toolButton("Chat", symbol: "bubble.left.and.bubble.right.fill") {
+            ParticipantGridWindowController.requestShowChat()
+        })
+
+        mid.append(shareMenu())
+
+        // --- Record: Greenroom's own local capture, NOT Zoom's cloud recording.
+        // Labelled so the two are never confused.
+        let recording = session.obsRecording
+        mid.append(Self.toolButton(recording ? "Stop Record" : "Record",
+                                   symbol: recording ? "stop.circle.fill" : "record.circle",
+                                   alert: recording) {
+            ParticipantGridWindowController.requestToggleRecording()
+        })
+
+        mid.append(reactionsMenu())
+        mid.append(securityMenu())
 
         if !waiting.isEmpty {
-            controls.append(Self.button("Admit all (\(waiting.count))", symbol: "person.badge.plus", prominent: true) {
+            mid.append(Self.toolButton("Admit \(waiting.count)", symbol: "person.badge.plus", alert: true) {
                 Self.perform("Admitted everyone waiting") { $0.admitEveryoneWaiting() }
             })
         }
-        controls.append(Self.button("Mute all", symbol: "mic.slash") {
-            Self.perform("Muted everyone") { $0.muteEveryone() }
-        })
-        controls.append(Self.button("Ask all to unmute", symbol: "mic") {
-            Self.perform("Asked everyone to unmute") { $0.askEveryoneToUnmute() }
-        })
-        if roster.contains(where: \.isRaisingHand) {
-            controls.append(Self.button("Lower all hands", symbol: "hand.raised.slash") {
-                Self.perform("Lowered all hands") { $0.lowerEveryHand() }
-            })
-        }
-        if roster.contains(where: \.isSpotlighted) {
-            controls.append(Self.button("Clear spotlight", symbol: "star.slash") {
-                Self.perform("Cleared spotlight") { $0.clearAllSpotlights() }
-            })
-        }
-        // Value-captured, not `self.flags`: these buttons are subviews of a bar
-        // this view owns, so a closure holding self would be a retain cycle
-        // rebuilt every second.
-        let stop = !flags.incomingAudioStopped
-        controls.append(Self.button(stop ? "Silence for me" : "Restore my audio",
-                                    symbol: stop ? "speaker.slash" : "speaker.wave.2") {
-            Self.perform(stop ? "Silenced the room on this Mac only" : "Restored incoming audio") {
-                $0.setIncomingAudioStopped(stop)
-            }
-        })
-        controls.append(roomSettingsMenu())
-        // Routed through the coordinator's own end-session, not the SDK's
-        // `leave()`. Leaving the meeting directly would strand everything the
-        // coordinator owns: OBS still running, an unfinalised recording, the
-        // chat and speaker windows still on screen.
-        controls.append(Self.button("End session", symbol: "stop.circle", destructive: true) {
+
+        // --- End, on the right, in red, as Zoom has it ---
+        let end = Self.toolButton("End", symbol: "xmark.circle.fill", destructive: true) {
             Self.confirm(title: "End the session?",
                          message: "Leaves the meeting, finishes any recording, and shuts OBS down.",
                          confirm: "End session") {
                 ParticipantGridWindowController.requestEndSession()
             }
-        })
-
-        Self.pack(controls, into: bottomBar, height: Self.bottomHeight)
-    }
-
-    /// The permission toggles live behind one menu rather than as eight buttons.
-    /// They are set once at the start of a term, not reached for mid-lesson, and
-    /// a control surface earns its density by ranking what is urgent.
-    private func roomSettingsMenu() -> NSView {
-        let popUp = FirstClickPopUpButton(frame: NSRect(x: 0, y: 0, width: 132, height: 26), pullsDown: true)
-        popUp.bezelStyle = .rounded
-        popUp.addItem(withTitle: "Room settings")
-        popUp.item(at: 0)?.image = NSImage(systemSymbolName: "slider.horizontal.3", accessibilityDescription: nil)
-
-        func toggle(_ title: String, _ on: Bool, _ action: @escaping (Bool) -> Void) {
-            let item = NSMenuItem(title: title, action: #selector(BlockMenuItem.fire), keyEquivalent: "")
-            let carrier = BlockMenuItem(title: title) { action(!on) }
-            item.state = on ? .on : .off
-            item.target = carrier
-            item.representedObject = carrier
-            popUp.menu?.addItem(item)
         }
 
+        // Left group pinned left, middle group centred, End pinned right - the
+        // three-zone layout Zoom uses, so nothing jumps around as buttons
+        // appear and disappear.
+        // The width each button already carries is used as-is. Reassigning
+        // fittingSize here is what made the first version overlap: a borderless
+        // icon-above-label button reports a fitting width far narrower than the
+        // 64pt the toolbar lays out, so buttons ended up 31pt apart and the
+        // longer labels ("Stop Video") were clipped.
+        var x: CGFloat = 12
+        for control in left {
+            control.frame.origin = NSPoint(x: x, y: (Self.bottomHeight - control.frame.height) / 2)
+            bottomBar.addSubview(control)
+            x = control.frame.maxX + 4
+        }
+        let midWidth = mid.reduce(CGFloat(0)) { $0 + $1.frame.width + 4 }
+        var mx = max(x + 16, (bounds.width - midWidth) / 2)
+        for control in mid {
+            control.frame.origin = NSPoint(x: mx, y: (Self.bottomHeight - control.frame.height) / 2)
+            bottomBar.addSubview(control)
+            mx = control.frame.maxX + 4
+        }
+        end.frame.origin = NSPoint(x: bounds.width - end.frame.width - 12,
+                                   y: (Self.bottomHeight - end.frame.height) / 2)
+        bottomBar.addSubview(end)
+    }
+
+    /// Room-wide host actions. In Zoom these sit inside the Participants panel,
+    /// not loose on the toolbar, so they sit here.
+    private func participantsMenu(count: Int) -> NSView {
+        let items: [(String, () -> Void)] = {
+            var out: [(String, () -> Void)] = [
+                ("Mute all", { Self.perform("Muted everyone") { $0.muteEveryone() } }),
+                ("Ask all to unmute", { Self.perform("Asked everyone to unmute") { $0.askEveryoneToUnmute() } }),
+            ]
+            if roster.contains(where: \.isRaisingHand) {
+                out.append(("Lower all hands", { Self.perform("Lowered all hands") { $0.lowerEveryHand() } }))
+            }
+            if roster.contains(where: \.isSpotlighted) {
+                out.append(("Clear spotlight", { Self.perform("Cleared spotlight") { $0.clearAllSpotlights() } }))
+            }
+            if !waiting.isEmpty {
+                out.append(("Admit all waiting", { Self.perform("Admitted everyone waiting") { $0.admitEveryoneWaiting() } }))
+            }
+            return out
+        }()
+        return Self.toolMenu("Participants \(count)", symbol: "person.2.fill", items: items)
+    }
+
+    /// Zoom's own screen share, which is a different thing from the OBS
+    /// composite Greenroom sends as its camera - hence the explicit wording.
+    private func shareMenu() -> NSView {
+        guard let sdk = ParticipantGridWindowController.sdk else {
+            return Self.toolButton("Share", symbol: "rectangle.on.rectangle") {}
+        }
+        var items: [(String, () -> Void)] = sdk.shareableDisplays().map { display in
+            (display.label, { Self.perform("Started sharing \(display.label) in Zoom") { $0.startShare(displayID: display.id) } })
+        }
+        items.append(("Stop sharing", { Self.perform("Stopped sharing in Zoom") { $0.stopShare() } }))
+        return Self.toolMenu("Share", symbol: "rectangle.on.rectangle", items: items)
+    }
+
+    private func reactionsMenu() -> NSView {
+        guard let sdk = ParticipantGridWindowController.sdk else {
+            return Self.toolButton("React", symbol: "hand.thumbsup") {}
+        }
+        let raised = sdk.myHandIsRaised
+        var items: [(String, () -> Void)] = [
+            (raised ? "Lower my hand" : "Raise my hand",
+             { Self.perform(raised ? "Lowered your hand" : "Raised your hand") { $0.setMyHand(raised: !raised) } })
+        ]
+        for reaction in ZoomMeetingSDKClient.Reaction.allCases {
+            items.append((reaction.rawValue, {
+                Self.perform("Sent \(reaction.rawValue.lowercased())") { $0.send(reaction) }
+            }))
+        }
+        return Self.toolMenu("React", symbol: "hand.thumbsup", items: items)
+    }
+
+    /// Named Security, as Zoom names it. These are set once at the start of a
+    /// term rather than reached for mid-lesson, which is why they are behind a
+    /// menu rather than on the bar.
+    private func securityMenu() -> NSView {
+        var items: [(String, () -> Void)] = []
+        func toggle(_ title: String, _ on: Bool, _ apply: @escaping (Bool) -> Void) {
+            items.append(((on ? "\u{2713} " : "   ") + title, { apply(!on) }))
+        }
         toggle("Participants can unmute themselves", flags.unmuteSelfAllowed) { on in
             Self.perform(on ? "Participants may unmute themselves" : "Participants may not unmute themselves") {
                 $0.setAllowUnmuteSelf(on)
@@ -574,26 +717,28 @@ private final class RootView: NSView {
             Self.perform(on ? "Renaming allowed" : "Renaming turned off") { $0.setAllowRename(on) }
         }
         toggle("Focus mode", flags.focusModeOn) { on in
-            Self.perform(on ? "Focus mode on - students see only you" : "Focus mode off") {
+            Self.perform(on ? "Focus mode on \u{2014} students see only you" : "Focus mode off") {
                 $0.setFocusMode(on)
             }
         }
         if flags.canSuspend {
-            popUp.menu?.addItem(.separator())
-            let item = NSMenuItem(title: "Suspend all activities…", action: #selector(BlockMenuItem.fire), keyEquivalent: "")
-            let carrier = BlockMenuItem(title: "Suspend") {
+            items.append(("Suspend all activities\u{2026}", {
                 Self.confirm(title: "Suspend all participant activities?",
                              message: "This stops every camera, microphone, share and chat in the meeting at once. Use it only if something has gone wrong.",
                              confirm: "Suspend") {
                     Self.perform("Suspended all participant activities") { $0.suspendAllActivities() }
                 }
-            }
-            item.target = carrier
-            item.representedObject = carrier
-            popUp.menu?.addItem(item)
+            }))
         }
-        return popUp
+        let stopped = flags.incomingAudioStopped
+        items.append((stopped ? "Restore incoming audio" : "Silence the room on this Mac only", {
+            Self.perform(stopped ? "Restored incoming audio" : "Silenced the room on this Mac only") {
+                $0.setIncomingAudioStopped(!stopped)
+            }
+        }))
+        return Self.toolMenu("Security", symbol: "shield.lefthalf.filled", items: items)
     }
+
 
     // MARK: Context bar - the selected student
 
@@ -687,6 +832,62 @@ private final class RootView: NSView {
             bar.addSubview(control)
             x = control.frame.maxX + 8
         }
+    }
+
+    /// One toolbar button, icon above a small label, the way Zoom draws them.
+    ///
+    /// `alert` uses systemRed rather than the brand accent: red-when-muted is
+    /// Zoom's own convention and the muscle memory being matched, and it keeps
+    /// the accent out of text, which DESIGN.md forbids. systemRed is a platform
+    /// colour, which the same document allows for chrome.
+    private static func toolButton(_ title: String,
+                                   symbol: String,
+                                   alert: Bool = false,
+                                   destructive: Bool = false,
+                                   action: @escaping () -> Void) -> NSButton {
+        let button = ClosureButton(action)
+        button.title = title
+        button.image = NSImage(systemSymbolName: symbol, accessibilityDescription: title)
+        button.imagePosition = .imageAbove
+        button.isBordered = false
+        button.font = .systemFont(ofSize: 10)
+        button.contentTintColor = destructive || alert ? .systemRed : .labelColor
+        button.sizeToFit()
+        button.frame.size.width = max(button.frame.width + 20, 72)
+        button.frame.size.height = 48
+        return button
+    }
+
+    /// A toolbar button that drops a menu.
+    ///
+    /// Built from an NSMenu popped by hand rather than an NSPopUpButton: a
+    /// pull-down cannot draw icon-above-label, and a popped menu behaves
+    /// predictably inside a non-activating panel, where the stock control's
+    /// tracking could not be confirmed working.
+    private static func toolMenu(_ title: String,
+                                 symbol: String,
+                                 items: [(String, () -> Void)]) -> NSView {
+        let menu = NSMenu()
+        for (label, action) in items {
+            let carrier = BlockMenuItem(title: label, action)
+            let item = NSMenuItem(title: label, action: #selector(BlockMenuItem.fire), keyEquivalent: "")
+            item.target = carrier
+            // NSMenuItem.target is weak, so the carrier needs an owner that is
+            // not - representedObject retains.
+            item.representedObject = carrier
+            menu.addItem(item)
+        }
+        let button = ToolMenuButton(menu: menu)
+        button.title = title
+        button.image = NSImage(systemSymbolName: symbol, accessibilityDescription: title)
+        button.imagePosition = .imageAbove
+        button.isBordered = false
+        button.font = .systemFont(ofSize: 10)
+        button.contentTintColor = .labelColor
+        button.sizeToFit()
+        button.frame.size.width = max(button.frame.width + 20, 72)
+        button.frame.size.height = 48
+        return button
     }
 
     private static func button(_ title: String,
@@ -952,6 +1153,25 @@ private final class DotView: NSView {
 /// AppKit targets are unowned and these controls are rebuilt on every refresh,
 /// so a separate target object would have to be kept alive by something. Having
 /// the button be its own target removes the question.
+/// A toolbar button that owns and pops its own menu.
+@MainActor
+private final class ToolMenuButton: NSButton {
+    private let owned: NSMenu
+    init(menu: NSMenu) {
+        self.owned = menu
+        super.init(frame: .zero)
+        target = self
+        action = #selector(pop)
+    }
+    required init?(coder: NSCoder) { nil }
+    @objc private func pop() {
+        // Above the button, since the toolbar sits at the bottom of the screen.
+        owned.popUp(positioning: nil, at: NSPoint(x: 0, y: bounds.height + 4), in: self)
+    }
+    /// See TileView.acceptsFirstMouse - the panel is rarely key.
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+}
+
 private final class ClosureButton: NSButton {
     private let body: () -> Void
     init(_ body: @escaping () -> Void) {

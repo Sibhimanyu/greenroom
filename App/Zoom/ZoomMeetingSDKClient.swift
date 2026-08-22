@@ -142,6 +142,36 @@ final class ZoomMeetingSDKClient: NSObject, ObservableObject {
         return element.getVideoView()
     }
 
+    /// A SECOND self-video element, for the control panel's own self view.
+    ///
+    /// An NSView has exactly one superview, so the panel and the speaker window
+    /// cannot both host the view `makeSelfView` returns - whichever parented it
+    /// last would steal it, and the other would go blank. They get separate
+    /// render elements instead. The SDK is happy to draw the same user twice.
+    private var railSelfElement: ZoomSDKNormalVideoElement?
+
+    func makeRailSelfView(frame: NSRect) -> NSView? {
+        guard didUseCustomUI else { return nil }
+        if let existing = railSelfElement {
+            _ = existing.resize(frame)
+            return existing.getVideoView()
+        }
+        guard let service = ZoomSDK.shared().getMeetingService(),
+              let container = service.getVideoContainer(),
+              let me = service.getMeetingActionController().getMyself()?.getUserID() else { return nil }
+        videoContainer = container
+        var element = ZoomSDKNormalVideoElement(frame: frame)
+        guard container.createNormalVideoElement(&element) == ZoomSDKError_Success else { return nil }
+        element.userid = me
+        guard element.subscribeVideo(true) == ZoomSDKError_Success else {
+            _ = container.clean(element)
+            return nil
+        }
+        _ = element.showVideo(true)
+        railSelfElement = element
+        return element.getVideoView()
+    }
+
     /// Kept apart from `participantElements` on purpose: that dictionary is
     /// pruned against the gallery's participant list, which excludes self, so
     /// storing the self view there would have it deleted on the next pass.
@@ -195,6 +225,10 @@ final class ZoomMeetingSDKClient: NSObject, ObservableObject {
     /// Releases the render elements. Called on leave so the SDK is not left
     /// drawing into views that are about to disappear.
     func releaseCustomUIVideo() {
+        if let element = railSelfElement {
+            _ = videoContainer?.clean(element)
+            railSelfElement = nil
+        }
         if let element = activeSpeakerElement {
             _ = videoContainer?.clean(element)
         }

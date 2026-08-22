@@ -32,6 +32,9 @@ enum ParticipantGridWindowController {
         var startedAt: Date?
         var obsRecording: Bool = false
         var presetName: String = ""
+        /// Whether the live-speaker tile is currently quick-hidden, so the rail
+        /// can offer the opposite action rather than a stale one.
+        var speakerHidden: Bool = false
     }
 
     private static weak var client: ZoomMeetingSDKClient?
@@ -39,6 +42,9 @@ enum ParticipantGridWindowController {
     private static var endSession: (@MainActor () -> Void)?
     private static var showChat: (@MainActor () -> Void)?
     private static var toggleRecording: (@MainActor () -> Void)?
+    private static var snapBack: (@MainActor () -> Void)?
+    private static var toggleSpeaker: (@MainActor () -> Void)?
+    private static var showMainWindow: (@MainActor () -> Void)?
 
     /// Wired once at session start. The window talks to the SDK directly rather
     /// than routing every button through the coordinator: the coordinator owns
@@ -47,12 +53,18 @@ enum ParticipantGridWindowController {
                           log: @escaping @MainActor (String) -> Void,
                           endSession: @escaping @MainActor () -> Void,
                           showChat: @escaping @MainActor () -> Void,
-                          toggleRecording: @escaping @MainActor () -> Void) {
+                          toggleRecording: @escaping @MainActor () -> Void,
+                          snapBack: @escaping @MainActor () -> Void,
+                          toggleSpeaker: @escaping @MainActor () -> Void,
+                          showMainWindow: @escaping @MainActor () -> Void) {
         self.client = client
         self.log = log
         self.endSession = endSession
         self.showChat = showChat
         self.toggleRecording = toggleRecording
+        self.snapBack = snapBack
+        self.toggleSpeaker = toggleSpeaker
+        self.showMainWindow = showMainWindow
     }
 
     // MARK: - Window
@@ -102,11 +114,15 @@ enum ParticipantGridWindowController {
     /// by join/leave callbacks because a brand-new participant's video element
     /// is not renderable the instant the callback fires, and a poll converges
     /// whether or not any single event was missed.
-    static func refresh(on screen: NSScreen, session: SessionInfo, includeSelf: Bool, windowed: Bool) {
+    static func refresh(on screen: NSScreen, session: SessionInfo, windowed: Bool) {
         guard let client else { return }
 
+        // Self is never in the grid. The rail carries a dedicated self view, and
+        // an NSView has one superview - having both would mean two hosts
+        // fighting over one SDK render element. It also matches how the surface
+        // reads: left is you, right is the class.
         var roster = client.meetingRoster()
-        if !includeSelf { roster.removeAll { $0.isMyself } }
+        roster.removeAll { $0.isMyself }
 
         let hosting: ControlPanel
         let isNewWindow: Bool
@@ -142,8 +158,12 @@ enum ParticipantGridWindowController {
                      flags: client.roomFlags(),
                      waiting: client.waitingRoomNames(),
                      session: session,
-                     videoProvider: { id, frame in client.participantView(userID: id, frame: frame) })
-        client.pruneParticipantViews(keeping: Set(roster.map(\.id)))
+                     videoProvider: { id, frame in client.participantView(userID: id, frame: frame) },
+                     selfProvider: { frame in client.makeRailSelfView(frame: frame) })
+        // Pruned to the VISIBLE page, not the whole roster, so students on other
+        // pages release their streams. The rail's self view is a separate element
+        // and is unaffected.
+        client.pruneParticipantViews(keeping: root?.visibleIDs ?? [])
 
         // Raise it only when it is new, or when it has gone away and was not
         // deliberately minimised. Placement here is CONVERGENT, not assertive.
@@ -180,12 +200,18 @@ enum ParticipantGridWindowController {
         endSession = nil
         showChat = nil
         toggleRecording = nil
+        snapBack = nil
+        toggleSpeaker = nil
+        showMainWindow = nil
     }
 
     fileprivate static func report(_ message: String) { log?(message) }
     fileprivate static func requestEndSession() { endSession?() }
     fileprivate static func requestShowChat() { showChat?() }
     fileprivate static func requestToggleRecording() { toggleRecording?() }
+    fileprivate static func requestSnapBack() { snapBack?() }
+    fileprivate static func requestToggleSpeaker() { toggleSpeaker?() }
+    fileprivate static func requestShowMainWindow() { showMainWindow?() }
     fileprivate static var sdk: ZoomMeetingSDKClient? { client }
     fileprivate static var hostWindow: NSWindow? { panel }
 }
@@ -218,15 +244,38 @@ private final class RootView: NSView {
     /// What the bars were last built from. Deliberately excludes who is TALKING:
     /// that changes constantly and only affects tile rings, never a button.
     private var lastBarSignature = ""
+    /// Held so a page change can re-attach video without waiting for the poll.
+    private var lastVideoProvider: ((UInt32, NSRect) -> NSView?)?
+    private var lastSelfProvider: ((NSRect) -> NSView?)?
 
     private var roster: [ZoomMeetingSDKClient.RosterEntry] = []
+    private var page = 0
+    private let rail = BarView()
+    private let selfViewHost = NSView()
+    private let selfViewLabel = NSTextField(labelWithString: "You, as the class sees you")
+    private var selfVideo: NSView?
+    private var railControls: [NSView] = []
+    private let pageLabel = NSTextField(labelWithString: "")
+    private var pagePrev: NSButton?
+    private var pageNext: NSButton?
     private var flags = ZoomMeetingSDKClient.RoomFlags()
     private var waiting: [(id: UInt32, name: String)] = []
     private var session = ParticipantGridWindowController.SessionInfo()
 
+    /// Left rail: you and your tools. Right: the class. The split the teacher
+    /// asked for, and it also settles a technical problem - with a dedicated
+    /// self view on the left there is no reason for the grid to include you, so
+    /// nothing fights over a single SDK render element.
+    private static let railWidth: CGFloat = 300
+    /// How many students fit on one page before the carousel appears. Fixed
+    /// rather than computed from the area: a page size that changed as people
+    /// joined would reshuffle faces mid-lesson, which is exactly when a teacher
+    /// is relying on their position.
+    private static let perPage = 12
     private static let barHeight: CGFloat = 44
-    /// Tall enough for Zoom's icon-above-label toolbar buttons.
-    private static let bottomHeight: CGFloat = 64
+    /// Zero: the rail carries every control now, so there is no bottom toolbar
+    /// to reserve space for. Kept as a constant because the body layout reads it.
+    private static let bottomHeight: CGFloat = 0
     private static let contextHeight: CGFloat = 48
     private static let gutter: CGFloat = 4
 
@@ -235,8 +284,23 @@ private final class RootView: NSView {
         wantsLayer = true
         layer?.backgroundColor = NSColor.black.cgColor
 
-        for bar in [topBar, contextBar, bottomBar] { addSubview(bar) }
+        for bar in [topBar, rail, contextBar, bottomBar] { addSubview(bar) }
         addSubview(gridHost)
+
+        selfViewHost.wantsLayer = true
+        selfViewHost.layer?.backgroundColor = NSColor.black.cgColor
+        selfViewHost.layer?.cornerRadius = 10        // DESIGN.md radius-md
+        selfViewHost.layer?.masksToBounds = true
+        rail.addSubview(selfViewHost)
+
+        selfViewLabel.font = .systemFont(ofSize: 11)
+        selfViewLabel.textColor = .secondaryLabelColor
+        rail.addSubview(selfViewLabel)
+
+        pageLabel.font = .monospacedSystemFont(ofSize: 11, weight: .regular)
+        pageLabel.textColor = .secondaryLabelColor
+        pageLabel.alignment = .center
+        addSubview(pageLabel)
 
         titleLabel.font = .systemFont(ofSize: 15, weight: .semibold)
         titleLabel.textColor = .labelColor
@@ -266,7 +330,8 @@ private final class RootView: NSView {
                 flags: ZoomMeetingSDKClient.RoomFlags,
                 waiting: [(id: UInt32, name: String)],
                 session: ParticipantGridWindowController.SessionInfo,
-                videoProvider: (UInt32, NSRect) -> NSView?) {
+                videoProvider: @escaping (UInt32, NSRect) -> NSView?,
+                selfProvider: @escaping (NSRect) -> NSView?) {
         self.roster = roster
         self.flags = flags
         self.waiting = waiting
@@ -275,6 +340,12 @@ private final class RootView: NSView {
         // A selection whose owner left must not linger: its actions would apply
         // to a user ID the SDK has already recycled.
         if let selected, !roster.contains(where: { $0.id == selected }) { self.selected = nil }
+
+        // Clamp rather than reset. If someone leaves while the teacher is on the
+        // last page, dropping them to page one would lose their place; this only
+        // moves them when the page they are on no longer exists.
+        let pages = max(1, Int(ceil(Double(roster.count) / Double(Self.perPage))))
+        page = min(page, pages - 1)
 
         syncTiles()
         updateChromeText()
@@ -294,19 +365,24 @@ private final class RootView: NSView {
         layoutEverything()
         // Video is attached only once the tiles have real frames. The SDK
         // resizes its render element to whatever rect it is handed, and handing
-        // it the zero rect a freshly created tile still has produces a element
+        // it the zero rect a freshly created tile still has produces an element
         // that never draws.
         attachVideo(videoProvider)
+        attachSelfVideo(selfProvider)
     }
 
     private func syncTiles() {
-        let live = Set(roster.map(\.id))
+        // Only the current page. An off-page student keeps no tile and therefore
+        // no video subscription - a class of forty should not mean forty live
+        // streams for twelve visible faces.
+        let visible = pageRoster
+        let live = Set(visible.map(\.id))
         for (id, tile) in tiles where !live.contains(id) {
             tile.detachVideo()
             tile.removeFromSuperview()
             tiles.removeValue(forKey: id)
         }
-        for entry in roster {
+        for entry in visible {
             let tile = tiles[entry.id] ?? {
                 let made = TileView(userID: entry.id)
                 made.onSelect = { [weak self] id in
@@ -327,8 +403,9 @@ private final class RootView: NSView {
     /// The SDK renders into a view it owns; the tile only parents it, and only
     /// when it changes. Re-parenting a live video view every refresh would
     /// flicker the whole wall.
-    private func attachVideo(_ videoProvider: (UInt32, NSRect) -> NSView?) {
-        for entry in roster {
+    private func attachVideo(_ videoProvider: @escaping (UInt32, NSRect) -> NSView?) {
+        lastVideoProvider = videoProvider
+        for entry in pageRoster {
             guard let tile = tiles[entry.id], !tile.bounds.isEmpty else { continue }
             tile.attach(video: videoProvider(entry.id, tile.videoBounds))
         }
@@ -338,7 +415,7 @@ private final class RootView: NSView {
     /// the height available to the grid - so all three are redone, without
     /// waiting for the next poll. A click has to feel immediate.
     private func selectionChanged() {
-        for entry in roster {
+        for entry in pageRoster {
             tiles[entry.id]?.apply(entry: entry, isSelected: selected == entry.id)
         }
         lastBarSignature = barSignature()
@@ -346,7 +423,29 @@ private final class RootView: NSView {
         layoutEverything()
     }
 
-    func detachAllVideo() { tiles.values.forEach { $0.detachVideo() } }
+    /// Who is on screen right now, for the caller's stream pruning.
+    var visibleIDs: Set<UInt32> { Set(pageRoster.map(\.id)) }
+
+    /// The self view, in its own render element so it never contends with the
+    /// speaker window for one NSView.
+    private func attachSelfVideo(_ provider: @escaping (NSRect) -> NSView?) {
+        lastSelfProvider = provider
+        guard !selfViewHost.bounds.isEmpty else { return }
+        guard let view = provider(selfViewHost.bounds) else { return }
+        if selfVideo !== view {
+            selfVideo?.removeFromSuperview()
+            view.autoresizingMask = [.width, .height]
+            selfViewHost.addSubview(view)
+            selfVideo = view
+        }
+        view.frame = selfViewHost.bounds
+    }
+
+    func detachAllVideo() {
+        tiles.values.forEach { $0.detachVideo() }
+        selfVideo?.removeFromSuperview()
+        selfVideo = nil
+    }
 
     // MARK: Layout
 
@@ -356,18 +455,32 @@ private final class RootView: NSView {
 
         topBar.frame = NSRect(x: 0, y: bounds.height - Self.barHeight,
                               width: width, height: Self.barHeight)
-        bottomBar.frame = NSRect(x: 0, y: 0, width: width, height: Self.bottomHeight)
-        contextBar.frame = NSRect(x: 0, y: Self.bottomHeight,
-                                  width: width, height: showContext ? Self.contextHeight : 0)
+        bottomBar.frame = .zero
+        bottomBar.isHidden = true
+        // Spans only the grid, not the rail: it describes a selected student, and
+        // the students are on the right.
+        contextBar.frame = NSRect(x: Self.railWidth, y: 0,
+                                  width: max(0, width - Self.railWidth),
+                                  height: showContext ? Self.contextHeight : 0)
         contextBar.isHidden = !showContext
 
         let gridBottom = Self.bottomHeight + (showContext ? Self.contextHeight : 0)
-        gridHost.frame = NSRect(x: 0, y: gridBottom,
-                                width: width,
-                                height: max(0, bounds.height - Self.barHeight - gridBottom))
+        let bodyHeight = max(0, bounds.height - Self.barHeight - gridBottom)
+        rail.frame = NSRect(x: 0, y: gridBottom, width: Self.railWidth, height: bodyHeight)
 
-        emptyState.frame = NSRect(x: 40, y: gridHost.frame.midY - 40,
-                                  width: width - 80, height: 80)
+        // The carousel row sits between the grid and whatever is below it, and
+        // only takes space when there is more than one page.
+        let pages = max(1, Int(ceil(Double(roster.count) / Double(Self.perPage))))
+        let pagerHeight: CGFloat = pages > 1 ? 24 : 0
+        gridHost.frame = NSRect(x: Self.railWidth,
+                                y: gridBottom + pagerHeight,
+                                width: max(0, width - Self.railWidth),
+                                height: max(0, bodyHeight - pagerHeight))
+        layoutPager(pages: pages, y: gridBottom, width: width - Self.railWidth)
+        layoutRail()
+
+        emptyState.frame = NSRect(x: Self.railWidth + 40, y: gridHost.frame.midY - 40,
+                                  width: max(80, width - Self.railWidth - 80), height: 80)
         emptyState.isHidden = !roster.isEmpty
         layoutHeaderLabels()
         layoutTiles()
@@ -392,27 +505,37 @@ private final class RootView: NSView {
                                     width: dotSize, height: dotSize)
     }
 
+    /// The students on the current page. Everything downstream - layout, video
+    /// subscription, ring state - works from this rather than the whole roster,
+    /// so a class of forty does not mean forty live video streams.
+    private var pageRoster: [ZoomMeetingSDKClient.RosterEntry] {
+        let start = page * Self.perPage
+        guard start < roster.count else { return [] }
+        return Array(roster[start..<min(start + Self.perPage, roster.count)])
+    }
+
     private func layoutTiles() {
-        guard !roster.isEmpty else { return }
+        let visible = pageRoster
+        guard !visible.isEmpty else { return }
         let area = gridHost.bounds
-        let (cols, rows) = Self.bestGrid(count: roster.count, in: area.size)
+        let (cols, rows) = Self.bestGrid(count: visible.count, in: area.size)
         let cellW = (area.width - Self.gutter * CGFloat(cols + 1)) / CGFloat(cols)
         let cellH = (area.height - Self.gutter * CGFloat(rows + 1)) / CGFloat(rows)
 
         // Layout moves get DESIGN.md's 250ms, but only when the grid actually
         // changes shape. Animating every two-second refresh would mean a wall
         // that is permanently in motion.
-        let shape = (cols, rows, roster.count)
+        let shape = (cols, rows, visible.count)
         let animate = lastGridShape.count >= 0 && shape != lastGridShape
         lastGridShape = shape
 
-        for (index, entry) in roster.enumerated() {
+        for (index, entry) in visible.enumerated() {
             guard let tile = tiles[entry.id] else { continue }
             let row = index / cols
             let column = index % cols
             // The last row is centred rather than left-packed: three students
             // in a 2x2 read as a group, not as a missing fourth.
-            let inRow = min(cols, roster.count - row * cols)
+            let inRow = min(cols, visible.count - row * cols)
             let rowWidth = CGFloat(inRow) * cellW + CGFloat(inRow - 1) * Self.gutter
             let originX = (area.width - rowWidth) / 2 + CGFloat(column) * (cellW + Self.gutter)
             let target = NSRect(x: originX,
@@ -508,6 +631,7 @@ private final class RootView: NSView {
         let sdk = ParticipantGridWindowController.sdk
         var parts: [String] = [
             selected.map(String.init) ?? "-",
+            String(page),
             String(roster.count),
             String(waiting.count),
             session.obsRecording ? "rec" : "-",
@@ -533,169 +657,207 @@ private final class RootView: NSView {
     }
 
     private func rebuildBars() {
-        rebuildBottomBar()
+        rebuildRail()
         rebuildContextBar()
     }
 
     static var accent: NSColor { NSColor(named: "AccentColor") ?? .systemGreen }
 
-    // MARK: Toolbar - shaped like Zoom's, because that is the muscle memory
+    // MARK: The rail - you, and everything you can do
 
-    /// Zoom's own bottom toolbar, as closely as this SDK allows.
+    /// The left rail: self view on top, then every control, grouped by which
+    /// product owns it.
     ///
-    /// The first version of this bar carried only host actions, which meant the
-    /// two buttons a teacher presses most - mute yourself, stop your video - had
-    /// no home at all. Everything per-person was hidden for `isMyself`, correct
-    /// for "make host" and wrong for those.
+    /// This replaced a Zoom-shaped bottom toolbar. The toolbar was the right
+    /// first move - it matched muscle memory - but on a display the teacher alone
+    /// can see, a horizontal strip wastes the space that makes this surface worth
+    /// having. A rail fits the whole control set without hiding two thirds of it
+    /// behind menus, and leaves the rest of the display to the class.
     ///
-    /// The grouping follows Zoom rather than inventing one: self-controls on the
-    /// left, room actions in the middle behind the button they belong to
-    /// (mute-all lives under Participants in Zoom, permissions live under
-    /// Security), and Leave on the right in red. Anyone who has run a Zoom class
-    /// should not have to learn this.
-    private func rebuildBottomBar() {
-        bottomBar.subviews.forEach { $0.removeFromSuperview() }
+    /// Grouped rather than mixed on purpose. "Record" here is Greenroom's own
+    /// capture of the OBS composite, and "Mute" is Zoom's; a teacher who cannot
+    /// tell which product a button belongs to cannot predict what it will do.
+    private func rebuildRail() {
+        railControls.forEach { $0.removeFromSuperview() }
+        railControls = []
         guard let sdk = ParticipantGridWindowController.sdk else { return }
 
-        var left: [NSView] = []
-        var mid: [NSView] = []
+        railControls.append(Self.railHeader("Greenroom"))
 
-        // --- self: the two most-used buttons in Zoom ---
+        let recording = session.obsRecording
+        railControls.append(Self.railRow(recording ? "Stop recording" : "Record this class",
+                                         symbol: recording ? "stop.circle.fill" : "record.circle",
+                                         alert: recording) {
+            ParticipantGridWindowController.requestToggleRecording()
+        })
+        railControls.append(Self.railRow("Snap windows back", symbol: "rectangle.3.group") {
+            ParticipantGridWindowController.requestSnapBack()
+        })
+        railControls.append(Self.railRow(session.speakerHidden ? "Show live speaker" : "Hide live speaker",
+                                         symbol: session.speakerHidden ? "eye" : "eye.slash") {
+            ParticipantGridWindowController.requestToggleSpeaker()
+        })
+        railControls.append(Self.railRow("Chat", symbol: "bubble.left.and.bubble.right") {
+            ParticipantGridWindowController.requestShowChat()
+        })
+        railControls.append(Self.railRow("Greenroom window", symbol: "macwindow") {
+            ParticipantGridWindowController.requestShowMainWindow()
+        })
+
+        railControls.append(Self.railHeader("Zoom"))
+
         let muted = sdk.iAmMuted
-        left.append(Self.toolButton(muted ? "Unmute" : "Mute",
-                                    symbol: muted ? "mic.slash.fill" : "mic.fill",
-                                    alert: muted) {
+        railControls.append(Self.railRow(muted ? "Unmute me" : "Mute me",
+                                         symbol: muted ? "mic.slash.fill" : "mic.fill",
+                                         alert: muted) {
             Self.perform(muted ? "Unmuted yourself" : "Muted yourself") { $0.setMyMute(!muted) }
         })
         let videoOn = sdk.myVideoIsOn
-        left.append(Self.toolButton(videoOn ? "Stop Video" : "Start Video",
-                                    symbol: videoOn ? "video.fill" : "video.slash.fill",
-                                    alert: !videoOn) {
+        railControls.append(Self.railRow(videoOn ? "Stop my video" : "Start my video",
+                                         symbol: videoOn ? "video.fill" : "video.slash.fill",
+                                         alert: !videoOn) {
             Self.perform(videoOn ? "Stopped your video" : "Started your video") { $0.setMyVideo(on: !videoOn) }
         })
-
-        // --- Participants: the room-wide host actions, where Zoom keeps them ---
-        mid.append(participantsMenu(count: roster.count))
-
-        // --- Chat: Greenroom owns this window, so the toolbar just raises it ---
-        mid.append(Self.toolButton("Chat", symbol: "bubble.left.and.bubble.right.fill") {
-            ParticipantGridWindowController.requestShowChat()
+        railControls.append(Self.railMenuRow("Participants (\(roster.count))",
+                                             symbol: "person.2.fill",
+                                             items: participantItems()))
+        railControls.append(Self.railMenuRow("Reactions", symbol: "hand.thumbsup", items: reactionItems()))
+        railControls.append(Self.railMenuRow("Security", symbol: "shield.lefthalf.filled", items: securityItems()))
+        railControls.append(Self.railRow("Meeting info", symbol: "info.circle") {
+            Self.showMeetingInfo()
         })
-
-        mid.append(shareMenu())
-
-        // --- Record: Greenroom's own local capture, NOT Zoom's cloud recording.
-        // Labelled so the two are never confused.
-        let recording = session.obsRecording
-        mid.append(Self.toolButton(recording ? "Stop Record" : "Record",
-                                   symbol: recording ? "stop.circle.fill" : "record.circle",
-                                   alert: recording) {
-            ParticipantGridWindowController.requestToggleRecording()
-        })
-
-        mid.append(reactionsMenu())
-        mid.append(securityMenu())
 
         if !waiting.isEmpty {
-            mid.append(Self.toolButton("Admit \(waiting.count)", symbol: "person.badge.plus", alert: true) {
+            railControls.append(Self.railRow("Admit \(waiting.count) waiting",
+                                             symbol: "person.badge.plus", alert: true) {
                 Self.perform("Admitted everyone waiting") { $0.admitEveryoneWaiting() }
             })
         }
 
-        // --- End, on the right, in red, as Zoom has it ---
-        let end = Self.toolButton("End", symbol: "xmark.circle.fill", destructive: true) {
+        railControls.append(Self.railRow("End session", symbol: "xmark.circle.fill", destructive: true) {
             Self.confirm(title: "End the session?",
                          message: "Leaves the meeting, finishes any recording, and shuts OBS down.",
                          confirm: "End session") {
                 ParticipantGridWindowController.requestEndSession()
             }
-        }
+        })
 
-        // Left group pinned left, middle group centred, End pinned right - the
-        // three-zone layout Zoom uses, so nothing jumps around as buttons
-        // appear and disappear.
-        // The width each button already carries is used as-is. Reassigning
-        // fittingSize here is what made the first version overlap: a borderless
-        // icon-above-label button reports a fitting width far narrower than the
-        // 64pt the toolbar lays out, so buttons ended up 31pt apart and the
-        // longer labels ("Stop Video") were clipped.
-        var x: CGFloat = 12
-        for control in left {
-            control.frame.origin = NSPoint(x: x, y: (Self.bottomHeight - control.frame.height) / 2)
-            bottomBar.addSubview(control)
-            x = control.frame.maxX + 4
-        }
-        let midWidth = mid.reduce(CGFloat(0)) { $0 + $1.frame.width + 4 }
-        var mx = max(x + 16, (bounds.width - midWidth) / 2)
-        for control in mid {
-            control.frame.origin = NSPoint(x: mx, y: (Self.bottomHeight - control.frame.height) / 2)
-            bottomBar.addSubview(control)
-            mx = control.frame.maxX + 4
-        }
-        end.frame.origin = NSPoint(x: bounds.width - end.frame.width - 12,
-                                   y: (Self.bottomHeight - end.frame.height) / 2)
-        bottomBar.addSubview(end)
+        railControls.forEach { rail.addSubview($0) }
     }
 
-    /// Room-wide host actions. In Zoom these sit inside the Participants panel,
-    /// not loose on the toolbar, so they sit here.
-    private func participantsMenu(count: Int) -> NSView {
-        let items: [(String, () -> Void)] = {
-            var out: [(String, () -> Void)] = [
-                ("Mute all", { Self.perform("Muted everyone") { $0.muteEveryone() } }),
-                ("Ask all to unmute", { Self.perform("Asked everyone to unmute") { $0.askEveryoneToUnmute() } }),
-            ]
-            if roster.contains(where: \.isRaisingHand) {
-                out.append(("Lower all hands", { Self.perform("Lowered all hands") { $0.lowerEveryHand() } }))
-            }
-            if roster.contains(where: \.isSpotlighted) {
-                out.append(("Clear spotlight", { Self.perform("Cleared spotlight") { $0.clearAllSpotlights() } }))
-            }
-            if !waiting.isEmpty {
-                out.append(("Admit all waiting", { Self.perform("Admitted everyone waiting") { $0.admitEveryoneWaiting() } }))
-            }
-            return out
-        }()
-        return Self.toolMenu("Participants \(count)", symbol: "person.2.fill", items: items)
+    /// Self view on top, then the controls down the rail.
+    private func layoutRail() {
+        let pad: CGFloat = 12
+        let width = Self.railWidth - pad * 2
+        // 16:9, because that is the shape of the OBS composite being sent.
+        let videoHeight = (width * 9 / 16).rounded()
+        var y = rail.bounds.height - pad - videoHeight
+        selfViewHost.frame = NSRect(x: pad, y: y, width: width, height: videoHeight)
+        selfVideo?.frame = selfViewHost.bounds
+
+        y -= 18
+        selfViewLabel.sizeToFit()
+        selfViewLabel.frame = NSRect(x: pad, y: y, width: width, height: 16)
+
+        y -= 8
+        for control in railControls {
+            let height: CGFloat = control is NSTextField ? 20 : 28
+            y -= height
+            control.frame = NSRect(x: pad, y: y, width: width, height: height)
+            y -= 2
+        }
     }
 
-    /// Zoom's own screen share, which is a different thing from the OBS
-    /// composite Greenroom sends as its camera - hence the explicit wording.
-    private func shareMenu() -> NSView {
-        guard let sdk = ParticipantGridWindowController.sdk else {
-            return Self.toolButton("Share", symbol: "rectangle.on.rectangle") {}
+    /// The students-overflow carousel. Only drawn when there is a second page.
+    private func layoutPager(pages: Int, y: CGFloat, width: CGFloat) {
+        let show = pages > 1
+        pageLabel.isHidden = !show
+        pagePrev?.isHidden = !show
+        pageNext?.isHidden = !show
+        guard show else { return }
+
+        if pagePrev == nil {
+            let previous = Self.pagerButton("chevron.left") { [weak self] in
+                guard let self else { return }
+                self.page = max(0, self.page - 1)
+                self.pageChanged()
+            }
+            let next = Self.pagerButton("chevron.right") { [weak self] in
+                guard let self, let pageCount = self.pageCount else { return }
+                self.page = min(pageCount - 1, self.page + 1)
+                self.pageChanged()
+            }
+            pagePrev = previous
+            pageNext = next
+            addSubview(previous)
+            addSubview(next)
         }
-        var items: [(String, () -> Void)] = sdk.shareableDisplays().map { display in
-            (display.label, { Self.perform("Started sharing \(display.label) in Zoom") { $0.startShare(displayID: display.id) } })
-        }
-        items.append(("Stop sharing", { Self.perform("Stopped sharing in Zoom") { $0.stopShare() } }))
-        return Self.toolMenu("Share", symbol: "rectangle.on.rectangle", items: items)
+        pageLabel.stringValue = "Page \(page + 1) of \(pages)"
+        pageLabel.sizeToFit()
+        let centreX = Self.railWidth + width / 2
+        pageLabel.frame = NSRect(x: centreX - pageLabel.frame.width / 2, y: y + 4,
+                                 width: pageLabel.frame.width, height: 16)
+        pagePrev?.frame = NSRect(x: pageLabel.frame.minX - 30, y: y + 1, width: 24, height: 22)
+        pageNext?.frame = NSRect(x: pageLabel.frame.maxX + 6, y: y + 1, width: 24, height: 22)
     }
 
-    private func reactionsMenu() -> NSView {
-        guard let sdk = ParticipantGridWindowController.sdk else {
-            return Self.toolButton("React", symbol: "hand.thumbsup") {}
+    private var pageCount: Int? {
+        roster.isEmpty ? nil : max(1, Int(ceil(Double(roster.count) / Double(Self.perPage))))
+    }
+
+    /// A page change swaps which students are on screen, so tiles, video
+    /// subscriptions and layout all have to follow immediately rather than
+    /// waiting for the next poll.
+    private func pageChanged() {
+        selected = nil
+        lastBarSignature = barSignature()
+        rebuildRail()
+        rebuildContextBar()
+        layoutEverything()
+        if let provider = lastVideoProvider { attachVideo(provider) }
+        if let provider = lastSelfProvider { attachSelfVideo(provider) }
+    }
+
+    // MARK: Menu contents
+
+    private func participantItems() -> [(String, () -> Void)] {
+        var out: [(String, () -> Void)] = [
+            ("Mute all", { Self.perform("Muted everyone") { $0.muteEveryone() } }),
+            ("Ask all to unmute", { Self.perform("Asked everyone to unmute") { $0.askEveryoneToUnmute() } })
+        ]
+        if roster.contains(where: \.isRaisingHand) {
+            out.append(("Lower all hands", { Self.perform("Lowered all hands") { $0.lowerEveryHand() } }))
         }
+        if roster.contains(where: \.isSpotlighted) {
+            out.append(("Clear spotlight", { Self.perform("Cleared spotlight") { $0.clearAllSpotlights() } }))
+        }
+        if !waiting.isEmpty {
+            out.append(("Admit all waiting", { Self.perform("Admitted everyone waiting") { $0.admitEveryoneWaiting() } }))
+        }
+        return out
+    }
+
+    private func reactionItems() -> [(String, () -> Void)] {
+        guard let sdk = ParticipantGridWindowController.sdk else { return [] }
         let raised = sdk.myHandIsRaised
-        var items: [(String, () -> Void)] = [
+        var out: [(String, () -> Void)] = [
             (raised ? "Lower my hand" : "Raise my hand",
              { Self.perform(raised ? "Lowered your hand" : "Raised your hand") { $0.setMyHand(raised: !raised) } })
         ]
         for reaction in ZoomMeetingSDKClient.Reaction.allCases {
-            items.append((reaction.rawValue, {
+            out.append((reaction.rawValue, {
                 Self.perform("Sent \(reaction.rawValue.lowercased())") { $0.send(reaction) }
             }))
         }
-        return Self.toolMenu("React", symbol: "hand.thumbsup", items: items)
+        return out
     }
 
-    /// Named Security, as Zoom names it. These are set once at the start of a
-    /// term rather than reached for mid-lesson, which is why they are behind a
-    /// menu rather than on the bar.
-    private func securityMenu() -> NSView {
-        var items: [(String, () -> Void)] = []
+    /// Named Security, as Zoom names it. Set once at the start of a term rather
+    /// than reached for mid-lesson, which is why these sit behind a menu.
+    private func securityItems() -> [(String, () -> Void)] {
+        var out: [(String, () -> Void)] = []
         func toggle(_ title: String, _ on: Bool, _ apply: @escaping (Bool) -> Void) {
-            items.append(((on ? "\u{2713} " : "   ") + title, { apply(!on) }))
+            out.append(((on ? "\u{2713} " : "   ") + title, { apply(!on) }))
         }
         toggle("Participants can unmute themselves", flags.unmuteSelfAllowed) { on in
             Self.perform(on ? "Participants may unmute themselves" : "Participants may not unmute themselves") {
@@ -710,9 +872,6 @@ private final class RootView: NSView {
         toggle("Participants can chat", flags.chatAllowed) { on in
             Self.perform(on ? "Chat allowed" : "Chat turned off") { $0.setAllowChat(on) }
         }
-        toggle("Participants can share screen", flags.shareAllowed) { on in
-            Self.perform(on ? "Screen share allowed" : "Screen share turned off") { $0.setAllowShare(on) }
-        }
         toggle("Participants can rename themselves", flags.renameAllowed) { on in
             Self.perform(on ? "Renaming allowed" : "Renaming turned off") { $0.setAllowRename(on) }
         }
@@ -721,8 +880,14 @@ private final class RootView: NSView {
                 $0.setFocusMode(on)
             }
         }
+        let stopped = flags.incomingAudioStopped
+        out.append((stopped ? "Restore incoming audio" : "Silence the room on this Mac only", {
+            Self.perform(stopped ? "Restored incoming audio" : "Silenced the room on this Mac only") {
+                $0.setIncomingAudioStopped(!stopped)
+            }
+        }))
         if flags.canSuspend {
-            items.append(("Suspend all activities\u{2026}", {
+            out.append(("Suspend all activities\u{2026}", {
                 Self.confirm(title: "Suspend all participant activities?",
                              message: "This stops every camera, microphone, share and chat in the meeting at once. Use it only if something has gone wrong.",
                              confirm: "Suspend") {
@@ -730,13 +895,37 @@ private final class RootView: NSView {
                 }
             }))
         }
-        let stopped = flags.incomingAudioStopped
-        items.append((stopped ? "Restore incoming audio" : "Silence the room on this Mac only", {
-            Self.perform(stopped ? "Restored incoming audio" : "Silenced the room on this Mac only") {
-                $0.setIncomingAudioStopped(!stopped)
-            }
-        }))
-        return Self.toolMenu("Security", symbol: "shield.lefthalf.filled", items: items)
+        return out
+    }
+
+    /// Zoom's (i) button: how somebody else gets into this room.
+    private static func showMeetingInfo() {
+        guard let invite = ParticipantGridWindowController.sdk?.meetingInvite() else {
+            ParticipantGridWindowController.report("Meeting details are not available yet.")
+            return
+        }
+        let alert = NSAlert()
+        alert.messageText = invite.topic.isEmpty ? "Meeting info" : invite.topic
+        alert.informativeText = "Anyone with this link can join."
+        alert.addButton(withTitle: "Copy invitation")
+        alert.addButton(withTitle: "Done")
+
+        // Selectable, so the link can be picked out by hand as well as copied
+        // wholesale.
+        let field = NSTextView(frame: NSRect(x: 0, y: 0, width: 340, height: 84))
+        field.string = invite.shareText
+        field.isEditable = false
+        field.isSelectable = true
+        field.drawsBackground = false
+        field.font = .monospacedSystemFont(ofSize: 11, weight: .regular)
+        alert.accessoryView = field
+
+        NSApp.activate(ignoringOtherApps: true)
+        if alert.runModal() == .alertFirstButtonReturn {
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(invite.shareText, forType: .string)
+            ParticipantGridWindowController.report("Invitation copied \u{2014} paste it wherever you invite people.")
+        }
     }
 
 
@@ -832,6 +1021,64 @@ private final class RootView: NSView {
             bar.addSubview(control)
             x = control.frame.maxX + 8
         }
+    }
+
+    /// A section eyebrow: mono, uppercase, letter-spaced, per DESIGN.md.
+    private static func railHeader(_ title: String) -> NSTextField {
+        let label = NSTextField(labelWithString: title.uppercased())
+        label.font = .monospacedSystemFont(ofSize: 10, weight: .semibold)
+        label.textColor = .tertiaryLabelColor
+        return label
+    }
+
+    /// A full-width rail row: icon, then label, left aligned. Reads as a control
+    /// panel rather than a toolbar, which is the point of the rail.
+    private static func railRow(_ title: String,
+                                symbol: String,
+                                alert: Bool = false,
+                                destructive: Bool = false,
+                                action: @escaping () -> Void) -> NSButton {
+        let button = ClosureButton(action)
+        button.title = " " + title
+        button.image = NSImage(systemSymbolName: symbol, accessibilityDescription: title)
+        button.imagePosition = .imageLeading
+        button.alignment = .left
+        button.bezelStyle = .rounded
+        button.font = .systemFont(ofSize: 12)
+        // systemRed, not the brand accent: DESIGN.md bars the accent from text,
+        // and red-for-muted is the convention being matched anyway.
+        button.contentTintColor = destructive || alert ? .systemRed : .labelColor
+        return button
+    }
+
+    private static func railMenuRow(_ title: String,
+                                    symbol: String,
+                                    items: [(String, () -> Void)]) -> NSView {
+        let menu = NSMenu()
+        for (label, action) in items {
+            let carrier = BlockMenuItem(title: label, action)
+            let item = NSMenuItem(title: label, action: #selector(BlockMenuItem.fire), keyEquivalent: "")
+            item.target = carrier
+            item.representedObject = carrier   // NSMenuItem.target is weak
+            menu.addItem(item)
+        }
+        let button = ToolMenuButton(menu: menu)
+        button.title = " " + title + "\u{2026}"
+        button.image = NSImage(systemSymbolName: symbol, accessibilityDescription: title)
+        button.imagePosition = .imageLeading
+        button.alignment = .left
+        button.bezelStyle = .rounded
+        button.font = .systemFont(ofSize: 12)
+        button.contentTintColor = .labelColor
+        return button
+    }
+
+    private static func pagerButton(_ symbol: String, action: @escaping () -> Void) -> NSButton {
+        let button = ClosureButton(action)
+        button.image = NSImage(systemSymbolName: symbol, accessibilityDescription: symbol)
+        button.imagePosition = .imageOnly
+        button.bezelStyle = .rounded
+        return button
     }
 
     /// One toolbar button, icon above a small label, the way Zoom draws them.

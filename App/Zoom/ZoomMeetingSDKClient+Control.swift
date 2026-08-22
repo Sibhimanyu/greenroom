@@ -165,6 +165,46 @@ extension ZoomMeetingSDKClient {
         return run { $0.raiseHand(raised, userID: me) }
     }
 
+    // MARK: - Meeting info, for the Info button
+
+    /// What Zoom's own (i) button shows: how someone else gets into this room.
+    ///
+    /// All of it comes from one accessor, `getMeetingProperty`, rather than
+    /// separate getters - which is why searching the headers for "getMeetingURL"
+    /// finds nothing.
+    struct MeetingInvite {
+        var topic: String
+        var number: String
+        var passcode: String
+        var joinURL: String
+
+        /// One block of text to hand to a parent or a colleague. Built here so
+        /// the panel and any future share sheet cannot word it differently.
+        var shareText: String {
+            var lines: [String] = []
+            if !topic.isEmpty { lines.append(topic) }
+            if !joinURL.isEmpty { lines.append("Join: \(joinURL)") }
+            if !number.isEmpty { lines.append("Meeting ID: \(number)") }
+            if !passcode.isEmpty { lines.append("Passcode: \(passcode)") }
+            return lines.joined(separator: "\n")
+        }
+    }
+
+    func meetingInvite() -> MeetingInvite? {
+        guard let service = ZoomSDK.shared().getMeetingService() else { return nil }
+        func property(_ command: MeetingPropertyCmd) -> String {
+            service.getMeetingProperty(command) ?? ""
+        }
+        let invite = MeetingInvite(
+            topic: property(MeetingPropertyCmd_Topic),
+            number: property(MeetingPropertyCmd_MeetingNumber),
+            passcode: property(MeetingPropertyCmd_MeetingPassword),
+            joinURL: property(MeetingPropertyCmd_JoinMeetingUrl))
+        // Nothing at all means we are not in a meeting yet; the caller should
+        // show nothing rather than an empty panel.
+        return invite.number.isEmpty && invite.joinURL.isEmpty ? nil : invite
+    }
+
     // MARK: - Sharing
 
     /// Zoom's own screen share, which is separate from the OBS composite this

@@ -1306,7 +1306,10 @@ final class CoordinatorController: ObservableObject {
                 guard let self else { return }
                 ChatWindowController.reveal(layout: self.workspaceLayout)
             },
-            toggleRecording: { [weak self] in self?.toggleRecording() })
+            toggleRecording: { [weak self] in self?.toggleRecording() },
+            snapBack: { [weak self] in self?.snapWindowsBack() },
+            toggleSpeaker: { [weak self] in self?.toggleSpeakerTile() },
+            showMainWindow: { [weak self] in self?.showMainWindow() })
         let startedAt = Date()
         Analytics.track(.surfaceShown, [
             .surface: "participants",
@@ -1325,10 +1328,10 @@ final class CoordinatorController: ObservableObject {
                     meetingNumber: digits,
                     startedAt: startedAt,
                     obsRecording: self.isRecording,
-                    presetName: self.meetingPresets.first { $0.number == digits }?.name ?? "")
+                    presetName: self.meetingPresets.first { $0.number == digits }?.name ?? "",
+                    speakerHidden: self.speakerTileQuickHidden)
                 ParticipantGridWindowController.refresh(on: screen,
                                                        session: session,
-                                                       includeSelf: !self.hideSelfView,
                                                        windowed: reference == nil)
                 // One second rather than the gallery's old two: this roster now
                 // carries live state - who is talking, whose hand is up - and a

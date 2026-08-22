@@ -61,39 +61,16 @@ enum SpeakerWindowController {
             // again later, so it is detached rather than destroyed.
             shownVideo?.removeFromSuperview()
         } else {
-            let created = NSWindow(contentRect: slot ?? NSRect(x: 0, y: 0, width: 505, height: 351),
-                                   styleMask: [.titled, .closable, .miniaturizable, .resizable],
-                                   backing: .buffered,
-                                   defer: false)
-            created.title = "Speaker"
-            created.isReleasedWhenClosed = false
-            // Black rather than the window background: video letterboxing
-            // against grey reads as a rendering fault.
-            created.backgroundColor = .black
-            window = created
+            guard let created = makeWindow(slot: slot) else { return }
             hosting = created
         }
 
-        // An empty state BEHIND the video, not instead of it. Added once.
-        //
-        // An active-speaker element renders whoever is currently speaking, so
-        // alone in a room it legitimately has nothing to draw and the window is
-        // simply black. Default Zoom UI hides that by showing your own
-        // self-view; here the honest black reads as broken. A label underneath
-        // says which it is, and the video covers it the moment anyone speaks.
+        // The message lives behind the video, added once: an active-speaker
+        // element renders whoever is currently speaking, so before anyone does
+        // there is legitimately nothing to draw and the window would be plain
+        // black. The video simply covers this the moment someone speaks.
+        ensurePlaceholder(in: hosting)
         let content = hosting.contentView ?? NSView()
-        if !content.subviews.contains(where: { $0 is NSTextField }) {
-        let placeholder = NSTextField(labelWithString: "Waiting for someone to speak")
-        placeholder.font = .systemFont(ofSize: 13)
-        placeholder.textColor = .secondaryLabelColor
-        placeholder.alignment = .center
-        placeholder.translatesAutoresizingMaskIntoConstraints = false
-        content.addSubview(placeholder)
-        NSLayoutConstraint.activate([
-            placeholder.centerXAnchor.constraint(equalTo: content.centerXAnchor),
-            placeholder.centerYAnchor.constraint(equalTo: content.centerYAnchor)
-        ])
-        }
 
         // The SDK's view is sized by us and must follow the window, so it is
         // pinned rather than left at whatever frame it was created with.
@@ -120,6 +97,65 @@ enum SpeakerWindowController {
         } else if window.isVisible {
             window.orderOut(nil)
         }
+    }
+
+    private static func makeWindow(slot: NSRect?) -> NSWindow? {
+        if let window { return window }
+        let created = NSWindow(contentRect: slot ?? NSRect(x: 0, y: 0, width: 505, height: 351),
+                               styleMask: [.titled, .closable, .miniaturizable, .resizable],
+                               backing: .buffered,
+                               defer: false)
+        created.title = "Speaker"
+        created.isReleasedWhenClosed = false
+        // Black rather than the window background: video letterboxing against
+        // grey reads as a rendering fault.
+        created.backgroundColor = .black
+        window = created
+        return created
+    }
+
+    /// Adds the message once, behind wherever video goes.
+    private static func ensurePlaceholder(in window: NSWindow) {
+        let content = window.contentView ?? NSView()
+        guard !content.subviews.contains(where: { $0 is NSTextField }) else { return }
+        let placeholder = NSTextField(labelWithString: emptyMessage)
+        placeholder.font = .systemFont(ofSize: 13)
+        placeholder.textColor = .secondaryLabelColor
+        placeholder.alignment = .center
+        placeholder.maximumNumberOfLines = 3
+        placeholder.usesSingleLineMode = false
+        placeholder.lineBreakMode = .byWordWrapping
+        placeholder.translatesAutoresizingMaskIntoConstraints = false
+        content.addSubview(placeholder)
+        NSLayoutConstraint.activate([
+            placeholder.centerXAnchor.constraint(equalTo: content.centerXAnchor),
+            placeholder.centerYAnchor.constraint(equalTo: content.centerYAnchor),
+            placeholder.widthAnchor.constraint(lessThanOrEqualTo: content.widthAnchor, constant: -24)
+        ])
+    }
+
+    fileprivate static let emptyMessage =
+        "No one is in the class yet.\nWhoever is speaking will appear here."
+
+    /// Shows the window with no video in it, just the message.
+    ///
+    /// This deliberately reverses an earlier decision. When the tile was black
+    /// while alone in a room it looked broken, so it fell back to showing your
+    /// own camera. Now that the control panel carries a large self view of its
+    /// own, a second copy of your face in the corner is redundant - and it hid
+    /// the more useful fact, which is that nobody has arrived. Saying so is
+    /// better than filling the space.
+    static func showEmpty(layout: WorkspaceLayout, visible: Bool) {
+        let slot = ChatWindowController.zoomSlotNSFrame(for: layout)
+        guard let hosting = window ?? makeWindow(slot: slot) else { return }
+        // Detach whatever was rendering, so the SDK is not drawing over the
+        // message. The view belongs to the SDK and may be shown again later, so
+        // it is detached rather than destroyed.
+        shownVideo?.removeFromSuperview()
+        shownVideo = nil
+        ensurePlaceholder(in: hosting)
+        if let slot, hosting.frame != slot { hosting.setFrame(slot, display: true) }
+        applyVisibility(visible, to: hosting)
     }
 
     static var isOpen: Bool { window?.isVisible ?? false }

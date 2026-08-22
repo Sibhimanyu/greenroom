@@ -1263,13 +1263,17 @@ final class CoordinatorController: ObservableObject {
                                                      layout: self.workspaceLayout,
                                                      visible: wantVisible)
                     }
-                } else if let selfView = self.zoomChatClient.makeSelfView(frame: slot) {
-                    SpeakerWindowController.show(videoView: selfView,
-                                                 layout: self.workspaceLayout,
-                                                 visible: wantVisible)
+                } else {
+                    // Deliberately NOT your own camera any more. It used to fall
+                    // back to a self view because a black tile looked broken, but
+                    // the control panel now carries a large self view of its own,
+                    // so a second copy of your face here was redundant - and it
+                    // buried the more useful fact, that nobody has arrived.
+                    SpeakerWindowController.showEmpty(layout: self.workspaceLayout,
+                                                      visible: wantVisible)
                     if !announcedSelfView {
                         announcedSelfView = true
-                        self.log("Nobody else here yet \u{2014} showing your own camera until someone joins.")
+                        self.log("Nobody else here yet \u{2014} the speaker tile says so until someone joins. Your own picture is on the participants panel.")
                     }
                 }
                 try? await Task.sleep(nanoseconds: 2_000_000_000)
@@ -1297,6 +1301,11 @@ final class CoordinatorController: ObservableObject {
         guard peopleViewWanted || participantPanelOnMainDisplay else {
             log("Participants panel skipped \u{2014} no second display to put it on. Connect your reference display, or allow it on this screen in Settings (\u{2318},) \u{2192} Second display.")
             return
+        }
+        // Surface subscription refusals. A black tile with no explanation was
+        // exactly how this went unnoticed until a second person joined.
+        zoomChatClient.onVideoSubscribeFailure = { [weak self] message in
+            self?.log(message)
         }
         ParticipantGridWindowController.configure(
             client: zoomChatClient,

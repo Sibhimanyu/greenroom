@@ -55,6 +55,33 @@ final class ZoomMeetingSDKClient: NSObject, ObservableObject {
     /// Held for the meeting's lifetime. The SDK renders into views owned by
     /// these objects, so dropping them would drop the video.
     private var videoContainer: ZoomSDKVideoContainer?
+
+    /// Called when the SDK refuses a video subscription, so the reason reaches
+    /// the status log instead of showing up as an unexplained black tile.
+    var onVideoSubscribeFailure: ((String) -> Void)?
+
+    /// The resolution to ask for, chosen from how large the view actually is.
+    ///
+    /// This is the fix for participant tiles rendering black. Without an explicit
+    /// resolution the SDK subscribes at high quality, and it enforces hard quotas:
+    /// ZoomSDKVideoSubscribe_Fail_HasSubscribe1080POr720P,
+    /// _HasSubscribeTwo720P and _HasSubscribeExceededLimit. Two or three greedy
+    /// streams exhaust the allowance and every later subscription is refused -
+    /// silently, because nothing was listening to the container delegate. Asking
+    /// for what a 300pt tile can actually display leaves room for a whole class.
+    private static func resolution(for frame: NSRect) -> ZoomSDKVideoRenderResolution {
+        switch frame.height {
+        case ..<200: return ZoomSDKVideoRenderResolution_180p
+        case ..<420: return ZoomSDKVideoRenderResolution_360p
+        default: return ZoomSDKVideoRenderResolution_720p
+        }
+    }
+
+    /// Wires the container delegate once, so failures are never silent again.
+    private func adopt(container: ZoomSDKVideoContainer) {
+        videoContainer = container
+        if container.delegate !== self { container.delegate = self }
+    }
     private var activeSpeakerElement: ZoomSDKActiveVideoElement?
 
     /// A view showing whoever is currently speaking, for us to place wherever
@@ -89,6 +116,10 @@ final class ZoomMeetingSDKClient: NSObject, ObservableObject {
             return ActiveSpeakerResult(view: nil, detail: "createActiveVideoElement=\(created.rawValue)")
         }
         activeSpeakerElement = element
+        // Sized to the side-column tile, not to whatever the SDK would pick.
+        // The active speaker is one stream competing with a whole grid for the
+        // same subscription quota.
+        _ = element.setResolution(Self.resolution(for: frame))
         let resized = element.resize(frame)
         let started = element.startActiveView(true)
         let shown = element.showVideo(true)
@@ -126,10 +157,13 @@ final class ZoomMeetingSDKClient: NSObject, ObservableObject {
             return existing.getVideoView()
         }
         guard let container = ZoomSDK.shared().getMeetingService()?.getVideoContainer() else { return nil }
-        videoContainer = container
+        adopt(container: container)
         var element = ZoomSDKNormalVideoElement(frame: frame)
         guard container.createNormalVideoElement(&element) == ZoomSDKError_Success else { return nil }
         element.userid = userID
+        // Ask for a tile-sized stream BEFORE subscribing. After subscribing is
+        // too late: the quota is spent at subscribe time.
+        _ = element.setResolution(Self.resolution(for: frame))
         let subscribed = element.subscribeVideo(true)
         _ = element.showVideo(true)
         guard subscribed == ZoomSDKError_Success else {
@@ -145,7 +179,7 @@ final class ZoomMeetingSDKClient: NSObject, ObservableObject {
     /// A SECOND self-video element, for the control panel's own self view.
     ///
     /// An NSView has exactly one superview, so the panel and the speaker window
-    /// cannot both host the view `makeSelfView` returns - whichever parented it
+    /// cannot both host one view - whichever parented it
     /// last would steal it, and the other would go blank. They get separate
     /// render elements instead. The SDK is happy to draw the same user twice.
     private var railSelfElement: ZoomSDKNormalVideoElement?
@@ -159,10 +193,14 @@ final class ZoomMeetingSDKClient: NSObject, ObservableObject {
         guard let service = ZoomSDK.shared().getMeetingService(),
               let container = service.getVideoContainer(),
               let me = service.getMeetingActionController().getMyself()?.getUserID() else { return nil }
-        videoContainer = container
+        adopt(container: container)
         var element = ZoomSDKNormalVideoElement(frame: frame)
         guard container.createNormalVideoElement(&element) == ZoomSDKError_Success else { return nil }
         element.userid = me
+        // Capped at 360p regardless of how large the rail draws it. This is a
+        // monitor of our own outgoing composite, and letting it claim 720p was
+        // starving the students' tiles of the subscription quota.
+        _ = element.setResolution(ZoomSDKVideoRenderResolution_360p)
         guard element.subscribeVideo(true) == ZoomSDKError_Success else {
             _ = container.clean(element)
             return nil
@@ -172,42 +210,8 @@ final class ZoomMeetingSDKClient: NSObject, ObservableObject {
         return element.getVideoView()
     }
 
-    /// Kept apart from `participantElements` on purpose: that dictionary is
-    /// pruned against the gallery's participant list, which excludes self, so
-    /// storing the self view there would have it deleted on the next pass.
-    private var selfViewElement: ZoomSDKNormalVideoElement?
-
-    /// Your own video, for when nobody else is in the meeting.
-    ///
-    /// The active-speaker element renders whoever is SPEAKING, so alone in a
-    /// room it has nothing to draw and the window is black. Default Zoom UI
-    /// covers that by falling back to your own video; custom UI has to do it
-    /// explicitly, which is what this is for. A normal element bound to our own
-    /// user ID, i.e. self treated as just another participant.
-    func makeSelfView(frame: NSRect) -> NSView? {
-        guard didUseCustomUI else { return nil }
-        if let existing = selfViewElement {
-            _ = existing.resize(frame)
-            return existing.getVideoView()
-        }
-        guard let service = ZoomSDK.shared().getMeetingService(),
-              let container = service.getVideoContainer(),
-              let me = service.getMeetingActionController().getMyself()?.getUserID() else { return nil }
-        videoContainer = container
-        var element = ZoomSDKNormalVideoElement(frame: frame)
-        guard container.createNormalVideoElement(&element) == ZoomSDKError_Success else { return nil }
-        element.userid = me
-        guard element.subscribeVideo(true) == ZoomSDKError_Success else {
-            _ = container.clean(element)
-            return nil
-        }
-        _ = element.showVideo(true)
-        selfViewElement = element
-        return element.getVideoView()
-    }
-
     /// Whether anyone other than us is in the meeting - the thing that decides
-    /// between the self view and the active-speaker view.
+    /// between the empty message and the active-speaker view.
     var hasOtherParticipants: Bool {
         !participantUserIDs(excludingSelf: true).isEmpty
     }
@@ -233,11 +237,6 @@ final class ZoomMeetingSDKClient: NSObject, ObservableObject {
             _ = videoContainer?.clean(element)
         }
         activeSpeakerElement = nil
-        if let selfElement = selfViewElement {
-            _ = selfElement.subscribeVideo(false)
-            _ = videoContainer?.clean(selfElement)
-        }
-        selfViewElement = nil
         for (_, element) in participantElements {
             _ = element.subscribeVideo(false)
             _ = videoContainer?.clean(element)
@@ -631,6 +630,40 @@ final class ZoomMeetingSDKClient: NSObject, ObservableObject {
         isJoined = false
         isHosting = false
     }
+}
+
+// MARK: - Video container delegate
+
+/// Subscription failures were the cause of participant tiles rendering black,
+/// and nothing was listening for them. Now every refusal reaches the status log
+/// with the SDK's own reason.
+extension ZoomMeetingSDKClient: ZoomSDKVideoContainerDelegate {
+
+    func onSubscribeUserFail(_ error: ZoomSDKVideoSubscribeFailReason,
+                             videoElement element: ZoomSDKVideoElement) {
+        let reason: String
+        switch error {
+        case ZoomSDKVideoSubscribe_Fail_ViewOnly:
+            reason = "this account is in view-only mode"
+        case ZoomSDKVideoSubscribe_Fail_NotInMeeting:
+            reason = "that person is no longer in the meeting"
+        case ZoomSDKVideoSubscribe_Fail_HasSubscribe1080POr720P,
+             ZoomSDKVideoSubscribe_Fail_HasSubscribe720P,
+             ZoomSDKVideoSubscribe_Fail_HasSubscribeTwo720P:
+            reason = "too many high-quality streams already open"
+        case ZoomSDKVideoSubscribe_Fail_HasSubscribeExceededLimit:
+            reason = "Zoom's limit on simultaneous video streams was reached"
+        case ZoomSDKVideoSubscribe_Fail_TooFrequentCall:
+            reason = "requests came too quickly; it should recover on the next pass"
+        default:
+            reason = "reason code \(error.rawValue)"
+        }
+        onVideoSubscribeFailure?("A participant's video could not start \u{2014} \(reason).")
+    }
+
+    func onRenderUserChanged(_ element: ZoomSDKVideoElement?, user userid: UInt32) {}
+
+    func onRenderDataTypeChanged(_ element: ZoomSDKVideoElement?, dataType type: VideoRenderDataType) {}
 }
 
 enum ZoomMeetingSDKError: LocalizedError {

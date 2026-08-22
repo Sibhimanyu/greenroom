@@ -288,7 +288,33 @@ private final class RootView: NSView {
     /// asked for, and it also settles a technical problem - with a dedicated
     /// self view on the left there is no reason for the grid to include you, so
     /// nothing fights over a single SDK render element.
-    private static let railWidth: CGFloat = 380
+    /// The rail/grid split is not fixed. Empty, the class side has nothing to
+    /// show, so the rail takes most of the display and your own picture is large.
+    /// As students arrive the grid earns the space back and the rail shrinks
+    /// toward a floor that still fits its controls.
+    ///
+    /// Started life at a flat 300pt, which read as 20/80 on a 1920 display: a
+    /// postage-stamp self view next to an enormous empty rectangle.
+    private static func railFraction(students: Int) -> CGFloat {
+        switch students {
+        case 0: return 0.62
+        case 1...2: return 0.48
+        case 3...4: return 0.40
+        case 5...9: return 0.32
+        default: return 0.26
+        }
+    }
+
+    /// Never narrower than the controls need, never wider than two thirds.
+    private var railWidth: CGFloat {
+        let ideal = bounds.width * Self.railFraction(students: roster.count)
+        return max(340, min(ideal, bounds.width * 0.66)).rounded()
+    }
+
+    /// Controls are laid in as many columns as the rail can hold at a readable
+    /// row width. Without this a 1200pt rail would draw 1200pt-wide buttons,
+    /// which looks like a mistake rather than a choice.
+    private static let railColumnWidth: CGFloat = 340
     /// How many students fit on one page before the carousel appears. Fixed
     /// rather than computed from the area: a page size that changed as people
     /// joined would reshuffle faces mid-lesson, which is exactly when a teacher
@@ -519,9 +545,16 @@ private final class RootView: NSView {
 
     // MARK: Layout
 
+    private var lastRailWidth: CGFloat = 0
+
     private func layoutEverything() {
         let width = bounds.width
         let showContext = selected != nil
+        // A join or a leave moves the divider, and DESIGN.md budgets 250ms for a
+        // layout move. Animated only when the width actually changes, so the
+        // one-second poll does not keep the whole panel in motion.
+        let railChanged = abs(railWidth - lastRailWidth) > 1 && lastRailWidth > 0
+        lastRailWidth = railWidth
 
         topBar.frame = NSRect(x: 0, y: bounds.height - Self.barHeight,
                               width: width, height: Self.barHeight)
@@ -529,28 +562,46 @@ private final class RootView: NSView {
         bottomBar.isHidden = true
         // Spans only the grid, not the rail: it describes a selected student, and
         // the students are on the right.
-        contextBar.frame = NSRect(x: Self.railWidth, y: 0,
-                                  width: max(0, width - Self.railWidth),
+        contextBar.frame = NSRect(x: railWidth, y: 0,
+                                  width: max(0, width - railWidth),
                                   height: showContext ? Self.contextHeight : 0)
         contextBar.isHidden = !showContext
 
         let gridBottom = Self.bottomHeight + (showContext ? Self.contextHeight : 0)
         let bodyHeight = max(0, bounds.height - Self.barHeight - gridBottom)
-        rail.frame = NSRect(x: 0, y: gridBottom, width: Self.railWidth, height: bodyHeight)
-
-        // The carousel row sits between the grid and whatever is below it, and
-        // only takes space when there is more than one page.
         let pages = max(1, Int(ceil(Double(roster.count) / Double(Self.perPage))))
         let pagerHeight: CGFloat = pages > 1 ? 24 : 0
-        gridHost.frame = NSRect(x: Self.railWidth,
+
+        let railTarget = NSRect(x: 0, y: gridBottom, width: railWidth, height: bodyHeight)
+        let gridTarget = NSRect(x: railWidth,
                                 y: gridBottom + pagerHeight,
-                                width: max(0, width - Self.railWidth),
+                                width: max(0, width - railWidth),
                                 height: max(0, bodyHeight - pagerHeight))
-        layoutPager(pages: pages, y: gridBottom, width: width - Self.railWidth)
+
+        // A join or a leave moves the divider, and DESIGN.md budgets 250ms for a
+        // layout move. Animated only when the width actually changed, so the
+        // one-second poll does not keep the panel permanently in motion.
+        if railChanged {
+            NSAnimationContext.runAnimationGroup { context in
+                context.duration = 0.25
+                context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+                rail.animator().frame = railTarget
+                gridHost.animator().frame = gridTarget
+            }
+            // Contents are placed at the destination immediately. Animating the
+            // rail's own subviews as well would have them arrive at different
+            // times and read as a stutter rather than a slide.
+            rail.frame = railTarget
+            gridHost.frame = gridTarget
+        } else {
+            rail.frame = railTarget
+            gridHost.frame = gridTarget
+        }
+        layoutPager(pages: pages, y: gridBottom, width: width - railWidth)
         layoutRail()
 
-        emptyState.frame = NSRect(x: Self.railWidth + 40, y: gridHost.frame.midY - 40,
-                                  width: max(80, width - Self.railWidth - 80), height: 80)
+        emptyState.frame = NSRect(x: railWidth + 40, y: gridHost.frame.midY - 40,
+                                  width: max(80, width - railWidth - 80), height: 80)
         emptyState.isHidden = !roster.isEmpty
         layoutHeaderLabels()
         layoutTiles()
@@ -825,41 +876,77 @@ private final class RootView: NSView {
         railControls.forEach { rail.addSubview($0) }
     }
 
-    /// Self view on top, then the controls down the rail.
+    /// Two shapes, chosen by how much width the rail has.
+    ///
+    /// Wide (nobody has joined yet, so the rail owns most of the display): your
+    /// picture on the left at whatever size fits, controls in a column beside it.
+    /// Narrow (a full class, and the grid has taken the space back): the classic
+    /// stack, picture on top and controls underneath.
+    ///
+    /// The first attempt only wrapped controls into a second column when the
+    /// first ran out of vertical room - which on a 1036pt-tall rail never
+    /// happened, so a 1191pt rail drew a single 381pt column of buttons with 780pt
+    /// of nothing beside it.
     private func layoutRail() {
         let pad: CGFloat = 12
-        let width = Self.railWidth - pad * 2
-        // 16:9, because that is the shape of the OBS composite being sent.
-        let videoHeight = (width * 9 / 16).rounded()
-        var y = rail.bounds.height - pad - videoHeight
-        selfViewHost.frame = NSRect(x: pad, y: y, width: width, height: videoHeight)
+        let available = rail.bounds.width - pad * 2
+        guard available > 0, rail.bounds.height > 0 else { return }
+
+        let controlWidth = Self.railColumnWidth
+        let sideBySide = available >= controlWidth + 320 + pad
+
+        if sideBySide {
+            // Controls hug the right edge; the picture takes everything left.
+            let mediaWidth = available - controlWidth - pad
+            layoutSelfBlock(x: pad, width: mediaWidth, top: rail.bounds.height - pad)
+            layoutControlColumn(x: pad + mediaWidth + pad,
+                                width: controlWidth,
+                                top: rail.bounds.height - pad)
+        } else {
+            let afterMedia = layoutSelfBlock(x: pad, width: available,
+                                             top: rail.bounds.height - pad)
+            layoutControlColumn(x: pad, width: available, top: afterMedia - 10)
+        }
+    }
+
+    /// Your picture, its caption, and the microphone meter, as one block.
+    /// Returns the y it finished at.
+    @discardableResult
+    private func layoutSelfBlock(x: CGFloat, width: CGFloat, top: CGFloat) -> CGFloat {
+        // 16:9, capped so a very wide rail does not push the meter off the
+        // bottom.
+        let height = min((width * 9 / 16).rounded(), rail.bounds.height * 0.55)
+        let mediaWidth = min((height * 16 / 9).rounded(), width)
+        var y = top - height
+        selfViewHost.frame = NSRect(x: x, y: y, width: mediaWidth, height: height)
         selfVideo?.frame = selfViewHost.bounds
 
         y -= 18
-        selfViewLabel.sizeToFit()
-        selfViewLabel.frame = NSRect(x: pad, y: y, width: width, height: 16)
+        selfViewLabel.frame = NSRect(x: x, y: y, width: mediaWidth, height: 16)
 
-        // Microphone block, directly under your own picture: the two things you
-        // check about yourself in one place.
+        // The meter matches the picture's width, not the rail's, so the two read
+        // as one unit rather than two stacked things.
         y -= 22
-        micLabel.frame = NSRect(x: pad, y: y, width: width, height: 14)
+        micLabel.frame = NSRect(x: x, y: y, width: mediaWidth, height: 14)
         y -= 16
-        micMeter.frame = NSRect(x: pad, y: y, width: width, height: 12)
+        micMeter.frame = NSRect(x: x, y: y, width: mediaWidth, height: 12)
         y -= 26
-        micHint.frame = NSRect(x: pad, y: y, width: width, height: 24)
+        micHint.frame = NSRect(x: x, y: y, width: mediaWidth, height: 24)
+        return y
+    }
 
-        y -= 10
+    private func layoutControlColumn(x: CGFloat, width: CGFloat, top: CGFloat) {
+        var y = top
         for control in railControls {
             let height: CGFloat = control is NSTextField ? 20 : 28
             y -= height
-            control.frame = NSRect(x: pad, y: y, width: width, height: height)
+            control.frame = NSRect(x: x, y: y, width: width, height: height)
             y -= 2
         }
-
-        // Session facts at the foot of the rail, in mono because they are
-        // machine facts - the split DESIGN.md asks for.
-        y -= 10
-        statsLabel.frame = NSRect(x: pad, y: max(6, y - 30), width: width, height: 36)
+        // Session facts directly under the controls rather than pinned to the
+        // floor, so they stay attached to the column they belong to.
+        y -= 12
+        statsLabel.frame = NSRect(x: x, y: max(6, y - 36), width: width, height: 36)
     }
 
     /// The students-overflow carousel. Only drawn when there is a second page.
@@ -888,7 +975,7 @@ private final class RootView: NSView {
         }
         pageLabel.stringValue = "Page \(page + 1) of \(pages)"
         pageLabel.sizeToFit()
-        let centreX = Self.railWidth + width / 2
+        let centreX = railWidth + width / 2
         pageLabel.frame = NSRect(x: centreX - pageLabel.frame.width / 2, y: y + 4,
                                  width: pageLabel.frame.width, height: 16)
         pagePrev?.frame = NSRect(x: pageLabel.frame.minX - 30, y: y + 1, width: 24, height: 22)
@@ -1655,4 +1742,9 @@ private final class BlockMenuItem: NSObject {
         self.body = body
     }
     @objc func fire() { body() }
+}
+
+private extension CGFloat {
+    /// Small helper so the self-view sizing reads as one expression.
+    func clamped(max upper: CGFloat) -> CGFloat { Swift.min(self, upper) }
 }

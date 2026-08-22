@@ -767,7 +767,15 @@ final class CoordinatorController: ObservableObject {
                 // non-empty means the built-in client took the session, so
                 // it also covers joinAllInOne's cross-account fallback,
                 // which DOES need the native parking.
-                if sdkMeetingWindows().isEmpty {
+                // "No SDK windows" used to mean the built-in client did not
+                // take the session, so the native Zoom app must be handling it
+                // and needs its window tiled. Under custom UI that inference is
+                // backwards: the built-in client IS handling the meeting, it
+                // simply has no windows. Without this guard, every custom-UI
+                // session ended up hunting for a native Zoom window that does
+                // not exist and logging "Couldn't find Zoom's meeting window to
+                // tile" - observed live.
+                if sdkMeetingWindows().isEmpty, !zoomChatClient.didUseCustomUI {
                     parkZoomWindow()
                 }
             } catch is CancellationError {
@@ -1164,8 +1172,9 @@ final class CoordinatorController: ObservableObject {
         }
         let slot = ChatWindowController.zoomSlotNSFrame(for: workspaceLayout)
             ?? NSRect(x: 0, y: 0, width: 505, height: 351)
-        guard let videoView = zoomChatClient.makeActiveSpeakerView(frame: slot) else {
-            log("Custom UI: the SDK didn't hand back a speaker view. Falling back to no tile \u{2014} the meeting audio and your outgoing camera are unaffected.")
+        let speaker = zoomChatClient.makeActiveSpeakerView(frame: slot)
+        guard let videoView = speaker.view else {
+            log("Custom UI: no speaker view \u{2014} \(speaker.detail). Meeting audio and your outgoing camera are unaffected.")
             return
         }
         SpeakerWindowController.show(videoView: videoView, layout: workspaceLayout)
@@ -1175,7 +1184,10 @@ final class CoordinatorController: ObservableObject {
             ChatWindowController.fillSideColumn(layout: workspaceLayout)
             log("Speaker starts hidden (quick-hide mode) \u{2014} chat has the full column; \u{2303}\u{2325}\u{2318}Z shows it.")
         }
-        log("Custom UI: the speaker view is Greenroom's own window \u{2014} no Zoom chrome, nothing to park.")
+        // The SDK's own return codes go in the log too, not just on failure.
+        // A view that exists but renders nothing looks identical to a working
+        // one from out here, so the codes are the only way to tell them apart.
+        log("Custom UI: speaker view is Greenroom's own window (\(speaker.detail)).")
     }
 
     /// Keeps the custom-UI gallery in step with who is actually in the meeting.
@@ -1652,7 +1664,10 @@ final class CoordinatorController: ObservableObject {
         if client.isConnected {
             Task { try? await GreenroomScene.enforceLayerOrder(client: client) }
         }
-        if !sdkMeetingWindows().isEmpty {
+        if zoomChatClient.didUseCustomUI {
+            // Our own windows: re-place them rather than hunting for the SDK's.
+            presentMeetingSurfaces(resetQuickHideToDefault: false)
+        } else if !sdkMeetingWindows().isEmpty {
             parkBuiltInMeetingWindow()
             placePeopleViewWindow()
         } else if ZoomWindowManager.hasAccessibilityPermission, ZoomWindowManager.currentMeetingWindowFrame() != nil {

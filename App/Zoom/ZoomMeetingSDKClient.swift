@@ -56,21 +56,42 @@ final class ZoomMeetingSDKClient: NSObject, ObservableObject {
     /// A view showing whoever is currently speaking, for us to place wherever
     /// we like. Custom UI only: in default UI the SDK owns its own windows and
     /// there is no container to ask.
-    func makeActiveSpeakerView(frame: NSRect) -> NSView? {
-        guard didUseCustomUI else { return nil }
-        guard let container = ZoomSDK.shared().getMeetingService()?.getVideoContainer() else { return nil }
+    /// The view, plus what the SDK said while producing it.
+    ///
+    /// Every one of these calls returns a ZoomSDKError and the first version of
+    /// this code threw all of them away with `_ =`. That is the same mistake
+    /// that hid the black-screen bug in the OBS scene code: a call that fails
+    /// silently looks identical to one that worked, and the only visible
+    /// symptom is a window with nothing in it. So the codes come back out.
+    struct ActiveSpeakerResult {
+        var view: NSView?
+        var detail: String
+    }
+
+    func makeActiveSpeakerView(frame: NSRect) -> ActiveSpeakerResult {
+        guard didUseCustomUI else {
+            return ActiveSpeakerResult(view: nil, detail: "not in custom-UI mode")
+        }
+        guard let container = ZoomSDK.shared().getMeetingService()?.getVideoContainer() else {
+            return ActiveSpeakerResult(view: nil, detail: "getVideoContainer returned nil")
+        }
         videoContainer = container
         // The element is allocated by US with its frame, then handed to the
         // container to wire up - the container does not return a new one, it
         // populates the one you pass in.
         var element = ZoomSDKActiveVideoElement(frame: frame)
         let created = container.createActiveVideoElement(&element)
-        guard created == ZoomSDKError_Success else { return nil }
+        guard created == ZoomSDKError_Success else {
+            return ActiveSpeakerResult(view: nil, detail: "createActiveVideoElement=\(created.rawValue)")
+        }
         activeSpeakerElement = element
-        _ = element.resize(frame)
-        _ = element.startActiveView(true)
-        _ = element.showVideo(true)
-        return element.getVideoView()
+        let resized = element.resize(frame)
+        let started = element.startActiveView(true)
+        let shown = element.showVideo(true)
+        let view = element.getVideoView()
+        let detail = "resize=\(resized.rawValue) startActiveView=\(started.rawValue)"
+            + " showVideo=\(shown.rawValue) view=\(view == nil ? "nil" : "ok")"
+        return ActiveSpeakerResult(view: view, detail: detail)
     }
 
     /// One render element per participant, keyed by user ID. Cached because a
@@ -105,8 +126,14 @@ final class ZoomMeetingSDKClient: NSObject, ObservableObject {
         var element = ZoomSDKNormalVideoElement(frame: frame)
         guard container.createNormalVideoElement(&element) == ZoomSDKError_Success else { return nil }
         element.userid = userID
-        _ = element.subscribeVideo(true)
+        let subscribed = element.subscribeVideo(true)
         _ = element.showVideo(true)
+        guard subscribed == ZoomSDKError_Success else {
+            // Do not cache a failed subscription: keeping it would make every
+            // later pass believe this user is already wired up.
+            _ = videoContainer?.clean(element)
+            return nil
+        }
         participantElements[userID] = element
         return element.getVideoView()
     }

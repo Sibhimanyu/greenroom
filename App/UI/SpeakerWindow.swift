@@ -47,10 +47,28 @@ enum SpeakerWindowController {
             hosting = created
         }
 
+        // An empty state BEHIND the video, not instead of it.
+        //
+        // An active-speaker element renders whoever is currently speaking, so
+        // alone in a room it legitimately has nothing to draw and the window is
+        // simply black. Default Zoom UI hides that by showing your own
+        // self-view; here the honest black reads as broken. A label underneath
+        // says which it is, and the video covers it the moment anyone speaks.
+        let content = hosting.contentView ?? NSView()
+        let placeholder = NSTextField(labelWithString: "Waiting for someone to speak")
+        placeholder.font = .systemFont(ofSize: 13)
+        placeholder.textColor = .secondaryLabelColor
+        placeholder.alignment = .center
+        placeholder.translatesAutoresizingMaskIntoConstraints = false
+        content.addSubview(placeholder)
+        NSLayoutConstraint.activate([
+            placeholder.centerXAnchor.constraint(equalTo: content.centerXAnchor),
+            placeholder.centerYAnchor.constraint(equalTo: content.centerYAnchor)
+        ])
+
         // The SDK's view is sized by us and must follow the window, so it is
         // pinned rather than left at whatever frame it was created with.
         videoView.translatesAutoresizingMaskIntoConstraints = false
-        let content = hosting.contentView ?? NSView()
         content.addSubview(videoView)
         NSLayoutConstraint.activate([
             videoView.leadingAnchor.constraint(equalTo: content.leadingAnchor),

@@ -707,9 +707,14 @@ private final class RootView: NSView {
         return button
     }
 
-    fileprivate static func perform(_ success: String, _ body: (ZoomMeetingSDKClient) -> Bool) {
+    fileprivate static func perform(_ success: String,
+                                    _ body: (ZoomMeetingSDKClient) -> Bool) {
         guard let sdk = ParticipantGridWindowController.sdk else { return }
-        if body(sdk) {
+        let ok = body(sdk)
+        // The success string is a sentence for the status log and can name a
+        // student, so it is NEVER the event. Only the outcome travels.
+        Analytics.track(.controlAction, [.refused: ok ? "no" : "yes"])
+        if ok {
             ParticipantGridWindowController.report(success)
         } else {
             // Named as a refusal rather than a failure: the usual cause is

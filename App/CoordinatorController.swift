@@ -534,6 +534,14 @@ final class CoordinatorController: ObservableObject {
     @Published var participantPanelOnMainDisplay: Bool {
         didSet { defaults.set(participantPanelOnMainDisplay, forKey: "participantPanelOnMainDisplay") }
     }
+    /// Whether anonymous usage analytics are sent. On by default, and the switch
+    /// is honoured immediately as well as on the next launch.
+    @Published var analyticsEnabled: Bool {
+        didSet {
+            defaults.set(analyticsEnabled, forKey: "analyticsEnabled")
+            Analytics.setEnabled(analyticsEnabled)
+        }
+    }
     /// Which display the participant gallery opens on, by stable CGDisplay
     /// UUID. Empty = Automatic (the first non-main display). Persisted and
     /// carried in the transfer file so a saved setup targets the same
@@ -597,6 +605,9 @@ final class CoordinatorController: ObservableObject {
             ?? true
         peopleViewOnStart = defaults.bool(forKey: "peopleViewOnStart")
         participantPanelOnMainDisplay = defaults.bool(forKey: "participantPanelOnMainDisplay")
+        // Absent means never answered, which is opted IN - matching the consent
+        // the Apptics setup already carries. An explicit false stays false.
+        analyticsEnabled = (defaults.object(forKey: "analyticsEnabled") as? Bool) ?? true
         peopleViewDisplayUUID = defaults.string(forKey: "peopleViewDisplayUUID") ?? ""
         screenCaptureDisplayUUID = defaults.string(forKey: "screenCaptureDisplayUUID") ?? ""
         customUIMode = defaults.bool(forKey: "customUIMode")
@@ -697,6 +708,13 @@ final class CoordinatorController: ObservableObject {
         isRunning = true
         virtualCamActive = false
         statusLines = []
+        sessionStartedAt = Date()
+        // Shape only. No meeting number, no preset name - see Analytics.swift.
+        Analytics.track(.sessionStart, [
+            .mode: meetingMode == .join ? "join" : "start",
+            .customUI: customUIMode ? "yes" : "no",
+            .displays: String(NSScreen.screens.count)
+        ])
 
         startTask = Task {
             do {
@@ -807,6 +825,11 @@ final class CoordinatorController: ObservableObject {
     func stop() {
         guard !isStopping else { return }
         isStopping = true
+        Analytics.track(.sessionEnd, [
+            .durationBand: Analytics.band(seconds: sessionStartedAt.map { Date().timeIntervalSince($0) } ?? 0),
+            .customUI: customUIMode ? "yes" : "no"
+        ])
+        sessionStartedAt = nil
         // A start still in flight gets abandoned at its next checkpoint -
         // without this, its meeting setup raced the OBS teardown below.
         startTask?.cancel()
@@ -1271,6 +1294,10 @@ final class CoordinatorController: ObservableObject {
             log: { [weak self] message in self?.log(message) },
             endSession: { [weak self] in self?.stop() })
         let startedAt = Date()
+        Analytics.track(.surfaceShown, [
+            .surface: "participants",
+            .placement: peopleViewTargetScreen() == nil ? "main_window" : "reference_display"
+        ])
         if peopleViewTargetScreen() == nil {
             log("Participants panel opened as a window on this display \u{2014} no second display to give it. It will not be full-screen, and you can move it.")
         }
@@ -1605,6 +1632,9 @@ final class CoordinatorController: ObservableObject {
     /// the follow loop (re)starts: session start, layout re-apply, Snap
     /// Windows Back - each of those is an explicit re-arm.
     /// Custom-UI gallery refresh. Cancelled with the session.
+    /// When the current session began, for the coarse duration band reported at
+    /// the end. Never sent as a timestamp - see Analytics.band(seconds:).
+    private var sessionStartedAt: Date?
     private var customUIGridTask: Task<Void, Never>?
     /// Custom-UI speaker-content chooser. Cancelled with the session.
     private var customUISpeakerTask: Task<Void, Never>?

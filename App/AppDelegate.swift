@@ -26,8 +26,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// without an API key launches silently instead of logging SDK errors at
     /// every start.
     ///
-    /// No crash reporting on this platform: AppticsMXCrashKit is gated to iOS
-    /// in the package, so OBS's teardown crashes will not appear here.
+    /// Crash reporting IS active here, via AppticsCrashKit + KSCrash. It only
+    /// covers Greenroom's own process - OBS crashing in its own binary is
+    /// invisible to this, since it is a separate application.
     private func startAnalytics() {
         guard Bundle.main.object(forInfoDictionaryKey: "AP_INFOPLIST_FILE") != nil else { return }
         #if DEBUG
@@ -35,6 +36,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         #else
         Apptics.initialize(withVerbose: false)
         #endif
+        // Honour a previous opt-out before anything is sent. setCompleteOff
+        // suppresses every call including device registration, so a user who
+        // turned analytics off stays off across launches rather than
+        // re-registering each time.
+        if UserDefaults.standard.object(forKey: "analyticsEnabled") != nil,
+           !UserDefaults.standard.bool(forKey: "analyticsEnabled") {
+            // Same shape as applicationDidFinishLaunching below: the delegate
+            // callback is nonisolated, and everything it reaches here is
+            // main-actor work already running on the main thread.
+            MainActor.assumeIsolated { Analytics.setEnabled(false) }
+        }
+    }
+
+    /// Apptics is started here, not in `applicationDidFinishLaunching`.
+    ///
+    /// Zoho documents this specifically for macOS: "For Mac applications, make
+    /// sure you call Apptics.initializewithVerbose: in
+    /// applicationWillFinishLaunching:". Starting it a phase later appears to
+    /// work and quietly misses the earliest part of the session, which is also
+    /// where launch crashes happen.
+    func applicationWillFinishLaunching(_ notification: Notification) {
+        startAnalytics()
     }
 
     /// System-wide shortcuts (see HotkeyManager - they work while OTHER
@@ -42,7 +65,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// resolve the coordinator at press time and guard on session state,
     /// mirroring the buttons' enabled states.
     func applicationDidFinishLaunching(_ notification: Notification) {
-        startAnalytics()
         MainActor.assumeIsolated {
             let mods = UInt32(cmdKey | optionKey | controlKey)
             HotkeyManager.shared.register([

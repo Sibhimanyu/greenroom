@@ -86,7 +86,14 @@ targets:
         embed: true
       - package: Sparkle
       - package: Apptics
-        product: AppticsAnalytics
+        # ...coreWithKSCrash, NOT plain AppticsAnalytics. The latter declares its
+        # crash reporter as `.target(name: "AppticsMXCrashKit", condition:
+        # .when(platforms: [.iOS]))`, so a macOS build of it links NO crash
+        # reporter at all - it resolves and compiles perfectly while silently
+        # reporting nothing. This product takes AppticsCrashKit + KSCrash
+        # unconditionally, both of which ship macos-arm64_x86_64 slices.
+        # Crashes bill as "Errors", which the free plan covers (5K/month).
+        product: AppticsAnalyticscoreWithKSCrash
     # Apptics needs a build-time step, which is what its CocoaPods
     # `script_phase` provides. SPM has no equivalent, so the vendored copy of
     # the same script runs here instead (see Vendor/Apptics/README.md).
@@ -162,10 +169,12 @@ targets:
           # --delete erases it and the app dies at launch with a dyld
           # "Library not loaded" (v0.3.0 shipped that way: Sparkle was
           # embedded by Xcode, wiped by this rsync, crash on open).
-          # Apptics contributes four: AppticsAnalytics pulls Apptics, JWT,
-          # AppticsEventTracker and AppticsScreenTracker as binary targets
-          # (AppticsMXCrashKit is iOS-only, so it never appears here).
-          XCODE_EMBEDS=" ZoomSDK.framework Sparkle.framework Apptics.framework JWT.framework AppticsEventTracker.framework AppticsScreenTracker.framework "
+          # Apptics contributes six via AppticsAnalyticscoreWithKSCrash:
+          # Apptics, JWT, AppticsEventTracker, AppticsScreenTracker, and the
+          # crash reporter pair AppticsCrashKit + KSCrash. (AppticsMXCrashKit is
+          # iOS-only and never appears, which is why the plain AppticsAnalytics
+          # product would leave macOS with no crash reporting.)
+          XCODE_EMBEDS=" ZoomSDK.framework Sparkle.framework Apptics.framework JWT.framework AppticsEventTracker.framework AppticsScreenTracker.framework AppticsCrashKit.framework KSCrash.framework "
           # Fail the build rather than repeat that bug silently. Anything in
           # the bundle that neither came from Vendor/ZoomSDK nor is on the
           # list above is about to be deleted, so say so now instead of
@@ -191,7 +200,8 @@ targets:
           find "$DEST" -mindepth 1 -maxdepth 1 \( -name "*.framework" -o -name "*.dylib" -o -name "*.bundle" -o -name "*.app" \) \
             -not -name "Sparkle.framework" \
             -not -name "Apptics.framework" -not -name "JWT.framework" \
-            -not -name "AppticsEventTracker.framework" -not -name "AppticsScreenTracker.framework" -print0 \
+            -not -name "AppticsEventTracker.framework" -not -name "AppticsScreenTracker.framework" \
+            -not -name "AppticsCrashKit.framework" -not -name "KSCrash.framework" -print0 \
             | xargs -0 -I{} codesign --force --deep --timestamp=none --sign "${EXPANDED_CODE_SIGN_IDENTITY}" "{}"
 
 schemes:

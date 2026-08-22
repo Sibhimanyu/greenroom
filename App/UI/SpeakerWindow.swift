@@ -26,13 +26,31 @@ enum SpeakerWindowController {
     /// Shows the speaker view in the side column's top slot - the same
     /// geometry the parked SDK tile used, so the rest of the layout (and the
     /// chat filling the space below) is unchanged.
+    /// The video view currently on screen. Tracked so swapping between the
+    /// active-speaker view and the self view only re-parents when the choice
+    /// actually changes - the deciding loop runs every couple of seconds, and
+    /// tearing a live SDK-rendered view out and back on every tick would
+    /// flicker.
+    private static var shownVideo: NSView?
+
     static func show(videoView: NSView, layout: WorkspaceLayout) {
         let slot = ChatWindowController.zoomSlotNSFrame(for: layout)
+
+        if shownVideo === videoView, let existing = window {
+            // Same content, nothing to rebuild. Still re-frame, which is cheap
+            // and absorbs a layout change.
+            if let slot { existing.setFrame(slot, display: true) }
+            existing.orderFrontRegardless()
+            return
+        }
 
         let hosting: NSWindow
         if let existing = window {
             hosting = existing
-            existing.contentView?.subviews.forEach { $0.removeFromSuperview() }
+            // Remove only the OUTGOING video view. The placeholder underneath
+            // stays, and the view we drop is owned by the SDK and may be shown
+            // again later, so it is detached rather than destroyed.
+            shownVideo?.removeFromSuperview()
         } else {
             let created = NSWindow(contentRect: slot ?? NSRect(x: 0, y: 0, width: 505, height: 351),
                                    styleMask: [.titled, .closable, .miniaturizable, .resizable],
@@ -47,7 +65,7 @@ enum SpeakerWindowController {
             hosting = created
         }
 
-        // An empty state BEHIND the video, not instead of it.
+        // An empty state BEHIND the video, not instead of it. Added once.
         //
         // An active-speaker element renders whoever is currently speaking, so
         // alone in a room it legitimately has nothing to draw and the window is
@@ -55,6 +73,7 @@ enum SpeakerWindowController {
         // self-view; here the honest black reads as broken. A label underneath
         // says which it is, and the video covers it the moment anyone speaks.
         let content = hosting.contentView ?? NSView()
+        if !content.subviews.contains(where: { $0 is NSTextField }) {
         let placeholder = NSTextField(labelWithString: "Waiting for someone to speak")
         placeholder.font = .systemFont(ofSize: 13)
         placeholder.textColor = .secondaryLabelColor
@@ -65,6 +84,7 @@ enum SpeakerWindowController {
             placeholder.centerXAnchor.constraint(equalTo: content.centerXAnchor),
             placeholder.centerYAnchor.constraint(equalTo: content.centerYAnchor)
         ])
+        }
 
         // The SDK's view is sized by us and must follow the window, so it is
         // pinned rather than left at whatever frame it was created with.
@@ -77,6 +97,7 @@ enum SpeakerWindowController {
             videoView.bottomAnchor.constraint(equalTo: content.bottomAnchor)
         ])
 
+        shownVideo = videoView
         if let slot { hosting.setFrame(slot, display: true) }
         hosting.orderFrontRegardless()
     }
@@ -111,6 +132,7 @@ enum SpeakerWindowController {
     static func close() {
         window?.orderOut(nil)
         window?.contentView?.subviews.forEach { $0.removeFromSuperview() }
+        shownVideo = nil
         window = nil
     }
 }

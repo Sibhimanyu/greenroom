@@ -138,6 +138,46 @@ final class ZoomMeetingSDKClient: NSObject, ObservableObject {
         return element.getVideoView()
     }
 
+    /// Kept apart from `participantElements` on purpose: that dictionary is
+    /// pruned against the gallery's participant list, which excludes self, so
+    /// storing the self view there would have it deleted on the next pass.
+    private var selfViewElement: ZoomSDKNormalVideoElement?
+
+    /// Your own video, for when nobody else is in the meeting.
+    ///
+    /// The active-speaker element renders whoever is SPEAKING, so alone in a
+    /// room it has nothing to draw and the window is black. Default Zoom UI
+    /// covers that by falling back to your own video; custom UI has to do it
+    /// explicitly, which is what this is for. A normal element bound to our own
+    /// user ID, i.e. self treated as just another participant.
+    func makeSelfView(frame: NSRect) -> NSView? {
+        guard didUseCustomUI else { return nil }
+        if let existing = selfViewElement {
+            _ = existing.resize(frame)
+            return existing.getVideoView()
+        }
+        guard let service = ZoomSDK.shared().getMeetingService(),
+              let container = service.getVideoContainer(),
+              let me = service.getMeetingActionController().getMyself()?.getUserID() else { return nil }
+        videoContainer = container
+        var element = ZoomSDKNormalVideoElement(frame: frame)
+        guard container.createNormalVideoElement(&element) == ZoomSDKError_Success else { return nil }
+        element.userid = me
+        guard element.subscribeVideo(true) == ZoomSDKError_Success else {
+            _ = container.clean(element)
+            return nil
+        }
+        _ = element.showVideo(true)
+        selfViewElement = element
+        return element.getVideoView()
+    }
+
+    /// Whether anyone other than us is in the meeting - the thing that decides
+    /// between the self view and the active-speaker view.
+    var hasOtherParticipants: Bool {
+        !participantUserIDs(excludingSelf: true).isEmpty
+    }
+
     /// Unsubscribes and drops elements for anyone no longer in the list, so a
     /// class that churns all morning does not accumulate dead subscriptions.
     func pruneParticipantViews(keeping keep: Set<UInt32>) {
@@ -155,6 +195,11 @@ final class ZoomMeetingSDKClient: NSObject, ObservableObject {
             _ = videoContainer?.clean(element)
         }
         activeSpeakerElement = nil
+        if let selfElement = selfViewElement {
+            _ = selfElement.subscribeVideo(false)
+            _ = videoContainer?.clean(selfElement)
+        }
+        selfViewElement = nil
         for (_, element) in participantElements {
             _ = element.subscribeVideo(false)
             _ = videoContainer?.clean(element)

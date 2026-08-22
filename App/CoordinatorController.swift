@@ -30,6 +30,7 @@ final class CoordinatorController: ObservableObject {
         stopShapePreview()
         ChatWindowController.close()
         customUIGridTask?.cancel()
+        customUISpeakerTask?.cancel()
         SpeakerWindowController.close()
         ParticipantGridWindowController.close()
         zoomChatClient.releaseCustomUIVideo()
@@ -813,6 +814,7 @@ final class CoordinatorController: ObservableObject {
             // Custom UI: stop the SDK rendering into views that are about to
             // go away, then drop our window.
             customUIGridTask?.cancel()
+            customUISpeakerTask?.cancel()
             SpeakerWindowController.close()
             ParticipantGridWindowController.close()
             zoomChatClient.releaseCustomUIVideo()
@@ -1178,6 +1180,7 @@ final class CoordinatorController: ObservableObject {
             return
         }
         SpeakerWindowController.show(videoView: videoView, layout: workspaceLayout)
+        startCustomUISpeakerFollow()
         startCustomUIGridFollow()
         if speakerTileQuickHidden {
             SpeakerWindowController.hide()
@@ -1188,6 +1191,44 @@ final class CoordinatorController: ObservableObject {
         // A view that exists but renders nothing looks identical to a working
         // one from out here, so the codes are the only way to tell them apart.
         log("Custom UI: speaker view is Greenroom's own window (\(speaker.detail)).")
+    }
+
+    /// Decides what the speaker window shows: your own video when you are alone
+    /// in the meeting, the active speaker once anyone else is there.
+    ///
+    /// The active-speaker element renders whoever is SPEAKING, so on its own it
+    /// leaves the window black until someone else joins and talks. That reads as
+    /// broken, and it is the one thing default Zoom UI does better - it falls
+    /// back to your own video. Custom UI has to make that choice itself.
+    ///
+    /// Runs regardless of display count, unlike the gallery follow: a
+    /// single-display teacher alone in the room is exactly the case that looked
+    /// broken.
+    private func startCustomUISpeakerFollow() {
+        customUISpeakerTask?.cancel()
+        customUISpeakerTask = Task { [weak self] in
+            var announcedSelfView = false
+            while !Task.isCancelled {
+                guard let self else { return }
+                let slot = ChatWindowController.zoomSlotNSFrame(for: self.workspaceLayout)
+                    ?? NSRect(x: 0, y: 0, width: 505, height: 351)
+                if self.zoomChatClient.hasOtherParticipants {
+                    if let view = self.zoomChatClient.makeActiveSpeakerView(frame: slot).view {
+                        SpeakerWindowController.show(videoView: view, layout: self.workspaceLayout)
+                    }
+                } else if let selfView = self.zoomChatClient.makeSelfView(frame: slot) {
+                    SpeakerWindowController.show(videoView: selfView, layout: self.workspaceLayout)
+                    if !announcedSelfView {
+                        announcedSelfView = true
+                        self.log("Nobody else here yet \u{2014} showing your own camera until someone joins.")
+                    }
+                }
+                // Swapping content orders the window front, which would undo a
+                // quick-hide, so re-assert it.
+                if self.speakerTileQuickHidden { SpeakerWindowController.hide() }
+                try? await Task.sleep(nanoseconds: 2_000_000_000)
+            }
+        }
     }
 
     /// Keeps the custom-UI gallery in step with who is actually in the meeting.
@@ -1526,6 +1567,8 @@ final class CoordinatorController: ObservableObject {
     /// Windows Back - each of those is an explicit re-arm.
     /// Custom-UI gallery refresh. Cancelled with the session.
     private var customUIGridTask: Task<Void, Never>?
+    /// Custom-UI speaker-content chooser. Cancelled with the session.
+    private var customUISpeakerTask: Task<Void, Never>?
     private var gridCorrectionStreak = 0
     private var gridCorrectionHoldUntilTick = 0
 

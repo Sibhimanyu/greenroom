@@ -638,6 +638,14 @@ private struct MeetingSDKSettingsTab: View {
                 Text("From your Zoom Marketplace app (General App \u{2192} Features \u{2192} Embed \u{2192} Meeting SDK). Only works for meetings hosted under this same Zoom account - joining a meeting hosted elsewhere fails with Zoom's cross-account restriction.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+
+                Divider()
+
+                Toggle("Custom meeting UI (experimental)", isOn: $coordinator.customUIMode)
+
+                Text("Renders the speaker inside a Greenroom window instead of using Zoom's own meeting windows, so there is no Zoom toolbar or info button to manage. Quit and reopen Greenroom to switch \u{2014} Zoom decides this when it starts up, not per session. The participant view isn't built for this mode yet.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
             Spacer(minLength: 0)
         }

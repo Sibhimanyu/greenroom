@@ -36,6 +36,52 @@ final class ZoomMeetingSDKClient: NSObject, ObservableObject {
     private(set) var isHosting = false
 
     private var didInit = false
+
+    /// Whether this process initialised the SDK in custom-UI mode. Recorded at
+    /// init because the flag could be flipped in defaults afterwards, and what
+    /// matters downstream is the mode the SDK is actually RUNNING in.
+    private(set) var didUseCustomUI = false
+
+    /// Opt-in, and app-restart-scoped: `needCustomizedUI` is an initSDK
+    /// parameter, so it cannot change while the process lives.
+    static var customUIModeEnabled: Bool {
+        UserDefaults.standard.bool(forKey: "customUIMode")
+    }
+
+    /// Held for the meeting's lifetime. The SDK renders into views owned by
+    /// these objects, so dropping them would drop the video.
+    private var videoContainer: ZoomSDKVideoContainer?
+    private var activeSpeakerElement: ZoomSDKActiveVideoElement?
+
+    /// A view showing whoever is currently speaking, for us to place wherever
+    /// we like. Custom UI only: in default UI the SDK owns its own windows and
+    /// there is no container to ask.
+    func makeActiveSpeakerView(frame: NSRect) -> NSView? {
+        guard didUseCustomUI else { return nil }
+        guard let container = ZoomSDK.shared().getMeetingService()?.getVideoContainer() else { return nil }
+        videoContainer = container
+        // The element is allocated by US with its frame, then handed to the
+        // container to wire up - the container does not return a new one, it
+        // populates the one you pass in.
+        var element = ZoomSDKActiveVideoElement(frame: frame)
+        let created = container.createActiveVideoElement(&element)
+        guard created == ZoomSDKError_Success else { return nil }
+        activeSpeakerElement = element
+        _ = element.resize(frame)
+        _ = element.startActiveView(true)
+        _ = element.showVideo(true)
+        return element.getVideoView()
+    }
+
+    /// Releases the render elements. Called on leave so the SDK is not left
+    /// drawing into views that are about to disappear.
+    func releaseCustomUIVideo() {
+        if let element = activeSpeakerElement {
+            _ = videoContainer?.clean(element)
+        }
+        activeSpeakerElement = nil
+        videoContainer = nil
+    }
     private var isAuthed = false
     private var authedClientID: String?
     private var authCompletion: ((Result<Void, Error>) -> Void)?
@@ -84,6 +130,14 @@ final class ZoomMeetingSDKClient: NSObject, ObservableObject {
             let params = ZoomSDKInitParams()
             params.enableLog = true
             params.zoomDomain = "zoom.us"
+            // Custom UI: the SDK stops creating its own meeting windows and
+            // hands us NSViews to render video into instead (see
+            // makeActiveSpeakerView). This is an INIT param, not a runtime
+            // property, and the SDK initialises once per process - so
+            // switching modes needs an app restart, which is why it is read
+            // from defaults rather than passed in.
+            params.needCustomizedUI = Self.customUIModeEnabled
+            didUseCustomUI = Self.customUIModeEnabled
             let result = ZoomSDK.shared().initSDK(with: params)
             guard result == ZoomSDKError_Success else {
                 throw ZoomMeetingSDKError.initFailed(result)

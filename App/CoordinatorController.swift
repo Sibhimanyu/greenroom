@@ -29,6 +29,8 @@ final class CoordinatorController: ObservableObject {
         peopleViewTask?.cancel()
         stopShapePreview()
         ChatWindowController.close()
+        SpeakerWindowController.close()
+        zoomChatClient.releaseCustomUIVideo()
         zoomChatClient.leave() // ends the meeting if we're hosting it
     }
 
@@ -399,6 +401,32 @@ final class CoordinatorController: ObservableObject {
     /// is enabled in Settings.
     func toggleSpeakerTile() {
         guard speakerTileShortcutEnabled else { return }
+        // Custom UI: the speaker is our own window, so hiding it is just
+        // ordering it out - no SDK window to find, and no risk of the toggle
+        // pointing at a panel that got mistaken for the tile.
+        if zoomChatClient.didUseCustomUI {
+            guard SpeakerWindowController.isOpen || speakerTileQuickHidden else {
+                log("No speaker to toggle yet \u{2014} the meeting is still coming up.")
+                return
+            }
+            if speakerTileQuickHidden {
+                speakerTileQuickHidden = false
+                SpeakerWindowController.reveal(layout: workspaceLayout)
+                if let slot = ChatWindowController.zoomSlotNSFrame(for: workspaceLayout),
+                   let screen = DisplayResolver.mainDisplayScreen() {
+                    let ax = CGRect(x: slot.origin.x, y: screen.frame.height - slot.maxY,
+                                    width: slot.width, height: slot.height)
+                    ChatWindowController.adjustBelowZoom(actualZoomFrameAX: ax, layout: workspaceLayout)
+                }
+                log("Speaker shown \u{2014} \u{2303}\u{2325}\u{2318}Z hides it again.")
+            } else {
+                speakerTileQuickHidden = true
+                SpeakerWindowController.hide()
+                ChatWindowController.fillSideColumn(layout: workspaceLayout)
+                log("Speaker hidden \u{2014} chat has the full column. \u{2303}\u{2325}\u{2318}Z shows it.")
+            }
+            return
+        }
         guard let window = builtInMeetingWindow, ChatWindowController.isOpen else {
             // Surfaced, not just logged: the status log is collapsed by
             // default, so pressing the shortcut before the tile exists looked
@@ -500,6 +528,13 @@ final class CoordinatorController: ObservableObject {
     /// which is what almost everyone wants and what this always did. Stored by
     /// display UUID so the choice survives unplugging and reconnecting, the
     /// same way peopleViewDisplayUUID does.
+    /// Custom-UI mode. Read by the SDK client at initSDK, which happens once
+    /// per process - so changing this only takes effect after a restart, and
+    /// the Settings copy says so.
+    @Published var customUIMode: Bool {
+        didSet { defaults.set(customUIMode, forKey: "customUIMode") }
+    }
+
     @Published var screenCaptureDisplayUUID: String {
         didSet { defaults.set(screenCaptureDisplayUUID, forKey: "screenCaptureDisplayUUID") }
     }
@@ -549,6 +584,7 @@ final class CoordinatorController: ObservableObject {
         peopleViewOnStart = defaults.bool(forKey: "peopleViewOnStart")
         peopleViewDisplayUUID = defaults.string(forKey: "peopleViewDisplayUUID") ?? ""
         screenCaptureDisplayUUID = defaults.string(forKey: "screenCaptureDisplayUUID") ?? ""
+        customUIMode = defaults.bool(forKey: "customUIMode")
         autoRecordOnStart = defaults.bool(forKey: "autoRecordOnStart")
         keepOBSWarm = (defaults.object(forKey: "keepOBSWarm") as? Bool) ?? true
         meetingMode = MeetingMode(rawValue: defaults.string(forKey: "meetingMode") ?? "") ?? .create
@@ -764,6 +800,10 @@ final class CoordinatorController: ObservableObject {
                 zoomChatBridge.reset()
                 log("Left the meeting chat.")
             }
+            // Custom UI: stop the SDK rendering into views that are about to
+            // go away, then drop our window.
+            SpeakerWindowController.close()
+            zoomChatClient.releaseCustomUIVideo()
             // A beat between cancelling the window-follow loops and the
             // SDK tearing its meeting windows down: the crash logs' seven
             // zVideoUIBridge dealloc SEGVs look like that teardown racing
@@ -1005,8 +1045,7 @@ final class CoordinatorController: ObservableObject {
         ChatWindowController.show(chat: zoomChatBridge, layout: workspaceLayout)
         log("Meeting is live \u{2014} you're hosting from Greenroom. No second Zoom app, no ghost participant.")
 
-        parkBuiltInMeetingWindow(resetQuickHideToDefault: true) // session start = the mode's default state
-        placePeopleViewWindow()
+        presentMeetingSurfaces(resetQuickHideToDefault: true) // session start = the mode's default state
         finalizeLayout()
     }
 
@@ -1080,8 +1119,7 @@ final class CoordinatorController: ObservableObject {
             ? "Meeting is live \u{2014} you're hosting from Greenroom."
             : "In the meeting \u{2014} no second Zoom app, no ghost participant.")
 
-        parkBuiltInMeetingWindow(resetQuickHideToDefault: true) // session start = the mode's default state
-        placePeopleViewWindow()
+        presentMeetingSurfaces(resetQuickHideToDefault: true) // session start = the mode's default state
         finalizeLayout()
     }
 
@@ -1099,6 +1137,42 @@ final class CoordinatorController: ObservableObject {
     /// work, since the window belongs to this process. Skipped entirely
     /// when the Zoom tile is toggled out of the side column: the meeting
     /// window then stays wherever it is.
+    /// Puts the meeting on screen. Two very different mechanisms behind one
+    /// call, so the session flows do not have to know which mode they are in.
+    ///
+    /// Default Zoom UI: the SDK owns its meeting windows, so Greenroom hunts
+    /// for them, parks one in the side column and pins the other to the
+    /// extended display. That machinery is the source of the tug-of-war, the
+    /// gallery landing on the wrong display, and the info popup being adopted
+    /// as the tile.
+    ///
+    /// Custom UI: there are no SDK windows at all. The SDK renders into a view
+    /// we own, so there is nothing to hunt, park, pin or defend against. The
+    /// participant gallery is not built for this mode yet - the speaker tile is.
+    private func presentMeetingSurfaces(resetQuickHideToDefault: Bool) {
+        guard zoomChatClient.didUseCustomUI else {
+            parkBuiltInMeetingWindow(resetQuickHideToDefault: resetQuickHideToDefault)
+            placePeopleViewWindow()
+            return
+        }
+        if resetQuickHideToDefault {
+            speakerTileQuickHidden = speakerTileShortcutEnabled
+        }
+        let slot = ChatWindowController.zoomSlotNSFrame(for: workspaceLayout)
+            ?? NSRect(x: 0, y: 0, width: 505, height: 351)
+        guard let videoView = zoomChatClient.makeActiveSpeakerView(frame: slot) else {
+            log("Custom UI: the SDK didn't hand back a speaker view. Falling back to no tile \u{2014} the meeting audio and your outgoing camera are unaffected.")
+            return
+        }
+        SpeakerWindowController.show(videoView: videoView, layout: workspaceLayout)
+        if speakerTileQuickHidden {
+            SpeakerWindowController.hide()
+            ChatWindowController.fillSideColumn(layout: workspaceLayout)
+            log("Speaker starts hidden (quick-hide mode) \u{2014} chat has the full column; \u{2303}\u{2325}\u{2318}Z shows it.")
+        }
+        log("Custom UI: the speaker view is Greenroom's own window \u{2014} no Zoom chrome, nothing to park.")
+    }
+
     private func parkBuiltInMeetingWindow(resetQuickHideToDefault: Bool = false) {
         layoutFollowTask?.cancel()
         layoutFollowTask = Task {
@@ -1908,6 +1982,7 @@ final class CoordinatorController: ObservableObject {
         NSApp.windows.filter { window in
             guard window.isVisible, !window.isSheet else { return false }
             if ChatWindowController.owns(window) { return false } // "Meeting Chat" - ours
+            if SpeakerWindowController.owns(window) { return false } // custom-UI speaker - also ours
             if window.title == "Greenroom" { return false } // main window
             if window.title.localizedCaseInsensitiveContains("settings") { return false }
 

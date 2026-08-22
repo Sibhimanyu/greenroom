@@ -56,6 +56,25 @@ final class ZoomMeetingSDKClient: NSObject, ObservableObject {
     /// these objects, so dropping them would drop the video.
     private var videoContainer: ZoomSDKVideoContainer?
 
+    /// Appends one line to ~/Library/Logs/Greenroom-video.log.
+    ///
+    /// A file, not the status log, for the same reason the quit path uses one:
+    /// the status log is not reachable from outside the app, and a black tile
+    /// gives no clue which of createNormalVideoElement, setResolution,
+    /// subscribeVideo or showVideo actually refused.
+    static func videoLog(_ message: String) {
+        let line = "\(ISO8601DateFormatter().string(from: Date())) \(message)\n"
+        let url = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Library/Logs/Greenroom-video.log")
+        if let handle = try? FileHandle(forWritingTo: url) {
+            handle.seekToEndOfFile()
+            handle.write(Data(line.utf8))
+            try? handle.close()
+        } else {
+            try? Data(line.utf8).write(to: url)
+        }
+    }
+
     /// Called when the SDK refuses a video subscription, so the reason reaches
     /// the status log instead of showing up as an unexplained black tile.
     var onVideoSubscribeFailure: ((String) -> Void)?
@@ -149,9 +168,26 @@ final class ZoomMeetingSDKClient: NSObject, ObservableObject {
             .getUserByUserID(userID)?.getUserName()
     }
 
+    /// User IDs whose subscription the SDK refused. Their elements are thrown
+    /// away so the next poll builds a fresh one.
+    ///
+    /// Without this a refusal was permanent: the dead element stayed in the cache
+    /// and every later pass returned the same black view. That matters most for
+    /// _TooFrequentCall and _HasSubscribeExceededLimit, both of which are
+    /// transient - the quota frees up as soon as another stream closes.
+    private var subscriptionFailures: Set<UInt32> = []
+
     /// A view rendering one participant, reused across layout passes.
     func participantView(userID: UInt32, frame: NSRect) -> NSView? {
         guard didUseCustomUI else { return nil }
+        if subscriptionFailures.contains(userID) {
+            subscriptionFailures.remove(userID)
+            if let dead = participantElements.removeValue(forKey: userID) {
+                _ = dead.subscribeVideo(false)
+                _ = videoContainer?.clean(dead)
+            }
+            Self.videoLog("retrying user=\(userID) after a refused subscription")
+        }
         if let existing = participantElements[userID] {
             _ = existing.resize(frame)
             return existing.getVideoView()
@@ -163,9 +199,15 @@ final class ZoomMeetingSDKClient: NSObject, ObservableObject {
         element.userid = userID
         // Ask for a tile-sized stream BEFORE subscribing. After subscribing is
         // too late: the quota is spent at subscribe time.
-        _ = element.setResolution(Self.resolution(for: frame))
+        let resolutionResult = element.setResolution(Self.resolution(for: frame))
         let subscribed = element.subscribeVideo(true)
-        _ = element.showVideo(true)
+        let shown = element.showVideo(true)
+        let info = ZoomSDK.shared().getMeetingService()?
+            .getMeetingActionController().getUserByUserID(userID)
+        let action = ZoomSDK.shared().getMeetingService()?.getMeetingActionController()
+        Self.videoLog("""
+            tile user=\(userID)             frame=\(Int(frame.width))x\(Int(frame.height))             setResolution=\(resolutionResult.rawValue)             subscribe=\(subscribed.rawValue)             showVideo=\(shown.rawValue)             view=\(element.getVideoView() == nil ? "nil" : "ok")             theirVideoOn=\(info?.isVideoOn() ?? false)             dataType=\(element.getDataType().rawValue)             incomingVideoStopped=\(action?.isIncomingVideoStopped() ?? false)
+            """.replacingOccurrences(of: "\n", with: ""))
         guard subscribed == ZoomSDKError_Success else {
             // Do not cache a failed subscription: keeping it would make every
             // later pass believe this user is already wired up.
@@ -658,12 +700,22 @@ extension ZoomMeetingSDKClient: ZoomSDKVideoContainerDelegate {
         default:
             reason = "reason code \(error.rawValue)"
         }
+        Self.videoLog("SUBSCRIBE FAIL code=\(error.rawValue) user=\(element.userid) \(reason)")
+        // Marked for rebuild rather than left cached and black forever.
+        subscriptionFailures.insert(element.userid)
         onVideoSubscribeFailure?("A participant's video could not start \u{2014} \(reason).")
     }
 
-    func onRenderUserChanged(_ element: ZoomSDKVideoElement?, user userid: UInt32) {}
+    func onRenderUserChanged(_ element: ZoomSDKVideoElement?, user userid: UInt32) {
+        Self.videoLog("renderUserChanged element=\(element?.userid ?? 0) -> user=\(userid)")
+    }
 
-    func onRenderDataTypeChanged(_ element: ZoomSDKVideoElement?, dataType type: VideoRenderDataType) {}
+    /// Avatar instead of video is the other way a tile ends up looking blank,
+    /// and it is NOT a failure - it is what the SDK draws when someone's camera
+    /// is off. Logged so the two are never confused again.
+    func onRenderDataTypeChanged(_ element: ZoomSDKVideoElement?, dataType type: VideoRenderDataType) {
+        Self.videoLog("dataTypeChanged user=\(element?.userid ?? 0) type=\(type.rawValue)")
+    }
 }
 
 enum ZoomMeetingSDKError: LocalizedError {

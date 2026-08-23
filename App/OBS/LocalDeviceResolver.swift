@@ -75,8 +75,17 @@ enum LocalDeviceResolver {
     /// once OBS's virtual cam is active, and testing showed
     /// `AVCaptureDevice.default(for: .video)` can hand it back as the
     /// "default" device - which would wire OBS's own webcam source to itself.
+    /// The camera the composite uses: the built-in one when there is one,
+    /// otherwise whatever is attached, otherwise nil.
+    ///
+    /// There is deliberately no user choice here. A picker was built and
+    /// removed: at the level a teacher works, "which camera" is not a decision
+    /// they were making, and the real complaint behind asking for it turned out
+    /// to be the black picture - which was the `device` key never being written
+    /// to the OBS source, nothing to do with which camera was selected.
     static func physicalCameraUID() -> String? {
-        resolveCamera(preferred: "").uid
+        let cameras = availableCameras()
+        return (cameras.first { $0.isBuiltIn } ?? cameras.first)?.id
     }
 
     struct Camera: Identifiable, Hashable {
@@ -85,8 +94,6 @@ enum LocalDeviceResolver {
         let id: String
         let name: String
         let isBuiltIn: Bool
-
-        var label: String { name + (isBuiltIn ? " \u{00B7} Built-in" : "") }
     }
 
     /// Every real camera attached RIGHT NOW, built-in first.
@@ -111,27 +118,6 @@ enum LocalDeviceResolver {
                           name: $0.localizedName,
                           isBuiltIn: $0.deviceType == .builtInWideAngleCamera) }
             .sorted { $0.isBuiltIn && !$1.isBuiltIn }
-    }
-
-    static func isCameraConnected(uid: String) -> Bool {
-        availableCameras().contains { $0.id == uid }
-    }
-
-    /// Which camera the webcam source should use: the explicit choice when it
-    /// is actually plugged in, otherwise the built-in one, otherwise whatever
-    /// is there. Mirrors resolveCaptureDisplay, including the fellBack flag -
-    /// a teacher whose USB camera is unplugged should be told their saved
-    /// choice was abandoned rather than wonder why the picture looks different.
-    ///
-    /// A nil uid is not an error: a session with no camera at all runs
-    /// screen-only, and the teacher's video returns next Start.
-    static func resolveCamera(preferred: String) -> (uid: String?, fellBack: Bool) {
-        let cameras = availableCameras()
-        if !preferred.isEmpty, cameras.contains(where: { $0.id == preferred }) {
-            return (preferred, false)
-        }
-        let automatic = (cameras.first { $0.isBuiltIn } ?? cameras.first)?.id
-        return (automatic, !preferred.isEmpty && automatic != nil)
     }
 
     static func cameraName(uid: String) -> String? {

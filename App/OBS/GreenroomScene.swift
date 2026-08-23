@@ -100,6 +100,7 @@ enum GreenroomScene {
     static let chromaKeyFilterName = "Greenroom Chroma Key"
     static let shapeMaskFilterName = "Greenroom Shape Mask"
     static let screenMaskFilterName = "Greenroom Screen Panel Mask"
+    static let cropFilterName = "Greenroom Square Crop"
 
     struct BubbleLayout {
         var widthFraction: Double = 0.24
@@ -578,6 +579,79 @@ enum GreenroomScene {
         ])
     }
 
+    /// The camera's own width/height, or 16:9 when OBS cannot tell us yet -
+    /// the same fallback `layoutCutout` uses, for the same reason.
+    private static func webcamSourceAspect(client: OBSWebSocketClient) async throws -> Double {
+        let items = try await sceneItems(client: client)
+        guard let webcam = items.first(where: { ($0["sourceName"] as? String) == webcamSourceName }),
+              let transform = webcam["sceneItemTransform"] as? [String: Any],
+              let width = transform["sourceWidth"] as? Double,
+              let height = transform["sourceHeight"] as? Double,
+              width > 0, height > 0 else { return 16.0 / 9.0 }
+        return width / height
+    }
+
+    /// Centre-crops the camera to a square, ahead of the shape mask.
+    ///
+    /// Only the circle wants this. A circle drawn on a 16:9 frame is an
+    /// ellipse, and a 16:9 frame fitted into a square box leaves 21.9% of that
+    /// box empty above and below - so a bubble dragged flush into the corner
+    /// still showed a gap, because the BOX was in the corner and the picture
+    /// was not. Cropping square fixes both at once: the mask draws a true
+    /// circle, and a square source fills a square box exactly.
+    ///
+    /// It costs 43.75% of the camera's width. That is inherent to a circular
+    /// bubble, not a bug, which is why the rectangular shapes keep their full
+    /// frame and get aspect-matched bounds instead.
+    ///
+    /// Index 0 is load-bearing: the mask is stretched over whatever reaches it,
+    /// so cropping AFTER the mask would stretch an ellipse rather than produce
+    /// a circle.
+    private static func ensureSquareCrop(client: OBSWebSocketClient,
+                                         enabled: Bool, aspect: Double) async throws {
+        let list = try await client.request("GetSourceFilterList", data: ["sourceName": webcamSourceName])
+        let filters = (list["filters"] as? [[String: Any]]) ?? []
+        let exists = filters.contains { ($0["filterName"] as? String) == cropFilterName }
+
+        guard enabled, aspect > 1 else {
+            if exists {
+                _ = try? await client.request("RemoveSourceFilter", data: [
+                    "sourceName": webcamSourceName, "filterName": cropFilterName
+                ])
+            }
+            return
+        }
+
+        // Crop is in SOURCE pixels, so it needs the real dimensions, not the
+        // aspect: a 1280x720 camera loses 280 from each side, a 1920x1080 one
+        // loses 420.
+        let items = try await sceneItems(client: client)
+        guard let webcam = items.first(where: { ($0["sourceName"] as? String) == webcamSourceName }),
+              let transform = webcam["sceneItemTransform"] as? [String: Any],
+              let width = transform["sourceWidth"] as? Double,
+              let height = transform["sourceHeight"] as? Double,
+              width > height else { return }
+        let side = Int(((width - height) / 2).rounded())
+        let settings: [String: Any] = [
+            "relative": false, "left": side, "right": side, "top": 0, "bottom": 0
+        ]
+
+        if exists {
+            _ = try await client.request("SetSourceFilterSettings", data: [
+                "sourceName": webcamSourceName, "filterName": cropFilterName,
+                "filterSettings": settings, "overlay": false
+            ])
+        } else {
+            _ = try await client.request("CreateSourceFilter", data: [
+                "sourceName": webcamSourceName, "filterName": cropFilterName,
+                "filterKind": "crop_filter", "filterSettings": settings
+            ])
+        }
+        _ = try? await client.request("SetSourceFilterIndex", data: [
+            "sourceName": webcamSourceName, "filterName": cropFilterName, "filterIndex": 0
+        ])
+    }
+
     /// Adds/updates/removes the shape-mask filter to match the chosen
     /// WebcamShape. Square needs no filter at all (the rectangular bounding
     /// box from `positionBubble` already does the job); circle and rounded
@@ -586,11 +660,18 @@ enum GreenroomScene {
     /// PNG - confirmed against OBS's own bundled mask_alpha_filter.effect
     /// shader rather than guessed.
     private static func ensureShapeMask(client: OBSWebSocketClient, shape: WebcamShape) async throws {
+        // Crop FIRST, then mask against whatever aspect survives the crop. The
+        // mask is stretched over the source, so the two have to agree or the
+        // shape comes out skewed - see MaskImageGenerator.maskImageURL.
+        let camera = try await webcamSourceAspect(client: client)
+        try await ensureSquareCrop(client: client, enabled: shape.cropsToSquare, aspect: camera)
+        let maskAspect = shape.cropsToSquare ? 1 : camera
+
         let list = try await client.request("GetSourceFilterList", data: ["sourceName": webcamSourceName])
         let filters = (list["filters"] as? [[String: Any]]) ?? []
         let exists = filters.contains { ($0["filterName"] as? String) == shapeMaskFilterName }
 
-        guard let maskURL = MaskImageGenerator.maskImageURL(for: shape) else {
+        guard let maskURL = MaskImageGenerator.maskImageURL(for: shape, aspect: maskAspect) else {
             if exists {
                 _ = try? await client.request("RemoveSourceFilter", data: [
                     "sourceName": webcamSourceName, "filterName": shapeMaskFilterName
@@ -734,9 +815,22 @@ enum GreenroomScene {
 
         let width = Double(canvasWidth)
         let height = Double(canvasHeight)
-        let diameter = width * layout.widthFraction
-        let x = width - width * layout.rightInset - diameter
-        let y = height - height * layout.bottomInset - diameter
+
+        // The box follows the shape, not the other way round. It used to be
+        // square for everything, which fitted a 16:9 camera inside a square and
+        // left 21.9% of the box empty top and bottom - so a bubble dragged
+        // flush into the corner still showed a gap, because the box was in the
+        // corner and the picture inside it was not.
+        //
+        // Circle crops the camera square (see ensureSquareCrop), so a square
+        // box fills exactly. The rectangular shapes keep their full frame and
+        // get a box shaped like it. Either way SCALE_INNER now has nothing left
+        // to letterbox.
+        let boxWidth = width * layout.widthFraction
+        let aspect = layout.shape.cropsToSquare ? 1 : try await webcamSourceAspect(client: client)
+        let boxHeight = boxWidth / aspect
+        let x = width - width * layout.rightInset - boxWidth
+        let y = height - height * layout.bottomInset - boxHeight
 
         _ = try await client.request("SetSceneItemTransform", data: [
             "sceneName": sceneName,
@@ -745,8 +839,8 @@ enum GreenroomScene {
                 "positionX": x,
                 "positionY": y,
                 "boundsType": "OBS_BOUNDS_SCALE_INNER",
-                "boundsWidth": diameter,
-                "boundsHeight": diameter
+                "boundsWidth": boxWidth,
+                "boundsHeight": boxHeight
             ]
         ])
     }

@@ -78,13 +78,19 @@ private struct WebcamSettingsTab: View {
     /// position or size behind it to edit.
     private var isAdjustable: Bool { coordinator.webcamShape != .presenterLarge }
 
+    /// 16:9, matching the fallback GreenroomScene uses when it cannot read the
+    /// source dimensions. It would be wrong to take this from
+    /// shapePreviewFrame: that is the OBS CANVAS, and what shapes the webcam is
+    /// the CAMERA's aspect. The two agree for most cameras, which is exactly
+    /// why reading the wrong one would go unnoticed.
+    private static let assumedCameraAspect = 16.0 / 9.0
+
     private var editMode: BubbleDragLayer.Mode {
-        // 16:9, matching the fallback layoutCutout uses when it cannot read the
-        // source dimensions. It would be wrong to take this from
-        // shapePreviewFrame: that is the OBS CANVAS, and what sizes a cutout is
-        // the WEBCAM's aspect. The two agree for most cameras, which is exactly
-        // why reading the wrong one would go unnoticed.
-        isCutout ? .cutout(aspect: 16.0 / 9.0) : .bubble
+        if isCutout { return .cutout(aspect: Self.assumedCameraAspect) }
+        // Circle crops the camera square before masking, so its box is square.
+        // The rectangular shapes keep the full frame, so theirs is not.
+        return .bubble(aspect: coordinator.webcamShape.cropsToSquare
+                       ? 1 : Self.assumedCameraAspect)
     }
 
     @EnvironmentObject private var coordinator: CoordinatorController
@@ -298,8 +304,13 @@ struct BubbleDragLayer: View {
 
     /// What the shape allows to be changed.
     enum Mode: Equatable {
-        /// A square that moves in both axes and resizes from any corner.
-        case bubble
+        /// Moves in both axes, resizes from any corner. `aspect` is the box's
+        /// width over its height: 1 for a circle, whose camera is cropped
+        /// square ahead of the mask, and the camera's own aspect for the
+        /// rectangular shapes, which keep their full frame. Matching
+        /// GreenroomScene here is the point - a square box drawn over a 16:9
+        /// bubble is what made the corner look unreachable.
+        case bubble(aspect: Double)
         /// The camera's real aspect, bottom edge pinned flush to the canvas.
         /// Horizontal position and height only: lifting a cutout off the bottom
         /// leaves the keyed person hovering above nothing, which is the bug the
@@ -317,6 +328,13 @@ struct BubbleDragLayer: View {
             switch self {
             case .bubble: return 0.08...0.6
             case .cutout: return 0.3...1.0
+            }
+        }
+        /// Box width over height.
+        var aspect: Double {
+            switch self {
+            case .bubble(let value), .cutout(let value):
+                return value.isFinite && value > 0 ? value : 1
             }
         }
         var corners: [Corner] {
@@ -353,11 +371,13 @@ struct BubbleDragLayer: View {
     private func box(for value: Geometry) -> CGSize {
         switch mode {
         case .bubble:
-            let side = canvas.width * value.size
-            return CGSize(width: side, height: side)
-        case .cutout(let aspect):
+            // Sized by WIDTH, matching positionBubble's widthFraction.
+            let width = canvas.width * value.size
+            return CGSize(width: width, height: width / mode.aspect)
+        case .cutout:
+            // Sized by HEIGHT, matching layoutCutout.
             let height = canvas.height * value.size
-            return CGSize(width: height * aspect, height: height)
+            return CGSize(width: height * mode.aspect, height: height)
         }
     }
     private var box: CGSize { box(for: geometry) }
@@ -647,7 +667,7 @@ struct WebcamShapePreview: View {
     /// live frame arriving cannot tear a drag down. See the note there.
     var geometry: Binding<BubbleDragLayer.Geometry>?
     /// Which shape's geometry `geometry` is expressing.
-    var mode: BubbleDragLayer.Mode = .bubble
+    var mode: BubbleDragLayer.Mode = .bubble(aspect: 1)
 
 
     private static let personGreen = Color(red: 0.373, green: 0.659, blue: 0.235)
@@ -694,10 +714,11 @@ struct WebcamShapePreview: View {
                         // fraction of canvas width, not height.
                         let live = geometry?.wrappedValue
                             ?? .init(size: 0.24, rightInset: 0.045, bottomInset: 0.06)
-                        let side = w * live.size
-                        let centreX = w - w * live.rightInset - side / 2
-                        let centreY = h - h * live.bottomInset - side / 2
-                        bubble(size: side)
+                        let bubbleWidth = w * live.size
+                        let bubbleHeight = bubbleWidth / mode.aspect
+                        let centreX = w - w * live.rightInset - bubbleWidth / 2
+                        let centreY = h - h * live.bottomInset - bubbleHeight / 2
+                        bubble(width: bubbleWidth, height: bubbleHeight)
                             .position(x: centreX, y: centreY)
                     }
                 }
@@ -765,11 +786,17 @@ struct WebcamShapePreview: View {
     }
 
     /// "You" in a corner bubble - the webcam frame, background included.
-    private func bubble(size: CGFloat) -> some View {
+    ///
+    /// Drawn at the shape's real aspect, not always square: the circle's camera
+    /// is cropped square before masking, the rectangular shapes keep their full
+    /// 16:9 frame, and a schematic that showed both as squares was the reason
+    /// the settings preview disagreed with the composite.
+    private func bubble(width: CGFloat, height: CGFloat) -> some View {
         let clip: AnyShape
         switch shape {
         case .circle: clip = AnyShape(Circle())
-        case .roundedRectangle: clip = AnyShape(RoundedRectangle(cornerRadius: size * 0.18))
+        case .roundedRectangle:
+            clip = AnyShape(RoundedRectangle(cornerRadius: min(width, height) * 0.18))
         default: clip = AnyShape(Rectangle())
         }
         return ZStack {
@@ -777,11 +804,11 @@ struct WebcamShapePreview: View {
             Image(systemName: "person.fill")
                 .resizable()
                 .scaledToFit()
-                .frame(height: size * 0.62)
+                .frame(height: height * 0.62)
                 .foregroundStyle(Self.personGreen.gradient)
-                .offset(y: size * 0.12)
+                .offset(y: height * 0.12)
         }
-        .frame(width: size, height: size)
+        .frame(width: width, height: height)
         .clipShape(clip)
         .overlay(clip.stroke(Self.personGreen.opacity(0.7), lineWidth: 1.5))
     }

@@ -126,6 +126,26 @@ final class ZoomMeetingSDKClient: NSObject, ObservableObject {
             return ActiveSpeakerResult(view: nil, detail: "getVideoContainer returned nil")
         }
         videoContainer = container
+
+        // Reused, not rebuilt. This is called from the speaker follow loop
+        // every two seconds, and it used to create a fresh element each time
+        // while merely OVERWRITING the stored reference - so every previous
+        // element stayed alive inside the container, still subscribed and still
+        // retrying. releaseCustomUIVideo only ever cleaned the last one.
+        //
+        // That is what kept the tiles black. The refusals in Greenroom-video.log
+        // are all user=1, which is this element, not a participant: the leaked
+        // copies accumulated at one every two seconds and saturated the SDK's
+        // subscription rate limiter, so the students' own subscribe calls were
+        // refused too. It is also why the per-user backoff did not help - the
+        // calls come from here, not from participantView, so they never
+        // consulted the cooldown.
+        if let existing = activeSpeakerElement {
+            _ = existing.resize(frame)
+            return ActiveSpeakerResult(view: existing.getVideoView(),
+                                       detail: "reused existing element")
+        }
+
         // The element is allocated by US with its frame, then handed to the
         // container to wire up - the container does not return a new one, it
         // populates the one you pass in.

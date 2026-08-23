@@ -104,6 +104,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 .init(keyCode: UInt32(kVK_ANSI_Z), modifiers: mods, label: "\u{2325}\u{2318}Z") {
                     CoordinatorController.shared?.toggleSpeakerTile()
                 },
+                // Clip marks. The digit IS the number of minutes, so there is
+                // nothing to remember: something good just happened, press the
+                // number of minutes it took. Digits rather than more letters
+                // because the mapping is the mnemonic, and because Option-Command
+                // digits are unclaimed by the system (unlike ⌘1-9, which is
+                // window and tab switching in nearly every app).
+                .init(keyCode: UInt32(kVK_ANSI_1), modifiers: mods, label: "\u{2325}\u{2318}1") {
+                    CoordinatorController.shared?.markClip(minutes: 1)
+                },
+                .init(keyCode: UInt32(kVK_ANSI_2), modifiers: mods, label: "\u{2325}\u{2318}2") {
+                    CoordinatorController.shared?.markClip(minutes: 2)
+                },
+                .init(keyCode: UInt32(kVK_ANSI_5), modifiers: mods, label: "\u{2325}\u{2318}5") {
+                    CoordinatorController.shared?.markClip(minutes: 5)
+                },
             ])
 
             // Another running app already owning a combination is the one way

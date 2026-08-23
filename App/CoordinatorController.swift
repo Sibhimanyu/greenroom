@@ -1086,7 +1086,11 @@ final class CoordinatorController: ObservableObject {
             // killing OBS mid-record leaves a truncated/unplayable file.
             if isRecording {
                 if let path = (try? await client.request("StopRecord"))?["outputPath"] as? String {
-                    log("Recording saved: \(path)")
+                    // End Session stops the tape too, so marks have to be
+                    // adopted here as well or a class ended the ordinary way
+                    // would strand them in pending-clips.json.
+                    let marks = adoptPendingClips(recordedAt: path)
+                    log("Recording saved: \(path)" + (marks > 0 ? " (\(marks) clip\(marks == 1 ? "" : "s") marked)" : ""))
                     Notifier.post(title: "Recording saved",
                                   body: "\((path as NSString).lastPathComponent) \u{2014} in Documents/Greenroom.")
                 }
@@ -1151,6 +1155,80 @@ final class CoordinatorController: ObservableObject {
     /// recorded is exactly what participants saw. Note this captures YOUR
     /// composite, not other participants' video; recording the actual Zoom
     /// meeting is a separate capability (the SDK's record controller).
+    /// Marks the last `minutes` of the recording, ending now.
+    ///
+    /// A bookmark, not a cut. `outputDuration` is OBS's own position in the file
+    /// it is writing, so the range is exact and costs one websocket round trip -
+    /// nothing is encoded, buffered, or read back from a file being written to.
+    /// The clip itself is cut later, losslessly, from the finished master.
+    ///
+    /// Ends AT the keypress rather than straddling it: "the last five minutes"
+    /// should mean the last five minutes.
+    func markClip(minutes: Int) {
+        Task {
+            guard isRecording else {
+                log("Nothing to clip \u{2014} press Record first (\u{2325}\u{2318}R). Marks need a tape rolling.")
+                Notifier.post(title: "Not recording",
+                              body: "Start the recording first \u{2014} there is nothing to clip yet.")
+                return
+            }
+            guard let folder = sessionFolder else {
+                log("Nothing to clip \u{2014} no session folder for this recording.")
+                return
+            }
+            // Double, not Int: obs-websocket sends this as a JSON number and the
+            // decoder is free to hand back either.
+            guard let status = try? await client.request("GetRecordStatus"),
+                  let position = (status["outputDuration"] as? Double)
+                    ?? (status["outputDuration"] as? Int).map(Double.init) else {
+                log("Couldn't clip \u{2014} OBS did not report where the recording is.")
+                return
+            }
+
+            let end = Int(position)
+            // Clamps at the start of the file: asking for the last five minutes
+            // two minutes in gives you two minutes, which is what you meant.
+            let start = max(0, end - minutes * 60_000)
+            let clip = SessionClip(startMs: start, endMs: end, markedAt: Date())
+            guard SessionClipStore.appendPending(clip, in: folder) else {
+                log("Couldn't clip \u{2014} the mark could not be written to \(folder.lastPathComponent).")
+                return
+            }
+
+            let clipped = clip.durationLabel
+            log("Clipped the last \(clipped) (\(Self.offsetLabel(start)) to \(Self.offsetLabel(end))).")
+            // Confirmed out loud: the teacher is mid-class looking at the shared
+            // screen, not at Greenroom, and a mark that gave no sign of landing
+            // would be pressed again and again.
+            Notifier.post(title: "Clipped the last \(clipped)",
+                          body: "Saved to \(folder.lastPathComponent) \u{2014} find it in Recordings after the class.")
+        }
+    }
+
+    /// Marries this session's pending marks to the file OBS just finished.
+    /// Returns how many were adopted, for the log and the notification.
+    @discardableResult
+    private func adoptPendingClips(recordedAt path: String) -> Int {
+        let recording = URL(fileURLWithPath: path)
+        // The recording's own folder, not sessionFolder: if pointRecordingAt
+        // failed and OBS wrote somewhere else, the marks should follow the file
+        // rather than be filed next to a recording that is not there.
+        let folder = recording.deletingLastPathComponent()
+        let pending = SessionClipStore.loadPending(in: folder)
+        guard !pending.isEmpty else { return 0 }
+        SessionClipStore.adoptPending(in: folder, as: recording)
+        return pending.count
+    }
+
+    /// mm:ss, or h:mm:ss once a class runs past the hour.
+    private static func offsetLabel(_ milliseconds: Int) -> String {
+        let total = milliseconds / 1000
+        let hours = total / 3600, minutes = (total % 3600) / 60, seconds = total % 60
+        return hours > 0
+            ? String(format: "%d:%02d:%02d", hours, minutes, seconds)
+            : String(format: "%d:%02d", minutes, seconds)
+    }
+
     func toggleRecording() {
         Task {
             do {
@@ -1158,9 +1236,14 @@ final class CoordinatorController: ObservableObject {
                     let response = try await client.request("StopRecord")
                     isRecording = false
                     if let path = response["outputPath"] as? String {
-                        log("Recording saved: \(path)")
+                        // The first moment OBS tells us the filename, which is
+                        // why marks were parked in a pending file until now.
+                        let marks = adoptPendingClips(recordedAt: path)
+                        log("Recording saved: \(path)" + (marks > 0 ? " (\(marks) clip\(marks == 1 ? "" : "s") marked)" : ""))
                         Notifier.post(title: "Recording saved",
-                                      body: "\((path as NSString).lastPathComponent) \u{2014} in Documents/Greenroom.")
+                                      body: marks > 0
+                                        ? "\((path as NSString).lastPathComponent) \u{2014} \(marks) clip\(marks == 1 ? "" : "s") marked."
+                                        : "\((path as NSString).lastPathComponent) \u{2014} in Documents/Greenroom.")
                     } else {
                         log("Recording stopped.")
                     }

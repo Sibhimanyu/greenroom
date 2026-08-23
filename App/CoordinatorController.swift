@@ -947,6 +947,12 @@ final class CoordinatorController: ObservableObject {
 
                 try await pipelineDone
                 mark(.camera, .done)
+                // Everything OBS writes for this session goes in the session's
+                // own folder - the recording, and the replay-buffer saves that
+                // become clips. Done here rather than only before StartRecord,
+                // because a clip taken without recording is written by OBS too
+                // and was landing in the recordings root.
+                await pointOutputsAtSessionFolder()
                 // Armed as soon as the composite exists, so the shortcuts work
                 // from the first minute of the class rather than from whenever
                 // somebody remembers to press Record.
@@ -1064,6 +1070,7 @@ final class CoordinatorController: ObservableObject {
             .customUI: customUIMode ? "yes" : "no"
         ])
         sessionStartedAt = nil
+        discardEmptySessionFolder()
         sessionFolder = nil
         // A start still in flight gets abandoned at its next checkpoint -
         // without this, its meeting setup raced the OBS teardown below.
@@ -1191,6 +1198,18 @@ final class CoordinatorController: ObservableObject {
     ///
     /// Ends AT the keypress rather than straddling it: "the last five minutes"
     /// should mean the last five minutes.
+    /// Points every OBS output at this session's folder, creating it.
+    ///
+    /// Nothing Greenroom produces belongs loose in ~/Documents/Greenroom. The
+    /// folder is created here rather than lazily at first record, because the
+    /// replay buffer can write a clip before any recording exists and OBS needs
+    /// somewhere to put it. `stop()` removes the folder again if the session
+    /// left nothing in it, so an unused session still costs nothing.
+    private func pointOutputsAtSessionFolder() async {
+        guard let folder = sessionFolder else { return }
+        await GreenroomScene.pointRecordingAt(folder, client: client)
+    }
+
     /// Arms the rolling buffer so the clip shortcuts work before anyone presses
     /// Record. Best-effort: a session that cannot buffer is still a session.
     private func armClipBuffer() async {
@@ -1286,7 +1305,7 @@ final class CoordinatorController: ObservableObject {
 
         do {
             let export = try await SessionClipExporter.exportTail(
-                minutes: minutes, of: replay, markedAt: Date())
+                minutes: minutes, of: replay, markedAt: Date(), into: folder)
             log("Clipped the last \(export.requested.durationLabel) from the buffer \u{2014} \(export.url.lastPathComponent).")
             ToastController.show("Clipped the last \(export.requested.durationLabel)",
                                  detail: "Saved to \(folder.lastPathComponent)")
@@ -1308,6 +1327,19 @@ final class CoordinatorController: ObservableObject {
                 ToastController.show("Clip failed", detail: error.localizedDescription, kind: .failure)
             }
         }
+    }
+
+    /// Removes this session's folder when the class left nothing behind.
+    ///
+    /// The folder is created at session start now, so that OBS has somewhere to
+    /// write. A session where nobody recorded and nobody clipped would otherwise
+    /// leave a dated empty folder every single morning.
+    private func discardEmptySessionFolder() {
+        guard let folder = sessionFolder else { return }
+        let contents = (try? FileManager.default.contentsOfDirectory(
+            at: folder, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles])) ?? []
+        guard contents.isEmpty else { return }
+        try? FileManager.default.removeItem(at: folder)
     }
 
     /// Marries this session's pending marks to the file OBS just finished.

@@ -7,33 +7,91 @@
 //  Meeting SDK callbacks, not Zoom's window - there's nothing to pop out
 //  of Zoom itself here).
 //
+//  What is here matches what the SDK actually exposes: text, emoji (ordinary
+//  characters, nothing special needed), file transfer both ways, threads and
+//  quoted replies. What Zoom's own client has and this cannot: reactions on a
+//  chat message, message recall, GIF search, read receipts and profile
+//  pictures. None of those exist in ZoomSDKMeetingChatController, so they are
+//  absent rather than faked.
+//
 import SwiftUI
 import AppKit
+import UniformTypeIdentifiers
 
 struct ChatWindowView: View {
     @ObservedObject var chat: ZoomChatBridge
+    @Environment(\.controlActiveState) private var activeState
+
     @State private var draft = ""
+    @State private var replyingTo: ChatMessage?
+    @State private var dropTargeted = false
+    /// Index of the first message that arrived while the window was not the
+    /// key window. The chat usually sits in a side column while the teacher
+    /// works in Chrome, so "what did I miss" is the normal question.
+    @State private var firstUnreadID: String?
 
     var body: some View {
         VStack(spacing: 0) {
-            if chat.messages.isEmpty {
-                // Empty state: a blank pane read as "broken or not
-                // connected?" (Codex design audit #16).
-                VStack(spacing: 6) {
-                    Image(systemName: "bubble.left.and.bubble.right")
-                        .font(.title2)
-                        .foregroundStyle(.tertiary)
-                    Text("Connected \u{2014} no messages yet")
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else {
+            transcript
+            if let error = chat.lastError { errorBar(error) }
+            if let replyingTo { replyBar(replyingTo) }
+            Divider()
+            composer
+        }
+        .frame(minWidth: 300, minHeight: 380)
+        .overlay {
+            if dropTargeted {
+                RoundedRectangle(cornerRadius: 10)
+                    .strokeBorder(Color.accentColor, style: StrokeStyle(lineWidth: 2, dash: [6]))
+                    .background(Color.accentColor.opacity(0.06))
+                    .overlay(Label("Drop to share with everyone", systemImage: "paperclip"))
+                    .padding(6)
+                    .allowsHitTesting(false)
+            }
+        }
+        .onDrop(of: [.fileURL], isTargeted: $dropTargeted) { providers in
+            attach(from: providers)
+        }
+        .onChange(of: chat.messages.count) { _ in noteArrival() }
+        .onChange(of: activeState) { state in
+            if state == .key { firstUnreadID = nil }
+        }
+    }
+
+    // MARK: Transcript
+
+    @ViewBuilder private var transcript: some View {
+        if chat.messages.isEmpty {
+            // Empty state: a blank pane read as "broken or not connected?"
+            // (Codex design audit #16).
+            VStack(spacing: 6) {
+                Image(systemName: "bubble.left.and.bubble.right")
+                    .font(.title2)
+                    .foregroundStyle(.tertiary)
+                Text("Connected \u{2014} no messages yet")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                Text(chat.fileTransferEnabled
+                     ? "Type below, or drag a file in to share it with the class."
+                     : "Type below. File sharing is switched off for this meeting.")
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 24)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else {
             ScrollViewReader { proxy in
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 2) {
                         ForEach(Array(chat.messages.enumerated()), id: \.element.id) { index, message in
-                            MessageRow(message: message, showsHeader: startsGroup(at: index))
+                            if let day = daySeparator(at: index) { DayDivider(label: day) }
+                            if message.id == firstUnreadID { UnreadDivider() }
+                            MessageRow(message: message,
+                                       showsHeader: startsGroup(at: index),
+                                       onReply: { replyingTo = message },
+                                       onAccept: { chat.accept(message) },
+                                       onDecline: { chat.declineFile(message) })
                                 .id(message.id)
                         }
                     }
@@ -45,31 +103,88 @@ struct ChatWindowView: View {
                     withAnimation { proxy.scrollTo(last.id, anchor: .bottom) }
                 }
             }
-            }
-
-            Divider()
-
-            HStack(spacing: 8) {
-                MessageField(text: $draft, placeholder: "Message everyone", onSend: send)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 7)
-                    .background(.quaternary.opacity(0.5), in: Capsule())
-
-                Button(action: send) {
-                    Image(systemName: "arrow.up.circle.fill").font(.title2)
-                }
-                .buttonStyle(.plain)
-                .help("Send message")
-                .accessibilityLabel("Send message")
-                .disabled(draft.isEmpty)
-                .foregroundStyle(draft.isEmpty
-                    ? AnyShapeStyle(HierarchicalShapeStyle.secondary)
-                    : AnyShapeStyle(Color.accentColor))
-            }
-            .padding(10)
         }
-        .frame(minWidth: 300, minHeight: 380)
     }
+
+    private func errorBar(_ message: String) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: "exclamationmark.triangle.fill")
+            Text(message).font(.caption)
+            Spacer()
+        }
+        .foregroundStyle(.orange)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
+        .background(Color.orange.opacity(0.12))
+    }
+
+    /// The message being answered, shown above the composer so it is obvious
+    /// what will be quoted before it is sent.
+    private func replyBar(_ message: ChatMessage) -> some View {
+        HStack(spacing: 8) {
+            Rectangle().fill(Color.accentColor).frame(width: 2)
+            VStack(alignment: .leading, spacing: 1) {
+                Text("Replying to \(message.senderName)")
+                    .font(.caption2.bold())
+                    .foregroundStyle(Color.accentColor)
+                Text(message.isFile ? (message.attachment?.name ?? "") : message.content)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+            Spacer()
+            Button {
+                replyingTo = nil
+            } label: {
+                Image(systemName: "xmark.circle.fill").foregroundStyle(.tertiary)
+            }
+            .buttonStyle(.plain)
+            .help("Cancel reply")
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
+        .frame(height: 40)
+    }
+
+    // MARK: Composer
+
+    private var composer: some View {
+        HStack(spacing: 8) {
+            Button(action: pickFile) {
+                Image(systemName: "paperclip").font(.system(size: 15))
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(chat.fileTransferEnabled ? AnyShapeStyle(HierarchicalShapeStyle.secondary)
+                                                      : AnyShapeStyle(HierarchicalShapeStyle.quaternary))
+            .disabled(!chat.fileTransferEnabled)
+            .help(chat.fileTransferEnabled
+                  ? "Share a file with everyone\u{2026}"
+                  : "File sharing is switched off for this meeting")
+            .accessibilityLabel("Share a file")
+
+            MessageField(text: $draft,
+                         placeholder: replyingTo == nil ? "Message everyone" : "Write your reply",
+                         onSend: send,
+                         onPasteFiles: share)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 7)
+                .background(.quaternary.opacity(0.5), in: Capsule())
+
+            Button(action: send) {
+                Image(systemName: "arrow.up.circle.fill").font(.title2)
+            }
+            .buttonStyle(.plain)
+            .help("Send message")
+            .accessibilityLabel("Send message")
+            .disabled(draft.isEmpty)
+            .foregroundStyle(draft.isEmpty
+                ? AnyShapeStyle(HierarchicalShapeStyle.secondary)
+                : AnyShapeStyle(Color.accentColor))
+        }
+        .padding(10)
+    }
+
+    // MARK: Behaviour
 
     /// A message starts a new visual group when it's from a different
     /// sender than the one before it, or more than 3 minutes later -
@@ -80,14 +195,90 @@ struct ChatWindowView: View {
         let current = chat.messages[index]
         let previous = chat.messages[index - 1]
         if previous.senderName != current.senderName { return true }
+        if current.isFile || previous.isFile { return true }
         return current.timestamp.timeIntervalSince(previous.timestamp) > 180
+    }
+
+    /// "Today", "Yesterday" or a date, on the first message of each day. A
+    /// class that runs over two sessions otherwise reads as one long morning.
+    private func daySeparator(at index: Int) -> String? {
+        let current = chat.messages[index].timestamp
+        if index > 0 {
+            let previous = chat.messages[index - 1].timestamp
+            guard !Calendar.current.isDate(current, inSameDayAs: previous) else { return nil }
+        }
+        if Calendar.current.isDateInToday(current) { return "Today" }
+        if Calendar.current.isDateInYesterday(current) { return "Yesterday" }
+        return current.formatted(.dateTime.weekday(.wide).day().month(.wide))
+    }
+
+    private func noteArrival() {
+        guard activeState != .key else { firstUnreadID = nil; return }
+        guard firstUnreadID == nil, let last = chat.messages.last, !last.isOutgoing else { return }
+        firstUnreadID = last.id
     }
 
     private func send() {
         let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
+        let parent = replyingTo
         draft = ""
-        DispatchQueue.main.async { chat.send(text) }
+        replyingTo = nil
+        DispatchQueue.main.async { chat.send(text, replyingTo: parent) }
+    }
+
+    private func share(_ urls: [URL]) {
+        for url in urls { chat.sendFile(url) }
+    }
+
+    private func pickFile() {
+        let panel = NSOpenPanel()
+        panel.allowsMultipleSelection = true
+        panel.canChooseDirectories = false
+        panel.prompt = "Share"
+        panel.message = "Share with everyone in the meeting"
+        guard panel.runModal() == .OK else { return }
+        share(panel.urls)
+    }
+
+    private func attach(from providers: [NSItemProvider]) -> Bool {
+        guard chat.fileTransferEnabled else { return false }
+        for provider in providers {
+            _ = provider.loadObject(ofClass: URL.self) { url, _ in
+                guard let url, url.isFileURL else { return }
+                Task { @MainActor in chat.sendFile(url) }
+            }
+        }
+        return true
+    }
+}
+
+/// A dated rule between days.
+private struct DayDivider: View {
+    let label: String
+    var body: some View {
+        HStack(spacing: 8) {
+            Rectangle().fill(.quaternary).frame(height: 1)
+            Text(label)
+                .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                .foregroundStyle(.tertiary)
+            Rectangle().fill(.quaternary).frame(height: 1)
+        }
+        .padding(.vertical, 10)
+    }
+}
+
+/// Where the teacher stopped reading.
+private struct UnreadDivider: View {
+    var body: some View {
+        HStack(spacing: 8) {
+            Rectangle().fill(Color.accentColor.opacity(0.6)).frame(height: 1)
+            Text("NEW")
+                .font(.system(size: 9, weight: .bold, design: .monospaced))
+                .foregroundStyle(Color.accentColor)
+            Rectangle().fill(Color.accentColor.opacity(0.6)).frame(height: 1)
+        }
+        .padding(.vertical, 6)
     }
 }
 
@@ -103,13 +294,20 @@ struct ChatWindowView: View {
 /// - the send BUTTON path clears through updateNSView, which pushes a
 ///   changed binding into the view (and never fights in-progress typing
 ///   because it only writes when the values differ).
+///
+/// It also owns paste. ⌘V with a file or an image on the pasteboard shares
+/// it rather than pasting a path string, which is what a teacher copying a
+/// picture actually means - and when the pasteboard holds plain text it
+/// falls straight through to normal pasting.
 private struct MessageField: NSViewRepresentable {
     @Binding var text: String
     let placeholder: String
     let onSend: () -> Void
+    var onPasteFiles: ([URL]) -> Void = { _ in }
 
     func makeNSView(context: Context) -> NSTextField {
-        let field = NSTextField()
+        let field = PastingTextField()
+        field.onPasteFiles = onPasteFiles
         field.placeholderString = placeholder
         field.isBordered = false
         field.drawsBackground = false
@@ -124,6 +322,8 @@ private struct MessageField: NSViewRepresentable {
 
     func updateNSView(_ field: NSTextField, context: Context) {
         context.coordinator.parent = self
+        (field as? PastingTextField)?.onPasteFiles = onPasteFiles
+        field.placeholderString = placeholder
         if field.stringValue != text {
             field.stringValue = text
         }
@@ -148,6 +348,43 @@ private struct MessageField: NSViewRepresentable {
             return true
         }
     }
+
+    /// Intercepts ⌘V only when the pasteboard actually holds files or image
+    /// data. Text paste is left completely alone - hijacking it would be a far
+    /// worse bug than the feature is worth.
+    final class PastingTextField: NSTextField {
+        var onPasteFiles: ([URL]) -> Void = { _ in }
+
+        override func performKeyEquivalent(with event: NSEvent) -> Bool {
+            guard event.modifierFlags.contains(.command),
+                  event.charactersIgnoringModifiers?.lowercased() == "v" else {
+                return super.performKeyEquivalent(with: event)
+            }
+            let board = NSPasteboard.general
+            if let urls = board.readObjects(forClasses: [NSURL.self], options: nil) as? [URL],
+               !urls.isEmpty, urls.allSatisfy(\.isFileURL) {
+                onPasteFiles(urls)
+                return true
+            }
+            // An image copied from Preview or a browser has no file behind it,
+            // so it is written out before it can be shared.
+            if let image = NSImage(pasteboard: board), let url = Self.writeTemporary(image) {
+                onPasteFiles([url])
+                return true
+            }
+            return super.performKeyEquivalent(with: event)
+        }
+
+        private static func writeTemporary(_ image: NSImage) -> URL? {
+            guard let tiff = image.tiffRepresentation,
+                  let bitmap = NSBitmapImageRep(data: tiff),
+                  let png = bitmap.representation(using: .png, properties: [:]) else { return nil }
+            let url = FileManager.default.temporaryDirectory
+                .appendingPathComponent("Pasted image.png")
+            try? png.write(to: url, options: .atomic)
+            return url
+        }
+    }
 }
 
 /// One message: initials avatar + name + time on the first message of a
@@ -156,11 +393,15 @@ private struct MessageField: NSViewRepresentable {
 private struct MessageRow: View {
     let message: ChatMessage
     let showsHeader: Bool
+    let onReply: () -> Void
+    let onAccept: () -> Void
+    let onDecline: () -> Void
+
+    @State private var hovering = false
 
     var body: some View {
         HStack(alignment: .top, spacing: 8) {
             if message.isOutgoing { Spacer(minLength: 32) }
-
             if !message.isOutgoing {
                 // Invisible placeholder keeps grouped messages aligned
                 // with the avatar above them.
@@ -168,29 +409,74 @@ private struct MessageRow: View {
             }
 
             VStack(alignment: message.isOutgoing ? .trailing : .leading, spacing: 2) {
-                if showsHeader {
-                    HStack(spacing: 6) {
-                        Text(message.senderName).font(.caption.bold())
-                        Text(message.timestamp, style: .time)
-                            .font(.caption2)
-                            .foregroundStyle(.tertiary)
-                    }
-                }
-                Text(message.content)
-                    .textSelection(.enabled)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 6)
-                    .background(
-                        message.isOutgoing
-                            ? AnyShapeStyle(Color.accentColor.opacity(0.22))
-                            : AnyShapeStyle(HierarchicalShapeStyle.quaternary.opacity(0.6)),
-                        in: RoundedRectangle(cornerRadius: 12)
-                    )
+                if showsHeader { header }
+                bubble
             }
 
             if !message.isOutgoing { Spacer(minLength: 32) }
         }
         .padding(.top, showsHeader ? 8 : 0)
+        .onHover { hovering = $0 }
+    }
+
+    private var header: some View {
+        HStack(spacing: 6) {
+            Text(message.senderName).font(.caption.bold())
+            Text(message.timestamp, style: .time)
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
+            if let privateTo = message.privateTo {
+                Label("private to \(privateTo)", systemImage: "lock.fill")
+                    .labelStyle(.titleAndIcon)
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundStyle(.orange)
+            }
+            if hovering {
+                Button(action: onReply) {
+                    Image(systemName: "arrowshape.turn.up.left")
+                        .font(.system(size: 10))
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.secondary)
+                .help("Reply to this message")
+            }
+        }
+    }
+
+    @ViewBuilder private var bubble: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            if let quote = message.quote { quoteBlock(quote) }
+            if let attachment = message.attachment {
+                AttachmentView(attachment: attachment,
+                               onAccept: onAccept,
+                               onDecline: onDecline)
+            }
+            if !message.content.isEmpty {
+                // Links are made tappable by Text's markdown handling of bare
+                // URLs; selection stays on so a meeting code can be copied.
+                Text(.init(message.content))
+                    .textSelection(.enabled)
+            }
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(
+            message.isOutgoing
+                ? AnyShapeStyle(Color.accentColor.opacity(0.22))
+                : AnyShapeStyle(HierarchicalShapeStyle.quaternary.opacity(0.6)),
+            in: RoundedRectangle(cornerRadius: 12)
+        )
+    }
+
+    private func quoteBlock(_ quote: ChatQuote) -> some View {
+        HStack(spacing: 6) {
+            Rectangle().fill(Color.accentColor.opacity(0.7)).frame(width: 2)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(quote.sender).font(.caption2.bold()).foregroundStyle(Color.accentColor)
+                Text(quote.snippet).font(.caption).foregroundStyle(.secondary).lineLimit(2)
+            }
+        }
+        .fixedSize(horizontal: false, vertical: true)
     }
 
     private var avatar: some View {
@@ -202,6 +488,74 @@ private struct MessageRow: View {
                     .font(.system(size: 10, weight: .semibold))
                     .foregroundStyle(.white)
             )
+    }
+}
+
+/// A file in the transcript: a thumbnail once an image is on disk, a row with
+/// its name and size otherwise, and the accept decision when one is pending.
+private struct AttachmentView: View {
+    let attachment: ChatAttachment
+    let onAccept: () -> Void
+    let onDecline: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            if let url = attachment.url, attachment.isImage, let image = NSImage(contentsOf: url) {
+                Image(nsImage: image)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(maxWidth: 220, maxHeight: 160)
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                    .onTapGesture { NSWorkspace.shared.open(url) }
+                    .help("Click to open")
+            }
+
+            HStack(spacing: 8) {
+                Image(systemName: attachment.isImage ? "photo" : "doc")
+                    .foregroundStyle(.secondary)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(attachment.name).font(.caption.bold()).lineLimit(1).truncationMode(.middle)
+                    Text(statusLine).font(.caption2).foregroundStyle(.secondary)
+                }
+                Spacer(minLength: 4)
+                controls
+            }
+
+            if attachment.state.isBusy {
+                ProgressView(value: Double(attachment.state.percent), total: 100)
+                    .controlSize(.small)
+            }
+        }
+        .frame(minWidth: 190, alignment: .leading)
+    }
+
+    @ViewBuilder private var controls: some View {
+        switch attachment.state {
+        case .offered:
+            // Nothing is written to disk until this is pressed. The senders
+            // are children and the SDK's allow-list stops executables and
+            // little else, so the teacher makes the call.
+            HStack(spacing: 4) {
+                Button("Accept", action: onAccept).controlSize(.small)
+                Button("Decline", role: .destructive, action: onDecline).controlSize(.small)
+            }
+        case .saved(let url):
+            Button("Show") { NSWorkspace.shared.activateFileViewerSelecting([url]) }
+                .controlSize(.small)
+        default:
+            EmptyView()
+        }
+    }
+
+    private var statusLine: String {
+        switch attachment.state {
+        case .offered:     return "\(attachment.sizeLabel) \u{2014} not downloaded"
+        case .receiving:   return "Downloading\u{2026} \(attachment.state.percent)%"
+        case .sending:     return "Sending\u{2026} \(attachment.state.percent)%"
+        case .saved:       return "\(attachment.sizeLabel) \u{2014} saved with this class"
+        case .sent:        return "\(attachment.sizeLabel) \u{2014} sent"
+        case .failed(let why): return why
+        }
     }
 }
 

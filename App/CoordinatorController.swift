@@ -1208,6 +1208,10 @@ final class CoordinatorController: ObservableObject {
     private func pointOutputsAtSessionFolder() async {
         guard let folder = sessionFolder else { return }
         await GreenroomScene.pointRecordingAt(folder, client: client)
+        // Accepted chat files belong with the class too, so a lesson's
+        // recording, clips and whatever a pupil shared all end up together
+        // rather than scattered between here and Downloads.
+        zoomChatBridge.saveDirectory = folder
     }
 
     /// Arms the rolling buffer so the clip shortcuts work before anyone presses

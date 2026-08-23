@@ -1188,7 +1188,16 @@ final class CoordinatorController: ObservableObject {
         guard clipBufferEnabled else { return }
         await GreenroomScene.configureReplayBuffer(client: client, enabled: true)
         guard (try? await client.request("StartReplayBuffer")) != nil else {
-            log("Clip buffer unavailable \u{2014} \u{2325}\u{2318}1/2/5 will still work once you press Record.")
+            // Measured cause, not a guess: OBS creates the replay-buffer output
+            // when it READS the profile, so a config written into a running
+            // instance returns 604 until the next launch. Greenroom seeds the
+            // profile before it launches OBS (see seedReplayBufferConfig), so
+            // this is only reachable when OBS was already running beforehand -
+            // somebody opened it by hand, or it stayed warm from a build that
+            // predates the setting.
+            log("Clip buffer needs an OBS restart \u{2014} quit OBS and start the session again, and \u{2325}\u{2318}1/2/5 will work without recording. Until then they work while a recording is running.")
+            Notifier.post(title: "Clip buffer needs an OBS restart",
+                          body: "Quit OBS and start again. Clip shortcuts still work while recording.")
             return
         }
         let minutes = GreenroomScene.replayBufferSeconds / 60

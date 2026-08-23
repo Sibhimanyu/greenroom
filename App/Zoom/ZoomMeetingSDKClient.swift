@@ -168,25 +168,42 @@ final class ZoomMeetingSDKClient: NSObject, ObservableObject {
             .getUserByUserID(userID)?.getUserName()
     }
 
-    /// User IDs whose subscription the SDK refused. Their elements are thrown
-    /// away so the next poll builds a fresh one.
+    /// When a refused user may be re-subscribed, and how many times in a row
+    /// they have been refused.
     ///
-    /// Without this a refusal was permanent: the dead element stayed in the cache
-    /// and every later pass returned the same black view. That matters most for
-    /// _TooFrequentCall and _HasSubscribeExceededLimit, both of which are
-    /// transient - the quota frees up as soon as another stream closes.
-    private var subscriptionFailures: Set<UInt32> = []
+    /// Rebuilding on the very next poll was the original design, and for
+    /// _HasSubscribeExceededLimit it is sound: the quota frees up as soon as
+    /// another stream closes, so trying again shortly after costs nothing.
+    ///
+    /// For _TooFrequentCall it is exactly backwards, and it was the whole bug.
+    /// That refusal is CAUSED by how often the subscription is asked for, so
+    /// tearing the element down and rebuilding it one second later guarantees
+    /// the next refusal, which schedules the next rebuild. The measured result
+    /// was a loop that climbed from 3 refusals a second to 69 over one session
+    /// (2,565 of them in Greenroom-video.log, every single one code 7) while
+    /// every tile stayed black.
+    ///
+    /// So a refusal now buys silence rather than another attempt: exponential
+    /// backoff, and the existing element is left alone while it runs.
+    private var subscriptionCooldown: [UInt32: Date] = [:]
+    private var subscriptionAttempts: [UInt32: Int] = [:]
+    private var lastSubscriptionFailure: [UInt32: Date] = [:]
 
     /// A view rendering one participant, reused across layout passes.
     func participantView(userID: UInt32, frame: NSRect) -> NSView? {
         guard didUseCustomUI else { return nil }
-        if subscriptionFailures.contains(userID) {
-            subscriptionFailures.remove(userID)
+        if let readyAt = subscriptionCooldown[userID] {
+            guard Date() >= readyAt else {
+                // Still backing off. Hand back whatever is already there rather
+                // than rebuilding - the rebuild is what causes the refusal.
+                return participantElements[userID]?.getVideoView()
+            }
+            subscriptionCooldown[userID] = nil
             if let dead = participantElements.removeValue(forKey: userID) {
                 _ = dead.subscribeVideo(false)
                 _ = videoContainer?.clean(dead)
             }
-            Self.videoLog("retrying user=\(userID) after a refused subscription")
+            Self.videoLog("retrying user=\(userID) after backoff")
         }
         if let existing = participantElements[userID] {
             _ = existing.resize(frame)
@@ -696,14 +713,31 @@ extension ZoomMeetingSDKClient: ZoomSDKVideoContainerDelegate {
         case ZoomSDKVideoSubscribe_Fail_HasSubscribeExceededLimit:
             reason = "Zoom's limit on simultaneous video streams was reached"
         case ZoomSDKVideoSubscribe_Fail_TooFrequentCall:
-            reason = "requests came too quickly; it should recover on the next pass"
+            reason = "requests came too quickly"
         default:
             reason = "reason code \(error.rawValue)"
         }
-        Self.videoLog("SUBSCRIBE FAIL code=\(error.rawValue) user=\(element.userid) \(reason)")
-        // Marked for rebuild rather than left cached and black forever.
-        subscriptionFailures.insert(element.userid)
-        onVideoSubscribeFailure?("A participant's video could not start \u{2014} \(reason).")
+        let userID = element.userid
+        // A run of refusals is one problem, not many. Anything after a quiet
+        // minute starts the backoff again from the beginning.
+        let now = Date()
+        let continuing = lastSubscriptionFailure[userID]
+            .map { now.timeIntervalSince($0) < 60 } ?? false
+        let attempts = continuing ? (subscriptionAttempts[userID] ?? 0) + 1 : 1
+        subscriptionAttempts[userID] = attempts
+        lastSubscriptionFailure[userID] = now
+        // 2, 4, 8, 16, 32 seconds, then hold there. The poll runs at 1Hz, so
+        // even the first step takes the pressure off the rate limiter.
+        let delay = min(32, pow(2.0, Double(min(attempts, 5))))
+        subscriptionCooldown[userID] = now.addingTimeInterval(delay)
+
+        Self.videoLog("SUBSCRIBE FAIL code=\(error.rawValue) user=\(userID) \(reason) \u{2014} backing off \(Int(delay))s (attempt \(attempts))")
+        // Only worth telling the teacher about things they can act on. A
+        // too-frequent refusal is Greenroom's own pacing and recovers itself;
+        // saying so would be noise during a class.
+        if error != ZoomSDKVideoSubscribe_Fail_TooFrequentCall {
+            onVideoSubscribeFailure?("A participant's video could not start \u{2014} \(reason).")
+        }
     }
 
     func onRenderUserChanged(_ element: ZoomSDKVideoElement?, user userid: UInt32) {

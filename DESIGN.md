@@ -134,6 +134,58 @@ saturation 10-15%.
   | `lg` | 14px | Panels, diagram frames, feature cards |
   | `pill` | 999px | Eyebrows, chips, status badges |
 
+### Panel composition (app)
+
+Applies to any app panel that pairs a piece of media with its controls. The
+participant rail is the one that exists today; anything similar follows it.
+
+- **Controls sit below the media, never beside it.** One shape at every width.
+  A panel that rearranges itself past a width threshold reads as a panel that
+  ran out of ideas, and the wide case is usually the one the user meets first.
+- **One content column, shared by everything in the panel.** Picture, caption,
+  meter and control grid align to the same left and right edges. A control grid
+  that stops short of the media above it is the loudest single tell that a
+  layout was not composed.
+- **Cap the column at the content's natural size, then centre it.** Measure the
+  cap in controls, not points: at most seven 76pt cells across, snapped down to
+  a whole number of cells so the last cell in a row lands exactly on the media's
+  right edge.
+- **Size the column for the media, not for the controls.** The media is the
+  primary content, so a cap chosen to make the button grid comfortable makes the
+  media pay for that comfort. Pick the cap where the *media* stops improving,
+  then check the control grid still reads at that width. Check the group sizes
+  too: a cap one cell under a group's size costs a whole extra row.
+- **Fit the column to height as well as width.** A column sized on width alone
+  makes the media as large as the panel is wide, which pushes whatever sits
+  below the controls off the bottom on a short window. Take the widest column
+  whose *whole* stack fits the panel height. When nothing fits, take the size
+  that overflows least — not the narrowest, since narrower means more wrapped
+  rows and a taller control column.
+- **Surplus width becomes symmetric margin, not stretched content.** Centring is
+  what makes leftover space read as margin instead of as content that failed to
+  fill its container.
+- **Size the container from the content, not from a fraction of the screen.** A
+  fraction is the right way to describe a panel only while its contents stretch
+  to fill whatever they are handed. Once the content is capped, a fraction just
+  buys margin, and the number goes stale the moment the content changes. Derive
+  the panel's ceiling from its widest content plus margin; keep the fraction, if
+  at all, only to shrink the panel when something else needs the room.
+- **Panels scroll rather than shrink.** When the stack does not fit, scroll it.
+  Do not claw height back by clamping the media to a fraction of the panel
+  height: that back-solves a media width that no longer matches the controls.
+- **In a control grid only two vertical gaps are decisions:** the break above a
+  section eyebrow (20px) and the breath below it before its first row (8px).
+  Every other gap is the cell grid itself (4px). A gap that is none of those
+  three is a bug, not a choice, however deliberate it looks on screen.
+- **Measure and place in one pass.** A panel that reports its own height to a
+  scroll view must run the identical arithmetic for both. Two copies drift, and
+  the failure is quiet in the worst way: if both copies share a bug the heights
+  agree, so nothing looks broken to the scroll view while the panel on screen
+  falls apart.
+
+Reference: `App/UI/ParticipantGridWindow.swift`, `railColumn(available:)` and
+`layoutRail()`.
+
 ## Motion
 
 - **Approach:** Minimal-functional. Motion clarifies state; it never decorates.
@@ -141,8 +193,71 @@ saturation 10-15%.
   (`snappy(0.25)` in SwiftUI).
 - **Easing:** ease-out entering, ease-in leaving, ease-in-out for movement.
 - **Allowed:** button hover lift (`translateY(-1px)`), arrow nudge on link
-  hover, chat scroll-to-latest, shape-preview crossfade.
+  hover, chat scroll-to-latest, shape-preview crossfade, the readiness bar
+  easing to a new width (250ms, ease-out) and the platform spinner on the one
+  active step.
 - **Not allowed:** scroll-driven animation, parallax, entrance choreography.
+
+### Waiting states
+
+- **Name the step, never just spin.** A bare spinner says "wait" and nothing
+  more, so a start stuck on OBS looks exactly like one about to finish. The
+  wait costs the same either way; spend it saying what is happening and roughly
+  how much is left. A determinate list of named steps plus a progress bar is
+  the pattern; the platform spinner marks the single active step.
+- **Fill in progressively.** Where the pieces come up at different times, show
+  each one the moment it is real rather than holding everything back for a
+  single reveal. Greenroom's virtual camera is live seconds before the meeting
+  connects, so the self view appears seconds before the roster does.
+- **A control that is not ready says so.** Dim and disable it rather than
+  hiding it: the teacher can see what is coming, and nothing looks live while
+  silently doing nothing.
+- **A failure belongs on the surface the user was already watching**, named
+  against the step it happened on — not in a log on another display.
+- **Pick the carrier by what the display can spare, and only ever one.** A
+  surface that owns a whole screen can hold the full waiting state. A surface
+  sharing one screen with the workspace cannot: it is either off, or it is an
+  ordinary window about to be buried by the layout pass it is reporting on.
+  There, use a small floating card instead — above the layout, too small to
+  fight it, gone when it has nothing left to say. Never show both; two accounts
+  of one wait is one too many.
+- **Centre a transient progress card, do not tuck it in a corner.** A corner
+  looks like the polite choice and is not: the workspace tiles a side column
+  flush to the bottom and, by default, the right edge, so bottom-right lands on
+  it. Centre favours no tiled pane over another, and nothing on that display is
+  usable during those seconds anyway.
+- **A progress surface may assert itself; a control surface may not.**
+
+### Affordances
+
+- **An interaction belongs to the setting, not to one way of drawing it.** Where
+  a control has two representations — a schematic and a live preview, an empty
+  state and a loaded one — the affordance goes on a layer both wear. Build it
+  into one of them and it disappears when the other takes over, usually the
+  richer one, because the richer one wins by default.
+- **If a caption says "drag this", something on screen must be draggable in
+  every state that caption is visible.** An instruction that outlives its
+  control is worse than no instruction: the user concludes the app is broken,
+  and they are right.
+- **Never nest an interactive layer inside content that refreshes on a timer.**
+  A live preview that republishes its image rebuilds everything under it, taking
+  the `@State` and any in-flight gesture with it. At Greenroom's 150ms preview
+  poll that capped a drag at about seven frames, so it read as a control that
+  did nothing at all. Put the interaction alongside the picture as a sibling,
+  where its identity survives the refresh, and give it the picture's rect rather
+  than living inside it.
+- **Focus goes under the controls, not around them.** `.focusable()` takes focus
+  on click, and on a container that is the same click a drag needs. Put it on a
+  layer beneath: clicking bare canvas arms the keyboard, clicking the control
+  works it, and the gesture sets focus itself so keys are live straight after.
+- **Attach a gesture before `.position`, not after.** `.position` wraps a view
+  in a container that fills its parent, so a gesture added afterwards responds
+  across the whole canvas rather than on the thing being dragged. Pair it with
+  an explicit `contentShape` so the hit area is the control, no more and no
+  less. Ordering
+  a control panel to the front on a timer is a tug-of-war with the person using
+  the Mac. A small, non-interactive card that leaves on its own is not, and
+  staying above a tiling pass is the whole reason it exists.
 
 ## macOS App Mapping
 
@@ -188,4 +303,9 @@ Ranked by user-visible impact. None of these block anything today.
 | 2026-08-18 | `--accent-lime` barred from text | Measured 2.25 contrast on white, failing AA at every size. Safe as a fill and as the macOS tint. |
 | 2026-08-18 | Added `--net-text` `#96600A` | The existing amber measures 3.68 and is used for 9.5-11px diagram labels. This is the nearest value that passes AA body text. |
 | 2026-08-18 | Kept the system font stack | This is a Mac utility, so SF on the site reads as platform-native rather than as a skipped typography decision. Revisit only if the product moves beyond macOS. |
+| 2026-08-23 | The participant panel opens on the first frame of a start, showing named steps | The reference display was blank from Start until the meeting connected — several seconds of OBS, virtual camera, meeting creation and SDK auth. Every step already wrote a line to `statusLines`, but that log is collapsed by default in a window on another display, so the work was visible to the app and not to the person waiting. Named steps rather than a spinner because a start that hangs should hang visibly, on a step you can point at. |
+| 2026-08-23 | A panel never ends in dead space: the rail's tail carries a priority block | The bottom of the rail was 126pt of nothing. Rather than grow the picture into it, the space now shows whatever most needs the teacher — people waiting, then hands up in raise order, then the session card. Strict priority because only one thing can be most urgent, and never blank because a block that empties out has moved the hole rather than filled it. |
+| 2026-08-23 | Self view sized for the media, capped at seven cells and fitted to height | Five-across was chosen for the button grid, so the picture paid for the buttons' comfort, and 60pt margins bought nothing once the column was capped. Seven cells with 24pt margins nearly doubles the picture area for an 88pt wider rail, and it clears Zoom's six-button group in one row where five forced a wrap. Height now bounds it too, so the priority block stays above the fold. |
+| 2026-08-23 | Rail width derives from its content, not from a fraction of the display | Once the column was capped, the old 0.62 empty-room fraction only bought margin: a 926pt rail wrapping a 396pt column in 265pt of nothing each side, on the screen a teacher opens into before every class. The ceiling is now the widest column plus margin (540pt); the fractions survive only to shrink the rail as the class fills. |
+| 2026-08-23 | Participant rail is one stacked, capped, centred column at every width | The rail had a second shape above 672pt that put the controls beside the self view. That width is the empty room, so it was the first thing a teacher saw every single class. Stacking alone was not enough: a bare stack at 1190pt drew a 669pt slab of video with the buttons wrapping fourteen across, so the stack needed a column capped in cells and centred. |
 | 2026-08-18 | Promoted mono to an identity role in section eyebrows | Gives the brand a typographic signature without abandoning the platform font, and reinforces the technical-honesty posture of the transparency page. |

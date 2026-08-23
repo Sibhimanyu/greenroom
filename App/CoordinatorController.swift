@@ -30,6 +30,7 @@ final class CoordinatorController: ObservableObject {
         stopShapePreview()
         ChatWindowController.close()
         customUIGridTask?.cancel()
+        customUIGridTask = nil
         customUISpeakerTask?.cancel()
         SpeakerWindowController.close()
         ParticipantGridWindowController.close()
@@ -226,6 +227,77 @@ final class CoordinatorController: ObservableObject {
     }
 
     @Published private(set) var statusLines: [String] = []
+
+    /// How far the start has got, in steps a teacher can name.
+    ///
+    /// `statusLines` already carried all of this and carried it well, but as
+    /// prose in a log that is collapsed by default, in the main window, usually
+    /// on a different display from the one being watched. This is the same
+    /// information shaped so a panel can draw it.
+    @Published private(set) var startReadiness = ParticipantGridWindowController.Readiness() {
+        didSet { syncReadinessHUD() }
+    }
+
+    /// The HUD carries the start only when the participant panel cannot.
+    ///
+    /// With a reference display the panel owns a whole screen and nothing can
+    /// cover it, so it does the job and the HUD would just be a second copy of
+    /// the same list. Without one the panel is either off - it is opt-in on a
+    /// single display and off by default - or it is an ordinary window that the
+    /// tiling step is about to bury. Either way, nothing on that screen is
+    /// telling the teacher what is happening, which is what the HUD is for.
+    private func syncReadinessHUD() {
+        guard peopleViewTargetScreen() == nil else {
+            ReadinessHUDController.close()
+            return
+        }
+        guard let screen = DisplayResolver.mainDisplayScreen() ?? NSScreen.main else { return }
+        ReadinessHUDController.show(startReadiness, on: screen)
+    }
+
+    /// The steps of a start, in the order they finish.
+    ///
+    /// Camera and meeting overlap in reality - the REST call and the SDK auth
+    /// run concurrently with OBS coming up - but they are reported in sequence,
+    /// because the meeting cannot COMPLETE before the virtual camera is live and
+    /// that dependency is the one the teacher is actually waiting on.
+    enum StartStep: Int, CaseIterable {
+        case workspace, camera, meeting, recording, tiling
+
+        var label: String {
+            switch self {
+            case .workspace: return "Workspace"
+            case .camera: return "Virtual camera"
+            case .meeting: return "Meeting"
+            case .recording: return "Recording"
+            case .tiling: return "Tiling windows"
+            }
+        }
+    }
+
+    private func resetStartReadiness() {
+        startReadiness = .init(steps: StartStep.allCases.map {
+            .init(label: $0.label, state: .pending)
+        })
+    }
+
+    private func mark(_ step: StartStep, _ state: ParticipantGridWindowController.Readiness.State) {
+        guard startReadiness.steps.indices.contains(step.rawValue) else { return }
+        startReadiness.steps[step.rawValue].state = state
+    }
+
+    /// Ends the progress display. Clearing the steps makes `isLive` true, which
+    /// is what returns the panel to its ordinary behaviour.
+    private func finishStartReadiness() {
+        startReadiness = .init()
+    }
+
+    private func failStartReadiness(_ message: String) {
+        if let active = startReadiness.steps.firstIndex(where: { $0.state == .active }) {
+            startReadiness.steps[active].state = .failed
+        }
+        startReadiness.failure = message
+    }
     /// True only during the Start transition (pipeline + meeting setup).
     /// `virtualCamActive` is the "session is live" flag the buttons key
     /// off once starting completes.
@@ -494,29 +566,63 @@ final class CoordinatorController: ObservableObject {
         }
     }
 
-    /// The three numbers plus the shape, ready for OBS.
+    /// Cutout's height, as a fraction of canvas height. Floored well above zero:
+    /// the frame being too small was one of the two problems that made cutout
+    /// stop reusing the bubble box, because a raised hand left the frame and
+    /// clipped visibly.
+    @Published var cutoutHeightFraction: Double {
+        didSet {
+            let clamped = min(max(cutoutHeightFraction, 0.3), 1.0)
+            if clamped != cutoutHeightFraction { cutoutHeightFraction = clamped; return }
+            defaults.set(cutoutHeightFraction, forKey: "cutoutHeightFraction")
+        }
+    }
+    /// Cutout's distance from the right edge, as a fraction of canvas width.
+    /// Allowed all the way across so the person can stand on the left when the
+    /// shared content lives on the right.
+    @Published var cutoutRightInset: Double {
+        didSet {
+            let clamped = min(max(cutoutRightInset, 0), 0.95)
+            if clamped != cutoutRightInset { cutoutRightInset = clamped; return }
+            defaults.set(cutoutRightInset, forKey: "cutoutRightInset")
+        }
+    }
+
+    /// Every number plus the shape, ready for OBS.
     var bubbleLayout: GreenroomScene.BubbleLayout {
         .init(widthFraction: bubbleWidthFraction,
               rightInset: bubbleRightInset,
               bottomInset: bubbleBottomInset,
+              cutoutHeightFraction: cutoutHeightFraction,
+              cutoutRightInset: cutoutRightInset,
               shape: webcamShape)
     }
 
-    /// Whether the bubble is still where it shipped, so Reset can be disabled
-    /// rather than offered as a no-op.
+    /// Whether the ACTIVE shape is still where it shipped, so Reset can be
+    /// disabled rather than offered as a no-op. Shape-aware: resetting a bubble
+    /// you cannot see while looking at a cutout would be a confusing button.
     var bubbleIsAtDefault: Bool {
         let shipped = GreenroomScene.BubbleLayout()
+        if webcamShape == .cutout {
+            return abs(cutoutHeightFraction - shipped.cutoutHeightFraction) < 0.001
+                && abs(cutoutRightInset - shipped.cutoutRightInset) < 0.001
+        }
         return abs(bubbleWidthFraction - shipped.widthFraction) < 0.001
             && abs(bubbleRightInset - shipped.rightInset) < 0.001
             && abs(bubbleBottomInset - shipped.bottomInset) < 0.001
     }
 
-    /// Back to the values the app shipped with.
+    /// Back to the values the app shipped with, for the shape on screen.
     func resetBubbleLayout() {
-        let defaultsLayout = GreenroomScene.BubbleLayout()
-        bubbleWidthFraction = defaultsLayout.widthFraction
-        bubbleRightInset = defaultsLayout.rightInset
-        bubbleBottomInset = defaultsLayout.bottomInset
+        let shipped = GreenroomScene.BubbleLayout()
+        if webcamShape == .cutout {
+            cutoutHeightFraction = shipped.cutoutHeightFraction
+            cutoutRightInset = shipped.cutoutRightInset
+            return
+        }
+        bubbleWidthFraction = shipped.widthFraction
+        bubbleRightInset = shipped.rightInset
+        bubbleBottomInset = shipped.bottomInset
     }
 
     @Published var webcamShape: WebcamShape {
@@ -665,6 +771,8 @@ final class CoordinatorController: ObservableObject {
         bubbleWidthFraction = (defaults.object(forKey: "bubbleWidthFraction") as? Double) ?? bubbleDefaults.widthFraction
         bubbleRightInset = (defaults.object(forKey: "bubbleRightInset") as? Double) ?? bubbleDefaults.rightInset
         bubbleBottomInset = (defaults.object(forKey: "bubbleBottomInset") as? Double) ?? bubbleDefaults.bottomInset
+        cutoutHeightFraction = (defaults.object(forKey: "cutoutHeightFraction") as? Double) ?? bubbleDefaults.cutoutHeightFraction
+        cutoutRightInset = (defaults.object(forKey: "cutoutRightInset") as? Double) ?? bubbleDefaults.cutoutRightInset
         mainAppURL = AppCatalog.sanitizedURLText(
             defaults.string(forKey: "mainAppURL") ?? defaults.string(forKey: "chromeURL") ?? AppLinks.site)
         // Defaults to ON for fresh installs (bool(forKey:) alone can't
@@ -787,14 +895,25 @@ final class CoordinatorController: ObservableObject {
             .displays: String(NSScreen.screens.count)
         ])
 
+        resetStartReadiness()
+        // Before anything else, so the reference display has something on it
+        // from the first frame rather than after the meeting connects. Gated on
+        // the SETTING rather than on zoomChatClient.didUseCustomUI, which is not
+        // known until the SDK has initialised - by which point the blank this
+        // exists to fill is already over. presentMeetingSurfaces closes the
+        // panel again if custom UI turns out not to have happened.
+        if customUIMode { startCustomUIGridFollow() }
+
         startTask = Task {
             do {
                 // Perceived speed: the main app doesn't depend on
                 // anything else - open it first so something visibly
                 // happens the instant Start is pressed.
+                mark(.workspace, mainAppOnStart ? .active : .skipped)
                 if mainAppOnStart {
                     log("Opening the \(mainAppDisplayName) window (\(workspaceLayout.label))\u{2026}")
                     openMainAppWindow()
+                    mark(.workspace, .done)
                 }
 
                 // Overlap everything that doesn't need OBS with OBS's own
@@ -803,11 +922,13 @@ final class CoordinatorController: ObservableObject {
                 // in the whole start is "virtual camera live before the
                 // meeting client starts", enforced by awaiting the
                 // pipeline before the meeting flows below.
+                mark(.camera, .active)
                 async let pipelineDone: Void = runPipeline()
                 async let preparedMeeting = prepareMeetingIfNeeded()
                 async let sdkPrefetched: Void = prefetchSDKAuth()
 
                 try await pipelineDone
+                mark(.camera, .done)
                 await sdkPrefetched
                 // Checkpoints between the big phases let Stop abandon a
                 // start cleanly (its OBS teardown otherwise races the
@@ -815,6 +936,7 @@ final class CoordinatorController: ObservableObject {
                 // aren't cancellation-aware; between-steps is enough.
                 try Task.checkCancellation()
 
+                mark(.meeting, .active)
                 switch meetingMode {
                 case .create where useBuiltInClient:
                     // All-in-one: the SDK IS the meeting client. One
@@ -852,15 +974,19 @@ final class CoordinatorController: ObservableObject {
                 }
 
                 try Task.checkCancellation()
+                mark(.meeting, .done)
 
                 // The meeting flow above has returned, so the session is
                 // live - start the tape if the setting says so. Uses the
                 // same path as the Record button, so End Session's
                 // finalize-before-quitting-OBS still applies.
+                mark(.recording, autoRecordOnStart && !isRecording ? .active : .skipped)
                 if autoRecordOnStart && !isRecording {
                     log("Starting the recording automatically (Settings \u{2192} Webcam).")
                     toggleRecording()
+                    mark(.recording, .done)
                 }
+                mark(.tiling, .active)
 
                 // The built-in client's window is parked in-process (see
                 // hostAllInOne/joinAllInOne) - the AX-based native-window
@@ -880,10 +1006,25 @@ final class CoordinatorController: ObservableObject {
                 if sdkMeetingWindows().isEmpty, !zoomChatClient.didUseCustomUI {
                     parkZoomWindow()
                 }
+
+                mark(.tiling, .done)
+                // Clearing the steps is what makes Readiness.isLive true, which
+                // hands the panel back to its ordinary behaviour: the class side
+                // returns to "waiting for students" and the controls come up.
+                finishStartReadiness()
             } catch is CancellationError {
+                // Stop abandoned the start on purpose. It closes the panel
+                // itself, so there is nothing to report on a surface that is
+                // already going away.
                 log("Start cancelled.")
+                finishStartReadiness()
             } catch {
                 log("Failed: \(error.localizedDescription)")
+                // Left on screen rather than cleared. The panel is the surface
+                // the teacher has been watching for the last several seconds,
+                // so it is where the failure belongs, named against the step it
+                // happened on.
+                failStartReadiness(error.localizedDescription)
             }
             isRunning = false
         }
@@ -920,6 +1061,9 @@ final class CoordinatorController: ObservableObject {
             // Custom UI: stop the SDK rendering into views that are about to
             // go away, then drop our window.
             customUIGridTask?.cancel()
+            customUIGridTask = nil
+            finishStartReadiness()
+            ReadinessHUDController.close()
             customUISpeakerTask?.cancel()
             SpeakerWindowController.close()
             ParticipantGridWindowController.close()
@@ -1289,6 +1433,15 @@ final class CoordinatorController: ObservableObject {
     /// participant gallery is not built for this mode yet - the speaker tile is.
     private func presentMeetingSurfaces(resetQuickHideToDefault: Bool) {
         guard zoomChatClient.didUseCustomUI else {
+            // The panel is opened optimistically on the first frame of a start,
+            // from the customUIMode SETTING, because didUseCustomUI is not known
+            // until the SDK has initialised - long after the blank it exists to
+            // fill. If the SDK went the other way, take it back down: in default
+            // Zoom-UI mode the SDK owns its own gallery and ours would be a
+            // second, stale one.
+            customUIGridTask?.cancel()
+            customUIGridTask = nil
+            ParticipantGridWindowController.close()
             parkBuiltInMeetingWindow(resetQuickHideToDefault: resetQuickHideToDefault)
             placePeopleViewWindow()
             return
@@ -1369,7 +1522,13 @@ final class CoordinatorController: ObservableObject {
     /// whether or not any single event was missed. Two seconds matches the
     /// default-UI follow loop, so the two modes feel the same.
     private func startCustomUIGridFollow() {
-        customUIGridTask?.cancel()
+        // Idempotent. It is called twice now: once on the first frame of a start
+        // so the panel can show progress, and again from presentMeetingSurfaces
+        // on the ordinary path. Restarting would re-stamp `startedAt`, jumping
+        // the session clock back to zero at the moment the meeting connects -
+        // several seconds after the teacher pressed Start, which is when the
+        // session actually began.
+        if customUIGridTask != nil { return }
         // Needs the toggle AND somewhere sensible to go.
         //
         // An earlier version opened on the main display whenever no second one
@@ -1418,7 +1577,8 @@ final class CoordinatorController: ObservableObject {
                     startedAt: startedAt,
                     obsRecording: self.isRecording,
                     presetName: self.meetingPresets.first { $0.number == digits }?.name ?? "",
-                    speakerHidden: self.speakerTileQuickHidden)
+                    speakerHidden: self.speakerTileQuickHidden,
+                    readiness: self.startReadiness)
                 ParticipantGridWindowController.refresh(on: screen,
                                                        session: session,
                                                        windowed: reference == nil)

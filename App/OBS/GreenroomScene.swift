@@ -105,6 +105,18 @@ enum GreenroomScene {
         var widthFraction: Double = 0.24
         var rightInset: Double = 0.045
         var bottomInset: Double = 0.06
+        /// Cutout's own geometry, because a cutout is not a bubble - see
+        /// `layoutCutout`. It gets its own two numbers rather than borrowing
+        /// three that mean something else: the frame keeps the camera's real
+        /// aspect instead of being square, so one "width fraction" cannot
+        /// describe it.
+        ///
+        /// There is deliberately no cutout bottom inset. Flush with the canvas
+        /// bottom is what makes the person rise from the screen edge; lift them
+        /// off it and they hover above nothing, which is the exact bug the
+        /// comment on `layoutCutout` records being found in use.
+        var cutoutHeightFraction: Double = 0.5
+        var cutoutRightInset: Double = 0.02
         var shape: WebcamShape = .circle
     }
 
@@ -636,7 +648,8 @@ enum GreenroomScene {
             try await layoutPresenter(client: client, canvasWidth: canvasWidth, canvasHeight: canvasHeight)
         } else if layout.shape == .cutout {
             try await ensureScreenPanelMask(client: client, enabled: false, canvasWidth: canvasWidth, canvasHeight: canvasHeight)
-            try await layoutCutout(client: client, canvasWidth: canvasWidth, canvasHeight: canvasHeight)
+            try await layoutCutout(client: client, layout: layout,
+                                   canvasWidth: canvasWidth, canvasHeight: canvasHeight)
         } else {
             try await ensureScreenPanelMask(client: client, enabled: false, canvasWidth: canvasWidth, canvasHeight: canvasHeight)
             try await positionBubble(client: client, layout: layout, canvasWidth: canvasWidth, canvasHeight: canvasHeight)
@@ -652,7 +665,8 @@ enum GreenroomScene {
     /// larger (half the canvas height of headroom), and its bottom edge
     /// sits FLUSH with the canvas bottom - the person rises from the
     /// screen edge like a news presenter.
-    private static func layoutCutout(client: OBSWebSocketClient, canvasWidth: Int, canvasHeight: Int) async throws {
+    private static func layoutCutout(client: OBSWebSocketClient, layout: BubbleLayout,
+                                     canvasWidth: Int, canvasHeight: Int) async throws {
         let items = try await sceneItems(client: client)
         guard let webcam = items.first(where: { ($0["sourceName"] as? String) == webcamSourceName }),
               let itemId = webcam["sceneItemId"] as? Int else { return }
@@ -664,13 +678,15 @@ enum GreenroomScene {
         let sourceHeight = (transform?["sourceHeight"] as? Double) ?? 0
         let aspect = (sourceWidth > 0 && sourceHeight > 0) ? sourceWidth / sourceHeight : 16.0 / 9.0
 
-        let frameHeight = height * 0.5
+        // Height and horizontal position are the teacher's now; the bottom edge
+        // is not, and stays flush. See BubbleLayout for why.
+        let frameHeight = height * layout.cutoutHeightFraction
         let frameWidth = frameHeight * aspect
         _ = try await client.request("SetSceneItemTransform", data: [
             "sceneName": sceneName,
             "sceneItemId": itemId,
             "sceneItemTransform": [
-                "positionX": width - width * 0.02 - frameWidth,
+                "positionX": width - width * layout.cutoutRightInset - frameWidth,
                 "positionY": height - frameHeight,
                 "boundsType": "OBS_BOUNDS_STRETCH",
                 "boundsWidth": frameWidth,

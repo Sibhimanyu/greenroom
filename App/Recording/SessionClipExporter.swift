@@ -50,10 +50,24 @@ enum SessionClipExporter {
         var addedLeadIn: Double { max(0, actualDuration - Double(requested.durationMs) / 1000) }
     }
 
-    /// Clips live beside the recording they came from, in one folder per
-    /// session so the session folder does not fill up with loose files.
+    /// Clips live in the session folder, directly beside the recording.
+    ///
+    /// They used to sit in a clips/ subfolder. That was protecting the scanner
+    /// from having to tell a clip apart from a recording, which is the wrong
+    /// thing to optimise for: the folder is named after the class, so what a
+    /// teacher expects to find inside it is that class's clips, not another
+    /// folder. The `Clip ` prefix below does the telling-apart instead, and it
+    /// does it in Finder too, where no scanner is involved.
     static func clipsFolder(for recording: URL) -> URL {
-        recording.deletingLastPathComponent().appendingPathComponent("clips", isDirectory: true)
+        recording.deletingLastPathComponent()
+    }
+
+    /// Marks a file as a clip rather than a recording, in the one place both
+    /// the app and Finder can see it.
+    static let clipPrefix = "Clip "
+
+    static func isClip(_ url: URL) -> Bool {
+        url.lastPathComponent.hasPrefix(clipPrefix)
     }
 
     /// Named by the time of day it was marked and how long it is, because that
@@ -63,8 +77,11 @@ enum SessionClipExporter {
     /// clip were deleted, so the file would stop matching whatever anybody had
     /// already written down or shared.
     static func exportURL(for clip: SessionClip, from recording: URL) -> URL {
-        clipsFolder(for: recording)
-            .appendingPathComponent("\(clip.markedAtLabel) (\(clip.durationLabel)).mp4")
+        clipsFolder(for: recording).appendingPathComponent(clipFileName(for: clip))
+    }
+
+    static func clipFileName(for clip: SessionClip) -> String {
+        "\(clipPrefix)\(clip.markedAtLabel) (\(clip.durationLabel)).mp4"
     }
 
     static func isExported(_ clip: SessionClip, from recording: URL) -> Bool {
@@ -149,10 +166,8 @@ enum SessionClipExporter {
                                endMs: Int(seconds * 1000),
                                markedAt: markedAt)
 
-        let folder = destination.map { $0.appendingPathComponent("clips", isDirectory: true) }
-            ?? clipsFolder(for: source)
-        let output = folder.appendingPathComponent(
-            "\(clip.markedAtLabel) (\(clip.durationLabel)).mp4")
+        let folder = destination ?? clipsFolder(for: source)
+        let output = folder.appendingPathComponent(clipFileName(for: clip))
         try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         try? FileManager.default.removeItem(at: output)
 

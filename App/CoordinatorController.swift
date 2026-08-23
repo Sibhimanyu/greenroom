@@ -1217,8 +1217,8 @@ final class CoordinatorController: ObservableObject {
         Task {
             guard let folder = sessionFolder else {
                 log("Nothing to clip \u{2014} start a session first.")
-                Notifier.post(title: "No session running",
-                              body: "Start the class first \u{2014} there is nothing to clip yet.")
+                ToastController.show("No session running",
+                                     detail: "Start the class first.", kind: .failure)
                 return
             }
             // Recording wins when it is available: marking the master costs
@@ -1252,8 +1252,8 @@ final class CoordinatorController: ObservableObject {
             // Confirmed out loud: the teacher is mid-class looking at the shared
             // screen, not at Greenroom, and a mark that gave no sign of landing
             // would be pressed again and again.
-            Notifier.post(title: "Clipped the last \(clipped)",
-                          body: "Saved to \(folder.lastPathComponent) \u{2014} find it in Recordings after the class.")
+            ToastController.show("Clipped the last \(clipped)",
+                                 detail: "Marked in \(folder.lastPathComponent) \u{2014} in Recordings after the class.")
         }
     }
 
@@ -1264,22 +1264,23 @@ final class CoordinatorController: ObservableObject {
     private func clipFromBuffer(minutes: Int, into folder: URL) async {
         guard clipBufferEnabled else {
             log("Nothing to clip \u{2014} the clip buffer is off (Settings \u{2192} Webcam) and nothing is recording.")
-            Notifier.post(title: "Nothing to clip",
-                          body: "Turn on the clip buffer in Settings, or press Record.")
+            ToastController.show("Nothing to clip",
+                                 detail: "Turn on the clip buffer in Settings, or press Record.", kind: .failure)
             return
         }
         guard await GreenroomScene.replayBufferIsRunning(client: client) else {
             log("Nothing to clip \u{2014} the clip buffer is not running. Press Record (\u{2325}\u{2318}R) to capture from here.")
-            Notifier.post(title: "Clip buffer not running",
-                          body: "Press Record to capture from here instead.")
+            ToastController.show("Clip buffer not running",
+                                 detail: "Press Record to capture from here instead.", kind: .failure)
             return
         }
 
-        Notifier.post(title: "Saving the last \(minutes) min\u{2026}",
-                      body: "Writing the clip buffer out.")
+        ToastController.show("Saving the last \(minutes) min\u{2026}",
+                             detail: "Writing the clip buffer out.",
+                             kind: .working, dismissAfter: nil)
         guard let replay = await GreenroomScene.saveReplayBuffer(client: client) else {
             log("Couldn't clip \u{2014} OBS did not hand back a replay file.")
-            Notifier.post(title: "Clip failed", body: "OBS did not produce a file.")
+            ToastController.show("Clip failed", detail: "OBS did not produce a file.", kind: .failure)
             return
         }
 
@@ -1287,8 +1288,8 @@ final class CoordinatorController: ObservableObject {
             let export = try await SessionClipExporter.exportTail(
                 minutes: minutes, of: replay, markedAt: Date())
             log("Clipped the last \(export.requested.durationLabel) from the buffer \u{2014} \(export.url.lastPathComponent).")
-            Notifier.post(title: "Clipped the last \(export.requested.durationLabel)",
-                          body: "Saved to \(folder.lastPathComponent)/clips.")
+            ToastController.show("Clipped the last \(export.requested.durationLabel)",
+                                 detail: "Saved to \(folder.lastPathComponent)")
         } catch {
             // AVFoundation cannot read every container OBS can write. Keeping
             // the whole buffer under its own name beats losing the moment, and
@@ -1299,11 +1300,12 @@ final class CoordinatorController: ObservableObject {
                                                      withIntermediateDirectories: true)
             if (try? FileManager.default.moveItem(at: replay, to: kept)) != nil {
                 log("Clipped, but couldn't trim it to \(minutes) min (\(error.localizedDescription)) \u{2014} kept the whole buffer as \(kept.lastPathComponent).")
-                Notifier.post(title: "Clipped the whole buffer",
-                              body: "Couldn't trim it to \(minutes) min, so the full buffer was kept.")
+                ToastController.show("Clipped the whole buffer",
+                                     detail: "Couldn't trim to \(minutes) min, so all of it was kept.",
+                                     kind: .failure)
             } else {
                 log("Couldn't clip \u{2014} \(error.localizedDescription)")
-                Notifier.post(title: "Clip failed", body: error.localizedDescription)
+                ToastController.show("Clip failed", detail: error.localizedDescription, kind: .failure)
             }
         }
     }

@@ -430,6 +430,9 @@ struct RecordingsView: View {
             try FileManager.default.trashItem(at: recording.url, resultingItemURL: nil)
             let sidecar = SessionClipStore.sidecarURL(for: recording.url)
             try? FileManager.default.trashItem(at: sidecar, resultingItemURL: nil)
+            // Only clips cut FROM this recording. Now that clips share the
+            // session folder, a blanket sweep would take clips belonging to
+            // another take, or to no recording at all.
             for clip in recording.clips {
                 let exported = SessionClipExporter.exportURL(for: clip, from: recording.url)
                 try? FileManager.default.trashItem(at: exported, resultingItemURL: nil)
@@ -447,7 +450,9 @@ struct RecordingsView: View {
         guard folder != GreenroomScene.recordingsDirectory else { return }
         let remaining = (try? FileManager.default.contentsOfDirectory(
             at: folder, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles])) ?? []
-        // An empty clips/ subfolder does not count as content.
+        // An empty legacy clips/ subfolder does not count as content. Clips
+        // themselves DO count: a session whose recording was deleted but whose
+        // clips were kept is still a session worth having.
         let meaningful = remaining.filter { url in
             if url.lastPathComponent == "clips" {
                 let inner = (try? FileManager.default.contentsOfDirectory(
@@ -472,8 +477,13 @@ struct RecordingsView: View {
         let entries = contents(of: root)
         let folders = entries.filter { isDirectory($0) && $0.lastPathComponent != "clips" }
         var found: [Session] = folders.compactMap { folder in
-            let recordings = self.recordings(in: folder)
-            let clips = self.recordings(in: folder.appendingPathComponent("clips"))
+            let all = self.recordings(in: folder)
+            let recordings = all.filter { !SessionClipExporter.isClip($0.url) }
+            // Clips sit in the session folder now, told apart by the `Clip `
+            // prefix. The legacy clips/ subfolder is still read so anything
+            // taken before that change does not vanish.
+            let clips = all.filter { SessionClipExporter.isClip($0.url) }
+                + self.recordings(in: folder.appendingPathComponent("clips"))
             // Not `recordings.isEmpty`: a session where the teacher clipped from
             // the buffer without ever pressing Record has clips and no master,
             // and dropping it here is what made those clips invisible.
@@ -486,10 +496,12 @@ struct RecordingsView: View {
         }
 
         // Everything recorded before sessions had folders.
-        let loose = self.recordings(from: entries.filter { !isDirectory($0) })
+        let allLoose = self.recordings(from: entries.filter { !isDirectory($0) })
+        let loose = allLoose.filter { !SessionClipExporter.isClip($0.url) }
         // Clips at the ROOT rather than in a session folder: everything taken
         // before buffer clips were routed into their session.
-        let looseClips = self.recordings(in: root.appendingPathComponent("clips"))
+        let looseClips = allLoose.filter { SessionClipExporter.isClip($0.url) }
+            + self.recordings(in: root.appendingPathComponent("clips"))
         if !loose.isEmpty || !looseClips.isEmpty {
             found.append(Session(folder: nil,
                                  title: "Earlier recordings",

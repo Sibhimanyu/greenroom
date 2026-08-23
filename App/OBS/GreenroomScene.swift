@@ -844,6 +844,79 @@ enum GreenroomScene {
         }
     }
 
+    // MARK: Replay buffer
+
+    /// How much of the recent past stays clippable. Matches the longest clip
+    /// shortcut, so ⌥⌘5 always has five minutes to hand back.
+    static let replayBufferSeconds = 300
+
+    /// Arms OBS's rolling buffer of the last few minutes.
+    ///
+    /// This is what makes the clip shortcuts work when the teacher never pressed
+    /// Record. The whole class is not on disk in that case, so the last five
+    /// minutes have to be held somewhere - and OBS already has a ring buffer
+    /// built for exactly this. Roughly 300MB of RAM at five minutes, released
+    /// when the session ends.
+    ///
+    /// In memory rather than on disk on purpose. A teacher who chose not to
+    /// record a class of children should end that class with nothing written
+    /// down, and a buffer only becomes a file when the shortcut is pressed.
+    ///
+    /// Both output modes get the parameters, same as the recording path: either
+    /// could be the profile's active one, and StartReplayBuffer refuses outright
+    /// if the active mode has the buffer switched off.
+    static func configureReplayBuffer(client: OBSWebSocketClient,
+                                      enabled: Bool,
+                                      seconds: Int = replayBufferSeconds) async {
+        for category in ["SimpleOutput", "AdvOut"] {
+            for (name, value) in [("RecRB", enabled ? "true" : "false"),
+                                  ("RecRBTime", String(seconds))] {
+                _ = try? await client.request("SetProfileParameter", data: [
+                    "parameterCategory": category,
+                    "parameterName": name,
+                    "parameterValue": value
+                ])
+            }
+        }
+    }
+
+    static func replayBufferIsRunning(client: OBSWebSocketClient) async -> Bool {
+        let status = try? await client.request("GetReplayBufferStatus")
+        return (status?["outputActive"] as? Bool) == true
+    }
+
+    /// Writes the ring out and returns the file OBS produced.
+    ///
+    /// The save is asynchronous inside OBS, and GetLastReplayBufferReplay keeps
+    /// reporting the PREVIOUS save until the new one lands - so the previous
+    /// path is read first and the result polled until it changes. Without that
+    /// the second clip of a lesson would hand back the first clip's file.
+    static func saveReplayBuffer(client: OBSWebSocketClient,
+                                 timeout: TimeInterval = 12) async -> URL? {
+        let before = (try? await client.request("GetLastReplayBufferReplay"))?["savedReplayPath"] as? String
+        guard (try? await client.request("SaveReplayBuffer")) != nil else { return nil }
+
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            try? await Task.sleep(nanoseconds: 200_000_000)
+            guard let path = (try? await client.request("GetLastReplayBufferReplay"))?["savedReplayPath"] as? String,
+                  !path.isEmpty, path != before else { continue }
+            // Reported and written are not the same instant. Wait for the size
+            // to settle before handing the file to AVFoundation, or a trim can
+            // read a half-flushed tail.
+            let url = URL(fileURLWithPath: path)
+            var previousSize = -1
+            for _ in 0..<25 {
+                let size = (try? url.resourceValues(forKeys: [.fileSizeKey]))?.fileSize ?? 0
+                if size > 0, size == previousSize { return url }
+                previousSize = size
+                try? await Task.sleep(nanoseconds: 200_000_000)
+            }
+            return url
+        }
+        return nil
+    }
+
     private static func configureRecordingPath(client: OBSWebSocketClient) async {
         // The root, as a floor. The coordinator re-points this at the session's
         // own folder immediately before the tape rolls - doing it here as well

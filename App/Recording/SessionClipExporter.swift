@@ -121,6 +121,42 @@ enum SessionClipExporter {
         return Export(url: output, requested: clip, actualDuration: produced)
     }
 
+    /// Cuts the last `minutes` out of `source`, into its own clips/ folder.
+    ///
+    /// The replay-buffer path. OBS hands back a file holding the whole ring, so
+    /// "the last two minutes" means the tail of a five-minute file rather than a
+    /// range measured from the start of a class.
+    ///
+    /// Consumes `source`: a replay save is a temporary artifact, and leaving it
+    /// beside the clip would double the disk cost of every clip taken.
+    @discardableResult
+    static func exportTail(minutes: Int, of source: URL, markedAt: Date) async throws -> Export {
+        let asset = AVURLAsset(url: source)
+        guard let total = try? await asset.load(.duration), total.isValid, total.seconds > 0 else {
+            throw Failure.unreadable(source)
+        }
+        let seconds = total.seconds
+        let wanted = min(Double(minutes) * 60, seconds)
+        let clip = SessionClip(startMs: Int((seconds - wanted) * 1000),
+                               endMs: Int(seconds * 1000),
+                               markedAt: markedAt)
+
+        // The ring already IS what was asked for. Copying a few hundred MB to
+        // achieve a rename would be silly.
+        if wanted >= seconds - 1.0 {
+            let destination = exportURL(for: clip, from: source)
+            try? FileManager.default.createDirectory(at: clipsFolder(for: source),
+                                                     withIntermediateDirectories: true)
+            try? FileManager.default.removeItem(at: destination)
+            try FileManager.default.moveItem(at: source, to: destination)
+            return Export(url: destination, requested: clip, actualDuration: seconds)
+        }
+
+        let export = try await export(clip, from: source)
+        try? FileManager.default.removeItem(at: source)
+        return export
+    }
+
     /// Exports every clip that is not already on disk, newest mark last so the
     /// folder fills in the order the class happened.
     ///

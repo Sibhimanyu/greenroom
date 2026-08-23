@@ -178,6 +178,12 @@ private struct WebcamSettingsTab: View {
 
             Divider()
 
+            Toggle("Keep the last 5 minutes clippable", isOn: $coordinator.clipBufferEnabled)
+
+            Text("\u{2325}\u{2318}1, \u{2325}\u{2318}2 and \u{2325}\u{2318}5 save the last 1, 2 or 5 minutes as a clip \u{2014} even when you are not recording. Held in memory, about 300MB, and never written to disk unless you press one of those keys. Off: the shortcuts only work while a recording is running.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
             Toggle("Start recording automatically with the meeting", isOn: $coordinator.autoRecordOnStart)
 
             Text("Off: record manually with the Record button or \u{2325}\u{2318}R. Either way, recordings save to Documents/Greenroom and stop safely when the session ends.")

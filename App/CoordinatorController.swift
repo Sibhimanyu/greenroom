@@ -772,6 +772,9 @@ final class CoordinatorController: ObservableObject {
         bubbleRightInset = (defaults.object(forKey: "bubbleRightInset") as? Double) ?? bubbleDefaults.rightInset
         bubbleBottomInset = (defaults.object(forKey: "bubbleBottomInset") as? Double) ?? bubbleDefaults.bottomInset
         className = defaults.string(forKey: "className") ?? ""
+        // Defaults ON: the shortcuts are useless without it, and bool(forKey:)
+        // alone cannot tell "never set" from "deliberately off".
+        clipBufferEnabled = (defaults.object(forKey: "clipBufferEnabled") as? Bool) ?? true
         cutoutHeightFraction = (defaults.object(forKey: "cutoutHeightFraction") as? Double) ?? bubbleDefaults.cutoutHeightFraction
         cutoutRightInset = (defaults.object(forKey: "cutoutRightInset") as? Double) ?? bubbleDefaults.cutoutRightInset
         mainAppURL = AppCatalog.sanitizedURLText(
@@ -935,6 +938,10 @@ final class CoordinatorController: ObservableObject {
 
                 try await pipelineDone
                 mark(.camera, .done)
+                // Armed as soon as the composite exists, so the shortcuts work
+                // from the first minute of the class rather than from whenever
+                // somebody remembers to press Record.
+                await armClipBuffer()
                 await sdkPrefetched
                 // Checkpoints between the big phases let Stop abandon a
                 // start cleanly (its OBS teardown otherwise races the
@@ -1071,6 +1078,7 @@ final class CoordinatorController: ObservableObject {
             customUIGridTask = nil
             finishStartReadiness()
             ReadinessHUDController.close()
+            _ = try? await client.request("StopReplayBuffer")
             customUISpeakerTask?.cancel()
             SpeakerWindowController.close()
             ParticipantGridWindowController.close()
@@ -1140,6 +1148,16 @@ final class CoordinatorController: ObservableObject {
         didSet { defaults.set(className, forKey: "className") }
     }
 
+    /// Keeps the last few minutes clippable even when nothing is being recorded.
+    ///
+    /// Costs roughly 300MB of RAM for the length of a session and encodes the
+    /// composite continuously, so it is a real cost on days you never clip -
+    /// hence a setting rather than an assumption. Held in memory, never on disk:
+    /// choosing not to record a class still ends with nothing written down.
+    @Published var clipBufferEnabled: Bool {
+        didSet { defaults.set(clipBufferEnabled, forKey: "clipBufferEnabled") }
+    }
+
     /// Where this session's recording and clips live.
     ///
     /// Decided once at Start so stopping and restarting the tape mid-class
@@ -1164,16 +1182,32 @@ final class CoordinatorController: ObservableObject {
     ///
     /// Ends AT the keypress rather than straddling it: "the last five minutes"
     /// should mean the last five minutes.
+    /// Arms the rolling buffer so the clip shortcuts work before anyone presses
+    /// Record. Best-effort: a session that cannot buffer is still a session.
+    private func armClipBuffer() async {
+        guard clipBufferEnabled else { return }
+        await GreenroomScene.configureReplayBuffer(client: client, enabled: true)
+        guard (try? await client.request("StartReplayBuffer")) != nil else {
+            log("Clip buffer unavailable \u{2014} \u{2325}\u{2318}1/2/5 will still work once you press Record.")
+            return
+        }
+        let minutes = GreenroomScene.replayBufferSeconds / 60
+        log("Clip buffer armed \u{2014} the last \(minutes) minutes stay clippable with \u{2325}\u{2318}1, \u{2325}\u{2318}2 or \u{2325}\u{2318}5, recording or not.")
+    }
+
     func markClip(minutes: Int) {
         Task {
-            guard isRecording else {
-                log("Nothing to clip \u{2014} press Record first (\u{2325}\u{2318}R). Marks need a tape rolling.")
-                Notifier.post(title: "Not recording",
-                              body: "Start the recording first \u{2014} there is nothing to clip yet.")
+            guard let folder = sessionFolder else {
+                log("Nothing to clip \u{2014} start a session first.")
+                Notifier.post(title: "No session running",
+                              body: "Start the class first \u{2014} there is nothing to clip yet.")
                 return
             }
-            guard let folder = sessionFolder else {
-                log("Nothing to clip \u{2014} no session folder for this recording.")
+            // Recording wins when it is available: marking the master costs
+            // nothing and cuts losslessly from the real file. The buffer is for
+            // when there is no master to mark.
+            guard isRecording else {
+                await clipFromBuffer(minutes: minutes, into: folder)
                 return
             }
             // Double, not Int: obs-websocket sends this as a JSON number and the
@@ -1202,6 +1236,57 @@ final class CoordinatorController: ObservableObject {
             // would be pressed again and again.
             Notifier.post(title: "Clipped the last \(clipped)",
                           body: "Saved to \(folder.lastPathComponent) \u{2014} find it in Recordings after the class.")
+        }
+    }
+
+    /// Writes the rolling buffer out and trims it to the minutes asked for.
+    ///
+    /// Unlike marking, this produces a finished clip there and then - there is
+    /// no master to cut from later, so the file has to exist now.
+    private func clipFromBuffer(minutes: Int, into folder: URL) async {
+        guard clipBufferEnabled else {
+            log("Nothing to clip \u{2014} the clip buffer is off (Settings \u{2192} Webcam) and nothing is recording.")
+            Notifier.post(title: "Nothing to clip",
+                          body: "Turn on the clip buffer in Settings, or press Record.")
+            return
+        }
+        guard await GreenroomScene.replayBufferIsRunning(client: client) else {
+            log("Nothing to clip \u{2014} the clip buffer is not running. Press Record (\u{2325}\u{2318}R) to capture from here.")
+            Notifier.post(title: "Clip buffer not running",
+                          body: "Press Record to capture from here instead.")
+            return
+        }
+
+        Notifier.post(title: "Saving the last \(minutes) min\u{2026}",
+                      body: "Writing the clip buffer out.")
+        guard let replay = await GreenroomScene.saveReplayBuffer(client: client) else {
+            log("Couldn't clip \u{2014} OBS did not hand back a replay file.")
+            Notifier.post(title: "Clip failed", body: "OBS did not produce a file.")
+            return
+        }
+
+        do {
+            let export = try await SessionClipExporter.exportTail(
+                minutes: minutes, of: replay, markedAt: Date())
+            log("Clipped the last \(export.requested.durationLabel) from the buffer \u{2014} \(export.url.lastPathComponent).")
+            Notifier.post(title: "Clipped the last \(export.requested.durationLabel)",
+                          body: "Saved to \(folder.lastPathComponent)/clips.")
+        } catch {
+            // AVFoundation cannot read every container OBS can write. Keeping
+            // the whole buffer under its own name beats losing the moment, and
+            // saying so beats a clip that quietly is not the length it claims.
+            let kept = SessionClipExporter.clipsFolder(for: replay)
+                .appendingPathComponent(replay.lastPathComponent)
+            try? FileManager.default.createDirectory(at: kept.deletingLastPathComponent(),
+                                                     withIntermediateDirectories: true)
+            if (try? FileManager.default.moveItem(at: replay, to: kept)) != nil {
+                log("Clipped, but couldn't trim it to \(minutes) min (\(error.localizedDescription)) \u{2014} kept the whole buffer as \(kept.lastPathComponent).")
+                Notifier.post(title: "Clipped the whole buffer",
+                              body: "Couldn't trim it to \(minutes) min, so the full buffer was kept.")
+            } else {
+                log("Couldn't clip \u{2014} \(error.localizedDescription)")
+                Notifier.post(title: "Clip failed", body: error.localizedDescription)
+            }
         }
     }
 

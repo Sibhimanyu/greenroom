@@ -73,8 +73,9 @@ enum SessionClipExporter {
 
     /// Cuts one clip. Returns immediately if it already exists on disk.
     @discardableResult
-    static func export(_ clip: SessionClip, from recording: URL) async throws -> Export {
-        let output = exportURL(for: clip, from: recording)
+    static func export(_ clip: SessionClip, from recording: URL,
+                       to explicitOutput: URL? = nil) async throws -> Export {
+        let output = explicitOutput ?? exportURL(for: clip, from: recording)
         let asset = AVURLAsset(url: recording)
 
         guard let total = try? await asset.load(.duration), total.isValid, total.seconds > 0 else {
@@ -87,7 +88,7 @@ enum SessionClipExporter {
         let end = max(start, min(clip.endSeconds, total.seconds))
         guard end - start > 0.1 else { throw Failure.rangeOutsideRecording }
 
-        try? FileManager.default.createDirectory(at: clipsFolder(for: recording),
+        try? FileManager.default.createDirectory(at: output.deletingLastPathComponent(),
                                                  withIntermediateDirectories: true)
         // AVAssetExportSession refuses to write over an existing file.
         try? FileManager.default.removeItem(at: output)
@@ -130,7 +131,14 @@ enum SessionClipExporter {
     /// Consumes `source`: a replay save is a temporary artifact, and leaving it
     /// beside the clip would double the disk cost of every clip taken.
     @discardableResult
-    static func exportTail(minutes: Int, of source: URL, markedAt: Date) async throws -> Export {
+    /// - Parameter destination: where the clip belongs, which is NOT always
+    ///   beside the source. A replay save lands wherever OBS's recording path
+    ///   currently points, and that is the recordings root until a recording
+    ///   starts - so a clip taken without recording was ending up in a clips/
+    ///   folder at the root instead of in the session it came from, where
+    ///   nothing was looking for it.
+    static func exportTail(minutes: Int, of source: URL, markedAt: Date,
+                           into destination: URL? = nil) async throws -> Export {
         let asset = AVURLAsset(url: source)
         guard let total = try? await asset.load(.duration), total.isValid, total.seconds > 0 else {
             throw Failure.unreadable(source)
@@ -141,18 +149,21 @@ enum SessionClipExporter {
                                endMs: Int(seconds * 1000),
                                markedAt: markedAt)
 
+        let folder = destination.map { $0.appendingPathComponent("clips", isDirectory: true) }
+            ?? clipsFolder(for: source)
+        let output = folder.appendingPathComponent(
+            "\(clip.markedAtLabel) (\(clip.durationLabel)).mp4")
+        try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        try? FileManager.default.removeItem(at: output)
+
         // The ring already IS what was asked for. Copying a few hundred MB to
         // achieve a rename would be silly.
         if wanted >= seconds - 1.0 {
-            let destination = exportURL(for: clip, from: source)
-            try? FileManager.default.createDirectory(at: clipsFolder(for: source),
-                                                     withIntermediateDirectories: true)
-            try? FileManager.default.removeItem(at: destination)
-            try FileManager.default.moveItem(at: source, to: destination)
-            return Export(url: destination, requested: clip, actualDuration: seconds)
+            try FileManager.default.moveItem(at: source, to: output)
+            return Export(url: output, requested: clip, actualDuration: seconds)
         }
 
-        let export = try await export(clip, from: source)
+        let export = try await export(clip, from: source, to: output)
         try? FileManager.default.removeItem(at: source)
         return export
     }

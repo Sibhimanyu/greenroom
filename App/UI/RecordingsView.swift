@@ -49,10 +49,21 @@ struct RecordingsView: View {
         let title: String
         let date: Date
         var recordings: [Recording]
+        /// Finished clip files in the session's clips/ folder.
+        ///
+        /// These are not always cut from a recording in this folder. A clip
+        /// taken from the rolling buffer while nothing was recording has no
+        /// master at all, so a session can legitimately hold clips and no
+        /// recording - and dropping those was why a clip taken without pressing
+        /// Record appeared nowhere despite being on disk.
+        var clipFiles: [Recording]
         var id: String { folder?.path ?? "__loose__" }
 
-        var clipCount: Int { recordings.reduce(0) { $0 + $1.clips.count } }
-        var sizeBytes: Int64 { recordings.reduce(0) { $0 + $1.sizeBytes } }
+        var isEmpty: Bool { recordings.isEmpty && clipFiles.isEmpty }
+        var clipCount: Int { recordings.reduce(0) { $0 + $1.clips.count } + clipFiles.count }
+        var sizeBytes: Int64 {
+            recordings.reduce(0) { $0 + $1.sizeBytes } + clipFiles.reduce(0) { $0 + $1.sizeBytes }
+        }
         static func == (a: Session, b: Session) -> Bool { a.id == b.id }
         func hash(into hasher: inout Hasher) { hasher.combine(id) }
     }
@@ -71,7 +82,9 @@ struct RecordingsView: View {
     @State private var exporting: (done: Int, total: Int)?
     @State private var confirmingDelete: Recording?
 
-    private var allRecordings: [Recording] { sessions.flatMap(\.recordings) }
+    private var allRecordings: [Recording] {
+        sessions.flatMap { $0.recordings + $0.clipFiles }
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -174,6 +187,9 @@ struct RecordingsView: View {
                         ForEach(session.recordings) { recording in
                             recordingRow(recording).tag(recording)
                         }
+                        ForEach(session.clipFiles) { clip in
+                            clipFileRow(clip).tag(clip)
+                        }
                     } header: {
                         HStack(spacing: 6) {
                             Text(session.title).lineLimit(1).truncationMode(.middle)
@@ -214,6 +230,29 @@ struct RecordingsView: View {
                 NSWorkspace.shared.activateFileViewerSelecting([recording.url])
             }
             Button("Move to Trash", role: .destructive) { confirmingDelete = recording }
+        }
+    }
+
+    /// A finished clip file. Distinct from a recording on purpose: it has no
+    /// marks of its own and is usually a fragment of something longer.
+    private func clipFileRow(_ clip: Recording) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: "scissors")
+                .font(.caption)
+                .foregroundStyle(Color.accentColor)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(clip.url.deletingPathExtension().lastPathComponent)
+                    .lineLimit(1)
+                Text(clip.sizeLabel)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .contextMenu {
+            Button("Show in Finder") {
+                NSWorkspace.shared.activateFileViewerSelecting([clip.url])
+            }
+            Button("Move to Trash", role: .destructive) { confirmingDelete = clip }
         }
     }
 
@@ -434,20 +473,29 @@ struct RecordingsView: View {
         let folders = entries.filter { isDirectory($0) && $0.lastPathComponent != "clips" }
         var found: [Session] = folders.compactMap { folder in
             let recordings = self.recordings(in: folder)
-            guard !recordings.isEmpty else { return nil }
+            let clips = self.recordings(in: folder.appendingPathComponent("clips"))
+            // Not `recordings.isEmpty`: a session where the teacher clipped from
+            // the buffer without ever pressing Record has clips and no master,
+            // and dropping it here is what made those clips invisible.
+            guard !recordings.isEmpty || !clips.isEmpty else { return nil }
             return Session(folder: folder,
                            title: folder.lastPathComponent,
-                           date: recordings.map(\.date).max() ?? .distantPast,
-                           recordings: recordings)
+                           date: (recordings + clips).map(\.date).max() ?? .distantPast,
+                           recordings: recordings,
+                           clipFiles: clips)
         }
 
         // Everything recorded before sessions had folders.
         let loose = self.recordings(from: entries.filter { !isDirectory($0) })
-        if !loose.isEmpty {
+        // Clips at the ROOT rather than in a session folder: everything taken
+        // before buffer clips were routed into their session.
+        let looseClips = self.recordings(in: root.appendingPathComponent("clips"))
+        if !loose.isEmpty || !looseClips.isEmpty {
             found.append(Session(folder: nil,
                                  title: "Earlier recordings",
-                                 date: loose.map(\.date).max() ?? .distantPast,
-                                 recordings: loose))
+                                 date: (loose + looseClips).map(\.date).max() ?? .distantPast,
+                                 recordings: loose,
+                                 clipFiles: looseClips))
         }
 
         sessions = found.sorted { $0.date > $1.date }

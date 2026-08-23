@@ -257,9 +257,29 @@ enum GreenroomScene {
             screenLive = try await screenCaptureIsLive(client: client)
         }
         if let webcamUID {
+            // `device` is the key av_capture_input_v2 actually reads. `uid` is
+            // the OLD v1 name, and writing only that is why the source came up
+            // with an empty Device field and a black picture: OBS accepted the
+            // setting, stored it, and never looked at it. Confirmed against the
+            // running OBS, which lists `device` among its properties with
+            // exactly the AVFoundation uniqueIDs used here, and answers
+            // "Unable to find a property by that name" for `uid`.
+            //
+            // Both are written because the input kind is resolved at runtime
+            // (see bestInputKind) and could still come back as v1 on an older
+            // OBS. An unknown key is ignored, so carrying both costs nothing
+            // and covers either.
+            let webcamSettings: [String: Any] = [
+                "device": webcamUID,
+                "device_name": cameraLabel ?? "",
+                "uid": webcamUID
+            ]
             try await ensureInput(client: client, name: webcamSourceName, kind: webcamKind,
-                                   settings: ["uid": webcamUID],
-                                   isCorrectlyConfigured: { ($0["uid"] as? String) == webcamUID })
+                                   settings: webcamSettings,
+                                   isCorrectlyConfigured: {
+                                       ($0["device"] as? String) == webcamUID
+                                           || ($0["uid"] as? String) == webcamUID
+                                   })
 
             try await ensureFilter(client: client, source: webcamSourceName, name: chromaKeyFilterName, kind: chromaKind)
             try await setChromaKey(client: client, enabled: bubble.shape.usesChromaKey, kind: chromaKind)
@@ -274,7 +294,7 @@ enum GreenroomScene {
             // isn't implicated in any crash) forces OBS to re-attempt opening it.
             _ = try? await client.request("SetInputSettings", data: [
                 "inputName": webcamSourceName,
-                "inputSettings": ["uid": webcamUID],
+                "inputSettings": webcamSettings,
                 "overlay": true
             ])
             try await setWebcamItemEnabled(client: client, enabled: true)

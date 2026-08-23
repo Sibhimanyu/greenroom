@@ -247,6 +247,15 @@ final class CoordinatorController: ObservableObject {
     /// tiling step is about to bury. Either way, nothing on that screen is
     /// telling the teacher what is happening, which is what the HUD is for.
     private func syncReadinessHUD() {
+        // Custom UI only. Readiness exists because that mode replaces Zoom's
+        // windows with Greenroom's own, so there is genuinely nothing on screen
+        // during a start. In default Zoom-UI mode the teacher already has Zoom's
+        // interface coming up in front of them and did not ask for another
+        // floating surface on top of it.
+        guard customUIMode else {
+            ReadinessHUDController.close()
+            return
+        }
         guard peopleViewTargetScreen() == nil else {
             ReadinessHUDController.close()
             return

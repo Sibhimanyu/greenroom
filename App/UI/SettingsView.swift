@@ -95,8 +95,32 @@ private struct WebcamSettingsTab: View {
 
     @EnvironmentObject private var coordinator: CoordinatorController
 
+    /// Re-read when the tab appears, so plugging a camera in and opening
+    /// Settings shows it without relaunching.
+    @State private var cameras: [LocalDeviceResolver.Camera] = LocalDeviceResolver.availableCameras()
+
     var body: some View {
         Form {
+            Picker("Camera", selection: $coordinator.webcamDeviceUID) {
+                Text("Automatic (built-in camera)").tag("")
+                ForEach(cameras) { camera in
+                    Text(camera.label).tag(camera.id)
+                }
+                // Keep a saved-but-unplugged choice visible and valid, so
+                // unplugging a USB camera does not silently reset it.
+                if !coordinator.webcamDeviceUID.isEmpty,
+                   !cameras.contains(where: { $0.id == coordinator.webcamDeviceUID }) {
+                    Text("Saved camera (not connected)").tag(coordinator.webcamDeviceUID)
+                }
+            }
+            .onAppear { cameras = LocalDeviceResolver.availableCameras() }
+
+            Text(cameraCaption)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            Divider()
+
             Picker("Bubble shape", selection: $coordinator.webcamShape) {
                 ForEach(WebcamShape.allCases) { shape in
                     Text(shape.label).tag(shape)
@@ -268,6 +292,18 @@ private struct WebcamSettingsTab: View {
         // typed value cannot put the source off-canvas.
         editedGeometry.wrappedValue = next
         Task { await coordinator.applyShapeForPreview() }
+    }
+
+    private var cameraCaption: String {
+        let base = "This is the camera the class sees. Automatic prefers your built-in one. The OBS Virtual Camera is deliberately never offered \u{2014} pointing the composite at its own output is what produces the infinite-mirror picture instead of a face."
+        if !coordinator.webcamDeviceUID.isEmpty,
+           !cameras.contains(where: { $0.id == coordinator.webcamDeviceUID }) {
+            return "The camera you picked isn't plugged in. Greenroom will use the built-in one for the next session and say so in the status log. " + base
+        }
+        if cameras.isEmpty {
+            return "No camera found. Sessions will run screen-only \u{2014} the class still sees your shared screen, and your video comes back next Start once a camera is connected."
+        }
+        return base + " Takes effect at the next Start."
     }
 
     private var shapeCaption: String {

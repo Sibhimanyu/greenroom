@@ -742,6 +742,13 @@ final class CoordinatorController: ObservableObject {
         didSet { defaults.set(screenCaptureDisplayUUID, forKey: "screenCaptureDisplayUUID") }
     }
 
+    /// Which camera the composite uses. Empty means automatic, which prefers
+    /// the built-in one - the same shape as screenCaptureDisplayUUID above,
+    /// including surviving the device being unplugged.
+    @Published var webcamDeviceUID: String {
+        didSet { defaults.set(webcamDeviceUID, forKey: "webcamDeviceUID") }
+    }
+
     @Published var peopleViewDisplayUUID: String {
         didSet { defaults.set(peopleViewDisplayUUID, forKey: "peopleViewDisplayUUID") }
     }
@@ -802,6 +809,7 @@ final class CoordinatorController: ObservableObject {
         analyticsEnabled = (defaults.object(forKey: "analyticsEnabled") as? Bool) ?? true
         peopleViewDisplayUUID = defaults.string(forKey: "peopleViewDisplayUUID") ?? ""
         screenCaptureDisplayUUID = defaults.string(forKey: "screenCaptureDisplayUUID") ?? ""
+        webcamDeviceUID = defaults.string(forKey: "webcamDeviceUID") ?? ""
         customUIMode = defaults.bool(forKey: "customUIMode")
         autoRecordOnStart = defaults.bool(forKey: "autoRecordOnStart")
         keepOBSWarm = (defaults.object(forKey: "keepOBSWarm") as? Bool) ?? true
@@ -1507,7 +1515,8 @@ final class CoordinatorController: ObservableObject {
         guard shapePreviewTask != nil else { return }
         _ = try? await GreenroomScene.ensureConfigured(client: client,
                                                        bubble: bubbleLayout,
-                                                       preferredDisplayUUID: screenCaptureDisplayUUID)
+                                                       preferredDisplayUUID: screenCaptureDisplayUUID,
+                                                       preferredCameraUID: webcamDeviceUID)
     }
 
     var mainAppDisplayName: String {
@@ -2923,7 +2932,8 @@ final class CoordinatorController: ObservableObject {
         let setup = try await GreenroomScene.ensureConfigured(
             client: client,
             bubble: bubbleLayout,
-            preferredDisplayUUID: screenCaptureDisplayUUID)
+            preferredDisplayUUID: screenCaptureDisplayUUID,
+                                                       preferredCameraUID: webcamDeviceUID)
         if !setup.webcamActive {
             log("No webcam connected \u{2014} running screen-only. Plug a camera in and press Start (or Snap Windows Back) to bring your video back.")
         }

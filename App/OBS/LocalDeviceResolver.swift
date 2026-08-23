@@ -76,17 +76,65 @@ enum LocalDeviceResolver {
     /// `AVCaptureDevice.default(for: .video)` can hand it back as the
     /// "default" device - which would wire OBS's own webcam source to itself.
     static func physicalCameraUID() -> String? {
+        resolveCamera(preferred: "").uid
+    }
+
+    struct Camera: Identifiable, Hashable {
+        /// AVFoundation's uniqueID, which is what OBS's av_capture source
+        /// speaks and what survives an unplug and replug.
+        let id: String
+        let name: String
+        let isBuiltIn: Bool
+
+        var label: String { name + (isBuiltIn ? " \u{00B7} Built-in" : "") }
+    }
+
+    /// Every real camera attached RIGHT NOW, built-in first.
+    ///
+    /// Never the OBS Virtual Camera. That device appears in this same
+    /// enumeration once OBS's virtual cam is running, and pointing the webcam
+    /// source at it would make OBS capture its own output - a feedback loop
+    /// that produces the infinite-mirror picture rather than a face.
+    static func availableCameras() -> [Camera] {
         var deviceTypes: [AVCaptureDevice.DeviceType] = [.builtInWideAngleCamera]
         if #available(macOS 14.0, *) {
             deviceTypes.append(.external)
         } else {
             deviceTypes.append(.externalUnknown)
         }
-
-        let devices = AVCaptureDevice.DiscoverySession(deviceTypes: deviceTypes, mediaType: .video, position: .unspecified)
+        return AVCaptureDevice.DiscoverySession(deviceTypes: deviceTypes,
+                                                mediaType: .video,
+                                                position: .unspecified)
             .devices
             .filter { $0.localizedName != "OBS Virtual Camera" }
+            .map { Camera(id: $0.uniqueID,
+                          name: $0.localizedName,
+                          isBuiltIn: $0.deviceType == .builtInWideAngleCamera) }
+            .sorted { $0.isBuiltIn && !$1.isBuiltIn }
+    }
 
-        return (devices.first { $0.deviceType == .builtInWideAngleCamera } ?? devices.first)?.uniqueID
+    static func isCameraConnected(uid: String) -> Bool {
+        availableCameras().contains { $0.id == uid }
+    }
+
+    /// Which camera the webcam source should use: the explicit choice when it
+    /// is actually plugged in, otherwise the built-in one, otherwise whatever
+    /// is there. Mirrors resolveCaptureDisplay, including the fellBack flag -
+    /// a teacher whose USB camera is unplugged should be told their saved
+    /// choice was abandoned rather than wonder why the picture looks different.
+    ///
+    /// A nil uid is not an error: a session with no camera at all runs
+    /// screen-only, and the teacher's video returns next Start.
+    static func resolveCamera(preferred: String) -> (uid: String?, fellBack: Bool) {
+        let cameras = availableCameras()
+        if !preferred.isEmpty, cameras.contains(where: { $0.id == preferred }) {
+            return (preferred, false)
+        }
+        let automatic = (cameras.first { $0.isBuiltIn } ?? cameras.first)?.id
+        return (automatic, !preferred.isEmpty && automatic != nil)
+    }
+
+    static func cameraName(uid: String) -> String? {
+        availableCameras().first { $0.id == uid }?.name
     }
 }

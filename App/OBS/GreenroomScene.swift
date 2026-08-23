@@ -26,6 +26,10 @@ enum GreenroomScene {
         var displayFellBack: Bool
         /// The display actually being captured, for the status log.
         var displayLabel: String?
+        /// A saved camera choice was abandoned because it is not plugged in.
+        var cameraFellBack: Bool = false
+        /// The camera actually in use, for the status log.
+        var cameraLabel: String?
     }
 
     static let sceneName = "Greenroom"
@@ -171,7 +175,8 @@ enum GreenroomScene {
     @discardableResult
     static func ensureConfigured(client: OBSWebSocketClient,
                                  bubble: BubbleLayout = BubbleLayout(),
-                                 preferredDisplayUUID: String = "") async throws -> SetupResult {
+                                 preferredDisplayUUID: String = "",
+                                 preferredCameraUID: String = "") async throws -> SetupResult {
         // OBS remembers whether the virtual cam was running when it last
         // quit and auto-resumes it on launch - confirmed by testing, that
         // left an active output blocking SetVideoSettings below ("Video
@@ -214,7 +219,13 @@ enum GreenroomScene {
         // (the class still gets the shared screen; the teacher's video
         // returns next Start once a camera is back). Reported to the
         // caller via the return value so the status log can say so.
-        let webcamUID = LocalDeviceResolver.physicalCameraUID()
+        // Same shape as the display above: an explicit choice when it is
+        // actually plugged in, the built-in camera otherwise, and the caller is
+        // told when a saved choice had to be abandoned rather than left to
+        // wonder why the picture changed.
+        let resolvedCamera = LocalDeviceResolver.resolveCamera(preferred: preferredCameraUID)
+        let webcamUID = resolvedCamera.uid
+        let cameraLabel = webcamUID.flatMap { LocalDeviceResolver.cameraName(uid: $0) }
 
         // capture_audio: false is load-bearing, not tidiness. OBS's macOS
         // ScreenCaptureKit source sets up a system-audio receive queue
@@ -293,7 +304,9 @@ enum GreenroomScene {
         return SetupResult(webcamActive: webcamUID != nil,
                            screenCaptureLive: screenLive,
                            displayFellBack: resolved.fellBack,
-                           displayLabel: displayLabel)
+                           displayLabel: displayLabel,
+                           cameraFellBack: resolvedCamera.fellBack,
+                           cameraLabel: cameraLabel)
     }
 
     /// Shows/hides the webcam's scene item - screen-only sessions (no

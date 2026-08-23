@@ -2250,6 +2250,50 @@ final class CoordinatorController: ObservableObject {
     /// keystroke away. Internal/automatic paths (Zoom-side meeting end,
     /// app quit) still call stop()/prepareForTermination directly: the
     /// destructive event already happened or is separately confirmed.
+    /// True while a class is actually live.
+    ///
+    /// Excludes `isStopping`: a session already being torn down does not need a
+    /// second confirmation, and asking again during teardown would be a dialog
+    /// nobody can act on usefully.
+    var hasLiveSession: Bool {
+        !isStopping && (isRunning || virtualCamActive || isRecording)
+    }
+
+    /// Asks before quitting out from under a live class.
+    ///
+    /// Quitting is not "close the window". It ends the Zoom meeting for everyone
+    /// when Greenroom is hosting, drops the students, and finalises whatever is
+    /// recording. ⌘Q sits one key from ⌘W and one slip from ending somebody's
+    /// lesson in front of their class.
+    ///
+    /// Cancel is the default button, against the usual convention of making the
+    /// titular action default. A teacher who hit ⌘Q by accident is exactly the
+    /// person about to hit Return by reflex, and the answer that reflex gives
+    /// should be the recoverable one.
+    ///
+    /// Returns true when quitting should proceed.
+    func confirmQuitWhileLive() -> Bool {
+        guard hasLiveSession else { return true }
+        // The quit may have been triggered from the menu bar while another app
+        // held focus, so the alert has to come forward with the app.
+        NSApp.activate(ignoringOtherApps: true)
+
+        let alert = NSAlert()
+        alert.messageText = "Quit Greenroom and end the class?"
+        alert.informativeText = isRecording
+            ? "The recording is finished and saved first. Then the Zoom meeting ends for everyone when you're hosting, and your students are dropped from the call."
+            : "The Zoom meeting ends for everyone when you're hosting, and your students are dropped from the call."
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: "Quit Greenroom")
+        alert.addButton(withTitle: "Cancel")
+        alert.buttons[0].hasDestructiveAction = true
+        // Hand the Return key to Cancel. Escape already maps to it as the
+        // second button.
+        alert.buttons[0].keyEquivalent = ""
+        alert.buttons[1].keyEquivalent = "\r"
+        return alert.runModal() == .alertFirstButtonReturn
+    }
+
     func confirmAndStop() {
         guard isRunning || virtualCamActive else { return }
         NSApp.activate(ignoringOtherApps: true) // the hotkey fires while other apps are focused

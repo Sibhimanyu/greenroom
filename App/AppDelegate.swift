@@ -137,6 +137,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         MainActor.assumeIsolated {
             guard let coordinator = CoordinatorController.shared else { return .terminateNow }
+            // Before prepareForTermination, not after: that begins tearing the
+            // session down, so asking afterwards would be asking about something
+            // already half-ended.
+            guard coordinator.confirmQuitWhileLive() else { return .terminateCancel }
             coordinator.prepareForTermination()
             // OBS gets a graceful, WAITED-FOR shutdown before this process
             // exits: stop the virtual camera, ask OBS to quit, wait for

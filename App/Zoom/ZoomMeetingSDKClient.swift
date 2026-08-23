@@ -771,7 +771,7 @@ enum ZoomMeetingSDKError: LocalizedError {
     /// generic ZoomSDKError_Failed instead - fixed after a real join
     /// attempt surfaced only "(rawValue: 1)" with no way to tell which of
     /// several possible causes it actually was.
-    case joinRejected(ZoomSDKMeetingError)
+    case joinRejected(ZoomSDKMeetingError, status: ZoomSDKMeetingStatus)
 
     /// Zoom refused because the meeting is hosted on a different Zoom
     /// account than the one owning this Marketplace app (error 63).
@@ -779,10 +779,51 @@ enum ZoomMeetingSDKError: LocalizedError {
     /// it without importing ZoomSDK - the Zoom types stay behind this
     /// wrapper layer.
     var isCrossAccountRejection: Bool {
-        if case .joinRejected(let reason) = self {
+        if case .joinRejected(let reason, _) = self {
             return reason == ZoomSDKMeetingError_UnableToJoinExternalMeeting
         }
         return false
+    }
+
+    /// Says what actually happened, in words a teacher can act on.
+    ///
+    /// This used to print the raw enum, which produced
+    /// "join was rejected (ZoomSDKMeetingError(rawValue: 101))" - and 101 is
+    /// ZoomSDKMeetingError_None, the SDK's way of saying it had no reason to
+    /// give. Reporting "rejected" for that is doubly wrong: nobody refused
+    /// anything, and the number tells the reader nothing.
+    static func joinFailureText(_ error: ZoomSDKMeetingError,
+                                status: ZoomSDKMeetingStatus) -> String {
+        switch error {
+        case ZoomSDKMeetingError_PasswordError:
+            return "Zoom rejected the meeting passcode. Check it in Settings \u{2192} Start Meeting."
+        case ZoomSDKMeetingError_MeetingNotStart:
+            return "That meeting has not been started yet by its host."
+        case ZoomSDKMeetingError_MeetingNotExist:
+            return "Zoom has no meeting with that number."
+        case ZoomSDKMeetingError_MeetingOver:
+            return "That meeting has already ended."
+        case ZoomSDKMeetingError_MeetingLocked:
+            return "The host has locked that meeting."
+        case ZoomSDKMeetingError_UserFull:
+            return "That meeting is full."
+        case ZoomSDKMeetingError_UnableToJoinExternalMeeting,
+             ZoomSDKMeetingError_HostDisallowOutsideUserJoin:
+            return "This Zoom account is not allowed to join that meeting."
+        case ZoomSDKMeetingError_RemovedByHost:
+            return "The host removed this account from the meeting."
+        case ZoomSDKMeetingError_ConnectionError, ZoomSDKMeetingError_ReconnectFailed,
+             ZoomSDKMeetingError_NoMMR, ZoomSDKMeetingError_MMRError:
+            return "Couldn't reach Zoom's servers. Check the network and try again."
+        case ZoomSDKMeetingError_None, ZoomSDKMeetingError_Success:
+            // The SDK ended the attempt without giving a reason. Almost always
+            // the previous meeting still tearing down underneath a new Start.
+            return status == ZoomSDKMeetingStatus_Ended
+                ? "The meeting ended before Greenroom finished joining. If the last session only just stopped, give it a few seconds and press Start again."
+                : "Zoom ended the join without saying why. If the last session only just stopped, give it a few seconds and press Start again."
+        default:
+            return "Zoom refused the join (code \(error.rawValue))."
+        }
     }
 
     var errorDescription: String? {
@@ -795,7 +836,8 @@ enum ZoomMeetingSDKError: LocalizedError {
         case .meetingServiceUnavailable: return "Zoom Meeting SDK's meeting service isn't available."
         case .invalidMeetingNumber: return "Meeting number must be numeric."
         case .joinFailed(let error): return "Zoom Meeting SDK join call failed immediately (\(error))."
-        case .joinRejected(let error): return "Zoom Meeting SDK join was rejected (\(error))."
+        case .joinRejected(let error, let status):
+            return Self.joinFailureText(error, status: status)
         case .timedOut(let what): return "\(what) timed out \u{2014} the Zoom SDK never called back. Press End Session and try again."
         }
     }
@@ -830,12 +872,19 @@ extension ZoomMeetingSDKClient: ZoomSDKMeetingServiceDelegate {
             isJoined = true
             joinCompletion?(.success(()))
             joinCompletion = nil
-        case ZoomSDKMeetingStatus_Failed, ZoomSDKMeetingStatus_Ended, ZoomSDKMeetingStatus_Disconnecting:
+        case ZoomSDKMeetingStatus_Disconnecting:
+            // Transitional, not terminal - it sits between InMeeting and Ended,
+            // and the SDK also passes through it while tearing the PREVIOUS
+            // meeting down. Failing a join here reported "rejected" for a
+            // meeting that had not been refused by anyone, with reason _None
+            // because nothing had actually gone wrong.
+            isJoined = false
+        case ZoomSDKMeetingStatus_Failed, ZoomSDKMeetingStatus_Ended:
             if !isJoined {
-                joinCompletion?(.failure(ZoomMeetingSDKError.joinRejected(error)))
+                joinCompletion?(.failure(ZoomMeetingSDKError.joinRejected(error, status: state)))
                 joinCompletion = nil
             }
-            isJoined = (state == ZoomSDKMeetingStatus_InMeeting)
+            isJoined = false
         default:
             break
         }

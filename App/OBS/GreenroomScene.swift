@@ -40,6 +40,43 @@ enum GreenroomScene {
         FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("Greenroom", isDirectory: true)
     }
+
+    /// One folder per session, holding that class's recording and its clips.
+    ///
+    /// Recordings used to land flat in `recordingsDirectory`, named by OBS's own
+    /// timestamp, so a term's worth of classes was a wall of identical-looking
+    /// files. A folder per session gives the clips somewhere to live and gives
+    /// the class a name a human chose.
+    ///
+    /// The date is always present even when a name was given: two runs of the
+    /// same class on the same day would otherwise collide, and a teacher who
+    /// records the same lesson twice is exactly who needs to tell them apart.
+    static func sessionFolderName(className: String, started: Date) -> String {
+        let stamp = sessionStampFormatter.string(from: started)
+        let cleaned = sanitizedClassName(className)
+        return cleaned.isEmpty ? "Class - \(stamp)" : "\(cleaned) - \(stamp)"
+    }
+
+    /// Trims a typed class name down to something safe as a folder name.
+    ///
+    /// `/` and `:` are the two characters the filesystem and Finder disagree
+    /// about, and a name long enough to break path limits is not a name anyone
+    /// meant to type. Runs of whitespace collapse so a stray double space does
+    /// not produce two different folders for the same class.
+    static func sanitizedClassName(_ raw: String) -> String {
+        let stripped = raw.components(separatedBy: CharacterSet(charactersIn: "/:\\"))
+            .joined(separator: "-")
+        let collapsed = stripped.split(whereSeparator: \.isWhitespace).joined(separator: " ")
+        return String(collapsed.prefix(60)).trimmingCharacters(in: .whitespaces)
+    }
+
+    private static let sessionStampFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        // Hyphens, not colons: a colon is a path separator to Finder and shows
+        // up as a slash in the sidebar.
+        formatter.dateFormat = "yyyy-MM-dd HH-mm"
+        return formatter
+    }()
     // MARK: Recording disk space
 
     /// How much room is left for recordings, in bytes, on the volume that
@@ -58,15 +95,23 @@ enum GreenroomScene {
     }
 
     /// What the recordings themselves currently occupy.
+    ///
+    /// Walks the tree rather than the top level: recordings live in a folder per
+    /// session now, so a flat scan would have reported the disk filling up with
+    /// nothing in it.
     static var recordingsUsedBytes: Int64 {
         let directory = recordingsDirectory
-        let urls = (try? FileManager.default.contentsOfDirectory(
+        guard let walker = FileManager.default.enumerator(
             at: directory,
-            includingPropertiesForKeys: [.fileSizeKey],
-            options: [.skipsHiddenFiles])) ?? []
-        return urls.reduce(into: Int64(0)) { total, url in
-            total += Int64((try? url.resourceValues(forKeys: [.fileSizeKey]))?.fileSize ?? 0)
+            includingPropertiesForKeys: [.fileSizeKey, .isRegularFileKey],
+            options: [.skipsHiddenFiles]) else { return 0 }
+        var total: Int64 = 0
+        for case let url as URL in walker {
+            let values = try? url.resourceValues(forKeys: [.fileSizeKey, .isRegularFileKey])
+            guard values?.isRegularFile == true else { continue }
+            total += Int64(values?.fileSize ?? 0)
         }
+        return total
     }
 
     /// How worried to be about the space left.
@@ -783,8 +828,12 @@ enum GreenroomScene {
     /// Record can be pressed. Best-effort (try?): a failure here should
     /// never fail the session, it just means OBS's own folder setting
     /// stays in effect.
-    private static func configureRecordingPath(client: OBSWebSocketClient) async {
-        let directory = recordingsDirectory
+    /// Points OBS at one specific folder. Called again just before each
+    /// StartRecord, because the folder is now per-session rather than fixed.
+    ///
+    /// Best-effort by design: a failure here means the recording lands in OBS's
+    /// own folder, which is untidy but not lost.
+    static func pointRecordingAt(_ directory: URL, client: OBSWebSocketClient) async {
         try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         for (category, name) in [("SimpleOutput", "FilePath"), ("AdvOut", "RecFilePath")] {
             _ = try? await client.request("SetProfileParameter", data: [
@@ -793,6 +842,14 @@ enum GreenroomScene {
                 "parameterValue": directory.path
             ])
         }
+    }
+
+    private static func configureRecordingPath(client: OBSWebSocketClient) async {
+        // The root, as a floor. The coordinator re-points this at the session's
+        // own folder immediately before the tape rolls - doing it here as well
+        // means a recording started by some path we did not anticipate still
+        // lands somewhere sensible rather than in OBS's default folder.
+        await pointRecordingAt(recordingsDirectory, client: client)
         // Fragmented MP4: the file is written as self-contained fragments,
         // so a crash/power-cut mid-recording loses at most the last few
         // seconds instead of the whole file (a non-fragmented mp4/mov with

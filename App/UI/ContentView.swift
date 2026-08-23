@@ -55,11 +55,49 @@ struct ContentView: View {
         !coordinator.virtualCamActive && !coordinator.isRecording
     }
 
+    /// Names the session's folder, so a term of classes is not a wall of
+    /// identical timestamps.
+    ///
+    /// Pre-filled from last time rather than asked for on every Start: the same
+    /// class runs five mornings a week, and a dialog would spend a click a day
+    /// on yesterday's answer. Shown BEFORE Start rather than after, so a wrong
+    /// name is something you notice rather than something you discover in the
+    /// folder afterwards.
+    @ViewBuilder private var classNameField: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text("CLASS NAME")
+                .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                .foregroundStyle(.tertiary)
+            HStack(spacing: 8) {
+                TextField("Class", text: $coordinator.className)
+                    .textFieldStyle(.roundedBorder)
+                    .frame(maxWidth: 280)
+                    .disabled(coordinator.isRunning || coordinator.virtualCamActive)
+                    .help("Names this session's folder in Documents/Greenroom. Leave it empty and the folder is named by date and time instead.")
+                Text(folderPreview)
+                    .font(.system(size: 11, design: .monospaced))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            }
+        }
+    }
+
+    /// The folder the next Start will create, shown as you type. Cheaper than
+    /// explaining the naming rule in prose, and it makes the timestamp fallback
+    /// obvious the moment the field is empty.
+    private var folderPreview: String {
+        if let live = coordinator.sessionFolder { return live.lastPathComponent }
+        return GreenroomScene.sessionFolderName(className: coordinator.className, started: Date())
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             header
 
             meetingSection
+
+            classNameField
 
             HStack(spacing: 10) {
                 Button {

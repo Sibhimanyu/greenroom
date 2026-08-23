@@ -771,6 +771,7 @@ final class CoordinatorController: ObservableObject {
         bubbleWidthFraction = (defaults.object(forKey: "bubbleWidthFraction") as? Double) ?? bubbleDefaults.widthFraction
         bubbleRightInset = (defaults.object(forKey: "bubbleRightInset") as? Double) ?? bubbleDefaults.rightInset
         bubbleBottomInset = (defaults.object(forKey: "bubbleBottomInset") as? Double) ?? bubbleDefaults.bottomInset
+        className = defaults.string(forKey: "className") ?? ""
         cutoutHeightFraction = (defaults.object(forKey: "cutoutHeightFraction") as? Double) ?? bubbleDefaults.cutoutHeightFraction
         cutoutRightInset = (defaults.object(forKey: "cutoutRightInset") as? Double) ?? bubbleDefaults.cutoutRightInset
         mainAppURL = AppCatalog.sanitizedURLText(
@@ -887,7 +888,12 @@ final class CoordinatorController: ObservableObject {
         isRunning = true
         virtualCamActive = false
         statusLines = []
-        sessionStartedAt = Date()
+        let startedAt = Date()
+        sessionStartedAt = startedAt
+        // Named now, created later - see sessionFolder.
+        sessionFolder = GreenroomScene.recordingsDirectory.appendingPathComponent(
+            GreenroomScene.sessionFolderName(className: className, started: startedAt),
+            isDirectory: true)
         // Shape only. No meeting number, no preset name - see Analytics.swift.
         Analytics.track(.sessionStart, [
             .mode: meetingMode == .join ? "join" : "start",
@@ -1042,6 +1048,7 @@ final class CoordinatorController: ObservableObject {
             .customUI: customUIMode ? "yes" : "no"
         ])
         sessionStartedAt = nil
+        sessionFolder = nil
         // A start still in flight gets abandoned at its next checkpoint -
         // without this, its meeting setup raced the OBS teardown below.
         startTask?.cancel()
@@ -1117,6 +1124,26 @@ final class CoordinatorController: ObservableObject {
         ZoomLauncher.launchZoom()
     }
 
+    /// What this class is called. Becomes the session folder's name.
+    ///
+    /// Remembered between runs and pre-filled rather than asked for. A daily
+    /// class has the same name five mornings a week, and DESIGN.md's promise is
+    /// a whole class in one click - a dialog on the most repeated action in the
+    /// product would spend that click on an answer that is almost always
+    /// yesterday's. Left empty it falls back to a timestamp, so nothing ever
+    /// blocks on it.
+    @Published var className: String {
+        didSet { defaults.set(className, forKey: "className") }
+    }
+
+    /// Where this session's recording and clips live.
+    ///
+    /// Decided once at Start so stopping and restarting the tape mid-class
+    /// lands in the same folder, but only created on disk when the tape
+    /// actually rolls - a session nobody recorded should not leave an empty
+    /// folder behind every morning.
+    private(set) var sessionFolder: URL?
+
     @Published private(set) var isRecording = false
 
     /// Records the composited feed (screen + webcam bubble/cutout) straight
@@ -1156,6 +1183,12 @@ final class CoordinatorController: ObservableObject {
                         case .ok:
                             break
                         }
+                    }
+                    // Right before StartRecord, not at session setup: this is
+                    // the first moment we know a recording is actually going to
+                    // happen, so it is the first moment worth creating a folder.
+                    if let folder = sessionFolder {
+                        await GreenroomScene.pointRecordingAt(folder, client: client)
                     }
                     _ = try await client.request("StartRecord")
                     isRecording = true

@@ -156,16 +156,36 @@ struct RecordingsView: View {
         return "\(used) in recordings \u{2022} \(free) free"
     }
 
+    static let playableExtensions = ["mov", "mp4", "mkv", "m4v"]
+
+    /// Finds recordings one level down as well as loose in the root.
+    ///
+    /// Sessions record into a folder of their own now. A top-level-only scan
+    /// found nothing in them, so every new recording would simply have stopped
+    /// appearing here. Loose files are still listed because every recording made
+    /// before that change is one.
     private func reload() {
         freeBytes = GreenroomScene.recordingsFreeBytes
         usedBytes = GreenroomScene.recordingsUsedBytes
-        let directory = GreenroomScene.recordingsDirectory
-        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        let keys: [URLResourceKey] = [.contentModificationDateKey, .fileSizeKey]
-        let urls = (try? FileManager.default.contentsOfDirectory(
-            at: directory, includingPropertiesForKeys: keys, options: [.skipsHiddenFiles])) ?? []
-        recordings = urls
-            .filter { ["mov", "mp4", "mkv", "m4v"].contains($0.pathExtension.lowercased()) }
+        let root = GreenroomScene.recordingsDirectory
+        try? FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        let keys: [URLResourceKey] = [.contentModificationDateKey, .fileSizeKey, .isDirectoryKey]
+
+        func media(in directory: URL) -> [URL] {
+            (try? FileManager.default.contentsOfDirectory(
+                at: directory, includingPropertiesForKeys: keys, options: [.skipsHiddenFiles])) ?? []
+        }
+
+        let top = media(in: root)
+        // The session folder's own clips/ subfolder is deliberately not walked:
+        // clips get their own presentation, and listing them beside their parent
+        // recording would read as duplicates of it.
+        let nested = top
+            .filter { (try? $0.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory == true }
+            .flatMap { media(in: $0) }
+
+        recordings = (top + nested)
+            .filter { Self.playableExtensions.contains($0.pathExtension.lowercased()) }
             .compactMap { url in
                 let values = try? url.resourceValues(forKeys: Set(keys))
                 return Recording(url: url,

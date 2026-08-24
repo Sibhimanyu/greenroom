@@ -88,12 +88,44 @@ final class ZoomMeetingSDKClient: NSObject, ObservableObject {
     /// streams exhaust the allowance and every later subscription is refused -
     /// silently, because nothing was listening to the container delegate. Asking
     /// for what a 300pt tile can actually display leaves room for a whole class.
-    private static func resolution(for frame: NSRect) -> ZoomSDKVideoRenderResolution {
-        switch frame.height {
-        case ..<200: return ZoomSDKVideoRenderResolution_180p
-        case ..<420: return ZoomSDKVideoRenderResolution_360p
-        default: return ZoomSDKVideoRenderResolution_720p
+    private static func resolution(for frame: NSRect,
+                                   openStreams: Int,
+                                   hero: Bool) -> ZoomSDKVideoRenderResolution {
+        // Two limits, and the lower one wins.
+        //
+        // Size alone was not enough. The SDK's quotas are documented in
+        // ZoomSDKErrors.h and they are hard: _HasSubscribe1080POr720P,
+        // _HasSubscribeTwo720P ("Maximum limit reached") and
+        // _HasSubscribeExceededLimit. A rail tile 800pt tall asked for 720p,
+        // which on its own consumed the allowance - so the FIRST student
+        // rendered and every later subscription was refused, along with the
+        // active-speaker view. Two students on screen, one of them black.
+        //
+        // This is what Zoom's own gallery does: thumbnails get thumbnail
+        // streams and only the hero view gets a big one. A slightly soft tile
+        // beats a black one, and the ceiling lifts again as the room empties.
+        // Only ONE stream is ever allowed to be the expensive one, and it is
+        // the speaker view - the thing actually being looked at. A grid tile is
+        // never worth a 720p slot: giving the first one 720p purely because it
+        // was drawn large is what spent the allowance before the rest of the
+        // class had asked for anything.
+        let ceiling: ZoomSDKVideoRenderResolution
+        switch (hero, openStreams) {
+        case (true, 0...1):  ceiling = ZoomSDKVideoRenderResolution_720p
+        case (true, _):      ceiling = ZoomSDKVideoRenderResolution_360p
+        case (false, 0...3): ceiling = ZoomSDKVideoRenderResolution_360p
+        default:             ceiling = ZoomSDKVideoRenderResolution_180p
         }
+        let wanted: ZoomSDKVideoRenderResolution
+        switch frame.height {
+        case ..<200: wanted = ZoomSDKVideoRenderResolution_90p
+        case ..<420: wanted = ZoomSDKVideoRenderResolution_180p
+        case ..<700: wanted = ZoomSDKVideoRenderResolution_360p
+        default: wanted = ZoomSDKVideoRenderResolution_720p
+        }
+        // The enum is ordered by quality, so the smaller raw value is the
+        // cheaper stream.
+        return wanted.rawValue <= ceiling.rawValue ? wanted : ceiling
     }
 
     /// Wires the container delegate once, so failures are never silent again.
@@ -101,77 +133,19 @@ final class ZoomMeetingSDKClient: NSObject, ObservableObject {
         videoContainer = container
         if container.delegate !== self { container.delegate = self }
     }
-    private var activeSpeakerElement: ZoomSDKActiveVideoElement?
-
-    /// A view showing whoever is currently speaking, for us to place wherever
-    /// we like. Custom UI only: in default UI the SDK owns its own windows and
-    /// there is no container to ask.
-    /// The view, plus what the SDK said while producing it.
-    ///
-    /// Every one of these calls returns a ZoomSDKError and the first version of
-    /// this code threw all of them away with `_ =`. That is the same mistake
-    /// that hid the black-screen bug in the OBS scene code: a call that fails
-    /// silently looks identical to one that worked, and the only visible
-    /// symptom is a window with nothing in it. So the codes come back out.
-    struct ActiveSpeakerResult {
-        var view: NSView?
-        var detail: String
-    }
-
-    func makeActiveSpeakerView(frame: NSRect) -> ActiveSpeakerResult {
-        guard didUseCustomUI else {
-            return ActiveSpeakerResult(view: nil, detail: "not in custom-UI mode")
-        }
-        guard let container = ZoomSDK.shared().getMeetingService()?.getVideoContainer() else {
-            return ActiveSpeakerResult(view: nil, detail: "getVideoContainer returned nil")
-        }
-        videoContainer = container
-
-        // Reused, not rebuilt. This is called from the speaker follow loop
-        // every two seconds, and it used to create a fresh element each time
-        // while merely OVERWRITING the stored reference - so every previous
-        // element stayed alive inside the container, still subscribed and still
-        // retrying. releaseCustomUIVideo only ever cleaned the last one.
-        //
-        // That is what kept the tiles black. The refusals in Greenroom-video.log
-        // are all user=1, which is this element, not a participant: the leaked
-        // copies accumulated at one every two seconds and saturated the SDK's
-        // subscription rate limiter, so the students' own subscribe calls were
-        // refused too. It is also why the per-user backoff did not help - the
-        // calls come from here, not from participantView, so they never
-        // consulted the cooldown.
-        if let existing = activeSpeakerElement {
-            _ = existing.resize(frame)
-            return ActiveSpeakerResult(view: existing.getVideoView(),
-                                       detail: "reused existing element")
-        }
-
-        // The element is allocated by US with its frame, then handed to the
-        // container to wire up - the container does not return a new one, it
-        // populates the one you pass in.
-        var element = ZoomSDKActiveVideoElement(frame: frame)
-        let created = container.createActiveVideoElement(&element)
-        guard created == ZoomSDKError_Success else {
-            return ActiveSpeakerResult(view: nil, detail: "createActiveVideoElement=\(created.rawValue)")
-        }
-        activeSpeakerElement = element
-        // Sized to the side-column tile, not to whatever the SDK would pick.
-        // The active speaker is one stream competing with a whole grid for the
-        // same subscription quota.
-        _ = element.setResolution(Self.resolution(for: frame))
-        let resized = element.resize(frame)
-        let started = element.startActiveView(true)
-        let shown = element.showVideo(true)
-        let view = element.getVideoView()
-        let detail = "resize=\(resized.rawValue) startActiveView=\(started.rawValue)"
-            + " showVideo=\(shown.rawValue) view=\(view == nil ? "nil" : "ok")"
-        return ActiveSpeakerResult(view: view, detail: detail)
-    }
 
     /// One render element per participant, keyed by user ID. Cached because a
     /// layout pass runs every couple of seconds: recreating elements each time
     /// would unsubscribe and resubscribe every student's video continuously.
     private var participantElements: [UInt32: ZoomSDKNormalVideoElement] = [:]
+    /// The frame each element was last asked for.
+    ///
+    /// The panel re-lays out at 1Hz and nearly always arrives at the same
+    /// geometry, so resizing unconditionally spent an SDK round trip per tile
+    /// per second re-laying out a render that had not moved. Only genuine
+    /// changes go through now.
+    private var lastRequestedFrame: [UInt32: NSRect] = [:]
+    private var lastSelfFrame: NSRect = .zero
 
     /// Who is in the meeting. `excludingSelf` follows the same Hide Self View
     /// preference the default UI honours, so the gallery matches what the
@@ -208,9 +182,12 @@ final class ZoomMeetingSDKClient: NSObject, ObservableObject {
     private var subscriptionCooldown: [UInt32: Date] = [:]
     private var subscriptionAttempts: [UInt32: Int] = [:]
     private var lastSubscriptionFailure: [UInt32: Date] = [:]
+    /// Why a user was last refused. Decides whether a fresh element could
+    /// possibly help - see the cooldown handling in participantView.
+    private var lastFailureReason: [UInt32: ZoomSDKVideoSubscribeFailReason] = [:]
 
     /// A view rendering one participant, reused across layout passes.
-    func participantView(userID: UInt32, frame: NSRect) -> NSView? {
+    func participantView(userID: UInt32, frame: NSRect, hero: Bool = false) -> NSView? {
         guard didUseCustomUI else { return nil }
         if let readyAt = subscriptionCooldown[userID] {
             guard Date() >= readyAt else {
@@ -219,14 +196,46 @@ final class ZoomMeetingSDKClient: NSObject, ObservableObject {
                 return participantElements[userID]?.getVideoView()
             }
             subscriptionCooldown[userID] = nil
-            if let dead = participantElements.removeValue(forKey: userID) {
+            // Rebuild only for reasons a FRESH element could fix.
+            //
+            // TooFrequentCall is not one of them. The probe shows the existing
+            // element's layer growing from 1 sublayer to 4 after it is
+            // attached, which is the SDK wiring up rendering - so the thing
+            // being destroyed may already be working. And the teardown itself
+            // is a subscribeVideo(false) immediately followed by a
+            // subscribeVideo(true) on the replacement, which is exactly the
+            // burst the SDK is complaining about. Retrying was feeding the
+            // refusal it was reacting to.
+            if lastFailureReason[userID] == ZoomSDKVideoSubscribe_Fail_TooFrequentCall,
+               let existing = participantElements[userID] {
+                // Re-ask on the SAME element, rather than rebuilding it OR
+                // leaving it alone.
+                //
+                // Rebuilding caused the refusal loop. Leaving it alone is just
+                // as broken in the other direction, and was the bug that kept
+                // every tile black: the log showed exactly ONE subscribeVideo
+                // call in a five-minute session, refused asynchronously, and
+                // never repeated. The element then draws the avatar - which
+                // needs no subscription - and goes black the instant the
+                // camera comes on, which is exactly what was reported.
+                //
+                // Re-asking on the retained element carries no teardown burst
+                // and is the only thing that actually reinstates the stream.
+                let again = existing.subscribeVideo(true)
+                Self.videoLog("user=\(userID) cooldown over, re-subscribed existing element"
+                    + " result=\(again.rawValue)")
+                if again == ZoomSDKError_Success { lastFailureReason[userID] = nil }
+            } else if let dead = participantElements.removeValue(forKey: userID) {
                 _ = dead.subscribeVideo(false)
                 _ = videoContainer?.clean(dead)
+                Self.videoLog("retrying user=\(userID) after backoff")
             }
-            Self.videoLog("retrying user=\(userID) after backoff")
         }
         if let existing = participantElements[userID] {
-            _ = existing.resize(frame)
+            if lastRequestedFrame[userID] != frame {
+                lastRequestedFrame[userID] = frame
+                _ = existing.resize(frame)
+            }
             return existing.getVideoView()
         }
         guard let container = ZoomSDK.shared().getMeetingService()?.getVideoContainer() else { return nil }
@@ -236,14 +245,30 @@ final class ZoomMeetingSDKClient: NSObject, ObservableObject {
         element.userid = userID
         // Ask for a tile-sized stream BEFORE subscribing. After subscribing is
         // too late: the quota is spent at subscribe time.
-        let resolutionResult = element.setResolution(Self.resolution(for: frame))
+        // Every element already in the container is a stream competing for the
+        // same allowance - including this user's own about to be added.
+        let asked = Self.resolution(for: frame,
+                                    openStreams: participantElements.count,
+                                    hero: hero)
+        var resolutionResult = element.setResolution(asked)
         let subscribed = element.subscribeVideo(true)
+        // setResolution fails intermittently (ZoomSDKError_Failed) with no
+        // pattern in size, count or order - and every tile it failed on has
+        // rendered black, while same-session tiles where it succeeded drew
+        // fine. Strongest correlation in the whole log history. Whether the
+        // element recovers when asked again after subscribing is exactly what
+        // this measures.
+        if resolutionResult != ZoomSDKError_Success {
+            resolutionResult = element.setResolution(asked)
+            Self.videoLog("setResolution retry user=\(userID)"
+                + " result=\(resolutionResult.rawValue)")
+        }
         let shown = element.showVideo(true)
         let info = ZoomSDK.shared().getMeetingService()?
             .getMeetingActionController().getUserByUserID(userID)
         let action = ZoomSDK.shared().getMeetingService()?.getMeetingActionController()
         Self.videoLog("""
-            tile user=\(userID)             frame=\(Int(frame.width))x\(Int(frame.height))             setResolution=\(resolutionResult.rawValue)             subscribe=\(subscribed.rawValue)             showVideo=\(shown.rawValue)             view=\(element.getVideoView() == nil ? "nil" : "ok")             theirVideoOn=\(info?.isVideoOn() ?? false)             dataType=\(element.getDataType().rawValue)             incomingVideoStopped=\(action?.isIncomingVideoStopped() ?? false)
+            tile user=\(userID)             frame=\(Int(frame.width))x\(Int(frame.height))             setResolution=\(resolutionResult.rawValue) asked=\(asked.rawValue)             subscribe=\(subscribed.rawValue)             showVideo=\(shown.rawValue)             view=\(element.getVideoView() == nil ? "nil" : "ok")             theirVideoOn=\(info?.isVideoOn() ?? false)             dataType=\(element.getDataType().rawValue)             incomingVideoStopped=\(action?.isIncomingVideoStopped() ?? false)
             """.replacingOccurrences(of: "\n", with: ""))
         guard subscribed == ZoomSDKError_Success else {
             // Do not cache a failed subscription: keeping it would make every
@@ -252,6 +277,7 @@ final class ZoomMeetingSDKClient: NSObject, ObservableObject {
             return nil
         }
         participantElements[userID] = element
+        lastRequestedFrame[userID] = frame
         return element.getVideoView()
     }
 
@@ -266,7 +292,10 @@ final class ZoomMeetingSDKClient: NSObject, ObservableObject {
     func makeRailSelfView(frame: NSRect) -> NSView? {
         guard didUseCustomUI else { return nil }
         if let existing = railSelfElement {
-            _ = existing.resize(frame)
+            if lastSelfFrame != frame {
+                lastSelfFrame = frame
+                _ = existing.resize(frame)
+            }
             return existing.getVideoView()
         }
         guard let service = ZoomSDK.shared().getMeetingService(),
@@ -289,8 +318,150 @@ final class ZoomMeetingSDKClient: NSObject, ObservableObject {
         return element.getVideoView()
     }
 
+    // MARK: - Speaker window (active element, clean test)
+
+    /// Zoom's own auto-following speaker element, hosted in the Speaker window.
+    ///
+    /// Every earlier run of this element was black - and every earlier run had
+    /// one or two participants, when the element is DOCUMENTED to operate with
+    /// three or more. So none of those runs proved anything, and the window-
+    /// binding conclusion drawn from them was premature. This is the clean
+    /// test: created once, startActiveView(true), 3+ rule respected, and no
+    /// competing element anywhere (Zoom's reference example runs an active
+    /// element alongside normal elements for the same people - the
+    /// one-element-per-user collision was two NORMAL elements).
+    ///
+    /// If this still draws black with three people in the room, the capability
+    /// matrix ("Multiple windows: No - regions in 1 container") wins for good,
+    /// and a separate window means the raw-data pipeline (ZoomSDKRenderer).
+    private var activeSpeakerElement: ZoomSDKActiveVideoElement?
+    private var lastActiveSpeakerFrame: NSRect = .zero
+
+    func activeSpeakerWindowView(frame: NSRect) -> NSView? {
+        guard didUseCustomUI else { return nil }
+        // "Three or more participants", self included - below that the element
+        // is documented not to run, and the panel's featured tile covers it.
+        guard meetingRoster().count >= 3 else { return nil }
+        if let existing = activeSpeakerElement {
+            if lastActiveSpeakerFrame != frame {
+                lastActiveSpeakerFrame = frame
+                _ = existing.resize(frame)
+            }
+            return existing.getVideoView()
+        }
+        guard let container = ZoomSDK.shared().getMeetingService()?.getVideoContainer() else { return nil }
+        adopt(container: container)
+        var element = ZoomSDKActiveVideoElement(frame: frame)
+        guard container.createActiveVideoElement(&element) == ZoomSDKError_Success else {
+            Self.videoLog("activeSpeaker createActiveVideoElement FAILED")
+            return nil
+        }
+        _ = element.setResolution(Self.resolution(for: frame,
+                                                  openStreams: participantElements.count,
+                                                  hero: true))
+        let resized = element.resize(frame)
+        let started = element.startActiveView(true)
+        let shown = element.showVideo(true)
+        Self.videoLog("activeSpeaker element created resize=\(resized.rawValue)"
+            + " startActiveView=\(started.rawValue) showVideo=\(shown.rawValue)"
+            + " participants=\(meetingRoster().count)")
+        activeSpeakerElement = element
+        lastActiveSpeakerFrame = frame
+        return element.getVideoView()
+    }
+
+    // MARK: - Featured speaker
+
+    /// The last person known to be talking, so a quiet room does not blank out.
+    private var lastKnownSpeaker: UInt32?
+    /// Last logged talking/pick state, so the 1Hz poll only writes on change.
+    private var lastSpeakerSignature = ""
+    /// Fed by the action controller's events (see +ActionEvents.swift) - the
+    /// delegate channel Zoom actually documents for active-speaker tracking.
+    /// When these have fired, they outrank the isTalking() poll.
+    private var eventActiveSpeaker: UInt32?
+    private var sawSpeakerEvents = false
+
+    func noteActiveAudio(_ ids: [UInt32]) {
+        sawSpeakerEvents = true
+        // Silence keeps the last speaker; several at once keeps the first.
+        guard let id = ids.first else { return }
+        if eventActiveSpeaker != id {
+            eventActiveSpeaker = id
+            Self.videoLog("event activeAudio -> user=\(id)")
+        }
+    }
+
+    func noteActiveSpeaker(_ id: UInt32) {
+        sawSpeakerEvents = true
+        guard id != 0, eventActiveSpeaker != id else { return }
+        eventActiveSpeaker = id
+        Self.videoLog("event activeSpeaker -> user=\(id)")
+    }
+
+    /// Who the panel should feature: whoever is talking, else whoever talked
+    /// last, else anyone at all. nil only when the room is empty.
+    ///
+    /// Sticky on purpose. `isTalking` is momentary - it goes false between
+    /// sentences - so following it directly would blank the tile every time
+    /// someone drew breath.
+    ///
+    /// There is deliberately no separate "speaker element" behind this. The
+    /// featured person is rendered by an ORDINARY participant element, just
+    /// drawn larger, because the SDK allows exactly one video element per user
+    /// and puts every element in one container owned by one window. A second
+    /// element for the same person broke the first, and hosting one outside
+    /// the panel's window rendered black and corrupted the container. One
+    /// element, one window, one place on screen.
+    func speakerToShow() -> UInt32? {
+        let others = meetingRoster().filter { !$0.isMyself }
+        guard !others.isEmpty else {
+            if let element = activeSpeakerElement {
+            _ = element.startActiveView(false)
+            _ = videoContainer?.clean(element)
+        }
+        activeSpeakerElement = nil
+        lastActiveSpeakerFrame = .zero
+        lastKnownSpeaker = nil
+        eventActiveSpeaker = nil
+        sawSpeakerEvents = false
+            return nil
+        }
+        // Events first, poll second. The events are the documented signal and
+        // update the instant someone speaks; the poll is the fallback for the
+        // stretch before the first event arrives. Self is excluded here for
+        // the same reason it is excluded from the grid - the featured tile is
+        // for the class, and the teacher already has a self view.
+        if sawSpeakerEvents, let fromEvent = eventActiveSpeaker,
+           others.contains(where: { $0.id == fromEvent }) {
+            lastKnownSpeaker = fromEvent
+        } else if let talking = others.first(where: { $0.isTalking }) {
+            lastKnownSpeaker = talking.id
+        } else if lastKnownSpeaker == nil
+                    || !others.contains(where: { $0.id == lastKnownSpeaker }) {
+            // Nobody has spoken yet, or the last speaker has left - a frozen
+            // tile of someone who is gone is worse than showing anyone.
+            lastKnownSpeaker = others.first?.id
+        }
+        // Is isTalking() actually usable?
+        //
+        // It is a POLL, and the signals Zoom documents for this
+        // (onActiveVideoUserChanged, onUserActiveAudioChange) are delegate-only
+        // on a 51-method all-required protocol. Worth knowing whether the cheap
+        // path works before paying for the expensive one: if `talking=[]` never
+        // becomes non-empty while someone is plainly speaking, polling is dead
+        // and the delegate is the only way.
+        let talking = others.filter(\.isTalking).map(\.id).sorted()
+        let signature = "talking=\(talking) pick=\(lastKnownSpeaker.map(String.init) ?? "nil")"
+        if signature != lastSpeakerSignature {
+            lastSpeakerSignature = signature
+            Self.videoLog("speakerToShow \(signature)")
+        }
+        return lastKnownSpeaker
+    }
+
     /// Whether anyone other than us is in the meeting - the thing that decides
-    /// between the empty message and the active-speaker view.
+    /// between the empty message and the speaker view.
     var hasOtherParticipants: Bool {
         !participantUserIDs(excludingSelf: true).isEmpty
     }
@@ -302,6 +473,7 @@ final class ZoomMeetingSDKClient: NSObject, ObservableObject {
             _ = element.subscribeVideo(false)
             _ = videoContainer?.clean(element)
             participantElements.removeValue(forKey: userID)
+            lastRequestedFrame.removeValue(forKey: userID)
         }
     }
 
@@ -312,15 +484,14 @@ final class ZoomMeetingSDKClient: NSObject, ObservableObject {
             _ = videoContainer?.clean(element)
             railSelfElement = nil
         }
-        if let element = activeSpeakerElement {
-            _ = videoContainer?.clean(element)
-        }
-        activeSpeakerElement = nil
+        lastKnownSpeaker = nil
         for (_, element) in participantElements {
             _ = element.subscribeVideo(false)
             _ = videoContainer?.clean(element)
         }
         participantElements.removeAll()
+        lastRequestedFrame.removeAll()
+        lastSelfFrame = .zero
         videoContainer = nil
     }
     private var isAuthed = false
@@ -430,6 +601,33 @@ final class ZoomMeetingSDKClient: NSObject, ObservableObject {
     /// after leave() - so a hosted meeting's END lands at Zoom before
     /// unInitSDK/_exit tears the SDK down mid-send. Returns the moment
     /// the status is terminal; no-op when the SDK never initialized.
+    /// Waits for the SDK to be genuinely IDLE, before a new meeting starts.
+    ///
+    /// The SDK carries one meeting state for the whole process, and a start
+    /// issued while the previous meeting is still tearing down loses the race:
+    /// the OLD meeting's terminal status arrives after `joinCompletion` has
+    /// been armed and resolves the NEW join as a failure. It surfaces as "the
+    /// meeting ended before Greenroom finished joining" - a start that looks
+    /// hung on the Meeting step for half a minute and then gives up. Seen live
+    /// 18 seconds after ending the previous session.
+    ///
+    /// Distinct from `awaitMeetingClosed`, which accepts Ended and Failed
+    /// because it runs at QUIT, where "on its way out" is good enough. Here
+    /// only Idle will do: Ended is the state whose late event causes the bug.
+    ///
+    /// Costs nothing on the common path - the first check returns immediately
+    /// when no meeting has been running. On timeout it proceeds anyway, which
+    /// is no worse than the unguarded behaviour it replaces.
+    func awaitMeetingIdle(timeout: TimeInterval = 15) async -> Bool {
+        guard didInit, let service = ZoomSDK.shared().getMeetingService() else { return true }
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if service.getMeetingStatus() == ZoomSDKMeetingStatus_Idle { return true }
+            try? await Task.sleep(nanoseconds: 200_000_000)
+        }
+        return false
+    }
+
     func awaitMeetingClosed(timeout: TimeInterval = 5) async {
         guard didInit, let service = ZoomSDK.shared().getMeetingService() else { return }
         let deadline = Date().addingTimeInterval(timeout)
@@ -738,9 +936,9 @@ extension ZoomMeetingSDKClient: ZoomSDKVideoContainerDelegate {
             reason = "reason code \(error.rawValue)"
         }
         let userID = element.userid
+        let now = Date()
         // A run of refusals is one problem, not many. Anything after a quiet
         // minute starts the backoff again from the beginning.
-        let now = Date()
         let continuing = lastSubscriptionFailure[userID]
             .map { now.timeIntervalSince($0) < 60 } ?? false
         let attempts = continuing ? (subscriptionAttempts[userID] ?? 0) + 1 : 1
@@ -751,7 +949,22 @@ extension ZoomMeetingSDKClient: ZoomSDKVideoContainerDelegate {
         let delay = min(32, pow(2.0, Double(min(attempts, 5))))
         subscriptionCooldown[userID] = now.addingTimeInterval(delay)
 
-        Self.videoLog("SUBSCRIBE FAIL code=\(error.rawValue) user=\(userID) \(reason) \u{2014} backing off \(Int(delay))s (attempt \(attempts))")
+        lastFailureReason[userID] = error
+        // Which element was refused, and how many the container holds.
+        //
+        // Worth keeping: one subscribe reliably produces TWO refusals at the
+        // same instant, and this is what proved they are the same element
+        // refused twice rather than the grid tile and the active-speaker view
+        // fighting over one person. It also shows the start-up burst - three
+        // elements subscribing in one tick - that trips the limiter.
+        let owner: String
+        if let grid = participantElements[userID], grid === element { owner = "gridTile" }
+        else if let rail = railSelfElement, rail === element { owner = "railSelf" }
+        else { owner = "UNTRACKED" }
+        let elementCount = videoContainer?.getVideoElementList()?.count ?? -1
+        Self.videoLog("SUBSCRIBE FAIL code=\(error.rawValue) user=\(userID) \(reason)"
+            + " owner=\(owner) containerElements=\(elementCount)"
+            + " \u{2014} backing off \(Int(delay))s (attempt \(attempts))")
         // Only worth telling the teacher about things they can act on. A
         // too-frequent refusal is Greenroom's own pacing and recovers itself;
         // saying so would be noise during a class.
@@ -769,6 +982,16 @@ extension ZoomMeetingSDKClient: ZoomSDKVideoContainerDelegate {
     /// is off. Logged so the two are never confused again.
     func onRenderDataTypeChanged(_ element: ZoomSDKVideoElement?, dataType type: VideoRenderDataType) {
         Self.videoLog("dataTypeChanged user=\(element?.userid ?? 0) type=\(type.rawValue)")
+        // Someone's camera coming back on is the moment a previously refused
+        // subscription is most worth retrying: the rate limiter has long since
+        // forgotten the start-up burst that caused the refusal, and until the
+        // retry happens this tile is the black rectangle the teacher sees.
+        //
+        // Only the cooldown is cleared here. Calling subscribeVideo from
+        // inside an SDK callback is precisely the kind of re-entrant traffic
+        // the limiter counts, so the next layout pass does the real work.
+        guard let userID = element?.userid, type == VideoRenderDataType_Video else { return }
+        if lastFailureReason[userID] != nil { subscriptionCooldown[userID] = Date() }
     }
 }
 
@@ -887,6 +1110,29 @@ extension ZoomMeetingSDKClient: ZoomSDKMeetingServiceDelegate {
     // the real bridged signature) - the third label is `end`, not
     // `endReason` as guessed in an earlier draft.
     func onMeetingStatusChange(_ state: ZoomSDKMeetingStatus, meetingError error: ZoomSDKMeetingError, end reason: EndMeetingReason) {
+        // Claim the video container as early as the SDK will give it to us.
+        //
+        // Zoom's own custom-UI guidance is explicit: build the custom UI on
+        // CONNECTING, not IN_MEETING, "the SDK needs the video container ready
+        // before it starts rendering" - and macOS lists "delegate/controller
+        // ordering issues in custom UI mode" as a named failure domain.
+        //
+        // Greenroom used to take the container lazily, on the first tile the
+        // panel asked for, which is seconds after the meeting is up. Until
+        // then nothing was listening to the container delegate, so any early
+        // subscription refusal went unreported - the exact blindness that made
+        // the first black-tile hunt so slow.
+        if state == ZoomSDKMeetingStatus_Connecting || state == ZoomSDKMeetingStatus_InMeeting,
+           videoContainer == nil, didUseCustomUI,
+           let container = ZoomSDK.shared().getMeetingService()?.getVideoContainer() {
+            adopt(container: container)
+            Self.videoLog("video container adopted at status=\(state.rawValue)")
+            // Same moment, same reasoning: register event listeners before the
+            // meeting starts producing events, per the SDK's own lifecycle
+            // guidance. Nothing else in the app claims this delegate.
+            ZoomSDK.shared().getMeetingService()?.getMeetingActionController().delegate = self
+            Self.videoLog("action controller delegate wired")
+        }
         switch state {
         case ZoomSDKMeetingStatus_InMeeting:
             isJoined = true

@@ -88,6 +88,62 @@ enum ZoomServerToServerClient {
         return CreatedMeeting(number: String(id), password: password, startURL: startURL, zak: zak)
     }
 
+    /// The meetings this account currently has LIVE.
+    ///
+    /// A Zoom host cannot run two meetings at once, so one left running makes
+    /// the NEXT start fail: Zoom ends one of the pair and the SDK reports
+    /// status Ended with reason None, which surfaces to the teacher as "the
+    /// meeting ended before Greenroom finished joining". A meeting is left
+    /// running whenever the app goes away without its termination path - a
+    /// crash, a force quit, `kill` - because that path is what ends it.
+    ///
+    /// Best-effort throughout: every failure returns empty rather than
+    /// throwing, because a pre-flight tidy must never be the reason a class
+    /// cannot start.
+    static func liveMeetings(accountID: String,
+                             clientID: String,
+                             clientSecret: String) async -> [Int64] {
+        guard let token = try? await fetchAccessToken(accountID: accountID,
+                                                      clientID: clientID,
+                                                      clientSecret: clientSecret),
+              let url = URL(string: "https://api.zoom.us/v2/users/me/meetings?type=live")
+        else { return [] }
+        var request = URLRequest(url: url)
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        guard let (data, response) = try? await URLSession.shared.data(for: request),
+              let http = response as? HTTPURLResponse,
+              (200...299).contains(http.statusCode),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let items = json["meetings"] as? [[String: Any]]
+        else { return [] }
+        return items.compactMap { $0["id"] as? Int64 }
+    }
+
+    /// Ends a live meeting outright (PUT /meetings/{id}/status, "end").
+    ///
+    /// Not "leave" - the meeting has no client attached any more, so there is
+    /// nothing to leave. Needs the same meeting-write scope the create call
+    /// already uses.
+    @discardableResult
+    static func endMeeting(id: Int64,
+                           accountID: String,
+                           clientID: String,
+                           clientSecret: String) async -> Bool {
+        guard let token = try? await fetchAccessToken(accountID: accountID,
+                                                      clientID: clientID,
+                                                      clientSecret: clientSecret),
+              let url = URL(string: "https://api.zoom.us/v2/meetings/\(id)/status")
+        else { return false }
+        var request = URLRequest(url: url)
+        request.httpMethod = "PUT"
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try? JSONSerialization.data(withJSONObject: ["action": "end"])
+        guard let (_, response) = try? await URLSession.shared.data(for: request),
+              let http = response as? HTTPURLResponse else { return false }
+        return (200...299).contains(http.statusCode)
+    }
+
     /// One meeting from the account's scheduled list. The list endpoint
     /// deliberately omits the passcode, but `joinURL` carries it in
     /// encrypted `pwd=` form - which is exactly what joins accept, and

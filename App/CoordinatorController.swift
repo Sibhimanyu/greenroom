@@ -2779,9 +2779,20 @@ final class CoordinatorController: ObservableObject {
         peopleViewTask = Task {
             for _ in 0..<30 {
                 if Task.isCancelled { return }
-                // The tile is already parked; the gallery is the other one.
+                // The tile MUST be parked first. Before it is,
+                // builtInMeetingWindow is nil and "the first window that is
+                // not the tile" matches the ONLY meeting window - this loop
+                // then adopted it as the gallery and pushed it behind the
+                // workspace, the tile hunt excluded it by identity and found
+                // nothing, and \u{2325}\u{2318}Z reported "no speaker tile"
+                // for the whole session. Waiting costs one tick; the tile
+                // parks within two or three.
+                guard let tileWindow = builtInMeetingWindow else {
+                    try? await Task.sleep(nanoseconds: 1_000_000_000)
+                    continue
+                }
                 let gallery = meetingVideoWindowCandidates()
-                    .first { $0 !== builtInMeetingWindow }
+                    .first { $0 !== tileWindow }
                 if let gallery {
                     if gallery.styleMask.contains(.fullScreen) {
                         // A window in a Space cannot be ordered back - eject

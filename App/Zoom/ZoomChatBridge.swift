@@ -101,9 +101,17 @@ struct ChatMessage: Identifiable {
     /// is also what a real client falls back to for anyone without a
     /// picture set.
     var initials: String {
-        let words = senderName.split(separator: " ").prefix(2)
-        let letters = words.compactMap { $0.first }.map(String.init)
-        return letters.isEmpty ? "?" : letters.joined().uppercased()
+        // First LETTER of each word, not first character: class names like
+        // "Sibhi -8A" put a dash-word second, and taking characters rendered
+        // the avatar as "S-". Words with no letter at all are skipped.
+        let words = senderName.split(separator: " ")
+        let letters = words.compactMap { word in
+            word.first(where: { $0.isLetter }).map(String.init)
+        }.prefix(2)
+        if letters.isEmpty {
+            return senderName.first.map { String($0).uppercased() } ?? "?"
+        }
+        return letters.joined().uppercased()
     }
 
     /// Stable per-person colour, derived from the name so the same person
@@ -353,22 +361,35 @@ extension ZoomChatBridge: ZoomSDKMeetingChatControllerDelegate {
         ))
     }
 
-    /// Offered, not accepted. The file is not written until `accept` runs.
+    /// Images small enough to be a photo download themselves, so the chat
+    /// shows a real preview instead of an Accept button - a picture a student
+    /// sends is the thing the class is about to talk about, and a permission
+    /// prompt in that moment reads as the app being broken. Everything else
+    /// (documents, archives, oversized files) keeps the teacher's explicit
+    /// Accept: the senders are children and the SDK's allow-list stops
+    /// executables but very little else.
+    private static let autoDownloadImageLimit = 25 * 1024 * 1024
+
     func onFileReceived(_ receiver: ZoomSDKFileReceiver) {
         let info = receiver.transferInfo
         pendingReceivers[info.messageId] = receiver
         guard !messages.contains(where: { $0.id == info.messageId }) else { return }
-        messages.append(ChatMessage(
+        let attachment = ChatAttachment(name: info.fileName,
+                                        sizeBytes: Int(info.fileSizeBytes),
+                                        state: .offered)
+        let message = ChatMessage(
             id: info.messageId,
             senderName: displayName(userID: receiver.senderUserId) ?? "Someone",
             content: "",
             isOutgoing: false,
             timestamp: Date(timeIntervalSince1970: TimeInterval(info.timeStamp)),
-            attachment: ChatAttachment(name: info.fileName,
-                                       sizeBytes: Int(info.fileSizeBytes),
-                                       state: .offered),
+            attachment: attachment,
             privateTo: info.isSendToAll ? nil : "you"
-        ))
+        )
+        messages.append(message)
+        if attachment.isImage, attachment.sizeBytes <= Self.autoDownloadImageLimit {
+            accept(message)
+        }
     }
 
     func onFileTransferProgress(_ info: ZoomSDKFileTransferInfo) {

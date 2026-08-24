@@ -501,13 +501,30 @@ private struct AttachmentView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             if let url = attachment.url, attachment.isImage, let image = NSImage(contentsOf: url) {
+                // The picture IS the message: preview first, details beneath.
                 Image(nsImage: image)
                     .resizable()
                     .scaledToFit()
-                    .frame(maxWidth: 220, maxHeight: 160)
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                    .frame(maxWidth: 280, maxHeight: 210)
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
                     .onTapGesture { NSWorkspace.shared.open(url) }
                     .help("Click to open")
+            } else if attachment.isImage, attachment.state.isBusy {
+                // Downloading: hold the picture's place instead of showing a
+                // bare progress row that looks like a permission prompt.
+                RoundedRectangle(cornerRadius: 10)
+                    .fill(.quaternary)
+                    .frame(width: 220, height: 140)
+                    .overlay {
+                        VStack(spacing: 6) {
+                            ProgressView(value: Double(attachment.state.percent), total: 100)
+                                .controlSize(.small)
+                                .frame(width: 120)
+                            Text("Receiving photo\u{2026}")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
             }
 
             HStack(spacing: 8) {
@@ -521,7 +538,7 @@ private struct AttachmentView: View {
                 controls
             }
 
-            if attachment.state.isBusy {
+            if attachment.state.isBusy, !attachment.isImage {
                 ProgressView(value: Double(attachment.state.percent), total: 100)
                     .controlSize(.small)
             }
@@ -549,7 +566,9 @@ private struct AttachmentView: View {
 
     private var statusLine: String {
         switch attachment.state {
-        case .offered:     return "\(attachment.sizeLabel) \u{2014} not downloaded"
+        case .offered:     return attachment.isImage
+            ? "\(attachment.sizeLabel) \u{2014} too large to preview automatically"
+            : "\(attachment.sizeLabel) \u{2014} waiting for you to accept"
         case .receiving:   return "Downloading\u{2026} \(attachment.state.percent)%"
         case .sending:     return "Sending\u{2026} \(attachment.state.percent)%"
         case .saved:       return "\(attachment.sizeLabel) \u{2014} saved with this class"

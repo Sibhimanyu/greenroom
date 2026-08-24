@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>Greenroom — your morning class, set up in one click</title>
+<title>Greenroom: your morning class, set up in one click</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="description" content="Greenroom is a macOS app that sets up a whole morning class in one click: OBS virtual camera, the Zoom meeting, and every window tiled into place.">
 <link rel="icon" type="image/png" href="favicon.png?v=3">
@@ -17,8 +17,7 @@
     --green: #3d7a22;
     --green-hover: #2f6118;
     --green-soft: #e8f3df;
-    --green-blob: #eef6e7;
-    --card-shadow: 0 1px 2px rgba(16, 24, 40, 0.04), 0 12px 32px rgba(16, 24, 40, 0.08);
+      --card-shadow: 0 1px 2px rgba(16, 24, 40, 0.04), 0 12px 32px rgba(16, 24, 40, 0.08);
   }
 
   * { box-sizing: border-box; }
@@ -80,167 +79,31 @@
   @media (max-width: 760px) { .nav-links { display: none; } }
 
   /* ---------- hero ---------- */
-  .hero { display: grid; grid-template-columns: minmax(0, 46%) minmax(0, 54%); align-items: center; gap: 32px; padding: 92px 0 100px; }
-
+  .hero { padding: 88px 24px 28px; }
   .eyebrow {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    background: var(--green-soft);
+    display: block;
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    font-size: 12.5px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
     color: var(--green);
-    font-size: 13px;
-    font-weight: 600;
-    padding: 5px 12px;
-    border-radius: 999px;
-    margin-bottom: 22px;
+    margin-bottom: 20px;
   }
   h1 {
-    font-size: clamp(38px, 5vw, 56px);
-    line-height: 1.08;
+    font-size: clamp(38px, 5.4vw, 58px);
+    line-height: 1.06;
     font-weight: 800;
     letter-spacing: -0.025em;
+    max-width: 20ch;
   }
   h1 .accent { color: var(--green); }
   .lede {
     margin: 22px 0 32px;
     font-size: 18px;
     color: var(--body);
-    max-width: 44ch;
+    max-width: 54ch;
   }
   .hero-actions { display: flex; align-items: center; gap: 26px; flex-wrap: wrap; }
-
-  /* ---------- hero mockup ---------- */
-  .mock-zone { position: relative; }
-  .blob {
-    position: absolute;
-    inset: -6% -4% 4% 6%;
-    background: var(--green-blob);
-    border-radius: 36% 30% 34% 32%;
-    z-index: 0;
-  }
-  .mock {
-    position: relative;
-    z-index: 1;
-    background: #fff;
-    border-radius: 16px;
-    box-shadow: var(--card-shadow);
-    border: 1px solid var(--line);
-    overflow: hidden;
-  }
-  .mock-bar {
-    height: 38px;
-    display: flex;
-    align-items: center;
-    gap: 7px;
-    padding: 0 14px;
-    border-bottom: 1px solid var(--line);
-  }
-  .mock-bar i { width: 11px; height: 11px; border-radius: 50%; }
-  .mock-bar i:nth-child(1) { background: #f87171; }
-  .mock-bar i:nth-child(2) { background: #fbbf24; }
-  .mock-bar i:nth-child(3) { background: #34d399; }
-  .mock-bar .addr {
-    flex: 1;
-    height: 14px;
-    margin-left: 8px;
-    border-radius: 7px;
-    background: var(--bg-soft);
-    border: 1px solid var(--line);
-  }
-
-  .mock-desk {
-    display: grid;
-    grid-template-columns: 1.9fr 1fr;
-    gap: 12px;
-    padding: 16px;
-    background: var(--bg-soft);
-    min-height: 380px;
-  }
-  .tile {
-    background: #fff;
-    border: 1px solid var(--line);
-    border-radius: 10px;
-    box-shadow: 0 1px 3px rgba(16, 24, 40, 0.05);
-    overflow: hidden;
-    opacity: 0;
-    transform: translateY(14px);
-    animation: rise 0.7s cubic-bezier(0.2, 0.7, 0.3, 1) forwards;
-  }
-  .tile-main { grid-row: 1 / 3; animation-delay: 0.15s; }
-  .tile-zoom { animation-delay: 0.35s; }
-  .tile-chat { animation-delay: 0.55s; }
-  @keyframes rise { to { opacity: 1; transform: none; } }
-
-  .tile h4 {
-    margin: 0;
-    padding: 12px 16px 10px;
-    font-size: 13px;
-    font-weight: 600;
-    color: var(--ink);
-    border-bottom: 1px solid var(--line);
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-  }
-  .tile h4 .tag {
-    font-size: 11px;
-    font-weight: 600;
-    color: var(--green);
-    background: var(--green-soft);
-    padding: 2px 8px;
-    border-radius: 999px;
-  }
-  .doc-lines { padding: 18px 16px; display: flex; flex-direction: column; gap: 11px; }
-  .doc-lines i { display: block; height: 8px; border-radius: 4px; background: var(--line); }
-  .doc-lines i.h { width: 52%; height: 12px; background: #d0d5dd; }
-  .doc-lines i:nth-child(3) { width: 94%; }
-  .doc-lines i:nth-child(4) { width: 88%; }
-  .doc-lines i:nth-child(5) { width: 91%; }
-  .doc-lines i:nth-child(6) { width: 64%; }
-  .doc-lines i:nth-child(7) { width: 90%; }
-  .doc-lines i:nth-child(8) { width: 83%; }
-
-  .zoom-body { position: relative; height: 108px; margin: 12px; border-radius: 8px; background: #1d2939; }
-  .zoom-body .share { position: absolute; inset: 12% 34% 22% 9%; border-radius: 4px; background: #344054; }
-  .zoom-body .bubble {
-    position: absolute; right: 9%; bottom: 14%;
-    width: 34px; height: 34px; border-radius: 50%;
-    background: radial-gradient(circle at 38% 32%, #8fd06a, var(--green));
-    border: 2px solid #fff;
-  }
-  .chat-body { padding: 12px 14px 16px; display: flex; flex-direction: column; gap: 8px; }
-  .chat-body .msg {
-    font-size: 12px;
-    color: var(--body);
-    background: var(--bg-soft);
-    border: 1px solid var(--line);
-    padding: 6px 11px;
-    border-radius: 10px;
-    width: fit-content;
-  }
-  .chat-body .msg.me { background: var(--green-soft); border-color: transparent; color: var(--green); align-self: flex-end; }
-
-  .chip {
-    position: absolute;
-    background: #fff;
-    border: 1px solid var(--line);
-    box-shadow: var(--card-shadow);
-    border-radius: 12px;
-    padding: 9px 15px;
-    font-size: 13px;
-    font-weight: 600;
-    color: var(--ink);
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    z-index: 2;
-    opacity: 0;
-    animation: rise 0.7s cubic-bezier(0.2, 0.7, 0.3, 1) forwards;
-  }
-  .chip .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green); }
-  .chip-cam { top: -18px; right: 6%; animation-delay: 0.8s; }
-  .chip-time { bottom: -16px; left: 4%; animation-delay: 1s; color: var(--body); }
-  .chip-time strong { color: var(--ink); }
 
   .intro-video {
     display: block;
@@ -266,47 +129,37 @@
   h2 { font-size: clamp(28px, 3.4vw, 36px); font-weight: 800; letter-spacing: -0.02em; line-height: 1.15; }
   .sec-head p { margin-top: 14px; color: var(--body); font-size: 17px; }
 
-  .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
-  @media (max-width: 900px) { .grid { grid-template-columns: repeat(2, 1fr); } }
-  @media (max-width: 600px) { .grid { grid-template-columns: 1fr; } }
-
-  .card {
-    background: #fff;
-    border: 1px solid var(--line);
-    border-radius: 14px;
-    padding: 26px;
-    box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04);
+  /* ---------- what one press does ---------- */
+  .runlog { border-top: 1px solid var(--line); }
+  .run {
+    display: grid;
+    grid-template-columns: 52px 1fr;
+    gap: 0 24px;
+    padding: 22px 0;
+    border-bottom: 1px solid var(--line);
+    align-items: baseline;
   }
-  .card .icon {
-    width: 42px; height: 42px;
-    border-radius: 10px;
-    background: var(--green-soft);
+  .run .n {
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    font-size: 12.5px;
+    letter-spacing: 0.06em;
     color: var(--green);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    margin-bottom: 18px;
   }
-  .card h3 { font-size: 16.5px; font-weight: 700; margin-bottom: 8px; }
-  .card p { font-size: 14.5px; color: var(--body); }
+  .run h3 { font-size: 17px; font-weight: 700; margin-bottom: 6px; }
+  .run p { font-size: 15px; color: var(--body); max-width: 66ch; }
+  @media (max-width: 600px) { .run { grid-template-columns: 1fr; gap: 4px; } }
 
   /* ---------- steps ---------- */
-  .steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; counter-reset: step; }
+  .steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 34px; }
   @media (max-width: 760px) { .steps { grid-template-columns: 1fr; } }
-  .step { counter-increment: step; }
   .step .num {
-    width: 34px; height: 34px;
-    border-radius: 50%;
-    background: var(--green);
-    color: #fff;
-    font-weight: 700;
-    font-size: 15px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    margin-bottom: 16px;
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    font-size: 12.5px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--green);
+    margin-bottom: 12px;
   }
-  .step .num::before { content: counter(step); }
   .step h3 { font-size: 16.5px; font-weight: 700; margin-bottom: 8px; }
   .step p { font-size: 14.5px; color: var(--body); }
   .step code {
@@ -376,33 +229,14 @@
     gap: 16px;
     flex-wrap: wrap;
   }
-  /* Below 1200px the two-column hero gets cramped - stack and center
-     (the "mobile view", starting well before phone widths). */
-  @media (max-width: 1200px) {
-    .hero { grid-template-columns: 1fr; padding: 56px 0 64px; }
-    .hero > div:first-child { text-align: center; }
-    .hero h1 { margin-inline: auto; }
-    .lede { margin-inline: auto; }
-    .hero-actions { justify-content: center; }
-    /* The floating decorations were composed for the wide two-column
-       hero: stacked full-width, the blob reads as a stray shape and the
-       camera chip has no content-free corner. The time chip tucks
-       inside as an overlay badge. */
-    .blob { display: none; }
-    .chip-cam { display: none; }
-    .chip-time { bottom: 10px; left: 10px; }
-  }
-
   @media (max-width: 700px) {
     .footer-inner { justify-content: center; text-align: center; }
   }
 
-  /* The hero mockup's blob and chips intentionally overhang their box -
-     clip at the page level so phones never scroll sideways. */
   html, body { overflow-x: clip; }
 
   @media (max-width: 700px) {
-    .hero { padding: 44px 0 52px; gap: 44px; }
+    .hero { padding: 56px 24px 48px; }
     section { padding: 60px 0; }
     .sec-head { margin-bottom: 32px; }
     .lede { font-size: 17px; }
@@ -411,13 +245,10 @@
        buttons back to the right edge ourselves. */
     .nav-cta { gap: 12px; margin-left: auto; }
     .hero-actions { gap: 16px; }
-    .chip { font-size: 12px; padding: 6px 11px; }
-    .mock-desk { min-height: 260px; padding: 12px; gap: 10px; }
     .story-grid { gap: 28px; }
   }
 
   @media (prefers-reduced-motion: reduce) {
-    .tile, .chip { animation-duration: 0.01s; animation-delay: 0s; }
     .btn:hover { transform: none; }
     html { scroll-behavior: auto; }
   }
@@ -433,7 +264,7 @@
     </a>
     <div class="nav-links">
       <a href="#video">Video</a>
-      <a href="#features">Features</a>
+      <a href="#features">What it does</a>
       <a href="#how">How it works</a>
       <a href="#story">The story</a>
       <a href="how-it-works.html">Is it safe?</a>
@@ -446,55 +277,26 @@
 </nav>
 
 <header class="wrap hero">
-  <div>
-    <span class="eyebrow">Built for a morning reading class at Zoho Schools</span>
-    <h1>Your whole class setup, in <span class="accent">one click.</span></h1>
-    <p class="lede">Greenroom starts the virtual camera, opens the Zoom meeting, and tiles
-    every window into its place — the reading doc, the meeting, the chat. The ten-minute
-    morning ritual becomes a button.</p>
-    <div class="hero-actions">
-      <a class="btn" href="https://github.com/Sibhimanyu/greenroom/releases">Download for Mac</a>
-      <a class="textlink" href="#how">See how it works <span class="arrow">→</span></a>
-    </div>
-  </div>
-
-  <div class="mock-zone" aria-hidden="true">
-    <div class="blob"></div>
-    <div class="chip chip-cam"><span class="dot"></span>Camera live</div>
-    <div class="chip chip-time">8:00 AM — <strong>class begins</strong></div>
-    <div class="mock">
-      <div class="mock-bar"><i></i><i></i><i></i><span class="addr"></span></div>
-      <div class="mock-desk">
-        <div class="tile tile-main">
-          <h4>Today's reading <span class="tag">Chrome</span></h4>
-          <div class="doc-lines"><i class="h"></i><i style="height:0;background:none"></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
-        </div>
-        <div class="tile tile-zoom">
-          <h4>Zoom Meeting <span class="tag">Live</span></h4>
-          <div class="zoom-body"><div class="share"></div><div class="bubble"></div></div>
-        </div>
-        <div class="tile tile-chat">
-          <h4>Meeting Chat</h4>
-          <div class="chat-body">
-            <span class="msg">Good morning!</span>
-            <span class="msg">Page 42 today?</span>
-            <span class="msg me">Page 42 ✓</span>
-          </div>
-        </div>
-      </div>
-    </div>
+  <span class="eyebrow">macOS · free · open source</span>
+  <h1>Your whole class setup, in <span class="accent">one click.</span></h1>
+  <p class="lede">Greenroom starts the virtual camera, opens the Zoom meeting, and puts every
+  window where it belongs: the reading doc, the meeting, the chat. The ten-minute morning
+  ritual becomes a button.</p>
+  <div class="hero-actions">
+    <a class="btn" href="https://github.com/Sibhimanyu/greenroom/releases">Download for Mac</a>
+    <a class="textlink" href="#video">Watch it run <span class="arrow">→</span></a>
   </div>
 </header>
 
 <section id="video">
   <div class="wrap">
     <div class="sec-head">
-      <p class="kicker">The intro</p>
+      <p class="kicker">Watch</p>
       <h2>The whole idea, in 37 seconds</h2>
     </div>
     <video class="intro-video" controls muted playsinline preload="metadata" poster="greenroom-intro-poster.jpg">
       <source src="greenroom-intro.mp4" type="video/mp4">
-      Your browser can't play this video &mdash; <a href="greenroom-intro.mp4">download it instead</a>.
+      Your browser can't play this video. <a href="greenroom-intro.mp4">Download it instead</a>.
     </video>
   </div>
 </section>
@@ -502,46 +304,80 @@
 <section class="soft" id="features">
   <div class="wrap">
     <div class="sec-head">
-      <p class="kicker">Features</p>
-      <h2>Everything the click carries</h2>
-      <p>One press of Start runs the whole stagecraft a screen-shared class needs.</p>
+      <p class="kicker">The click</p>
+      <h2>Four things happen, in order</h2>
+      <p>None of it is hard on its own. All of it, every single morning, is the problem.</p>
     </div>
-    <div class="grid">
-      <div class="card">
-        <div class="icon"><svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="1.5" y="4" width="12" height="12" rx="2.5"/><path d="M13.5 8.5 18 6v8l-4.5-2.5"/></svg></div>
-        <h3>You, over the page</h3>
-        <p>OBS runs hidden and publishes a virtual camera: the whole screen with the teacher
-        keyed into a corner bubble — or a green-screen cutout. Students see the book <em>and</em> you.</p>
+    <div class="runlog">
+      <div class="run">
+        <div class="n">01</div>
+        <div>
+          <h3>The camera starts</h3>
+          <p>OBS runs hidden and publishes a virtual camera: the whole screen, with the teacher
+          keyed into a corner bubble or cut out of the background entirely. Students see the
+          book <em>and</em> you.</p>
+        </div>
       </div>
-      <div class="card">
-        <div class="icon"><svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="10" cy="10" r="8"/><path d="M8 6.8v6.4l5-3.2z" fill="currentColor" stroke="none"/></svg></div>
-        <h3>The meeting starts itself</h3>
-        <p>A fresh Zoom meeting is created under your account and hosted from Greenroom's
-        built-in client — no second app. Joining an existing meeting by link works too.</p>
+      <div class="run">
+        <div class="n">02</div>
+        <div>
+          <h3>The meeting opens</h3>
+          <p>A fresh Zoom meeting is created under your own account and hosted from Greenroom's
+          built-in client, so there is no second app to click through. Joining an existing
+          meeting by link works the same way.</p>
+        </div>
       </div>
-      <div class="card">
-        <div class="icon"><svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="1.5" y="2.5" width="10" height="15" rx="2"/><rect x="13.5" y="2.5" width="5" height="7" rx="1.5"/><rect x="13.5" y="11.5" width="5" height="6" rx="1.5"/></svg></div>
-        <h3>Windows know their places</h3>
-        <p>Any app in the main pane at ½, ⅔ or ¾ of the screen; the Zoom tile and chat stack
-        into the rest. Dragged something? “Snap Windows Back” restores it all.</p>
+      <div class="run">
+        <div class="n">03</div>
+        <div>
+          <h3>Windows take their places</h3>
+          <p>Any app fills the main pane at ½, ⅔ or ¾ of the screen; the Zoom tile and chat
+          stack into the rest. Dragged something out of place mid-class? “Snap Windows Back”
+          restores all of it.</p>
+        </div>
       </div>
-      <div class="card">
-        <div class="icon"><svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M17 9.5a6.5 6.5 0 0 1-6.5 6.5H4l-1.5 2v-4.2A6.5 6.5 0 1 1 17 9.5z"/></svg></div>
-        <h3>Chat beside the book</h3>
-        <p>A standalone chat window in its own tile — read and answer the class without
-        Zoom's chat panel sliding over the shared page.</p>
+      <div class="run">
+        <div class="n">04</div>
+        <div>
+          <h3>Chat sits beside the book</h3>
+          <p>A standalone chat window in its own tile, so Zoom's chat panel never slides over
+          the page you are reading from.</p>
+        </div>
       </div>
-      <div class="card">
-        <div class="icon"><svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M10 2v10m0-10L6.5 5.5M10 2l3.5 3.5"/><path d="M3 12v3.5A2.5 2.5 0 0 0 5.5 18h9a2.5 2.5 0 0 0 2.5-2.5V12"/></svg></div>
-        <h3>Set up once, hand it on</h3>
-        <p>Every credential and preference exports as one file. A colleague imports it and
-        their Mac is ready — no one else touches the Zoom Marketplace.</p>
+      <div class="run">
+        <div class="n">＋</div>
+        <div>
+          <h3>Recording, when you want it</h3>
+          <p>One press records exactly what the class saw, the composited screen with you in
+          the corner, straight to a file for anyone who missed the morning.</p>
+        </div>
       </div>
-      <div class="card">
-        <div class="icon"><svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="10" cy="10" r="8"/><circle cx="10" cy="10" r="3.5" fill="currentColor" stroke="none"/></svg></div>
-        <h3>One-button recording</h3>
-        <p>Record exactly what the class saw — the composited screen with you in the corner —
-        straight to a file, for anyone who missed the morning.</p>
+      <div class="run">
+        <div class="n">＋</div>
+        <div>
+          <h3>Clip the good bits, after they happen</h3>
+          <p>Something great just happened? Press ⌥⌘1, 2 or 5 and the last one, two or five
+          minutes are saved as a clip — recording or not. A rolling five-minute buffer makes it
+          possible: held in memory, overwritten as it ages, written to disk only when you ask.
+          Every clip lands in a folder named for the class, never loose in a pile.</p>
+        </div>
+      </div>
+      <div class="run">
+        <div class="n">＋</div>
+        <div>
+          <h3>A class view built for teaching</h3>
+          <p>With the custom meeting UI on, a second display becomes the teacher's console:
+          whoever is speaking held large, every student in a grid below, hands up in the order
+          they were raised, and mute, spotlight and admit one click away.</p>
+        </div>
+      </div>
+      <div class="run">
+        <div class="n">＋</div>
+        <div>
+          <h3>Set up once, hand it on</h3>
+          <p>Every credential and preference exports as a single file. A colleague imports it
+          and their Mac is ready. Nobody else has to touch the Zoom Marketplace.</p>
+        </div>
       </div>
     </div>
   </div>
@@ -555,24 +391,24 @@
     </div>
     <div class="steps">
       <div class="step">
-        <div class="num"></div>
+        <div class="num">Step 01</div>
         <h3>Download &amp; drag in</h3>
         <p>Grab the zip from the <a href="https://github.com/Sibhimanyu/greenroom/releases">latest release</a>,
         unzip, and drag <strong>Greenroom.app</strong> into Applications.</p>
       </div>
       <div class="step">
-        <div class="num"></div>
+        <div class="num">Step 02</div>
         <h3>Open Anyway, once</h3>
         <p>The app isn't notarized, so macOS balks at the first open. System Settings →
         Privacy &amp; Security → <strong>Open Anyway</strong>. (macOS 14 and earlier:
         right-click → Open.)</p>
       </div>
       <div class="step">
-        <div class="num"></div>
+        <div class="num">Step 03</div>
         <h3>Import &amp; go</h3>
         <p>Import the settings file from whoever set it up, install the free
         <a href="https://obsproject.com">OBS Studio</a> when the built-in guide asks, and
-        grant each permission as it appears. That's the whole setup — once.</p>
+        grant each permission as it appears. That is the whole setup, once.</p>
       </div>
     </div>
   </div>
@@ -587,9 +423,9 @@
       </div>
       <p>Every morning at Zoho Schools, <strong>Raj San</strong> runs a reading class over
       Zoom. Done right, it needs real stagecraft: the students should see the <em>book</em>,
-      full screen, with the teacher keyed into a corner of it — not a webcam pointed at a desk.</p>
+      full screen, with the teacher keyed into a corner of it, not a webcam pointed at a desk.</p>
       <p>That meant OBS, a virtual camera, a chroma key, a meeting, and three windows dragged
-      into their places. None of it hard — all of it, every single morning, tedious.</p>
+      into their places. None of it hard. All of it, every single morning, tedious.</p>
       <p>Greenroom is named for the room performers wait in before going on stage. It gets
       everything ready, so walking on is the only step left.</p>
     </div>
@@ -615,13 +451,13 @@
       <a class="btn" href="https://github.com/Sibhimanyu/greenroom/releases">Download for Mac</a>
       <a class="textlink" href="https://github.com/Sibhimanyu/greenroom">View on GitHub <span class="arrow">→</span></a>
     </div>
-    <p class="cta-note">Zoom features need a one-time credentials file — the full guide is in the README.</p>
+    <p class="cta-note">Zoom features need a one-time credentials file. The full guide is in the README.</p>
   </div>
 </section>
 
 <footer>
   <div class="wrap footer-inner">
-    <span>Greenroom — built for the morning readers at Zoho Schools.</span>
+    <span>Greenroom. Built for the morning readers at Zoho Schools.</span>
     <span><a href="how-it-works.html">Is it safe?</a> · <a href="https://github.com/Sibhimanyu/greenroom">GitHub</a> · <a href="https://github.com/Sibhimanyu/greenroom/releases">Releases</a> · <a href="https://github.com/Sibhimanyu/greenroom#readme">Guide</a></span>
   </div>
 </footer>

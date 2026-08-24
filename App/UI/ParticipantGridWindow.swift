@@ -62,6 +62,9 @@ enum ParticipantGridWindowController {
         var steps: [Step] = []
         /// Set when a start fails, so the panel stops promising it is coming.
         var failure: String?
+        /// The newest status line, shown under the steps. Without it the card
+        /// says only which step is running, and a slow step reads as a hang.
+        var detail: String?
 
         /// True once there is nothing left to wait for. An empty list counts as
         /// live so that anything not driving readiness - the default Zoom-UI
@@ -84,6 +87,16 @@ enum ParticipantGridWindowController {
     private static var toggleRecording: (@MainActor () -> Void)?
     private static var snapBack: (@MainActor () -> Void)?
     private static var toggleSpeaker: (@MainActor () -> Void)?
+    /// Whether the featured speaker gets the large tile above the gallery,
+    /// or everyone shares the grid equally. What \u{2325}\u{2318}Z toggles now.
+    ///
+    /// A pop-out window was tried and is not possible: Zoom's own capability
+    /// matrix for custom UI says "Multiple windows: No (regions in 1
+    /// container)" - SDK-rendered video cannot leave the container's window,
+    /// and a pop-out needs the raw-data pipeline instead. The experiment
+    /// agreed: the re-parented view landed in a visible window at the right
+    /// size and still drew black.
+    static var featuredViewEnabled = true
     private static var showMainWindow: (@MainActor () -> Void)?
 
     /// Wired once at session start. The window talks to the SDK directly rather
@@ -128,6 +141,11 @@ enum ParticipantGridWindowController {
     }
 
     private static var panel: ControlPanel?
+    /// Where the panel currently lives, for alerts that must appear on the
+    /// same display the teacher is looking at.
+    fileprivate static var panelScreen: NSScreen? { panel?.screen }
+    /// The panel window itself, for the alert runner to step around.
+    fileprivate static var panelWindowForAlerts: NSWindow? { panel }
     private static var root: RootView?
 
     /// Full-screen and borderless when it has a display to itself. On a single
@@ -149,9 +167,23 @@ enum ParticipantGridWindowController {
                                    defer: false,
                                    screen: screen)
         created.title = "Participants"
+        ZoomMeetingSDKClient.videoLog("panel form=\(windowed ? "windowed" : "fullscreen")"
+            + " screen=\(screen.localizedName) size=\(Int(frame.width))x\(Int(frame.height))")
         created.isReleasedWhenClosed = false
         created.hidesOnDeactivate = false
         created.backgroundColor = .black
+        // Ordinary window level, deliberately - both forms.
+        //
+        // The full-screen form sat at .statusBar for a while so it would cover
+        // the menu bar and Dock, and that was the wrong trade: at that level
+        // every OTHER window on the display layers underneath it too, which
+        // made the reference monitor unusable for anything else - reported
+        // live as "when it is full screen I am not able to do anything else on
+        // that monitor". A panel that fills the display at .normal keeps the
+        // display usable: other windows can come in front, and the menu bar
+        // drawing over the top sliver is a fair price. Never a fullscreen
+        // Space either - a window in a Space cannot be re-framed, which is why
+        // the Zoom-UI placer has to eject its gallery from fullscreen.
         created.level = .normal
         created.collectionBehavior = [.managed, .fullScreenAuxiliary]
         created.isMovable = windowed
@@ -217,7 +249,10 @@ enum ParticipantGridWindowController {
                      flags: client.roomFlags(),
                      waiting: client.waitingRoomNames(),
                      session: session,
-                     videoProvider: { id, frame in client.participantView(userID: id, frame: frame) },
+                     featured: client.speakerToShow(),
+                     videoProvider: { id, frame, hero in
+                         client.participantView(userID: id, frame: frame, hero: hero)
+                     },
                      selfProvider: { frame in client.makeRailSelfView(frame: frame) })
         // Pruned to the VISIBLE page, not the whole roster, so students on other
         // pages release their streams. The rail's self view is a separate element
@@ -251,7 +286,7 @@ enum ParticipantGridWindowController {
     /// saying "Mute me" until the next tick. Nothing was broken, but nothing
     /// acknowledged the press either, which is the whole of what "unresponsive"
     /// meant here.
-    fileprivate static func refreshNow() {
+    static func refreshNow() {
         guard let screen = lastScreen else { return }
         refresh(on: screen, session: lastSession, windowed: isWindowed)
     }
@@ -326,10 +361,16 @@ private final class RootView: NSView {
     /// that changes constantly and only affects tile rings, never a button.
     private var lastBarSignature = ""
     /// Held so a page change can re-attach video without waiting for the poll.
-    private var lastVideoProvider: ((UInt32, NSRect) -> NSView?)?
+    private var lastVideoProvider: ((UInt32, NSRect, Bool) -> NSView?)?
     private var lastSelfProvider: ((NSRect) -> NSView?)?
 
     private var roster: [ZoomMeetingSDKClient.RosterEntry] = []
+    /// Who gets the large tile above the gallery. See speakerToShow().
+    private var featuredID: UInt32?
+    /// How much of the grid area the featured speaker takes. Zoom's own
+    /// custom-UI example splits 70/30; a class needs a little more room for
+    /// faces than a one-to-one call, so the gallery keeps slightly more.
+    private static let featuredShare: CGFloat = 0.58
     private var page = 0
     private let rail = BarView()
     /// The rail scrolls.
@@ -648,9 +689,11 @@ private final class RootView: NSView {
                 flags: ZoomMeetingSDKClient.RoomFlags,
                 waiting: [(id: UInt32, name: String)],
                 session: ParticipantGridWindowController.SessionInfo,
-                videoProvider: @escaping (UInt32, NSRect) -> NSView?,
+                featured: UInt32?,
+                videoProvider: @escaping (UInt32, NSRect, Bool) -> NSView?,
                 selfProvider: @escaping (NSRect) -> NSView?) {
         self.roster = roster
+        self.featuredID = ParticipantGridWindowController.featuredViewEnabled ? featured : nil
         self.flags = flags
         self.waiting = waiting
         self.session = session
@@ -732,11 +775,13 @@ private final class RootView: NSView {
     /// The SDK renders into a view it owns; the tile only parents it, and only
     /// when it changes. Re-parenting a live video view every refresh would
     /// flicker the whole wall.
-    private func attachVideo(_ videoProvider: @escaping (UInt32, NSRect) -> NSView?) {
+    private func attachVideo(_ videoProvider: @escaping (UInt32, NSRect, Bool) -> NSView?) {
         lastVideoProvider = videoProvider
         for entry in pageRoster {
             guard let tile = tiles[entry.id], !tile.bounds.isEmpty else { continue }
-            tile.attach(video: videoProvider(entry.id, tile.videoBounds))
+            let hero = entry.id == featuredID
+            // The featured tile is the one stream worth spending quality on.
+            tile.attach(video: videoProvider(entry.id, tile.videoBounds, hero))
         }
     }
 
@@ -917,25 +962,54 @@ private final class RootView: NSView {
     private func layoutTiles() {
         let visible = pageRoster
         guard !visible.isEmpty else { return }
-        let area = gridHost.bounds
-        let (cols, rows) = Self.bestGrid(count: visible.count, in: area.size)
+        let full = gridHost.bounds
+
+        // Featured speaker on top, gallery beneath - the split Zoom's own
+        // custom-UI reference example uses, and the only layout the SDK
+        // actually supports: every video element lives in one container owned
+        // by one window, so the person being featured has to be drawn here
+        // rather than in a window of their own.
+        //
+        // Not applied to a single participant: one person alone is the gallery,
+        // and splitting the space would draw them twice the size for no reason.
+        var gallery = visible
+        var featuredTile: TileView?
+        if let id = featuredID, visible.count > 1,
+           let index = gallery.firstIndex(where: { $0.id == id }) {
+            featuredTile = tiles[gallery.remove(at: index).id]
+        }
+
+        let featuredHeight = featuredTile == nil
+            ? 0 : (full.height * Self.featuredShare).rounded()
+        if let tile = featuredTile {
+            let target = NSRect(x: Self.gutter,
+                                y: full.height - featuredHeight + Self.gutter,
+                                width: max(0, full.width - Self.gutter * 2),
+                                height: max(0, featuredHeight - Self.gutter * 2))
+            if tile.frame != target { tile.frame = target }
+        }
+
+        let area = NSRect(x: 0, y: 0, width: full.width,
+                          height: max(0, full.height - featuredHeight))
+        guard !gallery.isEmpty else { return }
+        let (cols, rows) = Self.bestGrid(count: gallery.count, in: area.size)
         let cellW = (area.width - Self.gutter * CGFloat(cols + 1)) / CGFloat(cols)
         let cellH = (area.height - Self.gutter * CGFloat(rows + 1)) / CGFloat(rows)
 
         // Layout moves get DESIGN.md's 250ms, but only when the grid actually
         // changes shape. Animating every two-second refresh would mean a wall
         // that is permanently in motion.
-        let shape = (cols, rows, visible.count)
+        let shape = (cols, rows, gallery.count)
         let animate = lastGridShape.count >= 0 && shape != lastGridShape
         lastGridShape = shape
 
-        for (index, entry) in visible.enumerated() {
+        for (index, entry) in gallery.enumerated() {
             guard let tile = tiles[entry.id] else { continue }
             let row = index / cols
             let column = index % cols
             // The last row is centred rather than left-packed: three students
             // in a 2x2 read as a group, not as a missing fourth.
-            let inRow = min(cols, visible.count - row * cols)
+            let inRow = min(cols, gallery.count - row * cols)
             let rowWidth = CGFloat(inRow) * cellW + CGFloat(inRow - 1) * Self.gutter
             let originX = (area.width - rowWidth) / 2 + CGFloat(column) * (cellW + Self.gutter)
             let target = NSRect(x: originX,
@@ -1620,8 +1694,7 @@ private final class RootView: NSView {
         field.font = .monospacedSystemFont(ofSize: 11, weight: .regular)
         alert.accessoryView = field
 
-        NSApp.activate(ignoringOtherApps: true)
-        if alert.runModal() == .alertFirstButtonReturn {
+        if runAboveEverything(alert) == .alertFirstButtonReturn {
             NSPasteboard.general.clearContents()
             NSPasteboard.general.setString(invite.shareText, forType: .string)
             ParticipantGridWindowController.report("Invitation copied \u{2014} paste it wherever you invite people.")
@@ -1867,6 +1940,51 @@ private final class RootView: NSView {
         }
     }
 
+    /// Runs an alert ABOVE the panel, wherever the panel lives.
+    ///
+    /// The full-screen panel is a borderless window at .statusBar level - that
+    /// is what lets it cover the menu bar and Dock on the reference display.
+    /// runModal's alert window sits at .modalPanel, which is LOWER, so every
+    /// confirmation opened underneath the very surface whose button had just
+    /// been pressed - reported live on a two-display setup as End session and
+    /// Copy invitation "going behind the participant window". The alert also
+    /// centres on the panel's screen, so on two displays it appears where the
+    /// teacher is looking rather than on the other monitor.
+    private static func runAboveEverything(_ alert: NSAlert) -> NSApplication.ModalResponse {
+        NSApp.activate(ignoringOtherApps: true)
+        // Setting the ALERT's level does not work, and the first version of
+        // this runner proved it: runModal(for:) assigns the window to
+        // .modalPanel itself when the modal session begins, clobbering any
+        // level set beforehand - and it re-centres the window, clobbering the
+        // origin too. Pre-modal mutations of the alert are simply overwritten.
+        //
+        // So step the PANEL down instead. Nothing in the modal machinery
+        // touches other windows' levels, which makes this the version that
+        // cannot be clobbered: at .normal the panel sits below .modalPanel for
+        // exactly the alert's lifetime, and the saved level comes back after.
+        // The menu bar showing through during a dialog is fine - the dialog is
+        // the one moment the panel is not the surface being used.
+        let panelWindow = ParticipantGridWindowController.panelWindowForAlerts
+        let savedLevel = panelWindow?.level
+        panelWindow?.level = .normal
+        // Placement re-asserted from INSIDE the modal session, where it
+        // sticks: the async block runs after runModal has done its own
+        // centring, and puts the dialog on the display the teacher is
+        // actually looking at.
+        if let screen = ParticipantGridWindowController.panelScreen {
+            DispatchQueue.main.async { [weak window = alert.window] in
+                guard let window else { return }
+                let area = screen.visibleFrame
+                let size = window.frame.size
+                window.setFrameOrigin(NSPoint(x: (area.midX - size.width / 2).rounded(),
+                                              y: (area.midY - size.height / 2).rounded()))
+            }
+        }
+        let response = alert.runModal()
+        if let savedLevel { panelWindow?.level = savedLevel }
+        return response
+    }
+
     private static func confirm(title: String, message: String, confirm: String, action: @escaping () -> Void) {
         let alert = NSAlert()
         alert.messageText = title
@@ -1878,8 +1996,7 @@ private final class RootView: NSView {
         // and a sheet on a window whose app is not frontmost can appear behind
         // everything with no way to answer it. A destructive confirmation is
         // also the one moment where pulling focus is the correct behaviour.
-        NSApp.activate(ignoringOtherApps: true)
-        if alert.runModal() == .alertFirstButtonReturn { action() }
+        if runAboveEverything(alert) == .alertFirstButtonReturn { action() }
     }
 
     private static func prompt(title: String, current: String, action: @escaping (String) -> Void) {
@@ -1890,8 +2007,7 @@ private final class RootView: NSView {
         let field = NSTextField(string: current)
         field.frame = NSRect(x: 0, y: 0, width: 240, height: 24)
         alert.accessoryView = field
-        NSApp.activate(ignoringOtherApps: true)
-        let response = alert.runModal()
+        let response = runAboveEverything(alert)
         let trimmed = field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
         if response == .alertFirstButtonReturn, !trimmed.isEmpty { action(trimmed) }
     }
@@ -1967,15 +2083,61 @@ private final class TileView: NSView {
     override var isFlipped: Bool { false }
 
     var videoBounds: NSRect { NSRect(origin: .zero, size: bounds.size) }
+    private var lastLoggedSublayers = -2
 
     func attach(video newVideo: NSView?) {
-        guard video !== newVideo else { return }
+        // The common case by far - the poll runs at 1Hz and the view rarely
+        // changes. It used to log a full view-state line here, which meant a
+        // synchronous open/seek/write/close per tile per second on the main
+        // thread: 571 of 632 lines in one session's log, and the reason the
+        // panel felt sluggish. The probe had already done its job (it proved
+        // the views were on screen and correctly sized, which is what pointed
+        // the investigation at subscriptions instead).
+        guard video !== newVideo else {
+            // Change-only render probe. A rendering element grows its layer
+            // tree (1 sublayer bare, 4 once the SDK wires the surface up); one
+            // that reports dataType=Video but never leaves 1 is accepting data
+            // and drawing none of it - the exact state under investigation.
+            let sublayers = video?.layer?.sublayers?.count ?? -1
+            if sublayers != lastLoggedSublayers {
+                lastLoggedSublayers = sublayers
+                ZoomMeetingSDKClient.videoLog("render user=\(userID) sublayers=\(sublayers)"
+                    + " size=\(Int(bounds.width))x\(Int(bounds.height))")
+            }
+            return
+        }
         video?.removeFromSuperview()
         video = newVideo
-        guard let newVideo else { return }
+        guard let newVideo else {
+            ZoomMeetingSDKClient.videoLog("attach user=\(userID) provider returned nil")
+            return
+        }
         newVideo.autoresizingMask = [.width, .height]
         newVideo.frame = videoBounds
         addSubview(newVideo, positioned: .below, relativeTo: scrim)
+        ZoomMeetingSDKClient.videoLog(Self.viewState("attached", userID: userID,
+                                                     video: newVideo, tile: self))
+    }
+
+    /// TEMPORARY QA INSTRUMENTATION - remove once the tiles are confirmed.
+    private static func viewState(_ stage: String, userID: UInt32,
+                                  video: NSView?, tile: NSView) -> String {
+        guard let video else { return "\(stage) user=\(userID) video=nil" }
+        let layerInfo: String
+        if let layer = video.layer {
+            layerInfo = "layer=yes sublayers=\(layer.sublayers?.count ?? 0) "
+                + "opaque=\(layer.isOpaque) hidden=\(layer.isHidden)"
+        } else {
+            layerInfo = "layer=NONE"
+        }
+        return "\(stage) user=\(userID)"
+            + " videoFrame=\(Int(video.frame.width))x\(Int(video.frame.height))"
+            + " tileBounds=\(Int(tile.bounds.width))x\(Int(tile.bounds.height))"
+            + " superview=\(video.superview == nil ? "NONE" : "ok")"
+            + " window=\(video.window == nil ? "NONE" : (video.window!.isVisible ? "visible" : "hidden"))"
+            + " hidden=\(video.isHidden) alpha=\(String(format: "%.2f", video.alphaValue))"
+            + " subviews=\(video.subviews.count) \(layerInfo)"
+            + " tileInWindow=\(tile.window == nil ? "NONE" : "ok")"
     }
 
     func detachVideo() {
@@ -2312,6 +2474,7 @@ private final class ReadinessView: NSView {
     private let barTrack = NSView()
     private var rows: [(glyph: NSImageView, spinner: NSProgressIndicator, label: NSTextField)] = []
     private let failure = NSTextField(labelWithString: "")
+    private let detail = NSTextField(labelWithString: "")
     private var readiness = ParticipantGridWindowController.Readiness()
 
     override init(frame frameRect: NSRect) {
@@ -2338,6 +2501,14 @@ private final class ReadinessView: NSView {
         failure.lineBreakMode = .byWordWrapping
         failure.isHidden = true
         addSubview(failure)
+
+        detail.font = .systemFont(ofSize: 11)
+        detail.textColor = .tertiaryLabelColor
+        detail.maximumNumberOfLines = 2
+        detail.usesSingleLineMode = false
+        detail.lineBreakMode = .byTruncatingTail
+        detail.isHidden = true
+        addSubview(detail)
     }
 
     required init?(coder: NSCoder) { nil }
@@ -2376,6 +2547,10 @@ private final class ReadinessView: NSView {
         title.stringValue = next.failure == nil ? "GETTING READY" : "COULD NOT START"
         failure.stringValue = next.failure ?? ""
         failure.isHidden = next.failure == nil
+        // Suppressed once a failure is on screen: the red line IS the detail
+        // then, and repeating the last progress note under it only competes.
+        detail.stringValue = next.detail ?? ""
+        detail.isHidden = next.failure != nil || (next.detail ?? "").isEmpty
         needsLayout = true
         layoutSubtreeIfNeeded()
     }
@@ -2417,6 +2592,7 @@ private final class ReadinessView: NSView {
     var fittingHeight: CGFloat {
         16 + 12 + 3 + 16 + CGFloat(rows.count) * Self.rowHeight
             + (readiness.failure == nil ? 0 : 12 + 48)
+            + (detail.isHidden ? 0 : 10 + 30)
     }
     private static let rowHeight: CGFloat = 26
 
@@ -2450,6 +2626,12 @@ private final class ReadinessView: NSView {
             row.spinner.frame = NSRect(x: 0, y: y + 2, width: 16, height: 16)
             row.label.frame = NSRect(x: 26, y: y, width: max(0, width - 26), height: 20)
             y += Self.rowHeight
+        }
+
+        if !detail.isHidden {
+            y += 10
+            detail.frame = NSRect(x: 0, y: y, width: width, height: 30)
+            y += 30
         }
 
         if !failure.isHidden {

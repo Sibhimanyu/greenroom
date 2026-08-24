@@ -12,7 +12,7 @@
 //  and stuck there.
 //
 //  Custom UI removes the hunt entirely. The SDK hands over an NSView rendering
-//  the active speaker (ZoomMeetingSDKClient.makeActiveSpeakerView) and we put it
+//  whoever last spoke (ZoomMeetingSDKClient.speakerView) and we put it
 //  in a window we own. No Zoom chrome, so no "i" button and no toolbar. Nothing
 //  to fight over, because there is no second party.
 //
@@ -72,16 +72,21 @@ enum SpeakerWindowController {
         ensurePlaceholder(in: hosting)
         let content = hosting.contentView ?? NSView()
 
-        // The SDK's view is sized by us and must follow the window, so it is
-        // pinned rather than left at whatever frame it was created with.
-        videoView.translatesAutoresizingMaskIntoConstraints = false
+        // Manual frame plus an autoresizing mask - NOT Auto Layout.
+        //
+        // This is why the speaker window rendered black while the participant
+        // tiles, which share the same container and the same SDK, rendered
+        // fine. The element OWNS its view's geometry: ZoomSDKVideoElement's
+        // resize: sets the frame and the render surface is sized from it.
+        // Turning translatesAutoresizingMaskIntoConstraints off hands that
+        // frame to AppKit's layout engine instead, so every resize: the SDK
+        // made was overridden on the next layout pass and the surface never
+        // matched the view. The tiles were always right; only this window
+        // was pinning an SDK-owned view with constraints.
+        videoView.translatesAutoresizingMaskIntoConstraints = true
+        videoView.frame = content.bounds
+        videoView.autoresizingMask = [.width, .height]
         content.addSubview(videoView)
-        NSLayoutConstraint.activate([
-            videoView.leadingAnchor.constraint(equalTo: content.leadingAnchor),
-            videoView.trailingAnchor.constraint(equalTo: content.trailingAnchor),
-            videoView.topAnchor.constraint(equalTo: content.topAnchor),
-            videoView.bottomAnchor.constraint(equalTo: content.bottomAnchor)
-        ])
 
         shownVideo = videoView
         if let slot, hosting.frame != slot { hosting.setFrame(slot, display: true) }
@@ -135,7 +140,7 @@ enum SpeakerWindowController {
     }
 
     fileprivate static let emptyMessage =
-        "No one is in the class yet.\nWhoever is speaking will appear here."
+        "The live speaker appears here once three people are in the class.\nUntil then, the participants panel carries the featured speaker."
 
     /// Shows the window with no video in it, just the message.
     ///

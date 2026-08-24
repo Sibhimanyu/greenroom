@@ -489,13 +489,19 @@ final class CoordinatorController: ObservableObject {
         // ordering it out - no SDK window to find, and no risk of the toggle
         // pointing at a panel that got mistaken for the tile.
         if zoomChatClient.didUseCustomUI {
-            guard SpeakerWindowController.isOpen || speakerTileQuickHidden else {
-                log("No speaker to toggle yet \u{2014} the meeting is still coming up.")
-                return
-            }
+            // Custom UI: show or hide the speaker window; the follow loop
+            // keeps its content honest either way.
+            speakerTileQuickHidden.toggle()
             if speakerTileQuickHidden {
-                speakerTileQuickHidden = false
+                SpeakerWindowController.hide()
+                ChatWindowController.fillSideColumn(layout: workspaceLayout)
+                log("Speaker hidden \u{2014} chat has the full column. \u{2325}\u{2318}Z shows it.")
+            } else {
                 SpeakerWindowController.reveal(layout: workspaceLayout)
+                // The chat gives the column back. Hide grows it over the
+                // speaker slot (fillSideColumn), so show must shrink it under
+                // the slot again - dropped in a rewrite once, which left the
+                // revealed speaker sitting ON TOP of a full-column chat.
                 if let slot = ChatWindowController.zoomSlotNSFrame(for: workspaceLayout),
                    let screen = DisplayResolver.mainDisplayScreen() {
                     let ax = CGRect(x: slot.origin.x, y: screen.frame.height - slot.maxY,
@@ -503,11 +509,6 @@ final class CoordinatorController: ObservableObject {
                     ChatWindowController.adjustBelowZoom(actualZoomFrameAX: ax, layout: workspaceLayout)
                 }
                 log("Speaker shown \u{2014} \u{2325}\u{2318}Z hides it again.")
-            } else {
-                speakerTileQuickHidden = true
-                SpeakerWindowController.hide()
-                ChatWindowController.fillSideColumn(layout: workspaceLayout)
-                log("Speaker hidden \u{2014} chat has the full column. \u{2325}\u{2318}Z shows it.")
             }
             return
         }
@@ -1567,7 +1568,8 @@ final class CoordinatorController: ObservableObject {
 
         log("Starting the meeting in Greenroom's built-in Zoom client\u{2026}")
         try await zoomChatClient.ensureReady(clientID: sdkClientID, clientSecret: sdkClientSecret)
-        zoomChatClient.setDualScreenMode(peopleViewWanted)
+        await settleBeforeJoining()
+        zoomChatClient.setDualScreenMode(galleryWindowExists)
 
         if zoomChatClient.selectCamera(named: "OBS Virtual Camera") {
             log("Camera set to OBS Virtual Camera.")
@@ -1601,7 +1603,8 @@ final class CoordinatorController: ObservableObject {
 
         log("Joining meeting \(meetingNumber) in Greenroom's built-in Zoom client\u{2026}")
         try await zoomChatClient.ensureReady(clientID: sdkClientID, clientSecret: sdkClientSecret)
-        zoomChatClient.setDualScreenMode(peopleViewWanted)
+        await settleBeforeJoining()
+        zoomChatClient.setDualScreenMode(galleryWindowExists)
 
         if zoomChatClient.selectCamera(named: "OBS Virtual Camera") {
             log("Camera set to OBS Virtual Camera.")
@@ -1708,63 +1711,47 @@ final class CoordinatorController: ObservableObject {
         }
         let slot = ChatWindowController.zoomSlotNSFrame(for: workspaceLayout)
             ?? NSRect(x: 0, y: 0, width: 505, height: 351)
-        let speaker = zoomChatClient.makeActiveSpeakerView(frame: slot)
-        guard let videoView = speaker.view else {
-            log("Custom UI: no speaker view \u{2014} \(speaker.detail). Meeting audio and your outgoing camera are unaffected.")
-            return
-        }
-        SpeakerWindowController.show(videoView: videoView, layout: workspaceLayout)
-        startCustomUISpeakerFollow()
+        // The speaker element is deliberately NOT created here.
+        //
+        // Creating it at session start meant creating it in an empty room and
+        // attaching it to a window that quick-hide immediately ordered out.
+        // startActiveView is a one-shot: it succeeded once, under exactly
+        // those conditions, and every later call is refused as a duplicate -
+        // so the only subscription that ever counted was made with nobody to
+        // follow and no on-screen drawable to render into. The element then
+        // reported dataType=Video and drew black for the whole session, which
+        // is what made this look like a subscription bug for so long.
+        //
+        // The follow loop builds it instead, at the first moment it can
+        // actually work: somebody to follow, and the window on screen.
         startCustomUIGridFollow()
+        startCustomUISpeakerFollow()
         if speakerTileQuickHidden {
-            SpeakerWindowController.hide()
             ChatWindowController.fillSideColumn(layout: workspaceLayout)
             log("Speaker starts hidden (quick-hide mode) \u{2014} chat has the full column; \u{2325}\u{2318}Z shows it.")
         }
-        // The SDK's own return codes go in the log too, not just on failure.
-        // A view that exists but renders nothing looks identical to a working
-        // one from out here, so the codes are the only way to tell them apart.
-        log("Custom UI: speaker view is Greenroom's own window (\(speaker.detail)).")
     }
 
-    /// Decides what the speaker window shows: your own video when you are alone
-    /// in the meeting, the active speaker once anyone else is there.
-    ///
-    /// The active-speaker element renders whoever is SPEAKING, so on its own it
-    /// leaves the window black until someone else joins and talks. That reads as
-    /// broken, and it is the one thing default Zoom UI does better - it falls
-    /// back to your own video. Custom UI has to make that choice itself.
-    ///
-    /// Runs regardless of display count, unlike the gallery follow: a
-    /// single-display teacher alone in the room is exactly the case that looked
-    /// broken.
+    /// The Speaker window hosts Zoom's auto-following active element - the
+    /// clean test of it. Every earlier run was black WITH ONE OR TWO people in
+    /// the room, and the element is documented to operate with three or more,
+    /// so those runs proved nothing. Below three, the window says so and the
+    /// panel's featured tile carries the job.
     private func startCustomUISpeakerFollow() {
         customUISpeakerTask?.cancel()
         customUISpeakerTask = Task { [weak self] in
-            var announcedSelfView = false
             while !Task.isCancelled {
                 guard let self else { return }
                 let slot = ChatWindowController.zoomSlotNSFrame(for: self.workspaceLayout)
                     ?? NSRect(x: 0, y: 0, width: 505, height: 351)
                 let wantVisible = !self.speakerTileQuickHidden
-                if self.zoomChatClient.hasOtherParticipants {
-                    if let view = self.zoomChatClient.makeActiveSpeakerView(frame: slot).view {
-                        SpeakerWindowController.show(videoView: view,
-                                                     layout: self.workspaceLayout,
-                                                     visible: wantVisible)
-                    }
+                if wantVisible, let view = self.zoomChatClient.activeSpeakerWindowView(frame: slot) {
+                    SpeakerWindowController.show(videoView: view,
+                                                 layout: self.workspaceLayout,
+                                                 visible: true)
                 } else {
-                    // Deliberately NOT your own camera any more. It used to fall
-                    // back to a self view because a black tile looked broken, but
-                    // the control panel now carries a large self view of its own,
-                    // so a second copy of your face here was redundant - and it
-                    // buried the more useful fact, that nobody has arrived.
                     SpeakerWindowController.showEmpty(layout: self.workspaceLayout,
                                                       visible: wantVisible)
-                    if !announcedSelfView {
-                        announcedSelfView = true
-                        self.log("Nobody else here yet \u{2014} the speaker tile says so until someone joins. Your own picture is on the participants panel.")
-                    }
                 }
                 try? await Task.sleep(nanoseconds: 2_000_000_000)
             }
@@ -1935,7 +1922,7 @@ final class CoordinatorController: ObservableObject {
                         // the window (state changes do that) gets undone.
                         if builtInMeetingWindow == nil {
                             builtInMeetingWindow = window
-                            if !peopleViewWanted { zoomChatClient.simplifyMeetingView() }
+                            if !galleryWindowExists { zoomChatClient.simplifyMeetingView() }
                         }
                         if window.isVisible {
                             window.orderOut(nil)
@@ -1958,7 +1945,7 @@ final class CoordinatorController: ObservableObject {
                         // placer, and switching to speaker here would flip
                         // it back; the tile (the secondary window) already
                         // shows Zoom's complementary clean speaker view.
-                        if !peopleViewWanted {
+                        if !galleryWindowExists {
                             zoomChatClient.simplifyMeetingView()
                         }
                         // Remembered so the people-view placer knows which
@@ -2012,9 +1999,18 @@ final class CoordinatorController: ObservableObject {
     /// its window vanished entirely (SDK recreated it), re-run the placer
     /// every ~30s.
     private func maintainPeopleViewPlacement(tick: Int) {
-        guard peopleViewWanted else { return }
-        guard let target = peopleViewTargetScreen() else { return }
+        guard galleryWindowExists else { return }
+        guard let target = peopleViewTargetScreen() else {
+            keepBackgroundGalleryBehind()
+            return
+        }
         if let gallery = peopleViewWindow {
+            // Above the menu bar and the Dock, re-asserted every tick because
+            // the SDK resets the level whenever it recreates the window. At
+            // .normal the grid covers the display's bounds but the menu bar
+            // and Dock still draw over it, which is not what "full screen on
+            // the reference display" means.
+            if windowIsOnPeopleViewTarget(gallery) { gallery.level = .statusBar }
             // The grid STAYS on its display, focused or not (explicit
             // requirement) - clicking it must not strand it wherever the
             // SDK re-homed it. The only interaction respected is an
@@ -2133,8 +2129,22 @@ final class CoordinatorController: ObservableObject {
     /// on the extended one, exactly backwards, reported live.
     private func preferredTileWindow() -> NSWindow? {
         let candidates = tileCandidates()
-        guard peopleViewWanted else { return candidates.first }
+        guard galleryWindowExists else { return candidates.first }
         return candidates.count >= 2 ? candidates.last : nil
+    }
+
+    /// Keeps the no-second-display gallery behind the workspace.
+    ///
+    /// The SDK raises its own windows on state changes - waiting room, share
+    /// start - which is the same behaviour the ghost police exists for, so one
+    /// orderBack at placement time does not hold. Pushed back only when it has
+    /// floated to the FRONT without being focused: a teacher who deliberately
+    /// clicks into the grid keeps it, and it settles back on its own once they
+    /// click away.
+    private func keepBackgroundGalleryBehind() {
+        guard let gallery = peopleViewWindow, gallery.isVisible else { return }
+        guard !gallery.isKeyWindow, gallery.orderedIndex == 0 else { return }
+        gallery.orderBack(nil)
     }
 
     /// Whether a window currently lives on the people-view target display,
@@ -2365,7 +2375,59 @@ final class CoordinatorController: ObservableObject {
     /// unreachable by construction.
     private func prepareMeetingIfNeeded() async throws -> ZoomServerToServerClient.CreatedMeeting? {
         guard meetingMode == .create else { return nil }
+        await endStaleLiveMeetings()
         return try await createMeetingViaAPI()
+    }
+
+    /// Ends any meeting still live on the account before starting a new one.
+    ///
+    /// Zoom allows a host exactly one live meeting. A previous one left
+    /// running - after a crash, a force quit, or anything else that skipped
+    /// the termination path that ends it - collides with the new one, and Zoom
+    /// resolves the collision by ending a meeting itself. From inside the SDK
+    /// that arrives as status Ended with reason None, reported as "the meeting
+    /// ended before Greenroom finished joining": a start that sits on the
+    /// Meeting step and then gives up, with nothing on screen explaining why.
+    ///
+    /// Ending it deliberately is strictly better than letting Zoom pick which
+    /// of the two dies. It is still someone's live meeting, so it is never
+    /// silent - the status log names how many and says it is doing it.
+    ///
+    /// Logs the clean case too. Finding nothing live is the result that
+    /// DISPROVES this being the cause of a failed start, and that is worth as
+    /// much as finding something when the next one goes wrong.
+    private func endStaleLiveMeetings() async {
+        guard !s2sAccountID.isEmpty, !s2sClientID.isEmpty, !s2sClientSecret.isEmpty else { return }
+        let live = await ZoomServerToServerClient.liveMeetings(
+            accountID: s2sAccountID, clientID: s2sClientID, clientSecret: s2sClientSecret)
+        guard !live.isEmpty else {
+            Self.sessionLog("Pre-flight: no meetings already live on the account.")
+            return
+        }
+        log("\(live.count) meeting\(live.count == 1 ? " is" : "s are") still live on your Zoom account "
+            + "\u{2014} ending \(live.count == 1 ? "it" : "them") first, or this start would collide.")
+        for id in live {
+            let ended = await ZoomServerToServerClient.endMeeting(
+                id: id, accountID: s2sAccountID, clientID: s2sClientID, clientSecret: s2sClientSecret)
+            Self.sessionLog("Pre-flight: ending stale meeting \(id) \(ended ? "succeeded" : "FAILED")")
+        }
+    }
+
+    /// Lets a previous meeting finish tearing down before a new one starts.
+    ///
+    /// Silent on the common path - back-to-back sessions are the only time
+    /// there is anything to wait for, and that is exactly when the start used
+    /// to fail. Says so only if the wait is long enough to notice, so the
+    /// readiness card explains the pause rather than just sitting there.
+    private func settleBeforeJoining() async {
+        let started = Date()
+        let idle = await zoomChatClient.awaitMeetingIdle()
+        let waited = Date().timeIntervalSince(started)
+        if !idle {
+            log("The previous meeting is still closing \u{2014} starting anyway. If this start fails, wait a moment and press Start again.")
+        } else if waited > 1 {
+            log("Waited \(Int(waited.rounded()))s for the previous meeting to finish closing.")
+        }
     }
 
     /// Warms the Zoom SDK auth in parallel with the OBS pipeline.
@@ -2618,6 +2680,21 @@ final class CoordinatorController: ObservableObject {
         peopleViewOnStart && peopleViewTargetScreen() != nil
     }
 
+    /// Whether the SDK runs with TWO meeting windows this session.
+    ///
+    /// Deliberately separate from `peopleViewWanted`, which asks the narrower
+    /// question of whether one of them goes to another DISPLAY. With the
+    /// toggle on and no reference monitor connected the gallery still opens -
+    /// it just lives behind the workspace instead of on a second screen. The
+    /// two were conflated, which is why a single-display session used to get
+    /// no participant view at all: dual-screen mode was never enabled, so the
+    /// SDK never created the window there was nowhere to put.
+    ///
+    /// Every window-ROLE decision keys off this (which window is the tile,
+    /// whether to simplify the tile's view, what the stray sweep may demote).
+    /// Only the placement decisions still key off `peopleViewWanted`.
+    private var galleryWindowExists: Bool { peopleViewOnStart }
+
     /// Sends the built-in client's dual-screen gallery window full-screen
     /// onto the chosen (or default secondary) display. Polls for it
     /// because the SDK creates it a beat after the primary meeting window.
@@ -2626,7 +2703,10 @@ final class CoordinatorController: ObservableObject {
     private func placePeopleViewWindow() {
         guard peopleViewOnStart else { return }
         guard let target = peopleViewTargetScreen() else {
-            log("People view skipped \u{2014} no second display to put it on. Connect your reference display, or pick it in Settings (\u{2318},) \u{2192} Layout.")
+            // Used to give up here. The window is worth having even with
+            // nowhere special to put it - it just goes behind the workspace
+            // rather than covering it.
+            placePeopleViewBehindWorkspace()
             return
         }
         let onChosen = !peopleViewDisplayUUID.isEmpty && DisplayResolver.screen(forUUID: peopleViewDisplayUUID) != nil
@@ -2664,6 +2744,9 @@ final class CoordinatorController: ObservableObject {
                         // guard in maintainPeopleViewPlacement).
                         if windowIsOnPeopleViewTarget(gallery) {
                             peopleViewGrantedFrame = gallery.frame
+                            // Over the menu bar and Dock - see the same
+                            // assert in maintainPeopleViewPlacement.
+                            gallery.level = .statusBar
                         }
                         gallery.orderFront(nil)
                         peopleViewWindow = gallery
@@ -2674,6 +2757,45 @@ final class CoordinatorController: ObservableObject {
                         log(onChosen
                             ? "Participant grid (with the meeting controls) is on \u{201C}\(target.localizedName)\u{201D}."
                             : "Participant grid is on \(target.localizedName) (the secondary display). Pick a specific one in Settings \u{2192} Layout if this isn't your reference monitor.")
+                        return
+                    }
+                }
+                try? await Task.sleep(nanoseconds: 1_000_000_000)
+            }
+            log("People view: the gallery window never appeared \u{2014} is dual-screen mode supported on this meeting?")
+        }
+    }
+
+    /// The single-display form of `placePeopleViewWindow`: the gallery opens
+    /// behind the workspace instead of onto a reference monitor.
+    ///
+    /// Same hunt as the placer above - the SDK creates the gallery a beat
+    /// after the primary window - but the only placement is "not in the way".
+    /// It is left at whatever size the SDK chose and simply sent to the back,
+    /// so the tiled workspace is untouched and the roster is one Mission
+    /// Control (or \u{2318}`) away.
+    private func placePeopleViewBehindWorkspace() {
+        peopleViewTask?.cancel()
+        peopleViewTask = Task {
+            for _ in 0..<30 {
+                if Task.isCancelled { return }
+                // The tile is already parked; the gallery is the other one.
+                let gallery = meetingVideoWindowCandidates()
+                    .first { $0 !== builtInMeetingWindow }
+                if let gallery {
+                    if gallery.styleMask.contains(.fullScreen) {
+                        // A window in a Space cannot be ordered back - eject
+                        // it and finish on a later tick.
+                        gallery.toggleFullScreen(nil)
+                    } else {
+                        gallery.level = .normal
+                        gallery.orderBack(nil)
+                        peopleViewWindow = gallery
+                        // Same call the dual-display path makes: without it
+                        // the second window shows another speaker view rather
+                        // than the roster this exists to provide.
+                        zoomChatClient.showGalleryOnPrimaryView()
+                        log("Participant grid is open behind the workspace \u{2014} no second display to give it. Mission Control or \u{2318}` brings it forward; connect a reference display to have it full-screen there.")
                         return
                     }
                 }
@@ -2767,8 +2889,25 @@ final class CoordinatorController: ObservableObject {
     /// log says so and the rule can be tightened from a measurement instead of
     /// another guess.
     private func isPlausibleVideoWindow(_ window: NSWindow) -> Bool {
+        // Panels are never the meeting video window. Zoom's popups - the
+        // tile's info "i", tooltips, notification bubbles - are NSPanel
+        // subclasses (ZMTipPanel observed live), while the real video windows
+        // are ordinary NSWindows: they have to be, to support fullscreen.
+        // This is the class-level backstop for popups that dodge the title
+        // list below by having no title, and dodge the size floor by being
+        // big - the info popup is both.
+        if window is NSPanel {
+            logRejectedVideoCandidate(window, reason: "panels are never the meeting video window")
+            return false
+        }
+        let className = String(describing: type(of: window))
+        for marker in ["Tip", "Popover", "Toast", "Notification", "Tooltip"]
+        where className.contains(marker) {
+            logRejectedVideoCandidate(window, reason: "class \(className) is a popup, not a video window")
+            return false
+        }
         let title = window.title
-        for panel in ["information", "participant", "invite", "security", "keypad", "poll", "breakout"]
+        for panel in ["information", "participant", "invite", "security", "keypad", "poll", "breakout", "meeting info"]
         where title.localizedCaseInsensitiveContains(panel) {
             logRejectedVideoCandidate(window, reason: "title looks like the \(panel) panel")
             return false
@@ -2819,7 +2958,7 @@ final class CoordinatorController: ObservableObject {
         // While the people-view placer is still hunting for the gallery,
         // don't demote any tile/gallery candidate out from under it -
         // only obvious side panels (e.g. the SDK's chat window).
-        let placerHunting = peopleViewWanted && peopleViewWindow == nil
+        let placerHunting = galleryWindowExists && peopleViewWindow == nil
         let protected = placerHunting ? Set(meetingVideoWindowCandidates().map(\.windowNumber)) : []
         let mainArea = main.frame.width * main.frame.height
         for window in sdkMeetingWindows() {
@@ -2993,6 +3132,32 @@ final class CoordinatorController: ObservableObject {
 
     private func log(_ message: String) {
         statusLines.append(message)
+        Self.sessionLog(message)
+        // The readiness card shows the step; this shows what that step is
+        // actually doing. A start can legitimately sit on "Meeting" for a
+        // couple of minutes (the SDK join watchdog alone is 120s), and a bare
+        // spinner for that long is indistinguishable from a hang - which is
+        // exactly how it was reported.
+        if !startReadiness.steps.isEmpty { startReadiness.detail = message }
+    }
+
+    /// The same lines the main window shows, on disk with timestamps.
+    ///
+    /// They only ever lived in `statusLines`, which is an in-window view that
+    /// the centred readiness card covers - so when a start stalled, the one
+    /// stream of text that says WHY was both invisible to the teacher and gone
+    /// the moment the app quit. Every diagnosis of a stalled start starts here.
+    static func sessionLog(_ message: String) {
+        let line = "\(ISO8601DateFormatter().string(from: Date())) \(message)\n"
+        let url = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Library/Logs/Greenroom-session.log")
+        if let handle = try? FileHandle(forWritingTo: url) {
+            handle.seekToEndOfFile()
+            handle.write(Data(line.utf8))
+            try? handle.close()
+        } else {
+            try? Data(line.utf8).write(to: url)
+        }
     }
 }
 

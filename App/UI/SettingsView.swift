@@ -948,6 +948,12 @@ private struct LayoutSettingsTab: View {
                         .foregroundStyle(.secondary)
                 }
 
+                if coordinator.peopleViewOnStart, !coordinator.customUIMode {
+                    Text("With Zoom's own meeting UI, this is Zoom's participant grid. On a second display it goes full-screen there. With no second display it still opens \u{2014} behind the workspace, so it never covers your tiled windows; Mission Control or \u{2318}` brings it forward.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
                 if coordinator.peopleViewOnStart, coordinator.customUIMode {
                     Text("With the custom meeting UI on, this view also carries the host controls \u{2014} mute, spotlight, admit, rename, remove. It is meant for a display only you can see. With no second display it opens as an ordinary window you can move and resize.")
                         .font(.caption)

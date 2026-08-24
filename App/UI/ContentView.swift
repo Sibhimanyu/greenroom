@@ -155,8 +155,7 @@ struct ContentView: View {
         // That growth is what makes the WINDOW taller; without it the log
         // was squeezed into whatever slack the trailing Spacer left.
         // 360 + 180 (log) + 8 (its top padding) = 548, on the 4px scale.
-        .frame(minWidth: 580,
-               minHeight: statusExpanded && !coordinator.statusLines.isEmpty ? 548 : 360)
+        .frame(minWidth: 580, minHeight: minimumContentHeight)
         // The window OPENS at the preferred size every time, regardless
         // of the size it was closed at (explicit request) - SwiftUI
         // persists scene geometry across launches and defaultSize only
@@ -164,7 +163,7 @@ struct ContentView: View {
         .onAppear {
             DispatchQueue.main.async {
                 NSApp.windows.first { $0.title == "Greenroom" }?
-                    .setContentSize(NSSize(width: 620, height: 400))
+                    .setContentSize(NSSize(width: 620, height: preferredWindowHeight))
             }
         }
         // Growing is automatic (the minHeight above). Shrinking is not:
@@ -173,11 +172,15 @@ struct ContentView: View {
         // those points back. Width is preserved; only the log's rows came
         // and went.
         .onChange(of: statusExpanded) { _, expanded in
-            guard !expanded,
-                  let window = NSApp.windows.first(where: { $0.title == "Greenroom" })
-            else { return }
-            let width = window.contentRect(forFrameRect: window.frame).width
-            window.setContentSize(NSSize(width: width, height: 400))
+            guard !expanded else { return }
+            shrinkWindowToFit()
+        }
+        // The meeting mode is the other branch that changes height, so leaving
+        // Join has to hand its two rows back for the same reason closing the
+        // log does - otherwise the window keeps the slack as dead space.
+        .onChange(of: coordinator.meetingMode) { _, mode in
+            guard mode == .create else { return }
+            shrinkWindowToFit()
         }
         .sheet(isPresented: $coordinator.showOnboarding) {
             OnboardingView()
@@ -233,6 +236,41 @@ struct ContentView: View {
                 .help("Settings")
             }
         }
+    }
+
+    /// The size the window opens at, and returns to when a taller branch
+    /// closes. 400 is the long-standing preferred height; Join's extra rows
+    /// ride on top of it so the mode is not punished for being taller.
+    private var preferredWindowHeight: CGFloat {
+        coordinator.meetingMode == .join ? 464 : 400
+    }
+
+    /// Hands back height the window no longer needs. Growing is automatic via
+    /// `minimumContentHeight`; AppKit never shrinks on its own.
+    private func shrinkWindowToFit() {
+        guard let window = NSApp.windows.first(where: { $0.title == "Greenroom" })
+        else { return }
+        let width = window.contentRect(forFrameRect: window.frame).width
+        window.setContentSize(NSSize(width: width, height: preferredWindowHeight))
+    }
+
+    /// The window grows to fit its tallest branch, because AppKit will not do
+    /// it for us: `onAppear` pins the window to 620x400 once, and after that
+    /// only this minimum can push it taller.
+    ///
+    /// Join mode is the branch that needs the room - two labelled fields and a
+    /// row of fill-from sources, against Create's single caption line. Leaving
+    /// it out of the minimum is what made the Join UI overflow the window: the
+    /// content grew, the window did not, and the bottom of the form was simply
+    /// cut off.
+    private var minimumContentHeight: CGFloat {
+        var height: CGFloat = 360
+        // Two rows plus their spacing, less the caption line Create already
+        // spends there.
+        if coordinator.meetingMode == .join { height += 64 }
+        // 180 for the log itself, 8 for its top padding.
+        if statusExpanded && !coordinator.statusLines.isEmpty { height += 188 }
+        return height
     }
 
     private var meetingSection: some View {

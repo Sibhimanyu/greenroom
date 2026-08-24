@@ -47,8 +47,19 @@ extension ZoomMeetingSDKClient: ZoomSDKMeetingActionControllerDelegate {
     // MARK: Deliberate no-ops (protocol has no @optional)
 
     public func onUserAudioStatusChange(_ userAudioStatusArray: [Any]!) {}
-    public func onUserJoin(_ array: [Any]!) {}
-    public func onUserLeft(_ array: [Any]!) {}
+    public func onUserJoin(_ array: [Any]!) {
+        onParticipantCountChanged?()
+    }
+
+    /// Someone left: release their video element NOW. The 1s poll would get
+    /// there, but the subscription slot it frees is budget the remaining
+    /// tiles may be waiting on.
+    public func onUserLeft(_ array: [Any]!) {
+        let ids = (array as? [NSNumber])?.map { $0.uint32Value } ?? []
+        guard !ids.isEmpty else { return }
+        noteUsersLeft(ids)
+        onParticipantCountChanged?()
+    }
     public func onUserInfoUpdate(_ userID: UInt32) {}
     public func onHostChange(_ userID: UInt32) {}
     public func onVirtualNameTagStatusChanged(_ bOn: Bool, userID: UInt32) {}

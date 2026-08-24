@@ -140,7 +140,7 @@ enum SpeakerWindowController {
     }
 
     fileprivate static let emptyMessage =
-        "The live speaker appears here once three people are in the class.\nUntil then, the participants panel carries the featured speaker."
+        "No one is in the class yet.\nWhoever speaks will appear here."
 
     /// Shows the window with no video in it, just the message.
     ///

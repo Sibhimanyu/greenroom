@@ -32,6 +32,7 @@ final class CoordinatorController: ObservableObject {
         customUIGridTask?.cancel()
         customUIGridTask = nil
         customUISpeakerTask?.cancel()
+        tearDownActiveSpeakerWindow()
         SpeakerWindowController.close()
         ParticipantGridWindowController.close()
         zoomChatClient.releaseCustomUIVideo()
@@ -489,26 +490,17 @@ final class CoordinatorController: ObservableObject {
         // ordering it out - no SDK window to find, and no risk of the toggle
         // pointing at a panel that got mistaken for the tile.
         if zoomChatClient.didUseCustomUI {
-            // Custom UI: show or hide the speaker window; the follow loop
-            // keeps its content honest either way.
-            speakerTileQuickHidden.toggle()
-            if speakerTileQuickHidden {
-                SpeakerWindowController.hide()
+            guard let window = activeSpeakerWindowController?.window else {
+                log("No live speaker window yet \u{2014} it opens when three people are in the class.")
+                return
+            }
+            if window.isVisible {
+                window.orderOut(nil)
                 ChatWindowController.fillSideColumn(layout: workspaceLayout)
-                log("Speaker hidden \u{2014} chat has the full column. \u{2325}\u{2318}Z shows it.")
+                log("Live speaker hidden \u{2014} chat has the full column. \u{2325}\u{2318}Z shows it.")
             } else {
-                SpeakerWindowController.reveal(layout: workspaceLayout)
-                // The chat gives the column back. Hide grows it over the
-                // speaker slot (fillSideColumn), so show must shrink it under
-                // the slot again - dropped in a rewrite once, which left the
-                // revealed speaker sitting ON TOP of a full-column chat.
-                if let slot = ChatWindowController.zoomSlotNSFrame(for: workspaceLayout),
-                   let screen = DisplayResolver.mainDisplayScreen() {
-                    let ax = CGRect(x: slot.origin.x, y: screen.frame.height - slot.maxY,
-                                    width: slot.width, height: slot.height)
-                    ChatWindowController.adjustBelowZoom(actualZoomFrameAX: ax, layout: workspaceLayout)
-                }
-                log("Speaker shown \u{2014} \u{2325}\u{2318}Z hides it again.")
+                placeActiveSpeakerWindow()
+                log("Live speaker shown \u{2014} \u{2325}\u{2318}Z hides it again.")
             }
             return
         }
@@ -1097,6 +1089,7 @@ final class CoordinatorController: ObservableObject {
             ReadinessHUDController.close()
             _ = try? await client.request("StopReplayBuffer")
             customUISpeakerTask?.cancel()
+            tearDownActiveSpeakerWindow()
             SpeakerWindowController.close()
             ParticipantGridWindowController.close()
             zoomChatClient.releaseCustomUIVideo()
@@ -1725,38 +1718,16 @@ final class CoordinatorController: ObservableObject {
         // The follow loop builds it instead, at the first moment it can
         // actually work: somebody to follow, and the window on screen.
         startCustomUIGridFollow()
-        startCustomUISpeakerFollow()
+        zoomChatClient.onParticipantCountChanged = { [weak self] in
+            self?.refreshActiveSpeakerState()
+        }
+        refreshActiveSpeakerState()
         if speakerTileQuickHidden {
             ChatWindowController.fillSideColumn(layout: workspaceLayout)
             log("Speaker starts hidden (quick-hide mode) \u{2014} chat has the full column; \u{2325}\u{2318}Z shows it.")
         }
     }
 
-    /// The Speaker window hosts Zoom's auto-following active element - the
-    /// clean test of it. Every earlier run was black WITH ONE OR TWO people in
-    /// the room, and the element is documented to operate with three or more,
-    /// so those runs proved nothing. Below three, the window says so and the
-    /// panel's featured tile carries the job.
-    private func startCustomUISpeakerFollow() {
-        customUISpeakerTask?.cancel()
-        customUISpeakerTask = Task { [weak self] in
-            while !Task.isCancelled {
-                guard let self else { return }
-                let slot = ChatWindowController.zoomSlotNSFrame(for: self.workspaceLayout)
-                    ?? NSRect(x: 0, y: 0, width: 505, height: 351)
-                let wantVisible = !self.speakerTileQuickHidden
-                if wantVisible, let view = self.zoomChatClient.activeSpeakerWindowView(frame: slot) {
-                    SpeakerWindowController.show(videoView: view,
-                                                 layout: self.workspaceLayout,
-                                                 visible: true)
-                } else {
-                    SpeakerWindowController.showEmpty(layout: self.workspaceLayout,
-                                                      visible: wantVisible)
-                }
-                try? await Task.sleep(nanoseconds: 2_000_000_000)
-            }
-        }
-    }
 
     /// Keeps the custom-UI gallery in step with who is actually in the meeting.
     ///
@@ -2171,6 +2142,61 @@ final class CoordinatorController: ObservableObject {
     private var customUIGridTask: Task<Void, Never>?
     /// Custom-UI speaker-content chooser. Cancelled with the session.
     private var customUISpeakerTask: Task<Void, Never>?
+
+    /// The dedicated live-speaker window (custom UI). Long-lived controller;
+    /// the SDK element inside it exists only while the meeting has three or
+    /// more participants, per Zoom's documented threshold.
+    private var activeSpeakerWindowController: ActiveSpeakerWindowController?
+
+    /// The documented lifecycle: count crosses three -> window + element;
+    /// drops below -> element stopped and window closed. Called from
+    /// InMeeting and from every join/leave.
+    private func refreshActiveSpeakerState() {
+        guard zoomChatClient.didUseCustomUI, zoomChatClient.isJoined else { return }
+        let count = zoomChatClient.meetingRoster().count
+        if count >= 3 {
+            if activeSpeakerWindowController == nil {
+                let controller = ActiveSpeakerWindowController()
+                activeSpeakerWindowController = controller
+                controller.startActiveSpeaker()
+                // Into the side-column slot, chat tucked below - not the
+                // spec's centered default, which landed on the reading doc.
+                placeActiveSpeakerWindow()
+                log("Live speaker window opened \u{2014} three people are in the class. \u{2325}\u{2318}Z hides and shows it.")
+            } else if activeSpeakerWindowController?.isShowingVideo == false {
+                activeSpeakerWindowController?.startActiveSpeaker()
+            }
+        } else {
+            if let controller = activeSpeakerWindowController {
+                controller.destroyActiveSpeaker()
+                activeSpeakerWindowController = nil
+                ChatWindowController.fillSideColumn(layout: workspaceLayout)
+                log("Live speaker window closed \u{2014} it needs three people in the class.")
+            }
+        }
+    }
+
+    /// Puts the live-speaker window in the side-column slot above the chat -
+    /// the place the speaker tile has always lived - and tucks the chat under
+    /// it. Used when the window opens, when \u{2325}\u{2318}Z reveals it, and
+    /// by Snap Windows Back.
+    private func placeActiveSpeakerWindow() {
+        guard let window = activeSpeakerWindowController?.window else { return }
+        guard let slot = ChatWindowController.zoomSlotNSFrame(for: workspaceLayout) else { return }
+        window.setFrame(slot, display: true)
+        window.orderFront(nil)
+        if let screen = DisplayResolver.mainDisplayScreen() {
+            let ax = CGRect(x: slot.origin.x, y: screen.frame.height - slot.maxY,
+                            width: slot.width, height: slot.height)
+            ChatWindowController.adjustBelowZoom(actualZoomFrameAX: ax, layout: workspaceLayout)
+        }
+    }
+
+    private func tearDownActiveSpeakerWindow() {
+        activeSpeakerWindowController?.destroyActiveSpeaker()
+        activeSpeakerWindowController = nil
+        zoomChatClient.onParticipantCountChanged = nil
+    }
     private var gridCorrectionStreak = 0
     private var gridCorrectionHoldUntilTick = 0
 
@@ -2340,6 +2366,11 @@ final class CoordinatorController: ObservableObject {
         }
         if ChatWindowController.isOpen {
             ChatWindowController.show(chat: zoomChatBridge, layout: workspaceLayout)
+            // The live-speaker window is part of the layout now: a visible one
+            // snaps back into the side-column slot with the chat below it.
+            if activeSpeakerWindowController?.window?.isVisible == true {
+                placeActiveSpeakerWindow()
+            }
             // show() lays the chat out with the tile's slot reserved, which is
             // wrong when the quick-hide default just hid the tile: the column
             // kept a ~350pt hole where no tile was coming. Every other

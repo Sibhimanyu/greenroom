@@ -16,6 +16,19 @@ import Foundation
 
 enum GreenroomScene {
 
+    /// What setting up the scene actually achieved, so the caller can tell the
+    /// user rather than leaving them to notice a black picture themselves.
+    struct SetupResult {
+        var webcamActive: Bool
+        /// The screen capture is present AND producing frames.
+        var screenCaptureLive: Bool
+        /// A saved display choice was abandoned because it is not plugged in.
+        var displayFellBack: Bool
+        /// The display actually being captured, for the status log.
+        var displayLabel: String?
+
+    }
+
     static let sceneName = "Greenroom"
     static let screenSourceName = "Greenroom Screen"
     static let webcamSourceName = "Greenroom Webcam"
@@ -28,6 +41,43 @@ enum GreenroomScene {
         FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("Greenroom", isDirectory: true)
     }
+
+    /// One folder per session, holding that class's recording and its clips.
+    ///
+    /// Recordings used to land flat in `recordingsDirectory`, named by OBS's own
+    /// timestamp, so a term's worth of classes was a wall of identical-looking
+    /// files. A folder per session gives the clips somewhere to live and gives
+    /// the class a name a human chose.
+    ///
+    /// The date is always present even when a name was given: two runs of the
+    /// same class on the same day would otherwise collide, and a teacher who
+    /// records the same lesson twice is exactly who needs to tell them apart.
+    static func sessionFolderName(className: String, started: Date) -> String {
+        let stamp = sessionStampFormatter.string(from: started)
+        let cleaned = sanitizedClassName(className)
+        return cleaned.isEmpty ? "Class - \(stamp)" : "\(cleaned) - \(stamp)"
+    }
+
+    /// Trims a typed class name down to something safe as a folder name.
+    ///
+    /// `/` and `:` are the two characters the filesystem and Finder disagree
+    /// about, and a name long enough to break path limits is not a name anyone
+    /// meant to type. Runs of whitespace collapse so a stray double space does
+    /// not produce two different folders for the same class.
+    static func sanitizedClassName(_ raw: String) -> String {
+        let stripped = raw.components(separatedBy: CharacterSet(charactersIn: "/:\\"))
+            .joined(separator: "-")
+        let collapsed = stripped.split(whereSeparator: \.isWhitespace).joined(separator: " ")
+        return String(collapsed.prefix(60)).trimmingCharacters(in: .whitespaces)
+    }
+
+    private static let sessionStampFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        // Hyphens, not colons: a colon is a path separator to Finder and shows
+        // up as a slash in the sidebar.
+        formatter.dateFormat = "yyyy-MM-dd HH-mm"
+        return formatter
+    }()
     // MARK: Recording disk space
 
     /// How much room is left for recordings, in bytes, on the volume that
@@ -46,15 +96,23 @@ enum GreenroomScene {
     }
 
     /// What the recordings themselves currently occupy.
+    ///
+    /// Walks the tree rather than the top level: recordings live in a folder per
+    /// session now, so a flat scan would have reported the disk filling up with
+    /// nothing in it.
     static var recordingsUsedBytes: Int64 {
         let directory = recordingsDirectory
-        let urls = (try? FileManager.default.contentsOfDirectory(
+        guard let walker = FileManager.default.enumerator(
             at: directory,
-            includingPropertiesForKeys: [.fileSizeKey],
-            options: [.skipsHiddenFiles])) ?? []
-        return urls.reduce(into: Int64(0)) { total, url in
-            total += Int64((try? url.resourceValues(forKeys: [.fileSizeKey]))?.fileSize ?? 0)
+            includingPropertiesForKeys: [.fileSizeKey, .isRegularFileKey],
+            options: [.skipsHiddenFiles]) else { return 0 }
+        var total: Int64 = 0
+        for case let url as URL in walker {
+            let values = try? url.resourceValues(forKeys: [.fileSizeKey, .isRegularFileKey])
+            guard values?.isRegularFile == true else { continue }
+            total += Int64(values?.fileSize ?? 0)
         }
+        return total
     }
 
     /// How worried to be about the space left.
@@ -88,18 +146,33 @@ enum GreenroomScene {
     static let chromaKeyFilterName = "Greenroom Chroma Key"
     static let shapeMaskFilterName = "Greenroom Shape Mask"
     static let screenMaskFilterName = "Greenroom Screen Panel Mask"
+    static let cropFilterName = "Greenroom Square Crop"
 
     struct BubbleLayout {
         var widthFraction: Double = 0.24
         var rightInset: Double = 0.045
         var bottomInset: Double = 0.06
+        /// Cutout's own geometry, because a cutout is not a bubble - see
+        /// `layoutCutout`. It gets its own two numbers rather than borrowing
+        /// three that mean something else: the frame keeps the camera's real
+        /// aspect instead of being square, so one "width fraction" cannot
+        /// describe it.
+        ///
+        /// There is deliberately no cutout bottom inset. Flush with the canvas
+        /// bottom is what makes the person rise from the screen edge; lift them
+        /// off it and they hover above nothing, which is the exact bug the
+        /// comment on `layoutCutout` records being found in use.
+        var cutoutHeightFraction: Double = 0.5
+        var cutoutRightInset: Double = 0.02
         var shape: WebcamShape = .circle
     }
 
     /// Returns true when the webcam made it into the composite, false for
     /// a screen-only session (no physical camera connected).
     @discardableResult
-    static func ensureConfigured(client: OBSWebSocketClient, bubble: BubbleLayout = BubbleLayout()) async throws -> Bool {
+    static func ensureConfigured(client: OBSWebSocketClient,
+                                 bubble: BubbleLayout = BubbleLayout(),
+                                 preferredDisplayUUID: String = "") async throws -> SetupResult {
         // OBS remembers whether the virtual cam was running when it last
         // quit and auto-resumes it on launch - confirmed by testing, that
         // left an active output blocking SetVideoSettings below ("Video
@@ -126,16 +199,26 @@ enum GreenroomScene {
         // callback and segfaulted OBS entirely (EXC_BAD_ACCESS in
         // screen_stream_audio_update). Only ever reconfigure a source that
         // isn't alive yet - remove-and-recreate instead of patch-in-place.
-        guard let displayUUID = LocalDeviceResolver.mainDisplayUUID else {
+        // An explicit choice wins, but only while that display is actually
+        // plugged in. Capturing a display that is not there is what produced
+        // a black picture, so an absent choice falls back to the main display
+        // and says so rather than failing silently.
+        let resolved = LocalDeviceResolver.resolveCaptureDisplay(preferred: preferredDisplayUUID)
+        guard let displayUUID = resolved.uuid else {
             throw NSError(domain: "Greenroom", code: 23, userInfo: [
-                NSLocalizedDescriptionKey: "Couldn't resolve the main display's UUID."
+                NSLocalizedDescriptionKey: "Couldn't resolve a display to capture."
             ])
         }
+        let displayLabel = LocalDeviceResolver.activeDisplays()
+            .first { $0.id == displayUUID }?.label
         // No webcam is NOT an error anymore: the session runs screen-only
         // (the class still gets the shared screen; the teacher's video
         // returns next Start once a camera is back). Reported to the
         // caller via the return value so the status log can say so.
         let webcamUID = LocalDeviceResolver.physicalCameraUID()
+        // Still resolved, because `device_name` is part of what makes the OBS
+        // source work - see the settings written below.
+        let cameraLabel = webcamUID.flatMap { LocalDeviceResolver.cameraName(uid: $0) }
 
         // capture_audio: false is load-bearing, not tidiness. OBS's macOS
         // ScreenCaptureKit source sets up a system-audio receive queue
@@ -146,16 +229,50 @@ enum GreenroomScene {
         // webcam; recordings capture the mic separately), so turning the
         // queue off removes the crash path entirely. Recreated (not
         // patched) if an older scene left it on - see isCorrectlyConfigured.
+        let screenSettings: [String: Any] = ["type": 0, "display_uuid": displayUUID, "capture_audio": false]
         try await ensureInput(client: client, name: screenSourceName, kind: screenKind,
-                               settings: ["type": 0, "display_uuid": displayUUID, "capture_audio": false],
+                               settings: screenSettings,
                                isCorrectlyConfigured: {
                                    ($0["display_uuid"] as? String) == displayUUID
                                        && ($0["capture_audio"] as? Bool) == false
                                })
+
+        // Verify, then repair once. ensureInput can only check what OBS
+        // REPORTS about a source; this checks whether the thing actually
+        // produces pixels. A source that exists by name, matches on settings,
+        // and yields nothing is precisely the state that showed a black
+        // capture with the webcam still visible.
+        var screenLive = try await screenCaptureIsLive(client: client)
+        if !screenLive {
+            await removeInputAndWait(client: client, name: screenSourceName)
+            try await createInput(client: client, name: screenSourceName,
+                                  kind: screenKind, settings: screenSettings)
+            screenLive = try await screenCaptureIsLive(client: client)
+        }
         if let webcamUID {
+            // `device` is the key av_capture_input_v2 actually reads. `uid` is
+            // the OLD v1 name, and writing only that is why the source came up
+            // with an empty Device field and a black picture: OBS accepted the
+            // setting, stored it, and never looked at it. Confirmed against the
+            // running OBS, which lists `device` among its properties with
+            // exactly the AVFoundation uniqueIDs used here, and answers
+            // "Unable to find a property by that name" for `uid`.
+            //
+            // Both are written because the input kind is resolved at runtime
+            // (see bestInputKind) and could still come back as v1 on an older
+            // OBS. An unknown key is ignored, so carrying both costs nothing
+            // and covers either.
+            let webcamSettings: [String: Any] = [
+                "device": webcamUID,
+                "device_name": cameraLabel ?? "",
+                "uid": webcamUID
+            ]
             try await ensureInput(client: client, name: webcamSourceName, kind: webcamKind,
-                                   settings: ["uid": webcamUID],
-                                   isCorrectlyConfigured: { ($0["uid"] as? String) == webcamUID })
+                                   settings: webcamSettings,
+                                   isCorrectlyConfigured: {
+                                       ($0["device"] as? String) == webcamUID
+                                           || ($0["uid"] as? String) == webcamUID
+                                   })
 
             try await ensureFilter(client: client, source: webcamSourceName, name: chromaKeyFilterName, kind: chromaKind)
             try await setChromaKey(client: client, enabled: bubble.shape.usesChromaKey, kind: chromaKind)
@@ -170,7 +287,7 @@ enum GreenroomScene {
             // isn't implicated in any crash) forces OBS to re-attempt opening it.
             _ = try? await client.request("SetInputSettings", data: [
                 "inputName": webcamSourceName,
-                "inputSettings": ["uid": webcamUID],
+                "inputSettings": webcamSettings,
                 "overlay": true
             ])
             try await setWebcamItemEnabled(client: client, enabled: true)
@@ -197,7 +314,10 @@ enum GreenroomScene {
         try await enforceLayerOrder(client: client)
 
         try await client.request("SetCurrentProgramScene", data: ["sceneName": sceneName])
-        return webcamUID != nil
+        return SetupResult(webcamActive: webcamUID != nil,
+                           screenCaptureLive: screenLive,
+                           displayFellBack: resolved.fellBack,
+                           displayLabel: displayLabel)
     }
 
     /// Shows/hides the webcam's scene item - screen-only sessions (no
@@ -273,6 +393,27 @@ enum GreenroomScene {
     /// second scaling/distortion pass between them) to the screen source's
     /// real native pixel size, and stretches that source to exactly fill it.
     /// Since destination == source size, "stretch" introduces no distortion.
+    /// Whether the screen capture is actually ALIVE: present in the scene and
+    /// reporting real dimensions.
+    ///
+    /// Polls rather than judging on one read, because a freshly created
+    /// source honestly reports 0x0 until ScreenCaptureKit delivers its first
+    /// frame. Checking dimensions and not just the source list is the point:
+    /// the failure mode being caught here is a source that exists by name,
+    /// passes a settings comparison, and produces nothing.
+    static func screenCaptureIsLive(client: OBSWebSocketClient) async throws -> Bool {
+        for _ in 0..<12 {
+            let items = try await sceneItems(client: client)
+            if let item = items.first(where: { ($0["sourceName"] as? String) == screenSourceName }),
+               let transform = item["sceneItemTransform"] as? [String: Any],
+               let width = transform["sourceWidth"] as? Double, width > 0 {
+                return true
+            }
+            try? await Task.sleep(nanoseconds: 250_000_000)
+        }
+        return false
+    }
+
     private static func fitCanvasToScreenSource(client: OBSWebSocketClient) async throws -> (width: Int, height: Int) {
         let items = try await sceneItems(client: client)
         guard let screenItem = items.first(where: { ($0["sourceName"] as? String) == screenSourceName }),
@@ -376,10 +517,25 @@ enum GreenroomScene {
                 // the scene, rather than remove-and-recreate. That reuse
                 // also avoids re-triggering OBS's ScreenCaptureKit
                 // audio-teardown crash that a screen-source removal risks.
-                _ = try? await client.request("CreateSceneItem", data: [
-                    "sceneName": sceneName, "sourceName": name
-                ])
-                return
+                //
+                // The result is CHECKED, and that matters. It used to be
+                // `try?`, and the error it threw away was the whole bug:
+                // unplug the captured display and OBS keeps the source's
+                // NAME while marking the source removed, so this call comes
+                // back "Tried to add a removed source to a scene". Returning
+                // as though it had worked left the scene with no screen
+                // capture at all - a black picture with the webcam still
+                // showing, reported live on a single-display setup. A
+                // surviving name is not a surviving source, so fall through
+                // and rebuild instead of trusting it.
+                do {
+                    _ = try await client.request("CreateSceneItem", data: [
+                        "sceneName": sceneName, "sourceName": name
+                    ])
+                    return
+                } catch {
+                    // Zombie: fall through to remove-and-recreate below.
+                }
             }
             // Misconfigured: remove it entirely and wait until it's really
             // gone before recreating - RemoveInput returns before OBS has
@@ -492,6 +648,79 @@ enum GreenroomScene {
         ])
     }
 
+    /// The camera's own width/height, or 16:9 when OBS cannot tell us yet -
+    /// the same fallback `layoutCutout` uses, for the same reason.
+    private static func webcamSourceAspect(client: OBSWebSocketClient) async throws -> Double {
+        let items = try await sceneItems(client: client)
+        guard let webcam = items.first(where: { ($0["sourceName"] as? String) == webcamSourceName }),
+              let transform = webcam["sceneItemTransform"] as? [String: Any],
+              let width = transform["sourceWidth"] as? Double,
+              let height = transform["sourceHeight"] as? Double,
+              width > 0, height > 0 else { return 16.0 / 9.0 }
+        return width / height
+    }
+
+    /// Centre-crops the camera to a square, ahead of the shape mask.
+    ///
+    /// Only the circle wants this. A circle drawn on a 16:9 frame is an
+    /// ellipse, and a 16:9 frame fitted into a square box leaves 21.9% of that
+    /// box empty above and below - so a bubble dragged flush into the corner
+    /// still showed a gap, because the BOX was in the corner and the picture
+    /// was not. Cropping square fixes both at once: the mask draws a true
+    /// circle, and a square source fills a square box exactly.
+    ///
+    /// It costs 43.75% of the camera's width. That is inherent to a circular
+    /// bubble, not a bug, which is why the rectangular shapes keep their full
+    /// frame and get aspect-matched bounds instead.
+    ///
+    /// Index 0 is load-bearing: the mask is stretched over whatever reaches it,
+    /// so cropping AFTER the mask would stretch an ellipse rather than produce
+    /// a circle.
+    private static func ensureSquareCrop(client: OBSWebSocketClient,
+                                         enabled: Bool, aspect: Double) async throws {
+        let list = try await client.request("GetSourceFilterList", data: ["sourceName": webcamSourceName])
+        let filters = (list["filters"] as? [[String: Any]]) ?? []
+        let exists = filters.contains { ($0["filterName"] as? String) == cropFilterName }
+
+        guard enabled, aspect > 1 else {
+            if exists {
+                _ = try? await client.request("RemoveSourceFilter", data: [
+                    "sourceName": webcamSourceName, "filterName": cropFilterName
+                ])
+            }
+            return
+        }
+
+        // Crop is in SOURCE pixels, so it needs the real dimensions, not the
+        // aspect: a 1280x720 camera loses 280 from each side, a 1920x1080 one
+        // loses 420.
+        let items = try await sceneItems(client: client)
+        guard let webcam = items.first(where: { ($0["sourceName"] as? String) == webcamSourceName }),
+              let transform = webcam["sceneItemTransform"] as? [String: Any],
+              let width = transform["sourceWidth"] as? Double,
+              let height = transform["sourceHeight"] as? Double,
+              width > height else { return }
+        let side = Int(((width - height) / 2).rounded())
+        let settings: [String: Any] = [
+            "relative": false, "left": side, "right": side, "top": 0, "bottom": 0
+        ]
+
+        if exists {
+            _ = try await client.request("SetSourceFilterSettings", data: [
+                "sourceName": webcamSourceName, "filterName": cropFilterName,
+                "filterSettings": settings, "overlay": false
+            ])
+        } else {
+            _ = try await client.request("CreateSourceFilter", data: [
+                "sourceName": webcamSourceName, "filterName": cropFilterName,
+                "filterKind": "crop_filter", "filterSettings": settings
+            ])
+        }
+        _ = try? await client.request("SetSourceFilterIndex", data: [
+            "sourceName": webcamSourceName, "filterName": cropFilterName, "filterIndex": 0
+        ])
+    }
+
     /// Adds/updates/removes the shape-mask filter to match the chosen
     /// WebcamShape. Square needs no filter at all (the rectangular bounding
     /// box from `positionBubble` already does the job); circle and rounded
@@ -500,11 +729,18 @@ enum GreenroomScene {
     /// PNG - confirmed against OBS's own bundled mask_alpha_filter.effect
     /// shader rather than guessed.
     private static func ensureShapeMask(client: OBSWebSocketClient, shape: WebcamShape) async throws {
+        // Crop FIRST, then mask against whatever aspect survives the crop. The
+        // mask is stretched over the source, so the two have to agree or the
+        // shape comes out skewed - see MaskImageGenerator.maskImageURL.
+        let camera = try await webcamSourceAspect(client: client)
+        try await ensureSquareCrop(client: client, enabled: shape.cropsToSquare, aspect: camera)
+        let maskAspect = shape.cropsToSquare ? 1 : camera
+
         let list = try await client.request("GetSourceFilterList", data: ["sourceName": webcamSourceName])
         let filters = (list["filters"] as? [[String: Any]]) ?? []
         let exists = filters.contains { ($0["filterName"] as? String) == shapeMaskFilterName }
 
-        guard let maskURL = MaskImageGenerator.maskImageURL(for: shape) else {
+        guard let maskURL = MaskImageGenerator.maskImageURL(for: shape, aspect: maskAspect) else {
             if exists {
                 _ = try? await client.request("RemoveSourceFilter", data: [
                     "sourceName": webcamSourceName, "filterName": shapeMaskFilterName
@@ -533,12 +769,37 @@ enum GreenroomScene {
     /// the whole scene instead. Both paths reset what the other one
     /// changes, so switching shapes between sessions never leaves stale
     /// transforms or masks behind.
+    /// Re-places the webcam DURING a live session.
+    ///
+    /// ensureConfigured cannot be used mid-session: its first act is
+    /// StopVirtualCam, because SetVideoSettings is refused while an output is
+    /// active. That is why changing the shape used to do nothing until the next
+    /// Start - the whole call was gated off while running.
+    ///
+    /// Everything that actually moves or reshapes the webcam is a filter or a
+    /// scene-item transform, and OBS accepts both with the virtual camera
+    /// running. This is that subset and nothing else: no StopVirtualCam, no
+    /// SetVideoSettings, no source creation. The canvas is read rather than set.
+    static func applyLiveLayout(client: OBSWebSocketClient, bubble: BubbleLayout) async throws {
+        let video = try await client.request("GetVideoSettings")
+        let width = (video["baseWidth"] as? Int) ?? 1920
+        let height = (video["baseHeight"] as? Int) ?? 1080
+
+        let chromaKind = try await bestFilterKind(client: client,
+                                                  containing: ["chroma_key_filter_v2", "chroma_key"])
+        try await setChromaKey(client: client, enabled: bubble.shape.usesChromaKey, kind: chromaKind)
+        try await ensureShapeMask(client: client, shape: bubble.shape)
+        try await layoutScene(client: client, layout: bubble, canvasWidth: width, canvasHeight: height)
+        try await enforceLayerOrder(client: client)
+    }
+
     private static func layoutScene(client: OBSWebSocketClient, layout: BubbleLayout, canvasWidth: Int, canvasHeight: Int) async throws {
         if layout.shape.isPresenterStyle {
             try await layoutPresenter(client: client, canvasWidth: canvasWidth, canvasHeight: canvasHeight)
         } else if layout.shape == .cutout {
             try await ensureScreenPanelMask(client: client, enabled: false, canvasWidth: canvasWidth, canvasHeight: canvasHeight)
-            try await layoutCutout(client: client, canvasWidth: canvasWidth, canvasHeight: canvasHeight)
+            try await layoutCutout(client: client, layout: layout,
+                                   canvasWidth: canvasWidth, canvasHeight: canvasHeight)
         } else {
             try await ensureScreenPanelMask(client: client, enabled: false, canvasWidth: canvasWidth, canvasHeight: canvasHeight)
             try await positionBubble(client: client, layout: layout, canvasWidth: canvasWidth, canvasHeight: canvasHeight)
@@ -554,7 +815,8 @@ enum GreenroomScene {
     /// larger (half the canvas height of headroom), and its bottom edge
     /// sits FLUSH with the canvas bottom - the person rises from the
     /// screen edge like a news presenter.
-    private static func layoutCutout(client: OBSWebSocketClient, canvasWidth: Int, canvasHeight: Int) async throws {
+    private static func layoutCutout(client: OBSWebSocketClient, layout: BubbleLayout,
+                                     canvasWidth: Int, canvasHeight: Int) async throws {
         let items = try await sceneItems(client: client)
         guard let webcam = items.first(where: { ($0["sourceName"] as? String) == webcamSourceName }),
               let itemId = webcam["sceneItemId"] as? Int else { return }
@@ -566,13 +828,15 @@ enum GreenroomScene {
         let sourceHeight = (transform?["sourceHeight"] as? Double) ?? 0
         let aspect = (sourceWidth > 0 && sourceHeight > 0) ? sourceWidth / sourceHeight : 16.0 / 9.0
 
-        let frameHeight = height * 0.5
+        // Height and horizontal position are the teacher's now; the bottom edge
+        // is not, and stays flush. See BubbleLayout for why.
+        let frameHeight = height * layout.cutoutHeightFraction
         let frameWidth = frameHeight * aspect
         _ = try await client.request("SetSceneItemTransform", data: [
             "sceneName": sceneName,
             "sceneItemId": itemId,
             "sceneItemTransform": [
-                "positionX": width - width * 0.02 - frameWidth,
+                "positionX": width - width * layout.cutoutRightInset - frameWidth,
                 "positionY": height - frameHeight,
                 "boundsType": "OBS_BOUNDS_STRETCH",
                 "boundsWidth": frameWidth,
@@ -588,8 +852,12 @@ enum GreenroomScene {
     /// Record can be pressed. Best-effort (try?): a failure here should
     /// never fail the session, it just means OBS's own folder setting
     /// stays in effect.
-    private static func configureRecordingPath(client: OBSWebSocketClient) async {
-        let directory = recordingsDirectory
+    /// Points OBS at one specific folder. Called again just before each
+    /// StartRecord, because the folder is now per-session rather than fixed.
+    ///
+    /// Best-effort by design: a failure here means the recording lands in OBS's
+    /// own folder, which is untidy but not lost.
+    static func pointRecordingAt(_ directory: URL, client: OBSWebSocketClient) async {
         try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         for (category, name) in [("SimpleOutput", "FilePath"), ("AdvOut", "RecFilePath")] {
             _ = try? await client.request("SetProfileParameter", data: [
@@ -598,6 +866,87 @@ enum GreenroomScene {
                 "parameterValue": directory.path
             ])
         }
+    }
+
+    // MARK: Replay buffer
+
+    /// How much of the recent past stays clippable. Matches the longest clip
+    /// shortcut, so ⌥⌘5 always has five minutes to hand back.
+    static let replayBufferSeconds = 300
+
+    /// Arms OBS's rolling buffer of the last few minutes.
+    ///
+    /// This is what makes the clip shortcuts work when the teacher never pressed
+    /// Record. The whole class is not on disk in that case, so the last five
+    /// minutes have to be held somewhere - and OBS already has a ring buffer
+    /// built for exactly this. Roughly 300MB of RAM at five minutes, released
+    /// when the session ends.
+    ///
+    /// In memory rather than on disk on purpose. A teacher who chose not to
+    /// record a class of children should end that class with nothing written
+    /// down, and a buffer only becomes a file when the shortcut is pressed.
+    ///
+    /// Both output modes get the parameters, same as the recording path: either
+    /// could be the profile's active one, and StartReplayBuffer refuses outright
+    /// if the active mode has the buffer switched off.
+    static func configureReplayBuffer(client: OBSWebSocketClient,
+                                      enabled: Bool,
+                                      seconds: Int = replayBufferSeconds) async {
+        for category in ["SimpleOutput", "AdvOut"] {
+            for (name, value) in [("RecRB", enabled ? "true" : "false"),
+                                  ("RecRBTime", String(seconds))] {
+                _ = try? await client.request("SetProfileParameter", data: [
+                    "parameterCategory": category,
+                    "parameterName": name,
+                    "parameterValue": value
+                ])
+            }
+        }
+    }
+
+    static func replayBufferIsRunning(client: OBSWebSocketClient) async -> Bool {
+        let status = try? await client.request("GetReplayBufferStatus")
+        return (status?["outputActive"] as? Bool) == true
+    }
+
+    /// Writes the ring out and returns the file OBS produced.
+    ///
+    /// The save is asynchronous inside OBS, and GetLastReplayBufferReplay keeps
+    /// reporting the PREVIOUS save until the new one lands - so the previous
+    /// path is read first and the result polled until it changes. Without that
+    /// the second clip of a lesson would hand back the first clip's file.
+    static func saveReplayBuffer(client: OBSWebSocketClient,
+                                 timeout: TimeInterval = 12) async -> URL? {
+        let before = (try? await client.request("GetLastReplayBufferReplay"))?["savedReplayPath"] as? String
+        guard (try? await client.request("SaveReplayBuffer")) != nil else { return nil }
+
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            try? await Task.sleep(nanoseconds: 200_000_000)
+            guard let path = (try? await client.request("GetLastReplayBufferReplay"))?["savedReplayPath"] as? String,
+                  !path.isEmpty, path != before else { continue }
+            // Reported and written are not the same instant. Wait for the size
+            // to settle before handing the file to AVFoundation, or a trim can
+            // read a half-flushed tail.
+            let url = URL(fileURLWithPath: path)
+            var previousSize = -1
+            for _ in 0..<25 {
+                let size = (try? url.resourceValues(forKeys: [.fileSizeKey]))?.fileSize ?? 0
+                if size > 0, size == previousSize { return url }
+                previousSize = size
+                try? await Task.sleep(nanoseconds: 200_000_000)
+            }
+            return url
+        }
+        return nil
+    }
+
+    private static func configureRecordingPath(client: OBSWebSocketClient) async {
+        // The root, as a floor. The coordinator re-points this at the session's
+        // own folder immediately before the tape rolls - doing it here as well
+        // means a recording started by some path we did not anticipate still
+        // lands somewhere sensible rather than in OBS's default folder.
+        await pointRecordingAt(recordingsDirectory, client: client)
         // Fragmented MP4: the file is written as self-contained fragments,
         // so a crash/power-cut mid-recording loses at most the last few
         // seconds instead of the whole file (a non-fragmented mp4/mov with
@@ -620,9 +969,22 @@ enum GreenroomScene {
 
         let width = Double(canvasWidth)
         let height = Double(canvasHeight)
-        let diameter = width * layout.widthFraction
-        let x = width - width * layout.rightInset - diameter
-        let y = height - height * layout.bottomInset - diameter
+
+        // The box follows the shape, not the other way round. It used to be
+        // square for everything, which fitted a 16:9 camera inside a square and
+        // left 21.9% of the box empty top and bottom - so a bubble dragged
+        // flush into the corner still showed a gap, because the box was in the
+        // corner and the picture inside it was not.
+        //
+        // Circle crops the camera square (see ensureSquareCrop), so a square
+        // box fills exactly. The rectangular shapes keep their full frame and
+        // get a box shaped like it. Either way SCALE_INNER now has nothing left
+        // to letterbox.
+        let boxWidth = width * layout.widthFraction
+        let aspect = layout.shape.cropsToSquare ? 1 : try await webcamSourceAspect(client: client)
+        let boxHeight = boxWidth / aspect
+        let x = width - width * layout.rightInset - boxWidth
+        let y = height - height * layout.bottomInset - boxHeight
 
         _ = try await client.request("SetSceneItemTransform", data: [
             "sceneName": sceneName,
@@ -631,8 +993,8 @@ enum GreenroomScene {
                 "positionX": x,
                 "positionY": y,
                 "boundsType": "OBS_BOUNDS_SCALE_INNER",
-                "boundsWidth": diameter,
-                "boundsHeight": diameter
+                "boundsWidth": boxWidth,
+                "boundsHeight": boxHeight
             ]
         ])
     }

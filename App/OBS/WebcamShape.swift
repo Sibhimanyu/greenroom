@@ -40,4 +40,12 @@ enum WebcamShape: String, CaseIterable, Identifiable {
     /// Presenter mode reshapes the whole scene (screen panel + big keyed
     /// person), not just the webcam item.
     var isPresenterStyle: Bool { self == .presenterLarge }
+
+    /// Whether the camera is centre-cropped to a square before the shape mask.
+    ///
+    /// Only the circle. A circle mask stretched over a 16:9 frame is an
+    /// ellipse, and a 16:9 frame inside a square box letterboxes. The
+    /// rectangular shapes have neither problem and would only lose 43.75% of
+    /// the camera's width for nothing.
+    var cropsToSquare: Bool { self == .circle }
 }

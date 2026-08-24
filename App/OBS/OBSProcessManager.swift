@@ -90,6 +90,96 @@ final class OBSProcessManager {
         }
     }
 
+    private static var profilesDirectory: URL {
+        FileManager.default
+            .homeDirectoryForCurrentUser
+            .appendingPathComponent("Library/Application Support/obs-studio/basic/profiles")
+    }
+
+    /// Turns on OBS's replay buffer in the profile, BEFORE launch.
+    ///
+    /// Exists for the same reason seedWebSocketConfig does: OBS reads this at
+    /// startup and never again. SetProfileParameter over the websocket writes
+    /// the value happily and reports success, but the replay-buffer OUTPUT is
+    /// only created when OBS reads the profile - so arming it inside a running
+    /// instance fails with 604 "Replay buffer is not available" no matter how
+    /// correct the config looks from the outside.
+    ///
+    /// Measured against OBS 32.2.2 / obs-websocket 5.7.4: with RecRB=true and
+    /// RecRBTime=300 confirmed present in both output sections,
+    /// GetReplayBufferStatus and StartReplayBuffer both returned 604 in the
+    /// running instance and both succeeded immediately after a relaunch.
+    ///
+    /// Always enabled in the config, never conditional. An idle replay-buffer
+    /// output costs nothing until something starts it, and the runtime setting
+    /// decides that - so the config can simply always be ready, which removes
+    /// the case where a teacher turns the feature on and it does not work until
+    /// the next launch.
+    ///
+    /// Every profile, because OBS 32 no longer records the current profile
+    /// anywhere this can reliably read, and enabling an idle buffer in a profile
+    /// nobody is using changes nothing.
+    static func seedReplayBufferConfig(seconds: Int) {
+        guard let profiles = try? FileManager.default.contentsOfDirectory(
+            at: profilesDirectory, includingPropertiesForKeys: nil) else { return }
+        for profile in profiles {
+            let ini = profile.appendingPathComponent("basic.ini")
+            guard let text = try? String(contentsOf: ini, encoding: .utf8) else { continue }
+            var updated = text
+            for section in ["SimpleOutput", "AdvOut"] {
+                updated = setting(updated, section: section, key: "RecRB", value: "true")
+                updated = setting(updated, section: section, key: "RecRBTime", value: String(seconds))
+            }
+            if updated != text {
+                try? updated.write(to: ini, atomically: true, encoding: .utf8)
+            }
+        }
+    }
+
+    /// Sets one key inside one section of an INI, adding the key - or the whole
+    /// section - when it is missing.
+    ///
+    /// Line-based rather than parse-and-reserialise: this is OBS's file, it
+    /// rewrites it itself, and a round trip through a dictionary would reorder
+    /// everything and drop anything the parser did not model.
+    static func setting(_ text: String, section: String, key: String, value: String) -> String {
+        var lines = text.components(separatedBy: "\n")
+        let header = "[\(section)]"
+        var inSection = false
+        var sectionSeen = false
+        var replaced = false
+        var insertAt: Int?
+
+        for (index, line) in lines.enumerated() {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            if trimmed.hasPrefix("[") && trimmed.hasSuffix("]") {
+                if inSection, !replaced, insertAt == nil { insertAt = index }
+                inSection = (trimmed == header)
+                if inSection { sectionSeen = true }
+                continue
+            }
+            guard inSection, trimmed.hasPrefix("\(key)=") else { continue }
+            lines[index] = "\(key)=\(value)"
+            replaced = true
+        }
+
+        if replaced { return lines.joined(separator: "\n") }
+        if !sectionSeen {
+            // A profile without the section at all - append it whole.
+            var appended = lines
+            if appended.last?.isEmpty == false { appended.append("") }
+            appended.append(header)
+            appended.append("\(key)=\(value)")
+            appended.append("")
+            return appended.joined(separator: "\n")
+        }
+        // Section exists but the key does not: put it at the section's end,
+        // which is the end of the file when nothing follows.
+        let target = insertAt ?? lines.count
+        lines.insert("\(key)=\(value)", at: target)
+        return lines.joined(separator: "\n")
+    }
+
     func launch() async throws {
         guard let url = Self.obsAppURL else {
             throw NSError(domain: "Greenroom", code: 10, userInfo: [
@@ -99,6 +189,8 @@ final class OBSProcessManager {
 
         Self.clearStaleSentinels()
         try seedWebSocketConfig()
+        // Before launch, for the same reason as the websocket config above.
+        Self.seedReplayBufferConfig(seconds: GreenroomScene.replayBufferSeconds)
 
         let configuration = NSWorkspace.OpenConfiguration()
         configuration.arguments = [

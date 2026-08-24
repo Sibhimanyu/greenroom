@@ -29,6 +29,12 @@ final class CoordinatorController: ObservableObject {
         peopleViewTask?.cancel()
         stopShapePreview()
         ChatWindowController.close()
+        customUIGridTask?.cancel()
+        customUIGridTask = nil
+        customUISpeakerTask?.cancel()
+        SpeakerWindowController.close()
+        ParticipantGridWindowController.close()
+        zoomChatClient.releaseCustomUIVideo()
         zoomChatClient.leave() // ends the meeting if we're hosting it
     }
 
@@ -221,6 +227,86 @@ final class CoordinatorController: ObservableObject {
     }
 
     @Published private(set) var statusLines: [String] = []
+
+    /// How far the start has got, in steps a teacher can name.
+    ///
+    /// `statusLines` already carried all of this and carried it well, but as
+    /// prose in a log that is collapsed by default, in the main window, usually
+    /// on a different display from the one being watched. This is the same
+    /// information shaped so a panel can draw it.
+    @Published private(set) var startReadiness = ParticipantGridWindowController.Readiness() {
+        didSet { syncReadinessHUD() }
+    }
+
+    /// The HUD carries the start only when the participant panel cannot.
+    ///
+    /// With a reference display the panel owns a whole screen and nothing can
+    /// cover it, so it does the job and the HUD would just be a second copy of
+    /// the same list. Without one the panel is either off - it is opt-in on a
+    /// single display and off by default - or it is an ordinary window that the
+    /// tiling step is about to bury. Either way, nothing on that screen is
+    /// telling the teacher what is happening, which is what the HUD is for.
+    private func syncReadinessHUD() {
+        // Custom UI only. Readiness exists because that mode replaces Zoom's
+        // windows with Greenroom's own, so there is genuinely nothing on screen
+        // during a start. In default Zoom-UI mode the teacher already has Zoom's
+        // interface coming up in front of them and did not ask for another
+        // floating surface on top of it.
+        guard customUIMode else {
+            ReadinessHUDController.close()
+            return
+        }
+        guard peopleViewTargetScreen() == nil else {
+            ReadinessHUDController.close()
+            return
+        }
+        guard let screen = DisplayResolver.mainDisplayScreen() ?? NSScreen.main else { return }
+        ReadinessHUDController.show(startReadiness, on: screen)
+    }
+
+    /// The steps of a start, in the order they finish.
+    ///
+    /// Camera and meeting overlap in reality - the REST call and the SDK auth
+    /// run concurrently with OBS coming up - but they are reported in sequence,
+    /// because the meeting cannot COMPLETE before the virtual camera is live and
+    /// that dependency is the one the teacher is actually waiting on.
+    enum StartStep: Int, CaseIterable {
+        case workspace, camera, meeting, recording, tiling
+
+        var label: String {
+            switch self {
+            case .workspace: return "Workspace"
+            case .camera: return "Virtual camera"
+            case .meeting: return "Meeting"
+            case .recording: return "Recording"
+            case .tiling: return "Tiling windows"
+            }
+        }
+    }
+
+    private func resetStartReadiness() {
+        startReadiness = .init(steps: StartStep.allCases.map {
+            .init(label: $0.label, state: .pending)
+        })
+    }
+
+    private func mark(_ step: StartStep, _ state: ParticipantGridWindowController.Readiness.State) {
+        guard startReadiness.steps.indices.contains(step.rawValue) else { return }
+        startReadiness.steps[step.rawValue].state = state
+    }
+
+    /// Ends the progress display. Clearing the steps makes `isLive` true, which
+    /// is what returns the panel to its ordinary behaviour.
+    private func finishStartReadiness() {
+        startReadiness = .init()
+    }
+
+    private func failStartReadiness(_ message: String) {
+        if let active = startReadiness.steps.firstIndex(where: { $0.state == .active }) {
+            startReadiness.steps[active].state = .failed
+        }
+        startReadiness.failure = message
+    }
     /// True only during the Start transition (pipeline + meeting setup).
     /// `virtualCamActive` is the "session is live" flag the buttons key
     /// off once starting completes.
@@ -371,7 +457,7 @@ final class CoordinatorController: ObservableObject {
             zoomChatClient.setHideSelfView(hideSelfView)
         }
     }
-    /// The \u{2303}\u{2325}\u{2318}Z quick-hide MODE. Off: the normal
+    /// The \u{2325}\u{2318}Z quick-hide MODE. Off: the normal
     /// tile-above-chat layout persists and the shortcut is inert. On:
     /// sessions START with the speaker tile hidden and the chat owning
     /// the full side column; the shortcut shows the tile (chat resizes
@@ -388,24 +474,51 @@ final class CoordinatorController: ObservableObject {
 
     /// Quick-hide state: the tile is off-screen and the chat owns the
     /// FULL side column. Defaults to the setting at each session start
-    /// and after Snap Windows Back; \u{2303}\u{2325}\u{2318}Z flips it.
+    /// and after Snap Windows Back; \u{2325}\u{2318}Z flips it.
     /// Published (read-only) so the menu bar can label its toggle with
     /// the ACTUAL next action ("Show/Hide Speaker Tile").
     @Published private(set) var speakerTileQuickHidden = false
 
-    /// \u{2303}\u{2325}\u{2318}Z: shows the speaker tile in its slot
+    /// \u{2325}\u{2318}Z: shows the speaker tile in its slot
     /// (the chat resizes to sit below it) or hides it again (the chat
     /// takes the full column back). Only active when the quick-hide mode
     /// is enabled in Settings.
     func toggleSpeakerTile() {
         guard speakerTileShortcutEnabled else { return }
+        // Custom UI: the speaker is our own window, so hiding it is just
+        // ordering it out - no SDK window to find, and no risk of the toggle
+        // pointing at a panel that got mistaken for the tile.
+        if zoomChatClient.didUseCustomUI {
+            // Custom UI: show or hide the speaker window; the follow loop
+            // keeps its content honest either way.
+            speakerTileQuickHidden.toggle()
+            if speakerTileQuickHidden {
+                SpeakerWindowController.hide()
+                ChatWindowController.fillSideColumn(layout: workspaceLayout)
+                log("Speaker hidden \u{2014} chat has the full column. \u{2325}\u{2318}Z shows it.")
+            } else {
+                SpeakerWindowController.reveal(layout: workspaceLayout)
+                // The chat gives the column back. Hide grows it over the
+                // speaker slot (fillSideColumn), so show must shrink it under
+                // the slot again - dropped in a rewrite once, which left the
+                // revealed speaker sitting ON TOP of a full-column chat.
+                if let slot = ChatWindowController.zoomSlotNSFrame(for: workspaceLayout),
+                   let screen = DisplayResolver.mainDisplayScreen() {
+                    let ax = CGRect(x: slot.origin.x, y: screen.frame.height - slot.maxY,
+                                    width: slot.width, height: slot.height)
+                    ChatWindowController.adjustBelowZoom(actualZoomFrameAX: ax, layout: workspaceLayout)
+                }
+                log("Speaker shown \u{2014} \u{2325}\u{2318}Z hides it again.")
+            }
+            return
+        }
         guard let window = builtInMeetingWindow, ChatWindowController.isOpen else {
             // Surfaced, not just logged: the status log is collapsed by
             // default, so pressing the shortcut before the tile exists looked
             // like the shortcut was simply broken.
             log("No speaker tile to toggle yet \u{2014} waiting for Zoom's meeting window.")
             Notifier.post(title: "Speaker tile isn't ready yet",
-                          body: "Zoom's meeting window is still coming up. Try \u{2303}\u{2325}\u{2318}Z again in a moment.")
+                          body: "Zoom's meeting window is still coming up. Try \u{2325}\u{2318}Z again in a moment.")
             return
         }
         if speakerTileQuickHidden {
@@ -422,16 +535,105 @@ final class CoordinatorController: ObservableObject {
                 }
             }
             window.orderFrontRegardless()
-            log("Speaker tile shown \u{2014} \u{2303}\u{2325}\u{2318}Z hides it again.")
+            log("Speaker tile shown \u{2014} \u{2325}\u{2318}Z hides it again.")
         } else {
             speakerTileQuickHidden = true
             window.orderOut(nil)
             ChatWindowController.fillSideColumn(layout: workspaceLayout)
-            log("Speaker tile hidden \u{2014} chat has the full column. \u{2303}\u{2325}\u{2318}Z shows it.")
+            log("Speaker tile hidden \u{2014} chat has the full column. \u{2325}\u{2318}Z shows it.")
         }
     }
 
     // MARK: Defaults - persisted so Start reproduces the whole setup every time
+
+    /// Where the webcam bubble sits and how big it is, as fractions of the
+    /// canvas so it survives a resolution change.
+    ///
+    /// GreenroomScene.BubbleLayout has carried these three numbers all along;
+    /// nothing ever set them, so every session used the defaults and the only
+    /// adjustable thing was the shape. Clamped on the way in: OBS will happily
+    /// place a source off-canvas, and a bubble nobody can see is indistinguishable
+    /// from a camera that stopped working.
+    @Published var bubbleWidthFraction: Double {
+        didSet {
+            let clamped = min(max(bubbleWidthFraction, 0.08), 0.6)
+            if clamped != bubbleWidthFraction { bubbleWidthFraction = clamped; return }
+            defaults.set(bubbleWidthFraction, forKey: "bubbleWidthFraction")
+        }
+    }
+    @Published var bubbleRightInset: Double {
+        didSet {
+            let clamped = min(max(bubbleRightInset, 0), 0.9)
+            if clamped != bubbleRightInset { bubbleRightInset = clamped; return }
+            defaults.set(bubbleRightInset, forKey: "bubbleRightInset")
+        }
+    }
+    @Published var bubbleBottomInset: Double {
+        didSet {
+            let clamped = min(max(bubbleBottomInset, 0), 0.9)
+            if clamped != bubbleBottomInset { bubbleBottomInset = clamped; return }
+            defaults.set(bubbleBottomInset, forKey: "bubbleBottomInset")
+        }
+    }
+
+    /// Cutout's height, as a fraction of canvas height. Floored well above zero:
+    /// the frame being too small was one of the two problems that made cutout
+    /// stop reusing the bubble box, because a raised hand left the frame and
+    /// clipped visibly.
+    @Published var cutoutHeightFraction: Double {
+        didSet {
+            let clamped = min(max(cutoutHeightFraction, 0.3), 1.0)
+            if clamped != cutoutHeightFraction { cutoutHeightFraction = clamped; return }
+            defaults.set(cutoutHeightFraction, forKey: "cutoutHeightFraction")
+        }
+    }
+    /// Cutout's distance from the right edge, as a fraction of canvas width.
+    /// Allowed all the way across so the person can stand on the left when the
+    /// shared content lives on the right.
+    @Published var cutoutRightInset: Double {
+        didSet {
+            let clamped = min(max(cutoutRightInset, 0), 0.95)
+            if clamped != cutoutRightInset { cutoutRightInset = clamped; return }
+            defaults.set(cutoutRightInset, forKey: "cutoutRightInset")
+        }
+    }
+
+    /// Every number plus the shape, ready for OBS.
+    var bubbleLayout: GreenroomScene.BubbleLayout {
+        .init(widthFraction: bubbleWidthFraction,
+              rightInset: bubbleRightInset,
+              bottomInset: bubbleBottomInset,
+              cutoutHeightFraction: cutoutHeightFraction,
+              cutoutRightInset: cutoutRightInset,
+              shape: webcamShape)
+    }
+
+    /// Whether the ACTIVE shape is still where it shipped, so Reset can be
+    /// disabled rather than offered as a no-op. Shape-aware: resetting a bubble
+    /// you cannot see while looking at a cutout would be a confusing button.
+    var bubbleIsAtDefault: Bool {
+        let shipped = GreenroomScene.BubbleLayout()
+        if webcamShape == .cutout {
+            return abs(cutoutHeightFraction - shipped.cutoutHeightFraction) < 0.001
+                && abs(cutoutRightInset - shipped.cutoutRightInset) < 0.001
+        }
+        return abs(bubbleWidthFraction - shipped.widthFraction) < 0.001
+            && abs(bubbleRightInset - shipped.rightInset) < 0.001
+            && abs(bubbleBottomInset - shipped.bottomInset) < 0.001
+    }
+
+    /// Back to the values the app shipped with, for the shape on screen.
+    func resetBubbleLayout() {
+        let shipped = GreenroomScene.BubbleLayout()
+        if webcamShape == .cutout {
+            cutoutHeightFraction = shipped.cutoutHeightFraction
+            cutoutRightInset = shipped.cutoutRightInset
+            return
+        }
+        bubbleWidthFraction = shipped.widthFraction
+        bubbleRightInset = shipped.rightInset
+        bubbleBottomInset = shipped.bottomInset
+    }
 
     @Published var webcamShape: WebcamShape {
         didSet { defaults.set(webcamShape.rawValue, forKey: "webcamShape") }
@@ -480,7 +682,9 @@ final class CoordinatorController: ObservableObject {
         didSet { defaults.set(mainAppBundleID, forKey: "mainAppBundleID") }
     }
     @Published var mainAppURL: String {
-        didSet { defaults.set(mainAppURL, forKey: "mainAppURL") }
+        // Stored sanitised. A control character typed in here once made the
+        // preferences plist unparseable as XML, and the address unopenable.
+        didSet { defaults.set(AppCatalog.sanitizedURLText(mainAppURL), forKey: "mainAppURL") }
     }
     @Published var mainAppOnStart: Bool {
         didSet { defaults.set(mainAppOnStart, forKey: "mainAppOnStart") }
@@ -492,15 +696,58 @@ final class CoordinatorController: ObservableObject {
     @Published var peopleViewOnStart: Bool {
         didSet { defaults.set(peopleViewOnStart, forKey: "peopleViewOnStart") }
     }
+    /// Whether the custom-UI participants panel may open on the MAIN display
+    /// when no second display is attached.
+    ///
+    /// Off by default, and it should stay off for normal use. The panel is a
+    /// private control surface for a display the teacher alone can see; on a
+    /// single screen it covers the tiled workspace the whole app exists to
+    /// arrange. It is here so the panel can be exercised without a reference
+    /// monitor plugged in, not as a way to work.
+    @Published var participantPanelOnMainDisplay: Bool {
+        didSet { defaults.set(participantPanelOnMainDisplay, forKey: "participantPanelOnMainDisplay") }
+    }
+    /// Whether anonymous usage analytics are sent. On by default, and the switch
+    /// is honoured immediately as well as on the next launch.
+    @Published var analyticsEnabled: Bool {
+        didSet {
+            defaults.set(analyticsEnabled, forKey: "analyticsEnabled")
+            Analytics.setEnabled(analyticsEnabled)
+        }
+    }
     /// Which display the participant gallery opens on, by stable CGDisplay
     /// UUID. Empty = Automatic (the first non-main display). Persisted and
     /// carried in the transfer file so a saved setup targets the same
     /// physical monitor.
+    /// Which display the screen capture shares. Empty means "the main one",
+    /// which is what almost everyone wants and what this always did. Stored by
+    /// display UUID so the choice survives unplugging and reconnecting, the
+    /// same way peopleViewDisplayUUID does.
+    /// Custom-UI mode. Read by the SDK client at initSDK, which happens once
+    /// per process - so changing this only takes effect after a restart, and
+    /// the Settings copy says so.
+    @Published var customUIMode: Bool {
+        didSet { defaults.set(customUIMode, forKey: "customUIMode") }
+    }
+    /// True when the toggle no longer matches the mode actually running.
+    ///
+    /// `needCustomizedUI` is an initSDK parameter and the SDK initialises once
+    /// per process, at the first session start. Change the toggle after that and
+    /// nothing happens until relaunch - which looked exactly like a broken
+    /// switch until Settings started saying so.
+    var customUIModeNeedsRelaunch: Bool {
+        zoomChatClient.didInit && zoomChatClient.didUseCustomUI != customUIMode
+    }
+
+    @Published var screenCaptureDisplayUUID: String {
+        didSet { defaults.set(screenCaptureDisplayUUID, forKey: "screenCaptureDisplayUUID") }
+    }
+
     @Published var peopleViewDisplayUUID: String {
         didSet { defaults.set(peopleViewDisplayUUID, forKey: "peopleViewDisplayUUID") }
     }
     /// Recording starts by itself once the meeting is up (the Record
-    /// button and \u{2303}\u{2325}\u{2318}R stay available as the manual
+    /// button and \u{2325}\u{2318}R stay available as the manual
     /// trigger either way).
     @Published var autoRecordOnStart: Bool {
         didSet { defaults.set(autoRecordOnStart, forKey: "autoRecordOnStart") }
@@ -530,7 +777,18 @@ final class CoordinatorController: ObservableObject {
         mainAppBundleID = defaults.string(forKey: "mainAppBundleID") ?? ChromeWindowManager.chromeBundleID
         // Fresh installs open the Greenroom site until the teacher sets
         // their own page - a friendly first Start instead of a blank tab.
-        mainAppURL = defaults.string(forKey: "mainAppURL") ?? defaults.string(forKey: "chromeURL") ?? AppLinks.site
+        let bubbleDefaults = GreenroomScene.BubbleLayout()
+        bubbleWidthFraction = (defaults.object(forKey: "bubbleWidthFraction") as? Double) ?? bubbleDefaults.widthFraction
+        bubbleRightInset = (defaults.object(forKey: "bubbleRightInset") as? Double) ?? bubbleDefaults.rightInset
+        bubbleBottomInset = (defaults.object(forKey: "bubbleBottomInset") as? Double) ?? bubbleDefaults.bottomInset
+        className = defaults.string(forKey: "className") ?? ""
+        // Defaults ON: the shortcuts are useless without it, and bool(forKey:)
+        // alone cannot tell "never set" from "deliberately off".
+        clipBufferEnabled = (defaults.object(forKey: "clipBufferEnabled") as? Bool) ?? true
+        cutoutHeightFraction = (defaults.object(forKey: "cutoutHeightFraction") as? Double) ?? bubbleDefaults.cutoutHeightFraction
+        cutoutRightInset = (defaults.object(forKey: "cutoutRightInset") as? Double) ?? bubbleDefaults.cutoutRightInset
+        mainAppURL = AppCatalog.sanitizedURLText(
+            defaults.string(forKey: "mainAppURL") ?? defaults.string(forKey: "chromeURL") ?? AppLinks.site)
         // Defaults to ON for fresh installs (bool(forKey:) alone can't
         // distinguish "never set" from "explicitly off") - the one-button
         // session flow treats the main app window as part of the setup,
@@ -539,7 +797,13 @@ final class CoordinatorController: ObservableObject {
             ?? (defaults.object(forKey: "chromeOnStart") as? Bool)
             ?? true
         peopleViewOnStart = defaults.bool(forKey: "peopleViewOnStart")
+        participantPanelOnMainDisplay = defaults.bool(forKey: "participantPanelOnMainDisplay")
+        // Absent means never answered, which is opted IN - matching the consent
+        // the Apptics setup already carries. An explicit false stays false.
+        analyticsEnabled = (defaults.object(forKey: "analyticsEnabled") as? Bool) ?? true
         peopleViewDisplayUUID = defaults.string(forKey: "peopleViewDisplayUUID") ?? ""
+        screenCaptureDisplayUUID = defaults.string(forKey: "screenCaptureDisplayUUID") ?? ""
+        customUIMode = defaults.bool(forKey: "customUIMode")
         autoRecordOnStart = defaults.bool(forKey: "autoRecordOnStart")
         keepOBSWarm = (defaults.object(forKey: "keepOBSWarm") as? Bool) ?? true
         meetingMode = MeetingMode(rawValue: defaults.string(forKey: "meetingMode") ?? "") ?? .create
@@ -637,15 +901,38 @@ final class CoordinatorController: ObservableObject {
         isRunning = true
         virtualCamActive = false
         statusLines = []
+        let startedAt = Date()
+        sessionStartedAt = startedAt
+        // Named now, created later - see sessionFolder.
+        sessionFolder = GreenroomScene.recordingsDirectory.appendingPathComponent(
+            GreenroomScene.sessionFolderName(className: className, started: startedAt),
+            isDirectory: true)
+        // Shape only. No meeting number, no preset name - see Analytics.swift.
+        Analytics.track(.sessionStart, [
+            .mode: meetingMode == .join ? "join" : "start",
+            .customUI: customUIMode ? "yes" : "no",
+            .displays: String(NSScreen.screens.count)
+        ])
+
+        resetStartReadiness()
+        // Before anything else, so the reference display has something on it
+        // from the first frame rather than after the meeting connects. Gated on
+        // the SETTING rather than on zoomChatClient.didUseCustomUI, which is not
+        // known until the SDK has initialised - by which point the blank this
+        // exists to fill is already over. presentMeetingSurfaces closes the
+        // panel again if custom UI turns out not to have happened.
+        if customUIMode { startCustomUIGridFollow() }
 
         startTask = Task {
             do {
                 // Perceived speed: the main app doesn't depend on
                 // anything else - open it first so something visibly
                 // happens the instant Start is pressed.
+                mark(.workspace, mainAppOnStart ? .active : .skipped)
                 if mainAppOnStart {
                     log("Opening the \(mainAppDisplayName) window (\(workspaceLayout.label))\u{2026}")
                     openMainAppWindow()
+                    mark(.workspace, .done)
                 }
 
                 // Overlap everything that doesn't need OBS with OBS's own
@@ -654,11 +941,23 @@ final class CoordinatorController: ObservableObject {
                 // in the whole start is "virtual camera live before the
                 // meeting client starts", enforced by awaiting the
                 // pipeline before the meeting flows below.
+                mark(.camera, .active)
                 async let pipelineDone: Void = runPipeline()
                 async let preparedMeeting = prepareMeetingIfNeeded()
                 async let sdkPrefetched: Void = prefetchSDKAuth()
 
                 try await pipelineDone
+                mark(.camera, .done)
+                // Everything OBS writes for this session goes in the session's
+                // own folder - the recording, and the replay-buffer saves that
+                // become clips. Done here rather than only before StartRecord,
+                // because a clip taken without recording is written by OBS too
+                // and was landing in the recordings root.
+                await pointOutputsAtSessionFolder()
+                // Armed as soon as the composite exists, so the shortcuts work
+                // from the first minute of the class rather than from whenever
+                // somebody remembers to press Record.
+                await armClipBuffer()
                 await sdkPrefetched
                 // Checkpoints between the big phases let Stop abandon a
                 // start cleanly (its OBS teardown otherwise races the
@@ -666,6 +965,7 @@ final class CoordinatorController: ObservableObject {
                 // aren't cancellation-aware; between-steps is enough.
                 try Task.checkCancellation()
 
+                mark(.meeting, .active)
                 switch meetingMode {
                 case .create where useBuiltInClient:
                     // All-in-one: the SDK IS the meeting client. One
@@ -703,15 +1003,19 @@ final class CoordinatorController: ObservableObject {
                 }
 
                 try Task.checkCancellation()
+                mark(.meeting, .done)
 
                 // The meeting flow above has returned, so the session is
                 // live - start the tape if the setting says so. Uses the
                 // same path as the Record button, so End Session's
                 // finalize-before-quitting-OBS still applies.
+                mark(.recording, autoRecordOnStart && !isRecording ? .active : .skipped)
                 if autoRecordOnStart && !isRecording {
                     log("Starting the recording automatically (Settings \u{2192} Webcam).")
                     toggleRecording()
+                    mark(.recording, .done)
                 }
+                mark(.tiling, .active)
 
                 // The built-in client's window is parked in-process (see
                 // hostAllInOne/joinAllInOne) - the AX-based native-window
@@ -720,13 +1024,36 @@ final class CoordinatorController: ObservableObject {
                 // non-empty means the built-in client took the session, so
                 // it also covers joinAllInOne's cross-account fallback,
                 // which DOES need the native parking.
-                if sdkMeetingWindows().isEmpty {
+                // "No SDK windows" used to mean the built-in client did not
+                // take the session, so the native Zoom app must be handling it
+                // and needs its window tiled. Under custom UI that inference is
+                // backwards: the built-in client IS handling the meeting, it
+                // simply has no windows. Without this guard, every custom-UI
+                // session ended up hunting for a native Zoom window that does
+                // not exist and logging "Couldn't find Zoom's meeting window to
+                // tile" - observed live.
+                if sdkMeetingWindows().isEmpty, !zoomChatClient.didUseCustomUI {
                     parkZoomWindow()
                 }
+
+                mark(.tiling, .done)
+                // Clearing the steps is what makes Readiness.isLive true, which
+                // hands the panel back to its ordinary behaviour: the class side
+                // returns to "waiting for students" and the controls come up.
+                finishStartReadiness()
             } catch is CancellationError {
+                // Stop abandoned the start on purpose. It closes the panel
+                // itself, so there is nothing to report on a surface that is
+                // already going away.
                 log("Start cancelled.")
+                finishStartReadiness()
             } catch {
                 log("Failed: \(error.localizedDescription)")
+                // Left on screen rather than cleared. The panel is the surface
+                // the teacher has been watching for the last several seconds,
+                // so it is where the failure belongs, named against the step it
+                // happened on.
+                failStartReadiness(error.localizedDescription)
             }
             isRunning = false
         }
@@ -739,6 +1066,13 @@ final class CoordinatorController: ObservableObject {
     func stop() {
         guard !isStopping else { return }
         isStopping = true
+        Analytics.track(.sessionEnd, [
+            .durationBand: Analytics.band(seconds: sessionStartedAt.map { Date().timeIntervalSince($0) } ?? 0),
+            .customUI: customUIMode ? "yes" : "no"
+        ])
+        sessionStartedAt = nil
+        discardEmptySessionFolder()
+        sessionFolder = nil
         // A start still in flight gets abandoned at its next checkpoint -
         // without this, its meeting setup raced the OBS teardown below.
         startTask?.cancel()
@@ -755,6 +1089,17 @@ final class CoordinatorController: ObservableObject {
                 zoomChatBridge.reset()
                 log("Left the meeting chat.")
             }
+            // Custom UI: stop the SDK rendering into views that are about to
+            // go away, then drop our window.
+            customUIGridTask?.cancel()
+            customUIGridTask = nil
+            finishStartReadiness()
+            ReadinessHUDController.close()
+            _ = try? await client.request("StopReplayBuffer")
+            customUISpeakerTask?.cancel()
+            SpeakerWindowController.close()
+            ParticipantGridWindowController.close()
+            zoomChatClient.releaseCustomUIVideo()
             // A beat between cancelling the window-follow loops and the
             // SDK tearing its meeting windows down: the crash logs' seven
             // zVideoUIBridge dealloc SEGVs look like that teardown racing
@@ -766,7 +1111,11 @@ final class CoordinatorController: ObservableObject {
             // killing OBS mid-record leaves a truncated/unplayable file.
             if isRecording {
                 if let path = (try? await client.request("StopRecord"))?["outputPath"] as? String {
-                    log("Recording saved: \(path)")
+                    // End Session stops the tape too, so marks have to be
+                    // adopted here as well or a class ended the ordinary way
+                    // would strand them in pending-clips.json.
+                    let marks = adoptPendingClips(recordedAt: path)
+                    log("Recording saved: \(path)" + (marks > 0 ? " (\(marks) clip\(marks == 1 ? "" : "s") marked)" : ""))
                     Notifier.post(title: "Recording saved",
                                   body: "\((path as NSString).lastPathComponent) \u{2014} in Documents/Greenroom.")
                 }
@@ -804,6 +1153,36 @@ final class CoordinatorController: ObservableObject {
         ZoomLauncher.launchZoom()
     }
 
+    /// What this class is called. Becomes the session folder's name.
+    ///
+    /// Remembered between runs and pre-filled rather than asked for. A daily
+    /// class has the same name five mornings a week, and DESIGN.md's promise is
+    /// a whole class in one click - a dialog on the most repeated action in the
+    /// product would spend that click on an answer that is almost always
+    /// yesterday's. Left empty it falls back to a timestamp, so nothing ever
+    /// blocks on it.
+    @Published var className: String {
+        didSet { defaults.set(className, forKey: "className") }
+    }
+
+    /// Keeps the last few minutes clippable even when nothing is being recorded.
+    ///
+    /// Costs roughly 300MB of RAM for the length of a session and encodes the
+    /// composite continuously, so it is a real cost on days you never clip -
+    /// hence a setting rather than an assumption. Held in memory, never on disk:
+    /// choosing not to record a class still ends with nothing written down.
+    @Published var clipBufferEnabled: Bool {
+        didSet { defaults.set(clipBufferEnabled, forKey: "clipBufferEnabled") }
+    }
+
+    /// Where this session's recording and clips live.
+    ///
+    /// Decided once at Start so stopping and restarting the tape mid-class
+    /// lands in the same folder, but only created on disk when the tape
+    /// actually rolls - a session nobody recorded should not leave an empty
+    /// folder behind every morning.
+    private(set) var sessionFolder: URL?
+
     @Published private(set) var isRecording = false
 
     /// Records the composited feed (screen + webcam bubble/cutout) straight
@@ -811,6 +1190,187 @@ final class CoordinatorController: ObservableObject {
     /// recorded is exactly what participants saw. Note this captures YOUR
     /// composite, not other participants' video; recording the actual Zoom
     /// meeting is a separate capability (the SDK's record controller).
+    /// Marks the last `minutes` of the recording, ending now.
+    ///
+    /// A bookmark, not a cut. `outputDuration` is OBS's own position in the file
+    /// it is writing, so the range is exact and costs one websocket round trip -
+    /// nothing is encoded, buffered, or read back from a file being written to.
+    /// The clip itself is cut later, losslessly, from the finished master.
+    ///
+    /// Ends AT the keypress rather than straddling it: "the last five minutes"
+    /// should mean the last five minutes.
+    /// Points every OBS output at this session's folder, creating it.
+    ///
+    /// Nothing Greenroom produces belongs loose in ~/Documents/Greenroom. The
+    /// folder is created here rather than lazily at first record, because the
+    /// replay buffer can write a clip before any recording exists and OBS needs
+    /// somewhere to put it. `stop()` removes the folder again if the session
+    /// left nothing in it, so an unused session still costs nothing.
+    private func pointOutputsAtSessionFolder() async {
+        guard let folder = sessionFolder else { return }
+        await GreenroomScene.pointRecordingAt(folder, client: client)
+        // Accepted chat files belong with the class too, so a lesson's
+        // recording, clips and whatever a pupil shared all end up together
+        // rather than scattered between here and Downloads.
+        zoomChatBridge.saveDirectory = folder
+    }
+
+    /// Arms the rolling buffer so the clip shortcuts work before anyone presses
+    /// Record. Best-effort: a session that cannot buffer is still a session.
+    private func armClipBuffer() async {
+        guard clipBufferEnabled else { return }
+        await GreenroomScene.configureReplayBuffer(client: client, enabled: true)
+        guard (try? await client.request("StartReplayBuffer")) != nil else {
+            // Measured cause, not a guess: OBS creates the replay-buffer output
+            // when it READS the profile, so a config written into a running
+            // instance returns 604 until the next launch. Greenroom seeds the
+            // profile before it launches OBS (see seedReplayBufferConfig), so
+            // this is only reachable when OBS was already running beforehand -
+            // somebody opened it by hand, or it stayed warm from a build that
+            // predates the setting.
+            log("Clip buffer needs an OBS restart \u{2014} quit OBS and start the session again, and \u{2325}\u{2318}1/2/5 will work without recording. Until then they work while a recording is running.")
+            Notifier.post(title: "Clip buffer needs an OBS restart",
+                          body: "Quit OBS and start again. Clip shortcuts still work while recording.")
+            return
+        }
+        let minutes = GreenroomScene.replayBufferSeconds / 60
+        log("Clip buffer armed \u{2014} the last \(minutes) minutes stay clippable with \u{2325}\u{2318}1, \u{2325}\u{2318}2 or \u{2325}\u{2318}5, recording or not.")
+    }
+
+    func markClip(minutes: Int) {
+        Task {
+            guard let folder = sessionFolder else {
+                log("Nothing to clip \u{2014} start a session first.")
+                ToastController.show("No session running",
+                                     detail: "Start the class first.", kind: .failure)
+                return
+            }
+            // Recording wins when it is available: marking the master costs
+            // nothing and cuts losslessly from the real file. The buffer is for
+            // when there is no master to mark.
+            guard isRecording else {
+                await clipFromBuffer(minutes: minutes, into: folder)
+                return
+            }
+            // Double, not Int: obs-websocket sends this as a JSON number and the
+            // decoder is free to hand back either.
+            guard let status = try? await client.request("GetRecordStatus"),
+                  let position = (status["outputDuration"] as? Double)
+                    ?? (status["outputDuration"] as? Int).map(Double.init) else {
+                log("Couldn't clip \u{2014} OBS did not report where the recording is.")
+                return
+            }
+
+            let end = Int(position)
+            // Clamps at the start of the file: asking for the last five minutes
+            // two minutes in gives you two minutes, which is what you meant.
+            let start = max(0, end - minutes * 60_000)
+            let clip = SessionClip(startMs: start, endMs: end, markedAt: Date())
+            guard SessionClipStore.appendPending(clip, in: folder) else {
+                log("Couldn't clip \u{2014} the mark could not be written to \(folder.lastPathComponent).")
+                return
+            }
+
+            let clipped = clip.durationLabel
+            log("Clipped the last \(clipped) (\(Self.offsetLabel(start)) to \(Self.offsetLabel(end))).")
+            // Confirmed out loud: the teacher is mid-class looking at the shared
+            // screen, not at Greenroom, and a mark that gave no sign of landing
+            // would be pressed again and again.
+            ToastController.show("Clipped the last \(clipped)",
+                                 detail: "Marked in \(folder.lastPathComponent) \u{2014} in Recordings after the class.")
+        }
+    }
+
+    /// Writes the rolling buffer out and trims it to the minutes asked for.
+    ///
+    /// Unlike marking, this produces a finished clip there and then - there is
+    /// no master to cut from later, so the file has to exist now.
+    private func clipFromBuffer(minutes: Int, into folder: URL) async {
+        guard clipBufferEnabled else {
+            log("Nothing to clip \u{2014} the clip buffer is off (Settings \u{2192} Webcam) and nothing is recording.")
+            ToastController.show("Nothing to clip",
+                                 detail: "Turn on the clip buffer in Settings, or press Record.", kind: .failure)
+            return
+        }
+        guard await GreenroomScene.replayBufferIsRunning(client: client) else {
+            log("Nothing to clip \u{2014} the clip buffer is not running. Press Record (\u{2325}\u{2318}R) to capture from here.")
+            ToastController.show("Clip buffer not running",
+                                 detail: "Press Record to capture from here instead.", kind: .failure)
+            return
+        }
+
+        ToastController.show("Saving the last \(minutes) min\u{2026}",
+                             detail: "Writing the clip buffer out.",
+                             kind: .working, dismissAfter: nil)
+        guard let replay = await GreenroomScene.saveReplayBuffer(client: client) else {
+            log("Couldn't clip \u{2014} OBS did not hand back a replay file.")
+            ToastController.show("Clip failed", detail: "OBS did not produce a file.", kind: .failure)
+            return
+        }
+
+        do {
+            let export = try await SessionClipExporter.exportTail(
+                minutes: minutes, of: replay, markedAt: Date(), into: folder)
+            log("Clipped the last \(export.requested.durationLabel) from the buffer \u{2014} \(export.url.lastPathComponent).")
+            ToastController.show("Clipped the last \(export.requested.durationLabel)",
+                                 detail: "Saved to \(folder.lastPathComponent)")
+        } catch {
+            // AVFoundation cannot read every container OBS can write. Keeping
+            // the whole buffer under its own name beats losing the moment, and
+            // saying so beats a clip that quietly is not the length it claims.
+            let kept = SessionClipExporter.clipsFolder(for: replay)
+                .appendingPathComponent(replay.lastPathComponent)
+            try? FileManager.default.createDirectory(at: kept.deletingLastPathComponent(),
+                                                     withIntermediateDirectories: true)
+            if (try? FileManager.default.moveItem(at: replay, to: kept)) != nil {
+                log("Clipped, but couldn't trim it to \(minutes) min (\(error.localizedDescription)) \u{2014} kept the whole buffer as \(kept.lastPathComponent).")
+                ToastController.show("Clipped the whole buffer",
+                                     detail: "Couldn't trim to \(minutes) min, so all of it was kept.",
+                                     kind: .failure)
+            } else {
+                log("Couldn't clip \u{2014} \(error.localizedDescription)")
+                ToastController.show("Clip failed", detail: error.localizedDescription, kind: .failure)
+            }
+        }
+    }
+
+    /// Removes this session's folder when the class left nothing behind.
+    ///
+    /// The folder is created at session start now, so that OBS has somewhere to
+    /// write. A session where nobody recorded and nobody clipped would otherwise
+    /// leave a dated empty folder every single morning.
+    private func discardEmptySessionFolder() {
+        guard let folder = sessionFolder else { return }
+        let contents = (try? FileManager.default.contentsOfDirectory(
+            at: folder, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles])) ?? []
+        guard contents.isEmpty else { return }
+        try? FileManager.default.removeItem(at: folder)
+    }
+
+    /// Marries this session's pending marks to the file OBS just finished.
+    /// Returns how many were adopted, for the log and the notification.
+    @discardableResult
+    private func adoptPendingClips(recordedAt path: String) -> Int {
+        let recording = URL(fileURLWithPath: path)
+        // The recording's own folder, not sessionFolder: if pointRecordingAt
+        // failed and OBS wrote somewhere else, the marks should follow the file
+        // rather than be filed next to a recording that is not there.
+        let folder = recording.deletingLastPathComponent()
+        let pending = SessionClipStore.loadPending(in: folder)
+        guard !pending.isEmpty else { return 0 }
+        SessionClipStore.adoptPending(in: folder, as: recording)
+        return pending.count
+    }
+
+    /// mm:ss, or h:mm:ss once a class runs past the hour.
+    private static func offsetLabel(_ milliseconds: Int) -> String {
+        let total = milliseconds / 1000
+        let hours = total / 3600, minutes = (total % 3600) / 60, seconds = total % 60
+        return hours > 0
+            ? String(format: "%d:%02d:%02d", hours, minutes, seconds)
+            : String(format: "%d:%02d", minutes, seconds)
+    }
+
     func toggleRecording() {
         Task {
             do {
@@ -818,9 +1378,14 @@ final class CoordinatorController: ObservableObject {
                     let response = try await client.request("StopRecord")
                     isRecording = false
                     if let path = response["outputPath"] as? String {
-                        log("Recording saved: \(path)")
+                        // The first moment OBS tells us the filename, which is
+                        // why marks were parked in a pending file until now.
+                        let marks = adoptPendingClips(recordedAt: path)
+                        log("Recording saved: \(path)" + (marks > 0 ? " (\(marks) clip\(marks == 1 ? "" : "s") marked)" : ""))
                         Notifier.post(title: "Recording saved",
-                                      body: "\((path as NSString).lastPathComponent) \u{2014} in Documents/Greenroom.")
+                                      body: marks > 0
+                                        ? "\((path as NSString).lastPathComponent) \u{2014} \(marks) clip\(marks == 1 ? "" : "s") marked."
+                                        : "\((path as NSString).lastPathComponent) \u{2014} in Documents/Greenroom.")
                     } else {
                         log("Recording stopped.")
                     }
@@ -844,6 +1409,12 @@ final class CoordinatorController: ObservableObject {
                             break
                         }
                     }
+                    // Right before StartRecord, not at session setup: this is
+                    // the first moment we know a recording is actually going to
+                    // happen, so it is the first moment worth creating a folder.
+                    if let folder = sessionFolder {
+                        await GreenroomScene.pointRecordingAt(folder, client: client)
+                    }
                     _ = try await client.request("StartRecord")
                     isRecording = true
                     log("Recording\u{2026} (screen + webcam composite)")
@@ -851,7 +1422,7 @@ final class CoordinatorController: ObservableObject {
                     // main window is buried behind the main app. The menu
                     // bar's GR also flips to a REC glyph via isRecording.
                     Notifier.post(title: "Recording started",
-                                  body: "Greenroom is recording the composite. \u{2303}\u{2325}\u{2318}R stops it.")
+                                  body: "Greenroom is recording the composite. \u{2325}\u{2318}R stops it.")
                 }
             } catch {
                 log("Recording failed: \(error.localizedDescription) \u{2014} press Start first if the session isn't running.")
@@ -915,9 +1486,29 @@ final class CoordinatorController: ObservableObject {
     /// Re-applies the chosen shape to the warm OBS scene so the live
     /// preview tracks the picker immediately. NEVER during a session -
     /// ensureConfigured's first step stops the virtual camera.
+    /// Applies a webcam change, live if a session is running.
+    ///
+    /// This used to give up entirely during a session - `guard !virtualCamActive,
+    /// !isRunning` - so changing the shape or the bubble mid-class did nothing
+    /// until the next Start, with nothing saying so. The reason was real but
+    /// narrower than the guard: ensureConfigured begins with StopVirtualCam,
+    /// because SetVideoSettings is refused while an output is active. Moving,
+    /// resizing and reshaping the webcam are filter and transform calls, which
+    /// OBS accepts perfectly well with the virtual camera running, so a live
+    /// session now takes that path instead of being refused.
     func applyShapeForPreview() async {
-        guard shapePreviewTask != nil, !virtualCamActive, !isRunning else { return }
-        try? await GreenroomScene.ensureConfigured(client: client, bubble: .init(shape: webcamShape))
+        if virtualCamActive || isRunning {
+            do {
+                try await GreenroomScene.applyLiveLayout(client: client, bubble: bubbleLayout)
+            } catch {
+                log("Couldn't update the webcam overlay: \(error.localizedDescription)")
+            }
+            return
+        }
+        guard shapePreviewTask != nil else { return }
+        _ = try? await GreenroomScene.ensureConfigured(client: client,
+                                                       bubble: bubbleLayout,
+                                                       preferredDisplayUUID: screenCaptureDisplayUUID)
     }
 
     var mainAppDisplayName: String {
@@ -977,7 +1568,8 @@ final class CoordinatorController: ObservableObject {
 
         log("Starting the meeting in Greenroom's built-in Zoom client\u{2026}")
         try await zoomChatClient.ensureReady(clientID: sdkClientID, clientSecret: sdkClientSecret)
-        zoomChatClient.setDualScreenMode(peopleViewWanted)
+        await settleBeforeJoining()
+        zoomChatClient.setDualScreenMode(galleryWindowExists)
 
         if zoomChatClient.selectCamera(named: "OBS Virtual Camera") {
             log("Camera set to OBS Virtual Camera.")
@@ -994,8 +1586,7 @@ final class CoordinatorController: ObservableObject {
         ChatWindowController.show(chat: zoomChatBridge, layout: workspaceLayout)
         log("Meeting is live \u{2014} you're hosting from Greenroom. No second Zoom app, no ghost participant.")
 
-        parkBuiltInMeetingWindow(resetQuickHideToDefault: true) // session start = the mode's default state
-        placePeopleViewWindow()
+        presentMeetingSurfaces(resetQuickHideToDefault: true) // session start = the mode's default state
         finalizeLayout()
     }
 
@@ -1012,7 +1603,8 @@ final class CoordinatorController: ObservableObject {
 
         log("Joining meeting \(meetingNumber) in Greenroom's built-in Zoom client\u{2026}")
         try await zoomChatClient.ensureReady(clientID: sdkClientID, clientSecret: sdkClientSecret)
-        zoomChatClient.setDualScreenMode(peopleViewWanted)
+        await settleBeforeJoining()
+        zoomChatClient.setDualScreenMode(galleryWindowExists)
 
         if zoomChatClient.selectCamera(named: "OBS Virtual Camera") {
             log("Camera set to OBS Virtual Camera.")
@@ -1069,8 +1661,7 @@ final class CoordinatorController: ObservableObject {
             ? "Meeting is live \u{2014} you're hosting from Greenroom."
             : "In the meeting \u{2014} no second Zoom app, no ghost participant.")
 
-        parkBuiltInMeetingWindow(resetQuickHideToDefault: true) // session start = the mode's default state
-        placePeopleViewWindow()
+        presentMeetingSurfaces(resetQuickHideToDefault: true) // session start = the mode's default state
         finalizeLayout()
     }
 
@@ -1088,6 +1679,162 @@ final class CoordinatorController: ObservableObject {
     /// work, since the window belongs to this process. Skipped entirely
     /// when the Zoom tile is toggled out of the side column: the meeting
     /// window then stays wherever it is.
+    /// Puts the meeting on screen. Two very different mechanisms behind one
+    /// call, so the session flows do not have to know which mode they are in.
+    ///
+    /// Default Zoom UI: the SDK owns its meeting windows, so Greenroom hunts
+    /// for them, parks one in the side column and pins the other to the
+    /// extended display. That machinery is the source of the tug-of-war, the
+    /// gallery landing on the wrong display, and the info popup being adopted
+    /// as the tile.
+    ///
+    /// Custom UI: there are no SDK windows at all. The SDK renders into a view
+    /// we own, so there is nothing to hunt, park, pin or defend against. The
+    /// participant gallery is not built for this mode yet - the speaker tile is.
+    private func presentMeetingSurfaces(resetQuickHideToDefault: Bool) {
+        guard zoomChatClient.didUseCustomUI else {
+            // The panel is opened optimistically on the first frame of a start,
+            // from the customUIMode SETTING, because didUseCustomUI is not known
+            // until the SDK has initialised - long after the blank it exists to
+            // fill. If the SDK went the other way, take it back down: in default
+            // Zoom-UI mode the SDK owns its own gallery and ours would be a
+            // second, stale one.
+            customUIGridTask?.cancel()
+            customUIGridTask = nil
+            ParticipantGridWindowController.close()
+            parkBuiltInMeetingWindow(resetQuickHideToDefault: resetQuickHideToDefault)
+            placePeopleViewWindow()
+            return
+        }
+        if resetQuickHideToDefault {
+            speakerTileQuickHidden = speakerTileShortcutEnabled
+        }
+        let slot = ChatWindowController.zoomSlotNSFrame(for: workspaceLayout)
+            ?? NSRect(x: 0, y: 0, width: 505, height: 351)
+        // The speaker element is deliberately NOT created here.
+        //
+        // Creating it at session start meant creating it in an empty room and
+        // attaching it to a window that quick-hide immediately ordered out.
+        // startActiveView is a one-shot: it succeeded once, under exactly
+        // those conditions, and every later call is refused as a duplicate -
+        // so the only subscription that ever counted was made with nobody to
+        // follow and no on-screen drawable to render into. The element then
+        // reported dataType=Video and drew black for the whole session, which
+        // is what made this look like a subscription bug for so long.
+        //
+        // The follow loop builds it instead, at the first moment it can
+        // actually work: somebody to follow, and the window on screen.
+        startCustomUIGridFollow()
+        startCustomUISpeakerFollow()
+        if speakerTileQuickHidden {
+            ChatWindowController.fillSideColumn(layout: workspaceLayout)
+            log("Speaker starts hidden (quick-hide mode) \u{2014} chat has the full column; \u{2325}\u{2318}Z shows it.")
+        }
+    }
+
+    /// The Speaker window hosts Zoom's auto-following active element - the
+    /// clean test of it. Every earlier run was black WITH ONE OR TWO people in
+    /// the room, and the element is documented to operate with three or more,
+    /// so those runs proved nothing. Below three, the window says so and the
+    /// panel's featured tile carries the job.
+    private func startCustomUISpeakerFollow() {
+        customUISpeakerTask?.cancel()
+        customUISpeakerTask = Task { [weak self] in
+            while !Task.isCancelled {
+                guard let self else { return }
+                let slot = ChatWindowController.zoomSlotNSFrame(for: self.workspaceLayout)
+                    ?? NSRect(x: 0, y: 0, width: 505, height: 351)
+                let wantVisible = !self.speakerTileQuickHidden
+                if wantVisible, let view = self.zoomChatClient.activeSpeakerWindowView(frame: slot) {
+                    SpeakerWindowController.show(videoView: view,
+                                                 layout: self.workspaceLayout,
+                                                 visible: true)
+                } else {
+                    SpeakerWindowController.showEmpty(layout: self.workspaceLayout,
+                                                      visible: wantVisible)
+                }
+                try? await Task.sleep(nanoseconds: 2_000_000_000)
+            }
+        }
+    }
+
+    /// Keeps the custom-UI gallery in step with who is actually in the meeting.
+    ///
+    /// Polled rather than driven by onUserJoin/onUserLeft because the video
+    /// element for a brand-new participant is not necessarily renderable the
+    /// instant the join callback fires, and a poll is idempotent - it converges
+    /// whether or not any single event was missed. Two seconds matches the
+    /// default-UI follow loop, so the two modes feel the same.
+    private func startCustomUIGridFollow() {
+        // Idempotent. It is called twice now: once on the first frame of a start
+        // so the panel can show progress, and again from presentMeetingSurfaces
+        // on the ordinary path. Restarting would re-stamp `startedAt`, jumping
+        // the session clock back to zero at the moment the meeting connects -
+        // several seconds after the teacher pressed Start, which is when the
+        // session actually began.
+        if customUIGridTask != nil { return }
+        // Needs the toggle AND somewhere sensible to go.
+        //
+        // An earlier version opened on the main display whenever no second one
+        // was attached, reasoning that a laptop teacher still wants the roster.
+        // Tried live, that is wrong: the panel is big, it is a private control
+        // surface, and on one screen it lands on top of the tiled workspace this
+        // app exists to build. Now the main display is opt-in, off by default.
+        guard peopleViewOnStart else { return }
+        guard peopleViewWanted || participantPanelOnMainDisplay else {
+            log("Participants panel skipped \u{2014} no second display to put it on. Connect your reference display, or allow it on this screen in Settings (\u{2318},) \u{2192} Second display.")
+            return
+        }
+        // Surface subscription refusals. A black tile with no explanation was
+        // exactly how this went unnoticed until a second person joined.
+        zoomChatClient.onVideoSubscribeFailure = { [weak self] message in
+            self?.log(message)
+        }
+        ParticipantGridWindowController.configure(
+            client: zoomChatClient,
+            log: { [weak self] message in self?.log(message) },
+            endSession: { [weak self] in self?.stop() },
+            showChat: { [weak self] in
+                guard let self else { return }
+                ChatWindowController.reveal(layout: self.workspaceLayout)
+            },
+            toggleRecording: { [weak self] in self?.toggleRecording() },
+            snapBack: { [weak self] in self?.snapWindowsBack() },
+            toggleSpeaker: { [weak self] in self?.toggleSpeakerTile() },
+            showMainWindow: { [weak self] in self?.showMainWindow() })
+        let startedAt = Date()
+        Analytics.track(.surfaceShown, [
+            .surface: "participants",
+            .placement: peopleViewTargetScreen() == nil ? "main_window" : "reference_display"
+        ])
+        if peopleViewTargetScreen() == nil {
+            log("Participants panel opened as a window on this display \u{2014} no second display to give it. It will not be full-screen, and you can move it.")
+        }
+        customUIGridTask = Task { [weak self] in
+            while !Task.isCancelled {
+                guard let self else { return }
+                let reference = self.peopleViewTargetScreen()
+                guard let screen = reference ?? DisplayResolver.mainDisplayScreen() else { return }
+                let digits = self.meetingNumberDigits
+                let session = ParticipantGridWindowController.SessionInfo(
+                    meetingNumber: digits,
+                    startedAt: startedAt,
+                    obsRecording: self.isRecording,
+                    presetName: self.meetingPresets.first { $0.number == digits }?.name ?? "",
+                    speakerHidden: self.speakerTileQuickHidden,
+                    readiness: self.startReadiness)
+                ParticipantGridWindowController.refresh(on: screen,
+                                                       session: session,
+                                                       windowed: reference == nil)
+                // One second rather than the gallery's old two: this roster now
+                // carries live state - who is talking, whose hand is up - and a
+                // two-second lag on a raised hand is long enough for a student
+                // to give up and put it down again.
+                try? await Task.sleep(nanoseconds: 1_000_000_000)
+            }
+        }
+    }
+
     private func parkBuiltInMeetingWindow(resetQuickHideToDefault: Bool = false) {
         layoutFollowTask?.cancel()
         layoutFollowTask = Task {
@@ -1098,9 +1845,10 @@ final class CoordinatorController: ObservableObject {
             // the ideal window had not appeared yet. Drives the handoff below.
             var tileIsFallback = false
             demotedStrayWindowNumbers.removeAll() // fresh session, fresh logs
+            rejectedVideoCandidateNumbers.removeAll()
             // The quick-hide MODE's default state: enabled means sessions
             // begin with the tile hidden and the chat full-height;
-            // \u{2303}\u{2325}\u{2318}Z brings the speaker up on demand.
+            // \u{2325}\u{2318}Z brings the speaker up on demand.
             // Only SESSION STARTS reset to the default - a live layout
             // re-apply or snap-back must not undo a mid-class toggle.
             if resetQuickHideToDefault {
@@ -1168,20 +1916,20 @@ final class CoordinatorController: ObservableObject {
                         parked = false
                     } else if speakerTileQuickHidden {
                         // Quick-hide mode: the tile stays identified (so
-                        // \u{2303}\u{2325}\u{2318}Z can summon it) but
+                        // \u{2325}\u{2318}Z can summon it) but
                         // HIDDEN, with the chat owning the full column.
                         // Re-asserts every tick, so the SDK re-showing
                         // the window (state changes do that) gets undone.
                         if builtInMeetingWindow == nil {
                             builtInMeetingWindow = window
-                            if !peopleViewWanted { zoomChatClient.simplifyMeetingView() }
+                            if !galleryWindowExists { zoomChatClient.simplifyMeetingView() }
                         }
                         if window.isVisible {
                             window.orderOut(nil)
                             ChatWindowController.fillSideColumn(layout: workspaceLayout)
                             if !quickHideAnnounced {
                                 quickHideAnnounced = true
-                                log("Speaker tile starts hidden (quick-hide mode) \u{2014} chat has the full column; \u{2303}\u{2325}\u{2318}Z shows the speaker.")
+                                log("Speaker tile starts hidden (quick-hide mode) \u{2014} chat has the full column; \u{2325}\u{2318}Z shows the speaker.")
                             }
                         }
                         parked = false
@@ -1197,7 +1945,7 @@ final class CoordinatorController: ObservableObject {
                         // placer, and switching to speaker here would flip
                         // it back; the tile (the secondary window) already
                         // shows Zoom's complementary clean speaker view.
-                        if !peopleViewWanted {
+                        if !galleryWindowExists {
                             zoomChatClient.simplifyMeetingView()
                         }
                         // Remembered so the people-view placer knows which
@@ -1251,9 +1999,18 @@ final class CoordinatorController: ObservableObject {
     /// its window vanished entirely (SDK recreated it), re-run the placer
     /// every ~30s.
     private func maintainPeopleViewPlacement(tick: Int) {
-        guard peopleViewWanted else { return }
-        guard let target = peopleViewTargetScreen() else { return }
+        guard galleryWindowExists else { return }
+        guard let target = peopleViewTargetScreen() else {
+            keepBackgroundGalleryBehind()
+            return
+        }
         if let gallery = peopleViewWindow {
+            // Above the menu bar and the Dock, re-asserted every tick because
+            // the SDK resets the level whenever it recreates the window. At
+            // .normal the grid covers the display's bounds but the menu bar
+            // and Dock still draw over it, which is not what "full screen on
+            // the reference display" means.
+            if windowIsOnPeopleViewTarget(gallery) { gallery.level = .statusBar }
             // The grid STAYS on its display, focused or not (explicit
             // requirement) - clicking it must not strand it wherever the
             // SDK re-homed it. The only interaction respected is an
@@ -1286,7 +2043,7 @@ final class CoordinatorController: ObservableObject {
                     // Snap Windows Back restarts the loop and re-arms.
                     gridCorrectionHoldUntilTick = tick + 60
                     gridCorrectionStreak = 0
-                    log("Something keeps re-placing the participant grid within seconds \u{2014} pausing the tug-of-war for 2 minutes. Snap Windows Back (\u{2303}\u{2325}\u{2318}S) re-places it now.")
+                    log("Something keeps re-placing the participant grid within seconds \u{2014} pausing the tug-of-war for 2 minutes. Snap Windows Back (\u{2325}\u{2318}S) re-places it now.")
                 } else if gridCorrectionStreak == 3 {
                     // Raw re-framing isn't sticking: the SDK likely lost or
                     // changed its dual-screen state when it recreated the
@@ -1372,8 +2129,22 @@ final class CoordinatorController: ObservableObject {
     /// on the extended one, exactly backwards, reported live.
     private func preferredTileWindow() -> NSWindow? {
         let candidates = tileCandidates()
-        guard peopleViewWanted else { return candidates.first }
+        guard galleryWindowExists else { return candidates.first }
         return candidates.count >= 2 ? candidates.last : nil
+    }
+
+    /// Keeps the no-second-display gallery behind the workspace.
+    ///
+    /// The SDK raises its own windows on state changes - waiting room, share
+    /// start - which is the same behaviour the ghost police exists for, so one
+    /// orderBack at placement time does not hold. Pushed back only when it has
+    /// floated to the FRONT without being focused: a teacher who deliberately
+    /// clicks into the grid keeps it, and it settles back on its own once they
+    /// click away.
+    private func keepBackgroundGalleryBehind() {
+        guard let gallery = peopleViewWindow, gallery.isVisible else { return }
+        guard !gallery.isKeyWindow, gallery.orderedIndex == 0 else { return }
+        gallery.orderBack(nil)
     }
 
     /// Whether a window currently lives on the people-view target display,
@@ -1393,6 +2164,13 @@ final class CoordinatorController: ObservableObject {
     /// the fight detector for maintainPeopleViewPlacement. Reset whenever
     /// the follow loop (re)starts: session start, layout re-apply, Snap
     /// Windows Back - each of those is an explicit re-arm.
+    /// Custom-UI gallery refresh. Cancelled with the session.
+    /// When the current session began, for the coarse duration band reported at
+    /// the end. Never sent as a timestamp - see Analytics.band(seconds:).
+    private var sessionStartedAt: Date?
+    private var customUIGridTask: Task<Void, Never>?
+    /// Custom-UI speaker-content chooser. Cancelled with the session.
+    private var customUISpeakerTask: Task<Void, Never>?
     private var gridCorrectionStreak = 0
     private var gridCorrectionHoldUntilTick = 0
 
@@ -1480,12 +2258,56 @@ final class CoordinatorController: ObservableObject {
     }
 
     /// Confirmation gate in front of stop() for every user-facing trigger
-    /// (End Session button, menu bar item, \u{2303}\u{2325}\u{2318}X):
+    /// (End Session button, menu bar item, \u{2325}\u{2318}X):
     /// ending the session is destructive - it can end the meeting for the
     /// whole class - and the system-wide hotkey especially is one stray
     /// keystroke away. Internal/automatic paths (Zoom-side meeting end,
     /// app quit) still call stop()/prepareForTermination directly: the
     /// destructive event already happened or is separately confirmed.
+    /// True while a class is actually live.
+    ///
+    /// Excludes `isStopping`: a session already being torn down does not need a
+    /// second confirmation, and asking again during teardown would be a dialog
+    /// nobody can act on usefully.
+    var hasLiveSession: Bool {
+        !isStopping && (isRunning || virtualCamActive || isRecording)
+    }
+
+    /// Asks before quitting out from under a live class.
+    ///
+    /// Quitting is not "close the window". It ends the Zoom meeting for everyone
+    /// when Greenroom is hosting, drops the students, and finalises whatever is
+    /// recording. ⌘Q sits one key from ⌘W and one slip from ending somebody's
+    /// lesson in front of their class.
+    ///
+    /// Cancel is the default button, against the usual convention of making the
+    /// titular action default. A teacher who hit ⌘Q by accident is exactly the
+    /// person about to hit Return by reflex, and the answer that reflex gives
+    /// should be the recoverable one.
+    ///
+    /// Returns true when quitting should proceed.
+    func confirmQuitWhileLive() -> Bool {
+        guard hasLiveSession else { return true }
+        // The quit may have been triggered from the menu bar while another app
+        // held focus, so the alert has to come forward with the app.
+        NSApp.activate(ignoringOtherApps: true)
+
+        let alert = NSAlert()
+        alert.messageText = "Quit Greenroom and end the class?"
+        alert.informativeText = isRecording
+            ? "The recording is finished and saved first. Then the Zoom meeting ends for everyone when you're hosting, and your students are dropped from the call."
+            : "The Zoom meeting ends for everyone when you're hosting, and your students are dropped from the call."
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: "Quit Greenroom")
+        alert.addButton(withTitle: "Cancel")
+        alert.buttons[0].hasDestructiveAction = true
+        // Hand the Return key to Cancel. Escape already maps to it as the
+        // second button.
+        alert.buttons[0].keyEquivalent = ""
+        alert.buttons[1].keyEquivalent = "\r"
+        return alert.runModal() == .alertFirstButtonReturn
+    }
+
     func confirmAndStop() {
         guard isRunning || virtualCamActive else { return }
         NSApp.activate(ignoringOtherApps: true) // the hotkey fires while other apps are focused
@@ -1531,7 +2353,10 @@ final class CoordinatorController: ObservableObject {
         if client.isConnected {
             Task { try? await GreenroomScene.enforceLayerOrder(client: client) }
         }
-        if !sdkMeetingWindows().isEmpty {
+        if zoomChatClient.didUseCustomUI {
+            // Our own windows: re-place them rather than hunting for the SDK's.
+            presentMeetingSurfaces(resetQuickHideToDefault: false)
+        } else if !sdkMeetingWindows().isEmpty {
             parkBuiltInMeetingWindow()
             placePeopleViewWindow()
         } else if ZoomWindowManager.hasAccessibilityPermission, ZoomWindowManager.currentMeetingWindowFrame() != nil {
@@ -1550,7 +2375,59 @@ final class CoordinatorController: ObservableObject {
     /// unreachable by construction.
     private func prepareMeetingIfNeeded() async throws -> ZoomServerToServerClient.CreatedMeeting? {
         guard meetingMode == .create else { return nil }
+        await endStaleLiveMeetings()
         return try await createMeetingViaAPI()
+    }
+
+    /// Ends any meeting still live on the account before starting a new one.
+    ///
+    /// Zoom allows a host exactly one live meeting. A previous one left
+    /// running - after a crash, a force quit, or anything else that skipped
+    /// the termination path that ends it - collides with the new one, and Zoom
+    /// resolves the collision by ending a meeting itself. From inside the SDK
+    /// that arrives as status Ended with reason None, reported as "the meeting
+    /// ended before Greenroom finished joining": a start that sits on the
+    /// Meeting step and then gives up, with nothing on screen explaining why.
+    ///
+    /// Ending it deliberately is strictly better than letting Zoom pick which
+    /// of the two dies. It is still someone's live meeting, so it is never
+    /// silent - the status log names how many and says it is doing it.
+    ///
+    /// Logs the clean case too. Finding nothing live is the result that
+    /// DISPROVES this being the cause of a failed start, and that is worth as
+    /// much as finding something when the next one goes wrong.
+    private func endStaleLiveMeetings() async {
+        guard !s2sAccountID.isEmpty, !s2sClientID.isEmpty, !s2sClientSecret.isEmpty else { return }
+        let live = await ZoomServerToServerClient.liveMeetings(
+            accountID: s2sAccountID, clientID: s2sClientID, clientSecret: s2sClientSecret)
+        guard !live.isEmpty else {
+            Self.sessionLog("Pre-flight: no meetings already live on the account.")
+            return
+        }
+        log("\(live.count) meeting\(live.count == 1 ? " is" : "s are") still live on your Zoom account "
+            + "\u{2014} ending \(live.count == 1 ? "it" : "them") first, or this start would collide.")
+        for id in live {
+            let ended = await ZoomServerToServerClient.endMeeting(
+                id: id, accountID: s2sAccountID, clientID: s2sClientID, clientSecret: s2sClientSecret)
+            Self.sessionLog("Pre-flight: ending stale meeting \(id) \(ended ? "succeeded" : "FAILED")")
+        }
+    }
+
+    /// Lets a previous meeting finish tearing down before a new one starts.
+    ///
+    /// Silent on the common path - back-to-back sessions are the only time
+    /// there is anything to wait for, and that is exactly when the start used
+    /// to fail. Says so only if the wait is long enough to notice, so the
+    /// readiness card explains the pause rather than just sitting there.
+    private func settleBeforeJoining() async {
+        let started = Date()
+        let idle = await zoomChatClient.awaitMeetingIdle()
+        let waited = Date().timeIntervalSince(started)
+        if !idle {
+            log("The previous meeting is still closing \u{2014} starting anyway. If this start fails, wait a moment and press Start again.")
+        } else if waited > 1 {
+            log("Waited \(Int(waited.rounded()))s for the previous meeting to finish closing.")
+        }
     }
 
     /// Warms the Zoom SDK auth in parallel with the OBS pipeline.
@@ -1803,6 +2680,21 @@ final class CoordinatorController: ObservableObject {
         peopleViewOnStart && peopleViewTargetScreen() != nil
     }
 
+    /// Whether the SDK runs with TWO meeting windows this session.
+    ///
+    /// Deliberately separate from `peopleViewWanted`, which asks the narrower
+    /// question of whether one of them goes to another DISPLAY. With the
+    /// toggle on and no reference monitor connected the gallery still opens -
+    /// it just lives behind the workspace instead of on a second screen. The
+    /// two were conflated, which is why a single-display session used to get
+    /// no participant view at all: dual-screen mode was never enabled, so the
+    /// SDK never created the window there was nowhere to put.
+    ///
+    /// Every window-ROLE decision keys off this (which window is the tile,
+    /// whether to simplify the tile's view, what the stray sweep may demote).
+    /// Only the placement decisions still key off `peopleViewWanted`.
+    private var galleryWindowExists: Bool { peopleViewOnStart }
+
     /// Sends the built-in client's dual-screen gallery window full-screen
     /// onto the chosen (or default secondary) display. Polls for it
     /// because the SDK creates it a beat after the primary meeting window.
@@ -1811,7 +2703,10 @@ final class CoordinatorController: ObservableObject {
     private func placePeopleViewWindow() {
         guard peopleViewOnStart else { return }
         guard let target = peopleViewTargetScreen() else {
-            log("People view skipped \u{2014} no second display to put it on. Connect your reference display, or pick it in Settings (\u{2318},) \u{2192} Layout.")
+            // Used to give up here. The window is worth having even with
+            // nowhere special to put it - it just goes behind the workspace
+            // rather than covering it.
+            placePeopleViewBehindWorkspace()
             return
         }
         let onChosen = !peopleViewDisplayUUID.isEmpty && DisplayResolver.screen(forUUID: peopleViewDisplayUUID) != nil
@@ -1849,6 +2744,9 @@ final class CoordinatorController: ObservableObject {
                         // guard in maintainPeopleViewPlacement).
                         if windowIsOnPeopleViewTarget(gallery) {
                             peopleViewGrantedFrame = gallery.frame
+                            // Over the menu bar and Dock - see the same
+                            // assert in maintainPeopleViewPlacement.
+                            gallery.level = .statusBar
                         }
                         gallery.orderFront(nil)
                         peopleViewWindow = gallery
@@ -1859,6 +2757,45 @@ final class CoordinatorController: ObservableObject {
                         log(onChosen
                             ? "Participant grid (with the meeting controls) is on \u{201C}\(target.localizedName)\u{201D}."
                             : "Participant grid is on \(target.localizedName) (the secondary display). Pick a specific one in Settings \u{2192} Layout if this isn't your reference monitor.")
+                        return
+                    }
+                }
+                try? await Task.sleep(nanoseconds: 1_000_000_000)
+            }
+            log("People view: the gallery window never appeared \u{2014} is dual-screen mode supported on this meeting?")
+        }
+    }
+
+    /// The single-display form of `placePeopleViewWindow`: the gallery opens
+    /// behind the workspace instead of onto a reference monitor.
+    ///
+    /// Same hunt as the placer above - the SDK creates the gallery a beat
+    /// after the primary window - but the only placement is "not in the way".
+    /// It is left at whatever size the SDK chose and simply sent to the back,
+    /// so the tiled workspace is untouched and the roster is one Mission
+    /// Control (or \u{2318}`) away.
+    private func placePeopleViewBehindWorkspace() {
+        peopleViewTask?.cancel()
+        peopleViewTask = Task {
+            for _ in 0..<30 {
+                if Task.isCancelled { return }
+                // The tile is already parked; the gallery is the other one.
+                let gallery = meetingVideoWindowCandidates()
+                    .first { $0 !== builtInMeetingWindow }
+                if let gallery {
+                    if gallery.styleMask.contains(.fullScreen) {
+                        // A window in a Space cannot be ordered back - eject
+                        // it and finish on a later tick.
+                        gallery.toggleFullScreen(nil)
+                    } else {
+                        gallery.level = .normal
+                        gallery.orderBack(nil)
+                        peopleViewWindow = gallery
+                        // Same call the dual-display path makes: without it
+                        // the second window shows another speaker view rather
+                        // than the roster this exists to provide.
+                        zoomChatClient.showGalleryOnPrimaryView()
+                        log("Participant grid is open behind the workspace \u{2014} no second display to give it. Mission Control or \u{2318}` brings it forward; connect a reference display to have it full-screen there.")
                         return
                     }
                 }
@@ -1896,6 +2833,8 @@ final class CoordinatorController: ObservableObject {
         NSApp.windows.filter { window in
             guard window.isVisible, !window.isSheet else { return false }
             if ChatWindowController.owns(window) { return false } // "Meeting Chat" - ours
+            if SpeakerWindowController.owns(window) { return false } // custom-UI speaker - also ours
+            if ParticipantGridWindowController.owns(window) { return false } // custom-UI gallery - ours
             if window.title == "Greenroom" { return false } // main window
             if window.title.localizedCaseInsensitiveContains("settings") { return false }
 
@@ -1923,8 +2862,86 @@ final class CoordinatorController: ObservableObject {
     private func meetingVideoWindowCandidates() -> [NSWindow] {
         sdkMeetingWindows()
             .filter { !$0.title.localizedCaseInsensitiveContains("chat") }
+            .filter(isPlausibleVideoWindow)
             .sorted { $0.windowNumber < $1.windowNumber }
     }
+
+    /// Whether an SDK window is plausibly one of Zoom's VIDEO windows, as
+    /// opposed to a panel it popped up.
+    ///
+    /// This gate exists because a panel must never be adopted as the speaker
+    /// tile or pinned to the people-view display. Reported live: clicking the
+    /// info "i" on the tile made the SDK recreate its windows, which killed
+    /// the tile's weak reference; the re-hunt then took the newest candidate -
+    /// the just-opened popup - parked it in the side column, and the follow
+    /// loop re-asserted that every two seconds. A stuck window that also stole
+    /// the quick-hide shortcut, since it had become `builtInMeetingWindow`.
+    ///
+    /// Geometry is the discriminator on purpose: it survives the window
+    /// recreation that destroys identity, the same reason the gallery is
+    /// excluded geometrically rather than by reference.
+    ///
+    /// The floor is a HEURISTIC, and an honest one - Zoom's panel sizes are
+    /// not documented and this machine could not open one to measure. It sits
+    /// under any real video window (the side-column tile measured 505x351)
+    /// while excluding small panels. `logRejectedVideoCandidate` records what
+    /// it turns away with title and size, so the first time this is wrong the
+    /// log says so and the rule can be tightened from a measurement instead of
+    /// another guess.
+    private func isPlausibleVideoWindow(_ window: NSWindow) -> Bool {
+        // Panels are never the meeting video window. Zoom's popups - the
+        // tile's info "i", tooltips, notification bubbles - are NSPanel
+        // subclasses (ZMTipPanel observed live), while the real video windows
+        // are ordinary NSWindows: they have to be, to support fullscreen.
+        // This is the class-level backstop for popups that dodge the title
+        // list below by having no title, and dodge the size floor by being
+        // big - the info popup is both.
+        if window is NSPanel {
+            logRejectedVideoCandidate(window, reason: "panels are never the meeting video window")
+            return false
+        }
+        let className = String(describing: type(of: window))
+        for marker in ["Tip", "Popover", "Toast", "Notification", "Tooltip"]
+        where className.contains(marker) {
+            logRejectedVideoCandidate(window, reason: "class \(className) is a popup, not a video window")
+            return false
+        }
+        let title = window.title
+        for panel in ["information", "participant", "invite", "security", "keypad", "poll", "breakout", "meeting info"]
+        where title.localizedCaseInsensitiveContains(panel) {
+            logRejectedVideoCandidate(window, reason: "title looks like the \(panel) panel")
+            return false
+        }
+        let size = window.frame.size
+        if size.width < 300 || size.height < 220 {
+            logRejectedVideoCandidate(window, reason: "too small for a video window")
+            return false
+        }
+        return true
+    }
+
+    /// Logged once per window, to a file rather than the status log: this runs
+    /// on every follow-loop tick, so the user-facing log would drown.
+    private func logRejectedVideoCandidate(_ window: NSWindow, reason: String) {
+        guard rejectedVideoCandidateNumbers.insert(window.windowNumber).inserted else { return }
+        let size = window.frame.size
+        let line = "\(Self.quitLogStamp.string(from: Date())) ignored-sdk-window"
+            + " title=\"\(window.title)\""
+            + " \(Int(size.width))x\(Int(size.height))"
+            + " class=\(String(describing: type(of: window)))"
+            + " reason=\(reason)\n"
+        let url = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Library/Logs/Greenroom-quit.log")
+        if let handle = try? FileHandle(forWritingTo: url) {
+            handle.seekToEndOfFile()
+            try? handle.write(contentsOf: Data(line.utf8))
+            try? handle.close()
+        } else {
+            try? Data(line.utf8).write(to: url)
+        }
+    }
+
+    private var rejectedVideoCandidateNumbers = Set<Int>()
 
     /// Windows already demoted, so each is logged (and re-shrunk) once.
     private var demotedStrayWindowNumbers = Set<Int>()
@@ -1941,7 +2958,7 @@ final class CoordinatorController: ObservableObject {
         // While the people-view placer is still hunting for the gallery,
         // don't demote any tile/gallery candidate out from under it -
         // only obvious side panels (e.g. the SDK's chat window).
-        let placerHunting = peopleViewWanted && peopleViewWindow == nil
+        let placerHunting = galleryWindowExists && peopleViewWindow == nil
         let protected = placerHunting ? Set(meetingVideoWindowCandidates().map(\.windowNumber)) : []
         let mainArea = main.frame.width * main.frame.height
         for window in sdkMeetingWindows() {
@@ -2042,9 +3059,27 @@ final class CoordinatorController: ObservableObject {
                                     seconds: 2)
 
         log("Configuring the Greenroom scene (screen + keyed webcam bubble)\u{2026}")
-        let webcamActive = try await GreenroomScene.ensureConfigured(client: client, bubble: .init(shape: webcamShape))
-        if !webcamActive {
+        let setup = try await GreenroomScene.ensureConfigured(
+            client: client,
+            bubble: bubbleLayout,
+            preferredDisplayUUID: screenCaptureDisplayUUID)
+        if !setup.webcamActive {
             log("No webcam connected \u{2014} running screen-only. Plug a camera in and press Start (or Snap Windows Back) to bring your video back.")
+        }
+        if setup.displayFellBack {
+            log("The screen you picked to share isn't plugged in \u{2014} sharing \u{201C}\(setup.displayLabel ?? "the main display")\u{201D} instead. Change it in Settings (\u{2318},) \u{2192} Layout.")
+        }
+        // Never let a black picture ship silently: this is the one thing a
+        // class cannot work without, and it used to fail with no message at
+        // all while the webcam kept showing.
+        if !setup.screenCaptureLive {
+            // Recovery deliberately does NOT claim Snap Windows Back fixes
+            // this: Snap Back only re-asserts layer order, it does not rebuild
+            // a source. Rebuilding happens in ensureConfigured, which runs on
+            // Start, so ending and restarting the session is the honest advice.
+            log("The screen capture came up blank \u{2014} OBS couldn't open \u{201C}\(setup.displayLabel ?? "that display")\u{201D}. End the session and press Start to rebuild it, or pick a different screen in Settings (\u{2318},) \u{2192} Layout.")
+            Notifier.post(title: "Screen sharing is blank",
+                          body: "OBS couldn't capture that display. Check Settings \u{2192} Layout.")
         }
 
         log("Starting the virtual camera\u{2026}")
@@ -2083,6 +3118,13 @@ final class CoordinatorController: ObservableObject {
     /// keep-warm toggle flips on - so Start begins at "connect" instead
     /// of OBS's multi-second cold launch. No-op mid-session, when OBS
     /// isn't installed, or when the setting is off.
+    /// Names shortcuts another app has already claimed, so a dead key is
+    /// explained rather than just dead.
+    func reportUnavailableShortcuts(_ labels: [String]) {
+        let list = labels.joined(separator: ", ")
+        log("These shortcuts are already taken by another app and will not work: \(list). Quit whatever owns them, or use the menu bar icon instead.")
+    }
+
     func prewarmOBSIfEnabled() {
         guard keepOBSWarm, processManager.isInstalled, !isRunning, !virtualCamActive else { return }
         Task { try? await processManager.launch() }
@@ -2090,6 +3132,32 @@ final class CoordinatorController: ObservableObject {
 
     private func log(_ message: String) {
         statusLines.append(message)
+        Self.sessionLog(message)
+        // The readiness card shows the step; this shows what that step is
+        // actually doing. A start can legitimately sit on "Meeting" for a
+        // couple of minutes (the SDK join watchdog alone is 120s), and a bare
+        // spinner for that long is indistinguishable from a hang - which is
+        // exactly how it was reported.
+        if !startReadiness.steps.isEmpty { startReadiness.detail = message }
+    }
+
+    /// The same lines the main window shows, on disk with timestamps.
+    ///
+    /// They only ever lived in `statusLines`, which is an in-window view that
+    /// the centred readiness card covers - so when a start stalled, the one
+    /// stream of text that says WHY was both invisible to the teacher and gone
+    /// the moment the app quit. Every diagnosis of a stalled start starts here.
+    static func sessionLog(_ message: String) {
+        let line = "\(ISO8601DateFormatter().string(from: Date())) \(message)\n"
+        let url = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Library/Logs/Greenroom-session.log")
+        if let handle = try? FileHandle(forWritingTo: url) {
+            handle.seekToEndOfFile()
+            handle.write(Data(line.utf8))
+            try? handle.close()
+        } else {
+            try? Data(line.utf8).write(to: url)
+        }
     }
 }
 
@@ -2159,6 +3227,7 @@ struct SettingsTransfer: Codable {
     var mainAppOnStart: Bool?
     var peopleViewOnStart: Bool?
     var peopleViewDisplayUUID: String?
+    var screenCaptureDisplayUUID: String?
     var hideSelfView: Bool?
     var speakerTileShortcutEnabled: Bool?
     var autoRecordOnStart: Bool?
@@ -2188,6 +3257,7 @@ extension CoordinatorController {
             mainAppOnStart: mainAppOnStart,
             peopleViewOnStart: peopleViewOnStart,
             peopleViewDisplayUUID: peopleViewDisplayUUID,
+            screenCaptureDisplayUUID: screenCaptureDisplayUUID,
             hideSelfView: hideSelfView,
             speakerTileShortcutEnabled: speakerTileShortcutEnabled,
             autoRecordOnStart: autoRecordOnStart,
@@ -2219,6 +3289,7 @@ extension CoordinatorController {
         if let value = transfer.mainAppOnStart ?? transfer.chromeOnStart { mainAppOnStart = value }
         if let value = transfer.peopleViewOnStart { peopleViewOnStart = value }
         if let value = transfer.peopleViewDisplayUUID { peopleViewDisplayUUID = value }
+        if let value = transfer.screenCaptureDisplayUUID { screenCaptureDisplayUUID = value }
         if let value = transfer.hideSelfView { hideSelfView = value }
         if let value = transfer.speakerTileShortcutEnabled { speakerTileShortcutEnabled = value }
         if let value = transfer.autoRecordOnStart { autoRecordOnStart = value }

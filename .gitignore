@@ -33,3 +33,8 @@ dist/
 # Byte-cache from scripts/dmg-background.py
 __pycache__/
 .gstack/
+
+# Apptics: holds a live API_KEY, and this repo is public. Copy
+# apptics-config.plist.example to create it. The build script also rewrites it
+# (APP_VERSION_META) whenever a new app version is registered.
+apptics-config.plist

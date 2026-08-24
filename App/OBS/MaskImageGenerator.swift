@@ -23,17 +23,33 @@ enum MaskImageGenerator {
 
     /// `nil` for `.square` - that shape needs no mask at all, just the
     /// existing rectangular bounding-box crop already applied to the bubble.
-    static func maskImageURL(for shape: WebcamShape, size: Int = 512) -> URL? {
+    /// - Parameter aspect: width/height of the frame the mask will be stretched
+    ///   over. OBS's Image Mask/Blend stretches the image across the whole
+    ///   source, so a square mask on a 16:9 frame turns a circle into an
+    ///   ellipse and skews a rounded rectangle's corners. `screenPanelMaskURL`
+    ///   below already rendered at the target aspect for exactly this reason;
+    ///   the webcam's mask did not, which is how the "Circle" bubble came to be
+    ///   an oval in the real composite while the settings schematic drew a
+    ///   perfect circle.
+    ///
+    ///   Pass 1 when the source is cropped square before the mask (the circle
+    ///   path), and the camera's own aspect when it is not.
+    static func maskImageURL(for shape: WebcamShape, aspect: Double = 1, size: Int = 512) -> URL? {
         // Square needs no mask (the bounding-box crop is the shape), and
         // the chroma-keyed modes deliberately have none - the key does the
         // shaping there. Callers treat nil as "remove any existing mask
         // filter".
         guard shape == .circle || shape == .roundedRectangle else { return nil }
 
-        let url = directory.appendingPathComponent("mask_\(shape.rawValue)_\(size).png")
+        let safeAspect = aspect.isFinite && aspect > 0 ? aspect : 1
+        let width = size
+        let height = max(1, Int((Double(size) / safeAspect).rounded()))
+        let tag = String(format: "%.3f", safeAspect)
+
+        let url = directory.appendingPathComponent("mask_\(shape.rawValue)_\(width)x\(height)_\(tag).png")
         if FileManager.default.fileExists(atPath: url.path) { return url }
 
-        guard let pngData = renderMaskPNG(shape: shape, size: size) else { return nil }
+        guard let pngData = renderMaskPNG(shape: shape, width: width, height: height) else { return nil }
         try? pngData.write(to: url)
         return url
     }
@@ -66,12 +82,13 @@ enum MaskImageGenerator {
         return url
     }
 
-    private static func renderMaskPNG(shape: WebcamShape, size: Int) -> Data? {
-        let image = NSImage(size: NSSize(width: size, height: size))
+    private static func renderMaskPNG(shape: WebcamShape, width: Int, height: Int) -> Data? {
+        let image = NSImage(size: NSSize(width: width, height: height))
         image.lockFocus()
 
         let inset: CGFloat = 2
-        let rect = NSRect(x: inset, y: inset, width: CGFloat(size) - inset * 2, height: CGFloat(size) - inset * 2)
+        let rect = NSRect(x: inset, y: inset,
+                          width: CGFloat(width) - inset * 2, height: CGFloat(height) - inset * 2)
         let path: NSBezierPath
         switch shape {
         case .square, .cutout, .presenterLarge: // none reach here (see maskImageURL)
@@ -79,7 +96,9 @@ enum MaskImageGenerator {
         case .circle:
             path = NSBezierPath(ovalIn: rect)
         case .roundedRectangle:
-            let radius = rect.width * 0.18
+            // Off the SHORTER side, so the radius reads the same on a wide
+            // frame as on a square one rather than growing with the width.
+            let radius = min(rect.width, rect.height) * 0.18
             path = NSBezierPath(roundedRect: rect, xRadius: radius, yRadius: radius)
         }
         NSColor.white.setFill()

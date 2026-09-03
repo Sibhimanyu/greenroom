@@ -97,15 +97,17 @@ KEY_FILE="$HOME/.greenroom-sparkle-ed25519"
 # built on another machine and uploaded later. Only the zip is required.
 if "$REPO_DIR/scripts/make-dmg.sh" "$APP" "$VERSION" "$DIST"; then
   DMG_ARG=("$DIST/Greenroom-$VERSION.dmg#Greenroom $VERSION (macOS app, dmg)")
+  DOWNLOAD_EXT=dmg
 else
   echo "WARNING: DMG packaging failed (hdiutil blocked?) - releasing zip only."
   DMG_ARG=()
+  DOWNLOAD_EXT=zip
 fi
 
-# The site's Download buttons link straight to this release's zip (the one
-# artifact every release has; the DMG is best-effort above). Repoint them so
-# the link never goes stale.
-sed -i '' -E "s#releases/download/v[0-9.]+/Greenroom-[0-9.]+\.zip#releases/download/v$VERSION/Greenroom-$VERSION.zip#g" docs/*.html
+# The site's Download buttons link straight to this release: the DMG when
+# there is one, the zip otherwise (policy + fallback in the helper). If the
+# DMG is uploaded by hand later, run the helper again with "dmg".
+"$REPO_DIR/scripts/site-download-link.sh" "$VERSION" "$DOWNLOAD_EXT"
 
 git add project.yml docs/appcast.xml docs/*.html
 git commit -m "Version $VERSION"

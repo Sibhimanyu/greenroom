@@ -68,6 +68,10 @@ final class BrowserTab: NSObject, ObservableObject, Identifiable {
     @Published private(set) var suggestions: [Suggestion] = []
     @Published var highlightedSuggestion: Int?
     private var suggestionTask: Task<Void, Never>?
+    /// The address as the PAGE last set it. Suggestions appear only once
+    /// the field differs from this - focus alone, or a navigation while
+    /// focused, must not pop a list of completions for the current URL.
+    private var addressFromPage = ""
 
     var suggestionsVisible: Bool { addressFocused && !suggestions.isEmpty }
 
@@ -122,7 +126,9 @@ final class BrowserTab: NSObject, ObservableObject, Identifiable {
         observers = [
             webView.observe(\.url, options: [.new]) { [weak self] view, _ in
                 MainActor.assumeIsolated {
-                    self?.addressText = view.url?.absoluteString ?? ""
+                    let text = view.url?.absoluteString ?? ""
+                    self?.addressFromPage = text
+                    self?.addressText = text
                     if let url = view.url {
                         self?.isBlank = false
                         // Recorded at the URL change, not at didFinish: a
@@ -234,7 +240,7 @@ final class BrowserTab: NSObject, ObservableObject, Identifiable {
         suggestionTask?.cancel()
         highlightedSuggestion = nil
         let typed = addressText.trimmingCharacters(in: .whitespaces)
-        guard addressFocused, !typed.isEmpty else {
+        guard addressFocused, !typed.isEmpty, addressText != addressFromPage else {
             suggestions = []
             return
         }
@@ -1046,10 +1052,8 @@ private struct AddressBar: View {
                 }
                 .onChange(of: focused.wrappedValue) { _, isFocused in
                     tab.addressFocused = isFocused
-                    if isFocused {
-                        tab.addressEdited()
-                        selectAllInField()
-                    }
+                    // Select, never suggest: typing is what opens the list.
+                    if isFocused { selectAllInField() }
                 }
                 // accept() drops focus from the model side (Return on a
                 // highlighted row never reaches the field).
@@ -1654,6 +1658,12 @@ enum BrowserWindowController {
         // takes focus.
         targetWindow.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
+        // Keyboard focus goes to the PAGE, as in every browser. Left alone,
+        // AppKit hands a fresh window's first responder to its only text
+        // field, and the address bar opened with its dropdown showing.
+        if let tab = model.selected, !tab.isBlank {
+            targetWindow.makeFirstResponder(tab.webView)
+        }
     }
 
     private static func makeWindow(model: BrowserModel) -> NSWindow {

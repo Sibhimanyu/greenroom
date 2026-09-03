@@ -102,7 +102,12 @@ else
   DMG_ARG=()
 fi
 
-git add project.yml docs/appcast.xml
+# The site's Download buttons link straight to this release's zip (the one
+# artifact every release has; the DMG is best-effort above). Repoint them so
+# the link never goes stale.
+sed -i '' -E "s#releases/download/v[0-9.]+/Greenroom-[0-9.]+\.zip#releases/download/v$VERSION/Greenroom-$VERSION.zip#g" docs/*.html
+
+git add project.yml docs/appcast.xml docs/*.html
 git commit -m "Version $VERSION"
 git push
 

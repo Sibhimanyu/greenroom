@@ -7,10 +7,11 @@
 //  Accessibility grant, no Automation prompt, no hunting for another
 //  process's window, and never someone's whole tab pile.
 //
-//  Deliberately the everyday subset of a browser and nothing more: tabs,
-//  back/forward/reload, an address bar that also searches, the usual
-//  shortcuts, downloads to ~/Downloads. No extensions, no bookmarks, no
-//  history view - the external browsers in the picker are for those.
+//  Deliberately the everyday subset of a browser and nothing more: tabs in
+//  the title bar, back/forward/reload, an address bar that also searches
+//  and suggests, find in page, history, favicons, downloads to
+//  ~/Downloads, the usual shortcuts. No extensions, no bookmarks yet - the
+//  external browsers in the picker are for those.
 //
 //  Sign-ins persist: the default (on-disk) website data store keeps cookies
 //  between sessions, so the reading doc opens signed in every morning
@@ -34,6 +35,7 @@ final class BrowserTab: NSObject, ObservableObject, Identifiable {
     /// the user's typing takes over until they submit or the page moves.
     @Published var addressText = ""
     @Published var title = ""
+    @Published var favicon: NSImage?
     @Published var canGoBack = false
     @Published var canGoForward = false
     @Published var isLoading = false
@@ -42,7 +44,7 @@ final class BrowserTab: NSObject, ObservableObject, Identifiable {
     @Published var lastError: String?
     /// A one-line note that isn't an error - "saved to Downloads".
     @Published var notice: String?
-    /// Nothing loaded yet: the empty state, with the address field focused.
+    /// Nothing loaded yet: the new-tab page, with the address field focused.
     @Published private(set) var isBlank = true
     /// The last URL asked for via load() - known before WebKit has started
     /// the navigation, which is what the session-restore match needs.
@@ -75,9 +77,11 @@ final class BrowserTab: NSObject, ObservableObject, Identifiable {
     }
 
     /// Wired by BrowserModel: target="_blank" / window.open ask for a tab,
-    /// window.close asks for this one to go, title changes reach the
-    /// window title, and URL changes update the saved session.
+    /// ⌘-click asks for a background tab, window.close asks for this one to
+    /// go, title changes reach the window title, URL changes update the
+    /// saved session.
     var openInNewTab: ((WKWebViewConfiguration) -> BrowserTab)?
+    var openInBackgroundTab: ((URL) -> Void)?
     var requestClose: (() -> Void)?
     var titleChanged: (() -> Void)?
     var urlChanged: (() -> Void)?
@@ -186,6 +190,37 @@ final class BrowserTab: NSObject, ObservableObject, Identifiable {
             || (!typed.contains(" ") && typed.contains("."))
     }
 
+    func goBack() { webView.goBack() }
+    func goForward() { webView.goForward() }
+    func reload() { lastError = nil; webView.reload() }
+    func stop() { webView.stopLoading() }
+
+    /// ⌘+ / ⌘- / ⌘0, in Safari's steps.
+    func zoom(by factor: CGFloat) {
+        webView.pageZoom = min(max(webView.pageZoom * factor, 0.5), 3.0)
+    }
+    func resetZoom() { webView.pageZoom = 1 }
+
+    /// ⌘P. The print operation needs the view's frame set by hand -
+    /// WKWebView returns one with a zero frame and prints blank pages.
+    func printPage() {
+        guard webView.url != nil else { return }
+        let operation = webView.printOperation(with: NSPrintInfo.shared)
+        operation.view?.frame = webView.bounds
+        operation.showsPrintPanel = true
+        operation.showsProgressPanel = true
+        if let window = webView.window {
+            operation.runModal(for: window, delegate: nil, didRun: nil, contextInfo: nil)
+        } else {
+            operation.run()
+        }
+    }
+
+    /// The escape hatch for the rare page that refuses WebKit.
+    func openInDefaultBrowser() {
+        if let url = webView.url { NSWorkspace.shared.open(url) }
+    }
+
     // MARK: Address suggestions
 
     /// Called on every edit while the field is focused. History matches
@@ -275,17 +310,6 @@ final class BrowserTab: NSObject, ObservableObject, Identifiable {
         highlightedSuggestion = nil
     }
 
-    func goBack() { webView.goBack() }
-    func goForward() { webView.goForward() }
-    func reload() { lastError = nil; webView.reload() }
-    func stop() { webView.stopLoading() }
-
-    /// ⌘+ / ⌘- / ⌘0, in Safari's steps.
-    func zoom(by factor: CGFloat) {
-        webView.pageZoom = min(max(webView.pageZoom * factor, 0.5), 3.0)
-    }
-    func resetZoom() { webView.pageZoom = 1 }
-
     // MARK: Find in page
 
     func showFind() { isFinding = true }
@@ -310,15 +334,57 @@ final class BrowserTab: NSObject, ObservableObject, Identifiable {
             MainActor.assumeIsolated { self?.findMatched = result.matchFound }
         }
     }
+
+    // MARK: Favicon
+
+    /// Asks the page for its declared icon, falling back to /favicon.ico.
+    /// Cached per icon URL, so ten Wikipedia tabs fetch one image.
+    private func fetchFavicon() {
+        guard let pageURL = webView.url, let host = pageURL.host else { return }
+        let script = "(function(){var l=document.querySelector('link[rel~=\"icon\"]');return l?l.href:null})()"
+        webView.evaluateJavaScript(script) { [weak self] result, _ in
+            MainActor.assumeIsolated {
+                let declared = (result as? String).flatMap(URL.init(string:))
+                let fallback = URL(string: "\(pageURL.scheme ?? "https")://\(host)/favicon.ico")
+                guard let iconURL = declared ?? fallback else { return }
+                FaviconCache.shared.image(for: iconURL) { [weak self] image in
+                    // The tab may have moved on to another site meanwhile.
+                    guard let self, self.webView.url?.host == host else { return }
+                    self.favicon = image
+                }
+            }
+        }
+    }
 }
 
 // MARK: Navigation
 
 extension BrowserTab: WKNavigationDelegate {
 
+    /// ⌘-click on a link opens it in a background tab, as in every browser
+    /// - the results page the teacher is scanning stays put.
+    func webView(_ webView: WKWebView,
+                 decidePolicyFor navigationAction: WKNavigationAction,
+                 decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
+        if navigationAction.navigationType == .linkActivated,
+           navigationAction.modifierFlags.contains(.command),
+           let url = navigationAction.request.url,
+           let openInBackgroundTab {
+            openInBackgroundTab(url)
+            decisionHandler(.cancel)
+            return
+        }
+        decisionHandler(.allow)
+    }
+
     func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {
         lastError = nil
         notice = nil
+        favicon = nil
+    }
+
+    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        fetchFavicon()
     }
 
     func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
@@ -404,8 +470,8 @@ extension BrowserTab: WKUIDelegate {
                  windowFeatures: WKWindowFeatures) -> WKWebView? {
         guard let openInNewTab else { return nil }
         let tab = openInNewTab(configuration)
-        if navigationAction.request.url != nil, !(navigationAction.request.url?.absoluteString.isEmpty ?? true) {
-            tab.load(navigationAction.request.url!)
+        if let url = navigationAction.request.url, !url.absoluteString.isEmpty {
+            tab.load(url)
         }
         return tab.webView
     }
@@ -456,6 +522,32 @@ extension BrowserTab: WKUIDelegate {
     }
 }
 
+// MARK: - Favicon cache
+
+/// In-memory, per icon URL, for the life of the app. Small images, a few
+/// dozen sites a day - nothing worth writing to disk.
+@MainActor
+final class FaviconCache {
+    static let shared = FaviconCache()
+
+    private var images: [URL: NSImage] = [:]
+    private var waiting: [URL: [(NSImage?) -> Void]] = [:]
+
+    func image(for url: URL, completion: @escaping (NSImage?) -> Void) {
+        if let image = images[url] { completion(image); return }
+        if waiting[url] != nil { waiting[url]?.append(completion); return }
+        waiting[url] = [completion]
+        URLSession.shared.dataTask(with: url) { data, _, _ in
+            let image = data.flatMap(NSImage.init(data:))
+            image?.size = NSSize(width: 16, height: 16)
+            Task { @MainActor in
+                if let image { self.images[url] = image }
+                self.waiting.removeValue(forKey: url)?.forEach { $0(image) }
+            }
+        }.resume()
+    }
+}
+
 // MARK: - Window model
 
 /// The tabs of the one browser window, and the keyboard shortcuts that
@@ -472,6 +564,8 @@ final class BrowserModel: ObservableObject {
     @Published var findFocusRequest = 0
     /// The history popover (⌘Y).
     @Published var historyShown = false
+    /// ⌘⇧T brings these back, most recent first. Ten is plenty.
+    @Published private(set) var recentlyClosed: [URL] = []
 
     var onSelectedTitleChange: ((String) -> Void)?
     var onLastTabClosed: (() -> Void)?
@@ -513,6 +607,9 @@ final class BrowserModel: ObservableObject {
             guard let self else { return BrowserTab(configuration: configuration) }
             return self.newTab(configuration: configuration, after: tab)
         }
+        tab.openInBackgroundTab = { [weak self, weak tab] url in
+            self?.newTab(url: url, after: tab, select: false)
+        }
         tab.requestClose = { [weak self, weak tab] in
             if let tab { self?.close(tab) }
         }
@@ -546,6 +643,10 @@ final class BrowserModel: ObservableObject {
     func close(_ tab: BrowserTab) {
         guard let index = tabs.firstIndex(where: { $0.id == tab.id }) else { return }
         tab.stop()
+        if let url = tab.webView.url ?? tab.requestedURL {
+            recentlyClosed.insert(url, at: 0)
+            if recentlyClosed.count > 10 { recentlyClosed.removeLast() }
+        }
         tabs.remove(at: index)
         onTabsChanged?()
         if tabs.isEmpty {
@@ -560,6 +661,12 @@ final class BrowserModel: ObservableObject {
 
     func closeSelected() {
         if let selected { close(selected) }
+    }
+
+    func reopenClosedTab() {
+        guard !recentlyClosed.isEmpty else { return }
+        let url = recentlyClosed.removeFirst()
+        newTab(url: url, after: selected)
     }
 
     func showFind() {
@@ -627,11 +734,13 @@ final class BrowserModel: ObservableObject {
 
         switch chars.lowercased() {
         case "t" where !shift: newTab(); return true
+        case "t" where shift: reopenClosedTab(); return true
         case "w" where !shift: closeSelected(); return true
         case "l" where !shift: addressFocusRequest += 1; return true
         case "f" where !shift: showFind(); return true
         case "g": shift ? selected?.findPrevious() : selected?.findNext(); return true
         case "y" where !shift: historyShown.toggle(); return true
+        case "p" where !shift: selected?.printPage(); return true
         case "r" where !shift: selected?.reload(); return true
         case "." where !shift: selected?.stop(); return true
         case "[" where !shift: selected?.goBack(); return true
@@ -676,6 +785,59 @@ private struct WebViewHost: NSViewRepresentable {
     }
 }
 
+/// Reports a view's frame in SCREEN coordinates, and its window, whenever
+/// AppKit lays it out. The suggestion panel is a separate window, so it
+/// has to be placed in AppKit's space, not SwiftUI's.
+private struct AnchorReporter: NSViewRepresentable {
+    let onChange: (NSRect, NSWindow?) -> Void
+
+    func makeNSView(context: Context) -> ReporterView {
+        let view = ReporterView()
+        view.onChange = onChange
+        return view
+    }
+
+    func updateNSView(_ view: ReporterView, context: Context) {
+        view.onChange = onChange
+        view.report()
+    }
+
+    final class ReporterView: NSView {
+        var onChange: ((NSRect, NSWindow?) -> Void)?
+
+        override func layout() {
+            super.layout()
+            report()
+        }
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            report()
+        }
+
+        func report() {
+            guard let window else { onChange?(.zero, nil); return }
+            let inWindow = convert(bounds, to: nil)
+            onChange?(window.convertToScreen(inWindow), window)
+        }
+    }
+}
+
+/// Toolbar chrome shared by every icon button: a 28×24 target (the icon
+/// alone was 6×11, which is not a button, it is a dare) and a hover wash.
+private struct ToolbarIcon: ViewModifier {
+    func body(content: Content) -> some View {
+        content
+            .font(.system(size: 13, weight: .medium))
+            .frame(width: 28, height: 24)
+            .contentShape(RoundedRectangle(cornerRadius: 6))
+    }
+}
+
+private extension View {
+    func toolbarIcon() -> some View { modifier(ToolbarIcon()) }
+}
+
 struct BrowserWindowView: View {
     @ObservedObject var model: BrowserModel
     @FocusState private var addressFocused: Bool
@@ -685,15 +847,12 @@ struct BrowserWindowView: View {
         VStack(spacing: 0) {
             TabStrip(model: model)
             if let tab = model.selected {
-                // Above everything below it, so the suggestion dropdown it
-                // hangs draws over the find bar and the page.
                 AddressBar(model: model, tab: tab, focused: $addressFocused)
-                    .zIndex(1)
-                Divider()
                 if tab.isFinding {
-                    FindBar(tab: tab, focused: $findFocused)
                     Divider()
+                    FindBar(tab: tab, focused: $findFocused)
                 }
+                Divider()
                 TabContent(tab: tab)
             }
         }
@@ -703,19 +862,26 @@ struct BrowserWindowView: View {
     }
 }
 
-/// The row of tabs. Tabs share the width equally, between 72pt and 200pt
-/// each, and scroll once even 72pt no longer fits.
+/// The row of tabs, living in the title bar beside the traffic lights.
+/// Tabs share the width equally, between 72pt and 200pt each, and scroll
+/// once even 72pt no longer fits. The selected tab wears the toolbar's
+/// colour so the two read as one surface.
 private struct TabStrip: View {
     @ObservedObject var model: BrowserModel
+
+    /// Room for the close/minimise/zoom buttons at the left of a
+    /// full-size-content-view window.
+    static let trafficLightInset: CGFloat = 76
+    static let height: CGFloat = 36
 
     var body: some View {
         GeometryReader { geometry in
             let count = CGFloat(max(model.tabs.count, 1))
-            let available = geometry.size.width - 16 - 32 // padding + the "+" button
+            let available = geometry.size.width - Self.trafficLightInset - 8 - 36
             let width = min(200, max(72, available / count))
-            HStack(spacing: 4) {
+            HStack(alignment: .bottom, spacing: 4) {
                 ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 2) {
+                    HStack(alignment: .bottom, spacing: 2) {
                         ForEach(model.tabs) { tab in
                             TabChip(tab: tab,
                                     selected: tab.id == model.selectedID,
@@ -727,15 +893,19 @@ private struct TabStrip: View {
                 }
                 Button { model.newTab() } label: {
                     Image(systemName: "plus")
+                        .toolbarIcon()
                 }
                 .buttonStyle(.borderless)
+                .accessibilityLabel("New Tab")
                 .help("New Tab (\u{2318}T)")
+                .padding(.bottom, 2)
                 Spacer(minLength: 0)
             }
-            .padding(.horizontal, 8)
-            .frame(height: geometry.size.height)
+            .padding(.leading, Self.trafficLightInset)
+            .padding(.trailing, 8)
+            .frame(height: geometry.size.height, alignment: .bottom)
         }
-        .frame(height: 32)
+        .frame(height: Self.height)
         .background(Color(nsColor: .windowBackgroundColor))
     }
 }
@@ -753,6 +923,17 @@ private struct TabChip: View {
         HStack(spacing: 6) {
             if tab.isLoading {
                 ProgressView().controlSize(.mini)
+                    .frame(width: 16, height: 16)
+            } else if let favicon = tab.favicon {
+                Image(nsImage: favicon)
+                    .resizable()
+                    .frame(width: 16, height: 16)
+                    .clipShape(RoundedRectangle(cornerRadius: 3))
+            } else {
+                Image(systemName: tab.isBlank ? "plus.square.dashed" : "globe")
+                    .font(.system(size: 12))
+                    .foregroundStyle(.tertiary)
+                    .frame(width: 16, height: 16)
             }
             Text(tab.displayTitle)
                 .font(.callout)
@@ -764,20 +945,27 @@ private struct TabChip: View {
                 Button(action: close) {
                     Image(systemName: "xmark")
                         .font(.system(size: 9, weight: .semibold))
+                        .frame(width: 16, height: 16)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.borderless)
+                .accessibilityLabel("Close Tab")
                 .help("Close Tab (\u{2318}W)")
             }
         }
-        .padding(.horizontal, 8)
-        .frame(width: width, height: 26)
+        .padding(.horizontal, 10)
+        .frame(width: width, height: 30)
         .background(
             selected ? Color(nsColor: .controlBackgroundColor)
                      : (hovering ? Color.primary.opacity(0.06) : Color.clear),
-            in: RoundedRectangle(cornerRadius: 6))
+            in: UnevenRoundedRectangle(topLeadingRadius: 6, bottomLeadingRadius: 0,
+                                       bottomTrailingRadius: 0, topTrailingRadius: 6))
         .contentShape(Rectangle())
         .onTapGesture(perform: select)
         .onHover { hovering = $0 }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(tab.displayTitle)
+        .accessibilityAddTraits(selected ? [.isSelected] : [])
     }
 }
 
@@ -786,30 +974,55 @@ private struct AddressBar: View {
     @ObservedObject var tab: BrowserTab
     var focused: FocusState<Bool>.Binding
 
+    @State private var fieldAnchor: NSRect = .zero
+    @State private var fieldWindow: NSWindow?
+
     var body: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: 4) {
             Button(action: tab.goBack) {
-                Image(systemName: "chevron.left")
+                Image(systemName: "chevron.left").toolbarIcon()
             }
             .disabled(!tab.canGoBack)
+            .accessibilityLabel("Back")
             .help("Back (\u{2318}[)")
+            .contextMenu { historyMenu(tab.webView.backForwardList.backList.reversed()) }
 
             Button(action: tab.goForward) {
-                Image(systemName: "chevron.right")
+                Image(systemName: "chevron.right").toolbarIcon()
             }
             .disabled(!tab.canGoForward)
+            .accessibilityLabel("Forward")
             .help("Forward (\u{2318}])")
+            .contextMenu { historyMenu(tab.webView.backForwardList.forwardList) }
 
-            TextField("Address", text: $tab.addressText, prompt: Text("Search or enter a website"))
+            if tab.isLoading {
+                Button(action: tab.stop) {
+                    Image(systemName: "xmark").toolbarIcon()
+                }
+                .accessibilityLabel("Stop")
+                .help("Stop (\u{2318}.)")
+            } else {
+                Button(action: tab.reload) {
+                    Image(systemName: "arrow.clockwise").toolbarIcon()
+                }
+                .accessibilityLabel("Reload")
+                .help("Reload (\u{2318}R)")
+            }
+
+            TextField("Address", text: addressBinding, prompt: Text("Search or enter a website"))
                 .textFieldStyle(.roundedBorder)
                 .focused(focused)
+                .padding(.horizontal, 4)
                 .onSubmit {
                     tab.go()
                     focused.wrappedValue = false
                 }
                 .onChange(of: focused.wrappedValue) { _, isFocused in
                     tab.addressFocused = isFocused
-                    if isFocused { tab.addressEdited() }
+                    if isFocused {
+                        tab.addressEdited()
+                        selectAllInField()
+                    }
                 }
                 // accept() drops focus from the model side (Return on a
                 // highlighted row never reaches the field).
@@ -817,28 +1030,43 @@ private struct AddressBar: View {
                     if !isFocused { focused.wrappedValue = false }
                 }
                 .onChange(of: tab.addressText) { _, _ in tab.addressEdited() }
+                .background(AnchorReporter { rect, window in
+                    fieldAnchor = rect
+                    fieldWindow = window
+                })
 
-            if tab.isLoading {
-                Button(action: tab.stop) {
-                    Image(systemName: "xmark")
-                }
-                .help("Stop (\u{2318}.)")
-            } else {
-                Button(action: tab.reload) {
-                    Image(systemName: "arrow.clockwise")
-                }
-                .help("Reload (\u{2318}R)")
+            Menu {
+                Button("New Tab") { model.newTab() }
+                    .keyboardShortcut("t", modifiers: .command)
+                Button("Reopen Closed Tab") { model.reopenClosedTab() }
+                    .keyboardShortcut("t", modifiers: [.command, .shift])
+                    .disabled(model.recentlyClosed.isEmpty)
+                Divider()
+                Button("Find in Page\u{2026}") { model.showFind() }
+                    .keyboardShortcut("f", modifiers: .command)
+                Button("History\u{2026}") { model.historyShown = true }
+                    .keyboardShortcut("y", modifiers: .command)
+                Divider()
+                Button("Zoom In") { tab.zoom(by: 1.1) }
+                    .keyboardShortcut("+", modifiers: .command)
+                Button("Zoom Out") { tab.zoom(by: 1 / 1.1) }
+                    .keyboardShortcut("-", modifiers: .command)
+                Button("Actual Size") { tab.resetZoom() }
+                    .keyboardShortcut("0", modifiers: .command)
+                Divider()
+                Button("Print\u{2026}") { tab.printPage() }
+                    .keyboardShortcut("p", modifiers: .command)
+                    .disabled(tab.isBlank)
+                Button("Open in Default Browser") { tab.openInDefaultBrowser() }
+                    .disabled(tab.isBlank)
+            } label: {
+                Image(systemName: "ellipsis").toolbarIcon()
             }
-
-            Button { model.showFind() } label: {
-                Image(systemName: "magnifyingglass")
-            }
-            .help("Find in Page (\u{2318}F)")
-
-            Button { model.historyShown.toggle() } label: {
-                Image(systemName: "clock.arrow.circlepath")
-            }
-            .help("History (\u{2318}Y)")
+            .menuStyle(.borderlessButton)
+            .menuIndicator(.hidden)
+            .fixedSize()
+            .accessibilityLabel("More")
+            .help("More")
             .popover(isPresented: $model.historyShown, arrowEdge: .bottom) {
                 HistoryView { url in
                     tab.load(url)
@@ -847,16 +1075,61 @@ private struct AddressBar: View {
             }
         }
         .buttonStyle(.borderless)
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-        .background(Color(nsColor: .windowBackgroundColor))
-        // The dropdown hangs off the bar's bottom edge: its bottom guide is
-        // redefined as its top, so "align bottoms" puts its top on our bottom.
-        .overlay(alignment: .bottom) {
-            if tab.suggestionsVisible {
-                SuggestionList(tab: tab)
-                    .padding(.horizontal, 12)
-                    .alignmentGuide(.bottom) { $0[.top] }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 6)
+        .background(Color(nsColor: .controlBackgroundColor))
+        // The dropdown is its own window (SuggestionPanel), placed under the
+        // field in screen coordinates: nothing in this view hierarchy can
+        // draw over the WKWebView below, and a SwiftUI overlay hung the list
+        // upwards off the top of the screen.
+        .onChange(of: tab.suggestionsVisible) { _, _ in updatePanel() }
+        .onChange(of: tab.suggestions.count) { _, _ in updatePanel() }
+        .onChange(of: fieldAnchor) { _, _ in updatePanel() }
+        .onDisappear { SuggestionPanel.shared.hide() }
+    }
+
+    /// The URL without its "https://", "www." and trailing slash while
+    /// nobody is editing it - what every browser shows. Focus reveals the
+    /// real thing, and edits always go to the real thing.
+    private var addressBinding: Binding<String> {
+        Binding(
+            get: { focused.wrappedValue ? tab.addressText : Self.prettified(tab.addressText) },
+            set: { if focused.wrappedValue { tab.addressText = $0 } }
+        )
+    }
+
+    static func prettified(_ address: String) -> String {
+        var text = address
+        if text.hasPrefix("https://") { text.removeFirst("https://".count) }
+        if text.hasPrefix("www.") { text.removeFirst("www.".count) }
+        if text.hasSuffix("/"), !text.dropLast().contains("/") { text.removeLast() }
+        return text
+    }
+
+    /// Focus selects the whole address, so typing replaces it - the
+    /// behaviour every browser has and SwiftUI's field does not.
+    private func selectAllInField() {
+        DispatchQueue.main.async {
+            (fieldWindow?.firstResponder as? NSTextView)?.selectAll(nil)
+        }
+    }
+
+    private func updatePanel() {
+        guard let window = fieldWindow else { SuggestionPanel.shared.hide(); return }
+        SuggestionPanel.shared.update(tab: tab, anchor: fieldAnchor, parent: window)
+    }
+
+    /// Right-click on Back / Forward: the pages in that direction, nearest
+    /// first, so "the results page three hops ago" is one click.
+    @ViewBuilder
+    private func historyMenu(_ items: [WKBackForwardListItem]) -> some View {
+        if items.isEmpty {
+            Text("No pages")
+        } else {
+            ForEach(Array(items.prefix(12).enumerated()), id: \.offset) { _, item in
+                Button(item.title?.isEmpty == false ? item.title! : (item.url.host ?? item.url.absoluteString)) {
+                    tab.webView.go(to: item)
+                }
             }
         }
     }
@@ -865,8 +1138,11 @@ private struct AddressBar: View {
 /// What the address bar proposes while typing: the typed text (open or
 /// search), recent history that mentions it, then the engine's
 /// completions. Hover or ↑/↓ highlights, click or Return accepts.
-private struct SuggestionList: View {
+struct SuggestionList: View {
     @ObservedObject var tab: BrowserTab
+
+    static let rowHeight: CGFloat = 28
+    static let padding: CGFloat = 4
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -887,8 +1163,8 @@ private struct SuggestionList: View {
                         Spacer(minLength: 0)
                     }
                     .padding(.horizontal, 10)
-                    .padding(.vertical, 6)
                     .frame(maxWidth: .infinity, alignment: .leading)
+                    .frame(height: Self.rowHeight)
                     .background(index == tab.highlightedSuggestion ? Color.accentColor.opacity(0.18) : Color.clear,
                                 in: RoundedRectangle(cornerRadius: 6))
                     .contentShape(Rectangle())
@@ -899,11 +1175,80 @@ private struct SuggestionList: View {
                 }
             }
         }
-        .padding(4)
+        .padding(Self.padding)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 10))
+        .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 10))
         .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Color(nsColor: .separatorColor)))
-        .shadow(color: .black.opacity(0.15), radius: 12, y: 4)
+    }
+
+    static func height(forRows rows: Int) -> CGFloat {
+        CGFloat(rows) * rowHeight + padding * 2
+    }
+}
+
+/// The suggestion dropdown as a borderless child window under the address
+/// field - how Safari and Chrome do it. A child window moves with its
+/// parent, floats above the WKWebView, and never activates, so the field
+/// keeps focus while the mouse is over the rows.
+@MainActor
+final class SuggestionPanel {
+    static let shared = SuggestionPanel()
+
+    private var panel: NSPanel?
+    private var hosting: NSHostingView<AnyView>?
+    private var keyObserver: Any?
+
+    func update(tab: BrowserTab, anchor: NSRect, parent: NSWindow) {
+        guard tab.suggestionsVisible, anchor.width > 0 else { hide(); return }
+        let panel = self.panel ?? makePanel()
+        hosting?.rootView = AnyView(SuggestionList(tab: tab).tint(Brand.green))
+
+        let height = SuggestionList.height(forRows: tab.suggestions.count)
+        var frame = NSRect(x: anchor.minX, y: anchor.minY - 4 - height, width: anchor.width, height: height)
+        if let screen = parent.screen {
+            frame.origin.y = max(frame.origin.y, screen.visibleFrame.minY)
+        }
+        panel.setFrame(frame, display: true)
+        hosting?.frame = NSRect(origin: .zero, size: frame.size)
+
+        if panel.parent !== parent {
+            panel.parent?.removeChildWindow(panel)
+            parent.addChildWindow(panel, ordered: .above)
+        }
+        panel.orderFront(nil)
+    }
+
+    func hide() {
+        guard let panel, panel.isVisible else { return }
+        panel.parent?.removeChildWindow(panel)
+        panel.orderOut(nil)
+    }
+
+    private func makePanel() -> NSPanel {
+        let panel = NSPanel(contentRect: .zero,
+                            styleMask: [.borderless, .nonactivatingPanel],
+                            backing: .buffered,
+                            defer: false)
+        panel.isOpaque = false
+        panel.backgroundColor = .clear
+        panel.hasShadow = true
+        panel.becomesKeyOnlyIfNeeded = true
+        panel.hidesOnDeactivate = false
+        panel.isReleasedWhenClosed = false
+        panel.animationBehavior = .none
+        let hosting = NSHostingView(rootView: AnyView(EmptyView()))
+        panel.contentView = hosting
+        self.hosting = hosting
+        self.panel = panel
+        // Switching apps must not leave a dropdown floating over someone
+        // else's window.
+        keyObserver = NotificationCenter.default.addObserver(
+            forName: NSWindow.didResignKeyNotification, object: nil, queue: .main
+        ) { [weak self] note in
+            guard let window = note.object as? NSWindow, window == panel.parent else { return }
+            MainActor.assumeIsolated { self?.hide() }
+        }
+        return panel
     }
 }
 
@@ -931,15 +1276,17 @@ private struct FindBar: View {
             }
 
             Button(action: tab.findPrevious) {
-                Image(systemName: "chevron.up")
+                Image(systemName: "chevron.up").toolbarIcon()
             }
             .disabled(tab.findText.isEmpty)
+            .accessibilityLabel("Previous Match")
             .help("Previous (\u{21E7}\u{2318}G)")
 
             Button(action: tab.findNext) {
-                Image(systemName: "chevron.down")
+                Image(systemName: "chevron.down").toolbarIcon()
             }
             .disabled(tab.findText.isEmpty)
+            .accessibilityLabel("Next Match")
             .help("Next (\u{2318}G)")
 
             Spacer()
@@ -949,8 +1296,8 @@ private struct FindBar: View {
         }
         .buttonStyle(.borderless)
         .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-        .background(Color(nsColor: .windowBackgroundColor))
+        .padding(.vertical, 6)
+        .background(Color(nsColor: .controlBackgroundColor))
     }
 }
 
@@ -1088,26 +1435,9 @@ private struct TabContent: View {
 
             ZStack {
                 WebViewHost(webView: tab.webView)
-                if tab.isBlank { emptyState }
+                if tab.isBlank { NewTabPage(open: tab.load) }
             }
         }
-    }
-
-    /// A new tab before anything is typed. Blank white read as "broken".
-    private var emptyState: some View {
-        VStack(spacing: 8) {
-            Image(systemName: "globe")
-                .font(.title2)
-                .foregroundStyle(.tertiary)
-            Text("Search or enter a website")
-                .font(.callout)
-                .foregroundStyle(.secondary)
-            Text("\u{2318}L jumps to the address bar.")
-                .font(.caption)
-                .foregroundStyle(.tertiary)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color(nsColor: .textBackgroundColor))
     }
 
     private func messageBar(_ text: String, systemImage: String, tint: Color) -> some View {
@@ -1120,6 +1450,81 @@ private struct TabContent: View {
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
         .background(tint.opacity(0.12))
+    }
+}
+
+/// A new tab before anything is typed: the sites visited most recently,
+/// one per host, so the morning's regulars are a click away. The field
+/// above already has focus, so no instructions.
+private struct NewTabPage: View {
+    @ObservedObject private var history = BrowserHistory.shared
+    let open: (URL) -> Void
+
+    private var recent: [BrowserHistory.Entry] {
+        var seen = Set<String>()
+        return history.entries.filter { seen.insert($0.host).inserted }.prefix(8).map { $0 }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            if recent.isEmpty {
+                VStack(spacing: 8) {
+                    Image(systemName: "globe")
+                        .font(.title2)
+                        .foregroundStyle(.tertiary)
+                    Text("Search or enter a website above")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity)
+            } else {
+                Text("Recently visited")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .textCase(.uppercase)
+                VStack(spacing: 2) {
+                    ForEach(recent) { entry in
+                        Button {
+                            if let url = URL(string: entry.url) { open(url) }
+                        } label: {
+                            HStack(spacing: 10) {
+                                Image(systemName: "globe")
+                                    .foregroundStyle(.tertiary)
+                                    .frame(width: 16)
+                                VStack(alignment: .leading, spacing: 1) {
+                                    Text(entry.displayTitle).lineLimit(1)
+                                    Text(entry.host)
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                        .lineLimit(1)
+                                }
+                                Spacer()
+                            }
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 6)
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .background(RecentRowHover())
+                    }
+                }
+            }
+        }
+        .frame(maxWidth: 520)
+        .padding(.top, 48)
+        .padding(.horizontal, 24)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .background(Color(nsColor: .textBackgroundColor))
+    }
+}
+
+/// A quiet hover wash for list-like rows made of plain buttons.
+private struct RecentRowHover: View {
+    @State private var hovering = false
+    var body: some View {
+        RoundedRectangle(cornerRadius: 6)
+            .fill(hovering ? Color.primary.opacity(0.06) : Color.clear)
+            .onHover { hovering = $0 }
     }
 }
 
@@ -1208,7 +1613,13 @@ enum BrowserWindowController {
         newWindow.title = defaultTitle
         newWindow.setContentSize(NSSize(width: 960, height: 700))
         newWindow.minSize = NSSize(width: 480, height: 360)
-        newWindow.styleMask = [.titled, .closable, .miniaturizable, .resizable]
+        // Tabs live in the title bar, beside the traffic lights, the way
+        // every browser does it: the title is hidden (the selected tab IS
+        // the title) but still set, for Mission Control and the app switcher.
+        newWindow.styleMask = [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView]
+        newWindow.titleVisibility = .hidden
+        newWindow.titlebarAppearsTransparent = true
+        newWindow.isMovableByWindowBackground = true
         newWindow.tabbingMode = .disallowed
         newWindow.isReleasedWhenClosed = false // ARC + close() below manage its lifetime
 
@@ -1216,6 +1627,7 @@ enum BrowserWindowController {
             newWindow?.title = title.isEmpty ? defaultTitle : title
         }
         model.onLastTabClosed = { [weak newWindow] in
+            SuggestionPanel.shared.hide()
             newWindow?.close()
         }
         // Saved on every change rather than at quit: a force-quit or a
@@ -1254,6 +1666,7 @@ enum BrowserWindowController {
     }
 
     static func close() {
+        SuggestionPanel.shared.hide()
         window?.close()
     }
 }

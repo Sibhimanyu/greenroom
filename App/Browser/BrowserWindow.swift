@@ -258,8 +258,12 @@ final class BrowserTab: NSObject, ObservableObject, Identifiable {
                                text: typed,
                                detail: Self.looksLikeAddress(typed) ? "Open" : "Search Google",
                                url: nil)]
-        for entry in BrowserHistory.shared.matching(typed).prefix(3) {
+        // One row per distinct title+host: two Google searches for the same
+        // words differ only in the query string and read as a duplicate.
+        var seen = Set<String>()
+        for entry in BrowserHistory.shared.matching(typed) where seen.insert("\(entry.displayTitle)|\(entry.host)").inserted {
             list.append(Suggestion(kind: .history, text: entry.displayTitle, detail: entry.host, url: URL(string: entry.url)))
+            if seen.count == 3 { break }
         }
         return list
     }
@@ -857,6 +861,9 @@ struct BrowserWindowView: View {
             }
         }
         .frame(minWidth: 480, minHeight: 360)
+        // The window is full-size-content-view; SwiftUI still reserves the
+        // title bar as safe area. The tab strip is meant to live there.
+        .ignoresSafeArea(.container, edges: .top)
         .onChange(of: model.addressFocusRequest) { _, _ in addressFocused = true }
         .onChange(of: model.findFocusRequest) { _, _ in findFocused = true }
     }
@@ -1060,11 +1067,15 @@ private struct AddressBar: View {
                 Button("Open in Default Browser") { tab.openInDefaultBrowser() }
                     .disabled(tab.isBlank)
             } label: {
-                Image(systemName: "ellipsis").toolbarIcon()
+                Image(systemName: "ellipsis")
+                    .font(.system(size: 13, weight: .medium))
             }
             .menuStyle(.borderlessButton)
             .menuIndicator(.hidden)
-            .fixedSize()
+            // On the Menu, not its label: the label frame does not grow the
+            // hit area (it measured 20x14).
+            .frame(width: 28, height: 24)
+            .contentShape(RoundedRectangle(cornerRadius: 6))
             .accessibilityLabel("More")
             .help("More")
             .popover(isPresented: $model.historyShown, arrowEdge: .bottom) {

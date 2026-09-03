@@ -870,6 +870,27 @@ private struct LayoutSettingsTab: View {
                     .focused($focus, equals: .websiteURL)
             }
 
+            if AppCatalog.isBuiltInBrowser(coordinator.mainAppBundleID) {
+                Text("Greenroom's own browser window \u{2014} tiled directly, with no Accessibility or Automation permission to grant. Tabs, back and forward, find in page (\u{2318}F), history (\u{2318}Y), an address bar that also searches, and the usual shortcuts (\u{2318}T, \u{2318}W, \u{2318}L). Sign-ins are remembered between sessions. Pick Chrome or another browser above if you need extensions.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                Toggle("Reopen last session\u{2019}s tabs on Start", isOn: $coordinator.browserRestoresTabs)
+                Text("On: the tabs that were open when Greenroom last quit come back, with the website above opened alongside them. Off: each Start begins with just that website.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                Toggle("Suggest searches as you type", isOn: $coordinator.browserSearchSuggestions)
+                Text("On: the address bar sends what you type to Google as you type and shows its completions, as Chrome and Safari do. Off: only pages from your own history are suggested, and nothing leaves the Mac until you press Return.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                Toggle("Close the browser window when the session ends", isOn: $coordinator.browserClosesOnStop)
+                Text("On: Stop closes the browser along with the meeting windows; its tabs are kept and come back on the next Start. Off: the browser stays where it is, like any other main app.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
             if needsAccessibility && !hasAccessibilityPermission {
                 accessibilityWarning
             }

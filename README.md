@@ -151,10 +151,26 @@ rough. Shape changes apply on the next Start.
 The tiled-workspace arrangement, with a live schematic that previews
 every change:
 
-- **Main app** — dropdown of every installed and running app. Chrome is
-  the default. If the chosen app is a browser (anything registered as an
-  `https` handler), an **Open website** field appears — that URL opens in
-  the tiled window on Start.
+- **Main app** — dropdown of every installed and running app, with
+  **Greenroom Browser** pinned at the top. Chrome is the default. If the
+  chosen app is a browser (anything registered as an `https` handler), an
+  **Open website** field appears — that URL opens in the tiled window on
+  Start.
+  - *Greenroom Browser* is the app's own WebKit window: tabs, back /
+    forward / reload, find in page (⌘F), history (⌘Y, kept locally in
+    `~/Library/Application Support/Greenroom/browser-history.json`), an
+    address bar that also searches and suggests as you type (history
+    locally; Google completions only while **Suggest searches as you
+    type** is on — that setting is the one request the browser makes on
+    its own account), the usual shortcuts (⌘T, ⌘W, ⌘L, ⌘R,
+    ⌘[ / ⌘], ⌘⌥←/→ or ⌃Tab between tabs, ⌘1–9, ⌘+/−/0), downloads to
+    ~/Downloads — tiled by Greenroom directly with no Accessibility or
+    Automation permission. Sign-ins persist between sessions, and
+    **Reopen last session's tabs on Start** (on by default) brings back
+    the tabs from the last run alongside the configured website. **Close
+    the browser window when the session ends** (off by default) makes Stop
+    close it too — tabs are kept for the next Start. Pick
+    Chrome (or any other browser) instead when you need extensions.
 - **Main pane width** — ½, ⅔, or ¾ of the screen — and which **side** it
   sits on. The side column is whatever's left.
 - **Side column** — toggles for the **Zoom meeting tile** and the **chat

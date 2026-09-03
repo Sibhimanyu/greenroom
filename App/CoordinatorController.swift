@@ -681,6 +681,28 @@ final class CoordinatorController: ObservableObject {
     @Published var mainAppOnStart: Bool {
         didSet { defaults.set(mainAppOnStart, forKey: "mainAppOnStart") }
     }
+    /// Built-in browser only: whether Start brings back the tabs that were
+    /// open when Greenroom last quit, alongside the configured page.
+    @Published var browserRestoresTabs: Bool {
+        didSet {
+            defaults.set(browserRestoresTabs, forKey: "browserRestoresTabs")
+            BrowserWindowController.restoresTabs = browserRestoresTabs
+        }
+    }
+    /// Built-in browser only: whether the address bar asks Google for
+    /// completions as you type. The one network call the browser makes on
+    /// its own account, so it is a switch.
+    @Published var browserSearchSuggestions: Bool {
+        didSet {
+            defaults.set(browserSearchSuggestions, forKey: "browserSearchSuggestions")
+            BrowserWindowController.searchSuggestions = browserSearchSuggestions
+        }
+    }
+    /// Built-in browser only: whether Stop also closes the browser window.
+    /// Off by default - an external main app is never closed by Stop either.
+    @Published var browserClosesOnStop: Bool {
+        didSet { defaults.set(browserClosesOnStop, forKey: "browserClosesOnStop") }
+    }
     /// People view: on Start, the built-in client's dual-screen gallery
     /// window (every participant) goes full-screen onto a chosen display
     /// - your reference monitor, not the class mirror. No-op with a
@@ -788,6 +810,16 @@ final class CoordinatorController: ObservableObject {
         mainAppOnStart = (defaults.object(forKey: "mainAppOnStart") as? Bool)
             ?? (defaults.object(forKey: "chromeOnStart") as? Bool)
             ?? true
+        // ON by default: the point of the built-in browser is that the
+        // morning's tabs are where they were left. didSet does not run in
+        // init, so the controller's flag is set by hand here.
+        let restoresTabs = (defaults.object(forKey: "browserRestoresTabs") as? Bool) ?? true
+        browserRestoresTabs = restoresTabs
+        BrowserWindowController.restoresTabs = restoresTabs
+        let searchSuggestions = (defaults.object(forKey: "browserSearchSuggestions") as? Bool) ?? true
+        browserSearchSuggestions = searchSuggestions
+        BrowserWindowController.searchSuggestions = searchSuggestions
+        browserClosesOnStop = defaults.bool(forKey: "browserClosesOnStop")
         peopleViewOnStart = defaults.bool(forKey: "peopleViewOnStart")
         participantPanelOnMainDisplay = defaults.bool(forKey: "participantPanelOnMainDisplay")
         // Absent means never answered, which is opted IN - matching the consent
@@ -1080,6 +1112,13 @@ final class CoordinatorController: ObservableObject {
                 ChatWindowController.close()
                 zoomChatBridge.reset()
                 log("Left the meeting chat.")
+            }
+            // The browser is the teacher's, not the meeting's, so by default
+            // it stays open like Chrome would. Closing it with the session is
+            // a choice (Settings → Layout); its tabs survive for the next Start.
+            if browserClosesOnStop, AppCatalog.isBuiltInBrowser(mainAppBundleID), BrowserWindowController.isOpen {
+                BrowserWindowController.close()
+                log("Closed the Greenroom Browser window.")
             }
             // Custom UI: stop the SDK rendering into views that are about to
             // go away, then drop our window.
@@ -2877,6 +2916,7 @@ final class CoordinatorController: ObservableObject {
             if ChatWindowController.owns(window) { return false } // "Meeting Chat" - ours
             if SpeakerWindowController.owns(window) { return false } // custom-UI speaker - also ours
             if ParticipantGridWindowController.owns(window) { return false } // custom-UI gallery - ours
+            if BrowserWindowController.owns(window) { return false } // built-in browser - title is the page's
             if window.title == "Greenroom" { return false } // main window
             if window.title.localizedCaseInsensitiveContains("settings") { return false }
 
@@ -3051,10 +3091,17 @@ final class CoordinatorController: ObservableObject {
         if ZoomWindowManager.hasAccessibilityPermission {
             ZoomWindowManager.minimizeNonMeetingWindows()
         }
-        for window in NSApp.windows where window.isVisible && window.title == "Greenroom" {
+        // Title match, minus the browser: its title is the page's, and the
+        // default home page is our own site.
+        for window in NSApp.windows
+        where window.isVisible && window.title == "Greenroom" && !BrowserWindowController.owns(window) {
             window.orderBack(nil)
         }
-        NSRunningApplication.runningApplications(withBundleIdentifier: mainAppBundleID).first?.activate()
+        if AppCatalog.isBuiltInBrowser(mainAppBundleID) {
+            BrowserWindowController.activate()
+        } else {
+            NSRunningApplication.runningApplications(withBundleIdentifier: mainAppBundleID).first?.activate()
+        }
     }
 
     private func runPipeline() async throws {
@@ -3267,6 +3314,9 @@ struct SettingsTransfer: Codable {
     var mainAppBundleID: String?
     var mainAppURL: String?
     var mainAppOnStart: Bool?
+    var browserRestoresTabs: Bool?
+    var browserSearchSuggestions: Bool?
+    var browserClosesOnStop: Bool?
     var peopleViewOnStart: Bool?
     var peopleViewDisplayUUID: String?
     var screenCaptureDisplayUUID: String?
@@ -3297,6 +3347,9 @@ extension CoordinatorController {
             mainAppBundleID: mainAppBundleID,
             mainAppURL: mainAppURL,
             mainAppOnStart: mainAppOnStart,
+            browserRestoresTabs: browserRestoresTabs,
+            browserSearchSuggestions: browserSearchSuggestions,
+            browserClosesOnStop: browserClosesOnStop,
             peopleViewOnStart: peopleViewOnStart,
             peopleViewDisplayUUID: peopleViewDisplayUUID,
             screenCaptureDisplayUUID: screenCaptureDisplayUUID,
@@ -3329,6 +3382,9 @@ extension CoordinatorController {
         // app was implicitly Chrome, so the values carry straight over).
         if let value = transfer.mainAppURL ?? transfer.chromeURL { mainAppURL = value }
         if let value = transfer.mainAppOnStart ?? transfer.chromeOnStart { mainAppOnStart = value }
+        if let value = transfer.browserRestoresTabs { browserRestoresTabs = value }
+        if let value = transfer.browserSearchSuggestions { browserSearchSuggestions = value }
+        if let value = transfer.browserClosesOnStop { browserClosesOnStop = value }
         if let value = transfer.peopleViewOnStart { peopleViewOnStart = value }
         if let value = transfer.peopleViewDisplayUUID { peopleViewDisplayUUID = value }
         if let value = transfer.screenCaptureDisplayUUID { screenCaptureDisplayUUID = value }

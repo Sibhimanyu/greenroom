@@ -18,10 +18,23 @@ struct AppInfo: Identifiable, Hashable {
 
 enum AppCatalog {
 
+    /// Greenroom's own browser window (BrowserWindowController). Not a real
+    /// bundle: a sentinel that lives in the same `mainAppBundleID` slot as
+    /// any external app, so settings export/import, both pickers and every
+    /// caller that routes on a bundle ID keep working unchanged.
+    static let builtInBrowserID = "com.sibhimanyu.greenroom.browser"
+    static let builtInBrowser = AppInfo(bundleID: builtInBrowserID, name: "Greenroom Browser", url: nil)
+
+    static func isBuiltInBrowser(_ bundleID: String) -> Bool {
+        bundleID == builtInBrowserID
+    }
+
     /// Apps from the standard application folders plus whatever regular
     /// apps are currently running (covers apps installed elsewhere),
     /// deduplicated by bundle ID and sorted by name. Greenroom itself is
-    /// excluded - tiling our own window into the main pane is nonsense.
+    /// excluded - tiling our own window into the main pane is nonsense -
+    /// but its built-in browser is pinned to the top: it is the one choice
+    /// that needs no permission, so it should not be buried under "G".
     static func installedAndRunning() -> [AppInfo] {
         var byBundleID: [String: AppInfo] = [:]
 
@@ -48,17 +61,20 @@ enum AppCatalog {
         }
 
         byBundleID.removeValue(forKey: Bundle.main.bundleIdentifier ?? "")
-        return byBundleID.values.sorted {
+        let sorted = byBundleID.values.sorted {
             $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
         }
+        return [builtInBrowser] + sorted
     }
 
     /// Whether the app registers as an https handler - the practical
     /// definition of "is a browser" (Chrome, Safari, Arc, Firefox, ...).
     /// Cached: the handler list can't change without an install, and
     /// resolving ~10 bundles isn't free inside SwiftUI body evaluations.
+    /// The built-in browser counts too: it takes the "open website" field
+    /// and needs no Accessibility grant, which is what callers ask for.
     static func isBrowser(_ bundleID: String) -> Bool {
-        browserBundleIDs.contains(bundleID)
+        isBuiltInBrowser(bundleID) || browserBundleIDs.contains(bundleID)
     }
 
     private static var cachedBrowserIDs: Set<String>?
@@ -77,11 +93,13 @@ enum AppCatalog {
     }
 
     static func displayName(forBundleID bundleID: String) -> String? {
-        appURL(forBundleID: bundleID).map(displayName(forAppAt:))
+        if isBuiltInBrowser(bundleID) { return builtInBrowser.name }
+        return appURL(forBundleID: bundleID).map(displayName(forAppAt:))
     }
 
     static func icon(forBundleID bundleID: String) -> NSImage? {
-        appURL(forBundleID: bundleID).map { NSWorkspace.shared.icon(forFile: $0.path) }
+        if isBuiltInBrowser(bundleID) { return NSApplication.shared.applicationIconImage }
+        return appURL(forBundleID: bundleID).map { NSWorkspace.shared.icon(forFile: $0.path) }
     }
 
     /// "docs.google.com" -> https://docs.google.com; empty/whitespace ->

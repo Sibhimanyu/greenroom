@@ -3,7 +3,9 @@
 //  Greenroom
 //
 //  Opens whatever app the user picked for the main pane and tiles it to
-//  its slice of the screen. Two paths:
+//  its slice of the screen. Three paths:
+//   - Greenroom's own browser (BrowserWindowController) is our window:
+//    a plain setFrame, no permission of any kind.
 //   - Chrome keeps its dedicated AppleScript route (ChromeWindowManager):
 //    more reliable (Chrome scripts its own window bounds and URL under a
 //    lightweight per-app Automation permission), and it creates a fresh
@@ -25,6 +27,15 @@ enum MainPaneManager {
     /// human-readable error otherwise (matching ChromeWindowManager's
     /// convention).
     static func openWindow(bundleID: String, urlString: String, layout: WorkspaceLayout) async -> String? {
+        if AppCatalog.isBuiltInBrowser(bundleID) {
+            BrowserWindowController.show(urlString: urlString, layout: layout)
+            let typed = urlString.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !typed.isEmpty, AppCatalog.normalizedWebURL(from: urlString) == nil {
+                return "Opened \(AppCatalog.builtInBrowser.name) without a page \u{2014} \u{201C}\(urlString)\u{201D} is not a usable address. Retype it in Settings (\u{2318},)."
+            }
+            return nil
+        }
+
         // Browsers: scripted route first, for EVERY browser. Handing a URL
         // to a running browser via NSWorkspace opens a tab in the EXISTING
         // window (and the session then tiles someone's whole tab pile -
@@ -85,6 +96,11 @@ enum MainPaneManager {
     /// has dragged things around. No-op when the app isn't running.
     @discardableResult
     static func repositionFrontWindow(bundleID: String, layout: WorkspaceLayout) async -> String? {
+        if AppCatalog.isBuiltInBrowser(bundleID) {
+            BrowserWindowController.reposition(layout: layout)
+            return nil
+        }
+
         if AppCatalog.isBrowser(bundleID) {
             let scriptError = await ChromeWindowManager.repositionFrontWindow(bundleID: bundleID, occupying: layout)
             guard let scriptError else { return nil }

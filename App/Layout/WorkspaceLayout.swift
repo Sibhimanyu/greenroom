@@ -89,6 +89,17 @@ struct WorkspaceLayout: Codable, Equatable {
         return CGRect(x: x, y: top, width: width, height: visible.height)
     }
 
+    /// The main pane in NSWindow (bottom-left-origin) coordinates - for
+    /// the built-in browser, whose window is our own and tiles via plain
+    /// setFrame rather than AppleScript or the Accessibility API.
+    func mainPaneNSFrame() -> CGRect? {
+        guard let screen = DisplayResolver.mainDisplayScreen() else { return nil }
+        let visible = screen.visibleFrame
+        let x = visible.origin.x + visible.width * span.start
+        let width = visible.width * (span.end - span.start)
+        return CGRect(x: x, y: visible.origin.y, width: width, height: visible.height)
+    }
+
     /// The side column in NSWindow (bottom-left-origin) coordinates -
     /// NSWindow.setFrame and NSScreen.visibleFrame already share that
     /// space, so no conversion needed there.

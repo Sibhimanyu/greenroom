@@ -32,6 +32,7 @@ enum GreenroomScene {
     static let sceneName = "Greenroom"
     static let screenSourceName = "Greenroom Screen"
     static let webcamSourceName = "Greenroom Webcam"
+    static let micSourceName = "Greenroom Mic"
 
     /// Where recordings land on every Mac: ~/Documents/Greenroom, created
     /// on demand. Written into OBS's profile on each session start (see
@@ -226,8 +227,9 @@ enum GreenroomScene {
         // the "OBS quit unexpectedly" dialog on every Greenroom quit, and
         // the same callback named in the reconfigure-crash note above.
         // Greenroom never uses system audio (composite is screen +
-        // webcam; recordings capture the mic separately), so turning the
-        // queue off removes the crash path entirely. Recreated (not
+        // webcam; the teacher's voice comes from the dedicated mic input
+        // below, not from the screen), so turning the queue off removes the
+        // crash path entirely. Recreated (not
         // patched) if an older scene left it on - see isCorrectlyConfigured.
         let screenSettings: [String: Any] = ["type": 0, "display_uuid": displayUUID, "capture_audio": false]
         try await ensureInput(client: client, name: screenSourceName, kind: screenKind,
@@ -297,6 +299,23 @@ enum GreenroomScene {
             // its scene item; re-enabled next Start with a camera.
             try await setWebcamItemEnabled(client: client, enabled: false)
         }
+
+        // The only audio in the recording. Screen capture has its audio off
+        // (see above) and the webcam input is video-only, so without this every
+        // recording and every clip carried an AAC track of pure digital
+        // silence - measured at -91 dB on real clips. "default" follows the
+        // system input device, so the mic the teacher picked in System Settings
+        // is the one that gets recorded. CoreAudio permits several readers of
+        // one input, so this sits alongside Zoom and the mic meter without
+        // taking the device from either.
+        let micKind = try await bestInputKind(client: client, containing: ["coreaudio_input_capture", "wasapi_input_capture", "pulse_input_capture"])
+        let micSettings: [String: Any] = ["device_id": "default"]
+        try await ensureInput(client: client, name: micSourceName, kind: micKind,
+                               settings: micSettings,
+                               isCorrectlyConfigured: { ($0["device_id"] as? String) == "default" })
+        // Unmuted explicitly: a mute left on in the OBS UI would otherwise
+        // survive across sessions and bring the silence straight back.
+        _ = try? await client.request("SetInputMute", data: ["inputName": micSourceName, "inputMuted": false])
 
         // Match the OBS canvas to the screen source's actual native pixel
         // size and stretch the source to exactly fill it (confirmed by

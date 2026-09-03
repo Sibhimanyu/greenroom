@@ -66,7 +66,12 @@
   .nav-cta .btn { padding: 9px 18px; font-size: 14px; }
   .nav-cta .gh { color: var(--body); font-size: 14.5px; font-weight: 500; }
   .nav-cta .gh:hover { color: var(--ink); }
-  @media (max-width: 860px) { .nav-links { display: none; } .nav-cta { margin-left: auto; } }
+  @media (max-width: 760px) {
+    .nav-inner { flex-wrap: wrap; height: auto; padding: 10px 24px 12px; row-gap: 8px; }
+    .nav-links { order: 3; width: 100%; gap: 20px; margin: 0; }
+    .nav-cta { margin-left: auto; }
+    .nav-cta .gh { display: none; }
+  }
 
   /* ---------- hero ---------- */
   .page-hero { padding: 60px 0 4px; text-align: center; }
@@ -207,10 +212,9 @@
       <span><span class="green">Green</span>room</span>
     </a>
     <div class="nav-links">
-      <a href="index.html">Home</a>
-      <a href="#shape">The shape of it</a>
-      <a href="#releases">Release by release</a>
-      <a href="how-it-works.html">Is it safe?</a>
+      <a href="index.html">Overview</a>
+      <a href="how-it-works.html">Privacy &amp; safety</a>
+      <a href="timeline.html" aria-current="page">Timeline</a>
     </div>
     <div class="nav-cta">
       <a class="gh" href="https://github.com/Sibhimanyu/greenroom">GitHub</a>
@@ -616,7 +620,7 @@
 <footer>
   <div class="wrap footer-inner">
     <span>Greenroom. Built for the morning readers at Zoho Schools.</span>
-    <span><a href="index.html">Home</a> · <a href="how-it-works.html">Is it safe?</a> · <a href="https://github.com/Sibhimanyu/greenroom">GitHub</a> · <a href="https://github.com/Sibhimanyu/greenroom#readme">Guide</a></span>
+    <span><a href="index.html">Overview</a> · <a href="how-it-works.html">Privacy &amp; safety</a> · <a href="https://github.com/Sibhimanyu/greenroom">GitHub</a> · <a href="https://github.com/Sibhimanyu/greenroom/releases">Releases</a> · <a href="https://github.com/Sibhimanyu/greenroom#readme">Guide</a></span>
   </div>
 </footer>
 

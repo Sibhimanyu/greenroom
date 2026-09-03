@@ -283,9 +283,10 @@ The app is the other half of this system. Keep it aligned.
 
 Ranked by user-visible impact. None of these block anything today.
 
-1. App accent `#5FA83C` and site green `#3D7A22` are both retired in favour of
-   the logo pair. Update the colorset, `ContentView.brandGreen`, and the site's
-   `--green` tokens.
+1. App accent `#5FA83C` is retired in favour of the logo pair. Update the
+   colorset and `ContentView.brandGreen`. (Site side done 2026-09-03: every
+   page's `--green` is `#2F6118`, `--green-hover` is `#00401C`, and the
+   how-it-works diagram strokes no longer hardcode `#3D7A22`.)
 2. Amber diagram labels under 14px move from `--net` to `--net-text` (they
    currently fail AA body contrast).
 3. `docs/index.html` h2 scale differs from `docs/how-it-works.html`. Adopt the
@@ -314,3 +315,5 @@ Ranked by user-visible impact. None of these block anything today.
 | 2026-08-24 | A background window is pushed back only when it surfaces unfocused | The SDK raises its own windows on state changes, so one `orderBack` does not hold. Re-asserting every tick would fight a teacher who deliberately opened the roster, so the correction is limited to the case that is unambiguously not them: frontmost, but never focused. |
 | 2026-08-24 | No pop-out window for the live speaker; ⌥⌘Z toggles featured layout instead | Zoom's custom-UI capability matrix is explicit — "Multiple windows: No (regions in 1 container)"; SDK-rendered video cannot leave the container's window, and the re-parenting experiment drew black in a visible, correctly sized window. A pop-out would need the raw-data pipeline, which is a separate feature, not a layout choice. |
 | 2026-08-24 | The full-display participant panel runs at normal window level (supersedes the .statusBar cover) | Covering the menu bar and Dock also covered every other window on that display — the reference monitor became single-purpose, reported live. Filling the display at normal level keeps it usable; the menu bar over the top sliver is the accepted price. |
+| 2026-09-03 | The transparency page names the built-in browser's traffic as its own channels, not as "the main app's" | Greenroom Browser moves page loads into Greenroom's process, and the search-suggestion switch sends keystrokes to Google. Both are new facts about what leaves the Mac; the page's whole argument is that the list is complete, so they get their own cards, the system map gets a fourth amber link, and the hero says which two things leave without being asked. |
+| 2026-09-03 | The timeline page uses one series and a step line, with releases as markers | The only honest quantity available for every release is the size of the code; a step line says "this is what shipped, until the next one shipped" rather than implying growth between releases. Single series, so brand green carries it and no legend is needed; three direct labels tell the story, the table carries the rest. The build that never launched is a hollow amber marker, never red: danger is reserved for the "what it never does" claims. |

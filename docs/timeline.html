@@ -1,0 +1,658 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Greenroom timeline — every release since the first morning</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="How Greenroom grew, release by release: 17 versions in four weeks, from a one-click OBS + Zoom script to a teaching console with its own browser.">
+<link rel="icon" type="image/png" href="favicon.png?v=3">
+<link rel="apple-touch-icon" href="apple-touch-icon.png?v=3">
+<style>
+  :root {
+    --ink: #101828;
+    --body: #475467;
+    --faint: #98a2b3;
+    --line: #eaecf0;
+    --bg-soft: #f9fafb;
+    --green: #2f6118;
+    --green-hover: #00401c;
+    --green-soft: #e8f3df;
+    --lime: #78c000;          /* fill only - never text */
+    --net: #b9770e;
+    --net-text: #96600a;
+    --net-soft: #fdf4e3;
+  }
+
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  html, body { overflow-x: clip; }
+  body {
+    margin: 0; background: #fff; color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    font-size: 16px; line-height: 1.6; -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 1120px; margin: 0 auto; padding: 0 24px; }
+  .narrow { max-width: 760px; }
+  a { color: var(--green); text-decoration: none; }
+  :focus-visible { outline: 2px solid var(--green); outline-offset: 3px; border-radius: 4px; }
+  h1, h2, h3 { text-wrap: balance; margin: 0; }
+  p { margin: 0; }
+  .mono { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 13px; }
+
+  .btn {
+    display: inline-flex; align-items: center; gap: 8px;
+    background: var(--green); color: #fff; font-weight: 600; font-size: 15px;
+    padding: 12px 22px; border-radius: 10px; transition: background .2s, transform .15s;
+  }
+  .btn:hover { background: var(--green-hover); transform: translateY(-1px); }
+  .textlink { font-weight: 600; font-size: 15px; color: var(--ink); }
+  .textlink:hover { color: var(--green); }
+  .textlink .arrow { display: inline-block; transition: transform .2s; }
+  .textlink:hover .arrow { transform: translateX(3px); }
+
+  /* ---------- nav ---------- */
+  nav {
+    position: sticky; top: 0; background: rgba(255,255,255,.92);
+    backdrop-filter: blur(10px); border-bottom: 1px solid var(--line); z-index: 50;
+  }
+  .nav-inner { display: flex; align-items: center; height: 64px; gap: 32px; }
+  .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 19px; color: var(--ink); }
+  .brand img { display: block; }
+  .brand .green { color: var(--green); }
+  .nav-links { display: flex; gap: 26px; margin: 0 auto; }
+  .nav-links a { color: var(--body); font-size: 14.5px; font-weight: 500; }
+  .nav-links a:hover, .nav-links a[aria-current] { color: var(--ink); }
+  .nav-cta { display: flex; align-items: center; gap: 18px; }
+  .nav-cta .btn { padding: 9px 18px; font-size: 14px; }
+  .nav-cta .gh { color: var(--body); font-size: 14.5px; font-weight: 500; }
+  .nav-cta .gh:hover { color: var(--ink); }
+  @media (max-width: 860px) { .nav-links { display: none; } .nav-cta { margin-left: auto; } }
+
+  /* ---------- hero ---------- */
+  .page-hero { padding: 60px 0 4px; text-align: center; }
+  .eyebrow {
+    display: inline-flex; align-items: center; gap: 8px;
+    background: var(--green-soft); color: var(--green);
+    font-size: 13px; font-weight: 600; padding: 5px 12px; border-radius: 999px; margin-bottom: 20px;
+  }
+  h1 { font-size: clamp(30px, 4.6vw, 46px); line-height: 1.1; font-weight: 800; letter-spacing: -.025em; max-width: 22ch; margin: 0 auto; }
+  h1 .accent { color: var(--green); }
+  .page-hero .lede { margin: 18px auto 0; font-size: 17.5px; color: var(--body); max-width: 58ch; }
+
+  /* ---------- sections ---------- */
+  section { padding: 56px 0; }
+  section.soft { background: var(--bg-soft); border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+  .sec-head { max-width: 720px; margin-bottom: 28px; }
+  .kicker {
+    font-family: ui-monospace, "SF Mono", Menlo, monospace; text-transform: uppercase; letter-spacing: .08em;
+    color: var(--green); font-size: 12.5px; font-weight: 700; margin-bottom: 8px;
+  }
+  h2 { font-size: clamp(24px, 3.2vw, 32px); font-weight: 800; letter-spacing: -.02em; line-height: 1.15; }
+  .sec-head p { margin-top: 12px; color: var(--body); font-size: 16.5px; }
+
+  /* ---------- stat tiles ---------- */
+  .stats { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin-top: 36px; }
+  @media (max-width: 900px) { .stats { grid-template-columns: repeat(3, 1fr); } }
+  @media (max-width: 560px) { .stats { grid-template-columns: repeat(2, 1fr); } }
+  .stat { border: 1px solid var(--line); border-radius: 10px; padding: 16px 18px; background: #fff; }
+  .stat .v { font-size: 28px; font-weight: 800; letter-spacing: -.02em; line-height: 1.1; font-variant-numeric: tabular-nums; }
+  .stat .v small { font-size: 14px; font-weight: 600; color: var(--body); margin-left: 2px; }
+  .stat .l { margin-top: 6px; font-size: 13px; color: var(--body); }
+
+  /* ---------- diagram frame ---------- */
+  .viz { margin: 0; }
+  .viz .frame {
+    position: relative;
+    border: 1px solid var(--line); border-radius: 14px; background: #fff;
+    box-shadow: 0 1px 2px rgba(16,24,40,.04); padding: 18px; overflow-x: auto;
+  }
+  .viz svg { display: block; width: 100%; height: auto; }
+  .viz figcaption { margin-top: 12px; font-size: 14.5px; color: var(--body); max-width: 76ch; }
+  .viz figcaption code {
+    font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 12.5px;
+    background: var(--bg-soft); border: 1px solid var(--line); border-radius: 5px; padding: 1px 5px;
+  }
+  .svg-wide { min-width: 720px; }
+  .dot { cursor: pointer; }
+  .dot:hover circle, .dot:focus-visible circle { r: 6; }
+  .dot:focus-visible { outline: none; }
+  .tip {
+    position: absolute; pointer-events: none; display: none;
+    background: var(--ink); color: #fff; border-radius: 6px; padding: 8px 10px;
+    font-size: 12.5px; line-height: 1.45; max-width: 260px; z-index: 2;
+    box-shadow: 0 8px 24px rgba(16,24,40,.18);
+  }
+  .tip b { display: block; font-weight: 700; }
+  .tip .m { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 11.5px; color: #d0d5dd; }
+  .tip.show { display: block; }
+
+  details.table { margin-top: 18px; }
+  details.table summary { cursor: pointer; font-size: 14px; font-weight: 600; color: var(--body); }
+  details.table summary:hover { color: var(--ink); }
+  .table-scroll { overflow-x: auto; border: 1px solid var(--line); border-radius: 10px; background: #fff; margin-top: 12px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+  th, td { text-align: left; vertical-align: top; padding: 10px 14px; border-bottom: 1px solid var(--line); }
+  th { font-size: 11.5px; text-transform: uppercase; letter-spacing: .04em; color: var(--faint); font-weight: 700; }
+  td { color: var(--body); }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  td .mono { color: var(--ink); }
+  tr:last-child td { border-bottom: 0; }
+
+  /* ---------- the timeline ---------- */
+  .era { margin-top: 48px; }
+  .era:first-of-type { margin-top: 0; }
+  .era-head { display: grid; grid-template-columns: 176px 1fr; gap: 6px 32px; align-items: baseline; margin-bottom: 22px; }
+  .era-head .when { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 12.5px; letter-spacing: .06em; text-transform: uppercase; color: var(--green); }
+  .era-head h3 { font-size: 20px; font-weight: 800; letter-spacing: -.015em; }
+  .era-head p { grid-column: 2; color: var(--body); font-size: 15px; max-width: 66ch; }
+  .rail { position: relative; padding-left: 0; }
+  .rel { display: grid; grid-template-columns: 176px 24px 1fr; gap: 0 20px; position: relative; }
+  .rel .meta { text-align: right; padding-top: 22px; }
+  .rel .ver { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 14px; font-weight: 700; color: var(--ink); }
+  .rel .date { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 12px; color: var(--faint); margin-top: 3px; }
+  .rel .size { font-size: 12px; color: var(--faint); margin-top: 3px; font-variant-numeric: tabular-nums; }
+  .rel .spine { position: relative; }
+  .rel .spine::before { content: ""; position: absolute; left: 11px; top: 0; bottom: 0; width: 2px; background: var(--line); }
+  .rel:first-child .spine::before { top: 30px; }
+  .rel:last-child .spine::before { bottom: auto; height: 30px; }
+  .rel .node {
+    position: absolute; left: 6px; top: 26px; width: 12px; height: 12px; border-radius: 50%;
+    background: var(--green); border: 2px solid #fff; box-shadow: 0 0 0 2px var(--green);
+  }
+  .rel.minor .node { background: var(--lime); box-shadow: 0 0 0 2px var(--lime); }
+  .rel.failed .node { background: #fff; box-shadow: 0 0 0 2px var(--net); }
+  .rel .card { padding: 18px 0 26px; }
+  .rel .card h4 { margin: 0 0 8px; font-size: 16.5px; font-weight: 700; line-height: 1.35; }
+  .rel .card p, .rel .card li { font-size: 14.5px; color: var(--body); }
+  .rel .card ul { margin: 8px 0 0; padding-left: 18px; display: flex; flex-direction: column; gap: 5px; }
+  .rel .card li strong { color: var(--ink); font-weight: 600; }
+  .tag {
+    display: inline-block; font-size: 10.5px; font-weight: 800; letter-spacing: .05em; text-transform: uppercase;
+    padding: 3px 8px; border-radius: 999px; margin-bottom: 8px; vertical-align: middle;
+  }
+  .tag.new { background: var(--green-soft); color: var(--green); }
+  .tag.fix { background: var(--bg-soft); color: var(--body); border: 1px solid var(--line); }
+  .tag.warn { background: var(--net-soft); color: var(--net-text); }
+  .tag + .tag { margin-left: 4px; }
+  .rel .card .sub { font-size: 13.5px; color: var(--faint); margin-top: 8px; }
+  @media (max-width: 760px) {
+    .era-head { grid-template-columns: 1fr; }
+    .era-head p { grid-column: 1; }
+    .rel { grid-template-columns: 24px 1fr; gap: 0 16px; }
+    .rel .meta { grid-column: 2; text-align: left; padding: 18px 0 0; }
+    .rel .spine { grid-row: 1 / span 2; }
+    .rel .card { grid-column: 2; padding-top: 6px; }
+    .rel .node { top: 22px; }
+  }
+
+  /* ---------- cta / footer ---------- */
+  .cta-band { text-align: center; }
+  .cta-band h2 { margin-bottom: 12px; }
+  .cta-band p { color: var(--body); font-size: 16.5px; max-width: 46ch; margin: 0 auto 26px; text-wrap: balance; }
+  .cta-actions { display: flex; align-items: center; justify-content: center; gap: 22px; flex-wrap: wrap; }
+  footer { border-top: 1px solid var(--line); padding: 30px 0 38px; font-size: 14px; color: var(--faint); }
+  footer a { color: var(--body); }
+  footer a:hover { color: var(--ink); }
+  .footer-inner { width: 100%; display: flex; justify-content: space-between; align-items: baseline; gap: 16px; flex-wrap: wrap; }
+  @media (max-width: 700px) { .footer-inner { justify-content: center; text-align: center; } }
+  @media (prefers-reduced-motion: reduce) { .btn:hover { transform: none; } html { scroll-behavior: auto; } }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="wrap nav-inner">
+    <a class="brand" href="index.html">
+      <img src="logo-mark.png" width="40" height="34" alt="">
+      <span><span class="green">Green</span>room</span>
+    </a>
+    <div class="nav-links">
+      <a href="index.html">Home</a>
+      <a href="#shape">The shape of it</a>
+      <a href="#releases">Release by release</a>
+      <a href="how-it-works.html">Is it safe?</a>
+    </div>
+    <div class="nav-cta">
+      <a class="gh" href="https://github.com/Sibhimanyu/greenroom">GitHub</a>
+      <a class="btn" href="https://github.com/Sibhimanyu/greenroom/releases">Download</a>
+    </div>
+  </div>
+</nav>
+
+<header class="wrap page-hero">
+  <span class="eyebrow">Changelog · 17 releases · Aug 6 – Sep 3, 2026</span>
+  <h1>From a script to a stage, in <span class="accent">four weeks.</span></h1>
+  <p class="lede">Greenroom started as the one-click version of a teacher's 7:50 ritual. Every version since was
+  cut from a real morning class: something broke, something was missing, and the fix shipped before the next one.
+  This is the whole record, including the build that never launched.</p>
+
+  <div class="stats" aria-label="Totals">
+    <div class="stat"><div class="v">17</div><div class="l">releases</div></div>
+    <div class="stat"><div class="v">28<small>days</small></div><div class="l">first release to latest</div></div>
+    <div class="stat"><div class="v">185</div><div class="l">commits</div></div>
+    <div class="stat"><div class="v">4.3k <small>→</small> 18.8k</div><div class="l">lines of Swift</div></div>
+    <div class="stat"><div class="v">1</div><div class="l">build that never launched</div></div>
+  </div>
+</header>
+
+<!-- ============ 01 · THE SHAPE OF IT ============ -->
+<section id="shape">
+  <div class="wrap">
+    <div class="sec-head">
+      <p class="kicker">01 · The shape of it</p>
+      <h2>Two bursts and a long steady climb</h2>
+      <p>Lines of Swift in the app at each release, on the day it shipped. The size of the code is a blunt measure, but it
+      shows where the work went: a first day that produced most of the app, ten days of hardening in the 0.3 series,
+      and one Sunday (0.4.0) that doubled it.</p>
+    </div>
+
+    <figure class="viz">
+      <div class="frame">
+        <div class="tip" id="tip" role="status" aria-live="polite"></div>
+        <svg class="svg-wide" viewBox="0 0 960 340" role="img" aria-labelledby="chart-title chart-desc">
+          <title id="chart-title">Lines of Swift per release, August 6 to September 3, 2026</title>
+          <desc id="chart-desc">A step chart. 0.1.0 on August 6 has 4,274 lines. The 0.3 series through August 20 stays between 6,000 and 8,000. 0.4.0 on August 24 jumps to 16,588. 0.6.0 on September 3 reaches 18,781. 0.3.0 is marked as the release that never launched. The data table below lists every value.</desc>
+
+          <!-- grid: recessive -->
+          <g stroke="#eaecf0" stroke-width="1">
+            <line x1="70" y1="40" x2="920" y2="40"/>
+            <line x1="70" y1="95" x2="920" y2="95"/>
+            <line x1="70" y1="150" x2="920" y2="150"/>
+            <line x1="70" y1="205" x2="920" y2="205"/>
+          </g>
+          <line x1="70" y1="260" x2="920" y2="260" stroke="#d0d5dd" stroke-width="1.2"/>
+          <g font-size="11" fill="#98a2b3" text-anchor="end">
+            <text x="60" y="44">20k</text>
+            <text x="60" y="99">15k</text>
+            <text x="60" y="154">10k</text>
+            <text x="60" y="209">5k</text>
+            <text x="60" y="264">0</text>
+          </g>
+          <g font-size="11" fill="#98a2b3" text-anchor="middle">
+            <text x="70" y="284">Aug 6</text>
+            <text x="275" y="284">Aug 13</text>
+            <text x="480" y="284">Aug 20</text>
+            <text x="685" y="284">Aug 27</text>
+            <text x="891" y="284">Sep 3</text>
+          </g>
+          <text x="70" y="308" font-size="10.5" font-weight="700" letter-spacing="1.1" fill="#667085">RELEASE DAY →</text>
+          <text x="920" y="308" font-size="10.5" font-weight="700" letter-spacing="1.1" fill="#667085" text-anchor="end">LINES OF SWIFT IN App/</text>
+
+          <!-- eras -->
+          <g font-family="ui-monospace, SF Mono, Menlo, monospace" font-size="10.5" letter-spacing=".08em" fill="#2f6118" font-weight="700">
+            <text x="84" y="24">FOUNDATION</text>
+            <text x="330" y="24" text-anchor="middle">SELF-UPDATING · HARDENED IN CLASS</text>
+            <text x="604" y="24" text-anchor="middle">TEACHING SURFACE</text>
+            <text x="905" y="24" text-anchor="end">BROWSER</text>
+          </g>
+          <g stroke="#2f6118" stroke-width="1" opacity=".35">
+            <line x1="70" y1="30" x2="128" y2="30"/>
+            <line x1="172" y1="30" x2="510" y2="30"/>
+            <line x1="598" y1="30" x2="628" y2="30"/>
+            <line x1="898" y1="30" x2="920" y2="30"/>
+          </g>
+
+          <!-- the series: one step line, brand green, 2px -->
+          <path d="M70,213 H77 V213 H88.8 V194.1 H90.2 V193.8 H114.3 V193.5 H178.4 V193.5 H192.5 V192.8 H400 V191.3 H430.8 V185.4 H432.9 V183.6 H434.6 V180.7 H453.1 V178.8 H488.3 V171.8 H602.9 V77.5 H603.4 V77.4 H606.1 V75.2 H904.7 V75 H906.5 V53.4 H920"
+                fill="none" stroke="#2f6118" stroke-width="2" stroke-linejoin="round"/>
+
+          <!-- direct labels: only the three that carry the story -->
+          <text x="96" y="222" font-size="11" fill="#475467">4.3k · 0.1.0</text>
+          <text x="612" y="70" font-size="11" fill="#475467">16.6k · 0.4.0</text>
+          <text x="900" y="47" font-size="11" fill="#475467" text-anchor="end">18.8k · 0.6.0</text>
+          <text x="126" y="182" font-size="10.5" fill="#96600a">0.3.0 · never launched</text>
+          <line x1="114.3" y1="187" x2="114.3" y2="194" stroke="#b9770e" stroke-width="1"/>
+
+          <!-- markers: >= 8px, 2px white ring so the clusters stay legible -->
+          <g id="dots" fill="#2f6118" stroke="#fff" stroke-width="2">
+            <g class="dot" tabindex="0" data-v="0.1.0" data-d="Wed Aug 6" data-l="4,274" data-c="1" data-h="First packaged build: virtual camera, Zoom, tiled layout."><circle cx="77" cy="213" r="4.5"/></g>
+            <g class="dot" tabindex="0" data-v="0.2.0" data-d="Wed Aug 6" data-l="5,989" data-c="39" data-h="Most of the app: scheduled meetings, presenter mode, people view, recordings, shortcuts, warm OBS."><circle cx="88.8" cy="194.1" r="4.5"/></g>
+            <g class="dot" tabindex="0" data-v="0.2.1" data-d="Wed Aug 6" data-l="6,020" data-c="4" data-h="No more “quit unexpectedly” dialog; Greenroom returns to the front when a session ends."><circle cx="90.2" cy="193.8" r="4.5"/></g>
+            <g class="dot" tabindex="0" data-v="0.3.0" data-d="Thu Aug 7" data-l="6,041" data-c="7" data-h="Shipped without the Sparkle framework and could not start. Downloads removed."><circle cx="114.3" cy="193.5" r="4.5" fill="#fff" stroke="#b9770e" stroke-width="2"/></g>
+            <g class="dot" tabindex="0" data-v="0.3.1" data-d="Sat Aug 9" data-l="6,041" data-c="2" data-h="Self-updating app (Sparkle, EdDSA-signed). The last version anyone installs by hand."><circle cx="178.4" cy="193.5" r="4.5"/></g>
+            <g class="dot" tabindex="0" data-v="0.3.2" data-d="Sun Aug 10" data-l="6,108" data-c="4" data-h="Browsers get their own window again; OBS stops crashing on quit."><circle cx="192.5" cy="192.8" r="4.5"/></g>
+            <g class="dot" tabindex="0" data-v="0.3.3" data-d="Sun Aug 17" data-l="6,246" data-c="5" data-h="Meeting presets; the “Is it safe?” page; honest about plaintext credentials."><circle cx="400" cy="191.3" r="4.5"/></g>
+            <g class="dot" tabindex="0" data-v="0.3.4" data-d="Mon Aug 18" data-l="6,781" data-c="11" data-h="No more windows bursting open full-screen; safe quitting; ⌥⌘Z quick-hide; pick the participant display."><circle cx="430.8" cy="185.4" r="4.5"/></g>
+            <g class="dot" tabindex="0" data-v="0.3.5" data-d="Mon Aug 18" data-l="6,947" data-c="9" data-h="Dual display done right: speaker tile on the main screen, grid with controls on the second."><circle cx="432.9" cy="183.6" r="4.5"/></g>
+            <g class="dot" tabindex="0" data-v="0.3.6" data-d="Mon Aug 18" data-l="7,205" data-c="8" data-h="Drag to resize the layout; changes apply live; End Session asks first; fragmented MP4."><circle cx="434.6" cy="180.7" r="4.5"/></g>
+            <g class="dot" tabindex="0" data-v="0.3.7" data-d="Tue Aug 19" data-l="7,385" data-c="19" data-h="Design-system pass: brand green everywhere; the participant grid finally stays put."><circle cx="453.1" cy="178.8" r="4.5"/></g>
+            <g class="dot" tabindex="0" data-v="0.3.8" data-d="Wed Aug 20" data-l="8,018" data-c="9" data-h="OBS quits quietly; windows go to the right display; recording space shown."><circle cx="488.3" cy="171.8" r="4.5"/></g>
+            <g class="dot" tabindex="0" data-v="0.4.0" data-d="Sun Aug 24" data-l="16,588" data-c="52" data-h="Clips after the fact; the participants panel; chat rebuilt. The app doubles in a day."><circle cx="602.9" cy="77.5" r="4.5"/></g>
+            <g class="dot" tabindex="0" data-v="0.4.1" data-d="Sun Aug 24" data-l="16,599" data-c="2" data-h="The meeting tile is identified first, always."><circle cx="603.4" cy="77.4" r="4.5"/></g>
+            <g class="dot" tabindex="0" data-v="0.5.0" data-d="Sun Aug 24" data-l="16,802" data-c="4" data-h="The live speaker window works; participant video is stable; photos preview in chat."><circle cx="606.1" cy="75.2" r="4.5"/></g>
+            <g class="dot" tabindex="0" data-v="0.5.1" data-d="Wed Sep 3" data-l="16,821" data-c="2" data-h="Recordings have sound: every earlier clip carried a silent track."><circle cx="904.7" cy="75" r="4.5"/></g>
+            <g class="dot" tabindex="0" data-v="0.6.0" data-d="Wed Sep 3" data-l="18,781" data-c="7" data-h="Greenroom Browser: a WebKit window of its own, tabs, find, history, and yesterday's tabs back on Start."><circle cx="906.5" cy="53.4" r="4.5"/></g>
+          </g>
+        </svg>
+      </div>
+      <figcaption>Hover or tab to a dot for the release. Counted with <code>git ls-tree</code> on each release tag, Swift files under
+      <code>App/</code> only. The hollow amber point is 0.3.0, which shipped missing a framework and could not launch; it is the
+      reason the release script now verifies every linked library and smoke-launches the exact bytes before publishing.</figcaption>
+    </figure>
+
+    <details class="table">
+      <summary>Data table: every release, with commits and lines</summary>
+      <div class="table-scroll">
+        <table>
+          <thead><tr><th>Version</th><th>Published</th><th class="num">Commits</th><th class="num">Swift lines</th><th>Headline</th></tr></thead>
+          <tbody>
+            <tr><td><span class="mono">0.1.0</span></td><td>Aug 6, 05:47</td><td class="num">1</td><td class="num">4,274</td><td>First packaged build</td></tr>
+            <tr><td><span class="mono">0.2.0</span></td><td>Aug 6, 15:15</td><td class="num">39</td><td class="num">5,989</td><td>Most of the app</td></tr>
+            <tr><td><span class="mono">0.2.1</span></td><td>Aug 6, 16:37</td><td class="num">4</td><td class="num">6,020</td><td>Clean quit</td></tr>
+            <tr><td><span class="mono">0.3.0</span></td><td>Aug 7, 12:21</td><td class="num">7</td><td class="num">6,041</td><td>Never launched</td></tr>
+            <tr><td><span class="mono">0.3.1</span></td><td>Aug 9, 16:55</td><td class="num">2</td><td class="num">6,041</td><td>Self-updating</td></tr>
+            <tr><td><span class="mono">0.3.2</span></td><td>Aug 10, 04:13</td><td class="num">4</td><td class="num">6,108</td><td>Browser windows, quiet OBS</td></tr>
+            <tr><td><span class="mono">0.3.3</span></td><td>Aug 17, 06:08</td><td class="num">5</td><td class="num">6,246</td><td>Presets, transparency page</td></tr>
+            <tr><td><span class="mono">0.3.4</span></td><td>Aug 18, 07:22</td><td class="num">11</td><td class="num">6,781</td><td>Stability from real classes</td></tr>
+            <tr><td><span class="mono">0.3.5</span></td><td>Aug 18, 09:03</td><td class="num">9</td><td class="num">6,947</td><td>Dual display done right</td></tr>
+            <tr><td><span class="mono">0.3.6</span></td><td>Aug 18, 10:34</td><td class="num">8</td><td class="num">7,205</td><td>Drag-to-resize layout</td></tr>
+            <tr><td><span class="mono">0.3.7</span></td><td>Aug 19, 01:47</td><td class="num">19</td><td class="num">7,385</td><td>Design-system pass</td></tr>
+            <tr><td><span class="mono">0.3.8</span></td><td>Aug 20, 06:30</td><td class="num">9</td><td class="num">8,018</td><td>Right display, quiet quit</td></tr>
+            <tr><td><span class="mono">0.4.0</span></td><td>Aug 24, 04:23</td><td class="num">52</td><td class="num">16,588</td><td>Clips, participants panel</td></tr>
+            <tr><td><span class="mono">0.4.1</span></td><td>Aug 24, 04:41</td><td class="num">2</td><td class="num">16,599</td><td>Tile identified first</td></tr>
+            <tr><td><span class="mono">0.5.0</span></td><td>Aug 24, 07:02</td><td class="num">4</td><td class="num">16,802</td><td>Live speaker window</td></tr>
+            <tr><td><span class="mono">0.5.1</span></td><td>Sep 3, 11:24</td><td class="num">2</td><td class="num">16,821</td><td>Recordings have sound</td></tr>
+            <tr><td><span class="mono">0.6.0</span></td><td>Sep 3, 12:49</td><td class="num">7</td><td class="num">18,781</td><td>Greenroom Browser</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </details>
+  </div>
+</section>
+
+<!-- ============ 02 · RELEASE BY RELEASE ============ -->
+<section class="soft" id="releases">
+  <div class="wrap">
+    <div class="sec-head">
+      <p class="kicker">02 · Release by release</p>
+      <h2>What each morning taught the app</h2>
+      <p>Filled dots are minor and patch releases; the lime dots are the ones that added a whole capability. Full notes for
+      every version are on <a href="https://github.com/Sibhimanyu/greenroom/releases">GitHub Releases</a>.</p>
+    </div>
+
+    <!-- Era 1 -->
+    <div class="era">
+      <div class="era-head">
+        <div class="when">Aug 6 · one day</div>
+        <h3>Foundation</h3>
+        <p>Three releases before dinner. The first was the ritual as a script; the second turned out to be most of the app.</p>
+      </div>
+      <div class="rail">
+        <div class="rel minor">
+          <div class="meta"><div class="ver">0.1.0</div><div class="date">Wed Aug 6 · 05:47</div><div class="size">4,274 lines</div></div>
+          <div class="spine"><span class="node"></span></div>
+          <div class="card">
+            <span class="tag new">New</span>
+            <h4>The one-click morning: OBS virtual camera, Zoom meeting, tiled windows</h4>
+            <ul>
+              <li><strong>Screen plus keyed webcam bubble</strong> as one virtual camera, driven by OBS in the background.</li>
+              <li><strong>Start or join a Zoom meeting</strong>, then a configurable layout: any main app, the Zoom tile, a chat window.</li>
+              <li>Credentials travel as an exported settings file, so nobody else touches the Zoom Marketplace.</li>
+            </ul>
+          </div>
+        </div>
+        <div class="rel minor">
+          <div class="meta"><div class="ver">0.2.0</div><div class="date">Wed Aug 6 · 15:15</div><div class="size">5,989 lines · 39 commits</div></div>
+          <div class="spine"><span class="node"></span></div>
+          <div class="card">
+            <span class="tag new">New</span><span class="tag fix">Fixed</span>
+            <h4>“Everything since 0.1.0, which turns out to be most of the app”</h4>
+            <ul>
+              <li><strong>Scheduled meetings</strong> from the account, started as host; <strong>presenter webcam mode</strong>; <strong>people view</strong> on a second display.</li>
+              <li><strong>Recordings</strong> to ~/Documents/Greenroom with an in-app player; system-wide shortcuts; live previews in Settings.</li>
+              <li><strong>Fast Start</strong>: OBS stays warm between sessions, meeting creation and SDK auth run in parallel.</li>
+              <li>The cutout rendered the teacher at 1% opacity, in other words invisible. Fixed, along with the freezes that needed a force-quit.</li>
+            </ul>
+          </div>
+        </div>
+        <div class="rel">
+          <div class="meta"><div class="ver">0.2.1</div><div class="date">Wed Aug 6 · 16:37</div><div class="size">6,020 lines</div></div>
+          <div class="spine"><span class="node"></span></div>
+          <div class="card">
+            <span class="tag fix">Fixed</span>
+            <h4>Quitting stops saying “Greenroom quit unexpectedly”</h4>
+            <p>The Zoom SDK's engines crashed in their own destructors at process exit. Greenroom now shuts the SDK down itself, then leaves before the leftover teardown can run. It also comes back to the front when a session ends.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Era 2 -->
+    <div class="era">
+      <div class="era-head">
+        <div class="when">Aug 7 – 20 · two weeks</div>
+        <h3>Self-updating, and hardened in class</h3>
+        <p>The updater arrived, failed once, then made every later install automatic. The rest of the series is a list of things a real classroom did to the app.</p>
+      </div>
+      <div class="rail">
+        <div class="rel failed">
+          <div class="meta"><div class="ver">0.3.0</div><div class="date">Thu Aug 7 · 12:21</div><div class="size">6,041 lines</div></div>
+          <div class="spine"><span class="node"></span></div>
+          <div class="card">
+            <span class="tag warn">Never launched</span>
+            <h4>The build that could not start</h4>
+            <p>A build step that embeds the Zoom SDK deleted the Sparkle framework right after Xcode put it in the bundle. The app crashed on open on every Mac; downloads were pulled. The lasting result: the release script now resolves every linked library against the bundle and launches the exact shipped bytes before anything is published.</p>
+          </div>
+        </div>
+        <div class="rel minor">
+          <div class="meta"><div class="ver">0.3.1</div><div class="date">Sat Aug 9 · 16:55</div><div class="size">6,041 lines</div></div>
+          <div class="spine"><span class="node"></span></div>
+          <div class="card">
+            <span class="tag new">New</span>
+            <h4>The last version anyone installs by hand</h4>
+            <p>Sparkle auto-updates, EdDSA-signed, with <em>Install and Relaunch</em> and a <em>Check for Updates…</em> item in the app and menu bar. From here on, releases arrive on their own.</p>
+          </div>
+        </div>
+        <div class="rel">
+          <div class="meta"><div class="ver">0.3.2</div><div class="date">Sun Aug 10 · 04:13</div><div class="size">6,108 lines</div></div>
+          <div class="spine"><span class="node"></span></div>
+          <div class="card">
+            <span class="tag fix">Fixed</span>
+            <h4>Browsers open their own window again; OBS stops crashing on quit</h4>
+            <p>Picking a Chromium browser had tiled the teacher's entire existing tab pile. A fresh window per session fixed it. A system-audio capture queue Greenroom never used was what made OBS crash on the way out.</p>
+          </div>
+        </div>
+        <div class="rel">
+          <div class="meta"><div class="ver">0.3.3</div><div class="date">Sun Aug 17 · 06:08</div><div class="size">6,246 lines</div></div>
+          <div class="spine"><span class="node"></span></div>
+          <div class="card">
+            <span class="tag new">New</span>
+            <h4>Meeting presets, and the “Is it safe?” page</h4>
+            <ul>
+              <li><strong>Presets</strong> save regular meetings (name, ID, passcode) and travel in the settings export.</li>
+              <li>The transparency page: not AI, not watching the screen, not a keylogger, with a capability inventory for IT.</li>
+              <li>Honest about credential storage: plain text in local preferences, never the Keychain, never sent anywhere but Zoom.</li>
+            </ul>
+          </div>
+        </div>
+        <div class="rel">
+          <div class="meta"><div class="ver">0.3.4</div><div class="date">Mon Aug 18 · 07:22</div><div class="size">6,781 lines · 11 commits</div></div>
+          <div class="spine"><span class="node"></span></div>
+          <div class="card">
+            <span class="tag fix">Fixed</span><span class="tag new">New</span>
+            <h4>No more windows bursting open full-screen</h4>
+            <ul>
+              <li>Zoom's persisted auto-full-screen setting is cleared every session; window placement is deterministic; a standing guard keeps stray meeting windows off the shared screen.</li>
+              <li>Quitting finalizes any recording, ends the hosted meeting and winds OBS down. Self-view is no longer mirrored.</li>
+              <li><strong>⌥⌘Z quick-hide</strong> for the speaker tile; pick which display the participant view opens on; Hide Self View becomes a preference.</li>
+            </ul>
+          </div>
+        </div>
+        <div class="rel">
+          <div class="meta"><div class="ver">0.3.5</div><div class="date">Mon Aug 18 · 09:03</div><div class="size">6,947 lines</div></div>
+          <div class="spine"><span class="node"></span></div>
+          <div class="card">
+            <span class="tag fix">Fixed</span>
+            <h4>Dual display, done right</h4>
+            <p>The main display's corner tile is the clean speaker view; the extended display gets the participant grid with Zoom's controls. They had been swapped, with the grid never appearing. The OBS scene also rebuilds itself from nothing, and a Mac with no webcam still starts a screen-only session.</p>
+          </div>
+        </div>
+        <div class="rel">
+          <div class="meta"><div class="ver">0.3.6</div><div class="date">Mon Aug 18 · 10:34</div><div class="size">7,205 lines</div></div>
+          <div class="spine"><span class="node"></span></div>
+          <div class="card">
+            <span class="tag new">New</span>
+            <h4>Layout by direct manipulation</h4>
+            <ul>
+              <li>The fixed ½ / ⅔ / ¾ presets are gone: <strong>drag the handle</strong> between the panes, and between Zoom and Chat. Changes re-tile the live windows moments after you let go.</li>
+              <li>End Session asks first. Recordings become fragmented MP4, so a crash loses seconds, not the file.</li>
+            </ul>
+          </div>
+        </div>
+        <div class="rel">
+          <div class="meta"><div class="ver">0.3.7</div><div class="date">Tue Aug 19 · 01:47</div><div class="size">7,385 lines · 19 commits</div></div>
+          <div class="spine"><span class="node"></span></div>
+          <div class="card">
+            <span class="tag fix">Fixed</span>
+            <h4>A design-system pass, and the grid finally stays put</h4>
+            <p>Brand green everywhere, for real: a user's own accent colour had been overriding the app's. The participant grid stops fleeing to the main display when clicked; closing the main window and getting it back always works; quitting feels instant.</p>
+          </div>
+        </div>
+        <div class="rel">
+          <div class="meta"><div class="ver">0.3.8</div><div class="date">Wed Aug 20 · 06:30</div><div class="size">8,018 lines</div></div>
+          <div class="spine"><span class="node"></span></div>
+          <div class="card">
+            <span class="tag fix">Fixed</span>
+            <h4>OBS quits quietly; windows go to the right display</h4>
+            <p>Four separate causes of the “OBS quit unexpectedly” dialog, tracked down and closed. Windows land on the main display rather than whichever had keyboard focus. The Recordings window shows how much disk is left and warns before a class that might not fit.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Era 3 -->
+    <div class="era">
+      <div class="era-head">
+        <div class="when">Aug 24 · one Sunday</div>
+        <h3>The teaching surface</h3>
+        <p>The custom meeting UI grows from an experiment into the app's own console, and the recorder learns to clip the past. The code doubles in a day.</p>
+      </div>
+      <div class="rail">
+        <div class="rel minor">
+          <div class="meta"><div class="ver">0.4.0</div><div class="date">Sun Aug 24 · 04:23</div><div class="size">16,588 lines · 52 commits</div></div>
+          <div class="spine"><span class="node"></span></div>
+          <div class="card">
+            <span class="tag new">New</span>
+            <h4>Clips after the fact, and a participants panel built for teaching</h4>
+            <ul>
+              <li><strong>⌥⌘1, 2 or 5</strong> saves the last one, two or five minutes, recording or not: a rolling buffer held in memory, written only when you press the key.</li>
+              <li><strong>Participants panel</strong>: the live speaker held large, every student in a grid, hands up in the order raised, mute / spotlight / admit / rename one click away.</li>
+              <li><strong>Chat rebuilt</strong>: images and files, replies, day dividers, an unread marker. A meeting a crash left live is ended before the new one starts.</li>
+            </ul>
+          </div>
+        </div>
+        <div class="rel">
+          <div class="meta"><div class="ver">0.4.1</div><div class="date">Sun Aug 24 · 04:41</div><div class="size">16,599 lines</div></div>
+          <div class="spine"><span class="node"></span></div>
+          <div class="card">
+            <span class="tag fix">Fixed</span>
+            <h4>The meeting tile is identified first, always</h4>
+            <p>On a single display with Zoom's own UI, the tile could be mistaken for the participant gallery and pushed behind the workspace, which also left ⌥⌘Z reporting “no speaker tile” all session.</p>
+          </div>
+        </div>
+        <div class="rel minor">
+          <div class="meta"><div class="ver">0.5.0</div><div class="date">Sun Aug 24 · 07:02</div><div class="size">16,802 lines</div></div>
+          <div class="spine"><span class="node"></span></div>
+          <div class="card">
+            <span class="tag new">New</span><span class="tag fix">Fixed</span>
+            <h4>The live speaker window works</h4>
+            <ul>
+              <li>Opens by itself with three people in class, switching as the conversation moves; ⌥⌘Z hides and shows it, Snap Windows Back puts it home.</li>
+              <li><strong>Participant video is stable</strong>: every stream sized against Zoom's subscription budget, ending the “one view works, the other goes black” seesaw.</li>
+              <li>Photos a student sends preview in chat; avatars show proper initials.</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Era 4 -->
+    <div class="era">
+      <div class="era-head">
+        <div class="when">Sep 3 · one morning</div>
+        <h3>Sound, and a browser of its own</h3>
+        <p>A quiet bug that had shadowed every recording, then the first piece of the workspace Greenroom draws itself.</p>
+      </div>
+      <div class="rail">
+        <div class="rel">
+          <div class="meta"><div class="ver">0.5.1</div><div class="date">Wed Sep 3 · 11:24</div><div class="size">16,821 lines</div></div>
+          <div class="spine"><span class="node"></span></div>
+          <div class="card">
+            <span class="tag fix">Fixed</span>
+            <h4>Recordings have sound</h4>
+            <p>Every recording and clip so far carried a silent audio track: the screen capture had its audio off and the webcam feed was video only, so nothing in the scene was listening to the microphone. A dedicated mic input now follows the system input device and is un-muted on every start.</p>
+          </div>
+        </div>
+        <div class="rel minor">
+          <div class="meta"><div class="ver">0.6.0</div><div class="date">Wed Sep 3 · 12:49</div><div class="size">18,781 lines</div></div>
+          <div class="spine"><span class="node"></span></div>
+          <div class="card">
+            <span class="tag new">New</span>
+            <h4>Greenroom Browser</h4>
+            <ul>
+              <li>A new choice at the top of the Main app list: <strong>a WebKit window Greenroom owns</strong>, so it tiles itself with no Accessibility or Automation permission and Snap Windows Back is instant.</li>
+              <li>Tabs in the title bar, an address bar that searches and suggests, ⌘F find, ⌘Y history kept on the Mac, ⌘-click background tabs, ⌘⇧T, ⌘P.</li>
+              <li><strong>Start brings yesterday's tabs back</strong>, with the website from Settings on top. Switches for search suggestions and closing the window with the session.</li>
+            </ul>
+            <p class="sub">Chrome and every other installed browser stay in the list for the days an extension is needed.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="cta-band">
+  <div class="wrap">
+    <h2>The next morning decides the next version.</h2>
+    <p>Every release above answered something a real class did. If yours does something new, say so.</p>
+    <div class="cta-actions">
+      <a class="btn" href="https://github.com/Sibhimanyu/greenroom/releases">All releases on GitHub</a>
+      <a class="textlink" href="https://github.com/Sibhimanyu/greenroom/issues">Report something <span class="arrow">→</span></a>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap footer-inner">
+    <span>Greenroom. Built for the morning readers at Zoho Schools.</span>
+    <span><a href="index.html">Home</a> · <a href="how-it-works.html">Is it safe?</a> · <a href="https://github.com/Sibhimanyu/greenroom">GitHub</a> · <a href="https://github.com/Sibhimanyu/greenroom#readme">Guide</a></span>
+  </div>
+</footer>
+
+<script>
+(function () {
+  // Hover / focus tooltip for the release dots. Positioned inside the
+  // figure frame so it scrolls with the chart on narrow screens.
+  var frame = document.querySelector(".viz .frame");
+  var tip = document.getElementById("tip");
+  var dots = document.querySelectorAll(".dot");
+  if (!frame || !tip) return;
+
+  function show(dot) {
+    var d = dot.dataset;
+    tip.innerHTML = "<b>" + d.v + " · " + d.d + "</b>" +
+      "<span class=\"m\">" + d.l + " lines · " + d.c + (d.c === "1" ? " commit" : " commits") + "</span>" +
+      d.h;
+    tip.classList.add("show");
+    var circle = dot.querySelector("circle").getBoundingClientRect();
+    var box = frame.getBoundingClientRect();
+    var x = circle.left - box.left + circle.width / 2 + frame.scrollLeft;
+    var y = circle.top - box.top;
+    var w = tip.offsetWidth;
+    var left = Math.min(Math.max(x - w / 2, 8), frame.clientWidth - w - 8);
+    tip.style.left = left + "px";
+    tip.style.top = Math.max(y - tip.offsetHeight - 12, 8) + "px";
+  }
+  function hide() { tip.classList.remove("show"); }
+
+  dots.forEach(function (dot) {
+    dot.addEventListener("mouseenter", function () { show(dot); });
+    dot.addEventListener("mouseleave", hide);
+    dot.addEventListener("focus", function () { show(dot); });
+    dot.addEventListener("blur", hide);
+  });
+})();
+</script>
+</body>
+</html>

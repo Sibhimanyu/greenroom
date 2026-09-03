@@ -162,7 +162,8 @@ every change:
     address bar that also searches and suggests as you type (history
     locally; Google completions only while **Suggest searches as you
     type** is on — that setting is the one request the browser makes on
-    its own account), the usual shortcuts (⌘T, ⌘W, ⌘L, ⌘R,
+    its own account), favicons, ⌘-click to open a link in a background
+    tab, the usual shortcuts (⌘T, ⌘W, ⌘⇧T reopen closed tab, ⌘L, ⌘R, ⌘P,
     ⌘[ / ⌘], ⌘⌥←/→ or ⌃Tab between tabs, ⌘1–9, ⌘+/−/0), downloads to
     ~/Downloads — tiled by Greenroom directly with no Accessibility or
     Automation permission. Sign-ins persist between sessions, and

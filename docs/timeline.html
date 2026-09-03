@@ -144,12 +144,24 @@
   tr:last-child td { border-bottom: 0; }
 
   /* ---------- the timeline ---------- */
-  .era { margin-top: 48px; }
+  .era { margin-top: 56px; }
   .era:first-of-type { margin-top: 0; }
-  .era-head { display: grid; grid-template-columns: 176px 1fr; gap: 6px 32px; align-items: baseline; margin-bottom: 22px; }
-  .era-head .when { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 12.5px; letter-spacing: .06em; text-transform: uppercase; color: var(--green); }
+  .era-head { display: grid; grid-template-columns: 176px 1fr 300px; gap: 6px 32px; align-items: center; margin-bottom: 22px; }
+  .era-head .when { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 12.5px; letter-spacing: .06em; text-transform: uppercase; color: var(--green); align-self: start; padding-top: 6px; }
   .era-head h3 { font-size: 20px; font-weight: 800; letter-spacing: -.015em; }
-  .era-head p { grid-column: 2; color: var(--body); font-size: 15px; max-width: 66ch; }
+  .era-head p { color: var(--body); font-size: 15px; max-width: 52ch; margin-top: 6px; }
+  /* The stage as it stood at the end of the era: the same drawing as the
+     home hero, changing four times. */
+  .era-art { margin: 0; border: 1px solid var(--line); border-radius: 14px; background: #fff; padding: 12px; }
+  .era-art svg { display: block; width: 100%; height: auto; }
+  .feats { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+  .feat {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-size: 13px; font-weight: 600; color: var(--ink);
+    border: 1px solid var(--line); background: #fff; border-radius: 999px; padding: 4px 10px 4px 8px;
+  }
+  .feat .k { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 11px; color: var(--green); font-weight: 700; }
+  .feat.soft { color: var(--body); font-weight: 500; }
   .rail { position: relative; padding-left: 0; }
   .rel { display: grid; grid-template-columns: 176px 24px 1fr; gap: 0 20px; position: relative; }
   .rel .meta { text-align: right; padding-top: 22px; }
@@ -168,9 +180,8 @@
   .rel.failed .node { background: #fff; box-shadow: 0 0 0 2px var(--net); }
   .rel .card { padding: 18px 0 26px; }
   .rel .card h4 { margin: 0 0 8px; font-size: 16.5px; font-weight: 700; line-height: 1.35; }
-  .rel .card p, .rel .card li { font-size: 14.5px; color: var(--body); }
-  .rel .card ul { margin: 8px 0 0; padding-left: 18px; display: flex; flex-direction: column; gap: 5px; }
-  .rel .card li strong { color: var(--ink); font-weight: 600; }
+  .rel .card p { font-size: 14.5px; color: var(--body); max-width: 66ch; }
+  .rel .card p strong { color: var(--ink); font-weight: 600; }
   .tag {
     display: inline-block; font-size: 10.5px; font-weight: 800; letter-spacing: .05em; text-transform: uppercase;
     padding: 3px 8px; border-radius: 999px; margin-bottom: 8px; vertical-align: middle;
@@ -180,9 +191,10 @@
   .tag.warn { background: var(--net-soft); color: var(--net-text); }
   .tag + .tag { margin-left: 4px; }
   .rel .card .sub { font-size: 13.5px; color: var(--faint); margin-top: 8px; }
+  @media (max-width: 960px) { .era-head { grid-template-columns: 176px 1fr; } .era-art { grid-column: 2; max-width: 360px; } }
   @media (max-width: 760px) {
     .era-head { grid-template-columns: 1fr; }
-    .era-head p { grid-column: 1; }
+    .era-art { grid-column: 1; }
     .rel { grid-template-columns: 24px 1fr; gap: 0 16px; }
     .rel .meta { grid-column: 2; text-align: left; padding: 18px 0 0; }
     .rel .spine { grid-row: 1 / span 2; }
@@ -371,16 +383,30 @@
     <div class="sec-head">
       <p class="kicker">02 · Release by release</p>
       <h2>What each morning taught the app</h2>
-      <p>Filled dots are minor and patch releases; the lime dots are the ones that added a whole capability. Full notes for
-      every version are on <a href="https://github.com/Sibhimanyu/greenroom/releases">GitHub Releases</a>.</p>
+      <p>Filled dots are patch releases; lime dots added a whole capability. Each era shows the stage as it stood by its end.
+      Full notes for every version are on <a href="https://github.com/Sibhimanyu/greenroom/releases">GitHub Releases</a>.</p>
     </div>
 
     <!-- Era 1 -->
     <div class="era">
       <div class="era-head">
         <div class="when">Aug 6 · one day</div>
-        <h3>Foundation</h3>
-        <p>Three releases before dinner. The first was the ritual as a script; the second turned out to be most of the app.</p>
+        <div>
+          <h3>Foundation</h3>
+          <p>Three releases before dinner. The first was the ritual as a script; the second turned out to be most of the app.</p>
+        </div>
+        <figure class="era-art">
+          <svg viewBox="0 0 300 170" role="img" aria-label="The stage in August: one screen with the reading doc, the teacher keyed into a corner bubble, and a Zoom tile over a chat window in the right column.">
+            <rect x="6" y="10" width="288" height="146" rx="10" fill="#fff" stroke="#98a2b3" stroke-width="1.2"/>
+            <path d="M6,20 a10,10 0 0 1 10,-10 h268 a10,10 0 0 1 10,10 v8 h-288 z" fill="#f9fafb" stroke="#98a2b3" stroke-width="1.2"/>
+            <rect x="16" y="38" width="176" height="108" rx="5" fill="#fff" stroke="#d0d5dd"/>
+            <g fill="#e4e7ec"><rect x="26" y="50" width="96" height="6" rx="3" fill="#d0d5dd"/><rect x="26" y="64" width="150" height="4" rx="2"/><rect x="26" y="74" width="140" height="4" rx="2"/><rect x="26" y="84" width="146" height="4" rx="2"/><rect x="26" y="94" width="120" height="4" rx="2"/><rect x="26" y="108" width="150" height="4" rx="2"/><rect x="26" y="118" width="132" height="4" rx="2"/></g>
+            <circle cx="166" cy="124" r="15" fill="#e8f3df" stroke="#2f6118" stroke-width="1.5"/><circle cx="166" cy="120" r="5" fill="#78c000"/><path d="M156,135 a10,8 0 0 1 20,0" fill="#78c000"/>
+            <rect x="200" y="38" width="84" height="50" rx="5" fill="#101828"/><circle cx="242" cy="60" r="9" fill="#475467"/><circle cx="242" cy="57" r="3.2" fill="#98a2b3"/><path d="M235.5,66 a6.5,5 0 0 1 13,0" fill="#98a2b3"/>
+            <rect x="200" y="94" width="84" height="52" rx="5" fill="#fff" stroke="#d0d5dd"/><rect x="206" y="101" width="44" height="8" rx="4" fill="#f2f4f7"/><rect x="230" y="113" width="48" height="8" rx="4" fill="#e8f3df"/><rect x="206" y="125" width="36" height="8" rx="4" fill="#f2f4f7"/>
+            <text x="150" y="166" font-size="8.5" text-anchor="middle" fill="#2f6118" font-weight="700" letter-spacing=".08em" font-family="ui-monospace, SF Mono, Menlo, monospace">OBS · ZOOM · TILED WINDOWS</text>
+          </svg>
+        </figure>
       </div>
       <div class="rail">
         <div class="rel minor">
@@ -388,12 +414,9 @@
           <div class="spine"><span class="node"></span></div>
           <div class="card">
             <span class="tag new">New</span>
-            <h4>The one-click morning: OBS virtual camera, Zoom meeting, tiled windows</h4>
-            <ul>
-              <li><strong>Screen plus keyed webcam bubble</strong> as one virtual camera, driven by OBS in the background.</li>
-              <li><strong>Start or join a Zoom meeting</strong>, then a configurable layout: any main app, the Zoom tile, a chat window.</li>
-              <li>Credentials travel as an exported settings file, so nobody else touches the Zoom Marketplace.</li>
-            </ul>
+            <h4>The one-click morning</h4>
+            <p>OBS virtual camera with you keyed in, a Zoom meeting, and a tiled layout. Credentials travel as one settings file.</p>
+            <div class="feats"><span class="feat">Virtual camera</span><span class="feat">Start / join Zoom</span><span class="feat">Tiled layout</span><span class="feat soft">Settings export</span></div>
           </div>
         </div>
         <div class="rel minor">
@@ -402,12 +425,8 @@
           <div class="card">
             <span class="tag new">New</span><span class="tag fix">Fixed</span>
             <h4>“Everything since 0.1.0, which turns out to be most of the app”</h4>
-            <ul>
-              <li><strong>Scheduled meetings</strong> from the account, started as host; <strong>presenter webcam mode</strong>; <strong>people view</strong> on a second display.</li>
-              <li><strong>Recordings</strong> to ~/Documents/Greenroom with an in-app player; system-wide shortcuts; live previews in Settings.</li>
-              <li><strong>Fast Start</strong>: OBS stays warm between sessions, meeting creation and SDK auth run in parallel.</li>
-              <li>The cutout rendered the teacher at 1% opacity, in other words invisible. Fixed, along with the freezes that needed a force-quit.</li>
-            </ul>
+            <p>Also fixed: the cutout rendered you at 1% opacity, and the freezes that needed a force-quit.</p>
+            <div class="feats"><span class="feat">Scheduled meetings</span><span class="feat">Presenter mode</span><span class="feat">People view</span><span class="feat">Recordings</span><span class="feat"><span class="k">⌥⌘</span> Shortcuts</span><span class="feat">Fast Start</span></div>
           </div>
         </div>
         <div class="rel">
@@ -416,7 +435,7 @@
           <div class="card">
             <span class="tag fix">Fixed</span>
             <h4>Quitting stops saying “Greenroom quit unexpectedly”</h4>
-            <p>The Zoom SDK's engines crashed in their own destructors at process exit. Greenroom now shuts the SDK down itself, then leaves before the leftover teardown can run. It also comes back to the front when a session ends.</p>
+            <p>The Zoom SDK crashed in its own teardown at exit; Greenroom now shuts it down first. It also returns to the front when a session ends.</p>
           </div>
         </div>
       </div>
@@ -426,8 +445,28 @@
     <div class="era">
       <div class="era-head">
         <div class="when">Aug 7 – 20 · two weeks</div>
-        <h3>Self-updating, and hardened in class</h3>
-        <p>The updater arrived, failed once, then made every later install automatic. The rest of the series is a list of things a real classroom did to the app.</p>
+        <div>
+          <h3>Self-updating, and hardened in class</h3>
+          <p>The updater arrived, failed once, then made every later install automatic. The rest is what a real classroom did to the app.</p>
+        </div>
+        <figure class="era-art">
+          <svg viewBox="0 0 300 170" role="img" aria-label="The stage by August 20: the same screen, now with a drag handle between the panes, an update badge, and a second display holding the participant grid.">
+            <rect x="6" y="10" width="288" height="146" rx="10" fill="#fff" stroke="#98a2b3" stroke-width="1.2"/>
+            <path d="M6,20 a10,10 0 0 1 10,-10 h268 a10,10 0 0 1 10,10 v8 h-288 z" fill="#f9fafb" stroke="#98a2b3" stroke-width="1.2"/>
+            <rect x="16" y="38" width="160" height="108" rx="5" fill="#fff" stroke="#d0d5dd"/>
+            <g fill="#e4e7ec"><rect x="26" y="50" width="90" height="6" rx="3" fill="#d0d5dd"/><rect x="26" y="64" width="136" height="4" rx="2"/><rect x="26" y="74" width="128" height="4" rx="2"/><rect x="26" y="84" width="132" height="4" rx="2"/><rect x="26" y="94" width="110" height="4" rx="2"/><rect x="26" y="108" width="136" height="4" rx="2"/></g>
+            <circle cx="150" cy="124" r="15" fill="#e8f3df" stroke="#2f6118" stroke-width="1.5"/><circle cx="150" cy="120" r="5" fill="#78c000"/><path d="M140,135 a10,8 0 0 1 20,0" fill="#78c000"/>
+            <!-- the drag handle: direct manipulation arrived in 0.3.6 -->
+            <line x1="182" y1="38" x2="182" y2="146" stroke="#2f6118" stroke-width="1.2" stroke-dasharray="3 3"/>
+            <rect x="177" y="84" width="10" height="16" rx="3" fill="#2f6118"/>
+            <rect x="192" y="38" width="92" height="50" rx="5" fill="#101828"/><circle cx="238" cy="60" r="9" fill="#475467"/><circle cx="238" cy="57" r="3.2" fill="#98a2b3"/><path d="M231.5,66 a6.5,5 0 0 1 13,0" fill="#98a2b3"/>
+            <rect x="192" y="94" width="92" height="52" rx="5" fill="#fff" stroke="#d0d5dd"/><rect x="198" y="101" width="48" height="8" rx="4" fill="#f2f4f7"/><rect x="226" y="113" width="52" height="8" rx="4" fill="#e8f3df"/><rect x="198" y="125" width="40" height="8" rx="4" fill="#f2f4f7"/>
+            <!-- update badge -->
+            <rect x="214" y="2" width="72" height="16" rx="8" fill="#e8f3df" stroke="#2f6118"/>
+            <text x="250" y="13.5" font-size="8.5" text-anchor="middle" fill="#2f6118" font-weight="700">↻ updates itself</text>
+            <text x="150" y="166" font-size="8.5" text-anchor="middle" fill="#2f6118" font-weight="700" letter-spacing=".08em" font-family="ui-monospace, SF Mono, Menlo, monospace">DRAG TO RESIZE · SELF-UPDATING</text>
+          </svg>
+        </figure>
       </div>
       <div class="rail">
         <div class="rel failed">
@@ -436,7 +475,7 @@
           <div class="card">
             <span class="tag warn">Never launched</span>
             <h4>The build that could not start</h4>
-            <p>A build step that embeds the Zoom SDK deleted the Sparkle framework right after Xcode put it in the bundle. The app crashed on open on every Mac; downloads were pulled. The lasting result: the release script now resolves every linked library against the bundle and launches the exact shipped bytes before anything is published.</p>
+            <p>A build step deleted the Sparkle framework from the bundle; the app crashed on open everywhere and downloads were pulled. The release script has verified every library and smoke-launched every build since.</p>
           </div>
         </div>
         <div class="rel minor">
@@ -445,7 +484,7 @@
           <div class="card">
             <span class="tag new">New</span>
             <h4>The last version anyone installs by hand</h4>
-            <p>Sparkle auto-updates, EdDSA-signed, with <em>Install and Relaunch</em> and a <em>Check for Updates…</em> item in the app and menu bar. From here on, releases arrive on their own.</p>
+            <div class="feats"><span class="feat">Sparkle auto-updates</span><span class="feat">EdDSA-signed</span><span class="feat soft">Check for Updates…</span></div>
           </div>
         </div>
         <div class="rel">
@@ -453,8 +492,8 @@
           <div class="spine"><span class="node"></span></div>
           <div class="card">
             <span class="tag fix">Fixed</span>
-            <h4>Browsers open their own window again; OBS stops crashing on quit</h4>
-            <p>Picking a Chromium browser had tiled the teacher's entire existing tab pile. A fresh window per session fixed it. A system-audio capture queue Greenroom never used was what made OBS crash on the way out.</p>
+            <h4>Browsers get their own window; OBS stops crashing on quit</h4>
+            <p>A session had been tiling the teacher's whole tab pile.</p>
           </div>
         </div>
         <div class="rel">
@@ -462,12 +501,8 @@
           <div class="spine"><span class="node"></span></div>
           <div class="card">
             <span class="tag new">New</span>
-            <h4>Meeting presets, and the “Is it safe?” page</h4>
-            <ul>
-              <li><strong>Presets</strong> save regular meetings (name, ID, passcode) and travel in the settings export.</li>
-              <li>The transparency page: not AI, not watching the screen, not a keylogger, with a capability inventory for IT.</li>
-              <li>Honest about credential storage: plain text in local preferences, never the Keychain, never sent anywhere but Zoom.</li>
-            </ul>
+            <h4>Meeting presets, and the transparency page</h4>
+            <div class="feats"><span class="feat">Presets</span><span class="feat">“Is it safe?” page</span><span class="feat soft">Honest about plaintext credentials</span></div>
           </div>
         </div>
         <div class="rel">
@@ -476,11 +511,8 @@
           <div class="card">
             <span class="tag fix">Fixed</span><span class="tag new">New</span>
             <h4>No more windows bursting open full-screen</h4>
-            <ul>
-              <li>Zoom's persisted auto-full-screen setting is cleared every session; window placement is deterministic; a standing guard keeps stray meeting windows off the shared screen.</li>
-              <li>Quitting finalizes any recording, ends the hosted meeting and winds OBS down. Self-view is no longer mirrored.</li>
-              <li><strong>⌥⌘Z quick-hide</strong> for the speaker tile; pick which display the participant view opens on; Hide Self View becomes a preference.</li>
-            </ul>
+            <p>Deterministic placement, a guard against stray meeting windows, safe quitting, an unmirrored self-view.</p>
+            <div class="feats"><span class="feat"><span class="k">⌥⌘Z</span> Quick-hide</span><span class="feat">Pick the participant display</span><span class="feat soft">Hide Self View</span></div>
           </div>
         </div>
         <div class="rel">
@@ -489,7 +521,7 @@
           <div class="card">
             <span class="tag fix">Fixed</span>
             <h4>Dual display, done right</h4>
-            <p>The main display's corner tile is the clean speaker view; the extended display gets the participant grid with Zoom's controls. They had been swapped, with the grid never appearing. The OBS scene also rebuilds itself from nothing, and a Mac with no webcam still starts a screen-only session.</p>
+            <p>Speaker tile on the main screen, participant grid with controls on the second. They had been swapped.</p>
           </div>
         </div>
         <div class="rel">
@@ -498,10 +530,7 @@
           <div class="card">
             <span class="tag new">New</span>
             <h4>Layout by direct manipulation</h4>
-            <ul>
-              <li>The fixed ½ / ⅔ / ¾ presets are gone: <strong>drag the handle</strong> between the panes, and between Zoom and Chat. Changes re-tile the live windows moments after you let go.</li>
-              <li>End Session asks first. Recordings become fragmented MP4, so a crash loses seconds, not the file.</li>
-            </ul>
+            <div class="feats"><span class="feat">Drag the handles</span><span class="feat">Live re-tiling</span><span class="feat soft">End Session asks first</span><span class="feat soft">Crash-safe MP4</span></div>
           </div>
         </div>
         <div class="rel">
@@ -510,7 +539,7 @@
           <div class="card">
             <span class="tag fix">Fixed</span>
             <h4>A design-system pass, and the grid finally stays put</h4>
-            <p>Brand green everywhere, for real: a user's own accent colour had been overriding the app's. The participant grid stops fleeing to the main display when clicked; closing the main window and getting it back always works; quitting feels instant.</p>
+            <p>Brand green everywhere; the participant grid stops fleeing its display; quitting feels instant.</p>
           </div>
         </div>
         <div class="rel">
@@ -519,7 +548,7 @@
           <div class="card">
             <span class="tag fix">Fixed</span>
             <h4>OBS quits quietly; windows go to the right display</h4>
-            <p>Four separate causes of the “OBS quit unexpectedly” dialog, tracked down and closed. Windows land on the main display rather than whichever had keyboard focus. The Recordings window shows how much disk is left and warns before a class that might not fit.</p>
+            <div class="feats"><span class="feat soft">Four crash causes closed</span><span class="feat">Disk space in Recordings</span></div>
           </div>
         </div>
       </div>
@@ -529,8 +558,32 @@
     <div class="era">
       <div class="era-head">
         <div class="when">Aug 24 · one Sunday</div>
-        <h3>The teaching surface</h3>
-        <p>The custom meeting UI grows from an experiment into the app's own console, and the recorder learns to clip the past. The code doubles in a day.</p>
+        <div>
+          <h3>The teaching surface</h3>
+          <p>The custom meeting UI becomes the app's own console, and the recorder learns to clip the past. The code doubles in a day.</p>
+        </div>
+        <figure class="era-art">
+          <svg viewBox="0 0 300 170" role="img" aria-label="The stage by August 24: the main screen as before, plus a second display showing the live speaker large above a grid of students with hands up, and a clip shortcut badge.">
+            <rect x="6" y="26" width="172" height="118" rx="8" fill="#fff" stroke="#98a2b3" stroke-width="1.2"/>
+            <path d="M6,34 a8,8 0 0 1 8,-8 h156 a8,8 0 0 1 8,8 v6 h-172 z" fill="#f9fafb" stroke="#98a2b3" stroke-width="1.2"/>
+            <rect x="14" y="48" width="100" height="88" rx="4" fill="#fff" stroke="#d0d5dd"/>
+            <g fill="#e4e7ec"><rect x="20" y="56" width="60" height="5" rx="2.5" fill="#d0d5dd"/><rect x="20" y="68" width="88" height="3.5" rx="1.75"/><rect x="20" y="76" width="82" height="3.5" rx="1.75"/><rect x="20" y="84" width="86" height="3.5" rx="1.75"/><rect x="20" y="96" width="88" height="3.5" rx="1.75"/><rect x="20" y="104" width="70" height="3.5" rx="1.75"/></g>
+            <circle cx="98" cy="120" r="11" fill="#e8f3df" stroke="#2f6118" stroke-width="1.4"/><circle cx="98" cy="117" r="3.6" fill="#78c000"/><path d="M90.5,128 a7.5,6 0 0 1 15,0" fill="#78c000"/>
+            <rect x="120" y="48" width="50" height="38" rx="4" fill="#101828"/><circle cx="145" cy="65" r="7" fill="#475467"/>
+            <rect x="120" y="92" width="50" height="44" rx="4" fill="#fff" stroke="#d0d5dd"/><rect x="125" y="98" width="30" height="6" rx="3" fill="#f2f4f7"/><rect x="138" y="108" width="28" height="6" rx="3" fill="#e8f3df"/><rect x="125" y="118" width="24" height="6" rx="3" fill="#f2f4f7"/>
+            <!-- second display: the participants panel -->
+            <rect x="188" y="26" width="106" height="118" rx="8" fill="#101828" stroke="#98a2b3" stroke-width="1.2"/>
+            <rect x="196" y="34" width="90" height="52" rx="4" fill="#1d2939"/><circle cx="241" cy="58" r="12" fill="#475467"/><circle cx="241" cy="54" r="4.2" fill="#98a2b3"/><path d="M232,66 a9,7 0 0 1 18,0" fill="#98a2b3"/>
+            <rect x="200" y="76" width="34" height="8" rx="4" fill="#2f6118"/>
+            <g fill="#344054"><rect x="196" y="92" width="20" height="16" rx="3"/><rect x="220" y="92" width="20" height="16" rx="3"/><rect x="244" y="92" width="20" height="16" rx="3"/><rect x="268" y="92" width="18" height="16" rx="3"/><rect x="196" y="112" width="20" height="16" rx="3"/><rect x="220" y="112" width="20" height="16" rx="3"/><rect x="244" y="112" width="20" height="16" rx="3"/><rect x="268" y="112" width="18" height="16" rx="3"/></g>
+            <circle cx="233" cy="95" r="3" fill="#78c000"/><circle cx="281" cy="115" r="3" fill="#78c000"/>
+            <rect x="196" y="132" width="90" height="6" rx="3" fill="#344054"/>
+            <!-- clip badge -->
+            <rect x="8" y="2" width="92" height="16" rx="8" fill="#e8f3df" stroke="#2f6118"/>
+            <text x="54" y="13.5" font-size="8.5" text-anchor="middle" fill="#2f6118" font-weight="700">⌥⌘2 · last 2 min saved</text>
+            <text x="150" y="166" font-size="8.5" text-anchor="middle" fill="#2f6118" font-weight="700" letter-spacing=".08em" font-family="ui-monospace, SF Mono, Menlo, monospace">CLIPS · PARTICIPANTS PANEL · SECOND DISPLAY</text>
+          </svg>
+        </figure>
       </div>
       <div class="rail">
         <div class="rel minor">
@@ -539,11 +592,7 @@
           <div class="card">
             <span class="tag new">New</span>
             <h4>Clips after the fact, and a participants panel built for teaching</h4>
-            <ul>
-              <li><strong>⌥⌘1, 2 or 5</strong> saves the last one, two or five minutes, recording or not: a rolling buffer held in memory, written only when you press the key.</li>
-              <li><strong>Participants panel</strong>: the live speaker held large, every student in a grid, hands up in the order raised, mute / spotlight / admit / rename one click away.</li>
-              <li><strong>Chat rebuilt</strong>: images and files, replies, day dividers, an unread marker. A meeting a crash left live is ended before the new one starts.</li>
-            </ul>
+            <div class="feats"><span class="feat"><span class="k">⌥⌘1·2·5</span> Clips</span><span class="feat">Participants panel</span><span class="feat">Hands up, in order</span><span class="feat">Chat rebuilt</span><span class="feat soft">Ends a meeting a crash left live</span></div>
           </div>
         </div>
         <div class="rel">
@@ -552,7 +601,7 @@
           <div class="card">
             <span class="tag fix">Fixed</span>
             <h4>The meeting tile is identified first, always</h4>
-            <p>On a single display with Zoom's own UI, the tile could be mistaken for the participant gallery and pushed behind the workspace, which also left ⌥⌘Z reporting “no speaker tile” all session.</p>
+            <p>It could be mistaken for the gallery and pushed behind the workspace.</p>
           </div>
         </div>
         <div class="rel minor">
@@ -561,11 +610,8 @@
           <div class="card">
             <span class="tag new">New</span><span class="tag fix">Fixed</span>
             <h4>The live speaker window works</h4>
-            <ul>
-              <li>Opens by itself with three people in class, switching as the conversation moves; ⌥⌘Z hides and shows it, Snap Windows Back puts it home.</li>
-              <li><strong>Participant video is stable</strong>: every stream sized against Zoom's subscription budget, ending the “one view works, the other goes black” seesaw.</li>
-              <li>Photos a student sends preview in chat; avatars show proper initials.</li>
-            </ul>
+            <p>Participant video stops going black: every stream is sized against Zoom's subscription budget.</p>
+            <div class="feats"><span class="feat">Live speaker window</span><span class="feat">Photos preview in chat</span><span class="feat soft">Proper initials</span></div>
           </div>
         </div>
       </div>
@@ -575,8 +621,29 @@
     <div class="era">
       <div class="era-head">
         <div class="when">Sep 3 · one morning</div>
-        <h3>Sound, and a browser of its own</h3>
-        <p>A quiet bug that had shadowed every recording, then the first piece of the workspace Greenroom draws itself.</p>
+        <div>
+          <h3>Sound, and a browser of its own</h3>
+          <p>A quiet bug that had shadowed every recording, then the first piece of the workspace Greenroom draws itself.</p>
+        </div>
+        <figure class="era-art">
+          <svg viewBox="0 0 300 170" role="img" aria-label="The stage in September: the main pane is now Greenroom's own browser with three tabs and an address bar; the teacher bubble, Zoom tile and chat are as before, and a microphone badge marks that recordings carry sound.">
+            <rect x="6" y="10" width="288" height="146" rx="10" fill="#fff" stroke="#98a2b3" stroke-width="1.2"/>
+            <path d="M6,20 a10,10 0 0 1 10,-10 h268 a10,10 0 0 1 10,10 v8 h-288 z" fill="#f9fafb" stroke="#98a2b3" stroke-width="1.2"/>
+            <!-- Greenroom Browser: tabs in the title bar, an address bar -->
+            <rect x="16" y="38" width="176" height="108" rx="5" fill="#fff" stroke="#2f6118" stroke-width="1.4"/>
+            <rect x="16" y="38" width="176" height="12" rx="5" fill="#f2f4f7"/>
+            <rect x="22" y="41" width="40" height="9" rx="3" fill="#fff" stroke="#d0d5dd"/><rect x="64" y="42" width="34" height="7" rx="3" fill="#e4e7ec"/><rect x="100" y="42" width="34" height="7" rx="3" fill="#e4e7ec"/>
+            <rect x="22" y="54" width="164" height="9" rx="4.5" fill="#f9fafb" stroke="#d0d5dd"/><rect x="28" y="57" width="70" height="3" rx="1.5" fill="#98a2b3"/>
+            <g fill="#e4e7ec"><rect x="26" y="72" width="90" height="5" rx="2.5" fill="#d0d5dd"/><rect x="26" y="84" width="150" height="3.5" rx="1.75"/><rect x="26" y="92" width="140" height="3.5" rx="1.75"/><rect x="26" y="100" width="146" height="3.5" rx="1.75"/><rect x="26" y="112" width="150" height="3.5" rx="1.75"/><rect x="26" y="120" width="120" height="3.5" rx="1.75"/></g>
+            <circle cx="166" cy="124" r="15" fill="#e8f3df" stroke="#2f6118" stroke-width="1.5"/><circle cx="166" cy="120" r="5" fill="#78c000"/><path d="M156,135 a10,8 0 0 1 20,0" fill="#78c000"/>
+            <rect x="200" y="38" width="84" height="50" rx="5" fill="#101828"/><circle cx="242" cy="60" r="9" fill="#475467"/><circle cx="242" cy="57" r="3.2" fill="#98a2b3"/><path d="M235.5,66 a6.5,5 0 0 1 13,0" fill="#98a2b3"/>
+            <rect x="200" y="94" width="84" height="52" rx="5" fill="#fff" stroke="#d0d5dd"/><rect x="206" y="101" width="44" height="8" rx="4" fill="#f2f4f7"/><rect x="230" y="113" width="48" height="8" rx="4" fill="#e8f3df"/><rect x="206" y="125" width="36" height="8" rx="4" fill="#f2f4f7"/>
+            <!-- mic badge -->
+            <rect x="196" y="2" width="90" height="16" rx="8" fill="#e8f3df" stroke="#2f6118"/>
+            <text x="241" y="13.5" font-size="8.5" text-anchor="middle" fill="#2f6118" font-weight="700">● REC · with sound</text>
+            <text x="150" y="166" font-size="8.5" text-anchor="middle" fill="#2f6118" font-weight="700" letter-spacing=".08em" font-family="ui-monospace, SF Mono, Menlo, monospace">GREENROOM BROWSER · MIC IN THE SCENE</text>
+          </svg>
+        </figure>
       </div>
       <div class="rail">
         <div class="rel">
@@ -585,7 +652,7 @@
           <div class="card">
             <span class="tag fix">Fixed</span>
             <h4>Recordings have sound</h4>
-            <p>Every recording and clip so far carried a silent audio track: the screen capture had its audio off and the webcam feed was video only, so nothing in the scene was listening to the microphone. A dedicated mic input now follows the system input device and is un-muted on every start.</p>
+            <p>Every recording so far had a silent track: nothing in the scene was listening to the mic. A dedicated mic input now follows the system device.</p>
           </div>
         </div>
         <div class="rel minor">
@@ -594,12 +661,8 @@
           <div class="card">
             <span class="tag new">New</span>
             <h4>Greenroom Browser</h4>
-            <ul>
-              <li>A new choice at the top of the Main app list: <strong>a WebKit window Greenroom owns</strong>, so it tiles itself with no Accessibility or Automation permission and Snap Windows Back is instant.</li>
-              <li>Tabs in the title bar, an address bar that searches and suggests, ⌘F find, ⌘Y history kept on the Mac, ⌘-click background tabs, ⌘⇧T, ⌘P.</li>
-              <li><strong>Start brings yesterday's tabs back</strong>, with the website from Settings on top. Switches for search suggestions and closing the window with the session.</li>
-            </ul>
-            <p class="sub">Chrome and every other installed browser stay in the list for the days an extension is needed.</p>
+            <p>A WebKit window Greenroom owns, so it tiles itself with no permission to grant. Chrome and friends stay in the list.</p>
+            <div class="feats"><span class="feat">Tabs in the title bar</span><span class="feat"><span class="k">⌘F</span> Find</span><span class="feat"><span class="k">⌘Y</span> History, local</span><span class="feat">Suggests as you type</span><span class="feat">Yesterday's tabs on Start</span></div>
           </div>
         </div>
       </div>

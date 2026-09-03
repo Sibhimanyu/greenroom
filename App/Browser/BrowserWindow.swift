@@ -49,6 +49,10 @@ final class BrowserTab: NSObject, ObservableObject, Identifiable {
     /// The last URL asked for via load() - known before WebKit has started
     /// the navigation, which is what the session-restore match needs.
     private(set) var requestedURL: URL?
+    /// The tab Start opened for the website in Settings. Remembered across
+    /// launches so the next Start selects it instead of opening the same
+    /// site again - redirects mean its URL rarely matches the setting.
+    var openedFromSettings = false
 
     // Find in page (⌘F). WebKit highlights and scrolls to the match
     // itself; all that is ours is the bar and whether the last search hit.
@@ -583,6 +587,19 @@ final class BrowserModel: ObservableObject {
         tabs.compactMap { ($0.webView.url ?? $0.requestedURL)?.absoluteString }
     }
 
+    /// Position of the Settings-website tab within `sessionURLs`, if open.
+    var configuredTabIndex: Int? {
+        tabs.firstIndex { $0.openedFromSettings && ($0.webView.url ?? $0.requestedURL) != nil }
+    }
+
+    var configuredTab: BrowserTab? { tabs.first { $0.openedFromSettings } }
+
+    /// Marks `tab` as the Settings-website tab, and nothing else.
+    func markConfigured(_ tab: BrowserTab) {
+        for other in tabs { other.openedFromSettings = (other.id == tab.id) }
+        onTabsChanged?()
+    }
+
     /// New tabs open next to the current one, as in every browser, so a
     /// link opened from the reading doc sits beside it, not at the far end.
     @discardableResult
@@ -897,6 +914,9 @@ private struct TabStrip: View {
                                     close: { model.close(tab) })
                         }
                     }
+                    // A horizontal ScrollView centres content narrower than
+                    // itself; one tab then floated mid-strip (AX: x=682).
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 Button { model.newTab() } label: {
                     Image(systemName: "plus")
@@ -1549,6 +1569,8 @@ enum BrowserWindowController {
     private static var window: NSWindow?
     private static var model: BrowserModel?
     private static var keyMonitor: Any?
+    /// The Settings website the current session was opened with.
+    private static var configuredURLString: String?
 
     private static let defaultTitle = "Greenroom Browser"
 
@@ -1560,6 +1582,11 @@ enum BrowserWindowController {
     /// address bar to local history only - no request leaves the Mac.
     static var searchSuggestions = true
     private static let sessionKey = "browserLastSessionTabs"
+    /// Which saved tab was opened for the Settings website, and what that
+    /// website was at the time - so a changed setting opens the new site
+    /// rather than re-selecting the old tab.
+    private static let configuredIndexKey = "browserLastSessionConfiguredIndex"
+    private static let configuredURLKey = "browserLastSessionConfiguredURL"
 
     static var isOpen: Bool { window?.isVisible ?? false }
 
@@ -1581,21 +1608,36 @@ enum BrowserWindowController {
         let targetWindow = window ?? makeWindow(model: model)
 
         if !wasVisible {
+            let configured = AppCatalog.normalizedWebURL(from: urlString)
+                ?? (model.tabs.isEmpty ? URL(string: AppLinks.site) : nil)
+
             // A fresh launch with nothing open yet: last time's tabs first
-            // (when the setting is on), then the configured page on top -
-            // selected, and not duplicated if it is already among them.
+            // (when the setting is on). The tab that was opened for the
+            // Settings website keeps that role - as long as the setting still
+            // names the same site.
             if model.tabs.isEmpty, restoresTabs {
+                let defaults = UserDefaults.standard
+                let savedConfiguredURL = defaults.string(forKey: configuredURLKey)
+                let savedConfiguredIndex = defaults.object(forKey: configuredIndexKey) as? Int
                 for saved in savedSessionURLs() {
                     model.newTab(url: saved, select: false)
                 }
+                if let index = savedConfiguredIndex, model.tabs.indices.contains(index),
+                   savedConfiguredURL == configured?.absoluteString {
+                    model.tabs[index].openedFromSettings = true
+                }
             }
-            let configured = AppCatalog.normalizedWebURL(from: urlString)
-                ?? (model.tabs.isEmpty ? URL(string: AppLinks.site) : nil)
+
+            // Then the configured page on top - selected, and not opened a
+            // second time if a tab already holds it.
             if let configured {
-                if let existing = model.tabs.first(where: { $0.requestedURL == configured || $0.webView.url == configured }) {
+                configuredURLString = configured.absoluteString
+                if let existing = model.configuredTab
+                    ?? model.tabs.first(where: { $0.requestedURL == configured || $0.webView.url == configured }) {
+                    model.markConfigured(existing)
                     model.select(existing)
                 } else {
-                    model.newTab(url: configured)
+                    model.markConfigured(model.newTab(url: configured))
                 }
             } else if model.tabs.isEmpty {
                 model.newTab()
@@ -1644,7 +1686,10 @@ enum BrowserWindowController {
         // Saved on every change rather than at quit: a force-quit or a
         // crash then loses nothing, and the write is a handful of strings.
         model.onTabsChanged = {
-            UserDefaults.standard.set(model.sessionURLs, forKey: sessionKey)
+            let defaults = UserDefaults.standard
+            defaults.set(model.sessionURLs, forKey: sessionKey)
+            defaults.set(model.configuredTabIndex, forKey: configuredIndexKey)
+            defaults.set(configuredURLString, forKey: configuredURLKey)
         }
 
         // Shortcuts for the whole window in one place - see BrowserModel.handle.

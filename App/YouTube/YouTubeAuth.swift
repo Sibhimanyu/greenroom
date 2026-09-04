@@ -16,7 +16,7 @@
 import AppKit
 import CryptoKit
 import Foundation
-import Network
+import Darwin
 
 enum YouTubeAuth {
 
@@ -56,7 +56,7 @@ enum YouTubeAuth {
         let challenge = base64URL(Data(SHA256.hash(data: Data(verifier.utf8))))
         let state = randomToken(bytes: 12)
 
-        let listener = try await LoopbackListener.start()
+        let listener = try LoopbackListener.start()
         defer { listener.stop() }
         let redirectURI = "http://127.0.0.1:\(listener.port)"
 
@@ -182,90 +182,60 @@ enum YouTubeAuth {
 
 // MARK: - Loopback listener
 
-/// Listens on 127.0.0.1 for the single HTTP request Google's redirect makes,
-/// answers it with a "you can close this tab" page, and hands back the code.
-/// Loopback only: nothing off this Mac can reach it, and it is gone the
-/// moment the sign-in completes.
+/// Receives the single HTTP request Google makes to the redirect URI, on a
+/// plain BSD socket bound to 127.0.0.1 with a kernel-chosen port. Answers
+/// with a "you can close this tab" page and hands back the code. Loopback
+/// only: nothing off this Mac can reach it, and it is closed the moment the
+/// sign-in completes. A raw socket rather than Network.framework, whose
+/// NWListener rejects loopback-only binds (EINVAL, seen live).
 private final class LoopbackListener: @unchecked Sendable {
     let port: UInt16
-    private let listener: NWListener
-    private var queue: DispatchQueue { listener.queue ?? DispatchQueue(label: "greenroom.youtube.loopback") }
-    private var continuation: CheckedContinuation<(code: String, state: String), Error>?
-    private var connections: [NWConnection] = []
+    private let fd: Int32
 
-    private init(listener: NWListener, port: UInt16) {
-        self.listener = listener
+    private init(fd: Int32, port: UInt16) {
+        self.fd = fd
         self.port = port
-        // Set after every stored property exists (the closure captures self).
-        // Nothing can connect before the consent URL is opened, so no
-        // connection is missed by attaching the handler here.
-        listener.newConnectionHandler = { [weak self] connection in self?.accept(connection) }
     }
 
-    /// Binds an ephemeral port on the loopback interface and waits for the
-    /// listener to report ready - the port is only known then. A listener
-    /// that fails or never readies within five seconds throws with the
-    /// reason, rather than reporting a port it does not have.
-    static func start() async throws -> LoopbackListener {
-        let parameters = NWParameters.tcp
-        parameters.requiredInterfaceType = .loopback
-        parameters.allowLocalEndpointReuse = true
-        let listener: NWListener
-        do {
-            listener = try NWListener(using: parameters, on: .any)
-        } catch {
-            throw YouTubeAuth.AuthError.noPort(error.localizedDescription)
-        }
-        let queue = DispatchQueue(label: "greenroom.youtube.loopback")
+    static func start() throws -> LoopbackListener {
+        let fd = socket(AF_INET, SOCK_STREAM, 0)
+        guard fd >= 0 else { throw YouTubeAuth.AuthError.noPort(String(cString: strerror(errno))) }
 
-        let port: UInt16 = try await withThrowingTaskGroup(of: UInt16.self) { group in
-            group.addTask {
-                try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<UInt16, Error>) in
-                    // A continuation may resume once; the state handler can
-                    // fire many times. The box is a reference so the closure
-                    // captures a constant, which keeps Swift 6 happy.
-                    final class Once: @unchecked Sendable { var done = false }
-                    let once = Once()
-                    listener.stateUpdateHandler = { state in
-                        guard !once.done else { return }
-                        switch state {
-                        case .ready:
-                            if let p = listener.port?.rawValue, p != 0 {
-                                once.done = true
-                                continuation.resume(returning: p)
-                            }
-                        case .failed(let error):
-                            once.done = true
-                            continuation.resume(throwing: YouTubeAuth.AuthError.noPort(error.localizedDescription))
-                        case .cancelled:
-                            once.done = true
-                            continuation.resume(throwing: YouTubeAuth.AuthError.noPort("listener cancelled"))
-                        default:
-                            break
-                        }
-                    }
-                    listener.start(queue: queue)
-                }
-            }
-            group.addTask {
-                try await Task.sleep(nanoseconds: 5_000_000_000)
-                throw YouTubeAuth.AuthError.noPort("the listener never became ready")
-            }
-            let first = try await group.next()!
-            group.cancelAll()
-            return first
+        var reuse: Int32 = 1
+        setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &reuse, socklen_t(MemoryLayout<Int32>.size))
+
+        var address = sockaddr_in()
+        address.sin_len = UInt8(MemoryLayout<sockaddr_in>.size)
+        address.sin_family = sa_family_t(AF_INET)
+        address.sin_port = 0 // the kernel picks a free port
+        address.sin_addr.s_addr = inet_addr("127.0.0.1")
+        let bound = withUnsafePointer(to: &address) { pointer in
+            pointer.withMemoryRebound(to: sockaddr.self, capacity: 1) { bind(fd, $0, socklen_t(MemoryLayout<sockaddr_in>.size)) }
         }
-        listener.stateUpdateHandler = nil
-        return LoopbackListener(listener: listener, port: port)
+        guard bound == 0, listen(fd, 4) == 0 else {
+            let why = String(cString: strerror(errno))
+            close(fd)
+            throw YouTubeAuth.AuthError.noPort(why)
+        }
+
+        var assigned = sockaddr_in()
+        var length = socklen_t(MemoryLayout<sockaddr_in>.size)
+        let named = withUnsafeMutablePointer(to: &assigned) { pointer in
+            pointer.withMemoryRebound(to: sockaddr.self, capacity: 1) { getsockname(fd, $0, &length) }
+        }
+        guard named == 0 else {
+            close(fd)
+            throw YouTubeAuth.AuthError.noPort("could not read the assigned port")
+        }
+        return LoopbackListener(fd: fd, port: UInt16(bigEndian: assigned.sin_port))
     }
 
+    /// Accepts connections until one carries Google's redirect (a code, or
+    /// an error), answering anything else - a favicon probe, a speculative
+    /// second connection - with a 404. Times out after `timeout` seconds.
     func waitForCode(expectedState: String, timeout: TimeInterval) async throws -> String {
         let result: (code: String, state: String) = try await withThrowingTaskGroup(of: (code: String, state: String).self) { group in
-            group.addTask {
-                try await withCheckedThrowingContinuation { continuation in
-                    self.queue.async { self.continuation = continuation }
-                }
-            }
+            group.addTask { try await self.acceptRedirect() }
             group.addTask {
                 try await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))
                 throw YouTubeAuth.AuthError.timedOut
@@ -281,43 +251,55 @@ private final class LoopbackListener: @unchecked Sendable {
     }
 
     func stop() {
-        listener.cancel()
-        connections.forEach { $0.cancel() }
+        // Closing the listening socket makes a blocked accept() return -1,
+        // which ends the accept loop.
+        close(fd)
     }
 
-    private func accept(_ connection: NWConnection) {
-        connections.append(connection)
-        connection.start(queue: queue)
-        connection.receive(minimumIncompleteLength: 1, maximumLength: 16_384) { [weak self] data, _, _, _ in
-            guard let self, let data, let request = String(data: data, encoding: .utf8) else { return }
-            self.handle(request: request, on: connection)
+    private func acceptRedirect() async throws -> (code: String, state: String) {
+        try await withCheckedThrowingContinuation { continuation in
+            DispatchQueue.global(qos: .userInitiated).async {
+                while true {
+                    let client = accept(self.fd, nil, nil)
+                    guard client >= 0 else {
+                        continuation.resume(throwing: YouTubeAuth.AuthError.badRedirect("the callback listener closed"))
+                        return
+                    }
+                    var buffer = [UInt8](repeating: 0, count: 16_384)
+                    let count = read(client, &buffer, buffer.count)
+                    let request = count > 0 ? String(decoding: buffer[0..<count], as: UTF8.self) : ""
+
+                    // "GET /?state=...&code=... HTTP/1.1"
+                    let requestLine = request.split(separator: "\r\n").first.map(String.init) ?? ""
+                    let path = requestLine.split(separator: " ").dropFirst().first.map(String.init) ?? ""
+                    let items = URLComponents(string: "http://127.0.0.1\(path)")?.queryItems ?? []
+                    let code = items.first { $0.name == "code" }?.value
+                    let state = items.first { $0.name == "state" }?.value
+                    let error = items.first { $0.name == "error" }?.value
+
+                    if let code, let state {
+                        Self.respond(client, status: "200 OK",
+                                     body: "<h2>Greenroom is connected to YouTube.</h2><p>You can close this tab and go back to Greenroom.</p>")
+                        continuation.resume(returning: (code, state))
+                        return
+                    }
+                    if let error {
+                        Self.respond(client, status: "200 OK",
+                                     body: "<h2>Sign-in did not complete.</h2><p>\(error). Close this tab and try again from Greenroom.</p>")
+                        continuation.resume(throwing: YouTubeAuth.AuthError.badRedirect(error))
+                        return
+                    }
+                    // Not the redirect (favicon, a probe): answer and keep waiting.
+                    Self.respond(client, status: "404 Not Found", body: "")
+                }
+            }
         }
     }
 
-    private func handle(request: String, on connection: NWConnection) {
-        // "GET /?state=...&code=... HTTP/1.1"
-        let requestLine = request.split(separator: "\r\n").first.map(String.init) ?? ""
-        let path = requestLine.split(separator: " ").dropFirst().first.map(String.init) ?? ""
-        let components = URLComponents(string: "http://127.0.0.1\(path)")
-        let items = components?.queryItems ?? []
-        let code = items.first { $0.name == "code" }?.value
-        let state = items.first { $0.name == "state" }?.value
-        let error = items.first { $0.name == "error" }?.value
-
-        let body: String
-        if let code, let state {
-            body = "<h2>Greenroom is connected to YouTube.</h2><p>You can close this tab and go back to Greenroom.</p>"
-            continuation?.resume(returning: (code, state))
-        } else {
-            body = "<h2>Sign-in did not complete.</h2><p>\(error ?? "No code was returned.") Close this tab and try again from Greenroom.</p>"
-            continuation?.resume(throwing: YouTubeAuth.AuthError.badRedirect(error ?? "no code"))
-        }
-        continuation = nil
-
+    private static func respond(_ client: Int32, status: String, body: String) {
         let html = "<!doctype html><meta charset=utf-8><title>Greenroom</title><body style=\"font-family:-apple-system,sans-serif;text-align:center;padding:60px\">\(body)</body>"
-        let response = "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: \(html.utf8.count)\r\nConnection: close\r\n\r\n\(html)"
-        connection.send(content: response.data(using: .utf8), completion: .contentProcessed { _ in
-            connection.cancel()
-        })
+        let response = "HTTP/1.1 \(status)\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: \(html.utf8.count)\r\nConnection: close\r\n\r\n\(html)"
+        _ = response.withCString { write(client, $0, strlen($0)) }
+        close(client)
     }
 }

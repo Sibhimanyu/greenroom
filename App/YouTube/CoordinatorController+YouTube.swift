@@ -163,6 +163,30 @@ extension CoordinatorController {
         }
     }
 
+    // MARK: Rename on YouTube (Sessions window)
+
+    /// Changes the title of an uploaded video and remembers it in the class
+    /// folder. Returns nil on success, or the message to show.
+    func renameYouTubeVideo(_ upload: SessionMetadata.Upload, in folder: URL, to title: String) async -> String? {
+        let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return "The title cannot be empty." }
+        guard youtubeConnected else { return YouTubeAuth.AuthError.notConnected.localizedDescription }
+        let clientID = trimmedClientID
+        let clientSecret = trimmedClientSecret
+        do {
+            try await YouTubeUploader.rename(
+                videoID: upload.videoID, title: trimmed, description: "Recorded with Greenroom.",
+                token: { try await YouTubeAuth.accessToken(clientID: clientID, clientSecret: clientSecret) })
+            SessionMetadata.updateUploadTitle(videoID: upload.videoID, to: trimmed, in: folder)
+            Analytics.feature("youtube_rename")
+            log("Renamed on YouTube: \u{201C}\(trimmed)\u{201D} (\(upload.url)).")
+            return nil
+        } catch {
+            log("Couldn't rename on YouTube: \(error.localizedDescription)")
+            return error.localizedDescription
+        }
+    }
+
     // MARK: Connect / disconnect (Settings → YouTube)
 
     func connectYouTube() async {

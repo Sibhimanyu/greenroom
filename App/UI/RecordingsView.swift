@@ -90,6 +90,9 @@ struct RecordingsView: View {
     @State private var confirmingDelete: Recording?
     @State private var renaming: Session?
     @State private var renameDraft = ""
+    @State private var renamingVideo: (upload: SessionMetadata.Upload, folder: URL)?
+    @State private var videoTitleDraft = ""
+    @State private var renameError: String?
     /// Presented as a sheet from ContentView, so the environment object
     /// arrives with it; used for the YouTube upload button and state.
     @EnvironmentObject private var coordinator: CoordinatorController
@@ -124,7 +127,34 @@ struct RecordingsView: View {
             }
             Button("Cancel", role: .cancel) { renaming = nil }
         } message: {
-            Text("Shown in this window. The folder in Documents/Greenroom keeps its date name; clear the field to go back to it.")
+            Text("Shown in this window. The folder in Documents/Greenroom keeps its date name; clear the field to go back to it. Videos already on YouTube keep their titles \u{2014} rename those under the recording.")
+        }
+        .alert("Rename on YouTube",
+               isPresented: Binding(get: { renamingVideo != nil },
+                                    set: { if !$0 { renamingVideo = nil } })) {
+            TextField("Title", text: $videoTitleDraft)
+            Button("Rename") {
+                guard let target = renamingVideo else { return }
+                renamingVideo = nil
+                Task {
+                    if let failure = await coordinator.renameYouTubeVideo(target.upload, in: target.folder, to: videoTitleDraft) {
+                        renameError = failure
+                    } else {
+                        ToastController.show("Renamed on YouTube", detail: videoTitleDraft)
+                    }
+                    reload()
+                }
+            }
+            Button("Cancel", role: .cancel) { renamingVideo = nil }
+        } message: {
+            Text("Changes the title on the channel. The file on this Mac is untouched.")
+        }
+        .alert("Couldn't rename on YouTube",
+               isPresented: Binding(get: { renameError != nil },
+                                    set: { if !$0 { renameError = nil } })) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(renameError ?? "")
         }
         .alert("Couldn't move that to the Trash",
                isPresented: Binding(get: { trashError != nil },
@@ -315,8 +345,9 @@ struct RecordingsView: View {
                 Image(systemName: "play.rectangle.fill")
                     .foregroundStyle(Color.accentColor)
                 VStack(alignment: .leading, spacing: 1) {
-                    Text("On YouTube \u{00B7} \(upload.privacy) \u{00B7} uploaded \(upload.uploadedAt.formatted(date: .abbreviated, time: .shortened))")
+                    Text("\u{201C}\(upload.title)\u{201D} \u{00B7} \(upload.privacy) \u{00B7} uploaded \(upload.uploadedAt.formatted(date: .abbreviated, time: .shortened))")
                         .font(.caption)
+                        .lineLimit(1)
                     Text(upload.url)
                         .font(.system(size: 12, design: .monospaced))
                         .foregroundStyle(.secondary)
@@ -329,6 +360,12 @@ struct RecordingsView: View {
                 }
                 Button("Copy link") { copy(upload.url) }
                     .controlSize(.small)
+                Button("Rename\u{2026}") {
+                    videoTitleDraft = upload.title
+                    renamingVideo = (upload, recording.url.deletingLastPathComponent())
+                }
+                .controlSize(.small)
+                .help("Change the title on YouTube.")
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 8)

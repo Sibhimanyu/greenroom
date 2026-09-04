@@ -213,9 +213,13 @@ Session) is uploaded to the connected Google account's channel as
 copied to the clipboard. Setup: a Google Cloud project with the YouTube
 Data API v3 enabled and an OAuth client of type *Desktop app*; paste its
 Client ID / Secret, press **Connect Google account…** (browser sign-in,
-PKCE + loopback redirect), done. Scope is `youtube.upload` only; the
+PKCE + loopback redirect), done. Scope is `youtube.force-ssl` (upload and
+edit own videos; used for uploads and the Sessions window's Rename); the
 refresh token lives in `SecretStore` like the Zoom credentials and is
-revoked at Google on **Disconnect**. Quota: ~1,600 of 10,000 daily units
+revoked at Google on **Disconnect**. The Sessions window (formerly
+Recordings) keeps each class's YouTube links in its folder's
+`session.json`, lets you rename a class (display name; the dated folder
+stays) and rename the video on YouTube. Quota: ~1,600 of 10,000 daily units
 per upload, so about six a day. While the Google project is in Testing,
 the sign-in expires every seven days until it is published. The OAuth
 client ID/secret travel in the settings export; the connected account does

@@ -1417,7 +1417,7 @@ private struct YouTubeSettingsTab: View {
                         .foregroundStyle(.secondary)
                 }
 
-                Text("One-time setup, on the Google account that owns the channel: console.cloud.google.com \u{2192} create a project \u{2192} APIs & Services \u{2192} Enable \u{201C}YouTube Data API v3\u{201D} \u{2192} Credentials \u{2192} Create OAuth client ID, type \u{201C}Desktop app\u{201D}. Copy its Client ID and Client Secret here, then Connect: your browser opens Google\u{2019}s sign-in once, and Greenroom keeps only the permission to add videos. While the Google project is in \u{201C}Testing\u{201D}, add your account under Test users; that sign-in expires after seven days until the project is published.")
+                Text("One-time setup, on the Google account that owns the channel: console.cloud.google.com \u{2192} create a project \u{2192} APIs & Services \u{2192} Enable \u{201C}YouTube Data API v3\u{201D} \u{2192} Credentials \u{2192} Create OAuth client ID, type \u{201C}Desktop app\u{201D}. Copy its Client ID and Client Secret here, then Connect: your browser opens Google\u{2019}s sign-in once, and Greenroom keeps only the permission to upload and edit your own videos (used for uploads and title changes, nothing else). While the Google project is in \u{201C}Testing\u{201D}, add your account under Test users; that sign-in expires after seven days until the project is published.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
 

@@ -110,6 +110,34 @@ enum YouTubeUploader {
         throw UploadError.rejected(0, "the upload ended without a video id")
     }
 
+    /// Changes a video's title after the fact (videos.update, 50 quota
+    /// units). `description` is sent again because an update that omits a
+    /// mutable snippet field clears it.
+    static func rename(videoID: String, title: String, description: String,
+                       token: () async throws -> String) async throws {
+        var request = URLRequest(url: URL(string: "https://www.googleapis.com/youtube/v3/videos?part=snippet")!)
+        request.httpMethod = "PUT"
+        request.setValue("Bearer \(try await token())", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json; charset=UTF-8", forHTTPHeaderField: "Content-Type")
+        let body: [String: Any] = [
+            "id": videoID,
+            "snippet": [
+                "title": String(title.prefix(100)),
+                "description": description,
+                "categoryId": "27",
+            ],
+        ]
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        let (data, response) = try await URLSession.shared.data(for: request)
+        let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+        guard (200..<300).contains(status) else {
+            if status == 403, message(in: data).localizedCaseInsensitiveContains("insufficient") {
+                throw UploadError.rejected(status, YouTubeAuth.reconnectHint)
+            }
+            throw UploadError.rejected(status, message(in: data))
+        }
+    }
+
     /// Step one: register the upload and get the session URL every chunk
     /// goes to. Metadata travels here, once.
     private static func startSession(title: String, description: String, privacy: String,

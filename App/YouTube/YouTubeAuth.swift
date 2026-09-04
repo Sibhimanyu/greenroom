@@ -35,9 +35,16 @@ enum YouTubeAuth {
         }
     }
 
-    /// The only thing asked for: adding videos. Not reading the channel, not
-    /// managing anything.
-    static let scope = "https://www.googleapis.com/auth/youtube.upload"
+    /// Upload and edit the account's own videos. `youtube.upload` alone
+    /// cannot change a title afterwards, and there is no Google scope between
+    /// "add only" and "manage videos" - so this is the narrowest that lets a
+    /// class be renamed on YouTube after the fact. Greenroom uses it for
+    /// uploads and title changes, nothing else.
+    static let scope = "https://www.googleapis.com/auth/youtube.force-ssl"
+
+    /// Tokens granted before the scope widened can upload but not rename.
+    /// Google answers 403 insufficientPermissions; this is the message.
+    static let reconnectHint = "Google needs a new permission for that \u{2014} in Settings \u{2192} YouTube, Disconnect and then Connect again."
     private static let refreshTokenKey = "youtubeRefreshToken"
 
     static var isConnected: Bool { !(SecretStore.get(refreshTokenKey) ?? "").isEmpty }

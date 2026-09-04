@@ -612,8 +612,8 @@
         <p>The one channel that carries <strong>class content</strong>: when Settings &rarr; YouTube is set to ask or to
         upload automatically, a finished recording &mdash; the shared screen with you in it, and your voice &mdash; is
         uploaded over HTTPS to the connected Google account's channel, unlisted or private as you chose. Sign-in happens in
-        your browser on Google's own page; Greenroom keeps only a token that can add videos and nothing else, revoked at
-        Google by <em>Disconnect</em>. With &ldquo;Do nothing&rdquo; selected (the default) this channel does not exist.</p>
+        your browser on Google's own page; Greenroom keeps a token that can upload and edit the account's own videos
+        (it uses it for uploads and title changes, nothing else), revoked at Google by <em>Disconnect</em>. With &ldquo;Do nothing&rdquo; selected (the default) this channel does not exist.</p>
       </div>
       <div class="ep">
         <span class="tag local">Stays local</span>
@@ -707,7 +707,7 @@
             <tr><td><strong>Launch/quit apps</strong></td><td><span class="mono">NSWorkspace</span></td><td>OBS, Zoom, and your chosen main app.</td></tr>
             <tr><td><strong>Meetings</strong></td><td>Zoom Meeting SDK + REST</td><td>Creates/joins meetings under your own Zoom account with your Marketplace credentials; lists the account's scheduled and live meetings, and ends a meeting left live by a crashed session before starting a new one.</td></tr>
             <tr><td><strong>Updates</strong></td><td>Sparkle, EdDSA-signed</td><td>Appcast on GitHub Pages; installs only releases signed with the developer's key. System profiling disabled.</td></tr>
-            <tr><td><strong>YouTube upload</strong></td><td>YouTube Data API v3, OAuth 2.0 (PKCE, loopback)</td><td>Off by default. Resumable upload of a finished recording to the connected account's channel; scope <span class="mono">youtube.upload</span> only. Refresh token stored like the Zoom credentials (plain preferences); revoked at Google on Disconnect.</td></tr>
+            <tr><td><strong>YouTube upload</strong></td><td>YouTube Data API v3, OAuth 2.0 (PKCE, loopback)</td><td>Off by default. Resumable upload of a finished recording to the connected account's channel, and title changes from the Sessions window; scope <span class="mono">youtube.force-ssl</span> (upload and edit own videos). Refresh token stored like the Zoom credentials (plain preferences); revoked at Google on Disconnect.</td></tr>
             <tr><td><strong>Entitlements</strong></td><td>Hardened Runtime</td><td><span class="mono">device.camera</span>, <span class="mono">device.audio-input</span>. Nothing else — no screen-recording entitlement.</td></tr>
             <tr><td><strong>Frameworks</strong></td><td>Apple's own + Zoom SDK + Sparkle</td><td>AppKit, SwiftUI, WebKit, AVFoundation, ApplicationServices, Carbon, CryptoKit. <strong>No CoreML, Vision, or any ML framework linked.</strong></td></tr>
           </tbody>
@@ -739,7 +739,7 @@
     </div>
     <div class="caveat">
       <h3>Zoom and YouTube credentials are stored in plain text on your Mac</h3>
-      <p>The Zoom app credentials you enter, and the YouTube sign-in token if you connect a Google account, are saved in Greenroom's local preferences as <strong>plain text — not encrypted</strong>. Greenroom doesn't use the macOS Keychain at all. They never leave your Mac except to Zoom and Google respectively. The risk is purely local: anyone with access to your Mac user account could read them. The YouTube token can add videos to the channel and nothing else, and Disconnect revokes it at Google.</p>
+      <p>The Zoom app credentials you enter, and the YouTube sign-in token if you connect a Google account, are saved in Greenroom's local preferences as <strong>plain text — not encrypted</strong>. Greenroom doesn't use the macOS Keychain at all. They never leave your Mac except to Zoom and Google respectively. The risk is purely local: anyone with access to your Mac user account could read them. The YouTube token can upload and edit the account's own videos (Greenroom uses it for uploads and title changes only), and Disconnect revokes it at Google.</p>
       <p>In perspective: these are app-level Zoom API keys scoped to running meetings under your account — not your Zoom password — and revocable anytime in the Zoom Marketplace. The optional "export settings" file used to set up a colleague's Mac also contains them in plaintext by design; hand it over directly and delete it after importing.</p>
     </div>
   </div>

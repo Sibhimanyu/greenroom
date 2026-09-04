@@ -65,6 +65,13 @@ struct SessionMetadata: Codable {
         metadata.save(in: folder)
     }
 
+    static func updateUploadTitle(videoID: String, to title: String, in folder: URL) {
+        var metadata = load(in: folder)
+        guard let index = metadata.uploads.firstIndex(where: { $0.videoID == videoID }) else { return }
+        metadata.uploads[index].title = title
+        metadata.save(in: folder)
+    }
+
     static func rename(folder: URL, to title: String) {
         var metadata = load(in: folder)
         let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)

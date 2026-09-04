@@ -488,7 +488,7 @@ private final class RootView: NSView {
         for cells in stride(from: ceiling, through: Self.railMinCellsPerRow, by: -1) {
             let column = CGFloat(cells) * (Self.railCell.width + Self.railCellGap)
                 - Self.railCellGap
-            let stack = railStackHeight(width: column)
+            let stack = fittingStackHeight(width: column)
             if stack <= railBodyHeight { return cells }
             if stack < best.stack { best = (cells, stack) }
         }
@@ -1397,14 +1397,28 @@ private final class RootView: NSView {
     }
 
     /// The whole column's height at a width: picture, controls, needs block,
-    /// Prompter block, gaps and padding. ONE function, read by the cell-count
-    /// fit and by the layout pass, so the two can never disagree - which is
-    /// the failure that makes the rail scroll to the wrong offset.
+    /// Prompter block, gaps and padding. This is the DOCUMENT height, so it
+    /// counts everything - leave anything out and the scroll view cannot
+    /// reach the bottom of its own content.
     private func railStackHeight(width: CGFloat) -> CGFloat {
+        fittingStackHeight(width: width) + prompterBlock.height(forWidth: width)
+    }
+
+    /// The height the column-width decision is allowed to see.
+    ///
+    /// Deliberately NOT the whole stack: Prompter's cards are a fixed 64pt
+    /// each whatever the column's width, so letting them into this
+    /// calculation makes the rail narrow itself trying to fit content that
+    /// narrowing cannot shrink. The visible effect was a rail that shrank the
+    /// moment a fourth link arrived, handing the class grid space for no
+    /// reason and making the self view smaller for no gain. Prompter lives in
+    /// a scroll view; scrolling is the right answer for it. Only the blocks
+    /// that DO respond to width - the 16:9 picture, the wrapped control grid,
+    /// the needs rows - get a vote here.
+    private func fittingStackHeight(width: CGFloat) -> CGFloat {
         selfBlockHeight(width: width)
             + controlColumnHeight(width: width)
             + needsBlockHeight(width: width)
-            + prompterBlock.height(forWidth: width)
             + 10 + Self.railPad * 2
     }
 

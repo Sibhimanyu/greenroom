@@ -333,14 +333,15 @@ actor LinkResolver {
                                              subtitle: "Image search \u{00B7} nothing sent until you open it",
                                              source: .images, url: images.url!))
 
-        // Then the ones worth a request, in parallel.
-        async let site = officialSite(for: name)
+        // Then the ones worth a request, in parallel. The product's own site
+        // is NOT here: it is the slowest leg by far (a real homepage, TLS and
+        // all), and making four fast cards wait on it was most of the delay.
+        // `officialSiteCard` is a second wave the caller adds when it lands.
         async let encyclopedia = encyclopediaEntry(searching: query, fallingBackTo: name, confidence: mention.confidence)
         async let books = mention.kind == .book
             ? resolveBook(Mention(kind: .book, query: query, confidence: mention.confidence))
             : Resolution()
 
-        if let site = await site { resolution.cards.insert(site, at: 0) }
         let wiki = await encyclopedia
         resolution.cards.append(contentsOf: wiki.cards)
         resolution.sentTo += wiki.sentTo
@@ -369,11 +370,25 @@ actor LinkResolver {
     /// happens when the first found nothing.
     private func encyclopediaEntry(searching query: String, fallingBackTo name: String,
                                    confidence: Double) async -> Resolution {
-        let rich = await resolveWikipedia(Mention(kind: .topic, query: query, confidence: confidence))
-        guard rich.cards.isEmpty, Mention.normalize(query) != Mention.normalize(name) else { return rich }
-        var bare = await resolveWikipedia(Mention(kind: .topic, query: name, confidence: confidence))
+        // Both at once, not one after the other. Wikipedia answers in about
+        // 200 ms, so running the fallback concurrently costs one extra cheap
+        // request and saves the wait whenever the richer phrase misses.
+        guard Mention.normalize(query) != Mention.normalize(name) else {
+            return await resolveWikipedia(Mention(kind: .topic, query: query, confidence: confidence))
+        }
+        async let richResult = resolveWikipedia(Mention(kind: .topic, query: query, confidence: confidence))
+        async let bareResult = resolveWikipedia(Mention(kind: .topic, query: name, confidence: confidence))
+        let rich = await richResult
+        var bare = await bareResult
+        guard rich.cards.isEmpty else { return rich }
         bare.notes = rich.notes + bare.notes
         return bare
+    }
+
+    /// The second wave: the product's own homepage, fetched after the quick
+    /// cards are already on screen. Nil when the name has no site.
+    func officialSiteCard(for mention: Mention) async -> PrompterCard? {
+        await officialSite(for: mention.query)
     }
 
     /// A product's own homepage, guessed from its name and then checked.
@@ -399,10 +414,35 @@ actor LinkResolver {
         // "Accept: application/json" for the APIs, and a real site can answer
         // that with a 500 (bookfusion.com does), which read as "no site here".
         request.setValue("text/html,application/xhtml+xml", forHTTPHeaderField: "Accept")
-        guard let (data, response) = try? await session.data(for: request),
-              let http = response as? HTTPURLResponse, http.statusCode == 200,
-              let html = String(data: data.prefix(20_000), encoding: .utf8) ?? String(data: data.prefix(20_000), encoding: .isoLatin1)
-        else { return nil }
+
+        // Read only as far as the title.
+        //
+        // All this needs is one tag, and it sits in the first kilobyte or two
+        // of any page - but downloading whole homepages was the single
+        // slowest thing Prompter did (eink.com: ~1.7 s of a 3.3 s lookup).
+        // Streaming and stopping at </title> turns that into a fraction of a
+        // page. The 16 KB ceiling bounds a page that never closes the tag.
+        var html = ""
+        guard let (bytes, response) = try? await session.bytes(for: request),
+              let http = response as? HTTPURLResponse, http.statusCode == 200 else { return nil }
+        var buffer = Data()
+        do {
+            for try await byte in bytes {
+                buffer.append(byte)
+                if buffer.count >= 16_000 { break }
+                // Check cheaply, not on every single byte.
+                if byte == UInt8(ascii: ">"), buffer.count > 32,
+                   let text = String(data: buffer, encoding: .utf8) ?? String(data: buffer, encoding: .isoLatin1),
+                   text.range(of: "</title>", options: .caseInsensitive) != nil {
+                    html = text
+                    break
+                }
+            }
+        } catch { return nil }
+        if html.isEmpty {
+            html = String(data: buffer, encoding: .utf8) ?? String(data: buffer, encoding: .isoLatin1) ?? ""
+        }
+        guard !html.isEmpty else { return nil }
 
         guard let range = html.range(of: "<title[^>]*>([^<]{1,120})", options: [.regularExpression, .caseInsensitive]) else { return nil }
         let title = Self.stripHTML(String(html[range]).replacingOccurrences(of: "<title[^>]*>", with: "", options: [.regularExpression, .caseInsensitive]))

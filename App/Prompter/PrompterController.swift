@@ -462,6 +462,16 @@ final class PrompterController: ObservableObject {
                 insert(card)
                 Analytics.feature("prompter_card", source: card.source.analyticsCode)
             }
+            // Second wave: the product's own site takes a second or two to
+            // answer, so it arrives after the quick cards rather than holding
+            // all of them up.
+            if configuration.optionsMode {
+                Task { [weak self] in
+                    guard let self, let site = await self.resolver.officialSiteCard(for: mention) else { return }
+                    self.insert(site)
+                    Analytics.feature("prompter_card", source: site.source.analyticsCode)
+                }
+            }
         }
     }
 

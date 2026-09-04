@@ -21,11 +21,11 @@ import Network
 enum YouTubeAuth {
 
     enum AuthError: LocalizedError {
-        case noPort, timedOut, badRedirect(String), tokenExchange(String), notConnected, refreshFailed(String)
+        case noPort(String), timedOut, badRedirect(String), tokenExchange(String), notConnected, refreshFailed(String)
 
         var errorDescription: String? {
             switch self {
-            case .noPort: return "Couldn't open a local port for Google to call back on."
+            case .noPort(let why): return "Couldn't open a local port for Google to call back on (\(why))."
             case .timedOut: return "Google did not call back within five minutes."
             case .badRedirect(let why): return "Google's callback was not what was expected: \(why)"
             case .tokenExchange(let why): return "Google refused the sign-in code: \(why)"
@@ -56,7 +56,7 @@ enum YouTubeAuth {
         let challenge = base64URL(Data(SHA256.hash(data: Data(verifier.utf8))))
         let state = randomToken(bytes: 12)
 
-        let listener = try LoopbackListener()
+        let listener = try await LoopbackListener.start()
         defer { listener.stop() }
         let redirectURI = "http://127.0.0.1:\(listener.port)"
 
@@ -189,31 +189,74 @@ enum YouTubeAuth {
 private final class LoopbackListener: @unchecked Sendable {
     let port: UInt16
     private let listener: NWListener
-    private let queue = DispatchQueue(label: "greenroom.youtube.loopback")
+    private var queue: DispatchQueue { listener.queue ?? DispatchQueue(label: "greenroom.youtube.loopback") }
     private var continuation: CheckedContinuation<(code: String, state: String), Error>?
     private var connections: [NWConnection] = []
 
-    init() throws {
-        let parameters = NWParameters.tcp
-        parameters.requiredLocalEndpoint = NWEndpoint.hostPort(host: "127.0.0.1", port: .any)
-        listener = try NWListener(using: parameters)
-        listener.start(queue: queue)
-
-        // The port is assigned asynchronously; wait briefly for it.
-        var assigned: UInt16?
-        for _ in 0..<50 {
-            if let p = listener.port?.rawValue, p != 0 { assigned = p; break }
-            usleep(10_000)
-        }
-        guard let assigned else {
-            listener.cancel()
-            throw YouTubeAuth.AuthError.noPort
-        }
-        port = assigned
+    private init(listener: NWListener, port: UInt16) {
+        self.listener = listener
+        self.port = port
         // Set after every stored property exists (the closure captures self).
         // Nothing can connect before the consent URL is opened, so no
         // connection is missed by attaching the handler here.
         listener.newConnectionHandler = { [weak self] connection in self?.accept(connection) }
+    }
+
+    /// Binds an ephemeral port on the loopback interface and waits for the
+    /// listener to report ready - the port is only known then. A listener
+    /// that fails or never readies within five seconds throws with the
+    /// reason, rather than reporting a port it does not have.
+    static func start() async throws -> LoopbackListener {
+        let parameters = NWParameters.tcp
+        parameters.requiredInterfaceType = .loopback
+        parameters.allowLocalEndpointReuse = true
+        let listener: NWListener
+        do {
+            listener = try NWListener(using: parameters, on: .any)
+        } catch {
+            throw YouTubeAuth.AuthError.noPort(error.localizedDescription)
+        }
+        let queue = DispatchQueue(label: "greenroom.youtube.loopback")
+
+        let port: UInt16 = try await withThrowingTaskGroup(of: UInt16.self) { group in
+            group.addTask {
+                try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<UInt16, Error>) in
+                    // A continuation may resume once; the state handler can
+                    // fire many times. The box is a reference so the closure
+                    // captures a constant, which keeps Swift 6 happy.
+                    final class Once: @unchecked Sendable { var done = false }
+                    let once = Once()
+                    listener.stateUpdateHandler = { state in
+                        guard !once.done else { return }
+                        switch state {
+                        case .ready:
+                            if let p = listener.port?.rawValue, p != 0 {
+                                once.done = true
+                                continuation.resume(returning: p)
+                            }
+                        case .failed(let error):
+                            once.done = true
+                            continuation.resume(throwing: YouTubeAuth.AuthError.noPort(error.localizedDescription))
+                        case .cancelled:
+                            once.done = true
+                            continuation.resume(throwing: YouTubeAuth.AuthError.noPort("listener cancelled"))
+                        default:
+                            break
+                        }
+                    }
+                    listener.start(queue: queue)
+                }
+            }
+            group.addTask {
+                try await Task.sleep(nanoseconds: 5_000_000_000)
+                throw YouTubeAuth.AuthError.noPort("the listener never became ready")
+            }
+            let first = try await group.next()!
+            group.cancelAll()
+            return first
+        }
+        listener.stateUpdateHandler = nil
+        return LoopbackListener(listener: listener, port: port)
     }
 
     func waitForCode(expectedState: String, timeout: TimeInterval) async throws -> String {

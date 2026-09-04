@@ -93,23 +93,26 @@ struct HeuristicDetector: MentionDetector {
             }
         }
 
-        // Named entities the tagger is sure about. Places and organisations
-        // are cheap wins; people only with a cue or two capitalised words -
-        // the tagger calls a lone "Matilda" a person, and that is a child in
-        // the room as often as it is a book.
+        // Named entities the tagger is sure about - and only when they are
+        // two words or more. A lone capitalised word is a first name more
+        // often than anything else in a classroom ("Harish, can you hear
+        // me?"), and the tagger files first names under person, place AND
+        // organisation depending on the sentence. The bench caught exactly
+        // that: a student's name sent to Wikipedia as a "place". Single-word
+        // places still arrive through the cue phrases ("the river Ganga").
         let tagger = NLTagger(tagSchemes: [.nameType])
         tagger.string = text
         let options: NLTagger.Options = [.omitPunctuation, .omitWhitespace, .joinNames]
         tagger.enumerateTags(in: text.startIndex..<text.endIndex, unit: .word, scheme: .nameType, options: options) { tag, range in
             let phrase = String(text[range])
+            guard phrase.split(separator: " ").count >= 2 else { return true }
             switch tag {
             case .placeName?:
                 if let query = Self.acceptable(phrase, kind: .place) {
                     found.append(Mention(kind: .place, query: query, confidence: 0.6))
                 }
             case .personalName?:
-                let words = phrase.split(separator: " ")
-                if words.count >= 2, let query = Self.acceptable(phrase, kind: .person) {
+                if let query = Self.acceptable(phrase, kind: .person) {
                     found.append(Mention(kind: .person, query: query, confidence: 0.55))
                 }
             case .organizationName?:

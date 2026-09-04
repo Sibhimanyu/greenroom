@@ -86,8 +86,8 @@ extension CoordinatorController {
         log("Uploading to YouTube (\(youtubePrivacy)): \(title)\u{2026}")
         ToastController.show("Uploading to YouTube\u{2026}", detail: title, kind: .working, dismissAfter: nil)
 
-        let clientID = youtubeClientID
-        let clientSecret = youtubeClientSecret
+        let clientID = trimmedClientID
+        let clientSecret = trimmedClientSecret
         do {
             let result = try await YouTubeUploader.upload(
                 file: file,
@@ -116,10 +116,15 @@ extension CoordinatorController {
 
     // MARK: Connect / disconnect (Settings → YouTube)
 
+    /// Fields as Google must see them: a pasted secret often arrives with a
+    /// trailing newline, and Google answers that with "invalid secret".
+    private var trimmedClientID: String { youtubeClientID.trimmingCharacters(in: .whitespacesAndNewlines) }
+    private var trimmedClientSecret: String { youtubeClientSecret.trimmingCharacters(in: .whitespacesAndNewlines) }
+
     func connectYouTube() async {
         youtubeStatus = "Waiting for Google in your browser\u{2026}"
         do {
-            try await YouTubeAuth.connect(clientID: youtubeClientID, clientSecret: youtubeClientSecret)
+            try await YouTubeAuth.connect(clientID: trimmedClientID, clientSecret: trimmedClientSecret)
             youtubeConnected = true
             youtubeStatus = "Connected. Recordings can be uploaded to this account's channel."
             log("YouTube connected.")

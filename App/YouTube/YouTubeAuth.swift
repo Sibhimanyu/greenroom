@@ -28,7 +28,7 @@ enum YouTubeAuth {
             case .noPort(let why): return "Couldn't open a local port for Google to call back on (\(why))."
             case .timedOut: return "Google did not call back within five minutes."
             case .badRedirect(let why): return "Google's callback was not what was expected: \(why)"
-            case .tokenExchange(let why): return "Google refused the sign-in code: \(why)"
+            case .tokenExchange(let why): return "Google refused the sign-in code: \(why). Check that the Client Secret belongs to this Client ID (Google Cloud \u{2192} Credentials \u{2192} the Desktop app client) and re-copy both."
             case .notConnected: return "No Google account is connected. Settings \u{2192} YouTube \u{2192} Connect."
             case .refreshFailed(let why): return "Google would not renew the sign-in: \(why). Connect again in Settings \u{2192} YouTube."
             }
@@ -78,6 +78,8 @@ enum YouTubeAuth {
 
         let code = try await listener.waitForCode(expectedState: state, timeout: 300)
 
+        // The browser tab is answered only once the exchange has actually
+        // succeeded, so it never says "connected" over a failure.
         let form = [
             "code": code,
             "client_id": clientID,
@@ -86,12 +88,18 @@ enum YouTubeAuth {
             "grant_type": "authorization_code",
             "code_verifier": verifier,
         ]
-        let json = try await postForm("https://oauth2.googleapis.com/token", form, failure: AuthError.tokenExchange)
-        guard let refresh = json["refresh_token"] as? String, !refresh.isEmpty else {
-            throw AuthError.tokenExchange("no refresh token in the response")
+        do {
+            let json = try await postForm("https://oauth2.googleapis.com/token", form, failure: AuthError.tokenExchange)
+            guard let refresh = json["refresh_token"] as? String, !refresh.isEmpty else {
+                throw AuthError.tokenExchange("no refresh token in the response")
+            }
+            SecretStore.set(refresh, forKey: refreshTokenKey)
+            cacheAccess(from: json)
+            listener.reply(success: true, detail: "")
+        } catch {
+            listener.reply(success: false, detail: error.localizedDescription)
+            throw error
         }
-        SecretStore.set(refresh, forKey: refreshTokenKey)
-        cacheAccess(from: json)
     }
 
     /// Forgets the account here and tells Google to revoke the grant. The
@@ -191,10 +199,24 @@ enum YouTubeAuth {
 private final class LoopbackListener: @unchecked Sendable {
     let port: UInt16
     private let fd: Int32
+    /// The browser connection carrying Google's redirect, held open until
+    /// connect() knows whether the exchange worked - the page it shows is
+    /// then true.
+    private var pendingClient: Int32 = -1
 
     private init(fd: Int32, port: UInt16) {
         self.fd = fd
         self.port = port
+    }
+
+    /// Answers the waiting browser tab and closes it.
+    func reply(success: Bool, detail: String) {
+        guard pendingClient >= 0 else { return }
+        let body = success
+            ? "<h2>Greenroom is connected to YouTube.</h2><p>You can close this tab and go back to Greenroom.</p>"
+            : "<h2>Sign-in did not complete.</h2><p>\(detail)</p><p>Close this tab and try again from Greenroom.</p>"
+        Self.respond(pendingClient, status: "200 OK", body: body)
+        pendingClient = -1
     }
 
     static func start() throws -> LoopbackListener {
@@ -251,8 +273,10 @@ private final class LoopbackListener: @unchecked Sendable {
     }
 
     func stop() {
-        // Closing the listening socket makes a blocked accept() return -1,
-        // which ends the accept loop.
+        // A tab still waiting (timeout, cancellation) gets an answer rather
+        // than a spinner, then the listening socket closes, which makes a
+        // blocked accept() return -1 and ends the accept loop.
+        reply(success: false, detail: "Greenroom stopped waiting.")
         close(fd)
     }
 
@@ -278,8 +302,8 @@ private final class LoopbackListener: @unchecked Sendable {
                     let error = items.first { $0.name == "error" }?.value
 
                     if let code, let state {
-                        Self.respond(client, status: "200 OK",
-                                     body: "<h2>Greenroom is connected to YouTube.</h2><p>You can close this tab and go back to Greenroom.</p>")
+                        // Answered later by reply(), once the exchange is known.
+                        self.pendingClient = client
                         continuation.resume(returning: (code, state))
                         return
                     }

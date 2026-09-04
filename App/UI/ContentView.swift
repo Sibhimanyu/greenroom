@@ -17,10 +17,9 @@ struct ContentView: View {
     @State private var showRecordings = false
     @State private var showSavePreset = false
     @State private var presetNameDraft = ""
-    /// Bound (rather than left to the DisclosureGroup) because opening the
-    /// log has to do two things beyond showing it: grow the window to make
-    /// room, and jump to the newest line.
-    @State private var statusExpanded = false
+    /// Hidden by default: the log is diagnostic detail, opened when something
+    /// needs explaining. Not persisted - each launch starts compact.
+    @State private var statusShown = false
 
     /// Start is for starting: disabled while a start is in flight AND
     /// while the session is live (Stop first, then Start - pressing Start
@@ -142,46 +141,28 @@ struct ContentView: View {
 
             Divider()
 
-            manualControls
+            bottomBar
 
-            statusSection
+            if statusShown {
+                statusLog
+            }
 
             Spacer(minLength: 0)
         }
         .padding(20)
-        // minHeight sized to the collapsed-disclosures content: 460 left
-        // the bottom ~40% of the window as dead space (design-review F4).
-        // The open status log needs real room, so the minimum grows with it.
-        // That growth is what makes the WINDOW taller; without it the log
-        // was squeezed into whatever slack the trailing Spacer left.
-        // 360 + 180 (log) + 8 (its top padding) = 548, on the 4px scale.
-        .frame(minWidth: 580, minHeight: minimumContentHeight)
+        .frame(minWidth: 580, minHeight: preferredWindowHeight)
         // The window OPENS at the preferred size every time, regardless
         // of the size it was closed at (explicit request) - SwiftUI
         // persists scene geometry across launches and defaultSize only
         // covers the first-ever open, so the size is asserted on appear.
         .onAppear {
-            DispatchQueue.main.async {
-                NSApp.windows.first { $0.title == "Greenroom" }?
-                    .setContentSize(NSSize(width: 620, height: preferredWindowHeight))
-            }
+            DispatchQueue.main.async { resizeWindow(animated: false) }
         }
-        // Growing is automatic (the minHeight above). Shrinking is not:
-        // AppKit leaves the window at whatever height it reached, which is
-        // exactly the dead space F4 called out - so closing the log hands
-        // those points back. Width is preserved; only the log's rows came
-        // and went.
-        .onChange(of: statusExpanded) { _, expanded in
-            guard !expanded else { return }
-            shrinkWindowToFit()
-        }
-        // The meeting mode is the other branch that changes height, so leaving
-        // Join has to hand its two rows back for the same reason closing the
-        // log does - otherwise the window keeps the slack as dead space.
-        .onChange(of: coordinator.meetingMode) { _, mode in
-            guard mode == .create else { return }
-            shrinkWindowToFit()
-        }
+        // The two things that change the window's height. Both grow it
+        // DOWNWARD from an anchored top edge, so nothing above the divider
+        // moves - see resizeWindow.
+        .onChange(of: statusShown) { _, _ in resizeWindow(animated: true) }
+        .onChange(of: coordinator.meetingMode) { _, _ in resizeWindow(animated: true) }
         .sheet(isPresented: $coordinator.showOnboarding) {
             OnboardingView()
                 .environmentObject(coordinator)
@@ -238,39 +219,33 @@ struct ContentView: View {
         }
     }
 
-    /// The size the window opens at, and returns to when a taller branch
-    /// closes. 400 is the long-standing preferred height; Join's extra rows
-    /// ride on top of it so the mode is not punished for being taller.
+    /// The window's height for the current state: the controls, plus Join's
+    /// two extra rows, plus the log when it is shown. Measured from the
+    /// accessibility tree rather than guessed, on the 4px scale.
     private var preferredWindowHeight: CGFloat {
-        coordinator.meetingMode == .join ? 464 : 400
-    }
-
-    /// Hands back height the window no longer needs. Growing is automatic via
-    /// `minimumContentHeight`; AppKit never shrinks on its own.
-    private func shrinkWindowToFit() {
-        guard let window = NSApp.windows.first(where: { $0.title == "Greenroom" })
-        else { return }
-        let width = window.contentRect(forFrameRect: window.frame).width
-        window.setContentSize(NSSize(width: width, height: preferredWindowHeight))
-    }
-
-    /// The window grows to fit its tallest branch, because AppKit will not do
-    /// it for us: `onAppear` pins the window to 620x400 once, and after that
-    /// only this minimum can push it taller.
-    ///
-    /// Join mode is the branch that needs the room - two labelled fields and a
-    /// row of fill-from sources, against Create's single caption line. Leaving
-    /// it out of the minimum is what made the Join UI overflow the window: the
-    /// content grew, the window did not, and the bottom of the form was simply
-    /// cut off.
-    private var minimumContentHeight: CGFloat {
-        var height: CGFloat = 360
-        // Two rows plus their spacing, less the caption line Create already
-        // spends there.
+        var height: CGFloat = 372
         if coordinator.meetingMode == .join { height += 64 }
-        // 180 for the log itself, 8 for its top padding.
-        if statusExpanded && !coordinator.statusLines.isEmpty { height += 188 }
+        if statusShown { height += Self.statusLogHeight + 12 }
         return height
+    }
+
+    /// Height of the open log. Eight lines.
+    private static let statusLogHeight: CGFloat = 180
+
+    /// Resizes from an anchored TOP edge. AppKit's `setContentSize` keeps the
+    /// bottom-left corner, so every expansion used to send the whole window
+    /// climbing the screen while the rows above reflowed (reported live:
+    /// "that animation where everything moves up"). Holding the top edge means
+    /// the controls stay exactly where the cursor left them and only the
+    /// bottom edge travels - down when the log opens, up when it closes.
+    /// Width is the user's.
+    private func resizeWindow(animated: Bool) {
+        guard let window = NSApp.windows.first(where: { $0.title == "Greenroom" }) else { return }
+        let content = window.contentRect(forFrameRect: window.frame)
+        let width = animated ? content.width : 620
+        let target = NSRect(x: content.minX, y: content.maxY - preferredWindowHeight,
+                            width: width, height: preferredWindowHeight)
+        window.setFrame(window.frameRect(forContentRect: target), display: true, animate: animated)
     }
 
     private var meetingSection: some View {
@@ -422,73 +397,92 @@ struct ContentView: View {
     }
 
     /// The pieces of the session as individual actions - out of the way,
-    /// but there when one piece needs re-running without the rest.
-    private var manualControls: some View {
-        DisclosureGroup("Manual controls") {
-            HStack(spacing: 10) {
-                Button("Open Chat Window") { coordinator.joinChatOnly() }
-                    .disabled(coordinator.isConnectingChat || coordinator.meetingNumber.isEmpty)
-                Button("Open \(coordinator.mainAppDisplayName) Window") { coordinator.openMainAppWindow() }
-                Button("Just open Zoom") { coordinator.launchZoom() }
-            }
-            .padding(.top, 8)
+    /// but there when one piece needs re-running without the rest. A
+    /// pull-down, not a disclosure: three buttons that are used a few times a
+    /// term do not deserve a row of the window, and a menu opens over the
+    /// content instead of pushing it around.
+    private var manualControlsMenu: some View {
+        Menu {
+            Button("Open Chat Window") { coordinator.joinChatOnly() }
+                .disabled(coordinator.isConnectingChat || coordinator.meetingNumber.isEmpty)
+            Button("Open \(coordinator.mainAppDisplayName) Window") { coordinator.openMainAppWindow() }
+            Button("Just open Zoom") { coordinator.launchZoom() }
+        } label: {
+            Text("Manual controls")
         }
-        .font(.callout)
+        .menuStyle(.borderlessButton)
+        .controlSize(.small)
+        .fixedSize()
+        .help("Each piece of the session on its own: the chat, the main app window, or Zoom.")
     }
 
-    /// Collapsed by default, like Manual controls: the log is diagnostic
-    /// detail, not something to read every session - open it when
-    /// something needs explaining.
-    ///
-    /// The height is DEFINITE, not a maximum. As `maxHeight: 180` the
-    /// ScrollView was the only flexible child left in the body's VStack, so
-    /// with the window pinned to 400pt it got compressed to whatever slack
-    /// the trailing Spacer wasn't using - about two lines, with the rest
-    /// clipped instead of scrollable. A definite height makes the body's
-    /// ideal height grow instead, which the taller `minHeight` below turns
-    /// into a taller window.
-    private var statusSection: some View {
-        DisclosureGroup("Status", isExpanded: $statusExpanded) {
-            if coordinator.statusLines.isEmpty {
-                // Before the first session there is nothing to scroll, and a
-                // definite-height box would be 180pt of blank. Say why it is
-                // empty instead - an empty state, not dead space.
-                Text("Nothing logged yet. Start a session and each step shows up here.")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.top, 8)
-            } else {
-                ScrollViewReader { proxy in
-                    ScrollView {
-                        VStack(alignment: .leading, spacing: 4) {
-                            ForEach(Array(coordinator.statusLines.enumerated()), id: \.offset) { index, line in
-                                Text(line)
-                                    .font(.callout)
-                                    .textSelection(.enabled)
-                                    .id(index)
-                            }
-                        }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                    }
-                    .frame(height: Self.statusLogHeight)
-                    .padding(.top, 8)
-                    // Opening the log lands on the NEWEST line: the interesting
-                    // entry is always the last one, and the log is long enough
-                    // by mid-session to open well above it.
-                    .onAppear { scrollToNewestStatus(proxy) }
-                    // While it is open, follow the tail as the session talks.
-                    .onChange(of: coordinator.statusLines.count) { _, _ in
-                        scrollToNewestStatus(proxy)
+    /// The row under the divider: the log's toggle on the left, the manual
+    /// pull-down on the right. One fixed-height row in both states, so the
+    /// only thing that changes when the log opens is what is below it.
+    private var bottomBar: some View {
+        HStack(alignment: .firstTextBaseline) {
+            Button {
+                statusShown.toggle()
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: statusShown ? "chevron.down" : "chevron.right")
+                        .font(.system(size: 9, weight: .semibold))
+                    Text("Status")
+                    // The count is a machine fact, so mono - and it is what says
+                    // "something happened" while the log is closed.
+                    if !coordinator.statusLines.isEmpty {
+                        Text("\(coordinator.statusLines.count)")
+                            .font(.system(size: 11, design: .monospaced))
+                            .foregroundStyle(.secondary)
                     }
                 }
             }
+            .buttonStyle(.plain)
+            .font(.callout)
+            .help(statusShown ? "Hide the status log" : "Show what each step did and why")
+            .accessibilityLabel(statusShown ? "Hide status" : "Show status")
+
+            Spacer()
+            manualControlsMenu
         }
-        .font(.callout)
     }
 
-    /// Height of the open status log. On the 4px scale (DESIGN.md).
-    private static let statusLogHeight: CGFloat = 180
+    /// The log, when shown: a fixed 180pt box under the bar. Fixed, not
+    /// flexible, so the window's growth is exactly the box - and the newest
+    /// line is always the one in view.
+    private var statusLog: some View {
+        ScrollViewReader { proxy in
+            ScrollView {
+                if coordinator.statusLines.isEmpty {
+                    // An empty state, not dead space.
+                    Text("Nothing yet. Start a session and each step shows up here.")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(10)
+                } else {
+                    VStack(alignment: .leading, spacing: 4) {
+                        ForEach(Array(coordinator.statusLines.enumerated()), id: \.offset) { index, line in
+                            Text(line)
+                                .font(.callout)
+                                .textSelection(.enabled)
+                                .id(index)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(10)
+                }
+            }
+            .frame(maxWidth: .infinity)
+            .frame(height: Self.statusLogHeight)
+            .background(.quaternary.opacity(0.4), in: RoundedRectangle(cornerRadius: 8)) // DESIGN.md radius-sm
+            // Opening lands on the NEWEST line; while open, follow the tail.
+            .onAppear { scrollToNewestStatus(proxy) }
+            .onChange(of: coordinator.statusLines.count) { _, _ in
+                scrollToNewestStatus(proxy)
+            }
+        }
+    }
 
     private func scrollToNewestStatus(_ proxy: ScrollViewProxy) {
         guard let newest = coordinator.statusLines.indices.last else { return }

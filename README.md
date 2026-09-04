@@ -135,7 +135,7 @@ Also available:
   in a waveform menu-bar item. **Open** puts the link in your main-pane
   browser without stealing focus; **Send** drops it in the class chat.
   Pauses while you are muted; the menu bar has a per-class Stop.
-- **Manual controls** (disclosure in the main window) — each piece of the
+- **Manual controls** (pull-down beside the Status toggle) — each piece of the
   session individually: open just the chat window, just the main-app
   window, or just Zoom.
 

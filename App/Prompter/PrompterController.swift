@@ -32,6 +32,12 @@ final class PrompterController: ObservableObject {
         var youtubeToken: (() async throws -> String)?
         var rosterNames: () -> [String] = { [] }
         var log: (String) -> Void = { _ in }
+        /// Bench mode: every mention becomes a FAN of choices (the site
+        /// itself, a video, pictures, the encyclopedia entry, a definition)
+        /// instead of one best card, and far more of them are kept. The
+        /// shipped app leaves this off - a class needs restraint, a test
+        /// needs to see everything.
+        var optionsMode = false
     }
 
     @Published private(set) var isListening = false
@@ -84,7 +90,8 @@ final class PrompterController: ObservableObject {
         stoppedForClass = false
         testMode = false
         await resolver.reset()
-        await resolver.configure(.init(videoSearchEnabled: configuration.videoSearch,
+        await resolver.configure(.init(sessionCap: configuration.optionsMode ? 500 : 30,
+                                       videoSearchEnabled: configuration.videoSearch,
                                        youtubeToken: configuration.youtubeToken))
 
         let locale = await Transcriber.resolvedLocale(preferred: configuration.localeIdentifier)
@@ -193,7 +200,9 @@ final class PrompterController: ObservableObject {
         self.configuration = configuration
         testMode = false
         await resolver.reset()
-        await resolver.configure(.init(videoSearchEnabled: configuration.videoSearch, youtubeToken: configuration.youtubeToken))
+        await resolver.configure(.init(sessionCap: configuration.optionsMode ? 500 : 30,
+                                       videoSearchEnabled: configuration.videoSearch,
+                                       youtubeToken: configuration.youtubeToken))
         chooseDetector()
         let locale = await Transcriber.resolvedLocale(preferred: configuration.localeIdentifier)
         do {
@@ -211,7 +220,9 @@ final class PrompterController: ObservableObject {
         self.configuration = configuration
         testMode = false
         await resolver.reset()
-        await resolver.configure(.init(videoSearchEnabled: configuration.videoSearch, youtubeToken: configuration.youtubeToken))
+        await resolver.configure(.init(sessionCap: configuration.optionsMode ? 500 : 30,
+                                       videoSearchEnabled: configuration.videoSearch,
+                                       youtubeToken: configuration.youtubeToken))
         chooseDetector()
         let locale = await Transcriber.resolvedLocale(preferred: configuration.localeIdentifier)
         _ = await startPipeline(input: .buffers(buffers), locale: locale)
@@ -236,7 +247,9 @@ final class PrompterController: ObservableObject {
     /// Resolver only, on a typed query. Debug builds; the query IS sent.
     func debugResolve(_ query: String, kind: Mention.Kind, configuration: Configuration) async {
         self.configuration = configuration
-        await resolver.configure(.init(videoSearchEnabled: configuration.videoSearch, youtubeToken: configuration.youtubeToken))
+        await resolver.configure(.init(sessionCap: configuration.optionsMode ? 500 : 30,
+                                       videoSearchEnabled: configuration.videoSearch,
+                                       youtubeToken: configuration.youtubeToken))
         await resolve([Mention(kind: kind, query: query, confidence: 1)])
     }
 
@@ -416,12 +429,16 @@ final class PrompterController: ObservableObject {
                 Analytics.feature("prompter_roster_skip")
                 continue
             }
-            // Already have a card for it: nothing to send.
+            // Already have a card for it: nothing to send. In options mode a
+            // key carries several cards, so match on the key AND the fact that
+            // the fan was already built.
             if cards.contains(where: { $0.normalizedKey == mention.normalizedKey }) { continue }
 
             lookupsInFlight += 1
             isResolving = true
-            let resolution = await resolver.resolve(mention)
+            let resolution = configuration.optionsMode
+                ? await resolver.resolveOptions(mention)
+                : await resolver.resolve(mention)
             lookupsInFlight -= 1
             isResolving = lookupsInFlight > 0
 
@@ -436,7 +453,12 @@ final class PrompterController: ObservableObject {
                 configuration.log("Prompter: video card for \u{201C}\(mention.query)\u{201D} is a search link \u{2014} nothing sent.")
             }
             for note in resolution.notes { configuration.log("Prompter: \(note).") }
-            for card in resolution.cards.prefix(mention.kind == .video ? 1 : 1) {
+            // One card per mention in a class; every option in bench mode.
+            let offered = configuration.optionsMode ? resolution.cards : Array(resolution.cards.prefix(1))
+            if configuration.optionsMode, !offered.isEmpty {
+                configuration.log("Prompter: \(offered.count) option\(offered.count == 1 ? "" : "s") for \u{201C}\(mention.query)\u{201D} \u{2014} \(offered.map(\.source.label).joined(separator: ", ")).")
+            }
+            for card in offered {
                 insert(card)
                 Analytics.feature("prompter_card", source: card.source.analyticsCode)
             }
@@ -445,9 +467,14 @@ final class PrompterController: ObservableObject {
 
     private func insert(_ card: PrompterCard) {
         guard !dismissedKeys.contains(card.normalizedKey) else { return }
-        cards.removeAll { $0.normalizedKey == card.normalizedKey }
+        // A class keeps one card per thing; the bench keeps every option, so
+        // the same key legitimately appears several times there.
+        if !configuration.optionsMode {
+            cards.removeAll { $0.normalizedKey == card.normalizedKey }
+        }
         cards.insert(card, at: 0)
-        if cards.count > keepCards { cards.removeLast(cards.count - keepCards) }
+        let limit = configuration.optionsMode ? 200 : keepCards
+        if cards.count > limit { cards.removeLast(cards.count - limit) }
         unseenCount += 1
     }
 }

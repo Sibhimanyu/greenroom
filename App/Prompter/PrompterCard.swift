@@ -76,6 +76,11 @@ struct PrompterCard: Identifiable, Hashable {
         case googleBooks, openLibrary, wikipedia, wikiquote, youtube, search
         /// The Mac's own Dictionary. Nothing leaves for this one.
         case dictionary
+        /// The product's own homepage, found by guessing the domain from the
+        /// name and checking the page really exists.
+        case officialSite
+        /// A picture search, as a link. Sends nothing until it is opened.
+        case images
 
         var label: String {
             switch self {
@@ -86,6 +91,8 @@ struct PrompterCard: Identifiable, Hashable {
             case .youtube: return "YouTube"
             case .search: return "Search"
             case .dictionary: return "Dictionary"
+            case .officialSite: return "Official site"
+            case .images: return "Images"
             }
         }
 
@@ -98,6 +105,8 @@ struct PrompterCard: Identifiable, Hashable {
             case .youtube: return "youtube"
             case .search: return "search"
             case .dictionary: return "dictionary"
+            case .officialSite: return "official_site"
+            case .images: return "images"
             }
         }
     }

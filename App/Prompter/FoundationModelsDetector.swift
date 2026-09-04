@@ -65,17 +65,28 @@ final class FoundationModelsDetector: MentionDetector {
     /// session to the heuristic; a single guardrail refusal is not counted.
     private(set) var consecutiveErrors = 0
 
+    /// No concrete examples, on purpose.
+    ///
+    /// The first version of these instructions illustrated the "thing" kind with
+    /// two real product names. Scored against a 45-minute class the model then
+    /// emitted those two names 26 times between them, mostly in stretches where
+    /// neither was mentioned - it was echoing the prompt whenever a batch held
+    /// nothing real. Precision was 2%. A small model treats a concrete example
+    /// as a candidate answer, so the kinds are described by shape only, and the
+    /// rule for an empty batch is stated explicitly instead.
     private static let instructions = """
     You listen to a teacher speaking to a class over a video call, in Indian English with some Tamil mixed in. \
-    From the new words, list only things the teacher would open a browser tab for: a tool, app, product or \
-    company he names ("it's called Haiku Deck", "Kindle Paperwhite, they call it"); a word whose meaning he \
-    asks or explains; a quotation he recites (return the quoted line itself); a book, a video or film, a \
-    topic he sets out to explain, a well-known person, or a place. \
+    From the new words, list only things the teacher would open a browser tab for: a named tool, app, \
+    product or company; a word whose meaning he asks or explains; a quotation he recites (return the quoted \
+    line itself); a book, a video or film, a topic he sets out to explain, a well-known person, or a place. \
+    Every item you return must appear in the new words themselves. Never invent an item, never repeat an \
+    item from the context, and never return an example from these instructions. \
+    Most batches contain nothing worth looking up - returning an empty list is the normal, correct answer. \
     Rules: never list the names of the people in the call - students or the teacher - and never list \
     anything said TO someone; skip greetings, instructions and classroom management; ignore words that \
     are not English unless they are clearly a name; return a short search phrase for each item, the name \
-    as said, not a sentence (except a quote, which is the line as said); return nothing when nothing was \
-    named. The context words are for understanding only - do not list things from them again.
+    as said, not a sentence (except a quote, which is the line as said). \
+    The context words are for understanding only - do not list things from them again.
     """
 
     func prewarm() {

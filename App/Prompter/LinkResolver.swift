@@ -48,6 +48,9 @@ actor LinkResolver {
     }
 
     struct Configuration {
+        /// Lookups allowed in one session. A class is capped tight (30); the
+        /// bench raises it, because seeing everything is the point there.
+        var sessionCap = 30
         var videoSearchEnabled = true
         /// Nil when no Google account is connected: video mentions become
         /// search links.
@@ -73,8 +76,8 @@ actor LinkResolver {
     private var youtubeQuotaExhausted = false
 
     /// Per-session ceilings, per source.
-    private let caps: [PrompterCard.Source: Int] = [.googleBooks: 60, .openLibrary: 60, .wikipedia: 60, .wikiquote: 30, .youtube: 20, .search: 200, .dictionary: 200]
-    private let sessionCap = 30
+    private let caps: [PrompterCard.Source: Int] = [.googleBooks: 60, .openLibrary: 60, .wikipedia: 60, .wikiquote: 30, .youtube: 20, .search: 200, .dictionary: 200, .officialSite: 80, .images: 200]
+    private var sessionCap: Int { configuration.sessionCap }
     private let maxInFlight = 2
 
     init() {
@@ -295,6 +298,106 @@ actor LinkResolver {
         }
         await attachThumbnails(&resolution)
         return resolution
+    }
+
+    // MARK: Options - one thing, several ways to show it
+
+    /// Every angle on one phrase at once, so the teacher picks what the class
+    /// sees: the product's own site, a video, pictures, the encyclopedia
+    /// entry, a definition, the book.
+    ///
+    /// The shipped path (`resolve`) still returns the single best card for a
+    /// kind. This is the wider, noisier view - built for the bench, where
+    /// seeing every option is the point.
+    func resolveOptions(_ mention: Mention) async -> Resolution {
+        var resolution = Resolution()
+        let query = mention.query
+        guard !query.isEmpty else { return resolution }
+
+        // Cheap link cards first: they cost nothing and send nothing until
+        // they are opened, so they are always offered.
+        var youtube = URLComponents(string: "https://www.youtube.com/results")!
+        youtube.queryItems = [URLQueryItem(name: "search_query", value: query)]
+        resolution.cards.append(PrompterCard(kind: mention.kind, query: query,
+                                             title: "Video: \u{201C}\(query)\u{201D}",
+                                             subtitle: "YouTube search \u{00B7} nothing sent until you open it",
+                                             source: .youtube, url: youtube.url!))
+
+        var images = URLComponents(string: "https://www.bing.com/images/search")!
+        images.queryItems = [URLQueryItem(name: "q", value: query)]
+        resolution.cards.append(PrompterCard(kind: mention.kind, query: query,
+                                             title: "Pictures of \u{201C}\(query)\u{201D}",
+                                             subtitle: "Image search \u{00B7} nothing sent until you open it",
+                                             source: .images, url: images.url!))
+
+        // Then the ones worth a request, in parallel.
+        async let site = officialSite(for: query)
+        async let encyclopedia = resolveWikipedia(Mention(kind: .topic, query: query, confidence: mention.confidence))
+        async let books = mention.kind == .book
+            ? resolveBook(Mention(kind: .book, query: query, confidence: mention.confidence))
+            : Resolution()
+
+        if let site = await site { resolution.cards.insert(site, at: 0) }
+        let wiki = await encyclopedia
+        resolution.cards.append(contentsOf: wiki.cards)
+        resolution.sentTo += wiki.sentTo
+        let book = await books
+        resolution.cards.append(contentsOf: book.cards)
+        resolution.sentTo += book.sentTo
+
+        // The Mac's dictionary, for anything that could be a plain word.
+        if query.split(separator: " ").count == 1 {
+            let word = resolveWord(Mention(kind: .word, query: query, confidence: mention.confidence))
+            resolution.cards.append(contentsOf: word.cards)
+        }
+        // One card per destination: a source can return the same edition twice.
+        var seen: Set<String> = []
+        resolution.cards = resolution.cards.filter { seen.insert($0.url.absoluteString).inserted }
+        return resolution
+    }
+
+    /// A product's own homepage, guessed from its name and then checked.
+    ///
+    /// "Haiku Deck" -> haikudeck.com, which is right. The check matters as much
+    /// as the guess: the page must answer 200 AND its title must share a word
+    /// with the name, which is what rejects parked and squatted domains
+    /// (scarves.com answers with a Cloudflare interstitial titled "Just a
+    /// moment...").
+    ///
+    /// This visits the product's own site, the same page the teacher would
+    /// open. It is not a search engine and nothing is scraped.
+    private func officialSite(for query: String) async -> PrompterCard? {
+        let words = query.lowercased().split(whereSeparator: { !$0.isLetter && !$0.isNumber })
+        guard words.count >= 1, words.count <= 3 else { return nil }
+        let host = words.joined()
+        guard host.count >= 4, host.count <= 30 else { return nil }
+        guard allowed(.officialSite, host: host), let url = URL(string: "https://\(host).com") else { return nil }
+
+        var request = URLRequest(url: url)
+        request.timeoutInterval = 6
+        // Ask for a web page, not JSON. The shared session defaults to
+        // "Accept: application/json" for the APIs, and a real site can answer
+        // that with a 500 (bookfusion.com does), which read as "no site here".
+        request.setValue("text/html,application/xhtml+xml", forHTTPHeaderField: "Accept")
+        guard let (data, response) = try? await session.data(for: request),
+              let http = response as? HTTPURLResponse, http.statusCode == 200,
+              let html = String(data: data.prefix(20_000), encoding: .utf8) ?? String(data: data.prefix(20_000), encoding: .isoLatin1)
+        else { return nil }
+
+        guard let range = html.range(of: "<title[^>]*>([^<]{1,120})", options: [.regularExpression, .caseInsensitive]) else { return nil }
+        let title = Self.stripHTML(String(html[range]).replacingOccurrences(of: "<title[^>]*>", with: "", options: [.regularExpression, .caseInsensitive]))
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        // The title has to look like the thing, or this is a parked domain.
+        // Compare squashed as well as word by word: "book fusion" reaches
+        // bookfusion.com, whose title is the single word "BookFusion".
+        let normalizedTitle = Mention.normalize(title)
+        let titleWords = Set(normalizedTitle.split(separator: " ").map(String.init))
+        let squashedTitle = normalizedTitle.replacingOccurrences(of: " ", with: "")
+        guard words.contains(where: { titleWords.contains(String($0)) }) || squashedTitle.contains(host) else { return nil }
+
+        return PrompterCard(kind: .thing, query: query, title: title.isEmpty ? query : title,
+                            subtitle: "\(host).com \u{00B7} the site itself",
+                            source: .officialSite, url: url)
     }
 
     // MARK: Things - tools, products, companies

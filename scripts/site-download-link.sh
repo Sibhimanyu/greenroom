@@ -3,12 +3,13 @@
 #   scripts/site-download-link.sh 0.6.0 dmg
 #   scripts/site-download-link.sh 0.6.0 zip
 #
-# Policy: prefer the DMG whenever the release has one (drag-to-install is
-# the friendlier first download); the zip is the fallback because it is the
-# one artifact every release is guaranteed to carry. release.sh calls this
-# with whichever it managed to build. If a DMG is uploaded by hand later,
-# run this again with "dmg" and commit docs/ - and the site's
-# download-link.js upgrades the link at view time in the meantime.
+# Policy: the buttons follow the NEWEST DMG (drag-to-install is the
+# friendlier first download, and Sparkle brings a fresh install up to date on
+# first launch), so a zip-only release does not move the link. release.sh
+# calls this only when it built a DMG; "zip" exists for the day no DMG has
+# ever been published. If a DMG is uploaded by hand later, run this with
+# "dmg" and commit docs/ - the site's download-link.js also finds the newest
+# DMG at view time in the meantime.
 set -euo pipefail
 
 VERSION="${1:?usage: site-download-link.sh <version> <dmg|zip>}"

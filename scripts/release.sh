@@ -104,10 +104,17 @@ else
   DOWNLOAD_EXT=zip
 fi
 
-# The site's Download buttons link straight to this release: the DMG when
-# there is one, the zip otherwise (policy + fallback in the helper). If the
-# DMG is uploaded by hand later, run the helper again with "dmg".
-"$REPO_DIR/scripts/site-download-link.sh" "$VERSION" "$DOWNLOAD_EXT"
+# The site's Download buttons follow the NEWEST DMG, not the newest release:
+# a disk image is the friendlier first install and Sparkle updates a fresh
+# install on first launch anyway. So the link moves only when this release
+# produced a DMG; a zip-only release leaves the previous DMG link in place.
+# If the DMG is uploaded by hand later, run the helper: site-download-link.sh
+# $VERSION dmg. (docs/download-link.js also finds the newest DMG at view time.)
+if [ "$DOWNLOAD_EXT" = "dmg" ]; then
+  "$REPO_DIR/scripts/site-download-link.sh" "$VERSION" dmg
+else
+  echo "Download buttons left on the previous DMG (this release is zip-only)."
+fi
 
 git add project.yml docs/appcast.xml docs/*.html
 git commit -m "Version $VERSION"

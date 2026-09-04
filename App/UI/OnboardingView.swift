@@ -25,7 +25,7 @@ struct OnboardingView: View {
     @State private var testResults: [TestResult] = []
     @State private var connectingYouTube = false
 
-    private let stepCount = 7
+    private let stepCount = 8
     private let timer = Timer.publish(every: 1.5, on: .main, in: .common).autoconnect()
 
     var body: some View {
@@ -55,6 +55,7 @@ struct OnboardingView: View {
         case 3: setupStep
         case 4: permissionsStep
         case 5: youtubeStep
+        case 6: prompterStep
         default: readyStep
         }
     }
@@ -444,6 +445,28 @@ struct OnboardingView: View {
             Text("This is the only feature that sends class content anywhere: the recording itself, to the connected account\u{2019}s channel, over HTTPS. Nothing is uploaded while \u{201C}Do nothing\u{201D} is selected.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
+        }
+    }
+
+    // MARK: Prompter (optional) - the same rows as Settings → Prompter. In the
+    // flow because the model download belongs to setup day, not to the first
+    // minute of the first class.
+
+    private var prompterStep: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            stepHeader("Prompter (optional)", "While you teach, Greenroom can listen to your microphone and offer links for the books, videos, topics and places you mention \u{2014} on the participants panel or in the menu bar, one click to open, one to send to the chat.")
+            if #available(macOS 26.0, *) {
+                Form {
+                    PrompterSetupRows(compact: true)
+                }
+                .formStyle(.grouped)
+                .scrollContentBackground(.hidden)
+                Text("Speech becomes text on this Mac with Apple\u{2019}s models; the text stays in memory. The only thing sent anywhere is the short search phrase \u{2014} to Google Books, Open Library, Wikipedia and (if you allow it) YouTube \u{2014} and each one is written to the status log. Names of people in the meeting are never looked up. Off by default; Settings \u{2192} Prompter has the rest.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else {
+                PrompterUnavailableText()
+            }
         }
     }
 

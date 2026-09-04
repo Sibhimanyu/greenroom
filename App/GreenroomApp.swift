@@ -80,10 +80,20 @@ struct GreenroomApp: App {
                 .environmentObject(coordinator)
                 .tint(Brand.green)
         } label: {
+            // REC keeps precedence. The waveform says Prompter is listening,
+            // and it appears HERE only while the participants panel is the
+            // surface for its cards - when the panel is closed, Prompter has
+            // its own status item with the same glyph, and the menu bar must
+            // never show two.
             if coordinator.isRecording {
                 HStack(spacing: 3) {
                     Image(systemName: "record.circle.fill")
                     Text("REC")
+                }
+            } else if coordinator.prompterListening && coordinator.prompterOnRail {
+                HStack(spacing: 3) {
+                    Image(systemName: coordinator.prompterPaused ? "waveform.slash" : "waveform")
+                    Text("GR")
                 }
             } else {
                 Text("GR")

@@ -318,6 +318,12 @@ enum ParticipantGridWindowController {
         micMonitor.stop()
     }
 
+    /// Prompter's cards, pushed once a second by the coordinator like the mic
+    /// level. An empty state clears the block. No-op when the panel is closed.
+    static func applyPrompter(_ state: PrompterSurfaceState) {
+        root?.applyPrompter(state)
+    }
+
     fileprivate static func report(_ message: String) { log?(message) }
     fileprivate static func requestEndSession() { endSession?() }
     fileprivate static func requestShowChat() { showChat?() }
@@ -394,6 +400,9 @@ private final class RootView: NSView {
     /// each tick, never rebuilt - see `updateNeedsBlock`.
     private let needsEyebrow = NSTextField(labelWithString: "")
     private let needsRows: [NSTextField] = (0..<6).map { _ in NSTextField(labelWithString: "") }
+    /// Prompter's cards, under the needs block. Its own view with the rail's
+    /// discipline: a fixed pool, updated in place, one measuring/placing walk.
+    private let prompterBlock = PrompterRailBlock(frame: .zero)
     /// When each currently-raised hand went up.
     ///
     /// The SDK reports `isRaisingHand` as a bare bool with no timestamp, so
@@ -479,9 +488,7 @@ private final class RootView: NSView {
         for cells in stride(from: ceiling, through: Self.railMinCellsPerRow, by: -1) {
             let column = CGFloat(cells) * (Self.railCell.width + Self.railCellGap)
                 - Self.railCellGap
-            let stack = selfBlockHeight(width: column)
-                + controlColumnHeight(width: column)
-                + needsBlockHeight(width: column) + 10 + Self.railPad * 2
+            let stack = railStackHeight(width: column)
             if stack <= railBodyHeight { return cells }
             if stack < best.stack { best = (cells, stack) }
         }
@@ -646,6 +653,7 @@ private final class RootView: NSView {
             row.lineBreakMode = .byTruncatingTail
             railContent.addSubview(row)
         }
+        railContent.addSubview(prompterBlock)
 
         statsLabel.font = .monospacedSystemFont(ofSize: 10, weight: .regular)
         statsLabel.textColor = .tertiaryLabelColor
@@ -1343,9 +1351,7 @@ private final class RootView: NSView {
         // how the children wrap - so it is measured first, then everything is
         // placed for real. Both passes read the same column width, or the content
         // scrolls to an offset that does not match what is drawn.
-        let contentHeight = selfBlockHeight(width: column.width)
-            + controlColumnHeight(width: column.width)
-            + needsBlockHeight(width: column.width) + 10 + pad * 2
+        let contentHeight = railStackHeight(width: column.width)
 
         // Never shorter than the rail itself, or a short list would float.
         let documentHeight = max(contentHeight, rail.bounds.height)
@@ -1355,7 +1361,8 @@ private final class RootView: NSView {
         let afterMedia = layoutSelfBlock(x: x, width: column.width, top: top)
         let controlsTop = afterMedia - 10
         let controlsHeight = layoutControlColumn(x: x, width: column.width, top: controlsTop)
-        walkNeedsBlock(x: x, width: column.width, top: controlsTop - controlsHeight, place: true)
+        let needsHeight = walkNeedsBlock(x: x, width: column.width, top: controlsTop - controlsHeight, place: true)
+        prompterBlock.place(x: x, width: column.width, top: controlsTop - controlsHeight - needsHeight)
 
         // Start at the top, which is where the self view and the mic are.
         railContent.scroll(NSPoint(x: 0, y: documentHeight))
@@ -1387,6 +1394,26 @@ private final class RootView: NSView {
     /// How tall the needs block will be, without placing it.
     private func needsBlockHeight(width: CGFloat) -> CGFloat {
         walkNeedsBlock(x: 0, width: width, top: 0, place: false)
+    }
+
+    /// The whole column's height at a width: picture, controls, needs block,
+    /// Prompter block, gaps and padding. ONE function, read by the cell-count
+    /// fit and by the layout pass, so the two can never disagree - which is
+    /// the failure that makes the rail scroll to the wrong offset.
+    private func railStackHeight(width: CGFloat) -> CGFloat {
+        selfBlockHeight(width: width)
+            + controlColumnHeight(width: width)
+            + needsBlockHeight(width: width)
+            + prompterBlock.height(forWidth: width)
+            + 10 + Self.railPad * 2
+    }
+
+    /// Prompter's state, once a second. Re-lays the rail only when the block
+    /// changed height, so a stable set of cards costs nothing.
+    func applyPrompter(_ state: PrompterSurfaceState) {
+        if prompterBlock.apply(state) {
+            layoutEverything()
+        }
     }
 
     /// One walk, measuring or placing, for the same reason the control column
@@ -2795,21 +2822,8 @@ private final class ToolMenuButton: NSButton {
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 }
 
-private final class ClosureButton: NSButton {
-    private let body: () -> Void
-    init(_ body: @escaping () -> Void) {
-        self.body = body
-        super.init(frame: .zero)
-        target = self
-        action = #selector(fire)
-    }
-    required init?(coder: NSCoder) { nil }
-    @objc private func fire() { body() }
-
-    /// See TileView.acceptsFirstMouse - the panel is rarely key, so without this
-    /// every button press was discarded the first time.
-    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
-}
+// ClosureButton lives in App/UI/ClosureButton.swift now - the Prompter cards
+// share it. See TileView.acceptsFirstMouse for why it exists.
 
 /// A pop-up that also answers the first click. NSPopUpButton has the same
 /// first-mouse problem as every other control in a non-activating panel, and

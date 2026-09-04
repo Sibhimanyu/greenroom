@@ -11,9 +11,13 @@
 	<key>NSAppleEventsUsageDescription</key>
 	<string>Greenroom arranges Google Chrome windows for you (e.g. tiling a new window to half the screen).</string>
 	<key>NSCameraUsageDescription</key>
-	<string>The Meeting SDK chat connection may request camera access even though Greenroom always joins with video off.</string>
+	<string>Greenroom sends the composited video (your screen with you in it) to the Zoom meeting from inside the app, so it needs the camera the meeting uses.</string>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>The Meeting SDK chat connection may request microphone access even though Greenroom always joins muted.</string>
+	<string>Your microphone goes to the Zoom meeting and drives the level meter on the participants panel. With Prompter turned on (off by default), Greenroom also turns your speech into text on this Mac to suggest links; the audio and the text never leave the Mac and are not saved.</string>
+	<!-- No NSSpeechRecognitionUsageDescription on purpose: Prompter uses
+	     SpeechAnalyzer with audio the app already holds, which runs on this
+	     Mac and asks for no speech-recognition permission. Adding the key
+	     would imply a TCC prompt and a cloud path that do not exist. -->
 	<key>SUEnableAutomaticChecks</key>
 	<true/>
 	<key>SUFeedURL</key>

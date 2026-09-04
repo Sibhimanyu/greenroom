@@ -84,6 +84,18 @@ targets:
     dependencies:
       - framework: Vendor/ZoomSDK/ZoomSDK.framework
         embed: true
+      # Prompter (App/Prompter/) uses Apple's on-device speech and language
+      # models, both macOS 26 API. FoundationModels.framework does not EXIST
+      # on macOS 14/15, so a strong link would make dyld refuse to launch the
+      # app there; weak means the symbols resolve to nil and every use sits
+      # behind `#available(macOS 26.0, *)`. Speech has shipped since 10.15 -
+      # weak is harmless and keeps the two consistent. Verify after a build:
+      #   otool -L Greenroom.app/Contents/MacOS/Greenroom | grep -i foundationmodels
+      # must say "(weak)".
+      - sdk: FoundationModels.framework
+        weak: true
+      - sdk: Speech.framework
+        weak: true
       - package: Sparkle
       - package: Apptics
         # ...coreWithKSCrash, NOT plain AppticsAnalytics. The latter declares its

@@ -25,8 +25,24 @@ struct SessionMetadata: Codable {
         var id: String { videoID }
     }
 
+    /// A Prompter card the teacher acted on. Written on Open or Send ONLY -
+    /// never for a card that was merely shown, never a mention, a query or a
+    /// word of the transcript. This is the class's own record of what it
+    /// looked at, kept because "what was that book from Tuesday" is a real
+    /// question.
+    struct Link: Codable, Identifiable, Hashable {
+        var kind: String
+        var title: String
+        var url: String
+        /// "opened" | "sent"
+        var action: String
+        var at: Date
+        var id: String { "\(url)#\(at.timeIntervalSince1970)" }
+    }
+
     var title: String?
     var uploads: [Upload] = []
+    var links: [Link] = []
 
     static let fileName = "session.json"
 
@@ -69,6 +85,18 @@ struct SessionMetadata: Codable {
         var metadata = load(in: folder)
         guard let index = metadata.uploads.firstIndex(where: { $0.videoID == videoID }) else { return }
         metadata.uploads[index].title = title
+        metadata.save(in: folder)
+    }
+
+    /// Remembers a link the teacher opened or sent during the class. The
+    /// folder is created if the session has not written anything else yet.
+    static func recordLink(in folder: URL, kind: String, title: String, url: String, action: String) {
+        guard folder != GreenroomScene.recordingsDirectory else { return }
+        try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        var metadata = load(in: folder)
+        // The same link opened and then sent is one entry with the later action.
+        metadata.links.removeAll { $0.url == url }
+        metadata.links.append(Link(kind: kind, title: title, url: url, action: action, at: Date()))
         metadata.save(in: folder)
     }
 

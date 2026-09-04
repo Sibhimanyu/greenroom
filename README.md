@@ -57,7 +57,8 @@ the same drag-to-Applications experience.
 
 ### Requirements
 
-- macOS 14 or later
+- macOS 14 or later (**Prompter**, the opt-in live link suggestions,
+  needs macOS 26 — the app runs without it on 14 and 15)
 - [OBS Studio](https://obsproject.com) (free) — Greenroom launches and
   drives it in the background; you never touch the OBS UI
 - The Zoom desktop app — only for the classic/hybrid flow; the default
@@ -127,6 +128,13 @@ Also available:
   The file path is logged when you stop.
 - **Menu bar → Snap Windows Back** — re-tiles everything to the session
   layout after you've dragged windows around.
+- **Prompter** (Settings → Prompter, off by default, macOS 26) — while the
+  class is live it listens to *your* microphone, turns it into text on the
+  Mac, and offers link cards for the books, videos, topics, people and
+  places you name: on the participants panel when there is one, otherwise
+  in a waveform menu-bar item. **Open** puts the link in your main-pane
+  browser without stealing focus; **Send** drops it in the class chat.
+  Pauses while you are muted; the menu bar has a per-class Stop.
 - **Manual controls** (disclosure in the main window) — each piece of the
   session individually: open just the chat window, just the main-app
   window, or just Zoom.
@@ -224,6 +232,35 @@ per upload, so about six a day. While the Google project is in Testing,
 the sign-in expires every seven days until it is published. The OAuth
 client ID/secret travel in the settings export; the connected account does
 not.
+
+### Prompter
+Off by default; macOS 26 only (the tab says so on 14/15, and
+`FoundationModels.framework` is weak-linked so the app still launches
+there). **Listen during classes and suggest links** starts, once the
+meeting is live, an `AVAudioEngine` tap on the default input device
+feeding Apple's `SpeechAnalyzer`/`SpeechTranscriber` (on-device; the
+model asset is downloaded once from Apple through the system asset
+service — from this tab, never during a class). Finalised sentences go
+to a mention detector: Apple's on-device `FoundationModels` language
+model when Apple Intelligence is on, otherwise cue-phrase regexes plus
+`NLTagger`. Mentions matching anyone in the meeting (roster, waiting
+room, you) are dropped and logged as skipped. The surviving short phrase
+is looked up — Google Books then Open Library for books, Wikipedia's
+title search for topics/people/places, YouTube Data API `search.list`
+for videos only when a Google account is connected and **Video links may
+use YouTube search** is on (otherwise a `youtube.com/results` link that
+sends nothing until opened) — and becomes a card with a thumbnail. That
+phrase is the only thing derived from speech that leaves the Mac, and
+every one is written to the status log and
+`~/Library/Logs/Greenroom-session.log` with the host it went to.
+Transcript lives in memory (≤ 90 s window) and is discarded at End
+Session; the closing log line counts the sentences dropped. Caps: 30
+lookups a class, 20 YouTube, 5 cards shown / 8 kept, 10-minute card
+lifetime. **Language** picks the transcription locale (`en_IN` is
+supported; Tamil is not, as of macOS 26). **Try it (30 s)** transcribes
+and detects without looking anything up. Cards you Open or Send are
+recorded in the class folder's `session.json` (`links`) and shown in
+Sessions as "Links from class". Engine: `App/Prompter/`.
 
 ### Transfer
 Export/import every setting above as one JSON file — the whole point is

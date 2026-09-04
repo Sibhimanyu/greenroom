@@ -25,6 +25,12 @@
 //  settings people switch on or off (`setting_changed`, by `setting` + `state`).
 //  Neither carries what was typed, opened, or who was there.
 //
+//  Prompter (App/Prompter/) follows the same rule and is worth stating on its
+//  own, since it is the one feature that turns speech into text: no transcript
+//  text, no search query and no URL ever reaches an event. Its events are
+//  counts - a card was made, opened, sent or dismissed - with the SOURCE bucket
+//  ("books", "wikipedia", "youtube", "search"), never the phrase or the page.
+//
 //  Free-plan shape, measured rather than assumed (Apptics pricing, Aug 2026):
 //    - 50,000 "engagements" a month, shared across events, screens, tracked API
 //      calls AND remote-logger lines. A class produces well under a hundred

@@ -52,6 +52,17 @@ struct MenuBarView: View {
             Text("Uploading to YouTube \u{00B7} \(Int((progress * 100).rounded()))%")
         }
 
+        // Prompter: what it is doing, and the per-class off switch. The cards
+        // themselves are on the participants panel or the waveform item.
+        if coordinator.prompterListening {
+            Text(coordinator.prompterPaused
+                 ? "Prompter is paused \u{2014} you are muted"
+                 : "Prompter is listening \u{00B7} \(coordinator.prompterCardCount) link\(coordinator.prompterCardCount == 1 ? "" : "s")")
+            Button("Stop Prompter for This Session") {
+                coordinator.stopPrompterForClass()
+            }
+        }
+
         Divider()
 
         Button("Snap Windows Back") {

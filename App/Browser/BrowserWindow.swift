@@ -1723,6 +1723,25 @@ enum BrowserWindowController {
         (UserDefaults.standard.stringArray(forKey: sessionKey) ?? []).compactMap(URL.init(string:))
     }
 
+    /// Opens a URL in a new tab. With `focus` false the window comes forward
+    /// but the app is NOT activated, so whatever the teacher had in front
+    /// stays in front - Prompter's Open uses this: a card should land in the
+    /// reading window, not drag them to it. A closed window opens tiled, as
+    /// on Start.
+    static func open(_ url: URL, focus: Bool, layout: WorkspaceLayout) {
+        guard isOpen, let model, let window else {
+            show(urlString: url.absoluteString, layout: layout)
+            return
+        }
+        model.newTab(url: url, after: model.selected, select: true)
+        if focus {
+            window.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
+        } else {
+            window.orderFront(nil)
+        }
+    }
+
     /// Re-tiles without touching the page. No-op when not open, matching
     /// the external-app path's "not running" case.
     static func reposition(layout: WorkspaceLayout) {

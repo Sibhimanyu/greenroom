@@ -385,7 +385,9 @@
       <p class="kicker">05 · The menu bar</p>
       <h2>The <span class="mono" style="font-size:.8em;background:var(--bg-soft);border:1px solid var(--line);border-radius:6px;padding:2px 8px">GR</span> item, for when Greenroom's window is at the back</h2>
       <p>During a class Greenroom deliberately stays behind your main app. Everything you might need mid-lesson is in the menu bar
-      instead; while recording, the label becomes a record glyph and <strong>REC</strong>.</p>
+      instead; while recording, the label becomes a record glyph and <strong>REC</strong>. With Prompter listening, a waveform joins
+      it — or, when there is no participants panel to hold the cards, a separate waveform item appears whose popover is where the
+      cards live.</p>
     </div>
     <div class="table-scroll" style="max-width:760px">
       <table>
@@ -396,6 +398,8 @@
           <tr><td><strong>Start Recording / Stop Recording</strong></td><td>Same as <kbd>⌥⌘R</kbd>.</td></tr>
           <tr><td><strong>Snap Windows Back</strong></td><td>Same as <kbd>⌥⌘S</kbd>.</td></tr>
           <tr><td><strong>Hide / Show Speaker Tile</strong></td><td>Same as <kbd>⌥⌘Z</kbd>; enabled by Quick-hide mode.</td></tr>
+          <tr><td><strong>Prompter is listening · N links</strong></td><td>Only while Prompter is on and a class is live. Reads “paused” while you are muted in Zoom.</td></tr>
+          <tr><td><strong>Stop Prompter for This Session</strong></td><td>Stops listening for the rest of this class; the setting stays on for the next one.</td></tr>
           <tr><td><strong>Open Chat Window</strong></td><td>Just the chat, for a meeting you're in some other way.</td></tr>
           <tr><td><strong>Show Greenroom</strong></td><td>Brings the main window forward.</td></tr>
           <tr><td><strong>Check for Updates…</strong></td><td>Updates are checked on their own too; this is the manual version.</td></tr>
@@ -412,7 +416,7 @@
   <div class="wrap">
     <div class="sec-head">
       <p class="kicker">06 · Settings (⌘,)</p>
-      <h2>Six tabs. Three you'll actually open.</h2>
+      <h2>Seven tabs. Three you'll actually open.</h2>
       <p>Everything persists immediately and travels in the settings export. The starter settings are listed first in each tab;
       the rest can wait until a morning asks for them.</p>
     </div>
@@ -449,6 +453,18 @@
             <li><strong>Connect Google account…</strong> after pasting the Client ID and Secret of a Google Cloud OAuth client (Desktop app) with the YouTube Data API enabled. Your browser signs in once; Greenroom keeps the permission to upload and edit your own videos, used for uploads and title changes only. The caption in the tab has the exact clicks.</li>
           </ul>
           <p class="later">This is the only feature that sends class content off the Mac: the recording itself. The <a href="how-it-works.html#data">Privacy &amp; safety page</a> lists it as its own channel.</p>
+        </div>
+      </div>
+      <div class="setting">
+        <div class="tab">Prompter <span>off by default · macOS 26</span></div>
+        <div>
+          <ul>
+            <li><strong>Listen during classes and suggest links</strong>: while a class is live, what you say becomes text on this Mac and, when you name a book, a video, a topic, a person or a place, a link card appears on the participants panel — or in a waveform menu-bar item when there is no second display. <strong>Open</strong> puts it in your main-pane browser without stealing focus; <strong>Send</strong> drops the link in the class chat; <strong>×</strong> dismisses it for the class.</li>
+            <li><strong>Speech model</strong>: Apple's, downloaded once from here when you turn the switch on. Never during a class — a Start that finds it missing carries on without Prompter and says so in the status log.</li>
+            <li><strong>Language</strong> (Indian English by default when that is your system language), <strong>Mentions found by</strong> (Apple Intelligence on this Mac, or word patterns when it is off), and <strong>Video links may use YouTube search</strong> — off, or with no Google account connected, video cards are “search YouTube for…” links that send nothing until opened.</li>
+            <li><strong>Try it (30 s)</strong> shows the live text and what would be looked up, and looks nothing up.</li>
+          </ul>
+          <p class="later">What leaves the Mac is the short search phrase only — to Google Books, Open Library, Wikipedia and, if allowed, YouTube — and each one is written to the status log. Never the audio, never the transcript, never a name from the meeting. The <a href="how-it-works.html#prompter">Privacy &amp; safety page</a> draws the whole pipeline. Below macOS 26 the tab is one sentence and the rest of Greenroom is unchanged.</p>
         </div>
       </div>
       <div class="setting">
@@ -505,6 +521,8 @@
       question on a small card if you chose <em>Ask</em>, progress in the menu bar, and the link on your clipboard when it finishes.
       The link is kept with the class in Sessions (Open / Copy / Rename under the recording; Rename changes the title on YouTube), and
       any recording can be uploaded, or uploaded again, from there. The file stays in the folder either way.</p>
+      <p>With Prompter on, the cards you <em>opened or sent</em> during a class are kept with it too — <strong>Links from class</strong>
+      under the class in Sessions, with Open and Copy. Cards that were only shown are not recorded, and nothing of the transcript ever is.</p>
     </div>
   </div>
 </section>
@@ -514,9 +532,13 @@
   <div class="wrap">
     <div class="sec-head">
       <p class="kicker">08 · If something looks wrong</p>
-      <h2>The five fixes that cover most mornings</h2>
+      <h2>The six fixes that cover most mornings</h2>
     </div>
     <div class="cards">
+      <div class="card">
+        <h3>Prompter shows nothing</h3>
+        <p>Check the status log for a line beginning <strong>Prompter:</strong>. “Skipped — the speech model isn't downloaded” means Settings → Prompter → Download, between classes. “Paused — you are muted” is Zoom's mute. If it is listening and quiet, name things plainly: “the book called Matilda”, “a video about volcanoes”. Apple Intelligence off means fewer cards, not none.</p>
+      </div>
       <div class="card">
         <h3>A window is in the wrong place</h3>
         <p><kbd>⌥⌘S</kbd> Snap Windows Back. It re-tiles the main app, the Zoom tile and the chat to the saved layout and puts the webcam back on top in OBS.</p>

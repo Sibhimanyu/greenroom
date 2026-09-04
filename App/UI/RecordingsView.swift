@@ -64,9 +64,12 @@ struct RecordingsView: View {
         /// recording - and dropping those was why a clip taken without pressing
         /// Record appeared nowhere despite being on disk.
         var clipFiles: [Recording]
+        /// Prompter cards the teacher opened or sent during this class
+        /// (session.json). Never the ones merely shown.
+        var links: [SessionMetadata.Link] = []
         var id: String { folder?.path ?? "__loose__" }
 
-        var isEmpty: Bool { recordings.isEmpty && clipFiles.isEmpty }
+        var isEmpty: Bool { recordings.isEmpty && clipFiles.isEmpty && links.isEmpty }
         var clipCount: Int { recordings.reduce(0) { $0 + $1.clips.count } + clipFiles.count }
         var sizeBytes: Int64 {
             recordings.reduce(0) { $0 + $1.sizeBytes } + clipFiles.reduce(0) { $0 + $1.sizeBytes }
@@ -249,6 +252,9 @@ struct RecordingsView: View {
                         ForEach(session.clipFiles) { clip in
                             clipFileRow(clip).tag(clip)
                         }
+                        if !session.links.isEmpty {
+                            linksRow(session.links)
+                        }
                     } header: {
                         HStack(spacing: 6) {
                             Text(session.displayTitle).lineLimit(1).truncationMode(.middle)
@@ -329,6 +335,46 @@ struct RecordingsView: View {
                 NSWorkspace.shared.activateFileViewerSelecting([recording.url])
             }
             Button("Move to Trash", role: .destructive) { confirmingDelete = recording }
+        }
+    }
+
+    /// "Links from class": what Prompter offered and the teacher opened or
+    /// sent. Collapsed by default so a class with twelve links does not push
+    /// its recording off the list.
+    private func linksRow(_ links: [SessionMetadata.Link]) -> some View {
+        DisclosureGroup {
+            ForEach(links) { link in
+                HStack(spacing: 6) {
+                    Text(link.kind.uppercased())
+                        .font(.system(size: 9, weight: .semibold, design: .monospaced))
+                        .foregroundStyle(.tertiary)
+                        .frame(width: 44, alignment: .leading)
+                    Text(link.title).lineLimit(1).truncationMode(.tail)
+                    Spacer(minLength: 4)
+                    if link.action == "sent" {
+                        Image(systemName: "paperplane").font(.system(size: 9)).foregroundStyle(.secondary)
+                            .help("Sent to the class chat")
+                    }
+                }
+                .font(.caption)
+                .contextMenu {
+                    if let url = URL(string: link.url) {
+                        Button("Open") { NSWorkspace.shared.open(url) }
+                    }
+                    Button("Copy link") { copy(link.url) }
+                }
+                .onTapGesture(count: 2) {
+                    if let url = URL(string: link.url) { NSWorkspace.shared.open(url) }
+                }
+            }
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: "link").font(.system(size: 10)).foregroundStyle(.secondary)
+                Text("Links from class").font(.caption)
+                Text("\(links.count)")
+                    .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                    .foregroundStyle(.secondary)
+            }
         }
     }
 
@@ -644,8 +690,10 @@ struct RecordingsView: View {
             // Not `recordings.isEmpty`: a session where the teacher clipped from
             // the buffer without ever pressing Record has clips and no master,
             // and dropping it here is what made those clips invisible.
-            guard !recordings.isEmpty || !clips.isEmpty else { return nil }
             let metadata = SessionMetadata.load(in: folder)
+            // A class with no tape but with links it looked at is still a
+            // class worth listing.
+            guard !recordings.isEmpty || !clips.isEmpty || !metadata.links.isEmpty else { return nil }
             let withUploads = recordings.map { recording in
                 var copy = recording
                 copy.upload = metadata.upload(for: recording.url)
@@ -654,9 +702,10 @@ struct RecordingsView: View {
             return Session(folder: folder,
                            title: folder.lastPathComponent,
                            customTitle: metadata.title,
-                           date: (recordings + clips).map(\.date).max() ?? .distantPast,
+                           date: (recordings + clips).map(\.date).max() ?? metadata.links.map(\.at).max() ?? .distantPast,
                            recordings: withUploads,
-                           clipFiles: clips)
+                           clipFiles: clips,
+                           links: metadata.links.sorted { $0.at < $1.at })
         }
 
         // Everything recorded before sessions had folders.

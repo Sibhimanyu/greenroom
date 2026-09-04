@@ -1919,13 +1919,34 @@ private final class RootView: NSView {
         return button
     }
 
+    /// Maps a status sentence to a fixed code for the dashboard. The sentences
+    /// are written here, so the prefixes are stable; anything new reads as
+    /// "other" until it is added, never as the sentence itself.
+    fileprivate static func actionCode(for sentence: String) -> String {
+        switch true {
+        case sentence.hasPrefix("Muted everyone"): return "mute_all"
+        case sentence.hasPrefix("Asked everyone"): return "ask_unmute_all"
+        case sentence.hasPrefix("Lowered all"): return "lower_all_hands"
+        case sentence.hasPrefix("Lowered"): return "lower_hand"
+        case sentence.hasPrefix("Cleared spotlight"): return "clear_spotlight"
+        case sentence.hasPrefix("Admitted"): return "admit_all"
+        case sentence.hasPrefix("Sent"): return "reaction"
+        case sentence.hasPrefix("Suspended"): return "suspend_activities"
+        case sentence.hasPrefix("Renamed"): return "rename"
+        case sentence.hasSuffix("is now the host"): return "make_host"
+        case sentence.hasPrefix("Removed"): return "remove"
+        default: return "other"
+        }
+    }
+
     fileprivate static func perform(_ success: String,
                                     _ body: (ZoomMeetingSDKClient) -> Bool) {
         guard let sdk = ParticipantGridWindowController.sdk else { return }
         let ok = body(sdk)
         // The success string is a sentence for the status log and can name a
-        // student, so it is NEVER the event. Only the outcome travels.
-        Analytics.track(.controlAction, [.refused: ok ? "no" : "yes"])
+        // student, so it is NEVER the event. Only the outcome travels, plus the
+        // kind of control, derived from the sentence's fixed opening words.
+        Analytics.track(.controlAction, [.action: actionCode(for: success), .refused: ok ? "no" : "yes"])
         // Redraw immediately rather than at the next poll tick, so the control
         // that was just pressed reflects what it did.
         ParticipantGridWindowController.refreshNow()

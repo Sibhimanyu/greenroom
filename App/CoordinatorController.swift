@@ -347,6 +347,7 @@ final class CoordinatorController: ObservableObject {
 
     /// One-click fill of the Join Existing fields from a saved preset.
     func applyPreset(_ preset: MeetingPreset) {
+        Analytics.feature("preset")
         meetingMode = .join
         meetingNumber = preset.number
         meetingPassword = preset.password
@@ -357,6 +358,7 @@ final class CoordinatorController: ObservableObject {
     /// number is stored normalized (digits only); a blank name falls back
     /// to the number itself.
     func saveCurrentAsPreset(name: String) {
+        Analytics.feature("preset_save")
         let digits = meetingNumberDigits
         guard !digits.isEmpty else { return }
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -443,7 +445,10 @@ final class CoordinatorController: ObservableObject {
     /// participant. OFF falls back to the hybrid flow (native Zoom app +
     /// hidden chat participant).
     @Published var useBuiltInClient: Bool {
-        didSet { defaults.set(useBuiltInClient, forKey: "useBuiltInClient") }
+        didSet {
+            defaults.set(useBuiltInClient, forKey: "useBuiltInClient")
+            Analytics.setting("built_in_client", on: useBuiltInClient)
+        }
     }
     @Published var userDisplayName: String {
         didSet { defaults.set(userDisplayName, forKey: "userDisplayName") }
@@ -455,6 +460,7 @@ final class CoordinatorController: ObservableObject {
     @Published var hideSelfView: Bool {
         didSet {
             defaults.set(hideSelfView, forKey: "hideSelfView")
+            Analytics.setting("hide_self_view", on: hideSelfView)
             zoomChatClient.setHideSelfView(hideSelfView)
         }
     }
@@ -467,6 +473,7 @@ final class CoordinatorController: ObservableObject {
     @Published var speakerTileShortcutEnabled: Bool {
         didSet {
             defaults.set(speakerTileShortcutEnabled, forKey: "speakerTileShortcutEnabled")
+            Analytics.setting("quick_hide_mode", on: speakerTileShortcutEnabled)
             guard ChatWindowController.isOpen else { return }
             speakerTileQuickHidden = speakerTileShortcutEnabled
             parkBuiltInMeetingWindow() // restart the loop to assert the new default
@@ -486,6 +493,7 @@ final class CoordinatorController: ObservableObject {
     /// is enabled in Settings.
     func toggleSpeakerTile() {
         guard speakerTileShortcutEnabled else { return }
+        Analytics.track(.quickHide)
         // Custom UI: the speaker is our own window, so hiding it is just
         // ordering it out - no SDK window to find, and no risk of the toggle
         // pointing at a panel that got mistaken for the tile.
@@ -628,7 +636,10 @@ final class CoordinatorController: ObservableObject {
     }
 
     @Published var webcamShape: WebcamShape {
-        didSet { defaults.set(webcamShape.rawValue, forKey: "webcamShape") }
+        didSet {
+            defaults.set(webcamShape.rawValue, forKey: "webcamShape")
+            Analytics.setting("webcam_shape", webcamShape.rawValue)
+        }
     }
     /// The main pane + side column arrangement - see WorkspaceLayout.
     /// Stored as one JSON blob (it's several coupled fields, not a flat
@@ -636,6 +647,17 @@ final class CoordinatorController: ObservableObject {
     @Published var workspaceLayout: WorkspaceLayout {
         didSet {
             workspaceLayout.save(to: defaults)
+            // The toggles and the side, not the fractions: a drag emits dozens
+            // of values a second and the number itself says nothing useful.
+            if oldValue.sideShowsZoomTile != workspaceLayout.sideShowsZoomTile {
+                Analytics.setting("zoom_tile", on: workspaceLayout.sideShowsZoomTile)
+            }
+            if oldValue.sideShowsChat != workspaceLayout.sideShowsChat {
+                Analytics.setting("chat_window", on: workspaceLayout.sideShowsChat)
+            }
+            if oldValue.mainOnLeft != workspaceLayout.mainOnLeft {
+                Analytics.setting("main_pane_side", workspaceLayout.mainOnLeft ? "left" : "right")
+            }
             scheduleLiveLayoutApply()
         }
     }
@@ -671,7 +693,10 @@ final class CoordinatorController: ObservableObject {
     /// this used to hardcode) goes through its AppleScript special case;
     /// anything else is tiled via the Accessibility API.
     @Published var mainAppBundleID: String {
-        didSet { defaults.set(mainAppBundleID, forKey: "mainAppBundleID") }
+        didSet {
+            defaults.set(mainAppBundleID, forKey: "mainAppBundleID")
+            Analytics.setting("main_app", Analytics.mainAppKind(bundleID: mainAppBundleID))
+        }
     }
     @Published var mainAppURL: String {
         // Stored sanitised. A control character typed in here once made the
@@ -679,7 +704,10 @@ final class CoordinatorController: ObservableObject {
         didSet { defaults.set(AppCatalog.sanitizedURLText(mainAppURL), forKey: "mainAppURL") }
     }
     @Published var mainAppOnStart: Bool {
-        didSet { defaults.set(mainAppOnStart, forKey: "mainAppOnStart") }
+        didSet {
+            defaults.set(mainAppOnStart, forKey: "mainAppOnStart")
+            Analytics.setting("main_app_on_start", on: mainAppOnStart)
+        }
     }
     /// Built-in browser only: whether Start brings back the tabs that were
     /// open when Greenroom last quit, alongside the configured page.
@@ -687,6 +715,7 @@ final class CoordinatorController: ObservableObject {
         didSet {
             defaults.set(browserRestoresTabs, forKey: "browserRestoresTabs")
             BrowserWindowController.restoresTabs = browserRestoresTabs
+            Analytics.setting("browser_restore_tabs", on: browserRestoresTabs)
         }
     }
     /// Built-in browser only: whether the address bar asks Google for
@@ -696,19 +725,26 @@ final class CoordinatorController: ObservableObject {
         didSet {
             defaults.set(browserSearchSuggestions, forKey: "browserSearchSuggestions")
             BrowserWindowController.searchSuggestions = browserSearchSuggestions
+            Analytics.setting("browser_search_suggestions", on: browserSearchSuggestions)
         }
     }
     /// Built-in browser only: whether Stop also closes the browser window.
     /// Off by default - an external main app is never closed by Stop either.
     @Published var browserClosesOnStop: Bool {
-        didSet { defaults.set(browserClosesOnStop, forKey: "browserClosesOnStop") }
+        didSet {
+            defaults.set(browserClosesOnStop, forKey: "browserClosesOnStop")
+            Analytics.setting("browser_close_on_stop", on: browserClosesOnStop)
+        }
     }
     /// People view: on Start, the built-in client's dual-screen gallery
     /// window (every participant) goes full-screen onto a chosen display
     /// - your reference monitor, not the class mirror. No-op with a
     /// single display.
     @Published var peopleViewOnStart: Bool {
-        didSet { defaults.set(peopleViewOnStart, forKey: "peopleViewOnStart") }
+        didSet {
+            defaults.set(peopleViewOnStart, forKey: "peopleViewOnStart")
+            Analytics.setting("people_view_on_start", on: peopleViewOnStart)
+        }
     }
     /// Whether the custom-UI participants panel may open on the MAIN display
     /// when no second display is attached.
@@ -719,7 +755,10 @@ final class CoordinatorController: ObservableObject {
     /// arrange. It is here so the panel can be exercised without a reference
     /// monitor plugged in, not as a way to work.
     @Published var participantPanelOnMainDisplay: Bool {
-        didSet { defaults.set(participantPanelOnMainDisplay, forKey: "participantPanelOnMainDisplay") }
+        didSet {
+            defaults.set(participantPanelOnMainDisplay, forKey: "participantPanelOnMainDisplay")
+            Analytics.setting("panel_on_main_display", on: participantPanelOnMainDisplay)
+        }
     }
     /// Whether anonymous usage analytics are sent. On by default, and the switch
     /// is honoured immediately as well as on the next launch.
@@ -741,7 +780,10 @@ final class CoordinatorController: ObservableObject {
     /// per process - so changing this only takes effect after a restart, and
     /// the Settings copy says so.
     @Published var customUIMode: Bool {
-        didSet { defaults.set(customUIMode, forKey: "customUIMode") }
+        didSet {
+            defaults.set(customUIMode, forKey: "customUIMode")
+            Analytics.setting("custom_ui", on: customUIMode)
+        }
     }
     /// True when the toggle no longer matches the mode actually running.
     ///
@@ -764,7 +806,10 @@ final class CoordinatorController: ObservableObject {
     /// button and \u{2325}\u{2318}R stay available as the manual
     /// trigger either way).
     @Published var autoRecordOnStart: Bool {
-        didSet { defaults.set(autoRecordOnStart, forKey: "autoRecordOnStart") }
+        didSet {
+            defaults.set(autoRecordOnStart, forKey: "autoRecordOnStart")
+            Analytics.setting("auto_record", on: autoRecordOnStart)
+        }
     }
     /// OBS launches with Greenroom and survives End Session (quitting
     /// only with the app), so Start skips OBS's multi-second cold launch.
@@ -775,6 +820,7 @@ final class CoordinatorController: ObservableObject {
     @Published var keepOBSWarm: Bool {
         didSet {
             defaults.set(keepOBSWarm, forKey: "keepOBSWarm")
+            Analytics.setting("keep_obs_warm", on: keepOBSWarm)
             if keepOBSWarm { prewarmOBSIfEnabled() }
         }
     }
@@ -935,7 +981,8 @@ final class CoordinatorController: ObservableObject {
         Analytics.track(.sessionStart, [
             .mode: meetingMode == .join ? "join" : "start",
             .customUI: customUIMode ? "yes" : "no",
-            .displays: String(NSScreen.screens.count)
+            .displays: String(NSScreen.screens.count),
+            .mainApp: Analytics.mainAppKind(bundleID: mainAppBundleID)
         ])
 
         resetStartReadiness()
@@ -1073,6 +1120,7 @@ final class CoordinatorController: ObservableObject {
                 finishStartReadiness()
             } catch {
                 log("Failed: \(error.localizedDescription)")
+                Analytics.failure("start")
                 // Left on screen rather than cleared. The panel is the surface
                 // the teacher has been watching for the last several seconds,
                 // so it is where the failure belongs, named against the step it
@@ -1204,7 +1252,10 @@ final class CoordinatorController: ObservableObject {
     /// hence a setting rather than an assumption. Held in memory, never on disk:
     /// choosing not to record a class still ends with nothing written down.
     @Published var clipBufferEnabled: Bool {
-        didSet { defaults.set(clipBufferEnabled, forKey: "clipBufferEnabled") }
+        didSet {
+            defaults.set(clipBufferEnabled, forKey: "clipBufferEnabled")
+            Analytics.setting("clip_buffer", on: clipBufferEnabled)
+        }
     }
 
     /// Where this session's recording and clips live.
@@ -1216,6 +1267,8 @@ final class CoordinatorController: ObservableObject {
     private(set) var sessionFolder: URL?
 
     @Published private(set) var isRecording = false
+    /// For the recording_end duration band only; never written anywhere.
+    private var recordingStartedAt: Date?
 
     /// Records the composited feed (screen + webcam bubble/cutout) straight
     /// through OBS - the same picture the virtual camera sends, so what's
@@ -1281,9 +1334,11 @@ final class CoordinatorController: ObservableObject {
             // nothing and cuts losslessly from the real file. The buffer is for
             // when there is no master to mark.
             guard isRecording else {
+                Analytics.feature("clip_\(minutes)", source: "buffer")
                 await clipFromBuffer(minutes: minutes, into: folder)
                 return
             }
+            Analytics.feature("clip_\(minutes)", source: "recording")
             // Double, not Int: obs-websocket sends this as a JSON number and the
             // decoder is free to hand back either.
             guard let status = try? await client.request("GetRecordStatus"),
@@ -1409,6 +1464,10 @@ final class CoordinatorController: ObservableObject {
                 if isRecording {
                     let response = try await client.request("StopRecord")
                     isRecording = false
+                    Analytics.track(.recordingEnd, [
+                        .durationBand: Analytics.band(seconds: recordingStartedAt.map { Date().timeIntervalSince($0) } ?? 0)
+                    ])
+                    recordingStartedAt = nil
                     if let path = response["outputPath"] as? String {
                         // The first moment OBS tells us the filename, which is
                         // why marks were parked in a pending file until now.
@@ -1449,6 +1508,8 @@ final class CoordinatorController: ObservableObject {
                     }
                     _ = try await client.request("StartRecord")
                     isRecording = true
+                    recordingStartedAt = Date()
+                    Analytics.track(.recordingStart)
                     log("Recording\u{2026} (screen + webcam composite)")
                     // Confirmation where it can be seen - mid-session the
                     // main window is buried behind the main app. The menu
@@ -1458,6 +1519,7 @@ final class CoordinatorController: ObservableObject {
                 }
             } catch {
                 log("Recording failed: \(error.localizedDescription) \u{2014} press Start first if the session isn't running.")
+                Analytics.failure("record")
             }
         }
     }
@@ -2393,6 +2455,7 @@ final class CoordinatorController: ObservableObject {
     /// plain NSWindow) or the native Zoom app's (Accessibility API) - and
     /// the follow loops those restart re-align the chat automatically.
     func snapWindowsBack() {
+        Analytics.feature("snap_back")
         // Restore the quick-hide mode's DEFAULT state (hidden when the
         // mode is on, normal tile layout when off) - the parking loop
         // restarted below asserts it.
@@ -2594,6 +2657,7 @@ final class CoordinatorController: ObservableObject {
     /// it in the encrypted pwd= form joins accept - the same parsing as
     /// Paste Link.
     func selectScheduledMeeting(_ meeting: ZoomServerToServerClient.ScheduledMeeting) {
+        Analytics.feature("scheduled_pick")
         if let parsed = ZoomMeetingLinkParser.parse(meeting.joinURL) {
             meetingNumber = parsed.number
             meetingPassword = parsed.password
@@ -2625,6 +2689,7 @@ final class CoordinatorController: ObservableObject {
     /// calendar invites use. Beats manually copying two separate fields
     /// out of an invite by hand.
     func fillMeetingFromClipboard() {
+        Analytics.feature("paste_link")
         guard let clipboard = NSPasteboard.general.string(forType: .string),
               let parsed = ZoomMeetingLinkParser.parse(clipboard) else {
             // Logged AND surfaced: the status log is collapsed by default,
@@ -2662,6 +2727,7 @@ final class CoordinatorController: ObservableObject {
     func joinChatOnly() {
         loadSecretsIfNeeded()
         guard !isConnectingChat, !meetingNumberDigits.isEmpty else { return }
+        Analytics.feature("chat_only")
         guard !sdkClientID.isEmpty, !sdkClientSecret.isEmpty else {
             // Reached silently-skippable from the one-button session flow -
             // say why the chat window didn't appear instead of nothing.
@@ -3370,6 +3436,10 @@ extension CoordinatorController {
     /// import needs no separate save step.
     func importSettings(from data: Data) throws {
         let transfer = try JSONDecoder().decode(SettingsTransfer.self, from: data)
+        // One import assigns every field; that is not twenty deliberate changes.
+        Analytics.suppressSettingEvents = true
+        defer { Analytics.suppressSettingEvents = false }
+        Analytics.feature("settings_import")
         loadSecretsIfNeeded() // so fields the file omits keep their current values
         if let value = transfer.sdkClientID { sdkClientID = value }
         if let value = transfer.sdkClientSecret { sdkClientSecret = value }

@@ -953,7 +953,7 @@ private struct LayoutSettingsTab: View {
 
             Section("Privacy") {
                 Toggle("Send anonymous usage analytics", isOn: $coordinator.analyticsEnabled)
-                Text("Counts and timings only \u{2014} which features get used, how long sessions run, whether something failed. Never student names, meeting IDs, file paths or chat. Turning this off stops all network calls to the analytics service, including registering this Mac.")
+                Text("Counts and timings only \u{2014} which features get used, which settings are on or off, how long sessions run, whether something failed. Never student names, meeting IDs, file paths, web addresses or chat. Turning this off stops all network calls to the analytics service, including registering this Mac.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

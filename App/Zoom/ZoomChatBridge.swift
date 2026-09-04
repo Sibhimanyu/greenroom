@@ -180,6 +180,8 @@ final class ZoomChatBridge: NSObject, ObservableObject {
         guard let controller else { return }
         let trimmed = content.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
+        // A count. The text stays in the meeting.
+        Task { @MainActor in Analytics.feature(parent == nil ? "chat_send" : "chat_reply") }
 
         var body = trimmed
         var quoteRange: (start: UInt32, end: UInt32)?
@@ -213,6 +215,7 @@ final class ZoomChatBridge: NSObject, ObservableObject {
             lastError = "File sharing is switched off for this meeting."
             return
         }
+        Task { @MainActor in Analytics.feature("chat_file") }
         let size = (try? url.resourceValues(forKeys: [.fileSizeKey]))?.fileSize ?? 0
         let limit = controller.getMaxTransferFileSizeBytes()
         if limit > 0, UInt64(size) > limit {

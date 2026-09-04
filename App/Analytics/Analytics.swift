@@ -20,6 +20,11 @@
 //  were used and two were refused by Zoom. They cannot learn who was in the room
 //  or which meeting it was.
 //
+//  Two questions the dashboard is meant to answer, both as counts: which
+//  features get used (`feature_used`, broken down by `feature`) and which
+//  settings people switch on or off (`setting_changed`, by `setting` + `state`).
+//  Neither carries what was typed, opened, or who was there.
+//
 //  Free-plan shape, measured rather than assumed (Apptics pricing, Aug 2026):
 //    - 50,000 "engagements" a month, shared across events, screens, tracked API
 //      calls AND remote-logger lines. A class produces well under a hundred
@@ -54,6 +59,14 @@ enum Analytics {
         case recordingEnd   = "recording_end"
         case quickHide      = "quick_hide"
         case failure        = "failure"
+        /// One press of one feature: a clip, Snap Back, a preset, a chat
+        /// message, find-in-page. Counted, never described.
+        case featureUsed    = "feature_used"
+        /// A setting flipped in Settings - the state it was flipped TO, as an
+        /// enum code, so the dashboard shows what is on and what is off across
+        /// installs. Suppressed while a settings file is imported, which would
+        /// otherwise read as twenty deliberate changes.
+        case settingChanged = "setting_changed"
     }
 
     /// Every property key the app may ever send. Deliberately exhaustive and
@@ -71,8 +84,15 @@ enum Analytics {
         case roster                        // how many people were in the room
         case spaceBand    = "space_band"
         case code                          // failure code
-        case state                         // "on" | "off"
+        case state                         // "on" | "off", or an enum code
+        case feature                       // which feature was used (fixed codes)
+        case setting                       // which setting changed (fixed codes)
+        case source                        // clip source: "recording" | "buffer"
+        case mainApp      = "main_app"     // "builtin_browser" | "chrome" | "other_browser" | "other_app"
     }
+
+    /// True while `importSettings` assigns every field at once.
+    static var suppressSettingEvents = false
 
     private static let group = "greenroom"
 
@@ -110,6 +130,35 @@ enum Analytics {
         // can reach past the Key enum and invent a property name.
         let payload = Dictionary(uniqueKeysWithValues: properties.map { ($0.key.rawValue, $0.value) })
         APEvent.trackEvent(event.rawValue, andGroupName: group, withProperties: payload)
+    }
+
+    /// One use of a feature. `name` is a fixed code from the call site
+    /// (`clip_2`, `snap_back`, `chat_send`), never anything typed by a person.
+    static func feature(_ name: String, source: String? = nil) {
+        var properties: [Key: String] = [.feature: name]
+        if let source { properties[.source] = source }
+        track(.featureUsed, properties)
+    }
+
+    /// A setting changed to `state`. Booleans arrive as "on"/"off"; enums as
+    /// their raw code. Nothing that can carry an identifier is ever a setting
+    /// event: no URLs, no display UUIDs, no bundle IDs - `mainAppKind` maps
+    /// the chosen app to one of four buckets first.
+    static func setting(_ name: String, _ state: String) {
+        guard !suppressSettingEvents else { return }
+        track(.settingChanged, [.setting: name, .state: state])
+    }
+
+    static func setting(_ name: String, on: Bool) {
+        setting(name, on ? "on" : "off")
+    }
+
+    /// The main app as a bucket, never as its bundle ID.
+    static func mainAppKind(bundleID: String) -> String {
+        if AppCatalog.isBuiltInBrowser(bundleID) { return "builtin_browser" }
+        if bundleID == ChromeWindowManager.chromeBundleID { return "chrome" }
+        if AppCatalog.isBrowser(bundleID) { return "other_browser" }
+        return "other_app"
     }
 
     /// A genuine failure, billed against the free plan's 5,000 errors a month.

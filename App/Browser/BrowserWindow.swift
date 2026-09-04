@@ -186,9 +186,11 @@ final class BrowserTab: NSObject, ObservableObject, Identifiable {
         guard !typed.isEmpty else { return }
         dismissSuggestions()
         if Self.looksLikeAddress(typed), let url = AppCatalog.normalizedWebURL(from: typed) {
+            Analytics.feature("browser_address")
             load(url)
             return
         }
+        Analytics.feature("browser_search")
         var components = URLComponents(string: "https://www.google.com/search")!
         components.queryItems = [URLQueryItem(name: "q", value: typed)]
         if let url = components.url { load(url) }
@@ -577,7 +579,9 @@ final class BrowserModel: ObservableObject {
     /// Bumped to ask the view to focus the find field (⌘F).
     @Published var findFocusRequest = 0
     /// The history popover (⌘Y).
-    @Published var historyShown = false
+    @Published var historyShown = false {
+        didSet { if historyShown, !oldValue { Analytics.feature("browser_history") } }
+    }
     /// ⌘⇧T brings these back, most recent first. Ten is plenty.
     @Published private(set) var recentlyClosed: [URL] = []
 
@@ -625,6 +629,8 @@ final class BrowserModel: ObservableObject {
             selectedID = tab.id
             if url == nil { addressFocusRequest += 1 }
         }
+        // Tabs the teacher opened, not the ones Start restored or a page spawned.
+        if url == nil { Analytics.feature("browser_new_tab") }
         onTabsChanged?()
         return tab
     }
@@ -697,6 +703,7 @@ final class BrowserModel: ObservableObject {
     }
 
     func showFind() {
+        Analytics.feature("browser_find")
         selected?.showFind()
         findFocusRequest += 1
     }

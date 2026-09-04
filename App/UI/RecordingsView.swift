@@ -28,6 +28,8 @@ struct RecordingsView: View {
         let date: Date
         let sizeBytes: Int64
         var clips: [SessionClip]
+        /// Where this file went, if it was uploaded (from the folder's session.json).
+        var upload: SessionMetadata.Upload?
         var id: URL { url }
 
         var title: String {
@@ -46,9 +48,14 @@ struct RecordingsView: View {
     /// unfoldered session so nothing recorded before this change disappears.
     struct Session: Identifiable, Hashable {
         let folder: URL?
+        /// The folder's own name - the date and class it was created for.
         let title: String
+        /// The name the teacher gave it, if any (session.json).
+        var customTitle: String?
         let date: Date
         var recordings: [Recording]
+        var displayTitle: String { customTitle ?? title }
+        var uploadCount: Int { recordings.filter { $0.upload != nil }.count }
         /// Finished clip files in the session's clips/ folder.
         ///
         /// These are not always cut from a recording in this folder. A clip
@@ -81,8 +88,10 @@ struct RecordingsView: View {
     @State private var trashError: String?
     @State private var exporting: (done: Int, total: Int)?
     @State private var confirmingDelete: Recording?
+    @State private var renaming: Session?
+    @State private var renameDraft = ""
     /// Presented as a sheet from ContentView, so the environment object
-    /// arrives with it; used only for the YouTube upload button.
+    /// arrives with it; used for the YouTube upload button and state.
     @EnvironmentObject private var coordinator: CoordinatorController
 
     private var allRecordings: [Recording] {
@@ -99,7 +108,24 @@ struct RecordingsView: View {
         .frame(minWidth: 900, minHeight: 560)
         .onAppear(perform: reload)
         .onChange(of: selection) { newSelection in load(newSelection) }
+        // An upload finishing while the window is open should show up here.
+        .onChange(of: coordinator.isUploadingToYouTube) { _ in reload() }
         .onDisappear(perform: teardownPlayer)
+        .alert("Rename this class",
+               isPresented: Binding(get: { renaming != nil },
+                                    set: { if !$0 { renaming = nil } })) {
+            TextField("Name", text: $renameDraft)
+            Button("Rename") {
+                if let session = renaming, let folder = session.folder {
+                    SessionMetadata.rename(folder: folder, to: renameDraft)
+                }
+                renaming = nil
+                reload()
+            }
+            Button("Cancel", role: .cancel) { renaming = nil }
+        } message: {
+            Text("Shown in this window. The folder in Documents/Greenroom keeps its date name; clear the field to go back to it.")
+        }
         .alert("Couldn't move that to the Trash",
                isPresented: Binding(get: { trashError != nil },
                                     set: { if !$0 { trashError = nil } })) {
@@ -129,7 +155,7 @@ struct RecordingsView: View {
 
     private var header: some View {
         HStack {
-            Text("Recordings").font(.title3.bold())
+            Text("Sessions").font(.title3.bold())
             VStack(alignment: .leading, spacing: 1) {
                 Text(GreenroomScene.recordingsDirectory.path
                     .replacingOccurrences(of: NSHomeDirectory(), with: "~"))
@@ -170,8 +196,8 @@ struct RecordingsView: View {
             Image(systemName: "film.stack")
                 .font(.system(size: 40))
                 .foregroundStyle(.tertiary)
-            Text("No recordings yet").font(.headline)
-            Text("Press Record during a session \u{2014} the file lands here the moment you stop. Mark a moment mid-class with \u{2325}\u{2318}5 and it shows up on the recording below.")
+            Text("No sessions yet").font(.headline)
+            Text("Press Record during a class \u{2014} the file lands here the moment you stop, under the class it belongs to. Mark a moment mid-class with \u{2325}\u{2318}5 and it shows up on the recording; upload to YouTube and the link stays here too.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
@@ -195,12 +221,43 @@ struct RecordingsView: View {
                         }
                     } header: {
                         HStack(spacing: 6) {
-                            Text(session.title).lineLimit(1).truncationMode(.middle)
+                            Text(session.displayTitle).lineLimit(1).truncationMode(.middle)
                             if session.clipCount > 0 {
                                 Text("\(session.clipCount)")
                                     .font(.system(size: 10, weight: .semibold, design: .monospaced))
                                     .padding(.horizontal, 5).padding(.vertical, 1)
                                     .background(Color.accentColor.opacity(0.18), in: Capsule())
+                                    .help("\(session.clipCount) clip\(session.clipCount == 1 ? "" : "s")")
+                            }
+                            if session.uploadCount > 0 {
+                                Image(systemName: "play.rectangle.fill")
+                                    .font(.system(size: 10))
+                                    .foregroundStyle(Color.accentColor)
+                                    .help("\(session.uploadCount) on YouTube")
+                            }
+                            Spacer()
+                            if session.folder != nil {
+                                Button {
+                                    renameDraft = session.customTitle ?? ""
+                                    renaming = session
+                                } label: {
+                                    Image(systemName: "pencil")
+                                        .font(.system(size: 10))
+                                }
+                                .buttonStyle(.plain)
+                                .foregroundStyle(.secondary)
+                                .help("Rename this class")
+                            }
+                        }
+                        .contextMenu {
+                            if let folder = session.folder {
+                                Button("Rename\u{2026}") {
+                                    renameDraft = session.customTitle ?? ""
+                                    renaming = session
+                                }
+                                Button("Show in Finder") {
+                                    NSWorkspace.shared.activateFileViewerSelecting([folder])
+                                }
                             }
                         }
                     }
@@ -224,15 +281,58 @@ struct RecordingsView: View {
                 if !recording.clips.isEmpty {
                     Text("\u{2022} \(recording.clips.count) clip\(recording.clips.count == 1 ? "" : "s")")
                 }
+                if let upload = recording.upload {
+                    Text("\u{2022} YouTube \u{00B7} \(upload.privacy)")
+                        .foregroundStyle(Color.accentColor)
+                }
             }
             .font(.caption)
             .foregroundStyle(.secondary)
         }
         .contextMenu {
+            if let upload = recording.upload, let url = URL(string: upload.url) {
+                Button("Open on YouTube") { NSWorkspace.shared.open(url) }
+                Button("Copy YouTube link") { copy(upload.url) }
+                Divider()
+            }
             Button("Show in Finder") {
                 NSWorkspace.shared.activateFileViewerSelecting([recording.url])
             }
             Button("Move to Trash", role: .destructive) { confirmingDelete = recording }
+        }
+    }
+
+    private func copy(_ text: String) {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(text, forType: .string)
+        ToastController.show("Link copied", detail: text)
+    }
+
+    /// The upload record under the player: where it went, when, and the link.
+    @ViewBuilder private func uploadLine(for recording: Recording) -> some View {
+        if let upload = recording.upload {
+            HStack(spacing: 10) {
+                Image(systemName: "play.rectangle.fill")
+                    .foregroundStyle(Color.accentColor)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("On YouTube \u{00B7} \(upload.privacy) \u{00B7} uploaded \(upload.uploadedAt.formatted(date: .abbreviated, time: .shortened))")
+                        .font(.caption)
+                    Text(upload.url)
+                        .font(.system(size: 12, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                        .textSelection(.enabled)
+                }
+                Spacer()
+                if let url = URL(string: upload.url) {
+                    Button("Open") { NSWorkspace.shared.open(url) }
+                        .controlSize(.small)
+                }
+                Button("Copy link") { copy(upload.url) }
+                    .controlSize(.small)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            Divider()
         }
     }
 
@@ -272,6 +372,7 @@ struct RecordingsView: View {
                     .frame(height: 54)
                     .padding(.horizontal, 12)
                     .padding(.top, 10)
+                uploadLine(for: selection)
                 clipList(for: selection)
             }
         } else {
@@ -304,12 +405,15 @@ struct RecordingsView: View {
                     Button {
                         coordinator.uploadRecordingToYouTube(recording.url)
                     } label: {
-                        Label(coordinator.isUploadingToYouTube ? "Uploading\u{2026}" : "Upload to YouTube",
+                        Label(coordinator.isUploadingToYouTube ? "Uploading\u{2026}"
+                              : recording.upload == nil ? "Upload to YouTube" : "Upload again",
                               systemImage: "play.rectangle")
                     }
                     .controlSize(.small)
                     .disabled(coordinator.isUploadingToYouTube)
-                    .help("Upload this recording to the connected channel (\(coordinator.youtubePrivacy)).")
+                    .help(recording.upload == nil
+                          ? "Upload this recording to the connected channel (\(coordinator.youtubePrivacy))."
+                          : "Uploads a second copy; the existing video stays on the channel.")
                 }
                 Button(role: .destructive) {
                     confirmingDelete = recording
@@ -504,10 +608,17 @@ struct RecordingsView: View {
             // the buffer without ever pressing Record has clips and no master,
             // and dropping it here is what made those clips invisible.
             guard !recordings.isEmpty || !clips.isEmpty else { return nil }
+            let metadata = SessionMetadata.load(in: folder)
+            let withUploads = recordings.map { recording in
+                var copy = recording
+                copy.upload = metadata.upload(for: recording.url)
+                return copy
+            }
             return Session(folder: folder,
                            title: folder.lastPathComponent,
+                           customTitle: metadata.title,
                            date: (recordings + clips).map(\.date).max() ?? .distantPast,
-                           recordings: recordings,
+                           recordings: withUploads,
                            clipFiles: clips)
         }
 
@@ -521,6 +632,7 @@ struct RecordingsView: View {
         if !loose.isEmpty || !looseClips.isEmpty {
             found.append(Session(folder: nil,
                                  title: "Earlier recordings",
+                                 customTitle: nil,
                                  date: (loose + looseClips).map(\.date).max() ?? .distantPast,
                                  recordings: loose,
                                  clipFiles: looseClips))

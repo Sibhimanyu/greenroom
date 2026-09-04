@@ -134,10 +134,10 @@ struct ContentView: View {
                 Button {
                     showRecordings = true
                 } label: {
-                    Label("Recordings", systemImage: "film.stack")
+                    Label("Sessions", systemImage: "film.stack")
                 }
                 .controlSize(.large)
-                .help("Review past recordings \u{2014} play them right here, or jump to the file in Finder.")
+                .help("Every past class: its recordings and clips with a player, its YouTube links, and a name you can change.")
             }
 
             Divider()

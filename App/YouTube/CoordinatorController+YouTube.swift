@@ -142,9 +142,13 @@ extension CoordinatorController {
                         }
                     }
                 })
+            // The link lives with the class from now on: the Sessions window
+            // shows it under the recording, and the folder carries it.
+            SessionMetadata.recordUpload(of: file, videoID: result.videoID, url: result.url.absoluteString,
+                                         privacy: youtubePrivacy, title: title)
             NSPasteboard.general.clearContents()
             NSPasteboard.general.setString(result.url.absoluteString, forType: .string)
-            log("Uploaded to YouTube (\(youtubePrivacy)): \(result.url.absoluteString) \u{2014} link copied.")
+            log("Uploaded to YouTube (\(youtubePrivacy)): \(result.url.absoluteString) \u{2014} link copied, and kept with the session.")
             ToastController.show("Uploaded to YouTube", detail: "Link copied: \(result.url.absoluteString)", dismissAfter: 6)
             Notifier.post(title: "Uploaded to YouTube", body: "\(title) \u{2014} the \(youtubePrivacy) link is on your clipboard.")
         } catch {

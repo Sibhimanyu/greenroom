@@ -36,6 +36,9 @@ final class Transcriber {
     enum Input {
         case microphone(MicStream)
         case file(AVAudioFile)
+        /// Buffers already in the analyzer's preferred format, from any
+        /// source - the test bench feeds a recording's audio as it plays.
+        case buffers(AsyncStream<AnalyzerInput>)
     }
 
     private var analyzer: SpeechAnalyzer?
@@ -106,6 +109,8 @@ final class Transcriber {
                         return
                     }
                     let buffers = try mic.start(format: format)
+                    try await analyzer.start(inputSequence: buffers)
+                case .buffers(let buffers):
                     try await analyzer.start(inputSequence: buffers)
                 case .file(let file):
                     try await analyzer.start(inputAudioFile: file, finishAfterFile: true)

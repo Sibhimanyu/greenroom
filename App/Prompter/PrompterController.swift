@@ -204,6 +204,22 @@ final class PrompterController: ObservableObject {
         }
     }
 
+    /// The full pipeline on audio buffers from anywhere - the test bench's
+    /// played recording. Same code as a class, minus the microphone.
+    func debugFeed(buffers: AsyncStream<AnalyzerInput>, configuration: Configuration) async {
+        guard !isListening else { return }
+        self.configuration = configuration
+        testMode = false
+        await resolver.reset()
+        await resolver.configure(.init(videoSearchEnabled: configuration.videoSearch, youtubeToken: configuration.youtubeToken))
+        chooseDetector()
+        let locale = await Transcriber.resolvedLocale(preferred: configuration.localeIdentifier)
+        _ = await startPipeline(input: .buffers(buffers), locale: locale)
+        configuration.log(detector is HeuristicDetector
+                          ? "Prompter: mentions found by word patterns (Apple Intelligence is off)."
+                          : "Prompter: mentions found by Apple Intelligence (on-device).")
+    }
+
     /// Detector only, on typed text. Debug builds.
     func debugDetect(_ text: String, configuration: Configuration) async -> [Mention] {
         self.configuration = configuration

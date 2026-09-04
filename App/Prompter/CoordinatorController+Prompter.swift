@@ -43,6 +43,7 @@ extension CoordinatorController {
         var configuration = PrompterController.Configuration()
         configuration.localeIdentifier = prompterLocaleIdentifier
         configuration.videoSearch = prompterVideoSearch
+        configuration.useModelDetector = prompterUseModel
         if youtubeConnected {
             let clientID = youtubeClientID.trimmingCharacters(in: .whitespacesAndNewlines)
             let clientSecret = youtubeClientSecret.trimmingCharacters(in: .whitespacesAndNewlines)

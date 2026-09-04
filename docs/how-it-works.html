@@ -346,7 +346,7 @@
                what crosses is a handful of words, not a stream. -->
           <rect x="676" y="528" width="228" height="60" rx="16" fill="#fff" stroke="#d0d5dd"/>
           <text x="790" y="550" font-size="15" font-weight="700" text-anchor="middle" fill="#101828">Lookups</text>
-          <text x="790" y="566" font-size="9" text-anchor="middle" fill="#475467">Google Books · Open Library · Wikipedia · YouTube</text>
+          <text x="790" y="566" font-size="9" text-anchor="middle" fill="#475467">Wikipedia · Google Books · YouTube · the product’s own site</text>
           <text x="790" y="580" font-size="9.5" text-anchor="middle" fill="#96600a">a title or a name · only with Prompter on</text>
           <line x1="470" y1="356" x2="676" y2="558" stroke="#b9770e" stroke-width="1.2" marker-end="url(#aa)"/>
           <text x="600" y="514" font-size="10.5" text-anchor="middle" fill="#96600a">the search phrase · HTTPS · off by default</text>
@@ -660,12 +660,16 @@
       </div>
       <div class="ep">
         <span class="tag out">Leaves your Mac · off by default</span>
-        <h3>googleapis.com/books · openlibrary.org · en.wikipedia.org · youtube</h3>
+        <h3>en.wikipedia.org · googleapis.com/books · openlibrary.org · youtube · a named product’s own site</h3>
         <p>Only with Settings &rarr; <em>Prompter</em> on. When you name a book, a video, a topic, a person or a place, the
         <strong>short search phrase</strong> Prompter built &mdash; a title or a name, deterministic, a few words &mdash; goes over
         HTTPS to Google Books then Open Library (books), to Wikipedia's title search (topics, people, places), and, if you allow it
         and a Google account is connected, to the YouTube Data API (videos; otherwise the card is a search link that sends nothing
-        until you open it). Never the audio, never the transcript, never anyone in the meeting: a phrase matching a roster name is
+        until you open it). One more, added after watching a real class: when you name a <strong>product</strong>, Prompter guesses
+        its address from the name (&ldquo;Haiku Deck&rdquo; &rarr; haikudeck.com), opens that page and reads its title to check the
+        site is really there. It reads only as far as the title and offers the card only if the title matches the name. That is a
+        request to <em>that product&rsquo;s own site</em>, the same page you would open yourself &mdash; never a search engine, and
+        nothing is scraped. Never the audio, never the transcript, never anyone in the meeting: a phrase matching a roster name is
         dropped before any request. Each phrase sent is written to the status log and to
         <span class="mono">~/Library/Logs/Greenroom-session.log</span>, with the host it went to. Card thumbnails are fetched from
         the same hosts. Capped at 30 lookups a class; a fixed <span class="mono">User-Agent</span> names Greenroom.</p>
@@ -841,8 +845,8 @@
             <tr><td><strong>Updates</strong></td><td>Sparkle, EdDSA-signed</td><td>Appcast on GitHub Pages; installs only releases signed with the developer's key. System profiling disabled.</td></tr>
             <tr><td><strong>YouTube upload</strong></td><td>YouTube Data API v3, OAuth 2.0 (PKCE, loopback)</td><td>Off by default. Resumable upload of a finished recording to the connected account's channel, and title changes from the Sessions window; scope <span class="mono">youtube.force-ssl</span> (upload and edit own videos). Refresh token stored like the Zoom credentials (plain preferences); revoked at Google on Disconnect.</td></tr>
             <tr><td><strong>Speech to text</strong> (Prompter)</td><td>Apple <span class="mono">SpeechAnalyzer</span> / <span class="mono">SpeechTranscriber</span></td><td>macOS 26, off by default. Own <span class="mono">AVAudioEngine</span> tap on the default input device only; runs between the meeting going live and End Session, never outside a class. Text held in memory (&le; 90 s), never written to disk, never in analytics. Model asset from Apple via the system asset service, downloaded once from Settings. No speech-recognition permission involved.</td></tr>
-            <tr><td><strong>Mention detection</strong> (Prompter)</td><td>Apple <span class="mono">FoundationModels</span> (on-device) or regex + <span class="mono">NLTagger</span></td><td>Reads the new sentences and returns up to five short phrases with a kind. Roster names (meeting participants, waiting room, you) are excluded and any collision is dropped and logged. <span class="mono">FoundationModels.framework</span> is weak-linked so the app launches on macOS 14/15, where the tab says the feature needs 26.</td></tr>
-            <tr><td><strong>Link lookups</strong> (Prompter)</td><td><span class="mono">URLSession</span>, HTTPS, fixed <span class="mono">User-Agent</span></td><td>Google Books (keyless) &rarr; Open Library; Wikipedia REST title search; YouTube Data API <span class="mono">search.list</span> only with a connected account and the switch on, otherwise a search-page link. Per class: 30 lookups, 20 YouTube; two in flight; five-minute back-off after three failures per host. Every request logged with its phrase and host.</td></tr>
+            <tr><td><strong>Mention detection</strong> (Prompter)</td><td>Apple <span class="mono">FoundationModels</span> (on-device) or regex + <span class="mono">NLTagger</span></td><td>Reads the new sentences and returns up to five short phrases with a kind, plus a fuller search query built from the surrounding words. Off by default: measured against a recorded class it found everything but suggested roughly twenty-five times more wrong things than the word patterns, so a teacher turns it on knowingly. Roster names (meeting participants, waiting room, you) are excluded and any collision is dropped and logged. <span class="mono">FoundationModels.framework</span> is weak-linked so the app launches on macOS 14/15, where the tab says the feature needs 26.</td></tr>
+            <tr><td><strong>Link lookups</strong> (Prompter)</td><td><span class="mono">URLSession</span>, HTTPS, fixed <span class="mono">User-Agent</span></td><td>Wikipedia REST title search (the richer phrase and the bare name at once); Google Books (keyless) &rarr; Open Library; YouTube Data API <span class="mono">search.list</span> only with a connected account and the switch on, otherwise a search-page link; and, for a named product, a <span class="mono">GET</span> of the guessed domain read only as far as its <span class="mono">&lt;title&gt;</span>. Before anything is sent: the phrase must have been spoken, a lone word that is in the Mac&rsquo;s dictionary is dropped unless it was said as a name, and roster names are dropped. Per class: 30 lookups, 6 a minute, 20 YouTube; two in flight; five-minute back-off after three failures per host. Every request logged with its phrase and host.</td></tr>
             <tr><td><strong>Entitlements</strong></td><td>Hardened Runtime</td><td><span class="mono">device.camera</span>, <span class="mono">device.audio-input</span>. Nothing else — no screen-recording entitlement.</td></tr>
             <tr><td><strong>Frameworks</strong></td><td>Apple's own + Zoom SDK + Sparkle</td><td>AppKit, SwiftUI, WebKit, AVFoundation, ApplicationServices, Carbon, CryptoKit, NaturalLanguage; <span class="mono">Speech</span> and <span class="mono">FoundationModels</span> weak-linked for Prompter. <strong>No cloud AI SDK; no CoreML or Vision. The only models are Apple's and run on the Mac.</strong></td></tr>
           </tbody>

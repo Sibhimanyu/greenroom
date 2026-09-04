@@ -32,15 +32,12 @@ final class PrompterController: ObservableObject {
         var youtubeToken: (() async throws -> String)?
         var rosterNames: () -> [String] = { [] }
         var log: (String) -> Void = { _ in }
-        /// Bench mode: every mention becomes a FAN of choices (the site
-        /// itself, a video, pictures, the encyclopedia entry, a definition)
-        /// instead of one best card, and far more of them are kept. The
-        /// shipped app leaves this off - a class needs restraint, a test
-        /// needs to see everything.
-        var optionsMode = false
         /// A ceiling on outbound lookups per minute, whatever the detector
         /// offers. A class stays quiet; the bench is allowed to be busier.
         var lookupsPerMinute = 6
+        /// Settings -> Prompter -> "Also suggest links for things I mention
+        /// without naming them". Off by default: see chooseDetector.
+        var useModelDetector = false
     }
 
     @Published private(set) var isListening = false
@@ -93,7 +90,7 @@ final class PrompterController: ObservableObject {
         stoppedForClass = false
         testMode = false
         await resolver.reset()
-        await resolver.configure(.init(sessionCap: configuration.optionsMode ? 500 : 30,
+        await resolver.configure(.init(sessionCap: 30,
                                        lookupsPerMinute: configuration.lookupsPerMinute,
                                        videoSearchEnabled: configuration.videoSearch,
                                        youtubeToken: configuration.youtubeToken))
@@ -111,8 +108,8 @@ final class PrompterController: ObservableObject {
 
         configuration.log("Prompter: listening to your microphone. Speech becomes text on this Mac; the text stays in memory.")
         configuration.log(detector is HeuristicDetector
-                          ? "Prompter: mentions found by word patterns (Apple Intelligence is off)."
-                          : "Prompter: mentions found by Apple Intelligence (on-device).")
+                          ? "Prompter: mentions found by word patterns."
+                          : "Prompter: mentions found by Apple Intelligence (on-device) \u{2014} more suggestions, more wrong ones.")
         Analytics.feature("prompter_listen", source: detectorCode)
         return true
     }
@@ -204,7 +201,7 @@ final class PrompterController: ObservableObject {
         self.configuration = configuration
         testMode = false
         await resolver.reset()
-        await resolver.configure(.init(sessionCap: configuration.optionsMode ? 500 : 30,
+        await resolver.configure(.init(sessionCap: 30,
                                        lookupsPerMinute: configuration.lookupsPerMinute,
                                        videoSearchEnabled: configuration.videoSearch,
                                        youtubeToken: configuration.youtubeToken))
@@ -225,7 +222,7 @@ final class PrompterController: ObservableObject {
         self.configuration = configuration
         testMode = false
         await resolver.reset()
-        await resolver.configure(.init(sessionCap: configuration.optionsMode ? 500 : 30,
+        await resolver.configure(.init(sessionCap: 30,
                                        lookupsPerMinute: configuration.lookupsPerMinute,
                                        videoSearchEnabled: configuration.videoSearch,
                                        youtubeToken: configuration.youtubeToken))
@@ -233,8 +230,8 @@ final class PrompterController: ObservableObject {
         let locale = await Transcriber.resolvedLocale(preferred: configuration.localeIdentifier)
         _ = await startPipeline(input: .buffers(buffers), locale: locale)
         configuration.log(detector is HeuristicDetector
-                          ? "Prompter: mentions found by word patterns (Apple Intelligence is off)."
-                          : "Prompter: mentions found by Apple Intelligence (on-device).")
+                          ? "Prompter: mentions found by word patterns."
+                          : "Prompter: mentions found by Apple Intelligence (on-device) \u{2014} more suggestions, more wrong ones.")
     }
 
     /// Detector only, on typed text. Debug builds.
@@ -253,7 +250,7 @@ final class PrompterController: ObservableObject {
     /// Resolver only, on a typed query. Debug builds; the query IS sent.
     func debugResolve(_ query: String, kind: Mention.Kind, configuration: Configuration) async {
         self.configuration = configuration
-        await resolver.configure(.init(sessionCap: configuration.optionsMode ? 500 : 30,
+        await resolver.configure(.init(sessionCap: 30,
                                        lookupsPerMinute: configuration.lookupsPerMinute,
                                        videoSearchEnabled: configuration.videoSearch,
                                        youtubeToken: configuration.youtubeToken))
@@ -276,8 +273,16 @@ final class PrompterController: ObservableObject {
 
     // MARK: Pipeline
 
+    /// Word patterns unless the teacher asked for the model.
+    ///
+    /// The model was measured against a recorded class and it is not ready to
+    /// run a lesson: 100% recall, but 264 lookups and roughly 254 wrong cards
+    /// in 45 minutes, against the word patterns' 16 lookups at 56% precision.
+    /// Every wrong card is an interruption on the reference display, so the
+    /// precise detector is the default and the model is a switch the teacher
+    /// turns on knowing what it costs.
     private func chooseDetector() {
-        if FoundationModelsDetector.isAvailable {
+        if configuration.useModelDetector, FoundationModelsDetector.isAvailable {
             let model = FoundationModelsDetector()
             model.prewarm()
             detector = model
@@ -436,16 +441,12 @@ final class PrompterController: ObservableObject {
                 Analytics.feature("prompter_roster_skip")
                 continue
             }
-            // Already have a card for it: nothing to send. In options mode a
-            // key carries several cards, so match on the key AND the fact that
-            // the fan was already built.
+            // Already have a card for it: nothing to send.
             if cards.contains(where: { $0.normalizedKey == mention.normalizedKey }) { continue }
 
             lookupsInFlight += 1
             isResolving = true
-            let resolution = configuration.optionsMode
-                ? await resolver.resolveOptions(mention)
-                : await resolver.resolve(mention)
+            let resolution = await resolver.resolve(mention)
             lookupsInFlight -= 1
             isResolving = lookupsInFlight > 0
 
@@ -460,38 +461,18 @@ final class PrompterController: ObservableObject {
                 configuration.log("Prompter: video card for \u{201C}\(mention.query)\u{201D} is a search link \u{2014} nothing sent.")
             }
             for note in resolution.notes { configuration.log("Prompter: \(note).") }
-            // One card per mention in a class; every option in bench mode.
-            let offered = configuration.optionsMode ? resolution.cards : Array(resolution.cards.prefix(1))
-            if configuration.optionsMode, !offered.isEmpty {
-                configuration.log("Prompter: \(offered.count) option\(offered.count == 1 ? "" : "s") for \u{201C}\(mention.query)\u{201D} \u{2014} \(offered.map(\.source.label).joined(separator: ", ")).")
-            }
-            for card in offered {
+            for card in resolution.cards.prefix(1) {
                 insert(card)
                 Analytics.feature("prompter_card", source: card.source.analyticsCode)
-            }
-            // Second wave: the product's own site takes a second or two to
-            // answer, so it arrives after the quick cards rather than holding
-            // all of them up.
-            if configuration.optionsMode {
-                Task { [weak self] in
-                    guard let self, let site = await self.resolver.officialSiteCard(for: mention) else { return }
-                    self.insert(site)
-                    Analytics.feature("prompter_card", source: site.source.analyticsCode)
-                }
             }
         }
     }
 
     private func insert(_ card: PrompterCard) {
         guard !dismissedKeys.contains(card.normalizedKey) else { return }
-        // A class keeps one card per thing; the bench keeps every option, so
-        // the same key legitimately appears several times there.
-        if !configuration.optionsMode {
-            cards.removeAll { $0.normalizedKey == card.normalizedKey }
-        }
+        cards.removeAll { $0.normalizedKey == card.normalizedKey }
         cards.insert(card, at: 0)
-        let limit = configuration.optionsMode ? 200 : keepCards
-        if cards.count > limit { cards.removeLast(cards.count - limit) }
+        if cards.count > keepCards { cards.removeLast(cards.count - keepCards) }
         unseenCount += 1
     }
 }

@@ -23,7 +23,13 @@
 //  they call it"), words ("the word pabulum") and quotations, and reaches for
 //  the browser six to forty-five seconds later. So every rule below starts
 //  from a spoken tell, and nothing is detected from capitalisation alone.
-//  The bench (~/PrompterBench, score.sh) keeps the score honest.
+//
+//  Scored against that class: 16 lookups, 90% recall, 56% precision. The
+//  on-device model (FoundationModelsDetector, opt-in) reaches 100% recall on
+//  the same class but 264 lookups at 3% precision, which is why the patterns
+//  are what a lesson runs on. The transcript, truth file and detection dumps
+//  behind those numbers are kept OUTSIDE this repo (~/PrompterBench-evidence)
+//  because they are a real class with children's names in them.
 //
 import Foundation
 

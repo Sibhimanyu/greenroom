@@ -110,17 +110,17 @@ struct PrompterSetupRows: View {
                 Task { await assets.refresh(preferredLocale: coordinator.prompterLocaleIdentifier) }
             }
 
-            LabeledContent {
-                if FoundationModelsDetector.isAvailable {
-                    Text("Apple Intelligence")
-                } else {
-                    Text("Word patterns").foregroundStyle(.secondary)
-                }
-            } label: {
-                SettingLabel(title: "Mentions found by",
+            Toggle(isOn: $coordinator.prompterUseModel) {
+                SettingLabel(title: "Also suggest links for things I mention without naming them",
                              subtitle: FoundationModelsDetector.isAvailable
-                                 ? "Apple\u{2019}s language model, on this Mac."
-                                 : "\((FoundationModelsDetector.unavailableReason ?? "Apple Intelligence is unavailable").prefix(1).uppercased() + (FoundationModelsDetector.unavailableReason ?? "Apple Intelligence is unavailable").dropFirst()). Fewer cards, same rules.")
+                                 ? "Apple\u{2019}s language model reads each sentence. Finds much more, and interrupts much more."
+                                 : "Needs Apple Intelligence, which is off \u{2014} \(FoundationModelsDetector.unavailableReason ?? "unavailable").")
+            }
+            .disabled(!FoundationModelsDetector.isAvailable || inClass)
+
+            LabeledContent("Mentions found by") {
+                Text(coordinator.prompterUseModel && FoundationModelsDetector.isAvailable
+                     ? "Apple Intelligence" : "Word patterns")
             }
 
             Toggle(isOn: $coordinator.prompterVideoSearch) {

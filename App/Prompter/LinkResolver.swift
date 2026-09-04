@@ -143,7 +143,9 @@ actor LinkResolver {
         switch mention.kind {
         case .book: resolution = await resolveBook(mention)
         case .video: resolution = await resolveVideo(mention)
-        case .topic, .person, .place: resolution = await resolveWikipedia(mention)
+        case .topic, .person, .place:
+            resolution = await encyclopediaEntry(searching: mention.searchQuery, fallingBackTo: mention.query,
+                                                 confidence: mention.confidence)
         case .thing: resolution = await resolveThing(mention)
         case .quote: resolution = await resolveQuote(mention)
         case .word: resolution = resolveWord(mention)
@@ -163,7 +165,7 @@ actor LinkResolver {
 
         if allowed(.googleBooks, host: "googleapis.com") {
             hosts.append("Google Books")
-            switch await googleBooks(mention.query) {
+            switch await googleBooks(mention.searchQuery) {
             case .success(let cards):
                 resolution.cards = cards.map { card in
                     var copy = card
@@ -177,7 +179,7 @@ actor LinkResolver {
         }
         if resolution.cards.isEmpty, allowed(.openLibrary, host: "openlibrary.org") {
             hosts.append("Open Library")
-            switch await openLibrary(mention.query) {
+            switch await openLibrary(mention.searchQuery) {
             case .success(let cards):
                 resolution.cards = cards.map { card in
                     var copy = card
@@ -313,87 +315,16 @@ actor LinkResolver {
         return resolution
     }
 
-    // MARK: Options - one thing, several ways to show it
-
-    /// Every angle on one phrase at once, so the teacher picks what the class
-    /// sees: the product's own site, a video, pictures, the encyclopedia
-    /// entry, a definition, the book.
-    ///
-    /// The shipped path (`resolve`) still returns the single best card for a
-    /// kind. This is the wider, noisier view - built for the bench, where
-    /// seeing every option is the point.
-    func resolveOptions(_ mention: Mention) async -> Resolution {
-        var resolution = Resolution()
-        let now = Date()
-        recentLookups.removeAll { now.timeIntervalSince($0) > 60 }
-        guard recentLookups.count < configuration.lookupsPerMinute else {
-            resolution.notes = ["holding back \u{201C}\(mention.query)\u{201D} \u{2014} \(configuration.lookupsPerMinute) lookups a minute is the ceiling"]
-            resolution.skipped = true
-            return resolution
-        }
-        recentLookups.append(now)
-        // The richer phrase for searching; the bare name for the domain guess
-        // and for the card's label.
-        let query = mention.searchQuery
-        let name = mention.query
-        guard !query.isEmpty else { return resolution }
-
-        // Cheap link cards first: they cost nothing and send nothing until
-        // they are opened, so they are always offered.
-        var youtube = URLComponents(string: "https://www.youtube.com/results")!
-        youtube.queryItems = [URLQueryItem(name: "search_query", value: query)]
-        resolution.cards.append(PrompterCard(kind: mention.kind, query: query,
-                                             title: "Video: \u{201C}\(query)\u{201D}",
-                                             subtitle: "YouTube search \u{00B7} nothing sent until you open it",
-                                             source: .youtube, url: youtube.url!))
-
-        var images = URLComponents(string: "https://www.bing.com/images/search")!
-        images.queryItems = [URLQueryItem(name: "q", value: query)]
-        resolution.cards.append(PrompterCard(kind: mention.kind, query: query,
-                                             title: "Pictures of \u{201C}\(query)\u{201D}",
-                                             subtitle: "Image search \u{00B7} nothing sent until you open it",
-                                             source: .images, url: images.url!))
-
-        // Then the ones worth a request, in parallel. The product's own site
-        // is NOT here: it is the slowest leg by far (a real homepage, TLS and
-        // all), and making four fast cards wait on it was most of the delay.
-        // `officialSiteCard` is a second wave the caller adds when it lands.
-        async let encyclopedia = encyclopediaEntry(searching: query, fallingBackTo: name, confidence: mention.confidence)
-        async let books = mention.kind == .book
-            ? resolveBook(Mention(kind: .book, query: query, confidence: mention.confidence))
-            : Resolution()
-
-        let wiki = await encyclopedia
-        resolution.cards.append(contentsOf: wiki.cards)
-        resolution.sentTo += wiki.sentTo
-        let book = await books
-        resolution.cards.append(contentsOf: book.cards)
-        resolution.sentTo += book.sentTo
-
-        // The Mac's dictionary, for anything that could be a plain word.
-        if query.split(separator: " ").count == 1 {
-            let word = resolveWord(Mention(kind: .word, query: query, confidence: mention.confidence))
-            resolution.cards.append(contentsOf: word.cards)
-        }
-        // One card per destination: a source can return the same edition twice.
-        var seen: Set<String> = []
-        resolution.cards = resolution.cards.filter { seen.insert($0.url.absoluteString).inserted }
-        return resolution
-    }
-
     /// The encyclopedia entry, richer query first and the bare name second.
     ///
     /// Wikipedia matches on TITLES, so the extra word cuts both ways, measured
     /// on real cases: "Tahoma" alone lands on a high school in Washington and
     /// "Tahoma font" lands on the typeface, but "E Ink technology" matches no
-    /// title at all where "E Ink" is exactly right. Trying the richer phrase
-    /// first and falling back keeps both wins, and the second request only
-    /// happens when the first found nothing.
+    /// title at all where "E Ink" is exactly right. Both run at once - the
+    /// second is a cheap request and running it concurrently means a missing
+    /// rich match costs no extra wait.
     private func encyclopediaEntry(searching query: String, fallingBackTo name: String,
                                    confidence: Double) async -> Resolution {
-        // Both at once, not one after the other. Wikipedia answers in about
-        // 200 ms, so running the fallback concurrently costs one extra cheap
-        // request and saves the wait whenever the richer phrase misses.
         guard Mention.normalize(query) != Mention.normalize(name) else {
             return await resolveWikipedia(Mention(kind: .topic, query: query, confidence: confidence))
         }
@@ -404,12 +335,6 @@ actor LinkResolver {
         guard rich.cards.isEmpty else { return rich }
         bare.notes = rich.notes + bare.notes
         return bare
-    }
-
-    /// The second wave: the product's own homepage, fetched after the quick
-    /// cards are already on screen. Nil when the name has no site.
-    func officialSiteCard(for mention: Mention) async -> PrompterCard? {
-        await officialSite(for: mention.query)
     }
 
     /// A product's own homepage, guessed from its name and then checked.
@@ -488,6 +413,17 @@ actor LinkResolver {
     /// kindle"), and a search link sends nothing until it is opened.
     private func resolveThing(_ mention: Mention) async -> Resolution {
         var resolution = Resolution()
+        // The site itself and the encyclopedia entry are fetched together,
+        // not one after the other: the site check is the slow leg (a real
+        // homepage) and waiting for it before even starting Wikipedia was
+        // most of the delay. The site wins when it exists - for a named
+        // product it is what the teacher actually opens (haikudeck.com, in
+        // the recording).
+        async let siteCard = officialSite(for: mention.query)
+        if let site = await siteCard {
+            resolution.cards.append(site)
+            return resolution
+        }
         if allowed(.wikipedia, host: "wikipedia.org") {
             resolution.sentTo = ["Wikipedia"]
             // Title search, then a strict check: every word of the page's title

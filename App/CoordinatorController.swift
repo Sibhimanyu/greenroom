@@ -757,6 +757,15 @@ final class CoordinatorController: ObservableObject {
             Analytics.setting("prompter_video_search", on: prompterVideoSearch)
         }
     }
+    /// Whether Apple's on-device model finds mentions instead of the word
+    /// patterns. Off by default: it finds more and interrupts more - measured
+    /// at 264 lookups a class against the patterns' 16.
+    @Published var prompterUseModel: Bool {
+        didSet {
+            defaults.set(prompterUseModel, forKey: "prompterUseModel")
+            Analytics.setting("prompter_model_detector", on: prompterUseModel)
+        }
+    }
     /// Transcription language, as a locale identifier. Empty = the system's.
     @Published var prompterLocaleIdentifier: String {
         didSet { defaults.set(prompterLocaleIdentifier, forKey: "prompterLocaleIdentifier") }
@@ -938,6 +947,7 @@ final class CoordinatorController: ObservableObject {
         browserClosesOnStop = defaults.bool(forKey: "browserClosesOnStop")
         prompterEnabled = defaults.bool(forKey: "prompterEnabled")
         prompterVideoSearch = (defaults.object(forKey: "prompterVideoSearch") as? Bool) ?? true
+        prompterUseModel = defaults.bool(forKey: "prompterUseModel")
         prompterLocaleIdentifier = defaults.string(forKey: "prompterLocaleIdentifier") ?? ""
         youtubeUploadMode = YouTubeUploadMode(rawValue: defaults.string(forKey: "youtubeUploadMode") ?? "") ?? .off
         youtubePrivacy = defaults.string(forKey: "youtubePrivacy") ?? "unlisted"
@@ -3485,6 +3495,7 @@ struct SettingsTransfer: Codable {
     var browserClosesOnStop: Bool?
     var prompterEnabled: Bool?
     var prompterVideoSearch: Bool?
+    var prompterUseModel: Bool?
     var prompterLocaleIdentifier: String?
     var youtubeUploadMode: String?
     var youtubePrivacy: String?
@@ -3525,6 +3536,7 @@ extension CoordinatorController {
             browserClosesOnStop: browserClosesOnStop,
             prompterEnabled: prompterEnabled,
             prompterVideoSearch: prompterVideoSearch,
+            prompterUseModel: prompterUseModel,
             prompterLocaleIdentifier: prompterLocaleIdentifier,
             youtubeUploadMode: youtubeUploadMode.rawValue,
             youtubePrivacy: youtubePrivacy,
@@ -3571,6 +3583,7 @@ extension CoordinatorController {
         if let value = transfer.browserClosesOnStop { browserClosesOnStop = value }
         if let value = transfer.prompterEnabled { prompterEnabled = value }
         if let value = transfer.prompterVideoSearch { prompterVideoSearch = value }
+        if let value = transfer.prompterUseModel { prompterUseModel = value }
         if let value = transfer.prompterLocaleIdentifier { prompterLocaleIdentifier = value }
         // The OAuth client travels (a colleague shares the same Google Cloud
         // app); the connected account never does - each Mac connects its own.

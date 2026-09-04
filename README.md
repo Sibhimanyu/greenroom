@@ -240,16 +240,29 @@ there). **Listen during classes and suggest links** starts, once the
 meeting is live, an `AVAudioEngine` tap on the default input device
 feeding Apple's `SpeechAnalyzer`/`SpeechTranscriber` (on-device; the
 model asset is downloaded once from Apple through the system asset
-service — from this tab, never during a class). Finalised sentences go
-to a mention detector: Apple's on-device `FoundationModels` language
-model when Apple Intelligence is on, otherwise cue-phrase regexes plus
-`NLTagger`. Mentions matching anyone in the meeting (roster, waiting
-room, you) are dropped and logged as skipped. The surviving short phrase
-is looked up — Google Books then Open Library for books, Wikipedia's
-title search for topics/people/places, YouTube Data API `search.list`
-for videos only when a Google account is connected and **Video links may
-use YouTube search** is on (otherwise a `youtube.com/results` link that
-sends nothing until opened) — and becomes a card with a thumbnail. That
+service — from this tab, never during a class). Finalised sentences go to a mention detector. **Cue-phrase patterns by
+default** ("it's called X", "the word X", a quotation): measured against a
+recorded class at 16 lookups, 90% recall, 56% precision. Apple's on-device
+`FoundationModels` model is available behind *Also suggest links for things
+I mention without naming them* — it catches everything, including things
+said with no verbal tell, but the same class produced 264 lookups at 3%
+precision, so it is off by default.
+
+Before any request: the phrase must have actually been spoken, a lone word
+that is in the Mac's dictionary is dropped unless it was said as a name
+(so `Tahoma`, `monospace` and `BookFusion` pass while `roads`, `explain`
+and `scarves` do not), and no more than six lookups leave per minute. Mentions matching anyone in the meeting (roster, waiting
+room, you) are dropped and logged as skipped. The surviving phrase is looked up, using a fuller search query the model
+builds from the surrounding sentence (`monospace` → `monospace font`,
+which is the difference between finding nothing and finding the right
+page). Wikipedia's title search takes the rich phrase and the bare name at
+once; Google Books then Open Library for books; YouTube Data API
+`search.list` for videos only with a connected account and **Video links
+may use YouTube search** on (otherwise a `youtube.com/results` link that
+sends nothing until opened). For a **named product** Prompter also guesses
+the domain from the name (`Haiku Deck` → haikudeck.com), fetches it and
+reads only as far as the `<title>` to confirm the site exists and matches
+— a request to that product's own homepage, never a search engine. That
 phrase is the only thing derived from speech that leaves the Mac, and
 every one is written to the status log and
 `~/Library/Logs/Greenroom-session.log` with the host it went to.

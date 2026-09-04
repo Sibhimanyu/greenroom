@@ -7,6 +7,13 @@
 //  unlisted (or private). Off by default; nothing here runs until Settings
 //  → YouTube says so and a Google account has been connected.
 //
+//  Seamless means: the question is a floating card that blocks nothing and
+//  goes away on its own; the upload runs in the background with its
+//  progress in the menu bar, not in a toast the teacher would have to
+//  watch; the result arrives as a notification, a toast, and the link on
+//  the clipboard. A declined or failed upload can be redone from the
+//  Recordings window.
+//
 //  This is the one place Greenroom sends class content off the Mac, which
 //  is why it is a mode with "off" first, why the ask is the recommended
 //  setting, and why the safety page carries its own card for it.
@@ -40,29 +47,44 @@ extension CoordinatorController {
             return
         }
         let file = URL(fileURLWithPath: path)
-        Task { await offerYouTubeUpload(file) }
+        switch youtubeUploadMode {
+        case .ask:
+            askToUpload(file)
+        case .automatic:
+            Task { await uploadToYouTube(file, title: youtubeTitle(for: file)) }
+        case .off:
+            break
+        }
     }
 
-    private func offerYouTubeUpload(_ file: URL) async {
+    /// The Recordings window's button: an explicit act, so no mode check -
+    /// only a connected account is needed.
+    func uploadRecordingToYouTube(_ file: URL) {
+        guard youtubeConnected else {
+            log("Connect a Google account in Settings \u{2192} YouTube first.")
+            ToastController.show("Not connected", detail: "Settings \u{2192} YouTube \u{2192} Connect Google account.", kind: .failure)
+            return
+        }
+        Task { await uploadToYouTube(file, title: youtubeTitle(for: file)) }
+    }
+
+    /// A floating card, not a modal: the class teardown keeps running behind
+    /// it, the main window stays where it is, and two minutes of silence
+    /// count as "Not now".
+    private func askToUpload(_ file: URL) {
         let title = youtubeTitle(for: file)
         let size = (try? FileManager.default.attributesOfItem(atPath: file.path))?[.size] as? Int64 ?? 0
         let sizeLabel = ByteCountFormatter.string(fromByteCount: size, countStyle: .file)
-
-        if youtubeUploadMode == .ask {
-            // The class just ended and Greenroom is behind the main app; the
-            // question has to come forward or it is never seen.
-            NSApp.activate(ignoringOtherApps: true)
-            let alert = NSAlert()
-            alert.messageText = "Upload this recording to YouTube?"
-            alert.informativeText = "\u{201C}\(title)\u{201D} \u{2014} \(sizeLabel), \(youtubePrivacy) on the connected channel. The file stays in Documents/Greenroom either way."
-            alert.addButton(withTitle: "Upload")
-            alert.addButton(withTitle: "Not now")
-            guard alert.runModal() == .alertFirstButtonReturn else {
-                log("Not uploaded to YouTube \u{2014} the recording is in Documents/Greenroom.")
-                return
-            }
-        }
-        await uploadToYouTube(file, title: title)
+        UploadPromptCard.show(
+            title: "Upload this recording to YouTube?",
+            detail: "\u{201C}\(title)\u{201D} \u{00B7} \(sizeLabel) \u{00B7} \(youtubePrivacy). The file stays in Documents/Greenroom either way; you can also upload it later from Recordings.",
+            onUpload: { [weak self] in
+                guard let self else { return }
+                Task { await self.uploadToYouTube(file, title: title) }
+            },
+            onDismiss: { [weak self] in
+                self?.log("Not uploaded to YouTube \u{2014} the recording is in Documents/Greenroom, and Recordings has an Upload button.")
+            })
     }
 
     /// "Morning Reading · 4 Sep 2026", or "Class · 4 Sep 2026" with no
@@ -74,20 +96,33 @@ extension CoordinatorController {
         return "\(name.isEmpty ? "Class" : name) \u{00B7} \(modified.formatted(date: .abbreviated, time: .omitted))"
     }
 
+    /// Fields as Google must see them: a pasted secret often arrives with a
+    /// trailing newline, and Google answers that with "invalid secret".
+    private var trimmedClientID: String { youtubeClientID.trimmingCharacters(in: .whitespacesAndNewlines) }
+    private var trimmedClientSecret: String { youtubeClientSecret.trimmingCharacters(in: .whitespacesAndNewlines) }
+
     func uploadToYouTube(_ file: URL, title: String) async {
         guard !isUploadingToYouTube else {
-            log("Another upload is still running \u{2014} this recording stays in Documents/Greenroom.")
+            log("Another upload is still running \u{2014} this recording stays in Documents/Greenroom; upload it from Recordings afterwards.")
+            ToastController.show("An upload is already running", detail: "Try this one from Recordings when it finishes.", kind: .failure)
             return
         }
         isUploadingToYouTube = true
-        defer { isUploadingToYouTube = false }
+        youtubeUploadProgress = 0
+        defer {
+            isUploadingToYouTube = false
+            youtubeUploadProgress = nil
+        }
 
         Analytics.feature("youtube_upload", source: youtubeUploadMode.rawValue)
-        log("Uploading to YouTube (\(youtubePrivacy)): \(title)\u{2026}")
-        ToastController.show("Uploading to YouTube\u{2026}", detail: title, kind: .working, dismissAfter: nil)
+        log("Uploading to YouTube (\(youtubePrivacy)): \(title)\u{2026} Progress is in the menu bar; you will be told when it is done.")
+        // Three seconds, then gone: the teacher is told it started and is not
+        // asked to watch it.
+        ToastController.show("Uploading to YouTube in the background", detail: "\(title) \u{2014} progress in the menu bar, a notification when it is done.", kind: .working, dismissAfter: 4)
 
         let clientID = trimmedClientID
         let clientSecret = trimmedClientSecret
+        var lastLoggedQuarter = 0
         do {
             let result = try await YouTubeUploader.upload(
                 file: file,
@@ -96,10 +131,15 @@ extension CoordinatorController {
                 privacy: youtubePrivacy,
                 token: { try await YouTubeAuth.accessToken(clientID: clientID, clientSecret: clientSecret) },
                 progress: { fraction in
-                    let percent = Int((fraction * 100).rounded())
-                    Task { @MainActor in
-                        ToastController.show("Uploading to YouTube\u{2026} \(percent)%", detail: title,
-                                             kind: .working, dismissAfter: nil)
+                    Task { @MainActor [weak self] in
+                        guard let self else { return }
+                        self.youtubeUploadProgress = fraction
+                        // The status log gets the quarters, not every chunk.
+                        let quarter = Int(fraction * 4)
+                        if quarter > lastLoggedQuarter, quarter < 4 {
+                            lastLoggedQuarter = quarter
+                            self.log("YouTube upload \(quarter * 25)%\u{2026}")
+                        }
                     }
                 })
             NSPasteboard.general.clearContents()
@@ -109,17 +149,17 @@ extension CoordinatorController {
             Notifier.post(title: "Uploaded to YouTube", body: "\(title) \u{2014} the \(youtubePrivacy) link is on your clipboard.")
         } catch {
             Analytics.failure("youtube_upload")
-            log("YouTube upload failed: \(error.localizedDescription) \u{2014} the recording is still in Documents/Greenroom.")
-            ToastController.show("Upload failed", detail: error.localizedDescription, kind: .failure, dismissAfter: 8)
+            // Google's error prose is long; the log has all of it, the toast
+            // says where to look and how to retry.
+            log("YouTube upload failed: \(error.localizedDescription) \u{2014} the recording is still in Documents/Greenroom; retry from Recordings.")
+            ToastController.show("YouTube upload failed",
+                                 detail: "Details in the status log. The recording is saved; retry from Recordings.",
+                                 kind: .failure, dismissAfter: 8)
+            Notifier.post(title: "YouTube upload failed", body: "\(title) is still in Documents/Greenroom. Details in Greenroom\u{2019}s status log.")
         }
     }
 
     // MARK: Connect / disconnect (Settings → YouTube)
-
-    /// Fields as Google must see them: a pasted secret often arrives with a
-    /// trailing newline, and Google answers that with "invalid secret".
-    private var trimmedClientID: String { youtubeClientID.trimmingCharacters(in: .whitespacesAndNewlines) }
-    private var trimmedClientSecret: String { youtubeClientSecret.trimmingCharacters(in: .whitespacesAndNewlines) }
 
     func connectYouTube() async {
         youtubeStatus = "Waiting for Google in your browser\u{2026}"

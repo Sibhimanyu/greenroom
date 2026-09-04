@@ -764,6 +764,8 @@ final class CoordinatorController: ObservableObject {
     }
     @Published var youtubeConnected = YouTubeAuth.isConnected
     @Published var isUploadingToYouTube = false
+    /// 0...1 while an upload runs, for the menu bar; nil otherwise.
+    @Published var youtubeUploadProgress: Double?
     /// The last connect / disconnect outcome, shown under the button.
     @Published var youtubeStatus = ""
     /// People view: on Start, the built-in client's dual-screen gallery
@@ -2450,16 +2452,27 @@ final class CoordinatorController: ObservableObject {
     ///
     /// Returns true when quitting should proceed.
     func confirmQuitWhileLive() -> Bool {
-        guard hasLiveSession else { return true }
+        guard hasLiveSession || isUploadingToYouTube else { return true }
         // The quit may have been triggered from the menu bar while another app
         // held focus, so the alert has to come forward with the app.
         NSApp.activate(ignoringOtherApps: true)
 
         let alert = NSAlert()
-        alert.messageText = "Quit Greenroom and end the class?"
-        alert.informativeText = isRecording
-            ? "The recording is finished and saved first. Then the Zoom meeting ends for everyone when you're hosting, and your students are dropped from the call."
-            : "The Zoom meeting ends for everyone when you're hosting, and your students are dropped from the call."
+        if !hasLiveSession {
+            // Only an upload is in flight: quitting abandons it (the recording
+            // itself is safe on disk and can be uploaded again from Recordings).
+            let percent = Int(((youtubeUploadProgress ?? 0) * 100).rounded())
+            alert.messageText = "Quit Greenroom and cancel the YouTube upload?"
+            alert.informativeText = "The upload is \(percent)% done. Quitting cancels it; the recording stays in Documents/Greenroom and can be uploaded again from Recordings."
+        } else {
+            alert.messageText = "Quit Greenroom and end the class?"
+            alert.informativeText = isRecording
+                ? "The recording is finished and saved first. Then the Zoom meeting ends for everyone when you're hosting, and your students are dropped from the call."
+                : "The Zoom meeting ends for everyone when you're hosting, and your students are dropped from the call."
+            if isUploadingToYouTube {
+                alert.informativeText += " A YouTube upload in progress is cancelled too."
+            }
+        }
         alert.alertStyle = .warning
         alert.addButton(withTitle: "Quit Greenroom")
         alert.addButton(withTitle: "Cancel")

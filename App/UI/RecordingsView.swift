@@ -81,6 +81,9 @@ struct RecordingsView: View {
     @State private var trashError: String?
     @State private var exporting: (done: Int, total: Int)?
     @State private var confirmingDelete: Recording?
+    /// Presented as a sheet from ContentView, so the environment object
+    /// arrives with it; used only for the YouTube upload button.
+    @EnvironmentObject private var coordinator: CoordinatorController
 
     private var allRecordings: [Recording] {
         sessions.flatMap { $0.recordings + $0.clipFiles }
@@ -294,6 +297,19 @@ struct RecordingsView: View {
                 } else if !recording.clips.isEmpty {
                     Button("Export all clips") { exportAll(for: recording) }
                         .controlSize(.small)
+                }
+                // The retry path for a declined or failed upload - and the
+                // manual one for teachers who keep "After a recording" off.
+                if coordinator.youtubeConnected {
+                    Button {
+                        coordinator.uploadRecordingToYouTube(recording.url)
+                    } label: {
+                        Label(coordinator.isUploadingToYouTube ? "Uploading\u{2026}" : "Upload to YouTube",
+                              systemImage: "play.rectangle")
+                    }
+                    .controlSize(.small)
+                    .disabled(coordinator.isUploadingToYouTube)
+                    .help("Upload this recording to the connected channel (\(coordinator.youtubePrivacy)).")
                 }
                 Button(role: .destructive) {
                     confirmingDelete = recording

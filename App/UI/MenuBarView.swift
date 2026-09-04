@@ -46,6 +46,12 @@ struct MenuBarView: View {
         .keyboardShortcut("r", modifiers: [.option, .command])
         .disabled(!coordinator.virtualCamActive && !coordinator.isRecording)
 
+        // The upload runs in the background; this is where its progress
+        // lives, rather than a toast the teacher would have to watch.
+        if let progress = coordinator.youtubeUploadProgress {
+            Text("Uploading to YouTube \u{00B7} \(Int((progress * 100).rounded()))%")
+        }
+
         Divider()
 
         Button("Snap Windows Back") {

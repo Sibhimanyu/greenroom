@@ -25,8 +25,8 @@ enum UploadPromptCard {
     private static var onDismiss: (() -> Void)?
     private static var timeoutTask: Task<Void, Never>?
 
-    private static let width: CGFloat = 380
-    private static let padding: CGFloat = 16
+    private static let width: CGFloat = 440
+    private static let padding: CGFloat = 18
 
     /// Shows the card. `onUpload` runs on Upload; `onDismiss` on Not now or
     /// after `timeout` seconds with no answer. Showing again replaces the
@@ -101,55 +101,61 @@ enum UploadPromptCard {
         icon.contentTintColor = NSColor(named: "AccentColor") ?? .systemGreen
 
         let titleLabel = NSTextField(labelWithString: title)
-        titleLabel.font = .systemFont(ofSize: 13, weight: .semibold)
+        titleLabel.font = .systemFont(ofSize: 14, weight: .semibold)
         titleLabel.textColor = .labelColor
         titleLabel.lineBreakMode = .byWordWrapping
         titleLabel.maximumNumberOfLines = 2
 
         let detailLabel = NSTextField(labelWithString: detail)
-        detailLabel.font = .systemFont(ofSize: 12)
+        detailLabel.font = .systemFont(ofSize: 12.5)
         detailLabel.textColor = .secondaryLabelColor
         detailLabel.lineBreakMode = .byWordWrapping
-        detailLabel.maximumNumberOfLines = 3
+        detailLabel.maximumNumberOfLines = 4
 
         let uploadButton = NSButton(title: "Upload", target: Actions.shared, action: #selector(Actions.upload(_:)))
         uploadButton.bezelStyle = .rounded
-        uploadButton.controlSize = .small
+        uploadButton.controlSize = .regular
         uploadButton.keyEquivalent = "\r"
         let laterButton = NSButton(title: "Not now", target: Actions.shared, action: #selector(Actions.notNow(_:)))
         laterButton.bezelStyle = .rounded
-        laterButton.controlSize = .small
+        laterButton.controlSize = .regular
+        laterButton.keyEquivalent = "\u{1b}"
 
         [icon, titleLabel, detailLabel, uploadButton, laterButton].forEach(backing.addSubview)
 
-        // Layout by hand, like the toast: measured text, buttons on the
-        // right of a bottom row.
-        let textX = padding * 2 + 22
+        // Layout by hand, like the toast: icon, then text; buttons on their
+        // own row at the right, the way an alert lays them out.
+        let iconSize: CGFloat = 26
+        let textX = padding + iconSize + 14
         let textWidth = width - textX - padding
         titleLabel.preferredMaxLayoutWidth = textWidth
         detailLabel.preferredMaxLayoutWidth = textWidth
         let titleHeight = titleLabel.sizeThatFits(NSSize(width: textWidth, height: 200)).height
         let detailHeight = detailLabel.sizeThatFits(NSSize(width: textWidth, height: 200)).height
-        let buttonsHeight: CGFloat = 24
-        let height = padding * 2 + titleHeight + 4 + detailHeight + 12 + buttonsHeight
+        let buttonsHeight: CGFloat = 28
+        let height = padding + titleHeight + 6 + detailHeight + 16 + buttonsHeight + padding
 
         created.setContentSize(NSSize(width: width, height: height))
         backing.frame = NSRect(x: 0, y: 0, width: width, height: height)
-        icon.frame = NSRect(x: padding, y: height - padding - 20, width: 22, height: 20)
+        icon.frame = NSRect(x: padding, y: height - padding - iconSize + 2, width: iconSize, height: iconSize)
         titleLabel.frame = NSRect(x: textX, y: height - padding - titleHeight, width: textWidth, height: titleHeight)
-        detailLabel.frame = NSRect(x: textX, y: height - padding - titleHeight - 4 - detailHeight,
+        detailLabel.frame = NSRect(x: textX, y: height - padding - titleHeight - 6 - detailHeight,
                                    width: textWidth, height: detailHeight)
         uploadButton.sizeToFit()
         laterButton.sizeToFit()
-        let uploadWidth = max(72, uploadButton.frame.width)
-        let laterWidth = max(72, laterButton.frame.width)
+        let uploadWidth = max(90, uploadButton.frame.width + 16)
+        let laterWidth = max(90, laterButton.frame.width + 16)
         uploadButton.frame = NSRect(x: width - padding - uploadWidth, y: padding, width: uploadWidth, height: buttonsHeight)
-        laterButton.frame = NSRect(x: width - padding - uploadWidth - 8 - laterWidth, y: padding, width: laterWidth, height: buttonsHeight)
+        laterButton.frame = NSRect(x: width - padding - uploadWidth - 10 - laterWidth, y: padding, width: laterWidth, height: buttonsHeight)
 
-        let area = screen.visibleFrame
-        // Same shelf as the toast, a little higher so the two never overlap.
+        // Where an alert would be: centred, a little above the middle - this
+        // is a question, not a readout, so it does not share the toast's low
+        // shelf. The workspace's main display, not whichever screen has the
+        // key window (Greenroom is behind the main app at this point).
+        let target = DisplayResolver.mainDisplayScreen() ?? screen
+        let area = target.visibleFrame
         created.setFrameOrigin(NSPoint(x: (area.midX - width / 2).rounded(),
-                                       y: (area.minY + max(200, area.height * 0.24)).rounded()))
+                                       y: (area.midY - height / 2 + area.height * 0.08).rounded()))
         return created
     }
 }

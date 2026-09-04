@@ -412,6 +412,7 @@ final class CoordinatorController: ObservableObject {
         isRestoringSecret = true
         sdkClientSecret = SecretStore.get("zoomSDKClientSecret") ?? ""
         s2sClientSecret = SecretStore.get("zoomS2SClientSecret") ?? ""
+        youtubeClientSecret = SecretStore.get("youtubeClientSecret") ?? ""
         isRestoringSecret = false
     }
 
@@ -736,6 +737,35 @@ final class CoordinatorController: ObservableObject {
             Analytics.setting("browser_close_on_stop", on: browserClosesOnStop)
         }
     }
+
+    // MARK: YouTube upload - see CoordinatorController+YouTube.swift. Off by
+    // default; the one place class content can leave the Mac.
+    @Published var youtubeUploadMode: YouTubeUploadMode {
+        didSet {
+            defaults.set(youtubeUploadMode.rawValue, forKey: "youtubeUploadMode")
+            Analytics.setting("youtube_upload", youtubeUploadMode.rawValue)
+        }
+    }
+    /// "unlisted" (anyone with the link) or "private" (the channel's account only).
+    @Published var youtubePrivacy: String {
+        didSet {
+            defaults.set(youtubePrivacy, forKey: "youtubePrivacy")
+            Analytics.setting("youtube_privacy", youtubePrivacy)
+        }
+    }
+    @Published var youtubeClientID: String {
+        didSet { defaults.set(youtubeClientID, forKey: "youtubeClientID") }
+    }
+    @Published var youtubeClientSecret: String {
+        didSet {
+            guard !isRestoringSecret else { return }
+            SecretStore.set(youtubeClientSecret, forKey: "youtubeClientSecret")
+        }
+    }
+    @Published var youtubeConnected = YouTubeAuth.isConnected
+    @Published var isUploadingToYouTube = false
+    /// The last connect / disconnect outcome, shown under the button.
+    @Published var youtubeStatus = ""
     /// People view: on Start, the built-in client's dual-screen gallery
     /// window (every participant) goes full-screen onto a chosen display
     /// - your reference monitor, not the class mirror. No-op with a
@@ -866,6 +896,10 @@ final class CoordinatorController: ObservableObject {
         browserSearchSuggestions = searchSuggestions
         BrowserWindowController.searchSuggestions = searchSuggestions
         browserClosesOnStop = defaults.bool(forKey: "browserClosesOnStop")
+        youtubeUploadMode = YouTubeUploadMode(rawValue: defaults.string(forKey: "youtubeUploadMode") ?? "") ?? .off
+        youtubePrivacy = defaults.string(forKey: "youtubePrivacy") ?? "unlisted"
+        youtubeClientID = defaults.string(forKey: "youtubeClientID") ?? ""
+        youtubeClientSecret = "" // loaded lazily via loadSecretsIfNeeded()
         peopleViewOnStart = defaults.bool(forKey: "peopleViewOnStart")
         participantPanelOnMainDisplay = defaults.bool(forKey: "participantPanelOnMainDisplay")
         // Absent means never answered, which is opted IN - matching the consent
@@ -1198,6 +1232,7 @@ final class CoordinatorController: ObservableObject {
                     log("Recording saved: \(path)" + (marks > 0 ? " (\(marks) clip\(marks == 1 ? "" : "s") marked)" : ""))
                     Notifier.post(title: "Recording saved",
                                   body: "\((path as NSString).lastPathComponent) \u{2014} in Documents/Greenroom.")
+                    recordingFinished(path: path)
                 }
                 isRecording = false
             }
@@ -1473,6 +1508,7 @@ final class CoordinatorController: ObservableObject {
                         // why marks were parked in a pending file until now.
                         let marks = adoptPendingClips(recordedAt: path)
                         log("Recording saved: \(path)" + (marks > 0 ? " (\(marks) clip\(marks == 1 ? "" : "s") marked)" : ""))
+                        recordingFinished(path: path)
                         Notifier.post(title: "Recording saved",
                                       body: marks > 0
                                         ? "\((path as NSString).lastPathComponent) \u{2014} \(marks) clip\(marks == 1 ? "" : "s") marked."
@@ -3285,7 +3321,9 @@ final class CoordinatorController: ObservableObject {
         Task { try? await processManager.launch() }
     }
 
-    private func log(_ message: String) {
+    /// Internal, not private: the YouTube extension lives in its own file
+    /// and writes to the same status log.
+    func log(_ message: String) {
         statusLines.append(message)
         Self.sessionLog(message)
         // The readiness card shows the step; this shows what that step is
@@ -3383,6 +3421,10 @@ struct SettingsTransfer: Codable {
     var browserRestoresTabs: Bool?
     var browserSearchSuggestions: Bool?
     var browserClosesOnStop: Bool?
+    var youtubeUploadMode: String?
+    var youtubePrivacy: String?
+    var youtubeClientID: String?
+    var youtubeClientSecret: String?
     var peopleViewOnStart: Bool?
     var peopleViewDisplayUUID: String?
     var screenCaptureDisplayUUID: String?
@@ -3416,6 +3458,10 @@ extension CoordinatorController {
             browserRestoresTabs: browserRestoresTabs,
             browserSearchSuggestions: browserSearchSuggestions,
             browserClosesOnStop: browserClosesOnStop,
+            youtubeUploadMode: youtubeUploadMode.rawValue,
+            youtubePrivacy: youtubePrivacy,
+            youtubeClientID: youtubeClientID,
+            youtubeClientSecret: youtubeClientSecret,
             peopleViewOnStart: peopleViewOnStart,
             peopleViewDisplayUUID: peopleViewDisplayUUID,
             screenCaptureDisplayUUID: screenCaptureDisplayUUID,
@@ -3455,6 +3501,12 @@ extension CoordinatorController {
         if let value = transfer.browserRestoresTabs { browserRestoresTabs = value }
         if let value = transfer.browserSearchSuggestions { browserSearchSuggestions = value }
         if let value = transfer.browserClosesOnStop { browserClosesOnStop = value }
+        // The OAuth client travels (a colleague shares the same Google Cloud
+        // app); the connected account never does - each Mac connects its own.
+        if let value = transfer.youtubeUploadMode, let mode = YouTubeUploadMode(rawValue: value) { youtubeUploadMode = mode }
+        if let value = transfer.youtubePrivacy { youtubePrivacy = value }
+        if let value = transfer.youtubeClientID { youtubeClientID = value }
+        if let value = transfer.youtubeClientSecret { youtubeClientSecret = value }
         if let value = transfer.peopleViewOnStart { peopleViewOnStart = value }
         if let value = transfer.peopleViewDisplayUUID { peopleViewDisplayUUID = value }
         if let value = transfer.screenCaptureDisplayUUID { screenCaptureDisplayUUID = value }

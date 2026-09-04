@@ -218,7 +218,7 @@
   <span class="eyebrow">Privacy &amp; safety</span>
   <h1>Is Greenroom watching your screen? <span class="accent">No.</span></h1>
   <p class="lede">Here is every process, permission and network call it makes — drawn, not asserted.
-  No AI and no server of its own. Two things leave without you asking, and both have a switch: usage analytics (counts and timings, never names or meeting IDs) and, while the built-in browser's search suggestions are on, what you type in its address bar. Follow the diagrams and you've audited the app.</p>
+  No AI and no server of its own. Two things leave without you asking, and both have a switch: usage analytics (counts and timings, never names or meeting IDs) and, while the built-in browser's search suggestions are on, what you type in its address bar. Class content leaves only if you turn on YouTube upload, and then only your own recording. Follow the diagrams and you've audited the app.</p>
   <nav class="contents" aria-label="On this page">
     <a href="#map"><b>01</b>The whole system</a>
     <a href="#sequence"><b>02</b>Press Start</a>
@@ -236,19 +236,19 @@
   <div class="wrap">
     <div class="sec-head">
       <p class="kicker">01 · The whole system</p>
-      <h2>Four processes. Three links of its own to the outside, plus the pages you open.</h2>
+      <h2>Four processes. Three links of its own to the outside; two more only if you choose them.</h2>
     </div>
 
     <figure class="viz">
       <div class="frame">
-        <svg class="svg-wide" viewBox="0 0 940 486" role="img" aria-label="System map. Inside a 'Your Mac' boundary: your saved settings — chosen app, layout, webcam shape and Zoom credentials — are the instructions Greenroom follows; it makes no decisions of its own. Screen and Webcam feed OBS, which produces the OBS Virtual Camera and writes recordings to Documents/Greenroom; OBS and Greenroom talk over an authenticated localhost WebSocket on port 4455; Greenroom resizes and places your windows, reading their geometry only, never their contents, or draws the main window itself when Greenroom Browser is the chosen app. Encrypted HTTPS links leave the Mac: Greenroom to Zoom servers for meeting video, audio and chat; Greenroom to the pages you open, only when Greenroom Browser is the main app, plus Google search completions while that switch is on; Greenroom to GitHub for signed app-update checks; and Greenroom to Zoho Apptics for anonymous usage counts, which can be switched off in Settings. Nothing else leaves.">
+        <svg class="svg-wide" viewBox="0 0 940 540" role="img" aria-label="System map. Inside a 'Your Mac' boundary: your saved settings — chosen app, layout, webcam shape and Zoom credentials — are the instructions Greenroom follows; it makes no decisions of its own. Screen and Webcam feed OBS, which produces the OBS Virtual Camera and writes recordings to Documents/Greenroom; OBS and Greenroom talk over an authenticated localhost WebSocket on port 4455; Greenroom resizes and places your windows, reading their geometry only, never their contents, or draws the main window itself when Greenroom Browser is the chosen app. Encrypted HTTPS links leave the Mac: Greenroom to Zoom servers for meeting video, audio and chat; Greenroom to the pages you open, only when Greenroom Browser is the main app, plus Google search completions while that switch is on; Greenroom to GitHub for signed app-update checks; Greenroom to Zoho Apptics for anonymous usage counts, which can be switched off in Settings; and, only when YouTube upload is turned on in Settings, a finished recording to YouTube. Nothing else leaves.">
           <defs>
             <marker id="ag" markerWidth="9" markerHeight="9" refX="7" refY="4" orient="auto-start-reverse" markerUnits="userSpaceOnUse"><path d="M0,0 L8,4 L0,8 z" fill="#2f6118"/></marker>
             <marker id="aa" markerWidth="9" markerHeight="9" refX="7" refY="4" orient="auto-start-reverse" markerUnits="userSpaceOnUse"><path d="M0,0 L8,4 L0,8 z" fill="#b9770e"/></marker>
             <marker id="agy" markerWidth="8" markerHeight="8" refX="6" refY="3.5" orient="auto" markerUnits="userSpaceOnUse"><path d="M0,0 L7,3.5 L0,7 z" fill="#667085"/></marker>
           </defs>
 
-          <rect x="24" y="48" width="580" height="400" rx="18" fill="#fbfdfb" stroke="#2f6118" stroke-width="1.5" stroke-dasharray="6 5"/>
+          <rect x="24" y="48" width="580" height="454" rx="18" fill="#fbfdfb" stroke="#2f6118" stroke-width="1.5" stroke-dasharray="6 5"/>
           <text x="44" y="74" font-size="12" font-weight="700" letter-spacing="1.5" fill="#2f6118">YOUR MAC</text>
           <text x="648" y="74" font-size="12" font-weight="700" letter-spacing="1.5" fill="#667085">INTERNET</text>
 
@@ -308,8 +308,16 @@
           <rect x="676" y="372" width="228" height="64" rx="16" fill="#fff" stroke="#d0d5dd"/>
           <text x="790" y="398" font-size="15" font-weight="700" text-anchor="middle" fill="#101828">Zoho Apptics</text>
           <text x="790" y="417" font-size="11" text-anchor="middle" fill="#475467">usage counts · optional</text>
-          <line x1="470" y1="352" x2="676" y2="404" stroke="#b9770e" stroke-width="1.8" marker-end="url(#aa)"/>
-          <text x="560" y="396" font-size="11" text-anchor="middle" fill="#96600a">anonymous counts · HTTPS</text>
+          <line x1="470" y1="344" x2="676" y2="404" stroke="#b9770e" stroke-width="1.8" marker-end="url(#aa)"/>
+          <text x="560" y="392" font-size="11" text-anchor="middle" fill="#96600a">anonymous counts · HTTPS</text>
+
+          <!-- Only when Settings → YouTube is on: the one link that carries
+               class content, drawn as its own channel for that reason. -->
+          <rect x="676" y="452" width="228" height="60" rx="16" fill="#fff" stroke="#d0d5dd"/>
+          <text x="790" y="476" font-size="15" font-weight="700" text-anchor="middle" fill="#101828">YouTube</text>
+          <text x="790" y="495" font-size="10.5" text-anchor="middle" fill="#475467">your recording · only if you turn it on</text>
+          <line x1="470" y1="356" x2="676" y2="482" stroke="#b9770e" stroke-width="1.8" marker-end="url(#aa)"/>
+          <text x="548" y="444" font-size="11" text-anchor="middle" fill="#96600a">the recording · HTTPS · off by default</text>
 
           <line x1="470" y1="306" x2="676" y2="236" stroke="#b9770e" stroke-width="1.8" marker-end="url(#aa)"/>
           <text x="604" y="284" font-size="11" text-anchor="middle" fill="#96600a">pages you open · HTTPS</text>
@@ -329,10 +337,10 @@
           <line x1="470" y1="330" x2="676" y2="324" stroke="#b9770e" stroke-width="1.8" marker-end="url(#aa)"/>
           <text x="566" y="318" font-size="11" text-anchor="middle" fill="#96600a">update check · HTTPS</text>
 
-          <line x1="44" y1="468" x2="72" y2="468" stroke="#2f6118" stroke-width="1.8" marker-end="url(#ag)"/>
-          <text x="80" y="472" font-size="11" fill="#475467">stays on your Mac</text>
-          <line x1="270" y1="468" x2="298" y2="468" stroke="#b9770e" stroke-width="1.8" marker-end="url(#aa)"/>
-          <text x="306" y="472" font-size="11" fill="#475467">crosses to the internet (encrypted HTTPS)</text>
+          <line x1="44" y1="522" x2="72" y2="522" stroke="#2f6118" stroke-width="1.8" marker-end="url(#ag)"/>
+          <text x="80" y="526" font-size="11" fill="#475467">stays on your Mac</text>
+          <line x1="270" y1="522" x2="298" y2="522" stroke="#b9770e" stroke-width="1.8" marker-end="url(#aa)"/>
+          <text x="306" y="526" font-size="11" fill="#475467">crosses to the internet (encrypted HTTPS)</text>
         </svg>
       </div>
       <figcaption>Everything Greenroom does is determined by the dashed <strong>settings</strong> box: which app to open, the layout, the webcam shape, your Zoom credentials. It has no judgement of its own — change the settings and you change the script. Greenroom holds <strong>two entitlements: camera and microphone</strong> — and no others. Screen capture belongs to OBS, a separate app you can see running. The <code>ws:4455</code> link is an authenticated loopback socket that never reaches the network. <strong>Pages you open</strong> exists only when <em>Greenroom Browser</em> is your main app: that window is Apple's WebKit (the engine inside Safari) running in Greenroom's process, so the sites you visit load from Greenroom rather than from Chrome. Its history is one local file, its cookies live in WebKit's standard store, and nothing about your browsing is reported anywhere.</figcaption>
@@ -556,8 +564,8 @@
   <div class="wrap">
     <div class="sec-head center">
       <p class="kicker">05 · Every network call</p>
-      <h2>Six channels. That's the whole list.</h2>
-      <p>Four are Greenroom's own. Two exist only when you choose <em>Greenroom Browser</em> as the main app, and one of those has its own switch.</p>
+      <h2>Seven channels. That's the whole list.</h2>
+      <p>Four are Greenroom's own. Two exist only when you choose <em>Greenroom Browser</em> as the main app, and one of those has its own switch. The seventh is the one that carries class content, and it is off until you turn it on.</p>
     </div>
     <div class="eps">
       <div class="ep">
@@ -597,6 +605,15 @@
         <p>While Settings &rarr; Layout &rarr; <em>Suggest searches as you type</em> is on, each keystroke in the address bar is
         sent to Google for completions — exactly what Chrome and Safari do. Switch it off and only your own history is
         suggested; nothing leaves until you press Return.</p>
+      </div>
+      <div class="ep">
+        <span class="tag out">Leaves your Mac · off by default</span>
+        <h3>youtube.googleapis.com · oauth2.googleapis.com</h3>
+        <p>The one channel that carries <strong>class content</strong>: when Settings &rarr; YouTube is set to ask or to
+        upload automatically, a finished recording &mdash; the shared screen with you in it, and your voice &mdash; is
+        uploaded over HTTPS to the connected Google account's channel, unlisted or private as you chose. Sign-in happens in
+        your browser on Google's own page; Greenroom keeps only a token that can add videos and nothing else, revoked at
+        Google by <em>Disconnect</em>. With &ldquo;Do nothing&rdquo; selected (the default) this channel does not exist.</p>
       </div>
       <div class="ep">
         <span class="tag local">Stays local</span>
@@ -690,6 +707,7 @@
             <tr><td><strong>Launch/quit apps</strong></td><td><span class="mono">NSWorkspace</span></td><td>OBS, Zoom, and your chosen main app.</td></tr>
             <tr><td><strong>Meetings</strong></td><td>Zoom Meeting SDK + REST</td><td>Creates/joins meetings under your own Zoom account with your Marketplace credentials; lists the account's scheduled and live meetings, and ends a meeting left live by a crashed session before starting a new one.</td></tr>
             <tr><td><strong>Updates</strong></td><td>Sparkle, EdDSA-signed</td><td>Appcast on GitHub Pages; installs only releases signed with the developer's key. System profiling disabled.</td></tr>
+            <tr><td><strong>YouTube upload</strong></td><td>YouTube Data API v3, OAuth 2.0 (PKCE, loopback)</td><td>Off by default. Resumable upload of a finished recording to the connected account's channel; scope <span class="mono">youtube.upload</span> only. Refresh token stored like the Zoom credentials (plain preferences); revoked at Google on Disconnect.</td></tr>
             <tr><td><strong>Entitlements</strong></td><td>Hardened Runtime</td><td><span class="mono">device.camera</span>, <span class="mono">device.audio-input</span>. Nothing else — no screen-recording entitlement.</td></tr>
             <tr><td><strong>Frameworks</strong></td><td>Apple's own + Zoom SDK + Sparkle</td><td>AppKit, SwiftUI, WebKit, AVFoundation, ApplicationServices, Carbon, CryptoKit. <strong>No CoreML, Vision, or any ML framework linked.</strong></td></tr>
           </tbody>
@@ -703,6 +721,7 @@
         <li><a href="https://github.com/Sibhimanyu/greenroom/blob/main/App/Chrome/ChromeWindowManager.swift">ChromeWindowManager.swift</a> <span>— external browser automation</span></li>
         <li><a href="https://github.com/Sibhimanyu/greenroom/blob/main/App/Browser/BrowserWindow.swift">BrowserWindow.swift</a> <span>— the built-in browser</span></li>
         <li><a href="https://github.com/Sibhimanyu/greenroom/blob/main/App/Browser/BrowserHistory.swift">BrowserHistory.swift</a> <span>— its local history file</span></li>
+        <li><a href="https://github.com/Sibhimanyu/greenroom/blob/main/App/YouTube/YouTubeUploader.swift">YouTubeUploader.swift</a> <span>— the upload, and the one file that leaves</span></li>
         <li><a href="https://github.com/Sibhimanyu/greenroom/blob/main/App/OBS/OBSWebSocketClient.swift">OBSWebSocketClient.swift</a> <span>— localhost OBS control</span></li>
         <li><a href="https://github.com/Sibhimanyu/greenroom/blob/main/App/Zoom/ZoomServerToServerClient.swift">ZoomServerToServerClient.swift</a> <span>— Zoom API calls</span></li>
         <li><a href="https://github.com/Sibhimanyu/greenroom/blob/main/App/Zoom/SecretStore.swift">SecretStore.swift</a> <span>— credential storage</span></li>
@@ -719,8 +738,8 @@
       <h2>The weak spot</h2>
     </div>
     <div class="caveat">
-      <h3>Zoom credentials are stored in plain text on your Mac</h3>
-      <p>The Zoom app credentials you enter are saved in Greenroom's local preferences as <strong>plain text — not encrypted</strong>. Greenroom doesn't use the macOS Keychain at all. They never leave your Mac except to Zoom. The risk is purely local: anyone with access to your Mac user account could read them.</p>
+      <h3>Zoom and YouTube credentials are stored in plain text on your Mac</h3>
+      <p>The Zoom app credentials you enter, and the YouTube sign-in token if you connect a Google account, are saved in Greenroom's local preferences as <strong>plain text — not encrypted</strong>. Greenroom doesn't use the macOS Keychain at all. They never leave your Mac except to Zoom and Google respectively. The risk is purely local: anyone with access to your Mac user account could read them. The YouTube token can add videos to the channel and nothing else, and Disconnect revokes it at Google.</p>
       <p>In perspective: these are app-level Zoom API keys scoped to running meetings under your account — not your Zoom password — and revocable anytime in the Zoom Marketplace. The optional "export settings" file used to set up a colleague's Mac also contains them in plaintext by design; hand it over directly and delete it after importing.</p>
     </div>
   </div>

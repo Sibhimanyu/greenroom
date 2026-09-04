@@ -205,6 +205,22 @@ app — powers "New Meeting". Also here:
   "Greenroom Chat" participant carrying the chat.
 - **Your display name** — what you appear as in the built-in client.
 
+### YouTube
+Off by default. **After a recording**: Do nothing · Ask whether to upload
+· Upload automatically. When on, a finished recording (⌥⌘R stop or End
+Session) is uploaded to the connected Google account's channel as
+**unlisted** or **private**, resumable in 32 MiB chunks, and the link is
+copied to the clipboard. Setup: a Google Cloud project with the YouTube
+Data API v3 enabled and an OAuth client of type *Desktop app*; paste its
+Client ID / Secret, press **Connect Google account…** (browser sign-in,
+PKCE + loopback redirect), done. Scope is `youtube.upload` only; the
+refresh token lives in `SecretStore` like the Zoom credentials and is
+revoked at Google on **Disconnect**. Quota: ~1,600 of 10,000 daily units
+per upload, so about six a day. While the Google project is in Testing,
+the sign-in expires every seven days until it is published. The OAuth
+client ID/secret travel in the settings export; the connected account does
+not.
+
 ### Transfer
 Export/import every setting above as one JSON file — the whole point is
 setting up a teammate's machine without them ever touching the Zoom

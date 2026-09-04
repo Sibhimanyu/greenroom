@@ -29,6 +29,9 @@ struct SettingsView: View {
             StartMeetingSettingsTab()
                 .tabItem { Label("Start Meeting", systemImage: "video.badge.plus") }
 
+            YouTubeSettingsTab()
+                .tabItem { Label("YouTube", systemImage: "play.rectangle.fill") }
+
             TransferSettingsTab()
                 .tabItem { Label("Transfer", systemImage: "square.and.arrow.up.on.square") }
         }
@@ -1348,6 +1351,77 @@ private struct StartMeetingSettingsTab: View {
                 TextField("Your display name", text: $coordinator.userDisplayName)
 
                 Text("On (default): New Meeting runs entirely inside Greenroom's built-in Zoom client \u{2014} one participant (you), hosting directly, chat sent as you, no separate Zoom app. Off: the classic flow \u{2014} the native Zoom app plus a hidden \u{201C}Greenroom Chat\u{201D} participant carrying the chat.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(20)
+    }
+}
+
+/// Uploading recordings to YouTube - the one feature that sends class
+/// content off the Mac, so it opens on "Do nothing" and every line of copy
+/// says where the file goes.
+private struct YouTubeSettingsTab: View {
+    @EnvironmentObject private var coordinator: CoordinatorController
+    @State private var connecting = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Form {
+                Picker("After a recording", selection: $coordinator.youtubeUploadMode) {
+                    ForEach(YouTubeUploadMode.allCases) { mode in
+                        Text(mode.label).tag(mode)
+                    }
+                }
+                Text("Applies when a recording stops, whether by \u{2325}\u{2318}R or by ending the session. \u{201C}Ask\u{201D} shows one Upload / Not now question with the title and size; \u{201C}Automatically\u{201D} uploads without asking. The recording stays in Documents/Greenroom either way, and the link is copied to the clipboard when the upload finishes.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                Picker("Visibility", selection: $coordinator.youtubePrivacy) {
+                    Text("Unlisted \u{2014} anyone with the link").tag("unlisted")
+                    Text("Private \u{2014} only the channel\u{2019}s account").tag("private")
+                }
+
+                Divider()
+
+                TextField("Client ID", text: $coordinator.youtubeClientID)
+                SecureField("Client Secret", text: $coordinator.youtubeClientSecret)
+
+                HStack(spacing: 12) {
+                    if coordinator.youtubeConnected {
+                        Label("Google account connected", systemImage: "checkmark.circle.fill")
+                            .foregroundStyle(Brand.green)
+                        Button("Disconnect") {
+                            Task { await coordinator.disconnectYouTube() }
+                        }
+                    } else {
+                        Button(connecting ? "Waiting for Google\u{2026}" : "Connect Google account\u{2026}") {
+                            connecting = true
+                            Task {
+                                await coordinator.connectYouTube()
+                                connecting = false
+                            }
+                        }
+                        .disabled(connecting || coordinator.youtubeClientID.isEmpty || coordinator.youtubeClientSecret.isEmpty)
+                    }
+                    if coordinator.isUploadingToYouTube {
+                        ProgressView().controlSize(.small)
+                        Text("Uploading\u{2026}").font(.caption).foregroundStyle(.secondary)
+                    }
+                }
+                if !coordinator.youtubeStatus.isEmpty {
+                    Text(coordinator.youtubeStatus)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                Text("One-time setup, on the Google account that owns the channel: console.cloud.google.com \u{2192} create a project \u{2192} APIs & Services \u{2192} Enable \u{201C}YouTube Data API v3\u{201D} \u{2192} Credentials \u{2192} Create OAuth client ID, type \u{201C}Desktop app\u{201D}. Copy its Client ID and Client Secret here, then Connect: your browser opens Google\u{2019}s sign-in once, and Greenroom keeps only the permission to add videos. While the Google project is in \u{201C}Testing\u{201D}, add your account under Test users; that sign-in expires after seven days until the project is published.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                Text("This is the only place Greenroom sends class content anywhere: the recording itself \u{2014} the shared screen with you in it, and your voice \u{2014} goes to YouTube over HTTPS, to the connected account\u{2019}s channel, at the visibility above. Nothing is uploaded while \u{201C}Do nothing\u{201D} is selected. Disconnect revokes the permission at Google.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

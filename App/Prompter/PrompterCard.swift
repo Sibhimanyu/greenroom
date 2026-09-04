@@ -17,8 +17,19 @@ import Foundation
 
 /// Something the teacher said that might be worth a link.
 struct Mention: Hashable {
+    /// What kind of thing was named. Learned from recorded classes rather
+    /// than guessed: the teacher looks up tools and products ("it's called
+    /// Haiku Deck"), word meanings ("the word pabulum"), quotations ("ask not
+    /// what your country can do for you") and pictures of things, more often
+    /// than book titles.
     enum Kind: String, CaseIterable {
         case book, video, topic, person, place
+        /// A tool, app, product, company or other named thing.
+        case thing
+        /// A word whose meaning is being asked or explained.
+        case word
+        /// A quotation - the query is the phrase itself.
+        case quote
 
         /// The eyebrow on a card. Mono, upper-case per DESIGN.md.
         var eyebrow: String {
@@ -28,6 +39,9 @@ struct Mention: Hashable {
             case .topic: return "TOPIC"
             case .person: return "PERSON"
             case .place: return "PLACE"
+            case .thing: return "THING"
+            case .word: return "WORD"
+            case .quote: return "QUOTE"
             }
         }
     }
@@ -59,15 +73,19 @@ struct Mention: Hashable {
 /// points at a search page and has sent nothing anywhere yet.
 struct PrompterCard: Identifiable, Hashable {
     enum Source: String {
-        case googleBooks, openLibrary, wikipedia, youtube, search
+        case googleBooks, openLibrary, wikipedia, wikiquote, youtube, search
+        /// The Mac's own Dictionary. Nothing leaves for this one.
+        case dictionary
 
         var label: String {
             switch self {
             case .googleBooks: return "Google Books"
             case .openLibrary: return "Open Library"
             case .wikipedia: return "Wikipedia"
+            case .wikiquote: return "Wikiquote"
             case .youtube: return "YouTube"
             case .search: return "Search"
+            case .dictionary: return "Dictionary"
             }
         }
 
@@ -76,8 +94,10 @@ struct PrompterCard: Identifiable, Hashable {
             switch self {
             case .googleBooks, .openLibrary: return "books"
             case .wikipedia: return "wikipedia"
+            case .wikiquote: return "quotes"
             case .youtube: return "youtube"
             case .search: return "search"
+            case .dictionary: return "dictionary"
             }
         }
     }

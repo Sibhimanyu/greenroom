@@ -108,6 +108,9 @@ final class PrompterCardView: NSView {
         case .topic: symbol = "text.book.closed"
         case .person: symbol = "person"
         case .place: symbol = "mappin.and.ellipse"
+        case .thing: symbol = "cube"
+        case .word: symbol = "character.book.closed"
+        case .quote: symbol = "quote.opening"
         }
         let image = NSImage(systemSymbolName: symbol, accessibilityDescription: kind.eyebrow)
         return image?.withSymbolConfiguration(.init(pointSize: 22, weight: .regular))

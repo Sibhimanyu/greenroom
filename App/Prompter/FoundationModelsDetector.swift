@@ -28,9 +28,10 @@ struct GeneratedMentions {
 @available(macOS 26.0, *)
 @Generable
 struct GeneratedMention {
-    @Guide(description: "One of: book, video, topic, person, place", .anyOf(["book", "video", "topic", "person", "place"]))
+    @Guide(description: "One of: thing (a tool, app, product, company or other named thing), word (a word whose meaning is asked or explained), quote (a quotation), book, video, topic, person, place",
+           .anyOf(["thing", "word", "quote", "book", "video", "topic", "person", "place"]))
     var kind: String
-    @Guide(description: "A short search phrase, 1 to 6 words, the title or name as said. No sentences.")
+    @Guide(description: "For a quote: the quoted line itself, as said. Otherwise a short search phrase, 1 to 6 words, the name as said. No sentences.")
     var query: String
     @Guide(description: "How sure you are the speaker named a real, findable thing, 0.0 to 1.0", .range(0.0...1.0))
     var confidence: Double
@@ -65,13 +66,16 @@ final class FoundationModelsDetector: MentionDetector {
     private(set) var consecutiveErrors = 0
 
     private static let instructions = """
-    You listen to a teacher speaking to a class of children over a video call. From the new words, list only \
-    things that could be looked up on the web: the title of a book or story, a video or film, a topic being \
-    explained, a well-known person (an author, a historical figure), or a place. \
+    You listen to a teacher speaking to a class over a video call, in Indian English with some Tamil mixed in. \
+    From the new words, list only things the teacher would open a browser tab for: a tool, app, product or \
+    company he names ("it's called Haiku Deck", "Kindle Paperwhite, they call it"); a word whose meaning he \
+    asks or explains; a quotation he recites (return the quoted line itself); a book, a video or film, a \
+    topic he sets out to explain, a well-known person, or a place. \
     Rules: never list the names of the people in the call - students or the teacher - and never list \
-    anything said TO someone; skip greetings, instructions and classroom management; return a short \
-    search phrase for each item, the title or name as said, not a sentence; return nothing when nothing \
-    was named. The context words are for understanding only - do not list things from them again.
+    anything said TO someone; skip greetings, instructions and classroom management; ignore words that \
+    are not English unless they are clearly a name; return a short search phrase for each item, the name \
+    as said, not a sentence (except a quote, which is the line as said); return nothing when nothing was \
+    named. The context words are for understanding only - do not list things from them again.
     """
 
     func prewarm() {
@@ -99,7 +103,9 @@ final class FoundationModelsDetector: MentionDetector {
                     let query = generated.query.trimmingCharacters(in: .whitespacesAndNewlines)
                         .trimmingCharacters(in: CharacterSet(charactersIn: "\"“”'."))
                     let words = query.split(separator: " ")
-                    guard !words.isEmpty, words.count <= 7, query.count >= 3, query.count <= 60 else { return nil }
+                    let maxWords = kind == .quote ? 30 : 7
+                    let maxLength = kind == .quote ? 200 : 60
+                    guard !words.isEmpty, words.count <= maxWords, query.count >= 3, query.count <= maxLength else { return nil }
                     guard generated.confidence >= 0.45 else { return nil }
                     return Mention(kind: kind, query: query, confidence: min(1, max(0, generated.confidence)))
                 }

@@ -67,7 +67,7 @@ struct PrompterSetupRows: View {
         Section {
             Toggle(isOn: $coordinator.prompterEnabled) {
                 SettingLabel(title: "Listen during classes and suggest links",
-                             subtitle: "Cards for the books, videos, topics, people and places you name. Off by default.")
+                             subtitle: "Cards for the tools, words, quotes, books, videos, topics and people you name. Off by default.")
             }
         } header: { if !compact { Text("Prompter") } } footer: {
             if !compact {

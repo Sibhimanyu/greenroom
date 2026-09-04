@@ -188,6 +188,13 @@ extension CoordinatorController {
     /// to open the URL without activating.
     func openPrompterCard(_ card: PrompterCard) {
         Analytics.feature("prompter_open", source: card.source.analyticsCode)
+        // A dictionary card opens in Dictionary.app, not a browser: it never
+        // was a web page, and nothing is sent.
+        guard card.url.scheme == "https" || card.url.scheme == "http" else {
+            NSWorkspace.shared.open(card.url)
+            log("Prompter: opened \u{201C}\(card.title)\u{201D} in Dictionary.")
+            return
+        }
         if AppCatalog.isBuiltInBrowser(mainAppBundleID) {
             BrowserWindowController.open(card.url, focus: false, layout: workspaceLayout)
             log("Prompter: opened \u{201C}\(card.title)\u{201D} in Greenroom Browser.")
@@ -216,9 +223,11 @@ extension CoordinatorController {
             ToastController.show("Chat is not connected", detail: "Open the chat window first, then Send.", kind: .failure)
             return
         }
-        zoomChatBridge.send(card.url.absoluteString)
+        // A word card has no page to send; the class gets the definition.
+        let message = card.kind == .word ? "\(card.title): \(card.subtitle)" : card.url.absoluteString
+        zoomChatBridge.send(message)
         Analytics.feature("prompter_send", source: card.source.analyticsCode)
-        log("Prompter: sent \(card.url.absoluteString) to the class chat.")
+        log("Prompter: sent \(card.kind == .word ? "the definition of \u{201C}\(card.title)\u{201D}" : card.url.absoluteString) to the class chat.")
         if let folder = sessionFolder {
             SessionMetadata.recordLink(in: folder, kind: card.kind.rawValue, title: card.title,
                                        url: card.url.absoluteString, action: "sent")

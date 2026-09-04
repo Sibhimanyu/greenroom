@@ -24,6 +24,7 @@
 //  of fifty minutes should cost a few dozen small GETs, not a stream.
 //
 import AppKit
+import CoreServices
 import Foundation
 
 actor LinkResolver {
@@ -72,7 +73,7 @@ actor LinkResolver {
     private var youtubeQuotaExhausted = false
 
     /// Per-session ceilings, per source.
-    private let caps: [PrompterCard.Source: Int] = [.googleBooks: 60, .openLibrary: 60, .wikipedia: 60, .youtube: 20, .search: 200]
+    private let caps: [PrompterCard.Source: Int] = [.googleBooks: 60, .openLibrary: 60, .wikipedia: 60, .wikiquote: 30, .youtube: 20, .search: 200, .dictionary: 200]
     private let sessionCap = 30
     private let maxInFlight = 2
 
@@ -127,6 +128,9 @@ actor LinkResolver {
         case .book: resolution = await resolveBook(mention)
         case .video: resolution = await resolveVideo(mention)
         case .topic, .person, .place: resolution = await resolveWikipedia(mention)
+        case .thing: resolution = await resolveThing(mention)
+        case .quote: resolution = await resolveQuote(mention)
+        case .word: resolution = resolveWord(mention)
         }
         if !resolution.cards.isEmpty {
             totalResolved += 1
@@ -265,7 +269,10 @@ actor LinkResolver {
         var components = URLComponents(string: "https://en.wikipedia.org/w/rest.php/v1/search/title")!
         components.queryItems = [URLQueryItem(name: "q", value: mention.query), URLQueryItem(name: "limit", value: "3")]
         switch await fetchJSON(components.url!, source: .wikipedia, host: "wikipedia.org", parse: { json in
-            let pages = json["pages"] as? [[String: Any]] ?? []
+            let pages = (json["pages"] as? [[String: Any]] ?? []).filter { page in
+                // Disambiguation pages are a list, not an answer.
+                !((page["description"] as? String) ?? "").lowercased().contains("referred to by the same term")
+            }
             return pages.prefix(1).compactMap { page -> PrompterCard? in
                 guard let key = page["key"] as? String, let title = page["title"] as? String,
                       let url = URL(string: "https://en.wikipedia.org/wiki/\(key)") else { return nil }
@@ -288,6 +295,142 @@ actor LinkResolver {
         }
         await attachThumbnails(&resolution)
         return resolution
+    }
+
+    // MARK: Things - tools, products, companies
+
+    /// Wikipedia first; when it has nothing, a picture search link. The
+    /// teacher's own habit for a product was an image search ("e ink
+    /// kindle"), and a search link sends nothing until it is opened.
+    private func resolveThing(_ mention: Mention) async -> Resolution {
+        var resolution = Resolution()
+        if allowed(.wikipedia, host: "wikipedia.org") {
+            resolution.sentTo = ["Wikipedia"]
+            // Title search, then a strict check: every word of the page's title
+            // must have been said. A look-alike title ("Haiku d'Etat" for
+            // "haiku deck", "AdventHealth University" for "Advent University")
+            // fails it; a broader page ("Amazon Kindle" for "Kindle Paperwhite")
+            // fails it too and falls through to the picture search, which is
+            // what the teacher did for that one himself. Tested against the
+            // full-text endpoint as well: worse, it matched excerpts.
+            var components = URLComponents(string: "https://en.wikipedia.org/w/rest.php/v1/search/title")!
+            components.queryItems = [URLQueryItem(name: "q", value: mention.query), URLQueryItem(name: "limit", value: "3")]
+            let said = Set(Mention.normalize(mention.query).split(separator: " ").map(String.init))
+            let generic: Set<String> = ["the", "of", "and", "a", "an"]
+            switch await fetchJSON(components.url!, source: .wikipedia, host: "wikipedia.org", parse: { json in
+                let pages = json["pages"] as? [[String: Any]] ?? []
+                return pages.compactMap { page -> PrompterCard? in
+                    guard let key = page["key"] as? String, let title = page["title"] as? String,
+                          let url = URL(string: "https://en.wikipedia.org/wiki/\(key)") else { return nil }
+                    let description = (page["description"] as? String) ?? ""
+                    // Disambiguation pages are a list, not an answer.
+                    guard !description.lowercased().contains("referred to by the same term"),
+                          !description.lowercased().hasPrefix("disambiguation") else { return nil }
+                    let titleWords = Mention.normalize(title).split(separator: " ").map(String.init).filter { !generic.contains($0) }
+                    guard !titleWords.isEmpty, titleWords.allSatisfy({ said.contains($0) }) else { return nil }
+                    let card = PrompterCard(kind: .thing, query: mention.query, title: title,
+                                            subtitle: description.isEmpty ? "Wikipedia" : description.prefix(1).uppercased() + description.dropFirst(),
+                                            source: .wikipedia, url: url)
+                    if let thumb = (page["thumbnail"] as? [String: Any])?["url"] as? String {
+                        let absolute = thumb.hasPrefix("//") ? "https:" + thumb : thumb
+                        if let thumbURL = Self.https(absolute) { pendingThumbnails[card.id] = thumbURL }
+                    }
+                    return card
+                }
+            }) {
+            case .success(let cards):
+                resolution.cards = Array(cards.prefix(1))
+            case .failure(let note):
+                resolution.notes.append(note)
+            }
+            await attachThumbnails(&resolution)
+        }
+        if resolution.cards.isEmpty {
+            var components = URLComponents(string: "https://www.bing.com/images/search")!
+            components.queryItems = [URLQueryItem(name: "q", value: mention.query)]
+            resolution.cards = [PrompterCard(kind: .thing, query: mention.query,
+                                             title: "Pictures of \u{201C}\(mention.query)\u{201D}",
+                                             subtitle: "Image search \u{00B7} nothing sent until you open it",
+                                             source: .search, url: components.url!)]
+            resolution.searchLinkOnly = true
+        }
+        return resolution
+    }
+
+    // MARK: Quotations
+
+    /// Wikiquote's search, with the spoken line as the query. The page it
+    /// finds is the speaker (or the work), which is what the teacher wants
+    /// to name; the snippet carries the line as written.
+    private func resolveQuote(_ mention: Mention) async -> Resolution {
+        var resolution = Resolution()
+        guard allowed(.wikiquote, host: "wikiquote.org") else { return resolution }
+        resolution.sentTo = ["Wikiquote"]
+        var components = URLComponents(string: "https://en.wikiquote.org/w/api.php")!
+        components.queryItems = [
+            URLQueryItem(name: "action", value: "query"), URLQueryItem(name: "list", value: "search"),
+            URLQueryItem(name: "srsearch", value: mention.query), URLQueryItem(name: "srlimit", value: "3"),
+            URLQueryItem(name: "format", value: "json"), URLQueryItem(name: "utf8", value: "1")
+        ]
+        switch await fetchJSON(components.url!, source: .wikiquote, host: "wikiquote.org", parse: { json in
+            let results = ((json["query"] as? [String: Any])?["search"] as? [[String: Any]]) ?? []
+            return results.prefix(1).compactMap { result -> PrompterCard? in
+                guard let title = result["title"] as? String,
+                      let url = URL(string: "https://en.wikiquote.org/wiki/" + (title.replacingOccurrences(of: " ", with: "_")
+                        .addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? title)) else { return nil }
+                let snippet = Self.stripHTML((result["snippet"] as? String) ?? "")
+                return PrompterCard(kind: .quote, query: mention.query, title: title,
+                                    subtitle: snippet.isEmpty ? "Wikiquote" : "\u{201C}\(snippet)\u{201D}",
+                                    source: .wikiquote, url: url)
+            }
+        }) {
+        case .success(let cards):
+            resolution.cards = cards
+            if cards.isEmpty { resolution.notes.append("no result for the quotation (Wikiquote)") }
+        case .failure(let note):
+            resolution.notes.append(note)
+        }
+        if resolution.cards.isEmpty {
+            var components = URLComponents(string: "https://www.google.com/search")!
+            components.queryItems = [URLQueryItem(name: "q", value: "\"\(mention.query)\"")]
+            resolution.cards = [PrompterCard(kind: .quote, query: mention.query,
+                                             title: "Search for the quotation",
+                                             subtitle: "\u{201C}\(mention.query)\u{201D} \u{00B7} nothing sent until you open it",
+                                             source: .search, url: components.url!)]
+        }
+        return resolution
+    }
+
+    // MARK: Words - the Mac's own dictionary, nothing leaves
+
+    private func resolveWord(_ mention: Mention) -> Resolution {
+        var resolution = Resolution()
+        let word = mention.query.lowercased()
+        let range = CFRange(location: 0, length: word.utf16.count)
+        guard let definition = DCSCopyTextDefinition(nil, word as CFString, range)?.takeRetainedValue() as String?,
+              !definition.isEmpty else {
+            resolution.notes.append("\u{201C}\(mention.query)\u{201D} is not in the Mac's dictionary (nothing sent)")
+            return resolution
+        }
+        // The first sense only: "pabulum | ˈpabyələm | noun bland or insipid
+        // intellectual matter..." - drop the headword and pronunciation.
+        var text = definition
+        if let bar = text.range(of: "| ", options: .backwards, range: text.startIndex..<(text.index(text.startIndex, offsetBy: min(60, text.count)))) {
+            text = String(text[bar.upperBound...])
+        }
+        let firstSense = text.components(separatedBy: CharacterSet(charactersIn: ".;\n")).first ?? text
+        resolution.cards = [PrompterCard(kind: .word, query: mention.query, title: mention.query.capitalized,
+                                         subtitle: firstSense.trimmingCharacters(in: .whitespaces),
+                                         source: .dictionary,
+                                         url: URL(string: "dict://\(word.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? word)")!)]
+        resolution.notes.append("looked up \u{201C}\(mention.query)\u{201D} in the Mac\u{2019}s dictionary (nothing sent)")
+        return resolution
+    }
+
+    private static func stripHTML(_ text: String) -> String {
+        decodeHTML(text.replacingOccurrences(of: "<[^>]+>", with: "", options: .regularExpression))
+            .replacingOccurrences(of: "&nbsp;", with: " ")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     // MARK: Video

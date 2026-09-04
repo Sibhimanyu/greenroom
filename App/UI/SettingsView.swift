@@ -184,23 +184,18 @@ private struct WebcamSettingsTab: View {
 
             Divider()
 
-            Toggle("Keep the last 5 minutes clippable", isOn: $coordinator.clipBufferEnabled)
-
-            Text("\u{2325}\u{2318}1, \u{2325}\u{2318}2 and \u{2325}\u{2318}5 save the last 1, 2 or 5 minutes as a clip \u{2014} even when you are not recording. Held in memory, about 300MB, and never written to disk unless you press one of those keys. Off: the shortcuts only work while a recording is running.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-
-            Toggle("Start recording automatically with the meeting", isOn: $coordinator.autoRecordOnStart)
-
-            Text("Off: record manually with the Record button or \u{2325}\u{2318}R. Either way, recordings save to Documents/Greenroom and stop safely when the session ends.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-
-            Toggle("Keep OBS ready in the background", isOn: $coordinator.keepOBSWarm)
-
-            Text("Launches OBS with Greenroom and leaves it running between sessions, so Start skips OBS's slow cold launch. OBS still quits when Greenroom quits.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+            Toggle(isOn: $coordinator.clipBufferEnabled) {
+                SettingLabel(title: "Keep the last 5 minutes clippable",
+                             subtitle: "\u{2325}\u{2318}1 / 2 / 5 save the last minutes as a clip, recording or not. About 300 MB in memory, never on disk until you press.")
+            }
+            Toggle(isOn: $coordinator.autoRecordOnStart) {
+                SettingLabel(title: "Start recording automatically with the meeting",
+                             subtitle: "Off: press Record or \u{2325}\u{2318}R. Either way the file lands in Documents/Greenroom.")
+            }
+            Toggle(isOn: $coordinator.keepOBSWarm) {
+                SettingLabel(title: "Keep OBS ready in the background",
+                             subtitle: "Start skips OBS\u{2019}s cold launch. OBS still quits with Greenroom.")
+            }
         }
         .padding(20)
     }
@@ -877,24 +872,22 @@ private struct LayoutSettingsTab: View {
             }
 
             if AppCatalog.isBuiltInBrowser(coordinator.mainAppBundleID) {
-                Text("Greenroom's own browser window \u{2014} tiled directly, with no Accessibility or Automation permission to grant. Tabs, back and forward, find in page (\u{2318}F), history (\u{2318}Y), an address bar that also searches, and the usual shortcuts (\u{2318}T, \u{2318}W, \u{2318}L). Sign-ins are remembered between sessions. Pick Chrome or another browser above if you need extensions.")
+                Text("Greenroom\u{2019}s own browser: tabs, find in page, local history, no permissions to grant. Pick Chrome above if you need extensions.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
 
-                Toggle("Reopen last session\u{2019}s tabs on Start", isOn: $coordinator.browserRestoresTabs)
-                Text("On: the tabs that were open when Greenroom last quit come back, with the website above opened alongside them. Off: each Start begins with just that website.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-
-                Toggle("Suggest searches as you type", isOn: $coordinator.browserSearchSuggestions)
-                Text("On: the address bar sends what you type to Google as you type and shows its completions, as Chrome and Safari do. Off: only pages from your own history are suggested, and nothing leaves the Mac until you press Return.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-
-                Toggle("Close the browser window when the session ends", isOn: $coordinator.browserClosesOnStop)
-                Text("On: Stop closes the browser along with the meeting windows; its tabs are kept and come back on the next Start. Off: the browser stays where it is, like any other main app.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                Toggle(isOn: $coordinator.browserRestoresTabs) {
+                    SettingLabel(title: "Reopen last session\u{2019}s tabs on Start",
+                                 subtitle: "Yesterday\u{2019}s tabs come back beside the website above.")
+                }
+                Toggle(isOn: $coordinator.browserSearchSuggestions) {
+                    SettingLabel(title: "Suggest searches as you type",
+                                 subtitle: "Sends what you type to Google for completions. Off: history only, nothing leaves until Return.")
+                }
+                Toggle(isOn: $coordinator.browserClosesOnStop) {
+                    SettingLabel(title: "Close the browser window when the session ends",
+                                 subtitle: "Tabs are kept for the next Start.")
+                }
             }
 
             if needsAccessibility && !hasAccessibilityPermission {
@@ -914,7 +907,7 @@ private struct LayoutSettingsTab: View {
                     .frame(height: 140)
                     .padding(.vertical, 4)
 
-                Text("Drag the handle between the panes to set the main app's width; drag the one between Zoom and Chat to balance the side column. A live session re-tiles on Snap Windows Back (\u{2325}\u{2318}S).")
+                Text("Drag the handles to size the panes. A live session re-tiles on Snap Windows Back (\u{2325}\u{2318}S).")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -927,15 +920,14 @@ private struct LayoutSettingsTab: View {
             }
 
             Section("Meeting view") {
-                Toggle("Hide my own video tile (Zoom's \u{201C}Hide Self View\u{201D})", isOn: $coordinator.hideSelfView)
-                Text("On: the speaker tile and participant view show only the others. Off: your tile appears among them like anyone else's. The class receives your video either way \u{2014} this only changes what you see. Applies immediately, even mid-meeting.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-
-                Toggle("Quick-hide mode: speaker tile hidden by default (\u{2325}\u{2318}Z shows it)", isOn: $coordinator.speakerTileShortcutEnabled)
-                Text("On: sessions start with the speaker hidden and the chat using the full column height \u{2014} press \u{2325}\u{2318}Z to show the speaker (the chat shrinks below it), and again to hide it. Off: the normal speaker-above-chat layout stays put and the shortcut does nothing. Applies immediately, works system-wide.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                Toggle(isOn: $coordinator.hideSelfView) {
+                    SettingLabel(title: "Hide my own video tile",
+                                 subtitle: "Only changes what you see; the class still gets your video.")
+                }
+                Toggle(isOn: $coordinator.speakerTileShortcutEnabled) {
+                    SettingLabel(title: "Quick-hide mode",
+                                 subtitle: "Sessions start with the speaker hidden and the chat full height; \u{2325}\u{2318}Z shows it.")
+                }
             }
 
             Section("Shared screen") {
@@ -952,39 +944,31 @@ private struct LayoutSettingsTab: View {
                     }
                 }
 
-                Text("This is the screen your class sees. Automatic follows your main display, which is what you want unless you teach from a second monitor. If the display you pick isn't plugged in when a session starts, Greenroom shares your main one and says so in the status log.")
+                Text("The screen your class sees. If it is unplugged at Start, the main display is shared instead.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
 
             Section("Privacy") {
-                Toggle("Send anonymous usage analytics", isOn: $coordinator.analyticsEnabled)
-                Text("Counts and timings only \u{2014} which features get used, which settings are on or off, how long sessions run, whether something failed. Never student names, meeting IDs, file paths, web addresses or chat. Turning this off stops all network calls to the analytics service, including registering this Mac.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                Toggle(isOn: $coordinator.analyticsEnabled) {
+                    SettingLabel(title: "Send anonymous usage analytics",
+                                 subtitle: "Counts and timings only. Never names, meeting IDs, addresses or chat.")
+                }
             }
 
             Section("Second display") {
-                Toggle("Show the participant view on another display", isOn: $coordinator.peopleViewOnStart)
-
-                if coordinator.peopleViewOnStart, coordinator.customUIMode {
-                    Toggle("Allow it on this screen when no second display is connected",
-                           isOn: $coordinator.participantPanelOnMainDisplay)
-                    Text("Off by default. The panel is large and meant for a display only you can see, so on a single screen it covers the tiled workspace. Turn it on to try the panel without a reference monitor.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-
-                if coordinator.peopleViewOnStart, !coordinator.customUIMode {
-                    Text("With Zoom's own meeting UI, this is Zoom's participant grid. On a second display it goes full-screen there. With no second display it still opens \u{2014} behind the workspace, so it never covers your tiled windows; Mission Control or \u{2318}` brings it forward.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                Toggle(isOn: $coordinator.peopleViewOnStart) {
+                    SettingLabel(title: "Show the participant view on another display",
+                                 subtitle: coordinator.customUIMode
+                                     ? "Every student and the host controls, full-screen on your reference monitor."
+                                     : "Zoom\u{2019}s participant grid, full-screen on your reference monitor.")
                 }
 
                 if coordinator.peopleViewOnStart, coordinator.customUIMode {
-                    Text("With the custom meeting UI on, this view also carries the host controls \u{2014} mute, spotlight, admit, rename, remove. It is meant for a display only you can see. With no second display it opens as an ordinary window you can move and resize.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                    Toggle(isOn: $coordinator.participantPanelOnMainDisplay) {
+                        SettingLabel(title: "Allow it on this screen when no second display is connected",
+                                     subtitle: "It is large and covers the workspace; for trying the panel without a second monitor.")
+                    }
                 }
 
                 if coordinator.peopleViewOnStart {
@@ -1003,21 +987,16 @@ private struct LayoutSettingsTab: View {
                     Text(displayHelp)
                         .font(.caption)
                         .foregroundStyle(.secondary)
-                } else {
-                    Text("On Start, a full-screen view of every participant opens on another display \u{2014} your reference monitor. Your tiled workspace, and any display mirroring it (e.g. a class projector), stay on your main screen. Works with the built-in meeting client.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
                 }
             }
             .onReceive(NotificationCenter.default.publisher(for: NSApplication.didChangeScreenParametersNotification)) { _ in
                 displays = DisplayResolver.connectedDisplays()
             }
 
-            Toggle("Open the main app automatically on Start", isOn: $coordinator.mainAppOnStart)
-
-            Text("The Zoom meeting tile and chat window tile themselves into whatever space the main pane leaves free.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+            Toggle(isOn: $coordinator.mainAppOnStart) {
+                SettingLabel(title: "Open the main app automatically on Start",
+                             subtitle: "The Zoom tile and chat take whatever the main pane leaves free.")
+            }
         }
         .formStyle(.grouped)
         // Nothing focused when the tab opens. Without this the website field
@@ -1295,40 +1274,27 @@ private struct MeetingSDKSettingsTab: View {
     @EnvironmentObject private var coordinator: CoordinatorController
 
     var body: some View {
-        // Form centers short content vertically in whatever height the
-        // TabView gives it (fixed at 520 by SettingsView) rather than
-        // pinning to the top - three fields read as floating in a mostly
-        // empty pane (reproduced live, /qa pass). The trailing Spacer
-        // claims the leftover space instead.
-        VStack(alignment: .leading, spacing: 0) {
-            Form {
+        Form {
+            Section {
                 TextField("Client ID", text: $coordinator.sdkClientID)
                 SecureField("Client Secret", text: $coordinator.sdkClientSecret)
-
-                Text("From your Zoom Marketplace app (General App \u{2192} Features \u{2192} Embed \u{2192} Meeting SDK). Only works for meetings hosted under this same Zoom account - joining a meeting hosted elsewhere fails with Zoom's cross-account restriction.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-
-                Divider()
-
-                Toggle("Custom meeting UI (experimental)", isOn: $coordinator.customUIMode)
-
-                if coordinator.customUIModeNeedsRelaunch {
-                    HStack(alignment: .firstTextBaseline, spacing: 6) {
-                        Image(systemName: "exclamationmark.triangle.fill")
-                        Text("Not active yet \u{2014} quit and reopen Greenroom. Zoom fixes the meeting UI when it first starts a session, and this launch has already started one.")
-                    }
-                    .font(.caption)
-                    .foregroundStyle(.orange)
-                }
-
-                Text("Renders the speaker inside a Greenroom window instead of using Zoom's own meeting windows, so there is no Zoom toolbar or info button to manage, and the participant view becomes a full control surface with mute, spotlight and the rest. Zoom fixes the meeting UI when it first starts a session, so changing this only takes effect after you quit and reopen Greenroom.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+            } header: { Text("Zoom Meeting SDK app") } footer: {
+                Text("Zoom Marketplace \u{2192} General App \u{2192} Features \u{2192} Embed \u{2192} Meeting SDK. Works only in meetings hosted under this Zoom account.")
             }
-            Spacer(minLength: 0)
+
+            Section {
+                Toggle(isOn: $coordinator.customUIMode) {
+                    SettingLabel(title: "Custom meeting UI (experimental)",
+                                 subtitle: "Greenroom draws the speaker and the participant panel itself. Takes effect after a relaunch.")
+                }
+                if coordinator.customUIModeNeedsRelaunch {
+                    Label("Not active yet \u{2014} quit and reopen Greenroom.", systemImage: "exclamationmark.triangle.fill")
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                }
+            } header: { Text("Meeting UI") }
         }
-        .padding(20)
+        .formStyle(.grouped)
     }
 }
 
@@ -1336,30 +1302,24 @@ private struct StartMeetingSettingsTab: View {
     @EnvironmentObject private var coordinator: CoordinatorController
 
     var body: some View {
-        // See MeetingSDKSettingsTab - same top-align fix for Form's
-        // vertical centering of shorter-than-520pt content.
-        VStack(alignment: .leading, spacing: 0) {
-            Form {
+        Form {
+            Section {
                 TextField("Account ID", text: $coordinator.s2sAccountID)
                 TextField("Client ID", text: $coordinator.s2sClientID)
                 SecureField("Client Secret", text: $coordinator.s2sClientSecret)
-
-                Text("A different Zoom app than Meeting Chat's - create one at marketplace.zoom.us: Build App \u{2192} Server-to-Server OAuth, then copy its Account ID/Client ID/Secret here. Add all four scopes on its Scopes page: meeting:write:meeting:admin, meeting:read:list_meetings:admin, meeting:read:meeting:admin, user:read:token:admin. The setup guide (? on the main window) walks through it and can test the result. Same Zoom account as the Meeting Chat app = hosting and chat work in every meeting this creates.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-
-                Divider()
-
-                Toggle("Use built-in meeting client", isOn: $coordinator.useBuiltInClient)
-                TextField("Your display name", text: $coordinator.userDisplayName)
-
-                Text("On (default): New Meeting runs entirely inside Greenroom's built-in Zoom client \u{2014} one participant (you), hosting directly, chat sent as you, no separate Zoom app. Off: the classic flow \u{2014} the native Zoom app plus a hidden \u{201C}Greenroom Chat\u{201D} participant carrying the chat.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+            } header: { Text("Zoom Server-to-Server OAuth app") } footer: {
+                Text("A second Marketplace app, on the same Zoom account as Meeting Chat. Scopes: meeting:write:meeting:admin, meeting:read:list_meetings:admin, meeting:read:meeting:admin, user:read:token:admin. The setup guide (?) walks through it and tests the result.")
             }
-            Spacer(minLength: 0)
+
+            Section {
+                Toggle(isOn: $coordinator.useBuiltInClient) {
+                    SettingLabel(title: "Use built-in meeting client",
+                                 subtitle: "The whole meeting runs inside Greenroom. Off: the Zoom app, with a hidden chat participant.")
+                }
+                TextField("Your display name", text: $coordinator.userDisplayName)
+            } header: { Text("Meeting client") }
         }
-        .padding(20)
+        .formStyle(.grouped)
     }
 }
 
@@ -1371,66 +1331,60 @@ private struct YouTubeSettingsTab: View {
     @State private var connecting = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            Form {
-                Picker("After a recording", selection: $coordinator.youtubeUploadMode) {
+        Form {
+            Section {
+                Picker(selection: $coordinator.youtubeUploadMode) {
                     ForEach(YouTubeUploadMode.allCases) { mode in
                         Text(mode.label).tag(mode)
                     }
+                } label: {
+                    SettingLabel(title: "After a recording",
+                                 subtitle: "\u{201C}Ask\u{201D} shows one Upload / Not now card. The file stays in Documents/Greenroom either way.")
                 }
-                Text("Applies when a recording stops, whether by \u{2325}\u{2318}R or by ending the session. \u{201C}Ask\u{201D} shows one Upload / Not now question with the title and size; \u{201C}Automatically\u{201D} uploads without asking. The recording stays in Documents/Greenroom either way, and the link is copied to the clipboard when the upload finishes.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-
-                Picker("Visibility", selection: $coordinator.youtubePrivacy) {
-                    Text("Unlisted \u{2014} anyone with the link").tag("unlisted")
-                    Text("Private \u{2014} only the channel\u{2019}s account").tag("private")
+                Picker(selection: $coordinator.youtubePrivacy) {
+                    Text("Unlisted").tag("unlisted")
+                    Text("Private").tag("private")
+                } label: {
+                    SettingLabel(title: "Visibility",
+                                 subtitle: coordinator.youtubePrivacy == "private" ? "Only the channel\u{2019}s account can watch." : "Anyone with the link can watch.")
                 }
+            } header: { Text("Upload") } footer: {
+                Text("The one place class content leaves the Mac: the recording, over HTTPS, to the connected channel. Progress is in the menu bar; the link is copied when it finishes.")
+            }
 
-                Divider()
-
+            Section {
                 TextField("Client ID", text: $coordinator.youtubeClientID)
                 SecureField("Client Secret", text: $coordinator.youtubeClientSecret)
-
-                HStack(spacing: 12) {
-                    if coordinator.youtubeConnected {
-                        Label("Google account connected", systemImage: "checkmark.circle.fill")
-                            .foregroundStyle(Brand.green)
-                        Button("Disconnect") {
-                            Task { await coordinator.disconnectYouTube() }
-                        }
-                    } else {
-                        Button(connecting ? "Waiting for Google\u{2026}" : "Connect Google account\u{2026}") {
-                            connecting = true
-                            Task {
-                                await coordinator.connectYouTube()
-                                connecting = false
+                LabeledContent {
+                    HStack(spacing: 12) {
+                        if coordinator.youtubeConnected {
+                            Label("Connected", systemImage: "checkmark.circle.fill").foregroundStyle(Brand.green)
+                            Button("Disconnect") { Task { await coordinator.disconnectYouTube() } }
+                        } else {
+                            Button(connecting ? "Waiting for Google\u{2026}" : "Connect\u{2026}") {
+                                connecting = true
+                                Task {
+                                    await coordinator.connectYouTube()
+                                    connecting = false
+                                }
                             }
+                            .disabled(connecting || coordinator.youtubeClientID.isEmpty || coordinator.youtubeClientSecret.isEmpty)
                         }
-                        .disabled(connecting || coordinator.youtubeClientID.isEmpty || coordinator.youtubeClientSecret.isEmpty)
+                        if coordinator.isUploadingToYouTube {
+                            ProgressView().controlSize(.small)
+                        }
                     }
-                    if coordinator.isUploadingToYouTube {
-                        ProgressView().controlSize(.small)
-                        Text("Uploading\u{2026}").font(.caption).foregroundStyle(.secondary)
-                    }
+                } label: {
+                    SettingLabel(title: "Google account",
+                                 subtitle: coordinator.youtubeStatus.isEmpty
+                                     ? "Signs in once in your browser. Greenroom can upload and edit your own videos, nothing else."
+                                     : coordinator.youtubeStatus)
                 }
-                if !coordinator.youtubeStatus.isEmpty {
-                    Text(coordinator.youtubeStatus)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-
-                Text("One-time setup, on the Google account that owns the channel: console.cloud.google.com \u{2192} create a project \u{2192} APIs & Services \u{2192} Enable \u{201C}YouTube Data API v3\u{201D} \u{2192} Credentials \u{2192} Create OAuth client ID, type \u{201C}Desktop app\u{201D}. Copy its Client ID and Client Secret here, then Connect: your browser opens Google\u{2019}s sign-in once, and Greenroom keeps only the permission to upload and edit your own videos (used for uploads and title changes, nothing else). While the Google project is in \u{201C}Testing\u{201D}, add your account under Test users; that sign-in expires after seven days until the project is published.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-
-                Text("This is the only place Greenroom sends class content anywhere: the recording itself \u{2014} the shared screen with you in it, and your voice \u{2014} goes to YouTube over HTTPS, to the connected account\u{2019}s channel, at the visibility above. Nothing is uploaded while \u{201C}Do nothing\u{201D} is selected. Disconnect revokes the permission at Google.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+            } header: { Text("Account") } footer: {
+                Text("From a Google Cloud OAuth client of type \u{201C}Desktop app\u{201D} with the YouTube Data API v3 enabled. The setup guide (? on the main window) has the clicks; while the Google project is in Testing, the sign-in lasts seven days.")
             }
-            Spacer(minLength: 0)
         }
-        .padding(20)
+        .formStyle(.grouped)
     }
 }
 
@@ -1443,16 +1397,13 @@ private struct TransferSettingsTab: View {
     @State private var confirmingExport = false
 
     var body: some View {
-        // See MeetingSDKSettingsTab - same top-align fix; this tab's two
-        // buttons were the most visibly stranded of the three (reproduced
-        // live: a near-empty pane with buttons floating mid-height).
-        VStack(alignment: .leading, spacing: 0) {
-            Form {
-                HStack {
+        Form {
+            Section {
+                LabeledContent {
                     // Confirmation before writing secrets in plaintext - the
                     // risk shouldn't live only in small caption text below
                     // (Codex design audit #6).
-                    Button("Export Settings\u{2026}") { confirmingExport = true }
+                    Button("Export\u{2026}") { confirmingExport = true }
                         .confirmationDialog("This file will contain your Zoom secrets in plain text.",
                                             isPresented: $confirmingExport, titleVisibility: .visible) {
                             Button("Export Plaintext File") { exportSettings() }
@@ -1460,20 +1411,19 @@ private struct TransferSettingsTab: View {
                         } message: {
                             Text("Hand it over directly (e.g. AirDrop) and delete it after importing.")
                         }
-                    Button("Import Settings\u{2026}") { importSettings() }
+                } label: {
+                    SettingLabel(title: "Export settings", subtitle: "One file with every setting, credentials included, in plain text.")
                 }
-
-                Text("One file with every setting on this screen, Zoom credentials included \u{2014} in plaintext. Hand it over directly (e.g. AirDrop) and delete it once imported.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-
-                if !statusMessage.isEmpty {
-                    Text(statusMessage).font(.caption)
+                LabeledContent {
+                    Button("Import\u{2026}") { importSettings() }
+                } label: {
+                    SettingLabel(title: "Import settings", subtitle: "Sets up this Mac from a file a colleague exported.")
                 }
+            } header: { Text("Transfer") } footer: {
+                Text(statusMessage.isEmpty ? "Hand the file over directly (AirDrop) and delete it once imported." : statusMessage)
             }
-            Spacer(minLength: 0)
         }
-        .padding(20)
+        .formStyle(.grouped)
     }
 
     private func exportSettings() {

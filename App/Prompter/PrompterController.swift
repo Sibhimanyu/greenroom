@@ -10,8 +10,10 @@
 //  What it promises, and the code that keeps each promise:
 //    - Only finalised sentences are detected on (`handle(.final)`); volatile
 //      text goes to the Settings test panel and nowhere else.
-//    - Nothing is written down: `RollingTranscript` is a struct in memory,
-//      released in `stop()`, and the closing log line counts what was dropped.
+//    - The rolling window used for detection is a struct in memory, released
+//      in `stop()`. The FULL transcript is written to the class folder only
+//      when the teacher asks for it (Settings -> Prompter), and the log says
+//      plainly which of the two happened.
 //    - Every query that leaves is logged before the card exists (`resolve`).
 //    - A student's name never becomes a query: the roster filter runs inside
 //      both detectors, and a collision is logged as skipped.
@@ -38,6 +40,10 @@ final class PrompterController: ObservableObject {
         /// Settings -> Prompter -> "Also suggest links for things I mention
         /// without naming them". Off by default: see chooseDetector.
         var useModelDetector = false
+        /// Where to write the class transcript, or nil to keep it in memory
+        /// only. Set to a file inside the session's folder when Settings ->
+        /// Prompter -> "Save the transcript with the class" is on.
+        var transcriptFile: URL?
     }
 
     @Published private(set) var isListening = false
@@ -69,6 +75,7 @@ final class PrompterController: ObservableObject {
     private var restartAttempted = false
     private var lookupsInFlight = 0
     private var testMode = false
+    private var startedAt = Date()
 
     private let keepCards = 8
     private let cardLifetime: TimeInterval = 600
@@ -89,6 +96,7 @@ final class PrompterController: ObservableObject {
         self.configuration = configuration
         stoppedForClass = false
         testMode = false
+        startedAt = Date()
         await resolver.reset()
         await resolver.configure(.init(sessionCap: 30,
                                        lookupsPerMinute: configuration.lookupsPerMinute,
@@ -106,7 +114,9 @@ final class PrompterController: ObservableObject {
         chooseDetector()
         guard await startPipeline(input: nil, locale: locale) else { return false }
 
-        configuration.log("Prompter: listening to your microphone. Speech becomes text on this Mac; the text stays in memory.")
+        configuration.log(configuration.transcriptFile == nil
+                          ? "Prompter: listening to your microphone. Speech becomes text on this Mac; the text stays in memory."
+                          : "Prompter: listening to your microphone. Speech becomes text on this Mac and is saved to this class\u{2019}s folder.")
         configuration.log(detector is HeuristicDetector
                           ? "Prompter: mentions found by word patterns."
                           : "Prompter: mentions found by Apple Intelligence (on-device) \u{2014} more suggestions, more wrong ones.")
@@ -129,6 +139,7 @@ final class PrompterController: ObservableObject {
             Task { await transcriber.stop() }
         }
         let count = transcript.totalFinalized
+        let saved = configuration.transcriptFile
         transcript.reset()
         isListening = false
         isSpeaking = false
@@ -139,7 +150,13 @@ final class PrompterController: ObservableObject {
         unseenCount = 0
         dismissedKeys.removeAll()
         if wasListening, !testMode {
-            configuration.log(reason ?? "Prompter: stopped. Transcript discarded (\(count) sentence\(count == 1 ? "" : "s"), never written).")
+            if let reason {
+                configuration.log(reason)
+            } else if let saved {
+                configuration.log("Prompter: stopped. Transcript saved (\(count) sentence\(count == 1 ? "" : "s")): \(saved.path)")
+            } else {
+                configuration.log("Prompter: stopped. Transcript discarded (\(count) sentence\(count == 1 ? "" : "s"), never written).")
+            }
         }
         testMode = false
     }
@@ -148,7 +165,10 @@ final class PrompterController: ObservableObject {
     /// Settings stay as they were; the next class starts fresh.
     func stopForClass() {
         Analytics.feature("prompter_stop_for_class")
-        stop(reason: "Prompter: stopped for this class. Transcript discarded (\(transcript.totalFinalized) sentences, never written).")
+        let ending = configuration.transcriptFile == nil
+            ? "Transcript discarded (\(transcript.totalFinalized) sentences, never written)."
+            : "Transcript saved (\(transcript.totalFinalized) sentences)."
+        stop(reason: "Prompter: stopped for this class. \(ending)")
         stoppedForClass = true
     }
 
@@ -330,9 +350,16 @@ final class PrompterController: ObservableObject {
         case .final(let text):
             guard !isPaused else { return }
             transcript.appendFinal(text)
+            appendToTranscriptFile(text)
             liveTail = transcript.display
-            if transcript.unprocessedWordCount >= detectMinWords,
-               Date().timeIntervalSince(lastDetection) > 2 {
+            // A free detector runs on the sentence that just landed; there is
+            // nothing to ration and every wait is delay the teacher feels.
+            // A model pass is seconds of work, so it still waits for enough
+            // new words to be worth spending them on.
+            if detector.isCheap {
+                runDetection()
+            } else if transcript.unprocessedWordCount >= detectMinWords,
+                      Date().timeIntervalSince(lastDetection) > 2 {
                 runDetection()
             }
         case .speech(let speaking):
@@ -373,6 +400,29 @@ final class PrompterController: ObservableObject {
         }
     }
 
+    /// One line per finalised sentence, timestamped from the session's start,
+    /// appended as it lands rather than written at the end - a class that
+    /// crashes keeps everything said up to that moment.
+    private func appendToTranscriptFile(_ text: String) {
+        guard let url = configuration.transcriptFile else { return }
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        let elapsed = Int(Date().timeIntervalSince(startedAt))
+        let stamp = String(format: "%d:%02d:%02d", elapsed / 3600, (elapsed % 3600) / 60, elapsed % 60)
+        let line = "\(stamp)\t\(trimmed)\n"
+        if let handle = try? FileHandle(forWritingTo: url) {
+            handle.seekToEndOfFile()
+            handle.write(Data(line.utf8))
+            try? handle.close()
+        } else {
+            try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(),
+                                                     withIntermediateDirectories: true)
+            let header = "# \(url.deletingLastPathComponent().lastPathComponent)\n"
+                + "# What the microphone heard, as Prompter transcribed it on this Mac.\n\n"
+            try? Data((header + line).utf8).write(to: url)
+        }
+    }
+
     /// Tears the audio down without the "stopped" line - the caller has
     /// already logged the real reason.
     private func stopQuietly() {
@@ -391,8 +441,10 @@ final class PrompterController: ObservableObject {
         // Cards that sat untouched for ten minutes are stale by class standards.
         let cutoff = Date().addingTimeInterval(-cardLifetime)
         cards.removeAll { $0.createdAt < cutoff }
+        // The catch-up tick, for speech that never reaches the word count.
+        let gap = detector.isCheap ? 3.0 : detectEvery
         if transcript.unprocessedWordCount > 0,
-           Date().timeIntervalSince(lastDetection) >= detectEvery {
+           Date().timeIntervalSince(lastDetection) >= gap {
             runDetection()
         }
     }

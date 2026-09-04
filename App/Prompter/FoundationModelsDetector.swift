@@ -43,6 +43,7 @@ struct GeneratedMention {
 final class FoundationModelsDetector: MentionDetector {
     let name = "Apple Intelligence (on-device)"
     let analyticsCode = "ai"
+    let isCheap = false
 
     static var isAvailable: Bool {
         if case .available = SystemLanguageModel.default.availability { return true }

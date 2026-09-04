@@ -766,6 +766,15 @@ final class CoordinatorController: ObservableObject {
             Analytics.setting("prompter_model_detector", on: prompterUseModel)
         }
     }
+    /// Whether the class transcript is written to the session folder beside
+    /// the recording. On by default: a teacher who turned Prompter on wants
+    /// the record of what was said. Off keeps it in memory only.
+    @Published var prompterSaveTranscript: Bool {
+        didSet {
+            defaults.set(prompterSaveTranscript, forKey: "prompterSaveTranscript")
+            Analytics.setting("prompter_save_transcript", on: prompterSaveTranscript)
+        }
+    }
     /// Transcription language, as a locale identifier. Empty = the system's.
     @Published var prompterLocaleIdentifier: String {
         didSet { defaults.set(prompterLocaleIdentifier, forKey: "prompterLocaleIdentifier") }
@@ -948,6 +957,7 @@ final class CoordinatorController: ObservableObject {
         prompterEnabled = defaults.bool(forKey: "prompterEnabled")
         prompterVideoSearch = (defaults.object(forKey: "prompterVideoSearch") as? Bool) ?? true
         prompterUseModel = defaults.bool(forKey: "prompterUseModel")
+        prompterSaveTranscript = (defaults.object(forKey: "prompterSaveTranscript") as? Bool) ?? true
         prompterLocaleIdentifier = defaults.string(forKey: "prompterLocaleIdentifier") ?? ""
         youtubeUploadMode = YouTubeUploadMode(rawValue: defaults.string(forKey: "youtubeUploadMode") ?? "") ?? .off
         youtubePrivacy = defaults.string(forKey: "youtubePrivacy") ?? "unlisted"
@@ -3496,6 +3506,7 @@ struct SettingsTransfer: Codable {
     var prompterEnabled: Bool?
     var prompterVideoSearch: Bool?
     var prompterUseModel: Bool?
+    var prompterSaveTranscript: Bool?
     var prompterLocaleIdentifier: String?
     var youtubeUploadMode: String?
     var youtubePrivacy: String?
@@ -3537,6 +3548,7 @@ extension CoordinatorController {
             prompterEnabled: prompterEnabled,
             prompterVideoSearch: prompterVideoSearch,
             prompterUseModel: prompterUseModel,
+            prompterSaveTranscript: prompterSaveTranscript,
             prompterLocaleIdentifier: prompterLocaleIdentifier,
             youtubeUploadMode: youtubeUploadMode.rawValue,
             youtubePrivacy: youtubePrivacy,
@@ -3584,6 +3596,7 @@ extension CoordinatorController {
         if let value = transfer.prompterEnabled { prompterEnabled = value }
         if let value = transfer.prompterVideoSearch { prompterVideoSearch = value }
         if let value = transfer.prompterUseModel { prompterUseModel = value }
+        if let value = transfer.prompterSaveTranscript { prompterSaveTranscript = value }
         if let value = transfer.prompterLocaleIdentifier { prompterLocaleIdentifier = value }
         // The OAuth client travels (a colleague shares the same Google Cloud
         // app); the connected account never does - each Mac connects its own.

@@ -71,7 +71,7 @@ struct PrompterSetupRows: View {
             }
         } header: { if !compact { Text("Prompter") } } footer: {
             if !compact {
-                Text("Only the short search phrase leaves the Mac \u{2014} to Google Books, Open Library, Wikipedia and, if allowed, YouTube \u{2014} and each one is written to the status log. Audio, transcript and the names of people in the meeting never leave.")
+                Text("Only the short search phrase leaves the Mac \u{2014} to Google Books, Open Library, Wikipedia and, if allowed, YouTube \u{2014} and each one is written to the status log. The audio, the transcript and the names of people in the meeting never leave this Mac; the transcript is saved into the class folder unless you turn that off below.")
             }
         }
 
@@ -121,6 +121,11 @@ struct PrompterSetupRows: View {
             LabeledContent("Mentions found by") {
                 Text(coordinator.prompterUseModel && FoundationModelsDetector.isAvailable
                      ? "Apple Intelligence" : "Word patterns")
+            }
+
+            Toggle(isOn: $coordinator.prompterSaveTranscript) {
+                SettingLabel(title: "Save the transcript with the class",
+                             subtitle: "A transcript.txt in the class folder, beside the recording. Off keeps the text in memory only.")
             }
 
             Toggle(isOn: $coordinator.prompterVideoSearch) {

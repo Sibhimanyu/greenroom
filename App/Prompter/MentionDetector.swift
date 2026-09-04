@@ -39,6 +39,10 @@ protocol MentionDetector {
     var name: String { get }
     /// The analytics bucket: "ai" | "heuristic".
     var analyticsCode: String { get }
+    /// True when a pass costs nothing worth rationing. Regexes are free, so
+    /// they run on every finalised sentence; a model pass is seconds of the
+    /// Mac's attention, so it waits for enough new words to be worth it.
+    var isCheap: Bool { get }
     func detect(newText: String, context: String, excludedNames: [String]) async throws -> [Mention]
 }
 
@@ -46,6 +50,7 @@ protocol MentionDetector {
 struct HeuristicDetector: MentionDetector {
     let name = "word patterns"
     let analyticsCode = "heuristic"
+    let isCheap = true
 
     /// Words that end a title when they follow it. "the book called Matilda
     /// which is about" → "Matilda".

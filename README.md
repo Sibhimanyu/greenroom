@@ -266,8 +266,12 @@ reads only as far as the `<title>` to confirm the site exists and matches
 phrase is the only thing derived from speech that leaves the Mac, and
 every one is written to the status log and
 `~/Library/Logs/Greenroom-session.log` with the host it went to.
-Transcript lives in memory (≤ 90 s window) and is discarded at End
-Session; the closing log line counts the sentences dropped. Caps: 30
+The transcript is written to `transcript.txt` in the class folder as each
+sentence is finalised (a line per sentence, timed from the session start),
+beside the recording and the clips — **Save the transcript with the class**
+turns that off, in which case it lives only in the 90-second matching
+window and is discarded at End Session. Either way it never leaves the Mac;
+the closing log line names the file or the count discarded. Caps: 30
 lookups a class, 20 YouTube, 5 cards shown / 8 kept, 10-minute card
 lifetime. **Language** picks the transcription locale (`en_IN` is
 supported; Tamil is not, as of macOS 26). **Try it (30 s)** transcribes

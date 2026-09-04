@@ -44,6 +44,12 @@ extension CoordinatorController {
         configuration.localeIdentifier = prompterLocaleIdentifier
         configuration.videoSearch = prompterVideoSearch
         configuration.useModelDetector = prompterUseModel
+        // Beside the recording and the clips, in the folder named for this
+        // class. Nil when the teacher turned saving off, or before a session
+        // has a folder of its own.
+        if prompterSaveTranscript, let folder = sessionFolder {
+            configuration.transcriptFile = folder.appendingPathComponent("transcript.txt")
+        }
         if youtubeConnected {
             let clientID = youtubeClientID.trimmingCharacters(in: .whitespacesAndNewlines)
             let clientSecret = youtubeClientSecret.trimmingCharacters(in: .whitespacesAndNewlines)

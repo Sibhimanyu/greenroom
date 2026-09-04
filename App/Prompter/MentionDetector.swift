@@ -79,16 +79,52 @@ struct HeuristicDetector: MentionDetector {
 
     /// True when a phrase is worth spending a request on at all.
     ///
-    /// Two rules, both measured to cost nothing in recall: the name has to
-    /// have actually been said (the model does invent items despite being
-    /// told not to), and a lone everyday noun is not a thing to look up.
+    /// Three rules, measured against a real class to cost nothing in recall:
+    ///
+    /// 1. The name has to have actually been said. The model invents items
+    ///    despite being told not to.
+    /// 2. A single word that is in the Mac's dictionary is ordinary English,
+    ///    not a thing to look up - "roads", "explain", "scarves", "work".
+    ///    A hand-written list of such words was never going to be complete;
+    ///    the dictionary is. Checked against the real hits first: "Tahoma",
+    ///    "monospace", "Verdana" and "BookFusion" are all absent from it and
+    ///    survive.
+    /// 3. Except when he used it as a NAME. "Kindle", "Amazon" and "Haiku"
+    ///    are all in the dictionary (the verb, the river, the poem), so a
+    ///    dictionary word still passes if it appears capitalised in the middle
+    ///    of a sentence - which is how a brand reads and how an ordinary noun
+    ///    does not. Sentence-initial capitals do not count, or every word that
+    ///    opened a sentence would qualify.
+    ///
+    /// Multi-word phrases skip all of this: "paper white" and "font design"
+    /// are not what these rules are aimed at.
     static func worthLookingUp(_ query: String, spokenIn text: String) -> Bool {
         let normalized = Mention.normalize(query)
         guard !normalized.isEmpty else { return false }
-        let words = normalized.split(separator: " ").map(String.init)
-        if words.count == 1, genericWords.contains(words[0]) { return false }
         // Said, allowing for the transcriber's spacing and punctuation.
-        return Mention.normalize(text).contains(normalized)
+        guard Mention.normalize(text).contains(normalized) else { return false }
+
+        let words = normalized.split(separator: " ").map(String.init)
+        guard words.count == 1, let word = words.first else { return true }
+        if genericWords.contains(word) { return false }
+        guard isEverydayWord(word) else { return true }
+        return usedAsAName(query, in: text)
+    }
+
+    /// In the Mac's own dictionary, so an ordinary English word.
+    static func isEverydayWord(_ word: String) -> Bool {
+        let lowered = word.lowercased()
+        let range = CFRange(location: 0, length: lowered.utf16.count)
+        guard let definition = DCSCopyTextDefinition(nil, lowered as CFString, range)?.takeRetainedValue() as String? else { return false }
+        return !definition.isEmpty
+    }
+
+    /// Capitalised somewhere that is not the start of a sentence.
+    static func usedAsAName(_ query: String, in text: String) -> Bool {
+        let capitalized = query.prefix(1).uppercased() + query.dropFirst().lowercased()
+        let pattern = "(?<![.!?]\\s)(?<!^)\\b" + NSRegularExpression.escapedPattern(for: capitalized) + "\\b"
+        guard let regex = try? NSRegularExpression(pattern: pattern) else { return false }
+        return regex.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)) != nil
     }
 
     /// Words that are never a thing to look up on their own: the places the

@@ -117,6 +117,12 @@ extension CoordinatorController {
     /// menu-bar item. Never both.
     func syncPrompterSurfaces() {
         guard #available(macOS 26.0, *), let engine = prompter, engine.isListening else {
+            // The engine stopped on its own (no microphone, transcriber gave
+            // up): the mirrors must say so or the menu bar keeps claiming it
+            // is listening.
+            prompterListening = false
+            prompterPaused = false
+            prompterCardCount = 0
             prompterMenuBar.setVisible(false)
             ParticipantGridWindowController.applyPrompter(.empty)
             return

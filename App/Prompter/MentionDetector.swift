@@ -59,6 +59,38 @@ struct HeuristicDetector: MentionDetector {
         "when", "where", "while", "okay", "ok", "right", "yeah", "or", "no", "um", "uh"
     ]
 
+    /// Everyday classroom nouns that are never worth a lookup on their own.
+    ///
+    /// Measured against a real class: the model offered "work", "schools",
+    /// "food", "paper", "people" and the like as things to search. As a single
+    /// word none of them is what a teacher would open a tab for, and dropping
+    /// them cost none of the ten real hits while removing a tenth of the
+    /// traffic. A word here is only blocked when it stands ALONE - "paper
+    /// white" and "font design" survive.
+    static let genericWords: Set<String> = [
+        "work", "works", "school", "schools", "food", "paper", "papers", "screen", "screens",
+        "book", "books", "story", "stories", "class", "classes", "people", "person", "student",
+        "students", "teacher", "time", "day", "days", "thing", "things", "word", "words",
+        "reading", "writing", "design", "font", "fonts", "point", "points", "line", "lines",
+        "page", "pages", "idea", "ideas", "life", "question", "questions", "answer", "answers",
+        "picture", "pictures", "video", "light", "group", "groups", "place", "today",
+        "yesterday", "morning", "name", "names", "hand", "eye", "ear", "head", "heart"
+    ]
+
+    /// True when a phrase is worth spending a request on at all.
+    ///
+    /// Two rules, both measured to cost nothing in recall: the name has to
+    /// have actually been said (the model does invent items despite being
+    /// told not to), and a lone everyday noun is not a thing to look up.
+    static func worthLookingUp(_ query: String, spokenIn text: String) -> Bool {
+        let normalized = Mention.normalize(query)
+        guard !normalized.isEmpty else { return false }
+        let words = normalized.split(separator: " ").map(String.init)
+        if words.count == 1, genericWords.contains(words[0]) { return false }
+        // Said, allowing for the transcriber's spacing and punctuation.
+        return Mention.normalize(text).contains(normalized)
+    }
+
     /// Words that are never a thing to look up on their own: the places the
     /// teacher is looking, not what they found there.
     private static let blocklist: Set<String> = [

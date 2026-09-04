@@ -38,6 +38,9 @@ final class PrompterController: ObservableObject {
         /// shipped app leaves this off - a class needs restraint, a test
         /// needs to see everything.
         var optionsMode = false
+        /// A ceiling on outbound lookups per minute, whatever the detector
+        /// offers. A class stays quiet; the bench is allowed to be busier.
+        var lookupsPerMinute = 6
     }
 
     @Published private(set) var isListening = false
@@ -91,6 +94,7 @@ final class PrompterController: ObservableObject {
         testMode = false
         await resolver.reset()
         await resolver.configure(.init(sessionCap: configuration.optionsMode ? 500 : 30,
+                                       lookupsPerMinute: configuration.lookupsPerMinute,
                                        videoSearchEnabled: configuration.videoSearch,
                                        youtubeToken: configuration.youtubeToken))
 
@@ -201,6 +205,7 @@ final class PrompterController: ObservableObject {
         testMode = false
         await resolver.reset()
         await resolver.configure(.init(sessionCap: configuration.optionsMode ? 500 : 30,
+                                       lookupsPerMinute: configuration.lookupsPerMinute,
                                        videoSearchEnabled: configuration.videoSearch,
                                        youtubeToken: configuration.youtubeToken))
         chooseDetector()
@@ -221,6 +226,7 @@ final class PrompterController: ObservableObject {
         testMode = false
         await resolver.reset()
         await resolver.configure(.init(sessionCap: configuration.optionsMode ? 500 : 30,
+                                       lookupsPerMinute: configuration.lookupsPerMinute,
                                        videoSearchEnabled: configuration.videoSearch,
                                        youtubeToken: configuration.youtubeToken))
         chooseDetector()
@@ -248,6 +254,7 @@ final class PrompterController: ObservableObject {
     func debugResolve(_ query: String, kind: Mention.Kind, configuration: Configuration) async {
         self.configuration = configuration
         await resolver.configure(.init(sessionCap: configuration.optionsMode ? 500 : 30,
+                                       lookupsPerMinute: configuration.lookupsPerMinute,
                                        videoSearchEnabled: configuration.videoSearch,
                                        youtubeToken: configuration.youtubeToken))
         await resolve([Mention(kind: kind, query: query, confidence: 1)])

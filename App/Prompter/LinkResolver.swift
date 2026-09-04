@@ -51,6 +51,11 @@ actor LinkResolver {
         /// Lookups allowed in one session. A class is capped tight (30); the
         /// bench raises it, because seeing everything is the point there.
         var sessionCap = 30
+        /// A ceiling on how fast lookups may leave, whatever the detector
+        /// offers. Quality filters judge; this one simply refuses to send
+        /// more than this many in any sixty seconds, so a talkative stretch
+        /// cannot flood the network.
+        var lookupsPerMinute = 6
         var videoSearchEnabled = true
         /// Nil when no Google account is connected: video mentions become
         /// search links.
@@ -70,6 +75,7 @@ actor LinkResolver {
     private var consecutiveFailures: [String: Int] = [:]
     private var backoffUntil: [String: Date] = [:]
     private var inFlight = 0
+    private var recentLookups: [Date] = []
     private(set) var totalResolved = 0
     /// True once YouTube said the quota is gone for the day, so every further
     /// video mention becomes a search link without asking again.
@@ -116,6 +122,13 @@ actor LinkResolver {
         guard totalResolved < sessionCap else {
             return Resolution(notes: ["session limit of \(sessionCap) lookups reached \u{2014} no more cards this class"], skipped: true)
         }
+        // The per-minute brake, checked before anything is sent.
+        let now = Date()
+        recentLookups.removeAll { now.timeIntervalSince($0) > 60 }
+        guard recentLookups.count < configuration.lookupsPerMinute else {
+            return Resolution(notes: ["holding back \u{201C}\(mention.query)\u{201D} \u{2014} \(configuration.lookupsPerMinute) lookups a minute is the ceiling"], skipped: true)
+        }
+        recentLookups.append(now)
         resolvedKeys.insert(key)
 
         // Two at a time. A burst of mentions waits its turn rather than
@@ -311,6 +324,14 @@ actor LinkResolver {
     /// seeing every option is the point.
     func resolveOptions(_ mention: Mention) async -> Resolution {
         var resolution = Resolution()
+        let now = Date()
+        recentLookups.removeAll { now.timeIntervalSince($0) > 60 }
+        guard recentLookups.count < configuration.lookupsPerMinute else {
+            resolution.notes = ["holding back \u{201C}\(mention.query)\u{201D} \u{2014} \(configuration.lookupsPerMinute) lookups a minute is the ceiling"]
+            resolution.skipped = true
+            return resolution
+        }
+        recentLookups.append(now)
         // The richer phrase for searching; the bare name for the domain guess
         // and for the card's label.
         let query = mention.searchQuery

@@ -126,6 +126,10 @@ final class FoundationModelsDetector: MentionDetector {
                     let maxLength = kind == .quote ? 200 : 60
                     guard !words.isEmpty, words.count <= maxWords, query.count >= 3, query.count <= maxLength else { return nil }
                     guard generated.confidence >= 0.45 else { return nil }
+                    // The model invents items despite being told not to, and
+                    // offers everyday nouns as things to look up. Both are
+                    // cheap to reject here, before anything is sent.
+                    guard kind == .quote || HeuristicDetector.worthLookingUp(query, spokenIn: trimmed) else { return nil }
                     return Mention(kind: kind, query: query,
                                    searchQuery: generated.searchQuery.trimmingCharacters(in: .whitespacesAndNewlines),
                                    confidence: min(1, max(0, generated.confidence)))

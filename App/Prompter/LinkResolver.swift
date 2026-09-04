@@ -311,7 +311,10 @@ actor LinkResolver {
     /// seeing every option is the point.
     func resolveOptions(_ mention: Mention) async -> Resolution {
         var resolution = Resolution()
-        let query = mention.query
+        // The richer phrase for searching; the bare name for the domain guess
+        // and for the card's label.
+        let query = mention.searchQuery
+        let name = mention.query
         guard !query.isEmpty else { return resolution }
 
         // Cheap link cards first: they cost nothing and send nothing until
@@ -331,8 +334,8 @@ actor LinkResolver {
                                              source: .images, url: images.url!))
 
         // Then the ones worth a request, in parallel.
-        async let site = officialSite(for: query)
-        async let encyclopedia = resolveWikipedia(Mention(kind: .topic, query: query, confidence: mention.confidence))
+        async let site = officialSite(for: name)
+        async let encyclopedia = encyclopediaEntry(searching: query, fallingBackTo: name, confidence: mention.confidence)
         async let books = mention.kind == .book
             ? resolveBook(Mention(kind: .book, query: query, confidence: mention.confidence))
             : Resolution()
@@ -354,6 +357,23 @@ actor LinkResolver {
         var seen: Set<String> = []
         resolution.cards = resolution.cards.filter { seen.insert($0.url.absoluteString).inserted }
         return resolution
+    }
+
+    /// The encyclopedia entry, richer query first and the bare name second.
+    ///
+    /// Wikipedia matches on TITLES, so the extra word cuts both ways, measured
+    /// on real cases: "Tahoma" alone lands on a high school in Washington and
+    /// "Tahoma font" lands on the typeface, but "E Ink technology" matches no
+    /// title at all where "E Ink" is exactly right. Trying the richer phrase
+    /// first and falling back keeps both wins, and the second request only
+    /// happens when the first found nothing.
+    private func encyclopediaEntry(searching query: String, fallingBackTo name: String,
+                                   confidence: Double) async -> Resolution {
+        let rich = await resolveWikipedia(Mention(kind: .topic, query: query, confidence: confidence))
+        guard rich.cards.isEmpty, Mention.normalize(query) != Mention.normalize(name) else { return rich }
+        var bare = await resolveWikipedia(Mention(kind: .topic, query: name, confidence: confidence))
+        bare.notes = rich.notes + bare.notes
+        return bare
     }
 
     /// A product's own homepage, guessed from its name and then checked.

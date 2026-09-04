@@ -43,6 +43,9 @@ extension CoordinatorController {
         var configuration = PrompterController.Configuration()
         configuration.localeIdentifier = prompterLocaleIdentifier
         configuration.videoSearch = prompterVideoSearch
+        // The class name is the only description of the subject the app has,
+        // and it is exactly the hint the model needs to search well.
+        configuration.subject = className.trimmingCharacters(in: .whitespaces)
         if youtubeConnected {
             let clientID = youtubeClientID.trimmingCharacters(in: .whitespacesAndNewlines)
             let clientSecret = youtubeClientSecret.trimmingCharacters(in: .whitespacesAndNewlines)

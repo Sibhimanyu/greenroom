@@ -32,6 +32,10 @@ final class PrompterController: ObservableObject {
         var youtubeToken: (() async throws -> String)?
         var rosterNames: () -> [String] = { [] }
         var log: (String) -> Void = { _ in }
+        /// What the class is about, from the class name the teacher set.
+        /// The model uses it to write searchable queries: a design lesson's
+        /// "Tahoma" is a font, a geography lesson's is a place.
+        var subject = ""
         /// Bench mode: every mention becomes a FAN of choices (the site
         /// itself, a video, pictures, the encyclopedia entry, a definition)
         /// instead of one best card, and far more of them are kept. The
@@ -271,7 +275,7 @@ final class PrompterController: ObservableObject {
 
     private func chooseDetector() {
         if FoundationModelsDetector.isAvailable {
-            let model = FoundationModelsDetector()
+            let model = FoundationModelsDetector(subject: configuration.subject)
             model.prewarm()
             detector = model
         } else {
@@ -447,7 +451,7 @@ final class PrompterController: ObservableObject {
                 continue
             }
             if !resolution.sentTo.isEmpty {
-                configuration.log("Prompter: sent \u{201C}\(mention.query)\u{201D} to \(resolution.sentTo.joined(separator: " and ")).")
+                configuration.log("Prompter: sent \u{201C}\(mention.searchQuery)\u{201D} to \(resolution.sentTo.joined(separator: " and ")).")
             }
             if resolution.searchLinkOnly {
                 configuration.log("Prompter: video card for \u{201C}\(mention.query)\u{201D} is a search link \u{2014} nothing sent.")

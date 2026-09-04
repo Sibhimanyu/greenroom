@@ -47,13 +47,34 @@ struct Mention: Hashable {
     }
 
     var kind: Kind
-    /// Short and deterministic: the words that go into the search box. This
-    /// is the ONLY text derived from speech that ever leaves the Mac, and it
-    /// is written to the status log every time it does.
+    /// What the thing is called, as said. Used for the card's label, for
+    /// dedupe, for the roster check, and for guessing a product's domain.
     var query: String
+    /// What actually goes in the search box.
+    ///
+    /// A bare name is often unsearchable: "monospace" alone lands nowhere,
+    /// "monospace font" lands on the right page. So the model is asked for a
+    /// query that carries a word or two of what kind of thing it is, drawn
+    /// from what the teacher was saying. Defaults to the name when nothing
+    /// richer is available (the word-pattern detector has no way to enrich).
+    /// This, not `query`, is the text that leaves the Mac - and it is what
+    /// the status log names.
+    var searchQuery: String
     /// 0...1. The heuristic detector never goes above 0.8; the model reports
     /// its own.
     var confidence: Double
+
+    /// `searchQuery` falls back to the name, which is what the word-pattern
+    /// detector always produces.
+    init(kind: Kind, query: String, searchQuery: String? = nil, confidence: Double) {
+        self.kind = kind
+        self.query = query
+        let enriched = (searchQuery ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        // A "richer" query that lost the name itself is worse than the name.
+        self.searchQuery = enriched.isEmpty || !Mention.normalize(enriched).contains(Mention.normalize(query))
+            ? query : enriched
+        self.confidence = confidence
+    }
 
     /// Lower-cased, whitespace-collapsed, punctuation-stripped - the key the
     /// session dedupes and suppresses on. "Charlotte's Web" and "charlottes

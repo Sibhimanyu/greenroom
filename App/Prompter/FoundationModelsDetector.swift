@@ -31,8 +31,10 @@ struct GeneratedMention {
     @Guide(description: "One of: thing (a tool, app, product, company or other named thing), word (a word whose meaning is asked or explained), quote (a quotation), book, video, topic, person, place",
            .anyOf(["thing", "word", "quote", "book", "video", "topic", "person", "place"]))
     var kind: String
-    @Guide(description: "For a quote: the quoted line itself, as said. Otherwise a short search phrase, 1 to 6 words, the name as said. No sentences.")
+    @Guide(description: "For a quote: the quoted line itself, as said. Otherwise the name of the thing as the teacher said it, 1 to 6 words.")
     var query: String
+    @Guide(description: "What you would type into a search box to find this exact thing. Include the name plus a word or two saying what kind of thing it is, taken from what the teacher was talking about - for example a font name plus the word font, or a product name plus what it does. For a quote, repeat the quoted line. 2 to 10 words.")
+    var searchQuery: String
     @Guide(description: "How sure you are the speaker named a real, findable thing, 0.0 to 1.0", .range(0.0...1.0))
     var confidence: Double
 }
@@ -41,6 +43,15 @@ struct GeneratedMention {
 final class FoundationModelsDetector: MentionDetector {
     let name = "Apple Intelligence (on-device)"
     let analyticsCode = "ai"
+
+    /// What this class is about ("design and typography"), from the class
+    /// name the teacher set. One line of subject matter is what separates a
+    /// font called Tahoma from a place called Tahoma.
+    private let subject: String
+
+    init(subject: String = "") {
+        self.subject = subject.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
 
     static var isAvailable: Bool {
         if case .available = SystemLanguageModel.default.availability { return true }
@@ -74,7 +85,19 @@ final class FoundationModelsDetector: MentionDetector {
     /// nothing real. Precision was 2%. A small model treats a concrete example
     /// as a candidate answer, so the kinds are described by shape only, and the
     /// rule for an empty batch is stated explicitly instead.
-    private static let instructions = """
+    private var instructions: String { Self.baseInstructions + subjectRule }
+
+    /// The subject belongs in the standing rules, never in the turn.
+    ///
+    /// Passed alongside the new words it was read as content: with "design,
+    /// typography and reading" as the subject the model returned "design",
+    /// "typography" and "reading" as things to look up. Stated as a rule, with
+    /// an explicit prohibition, it informs the queries instead of seeding them.
+    private var subjectRule: String {
+        subject.isEmpty ? "" : " This class is about \(subject). Use that only to judge what a name means and to write better search queries - never return the subject words themselves as an item."
+    }
+
+    private static let baseInstructions = """
     You listen to a teacher speaking to a class over a video call, in Indian English with some Tamil mixed in. \
     From the new words, list only things the teacher would open a browser tab for: a named tool, app, \
     product or company; a word whose meaning he asks or explains; a quotation he recites (return the quoted \
@@ -84,13 +107,16 @@ final class FoundationModelsDetector: MentionDetector {
     Most batches contain nothing worth looking up - returning an empty list is the normal, correct answer. \
     Rules: never list the names of the people in the call - students or the teacher - and never list \
     anything said TO someone; skip greetings, instructions and classroom management; ignore words that \
-    are not English unless they are clearly a name; return a short search phrase for each item, the name \
-    as said, not a sentence (except a quote, which is the line as said). \
+    are not English unless they are clearly a name. \
+    For each item give TWO things: the name as the teacher said it, and a search query that would actually \
+    find it. A bare name is often too thin to search - "monospace" finds nothing useful, "monospace font" \
+    finds the right page - so the query should carry a word or two about what kind of thing it is, taken \
+    from what the teacher was saying. A quote is the exception: both are the quoted line. \
     The context words are for understanding only - do not list things from them again.
     """
 
     func prewarm() {
-        let session = LanguageModelSession(instructions: Self.instructions)
+        let session = LanguageModelSession(instructions: instructions)
         session.prewarm()
     }
 
@@ -102,7 +128,7 @@ final class FoundationModelsDetector: MentionDetector {
         var prompt = "Context (already handled): \(context.isEmpty ? "none" : context)\nNew words: \(trimmed)\(roster)"
 
         for attempt in 0..<2 {
-            let session = LanguageModelSession(instructions: Self.instructions)
+            let session = LanguageModelSession(instructions: instructions)
             do {
                 let response = try await session.respond(
                     to: prompt,
@@ -118,7 +144,9 @@ final class FoundationModelsDetector: MentionDetector {
                     let maxLength = kind == .quote ? 200 : 60
                     guard !words.isEmpty, words.count <= maxWords, query.count >= 3, query.count <= maxLength else { return nil }
                     guard generated.confidence >= 0.45 else { return nil }
-                    return Mention(kind: kind, query: query, confidence: min(1, max(0, generated.confidence)))
+                    return Mention(kind: kind, query: query,
+                                   searchQuery: generated.searchQuery.trimmingCharacters(in: .whitespacesAndNewlines),
+                                   confidence: min(1, max(0, generated.confidence)))
                 }
                 return HeuristicDetector.filter(mentions, excludedNames: excludedNames)
             } catch let error as LanguageModelSession.GenerationError {

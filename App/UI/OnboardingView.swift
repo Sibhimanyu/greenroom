@@ -23,8 +23,9 @@ struct OnboardingView: View {
     @State private var scratchExpanded = false
     @State private var isTesting = false
     @State private var testResults: [TestResult] = []
+    @State private var connectingYouTube = false
 
-    private let stepCount = 6
+    private let stepCount = 7
     private let timer = Timer.publish(every: 1.5, on: .main, in: .common).autoconnect()
 
     var body: some View {
@@ -53,6 +54,7 @@ struct OnboardingView: View {
         case 2: credentialsStep
         case 3: setupStep
         case 4: permissionsStep
+        case 5: youtubeStep
         default: readyStep
         }
     }
@@ -390,6 +392,59 @@ struct OnboardingView: View {
             .frame(maxWidth: 440)
         }
         .frame(maxWidth: .infinity)
+    }
+
+    // MARK: YouTube (optional) - the same controls as Settings → YouTube, in
+    // the flow, because a teacher who records wants to know the class can
+    // land on the channel before the first morning, not discover it later.
+
+    private var youtubeStep: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            stepHeader("YouTube (optional)", "Recordings can go straight to your channel as unlisted videos. Skip this if you never record; it lives in Settings \u{2192} YouTube too.")
+
+            Picker("After a recording", selection: $coordinator.youtubeUploadMode) {
+                ForEach(YouTubeUploadMode.allCases) { mode in
+                    Text(mode.label).tag(mode)
+                }
+            }
+            Text("\u{201C}Ask\u{201D} shows one Upload / Not now card when a recording stops; the file stays in Documents/Greenroom either way, and the link is copied when the upload finishes.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            if coordinator.youtubeUploadMode != .off {
+                Divider()
+                TextField("Client ID", text: $coordinator.youtubeClientID)
+                SecureField("Client Secret", text: $coordinator.youtubeClientSecret)
+                HStack(spacing: 12) {
+                    if coordinator.youtubeConnected {
+                        Label("Google account connected", systemImage: "checkmark.circle.fill")
+                            .foregroundStyle(Brand.green)
+                        Button("Disconnect") { Task { await coordinator.disconnectYouTube() } }
+                    } else {
+                        Button(connectingYouTube ? "Waiting for Google\u{2026}" : "Connect Google account\u{2026}") {
+                            connectingYouTube = true
+                            Task {
+                                await coordinator.connectYouTube()
+                                connectingYouTube = false
+                            }
+                        }
+                        .disabled(connectingYouTube || coordinator.youtubeClientID.isEmpty || coordinator.youtubeClientSecret.isEmpty)
+                    }
+                }
+                if !coordinator.youtubeStatus.isEmpty {
+                    Text(coordinator.youtubeStatus)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Text("One-time, on the Google account that owns the channel: console.cloud.google.com \u{2192} new project \u{2192} APIs & Services \u{2192} enable \u{201C}YouTube Data API v3\u{201D} \u{2192} Credentials \u{2192} OAuth client ID, type \u{201C}Desktop app\u{201D}. Paste its ID and Secret above, then Connect: your browser signs in once. Greenroom keeps only the permission to upload and edit your own videos. If the settings file you imported already carried the ID and Secret, just press Connect.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Text("This is the only feature that sends class content anywhere: the recording itself, to the connected account\u{2019}s channel, over HTTPS. Nothing is uploaded while \u{201C}Do nothing\u{201D} is selected.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
     }
 
     // MARK: Shared pieces

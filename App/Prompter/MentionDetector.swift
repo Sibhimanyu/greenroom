@@ -119,12 +119,40 @@ struct HeuristicDetector: MentionDetector {
         guard words.count == 1, let word = words.first else { return true }
         if genericWords.contains(word) { return false }
         guard isEverydayWord(word) else { return true }
-        // A long ordinary word is usually the subject of the lesson rather
-        // than a word in passing: "photosynthesis", "arithmetic",
-        // "vocabulary". The short ones are the ones that were never worth a
-        // request - "roads", "explain", "scarves" - and they still go.
-        if word.count >= 8 { return true }
+        // There was briefly a bypass here letting any ordinary word of eight
+        // letters or more through, on the theory that a long word is a subject
+        // word. Length is not that signal. It admitted "happening" from "what
+        // is happening right now?", and would have admitted "everything",
+        // "something", "different", "important" and "beginning" - measured, all
+        // nine or ten letters, all in the dictionary. One real class produced
+        // exactly one prompt and it was "happening". Reverted.
         return usedAsAName(query, in: text)
+    }
+
+    /// True when the sentence actually asks about a word, rather than merely
+    /// containing one.
+    ///
+    /// A definition card is only ever right when the teacher is asking or
+    /// explaining what something means. Without this, the model labels any
+    /// noun-shaped word a `.word` and the class gets a dictionary entry for
+    /// "happening" out of "what is happening right now?". The dictionary path
+    /// sends nothing off the Mac, which is exactly why it needed a rule of its
+    /// own: the request filters do not apply to it and it looked free.
+    static func asksAboutTheWord(_ query: String, in text: String) -> Bool {
+        let name = NSRegularExpression.escapedPattern(for: query)
+        let tells = [
+            #"(?i)\bwhat\s+(?:does|do)\s+"# + name + #"\s+mean\b"#,
+            #"(?i)\bwhat\s+is\s+(?:the\s+)?meaning\s+of\s+"# + name + #"\b"#,
+            #"(?i)\bmeaning\s+of\s+(?:the\s+word\s+)?"# + name + #"\b"#,
+            #"(?i)\bthe\s+word\s+"# + name + #"\b"#,
+            #"(?i)\b"# + name + #"\s+means\b"#,
+            #"(?i)\bdefine\s+"# + name + #"\b"#,
+            #"(?i)\bcalled\s+"# + name + #"\b"#
+        ]
+        return tells.contains { pattern in
+            guard let regex = try? NSRegularExpression(pattern: pattern) else { return false }
+            return regex.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)) != nil
+        }
     }
 
     /// In the Mac's own dictionary, so an ordinary English word.

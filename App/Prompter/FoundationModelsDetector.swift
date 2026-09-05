@@ -126,14 +126,44 @@ final class FoundationModelsDetector: MentionDetector {
                     let maxWords = kind == .quote ? 30 : 7
                     let maxLength = kind == .quote ? 200 : 60
                     guard !words.isEmpty, words.count <= maxWords, query.count >= 3, query.count <= maxLength else { return nil }
+                    // A quotation is at least a clause. The three-character
+                    // floor let "Oh my God" go to Wikiquote twice in one class.
+                    if kind == .quote, words.count < 4 { return nil }
                     guard generated.confidence >= 0.45 else { return nil }
                     // The model invents items despite being told not to, and
                     // offers everyday nouns as things to look up. Both are
                     // cheap to reject here, before anything is sent.
-                    guard kind == .quote || HeuristicDetector.worthLookingUp(query, spokenIn: trimmed) else { return nil }
-                    return Mention(kind: kind, query: query,
-                                   searchQuery: generated.searchQuery.trimmingCharacters(in: .whitespacesAndNewlines),
-                                   confidence: min(1, max(0, generated.confidence)))
+                    // Each kind answers to the gate that is actually about it.
+                    switch kind {
+                    case .quote:
+                        // The quoted line itself; the word floor above is its rule.
+                        break
+                    case .word:
+                        // A definition is right exactly when someone asked what
+                        // the word means - ordinary word or not. Running these
+                        // through worthLookingUp instead was wrong both ways:
+                        // it passed "happening" because the model called it a
+                        // word, and it would have dropped a real "what does
+                        // pabulum mean?" for being in the dictionary, which is
+                        // the one place being in the dictionary is the point.
+                        guard Mention.normalize(trimmed).contains(Mention.normalize(query)),
+                              HeuristicDetector.asksAboutTheWord(query, in: trimmed) else { return nil }
+                    default:
+                        guard HeuristicDetector.worthLookingUp(query, spokenIn: trimmed) else { return nil }
+                    }
+                    let mention = Mention(kind: kind, query: query,
+                                          searchQuery: generated.searchQuery.trimmingCharacters(in: .whitespacesAndNewlines),
+                                          confidence: min(1, max(0, generated.confidence)))
+                    // The one-word search is the one that finds nothing. The
+                    // model is asked to carry a word or two of what kind of
+                    // thing this is, drawn from the surrounding talk; when it
+                    // hands back the bare name anyway, the talk did not say
+                    // what the thing was, and there is nothing to search for.
+                    // Quotes are the line itself, and a definition never
+                    // leaves the Mac, so neither needs the context.
+                    let enriched = mention.searchQuery.split(whereSeparator: \.isWhitespace).count >= 2
+                    guard kind == .quote || kind == .word || enriched else { return nil }
+                    return mention
                 }
                 return HeuristicDetector.filter(mentions, excludedNames: excludedNames)
             } catch let error as LanguageModelSession.GenerationError {

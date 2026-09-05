@@ -19,7 +19,10 @@ final class PrompterRailBlock: NSView {
     private static let eyebrowHeight: CGFloat = 16
     private static let groupGap: CGFloat = 20  // matches the rail's railGroupGap
     private static let eyebrowGap: CGFloat = 8 // matches railEyebrowGap
-    private static let cardGap: CGFloat = 6
+    /// Eight, not six. DESIGN.md's spacing scale is 4px steps and lists 6 as
+    /// drift to round off when the code is touched; the cards are also easier
+    /// to tell apart with the extra air now that they carry a hairline.
+    private static let cardGap: CGFloat = 8
     /// The "+N more" line drawn when the rail is too short for every card.
     private static let overflowGap: CGFloat = 6
     private static let overflowHeight: CGFloat = 14

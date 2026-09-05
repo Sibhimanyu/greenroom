@@ -334,7 +334,17 @@ final class PrompterController: ObservableObject {
                          source: .wikipedia, url: URL(string: "https://en.wikipedia.org/wiki/Eric_Carle")!),
             PrompterCard(kind: .video, query: "baby shark dance", title: "Search YouTube for \u{201C}baby shark dance\u{201D}",
                          subtitle: "Nothing sent until you open it", source: .search,
-                         url: URL(string: "https://www.youtube.com/results?search_query=baby+shark+dance")!)
+                         url: URL(string: "https://www.youtube.com/results?search_query=baby+shark+dance")!),
+            // Six, not three. Three fills the rail's slots exactly and so never
+            // rotates - the button could not show the one behaviour it is most
+            // useful for testing.
+            PrompterCard(kind: .word, query: "pabulum", title: "pabulum", subtitle: "Bland intellectual fare",
+                         source: .dictionary, url: URL(string: "dict://pabulum")!),
+            PrompterCard(kind: .thing, query: "haiku deck", title: "Haiku Deck", subtitle: "haikudeck.com",
+                         source: .officialSite, url: URL(string: "https://www.haikudeck.com")!),
+            PrompterCard(kind: .quote, query: "ask not what your country can do for you",
+                         title: "John F. Kennedy", subtitle: "Inaugural Address, 1961",
+                         source: .wikiquote, url: URL(string: "https://en.wikiquote.org/wiki/John_F._Kennedy")!)
         ]
         for card in samples { insert(card) }
         isListening = true

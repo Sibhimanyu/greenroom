@@ -488,7 +488,12 @@ private final class RootView: NSView {
         for cells in stride(from: ceiling, through: Self.railMinCellsPerRow, by: -1) {
             let column = CGFloat(cells) * (Self.railCell.width + Self.railCellGap)
                 - Self.railCellGap
-            let stack = fittingStackHeight(width: column)
+            // Plus whatever the session facts gave up to Prompter: the width
+            // decision must not see that stand-down. If it did, a card arriving
+            // would free 116pt, widen the column, and grow the 16:9 picture
+            // right back into the room the stand-down just made - a rail that
+            // heaves sideways on every first link, for no gain.
+            let stack = fittingStackHeight(width: column) + suppressedNeedsHeight
             if stack <= railBodyHeight { return cells }
             if stack < best.stack { best = (cells, stack) }
         }
@@ -851,6 +856,14 @@ private final class RootView: NSView {
     // MARK: Layout
 
     private var lastRailWidth: CGFloat = 0
+    /// The document height the rail was last laid out at, so `layoutRail` can
+    /// keep the teacher's scroll position across a re-lay instead of snapping
+    /// them to the top every time a card arrives.
+    private var lastRailDocumentHeight: CGFloat = 0
+    /// Height the session-facts block would occupy if Prompter were not
+    /// standing it down. Zero whenever it is actually drawn. Read only by the
+    /// column-width decision - see `railCellsPerRow`.
+    private var suppressedNeedsHeight: CGFloat = 0
 
     private func layoutEverything() {
         let width = bounds.width
@@ -1144,6 +1157,7 @@ private final class RootView: NSView {
         let prose = NSFont.systemFont(ofSize: 12)
         var eyebrow = ""
         var rows: [(text: String, font: NSFont)] = []
+        suppressedNeedsHeight = 0
 
         if !session.readiness.isLive {
             // The class side is already carrying the progress. Two accounts of
@@ -1160,6 +1174,20 @@ private final class RootView: NSView {
                 ("\(index + 1).  \(entry.name)", prose)
             }
             if queue.count > 5 { rows.append(("+\(queue.count - 5) more", prose)) }
+        } else if prompterBlock.hasCards {
+            // What the block would have been, kept for the width decision below.
+            let factRows = session.meetingNumber.isEmpty ? 3 : 4
+            suppressedNeedsHeight = Self.railGroupGap + 16 + Self.railEyebrowGap
+                + CGFloat(factRows) * Self.railRowHeight
+            // The last rung of the ladder is admitted filler - facts for a quiet
+            // stretch. A quiet stretch is exactly when it is NOT quiet any more:
+            // live links are on screen and they are what the teacher is about to
+            // act on. So the filler stands down and gives Prompter its 116pt
+            // back, which is the difference between five cards and three.
+            //
+            // Only the filler yields. Someone at the door and a raised hand are
+            // still more urgent than a link, and they keep the top of the block.
+            eyebrow = ""
         } else {
             // Machine facts, so mono - the split DESIGN.md asks for. The meeting
             // number is here rather than only in the top bar because the moment
@@ -1351,10 +1379,18 @@ private final class RootView: NSView {
         // how the children wrap - so it is measured first, then everything is
         // placed for real. Both passes read the same column width, or the content
         // scrolls to an offset that does not match what is drawn.
-        let contentHeight = railStackHeight(width: column.width)
+        let stack = railStack(width: column.width, available: rail.bounds.height)
+
+        // How far down the column the teacher had scrolled, so a card arriving
+        // does not yank them back to the top mid-read. This used to snap to the
+        // top on every pass, and the rail re-lays on a one-second poll.
+        let visibleHeight = railScroll.contentView.bounds.height
+        let scrolledFromTop = lastRailDocumentHeight > 0
+            ? max(0, lastRailDocumentHeight - railScroll.contentView.bounds.maxY)
+            : 0
 
         // Never shorter than the rail itself, or a short list would float.
-        let documentHeight = max(contentHeight, rail.bounds.height)
+        let documentHeight = max(stack.total, rail.bounds.height)
         railContent.frame = NSRect(x: 0, y: 0, width: rail.bounds.width, height: documentHeight)
 
         let top = documentHeight - pad
@@ -1362,10 +1398,14 @@ private final class RootView: NSView {
         let controlsTop = afterMedia - 10
         let controlsHeight = layoutControlColumn(x: x, width: column.width, top: controlsTop)
         let needsHeight = walkNeedsBlock(x: x, width: column.width, top: controlsTop - controlsHeight, place: true)
-        prompterBlock.place(x: x, width: column.width, top: controlsTop - controlsHeight - needsHeight)
+        prompterBlock.place(x: x, width: column.width,
+                            top: controlsTop - controlsHeight - needsHeight,
+                            available: stack.prompterBudget)
 
-        // Start at the top, which is where the self view and the mic are.
-        railContent.scroll(NSPoint(x: 0, y: documentHeight))
+        // Hold the reading position. With nothing scrolled yet this is the top,
+        // which is where the self view and the mic are.
+        railContent.scroll(NSPoint(x: 0, y: max(0, documentHeight - scrolledFromTop - visibleHeight)))
+        lastRailDocumentHeight = documentHeight
     }
 
     /// The single content column the whole rail aligns to: picture, caption,
@@ -1396,12 +1436,21 @@ private final class RootView: NSView {
         walkNeedsBlock(x: 0, width: width, top: 0, place: false)
     }
 
-    /// The whole column's height at a width: picture, controls, needs block,
-    /// Prompter block, gaps and padding. This is the DOCUMENT height, so it
-    /// counts everything - leave anything out and the scroll view cannot
-    /// reach the bottom of its own content.
-    private func railStackHeight(width: CGFloat) -> CGFloat {
-        fittingStackHeight(width: width) + prompterBlock.height(forWidth: width)
+    /// The whole column's height at a width, and Prompter's share of it.
+    ///
+    /// The two are one answer, not two: Prompter is the only block that sizes
+    /// itself to the room left over, so the room left over has to be worked out
+    /// before its height is known, and both numbers have to come from the same
+    /// arithmetic or the measuring pass and the placing pass disagree - the
+    /// mistake this file has made twice already.
+    ///
+    /// `total` is the DOCUMENT height, so it counts everything; leave anything
+    /// out and the scroll view cannot reach the bottom of its own content.
+    private func railStack(width: CGFloat, available: CGFloat)
+        -> (total: CGFloat, prompterBudget: CGFloat) {
+        let fitting = fittingStackHeight(width: width)
+        let budget = max(0, available - fitting)
+        return (fitting + prompterBlock.height(forWidth: width, available: budget), budget)
     }
 
     /// The height the column-width decision is allowed to see.
@@ -1425,9 +1474,13 @@ private final class RootView: NSView {
     /// Prompter's state, once a second. Re-lays the rail only when the block
     /// changed height, so a stable set of cards costs nothing.
     func applyPrompter(_ state: PrompterSurfaceState) {
-        if prompterBlock.apply(state) {
-            layoutEverything()
-        }
+        let hadCards = prompterBlock.hasCards
+        guard prompterBlock.apply(state) || hadCards != prompterBlock.hasCards else { return }
+        // The session-facts block stands down while links are on screen, so a
+        // first or last card changes what the needs block says as well as how
+        // tall Prompter is. Both, then one layout.
+        updateNeedsBlock()
+        layoutEverything()
     }
 
     /// One walk, measuring or placing, for the same reason the control column

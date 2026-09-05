@@ -238,6 +238,7 @@ targets:
       - path: App/Prompter/PrompterCard.swift
       - path: App/Prompter/LinkResolver.swift
       - path: App/Prompter/PrompterTransport.swift
+      - path: App/Prompter/TitleMatch.swift
       - path: App/Prompter/ThumbnailLoader.swift
     settings:
       base:

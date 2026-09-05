@@ -565,8 +565,6 @@ actor LinkResolver {
             // full-text endpoint as well: worse, it matched excerpts.
             var components = URLComponents(string: "https://en.wikipedia.org/w/rest.php/v1/search/title")!
             components.queryItems = [URLQueryItem(name: "q", value: mention.query), URLQueryItem(name: "limit", value: "3")]
-            let said = Set(Mention.normalize(mention.query).split(separator: " ").map(String.init))
-            let generic: Set<String> = ["the", "of", "and", "a", "an"]
             switch await fetchJSON(components.url!, source: .wikipedia, host: "wikipedia.org", parse: { json in
                 let pages = json["pages"] as? [[String: Any]] ?? []
                 return pages.compactMap { page -> PrompterCard? in
@@ -576,8 +574,12 @@ actor LinkResolver {
                     // Disambiguation pages are a list, not an answer.
                     guard !description.lowercased().contains("referred to by the same term"),
                           !description.lowercased().hasPrefix("disambiguation") else { return nil }
-                    let titleWords = Mention.normalize(title).split(separator: " ").map(String.init).filter { !generic.contains($0) }
-                    guard !titleWords.isEmpty, titleWords.allSatisfy({ said.contains($0) }) else { return nil }
+                    // One shared rule, in TitleMatch. The check that used to
+                    // live here asked only that every word of the TITLE had
+                    // been said, which let a title that is a subset of the
+                    // phrase win: "haiku deck" matched the page "Haiku", the
+                    // poetic form. Everything said has to be answered now.
+                    guard TitleMatch.answers(title: title, said: mention.query) else { return nil }
                     let card = PrompterCard(kind: .thing, query: mention.query, title: title,
                                             subtitle: description.isEmpty ? "Wikipedia" : description.prefix(1).uppercased() + description.dropFirst(),
                                             source: .wikipedia, url: url)

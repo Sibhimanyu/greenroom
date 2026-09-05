@@ -73,6 +73,8 @@ enum Recorded {
 
 struct ResolverCase {
     let id: String
+    /// Why this case is here. Read by people, not by the runner.
+    var _why: String = ""
     let mention: Mention
     let replies: [String: RecordedTransport.Reply]
     /// The card's expected title, or nil when the case expects a search link.
@@ -125,6 +127,54 @@ func resolverCases() -> [ResolverCase] {
                 // teacher did for this one himself.
                 Recorded.wikipediaSearch: .init(body: Recorded.wikipediaPage(
                     title: "Amazon Kindle", key: "Amazon_Kindle", description: "E-reader series"))
+            ],
+            expectTitle: nil,
+            expectSource: .search),
+
+        ResolverCase(
+            id: "thing-subset-title-rejected",
+            _why: "The hole in the old rule. Every word of 'Haiku' had been said, so the poetic form was served confidently to a teacher talking about slide software.",
+            mention: Mention(kind: .thing, query: "haiku deck", confidence: 0.8),
+            replies: [
+                "https://haikudeck.com": .init(status: 404, body: ""),
+                Recorded.wikipediaSearch: .init(body: Recorded.wikipediaPage(
+                    title: "Haiku", key: "Haiku", description: "Japanese poetic form"))
+            ],
+            expectTitle: nil,
+            expectSource: .search),
+
+        ResolverCase(
+            id: "thing-asr-mangled-brand",
+            _why: "What the transcriber actually wrote for Haiku Deck. Four edits away by spelling, the same word by sound.",
+            mention: Mention(kind: .thing, query: "hyco deck", confidence: 0.8),
+            replies: [
+                "https://hycodeck.com": .init(status: 404, body: ""),
+                Recorded.wikipediaSearch: .init(body: Recorded.wikipediaPage(
+                    title: "Haiku Deck", key: "Haiku_Deck", description: "Presentation software"))
+            ],
+            expectTitle: "Haiku Deck",
+            expectSource: .wikipedia),
+
+        ResolverCase(
+            id: "thing-extra-title-word-allowed",
+            _why: "A title may say more than was said. Only missing what WAS said is disqualifying.",
+            mention: Mention(kind: .thing, query: "monospace", confidence: 0.8),
+            replies: [
+                "https://monospace.com": .init(status: 404, body: ""),
+                Recorded.wikipediaSearch: .init(body: Recorded.wikipediaPage(
+                    title: "Monospaced font", key: "Monospaced_font", description: "Typeface class"))
+            ],
+            expectTitle: "Monospaced font",
+            expectSource: .wikipedia),
+
+        ResolverCase(
+            id: "thing-phonetic-not-a-blank-cheque",
+            _why: "Soundex is loose. It may rescue one mangled token, never carry a whole wrong title.",
+            mention: Mention(kind: .thing, query: "brand new gadget", confidence: 0.8),
+            replies: [
+                "https://brandnewgadget.com": .init(status: 404, body: ""),
+                Recorded.wikipediaSearch: .init(body: Recorded.wikipediaPage(
+                    title: "Burnt Nut Gasket", key: "Burnt_Nut_Gasket", description: "Unrelated"))
             ],
             expectTitle: nil,
             expectSource: .search),

@@ -124,8 +124,8 @@ struct PrompterSetupRows: View {
             }
 
             Toggle(isOn: $coordinator.prompterSaveTranscript) {
-                SettingLabel(title: "Save the transcript with the class",
-                             subtitle: "A transcript.txt in the class folder, beside the recording. Off keeps the text in memory only.")
+                SettingLabel(title: "Save the transcript and links with the class",
+                             subtitle: "transcript.txt for what was said and prompts.txt for what was suggested, in the class folder beside the recording. Off keeps both in memory only.")
             }
 
             Toggle(isOn: $coordinator.prompterVideoSearch) {

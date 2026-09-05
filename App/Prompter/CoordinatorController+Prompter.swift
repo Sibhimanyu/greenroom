@@ -49,6 +49,10 @@ extension CoordinatorController {
         // has a folder of its own.
         if prompterSaveTranscript, let folder = sessionFolder {
             configuration.transcriptFile = folder.appendingPathComponent("transcript.txt")
+            // Two files, not one. What was said and what was suggested answer
+            // different questions, and on a class the speech model barely
+            // finalises they are indistinguishable in a single file.
+            configuration.promptsFile = folder.appendingPathComponent("prompts.txt")
         }
         if youtubeConnected {
             let clientID = youtubeClientID.trimmingCharacters(in: .whitespacesAndNewlines)

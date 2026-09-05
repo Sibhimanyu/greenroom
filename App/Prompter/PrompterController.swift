@@ -44,6 +44,13 @@ final class PrompterController: ObservableObject {
         /// only. Set to a file inside the session's folder when Settings ->
         /// Prompter -> "Save the transcript with the class" is on.
         var transcriptFile: URL?
+        /// Where to write the links Prompter offered. Separate from the
+        /// transcript because they answer different questions - one is what
+        /// was said, the other is what the class was offered - and because a
+        /// sparse transcript makes the two indistinguishable when they share
+        /// a file: on a class the speech model barely finalises, every line
+        /// of the transcript happens to be a line that produced a link.
+        var promptsFile: URL?
     }
 
     @Published private(set) var isListening = false
@@ -63,6 +70,8 @@ final class PrompterController: ObservableObject {
     private(set) var detectorCode = ""
 
     private var configuration = Configuration()
+    /// Links written to the prompts file this session, for the closing line.
+    private var promptsWritten = 0
     private var transcript = RollingTranscript()
     private var transcriber: Transcriber?
     private var detector: MentionDetector = HeuristicDetector()
@@ -140,6 +149,9 @@ final class PrompterController: ObservableObject {
         }
         let count = transcript.totalFinalized
         let saved = configuration.transcriptFile
+        let links = promptsWritten
+        let savedPrompts = links > 0 ? configuration.promptsFile : nil
+        promptsWritten = 0
         transcript.reset()
         isListening = false
         isSpeaking = false
@@ -156,6 +168,9 @@ final class PrompterController: ObservableObject {
                 configuration.log("Prompter: stopped. Transcript saved (\(count) sentence\(count == 1 ? "" : "s")): \(saved.path)")
             } else {
                 configuration.log("Prompter: stopped. Transcript discarded (\(count) sentence\(count == 1 ? "" : "s"), never written).")
+            }
+            if let savedPrompts {
+                configuration.log("Prompter: \(links) link\(links == 1 ? "" : "s") saved: \(savedPrompts.path)")
             }
         }
         testMode = false
@@ -400,26 +415,61 @@ final class PrompterController: ObservableObject {
         }
     }
 
-    /// One line per finalised sentence, timestamped from the session's start,
-    /// appended as it lands rather than written at the end - a class that
-    /// crashes keeps everything said up to that moment.
+    /// One line per finalised sentence, timestamped from the session's start.
     private func appendToTranscriptFile(_ text: String) {
-        guard let url = configuration.transcriptFile else { return }
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
+        append("\(stamp())\t\(trimmed)\n", to: configuration.transcriptFile, headerLines: [
+            "What the microphone heard, as Prompter transcribed it on this Mac.",
+            "One line per finalised sentence: time, then what was said.",
+            "Sparse is normal. The speech model finalises only what it can render",
+            "in the class language, so a bilingual class transcribes thinly."
+        ])
+    }
+
+    /// One line per link Prompter put on screen.
+    ///
+    /// A separate file from the transcript, and not a subset of it. They read
+    /// as the same thing on a thin transcript - where nearly every sentence the
+    /// model finalised also produced a link - and that coincidence is exactly
+    /// what makes one file useless for judging either.
+    private func appendToPromptsFile(_ card: PrompterCard) {
+        let fields = [stamp(), card.kind.rawValue, card.source.label,
+                      oneLine(card.query), oneLine(card.title), card.url.absoluteString]
+        append(fields.joined(separator: "\t") + "\n", to: configuration.promptsFile, headerLines: [
+            "Links Prompter offered during this class, in the order they appeared.",
+            "time, kind, source, what it heard, what it found, link."
+        ])
+    }
+
+    /// Seconds since the session started, as h:mm:ss.
+    private func stamp() -> String {
         let elapsed = Int(Date().timeIntervalSince(startedAt))
-        let stamp = String(format: "%d:%02d:%02d", elapsed / 3600, (elapsed % 3600) / 60, elapsed % 60)
-        let line = "\(stamp)\t\(trimmed)\n"
+        return String(format: "%d:%02d:%02d", elapsed / 3600, (elapsed % 3600) / 60, elapsed % 60)
+    }
+
+    /// Tabs and newlines out, so a title can never split a row in two.
+    private func oneLine(_ text: String) -> String {
+        text.components(separatedBy: .whitespacesAndNewlines)
+            .filter { !$0.isEmpty }
+            .joined(separator: " ")
+    }
+
+    /// Appended as it lands rather than written at the end - a class that
+    /// crashes keeps everything up to that moment. The header is written with
+    /// the first line, so a file only exists once it has something in it.
+    private func append(_ line: String, to url: URL?, headerLines: [String]) {
+        guard let url else { return }
         if let handle = try? FileHandle(forWritingTo: url) {
             handle.seekToEndOfFile()
             handle.write(Data(line.utf8))
             try? handle.close()
         } else {
-            try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(),
-                                                     withIntermediateDirectories: true)
-            let header = "# \(url.deletingLastPathComponent().lastPathComponent)\n"
-                + "# What the microphone heard, as Prompter transcribed it on this Mac.\n\n"
-            try? Data((header + line).utf8).write(to: url)
+            let folder = url.deletingLastPathComponent()
+            try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            let preamble = (["# \(folder.lastPathComponent)"] + headerLines.map { "# \($0)" })
+                .joined(separator: "\n") + "\n\n"
+            try? Data((preamble + line).utf8).write(to: url)
         }
     }
 
@@ -526,5 +576,7 @@ final class PrompterController: ObservableObject {
         cards.insert(card, at: 0)
         if cards.count > keepCards { cards.removeLast(cards.count - keepCards) }
         unseenCount += 1
+        appendToPromptsFile(card)
+        promptsWritten += 1
     }
 }

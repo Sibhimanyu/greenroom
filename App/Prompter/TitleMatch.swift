@@ -55,6 +55,7 @@ enum TitleMatch {
 
         var remaining = titleTokens
         var phoneticUsed = 0
+        var spelledMatches = 0
         for token in saidTokens {
             guard let index = remaining.firstIndex(where: { exactOrNear(token, $0) }) else {
                 // Nothing spelled close enough. Allow ONE token of the title to
@@ -67,9 +68,18 @@ enum TitleMatch {
                 remaining.remove(at: sounded)
                 continue
             }
+            spelledMatches += 1
             remaining.remove(at: index)
         }
-        return true
+        // Sound corroborates spelling; it never makes the case alone.
+        //
+        // "One phonetic token per title" reads like a bound and is none when
+        // the phrase IS one token. A real class proved it within a minute:
+        // Tamil speech gave the model "Orukuntu", which keys to O625, and so
+        // does "Orkun" - so a Turkish footballer was offered to a reading
+        // class. "Hyco deck" still reaches "Haiku Deck" because "deck" is
+        // spelled right and carries the match; "orukuntu" has nothing behind it.
+        return phoneticUsed == 0 || spelledMatches > 0
     }
 
     /// Normalised, filler removed.

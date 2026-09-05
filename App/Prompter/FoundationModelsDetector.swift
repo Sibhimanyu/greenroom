@@ -126,9 +126,18 @@ final class FoundationModelsDetector: MentionDetector {
                     let maxWords = kind == .quote ? 30 : 7
                     let maxLength = kind == .quote ? 200 : 60
                     guard !words.isEmpty, words.count <= maxWords, query.count >= 3, query.count <= maxLength else { return nil }
-                    // A quotation is at least a clause. The three-character
-                    // floor let "Oh my God" go to Wikiquote twice in one class.
-                    if kind == .quote, words.count < 4 { return nil }
+                    // A quotation needs somebody to have said one was coming.
+                    //
+                    // This was a word-count floor, which does not work: the
+                    // greeting that reached Wikiquote in a live class ("how is
+                    // everyone today?") is five words, and "As a woman like
+                    // that was really into me" is nine. Length is not the
+                    // difference between talking and quoting. The word-pattern
+                    // detector has always required a recitation cue; the model
+                    // now answers to the same rule, reading the lead-in too
+                    // because the tell usually lands in the sentence before.
+                    if kind == .quote,
+                       !HeuristicDetector.hasRecitationCue(context + " " + trimmed) { return nil }
                     guard generated.confidence >= 0.45 else { return nil }
                     // The model invents items despite being told not to, and
                     // offers everyday nouns as things to look up. Both are

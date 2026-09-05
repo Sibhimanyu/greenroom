@@ -180,6 +180,18 @@ func resolverCases() -> [ResolverCase] {
             expectSource: .search),
 
         ResolverCase(
+            id: "thing-phonetic-alone-is-not-evidence",
+            _why: "From the 22-29 class. Tamil speech gave the model 'Orukuntu'; it keys to O625 and so does 'Orkun', so the phonetic path served a Turkish footballer. The bound was one phonetic token per title, which is no bound at all when the phrase IS one token.",
+            mention: Mention(kind: .thing, query: "orukuntu", confidence: 0.8),
+            replies: [
+                "https://orukuntu.com": .init(status: 404, body: ""),
+                Recorded.wikipediaSearch: .init(body: Recorded.wikipediaPage(
+                    title: "Orkun Usak", key: "Orkun_Usak", description: "Turkish footballer"))
+            ],
+            expectTitle: nil,
+            expectSource: .search),
+
+        ResolverCase(
             id: "thing-disambiguation-rejected",
             mention: Mention(kind: .thing, query: "mercury", confidence: 0.8),
             replies: [
@@ -320,7 +332,8 @@ func runResolverBench(verbose: Bool) async -> Bool {
     print("")
 
     let compositeOK = await runCompositeBench()
-    let ok = failures.isEmpty && concurrent && fastPathOK && waitedItOut && compositeOK
+    let rulesOK = runRulesBench()
+    let ok = failures.isEmpty && concurrent && fastPathOK && waitedItOut && compositeOK && rulesOK
     return ok
 }
 
@@ -393,6 +406,60 @@ func runCompositeBench() async -> Bool {
     print("    roster name from model  \(studentDropped ? "dropped" : "LEAKED")")
     ok = ok && studentDropped
 
+    // 4. A batch that is not English is not a batch to mine for named things.
+    //    From the 22-29 class: this sentence is Tamil as the English model
+    //    heard it, zero of five words in the dictionary, and it produced two
+    //    of that class's three wrong links.
+    let tamilModel = StubDetector(returning: [
+        Mention(kind: .thing, query: "Orukuntu", confidence: 1.0),
+        Mention(kind: .thing, query: "Kayam", confidence: 1.0)
+    ])
+    let tamilGuard = CompositeDetector(model: tamilModel)
+    let tamil = (try? await tamilGuard.detect(
+        newText: "Eppudu, Orukuntu, Indha, veyyil, Kayam.",
+        context: "", excludedNames: [])) ?? []
+    let skippedTheModel = !tamilModel.ran && tamil.isEmpty
+    print("    non-English batch    model asked \(tamilModel.ran ? "YES - it should not have been" : "no")")
+    ok = ok && skippedTheModel
+
+    // And the other side: an English sentence with no tell must still reach it.
+    let englishModel = StubDetector(returning: [
+        Mention(kind: .thing, query: "book fusion", confidence: 1.0)
+    ])
+    let englishGuard = CompositeDetector(model: englishModel)
+    _ = try? await englishGuard.detect(
+        newText: "Many of you still have not joined book fusion, please do it tonight.",
+        context: "", excludedNames: [])
+    print("    English, no tell     model asked \(englishModel.ran ? "yes" : "NO - the guard is too tight")")
+    ok = ok && englishModel.ran
+
+    print("")
+    return ok
+}
+
+/// Rules that decide whether a phrase is worth anything, checked directly.
+/// Cheaper and more precise than reaching them through a whole resolution.
+func runRulesBench() -> Bool {
+    print("  quotation rule")
+    var ok = true
+    let cases: [(text: String, isQuote: Bool, why: String)] = [
+        ("there is a very famous quote from that speech. Kennedy. Ask not what your country can do for you.",
+         true, "recitation cue in the lead-in"),
+        ("Hello, how is everyone today?",
+         false, "a greeting, which went to Wikiquote in the 22-29 class"),
+        ("As a woman like that was really into me.",
+         false, "conversation, which went to Wikiquote in the 03-sep class"),
+        ("and as he said, the only thing we have to fear is fear itself",
+         true, "as he said"),
+        ("Oh my God.",
+         false, "an exclamation")
+    ]
+    for test in cases {
+        let got = HeuristicDetector.hasRecitationCue(test.text)
+        let pass = got == test.isQuote
+        ok = ok && pass
+        print("    \(pass ? "ok   " : "FAIL ") quotation=\(got ? "yes" : "no ")  \(test.why)")
+    }
     print("")
     return ok
 }

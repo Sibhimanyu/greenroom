@@ -79,6 +79,14 @@ struct CompositeDetector: MentionDetector {
         let byPattern = try await patterns.detect(newText: newText, context: context,
                                                   excludedNames: excludedNames)
         guard byPattern.isEmpty else { return byPattern }
+        // A batch that is not English is not a batch to mine for named things.
+        //
+        // The patterns are safe here on their own - they need English cue words
+        // to fire at all - but the model reads anything and will find a name in
+        // it. In one real class this sentence, zero of five words in the
+        // dictionary, produced two of the three wrong links: "Orukuntu" became
+        // a Turkish footballer and "Kayam" became a concert-tent hire company.
+        guard HeuristicDetector.englishRatio(newText) >= 0.5 else { return [] }
         let byModel = try await model.detect(newText: newText, context: context,
                                              excludedNames: excludedNames)
             .map { mention -> Mention in
@@ -207,6 +215,38 @@ struct HeuristicDetector: MentionDetector {
             guard let regex = try? NSRegularExpression(pattern: pattern) else { return false }
             return regex.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)) != nil
         }
+    }
+
+    /// True when someone is being quoted, rather than merely talking.
+    ///
+    /// The word-pattern detector has always required this: its quote cue is
+    /// built around "quote", "famous line", "as he said". The model was under
+    /// no such obligation and simply labelled things `.quote`, so a greeting
+    /// became a quotation - "Hello, how is everyone today?" was served the
+    /// Wikiquote page for How to Train Your Dragon in a live class. A word
+    /// count does not separate those: the greeting is five words and "As a
+    /// woman like that was really into me" is nine, and both are wrong. What
+    /// separates them is whether anybody said a quotation was coming.
+    static func hasRecitationCue(_ text: String) -> Bool {
+        let pattern = #"(?i)\b(quot(?:e|es|ed|ing|ation|ations)|famous (?:line|lines|words|saying|speech)|as (?:he|she|they) (?:said|says|put it|wrote)|in (?:his|her|their) words|the line goes|to borrow a phrase)\b"#
+        guard let regex = try? NSRegularExpression(pattern: pattern) else { return false }
+        return regex.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)) != nil
+    }
+
+    /// The share of a batch's words that are English, by the Mac's dictionary.
+    ///
+    /// The one signal that separates a lesson from the noise around it. This
+    /// class is taught in Indian English with Tamil mixed in, and there is no
+    /// Tamil speech model on this platform, so Tamil arrives as plausible
+    /// English-looking nonsense: "Eppudu, Orukuntu, Indha, veyyil, Kayam."
+    /// Measured on real sentences, the separation is total - the Tamil ones
+    /// score 0% and the English ones 83-100%.
+    static func englishRatio(_ text: String) -> Double {
+        let tokens = text.lowercased()
+            .components(separatedBy: CharacterSet.letters.inverted)
+            .filter { $0.count > 1 }
+        guard !tokens.isEmpty else { return 0 }
+        return Double(tokens.filter { isEverydayWord($0) }.count) / Double(tokens.count)
     }
 
     /// In the Mac's own dictionary, so an ordinary English word.

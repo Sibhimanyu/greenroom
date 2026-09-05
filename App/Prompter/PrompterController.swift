@@ -206,6 +206,14 @@ final class PrompterController: ObservableObject {
             if let savedPrompts {
                 configuration.log("Prompter: \(links) link\(links == 1 ? "" : "s") saved: \(savedPrompts.path)")
             }
+            // Where the waiting actually went, per source. Counts and timings
+            // only - never a query, a title or a URL.
+            let resolver = self.resolver
+            Task { [configuration] in
+                let summary = await resolver.timingSummary()
+                guard !summary.isEmpty else { return }
+                await MainActor.run { configuration.log("Prompter: lookups this class \u{2014} \(summary).") }
+            }
         }
         testMode = false
     }

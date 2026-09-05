@@ -84,6 +84,16 @@ actor LinkResolver {
     private var backoffUntil: [String: Date] = [:]
     private var inFlight = 0
     private var recentLookups: [Date] = []
+    /// Per-source timing, so where a class's waiting actually went is a fact
+    /// rather than a guess.
+    ///
+    /// Deliberately NOT wired into source selection yet. The plan's next step
+    /// is to prefer fast reliable sources per kind, and there is no evidence
+    /// yet for what that ordering should be - inventing one from a hunch is
+    /// how the eight-letter word filter happened. This collects the evidence
+    /// first; the policy comes after a few real classes.
+    private var timings: [PrompterCard.Source: [Double]] = [:]
+    private var failures: [PrompterCard.Source: Int] = [:]
     private(set) var totalResolved = 0
     /// True once YouTube said the quota is gone for the day, so every further
     /// video mention becomes a search link without asking again.
@@ -112,11 +122,34 @@ actor LinkResolver {
         consecutiveFailures.removeAll()
         backoffUntil.removeAll()
         pendingThumbnails.removeAll()
+        timings.removeAll()
+        failures.removeAll()
         totalResolved = 0
         youtubeQuotaExhausted = false
     }
 
     var youtubeQuotaIsExhausted: Bool { youtubeQuotaExhausted }
+
+    /// One line naming each source used, how many times, its median, and how
+    /// many of those came back as nothing. Empty when nothing was looked up.
+    func timingSummary() -> String {
+        let used = timings.filter { !$0.value.isEmpty }
+        guard !used.isEmpty else { return "" }
+        let parts = used.keys.sorted { $0.label < $1.label }.map { source -> String in
+            let samples = used[source]!.sorted()
+            let median = samples[samples.count / 2]
+            let failed = failures[source, default: 0]
+            return "\(source.label) \(samples.count)"
+                + String(format: " (median %.0f ms", median * 1000)
+                + (failed > 0 ? ", \(failed) failed)" : ")")
+        }
+        return parts.joined(separator: ", ")
+    }
+
+    private func note(_ source: PrompterCard.Source, seconds: Double, failed: Bool) {
+        timings[source, default: []].append(seconds)
+        if failed { failures[source, default: 0] += 1 }
+    }
 
     // MARK: Resolve
 
@@ -375,10 +408,15 @@ actor LinkResolver {
         // Stopping at </title> turns that into a fraction of a page. The 16 KB
         // ceiling bounds a page that never closes the tag. The streaming itself
         // lives in the transport, so a recorded answer can just be a string.
+        let started = Date()
         guard let (html, http) = try? await transport.text(for: request,
                                                            stoppingAfter: "</title>",
                                                            byteCap: 16_000),
-              http.statusCode == 200, !html.isEmpty else { return nil }
+              http.statusCode == 200, !html.isEmpty else {
+            note(.officialSite, seconds: Date().timeIntervalSince(started), failed: true)
+            return nil
+        }
+        note(.officialSite, seconds: Date().timeIntervalSince(started), failed: false)
 
         guard let range = html.range(of: "<title[^>]*>([^<]{1,120})", options: [.regularExpression, .caseInsensitive]) else { return nil }
         let title = Self.stripHTML(String(html[range]).replacingOccurrences(of: "<title[^>]*>", with: "", options: [.regularExpression, .caseInsensitive]))
@@ -417,11 +455,26 @@ actor LinkResolver {
         // the best valid card rather than the first one that arrives. The site
         // still wins when it exists, because for a named product it is what
         // the teacher actually opens (haikudeck.com, in the recording).
-        async let siteCard = officialSite(for: mention.query)
-        async let wikipedia = thingFromWikipedia(mention)
+        let siteTask = Task { await self.officialSite(for: mention.query) }
+        var fromWikipedia = await thingFromWikipedia(mention)
 
-        let site = await siteCard
-        var fromWikipedia = await wikipedia
+        // The fast-path policy the plan asks for, and the reason it is
+        // conditional. The site is the PREFERRED answer for a named product,
+        // so it is worth waiting for - but only while there is nothing else to
+        // show. Once Wikipedia has a valid card in hand, a site that has not
+        // answered in a second and a half is no longer worth the teacher's
+        // silence, because the alternative is already sitting there.
+        //
+        // With nothing else to offer, it waits the request out. Cutting the
+        // site short there would trade a real answer for a picture-search link,
+        // which is not a fast path, just a worse one.
+        let site: PrompterCard?
+        if fromWikipedia.cards.isEmpty {
+            site = await siteTask.value
+        } else {
+            site = await result(of: siteTask, within: Self.fastPathSeconds)
+            if site == nil { siteTask.cancel() }
+        }
         if let site {
             resolution.cards.append(site)
             // Keep whatever Wikipedia had to say for the log, but not its card.
@@ -445,6 +498,56 @@ actor LinkResolver {
             resolution.searchLinkOnly = true
         }
         return resolution
+    }
+
+    /// How long a preferred source may keep the teacher waiting once a valid
+    /// fallback is already in hand.
+    private static let fastPathSeconds: Double = 1.5
+
+    private enum Race {
+        case finished(PrompterCard?)
+        /// This leg was cancelled because the other one won.
+        case lost
+    }
+
+    /// The task's value, or nil if it has not produced one within `seconds`.
+    ///
+    /// "No site" and "the site took too long" are the same thing to a caller
+    /// that has an alternative ready, so both come back as nil rather than
+    /// being distinguished for no one.
+    ///
+    /// The deadline leg cancels `task` itself rather than relying on
+    /// `group.cancelAll()`. That distinction is the whole function: cancelling
+    /// the group cancels the child that is AWAITING the task, not the task,
+    /// and `Task.value` on a non-throwing task keeps waiting through its own
+    /// cancellation. withTaskGroup then cannot return until every child has
+    /// drained, so the first version of this waited out the full five seconds
+    /// it was written to avoid - the bench measured 5.11 s and said so.
+    private func result(of task: Task<PrompterCard?, Never>, within seconds: Double) async -> PrompterCard? {
+        let timer = Task { try await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000)) }
+        return await withTaskGroup(of: Race.self) { group in
+            group.addTask { .finished(await task.value) }
+            group.addTask {
+                do { try await timer.value } catch { return .lost }
+                task.cancel()
+                return .finished(nil)
+            }
+            var winner: PrompterCard?
+            while let outcome = await group.next() {
+                if case .finished(let card) = outcome {
+                    winner = card
+                    break
+                }
+            }
+            // Both cancels have to happen HERE, before the closure returns:
+            // withTaskGroup drains its children on the way out, so a timer
+            // cancelled in a `defer` outside is cancelled too late and the
+            // fast site pays the full deadline anyway. The bench caught that
+            // too - the concurrent case jumped from 315 ms to 1862 ms.
+            timer.cancel()
+            group.cancelAll()
+            return winner
+        }
     }
 
     /// The encyclopedia leg of a named thing, on its own so it can be started
@@ -677,20 +780,25 @@ actor LinkResolver {
         counts[source, default: 0] += 1
         var request = URLRequest(url: url)
         for (key, value) in headers { request.setValue(value, forHTTPHeaderField: key) }
+        let started = Date()
         do {
             let (data, response) = try await transport.data(for: request)
             let status = response.statusCode
             guard (200..<300).contains(status) else {
+                note(source, seconds: Date().timeIntervalSince(started), failed: true)
                 noteFailure(host)
                 return .failure("lookup failed (\(source.label), HTTP \(status)) \u{2014} card skipped")
             }
             guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                note(source, seconds: Date().timeIntervalSince(started), failed: true)
                 noteFailure(host)
                 return .failure("lookup failed (\(source.label), unreadable reply) \u{2014} card skipped")
             }
+            note(source, seconds: Date().timeIntervalSince(started), failed: false)
             consecutiveFailures[host] = 0
             return .success(parse(json))
         } catch {
+            note(source, seconds: Date().timeIntervalSince(started), failed: true)
             noteFailure(host)
             let reason = (error as? URLError)?.code == .notConnectedToInternet ? "offline" : "network error"
             return .failure("lookup failed (\(source.label), \(reason)) \u{2014} card skipped")

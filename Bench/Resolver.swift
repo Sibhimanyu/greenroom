@@ -215,6 +215,60 @@ func runResolverBench(verbose: Bool) async -> Bool {
                  sequential * 1000, elapsed * 1000, concurrent ? "CONCURRENT" : "SEQUENTIAL - REGRESSION"))
     print("")
 
-    let ok = failures.isEmpty && concurrent
+    // MARK: The fast-path assertion
+    //
+    // A site that will answer eventually, and a Wikipedia card already in hand.
+    // The teacher should get the Wikipedia card at the 1.5 s deadline rather
+    // than waiting out the site.
+
+    let slowSite = DelayedTransport(
+        replies: [
+            "https://slowproduct.com": .init(body: Recorded.homepage(title: "Slow Product")),
+            Recorded.wikipediaSearch: .init(body: Recorded.wikipediaPage(
+                title: "Slow Product", key: "Slow_Product", description: "A thing"))
+        ],
+        delays: ["https://slowproduct.com": 5.0, Recorded.wikipediaSearch: 0.05])
+    let fastPathResolver = LinkResolver(transport: slowSite)
+    await fastPathResolver.configure(.init(sessionCap: 100, lookupsPerMinute: 100))
+
+    let fastStarted = Date()
+    let fastResult = await fastPathResolver.resolve(
+        Mention(kind: .thing, query: "slow product", confidence: 0.8))
+    let fastElapsed = Date().timeIntervalSince(fastStarted)
+    let card = fastResult.cards.first
+    // Under 2 s means the deadline fired; the card must still be the real
+    // Wikipedia answer, not the picture-search consolation prize.
+    let servedInTime = fastElapsed < 2.0
+    let servedTheFallback = card?.source == .wikipedia
+    let fastPathOK = servedInTime && servedTheFallback
+
+    print("  slow site (5 s) with a wikipedia card ready")
+    print(String(format: "    waited %.2f s, served %@  %@",
+                 fastElapsed,
+                 card?.source.label ?? "nothing",
+                 fastPathOK ? "FAST PATH" : "WAITED FOR THE SLOW SOURCE"))
+    print("")
+
+    // And the other half of the policy: with nothing else to show, the site is
+    // worth waiting for. Cutting it short would trade a real answer for a
+    // search link.
+    let noFallback = DelayedTransport(
+        replies: [
+            "https://patientproduct.com": .init(body: Recorded.homepage(title: "Patient Product")),
+            Recorded.wikipediaSearch: .init(status: 404, body: "{}")
+        ],
+        delays: ["https://patientproduct.com": 2.2])
+    let patientResolver = LinkResolver(transport: noFallback)
+    await patientResolver.configure(.init(sessionCap: 100, lookupsPerMinute: 100))
+    let patient = await patientResolver.resolve(
+        Mention(kind: .thing, query: "patient product", confidence: 0.8))
+    let waitedItOut = patient.cards.first?.source == .officialSite
+
+    print("  slow site (2.2 s) with nothing else to offer")
+    print("    served \(patient.cards.first?.source.label ?? "nothing")  "
+        + (waitedItOut ? "WAITED, CORRECTLY" : "GAVE UP TOO EARLY"))
+    print("")
+
+    let ok = failures.isEmpty && concurrent && fastPathOK && waitedItOut
     return ok
 }

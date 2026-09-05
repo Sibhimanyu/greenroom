@@ -539,6 +539,11 @@ private final class RootView: NSView {
     /// not earn its own row.
     private static let selfChrome = (caption: CGFloat(18), micLabel: CGFloat(22),
                                      meter: CGFloat(16), trail: CGFloat(24))
+    /// The picture never shrinks past this, whatever else needs the room. At
+    /// 160pt tall it is still a face you can read your own framing from, which
+    /// is the whole job of "You, as the class sees you". Below that the rail
+    /// overflows and scrolls instead - the honest failure.
+    private static let selfPictureFloor: CGFloat = 160
     private static var selfChromeHeight: CGFloat {
         selfChrome.caption + selfChrome.micLabel + selfChrome.meter + selfChrome.trail
     }
@@ -1510,7 +1515,42 @@ private final class RootView: NSView {
 
     /// How tall the self-view block will be at a given width, without placing it.
     private func selfBlockHeight(width: CGFloat) -> CGFloat {
-        (width * 9 / 16).rounded() + Self.selfChromeHeight
+        selfPicture(width: width).height + Self.selfChromeHeight
+    }
+
+    /// The picture's size in a column of `width`.
+    ///
+    /// 16:9 across the whole column when the rail can afford it, and smaller
+    /// when it cannot. The rail owes Prompter three card slots from the moment
+    /// it starts listening, and on a laptop-height panel the picture is the
+    /// only block big enough to pay: the controls are already wrapped as
+    /// tightly as they go and the session facts have already stood down.
+    ///
+    /// A capped picture keeps 16:9 by losing width too, and centres. This is
+    /// the narrower-than-the-buttons case the old comment here argued against,
+    /// and it was right that a ragged edge is a cost. It is the smaller cost.
+    /// A teacher who cannot see their suggestions has lost the feature; one
+    /// whose self view is inset by 40pt has lost some symmetry.
+    private func selfPicture(width: CGFloat) -> CGSize {
+        let full = (width * 9 / 16).rounded()
+        let cap = selfPictureCap(width: width)
+        guard cap < full else { return CGSize(width: width, height: full) }
+        let height = max(Self.selfPictureFloor, cap).rounded()
+        // Never wider than the column, whatever the arithmetic says.
+        return CGSize(width: min(width, (height * 16 / 9).rounded()), height: height)
+    }
+
+    /// Everything the rail must fit besides the picture, subtracted from the
+    /// rail's own height. Deliberately does NOT include the picture, which is
+    /// what it is solving for.
+    private func selfPictureCap(width: CGFloat) -> CGFloat {
+        railBodyHeight
+            - Self.railPad * 2 - 10
+            - Self.selfChromeHeight
+            - controlColumnHeight(width: width)
+            - needsBlockHeight(width: width)
+            - suppressedNeedsHeight
+            - prompterBlock.reserved
     }
 
     /// How tall the wrapped cells will be at a given width, without placing them.
@@ -1532,9 +1572,12 @@ private final class RootView: NSView {
         // Same expression as selfBlockHeight, deliberately - if the measuring
         // pass and the placing pass disagree the content scrolls to the wrong
         // offset or clips.
-        let height = (width * 9 / 16).rounded()
-        var y = top - height
-        selfViewHost.frame = NSRect(x: x, y: y, width: width, height: height)
+        let picture = selfPicture(width: width)
+        var y = top - picture.height
+        // Centred when it is narrower than the column, so a capped picture
+        // reads as inset rather than as content that failed to fill its box.
+        selfViewHost.frame = NSRect(x: x + ((width - picture.width) / 2).rounded(),
+                                    y: y, width: picture.width, height: picture.height)
         selfVideo?.frame = selfViewHost.bounds
 
         // Caption and meter share the picture's edges, so the block reads as one

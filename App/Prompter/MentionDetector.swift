@@ -119,6 +119,11 @@ struct HeuristicDetector: MentionDetector {
         guard words.count == 1, let word = words.first else { return true }
         if genericWords.contains(word) { return false }
         guard isEverydayWord(word) else { return true }
+        // A long ordinary word is usually the subject of the lesson rather
+        // than a word in passing: "photosynthesis", "arithmetic",
+        // "vocabulary". The short ones are the ones that were never worth a
+        // request - "roads", "explain", "scarves" - and they still go.
+        if word.count >= 8 { return true }
         return usedAsAName(query, in: text)
     }
 

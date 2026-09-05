@@ -12,6 +12,10 @@ import AppKit
 final class PrompterRailBlock: NSView {
 
     static let maxCards = 5
+    /// The rail promises this many card slots. Three, because two is not a
+    /// choice and one is a notification. The self view gives up height to
+    /// keep the promise - see `selfPicture` in ParticipantGridWindow.
+    static let minCards = 3
     private static let eyebrowHeight: CGFloat = 16
     private static let groupGap: CGFloat = 20  // matches the rail's railGroupGap
     private static let eyebrowGap: CGFloat = 8 // matches railEyebrowGap
@@ -57,6 +61,23 @@ final class PrompterRailBlock: NSView {
 
     /// True when Prompter has anything to say on this rail.
     var isActive: Bool { state.listening || !state.cards.isEmpty }
+
+    /// Height the rail sets aside for Prompter the moment it starts listening.
+    ///
+    /// A fixed number, not one that tracks the card count, so the self view
+    /// resizes once at the start of class and then holds. Sizing the reserve
+    /// to the cards present would shrink and grow the picture every time a
+    /// link arrived or aged out, which is movement in the corner of the
+    /// teacher's eye for the whole lesson.
+    static var reserveForMinCards: CGFloat {
+        groupGap + eyebrowHeight + eyebrowGap
+            + CGFloat(minCards) * PrompterCardView.height
+            + CGFloat(minCards - 1) * cardGap
+            + overflowGap + overflowHeight
+    }
+
+    /// What this block is currently owed by the rail's height budget.
+    var reserved: CGFloat { isActive ? Self.reserveForMinCards : 0 }
 
     /// True when there are links on screen, as opposed to a listening eyebrow.
     /// The rail asks, because a live link outranks the standing session facts

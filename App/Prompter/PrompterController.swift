@@ -36,7 +36,11 @@ final class PrompterController: ObservableObject {
         var log: (String) -> Void = { _ in }
         /// A ceiling on outbound lookups per minute, whatever the detector
         /// offers. A class stays quiet; the bench is allowed to be busier.
-        var lookupsPerMinute = 6
+        /// Twelve, up from six. Six was set when the rail showed whatever the
+        /// last lookup produced; the rail now holds three slots and cycles
+        /// eight cards through them, so it has somewhere to put the extra
+        /// results and a thin minute starves it.
+        var lookupsPerMinute = 12
         /// Settings -> Prompter -> "Also suggest links for things I mention
         /// without naming them". Off by default: see chooseDetector.
         var useModelDetector = false
@@ -72,6 +76,21 @@ final class PrompterController: ObservableObject {
     private var configuration = Configuration()
     /// Links written to the prompts file this session, for the closing line.
     private var promptsWritten = 0
+    /// Where the shown window starts in `cards`. The rail has three slots and
+    /// keeps eight, so without this the older five were written to the file
+    /// and never seen.
+    private var rotationOffset = 0
+    private var lastRotation = Date()
+    /// Slow enough to read a card and reach for it, fast enough that eight
+    /// cards come round inside a minute.
+    private let rotateEvery: TimeInterval = 8
+
+    /// `cards` rotated to the current window. A new card resets the rotation,
+    /// so the thing just said is always the thing at the top.
+    var visibleCards: [PrompterCard] {
+        guard rotationOffset > 0, rotationOffset < cards.count else { return cards }
+        return Array(cards[rotationOffset...]) + Array(cards[..<rotationOffset])
+    }
     private var transcript = RollingTranscript()
     private var transcriber: Transcriber?
     private var detector: MentionDetector = HeuristicDetector()
@@ -86,14 +105,29 @@ final class PrompterController: ObservableObject {
     private var testMode = false
     private var startedAt = Date()
 
-    private let keepCards = 8
-    private let cardLifetime: TimeInterval = 600
+    /// Twelve retained, three shown at a time, cycled. Was eight, which the
+    /// longer card lifetime would otherwise throw away.
+    private let keepCards = 12
+    /// Thirty minutes, up from ten.
+    ///
+    /// Ten assumed links arrive faster than they age out. On a real class they
+    /// do not: 5 Sep produced 13 lookups in 15 minutes, so cards expired faster
+    /// than they were replaced and the rail sat on one. Three visible slots are
+    /// only ever full if what fills them survives long enough to be joined.
+    private let cardLifetime: TimeInterval = 1800
     /// Detection cadence: every 8 s if there is anything new, or as soon as a
     /// final sentence lands and at least 6 new words are waiting.
     private let detectEvery: TimeInterval = 8
     private let detectMinWords = 6
+    /// Lookups allowed in one class. Eighty, up from thirty: thirty was a
+    /// ceiling on a surface that showed five cards and kept eight, and a
+    /// 45-minute class hit it before the halfway point.
+    private let sessionLookupCap = 80
 
-    var surfaceCards: [PrompterCard] { Array(cards.prefix(PrompterRailBlock.maxCards)) }
+    /// What the surfaces draw: the rotated window, capped at what a rail can
+    /// hold. The full list stays in `cards` so the rotation has somewhere to
+    /// rotate through and the "+N older" count stays honest.
+    var surfaceCards: [PrompterCard] { Array(visibleCards.prefix(PrompterRailBlock.maxCards)) }
 
     // MARK: Lifecycle
 
@@ -107,7 +141,7 @@ final class PrompterController: ObservableObject {
         testMode = false
         startedAt = Date()
         await resolver.reset()
-        await resolver.configure(.init(sessionCap: 30,
+        await resolver.configure(.init(sessionCap: sessionLookupCap,
                                        lookupsPerMinute: configuration.lookupsPerMinute,
                                        videoSearchEnabled: configuration.videoSearch,
                                        youtubeToken: configuration.youtubeToken))
@@ -236,7 +270,7 @@ final class PrompterController: ObservableObject {
         self.configuration = configuration
         testMode = false
         await resolver.reset()
-        await resolver.configure(.init(sessionCap: 30,
+        await resolver.configure(.init(sessionCap: sessionLookupCap,
                                        lookupsPerMinute: configuration.lookupsPerMinute,
                                        videoSearchEnabled: configuration.videoSearch,
                                        youtubeToken: configuration.youtubeToken))
@@ -257,7 +291,7 @@ final class PrompterController: ObservableObject {
         self.configuration = configuration
         testMode = false
         await resolver.reset()
-        await resolver.configure(.init(sessionCap: 30,
+        await resolver.configure(.init(sessionCap: sessionLookupCap,
                                        lookupsPerMinute: configuration.lookupsPerMinute,
                                        videoSearchEnabled: configuration.videoSearch,
                                        youtubeToken: configuration.youtubeToken))
@@ -285,7 +319,7 @@ final class PrompterController: ObservableObject {
     /// Resolver only, on a typed query. Debug builds; the query IS sent.
     func debugResolve(_ query: String, kind: Mention.Kind, configuration: Configuration) async {
         self.configuration = configuration
-        await resolver.configure(.init(sessionCap: 30,
+        await resolver.configure(.init(sessionCap: sessionLookupCap,
                                        lookupsPerMinute: configuration.lookupsPerMinute,
                                        videoSearchEnabled: configuration.videoSearch,
                                        youtubeToken: configuration.youtubeToken))
@@ -491,6 +525,14 @@ final class PrompterController: ObservableObject {
         // Cards that sat untouched for ten minutes are stale by class standards.
         let cutoff = Date().addingTimeInterval(-cardLifetime)
         cards.removeAll { $0.createdAt < cutoff }
+        // Cycle the window when there is more than the rail can show at once.
+        if cards.count > PrompterRailBlock.minCards,
+           Date().timeIntervalSince(lastRotation) >= rotateEvery {
+            rotationOffset = (rotationOffset + 1) % cards.count
+            lastRotation = Date()
+        } else if cards.count <= PrompterRailBlock.minCards {
+            rotationOffset = 0
+        }
         // The catch-up tick, for speech that never reaches the word count.
         let gap = detector.isCheap ? 3.0 : detectEvery
         if transcript.unprocessedWordCount > 0,
@@ -576,6 +618,10 @@ final class PrompterController: ObservableObject {
         cards.insert(card, at: 0)
         if cards.count > keepCards { cards.removeLast(cards.count - keepCards) }
         unseenCount += 1
+        // The newest link goes to the top of the window, not into the queue
+        // behind whatever the rotation was showing.
+        rotationOffset = 0
+        lastRotation = Date()
         appendToPromptsFile(card)
         promptsWritten += 1
     }

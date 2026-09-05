@@ -209,4 +209,12 @@ if !wrongKindLines.isEmpty {
     print("")
 }
 
-exit(overall.precision >= 0.70 ? 0 : 1)
+var resolverOK = true
+let resolverSemaphore = DispatchSemaphore(value: 0)
+Task {
+    resolverOK = await runResolverBench(verbose: verbose)
+    resolverSemaphore.signal()
+}
+resolverSemaphore.wait()
+
+exit(overall.precision >= 0.70 && resolverOK ? 0 : 1)

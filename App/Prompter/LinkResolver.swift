@@ -39,6 +39,14 @@ actor LinkResolver {
         /// True when the only card is a search link, so nothing was sent.
         var searchLinkOnly = false
         var skipped = false
+        /// Pictures to fetch for these cards, by card id - NOT fetched yet.
+        ///
+        /// A card used to wait for its own thumbnail before it could be shown,
+        /// which put a second round trip in front of a link the teacher could
+        /// already have clicked. The picture is decoration; the link is the
+        /// product. The caller shows the card and fills the picture in when it
+        /// arrives. See PrompterController.loadThumbnails.
+        var thumbnails: [UUID: URL] = [:]
     }
 
     /// One host's answer: cards, or the note the status log gets instead.
@@ -66,7 +74,7 @@ actor LinkResolver {
     /// reading their logs should be able to tell what this is.
     static let userAgent = "Greenroom/\(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "dev") (macOS; Prompter; +https://sibhimanyu.github.io/greenroom/how-it-works.html)"
 
-    private let session: URLSession
+    private let transport: PrompterTransport
     private var configuration = Configuration()
 
     private var resolvedKeys: Set<String> = []
@@ -86,13 +94,10 @@ actor LinkResolver {
     private var sessionCap: Int { configuration.sessionCap }
     private let maxInFlight = 2
 
-    init() {
-        let config = URLSessionConfiguration.ephemeral
-        config.timeoutIntervalForRequest = 8
-        config.timeoutIntervalForResource = 12
-        config.httpAdditionalHeaders = ["User-Agent": Self.userAgent, "Accept": "application/json"]
-        config.waitsForConnectivity = false
-        session = URLSession(configuration: config)
+    /// The transport is injectable so the bench can replay recorded answers.
+    /// See PrompterTransport.
+    init(transport: PrompterTransport? = nil) {
+        self.transport = transport ?? URLSessionTransport(userAgent: Self.userAgent)
     }
 
     func configure(_ configuration: Configuration) {
@@ -106,6 +111,7 @@ actor LinkResolver {
         counts.removeAll()
         consecutiveFailures.removeAll()
         backoffUntil.removeAll()
+        pendingThumbnails.removeAll()
         totalResolved = 0
         youtubeQuotaExhausted = false
     }
@@ -205,7 +211,7 @@ actor LinkResolver {
         if resolution.cards.isEmpty, resolution.notes.isEmpty, !hosts.isEmpty {
             resolution.notes.append("no result for \u{201C}\(mention.query)\u{201D} (\(hosts.joined(separator: " and ")))")
         }
-        await attachThumbnails(&resolution)
+        takeThumbnails(&resolution)
         return resolution
     }
 
@@ -311,7 +317,7 @@ actor LinkResolver {
         case .failure(let note):
             resolution.notes.append(note)
         }
-        await attachThumbnails(&resolution)
+        takeThumbnails(&resolution)
         return resolution
     }
 
@@ -366,29 +372,13 @@ actor LinkResolver {
         // All this needs is one tag, and it sits in the first kilobyte or two
         // of any page - but downloading whole homepages was the single
         // slowest thing Prompter did (eink.com: ~1.7 s of a 3.3 s lookup).
-        // Streaming and stopping at </title> turns that into a fraction of a
-        // page. The 16 KB ceiling bounds a page that never closes the tag.
-        var html = ""
-        guard let (bytes, response) = try? await session.bytes(for: request),
-              let http = response as? HTTPURLResponse, http.statusCode == 200 else { return nil }
-        var buffer = Data()
-        do {
-            for try await byte in bytes {
-                buffer.append(byte)
-                if buffer.count >= 16_000 { break }
-                // Check cheaply, not on every single byte.
-                if byte == UInt8(ascii: ">"), buffer.count > 32,
-                   let text = String(data: buffer, encoding: .utf8) ?? String(data: buffer, encoding: .isoLatin1),
-                   text.range(of: "</title>", options: .caseInsensitive) != nil {
-                    html = text
-                    break
-                }
-            }
-        } catch { return nil }
-        if html.isEmpty {
-            html = String(data: buffer, encoding: .utf8) ?? String(data: buffer, encoding: .isoLatin1) ?? ""
-        }
-        guard !html.isEmpty else { return nil }
+        // Stopping at </title> turns that into a fraction of a page. The 16 KB
+        // ceiling bounds a page that never closes the tag. The streaming itself
+        // lives in the transport, so a recorded answer can just be a string.
+        guard let (html, http) = try? await transport.text(for: request,
+                                                           stoppingAfter: "</title>",
+                                                           byteCap: 16_000),
+              http.statusCode == 200, !html.isEmpty else { return nil }
 
         guard let range = html.range(of: "<title[^>]*>([^<]{1,120})", options: [.regularExpression, .caseInsensitive]) else { return nil }
         let title = Self.stripHTML(String(html[range]).replacingOccurrences(of: "<title[^>]*>", with: "", options: [.regularExpression, .caseInsensitive]))
@@ -413,17 +403,54 @@ actor LinkResolver {
     /// kindle"), and a search link sends nothing until it is opened.
     private func resolveThing(_ mention: Mention) async -> Resolution {
         var resolution = Resolution()
-        // The site itself and the encyclopedia entry are fetched together,
-        // not one after the other: the site check is the slow leg (a real
-        // homepage) and waiting for it before even starting Wikipedia was
-        // most of the delay. The site wins when it exists - for a named
-        // product it is what the teacher actually opens (haikudeck.com, in
-        // the recording).
+        // The site itself and the encyclopedia entry really are fetched
+        // together now.
+        //
+        // The comment here has claimed that for a while and the code did not
+        // do it: `async let siteCard` was awaited on the very next line, which
+        // is a sequential call with extra syntax. The site check is the slow
+        // leg - a real homepage, even stopping at </title> - so Wikipedia did
+        // not start until it finished, and for a product with no site of its
+        // own the teacher waited for both round trips end to end.
+        //
+        // Both are spent every time, which the plan asks for explicitly: pick
+        // the best valid card rather than the first one that arrives. The site
+        // still wins when it exists, because for a named product it is what
+        // the teacher actually opens (haikudeck.com, in the recording).
         async let siteCard = officialSite(for: mention.query)
-        if let site = await siteCard {
+        async let wikipedia = thingFromWikipedia(mention)
+
+        let site = await siteCard
+        var fromWikipedia = await wikipedia
+        if let site {
             resolution.cards.append(site)
+            // Keep whatever Wikipedia had to say for the log, but not its card.
+            resolution.notes = fromWikipedia.notes
+            resolution.sentTo = fromWikipedia.sentTo
             return resolution
         }
+        resolution.notes = fromWikipedia.notes
+        resolution.sentTo = fromWikipedia.sentTo
+        resolution.cards = fromWikipedia.cards
+        resolution.thumbnails = fromWikipedia.thumbnails
+        fromWikipedia.cards = []
+
+        if resolution.cards.isEmpty {
+            var components = URLComponents(string: "https://www.bing.com/images/search")!
+            components.queryItems = [URLQueryItem(name: "q", value: mention.query)]
+            resolution.cards = [PrompterCard(kind: .thing, query: mention.query,
+                                             title: "Pictures of \u{201C}\(mention.query)\u{201D}",
+                                             subtitle: "Image search \u{00B7} nothing sent until you open it",
+                                             source: .search, url: components.url!)]
+            resolution.searchLinkOnly = true
+        }
+        return resolution
+    }
+
+    /// The encyclopedia leg of a named thing, on its own so it can be started
+    /// alongside the site check rather than after it.
+    private func thingFromWikipedia(_ mention: Mention) async -> Resolution {
+        var resolution = Resolution()
         if allowed(.wikipedia, host: "wikipedia.org") {
             resolution.sentTo = ["Wikipedia"]
             // Title search, then a strict check: every word of the page's title
@@ -463,16 +490,7 @@ actor LinkResolver {
             case .failure(let note):
                 resolution.notes.append(note)
             }
-            await attachThumbnails(&resolution)
-        }
-        if resolution.cards.isEmpty {
-            var components = URLComponents(string: "https://www.bing.com/images/search")!
-            components.queryItems = [URLQueryItem(name: "q", value: mention.query)]
-            resolution.cards = [PrompterCard(kind: .thing, query: mention.query,
-                                             title: "Pictures of \u{201C}\(mention.query)\u{201D}",
-                                             subtitle: "Image search \u{00B7} nothing sent until you open it",
-                                             source: .search, url: components.url!)]
-            resolution.searchLinkOnly = true
+            takeThumbnails(&resolution)
         }
         return resolution
     }
@@ -616,7 +634,7 @@ actor LinkResolver {
             resolution.cards = [searchCard]
             resolution.searchLinkOnly = true
         }
-        await attachThumbnails(&resolution)
+        takeThumbnails(&resolution)
         return resolution
     }
 
@@ -632,12 +650,18 @@ actor LinkResolver {
 
     private var pendingThumbnails: [UUID: URL] = [:]
 
-    private func attachThumbnails(_ resolution: inout Resolution) async {
-        for index in resolution.cards.indices {
-            let id = resolution.cards[index].id
-            guard let url = pendingThumbnails.removeValue(forKey: id) else { continue }
-            resolution.cards[index].thumbnail = await ThumbnailLoader.shared.image(for: url)
+    /// Hands the pending picture URLs to the caller instead of fetching them.
+    /// Synchronous on purpose: nothing here touches the network.
+    private func takeThumbnails(_ resolution: inout Resolution) {
+        for card in resolution.cards {
+            guard let url = pendingThumbnails.removeValue(forKey: card.id) else { continue }
+            resolution.thumbnails[card.id] = url
         }
+        // Only this resolution's entries are taken. Clearing the whole table
+        // here would be wrong: two lookups run at once (maxInFlight is 2), so
+        // the leftovers may belong to the other one, still in flight. What is
+        // genuinely stranded - cards that lost a ranking round - is a handful
+        // of URLs per session and goes in reset().
     }
 
     /// Cap and back-off check for one source. A host that failed three times
@@ -654,8 +678,8 @@ actor LinkResolver {
         var request = URLRequest(url: url)
         for (key, value) in headers { request.setValue(value, forHTTPHeaderField: key) }
         do {
-            let (data, response) = try await session.data(for: request)
-            let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+            let (data, response) = try await transport.data(for: request)
+            let status = response.statusCode
             guard (200..<300).contains(status) else {
                 noteFailure(host)
                 return .failure("lookup failed (\(source.label), HTTP \(status)) \u{2014} card skipped")

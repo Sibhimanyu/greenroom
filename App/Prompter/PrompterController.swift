@@ -618,7 +618,27 @@ final class PrompterController: ObservableObject {
             for card in resolution.cards.prefix(1) {
                 insert(card)
                 Analytics.feature("prompter_card", source: card.source.analyticsCode)
+                if let thumbnail = resolution.thumbnails[card.id] {
+                    loadThumbnail(thumbnail, for: card.id)
+                }
             }
+        }
+    }
+
+    /// Fetches a card's picture after the card is already on screen.
+    ///
+    /// The card used to wait for this. That put a second round trip in front
+    /// of a link the teacher could already have clicked, to fetch decoration.
+    /// If it arrives, the card gains a picture in place; if it never does, the
+    /// card is exactly as useful without one.
+    private func loadThumbnail(_ url: URL, for id: UUID) {
+        Task { [weak self] in
+            guard let image = await ThumbnailLoader.shared.image(for: url) else { return }
+            guard let self else { return }
+            // The card may have been dismissed or aged out while this was in
+            // flight, which is not worth a word to anyone.
+            guard let index = self.cards.firstIndex(where: { $0.id == id }) else { return }
+            self.cards[index].thumbnail = image
         }
     }
 

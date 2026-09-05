@@ -216,10 +216,44 @@ targets:
             -not -name "AppticsCrashKit.framework" -not -name "KSCrash.framework" -print0 \
             | xargs -0 -I{} codesign --force --deep --timestamp=none --sign "${EXPANDED_CODE_SIGN_IDENTITY}" "{}"
 
+  # The detector benchmark (docs/prompter-search-improvement-plan.md, Phase 1).
+  #
+  # A plain command-line tool, not a test bundle hosted on Greenroom. The app
+  # links ZoomSDK, Sparkle and Apptics; a hosted bundle would drag all three in
+  # to exercise two files that import Foundation, and would need a running host
+  # app to do it. This builds in a couple of seconds and needs no network, no
+  # microphone and no meeting.
+  #
+  # It compiles the detector's real sources rather than a copy, so the thing
+  # scored is the thing that ships. That also fences the detector in: the moment
+  # it reaches for anything in the app target, this target stops compiling,
+  # which is the warning you want before an untestable dependency sets.
+  PrompterBench:
+    type: tool
+    platform: macOS
+    sources:
+      - path: Bench
+        excludes: ["fixtures/**"]
+      - path: App/Prompter/MentionDetector.swift
+      - path: App/Prompter/PrompterCard.swift
+    settings:
+      base:
+        PRODUCT_NAME: PrompterBench
+        SWIFT_VERSION: "5.0"
+        CODE_SIGN_STYLE: Automatic
+        CODE_SIGN_IDENTITY: "-"
+        ENABLE_HARDENED_RUNTIME: NO
+
 schemes:
   Greenroom:
     build:
       targets:
         Greenroom: all
+    run:
+      config: Debug
+  PrompterBench:
+    build:
+      targets:
+        PrompterBench: all
     run:
       config: Debug

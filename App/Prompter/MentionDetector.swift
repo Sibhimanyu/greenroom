@@ -182,46 +182,67 @@ struct HeuristicDetector: MentionDetector {
     /// punctuation; trimToTitle then cuts at the first stop word.
     private static let span = #"["“]?([A-Za-z][^.,;!?"”]{2,60}?)["”]?"#
 
+    /// One spoken tell.
+    ///
+    /// `guarded` sends what the cue captured through `worthLookingUp` before it
+    /// counts. Almost no cue wants that: when the teacher says "the word
+    /// pabulum" or "a video about volcanoes", the tell IS the evidence, and the
+    /// phrase being an ordinary English word is not a reason to ignore a direct
+    /// request. Measured - applying the guard everywhere held precision at 100%
+    /// and dropped recall from 100% to 80%, losing photosynthesis, volcanoes
+    /// and all three definition cases.
+    ///
+    /// The exception is the cues that INFER a subject from a question instead
+    /// of being handed one. "What is monospace?" and "What is happening right
+    /// now?" are the same shape, and only the ordinariness of the word tells
+    /// them apart.
+    private struct Cue {
+        let pattern: String
+        let kind: Mention.Kind
+        let confidence: Double
+        var guarded = false
+    }
+
     /// A tell → a kind. Case-insensitivity is scoped to the tell words with
     /// `(?i:…)`; a blanket `(?i)` would make `[A-Z]` match anything.
-    private static let cues: [(pattern: String, kind: Mention.Kind, confidence: Double)] = [
+    private static let cues: [Cue] = [
         // Named things: "it's called X", "they call it X", "X, they call it",
         // "a tool called X", "invented by Amazon called X", "X is a tool".
-        (#"\b(?i:it's|it is|this is|which is|that's|that is|that was|it was|this one is|the tool is|the app is|the site is) (?i:called|named) "# + span + #"(?=[.,;!?]|$)"#, .thing, 0.75),
-        (#"\b(?i:they call it|we call it|people call it|everyone calls it|you call it) "# + span + #"(?=[.,;!?]|$)"#, .thing, 0.7),
-        (#"(?<=[.,;!?] |^)([A-Za-z][A-Za-z0-9']*(?: [A-Za-z][A-Za-z0-9']*){0,2}),? (?i:they call it|we call it)\b"#, .thing, 0.7),
-        (#"\b(?i:a|an|the|this|that) (?i:tool|app|website|site|device|product|technology|company|service|platform|software|library|game|font|typeface|gadget) (?i:called|named) "# + span + #"(?=[.,;!?]|$)"#, .thing, 0.8),
-        (#"\b(?i:invented|created|made|developed|built|founded|launched) by [A-Za-z][A-Za-z0-9' ]{1,30}? (?i:called|named) "# + span + #"(?=[.,;!?]|$)"#, .thing, 0.8),
-        (#"(?<=[.,;!?] |^)([A-Za-z][A-Za-z0-9' ]{2,30}?) (?i:is|was) (?i:a|an) (?:[a-z]+ ){0,2}(?i:tool|app|website|site|device|product|technology|company|service|platform|software|library|gadget)\b"#, .thing, 0.6),
-        (#"\b(?i:i would like to introduce|let me introduce|i want to introduce|introducing)(?: (?i:you to|this|to you))?(?: (?i:chap|guy|tool|app|website|site|thing|one))?[.,]?\s*(?:(?i:um|uh|okay|ok|so|yeah),?\s*)*"# + span + #"(?=[.,;!?]|$)"#, .thing, 0.65),
+        Cue(pattern: #"\b(?i:it's|it is|this is|which is|that's|that is|that was|it was|this one is|the tool is|the app is|the site is) (?i:called|named) "# + span + #"(?=[.,;!?]|$)"#, kind: .thing, confidence: 0.75),
+        Cue(pattern: #"\b(?i:they call it|we call it|people call it|everyone calls it|you call it) "# + span + #"(?=[.,;!?]|$)"#, kind: .thing, confidence: 0.7),
+        Cue(pattern: #"(?<=[.,;!?] |^)([A-Za-z][A-Za-z0-9']*(?: [A-Za-z][A-Za-z0-9']*){0,2}),? (?i:they call it|we call it)\b"#, kind: .thing, confidence: 0.7),
+        Cue(pattern: #"\b(?i:a|an|the|this|that) (?i:tool|app|website|site|device|product|technology|company|service|platform|software|library|game|font|typeface|gadget) (?i:called|named) "# + span + #"(?=[.,;!?]|$)"#, kind: .thing, confidence: 0.8),
+        Cue(pattern: #"\b(?i:invented|created|made|developed|built|founded|launched) by [A-Za-z][A-Za-z0-9' ]{1,30}? (?i:called|named) "# + span + #"(?=[.,;!?]|$)"#, kind: .thing, confidence: 0.8),
+        Cue(pattern: #"(?<=[.,;!?] |^)([A-Za-z][A-Za-z0-9' ]{2,30}?) (?i:is|was) (?i:a|an) (?:[a-z]+ ){0,2}(?i:tool|app|website|site|device|product|technology|company|service|platform|software|library|gadget)\b"#, kind: .thing, confidence: 0.6),
+        Cue(pattern: #"\b(?i:i would like to introduce|let me introduce|i want to introduce|introducing)(?: (?i:you to|this|to you))?(?: (?i:chap|guy|tool|app|website|site|thing|one))?[.,]?\s*(?:(?i:um|uh|okay|ok|so|yeah),?\s*)*"# + span + #"(?=[.,;!?]|$)"#, kind: .thing, confidence: 0.65),
         // Words: "the word X", "meaning of X", "what does X mean", "X means".
-        (#"\b(?i:the word) ["“]([A-Za-z][a-z-]{3,30})["”]"#, .word, 0.75),
-        (#"\b(?i:the word) ([A-Za-z][a-z-]{3,30}) (?i:means|is|comes from)\b"#, .word, 0.7),
-        (#"\b(?i:meaning of|the meaning of the word|definition of|define) ["“]?([A-Za-z][a-z-]{3,30})["”]?"#, .word, 0.75),
-        (#"\b(?i:what does) ["“]?([A-Za-z][a-z-]{3,30})["”]? (?i:mean)\b"#, .word, 0.75),
+        Cue(pattern: #"\b(?i:the word) ["“]([A-Za-z][a-z-]{3,30})["”]"#, kind: .word, confidence: 0.75),
+        Cue(pattern: #"\b(?i:the word) ([A-Za-z][a-z-]{3,30}) (?i:means|is|comes from)\b"#, kind: .word, confidence: 0.7),
+        Cue(pattern: #"\b(?i:meaning of|the meaning of the word|definition of|define) ["“]?([A-Za-z][a-z-]{3,30})["”]?"#, kind: .word, confidence: 0.75),
+        Cue(pattern: #"\b(?i:what does) ["“]?([A-Za-z][a-z-]{3,30})["”]? (?i:mean)\b"#, kind: .word, confidence: 0.75),
         // Quotations: the sentence after the one that says "quote" (skipping a
         // bare attribution like "Kennedy." and fillers), taken whole. The
         // phrase itself is the query.
-        (#"\b(?i:quot(?:e|es|ation|ations)|famous (?:line|lines|words|saying)|as (?:he|she|they) (?:said|says|put it))\b[^.?!]*[.?!]\s*(?:[A-Z][A-Za-z.'-]+(?: [A-Z][A-Za-z.'-]+)?[.!]\s*)?(?:(?i:and so|so|um|uh|okay|ok),?\s*)?([^.?!]{25,160})"#, .quote, 0.7),
+        Cue(pattern: #"\b(?i:quot(?:e|es|ation|ations)|famous (?:line|lines|words|saying)|as (?:he|she|they) (?:said|says|put it))\b[^.?!]*[.?!]\s*(?:[A-Z][A-Za-z.'-]+(?: [A-Z][A-Za-z.'-]+)?[.!]\s*)?(?:(?i:and so|so|um|uh|okay|ok),?\s*)?([^.?!]{25,160})"#, kind: .quote, confidence: 0.7),
         // Books: "the book called X", quoted titles after read/reading.
-        (#"\b(?i:the|a|this|that) (?i:book|story|novel|picture book|storybook) (?i:called|named|titled) "# + span + #"(?=[.,;!?]|$)"#, .book, 0.8),
-        (#"\b(?i:reading|read|finished|started) (?i:the book |a book |the story )?["“]([^"”]{2,60})["”]"#, .book, 0.75),
-        (#"\b(?i:book|story|novel) ["“]([^"”]{2,60})["”]"#, .book, 0.75),
+        Cue(pattern: #"\b(?i:the|a|this|that) (?i:book|story|novel|picture book|storybook) (?i:called|named|titled) "# + span + #"(?=[.,;!?]|$)"#, kind: .book, confidence: 0.8),
+        Cue(pattern: #"\b(?i:reading|read|finished|started) (?i:the book |a book |the story )?["“]([^"”]{2,60})["”]"#, kind: .book, confidence: 0.75),
+        Cue(pattern: #"\b(?i:book|story|novel) ["“]([^"”]{2,60})["”]"#, kind: .book, confidence: 0.75),
         // Videos and articles: "a video about X", "articles and videos about
         // why X", "I watched a video about X".
-        (#"\b(?i:a|the|this|some) (?i:video|videos|clip|documentary|cartoon|film|movie|talk|ted talk) (?i:about|called|of|on) (?i:why |how |what )?"# + span + #"(?=[.,;!?]|$)"#, .video, 0.75),
-        (#"\b(?i:i|we) (?i:watched|saw) (?i:a |the )?(?i:video|clip|documentary|cartoon|film|movie)?(?: (?i:on youtube))? (?i:about|called|of) "# + span + #"(?=[.,;!?]|$)"#, .video, 0.7),
-        (#"\b(?i:articles?|blogs?|posts?|papers?|essays?)(?:[^.?!]{0,30}?(?i:videos?))?[^.?!]{0,12}? (?i:about|on) (?i:why |how |what )?"# + span + #"(?=[.,;!?]|$)"#, .video, 0.65),
+        Cue(pattern: #"\b(?i:a|the|this|some) (?i:video|videos|clip|documentary|cartoon|film|movie|talk|ted talk) (?i:about|called|of|on) (?i:why |how |what )?"# + span + #"(?=[.,;!?]|$)"#, kind: .video, confidence: 0.75),
+        Cue(pattern: #"\b(?i:i|we) (?i:watched|saw) (?i:a |the )?(?i:video|clip|documentary|cartoon|film|movie)?(?: (?i:on youtube))? (?i:about|called|of) "# + span + #"(?=[.,;!?]|$)"#, kind: .video, confidence: 0.7),
+        Cue(pattern: #"\b(?i:articles?|blogs?|posts?|papers?|essays?)(?:[^.?!]{0,30}?(?i:videos?))?[^.?!]{0,12}? (?i:about|on) (?i:why |how |what )?"# + span + #"(?=[.,;!?]|$)"#, kind: .video, confidence: 0.65),
         // Topics: "let's talk about X", "what is X?", "fonts such as X and Y".
-        (#"\b(?i:let's|let us) (?i:talk|learn|read) (?i:about) "# + span + #"(?=[.,;!?]|$)"#, .topic, 0.6),
-        (#"\b(?i:do you know) (?i:what|about) (?i:a |an |the )?([^.,;!?]{2,40}?) (?i:is|are|means|was)\b"#, .topic, 0.55),
-        (#"\b(?i:what) (?i:is|are) (?i:a |an |the )?([^.,;!?]{2,40}?)\?"#, .topic, 0.5),
-        (#"\b(?i:fonts?|typefaces?|font families|families) (?i:such as|like) ([A-Z][a-z]+(?:,? (?:(?i:and|or) )?[A-Z][a-z]+){0,3})"#, .topic, 0.65),
+        Cue(pattern: #"\b(?i:let's|let us) (?i:talk|learn|read) (?i:about) "# + span + #"(?=[.,;!?]|$)"#, kind: .topic, confidence: 0.6),
+        Cue(pattern: #"\b(?i:do you know) (?i:what|about) (?i:a |an |the )?([^.,;!?]{2,40}?) (?i:is|are|means|was)\b"#, kind: .topic, confidence: 0.55, guarded: true),
+        Cue(pattern: #"\b(?i:what) (?i:is|are) (?i:a |an |the )?([^.,;!?]{2,40}?)\?"#, kind: .topic, confidence: 0.5, guarded: true),
+        Cue(pattern: #"\b(?i:fonts?|typefaces?|font families|families) (?i:such as|like) ([A-Z][a-z]+(?:,? (?:(?i:and|or) )?[A-Z][a-z]+){0,3})"#, kind: .topic, confidence: 0.65),
         // People: "written by X", "the author X". Two words minimum, always.
-        (#"\b(?i:written|book|story|novel|poem|by the author|author) (?i:by) ((?:[A-Z]\. ?)*[A-Z][a-z]+(?: [A-Z]\.)*(?: [A-Z][a-z]+){1,2})"#, .person, 0.75),
-        (#"\b(?i:the author|the writer|the poet|the scientist|the artist|the president|the king|the queen|the designer) ([A-Z][a-z]+(?: [A-Z][a-z]+){1,2})"#, .person, 0.7),
+        Cue(pattern: #"\b(?i:written|book|story|novel|poem|by the author|author) (?i:by) ((?:[A-Z]\. ?)*[A-Z][a-z]+(?: [A-Z]\.)*(?: [A-Z][a-z]+){1,2})"#, kind: .person, confidence: 0.75),
+        Cue(pattern: #"\b(?i:the author|the writer|the poet|the scientist|the artist|the president|the king|the queen|the designer) ([A-Z][a-z]+(?: [A-Z][a-z]+){1,2})"#, kind: .person, confidence: 0.7),
         // Places: "the country called X".
-        (#"\b(?i:the country|the city|the river|the mountain|the ocean|the continent|the state|the planet) (?i:of |called )?([A-Z][A-Za-z]+(?: [A-Z][A-Za-z]+){0,2})"#, .place, 0.7)
+        Cue(pattern: #"\b(?i:the country|the city|the river|the mountain|the ocean|the continent|the state|the planet) (?i:of |called )?([A-Z][A-Za-z]+(?: [A-Z][A-Za-z]+){0,2})"#, kind: .place, confidence: 0.7)
     ]
 
     func detect(newText: String, context: String, excludedNames: [String]) async throws -> [Mention] {
@@ -260,7 +281,11 @@ struct HeuristicDetector: MentionDetector {
                     var kind = cue.kind
                     if kind == .thing, Self.nearby(text, captured, words: ["book", "novel", "story", "storybook"]) { kind = .book }
                     if kind == .thing, Self.nearby(text, captured, words: ["movie", "film", "documentary"]) { kind = .video }
-                    found.append(Mention(kind: kind, query: Self.extended(query, in: text), confidence: cue.confidence))
+                    let finalQuery = Self.extended(query, in: text)
+                    // Only the cues that inferred a subject from a question
+                    // have to prove the phrase is not ordinary English. See Cue.
+                    if cue.guarded, !Self.worthLookingUp(finalQuery, spokenIn: text) { continue }
+                    found.append(Mention(kind: kind, query: finalQuery, confidence: cue.confidence))
                 }
             }
         }

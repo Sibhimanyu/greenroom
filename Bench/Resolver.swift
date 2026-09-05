@@ -319,6 +319,80 @@ func runResolverBench(verbose: Bool) async -> Bool {
         + (waitedItOut ? "WAITED, CORRECTLY" : "GAVE UP TOO EARLY"))
     print("")
 
-    let ok = failures.isEmpty && concurrent && fastPathOK && waitedItOut
+    let compositeOK = await runCompositeBench()
+    let ok = failures.isEmpty && concurrent && fastPathOK && waitedItOut && compositeOK
+    return ok
+}
+
+// MARK: - Composite detector
+
+/// A detector that returns whatever it was handed, and records whether it ran.
+/// Standing in for the real model, which cannot be part of a deterministic
+/// bench: it is a language model, so the same input is not a promise of the
+/// same output. What IS testable is the composition - who gets asked, when,
+/// and whose answer wins - and that is what this checks.
+final class StubDetector: MentionDetector, @unchecked Sendable {
+    let name = "stub"
+    let analyticsCode = "stub"
+    let isCheap = true
+    private let output: [Mention]
+    private(set) var ran = false
+
+    init(returning output: [Mention]) { self.output = output }
+
+    func detect(newText: String, context: String, excludedNames: [String]) async throws -> [Mention] {
+        ran = true
+        return output
+    }
+}
+
+func runCompositeBench() async -> Bool {
+    print("  composite detector")
+    var ok = true
+
+    // 1. An explicit tell: the patterns answer and the model is never asked.
+    let quietModel = StubDetector(returning: [
+        Mention(kind: .topic, query: "slides", confidence: 1.0)
+    ])
+    let withTell = CompositeDetector(model: quietModel)
+    let told = (try? await withTell.detect(
+        newText: "There is a tool called Figma that we will use today.",
+        context: "", excludedNames: [])) ?? []
+    let patternsAnswered = told.contains { $0.query.lowercased().contains("figma") }
+    let modelSpared = !quietModel.ran
+    print("    explicit tell        patterns answered \(patternsAnswered ? "yes" : "NO")"
+        + ", model asked \(quietModel.ran ? "YES - it should not have been" : "no")")
+    ok = ok && patternsAnswered && modelSpared
+
+    // 2. No tell at all: the patterns are silent, so the model gets its turn,
+    //    and what it returns is tagged as its own.
+    let busyModel = StubDetector(returning: [
+        Mention(kind: .thing, query: "book fusion", searchQuery: "book fusion library",
+                confidence: 1.0)
+    ])
+    let noTell = CompositeDetector(model: busyModel)
+    let untold = (try? await noTell.detect(
+        newText: "Many of you still have not joined book fusion, please do it tonight.",
+        context: "", excludedNames: [])) ?? []
+    let modelFilledIn = untold.contains { $0.query == "book fusion" }
+    let tagged = untold.allSatisfy { $0.foundBy == .model }
+    print("    no tell              model asked \(busyModel.ran ? "yes" : "NO")"
+        + ", answer tagged \(tagged && modelFilledIn ? "model" : "WRONG")")
+    ok = ok && busyModel.ran && modelFilledIn && tagged
+
+    // 3. The roster rule still binds on the model's leg. It ignores its
+    //    instructions, so this cannot be left to the prompt.
+    let looseModel = StubDetector(returning: [
+        Mention(kind: .person, query: "Arun Kumar", confidence: 1.0)
+    ])
+    let guarded = CompositeDetector(model: looseModel)
+    let roster = (try? await guarded.detect(
+        newText: "Right, so that is the plan for the rest of this week everyone.",
+        context: "", excludedNames: ["Arun Kumar"])) ?? []
+    let studentDropped = !roster.contains { $0.query == "Arun Kumar" }
+    print("    roster name from model  \(studentDropped ? "dropped" : "LEAKED")")
+    ok = ok && studentDropped
+
+    print("")
     return ok
 }

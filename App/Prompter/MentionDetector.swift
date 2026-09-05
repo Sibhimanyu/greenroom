@@ -46,6 +46,60 @@ protocol MentionDetector {
     func detect(newText: String, context: String, excludedNames: [String]) async throws -> [Mention]
 }
 
+/// Word patterns first; the model only where they are silent.
+///
+/// Phase 3 of docs/prompter-search-improvement-plan.md: the model is a
+/// SECONDARY candidate generator, not a replacement. Measured against a real
+/// class the two are not close - word patterns 16 lookups at 56% precision,
+/// the model 264 at 3% - but the model is the only one that finds a thing said
+/// with no verbal tell ("haven't joined book fusion"). Running it instead of
+/// the patterns threw away the good source to get the greedy one. Running it
+/// after them keeps both: a sentence with an explicit tell is answered by the
+/// rule that is right about it, and the model is left the sentences nobody
+/// else can read.
+///
+/// Composed rather than run in parallel because the transcript can only be
+/// consumed once - `unprocessedText` marks every sentence processed as it
+/// hands them over, so two detectors reading it would each see half a class.
+///
+/// Cheap on purpose. The patterns leg costs under a millisecond and answers
+/// most batches on its own, so it keeps running on every finalised sentence.
+/// Only a silent batch pays for the model, and while that pass is in flight
+/// `runDetection` declines to start another - so new speech accumulates and
+/// arrives in the next batch rather than being dropped or piling up passes.
+struct CompositeDetector: MentionDetector {
+    let name = "word patterns, with Apple Intelligence for the rest"
+    let analyticsCode = "composite"
+    let isCheap = true
+
+    let patterns = HeuristicDetector()
+    let model: MentionDetector
+
+    func detect(newText: String, context: String, excludedNames: [String]) async throws -> [Mention] {
+        let byPattern = try await patterns.detect(newText: newText, context: context,
+                                                  excludedNames: excludedNames)
+        guard byPattern.isEmpty else { return byPattern }
+        let byModel = try await model.detect(newText: newText, context: context,
+                                             excludedNames: excludedNames)
+            .map { mention -> Mention in
+                var tagged = mention
+                tagged.foundBy = .model
+                return tagged
+            }
+        // The roster rule is applied again here, on the way out.
+        //
+        // Both detectors already apply it, so this is belt and braces - and it
+        // is worth it for this one property. A composite that trusts whatever
+        // it wraps is only as safe as the least careful thing anyone plugs into
+        // it later, and the failure mode is a child's name leaving the Mac.
+        // The bench caught exactly that: a stub detector that skipped the
+        // filter sent "Arun Kumar" straight through the composite.
+        // HeuristicDetector.filter is idempotent, so applying it twice costs a
+        // set intersection and nothing else.
+        return HeuristicDetector.filter(byModel, excludedNames: excludedNames)
+    }
+}
+
 /// Spoken tells and what follows them. No network, no model, no learning.
 struct HeuristicDetector: MentionDetector {
     let name = "word patterns"

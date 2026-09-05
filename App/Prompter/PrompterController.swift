@@ -372,7 +372,9 @@ final class PrompterController: ObservableObject {
         if configuration.useModelDetector, FoundationModelsDetector.isAvailable {
             let model = FoundationModelsDetector()
             model.prewarm()
-            detector = model
+            // Both, not one. The patterns answer the sentences that carry an
+            // explicit tell and the model gets the rest - see CompositeDetector.
+            detector = CompositeDetector(model: model)
         } else {
             detector = HeuristicDetector()
         }
@@ -485,12 +487,18 @@ final class PrompterController: ObservableObject {
     /// as the same thing on a thin transcript - where nearly every sentence the
     /// model finalised also produced a link - and that coincidence is exactly
     /// what makes one file useless for judging either.
-    private func appendToPromptsFile(_ card: PrompterCard) {
-        let fields = [stamp(), card.kind.rawValue, card.source.label,
+    private func appendToPromptsFile(_ card: PrompterCard, foundBy: FoundBy) {
+        let fields = [stamp(), foundBy.rawValue, card.kind.rawValue, card.source.label,
                       oneLine(card.query), oneLine(card.title), card.url.absoluteString]
         append(fields.joined(separator: "\t") + "\n", to: configuration.promptsFile, headerLines: [
             "Links Prompter offered during this class, in the order they appeared.",
-            "time, kind, source, what it heard, what it found, link."
+            "time, found by, kind, source, what it heard, what it found, link.",
+            "",
+            "\"found by\" is patterns or model. Word patterns answer a sentence with",
+            "an explicit tell; the model gets the sentences nobody else can read.",
+            "Measured on one recorded class the two were far apart - 16 lookups at",
+            "56% precision against 264 at 3% - so the split in a real lesson is the",
+            "number worth watching."
         ])
     }
 
@@ -624,7 +632,7 @@ final class PrompterController: ObservableObject {
             }
             for note in resolution.notes { configuration.log("Prompter: \(note).") }
             for card in resolution.cards.prefix(1) {
-                insert(card)
+                insert(card, foundBy: mention.foundBy)
                 Analytics.feature("prompter_card", source: card.source.analyticsCode)
                 if let thumbnail = resolution.thumbnails[card.id] {
                     loadThumbnail(thumbnail, for: card.id)
@@ -650,7 +658,7 @@ final class PrompterController: ObservableObject {
         }
     }
 
-    private func insert(_ card: PrompterCard) {
+    private func insert(_ card: PrompterCard, foundBy: FoundBy = .patterns) {
         guard !dismissedKeys.contains(card.normalizedKey) else { return }
         cards.removeAll { $0.normalizedKey == card.normalizedKey }
         cards.insert(card, at: 0)
@@ -660,7 +668,7 @@ final class PrompterController: ObservableObject {
         // behind whatever the rotation was showing.
         rotationOffset = 0
         lastRotation = Date()
-        appendToPromptsFile(card)
+        appendToPromptsFile(card, foundBy: foundBy)
         promptsWritten += 1
     }
 }

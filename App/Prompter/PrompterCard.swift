@@ -15,6 +15,14 @@
 import AppKit
 import Foundation
 
+/// Which detector proposed a mention. Written into the class's prompts.txt so
+/// a real lesson says how the two sources actually split, rather than the split
+/// being argued from one recording.
+enum FoundBy: String, Hashable {
+    case patterns
+    case model
+}
+
 /// Something the teacher said that might be worth a link.
 struct Mention: Hashable {
     /// What kind of thing was named. Learned from recorded classes rather
@@ -63,6 +71,9 @@ struct Mention: Hashable {
     /// 0...1. The heuristic detector never goes above 0.8; the model reports
     /// its own.
     var confidence: Double
+    /// Which detector proposed this. Defaults to the word patterns, which is
+    /// what produces a Mention everywhere except the model's own leg.
+    var foundBy: FoundBy = .patterns
 
     /// `searchQuery` falls back to the name, which is what the word-pattern
     /// detector always produces.

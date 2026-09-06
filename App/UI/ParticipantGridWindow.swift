@@ -357,6 +357,10 @@ private final class RootView: NSView {
     private let topBar = BarView()
     private let bottomBar = BarView()
     private let contextBar = BarView()
+    /// The header's three immediate actions and its overflow, rebuilt in place
+    /// when their titles change (Record flips to Stop recording, and so on).
+    private var headerButtons: [NSButton] = []
+    private weak var moreButton: NSButton?
     private let gridHost = NSView()
     private let emptyState = NSTextField(labelWithString: "")
     private let readiness = ReadinessView()
@@ -397,6 +401,11 @@ private final class RootView: NSView {
     private let railContent = NSView()
     private let railDivider = NSView()
     private let selfViewHost = NSView()
+    /// The corner overlay that replaced the rail's self-view block.
+    private let selfPreview = SelfPreviewView(frame: .zero)
+    /// Hidden before the class is live, and whenever the teacher turns it off.
+    private var showsSelfPreview = true
+    private var lastMicLevel: Double = 0
     private let selfViewLabel = NSTextField(labelWithString: "You, as the class sees you")
     private var selfVideo: NSView?
     private var railControls: [NSView] = []
@@ -463,7 +472,20 @@ private final class RootView: NSView {
     ///
     /// So the content sets the ceiling and the floor, and `railFraction` only
     /// decides how much of that range a filling class claws back.
-    private var railWidth: CGFloat {
+    /// Zero. The rail is gone.
+    ///
+    /// Phase 3 of docs/participant-window-redesign-plan.md: the self view and
+    /// the control set no longer take a column off the front of the window.
+    /// The picture of yourself is occasionally useful, not continuously
+    /// primary, so it is a small overlay in the corner of the grid; the
+    /// controls are three in the header and the rest one click away in More.
+    ///
+    /// Kept as a computed zero rather than deleted at every call site, because
+    /// the grid, the divider and the context strip all measure from it and a
+    /// single source is easier to trust than eleven edits.
+    private var railWidth: CGFloat { 0 }
+
+    private var legacyRailWidth: CGFloat {
         let share = bounds.width * Self.railFraction(students: roster.count)
         // Both bounds yield on a narrow window. A hard minimum used to swallow
         // the whole width and leave the grid at zero, so it gives way once the
@@ -669,6 +691,21 @@ private final class RootView: NSView {
         selfViewHost.layer?.masksToBounds = true
         railContent.addSubview(selfViewHost)
 
+        // The preview goes on the window, above the grid, so the grid never
+        // measures around it. Actions are the two that are about you.
+        selfPreview.actions = SelfPreviewView.Actions(
+            toggleMute: {
+                guard let sdk = ParticipantGridWindowController.sdk else { return }
+                let muted = sdk.iAmMuted
+                Self.perform(muted ? "Unmuted yourself" : "Muted yourself") { $0.setMyMute(!muted) }
+            },
+            toggleVideo: {
+                guard let sdk = ParticipantGridWindowController.sdk else { return }
+                let on = sdk.myVideoIsOn
+                Self.perform(on ? "Stopped your video" : "Started your video") { $0.setMyVideo(on: !on) }
+            })
+        addSubview(selfPreview)
+
         selfViewLabel.font = .systemFont(ofSize: 11)
         selfViewLabel.textColor = .secondaryLabelColor
         railContent.addSubview(selfViewLabel)
@@ -852,6 +889,7 @@ private final class RootView: NSView {
         micHint.isHidden = !running
         guard running else { return }
         micMeter.level = level
+        lastMicLevel = level
         let muted = ParticipantGridWindowController.sdk?.iAmMuted ?? false
         micMeter.muted = muted
         // The one sentence worth saying about a live meter: whether the room can
@@ -871,15 +909,16 @@ private final class RootView: NSView {
     /// speaker window for one NSView.
     private func attachSelfVideo(_ provider: @escaping (NSRect) -> NSView?) {
         lastSelfProvider = provider
-        guard !selfViewHost.bounds.isEmpty else { return }
-        guard let view = provider(selfViewHost.bounds) else { return }
+        let host = selfPreview.videoHost
+        guard !host.bounds.isEmpty else { return }
+        guard let view = provider(host.bounds) else { return }
         if selfVideo !== view {
             selfVideo?.removeFromSuperview()
             view.autoresizingMask = [.width, .height]
-            selfViewHost.addSubview(view)
+            host.addSubview(view)
             selfVideo = view
         }
-        view.frame = selfViewHost.bounds
+        view.frame = host.bounds
     }
 
     func detachAllVideo() {
@@ -951,6 +990,23 @@ private final class RootView: NSView {
             liveQueue.isHidden = true
         }
 
+        // The self preview: a 16:9 overlay in the grid's bottom-left corner,
+        // sized in points and never consulted by the grid's cell arithmetic.
+        // The plan's rule is that it must not alter the grid; laying it out
+        // after the grid, over the top, is how that is guaranteed rather than
+        // remembered.
+        let previewWidth: CGFloat = 240
+        let previewHeight = (previewWidth * 9 / 16).rounded()
+        selfPreview.frame = NSRect(x: 16,
+                                   y: gridBottom + pagerHeight + 16,
+                                   width: previewWidth, height: previewHeight)
+        selfPreview.isHidden = !showsSelfPreview || !session.readiness.isLive
+        if !selfPreview.isHidden, let sdk = ParticipantGridWindowController.sdk {
+            selfPreview.apply(muted: sdk.iAmMuted, videoOn: sdk.myVideoIsOn, level: lastMicLevel)
+        }
+
+        rail.isHidden = true
+        railDivider.isHidden = true
         let railTarget = NSRect(x: 0, y: gridBottom, width: railWidth, height: bodyHeight)
         let gridTarget = NSRect(x: railWidth,
                                 y: gridBottom + pagerHeight,
@@ -1013,7 +1069,20 @@ private final class RootView: NSView {
                                   y: (Self.barHeight - factsLabel.frame.height) / 2,
                                   width: factsLabel.frame.width, height: factsLabel.frame.height)
         recordingLabel.sizeToFit()
-        recordingLabel.frame = NSRect(x: bounds.width - recordingLabel.frame.width - 16,
+        // The three actions the plan puts in the header, right aligned, with
+        // More last. Everything else in the rail moved into that menu.
+        var actionsRight = bounds.width - 16
+        for button in headerButtons.reversed() {
+            button.sizeToFit()
+            let size = NSSize(width: max(button.frame.width, 44), height: 24)
+            button.frame = NSRect(x: actionsRight - size.width,
+                                  y: (Self.barHeight - size.height) / 2,
+                                  width: size.width, height: size.height)
+            actionsRight = button.frame.minX - 8
+        }
+
+        recordingLabel.frame = NSRect(x: min(actionsRight - recordingLabel.frame.width - 16,
+                                             bounds.width - recordingLabel.frame.width - 16),
                                       y: (Self.barHeight - recordingLabel.frame.height) / 2,
                                       width: recordingLabel.frame.width,
                                       height: recordingLabel.frame.height)
@@ -1193,6 +1262,105 @@ private final class RootView: NSView {
         }
     }
 
+    /// The header's actions: Mute all, Chat, Record, More.
+    ///
+    /// Three immediate ones, per the plan, chosen because they are what a
+    /// teacher reaches for without planning to. Mute me and Stop my video are
+    /// deliberately NOT here: they are about you, so they live on the self
+    /// preview, next to the picture of you they change.
+    private func rebuildHeaderActions() {
+        headerButtons.forEach { $0.removeFromSuperview() }
+        headerButtons = []
+        guard ParticipantGridWindowController.sdk != nil else { return }
+
+        let recording = session.obsRecording
+        let made: [NSButton] = [
+            Self.button("Mute all", symbol: "mic.slash") {
+                Self.perform("Muted everyone") { $0.muteEveryone() }
+            },
+            Self.button("Chat", symbol: "bubble.left.and.bubble.right") {
+                ParticipantGridWindowController.requestShowChat()
+            },
+            Self.button(recording ? "Stop recording" : "Record",
+                        symbol: recording ? "stop.circle.fill" : "record.circle",
+                        destructive: recording) {
+                ParticipantGridWindowController.requestToggleRecording()
+            }
+        ]
+        // The anchor is resolved when the button is pressed, not when it is
+        // built, so the closure does not have to name a button that does not
+        // exist yet.
+        let more = Self.button("More", symbol: "ellipsis") { [weak self] in
+            guard let self, let anchor = self.moreButton else { return }
+            self.showMoreMenu(from: anchor)
+        }
+        moreButton = more
+        headerButtons = made + [more]
+        for button in headerButtons {
+            button.font = .systemFont(ofSize: 12)
+            topBar.addSubview(button)
+        }
+    }
+
+    /// Everything that used to be a permanently visible rail cell but is
+    /// reached a few times a lesson at most.
+    ///
+    /// Phase 3 of the redesign plan: the rail gave routine controls, session
+    /// setup, meeting administration and one irreversible action the same
+    /// visual weight, in a grid that was always on screen. These keep working
+    /// exactly as they did - same closures, same confirmations - from a menu
+    /// that costs one click and no permanent space.
+    private func moreItems() -> [(String, () -> Void)] {
+        var out: [(String, () -> Void)] = []
+        out.append(("Snap windows back", { ParticipantGridWindowController.requestSnapBack() }))
+        out.append((session.speakerHidden ? "Show live speaker" : "Hide live speaker",
+                    { ParticipantGridWindowController.requestToggleSpeaker() }))
+        out.append(("Greenroom window", { ParticipantGridWindowController.requestShowMainWindow() }))
+        out.append(("Meeting info", { Self.showMeetingInfo() }))
+        return out
+    }
+
+    /// The header's More menu, assembled from the existing item lists so the
+    /// participants, reactions and security controls keep one definition each.
+    private func showMoreMenu(from view: NSView) {
+        let menu = NSMenu()
+        func add(_ label: String, _ action: @escaping () -> Void) {
+            let carrier = BlockMenuItem(title: label, action)
+            let item = NSMenuItem(title: label, action: #selector(BlockMenuItem.fire), keyEquivalent: "")
+            item.target = carrier
+            item.representedObject = carrier
+            menu.addItem(item)
+        }
+        for (label, action) in moreItems() { add(label, action) }
+        menu.addItem(.separator())
+        for (title, items) in [("Participants", participantItems()),
+                               ("Reactions", reactionItems()),
+                               ("Security", securityItems())] {
+            let parent = NSMenuItem(title: title, action: nil, keyEquivalent: "")
+            let submenu = NSMenu()
+            for (label, action) in items {
+                let carrier = BlockMenuItem(title: label, action)
+                let item = NSMenuItem(title: label, action: #selector(BlockMenuItem.fire), keyEquivalent: "")
+                item.target = carrier
+                item.representedObject = carrier
+                submenu.addItem(item)
+            }
+            parent.submenu = submenu
+            menu.addItem(parent)
+        }
+        // Last, after a rule, and it still asks. The plan is explicit that End
+        // session is never one of the immediate controls.
+        menu.addItem(.separator())
+        add("End session\u{2026}") {
+            Self.confirm(title: "End the session?",
+                         message: "Leaves the meeting, finishes any recording, and shuts OBS down.",
+                         confirm: "End session") {
+                ParticipantGridWindowController.requestEndSession()
+            }
+        }
+        menu.popUp(positioning: nil, at: NSPoint(x: 0, y: -4), in: view)
+    }
+
     /// Selects the earliest raised hand, which is what "Next" means: the queue
     /// is in raise order, so the first row is the person who has waited longest.
     private func selectFirstRaisedHand() {
@@ -1350,6 +1518,7 @@ private final class RootView: NSView {
     private func rebuildRail() {
         railControls.forEach { $0.removeFromSuperview() }
         railControls = []
+        rebuildHeaderActions()
         guard let sdk = ParticipantGridWindowController.sdk else { return }
 
         railControls.append(Self.railHeader("Greenroom"))
@@ -3004,7 +3173,7 @@ private final class ReadinessView: NSView {
     }
 }
 
-private final class LevelMeterView: NSView {
+final class LevelMeterView: NSView {
 
     var level: Double = 0 { didSet { if abs(level - oldValue) > 0.01 { needsDisplay = true } } }
     /// Drawn hollow when the mic is muted in Zoom, so a moving meter never

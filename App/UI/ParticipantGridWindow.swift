@@ -536,11 +536,30 @@ private final class RootView: NSView {
     private static let railMeterWidth: CGFloat = 200
     /// One line in the block under the controls.
     private static let railRowHeight: CGFloat = 18
-    /// Marks a control that insists on starting its own row.
-    private static let railBreakTag = 7001
     /// Marks a control that takes a row to itself, spanning the whole column.
     private static let railWideTag = 7002
     private static let railWideHeight: CGFloat = 34
+    /// One control cell: a glyph over two reserved lines of caption.
+    private static let railControlHeight: CGFloat = 64
+    /// Narrower than this and an 11pt caption has nothing to say, so the group
+    /// takes another row instead.
+    private static let railMinControlWidth: CGFloat = 86
+
+    /// How to split `items` across rows in a column of `width`.
+    ///
+    /// As few rows as the width allows, then the items spread as evenly as
+    /// possible across them - five in a column that fits six is one row of
+    /// five, not a row of six and a stray. Earlier rows take the remainder,
+    /// so a ragged edge, when one is unavoidable, lands at the bottom where
+    /// the eye is already leaving.
+    private static func controlRows(items: Int, width: CGFloat) -> [Int] {
+        guard items > 0 else { return [] }
+        let perRow = max(1, Int((width + railCellGap) / (railMinControlWidth + railCellGap)))
+        let rows = max(1, Int(ceil(Double(items) / Double(perRow))))
+        let base = items / rows
+        let extra = items % rows
+        return (0..<rows).map { base + ($0 < extra ? 1 : 0) }
+    }
     /// The fixed stack between the picture and the controls: caption, mic
     /// eyebrow, meter row, trailing space. Named because `selfBlockHeight` and
     /// `layoutSelfBlock` both step through it and have to agree.
@@ -1624,45 +1643,62 @@ private final class RootView: NSView {
     ///
     /// Returns the total height consumed below `top`.
     private func walkControlColumn(x: CGFloat, width: CGFloat, top: CGFloat, place: Bool) -> CGFloat {
-        let cell = Self.railCell
         let gap = Self.railCellGap
-        let perRow = max(1, Int((width + gap) / (cell.width + gap)))
         var y = top
-        var column = 0
+        var pending: [NSView] = []
+
+        /// Lays whatever cells have piled up, then clears them.
+        ///
+        /// Every row divides the column EXACTLY. The old grid used a fixed 76pt
+        /// cell and packed left, so a group of five in a seven-slot grid left
+        /// 152pt of nothing on the right while the group of six below it left
+        /// 76pt - two different ragged edges, and no response to the panel's
+        /// width at all. Cells now stretch to whatever their row needs, so the
+        /// right edge lines up with the picture above and the whole set moves
+        /// when the panel is resized.
+        func flush() {
+            guard !pending.isEmpty else { return }
+            var index = 0
+            for (row, count) in Self.controlRows(items: pending.count, width: width).enumerated() {
+                if row > 0 { y -= gap }
+                y -= Self.railControlHeight
+                let cellWidth = (width - CGFloat(count - 1) * gap) / CGFloat(count)
+                for slot in 0..<count {
+                    if place {
+                        pending[index].frame = NSRect(
+                            x: (x + CGFloat(slot) * (cellWidth + gap)).rounded(),
+                            y: y,
+                            width: cellWidth.rounded(),
+                            height: Self.railControlHeight)
+                    }
+                    index += 1
+                }
+            }
+            pending = []
+        }
 
         for control in railControls {
-            // A section eyebrow closes whatever row is open, takes a group break
-            // above it, and spans the whole column.
+            // A section eyebrow closes the open group, takes a group break above
+            // it, and spans the whole column.
             if control is NSTextField {
-                column = 0
+                flush()
                 y -= Self.railGroupGap + 16
                 if place { control.frame = NSRect(x: x, y: y, width: width, height: 16) }
                 y -= Self.railEyebrowGap
                 continue
             }
-            // A wide control closes the open row and takes the whole column.
+            // A wide control closes the group and takes the whole column.
             if control.tag == Self.railWideTag {
-                column = 0
+                flush()
                 y -= Self.railGroupGap + Self.railWideHeight
                 if place {
                     control.frame = NSRect(x: x, y: y, width: width, height: Self.railWideHeight)
                 }
                 continue
             }
-            // Opening a row costs one cell height. A wrap costs the inter-row
-            // gap on top of that, and nothing more. A control carrying the break
-            // tag wraps whether the row was full or not.
-            if column == perRow || (control.tag == Self.railBreakTag && column != 0) {
-                y -= gap
-                column = 0
-            }
-            if column == 0 { y -= cell.height }
-            if place {
-                control.frame = NSRect(x: x + CGFloat(column) * (cell.width + gap),
-                                       y: y, width: cell.width, height: cell.height)
-            }
-            column += 1
+            pending.append(control)
         }
+        flush()
 
         // Session facts under the cells rather than pinned to the floor, so they
         // stay attached to what they describe - and only when they have anything
@@ -2433,30 +2469,61 @@ private final class IconCellButton: NSButton {
 
     /// Wide cells lay their glyph beside the caption and span the column.
     private let wide: Bool
+    private let caption: String
+    private let glyph: NSImage?
 
+    /// The cell draws its own contents instead of letting NSButton lay them out.
+    ///
+    /// NSButton centres the image-and-title block as one unit, so a caption that
+    /// wraps to two lines pushes its glyph UP relative to a neighbour whose
+    /// caption fits on one. In a row of five that reads as five buttons at four
+    /// different heights, which is most of why the panel looked unfinished.
+    /// Drawing it here pins the glyph to a fixed baseline and always reserves
+    /// two lines for the caption, so every cell in a row agrees.
     init(symbol: String, caption: String, tint: NSColor, wide: Bool = false,
          action: @escaping () -> Void) {
         self.body = action
         self.wide = wide
+        self.caption = caption
+        let config = NSImage.SymbolConfiguration(pointSize: wide ? 13 : 18, weight: .medium)
+        self.glyph = NSImage(systemSymbolName: symbol, accessibilityDescription: caption)?
+            .withSymbolConfiguration(config)
         super.init(frame: .zero)
         self.tint = tint
         target = self
         self.action = #selector(fire)
         isBordered = false
-        imagePosition = wide ? .imageLeading : .imageAbove
-        title = wide ? " " + caption : caption
-        font = wide ? .systemFont(ofSize: 12, weight: .medium) : .systemFont(ofSize: 9)
-        // A slightly heavier symbol so a 17pt glyph still reads at a glance.
-        let config = NSImage.SymbolConfiguration(pointSize: wide ? 13 : 17, weight: .medium)
-        image = NSImage(systemSymbolName: symbol, accessibilityDescription: caption)?
-            .withSymbolConfiguration(config)
-        contentTintColor = tint
+        title = ""
+        image = nil
         wantsLayer = true
         layer?.cornerRadius = 8            // DESIGN.md radius, one step below md
         layer?.borderWidth = 1
         layer?.borderColor = NSColor.clear.cgColor
         toolTip = caption
+        setAccessibilityLabel(caption)
+        setAccessibilityRole(.button)
     }
+
+    /// SF Symbols are template images; drawing one directly paints it black
+    /// whatever contentTintColor says, because that only applies to the paths
+    /// NSButton draws for you - and this cell draws its own.
+    private static func tinted(_ image: NSImage, _ color: NSColor) -> NSImage {
+        guard let copy = image.copy() as? NSImage else { return image }
+        copy.lockFocus()
+        color.set()
+        NSRect(origin: .zero, size: copy.size).fill(using: .sourceAtop)
+        copy.unlockFocus()
+        copy.isTemplate = false
+        return copy
+    }
+
+    /// 11pt, up from 9. Nine was smaller than the mono session facts sitting
+    /// under it and below anything DESIGN.md's scale contains; the app is the
+    /// compact end of the system, not a different system.
+    private static let captionFont = NSFont.systemFont(ofSize: 11, weight: .regular)
+    private static let wideFont = NSFont.systemFont(ofSize: 12.5, weight: .medium)
+    /// Two lines, always reserved, so glyphs share a baseline across a row.
+    static let captionLines: CGFloat = 2
 
     required init?(coder: NSCoder) { nil }
 
@@ -2529,7 +2596,50 @@ private final class IconCellButton: NSButton {
             background.setFill()
             NSBezierPath(roundedRect: bounds, xRadius: 8, yRadius: 8).fill()
         }
-        super.draw(dirtyRect)
+
+        let ink = isEnabled ? tint : tint.withAlphaComponent(0.4)
+        let mark = glyph.map { Self.tinted($0, ink) }
+        let paragraph = NSMutableParagraphStyle()
+        paragraph.alignment = wide ? .left : .center
+        paragraph.lineBreakMode = .byTruncatingTail
+
+        if wide {
+            // Glyph then caption, both on the vertical centre line.
+            let text = NSAttributedString(string: caption, attributes: [
+                .font: Self.wideFont, .foregroundColor: ink, .paragraphStyle: paragraph
+            ])
+            let textSize = text.size()
+            let glyphSize = mark?.size ?? .zero
+            var x = ((bounds.width - (glyphSize.width + 8 + textSize.width)) / 2).rounded()
+            x = max(12, x)
+            mark?.draw(in: NSRect(x: x, y: ((bounds.height - glyphSize.height) / 2).rounded(),
+                                   width: glyphSize.width, height: glyphSize.height),
+                        from: .zero, operation: .sourceOver, fraction: isEnabled ? 1 : 0.4,
+                        respectFlipped: true, hints: [.interpolation: NSImageInterpolation.high.rawValue])
+            text.draw(in: NSRect(x: x + glyphSize.width + 8,
+                                 y: ((bounds.height - textSize.height) / 2).rounded(),
+                                 width: bounds.width - x - glyphSize.width - 8 - 12,
+                                 height: textSize.height))
+            return
+        }
+
+        // Caption sits on the floor of the cell in a block two lines tall,
+        // whether it uses one line or two. The glyph is pinned above it.
+        let lineHeight = Self.captionFont.boundingRectForFont.height
+        let captionHeight = (lineHeight * Self.captionLines).rounded()
+        let captionRect = NSRect(x: 3, y: 6, width: bounds.width - 6, height: captionHeight)
+        NSAttributedString(string: caption, attributes: [
+            .font: Self.captionFont, .foregroundColor: ink, .paragraphStyle: paragraph
+        ]).draw(with: captionRect, options: [.usesLineFragmentOrigin], context: nil)
+
+        if let mark {
+            let size = mark.size
+            let top = bounds.height - 8 - size.height
+            mark.draw(in: NSRect(x: ((bounds.width - size.width) / 2).rounded(),
+                                  y: top, width: size.width, height: size.height),
+                       from: .zero, operation: .sourceOver, fraction: isEnabled ? 1 : 0.4,
+                       respectFlipped: true, hints: [.interpolation: NSImageInterpolation.high.rawValue])
+        }
     }
 }
 

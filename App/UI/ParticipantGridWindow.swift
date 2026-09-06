@@ -509,7 +509,43 @@ private final class RootView: NSView {
         let share = bounds.width * 0.40
         // Below the floor the picture stops being able to show framing; above
         // the ceiling the class starts losing more than the picture gains.
-        return max(min(share, 720), min(360, bounds.width * 0.5)).rounded()
+        let floor = min(360, bounds.width * 0.5)
+        let wanted = max(min(share, 720), floor).rounded()
+
+        // Then: no wider than the column whose stack still fits the height.
+        //
+        // The picture is 16:9 across the column, so a wider rail is a TALLER
+        // picture, and height is the scarce dimension. Left alone, 40% of a
+        // 1600pt window gave a 616 x 347 picture and a 787pt stack in an 861pt
+        // rail - which, once the queue took its 96pt floor, pushed End session
+        // off the bottom. The one irreversible control in the panel, scrolled
+        // out of sight, and worse the wider the display got.
+        //
+        // So the rail stops growing at the point where the picture would start
+        // costing the controls. The test is the FIXED STACK alone, not the
+        // stack plus room for the queue: requiring both cost 100pt of picture
+        // at 1150 to buy the queue 56pt, which is the wrong way round for a
+        // teacher who has twice asked for a bigger picture. End session stays
+        // visible; the queue takes what is left and scrolls, which is what
+        // layout A1 says it does.
+        //
+        // Widest that fits, scanned rather than stepped: narrowing the column
+        // wraps the control rows, so a narrower rail can be TALLER than a wide
+        // one. Walking down and stopping at the first fit would walk straight
+        // past the answer in that band.
+        guard railBodyHeight > 0 else { return wanted }
+        var best = floor
+        var smallestStack = CGFloat.greatestFiniteMagnitude
+        var fallback = floor
+        var width = wanted
+        while width >= floor {
+            let stack = fittingStackHeight(width: width - Self.railPad * 2)
+            if stack <= railBodyHeight { best = width; break }
+            if stack < smallestStack { smallestStack = stack; fallback = width }
+            width -= 20
+        }
+        // Nothing fit: take the width that overflows least and let it scroll.
+        return (width >= floor ? best : fallback).rounded()
     }
 
     private var legacyRailWidth: CGFloat {
@@ -1667,8 +1703,11 @@ private final class RootView: NSView {
         // sight, and never less than one card's worth when it has something to
         // say. Between those it takes what it needs.
         let roomForQueue = max(0, rail.bounds.height - stack.total)
-        let queueHeight = queueWanted == 0 ? 0
-            : min(queueWanted, max(Self.railMinQueueHeight, roomForQueue))
+        // Never more than the room actually there. The minimum used to be a
+        // claim - max(floor, room) - which on a wide window handed the queue
+        // 96pt it did not have and pushed End session, the one irreversible
+        // control in the panel, off the bottom of the column.
+        let queueHeight = queueWanted == 0 ? 0 : min(queueWanted, roomForQueue)
         let topHeight = max(0, rail.bounds.height - queueHeight)
 
         railScroll.frame = NSRect(x: 0, y: queueHeight,

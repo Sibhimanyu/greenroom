@@ -209,6 +209,8 @@ if !wrongKindLines.isEmpty {
     print("")
 }
 
+let consoleOK = runConsoleBench()
+
 var resolverOK = true
 let resolverSemaphore = DispatchSemaphore(value: 0)
 Task {
@@ -217,4 +219,4 @@ Task {
 }
 resolverSemaphore.wait()
 
-exit(overall.precision >= 0.70 && resolverOK ? 0 : 1)
+exit(overall.precision >= 0.70 && resolverOK && consoleOK ? 0 : 1)

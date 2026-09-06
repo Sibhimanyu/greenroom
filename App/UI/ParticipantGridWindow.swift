@@ -1171,6 +1171,26 @@ private final class RootView: NSView {
         }
     }
 
+    /// Everything the window shows, as one value.
+    ///
+    /// Phase 1 of the redesign plan: the rail's blocks each used to work out
+    /// their own idea of what mattered, so "what needs the teacher" was decided
+    /// in more than one place and could disagree. It is decided here now, and
+    /// the views read the answer. See ParticipantConsoleState.
+    private var consoleState: ParticipantConsoleState {
+        var state = ParticipantConsoleState()
+        state.isLive = session.readiness.isLive
+        state.meetingNumber = session.meetingNumber
+        state.isRecording = session.obsRecording
+        state.students = roster.count
+        state.waiting = waiting.map { .init(id: $0.id, name: $0.name) }
+        state.hands = handQueue.map { .init(id: $0.id, name: $0.name) }
+        state.selected = selected
+        state.prompterCards = prompterBlock.cardCount
+        state.prompterListening = prompterBlock.isActive
+        return state
+    }
+
     /// The block under the controls: whatever most needs the teacher right now.
     ///
     /// Strictly prioritised, because only one thing can be the most urgent:
@@ -1189,22 +1209,25 @@ private final class RootView: NSView {
         var rows: [(text: String, font: NSFont)] = []
         suppressedNeedsHeight = 0
 
-        if !session.readiness.isLive {
+        // The ladder itself now lives in ParticipantConsoleState. This method
+        // renders its answer rather than working it out a second time.
+        let console = consoleState
+        switch console.attention {
+        case .waiting(let people, let total):
+            eyebrow = "WAITING TO JOIN   \(total)"
+            rows = people.map { ($0.name, prose) }
+            if total > people.count { rows.append(("+\(total - people.count) more", prose)) }
+        case .hands(let people, let total):
+            eyebrow = "HANDS UP   \(total)"
+            rows = people.enumerated().map { index, person in
+                ("\(index + 1).  \(person.name)", prose)
+            }
+            if total > people.count { rows.append(("+\(total - people.count) more", prose)) }
+        case .clear where !console.isLive:
             // The class side is already carrying the progress. Two accounts of
             // the same wait, side by side, is one too many.
             eyebrow = ""
-        } else if !waiting.isEmpty {
-            eyebrow = "WAITING TO JOIN   \(waiting.count)"
-            rows = waiting.prefix(5).map { ($0.name, prose) }
-            if waiting.count > 5 { rows.append(("+\(waiting.count - 5) more", prose)) }
-        } else if !handQueue.isEmpty {
-            let queue = handQueue
-            eyebrow = "HANDS UP   \(queue.count)"
-            rows = queue.prefix(5).enumerated().map { index, entry in
-                ("\(index + 1).  \(entry.name)", prose)
-            }
-            if queue.count > 5 { rows.append(("+\(queue.count - 5) more", prose)) }
-        } else if prompterBlock.hasCards {
+        case .clear where !console.showsSessionFacts:
             // What the block would have been, kept for the width decision below.
             let factRows = session.meetingNumber.isEmpty ? 3 : 4
             suppressedNeedsHeight = Self.railGroupGap + 16 + Self.railEyebrowGap
@@ -1218,16 +1241,16 @@ private final class RootView: NSView {
             // Only the filler yields. Someone at the door and a raised hand are
             // still more urgent than a link, and they keep the top of the block.
             eyebrow = ""
-        } else {
+        default:
             // Machine facts, so mono - the split DESIGN.md asks for. The meeting
             // number is here rather than only in the top bar because the moment
             // you need it is the moment a student cannot find the link, and it
             // should be readable aloud without hunting.
             eyebrow = "SESSION"
-            if !session.meetingNumber.isEmpty {
-                rows.append(("MEETING     \(session.meetingNumber)", mono))
+            if !console.meetingNumber.isEmpty {
+                rows.append(("MEETING     \(console.meetingNumber)", mono))
             }
-            rows.append((session.obsRecording ? "RECORDING   local" : "RECORDING   off", mono))
+            rows.append((console.isRecording ? "RECORDING   local" : "RECORDING   off", mono))
             rows.append(("\u{2325}\u{2318}G start    \u{2325}\u{2318}R record    \u{2325}\u{2318}S snap back", mono))
             rows.append(("\u{2325}\u{2318}X end      \u{2325}\u{2318}Z speaker", mono))
         }

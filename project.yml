@@ -240,6 +240,7 @@ targets:
       - path: App/Prompter/PrompterTransport.swift
       - path: App/Prompter/TitleMatch.swift
       - path: App/Prompter/ThumbnailLoader.swift
+      - path: App/UI/ParticipantConsole/ParticipantConsoleState.swift
     settings:
       base:
         PRODUCT_NAME: PrompterBench

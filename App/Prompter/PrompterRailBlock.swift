@@ -66,6 +66,9 @@ final class PrompterRailBlock: NSView {
     /// True when Prompter has anything to say on this rail.
     var isActive: Bool { state.listening || !state.cards.isEmpty }
 
+    /// How many links are held, for the console's presentation model.
+    var cardCount: Int { state.cards.count }
+
     /// True when there are links on screen, as opposed to a listening eyebrow.
     /// The rail asks, because a live link outranks the standing session facts
     /// for the room the two of them are competing over.

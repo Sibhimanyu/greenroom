@@ -1719,11 +1719,17 @@ private final class RootView: NSView {
     ///
     /// Returns x as an offset inside `available`; the caller adds its own pad.
     private func railColumn(available: CGFloat) -> (x: CGFloat, width: CGFloat) {
-        let cellStride = Self.railCell.width + Self.railCellGap
-        let fits = Int((available + Self.railCellGap) / cellStride)
-        let cells = max(1, min(Self.railMaxCellsPerRow, fits))
-        let width = min(available, CGFloat(cells) * cellStride - Self.railCellGap)
-        return (x: ((available - width) / 2).rounded(), width: width)
+        // The whole width, no snapping.
+        //
+        // This used to round DOWN to a whole number of 76pt control cells so
+        // the button grid's right edge landed exactly on the picture's. That
+        // was the right call while cells were a fixed width and packed left.
+        // They are not any more - walkControlColumn stretches each row to fill
+        // the column exactly - so the snapping buys nothing and the picture
+        // pays for it: 549pt of column became a 476pt picture on his display,
+        // losing 73pt of width and 41pt of height to align with a grid that
+        // now aligns itself.
+        (x: 0, width: available)
     }
 
     /// How tall the needs block will be, without placing it.

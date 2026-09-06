@@ -538,6 +538,9 @@ private final class RootView: NSView {
     private static let railRowHeight: CGFloat = 18
     /// Marks a control that insists on starting its own row.
     private static let railBreakTag = 7001
+    /// Marks a control that takes a row to itself, spanning the whole column.
+    private static let railWideTag = 7002
+    private static let railWideHeight: CGFloat = 34
     /// The fixed stack between the picture and the controls: caption, mic
     /// eyebrow, meter row, trailing space. Named because `selfBlockHeight` and
     /// `layoutSelfBlock` both step through it and have to agree.
@@ -1331,18 +1334,25 @@ private final class RootView: NSView {
             })
         }
 
-        // Its own row. It is the one irreversible control in the rail, and
-        // sitting inline next to Meeting info left red as the only thing telling
-        // them apart - which is no separation at all for anyone who does not
-        // parse colour quickly, or at all.
-        let endSession = Self.railRow("End session", symbol: "xmark.circle.fill", destructive: true) {
+        // Its own row, spanning the column, rather than one small icon cell
+        // stranded at the left of an otherwise empty line.
+        //
+        // It stays on its own row because it is the one irreversible control
+        // in the rail, and inline next to Meeting info left red as the only
+        // thing telling them apart - no separation at all for anyone who does
+        // not parse colour quickly, or at all. What was wrong was the SHAPE:
+        // a 76pt cell alone on a 556pt line reads as a layout that ran out of
+        // buttons. Full width reads as a decision, gives the most consequential
+        // control the largest target, and costs 20pt less than the icon cell did.
+        let endSession = Self.railRow("End session", symbol: "xmark.circle.fill",
+                                      destructive: true, wide: true) {
             Self.confirm(title: "End the session?",
                          message: "Leaves the meeting, finishes any recording, and shuts OBS down.",
                          confirm: "End session") {
                 ParticipantGridWindowController.requestEndSession()
             }
         }
-        endSession.tag = Self.railBreakTag
+        endSession.tag = Self.railWideTag
         railControls.append(endSession)
 
         // Dimmed and disabled until the subsystem behind them exists. Showing
@@ -1628,6 +1638,15 @@ private final class RootView: NSView {
                 y -= Self.railGroupGap + 16
                 if place { control.frame = NSRect(x: x, y: y, width: width, height: 16) }
                 y -= Self.railEyebrowGap
+                continue
+            }
+            // A wide control closes the open row and takes the whole column.
+            if control.tag == Self.railWideTag {
+                column = 0
+                y -= Self.railGroupGap + Self.railWideHeight
+                if place {
+                    control.frame = NSRect(x: x, y: y, width: width, height: Self.railWideHeight)
+                }
                 continue
             }
             // Opening a row costs one cell height. A wrap costs the inter-row
@@ -1927,12 +1946,14 @@ private final class RootView: NSView {
                                 symbol: String,
                                 alert: Bool = false,
                                 destructive: Bool = false,
+                                wide: Bool = false,
                                 action: @escaping () -> Void) -> NSButton {
         // systemRed, not the brand accent: DESIGN.md bars the accent from text,
         // and red-for-muted is the convention being matched anyway.
         IconCellButton(symbol: symbol,
                        caption: title,
                        tint: destructive || alert ? .systemRed : .labelColor,
+                       wide: wide,
                        action: action)
     }
 
@@ -2399,28 +2420,41 @@ private final class TileView: NSView {
 private final class IconCellButton: NSButton {
 
     private let body: () -> Void
-    private var hovering = false { didSet { needsDisplay = true } }
+    private var hovering = false {
+        didSet {
+            guard oldValue != hovering else { return }
+            needsDisplay = true
+            applyChrome(animated: true)
+        }
+    }
     private var tint: NSColor = .labelColor
     /// Set instead of an action when this cell opens a menu.
     var attachedMenu: NSMenu?
 
-    init(symbol: String, caption: String, tint: NSColor, action: @escaping () -> Void) {
+    /// Wide cells lay their glyph beside the caption and span the column.
+    private let wide: Bool
+
+    init(symbol: String, caption: String, tint: NSColor, wide: Bool = false,
+         action: @escaping () -> Void) {
         self.body = action
+        self.wide = wide
         super.init(frame: .zero)
         self.tint = tint
         target = self
         self.action = #selector(fire)
         isBordered = false
-        imagePosition = .imageAbove
-        title = caption
-        font = .systemFont(ofSize: 9)
+        imagePosition = wide ? .imageLeading : .imageAbove
+        title = wide ? " " + caption : caption
+        font = wide ? .systemFont(ofSize: 12, weight: .medium) : .systemFont(ofSize: 9)
         // A slightly heavier symbol so a 17pt glyph still reads at a glance.
-        let config = NSImage.SymbolConfiguration(pointSize: 17, weight: .medium)
+        let config = NSImage.SymbolConfiguration(pointSize: wide ? 13 : 17, weight: .medium)
         image = NSImage(systemSymbolName: symbol, accessibilityDescription: caption)?
             .withSymbolConfiguration(config)
         contentTintColor = tint
         wantsLayer = true
         layer?.cornerRadius = 8            // DESIGN.md radius, one step below md
+        layer?.borderWidth = 1
+        layer?.borderColor = NSColor.clear.cgColor
         toolTip = caption
     }
 
@@ -2450,13 +2484,47 @@ private final class IconCellButton: NSButton {
     override func mouseEntered(with event: NSEvent) { hovering = true }
     override func mouseExited(with event: NSEvent) { hovering = false }
 
+    override var isHighlighted: Bool {
+        didSet {
+            guard oldValue != isHighlighted else { return }
+            needsDisplay = true
+            applyChrome(animated: !isHighlighted)
+        }
+    }
+
+    /// The hairline, animated. The fill is drawn in `draw` because a press has
+    /// to be instant to feel like a press, while hover wants the 150ms
+    /// DESIGN.md allows so the rail does not flicker as the pointer crosses it.
+    private func applyChrome(animated: Bool) {
+        let target: NSColor = isHighlighted
+            ? tint.withAlphaComponent(0.55)
+            : hovering ? NSColor.separatorColor : .clear
+        guard animated else {
+            layer?.borderColor = target.cgColor
+            return
+        }
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0.15
+            context.timingFunction = CAMediaTimingFunction(name: hovering ? .easeOut : .easeIn)
+            context.allowsImplicitAnimation = true
+            layer?.borderColor = target.cgColor
+        }
+    }
+
     /// Hover and press are drawn here rather than left to the bezel, because a
     /// borderless button gives no feedback at all otherwise - and feedback on
     /// press is most of what makes a control feel like it worked.
+    ///
+    /// The steps used to be white at 10% for hover and the tint at 28% for
+    /// press. On a near-black panel that is close to invisible, which is what
+    /// "the touch response is not engaging" meant: the feedback existed and
+    /// could not be seen. Hover is now a system fill at 16% with a hairline,
+    /// and a press is a real block of the control's own colour, so a red
+    /// control flashes red and the eye has something to catch.
     override func draw(_ dirtyRect: NSRect) {
         let background: NSColor? = isHighlighted
-            ? tint.withAlphaComponent(0.28)
-            : hovering ? NSColor.white.withAlphaComponent(0.10) : nil
+            ? tint.withAlphaComponent(0.42)
+            : hovering ? NSColor.labelColor.withAlphaComponent(0.16) : nil
         if let background {
             background.setFill()
             NSBezierPath(roundedRect: bounds, xRadius: 8, yRadius: 8).fill()

@@ -127,7 +127,16 @@ final class LiveQueueView: NSView {
         secondary.isHidden = attention == nil
         for row in rows { row.isHidden = true }
 
-        var y = total - LiveQueueLayout.pad
+        // From the TOP of the view, not from the top of its content.
+        //
+        // These differ whenever the view is taller than what it holds, which is
+        // the normal case: the queue's document view is sized to the scroller's
+        // viewport so a short queue does not leave a scrollable void. Laying out
+        // from `total` in a view of height H put the content at the BOTTOM of
+        // the queue area - AppKit's origin is bottom-left - so one waiting
+        // student appeared floating at the foot of the column, detached from
+        // the controls it belongs under.
+        var y = max(bounds.height, total) - LiveQueueLayout.pad
         let x = LiveQueueLayout.pad
 
         if let attention {

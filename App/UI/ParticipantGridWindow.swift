@@ -1697,9 +1697,14 @@ private final class RootView: NSView {
         lastRailDocumentHeight = documentHeight
 
         if queueHeight > 0 {
-            let used = liveQueue.apply(consoleState, width: rail.bounds.width)
+            // Frame first, THEN write it: the view lays out from its own
+            // height, so it has to know that height before it draws.
             liveQueue.frame = NSRect(x: 0, y: 0, width: rail.bounds.width,
-                                     height: max(used, queueHeight))
+                                     height: max(queueWanted, queueHeight))
+            liveQueue.apply(consoleState, width: rail.bounds.width)
+            // Non-flipped document views scroll to the bottom by default, which
+            // would open the queue showing its last row.
+            liveQueue.scroll(NSPoint(x: 0, y: liveQueue.bounds.height))
         }
     }
 

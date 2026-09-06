@@ -360,6 +360,22 @@ private final class RootView: NSView {
     /// The header's three immediate actions and its overflow, rebuilt in place
     /// when their titles change (Record flips to Stop recording, and so on).
     private var headerButtons: [NSButton] = []
+    /// The selected student's drawer, over the grid's right edge. Exists only
+    /// while somebody is selected - see ParticipantInspectorView.
+    private let inspector = ParticipantInspectorView(frame: .zero)
+    /// Live only while the drawer is open. The panel is non-activating and is
+    /// rarely key, so Escape has to be caught before the responder chain gets
+    /// a chance not to deliver it.
+    private var escapeMonitor: Any?
+
+    /// Below this the window stops being a grid with panels beside it.
+    ///
+    /// Phase 4: on a laptop the queue and the drawer would leave the class
+    /// itself a strip, so they overlay the grid's right edge instead of taking
+    /// a column off it. 900pt is where 320 + 300 + a usable canvas stops
+    /// fitting side by side.
+    private static let narrowWidth: CGFloat = 900
+    private var isNarrow: Bool { bounds.width < Self.narrowWidth }
     private weak var moreButton: NSButton?
     private let gridHost = NSView()
     private let emptyState = NSTextField(labelWithString: "")
@@ -706,6 +722,14 @@ private final class RootView: NSView {
             })
         addSubview(selfPreview)
 
+        inspector.onClose = { [weak self] in
+            guard let self else { return }
+            self.selected = nil
+            self.selectionChanged()
+        }
+        inspector.isHidden = true
+        addSubview(inspector)
+
         selfViewLabel.font = .systemFont(ofSize: 11)
         selfViewLabel.textColor = .secondaryLabelColor
         railContent.addSubview(selfViewLabel)
@@ -950,12 +974,12 @@ private final class RootView: NSView {
         bottomBar.isHidden = true
         // Spans only the grid, not the rail: it describes a selected student, and
         // the students are on the right.
-        contextBar.frame = NSRect(x: railWidth, y: 0,
-                                  width: max(0, width - railWidth),
-                                  height: showContext ? Self.contextHeight : 0)
-        contextBar.isHidden = !showContext
+        contextBar.frame = .zero
+        contextBar.isHidden = true
 
-        let gridBottom = Self.bottomHeight + (showContext ? Self.contextHeight : 0)
+        // The drawer floats over the grid rather than taking a band off it, so
+        // selecting somebody never reflows the class.
+        let gridBottom = Self.bottomHeight
         let bodyHeight = max(0, bounds.height - Self.barHeight - gridBottom)
 
         // perPage is derived from gridHost's size, and gridHost's height depends
@@ -970,7 +994,10 @@ private final class RootView: NSView {
         let queueState = consoleState
         let queueHeight = liveQueue.height(for: queueState, width: LiveQueueLayout.width)
         let queueWidth = queueHeight > 0 ? LiveQueueLayout.width : 0
-        let canvasWidth = max(0, width - railWidth - queueWidth)
+        // Wide: the queue takes a column and the grid gets the rest. Narrow:
+        // it floats over the grid's right edge, because a laptop cannot afford
+        // 320pt off a canvas that is already the smallest thing on screen.
+        let canvasWidth = max(0, width - railWidth - (isNarrow ? 0 : queueWidth))
 
         gridHost.frame = NSRect(x: railWidth, y: gridBottom + 24,
                                 width: canvasWidth,
@@ -1003,6 +1030,18 @@ private final class RootView: NSView {
         selfPreview.isHidden = !showsSelfPreview || !session.readiness.isLive
         if !selfPreview.isHidden, let sdk = ParticipantGridWindowController.sdk {
             selfPreview.apply(muted: sdk.iAmMuted, videoOn: sdk.myVideoIsOn, level: lastMicLevel)
+        }
+
+        // The drawer sits against the right edge of the canvas, inboard of the
+        // Live Queue when one is showing, so the two never overlap.
+        inspector.isHidden = !showContext
+        updateEscapeMonitor(active: showContext)
+        if showContext {
+            let drawerHeight = min(inspector.height(), bodyHeight - 32)
+            inspector.frame = NSRect(x: width - queueWidth - ParticipantInspectorView.width - 16,
+                                     y: gridBottom + bodyHeight - drawerHeight - 16,
+                                     width: ParticipantInspectorView.width,
+                                     height: drawerHeight)
         }
 
         rail.isHidden = true
@@ -2168,7 +2207,14 @@ private final class RootView: NSView {
                 }
             })
         }
-        Self.pack(controls, into: contextBar, height: Self.contextHeight)
+        // Straight into the drawer. The strip along the bottom is gone: it was
+        // always in the layout and empty most of the time, which is the third
+        // competing region the plan asks to remove.
+        let head = controls.first
+        inspector.apply(name: entry.name,
+                        status: Self.stateWords(for: entry),
+                        controls: Array(controls.dropFirst()))
+        _ = head
     }
 
     // MARK: Control helpers
@@ -2182,6 +2228,49 @@ private final class RootView: NSView {
             bar.addSubview(control)
             x = control.frame.maxX + 8
         }
+    }
+
+    /// A global monitor outlives the view that installed it, so ending a
+    /// session with the drawer open would leave one running for the rest of
+    /// the app's life, swallowing Escape everywhere.
+    deinit {
+        if let escapeMonitor { NSEvent.removeMonitor(escapeMonitor) }
+    }
+
+    /// Escape closes the drawer, and only while it is open.
+    ///
+    /// A local monitor rather than `cancelOperation`: the participants panel is
+    /// a non-activating panel and is usually not key, so the responder chain
+    /// cannot be relied on to deliver the key at all.
+    private func updateEscapeMonitor(active: Bool) {
+        if active, escapeMonitor == nil {
+            escapeMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+                guard let self, event.keyCode == 53 else { return event }   // Escape
+                guard self.selected != nil else { return event }
+                self.selected = nil
+                self.selectionChanged()
+                return nil
+            }
+        } else if !active, let monitor = escapeMonitor {
+            NSEvent.removeMonitor(monitor)
+            escapeMonitor = nil
+        }
+    }
+
+    /// The selected student's state as words, not colour.
+    ///
+    /// The plan asks for one strong alert treatment that does not depend on
+    /// colour alone, and this is the "alone" part: whatever a dot on the tile
+    /// says, the drawer says it in English too.
+    private static func stateWords(for entry: ZoomMeetingSDKClient.RosterEntry) -> String {
+        var parts: [String] = []
+        if entry.isMuted { parts.append("Muted") }
+        if !entry.videoOn { parts.append("Video off") }
+        if entry.isRaisingHand { parts.append("Hand up") }
+        if entry.isSpotlighted { parts.append("Spotlighted") }
+        if entry.isCoHost { parts.append("Co-host") }
+        if entry.isMyself { parts.append("You") }
+        return parts.joined(separator: "  \u{00B7}  ")
     }
 
     /// A section eyebrow: mono, uppercase, letter-spaced, per DESIGN.md.

@@ -154,10 +154,18 @@ enum ParticipantGridWindowController {
     /// borderless panel covering their only screen would be unusable.
     private static func makePanel(on screen: NSScreen, windowed: Bool) -> ControlPanel {
         let frame = windowed
-            ? NSRect(x: screen.visibleFrame.minX + 60,
-                     y: screen.visibleFrame.minY + 60,
-                     width: min(1100, screen.visibleFrame.width - 120),
-                     height: min(760, screen.visibleFrame.height - 120))
+            // Use the display. This was 1100x760 inset by 60, which on a 16in
+            // laptop left 180pt of width and 185pt of height unused and made
+            // the rail the tightest thing on screen: at 760 the whole stack -
+            // picture, mic, eleven controls, session facts, links - had 716pt
+            // to live in, and the picture was what got squeezed. The inset
+            // drops to 40 and the ceilings rise, so the same laptop opens the
+            // panel 1432x905 instead. It is a resizable window either way; the
+            // ceilings only stop it becoming absurd on a very large display.
+            ? NSRect(x: screen.visibleFrame.minX + 40,
+                     y: screen.visibleFrame.minY + 40,
+                     width: min(1600, screen.visibleFrame.width - 80),
+                     height: min(1100, screen.visibleFrame.height - 80))
             : screen.frame
         let created = ControlPanel(contentRect: frame,
                                    styleMask: windowed
@@ -539,11 +547,6 @@ private final class RootView: NSView {
     /// not earn its own row.
     private static let selfChrome = (caption: CGFloat(18), micLabel: CGFloat(22),
                                      meter: CGFloat(16), trail: CGFloat(24))
-    /// The picture never shrinks past this, whatever else needs the room. At
-    /// 160pt tall it is still a face you can read your own framing from, which
-    /// is the whole job of "You, as the class sees you". Below that the rail
-    /// overflows and scrolls instead - the honest failure.
-    private static let selfPictureFloor: CGFloat = 160
     private static var selfChromeHeight: CGFloat {
         selfChrome.caption + selfChrome.micLabel + selfChrome.meter + selfChrome.trail
     }
@@ -1514,43 +1517,20 @@ private final class RootView: NSView {
     }
 
     /// How tall the self-view block will be at a given width, without placing it.
+    ///
+    /// The picture is 16:9 across the WHOLE content column, always. There was
+    /// briefly a cap here, so the rail could promise Prompter three card slots
+    /// by taking the height off the picture. On the real panel that was a bad
+    /// trade and an invisible one: the windowed panel is 760pt tall, the
+    /// reserve was 272pt whether or not a single link existed, and the picture
+    /// went straight to its floor - a 284pt image inset in a 556pt column, for
+    /// the whole lesson, mostly to hold space for cards that never arrived.
+    ///
+    /// So the picture takes the column and Prompter takes what is left over,
+    /// fitting whole cards to it and labelling the rest "+N older". When even
+    /// that does not fit, the rail scrolls, which is what railScroll is for.
     private func selfBlockHeight(width: CGFloat) -> CGFloat {
-        selfPicture(width: width).height + Self.selfChromeHeight
-    }
-
-    /// The picture's size in a column of `width`.
-    ///
-    /// 16:9 across the whole column when the rail can afford it, and smaller
-    /// when it cannot. The rail owes Prompter three card slots from the moment
-    /// it starts listening, and on a laptop-height panel the picture is the
-    /// only block big enough to pay: the controls are already wrapped as
-    /// tightly as they go and the session facts have already stood down.
-    ///
-    /// A capped picture keeps 16:9 by losing width too, and centres. This is
-    /// the narrower-than-the-buttons case the old comment here argued against,
-    /// and it was right that a ragged edge is a cost. It is the smaller cost.
-    /// A teacher who cannot see their suggestions has lost the feature; one
-    /// whose self view is inset by 40pt has lost some symmetry.
-    private func selfPicture(width: CGFloat) -> CGSize {
-        let full = (width * 9 / 16).rounded()
-        let cap = selfPictureCap(width: width)
-        guard cap < full else { return CGSize(width: width, height: full) }
-        let height = max(Self.selfPictureFloor, cap).rounded()
-        // Never wider than the column, whatever the arithmetic says.
-        return CGSize(width: min(width, (height * 16 / 9).rounded()), height: height)
-    }
-
-    /// Everything the rail must fit besides the picture, subtracted from the
-    /// rail's own height. Deliberately does NOT include the picture, which is
-    /// what it is solving for.
-    private func selfPictureCap(width: CGFloat) -> CGFloat {
-        railBodyHeight
-            - Self.railPad * 2 - 10
-            - Self.selfChromeHeight
-            - controlColumnHeight(width: width)
-            - needsBlockHeight(width: width)
-            - suppressedNeedsHeight
-            - prompterBlock.reserved
+        (width * 9 / 16).rounded() + Self.selfChromeHeight
     }
 
     /// How tall the wrapped cells will be at a given width, without placing them.
@@ -1572,12 +1552,12 @@ private final class RootView: NSView {
         // Same expression as selfBlockHeight, deliberately - if the measuring
         // pass and the placing pass disagree the content scrolls to the wrong
         // offset or clips.
-        let picture = selfPicture(width: width)
-        var y = top - picture.height
-        // Centred when it is narrower than the column, so a capped picture
-        // reads as inset rather than as content that failed to fill its box.
-        selfViewHost.frame = NSRect(x: x + ((width - picture.width) / 2).rounded(),
-                                    y: y, width: picture.width, height: picture.height)
+        // Same expression as selfBlockHeight, deliberately: if the measuring
+        // pass and the placing pass disagree the content scrolls to the wrong
+        // offset or clips.
+        let height = (width * 9 / 16).rounded()
+        var y = top - height
+        selfViewHost.frame = NSRect(x: x, y: y, width: width, height: height)
         selfVideo?.frame = selfViewHost.bounds
 
         // Caption and meter share the picture's edges, so the block reads as one

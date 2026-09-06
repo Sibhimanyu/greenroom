@@ -740,7 +740,10 @@ private final class RootView: NSView {
             viewAll: { [weak self] in self?.showParticipantsMenu() },
             nextHand: { [weak self] in self?.selectFirstRaisedHand() },
             lowerAll: { Self.perform("Lowered every hand") { $0.lowerEveryHand() } })
-        addSubview(liveQueue)
+        // NOT addSubview'd here: queueScroll takes it as its documentView
+        // below, which reparents it. Leaving the stray call was harmless only
+        // because assignment happens later - the same kind of leftover that
+        // left `rail.isHidden = true` behind and emptied the whole column.
 
         railScroll.drawsBackground = false
         railScroll.hasVerticalScroller = true
@@ -1063,9 +1066,6 @@ private final class RootView: NSView {
         // twice.
         // The self preview: a 16:9 overlay in the grid's bottom-left corner,
         // sized in points and never consulted by the grid's cell arithmetic.
-        // The plan's rule is that it must not alter the grid; laying it out
-        // after the grid, over the top, is how that is guaranteed rather than
-        // remembered.
         // The corner overlay is retired: the picture is the top of the column
         // again, at the size the teacher asked for.
         selfPreview.isHidden = true
@@ -1082,8 +1082,13 @@ private final class RootView: NSView {
                                      height: drawerHeight)
         }
 
-        rail.isHidden = true
-        railDivider.isHidden = true
+        // Visible. Phase 3 hid the rail when the self view moved to a corner
+        // overlay, and layout A1 brought the column back - but this line
+        // survived, so every layout pass hid the thing it had just measured,
+        // positioned and filled. railWidth was right, the grid started at the
+        // correct x, and the left 574pt of the panel was empty.
+        rail.isHidden = false
+        railDivider.isHidden = false
         let railTarget = NSRect(x: 0, y: gridBottom, width: railWidth, height: bodyHeight)
         let gridTarget = NSRect(x: railWidth,
                                 y: gridBottom + pagerHeight,

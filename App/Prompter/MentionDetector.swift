@@ -86,7 +86,13 @@ struct CompositeDetector: MentionDetector {
         // it. In one real class this sentence, zero of five words in the
         // dictionary, produced two of the three wrong links: "Orukuntu" became
         // a Turkish footballer and "Kayam" became a concert-tent hire company.
-        guard HeuristicDetector.englishRatio(newText) >= 0.5 else { return [] }
+        // Above half, not at it. A real class on 6 Sep transcribed
+        // "Feeting season, Jao Maa" - two of its four words are in the Mac's
+        // dictionary, so it scored exactly 0.50, passed a >= 0.5 test, and
+        // produced both of that class's false alarms. A sentence that is half
+        // not-English is not a sentence to mine for names, and a threshold a
+        // real failure lands exactly on is the wrong threshold.
+        guard HeuristicDetector.englishRatio(newText) > 0.5 else { return [] }
         let byModel = try await model.detect(newText: newText, context: context,
                                              excludedNames: excludedNames)
             .map { mention -> Mention in

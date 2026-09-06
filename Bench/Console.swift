@@ -89,6 +89,28 @@ func runConsoleBench() -> Bool {
     check("session facts show in a quiet stretch", idle.showsSessionFacts && !idle.showsAssist)
 
     print("")
+    print("  detector guards, against real class transcripts")
+
+    // Both from classes the teacher actually ran, both of which produced
+    // false alarms that shipped to the panel.
+    let realCases: [(String, Bool, String)] = [
+        ("Feeting season, Jao Maa", false,
+         "6 Sep: exactly 50% English, passed a >= 0.5 test, gave 2 false alarms"),
+        ("Eppudu, Orukuntu, Indha, veyyil, Kayam.", false,
+         "5 Sep: 0% English, gave 2 false alarms"),
+        ("There is this tool called figma.", true,
+         "must still reach the model when the patterns are silent"),
+        ("Many of you still have not joined book fusion.", true,
+         "the case the model exists for")
+    ]
+    for (text, shouldPass, why) in realCases {
+        let got = HeuristicDetector.englishRatio(text) > 0.5
+        let pass = got == shouldPass
+        ok = ok && pass
+        print("    \(pass ? "ok   " : "FAIL ") mined=\(got ? "yes" : "no ")  \(why)")
+    }
+
+    print("")
     print("  live queue layout")
 
     func layout(_ label: String, _ passed: Bool) {

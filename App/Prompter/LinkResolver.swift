@@ -333,6 +333,14 @@ actor LinkResolver {
             return pages.prefix(1).compactMap { page -> PrompterCard? in
                 guard let key = page["key"] as? String, let title = page["title"] as? String,
                       let url = URL(string: "https://en.wikipedia.org/wiki/\(key)") else { return nil }
+                // The same rule resolveThing uses, which this path never had.
+                //
+                // TitleMatch guarded `.thing` only, so topics, people and
+                // places took whatever the title search returned. A real class
+                // on 6 Sep turned "Jao Maa" into the Wikipedia page for Jan
+                // Mayen, an Arctic island, and served it as a topic. Three of
+                // the four kinds that reach Wikipedia had no title check at all.
+                guard TitleMatch.answers(title: title, said: mention.query) else { return nil }
                 let description = (page["description"] as? String) ?? "Wikipedia"
                 let card = PrompterCard(kind: mention.kind, query: mention.query, title: title,
                                         subtitle: description.prefix(1).uppercased() + description.dropFirst(),

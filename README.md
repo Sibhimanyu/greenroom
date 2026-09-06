@@ -323,6 +323,21 @@ Download it with your own Zoom Marketplace account and copy the zip's
 contents in; [`Vendor/README.md`](Vendor/README.md) documents the layout
 and the rsync/codesign trap to avoid.
 
+Checking the Prompter detector after a change:
+
+```sh
+scripts/prompter-bench.sh            # the report
+scripts/prompter-bench.sh --verbose  # every false alarm and miss
+```
+
+Scores the word-pattern detector and the link resolver against checked-in
+fixtures. No network, no speech model, no microphone, no meeting: the same
+input gives the same number every run, in about a second. Run it before and
+after any change to the detector, its filters, or the resolver's ranking, and
+put both numbers in the commit message. It exists because an unmeasured filter
+change shipped once and the next real class produced a single suggestion: a
+dictionary entry for the word "happening".
+
 Non-obvious build/runtime notes, learned the hard way:
 
 - **Signing identity must stay stable** across rebuilds (hence the team ID

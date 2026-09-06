@@ -115,6 +115,28 @@ targets:
     # build failure from inside a third-party script, which is a miserable way
     # to discover a missing credential.
     preBuildScripts:
+      # The Zoom SDK is the one thing a clone does not come with: ~600 MB and
+      # not redistributable, so it is gitignored and downloaded with your own
+      # Marketplace account. Without this check the first build a new developer
+      # runs fails with
+      #
+      #   ActiveSpeakerWindowController.swift:22: error: unable to resolve
+      #   module dependency: 'ZoomSDK'
+      #
+      # which names a random UI file, gives no cause, and offers no fix. Tested
+      # by moving the SDK aside and building. This says what is missing, why,
+      # and where the instructions are - the same courtesy the Apptics check
+      # below already extends.
+      - name: Check the Zoom SDK is present
+        basedOnDependencyAnalysis: false
+        script: |
+          if [ ! -d "${SRCROOT}/Vendor/ZoomSDK/ZoomSDK.framework" ]; then
+            echo "error: Vendor/ZoomSDK/ZoomSDK.framework is missing."
+            echo "note: The Zoom Meeting SDK for macOS is proprietary (~600 MB) so it is not in this repo."
+            echo "note: Download it with your own Zoom Marketplace account, then copy the zip's contents into Vendor/ZoomSDK/."
+            echo "note: Vendor/README.md documents the expected layout and the rsync/codesign trap to avoid."
+            exit 1
+          fi
       - name: Apptics pre build
         basedOnDependencyAnalysis: false
         script: |

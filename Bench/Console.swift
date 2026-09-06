@@ -89,5 +89,64 @@ func runConsoleBench() -> Bool {
     check("session facts show in a quiet stretch", idle.showsSessionFacts && !idle.showsAssist)
 
     print("")
+    print("  live queue layout")
+
+    func layout(_ label: String, _ passed: Bool) {
+        ok = ok && passed
+        print("    \(passed ? "ok   " : "FAIL ") \(label)")
+    }
+
+    // Nothing to act on and nothing to suggest: no panel at all. The plan is
+    // explicit that an empty queue shows no filler.
+    var empty = ParticipantConsoleState()
+    empty.isLive = true
+    let noSections = LiveQueueLayout.sections(for: empty, assistHeight: 0)
+    layout("quiet class: no sections, no panel",
+           noSections.isEmpty && LiveQueueLayout.contentHeight(noSections) == 0)
+
+    // One person waiting reads "Admit", several read "Admit all". With one
+    // person the plural is a lie.
+    var one = ParticipantConsoleState()
+    one.isLive = true
+    one.waiting = [person(1, "Priya")]
+    layout("one waiting: the button says Admit",
+           LiveQueueLayout.sections(for: one, assistHeight: 0).first?.actions.first == "Admit")
+
+    var three = ParticipantConsoleState()
+    three.isLive = true
+    three.waiting = [person(1, "Priya"), person(2, "Arun"), person(3, "Meera")]
+    layout("three waiting: the button says Admit all",
+           LiveQueueLayout.sections(for: three, assistHeight: 0).first?.actions.first == "Admit all")
+
+    // The rule the plan cares about most: Assist never takes the top, and its
+    // arrival never changes what is above it.
+    var handsThenCards = ParticipantConsoleState()
+    handsThenCards.isLive = true
+    handsThenCards.hands = [person(2, "Arun")]
+    let before2 = LiveQueueLayout.sections(for: handsThenCards, assistHeight: 0)
+    handsThenCards.prompterCards = 3
+    let after = LiveQueueLayout.sections(for: handsThenCards, assistHeight: 140)
+    layout("a card arriving does not move the hands section",
+           before2.first == after.first)
+    layout("assist lands below, never on top",
+           after.count == 2 && after.last?.kind == .assist)
+
+    // Singular and plural read correctly, because a queue that says "1 hands
+    // up" is a queue nobody trusts.
+    var oneHand = ParticipantConsoleState()
+    oneHand.isLive = true
+    oneHand.hands = [person(2, "Arun")]
+    layout("one hand reads \"1 hand up\"",
+           LiveQueueLayout.sections(for: oneHand, assistHeight: 0).first?.eyebrow == "1 hand up")
+
+    // Long queues name five and count the rest, in both sections.
+    var many2 = ParticipantConsoleState()
+    many2.isLive = true
+    many2.hands = (1...8).map { person(UInt32($0), "Student \($0)") }
+    let manyRows = LiveQueueLayout.sections(for: many2, assistHeight: 0).first?.rows ?? []
+    layout("eight hands: five named plus a count",
+           manyRows.count == 6 && manyRows.last == "+3 more")
+
+    print("")
     return ok
 }

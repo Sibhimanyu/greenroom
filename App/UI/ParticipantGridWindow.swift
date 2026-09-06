@@ -411,6 +411,8 @@ private final class RootView: NSView {
     /// Prompter's cards, under the needs block. Its own view with the rail's
     /// discipline: a fixed pool, updated in place, one measuring/placing walk.
     private let prompterBlock = PrompterRailBlock(frame: .zero)
+    /// The exception panel on the right of the grid. Fixed width.
+    private lazy var liveQueue = LiveQueueView(assist: prompterBlock)
     /// When each currently-raised hand went up.
     ///
     /// The SDK reports `isRaisingHand` as a bare bool with no timestamp, so
@@ -496,12 +498,7 @@ private final class RootView: NSView {
         for cells in stride(from: ceiling, through: Self.railMinCellsPerRow, by: -1) {
             let column = CGFloat(cells) * (Self.railCell.width + Self.railCellGap)
                 - Self.railCellGap
-            // Plus whatever the session facts gave up to Prompter: the width
-            // decision must not see that stand-down. If it did, a card arriving
-            // would free 116pt, widen the column, and grow the 16:9 picture
-            // right back into the room the stand-down just made - a rail that
-            // heaves sideways on every first link, for no gain.
-            let stack = fittingStackHeight(width: column) + suppressedNeedsHeight
+            let stack = fittingStackHeight(width: column)
             if stack <= railBodyHeight { return cells }
             if stack < best.stack { best = (cells, stack) }
         }
@@ -648,6 +645,15 @@ private final class RootView: NSView {
         railDivider.layer?.backgroundColor = NSColor.separatorColor.cgColor
         addSubview(railDivider)
 
+        // The queue calls actions that already exist; it adds no SDK behaviour
+        // of its own, which is what keeps Phase 2 a presentation change.
+        liveQueue.actions = LiveQueueView.Actions(
+            admitAll: { Self.perform("Admitted everyone waiting") { $0.admitEveryoneWaiting() } },
+            viewAll: { [weak self] in self?.showParticipantsMenu() },
+            nextHand: { [weak self] in self?.selectFirstRaisedHand() },
+            lowerAll: { Self.perform("Lowered every hand") { $0.lowerEveryHand() } })
+        addSubview(liveQueue)
+
         railScroll.drawsBackground = false
         railScroll.hasVerticalScroller = true
         // Overlay style so the scroller does not permanently steal width from a
@@ -688,7 +694,6 @@ private final class RootView: NSView {
             row.lineBreakMode = .byTruncatingTail
             railContent.addSubview(row)
         }
-        railContent.addSubview(prompterBlock)
 
         statsLabel.font = .monospacedSystemFont(ofSize: 10, weight: .regular)
         statsLabel.textColor = .tertiaryLabelColor
@@ -890,10 +895,6 @@ private final class RootView: NSView {
     /// keep the teacher's scroll position across a re-lay instead of snapping
     /// them to the top every time a card arrives.
     private var lastRailDocumentHeight: CGFloat = 0
-    /// Height the session-facts block would occupy if Prompter were not
-    /// standing it down. Zero whenever it is actually drawn. Read only by the
-    /// column-width decision - see `railCellsPerRow`.
-    private var suppressedNeedsHeight: CGFloat = 0
 
     private func layoutEverything() {
         let width = bounds.width
@@ -923,16 +924,37 @@ private final class RootView: NSView {
         // is broken by measuring against the full body height first: the carousel
         // is 24pt, far less than one quantisation step, so including it or not
         // cannot change the answer.
+        // The Live Queue takes a fixed slice off the right, and only when it has
+        // something to say. Fixed is the whole point: the rail it takes over
+        // from re-decided its own width whenever Prompter's contents changed,
+        // so a link arriving moved everything. This width is a constant.
+        let queueState = consoleState
+        let queueHeight = liveQueue.height(for: queueState, width: LiveQueueLayout.width)
+        let queueWidth = queueHeight > 0 ? LiveQueueLayout.width : 0
+        let canvasWidth = max(0, width - railWidth - queueWidth)
+
         gridHost.frame = NSRect(x: railWidth, y: gridBottom + 24,
-                                width: max(0, width - railWidth),
+                                width: canvasWidth,
                                 height: max(0, bodyHeight - 24))
         let pages = max(1, Int(ceil(Double(roster.count) / Double(perPage))))
         let pagerHeight: CGFloat = pages > 1 ? 24 : 0
 
+        // Pinned to the top of the body: an exception is read first, and a
+        // panel that floats with its own content length is harder to find
+        // twice.
+        if queueWidth > 0 {
+            liveQueue.frame = NSRect(x: width - queueWidth,
+                                     y: gridBottom + bodyHeight - queueHeight,
+                                     width: queueWidth, height: queueHeight)
+            liveQueue.apply(queueState, width: queueWidth)
+        } else {
+            liveQueue.isHidden = true
+        }
+
         let railTarget = NSRect(x: 0, y: gridBottom, width: railWidth, height: bodyHeight)
         let gridTarget = NSRect(x: railWidth,
                                 y: gridBottom + pagerHeight,
-                                width: max(0, width - railWidth),
+                                width: canvasWidth,
                                 height: max(0, bodyHeight - pagerHeight))
         // Rides the divider, so it slides with the split rather than jumping to
         // the new edge while the two panels are still moving.
@@ -1171,6 +1193,30 @@ private final class RootView: NSView {
         }
     }
 
+    /// Selects the earliest raised hand, which is what "Next" means: the queue
+    /// is in raise order, so the first row is the person who has waited longest.
+    private func selectFirstRaisedHand() {
+        guard let first = handQueue.first else { return }
+        selected = first.id
+        selectionChanged()
+    }
+
+    /// Opens the existing participant-management menu rather than inventing a
+    /// second list of the same people.
+    private func showParticipantsMenu() {
+        let menu = NSMenu()
+        for (label, action) in participantItems() {
+            let carrier = BlockMenuItem(title: label, action)
+            let item = NSMenuItem(title: label, action: #selector(BlockMenuItem.fire), keyEquivalent: "")
+            item.target = carrier
+            item.representedObject = carrier
+            menu.addItem(item)
+        }
+        menu.popUp(positioning: nil,
+                   at: NSPoint(x: liveQueue.frame.minX, y: liveQueue.frame.maxY),
+                   in: self)
+    }
+
     /// Everything the window shows, as one value.
     ///
     /// Phase 1 of the redesign plan: the rail's blocks each used to work out
@@ -1207,41 +1253,23 @@ private final class RootView: NSView {
         let prose = NSFont.systemFont(ofSize: 12)
         var eyebrow = ""
         var rows: [(text: String, font: NSFont)] = []
-        suppressedNeedsHeight = 0
 
-        // The ladder itself now lives in ParticipantConsoleState. This method
-        // renders its answer rather than working it out a second time.
+        // Waiting students, raised hands and Prompter's cards have moved to the
+        // Live Queue, where each sits next to the action it needs. What is left
+        // here is the standing session facts, which belong beside the controls
+        // they describe.
+        //
+        // This block no longer changes height for any reason except the meeting
+        // number arriving, which is why suppressedNeedsHeight is gone: the
+        // facts used to stand down for Prompter, and because the rail's WIDTH
+        // was decided from this stack, a link arriving moved the whole panel.
+        // Nothing in the rail responds to Prompter any more.
         let console = consoleState
-        switch console.attention {
-        case .waiting(let people, let total):
-            eyebrow = "WAITING TO JOIN   \(total)"
-            rows = people.map { ($0.name, prose) }
-            if total > people.count { rows.append(("+\(total - people.count) more", prose)) }
-        case .hands(let people, let total):
-            eyebrow = "HANDS UP   \(total)"
-            rows = people.enumerated().map { index, person in
-                ("\(index + 1).  \(person.name)", prose)
-            }
-            if total > people.count { rows.append(("+\(total - people.count) more", prose)) }
-        case .clear where !console.isLive:
+        if !console.isLive {
             // The class side is already carrying the progress. Two accounts of
             // the same wait, side by side, is one too many.
             eyebrow = ""
-        case .clear where !console.showsSessionFacts:
-            // What the block would have been, kept for the width decision below.
-            let factRows = session.meetingNumber.isEmpty ? 3 : 4
-            suppressedNeedsHeight = Self.railGroupGap + 16 + Self.railEyebrowGap
-                + CGFloat(factRows) * Self.railRowHeight
-            // The last rung of the ladder is admitted filler - facts for a quiet
-            // stretch. A quiet stretch is exactly when it is NOT quiet any more:
-            // live links are on screen and they are what the teacher is about to
-            // act on. So the filler stands down and gives Prompter its 116pt
-            // back, which is the difference between five cards and three.
-            //
-            // Only the filler yields. Someone at the door and a raised hand are
-            // still more urgent than a link, and they keep the top of the block.
-            eyebrow = ""
-        default:
+        } else {
             // Machine facts, so mono - the split DESIGN.md asks for. The meeting
             // number is here rather than only in the top bar because the moment
             // you need it is the moment a student cannot find the link, and it
@@ -1458,9 +1486,6 @@ private final class RootView: NSView {
         let controlsTop = afterMedia - 10
         let controlsHeight = layoutControlColumn(x: x, width: column.width, top: controlsTop)
         let needsHeight = walkNeedsBlock(x: x, width: column.width, top: controlsTop - controlsHeight, place: true)
-        prompterBlock.place(x: x, width: column.width,
-                            top: controlsTop - controlsHeight - needsHeight,
-                            available: stack.prompterBudget)
 
         // Hold the reading position. With nothing scrolled yet this is the top,
         // which is where the self view and the mic are.
@@ -1509,8 +1534,7 @@ private final class RootView: NSView {
     private func railStack(width: CGFloat, available: CGFloat)
         -> (total: CGFloat, prompterBudget: CGFloat) {
         let fitting = fittingStackHeight(width: width)
-        let budget = max(0, available - fitting)
-        return (fitting + prompterBlock.height(forWidth: width, available: budget), budget)
+        return (fitting, 0)
     }
 
     /// The height the column-width decision is allowed to see.

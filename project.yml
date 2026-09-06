@@ -241,6 +241,7 @@ targets:
       - path: App/Prompter/TitleMatch.swift
       - path: App/Prompter/ThumbnailLoader.swift
       - path: App/UI/ParticipantConsole/ParticipantConsoleState.swift
+      - path: App/UI/ParticipantConsole/LiveQueueLayout.swift
     settings:
       base:
         PRODUCT_NAME: PrompterBench

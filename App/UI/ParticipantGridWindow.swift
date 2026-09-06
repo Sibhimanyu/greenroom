@@ -414,6 +414,11 @@ private final class RootView: NSView {
     /// coordinates - off the rail entirely, unreachable, and invisible even to
     /// the accessibility tree. Reproduced by resizing the window to 620x520.
     private let railScroll = NSScrollView()
+    /// The queue's own scroller, under the controls. Layout A1: the self view,
+    /// the meter and the control groups keep their places, and whatever is left
+    /// of the column belongs to the queue - which scrolls inside that, rather
+    /// than pushing the controls around or scrolling the whole column.
+    private let queueScroll = NSScrollView()
     private let railContent = NSView()
     private let railDivider = NSView()
     private let selfViewHost = NSView()
@@ -488,18 +493,24 @@ private final class RootView: NSView {
     ///
     /// So the content sets the ceiling and the floor, and `railFraction` only
     /// decides how much of that range a filling class claws back.
-    /// Zero. The rail is gone.
+    /// Two fifths of the window, which is layout A.
     ///
-    /// Phase 3 of docs/participant-window-redesign-plan.md: the self view and
-    /// the control set no longer take a column off the front of the window.
-    /// The picture of yourself is occasionally useful, not continuously
-    /// primary, so it is a small overlay in the corner of the grid; the
-    /// controls are three in the header and the rest one click away in More.
+    /// Phase 3 made this zero and moved the self view to a 240pt corner overlay,
+    /// because the redesign plan says the grid is the primary surface. Shown
+    /// four layouts side by side, the teacher picked the opposite: the shape he
+    /// already works in, with a large self view and his controls under it. The
+    /// plan and the habit disagreed and the habit won.
     ///
-    /// Kept as a computed zero rather than deleted at every call site, because
-    /// the grid, the divider and the context strip all measure from it and a
-    /// single source is easier to trust than eleven edits.
-    private var railWidth: CGFloat { 0 }
+    /// A flat fraction, not a fraction that shrinks as students arrive. The old
+    /// sliding rule meant the self view changed size during a lesson as people
+    /// joined and left, which is movement nobody asked for. The floor and
+    /// ceiling only bind on a window too narrow or too wide for 40% to be sane.
+    private var railWidth: CGFloat {
+        let share = bounds.width * 0.40
+        // Below the floor the picture stops being able to show framing; above
+        // the ceiling the class starts losing more than the picture gains.
+        return max(min(share, 720), min(360, bounds.width * 0.5)).rounded()
+    }
 
     private var legacyRailWidth: CGFloat {
         let share = bounds.width * Self.railFraction(students: roster.count)
@@ -574,6 +585,9 @@ private final class RootView: NSView {
     /// Marks a control that takes a row to itself, spanning the whole column.
     private static let railWideTag = 7002
     private static let railWideHeight: CGFloat = 34
+    /// The least the queue may have when it has anything to say: an eyebrow,
+    /// one name and its buttons. Below that it is a teaser, not a queue.
+    private static let railMinQueueHeight: CGFloat = 96
     /// One control cell: a glyph over two reserved lines of caption.
     private static let railControlHeight: CGFloat = 64
     /// Narrower than this and an 11pt caption has nothing to say, so the group
@@ -700,6 +714,13 @@ private final class RootView: NSView {
         railScroll.autohidesScrollers = true
         railScroll.documentView = railContent
         rail.addSubview(railScroll)
+
+        queueScroll.drawsBackground = false
+        queueScroll.hasVerticalScroller = true
+        queueScroll.scrollerStyle = .overlay
+        queueScroll.autohidesScrollers = true
+        queueScroll.documentView = liveQueue
+        rail.addSubview(queueScroll)
 
         selfViewHost.wantsLayer = true
         selfViewHost.layer?.backgroundColor = NSColor.black.cgColor
@@ -933,7 +954,7 @@ private final class RootView: NSView {
     /// speaker window for one NSView.
     private func attachSelfVideo(_ provider: @escaping (NSRect) -> NSView?) {
         lastSelfProvider = provider
-        let host = selfPreview.videoHost
+        let host = selfViewHost
         guard !host.bounds.isEmpty else { return }
         guard let view = provider(host.bounds) else { return }
         if selfVideo !== view {
@@ -991,13 +1012,9 @@ private final class RootView: NSView {
         // something to say. Fixed is the whole point: the rail it takes over
         // from re-decided its own width whenever Prompter's contents changed,
         // so a link arriving moved everything. This width is a constant.
-        let queueState = consoleState
-        let queueHeight = liveQueue.height(for: queueState, width: LiveQueueLayout.width)
-        let queueWidth = queueHeight > 0 ? LiveQueueLayout.width : 0
-        // Wide: the queue takes a column and the grid gets the rest. Narrow:
-        // it floats over the grid's right edge, because a laptop cannot afford
-        // 320pt off a canvas that is already the smallest thing on screen.
-        let canvasWidth = max(0, width - railWidth - (isNarrow ? 0 : queueWidth))
+        // The queue lives in the rail now, so it takes nothing off the class.
+        let queueWidth: CGFloat = 0
+        let canvasWidth = max(0, width - railWidth)
 
         gridHost.frame = NSRect(x: railWidth, y: gridBottom + 24,
                                 width: canvasWidth,
@@ -1008,29 +1025,14 @@ private final class RootView: NSView {
         // Pinned to the top of the body: an exception is read first, and a
         // panel that floats with its own content length is harder to find
         // twice.
-        if queueWidth > 0 {
-            liveQueue.frame = NSRect(x: width - queueWidth,
-                                     y: gridBottom + bodyHeight - queueHeight,
-                                     width: queueWidth, height: queueHeight)
-            liveQueue.apply(queueState, width: queueWidth)
-        } else {
-            liveQueue.isHidden = true
-        }
-
         // The self preview: a 16:9 overlay in the grid's bottom-left corner,
         // sized in points and never consulted by the grid's cell arithmetic.
         // The plan's rule is that it must not alter the grid; laying it out
         // after the grid, over the top, is how that is guaranteed rather than
         // remembered.
-        let previewWidth: CGFloat = 240
-        let previewHeight = (previewWidth * 9 / 16).rounded()
-        selfPreview.frame = NSRect(x: 16,
-                                   y: gridBottom + pagerHeight + 16,
-                                   width: previewWidth, height: previewHeight)
-        selfPreview.isHidden = !showsSelfPreview || !session.readiness.isLive
-        if !selfPreview.isHidden, let sdk = ParticipantGridWindowController.sdk {
-            selfPreview.apply(muted: sdk.iAmMuted, videoOn: sdk.myVideoIsOn, level: lastMicLevel)
-        }
+        // The corner overlay is retired: the picture is the top of the column
+        // again, at the size the teacher asked for.
+        selfPreview.isHidden = true
 
         // The drawer sits against the right edge of the canvas, inboard of the
         // Live Queue when one is showing, so the two never overlap.
@@ -1308,37 +1310,19 @@ private final class RootView: NSView {
     /// deliberately NOT here: they are about you, so they live on the self
     /// preview, next to the picture of you they change.
     private func rebuildHeaderActions() {
+        // None. The column carries every control again, so a header button is a
+        // second way to reach the same SDK call - and two paths to one action is
+        // how a stale one survives a refactor. Mute all, Chat and Record all
+        // live in the labelled groups under the self view; End session is the
+        // wide bar at the foot of them.
+        //
+        // The More menu it opened is gone with it. Snap back, live speaker, the
+        // Greenroom window, meeting info, participants, reactions and security
+        // are all cells in those groups, which is where the teacher already
+        // looks for them.
         headerButtons.forEach { $0.removeFromSuperview() }
         headerButtons = []
-        guard ParticipantGridWindowController.sdk != nil else { return }
-
-        let recording = session.obsRecording
-        let made: [NSButton] = [
-            Self.button("Mute all", symbol: "mic.slash") {
-                Self.perform("Muted everyone") { $0.muteEveryone() }
-            },
-            Self.button("Chat", symbol: "bubble.left.and.bubble.right") {
-                ParticipantGridWindowController.requestShowChat()
-            },
-            Self.button(recording ? "Stop recording" : "Record",
-                        symbol: recording ? "stop.circle.fill" : "record.circle",
-                        destructive: recording) {
-                ParticipantGridWindowController.requestToggleRecording()
-            }
-        ]
-        // The anchor is resolved when the button is pressed, not when it is
-        // built, so the closure does not have to name a button that does not
-        // exist yet.
-        let more = Self.button("More", symbol: "ellipsis") { [weak self] in
-            guard let self, let anchor = self.moreButton else { return }
-            self.showMoreMenu(from: anchor)
-        }
-        moreButton = more
-        headerButtons = made + [more]
-        for button in headerButtons {
-            button.font = .systemFont(ofSize: 12)
-            topBar.addSubview(button)
-        }
+        moreButton = nil
     }
 
     /// Everything that used to be a permanently visible rail cell but is
@@ -1457,7 +1441,6 @@ private final class RootView: NSView {
     /// accessibility tree and drops clicks that land mid-teardown.
     private func updateNeedsBlock() {
         let mono = NSFont.monospacedSystemFont(ofSize: 10, weight: .regular)
-        let prose = NSFont.systemFont(ofSize: 12)
         var eyebrow = ""
         var rows: [(text: String, font: NSFont)] = []
 
@@ -1663,42 +1646,61 @@ private final class RootView: NSView {
     /// element shares - see `railColumn`.
     private func layoutRail() {
         let pad = Self.railPad
-        railScroll.frame = rail.bounds
         let available = rail.bounds.width - pad * 2
         guard available > 0, rail.bounds.height > 0 else { return }
 
         let column = railColumn(available: available)
         let x = pad + column.x
 
-        // Two passes. The document view has to be told its height before its
-        // children can be placed against the top of it, and the height depends on
-        // how the children wrap - so it is measured first, then everything is
-        // placed for real. Both passes read the same column width, or the content
-        // scrolls to an offset that does not match what is drawn.
+        // Layout A1: the column is two regions, not one scroller.
+        //
+        // Above, the things that must never move while a lesson is running -
+        // the picture, the meter, both control groups, End session. Below,
+        // whatever room is left belongs to the queue, and the queue scrolls
+        // inside THAT rather than pushing the controls down or dragging the
+        // whole column with it. Measured at 1432pt wide, the split is 686pt of
+        // fixed stack and 175pt of queue.
         let stack = railStack(width: column.width, available: rail.bounds.height)
+        let queueWanted = liveQueue.height(for: consoleState, width: rail.bounds.width)
 
-        // How far down the column the teacher had scrolled, so a card arriving
-        // does not yank them back to the top mid-read. This used to snap to the
-        // top on every pass, and the rail re-lays on a one-second poll.
+        // The queue never takes so much that the controls are pushed out of
+        // sight, and never less than one card's worth when it has something to
+        // say. Between those it takes what it needs.
+        let roomForQueue = max(0, rail.bounds.height - stack.total)
+        let queueHeight = queueWanted == 0 ? 0
+            : min(queueWanted, max(Self.railMinQueueHeight, roomForQueue))
+        let topHeight = max(0, rail.bounds.height - queueHeight)
+
+        railScroll.frame = NSRect(x: 0, y: queueHeight,
+                                  width: rail.bounds.width, height: topHeight)
+        queueScroll.frame = NSRect(x: 0, y: 0, width: rail.bounds.width, height: queueHeight)
+        queueScroll.isHidden = queueHeight <= 0
+
+        // How far down the fixed stack the teacher had scrolled, so a card
+        // arriving does not yank them back to the top mid-read.
         let visibleHeight = railScroll.contentView.bounds.height
         let scrolledFromTop = lastRailDocumentHeight > 0
             ? max(0, lastRailDocumentHeight - railScroll.contentView.bounds.maxY)
             : 0
 
-        // Never shorter than the rail itself, or a short list would float.
-        let documentHeight = max(stack.total, rail.bounds.height)
+        // Never shorter than its own viewport, or a short stack would float.
+        let documentHeight = max(stack.total, topHeight)
         railContent.frame = NSRect(x: 0, y: 0, width: rail.bounds.width, height: documentHeight)
 
         let top = documentHeight - pad
         let afterMedia = layoutSelfBlock(x: x, width: column.width, top: top)
         let controlsTop = afterMedia - 10
         let controlsHeight = layoutControlColumn(x: x, width: column.width, top: controlsTop)
-        let needsHeight = walkNeedsBlock(x: x, width: column.width, top: controlsTop - controlsHeight, place: true)
+        _ = walkNeedsBlock(x: x, width: column.width, top: controlsTop - controlsHeight, place: true)
 
-        // Hold the reading position. With nothing scrolled yet this is the top,
-        // which is where the self view and the mic are.
         railContent.scroll(NSPoint(x: 0, y: max(0, documentHeight - scrolledFromTop - visibleHeight)))
         lastRailDocumentHeight = documentHeight
+
+        if queueHeight > 0 {
+            let used = liveQueue.apply(consoleState, width: rail.bounds.width)
+            liveQueue.frame = NSRect(x: 0, y: 0, width: rail.bounds.width,
+                                     height: max(used, queueHeight))
+        }
     }
 
     /// The single content column the whole rail aligns to: picture, caption,

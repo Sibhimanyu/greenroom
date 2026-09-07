@@ -102,21 +102,38 @@ final class LiveQueueView: NSView {
                                      assistHeight: assistHeight(state: state, width: width)))
     }
 
-    private func assistHeight(state: ParticipantConsoleState, width: CGFloat) -> CGFloat {
+    /// How much room Assist gets.
+    ///
+    /// `budget` is the height the panel will actually be laid out at, or nil
+    /// while measuring what it WANTS. Measured live with five links held, the
+    /// generous-budget version laid out all five and let the panel scroll: the
+    /// queue was 80pt, its two eyebrows filled it, and every card sat below the
+    /// window edge at y=918 and beyond. Fitting to the real height instead
+    /// means the block shows whole cards and counts the rest, which is the
+    /// behaviour PrompterRailBlock was built for.
+    private func assistHeight(state: ParticipantConsoleState, width: CGFloat,
+                              budget: CGFloat? = nil) -> CGFloat {
         guard state.prompterCards > 0 else { return 0 }
         let inner = width - LiveQueueLayout.pad * 2
-        // A generous budget: the queue scrolls if the whole panel overflows,
-        // which is the one place scrolling is right - it is the least urgent
-        // thing here.
-        return assist.height(forWidth: inner, available: 400)
+        guard let budget else { return assist.height(forWidth: inner, available: 400) }
+        // What is left after the section above it has taken its share.
+        let above = LiveQueueLayout.sections(for: state, assistHeight: 0)
+            .filter { $0.kind != .assist }
+            .reduce(0) { $0 + $1.height + LiveQueueLayout.sectionGap }
+        let room = budget - LiveQueueLayout.pad * 2 - above - LiveQueueLayout.eyebrowHeight
+            - LiveQueueLayout.eyebrowGap
+        return assist.height(forWidth: inner, available: max(0, room))
     }
 
     /// Writes the panel for a state and lays it out. Returns the height used.
     @discardableResult
     func apply(_ state: ParticipantConsoleState, width: CGFloat) -> CGFloat {
         let inner = width - LiveQueueLayout.pad * 2
-        sections = LiveQueueLayout.sections(for: state,
-                                            assistHeight: assistHeight(state: state, width: width))
+        // Fitted to the height this view actually has, which is set before
+        // apply runs. See assistHeight.
+        sections = LiveQueueLayout.sections(
+            for: state,
+            assistHeight: assistHeight(state: state, width: width, budget: bounds.height))
         let total = LiveQueueLayout.contentHeight(sections)
         isHidden = sections.isEmpty
         guard !sections.isEmpty else { return 0 }
@@ -176,7 +193,9 @@ final class LiveQueueView: NSView {
             assistEyebrow.frame = NSRect(x: x, y: y, width: inner,
                                          height: LiveQueueLayout.eyebrowHeight)
             y -= LiveQueueLayout.eyebrowGap
-            assist.place(x: x, width: inner, top: y, available: 400)
+            assist.place(x: x, width: inner, top: y,
+                         available: assistHeight(state: state, width: bounds.width,
+                                                 budget: bounds.height))
         } else {
             assist.frame = .zero
         }

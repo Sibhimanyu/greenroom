@@ -1496,9 +1496,21 @@ private final class RootView: NSView {
         // was decided from this stack, a link arriving moved the whole panel.
         // Nothing in the rail responds to Prompter any more.
         let console = consoleState
-        if !console.isLive {
-            // The class side is already carrying the progress. Two accounts of
-            // the same wait, side by side, is one too many.
+        // showsSessionFacts, not merely isLive.
+        //
+        // The A1 rewrite reduced this to "blank before the class, facts after",
+        // which dropped the rung that makes the column work: these facts are
+        // filler, and they yield to anything real. Left always-on they cost
+        // 116pt of a 810pt column, and with the picture and controls above them
+        // the queue was left 6pt - measured in a live session, with five links
+        // held and a six-point-tall panel to show them in.
+        //
+        // The rule lives in ParticipantConsoleState: facts show only when the
+        // class is live, nobody is waiting, no hand is up and Prompter is
+        // holding nothing.
+        if !console.showsSessionFacts {
+            // Before the class, the readiness panel is already carrying the
+            // wait; during it, something more useful has the space.
             eyebrow = ""
         } else {
             // Machine facts, so mono - the split DESIGN.md asks for. The meeting
@@ -1743,8 +1755,13 @@ private final class RootView: NSView {
         if queueHeight > 0 {
             // Frame first, THEN write it: the view lays out from its own
             // height, so it has to know that height before it draws.
+            // The VIEWPORT height, not what the queue wanted. Sized to the
+            // want, the block fitted five cards into a 400pt document that an
+            // 80pt scroller showed the top of - measured live, every card sat
+            // below the window edge. Sized to what it has, the block fits whole
+            // cards and counts the rest, which is what it was built to do.
             liveQueue.frame = NSRect(x: 0, y: 0, width: rail.bounds.width,
-                                     height: max(queueWanted, queueHeight))
+                                     height: queueHeight)
             liveQueue.apply(consoleState, width: rail.bounds.width)
             // Non-flipped document views scroll to the bottom by default, which
             // would open the queue showing its last row.

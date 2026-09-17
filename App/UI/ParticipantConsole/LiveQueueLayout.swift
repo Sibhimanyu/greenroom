@@ -10,7 +10,7 @@
 //  and the only ones caught early were the ones a bench could run.
 //
 //  The rule the plan cares about most is that this panel's WIDTH never changes.
-//  The rail's did - Prompter arriving re-ran a column-width decision and moved
+//  The rail's did - Cues arriving re-ran a column-width decision and moved
 //  the whole layout - and that instability is the reason the queue is fixed.
 //  Nothing here returns a width; the caller owns it and it is a constant.
 //
@@ -48,7 +48,7 @@ enum LiveQueueLayout {
 
     /// What the queue draws for a given state, in order.
     ///
-    /// Empty when nothing needs the teacher and Prompter has nothing to say:
+    /// Empty when nothing needs the teacher and Cues has nothing to say:
     /// the plan is explicit that an empty queue shows no filler. A section that
     /// exists only to say "nothing here" is not filling the space, it is
     /// moving the hole.
@@ -83,7 +83,7 @@ enum LiveQueueLayout {
         // something urgent holds the top it still gets a slot, because a link
         // the teacher was about to use should not vanish because a hand went
         // up - it just stops being first.
-        if state.prompterCards > 0, assistHeight > 0 {
+        if state.cuesCards > 0, assistHeight > 0 {
             out.append(Section(kind: .assist, eyebrow: "ASSIST", rows: [], actions: [],
                                height: eyebrowHeight + eyebrowGap + assistHeight))
         }

@@ -1,13 +1,13 @@
 //
 //  Console.swift
-//  PrompterBench
+//  CuesBench
 //
 //  The participant window's priority ladder, checked directly.
 //
 //  Phase 1 of docs/participant-window-redesign-plan.md moved "what needs the
 //  teacher right now" out of the drawing code and into a value. This is the
 //  reason that was worth doing: the ladder had never been testable, and it has
-//  been quietly wrong before - the session facts once stood down for Prompter
+//  been quietly wrong before - the session facts once stood down for Cues
 //  in a way that also changed the rail's WIDTH, so a link arriving moved the
 //  whole panel.
 //
@@ -67,19 +67,19 @@ func runConsoleBench() -> Bool {
     var busy = ParticipantConsoleState()
     busy.isLive = true
     busy.waiting = [person(1, "Priya")]
-    busy.prompterCards = 5
+    busy.cuesCards = 5
     check("assist yields to the waiting room", !busy.showsAssist)
 
     var handsAndCards = ParticipantConsoleState()
     handsAndCards.isLive = true
     handsAndCards.hands = [person(2, "Arun")]
-    handsAndCards.prompterCards = 3
+    handsAndCards.cuesCards = 3
     check("assist yields to a raised hand", !handsAndCards.showsAssist)
 
     // With nothing urgent, Assist takes the room and the standing facts yield.
     var quiet = ParticipantConsoleState()
     quiet.isLive = true
-    quiet.prompterCards = 2
+    quiet.cuesCards = 2
     check("assist shows when nothing is urgent", quiet.showsAssist)
     check("session facts yield to live links", !quiet.showsSessionFacts)
 
@@ -146,7 +146,7 @@ func runConsoleBench() -> Bool {
     handsThenCards.isLive = true
     handsThenCards.hands = [person(2, "Arun")]
     let before2 = LiveQueueLayout.sections(for: handsThenCards, assistHeight: 0)
-    handsThenCards.prompterCards = 3
+    handsThenCards.cuesCards = 3
     let after = LiveQueueLayout.sections(for: handsThenCards, assistHeight: 140)
     layout("a card arriving does not move the hands section",
            before2.first == after.first)

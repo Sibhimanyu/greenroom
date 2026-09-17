@@ -31,7 +31,7 @@ Use a **Classroom Console** layout:
 │                                                   │ 1. Arun  2. Meera      │
 │                                      ┌─────────┐  │ [Next] [Lower all]     │
 │                                      │ You PIP │  │ ────────────────────── │
-│                                      └─────────┘  │ Assist / Prompter       │
+│                                      └─────────┘  │ Assist / Cues       │
 │                                                   │ only when it has cards  │
 └───────────────────────────────────────────────────┴────────────────────────┘
 ```
@@ -41,23 +41,23 @@ strictly prioritized list of exceptions requiring teacher action:
 
 1. People waiting to join.
 2. Raised hands, in the order the hands were raised.
-3. Prompter suggestions, only when no more urgent state needs the space.
+3. Cues suggestions, only when no more urgent state needs the space.
 
 When there is nothing actionable, the right side collapses to a slim status
-strip or shows only the Assist section if Prompter has a card.
+strip or shows only the Assist section if Cues has a card.
 
 ## Problems in the current layout
 
 - The permanent self-video / control rail takes substantial width from the
   participant grid even though self-preview is occasionally useful rather than
   continuously primary.
-- Global commands, session facts, hand/waiting state, and Prompter cards share
+- Global commands, session facts, hand/waiting state, and Cues cards share
   one long scrolling column. Important state can be below the fold.
 - Controls have too much equal visual weight: routine controls, session setup,
   meeting administration, and destructive actions all live in the same grid.
 - A selected participant gets a separate context strip, creating another
   competing visual region instead of a coherent temporary inspector.
-- Prompter changes rail sizing and displaces other information, making the
+- Cues changes rail sizing and displaces other information, making the
   layout feel unstable as cards arrive.
 
 ## Information architecture
@@ -112,7 +112,7 @@ Use distinct stacked sections:
 - Primary action: `Next` selects/highlights the first raised hand.
 - Secondary action: `Lower all`.
 
-#### Assist (Prompter)
+#### Assist (Cues)
 
 - Display only when no waiting-room or hand state requires the same priority
   space, or give it a compact one-card slot below those sections.
@@ -194,12 +194,12 @@ single vertical rail scroll more aggressively.
    - header/session facts;
    - waiting list;
    - hand queue;
-   - Prompter cards;
+   - Cues cards;
    - participant selection;
    - global command state.
 2. Add a lightweight presentation model, for example
    `ParticipantConsoleState`, derived from the existing roster, session,
-   waiting, and `PrompterSurfaceState` values.
+   waiting, and `CuesSurfaceState` values.
 3. Preserve current Zoom SDK calls and their confirmation behavior; this is a
    presentation reorganization, not a meeting-control rewrite.
 
@@ -224,7 +224,7 @@ Acceptance:
 
 - A new waiting-room entry appears without shifting grid width.
 - Hands are always shown in raise order.
-- Prompter content never displaces waiting-room or hand actions.
+- Cues content never displaces waiting-room or hand actions.
 - The top-bar counts and Live Queue do not duplicate long status copy.
 
 ### Phase 3 — Replace the rail with a PIP and inspector
@@ -258,15 +258,15 @@ Acceptance:
   vertical scroll region.
 - A waiting person, raised hand, and selected participant can each be acted on
   in one obvious path.
-- The layout does not reflow or resize horizontally when Prompter cards arrive.
+- The layout does not reflow or resize horizontally when Cues cards arrive.
 
 ## Files likely to change
 
 | Area | Likely files |
 | --- | --- |
 | Main participant-window composition and layout | `App/UI/ParticipantGridWindow.swift` |
-| Prompter presentation in the Live Queue | `App/Prompter/PrompterRailBlock.swift`, `App/Prompter/PrompterCardView.swift` |
-| Prompter state binding | `App/Prompter/CoordinatorController+Prompter.swift` |
+| Cues presentation in the Live Queue | `App/Cues/CuesRailBlock.swift`, `App/Cues/CueCardView.swift` |
+| Cues state binding | `App/Cues/CoordinatorController+Cues.swift` |
 | Project design guidance | `DESIGN.md` |
 | New extracted AppKit views | New focused files under `App/UI/ParticipantConsole/` if the existing file becomes too large |
 
@@ -283,7 +283,7 @@ window:
    earliest hand.
 5. Select a participant: inspector appears with correct actions and closes
    cleanly.
-6. Prompter receives several cards: it stays contained, does not move critical
+6. Cues receives several cards: it stays contained, does not move critical
    sections, and cards remain actionable.
 7. Resize to laptop width: the queue/inspector becomes a drawer; all critical
    actions remain reachable.

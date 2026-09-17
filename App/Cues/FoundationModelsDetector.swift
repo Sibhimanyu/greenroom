@@ -11,7 +11,7 @@
 //  go through the same roster filter as the heuristic's before any of them can
 //  become a request.
 //
-//  A fresh session per pass. Prompter's passes are independent - the context
+//  A fresh session per pass. Cues's passes are independent - the context
 //  words carry what matters - and a long-lived session accumulates a
 //  transcript in the model's window until it overflows mid-class.
 //
@@ -157,6 +157,13 @@ final class FoundationModelsDetector: MentionDetector {
                         // the one place being in the dictionary is the point.
                         guard Mention.normalize(trimmed).contains(Mention.normalize(query)),
                               HeuristicDetector.asksAboutTheWord(query, in: trimmed) else { return nil }
+                    case .thing, .topic:
+                        // The two kinds the model invents. A book, a video, a
+                        // person or a place is a category the talk names out
+                        // loud; "thing" and "topic" are where a sliced-up
+                        // sentence lands, so they answer to namesAThing too.
+                        guard HeuristicDetector.worthLookingUp(query, spokenIn: trimmed),
+                              HeuristicDetector.namesAThing(query) else { return nil }
                     default:
                         guard HeuristicDetector.worthLookingUp(query, spokenIn: trimmed) else { return nil }
                     }

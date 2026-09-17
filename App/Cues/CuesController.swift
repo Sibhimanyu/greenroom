@@ -1,10 +1,10 @@
 //
-//  PrompterController.swift
+//  CuesController.swift
 //  Greenroom
 //
 //  The pipeline, end to end, for one session: microphone → speech → text →
 //  mentions → lookups → cards. Owned by the coordinator between the session
-//  going live and End Session, and by nothing else - there is no Prompter at
+//  going live and End Session, and by nothing else - there is no Cues at
 //  launch, none between classes, none in the background.
 //
 //  What it promises, and the code that keeps each promise:
@@ -12,7 +12,7 @@
 //      text goes to the Settings test panel and nowhere else.
 //    - The rolling window used for detection is a struct in memory, released
 //      in `stop()`. The FULL transcript is written to the class folder only
-//      when the teacher asks for it (Settings -> Prompter), and the log says
+//      when the teacher asks for it (Settings -> Cues), and the log says
 //      plainly which of the two happened.
 //    - Every query that leaves is logged before the card exists (`resolve`).
 //    - A student's name never becomes a query: the roster filter runs inside
@@ -26,7 +26,7 @@ import Speech
 
 @available(macOS 26.0, *)
 @MainActor
-final class PrompterController: ObservableObject {
+final class CuesController: ObservableObject {
 
     struct Configuration {
         var localeIdentifier = ""
@@ -41,20 +41,20 @@ final class PrompterController: ObservableObject {
         /// eight cards through them, so it has somewhere to put the extra
         /// results and a thin minute starves it.
         var lookupsPerMinute = 12
-        /// Settings -> Prompter -> "Also suggest links for things I mention
+        /// Settings -> Cues -> "Also suggest links for things I mention
         /// without naming them". Off by default: see chooseDetector.
         var useModelDetector = false
         /// Where to write the class transcript, or nil to keep it in memory
         /// only. Set to a file inside the session's folder when Settings ->
-        /// Prompter -> "Save the transcript with the class" is on.
+        /// Cues -> "Save the transcript with the class" is on.
         var transcriptFile: URL?
-        /// Where to write the links Prompter offered. Separate from the
+        /// Where to write the links Cues offered. Separate from the
         /// transcript because they answer different questions - one is what
         /// was said, the other is what the class was offered - and because a
         /// sparse transcript makes the two indistinguishable when they share
         /// a file: on a class the speech model barely finalises, every line
         /// of the transcript happens to be a line that produced a link.
-        var promptsFile: URL?
+        var linksFile: URL?
     }
 
     @Published private(set) var isListening = false
@@ -63,7 +63,7 @@ final class PrompterController: ObservableObject {
     @Published private(set) var stoppedForClass = false
     @Published private(set) var isResolving = false
     /// Newest first. Eight kept, five shown.
-    @Published private(set) var cards: [PrompterCard] = []
+    @Published private(set) var cards: [CueCard] = []
     @Published private(set) var unseenCount = 0
     /// The Settings "Try it" readout: recent finals plus the live tail.
     @Published private(set) var liveTail = ""
@@ -87,7 +87,7 @@ final class PrompterController: ObservableObject {
 
     /// `cards` rotated to the current window. A new card resets the rotation,
     /// so the thing just said is always the thing at the top.
-    var visibleCards: [PrompterCard] {
+    var visibleCards: [CueCard] {
         guard rotationOffset > 0, rotationOffset < cards.count else { return cards }
         return Array(cards[rotationOffset...]) + Array(cards[..<rotationOffset])
     }
@@ -127,7 +127,7 @@ final class PrompterController: ObservableObject {
     /// What the surfaces draw: the rotated window, capped at what a rail can
     /// hold. The full list stays in `cards` so the rotation has somewhere to
     /// rotate through and the "+N older" count stays honest.
-    var surfaceCards: [PrompterCard] { Array(visibleCards.prefix(PrompterRailBlock.maxCards)) }
+    var surfaceCards: [CueCard] { Array(visibleCards.prefix(CuesRailBlock.maxCards)) }
 
     // MARK: Lifecycle
 
@@ -149,7 +149,7 @@ final class PrompterController: ObservableObject {
         let locale = await Transcriber.resolvedLocale(preferred: configuration.localeIdentifier)
         let status = await AssetInventory.status(forModules: [Transcriber.makeTranscriber(locale: locale)])
         guard status == .installed else {
-            configuration.log("Prompter skipped \u{2014} the speech model isn't downloaded yet. Settings (\u{2318},) \u{2192} Prompter \u{2192} Download.")
+            configuration.log("Cues skipped \u{2014} the speech model isn't downloaded yet. Settings (\u{2318},) \u{2192} Cues \u{2192} Download.")
             Analytics.failure("prompter_asset")
             return false
         }
@@ -158,11 +158,11 @@ final class PrompterController: ObservableObject {
         guard await startPipeline(input: nil, locale: locale) else { return false }
 
         configuration.log(configuration.transcriptFile == nil
-                          ? "Prompter: listening to your microphone. Speech becomes text on this Mac; the text stays in memory."
-                          : "Prompter: listening to your microphone. Speech becomes text on this Mac and is saved to this class\u{2019}s folder.")
+                          ? "Cues: listening to your microphone. Speech becomes text on this Mac; the text stays in memory."
+                          : "Cues: listening to your microphone. Speech becomes text on this Mac and is saved to this class\u{2019}s folder.")
         configuration.log(detector is HeuristicDetector
-                          ? "Prompter: mentions found by word patterns."
-                          : "Prompter: mentions found by Apple Intelligence (on-device) \u{2014} more suggestions, more wrong ones.")
+                          ? "Cues: mentions found by word patterns."
+                          : "Cues: mentions found by Apple Intelligence (on-device) \u{2014} more suggestions, more wrong ones.")
         Analytics.feature("prompter_listen", source: detectorCode)
         return true
     }
@@ -184,7 +184,7 @@ final class PrompterController: ObservableObject {
         let count = transcript.totalFinalized
         let saved = configuration.transcriptFile
         let links = promptsWritten
-        let savedPrompts = links > 0 ? configuration.promptsFile : nil
+        let savedLinks = links > 0 ? configuration.linksFile : nil
         promptsWritten = 0
         transcript.reset()
         isListening = false
@@ -199,12 +199,12 @@ final class PrompterController: ObservableObject {
             if let reason {
                 configuration.log(reason)
             } else if let saved {
-                configuration.log("Prompter: stopped. Transcript saved (\(count) sentence\(count == 1 ? "" : "s")): \(saved.path)")
+                configuration.log("Cues: stopped. Transcript saved (\(count) sentence\(count == 1 ? "" : "s")): \(saved.path)")
             } else {
-                configuration.log("Prompter: stopped. Transcript discarded (\(count) sentence\(count == 1 ? "" : "s"), never written).")
+                configuration.log("Cues: stopped. Transcript discarded (\(count) sentence\(count == 1 ? "" : "s"), never written).")
             }
-            if let savedPrompts {
-                configuration.log("Prompter: \(links) link\(links == 1 ? "" : "s") saved: \(savedPrompts.path)")
+            if let savedLinks {
+                configuration.log("Cues: \(links) link\(links == 1 ? "" : "s") saved: \(savedLinks.path)")
             }
             // Where the waiting actually went, per source. Counts and timings
             // only - never a query, a title or a URL.
@@ -212,7 +212,7 @@ final class PrompterController: ObservableObject {
             Task { [configuration] in
                 let summary = await resolver.timingSummary()
                 guard !summary.isEmpty else { return }
-                await MainActor.run { configuration.log("Prompter: lookups this class \u{2014} \(summary).") }
+                await MainActor.run { configuration.log("Cues: lookups this class \u{2014} \(summary).") }
             }
         }
         testMode = false
@@ -225,7 +225,7 @@ final class PrompterController: ObservableObject {
         let ending = configuration.transcriptFile == nil
             ? "Transcript discarded (\(transcript.totalFinalized) sentences, never written)."
             : "Transcript saved (\(transcript.totalFinalized) sentences)."
-        stop(reason: "Prompter: stopped for this class. \(ending)")
+        stop(reason: "Cues: stopped for this class. \(ending)")
         stoppedForClass = true
     }
 
@@ -233,12 +233,12 @@ final class PrompterController: ObservableObject {
     func setPaused(_ paused: Bool) {
         guard isListening, paused != isPaused else { return }
         isPaused = paused
-        configuration.log(paused ? "Prompter: paused \u{2014} you are muted in Zoom." : "Prompter: resumed.")
+        configuration.log(paused ? "Cues: paused \u{2014} you are muted in Zoom." : "Cues: resumed.")
     }
 
     func markSeen() { unseenCount = 0 }
 
-    func dismiss(_ card: PrompterCard) {
+    func dismiss(_ card: CueCard) {
         dismissedKeys.insert(card.normalizedKey)
         cards.removeAll { $0.id == card.id }
         Analytics.feature("prompter_dismiss", source: card.source.analyticsCode)
@@ -247,7 +247,7 @@ final class PrompterController: ObservableObject {
     // MARK: Settings test and debug paths
 
     /// Thirty seconds of live transcription with detection but no lookups, for
-    /// Settings → Prompter → Try it. Nothing leaves the Mac.
+    /// Settings → Cues → Try it. Nothing leaves the Mac.
     func startTest(seconds: TimeInterval, configuration: Configuration) async {
         guard !isListening else { return }
         self.configuration = configuration
@@ -288,7 +288,7 @@ final class PrompterController: ObservableObject {
             let file = try AVAudioFile(forReading: url)
             _ = await startPipeline(input: .file(file), locale: locale)
         } catch {
-            configuration.log("Prompter: could not read \(url.lastPathComponent): \(error.localizedDescription)")
+            configuration.log("Cues: could not read \(url.lastPathComponent): \(error.localizedDescription)")
         }
     }
 
@@ -307,8 +307,8 @@ final class PrompterController: ObservableObject {
         let locale = await Transcriber.resolvedLocale(preferred: configuration.localeIdentifier)
         _ = await startPipeline(input: .buffers(buffers), locale: locale)
         configuration.log(detector is HeuristicDetector
-                          ? "Prompter: mentions found by word patterns."
-                          : "Prompter: mentions found by Apple Intelligence (on-device) \u{2014} more suggestions, more wrong ones.")
+                          ? "Cues: mentions found by word patterns."
+                          : "Cues: mentions found by Apple Intelligence (on-device) \u{2014} more suggestions, more wrong ones.")
     }
 
     /// Detector only, on typed text. Debug builds.
@@ -319,7 +319,7 @@ final class PrompterController: ObservableObject {
         do {
             return try await detector.detect(newText: text, context: "", excludedNames: names)
         } catch {
-            configuration.log("Prompter: detector error: \(error.localizedDescription)")
+            configuration.log("Cues: detector error: \(error.localizedDescription)")
             return []
         }
     }
@@ -335,22 +335,22 @@ final class PrompterController: ObservableObject {
     }
 
     func debugInjectSampleCards() {
-        let samples: [PrompterCard] = [
-            PrompterCard(kind: .book, query: "charlottes web", title: "Charlotte\u{2019}s Web", subtitle: "E. B. White",
+        let samples: [CueCard] = [
+            CueCard(kind: .book, query: "charlottes web", title: "Charlotte\u{2019}s Web", subtitle: "E. B. White",
                          source: .googleBooks, url: URL(string: "https://books.google.com/books?id=sample")!),
-            PrompterCard(kind: .person, query: "eric carle", title: "Eric Carle", subtitle: "American author and illustrator",
+            CueCard(kind: .person, query: "eric carle", title: "Eric Carle", subtitle: "American author and illustrator",
                          source: .wikipedia, url: URL(string: "https://en.wikipedia.org/wiki/Eric_Carle")!),
-            PrompterCard(kind: .video, query: "baby shark dance", title: "Search YouTube for \u{201C}baby shark dance\u{201D}",
+            CueCard(kind: .video, query: "baby shark dance", title: "Search YouTube for \u{201C}baby shark dance\u{201D}",
                          subtitle: "Nothing sent until you open it", source: .search,
                          url: URL(string: "https://www.youtube.com/results?search_query=baby+shark+dance")!),
             // Six, not three. Three fills the rail's slots exactly and so never
             // rotates - the button could not show the one behaviour it is most
             // useful for testing.
-            PrompterCard(kind: .word, query: "pabulum", title: "pabulum", subtitle: "Bland intellectual fare",
+            CueCard(kind: .word, query: "pabulum", title: "pabulum", subtitle: "Bland intellectual fare",
                          source: .dictionary, url: URL(string: "dict://pabulum")!),
-            PrompterCard(kind: .thing, query: "haiku deck", title: "Haiku Deck", subtitle: "haikudeck.com",
+            CueCard(kind: .thing, query: "haiku deck", title: "Haiku Deck", subtitle: "haikudeck.com",
                          source: .officialSite, url: URL(string: "https://www.haikudeck.com")!),
-            PrompterCard(kind: .quote, query: "ask not what your country can do for you",
+            CueCard(kind: .quote, query: "ask not what your country can do for you",
                          title: "John F. Kennedy", subtitle: "Inaugural Address, 1961",
                          source: .wikiquote, url: URL(string: "https://en.wikiquote.org/wiki/John_F._Kennedy")!)
         ]
@@ -436,12 +436,12 @@ final class PrompterController: ObservableObject {
         case .failed(let why):
             if why.contains("no microphone input") {
                 status = why
-                configuration.log("Prompter: no microphone input \u{2014} listening is off for this session.")
+                configuration.log("Cues: no microphone input \u{2014} listening is off for this session.")
                 Analytics.failure("prompter_mic")
                 stopQuietly()
             } else if !restartAttempted, !testMode {
                 restartAttempted = true
-                configuration.log("Prompter: transcription stopped (\(why)). Trying once more\u{2026}")
+                configuration.log("Cues: transcription stopped (\(why)). Trying once more\u{2026}")
                 Analytics.failure("prompter_analyzer")
                 Task { [weak self] in
                     guard let self else { return }
@@ -451,11 +451,11 @@ final class PrompterController: ObservableObject {
                     if let old = self.transcriber { await old.stop() }
                     let ok = await self.startPipeline(input: nil, locale: locale)
                     self.restartAttempted = true
-                    if !ok { self.configuration.log("Prompter: transcription stopped again. Listening is off for the rest of this session.") }
+                    if !ok { self.configuration.log("Cues: transcription stopped again. Listening is off for the rest of this session.") }
                 }
             } else {
                 status = why
-                configuration.log("Prompter: transcription stopped (\(why)). Listening is off for the rest of this session.")
+                configuration.log("Cues: transcription stopped (\(why)). Listening is off for the rest of this session.")
                 Analytics.failure("prompter_analyzer")
                 stopQuietly()
             }
@@ -474,24 +474,24 @@ final class PrompterController: ObservableObject {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
         append("\(stamp())\t\(trimmed)\n", to: configuration.transcriptFile, headerLines: [
-            "What the microphone heard, as Prompter transcribed it on this Mac.",
+            "What the microphone heard, as Cues transcribed it on this Mac.",
             "One line per finalised sentence: time, then what was said.",
             "Sparse is normal. The speech model finalises only what it can render",
             "in the class language, so a bilingual class transcribes thinly."
         ])
     }
 
-    /// One line per link Prompter put on screen.
+    /// One line per link Cues put on screen.
     ///
     /// A separate file from the transcript, and not a subset of it. They read
     /// as the same thing on a thin transcript - where nearly every sentence the
     /// model finalised also produced a link - and that coincidence is exactly
     /// what makes one file useless for judging either.
-    private func appendToPromptsFile(_ card: PrompterCard, foundBy: FoundBy) {
+    private func appendToPromptsFile(_ card: CueCard, foundBy: FoundBy) {
         let fields = [stamp(), foundBy.rawValue, card.kind.rawValue, card.source.label,
                       oneLine(card.query), oneLine(card.title), card.url.absoluteString]
-        append(fields.joined(separator: "\t") + "\n", to: configuration.promptsFile, headerLines: [
-            "Links Prompter offered during this class, in the order they appeared.",
+        append(fields.joined(separator: "\t") + "\n", to: configuration.linksFile, headerLines: [
+            "Links Cues offered during this class, in the order they appeared.",
             "time, found by, kind, source, what it heard, what it found, link.",
             "",
             "\"found by\" is patterns or model. Word patterns answer a sentence with",
@@ -552,11 +552,11 @@ final class PrompterController: ObservableObject {
         let cutoff = Date().addingTimeInterval(-cardLifetime)
         cards.removeAll { $0.createdAt < cutoff }
         // Cycle the window when there is more than the rail can show at once.
-        if cards.count > PrompterRailBlock.minCards,
+        if cards.count > CuesRailBlock.minCards,
            Date().timeIntervalSince(lastRotation) >= rotateEvery {
             rotationOffset = (rotationOffset + 1) % cards.count
             lastRotation = Date()
-        } else if cards.count <= PrompterRailBlock.minCards {
+        } else if cards.count <= CuesRailBlock.minCards {
             rotationOffset = 0
         }
         // The catch-up tick, for speech that never reaches the word count.
@@ -594,7 +594,7 @@ final class PrompterController: ObservableObject {
                     self.detector = HeuristicDetector()
                     self.detectorName = self.detector.name
                     self.detectorCode = self.detector.analyticsCode
-                    self.configuration.log("Prompter: Apple Intelligence failed three times running \u{2014} mentions found by word patterns for the rest of this session.")
+                    self.configuration.log("Cues: Apple Intelligence failed three times running \u{2014} mentions found by word patterns for the rest of this session.")
                     Analytics.failure("prompter_model")
                 }
             }
@@ -607,7 +607,7 @@ final class PrompterController: ObservableObject {
             // still equals a roster name here is a second line of defence.
             let names = configuration.rosterNames().map(Mention.normalize)
             if names.contains(mention.normalizedKey) {
-                configuration.log("Prompter: skipped \u{201C}\(mention.query)\u{201D} \u{2014} matches someone in the meeting.")
+                configuration.log("Cues: skipped \u{201C}\(mention.query)\u{201D} \u{2014} matches someone in the meeting.")
                 Analytics.feature("prompter_roster_skip")
                 continue
             }
@@ -621,16 +621,16 @@ final class PrompterController: ObservableObject {
             isResolving = lookupsInFlight > 0
 
             if resolution.skipped, resolution.cards.isEmpty {
-                for note in resolution.notes { configuration.log("Prompter: \(note).") }
+                for note in resolution.notes { configuration.log("Cues: \(note).") }
                 continue
             }
             if !resolution.sentTo.isEmpty {
-                configuration.log("Prompter: sent \u{201C}\(mention.searchQuery)\u{201D} to \(resolution.sentTo.joined(separator: " and ")).")
+                configuration.log("Cues: sent \u{201C}\(mention.searchQuery)\u{201D} to \(resolution.sentTo.joined(separator: " and ")).")
             }
             if resolution.searchLinkOnly {
-                configuration.log("Prompter: video card for \u{201C}\(mention.query)\u{201D} is a search link \u{2014} nothing sent.")
+                configuration.log("Cues: video card for \u{201C}\(mention.query)\u{201D} is a search link \u{2014} nothing sent.")
             }
-            for note in resolution.notes { configuration.log("Prompter: \(note).") }
+            for note in resolution.notes { configuration.log("Cues: \(note).") }
             for card in resolution.cards.prefix(1) {
                 insert(card, foundBy: mention.foundBy)
                 Analytics.feature("prompter_card", source: card.source.analyticsCode)
@@ -658,7 +658,7 @@ final class PrompterController: ObservableObject {
         }
     }
 
-    private func insert(_ card: PrompterCard, foundBy: FoundBy = .patterns) {
+    private func insert(_ card: CueCard, foundBy: FoundBy = .patterns) {
         guard !dismissedKeys.contains(card.normalizedKey) else { return }
         cards.removeAll { $0.normalizedKey == card.normalizedKey }
         cards.insert(card, at: 0)

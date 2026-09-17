@@ -385,7 +385,7 @@
       <p class="kicker">05 · The menu bar</p>
       <h2>The <span class="mono" style="font-size:.8em;background:var(--bg-soft);border:1px solid var(--line);border-radius:6px;padding:2px 8px">GR</span> item, for when Greenroom's window is at the back</h2>
       <p>During a class Greenroom deliberately stays behind your main app. Everything you might need mid-lesson is in the menu bar
-      instead; while recording, the label becomes a record glyph and <strong>REC</strong>. With Prompter listening, a waveform joins
+      instead; while recording, the label becomes a record glyph and <strong>REC</strong>. With Cues listening, a waveform joins
       it — or, when there is no participants panel to hold the cards, a separate waveform item appears whose popover is where the
       cards live.</p>
     </div>
@@ -398,8 +398,8 @@
           <tr><td><strong>Start Recording / Stop Recording</strong></td><td>Same as <kbd>⌥⌘R</kbd>.</td></tr>
           <tr><td><strong>Snap Windows Back</strong></td><td>Same as <kbd>⌥⌘S</kbd>.</td></tr>
           <tr><td><strong>Hide / Show Speaker Tile</strong></td><td>Same as <kbd>⌥⌘Z</kbd>; enabled by Quick-hide mode.</td></tr>
-          <tr><td><strong>Prompter is listening · N links</strong></td><td>Only while Prompter is on and a class is live. Reads “paused” while you are muted in Zoom.</td></tr>
-          <tr><td><strong>Stop Prompter for This Session</strong></td><td>Stops listening for the rest of this class; the setting stays on for the next one.</td></tr>
+          <tr><td><strong>Cues is listening · N links</strong></td><td>Only while Cues is on and a class is live. Reads “paused” while you are muted in Zoom.</td></tr>
+          <tr><td><strong>Stop Cues for This Session</strong></td><td>Stops listening for the rest of this class; the setting stays on for the next one.</td></tr>
           <tr><td><strong>Open Chat Window</strong></td><td>Just the chat, for a meeting you're in some other way.</td></tr>
           <tr><td><strong>Show Greenroom</strong></td><td>Brings the main window forward.</td></tr>
           <tr><td><strong>Check for Updates…</strong></td><td>Updates are checked on their own too; this is the manual version.</td></tr>
@@ -456,17 +456,17 @@
         </div>
       </div>
       <div class="setting">
-        <div class="tab">Prompter <span>off by default · macOS 26</span></div>
+        <div class="tab">Cues <span>off by default · macOS 26</span></div>
         <div>
           <ul>
             <li><strong>Listen during classes and suggest links</strong>: while a class is live, what you say becomes text on this Mac and, when you name a book, a video, a topic, a person or a place, a link card appears on the participants panel — or in a waveform menu-bar item when there is no second display. <strong>Open</strong> puts it in your main-pane browser without stealing focus; <strong>Send</strong> drops the link in the class chat; <strong>×</strong> dismisses it for the class.</li>
-            <li><strong>Speech model</strong>: Apple's, downloaded once from here when you turn the switch on. Never during a class — a Start that finds it missing carries on without Prompter and says so in the status log.</li>
+            <li><strong>Speech model</strong>: Apple's, downloaded once from here when you turn the switch on. Never during a class — a Start that finds it missing carries on without Cues and says so in the status log.</li>
             <li><strong>Language</strong> (Indian English by default when that is your system language), and <strong>Video links may use YouTube search</strong> — off, or with no Google account connected, video cards are “search YouTube for…” links that send nothing until opened.</li>
             <li><strong>Also suggest links for things I mention without naming them</strong> (off) hands the listening to Apple&rsquo;s on-device language model instead of the word patterns. It catches things you refer to in passing, without saying &ldquo;it&rsquo;s called&hellip;&rdquo; &mdash; and it interrupts far more often. Tested against a real lesson it found everything and suggested about twenty-five wrong things for every right one, so it is off unless you want that trade.</li>
-            <li><strong>Save the transcript with the class</strong> (on) writes everything Prompter heard to <code>transcript.txt</code> in the class folder, beside the recording, a line per sentence with its time. Turn it off to keep the text in memory only.</li>
+            <li><strong>Save the transcript with the class</strong> (on) writes everything Cues heard to <code>transcript.txt</code> in the class folder, beside the recording, a line per sentence with its time. Turn it off to keep the text in memory only.</li>
             <li><strong>Try it (30 s)</strong> shows the live text and what would be looked up, and looks nothing up.</li>
           </ul>
-          <p class="later">What leaves the Mac is the short search phrase only — to Google Books, Open Library, Wikipedia and, if allowed, YouTube — and each one is written to the status log. Never the audio, never the transcript, never a name from the meeting. The <a href="how-it-works.html#prompter">Privacy &amp; safety page</a> draws the whole pipeline. Below macOS 26 the tab is one sentence and the rest of Greenroom is unchanged.</p>
+          <p class="later">What leaves the Mac is the short search phrase only — to Google Books, Open Library, Wikipedia and, if allowed, YouTube — and each one is written to the status log. Never the audio, never the transcript, never a name from the meeting. The <a href="how-it-works.html#Cues">Privacy &amp; safety page</a> draws the whole pipeline. Below macOS 26 the tab is one sentence and the rest of Greenroom is unchanged.</p>
         </div>
       </div>
       <div class="setting">
@@ -523,7 +523,7 @@
       question on a small card if you chose <em>Ask</em>, progress in the menu bar, and the link on your clipboard when it finishes.
       The link is kept with the class in Sessions (Open / Copy / Rename under the recording; Rename changes the title on YouTube), and
       any recording can be uploaded, or uploaded again, from there. The file stays in the folder either way.</p>
-      <p>With Prompter on, the class folder also holds <code>transcript.txt</code> &mdash; what the microphone heard, timed from the start of the session. And the cards you <em>opened or sent</em> are kept with it — <strong>Links from class</strong>
+      <p>With Cues on, the class folder also holds <code>transcript.txt</code> &mdash; what the microphone heard, timed from the start of the session. And the cards you <em>opened or sent</em> are kept with it — <strong>Links from class</strong>
       under the class in Sessions, with Open and Copy. Cards that were only shown are not recorded, and nothing of the transcript ever is.</p>
     </div>
   </div>
@@ -538,8 +538,8 @@
     </div>
     <div class="cards">
       <div class="card">
-        <h3>Prompter shows nothing</h3>
-        <p>Check the status log for a line beginning <strong>Prompter:</strong>. “Skipped — the speech model isn't downloaded” means Settings → Prompter → Download, between classes. “Paused — you are muted” is Zoom's mute. If it is listening and quiet, name things plainly: “the book called Matilda”, “a video about volcanoes”. Apple Intelligence off means fewer cards, not none.</p>
+        <h3>Cues shows nothing</h3>
+        <p>Check the status log for a line beginning <strong>Cues:</strong>. “Skipped — the speech model isn't downloaded” means Settings → Cues → Download, between classes. “Paused — you are muted” is Zoom's mute. If it is listening and quiet, name things plainly: “the book called Matilda”, “a video about volcanoes”. Apple Intelligence off means fewer cards, not none.</p>
       </div>
       <div class="card">
         <h3>A window is in the wrong place</h3>

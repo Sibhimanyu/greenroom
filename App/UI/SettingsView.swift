@@ -32,8 +32,8 @@ struct SettingsView: View {
             YouTubeSettingsTab()
                 .tabItem { Label("YouTube", systemImage: "play.rectangle.fill") }
 
-            PrompterSettingsTab()
-                .tabItem { Label("Prompter", systemImage: "waveform.and.magnifyingglass") }
+            CuesSettingsTab()
+                .tabItem { Label("Cues", systemImage: "waveform.and.magnifyingglass") }
 
             TransferSettingsTab()
                 .tabItem { Label("Transfer", systemImage: "square.and.arrow.up.on.square") }

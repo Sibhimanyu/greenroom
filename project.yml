@@ -84,7 +84,7 @@ targets:
     dependencies:
       - framework: Vendor/ZoomSDK/ZoomSDK.framework
         embed: true
-      # Prompter (App/Prompter/) uses Apple's on-device speech and language
+      # Cues (App/Cues/) uses Apple's on-device speech and language
       # models, both macOS 26 API. FoundationModels.framework does not EXIST
       # on macOS 14/15, so a strong link would make dyld refuse to launch the
       # app there; weak means the symbols resolve to nil and every use sits
@@ -238,7 +238,7 @@ targets:
             -not -name "AppticsCrashKit.framework" -not -name "KSCrash.framework" -print0 \
             | xargs -0 -I{} codesign --force --deep --timestamp=none --sign "${EXPANDED_CODE_SIGN_IDENTITY}" "{}"
 
-  # The detector benchmark (docs/prompter-search-improvement-plan.md, Phase 1).
+  # The detector benchmark (docs/cues-search-improvement-plan.md, Phase 1).
   #
   # A plain command-line tool, not a test bundle hosted on Greenroom. The app
   # links ZoomSDK, Sparkle and Apptics; a hosted bundle would drag all three in
@@ -250,23 +250,23 @@ targets:
   # scored is the thing that ships. That also fences the detector in: the moment
   # it reaches for anything in the app target, this target stops compiling,
   # which is the warning you want before an untestable dependency sets.
-  PrompterBench:
+  CuesBench:
     type: tool
     platform: macOS
     sources:
       - path: Bench
         excludes: ["fixtures/**"]
-      - path: App/Prompter/MentionDetector.swift
-      - path: App/Prompter/PrompterCard.swift
-      - path: App/Prompter/LinkResolver.swift
-      - path: App/Prompter/PrompterTransport.swift
-      - path: App/Prompter/TitleMatch.swift
-      - path: App/Prompter/ThumbnailLoader.swift
+      - path: App/Cues/MentionDetector.swift
+      - path: App/Cues/CueCard.swift
+      - path: App/Cues/LinkResolver.swift
+      - path: App/Cues/CuesTransport.swift
+      - path: App/Cues/TitleMatch.swift
+      - path: App/Cues/ThumbnailLoader.swift
       - path: App/UI/ParticipantConsole/ParticipantConsoleState.swift
       - path: App/UI/ParticipantConsole/LiveQueueLayout.swift
     settings:
       base:
-        PRODUCT_NAME: PrompterBench
+        PRODUCT_NAME: CuesBench
         SWIFT_VERSION: "5.0"
         CODE_SIGN_STYLE: Automatic
         CODE_SIGN_IDENTITY: "-"
@@ -279,9 +279,9 @@ schemes:
         Greenroom: all
     run:
       config: Debug
-  PrompterBench:
+  CuesBench:
     build:
       targets:
-        PrompterBench: all
+        CuesBench: all
     run:
       config: Debug

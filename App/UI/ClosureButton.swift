@@ -4,7 +4,7 @@
 //
 //  An NSButton that runs a closure, and answers the FIRST click.
 //
-//  Used by every control in the non-activating panels (participants, Prompter
+//  Used by every control in the non-activating panels (participants, Cues
 //  cards). Those panels are rarely key, and a stock NSButton in a non-key
 //  window discards its first press as "make me key" - so every button press
 //  was silently eaten the first time. acceptsFirstMouse is the fix, and it

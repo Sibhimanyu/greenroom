@@ -1,8 +1,8 @@
 //
 //  Resolver.swift
-//  PrompterBench
+//  CuesBench
 //
-//  Phase 2 of docs/prompter-search-improvement-plan.md: score what the resolver
+//  Phase 2 of docs/cues-search-improvement-plan.md: score what the resolver
 //  does with an answer, and how long it takes to get there, without asking the
 //  live internet. Every reply here is recorded, so the same input gives the
 //  same card and the same shape of timing every run.
@@ -18,7 +18,7 @@
 import Foundation
 
 /// A recorded transport that also takes its time, so concurrency is measurable.
-struct DelayedTransport: PrompterTransport {
+struct DelayedTransport: CuesTransport {
     let replies: [String: RecordedTransport.Reply]
     /// URL prefix -> seconds this reply should take to arrive.
     let delays: [String: Double]
@@ -77,34 +77,80 @@ struct ResolverCase {
     var _why: String = ""
     let mention: Mention
     let replies: [String: RecordedTransport.Reply]
-    /// The card's expected title, or nil when the case expects a search link.
+    /// The card's expected title, or nil when the case expects NO card.
+    ///
+    /// It used to mean "expects a picture-search link". That consolation card
+    /// is gone: when no source answers, the correct behaviour is to offer the
+    /// teacher nothing.
     let expectTitle: String?
-    let expectSource: PrompterCard.Source
+    let expectSource: CueCard.Source
 }
 
 func resolverCases() -> [ResolverCase] {
     [
         ResolverCase(
-            id: "thing-prefers-its-own-site",
+            id: "thing-no-site-guess",
             mention: Mention(kind: .thing, query: "haiku deck", confidence: 0.8),
             replies: [
+                // haikudeck.com is real and this used to prefer it. The same
+                // guess reached Whitepages for "phone number" and a Utah gym
+                // for "upper limit", 54 lookups for nine wrong answers, so the
+                // guess is gone: Wikipedia answers or nothing does.
                 "https://haikudeck.com": .init(body: Recorded.homepage(title: "Haiku Deck")),
-                Recorded.wikipediaSearch: .init(body: Recorded.wikipediaPage(
-                    title: "Haiku", key: "Haiku", description: "Japanese poetic form"))
-            ],
-            expectTitle: "Haiku Deck",
-            expectSource: .officialSite),
-
-        ResolverCase(
-            id: "thing-parked-domain-rejected",
-            mention: Mention(kind: .thing, query: "scarves", confidence: 0.8),
-            replies: [
-                // What a squatted domain actually answers with.
-                "https://scarves.com": .init(body: Recorded.homepage(title: "Just a moment...")),
                 Recorded.wikipediaSearch: .init(status: 404, body: "{}")
             ],
             expectTitle: nil,
-            expectSource: .search),
+            expectSource: .wikipedia),
+
+        ResolverCase(
+            id: "thing-nothing-found-offers-nothing",
+            mention: Mention(kind: .thing, query: "scarves", confidence: 0.8),
+            replies: [
+                Recorded.wikipediaSearch: .init(status: 404, body: "{}")
+            ],
+            // Was a Bing image search, which cannot be wrong and is therefore
+            // where every bad mention landed - 54 of one class's 82 links.
+            expectTitle: nil,
+            expectSource: .wikipedia),
+
+        ResolverCase(
+            id: "thing-wikipedia-disambiguation-rejected",
+            mention: Mention(kind: .thing, query: "shut down", confidence: 0.8),
+            replies: [
+                Recorded.wikipediaSearch: .init(body: Recorded.wikipediaPage(
+                    title: "Shut Down (Blackpink song)", key: "Shut_Down",
+                    description: "2022 single"))
+            ],
+            // Every spoken word is in the title, so answers() passed it and a
+            // real class got a K-pop single. A parenthetical means the phrase
+            // was ambiguous and Wikipedia chose for us.
+            expectTitle: nil,
+            expectSource: .wikipedia),
+
+        ResolverCase(
+            id: "thing-creative-work-rejected",
+            mention: Mention(kind: .thing, query: "interesting story", confidence: 0.8),
+            replies: [
+                Recorded.wikipediaSearch: .init(body: Recorded.wikipediaPage(
+                    title: "An Interesting Story", key: "An_Interesting_Story",
+                    description: "1904 film"))
+            ],
+            // An exact title, and the wrong answer in a reading lesson.
+            expectTitle: nil,
+            expectSource: .wikipedia),
+
+        ResolverCase(
+            id: "thing-person-description-still-allowed",
+            mention: Mention(kind: .thing, query: "orson welles", confidence: 0.8),
+            replies: [
+                Recorded.wikipediaSearch: .init(body: Recorded.wikipediaPage(
+                    title: "Orson Welles", key: "Orson_Welles",
+                    description: "American film director"))
+            ],
+            // The guard against over-reach: "film" in a job title is not a
+            // release date, so this must survive.
+            expectTitle: "Orson Welles",
+            expectSource: .wikipedia),
 
         ResolverCase(
             id: "thing-wikipedia-when-no-site",
@@ -224,12 +270,14 @@ func runResolverBench(verbose: Bool) async -> Bool {
         let card = resolution.cards.first
 
         let titleOK: Bool
+        let sourceOK: Bool
         if let expected = scenario.expectTitle {
             titleOK = card?.title == expected
+            sourceOK = card?.source == scenario.expectSource
         } else {
-            titleOK = card?.source == .search
+            titleOK = card == nil
+            sourceOK = true
         }
-        let sourceOK = card?.source == scenario.expectSource
 
         if titleOK && sourceOK {
             passed += 1
@@ -239,7 +287,7 @@ func runResolverBench(verbose: Bool) async -> Bool {
         } else {
             failures.append("  FAIL  \(pad(scenario.id, 32)) got \(card?.source.label ?? "no card")"
                 + " \u{201C}\(card?.title ?? "-")\u{201D}, wanted \(scenario.expectSource.label)"
-                + (scenario.expectTitle.map { " \u{201C}\($0)\u{201D}" } ?? " search link"))
+                + (scenario.expectTitle.map { " \u{201C}\($0)\u{201D}" } ?? " no card at all"))
         }
     }
 
@@ -248,22 +296,26 @@ func runResolverBench(verbose: Bool) async -> Bool {
     print("")
 
     // MARK: The concurrency assertion
+    //
+    // Retargeted. This used to time resolveThing fetching a product's homepage
+    // and its Wikipedia entry together; the homepage guess is gone, so the
+    // remaining pair is encyclopediaEntry's two legs - the enriched search
+    // query and the bare name, which run as `async let` and must overlap.
 
     let leg = 0.30
     let replies: [String: RecordedTransport.Reply] = [
-        "https://haikudeck.com": .init(body: Recorded.homepage(title: "Haiku Deck")),
         Recorded.wikipediaSearch: .init(body: Recorded.wikipediaPage(
-            title: "Haiku Deck", key: "Haiku_Deck", description: "Presentation software"))
+            title: "Working memory", key: "Working_memory", description: "Cognitive system"))
     ]
-    let transport = DelayedTransport(replies: replies, delays: [
-        "https://haikudeck.com": leg,
-        Recorded.wikipediaSearch: leg
-    ])
+    let transport = DelayedTransport(replies: replies,
+                                     delays: [Recorded.wikipediaSearch: leg])
     let resolver = LinkResolver(transport: transport)
     await resolver.configure(.init(sessionCap: 100, lookupsPerMinute: 100))
 
     let started = Date()
-    _ = await resolver.resolve(Mention(kind: .thing, query: "haiku deck", confidence: 0.8))
+    _ = await resolver.resolve(Mention(kind: .topic, query: "working memory",
+                                       searchQuery: "working memory psychology",
+                                       confidence: 0.8))
     let elapsed = Date().timeIntervalSince(started)
 
     // Sequential would be 2 x leg. Concurrent is one leg plus overhead. The
@@ -272,68 +324,14 @@ func runResolverBench(verbose: Bool) async -> Bool {
     let sequential = leg * 2
     let threshold = leg * 1.5
     let concurrent = elapsed < threshold
-    print("  site + wikipedia, \(Int(leg * 1000)) ms each")
+    print("  two wikipedia legs, \(Int(leg * 1000)) ms each")
     print(String(format: "    sequential would be %.0f ms, measured %.0f ms  %@",
                  sequential * 1000, elapsed * 1000, concurrent ? "CONCURRENT" : "SEQUENTIAL - REGRESSION"))
     print("")
 
-    // MARK: The fast-path assertion
-    //
-    // A site that will answer eventually, and a Wikipedia card already in hand.
-    // The teacher should get the Wikipedia card at the 1.5 s deadline rather
-    // than waiting out the site.
-
-    let slowSite = DelayedTransport(
-        replies: [
-            "https://slowproduct.com": .init(body: Recorded.homepage(title: "Slow Product")),
-            Recorded.wikipediaSearch: .init(body: Recorded.wikipediaPage(
-                title: "Slow Product", key: "Slow_Product", description: "A thing"))
-        ],
-        delays: ["https://slowproduct.com": 5.0, Recorded.wikipediaSearch: 0.05])
-    let fastPathResolver = LinkResolver(transport: slowSite)
-    await fastPathResolver.configure(.init(sessionCap: 100, lookupsPerMinute: 100))
-
-    let fastStarted = Date()
-    let fastResult = await fastPathResolver.resolve(
-        Mention(kind: .thing, query: "slow product", confidence: 0.8))
-    let fastElapsed = Date().timeIntervalSince(fastStarted)
-    let card = fastResult.cards.first
-    // Under 2 s means the deadline fired; the card must still be the real
-    // Wikipedia answer, not the picture-search consolation prize.
-    let servedInTime = fastElapsed < 2.0
-    let servedTheFallback = card?.source == .wikipedia
-    let fastPathOK = servedInTime && servedTheFallback
-
-    print("  slow site (5 s) with a wikipedia card ready")
-    print(String(format: "    waited %.2f s, served %@  %@",
-                 fastElapsed,
-                 card?.source.label ?? "nothing",
-                 fastPathOK ? "FAST PATH" : "WAITED FOR THE SLOW SOURCE"))
-    print("")
-
-    // And the other half of the policy: with nothing else to show, the site is
-    // worth waiting for. Cutting it short would trade a real answer for a
-    // search link.
-    let noFallback = DelayedTransport(
-        replies: [
-            "https://patientproduct.com": .init(body: Recorded.homepage(title: "Patient Product")),
-            Recorded.wikipediaSearch: .init(status: 404, body: "{}")
-        ],
-        delays: ["https://patientproduct.com": 2.2])
-    let patientResolver = LinkResolver(transport: noFallback)
-    await patientResolver.configure(.init(sessionCap: 100, lookupsPerMinute: 100))
-    let patient = await patientResolver.resolve(
-        Mention(kind: .thing, query: "patient product", confidence: 0.8))
-    let waitedItOut = patient.cards.first?.source == .officialSite
-
-    print("  slow site (2.2 s) with nothing else to offer")
-    print("    served \(patient.cards.first?.source.label ?? "nothing")  "
-        + (waitedItOut ? "WAITED, CORRECTLY" : "GAVE UP TOO EARLY"))
-    print("")
-
     let compositeOK = await runCompositeBench()
     let rulesOK = runRulesBench()
-    let ok = failures.isEmpty && concurrent && fastPathOK && waitedItOut && compositeOK && rulesOK
+    let ok = failures.isEmpty && concurrent && compositeOK && rulesOK
     return ok
 }
 

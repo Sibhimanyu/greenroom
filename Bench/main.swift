@@ -1,8 +1,8 @@
 //
 //  main.swift
-//  PrompterBench
+//  CuesBench
 //
-//  Phase 1 of docs/prompter-search-improvement-plan.md: a repeatable score for
+//  Phase 1 of docs/cues-search-improvement-plan.md: a repeatable score for
 //  the word-pattern detector, so a change to it is a measurement rather than an
 //  opinion.
 //
@@ -20,7 +20,7 @@
 //  the detector honest: the moment it reaches for anything in the app, this
 //  stops compiling.
 //
-//  Run it:  scripts/prompter-bench.sh
+//  Run it:  scripts/cues-bench.sh
 //
 import Foundation
 
@@ -98,7 +98,7 @@ func pad(_ s: String, _ n: Int) -> String {
 
 let arguments = CommandLine.arguments
 guard arguments.count >= 2 else {
-    FileHandle.standardError.write(Data("usage: PrompterBench <fixtures.json> [--verbose]\n".utf8))
+    FileHandle.standardError.write(Data("usage: CuesBench <fixtures.json> [--verbose]\n".utf8))
     exit(2)
 }
 let verbose = arguments.contains("--verbose")

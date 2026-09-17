@@ -25,7 +25,7 @@
 //  settings people switch on or off (`setting_changed`, by `setting` + `state`).
 //  Neither carries what was typed, opened, or who was there.
 //
-//  Prompter (App/Prompter/) follows the same rule and is worth stating on its
+//  Cues (App/Cues/) follows the same rule and is worth stating on its
 //  own, since it is the one feature that turns speech into text: no transcript
 //  text, no search query and no URL ever reaches an event. Its events are
 //  counts - a card was made, opened, sent or dismissed - with the SOURCE bucket

@@ -64,7 +64,7 @@ struct RecordingsView: View {
         /// recording - and dropping those was why a clip taken without pressing
         /// Record appeared nowhere despite being on disk.
         var clipFiles: [Recording]
-        /// Prompter cards the teacher opened or sent during this class
+        /// Cues cards the teacher opened or sent during this class
         /// (session.json). Never the ones merely shown.
         var links: [SessionMetadata.Link] = []
         var id: String { folder?.path ?? "__loose__" }
@@ -96,6 +96,16 @@ struct RecordingsView: View {
     @State private var renamingVideo: (upload: SessionMetadata.Upload, folder: URL)?
     @State private var videoTitleDraft = ""
     @State private var renameError: String?
+    /// Which half of the detail pane is showing. The recording is what the
+    /// window was built for; the transcript is what a teacher wants the day
+    /// after, and it had no home in the app at all.
+    @State private var detailTab: DetailTab = .recording
+
+    enum DetailTab: String, CaseIterable, Identifiable {
+        case recording = "Recording"
+        case transcript = "Transcript"
+        var id: String { rawValue }
+    }
     /// Presented as a sheet from ContentView, so the environment object
     /// arrives with it; used for the YouTube upload button and state.
     @EnvironmentObject private var coordinator: CoordinatorController
@@ -338,7 +348,7 @@ struct RecordingsView: View {
         }
     }
 
-    /// "Links from class": what Prompter offered and the teacher opened or
+    /// "Links from class": what Cues offered and the teacher opened or
     /// sent. Collapsed by default so a class with twelve links does not push
     /// its recording off the list.
     private func linksRow(_ links: [SessionMetadata.Link]) -> some View {
@@ -442,7 +452,49 @@ struct RecordingsView: View {
         }
     }
 
+    /// The class folder a recording belongs to, for the transcript pane.
+    private func folder(for recording: Recording) -> URL? {
+        sessions.first {
+            $0.recordings.contains(recording) || $0.clipFiles.contains(recording)
+        }?.folder
+    }
+
     @ViewBuilder private var detail: some View {
+        if let selection {
+            VStack(spacing: 0) {
+                // A picker rather than a split: on a 460pt pane the transcript
+                // and the video each want the whole width, and stacking them
+                // gives both half a pane and neither enough.
+                Picker("", selection: $detailTab) {
+                    ForEach(DetailTab.allCases) { tab in Text(tab.rawValue).tag(tab) }
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .frame(maxWidth: 260)
+                .padding(.top, 10)
+                .padding(.bottom, 8)
+
+                if detailTab == .transcript {
+                    if let folder = folder(for: selection) {
+                        SessionTranscriptView(folder: folder)
+                    } else {
+                        Text("This recording is not in a class folder, so it has no transcript.")
+                            .font(.system(size: 12))
+                            .foregroundStyle(.secondary)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    }
+                } else {
+                    recordingDetail
+                }
+            }
+        } else {
+            Text("Select a recording to play it")
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+    }
+
+    @ViewBuilder private var recordingDetail: some View {
         if let player, let selection {
             VStack(spacing: 0) {
                 PlayerView(player: player)
@@ -459,8 +511,8 @@ struct RecordingsView: View {
                 clipList(for: selection)
             }
         } else {
-            Text("Select a recording to play it")
-                .foregroundStyle(.secondary)
+            ProgressView()
+                .controlSize(.small)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
     }

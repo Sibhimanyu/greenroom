@@ -326,10 +326,10 @@ enum ParticipantGridWindowController {
         micMonitor.stop()
     }
 
-    /// Prompter's cards, pushed once a second by the coordinator like the mic
+    /// Cues's cards, pushed once a second by the coordinator like the mic
     /// level. An empty state clears the block. No-op when the panel is closed.
-    static func applyPrompter(_ state: PrompterSurfaceState) {
-        root?.applyPrompter(state)
+    static func applyCues(_ state: CuesSurfaceState) {
+        root?.applyCues(state)
     }
 
     fileprivate static func report(_ message: String) { log?(message) }
@@ -438,11 +438,11 @@ private final class RootView: NSView {
     /// each tick, never rebuilt - see `updateNeedsBlock`.
     private let needsEyebrow = NSTextField(labelWithString: "")
     private let needsRows: [NSTextField] = (0..<6).map { _ in NSTextField(labelWithString: "") }
-    /// Prompter's cards, under the needs block. Its own view with the rail's
+    /// Cues's cards, under the needs block. Its own view with the rail's
     /// discipline: a fixed pool, updated in place, one measuring/placing walk.
-    private let prompterBlock = PrompterRailBlock(frame: .zero)
+    private let cuesBlock = CuesRailBlock(frame: .zero)
     /// The exception panel on the right of the grid. Fixed width.
-    private lazy var liveQueue = LiveQueueView(assist: prompterBlock)
+    private lazy var liveQueue = LiveQueueView(assist: cuesBlock)
     /// When each currently-raised hand went up.
     ///
     /// The SDK reports `isRaisingHand` as a bare bool with no timestamp, so
@@ -1049,7 +1049,7 @@ private final class RootView: NSView {
         // cannot change the answer.
         // The Live Queue takes a fixed slice off the right, and only when it has
         // something to say. Fixed is the whole point: the rail it takes over
-        // from re-decided its own width whenever Prompter's contents changed,
+        // from re-decided its own width whenever Cues's contents changed,
         // so a link arriving moved everything. This width is a constant.
         // The queue lives in the rail now, so it takes nothing off the class.
         let queueWidth: CGFloat = 0
@@ -1464,8 +1464,8 @@ private final class RootView: NSView {
         state.waiting = waiting.map { .init(id: $0.id, name: $0.name) }
         state.hands = handQueue.map { .init(id: $0.id, name: $0.name) }
         state.selected = selected
-        state.prompterCards = prompterBlock.cardCount
-        state.prompterListening = prompterBlock.isActive
+        state.cuesCards = cuesBlock.cardCount
+        state.cuesListening = cuesBlock.isActive
         return state
     }
 
@@ -1485,16 +1485,16 @@ private final class RootView: NSView {
         var eyebrow = ""
         var rows: [(text: String, font: NSFont)] = []
 
-        // Waiting students, raised hands and Prompter's cards have moved to the
+        // Waiting students, raised hands and Cues's cards have moved to the
         // Live Queue, where each sits next to the action it needs. What is left
         // here is the standing session facts, which belong beside the controls
         // they describe.
         //
         // This block no longer changes height for any reason except the meeting
         // number arriving, which is why suppressedNeedsHeight is gone: the
-        // facts used to stand down for Prompter, and because the rail's WIDTH
+        // facts used to stand down for Cues, and because the rail's WIDTH
         // was decided from this stack, a link arriving moved the whole panel.
-        // Nothing in the rail responds to Prompter any more.
+        // Nothing in the rail responds to Cues any more.
         let console = consoleState
         // showsSessionFacts, not merely isLive.
         //
@@ -1506,7 +1506,7 @@ private final class RootView: NSView {
         // held and a six-point-tall panel to show them in.
         //
         // The rule lives in ParticipantConsoleState: facts show only when the
-        // class is live, nobody is waiting, no hand is up and Prompter is
+        // class is live, nobody is waiting, no hand is up and Cues is
         // holding nothing.
         if !console.showsSessionFacts {
             // Before the class, the readiness panel is already carrying the
@@ -1803,9 +1803,9 @@ private final class RootView: NSView {
         walkNeedsBlock(x: 0, width: width, top: 0, place: false)
     }
 
-    /// The whole column's height at a width, and Prompter's share of it.
+    /// The whole column's height at a width, and Cues's share of it.
     ///
-    /// The two are one answer, not two: Prompter is the only block that sizes
+    /// The two are one answer, not two: Cues is the only block that sizes
     /// itself to the room left over, so the room left over has to be worked out
     /// before its height is known, and both numbers have to come from the same
     /// arithmetic or the measuring pass and the placing pass disagree - the
@@ -1814,19 +1814,19 @@ private final class RootView: NSView {
     /// `total` is the DOCUMENT height, so it counts everything; leave anything
     /// out and the scroll view cannot reach the bottom of its own content.
     private func railStack(width: CGFloat, available: CGFloat)
-        -> (total: CGFloat, prompterBudget: CGFloat) {
+        -> (total: CGFloat, cuesBudget: CGFloat) {
         let fitting = fittingStackHeight(width: width)
         return (fitting, 0)
     }
 
     /// The height the column-width decision is allowed to see.
     ///
-    /// Deliberately NOT the whole stack: Prompter's cards are a fixed 64pt
+    /// Deliberately NOT the whole stack: Cues's cards are a fixed 64pt
     /// each whatever the column's width, so letting them into this
     /// calculation makes the rail narrow itself trying to fit content that
     /// narrowing cannot shrink. The visible effect was a rail that shrank the
     /// moment a fourth link arrived, handing the class grid space for no
-    /// reason and making the self view smaller for no gain. Prompter lives in
+    /// reason and making the self view smaller for no gain. Cues lives in
     /// a scroll view; scrolling is the right answer for it. Only the blocks
     /// that DO respond to width - the 16:9 picture, the wrapped control grid,
     /// the needs rows - get a vote here.
@@ -1837,14 +1837,14 @@ private final class RootView: NSView {
             + 10 + Self.railPad * 2
     }
 
-    /// Prompter's state, once a second. Re-lays the rail only when the block
+    /// Cues's state, once a second. Re-lays the rail only when the block
     /// changed height, so a stable set of cards costs nothing.
-    func applyPrompter(_ state: PrompterSurfaceState) {
-        let hadCards = prompterBlock.hasCards
-        guard prompterBlock.apply(state) || hadCards != prompterBlock.hasCards else { return }
+    func applyCues(_ state: CuesSurfaceState) {
+        let hadCards = cuesBlock.hasCards
+        guard cuesBlock.apply(state) || hadCards != cuesBlock.hasCards else { return }
         // The session-facts block stands down while links are on screen, so a
         // first or last card changes what the needs block says as well as how
-        // tall Prompter is. Both, then one layout.
+        // tall Cues is. Both, then one layout.
         updateNeedsBlock()
         layoutEverything()
     }
@@ -1877,14 +1877,14 @@ private final class RootView: NSView {
     /// How tall the self-view block will be at a given width, without placing it.
     ///
     /// The picture is 16:9 across the WHOLE content column, always. There was
-    /// briefly a cap here, so the rail could promise Prompter three card slots
+    /// briefly a cap here, so the rail could promise Cues three card slots
     /// by taking the height off the picture. On the real panel that was a bad
     /// trade and an invisible one: the windowed panel is 760pt tall, the
     /// reserve was 272pt whether or not a single link existed, and the picture
     /// went straight to its floor - a 284pt image inset in a 556pt column, for
     /// the whole lesson, mostly to hold space for cards that never arrived.
     ///
-    /// So the picture takes the column and Prompter takes what is left over,
+    /// So the picture takes the column and Cues takes what is left over,
     /// fitting whole cards to it and labelling the rest "+N older". When even
     /// that does not fit, the rail scrolls, which is what railScroll is for.
     private func selfBlockHeight(width: CGFloat) -> CGFloat {
@@ -3469,7 +3469,7 @@ private final class ToolMenuButton: NSButton {
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 }
 
-// ClosureButton lives in App/UI/ClosureButton.swift now - the Prompter cards
+// ClosureButton lives in App/UI/ClosureButton.swift now - the Cues cards
 // share it. See TileView.acceptsFirstMouse for why it exists.
 
 /// A pop-up that also answers the first click. NSPopUpButton has the same

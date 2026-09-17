@@ -13,8 +13,8 @@
 	<key>NSCameraUsageDescription</key>
 	<string>Greenroom sends the composited video (your screen with you in it) to the Zoom meeting from inside the app, so it needs the camera the meeting uses.</string>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>Your microphone goes to the Zoom meeting and drives the level meter on the participants panel. With Prompter turned on (off by default), Greenroom also turns your speech into text on this Mac to suggest links; the audio and the text never leave the Mac and are not saved.</string>
-	<!-- No NSSpeechRecognitionUsageDescription on purpose: Prompter uses
+	<string>Your microphone goes to the Zoom meeting and drives the level meter on the participants panel. With Cues turned on (off by default), Greenroom also turns your speech into text on this Mac to suggest links; the audio and the text never leave the Mac and are not saved.</string>
+	<!-- No NSSpeechRecognitionUsageDescription on purpose: Cues uses
 	     SpeechAnalyzer with audio the app already holds, which runs on this
 	     Mac and asks for no speech-recognition permission. Adding the key
 	     would imply a TCC prompt and a cloud path that do not exist. -->

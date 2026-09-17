@@ -153,7 +153,7 @@ final class ZoomChatBridge: NSObject, ObservableObject {
             .filter { !$0.isEmpty }
     }
 
-    /// Whether there is a meeting to send into. Prompter's Send checks this
+    /// Whether there is a meeting to send into. Cues's Send checks this
     /// so a card never claims to have posted when nothing was connected.
     var isAttached: Bool { controller != nil }
 

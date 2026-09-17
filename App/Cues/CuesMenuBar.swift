@@ -1,12 +1,12 @@
 //
-//  PrompterMenuBar.swift
+//  CuesMenuBar.swift
 //  Greenroom
 //
-//  Prompter's surface when there is no reference display: a status item with
+//  Cues's surface when there is no reference display: a status item with
 //  a waveform and an unseen count, and a popover of cards under it.
 //
 //  AppKit rather than a second MenuBarExtra: a SwiftUI menu-bar extra with a
-//  window style activates the app when it opens, and Prompter must never pull
+//  window style activates the app when it opens, and Cues must never pull
 //  Greenroom in front of the page the teacher is reading. An NSPopover from an
 //  NSStatusItem does not.
 //
@@ -16,12 +16,12 @@
 import AppKit
 
 @MainActor
-final class PrompterMenuBar: NSObject, NSPopoverDelegate {
+final class CuesMenuBar: NSObject, NSPopoverDelegate {
 
     private var item: NSStatusItem?
     private let popover = NSPopover()
     private let content = PopoverContent()
-    private var state = PrompterSurfaceState.empty
+    private var state = CuesSurfaceState.empty
     private var unseen = 0
 
     /// Called when the popover opens, so the badge can clear.
@@ -50,7 +50,7 @@ final class PrompterMenuBar: NSObject, NSPopoverDelegate {
             created.button?.target = self
             created.button?.action = #selector(toggle)
             created.button?.imagePosition = .imageLeading
-            created.button?.setAccessibilityLabel("Prompter")
+            created.button?.setAccessibilityLabel("Cues")
             item = created
             render()
         } else if !visible, let existing = item {
@@ -60,7 +60,7 @@ final class PrompterMenuBar: NSObject, NSPopoverDelegate {
         }
     }
 
-    func apply(_ next: PrompterSurfaceState, unseen: Int, statusText: String) {
+    func apply(_ next: CuesSurfaceState, unseen: Int, statusText: String) {
         state = next
         self.unseen = unseen
         content.apply(next, statusText: statusText)
@@ -71,11 +71,11 @@ final class PrompterMenuBar: NSObject, NSPopoverDelegate {
     private func render() {
         guard let button = item?.button else { return }
         let symbol = state.paused ? "waveform.slash" : "waveform"
-        let image = NSImage(systemSymbolName: symbol, accessibilityDescription: "Prompter")
+        let image = NSImage(systemSymbolName: symbol, accessibilityDescription: "Cues")
         image?.isTemplate = true
         button.image = image
         button.title = unseen > 0 ? " \(unseen)" : ""
-        button.toolTip = state.paused ? "Prompter is paused" : "Prompter is listening \u{00B7} \(state.cards.count) link\(state.cards.count == 1 ? "" : "s")"
+        button.toolTip = state.paused ? "Cues is paused" : "Cues is listening \u{00B7} \(state.cards.count) link\(state.cards.count == 1 ? "" : "s")"
     }
 
     @objc private func toggle() {
@@ -106,9 +106,9 @@ final class PrompterMenuBar: NSObject, NSPopoverDelegate {
     private final class PopoverContent: NSView {
         private let status = NSTextField(labelWithString: "")
         private let empty = NSTextField(wrappingLabelWithString: "")
-        private let cards: [PrompterCardView] = (0..<PrompterRailBlock.maxCards).map { _ in PrompterCardView(frame: .zero) }
+        private let cards: [CueCardView] = (0..<CuesRailBlock.maxCards).map { _ in CueCardView(frame: .zero) }
         private lazy var stop = ClosureButton { [weak self] in self?.onStop?() }
-        private var state = PrompterSurfaceState.empty
+        private var state = CuesSurfaceState.empty
         var onStop: (() -> Void)?
 
         private let pad: CGFloat = 12
@@ -135,10 +135,10 @@ final class PrompterMenuBar: NSObject, NSPopoverDelegate {
 
         required init?(coder: NSCoder) { nil }
 
-        func apply(_ next: PrompterSurfaceState, statusText: String) {
+        func apply(_ next: CuesSurfaceState, statusText: String) {
             state = next
             status.stringValue = statusText.uppercased()
-            let shown = Array(next.cards.prefix(PrompterRailBlock.maxCards))
+            let shown = Array(next.cards.prefix(CuesRailBlock.maxCards))
             for (index, view) in cards.enumerated() {
                 if index < shown.count {
                     view.isHidden = false
@@ -155,13 +155,13 @@ final class PrompterMenuBar: NSObject, NSPopoverDelegate {
         }
 
         func height(forWidth width: CGFloat) -> CGFloat {
-            let count = min(state.cards.count, PrompterRailBlock.maxCards)
+            let count = min(state.cards.count, CuesRailBlock.maxCards)
             var height = pad + 14 + gap
             if count == 0 {
                 let textWidth = width - pad * 2
                 height += empty.sizeThatFits(NSSize(width: textWidth, height: .greatestFiniteMagnitude)).height + gap
             } else {
-                height += CGFloat(count) * PrompterCardView.height + CGFloat(count - 1) * gap + gap
+                height += CGFloat(count) * CueCardView.height + CGFloat(count - 1) * gap + gap
             }
             height += 24 + pad
             return height
@@ -175,8 +175,8 @@ final class PrompterMenuBar: NSObject, NSPopoverDelegate {
             y -= gap
             if empty.isHidden {
                 for view in cards where !view.isHidden {
-                    y -= PrompterCardView.height
-                    view.frame = NSRect(x: pad, y: y, width: width, height: PrompterCardView.height)
+                    y -= CueCardView.height
+                    view.frame = NSRect(x: pad, y: y, width: width, height: CueCardView.height)
                     y -= gap
                 }
             } else {

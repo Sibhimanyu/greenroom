@@ -5,9 +5,9 @@
 //  What the participant window is showing, worked out once.
 //
 //  Phase 1 of docs/participant-window-redesign-plan.md. The plan's diagnosis is
-//  that session facts, the waiting list, the hand queue, Prompter's cards and
+//  that session facts, the waiting list, the hand queue, Cues's cards and
 //  the selected participant all live in one scrolling rail and each recompute
-//  their own idea of what matters. The consequence was visible: Prompter
+//  their own idea of what matters. The consequence was visible: Cues
 //  arriving changed the rail's size and pushed other information around, so the
 //  layout moved for reasons the teacher could not see.
 //
@@ -55,8 +55,8 @@ struct ParticipantConsoleState: Equatable {
     /// timestamps.
     var hands: [Person] = []
     var selected: UInt32?
-    var prompterCards = 0
-    var prompterListening = false
+    var cuesCards = 0
+    var cuesListening = false
 
     /// The top of the Live Queue.
     ///
@@ -74,13 +74,13 @@ struct ParticipantConsoleState: Equatable {
         return .clear
     }
 
-    /// True when Prompter may take queue space.
+    /// True when Cues may take queue space.
     ///
     /// The plan's rule, in one place: Assist never displaces a person at the
     /// door or a raised hand. It gets the room only when nothing more urgent
     /// wants it.
     var showsAssist: Bool {
-        guard isLive, prompterCards > 0 else { return false }
+        guard isLive, cuesCards > 0 else { return false }
         return attention == .clear
     }
 
@@ -90,6 +90,6 @@ struct ParticipantConsoleState: Equatable {
     /// and the first thing to yield. A quiet stretch is exactly when it stops
     /// being quiet, so live links push them out.
     var showsSessionFacts: Bool {
-        isLive && attention == .clear && prompterCards == 0
+        isLive && attention == .clear && cuesCards == 0
     }
 }

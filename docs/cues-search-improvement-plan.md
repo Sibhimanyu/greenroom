@@ -1,4 +1,4 @@
-# Prompter search: speed and accuracy improvement plan
+# Cues search: speed and accuracy improvement plan
 
 ## Objective
 
@@ -11,7 +11,7 @@ hardening are out of scope for this iteration.
 
 ## Current pipeline
 
-`finalized speech -> mention detector -> LinkResolver -> Prompter card`
+`finalized speech -> mention detector -> LinkResolver -> Cues card`
 
 The default detector is a precision-oriented heuristic. An optional
 Foundation Models detector produces richer candidates but is currently much
@@ -172,12 +172,12 @@ Make the three stages explicit and independently testable:
 
 | Area | Primary files |
 | --- | --- |
-| Pipeline orchestration and timing | `App/Prompter/PrompterController.swift` |
-| Candidate extraction and validation | `App/Prompter/MentionDetector.swift`, `App/Prompter/FoundationModelsDetector.swift` |
-| Retrieval, concurrency, caching, ranking | `App/Prompter/LinkResolver.swift` |
-| Card state / async thumbnail updates | `App/Prompter/PrompterCard.swift`, `App/Prompter/ThumbnailLoader.swift` |
-| Feedback and display | `App/Prompter/PrompterCardView.swift`, `App/Prompter/PrompterRailBlock.swift` |
-| Automated regression suite | New Prompter fixture and test target files |
+| Pipeline orchestration and timing | `App/Cues/CuesController.swift` |
+| Candidate extraction and validation | `App/Cues/MentionDetector.swift`, `App/Cues/FoundationModelsDetector.swift` |
+| Retrieval, concurrency, caching, ranking | `App/Cues/LinkResolver.swift` |
+| Card state / async thumbnail updates | `App/Cues/CueCard.swift`, `App/Cues/ThumbnailLoader.swift` |
+| Feedback and display | `App/Cues/CueCardView.swift`, `App/Cues/CuesRailBlock.swift` |
+| Automated regression suite | New Cues fixture and test target files |
 
 ## Guardrails for implementation
 

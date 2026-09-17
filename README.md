@@ -57,7 +57,7 @@ the same drag-to-Applications experience.
 
 ### Requirements
 
-- macOS 14 or later (**Prompter**, the opt-in live link suggestions,
+- macOS 14 or later (**Cues**, the opt-in live link suggestions,
   needs macOS 26 — the app runs without it on 14 and 15)
 - [OBS Studio](https://obsproject.com) (free) — Greenroom launches and
   drives it in the background; you never touch the OBS UI
@@ -128,7 +128,7 @@ Also available:
   The file path is logged when you stop.
 - **Menu bar → Snap Windows Back** — re-tiles everything to the session
   layout after you've dragged windows around.
-- **Prompter** (Settings → Prompter, off by default, macOS 26) — while the
+- **Cues** (Settings → Cues, off by default, macOS 26) — while the
   class is live it listens to *your* microphone, turns it into text on the
   Mac, and offers link cards for the books, videos, topics, people and
   places you name: on the participants panel when there is one, otherwise
@@ -233,7 +233,7 @@ the sign-in expires every seven days until it is published. The OAuth
 client ID/secret travel in the settings export; the connected account does
 not.
 
-### Prompter
+### Cues
 Off by default; macOS 26 only (the tab says so on 14/15, and
 `FoundationModels.framework` is weak-linked so the app still launches
 there). **Listen during classes and suggest links** starts, once the
@@ -259,7 +259,7 @@ page). Wikipedia's title search takes the rich phrase and the bare name at
 once; Google Books then Open Library for books; YouTube Data API
 `search.list` for videos only with a connected account and **Video links
 may use YouTube search** on (otherwise a `youtube.com/results` link that
-sends nothing until opened). For a **named product** Prompter also guesses
+sends nothing until opened). For a **named product** Cues also guesses
 the domain from the name (`Haiku Deck` → haikudeck.com), fetches it and
 reads only as far as the `<title>` to confirm the site exists and matches
 — a request to that product's own homepage, never a search engine. That
@@ -277,7 +277,7 @@ lifetime. **Language** picks the transcription locale (`en_IN` is
 supported; Tamil is not, as of macOS 26). **Try it (30 s)** transcribes
 and detects without looking anything up. Cards you Open or Send are
 recorded in the class folder's `session.json` (`links`) and shown in
-Sessions as "Links from class". Engine: `App/Prompter/`.
+Sessions as "Links from class". Engine: `App/Cues/`.
 
 ### Transfer
 Export/import every setting above as one JSON file — the whole point is
@@ -323,11 +323,11 @@ Download it with your own Zoom Marketplace account and copy the zip's
 contents in; [`Vendor/README.md`](Vendor/README.md) documents the layout
 and the rsync/codesign trap to avoid.
 
-Checking the Prompter detector after a change:
+Checking the Cues detector after a change:
 
 ```sh
-scripts/prompter-bench.sh            # the report
-scripts/prompter-bench.sh --verbose  # every false alarm and miss
+scripts/cues-bench.sh            # the report
+scripts/cues-bench.sh --verbose  # every false alarm and miss
 ```
 
 Scores the word-pattern detector and the link resolver against checked-in

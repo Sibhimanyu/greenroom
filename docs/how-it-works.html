@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <title>How Greenroom works — and why it's safe</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="description" content="A visual, technical walkthrough of the Greenroom macOS app: every process, every permission, every byte that leaves your Mac — diagrammed, so you can see for yourself what it does and does not do. No cloud AI; the one model it can run is Apple's, on your Mac, and only if you turn Prompter on.">
+<meta name="description" content="A visual, technical walkthrough of the Greenroom macOS app: every process, every permission, every byte that leaves your Mac — diagrammed, so you can see for yourself what it does and does not do. No cloud AI; the one model it can run is Apple's, on your Mac, and only if you turn Cues on.">
 <link rel="icon" type="image/png" href="favicon.png?v=3">
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=3">
 <style>
@@ -218,7 +218,7 @@
   <span class="eyebrow">Privacy &amp; safety</span>
   <h1>Is Greenroom watching your screen? <span class="accent">No.</span></h1>
   <p class="lede">Here is every process, permission and network call it makes — drawn, not asserted.
-  No server of its own, and no cloud AI: the one model it can run is Apple's, on this Mac, and only if you turn <em>Prompter</em> on. Two things leave without you asking, and both have a switch: usage analytics (counts and timings, never names or meeting IDs) and, while the built-in browser's search suggestions are on, what you type in its address bar. Class content leaves only if you turn on YouTube upload, and then only your own recording; with Prompter on, the short search phrases it builds leave too, and each one is written to the log. Follow the diagrams and you've audited the app.</p>
+  No server of its own, and no cloud AI: the one model it can run is Apple's, on this Mac, and only if you turn <em>Cues</em> on. Two things leave without you asking, and both have a switch: usage analytics (counts and timings, never names or meeting IDs) and, while the built-in browser's search suggestions are on, what you type in its address bar. Class content leaves only if you turn on YouTube upload, and then only your own recording; with Cues on, the short search phrases it builds leave too, and each one is written to the log. Follow the diagrams and you've audited the app.</p>
   <nav class="contents" aria-label="On this page">
     <a href="#map"><b>01</b>The whole system</a>
     <a href="#sequence"><b>02</b>Press Start</a>
@@ -226,7 +226,7 @@
     <a href="#scope"><b>04</b>Permissions</a>
     <a href="#data"><b>05</b>Every network call</a>
     <a href="#clips"><b>06</b>The clip buffer</a>
-    <a href="#prompter"><b>07</b>Prompter</a>
+    <a href="#Cues"><b>07</b>Cues</a>
     <a href="#it"><b>08</b>For your IT team</a>
     <a href="#caveats"><b>09</b>The weak spots</a>
   </nav>
@@ -242,7 +242,7 @@
 
     <figure class="viz">
       <div class="frame">
-        <svg class="svg-wide" viewBox="0 0 940 620" role="img" aria-label="System map. Inside a 'Your Mac' boundary: your saved settings — chosen app, layout, webcam shape and Zoom credentials — are the instructions Greenroom follows; it makes no decisions of its own. Screen and Webcam feed OBS, which produces the OBS Virtual Camera and writes recordings to Documents/Greenroom; OBS and Greenroom talk over an authenticated localhost WebSocket on port 4455; Greenroom resizes and places your windows, reading their geometry only, never their contents, or draws the main window itself when Greenroom Browser is the chosen app. With Prompter turned on, your microphone also feeds Greenroom, where Apple's speech model turns it into text on the Mac and Apple's on-device language model picks out books, videos, topics, people and places; the speech model is downloaded once from Apple. Encrypted HTTPS links leave the Mac: Greenroom to Zoom servers for meeting video, audio and chat; Greenroom to the pages you open, only when Greenroom Browser is the main app, plus Google search completions while that switch is on; Greenroom to GitHub for signed app-update checks; Greenroom to Zoho Apptics for anonymous usage counts, which can be switched off in Settings; only when YouTube upload is turned on in Settings, a finished recording to YouTube; and only when Prompter is turned on, a short search phrase — a title or a name, never audio or transcript — to Google Books, Open Library, Wikipedia or YouTube. Nothing else leaves.">
+        <svg class="svg-wide" viewBox="0 0 940 620" role="img" aria-label="System map. Inside a 'Your Mac' boundary: your saved settings — chosen app, layout, webcam shape and Zoom credentials — are the instructions Greenroom follows; it makes no decisions of its own. Screen and Webcam feed OBS, which produces the OBS Virtual Camera and writes recordings to Documents/Greenroom; OBS and Greenroom talk over an authenticated localhost WebSocket on port 4455; Greenroom resizes and places your windows, reading their geometry only, never their contents, or draws the main window itself when Greenroom Browser is the chosen app. With Cues turned on, your microphone also feeds Greenroom, where Apple's speech model turns it into text on the Mac and Apple's on-device language model picks out books, videos, topics, people and places; the speech model is downloaded once from Apple. Encrypted HTTPS links leave the Mac: Greenroom to Zoom servers for meeting video, audio and chat; Greenroom to the pages you open, only when Greenroom Browser is the main app, plus Google search completions while that switch is on; Greenroom to GitHub for signed app-update checks; Greenroom to Zoho Apptics for anonymous usage counts, which can be switched off in Settings; only when YouTube upload is turned on in Settings, a finished recording to YouTube; and only when Cues is turned on, a short search phrase — a title or a name, never audio or transcript — to Google Books, Open Library, Wikipedia or YouTube. Nothing else leaves.">
           <defs>
             <marker id="ag" markerWidth="9" markerHeight="9" refX="7" refY="4" orient="auto-start-reverse" markerUnits="userSpaceOnUse"><path d="M0,0 L8,4 L0,8 z" fill="#2f6118"/></marker>
             <marker id="aa" markerWidth="9" markerHeight="9" refX="7" refY="4" orient="auto-start-reverse" markerUnits="userSpaceOnUse"><path d="M0,0 L8,4 L0,8 z" fill="#b9770e"/></marker>
@@ -260,14 +260,14 @@
           <line x1="328" y1="112" x2="344" y2="130" stroke="#667085" stroke-width="1.4" marker-end="url(#agy)"/>
           <line x1="424" y1="112" x2="408" y2="130" stroke="#667085" stroke-width="1.4" marker-end="url(#agy)"/>
 
-          <!-- Prompter's one input: the teacher's microphone, and nothing
+          <!-- Cues's one input: the teacher's microphone, and nothing
                else. In the left column with your windows and recordings -
                your side of the Mac - and drawn green and thick because the
                whole stream stays here: it becomes text in Greenroom and the
                text stays in memory. -->
           <rect x="40" y="386" width="146" height="44" rx="12" fill="#fff" stroke="#d0d5dd"/>
           <text x="113" y="405" font-size="12.5" font-weight="600" text-anchor="middle" fill="#101828">Your mic</text>
-          <text x="113" y="420" font-size="9.5" text-anchor="middle" fill="#475467">only with Prompter on</text>
+          <text x="113" y="420" font-size="9.5" text-anchor="middle" fill="#475467">only with Cues on</text>
           <line x1="186" y1="400" x2="282" y2="348" stroke="#2f6118" stroke-width="3" marker-end="url(#ag)"/>
           <text x="236" y="392" font-size="10" font-weight="600" text-anchor="middle" fill="#2f6118">speech → text</text>
           <text x="236" y="404" font-size="9.5" text-anchor="middle" fill="#667085">on this Mac</text>
@@ -280,7 +280,7 @@
           <rect x="282" y="270" width="188" height="86" rx="12" fill="#e8f3df" stroke="#2f6118" stroke-width="2"/>
           <text x="376" y="300" font-size="15" font-weight="700" text-anchor="middle" fill="#101828">Greenroom</text>
           <text x="376" y="318" font-size="11" text-anchor="middle" fill="#475467">orchestrator</text>
-          <text x="376" y="334" font-size="9" text-anchor="middle" fill="#2f6118">Prompter: on-device models · opt-in</text>
+          <text x="376" y="334" font-size="9" text-anchor="middle" fill="#2f6118">Cues: on-device models · opt-in</text>
 
           <rect x="40" y="276" width="146" height="76" rx="12" fill="#fff" stroke="#d0d5dd"/>
           <text x="113" y="302" font-size="12.5" font-weight="600" text-anchor="middle" fill="#101828">Your windows</text>
@@ -303,11 +303,11 @@
           <text x="388" y="374" font-size="10" fill="#101828">instructions</text>
 
           <!-- The speech model: Apple's, fetched once through the system's
-               asset service when Prompter is switched on, then a file on this
+               asset service when Cues is switched on, then a file on this
                Mac. Dashed like the settings box - configuration, not a process. -->
           <rect x="282" y="450" width="188" height="44" rx="10" fill="#fff" stroke="#2f6118" stroke-dasharray="4 3"/>
           <text x="376" y="469" font-size="12" font-weight="700" text-anchor="middle" fill="#101828">Speech model</text>
-          <text x="376" y="484" font-size="9" text-anchor="middle" fill="#475467">Apple's · fetched once · Prompter only</text>
+          <text x="376" y="484" font-size="9" text-anchor="middle" fill="#475467">Apple's · fetched once · Cues only</text>
           <line x1="376" y1="450" x2="376" y2="430" stroke="#2f6118" stroke-width="1.2" stroke-dasharray="3 3"/>
 
           <rect x="676" y="96" width="228" height="84" rx="16" fill="#fff" stroke="#d0d5dd"/>
@@ -341,13 +341,13 @@
           <line x1="470" y1="352" x2="676" y2="482" stroke="#b9770e" stroke-width="1.8" marker-end="url(#aa)"/>
           <text x="548" y="436" font-size="11" text-anchor="middle" fill="#96600a">the recording · HTTPS · off by default</text>
 
-          <!-- Prompter's lookups: the only words derived from speech that
+          <!-- Cues's lookups: the only words derived from speech that
                leave, and only the search phrase. Thin amber line, because
                what crosses is a handful of words, not a stream. -->
           <rect x="676" y="528" width="228" height="60" rx="16" fill="#fff" stroke="#d0d5dd"/>
           <text x="790" y="550" font-size="15" font-weight="700" text-anchor="middle" fill="#101828">Lookups</text>
           <text x="790" y="566" font-size="9" text-anchor="middle" fill="#475467">Wikipedia · Google Books · YouTube · the product’s own site</text>
-          <text x="790" y="580" font-size="9.5" text-anchor="middle" fill="#96600a">a title or a name · only with Prompter on</text>
+          <text x="790" y="580" font-size="9.5" text-anchor="middle" fill="#96600a">a title or a name · only with Cues on</text>
           <line x1="470" y1="356" x2="676" y2="558" stroke="#b9770e" stroke-width="1.2" marker-end="url(#aa)"/>
           <text x="600" y="514" font-size="10.5" text-anchor="middle" fill="#96600a">the search phrase · HTTPS · off by default</text>
 
@@ -375,7 +375,7 @@
           <text x="306" y="608" font-size="11" fill="#475467">crosses to the internet (encrypted HTTPS)</text>
         </svg>
       </div>
-      <figcaption>Everything Greenroom does is determined by the dashed <strong>settings</strong> box: which app to open, the layout, the webcam shape, your Zoom credentials. Change the settings and you change the script. The one place it exercises judgement is <strong>Prompter</strong>, and only if you turn it on: your microphone becomes text on this Mac (Apple's speech model, the thick green stream — it never leaves), Apple's on-device language model picks out the books, videos, topics, people and places you named, and the short search phrase is what crosses (the thin amber line). Greenroom holds <strong>two entitlements: camera and microphone</strong> — and no others. Screen capture belongs to OBS, a separate app you can see running. The <code>ws:4455</code> link is an authenticated loopback socket that never reaches the network. <strong>Pages you open</strong> exists only when <em>Greenroom Browser</em> is your main app: that window is Apple's WebKit (the engine inside Safari) running in Greenroom's process, so the sites you visit load from Greenroom rather than from Chrome. Its history is one local file, its cookies live in WebKit's standard store, and nothing about your browsing is reported anywhere.</figcaption>
+      <figcaption>Everything Greenroom does is determined by the dashed <strong>settings</strong> box: which app to open, the layout, the webcam shape, your Zoom credentials. Change the settings and you change the script. The one place it exercises judgement is <strong>Cues</strong>, and only if you turn it on: your microphone becomes text on this Mac (Apple's speech model, the thick green stream — it never leaves), Apple's on-device language model picks out the books, videos, topics, people and places you named, and the short search phrase is what crosses (the thin amber line). Greenroom holds <strong>two entitlements: camera and microphone</strong> — and no others. Screen capture belongs to OBS, a separate app you can see running. The <code>ws:4455</code> link is an authenticated loopback socket that never reaches the network. <strong>Pages you open</strong> exists only when <em>Greenroom Browser</em> is your main app: that window is Apple's WebKit (the engine inside Safari) running in Greenroom's process, so the sites you visit load from Greenroom rather than from Chrome. Its history is one local file, its cookies live in WebKit's standard store, and nothing about your browsing is reported anywhere.</figcaption>
     </figure>
   </div>
 </section>
@@ -524,8 +524,8 @@
 
     <div class="chips">
       <span class="chip"><span class="x">✕</span> No cloud AI</span>
-      <span class="chip"><span class="t">✓</span> Prompter's speech and language models run on this Mac, and it is off by default</span>
-      <span class="chip"><span class="x">✕</span> No audio or transcript ever leaves this Mac — only the search phrase Prompter builds</span>
+      <span class="chip"><span class="t">✓</span> Cues's speech and language models run on this Mac, and it is off by default</span>
+      <span class="chip"><span class="x">✕</span> No audio or transcript ever leaves this Mac — only the search phrase Cues builds</span>
       <span class="chip"><span class="x">✕</span> No screen pixels captured by Greenroom</span>
       <span class="chip"><span class="x">✕</span> No keylogging</span>
       <span class="chip"><span class="x">✕</span> No student names, meeting IDs or chat in analytics</span>
@@ -557,10 +557,10 @@
       <div class="scope">
         <div class="who">Microphone <span>the other entitlement</span></div>
         <div>
-          <div class="bar-labels"><span class="u">meeting audio · level meter · Prompter (opt-in)</span><span class="r">unused</span></div>
+          <div class="bar-labels"><span class="u">meeting audio · level meter · Cues (opt-in)</span><span class="r">unused</span></div>
           <div class="bar"><div class="used" style="width:72%"></div></div>
         </div>
-        <p class="note">Three readers of the same device, all inside a class and none outside one: Zoom's SDK sends your voice to the meeting; the participants panel's level meter shows whether it hears you; and, only with <em>Prompter</em> turned on, Apple's speech model turns it into text on this Mac. Prompter reads the default input device — never Zoom's incoming audio — and pauses while you are muted in Zoom. The text is saved as <span class="mono">transcript.txt</span> in that class's folder, beside its recording, so you have the record of what was said; a switch in Settings &rarr; Prompter turns that off and keeps it in memory only. Either way the audio and the transcript stay on this Mac. macOS asks no additional permission for that: it is the same microphone grant, and no speech-recognition service is involved.</p>
+        <p class="note">Three readers of the same device, all inside a class and none outside one: Zoom's SDK sends your voice to the meeting; the participants panel's level meter shows whether it hears you; and, only with <em>Cues</em> turned on, Apple's speech model turns it into text on this Mac. Cues reads the default input device — never Zoom's incoming audio — and pauses while you are muted in Zoom. The text is saved as <span class="mono">transcript.txt</span> in that class's folder, beside its recording, so you have the record of what was said; a switch in Settings &rarr; Cues turns that off and keeps it in memory only. Either way the audio and the transcript stay on this Mac. macOS asks no additional permission for that: it is the same microphone grant, and no speech-recognition service is involved.</p>
       </div>
 
       <div class="scope">
@@ -608,7 +608,7 @@
     <div class="sec-head center">
       <p class="kicker">05 · Every network call</p>
       <h2>Eight channels. That's the whole list.</h2>
-      <p>Four are Greenroom's own. Two exist only when you choose <em>Greenroom Browser</em> as the main app, and one of those has its own switch. The seventh carries class content — your recording — and the eighth carries the search phrases <em>Prompter</em> builds from what you say. Both are off until you turn them on.</p>
+      <p>Four are Greenroom's own. Two exist only when you choose <em>Greenroom Browser</em> as the main app, and one of those has its own switch. The seventh carries class content — your recording — and the eighth carries the search phrases <em>Cues</em> builds from what you say. Both are off until you turn them on.</p>
     </div>
     <div class="eps">
       <div class="ep">
@@ -661,11 +661,11 @@
       <div class="ep">
         <span class="tag out">Leaves your Mac · off by default</span>
         <h3>en.wikipedia.org · googleapis.com/books · openlibrary.org · youtube · a named product’s own site</h3>
-        <p>Only with Settings &rarr; <em>Prompter</em> on. When you name a book, a video, a topic, a person or a place, the
-        <strong>short search phrase</strong> Prompter built &mdash; a title or a name, deterministic, a few words &mdash; goes over
+        <p>Only with Settings &rarr; <em>Cues</em> on. When you name a book, a video, a topic, a person or a place, the
+        <strong>short search phrase</strong> Cues built &mdash; a title or a name, deterministic, a few words &mdash; goes over
         HTTPS to Google Books then Open Library (books), to Wikipedia's title search (topics, people, places), and, if you allow it
         and a Google account is connected, to the YouTube Data API (videos; otherwise the card is a search link that sends nothing
-        until you open it). One more, added after watching a real class: when you name a <strong>product</strong>, Prompter guesses
+        until you open it). One more, added after watching a real class: when you name a <strong>product</strong>, Cues guesses
         its address from the name (&ldquo;Haiku Deck&rdquo; &rarr; haikudeck.com), opens that page and reads its title to check the
         site is really there. It reads only as far as the title and offers the card only if the title matches the name. That is a
         request to <em>that product&rsquo;s own site</em>, the same page you would open yourself &mdash; never a search engine, and
@@ -746,12 +746,12 @@
 </section>
 
 <!-- ============ 7. PROMPTER ============ -->
-<section class="soft" id="prompter">
+<section class="soft" id="Cues">
   <div class="wrap">
     <div class="sec-head">
-      <p class="kicker">07 &middot; Prompter</p>
+      <p class="kicker">07 &middot; Cues</p>
       <h2>How a link card gets made, and what leaves at each step</h2>
-      <p>Off by default, macOS 26 only. Turn it on in Settings &rarr; Prompter and, while a class is live, Greenroom listens to <em>your</em> microphone and offers link cards for what you mention. Here is the pipeline, with the one point where anything crosses.</p>
+      <p>Off by default, macOS 26 only. Turn it on in Settings &rarr; Cues and, while a class is live, Greenroom listens to <em>your</em> microphone and offers link cards for what you mention. Here is the pipeline, with the one point where anything crosses.</p>
     </div>
 
     <figure class="viz">
@@ -817,7 +817,7 @@
           <text x="266" y="252" font-size="11" fill="#475467">crosses to the internet (encrypted HTTPS)</text>
         </svg>
       </div>
-      <figcaption>The transcript is written to <span class="mono">transcript.txt</span> in the class's folder as each sentence is finalised, so a class that crashes keeps what was said; Settings &rarr; Prompter turns that off. It is written to your disk, never sent anywhere. Only finalised sentences are used; the in-progress guesses go nowhere. Detection runs on the new sentences plus twenty words of lead-in, every eight seconds or so. A card exists only after a lookup answered with a title and a page &mdash; except the video &ldquo;search link&rdquo; card, which points at a YouTube search page and has sent nothing. Five cards show at once, eight are kept, a class gets thirty lookups, and a dismissed card stays dismissed for the class. Cards you open or send are remembered with the class in Sessions (&ldquo;Links from class&rdquo;); cards merely shown are not. The whole engine is <a class="underline" href="https://github.com/Sibhimanyu/greenroom/tree/main/App/Prompter">App/Prompter/</a>, and every line the status log writes for it begins with <span class="mono">Prompter:</span>.</figcaption>
+      <figcaption>The transcript is written to <span class="mono">transcript.txt</span> in the class's folder as each sentence is finalised, so a class that crashes keeps what was said; Settings &rarr; Cues turns that off. It is written to your disk, never sent anywhere. Only finalised sentences are used; the in-progress guesses go nowhere. Detection runs on the new sentences plus twenty words of lead-in, every eight seconds or so. A card exists only after a lookup answered with a title and a page &mdash; except the video &ldquo;search link&rdquo; card, which points at a YouTube search page and has sent nothing. Five cards show at once, eight are kept, a class gets thirty lookups, and a dismissed card stays dismissed for the class. Cards you open or send are remembered with the class in Sessions (&ldquo;Links from class&rdquo;); cards merely shown are not. The whole engine is <a class="underline" href="https://github.com/Sibhimanyu/greenroom/tree/main/App/Cues">App/Cues/</a>, and every line the status log writes for it begins with <span class="mono">Cues:</span>.</figcaption>
     </figure>
   </div>
 </section>
@@ -844,11 +844,11 @@
             <tr><td><strong>Meetings</strong></td><td>Zoom Meeting SDK + REST</td><td>Creates/joins meetings under your own Zoom account with your Marketplace credentials; lists the account's scheduled and live meetings, and ends a meeting left live by a crashed session before starting a new one.</td></tr>
             <tr><td><strong>Updates</strong></td><td>Sparkle, EdDSA-signed</td><td>Appcast on GitHub Pages; installs only releases signed with the developer's key. System profiling disabled.</td></tr>
             <tr><td><strong>YouTube upload</strong></td><td>YouTube Data API v3, OAuth 2.0 (PKCE, loopback)</td><td>Off by default. Resumable upload of a finished recording to the connected account's channel, and title changes from the Sessions window; scope <span class="mono">youtube.force-ssl</span> (upload and edit own videos). Refresh token stored like the Zoom credentials (plain preferences); revoked at Google on Disconnect.</td></tr>
-            <tr><td><strong>Speech to text</strong> (Prompter)</td><td>Apple <span class="mono">SpeechAnalyzer</span> / <span class="mono">SpeechTranscriber</span></td><td>macOS 26, off by default. Own <span class="mono">AVAudioEngine</span> tap on the default input device only; runs between the meeting going live and End Session, never outside a class. Text held in memory (&le; 90 s) for matching, and written to <span class="mono">transcript.txt</span> in the class folder unless that is switched off. Never in analytics, never sent anywhere. Model asset from Apple via the system asset service, downloaded once from Settings. No speech-recognition permission involved.</td></tr>
-            <tr><td><strong>Mention detection</strong> (Prompter)</td><td>Apple <span class="mono">FoundationModels</span> (on-device) or regex + <span class="mono">NLTagger</span></td><td>Reads the new sentences and returns up to five short phrases with a kind, plus a fuller search query built from the surrounding words. Off by default: measured against a recorded class it found everything but suggested roughly twenty-five times more wrong things than the word patterns, so a teacher turns it on knowingly. Roster names (meeting participants, waiting room, you) are excluded and any collision is dropped and logged. <span class="mono">FoundationModels.framework</span> is weak-linked so the app launches on macOS 14/15, where the tab says the feature needs 26.</td></tr>
-            <tr><td><strong>Link lookups</strong> (Prompter)</td><td><span class="mono">URLSession</span>, HTTPS, fixed <span class="mono">User-Agent</span></td><td>Wikipedia REST title search (the richer phrase and the bare name at once); Google Books (keyless) &rarr; Open Library; YouTube Data API <span class="mono">search.list</span> only with a connected account and the switch on, otherwise a search-page link; and, for a named product, a <span class="mono">GET</span> of the guessed domain read only as far as its <span class="mono">&lt;title&gt;</span>. Before anything is sent: the phrase must have been spoken, a lone word that is in the Mac&rsquo;s dictionary is dropped unless it was said as a name, and roster names are dropped. Per class: 30 lookups, 6 a minute, 20 YouTube; two in flight; five-minute back-off after three failures per host. Every request logged with its phrase and host.</td></tr>
+            <tr><td><strong>Speech to text</strong> (Cues)</td><td>Apple <span class="mono">SpeechAnalyzer</span> / <span class="mono">SpeechTranscriber</span></td><td>macOS 26, off by default. Own <span class="mono">AVAudioEngine</span> tap on the default input device only; runs between the meeting going live and End Session, never outside a class. Text held in memory (&le; 90 s) for matching, and written to <span class="mono">transcript.txt</span> in the class folder unless that is switched off. Never in analytics, never sent anywhere. Model asset from Apple via the system asset service, downloaded once from Settings. No speech-recognition permission involved.</td></tr>
+            <tr><td><strong>Mention detection</strong> (Cues)</td><td>Apple <span class="mono">FoundationModels</span> (on-device) or regex + <span class="mono">NLTagger</span></td><td>Reads the new sentences and returns up to five short phrases with a kind, plus a fuller search query built from the surrounding words. Off by default: measured against a recorded class it found everything but suggested roughly twenty-five times more wrong things than the word patterns, so a teacher turns it on knowingly. Roster names (meeting participants, waiting room, you) are excluded and any collision is dropped and logged. <span class="mono">FoundationModels.framework</span> is weak-linked so the app launches on macOS 14/15, where the tab says the feature needs 26.</td></tr>
+            <tr><td><strong>Link lookups</strong> (Cues)</td><td><span class="mono">URLSession</span>, HTTPS, fixed <span class="mono">User-Agent</span></td><td>Wikipedia REST title search (the richer phrase and the bare name at once); Google Books (keyless) &rarr; Open Library; YouTube Data API <span class="mono">search.list</span> only with a connected account and the switch on, otherwise a search-page link; and, for a named product, a <span class="mono">GET</span> of the guessed domain read only as far as its <span class="mono">&lt;title&gt;</span>. Before anything is sent: the phrase must have been spoken, a lone word that is in the Mac&rsquo;s dictionary is dropped unless it was said as a name, and roster names are dropped. Per class: 30 lookups, 6 a minute, 20 YouTube; two in flight; five-minute back-off after three failures per host. Every request logged with its phrase and host.</td></tr>
             <tr><td><strong>Entitlements</strong></td><td>Hardened Runtime</td><td><span class="mono">device.camera</span>, <span class="mono">device.audio-input</span>. Nothing else — no screen-recording entitlement.</td></tr>
-            <tr><td><strong>Frameworks</strong></td><td>Apple's own + Zoom SDK + Sparkle</td><td>AppKit, SwiftUI, WebKit, AVFoundation, ApplicationServices, Carbon, CryptoKit, NaturalLanguage; <span class="mono">Speech</span> and <span class="mono">FoundationModels</span> weak-linked for Prompter. <strong>No cloud AI SDK; no CoreML or Vision. The only models are Apple's and run on the Mac.</strong></td></tr>
+            <tr><td><strong>Frameworks</strong></td><td>Apple's own + Zoom SDK + Sparkle</td><td>AppKit, SwiftUI, WebKit, AVFoundation, ApplicationServices, Carbon, CryptoKit, NaturalLanguage; <span class="mono">Speech</span> and <span class="mono">FoundationModels</span> weak-linked for Cues. <strong>No cloud AI SDK; no CoreML or Vision. The only models are Apple's and run on the Mac.</strong></td></tr>
           </tbody>
         </table>
       </div>
@@ -861,9 +861,9 @@
         <li><a href="https://github.com/Sibhimanyu/greenroom/blob/main/App/Browser/BrowserWindow.swift">BrowserWindow.swift</a> <span>— the built-in browser</span></li>
         <li><a href="https://github.com/Sibhimanyu/greenroom/blob/main/App/Browser/BrowserHistory.swift">BrowserHistory.swift</a> <span>— its local history file</span></li>
         <li><a href="https://github.com/Sibhimanyu/greenroom/blob/main/App/YouTube/YouTubeUploader.swift">YouTubeUploader.swift</a> <span>— the upload, and the one file that leaves</span></li>
-        <li><a href="https://github.com/Sibhimanyu/greenroom/blob/main/App/Prompter/LinkResolver.swift">LinkResolver.swift</a> <span>— Prompter's lookups: the only words from speech that leave</span></li>
-        <li><a href="https://github.com/Sibhimanyu/greenroom/blob/main/App/Prompter/MentionDetector.swift">MentionDetector.swift</a> <span>— the roster filter and the word-pattern detector</span></li>
-        <li><a href="https://github.com/Sibhimanyu/greenroom/blob/main/App/Prompter/RollingTranscript.swift">RollingTranscript.swift</a> <span>— the transcript, in memory only</span></li>
+        <li><a href="https://github.com/Sibhimanyu/greenroom/blob/main/App/Cues/LinkResolver.swift">LinkResolver.swift</a> <span>— Cues's lookups: the only words from speech that leave</span></li>
+        <li><a href="https://github.com/Sibhimanyu/greenroom/blob/main/App/Cues/MentionDetector.swift">MentionDetector.swift</a> <span>— the roster filter and the word-pattern detector</span></li>
+        <li><a href="https://github.com/Sibhimanyu/greenroom/blob/main/App/Cues/RollingTranscript.swift">RollingTranscript.swift</a> <span>— the transcript, in memory only</span></li>
         <li><a href="https://github.com/Sibhimanyu/greenroom/blob/main/App/OBS/OBSWebSocketClient.swift">OBSWebSocketClient.swift</a> <span>— localhost OBS control</span></li>
         <li><a href="https://github.com/Sibhimanyu/greenroom/blob/main/App/Zoom/ZoomServerToServerClient.swift">ZoomServerToServerClient.swift</a> <span>— Zoom API calls</span></li>
         <li><a href="https://github.com/Sibhimanyu/greenroom/blob/main/App/Zoom/SecretStore.swift">SecretStore.swift</a> <span>— credential storage</span></li>
@@ -885,8 +885,8 @@
       <p>In perspective: these are app-level Zoom API keys scoped to running meetings under your account — not your Zoom password — and revocable anytime in the Zoom Marketplace. The optional "export settings" file used to set up a colleague's Mac also contains them in plaintext by design; hand it over directly and delete it after importing.</p>
     </div>
     <div class="caveat" style="margin-top:18px">
-      <h3>With Prompter on, the search phrases say what your class was about</h3>
-      <p>Prompter sends only the phrase it built — never audio, never the transcript, never a name from the meeting — but a term's worth of phrases to Google Books, Wikipedia and YouTube is still a record of what you taught, seen by those services like any search you typed yourself. Greenroom adds nothing to identify you beyond the connection itself (and, for YouTube video search, your own connected account). It is off by default; it pauses while you are muted; the menu bar can stop it for a class; and the log names every phrase, so you can see exactly what left.</p>
+      <h3>With Cues on, the search phrases say what your class was about</h3>
+      <p>Cues sends only the phrase it built — never audio, never the transcript, never a name from the meeting — but a term's worth of phrases to Google Books, Wikipedia and YouTube is still a record of what you taught, seen by those services like any search you typed yourself. Greenroom adds nothing to identify you beyond the connection itself (and, for YouTube video search, your own connected account). It is off by default; it pauses while you are muted; the menu bar can stop it for a class; and the log names every phrase, so you can see exactly what left.</p>
       <p>Two more limits, plainly: it hears your <em>microphone</em>, so a student's voice coming out of your speakers can reach it as room sound (a headset removes that); and the word-pattern fallback, used when Apple Intelligence is off, finds fewer things than the model does.</p>
     </div>
   </div>

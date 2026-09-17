@@ -1,5 +1,5 @@
 //
-//  PrompterCardView.swift
+//  CueCardView.swift
 //  Greenroom
 //
 //  One suggestion as a row: picture, kind, title, where it came from, and the
@@ -27,7 +27,7 @@
 //
 import AppKit
 
-final class PrompterCardView: NSView {
+final class CueCardView: NSView {
 
     /// Unchanged at 64pt on purpose. The extra air comes from deleting the
     /// button row, not from taking height off the self view, which is the
@@ -48,10 +48,10 @@ final class PrompterCardView: NSView {
     private var hovering = false
     private var pressOrigin: NSPoint?
 
-    private(set) var card: PrompterCard?
-    var onOpen: ((PrompterCard) -> Void)?
-    var onSend: ((PrompterCard) -> Void)?
-    var onDismiss: ((PrompterCard) -> Void)?
+    private(set) var card: CueCard?
+    var onOpen: ((CueCard) -> Void)?
+    var onSend: ((CueCard) -> Void)?
+    var onDismiss: ((CueCard) -> Void)?
 
     override init(frame: NSRect) {
         super.init(frame: frame)
@@ -111,7 +111,7 @@ final class PrompterCardView: NSView {
 
     required init?(coder: NSCoder) { nil }
 
-    private func fire(_ action: ((PrompterCard) -> Void)?) {
+    private func fire(_ action: ((CueCard) -> Void)?) {
         guard let card else { return }
         action?(card)
     }
@@ -182,7 +182,7 @@ final class PrompterCardView: NSView {
 
     /// Rewrites the row for a card. Returns without touching anything when the
     /// same card is already shown, so the poll does not repaint a stable row.
-    func apply(_ next: PrompterCard, canSend: Bool) {
+    func apply(_ next: CueCard, canSend: Bool) {
         let changed = card?.id != next.id || card?.thumbnail !== next.thumbnail
         card = next
         sendButton.isEnabled = canSend

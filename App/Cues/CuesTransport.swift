@@ -1,10 +1,10 @@
 //
-//  PrompterTransport.swift
+//  CuesTransport.swift
 //  Greenroom
 //
 //  Everything LinkResolver needs from the network, behind one protocol.
 //
-//  Phase 2 of docs/prompter-search-improvement-plan.md asks for source clients
+//  Phase 2 of docs/cues-search-improvement-plan.md asks for source clients
 //  that tests can stand in for, so resolution can be scored without depending
 //  on what Wikipedia happens to return today. The resolver used to hold a
 //  URLSession directly, which made every ranking decision in it unmeasurable:
@@ -14,12 +14,12 @@
 //  Two methods, because the resolver does two different things with a socket.
 //  The APIs return JSON in one piece. A product's homepage is read only as far
 //  as its </title>, which was worth doing - downloading whole homepages was the
-//  slowest thing Prompter did - and that streaming decision belongs on this
+//  slowest thing Cues did - and that streaming decision belongs on this
 //  side of the line, where a recorded answer can simply hand back the string.
 //
 import Foundation
 
-protocol PrompterTransport: Sendable {
+protocol CuesTransport: Sendable {
     /// A whole JSON body.
     func data(for request: URLRequest) async throws -> (Data, HTTPURLResponse)
 
@@ -31,7 +31,7 @@ protocol PrompterTransport: Sendable {
 
 /// The real one. Ephemeral session, short timeouts, a descriptive User-Agent
 /// that a site owner reading their logs can identify.
-struct URLSessionTransport: PrompterTransport {
+struct URLSessionTransport: CuesTransport {
     private let session: URLSession
 
     init(userAgent: String) {
@@ -88,7 +88,7 @@ struct URLSessionTransport: PrompterTransport {
 /// every time. Anything it was not given answers 404, which is deliberate: a
 /// fixture that reaches a URL nobody recorded should fail loudly rather than
 /// quietly fall through to a search link and look like a pass.
-struct RecordedTransport: PrompterTransport {
+struct RecordedTransport: CuesTransport {
     struct Reply {
         var status = 200
         var body: String

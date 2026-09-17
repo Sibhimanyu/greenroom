@@ -25,7 +25,7 @@ struct SessionMetadata: Codable {
         var id: String { videoID }
     }
 
-    /// A Prompter card the teacher acted on. Written on Open or Send ONLY -
+    /// A Cues card the teacher acted on. Written on Open or Send ONLY -
     /// never for a card that was merely shown, never a mention, a query or a
     /// word of the transcript. This is the class's own record of what it
     /// looked at, kept because "what was that book from Tuesday" is a real

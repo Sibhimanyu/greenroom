@@ -1,10 +1,10 @@
 //
-//  PrompterCard.swift
+//  CueCard.swift
 //  Greenroom
 //
-//  The vocabulary of Prompter: what the detector hears (a Mention), what a
-//  lookup turns it into (a PrompterCard), and what a surface needs to draw
-//  and act on it (PrompterSurfaceState).
+//  The vocabulary of Cues: what the detector hears (a Mention), what a
+//  lookup turns it into (a CueCard), and what a surface needs to draw
+//  and act on it (CuesSurfaceState).
 //
 //  Nothing here touches speech or the network. That is deliberate: the two
 //  surfaces (participants panel, menu bar) and the Sessions window all speak
@@ -15,7 +15,7 @@
 import AppKit
 import Foundation
 
-/// Which detector proposed a mention. Written into the class's prompts.txt so
+/// Which detector proposed a mention. Written into the class's cues.txt so
 /// a real lesson says how the two sources actually split, rather than the split
 /// being argued from one recording.
 enum FoundBy: String, Hashable {
@@ -103,7 +103,7 @@ struct Mention: Hashable {
 /// One suggestion, ready to show. A card exists only after a lookup came back
 /// with a title and a URL - the one exception is a `.search` card, which
 /// points at a search page and has sent nothing anywhere yet.
-struct PrompterCard: Identifiable, Hashable {
+struct CueCard: Identifiable, Hashable {
     enum Source: String {
         case googleBooks, openLibrary, wikipedia, wikiquote, youtube, search
         /// The Mac's own Dictionary. Nothing leaves for this one.
@@ -170,14 +170,14 @@ struct PrompterCard: Identifiable, Hashable {
 
     var normalizedKey: String { Mention.normalize(query) }
 
-    static func == (a: PrompterCard, b: PrompterCard) -> Bool { a.id == b.id }
+    static func == (a: CueCard, b: CueCard) -> Bool { a.id == b.id }
     func hash(into hasher: inout Hasher) { hasher.combine(id) }
 }
 
 /// Everything a surface needs, and the three things it may do. Handed to the
 /// participants panel and the menu-bar item on every tick; both redraw in
 /// place from it.
-struct PrompterSurfaceState {
+struct CuesSurfaceState {
     var listening = false
     /// True while muted in Zoom or stopped for this class: the pipeline is
     /// up but nothing is being transcribed.
@@ -185,12 +185,12 @@ struct PrompterSurfaceState {
     /// True while a lookup is in flight - the amber dot (DESIGN.md: network
     /// reads amber).
     var resolving = false
-    var cards: [PrompterCard] = []
-    var open: (PrompterCard) -> Void = { _ in }
-    var send: (PrompterCard) -> Void = { _ in }
-    var dismiss: (PrompterCard) -> Void = { _ in }
+    var cards: [CueCard] = []
+    var open: (CueCard) -> Void = { _ in }
+    var send: (CueCard) -> Void = { _ in }
+    var dismiss: (CueCard) -> Void = { _ in }
     /// Whether Send has anywhere to go: the meeting chat is joined.
     var canSend = false
 
-    static let empty = PrompterSurfaceState()
+    static let empty = CuesSurfaceState()
 }

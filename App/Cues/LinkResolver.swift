@@ -2,7 +2,7 @@
 //  LinkResolver.swift
 //  Greenroom
 //
-//  Turns a mention into a card, which means this is the one file in Prompter
+//  Turns a mention into a card, which means this is the one file in Cues
 //  that talks to the internet - and the only place any word derived from the
 //  teacher's speech leaves the Mac. What leaves is the query string, over
 //  HTTPS, to a fixed list of hosts, with a User-Agent that says who is asking.
@@ -32,7 +32,7 @@ actor LinkResolver {
     /// What one mention became. `sentTo` names the hosts that received the
     /// query, in the words the status log uses.
     struct Resolution {
-        var cards: [PrompterCard] = []
+        var cards: [CueCard] = []
         var sentTo: [String] = []
         /// Things worth one log line each: "no result (Wikipedia)".
         var notes: [String] = []
@@ -45,13 +45,13 @@ actor LinkResolver {
         /// which put a second round trip in front of a link the teacher could
         /// already have clicked. The picture is decoration; the link is the
         /// product. The caller shows the card and fills the picture in when it
-        /// arrives. See PrompterController.loadThumbnails.
+        /// arrives. See CuesController.loadThumbnails.
         var thumbnails: [UUID: URL] = [:]
     }
 
     /// One host's answer: cards, or the note the status log gets instead.
     enum Lookup {
-        case success([PrompterCard])
+        case success([CueCard])
         case failure(String)
     }
 
@@ -72,14 +72,14 @@ actor LinkResolver {
 
     /// Descriptive, fixed, and the same on every request. A site owner
     /// reading their logs should be able to tell what this is.
-    static let userAgent = "Greenroom/\(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "dev") (macOS; Prompter; +https://sibhimanyu.github.io/greenroom/how-it-works.html)"
+    static let userAgent = "Greenroom/\(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "dev") (macOS; Cues; +https://sibhimanyu.github.io/greenroom/how-it-works.html)"
 
-    private let transport: PrompterTransport
+    private let transport: CuesTransport
     private var configuration = Configuration()
 
     private var resolvedKeys: Set<String> = []
     private var cache: [String: Resolution] = [:]
-    private var counts: [PrompterCard.Source: Int] = [:]
+    private var counts: [CueCard.Source: Int] = [:]
     private var consecutiveFailures: [String: Int] = [:]
     private var backoffUntil: [String: Date] = [:]
     private var inFlight = 0
@@ -92,21 +92,21 @@ actor LinkResolver {
     /// yet for what that ordering should be - inventing one from a hunch is
     /// how the eight-letter word filter happened. This collects the evidence
     /// first; the policy comes after a few real classes.
-    private var timings: [PrompterCard.Source: [Double]] = [:]
-    private var failures: [PrompterCard.Source: Int] = [:]
+    private var timings: [CueCard.Source: [Double]] = [:]
+    private var failures: [CueCard.Source: Int] = [:]
     private(set) var totalResolved = 0
     /// True once YouTube said the quota is gone for the day, so every further
     /// video mention becomes a search link without asking again.
     private var youtubeQuotaExhausted = false
 
     /// Per-session ceilings, per source.
-    private let caps: [PrompterCard.Source: Int] = [.googleBooks: 60, .openLibrary: 60, .wikipedia: 60, .wikiquote: 30, .youtube: 20, .search: 200, .dictionary: 200, .officialSite: 80, .images: 200]
+    private let caps: [CueCard.Source: Int] = [.googleBooks: 60, .openLibrary: 60, .wikipedia: 60, .wikiquote: 30, .youtube: 20, .search: 200, .dictionary: 200, .images: 200]
     private var sessionCap: Int { configuration.sessionCap }
     private let maxInFlight = 2
 
     /// The transport is injectable so the bench can replay recorded answers.
-    /// See PrompterTransport.
-    init(transport: PrompterTransport? = nil) {
+    /// See CuesTransport.
+    init(transport: CuesTransport? = nil) {
         self.transport = transport ?? URLSessionTransport(userAgent: Self.userAgent)
     }
 
@@ -146,7 +146,7 @@ actor LinkResolver {
         return parts.joined(separator: ", ")
     }
 
-    private func note(_ source: PrompterCard.Source, seconds: Double, failed: Bool) {
+    private func note(_ source: CueCard.Source, seconds: Double, failed: Bool) {
         timings[source, default: []].append(seconds)
         if failed { failures[source, default: 0] += 1 }
     }
@@ -258,7 +258,7 @@ actor LinkResolver {
         ]
         return await fetchJSON(components.url!, source: .googleBooks, host: "googleapis.com") { json in
             let items = json["items"] as? [[String: Any]] ?? []
-            return items.compactMap { item -> PrompterCard? in
+            return items.compactMap { item -> CueCard? in
                 guard let info = item["volumeInfo"] as? [String: Any],
                       let title = info["title"] as? String,
                       let id = item["id"] as? String,
@@ -267,7 +267,7 @@ actor LinkResolver {
                     ?? "https://books.google.com/books?id=\(id)"
                 guard let url = Self.https(link) else { return nil }
                 let authors = (info["authors"] as? [String] ?? []).joined(separator: ", ")
-                var card = PrompterCard(kind: .book, query: query, title: title,
+                var card = CueCard(kind: .book, query: query, title: title,
                                         subtitle: authors.isEmpty ? "Google Books" : authors,
                                         source: .googleBooks, url: url)
                 if let thumb = (info["imageLinks"] as? [String: Any])?["thumbnail"] as? String,
@@ -289,12 +289,12 @@ actor LinkResolver {
         ]
         return await fetchJSON(components.url!, source: .openLibrary, host: "openlibrary.org") { json in
             let docs = json["docs"] as? [[String: Any]] ?? []
-            return docs.compactMap { doc -> PrompterCard? in
+            return docs.compactMap { doc -> CueCard? in
                 guard let title = doc["title"] as? String, let key = doc["key"] as? String,
                       Self.titleMatches(title, query: query),
                       let url = URL(string: "https://openlibrary.org\(key)") else { return nil }
                 let authors = (doc["author_name"] as? [String] ?? []).prefix(2).joined(separator: ", ")
-                let card = PrompterCard(kind: .book, query: query, title: title,
+                let card = CueCard(kind: .book, query: query, title: title,
                                         subtitle: authors.isEmpty ? "Open Library" : authors,
                                         source: .openLibrary, url: url)
                 if let cover = doc["cover_i"] as? Int,
@@ -330,7 +330,7 @@ actor LinkResolver {
                 // Disambiguation pages are a list, not an answer.
                 !((page["description"] as? String) ?? "").lowercased().contains("referred to by the same term")
             }
-            return pages.prefix(1).compactMap { page -> PrompterCard? in
+            return pages.prefix(1).compactMap { page -> CueCard? in
                 guard let key = page["key"] as? String, let title = page["title"] as? String,
                       let url = URL(string: "https://en.wikipedia.org/wiki/\(key)") else { return nil }
                 // The same rule resolveThing uses, which this path never had.
@@ -340,9 +340,14 @@ actor LinkResolver {
                 // on 6 Sep turned "Jao Maa" into the Wikipedia page for Jan
                 // Mayen, an Arctic island, and served it as a topic. Three of
                 // the four kinds that reach Wikipedia had no title check at all.
-                guard TitleMatch.answers(title: title, said: mention.query) else { return nil }
+                guard TitleMatch.answers(title: title, said: mention.query),
+                              !TitleMatch.guessedTheSense(title: title, said: mention.query) else { return nil }
                 let description = (page["description"] as? String) ?? "Wikipedia"
-                let card = PrompterCard(kind: mention.kind, query: mention.query, title: title,
+                // Topics answer to the creative-work rule as well; books and
+                // videos deliberately do not.
+                if mention.kind == .topic,
+                   TitleMatch.namesACreativeWork(description: description) { return nil }
+                let card = CueCard(kind: mention.kind, query: mention.query, title: title,
                                         subtitle: description.prefix(1).uppercased() + description.dropFirst(),
                                         source: .wikipedia, url: url)
                 if let thumb = (page["thumbnail"] as? [String: Any])?["url"] as? String {
@@ -384,128 +389,32 @@ actor LinkResolver {
         return bare
     }
 
-    /// A product's own homepage, guessed from its name and then checked.
-    ///
-    /// "Haiku Deck" -> haikudeck.com, which is right. The check matters as much
-    /// as the guess: the page must answer 200 AND its title must share a word
-    /// with the name, which is what rejects parked and squatted domains
-    /// (scarves.com answers with a Cloudflare interstitial titled "Just a
-    /// moment...").
-    ///
-    /// This visits the product's own site, the same page the teacher would
-    /// open. It is not a search engine and nothing is scraped.
-    private func officialSite(for query: String) async -> PrompterCard? {
-        let words = query.lowercased().split(whereSeparator: { !$0.isLetter && !$0.isNumber })
-        guard words.count >= 1, words.count <= 3 else { return nil }
-        let host = words.joined()
-        guard host.count >= 4, host.count <= 30 else { return nil }
-        guard allowed(.officialSite, host: host), let url = URL(string: "https://\(host).com") else { return nil }
-
-        var request = URLRequest(url: url)
-        request.timeoutInterval = 6
-        // Ask for a web page, not JSON. The shared session defaults to
-        // "Accept: application/json" for the APIs, and a real site can answer
-        // that with a 500 (bookfusion.com does), which read as "no site here".
-        request.setValue("text/html,application/xhtml+xml", forHTTPHeaderField: "Accept")
-
-        // Read only as far as the title.
-        //
-        // All this needs is one tag, and it sits in the first kilobyte or two
-        // of any page - but downloading whole homepages was the single
-        // slowest thing Prompter did (eink.com: ~1.7 s of a 3.3 s lookup).
-        // Stopping at </title> turns that into a fraction of a page. The 16 KB
-        // ceiling bounds a page that never closes the tag. The streaming itself
-        // lives in the transport, so a recorded answer can just be a string.
-        let started = Date()
-        guard let (html, http) = try? await transport.text(for: request,
-                                                           stoppingAfter: "</title>",
-                                                           byteCap: 16_000),
-              http.statusCode == 200, !html.isEmpty else {
-            note(.officialSite, seconds: Date().timeIntervalSince(started), failed: true)
-            return nil
-        }
-        note(.officialSite, seconds: Date().timeIntervalSince(started), failed: false)
-
-        guard let range = html.range(of: "<title[^>]*>([^<]{1,120})", options: [.regularExpression, .caseInsensitive]) else { return nil }
-        let title = Self.stripHTML(String(html[range]).replacingOccurrences(of: "<title[^>]*>", with: "", options: [.regularExpression, .caseInsensitive]))
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        // The title has to look like the thing, or this is a parked domain.
-        // Compare squashed as well as word by word: "book fusion" reaches
-        // bookfusion.com, whose title is the single word "BookFusion".
-        let normalizedTitle = Mention.normalize(title)
-        let titleWords = Set(normalizedTitle.split(separator: " ").map(String.init))
-        let squashedTitle = normalizedTitle.replacingOccurrences(of: " ", with: "")
-        guard words.contains(where: { titleWords.contains(String($0)) }) || squashedTitle.contains(host) else { return nil }
-
-        return PrompterCard(kind: .thing, query: query, title: title.isEmpty ? query : title,
-                            subtitle: "\(host).com \u{00B7} the site itself",
-                            source: .officialSite, url: url)
-    }
-
     // MARK: Things - tools, products, companies
 
-    /// Wikipedia first; when it has nothing, a picture search link. The
-    /// teacher's own habit for a product was an image search ("e ink
-    /// kindle"), and a search link sends nothing until it is opened.
+    /// Wikipedia, or nothing.
+    ///
+    /// This used to do two more things, and one recorded 43-minute class
+    /// retired both.
+    ///
+    /// It guessed an official site by deleting the spaces from the query and
+    /// fetching `<that>.com`. That ran 54 times of the class's 80-lookup
+    /// budget and failed 41 of them, and the nine that answered were a
+    /// packaging firm for "Vijay Shri", a Utah gym for "upper limit" and
+    /// Whitepages for "phone number". It was a domain-squatter detector
+    /// wearing two thirds of the lookup budget.
+    ///
+    /// When everything failed it offered a Bing image search instead. That
+    /// card cannot be wrong, so it became the place every bad mention landed:
+    /// 54 of the 82 links that class were "Pictures of ..." over scraps like
+    /// "this part" and "Other number". Worse, the junk exhausted Wikipedia's
+    /// own 60-lookup cap, so the genuinely good late-class terms -
+    /// "prefrontal cortex", "Generative AI", "virtual memory" - could no
+    /// longer reach Wikipedia and got picture searches too, when all three
+    /// have exact articles. Suppressing the noise is what gets them their
+    /// real entry back; a card that is never wrong and rarely useful is not
+    /// worth a slot the right answer needed.
     private func resolveThing(_ mention: Mention) async -> Resolution {
-        var resolution = Resolution()
-        // The site itself and the encyclopedia entry really are fetched
-        // together now.
-        //
-        // The comment here has claimed that for a while and the code did not
-        // do it: `async let siteCard` was awaited on the very next line, which
-        // is a sequential call with extra syntax. The site check is the slow
-        // leg - a real homepage, even stopping at </title> - so Wikipedia did
-        // not start until it finished, and for a product with no site of its
-        // own the teacher waited for both round trips end to end.
-        //
-        // Both are spent every time, which the plan asks for explicitly: pick
-        // the best valid card rather than the first one that arrives. The site
-        // still wins when it exists, because for a named product it is what
-        // the teacher actually opens (haikudeck.com, in the recording).
-        let siteTask = Task { await self.officialSite(for: mention.query) }
-        var fromWikipedia = await thingFromWikipedia(mention)
-
-        // The fast-path policy the plan asks for, and the reason it is
-        // conditional. The site is the PREFERRED answer for a named product,
-        // so it is worth waiting for - but only while there is nothing else to
-        // show. Once Wikipedia has a valid card in hand, a site that has not
-        // answered in a second and a half is no longer worth the teacher's
-        // silence, because the alternative is already sitting there.
-        //
-        // With nothing else to offer, it waits the request out. Cutting the
-        // site short there would trade a real answer for a picture-search link,
-        // which is not a fast path, just a worse one.
-        let site: PrompterCard?
-        if fromWikipedia.cards.isEmpty {
-            site = await siteTask.value
-        } else {
-            site = await result(of: siteTask, within: Self.fastPathSeconds)
-            if site == nil { siteTask.cancel() }
-        }
-        if let site {
-            resolution.cards.append(site)
-            // Keep whatever Wikipedia had to say for the log, but not its card.
-            resolution.notes = fromWikipedia.notes
-            resolution.sentTo = fromWikipedia.sentTo
-            return resolution
-        }
-        resolution.notes = fromWikipedia.notes
-        resolution.sentTo = fromWikipedia.sentTo
-        resolution.cards = fromWikipedia.cards
-        resolution.thumbnails = fromWikipedia.thumbnails
-        fromWikipedia.cards = []
-
-        if resolution.cards.isEmpty {
-            var components = URLComponents(string: "https://www.bing.com/images/search")!
-            components.queryItems = [URLQueryItem(name: "q", value: mention.query)]
-            resolution.cards = [PrompterCard(kind: .thing, query: mention.query,
-                                             title: "Pictures of \u{201C}\(mention.query)\u{201D}",
-                                             subtitle: "Image search \u{00B7} nothing sent until you open it",
-                                             source: .search, url: components.url!)]
-            resolution.searchLinkOnly = true
-        }
-        return resolution
+        await thingFromWikipedia(mention)
     }
 
     /// How long a preferred source may keep the teacher waiting once a valid
@@ -513,7 +422,7 @@ actor LinkResolver {
     private static let fastPathSeconds: Double = 1.5
 
     private enum Race {
-        case finished(PrompterCard?)
+        case finished(CueCard?)
         /// This leg was cancelled because the other one won.
         case lost
     }
@@ -531,7 +440,7 @@ actor LinkResolver {
     /// cancellation. withTaskGroup then cannot return until every child has
     /// drained, so the first version of this waited out the full five seconds
     /// it was written to avoid - the bench measured 5.11 s and said so.
-    private func result(of task: Task<PrompterCard?, Never>, within seconds: Double) async -> PrompterCard? {
+    private func result(of task: Task<CueCard?, Never>, within seconds: Double) async -> CueCard? {
         let timer = Task { try await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000)) }
         return await withTaskGroup(of: Race.self) { group in
             group.addTask { .finished(await task.value) }
@@ -540,7 +449,7 @@ actor LinkResolver {
                 task.cancel()
                 return .finished(nil)
             }
-            var winner: PrompterCard?
+            var winner: CueCard?
             while let outcome = await group.next() {
                 if case .finished(let card) = outcome {
                     winner = card
@@ -575,20 +484,24 @@ actor LinkResolver {
             components.queryItems = [URLQueryItem(name: "q", value: mention.query), URLQueryItem(name: "limit", value: "3")]
             switch await fetchJSON(components.url!, source: .wikipedia, host: "wikipedia.org", parse: { json in
                 let pages = json["pages"] as? [[String: Any]] ?? []
-                return pages.compactMap { page -> PrompterCard? in
+                return pages.compactMap { page -> CueCard? in
                     guard let key = page["key"] as? String, let title = page["title"] as? String,
                           let url = URL(string: "https://en.wikipedia.org/wiki/\(key)") else { return nil }
                     let description = (page["description"] as? String) ?? ""
                     // Disambiguation pages are a list, not an answer.
                     guard !description.lowercased().contains("referred to by the same term"),
                           !description.lowercased().hasPrefix("disambiguation") else { return nil }
+                    // A named thing is not a 1904 film that happens to share
+                    // the phrase. See TitleMatch.namesACreativeWork.
+                    guard !TitleMatch.namesACreativeWork(description: description) else { return nil }
                     // One shared rule, in TitleMatch. The check that used to
                     // live here asked only that every word of the TITLE had
                     // been said, which let a title that is a subset of the
                     // phrase win: "haiku deck" matched the page "Haiku", the
                     // poetic form. Everything said has to be answered now.
-                    guard TitleMatch.answers(title: title, said: mention.query) else { return nil }
-                    let card = PrompterCard(kind: .thing, query: mention.query, title: title,
+                    guard TitleMatch.answers(title: title, said: mention.query),
+                              !TitleMatch.guessedTheSense(title: title, said: mention.query) else { return nil }
+                    let card = CueCard(kind: .thing, query: mention.query, title: title,
                                             subtitle: description.isEmpty ? "Wikipedia" : description.prefix(1).uppercased() + description.dropFirst(),
                                             source: .wikipedia, url: url)
                     if let thumb = (page["thumbnail"] as? [String: Any])?["url"] as? String {
@@ -625,12 +538,12 @@ actor LinkResolver {
         ]
         switch await fetchJSON(components.url!, source: .wikiquote, host: "wikiquote.org", parse: { json in
             let results = ((json["query"] as? [String: Any])?["search"] as? [[String: Any]]) ?? []
-            return results.prefix(1).compactMap { result -> PrompterCard? in
+            return results.prefix(1).compactMap { result -> CueCard? in
                 guard let title = result["title"] as? String,
                       let url = URL(string: "https://en.wikiquote.org/wiki/" + (title.replacingOccurrences(of: " ", with: "_")
                         .addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? title)) else { return nil }
                 let snippet = Self.stripHTML((result["snippet"] as? String) ?? "")
-                return PrompterCard(kind: .quote, query: mention.query, title: title,
+                return CueCard(kind: .quote, query: mention.query, title: title,
                                     subtitle: snippet.isEmpty ? "Wikiquote" : "\u{201C}\(snippet)\u{201D}",
                                     source: .wikiquote, url: url)
             }
@@ -644,7 +557,7 @@ actor LinkResolver {
         if resolution.cards.isEmpty {
             var components = URLComponents(string: "https://www.google.com/search")!
             components.queryItems = [URLQueryItem(name: "q", value: "\"\(mention.query)\"")]
-            resolution.cards = [PrompterCard(kind: .quote, query: mention.query,
+            resolution.cards = [CueCard(kind: .quote, query: mention.query,
                                              title: "Search for the quotation",
                                              subtitle: "\u{201C}\(mention.query)\u{201D} \u{00B7} nothing sent until you open it",
                                              source: .search, url: components.url!)]
@@ -670,7 +583,7 @@ actor LinkResolver {
             text = String(text[bar.upperBound...])
         }
         let firstSense = text.components(separatedBy: CharacterSet(charactersIn: ".;\n")).first ?? text
-        resolution.cards = [PrompterCard(kind: .word, query: mention.query, title: mention.query.capitalized,
+        resolution.cards = [CueCard(kind: .word, query: mention.query, title: mention.query.capitalized,
                                          subtitle: firstSense.trimmingCharacters(in: .whitespaces),
                                          source: .dictionary,
                                          url: URL(string: "dict://\(word.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? word)")!)]
@@ -716,13 +629,13 @@ actor LinkResolver {
         switch await fetchJSON(components.url!, source: .youtube, host: "youtube.googleapis.com",
                                headers: ["Authorization": "Bearer \(bearer)"], parse: { json in
             let items = json["items"] as? [[String: Any]] ?? []
-            return items.compactMap { item -> PrompterCard? in
+            return items.compactMap { item -> CueCard? in
                 guard let idBlock = item["id"] as? [String: Any], let videoID = idBlock["videoId"] as? String,
                       let snippet = item["snippet"] as? [String: Any],
                       let title = snippet["title"] as? String,
                       let url = URL(string: "https://www.youtube.com/watch?v=\(videoID)") else { return nil }
                 let channel = (snippet["channelTitle"] as? String) ?? "YouTube"
-                let card = PrompterCard(kind: .video, query: mention.query, title: Self.decodeHTML(title),
+                let card = CueCard(kind: .video, query: mention.query, title: Self.decodeHTML(title),
                                         subtitle: channel, source: .youtube, url: url)
                 if let thumbs = snippet["thumbnails"] as? [String: Any],
                    let medium = (thumbs["medium"] ?? thumbs["default"]) as? [String: Any],
@@ -751,10 +664,10 @@ actor LinkResolver {
         return resolution
     }
 
-    private static func youtubeSearchCard(for mention: Mention) -> PrompterCard {
+    private static func youtubeSearchCard(for mention: Mention) -> CueCard {
         var components = URLComponents(string: "https://www.youtube.com/results")!
         components.queryItems = [URLQueryItem(name: "search_query", value: mention.query)]
-        return PrompterCard(kind: .video, query: mention.query,
+        return CueCard(kind: .video, query: mention.query,
                             title: "Search YouTube for \u{201C}\(mention.query)\u{201D}",
                             subtitle: "Nothing sent until you open it", source: .search, url: components.url!)
     }
@@ -779,14 +692,14 @@ actor LinkResolver {
 
     /// Cap and back-off check for one source. A host that failed three times
     /// running is left alone for five minutes.
-    private func allowed(_ source: PrompterCard.Source, host: String) -> Bool {
+    private func allowed(_ source: CueCard.Source, host: String) -> Bool {
         if let until = backoffUntil[host], until > Date() { return false }
         return counts[source, default: 0] < caps[source, default: 0]
     }
 
-    private func fetchJSON(_ url: URL, source: PrompterCard.Source, host: String,
+    private func fetchJSON(_ url: URL, source: CueCard.Source, host: String,
                            headers: [String: String] = [:],
-                           parse: ([String: Any]) -> [PrompterCard]) async -> Lookup {
+                           parse: ([String: Any]) -> [CueCard]) async -> Lookup {
         counts[source, default: 0] += 1
         var request = URLRequest(url: url)
         for (key, value) in headers { request.setValue(value, forHTTPHeaderField: key) }
@@ -823,7 +736,7 @@ actor LinkResolver {
         }
     }
 
-    /// Google Books hands out http:// covers; everything Prompter opens or
+    /// Google Books hands out http:// covers; everything Cues opens or
     /// fetches is https or nothing.
     private static func https(_ string: String) -> URL? {
         var text = string

@@ -1,8 +1,8 @@
 //
-//  PrompterSettingsTab.swift
+//  CuesSettingsTab.swift
 //  Greenroom
 //
-//  Settings → Prompter, and the rows Onboarding borrows from it.
+//  Settings → Cues, and the rows Onboarding borrows from it.
 //
 //  Grouped form, the Layout tab's grammar: a title and a one-line subtitle
 //  on the left, the control on the right, and nothing that needs a
@@ -14,17 +14,17 @@
 //
 import SwiftUI
 
-struct PrompterSettingsTab: View {
+struct CuesSettingsTab: View {
     var body: some View {
         Form {
             if #available(macOS 26.0, *) {
-                PrompterSetupRows(compact: false)
-                PrompterTryItRows()
+                CuesSetupRows(compact: false)
+                CuesTryItRows()
                 #if DEBUG
-                PrompterDebugRows()
+                CuesDebugRows()
                 #endif
             } else {
-                Section { PrompterUnavailableText() }
+                Section { CuesUnavailableText() }
             }
         }
         .formStyle(.grouped)
@@ -32,9 +32,9 @@ struct PrompterSettingsTab: View {
 }
 
 /// The one sentence for Macs that cannot run it.
-struct PrompterUnavailableText: View {
+struct CuesUnavailableText: View {
     var body: some View {
-        Text("Prompter needs macOS 26. It listens to your microphone during a class and suggests links for what you mention, using Apple\u{2019}s on-device models. Everything else in Greenroom works as before.")
+        Text("Cues needs macOS 26. It listens to your microphone during a class and suggests links for what you mention, using Apple\u{2019}s on-device models. Everything else in Greenroom works as before.")
             .font(.callout)
             .foregroundStyle(.secondary)
     }
@@ -55,7 +55,7 @@ struct SettingLabel: View {
 /// Switch, model, detector, language, YouTube - shared by Settings and the
 /// onboarding page. `compact` drops the section headers for the wizard.
 @available(macOS 26.0, *)
-struct PrompterSetupRows: View {
+struct CuesSetupRows: View {
     @EnvironmentObject private var coordinator: CoordinatorController
     @ObservedObject private var assets = ModelAssets.shared
     @State private var locales: [Locale] = []
@@ -65,11 +65,11 @@ struct PrompterSetupRows: View {
 
     var body: some View {
         Section {
-            Toggle(isOn: $coordinator.prompterEnabled) {
+            Toggle(isOn: $coordinator.cuesEnabled) {
                 SettingLabel(title: "Listen during classes and suggest links",
                              subtitle: "Cards for the tools, words, quotes, books, videos, topics and people you name. Off by default.")
             }
-        } header: { if !compact { Text("Prompter") } } footer: {
+        } header: { if !compact { Text("Cues") } } footer: {
             if !compact {
                 Text("Only the short search phrase leaves the Mac \u{2014} to Google Books, Open Library, Wikipedia and, if allowed, YouTube \u{2014} and each one is written to the status log. The audio, the transcript and the names of people in the meeting never leave this Mac; the transcript is saved into the class folder unless you turn that off below.")
             }
@@ -97,7 +97,7 @@ struct PrompterSetupRows: View {
                 SettingLabel(title: "Speech model", subtitle: "Apple\u{2019}s, downloaded once. Never during a class.")
             }
 
-            Picker(selection: $coordinator.prompterLocaleIdentifier) {
+            Picker(selection: $coordinator.cuesLocaleIdentifier) {
                 Text("System (\(ModelAssets.displayName(Locale.current)))").tag("")
                 ForEach(locales, id: \.identifier) { locale in
                     Text(ModelAssets.displayName(locale)).tag(locale.identifier)
@@ -106,11 +106,11 @@ struct PrompterSetupRows: View {
                 SettingLabel(title: "Language", subtitle: "What you teach in.")
             }
             .disabled(inClass)
-            .onChange(of: coordinator.prompterLocaleIdentifier) { _ in
-                Task { await assets.refresh(preferredLocale: coordinator.prompterLocaleIdentifier) }
+            .onChange(of: coordinator.cuesLocaleIdentifier) { _ in
+                Task { await assets.refresh(preferredLocale: coordinator.cuesLocaleIdentifier) }
             }
 
-            Toggle(isOn: $coordinator.prompterUseModel) {
+            Toggle(isOn: $coordinator.cuesUseModel) {
                 SettingLabel(title: "Also suggest links for things I mention without naming them",
                              subtitle: FoundationModelsDetector.isAvailable
                                  ? "Apple\u{2019}s language model reads each sentence. Finds much more, and interrupts much more."
@@ -119,16 +119,16 @@ struct PrompterSetupRows: View {
             .disabled(!FoundationModelsDetector.isAvailable || inClass)
 
             LabeledContent("Mentions found by") {
-                Text(coordinator.prompterUseModel && FoundationModelsDetector.isAvailable
+                Text(coordinator.cuesUseModel && FoundationModelsDetector.isAvailable
                      ? "Apple Intelligence" : "Word patterns")
             }
 
-            Toggle(isOn: $coordinator.prompterSaveTranscript) {
+            Toggle(isOn: $coordinator.cuesSaveTranscript) {
                 SettingLabel(title: "Save the transcript and links with the class",
-                             subtitle: "transcript.txt for what was said and prompts.txt for what was suggested, in the class folder beside the recording. Off keeps both in memory only.")
+                             subtitle: "transcript.txt for what was said and cues.txt for what was suggested, in the class folder beside the recording. Off keeps both in memory only.")
             }
 
-            Toggle(isOn: $coordinator.prompterVideoSearch) {
+            Toggle(isOn: $coordinator.cuesVideoSearch) {
                 SettingLabel(title: "Video links may use YouTube search",
                              subtitle: coordinator.youtubeConnected
                                  ? "Top result on your connected Google account, up to 20 a class."
@@ -140,12 +140,12 @@ struct PrompterSetupRows: View {
         Color.clear.frame(height: 0)
             .task {
                 locales = await ModelAssets.supportedLocales()
-                await assets.refresh(preferredLocale: coordinator.prompterLocaleIdentifier)
+                await assets.refresh(preferredLocale: coordinator.cuesLocaleIdentifier)
             }
-            .onChange(of: coordinator.prompterEnabled) { enabled in
+            .onChange(of: coordinator.cuesEnabled) { enabled in
                 guard enabled, !inClass else { return }
                 Task {
-                    await assets.refresh(preferredLocale: coordinator.prompterLocaleIdentifier)
+                    await assets.refresh(preferredLocale: coordinator.cuesLocaleIdentifier)
                     if assets.status == .notDownloaded { download() }
                 }
             }
@@ -153,14 +153,14 @@ struct PrompterSetupRows: View {
 
     private func download() {
         let language = ModelAssets.displayName(assets.resolvedLocale)
-        coordinator.log("Prompter: downloading the speech model from Apple (\(language))\u{2026}")
+        coordinator.log("Cues: downloading the speech model from Apple (\(language))\u{2026}")
         Analytics.feature("prompter_model_download")
         Task {
-            await assets.download(preferredLocale: coordinator.prompterLocaleIdentifier)
+            await assets.download(preferredLocale: coordinator.cuesLocaleIdentifier)
             switch assets.status {
-            case .installed: coordinator.log("Prompter: speech model installed (\(language)).")
+            case .installed: coordinator.log("Cues: speech model installed (\(language)).")
             case .failed(let why):
-                coordinator.log("Prompter: speech model download failed \u{2014} \(why)")
+                coordinator.log("Cues: speech model download failed \u{2014} \(why)")
                 Analytics.failure("prompter_asset")
             default: break
             }
@@ -170,10 +170,10 @@ struct PrompterSetupRows: View {
 
 /// Thirty seconds of live transcription and detection, no lookups.
 @available(macOS 26.0, *)
-struct PrompterTryItRows: View {
+struct CuesTryItRows: View {
     @EnvironmentObject private var coordinator: CoordinatorController
     @ObservedObject private var assets = ModelAssets.shared
-    @StateObject private var tester = PrompterController()
+    @StateObject private var tester = CuesController()
 
     private var inClass: Bool { coordinator.isRunning || coordinator.virtualCamActive }
 
@@ -188,7 +188,7 @@ struct PrompterTryItRows: View {
                         }
                     } else {
                         Button("Try it (30 s)") {
-                            Task { await tester.startTest(seconds: 30, configuration: coordinator.prompterConfiguration()) }
+                            Task { await tester.startTest(seconds: 30, configuration: coordinator.cuesConfiguration()) }
                         }
                         .disabled(inClass || !assets.status.isInstalled)
                     }
@@ -225,9 +225,9 @@ struct PrompterTryItRows: View {
 #if DEBUG
 /// Developer paths: each stage of the pipeline on its own, with real inputs.
 @available(macOS 26.0, *)
-struct PrompterDebugRows: View {
+struct CuesDebugRows: View {
     @EnvironmentObject private var coordinator: CoordinatorController
-    @StateObject private var bench = PrompterController()
+    @StateObject private var bench = CuesController()
     @State private var text = "We\u{2019}re reading the book called Charlotte\u{2019}s Web by E. B. White, and I watched a video about spiders."
     @State private var query = "Charlotte\u{2019}s Web"
     @State private var kind: Mention.Kind = .book
@@ -240,7 +240,7 @@ struct PrompterDebugRows: View {
                     TextField("", text: $text).labelsHidden().frame(maxWidth: 340)
                     Button("Detect") {
                         Task {
-                            let mentions = await bench.debugDetect(text, configuration: coordinator.prompterConfiguration())
+                            let mentions = await bench.debugDetect(text, configuration: coordinator.cuesConfiguration())
                             result = mentions.isEmpty ? "no mentions" : mentions.map { "\($0.kind.rawValue): \($0.query) (\(Int($0.confidence * 100))%)" }.joined(separator: "  \u{00B7}  ")
                         }
                     }
@@ -256,7 +256,7 @@ struct PrompterDebugRows: View {
                     .frame(width: 90)
                     Button("Resolve") {
                         Task {
-                            await bench.debugResolve(query, kind: kind, configuration: coordinator.prompterConfiguration())
+                            await bench.debugResolve(query, kind: kind, configuration: coordinator.cuesConfiguration())
                             result = bench.cards.map { "\($0.source.label): \($0.title) \u{2192} \($0.url.absoluteString) \($0.thumbnail == nil ? "(no image)" : "(image)")" }.joined(separator: "\n")
                             if result.isEmpty { result = "no card - see status log" }
                         }
@@ -270,24 +270,24 @@ struct PrompterDebugRows: View {
                         panel.allowedContentTypes = [.audio]
                         panel.allowsMultipleSelection = false
                         guard panel.runModal() == .OK, let url = panel.url else { return }
-                        Task { await bench.debugFeed(file: url, configuration: coordinator.prompterConfiguration()) }
+                        Task { await bench.debugFeed(file: url, configuration: coordinator.cuesConfiguration()) }
                     }
                     Button("Inject sample cards") {
-                        if let engine = coordinator.prompter {
+                        if let engine = coordinator.cues {
                             engine.debugInjectSampleCards()
                         } else {
-                            coordinator.prompterEngine = PrompterController()
-                            coordinator.prompter?.debugInjectSampleCards()
+                            coordinator.cuesEngine = CuesController()
+                            coordinator.cues?.debugInjectSampleCards()
                         }
-                        coordinator.prompterTickTask?.cancel()
-                        coordinator.prompterTickTask = Task { @MainActor in
+                        coordinator.cuesTickTask?.cancel()
+                        coordinator.cuesTickTask = Task { @MainActor in
                             while !Task.isCancelled {
-                                coordinator.syncPrompterSurfaces()
+                                coordinator.syncCuesSurfaces()
                                 try? await Task.sleep(nanoseconds: 1_000_000_000)
                             }
                         }
                     }
-                    Button("Clear") { coordinator.stopPrompter() }
+                    Button("Clear") { coordinator.stopCues() }
                 }
             }
             if !bench.liveTail.isEmpty { Text(bench.liveTail).font(.caption) }

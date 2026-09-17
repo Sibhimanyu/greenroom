@@ -7,9 +7,9 @@
 //
 //  The model comes from Apple through the system's asset service - the same
 //  mechanism Dictation uses - not from Greenroom's site. It is fetched when
-//  the teacher turns Prompter on in Settings, with a progress bar, and never
+//  the teacher turns Cues on in Settings, with a progress bar, and never
 //  during a class: a Start that finds no model logs why and carries on
-//  without Prompter rather than pulling a download into the first minute of
+//  without Cues rather than pulling a download into the first minute of
 //  a lesson.
 //
 import Foundation

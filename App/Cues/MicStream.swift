@@ -8,7 +8,7 @@
 //  readers tap one input device (Zoom, OBS's "Greenroom Mic", the meter and
 //  this all coexist), but one engine allows one tap per bus, and the meter's
 //  engine lives and dies with the participants panel, which may not be open.
-//  This one lives and dies with the Prompter.
+//  This one lives and dies with the Cues.
 //
 //  Only the default INPUT device is read. Zoom's incoming audio is an output
 //  and is never tapped, so what the students say never enters this pipeline
@@ -35,11 +35,11 @@ final class MicStream {
         // Same guard as MicLevelMonitor: a zero sample rate means no device,
         // and installTap on that format traps inside CoreAudio.
         guard source.sampleRate > 0, source.channelCount > 0 else {
-            throw NSError(domain: "Greenroom.Prompter", code: 1,
+            throw NSError(domain: "Greenroom.Cues", code: 1,
                           userInfo: [NSLocalizedDescriptionKey: "no microphone input"])
         }
         guard let converter = AVAudioConverter(from: source, to: target) else {
-            throw NSError(domain: "Greenroom.Prompter", code: 2,
+            throw NSError(domain: "Greenroom.Cues", code: 2,
                           userInfo: [NSLocalizedDescriptionKey: "the microphone format could not be converted"])
         }
         self.converter = converter

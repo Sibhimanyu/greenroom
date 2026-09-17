@@ -9,7 +9,7 @@
 //  action, with the action next to the thing.
 //
 //  Fixed width, always. The rail it replaces re-ran a column-width decision
-//  whenever Prompter's contents changed, so a link arriving moved the whole
+//  whenever Cues's contents changed, so a link arriving moved the whole
 //  panel; this one cannot, because nothing here is allowed to ask for a
 //  different width. Where the sections go is arithmetic in LiveQueueLayout,
 //  checked by the bench without a meeting.
@@ -40,12 +40,12 @@ final class LiveQueueView: NSView {
     private let assistEyebrow = NSTextField(labelWithString: "ASSIST")
     private let rule = NSView()
 
-    /// Prompter draws its own cards; the queue only gives it a place to stand.
-    let assist: PrompterRailBlock
+    /// Cues draws its own cards; the queue only gives it a place to stand.
+    let assist: CuesRailBlock
 
     private var sections: [LiveQueueLayout.Section] = []
 
-    init(assist: PrompterRailBlock) {
+    init(assist: CuesRailBlock) {
         self.assist = assist
         super.init(frame: .zero)
         wantsLayer = true
@@ -110,10 +110,10 @@ final class LiveQueueView: NSView {
     /// queue was 80pt, its two eyebrows filled it, and every card sat below the
     /// window edge at y=918 and beyond. Fitting to the real height instead
     /// means the block shows whole cards and counts the rest, which is the
-    /// behaviour PrompterRailBlock was built for.
+    /// behaviour CuesRailBlock was built for.
     private func assistHeight(state: ParticipantConsoleState, width: CGFloat,
                               budget: CGFloat? = nil) -> CGFloat {
-        guard state.prompterCards > 0 else { return 0 }
+        guard state.cuesCards > 0 else { return 0 }
         let inner = width - LiveQueueLayout.pad * 2
         guard let budget else { return assist.height(forWidth: inner, available: 400) }
         // What is left after the section above it has taken its share.

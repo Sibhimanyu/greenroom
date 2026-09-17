@@ -1,19 +1,19 @@
 //
-//  PrompterRailBlock.swift
+//  CuesRailBlock.swift
 //  Greenroom
 //
-//  Prompter's block on the participants panel: an eyebrow that says it is
+//  Cues's block on the participants panel: an eyebrow that says it is
 //  listening, and up to five cards. Sits under the needs block in the rail's
 //  content column and follows the rail's rules - a fixed pool of views updated
 //  in place, one walk that measures or places, never rebuilt on the poll.
 //
 import AppKit
 
-final class PrompterRailBlock: NSView {
+final class CuesRailBlock: NSView {
 
     static let maxCards = 5
     /// Below this many cards the window stops cycling them, because there is
-    /// nothing to cycle. Not a promise of space: the rail gives Prompter what
+    /// nothing to cycle. Not a promise of space: the rail gives Cues what
     /// is left after the picture and the controls, and says "+N older" when
     /// that is fewer slots than there are cards.
     static let minCards = 3
@@ -31,8 +31,8 @@ final class PrompterRailBlock: NSView {
     private let eyebrow = NSTextField(labelWithString: "")
     private let overflow = NSTextField(labelWithString: "")
     private let dot = NSView()
-    private let cards: [PrompterCardView] = (0..<PrompterRailBlock.maxCards).map { _ in PrompterCardView(frame: .zero) }
-    private var state = PrompterSurfaceState.empty
+    private let cards: [CueCardView] = (0..<CuesRailBlock.maxCards).map { _ in CueCardView(frame: .zero) }
+    private var state = CuesSurfaceState.empty
     private var pulse: Timer?
 
     override init(frame: NSRect) {
@@ -63,7 +63,7 @@ final class PrompterRailBlock: NSView {
 
     required init?(coder: NSCoder) { nil }
 
-    /// True when Prompter has anything to say on this rail.
+    /// True when Cues has anything to say on this rail.
     var isActive: Bool { state.listening || !state.cards.isEmpty }
 
     /// How many links are held, for the console's presentation model.
@@ -77,7 +77,7 @@ final class PrompterRailBlock: NSView {
     /// Rewrites in place. Returns true when the block's height changed, so the
     /// rail knows to re-lay its column.
     @discardableResult
-    func apply(_ next: PrompterSurfaceState) -> Bool {
+    func apply(_ next: CuesSurfaceState) -> Bool {
         let before = visibleCount
         state = next
         let shown = Array(next.cards.prefix(Self.maxCards))
@@ -137,7 +137,7 @@ final class PrompterRailBlock: NSView {
         guard wanted > 0 else { return 0 }
         var best = 0
         for n in 1...wanted {
-            var need = eyebrowGap + CGFloat(n) * PrompterCardView.height
+            var need = eyebrowGap + CGFloat(n) * CueCardView.height
                 + CGFloat(n - 1) * cardGap
             if n < wanted { need += overflowGap + overflowHeight }
             if need <= budget { best = n }
@@ -165,7 +165,7 @@ final class PrompterRailBlock: NSView {
 
         var used = head
         if shown > 0 {
-            used += Self.eyebrowGap + CGFloat(shown) * PrompterCardView.height
+            used += Self.eyebrowGap + CGFloat(shown) * CueCardView.height
                 + CGFloat(shown - 1) * Self.cardGap
         }
         if hidden > 0 { used += Self.overflowGap + Self.overflowHeight }
@@ -182,8 +182,8 @@ final class PrompterRailBlock: NSView {
                 continue
             }
             view.isHidden = false
-            y -= PrompterCardView.height
-            view.frame = NSRect(x: 0, y: y, width: width, height: PrompterCardView.height)
+            y -= CueCardView.height
+            view.frame = NSRect(x: 0, y: y, width: width, height: CueCardView.height)
             y -= Self.cardGap
         }
         overflow.isHidden = hidden == 0

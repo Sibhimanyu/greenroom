@@ -5,7 +5,7 @@
 //  Speech to text, on this Mac, with Apple's SpeechAnalyzer.
 //
 //  Two modules on one analyzer: a SpeechTranscriber, whose finalised results
-//  are the only text the rest of Prompter ever acts on, and a SpeechDetector
+//  are the only text the rest of Cues ever acts on, and a SpeechDetector
 //  so the surfaces can show "hearing you" without a second audio tap. Volatile
 //  (in-progress) results are passed through for the Settings test panel and
 //  nothing else.

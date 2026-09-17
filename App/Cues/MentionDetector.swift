@@ -28,7 +28,7 @@
 //  on-device model (FoundationModelsDetector, opt-in) reaches 100% recall on
 //  the same class but 264 lookups at 3% precision, which is why the patterns
 //  are what a lesson runs on. The transcript, truth file and detection dumps
-//  behind those numbers are kept OUTSIDE this repo (~/PrompterBench-evidence)
+//  behind those numbers are kept OUTSIDE this repo (~/CuesBench-evidence)
 //  because they are a real class with children's names in them.
 //
 import Foundation
@@ -48,7 +48,7 @@ protocol MentionDetector {
 
 /// Word patterns first; the model only where they are silent.
 ///
-/// Phase 3 of docs/prompter-search-improvement-plan.md: the model is a
+/// Phase 3 of docs/cues-search-improvement-plan.md: the model is a
 /// SECONDARY candidate generator, not a replacement. Measured against a real
 /// class the two are not close - word patterns 16 lookups at 56% precision,
 /// the model 264 at 3% - but the model is the only one that finds a thing said
@@ -81,7 +81,7 @@ struct CompositeDetector: MentionDetector {
         guard byPattern.isEmpty else { return byPattern }
         // A batch that is not English is not a batch to mine for named things.
         //
-        // The patterns are safe here on their own - they need English cue words
+        // The patterns are safe here on their own - they need English tell words
         // to fire at all - but the model reads anything and will find a name in
         // it. In one real class this sentence, zero of five words in the
         // dictionary, produced two of the three wrong links: "Orukuntu" became
@@ -197,6 +197,41 @@ struct HeuristicDetector: MentionDetector {
         return usedAsAName(query, in: text)
     }
 
+    /// Words that mean this phrase is a scrap of talk, not the name of a thing.
+    ///
+    /// Pronouns, auxiliaries, demonstratives and interrogatives. A named thing
+    /// does not contain them; a sentence the model sliced out of the class
+    /// almost always does.
+    private static let conversationalWords: Set<String> = [
+        "i", "me", "my", "mine", "myself", "you", "your", "yours", "he", "him", "his",
+        "she", "her", "hers", "it", "its", "we", "us", "our", "ours", "they", "them",
+        "their", "theirs",
+        "am", "is", "are", "was", "were", "be", "been", "being", "do", "does", "did",
+        "dont", "doesnt", "didnt", "have", "has", "had", "will", "would", "shall",
+        "should", "can", "could", "may", "might", "must", "need", "needs", "needed",
+        "not", "cant", "wont", "thats", "im", "like", "just",
+        "what", "how", "why", "when", "where", "who", "whom", "which",
+        "this", "that", "these", "those", "other", "another", "such", "every", "most",
+        "imagine", "meant", "heard", "think", "thought", "know", "want", "happens",
+        "happen", "happening", "impacts", "submitted"
+    ]
+
+    /// True when a query reads as the name of a thing.
+    ///
+    /// The model is asked for named things and mostly obliges, but on 43
+    /// minutes of real class it also returned "you don't need to care", "this
+    /// is what I heard me", "Other number" and "how people with them" - talk it
+    /// had sliced into noun-shaped pieces. `worthLookingUp` never saw them: it
+    /// only judges SINGLE words, so every multi-word fragment passed
+    /// unconditionally. Two properties separate the 82 links that class
+    /// produced into the 11 worth having and the rest: a named thing is short,
+    /// and it does not contain the words people use to talk about things.
+    static func namesAThing(_ query: String) -> Bool {
+        let words = Mention.normalize(query).split(separator: " ").map(String.init)
+        guard !words.isEmpty, words.count <= 3 else { return false }
+        return !words.contains(where: { conversationalWords.contains($0) })
+    }
+
     /// True when the sentence actually asks about a word, rather than merely
     /// containing one.
     ///
@@ -225,7 +260,7 @@ struct HeuristicDetector: MentionDetector {
 
     /// True when someone is being quoted, rather than merely talking.
     ///
-    /// The word-pattern detector has always required this: its quote cue is
+    /// The word-pattern detector has always required this: its quote tell is
     /// built around "quote", "famous line", "as he said". The model was under
     /// no such obligation and simply labelled things `.quote`, so a greeting
     /// became a quotation - "Hello, how is everyone today?" was served the
@@ -284,19 +319,19 @@ struct HeuristicDetector: MentionDetector {
 
     /// One spoken tell.
     ///
-    /// `guarded` sends what the cue captured through `worthLookingUp` before it
-    /// counts. Almost no cue wants that: when the teacher says "the word
+    /// `guarded` sends what the tell captured through `worthLookingUp` before it
+    /// counts. Almost no tell wants that: when the teacher says "the word
     /// pabulum" or "a video about volcanoes", the tell IS the evidence, and the
     /// phrase being an ordinary English word is not a reason to ignore a direct
     /// request. Measured - applying the guard everywhere held precision at 100%
     /// and dropped recall from 100% to 80%, losing photosynthesis, volcanoes
     /// and all three definition cases.
     ///
-    /// The exception is the cues that INFER a subject from a question instead
+    /// The exception is the tells that INFER a subject from a question instead
     /// of being handed one. "What is monospace?" and "What is happening right
     /// now?" are the same shape, and only the ordinariness of the word tells
     /// them apart.
-    private struct Cue {
+    private struct Tell {
         let pattern: String
         let kind: Mention.Kind
         let confidence: Double
@@ -305,44 +340,44 @@ struct HeuristicDetector: MentionDetector {
 
     /// A tell → a kind. Case-insensitivity is scoped to the tell words with
     /// `(?i:…)`; a blanket `(?i)` would make `[A-Z]` match anything.
-    private static let cues: [Cue] = [
+    private static let tells: [Tell] = [
         // Named things: "it's called X", "they call it X", "X, they call it",
         // "a tool called X", "invented by Amazon called X", "X is a tool".
-        Cue(pattern: #"\b(?i:it's|it is|this is|which is|that's|that is|that was|it was|this one is|the tool is|the app is|the site is) (?i:called|named) "# + span + #"(?=[.,;!?]|$)"#, kind: .thing, confidence: 0.75),
-        Cue(pattern: #"\b(?i:they call it|we call it|people call it|everyone calls it|you call it) "# + span + #"(?=[.,;!?]|$)"#, kind: .thing, confidence: 0.7),
-        Cue(pattern: #"(?<=[.,;!?] |^)([A-Za-z][A-Za-z0-9']*(?: [A-Za-z][A-Za-z0-9']*){0,2}),? (?i:they call it|we call it)\b"#, kind: .thing, confidence: 0.7),
-        Cue(pattern: #"\b(?i:a|an|the|this|that) (?i:tool|app|website|site|device|product|technology|company|service|platform|software|library|game|font|typeface|gadget) (?i:called|named) "# + span + #"(?=[.,;!?]|$)"#, kind: .thing, confidence: 0.8),
-        Cue(pattern: #"\b(?i:invented|created|made|developed|built|founded|launched) by [A-Za-z][A-Za-z0-9' ]{1,30}? (?i:called|named) "# + span + #"(?=[.,;!?]|$)"#, kind: .thing, confidence: 0.8),
-        Cue(pattern: #"(?<=[.,;!?] |^)([A-Za-z][A-Za-z0-9' ]{2,30}?) (?i:is|was) (?i:a|an) (?:[a-z]+ ){0,2}(?i:tool|app|website|site|device|product|technology|company|service|platform|software|library|gadget)\b"#, kind: .thing, confidence: 0.6),
-        Cue(pattern: #"\b(?i:i would like to introduce|let me introduce|i want to introduce|introducing)(?: (?i:you to|this|to you))?(?: (?i:chap|guy|tool|app|website|site|thing|one))?[.,]?\s*(?:(?i:um|uh|okay|ok|so|yeah),?\s*)*"# + span + #"(?=[.,;!?]|$)"#, kind: .thing, confidence: 0.65),
+        Tell(pattern: #"\b(?i:it's|it is|this is|which is|that's|that is|that was|it was|this one is|the tool is|the app is|the site is) (?i:called|named) "# + span + #"(?=[.,;!?]|$)"#, kind: .thing, confidence: 0.75),
+        Tell(pattern: #"\b(?i:they call it|we call it|people call it|everyone calls it|you call it) "# + span + #"(?=[.,;!?]|$)"#, kind: .thing, confidence: 0.7),
+        Tell(pattern: #"(?<=[.,;!?] |^)([A-Za-z][A-Za-z0-9']*(?: [A-Za-z][A-Za-z0-9']*){0,2}),? (?i:they call it|we call it)\b"#, kind: .thing, confidence: 0.7),
+        Tell(pattern: #"\b(?i:a|an|the|this|that) (?i:tool|app|website|site|device|product|technology|company|service|platform|software|library|game|font|typeface|gadget) (?i:called|named) "# + span + #"(?=[.,;!?]|$)"#, kind: .thing, confidence: 0.8),
+        Tell(pattern: #"\b(?i:invented|created|made|developed|built|founded|launched) by [A-Za-z][A-Za-z0-9' ]{1,30}? (?i:called|named) "# + span + #"(?=[.,;!?]|$)"#, kind: .thing, confidence: 0.8),
+        Tell(pattern: #"(?<=[.,;!?] |^)([A-Za-z][A-Za-z0-9' ]{2,30}?) (?i:is|was) (?i:a|an) (?:[a-z]+ ){0,2}(?i:tool|app|website|site|device|product|technology|company|service|platform|software|library|gadget)\b"#, kind: .thing, confidence: 0.6),
+        Tell(pattern: #"\b(?i:i would like to introduce|let me introduce|i want to introduce|introducing)(?: (?i:you to|this|to you))?(?: (?i:chap|guy|tool|app|website|site|thing|one))?[.,]?\s*(?:(?i:um|uh|okay|ok|so|yeah),?\s*)*"# + span + #"(?=[.,;!?]|$)"#, kind: .thing, confidence: 0.65),
         // Words: "the word X", "meaning of X", "what does X mean", "X means".
-        Cue(pattern: #"\b(?i:the word) ["“]([A-Za-z][a-z-]{3,30})["”]"#, kind: .word, confidence: 0.75),
-        Cue(pattern: #"\b(?i:the word) ([A-Za-z][a-z-]{3,30}) (?i:means|is|comes from)\b"#, kind: .word, confidence: 0.7),
-        Cue(pattern: #"\b(?i:meaning of|the meaning of the word|definition of|define) ["“]?([A-Za-z][a-z-]{3,30})["”]?"#, kind: .word, confidence: 0.75),
-        Cue(pattern: #"\b(?i:what does) ["“]?([A-Za-z][a-z-]{3,30})["”]? (?i:mean)\b"#, kind: .word, confidence: 0.75),
+        Tell(pattern: #"\b(?i:the word) ["“]([A-Za-z][a-z-]{3,30})["”]"#, kind: .word, confidence: 0.75),
+        Tell(pattern: #"\b(?i:the word) ([A-Za-z][a-z-]{3,30}) (?i:means|is|comes from)\b"#, kind: .word, confidence: 0.7),
+        Tell(pattern: #"\b(?i:meaning of|the meaning of the word|definition of|define) ["“]?([A-Za-z][a-z-]{3,30})["”]?"#, kind: .word, confidence: 0.75),
+        Tell(pattern: #"\b(?i:what does) ["“]?([A-Za-z][a-z-]{3,30})["”]? (?i:mean)\b"#, kind: .word, confidence: 0.75),
         // Quotations: the sentence after the one that says "quote" (skipping a
         // bare attribution like "Kennedy." and fillers), taken whole. The
         // phrase itself is the query.
-        Cue(pattern: #"\b(?i:quot(?:e|es|ation|ations)|famous (?:line|lines|words|saying)|as (?:he|she|they) (?:said|says|put it))\b[^.?!]*[.?!]\s*(?:[A-Z][A-Za-z.'-]+(?: [A-Z][A-Za-z.'-]+)?[.!]\s*)?(?:(?i:and so|so|um|uh|okay|ok),?\s*)?([^.?!]{25,160})"#, kind: .quote, confidence: 0.7),
+        Tell(pattern: #"\b(?i:quot(?:e|es|ation|ations)|famous (?:line|lines|words|saying)|as (?:he|she|they) (?:said|says|put it))\b[^.?!]*[.?!]\s*(?:[A-Z][A-Za-z.'-]+(?: [A-Z][A-Za-z.'-]+)?[.!]\s*)?(?:(?i:and so|so|um|uh|okay|ok),?\s*)?([^.?!]{25,160})"#, kind: .quote, confidence: 0.7),
         // Books: "the book called X", quoted titles after read/reading.
-        Cue(pattern: #"\b(?i:the|a|this|that) (?i:book|story|novel|picture book|storybook) (?i:called|named|titled) "# + span + #"(?=[.,;!?]|$)"#, kind: .book, confidence: 0.8),
-        Cue(pattern: #"\b(?i:reading|read|finished|started) (?i:the book |a book |the story )?["“]([^"”]{2,60})["”]"#, kind: .book, confidence: 0.75),
-        Cue(pattern: #"\b(?i:book|story|novel) ["“]([^"”]{2,60})["”]"#, kind: .book, confidence: 0.75),
+        Tell(pattern: #"\b(?i:the|a|this|that) (?i:book|story|novel|picture book|storybook) (?i:called|named|titled) "# + span + #"(?=[.,;!?]|$)"#, kind: .book, confidence: 0.8),
+        Tell(pattern: #"\b(?i:reading|read|finished|started) (?i:the book |a book |the story )?["“]([^"”]{2,60})["”]"#, kind: .book, confidence: 0.75),
+        Tell(pattern: #"\b(?i:book|story|novel) ["“]([^"”]{2,60})["”]"#, kind: .book, confidence: 0.75),
         // Videos and articles: "a video about X", "articles and videos about
         // why X", "I watched a video about X".
-        Cue(pattern: #"\b(?i:a|the|this|some) (?i:video|videos|clip|documentary|cartoon|film|movie|talk|ted talk) (?i:about|called|of|on) (?i:why |how |what )?"# + span + #"(?=[.,;!?]|$)"#, kind: .video, confidence: 0.75),
-        Cue(pattern: #"\b(?i:i|we) (?i:watched|saw) (?i:a |the )?(?i:video|clip|documentary|cartoon|film|movie)?(?: (?i:on youtube))? (?i:about|called|of) "# + span + #"(?=[.,;!?]|$)"#, kind: .video, confidence: 0.7),
-        Cue(pattern: #"\b(?i:articles?|blogs?|posts?|papers?|essays?)(?:[^.?!]{0,30}?(?i:videos?))?[^.?!]{0,12}? (?i:about|on) (?i:why |how |what )?"# + span + #"(?=[.,;!?]|$)"#, kind: .video, confidence: 0.65),
+        Tell(pattern: #"\b(?i:a|the|this|some) (?i:video|videos|clip|documentary|cartoon|film|movie|talk|ted talk) (?i:about|called|of|on) (?i:why |how |what )?"# + span + #"(?=[.,;!?]|$)"#, kind: .video, confidence: 0.75),
+        Tell(pattern: #"\b(?i:i|we) (?i:watched|saw) (?i:a |the )?(?i:video|clip|documentary|cartoon|film|movie)?(?: (?i:on youtube))? (?i:about|called|of) "# + span + #"(?=[.,;!?]|$)"#, kind: .video, confidence: 0.7),
+        Tell(pattern: #"\b(?i:articles?|blogs?|posts?|papers?|essays?)(?:[^.?!]{0,30}?(?i:videos?))?[^.?!]{0,12}? (?i:about|on) (?i:why |how |what )?"# + span + #"(?=[.,;!?]|$)"#, kind: .video, confidence: 0.65),
         // Topics: "let's talk about X", "what is X?", "fonts such as X and Y".
-        Cue(pattern: #"\b(?i:let's|let us) (?i:talk|learn|read) (?i:about) "# + span + #"(?=[.,;!?]|$)"#, kind: .topic, confidence: 0.6),
-        Cue(pattern: #"\b(?i:do you know) (?i:what|about) (?i:a |an |the )?([^.,;!?]{2,40}?) (?i:is|are|means|was)\b"#, kind: .topic, confidence: 0.55, guarded: true),
-        Cue(pattern: #"\b(?i:what) (?i:is|are) (?i:a |an |the )?([^.,;!?]{2,40}?)\?"#, kind: .topic, confidence: 0.5, guarded: true),
-        Cue(pattern: #"\b(?i:fonts?|typefaces?|font families|families) (?i:such as|like) ([A-Z][a-z]+(?:,? (?:(?i:and|or) )?[A-Z][a-z]+){0,3})"#, kind: .topic, confidence: 0.65),
+        Tell(pattern: #"\b(?i:let's|let us) (?i:talk|learn|read) (?i:about) "# + span + #"(?=[.,;!?]|$)"#, kind: .topic, confidence: 0.6),
+        Tell(pattern: #"\b(?i:do you know) (?i:what|about) (?i:a |an |the )?([^.,;!?]{2,40}?) (?i:is|are|means|was)\b"#, kind: .topic, confidence: 0.55, guarded: true),
+        Tell(pattern: #"\b(?i:what) (?i:is|are) (?i:a |an |the )?([^.,;!?]{2,40}?)\?"#, kind: .topic, confidence: 0.5, guarded: true),
+        Tell(pattern: #"\b(?i:fonts?|typefaces?|font families|families) (?i:such as|like) ([A-Z][a-z]+(?:,? (?:(?i:and|or) )?[A-Z][a-z]+){0,3})"#, kind: .topic, confidence: 0.65),
         // People: "written by X", "the author X". Two words minimum, always.
-        Cue(pattern: #"\b(?i:written|book|story|novel|poem|by the author|author) (?i:by) ((?:[A-Z]\. ?)*[A-Z][a-z]+(?: [A-Z]\.)*(?: [A-Z][a-z]+){1,2})"#, kind: .person, confidence: 0.75),
-        Cue(pattern: #"\b(?i:the author|the writer|the poet|the scientist|the artist|the president|the king|the queen|the designer) ([A-Z][a-z]+(?: [A-Z][a-z]+){1,2})"#, kind: .person, confidence: 0.7),
+        Tell(pattern: #"\b(?i:written|book|story|novel|poem|by the author|author) (?i:by) ((?:[A-Z]\. ?)*[A-Z][a-z]+(?: [A-Z]\.)*(?: [A-Z][a-z]+){1,2})"#, kind: .person, confidence: 0.75),
+        Tell(pattern: #"\b(?i:the author|the writer|the poet|the scientist|the artist|the president|the king|the queen|the designer) ([A-Z][a-z]+(?: [A-Z][a-z]+){1,2})"#, kind: .person, confidence: 0.7),
         // Places: "the country called X".
-        Cue(pattern: #"\b(?i:the country|the city|the river|the mountain|the ocean|the continent|the state|the planet) (?i:of |called )?([A-Z][A-Za-z]+(?: [A-Z][A-Za-z]+){0,2})"#, kind: .place, confidence: 0.7)
+        Tell(pattern: #"\b(?i:the country|the city|the river|the mountain|the ocean|the continent|the state|the planet) (?i:of |called )?([A-Z][A-Za-z]+(?: [A-Z][A-Za-z]+){0,2})"#, kind: .place, confidence: 0.7)
     ]
 
     func detect(newText: String, context: String, excludedNames: [String]) async throws -> [Mention] {
@@ -352,40 +387,40 @@ struct HeuristicDetector: MentionDetector {
 
         // The tell for a quotation is often the sentence BEFORE the line
         // ("Ask not what quote. Kennedy.") and can fall in the previous batch,
-        // so the quote cue alone also sees the last words of the lead-in.
+        // so the quote tell alone also sees the last words of the lead-in.
         let lead = Self.clean(context).split(separator: " ").suffix(14).joined(separator: " ")
         let withLead = lead.isEmpty ? text : lead + " " + text
 
-        for cue in Self.cues {
-            guard let regex = try? NSRegularExpression(pattern: cue.pattern) else { continue }
-            let haystack = cue.kind == .quote ? withLead : text
+        for tell in Self.tells {
+            guard let regex = try? NSRegularExpression(pattern: tell.pattern) else { continue }
+            let haystack = tell.kind == .quote ? withLead : text
             let range = NSRange(haystack.startIndex..., in: haystack)
             for match in regex.matches(in: haystack, range: range) where match.numberOfRanges > 1 {
                 guard let captured = Range(match.range(at: 1), in: haystack) else { continue }
                 let raw = String(haystack[captured])
-                if cue.kind == .quote {
+                if tell.kind == .quote {
                     // Only a line that is (at least partly) new text counts.
                     guard haystack.distance(from: haystack.startIndex, to: captured.upperBound) > (withLead.count - text.count) else { continue }
                     guard let query = Self.acceptableQuote(raw) else { continue }
-                    found.append(Mention(kind: .quote, query: query, confidence: cue.confidence))
+                    found.append(Mention(kind: .quote, query: query, confidence: tell.confidence))
                     continue
                 }
                 // "fonts such as Tahoma and Verdana" is two topics.
-                let pieces = cue.kind == .topic && raw.contains(where: { $0 == "," }) || raw.range(of: " and ", options: .caseInsensitive) != nil && cue.kind == .topic
+                let pieces = tell.kind == .topic && raw.contains(where: { $0 == "," }) || raw.range(of: " and ", options: .caseInsensitive) != nil && tell.kind == .topic
                     ? raw.components(separatedBy: CharacterSet(charactersIn: ",")).flatMap { $0.components(separatedBy: " and ") }
                     : [raw]
                 for piece in pieces {
                     let phrase = Self.trimToTitle(piece)
-                    guard let query = Self.acceptable(phrase, kind: cue.kind) else { continue }
+                    guard let query = Self.acceptable(phrase, kind: tell.kind) else { continue }
                     // A named thing said next to "book", "story" or "novel" is a book.
-                    var kind = cue.kind
+                    var kind = tell.kind
                     if kind == .thing, Self.nearby(text, captured, words: ["book", "novel", "story", "storybook"]) { kind = .book }
                     if kind == .thing, Self.nearby(text, captured, words: ["movie", "film", "documentary"]) { kind = .video }
                     let finalQuery = Self.extended(query, in: text)
-                    // Only the cues that inferred a subject from a question
-                    // have to prove the phrase is not ordinary English. See Cue.
-                    if cue.guarded, !Self.worthLookingUp(finalQuery, spokenIn: text) { continue }
-                    found.append(Mention(kind: kind, query: finalQuery, confidence: cue.confidence))
+                    // Only the tells that inferred a subject from a question
+                    // have to prove the phrase is not ordinary English. See Tell.
+                    if tell.guarded, !Self.worthLookingUp(finalQuery, spokenIn: text) { continue }
+                    found.append(Mention(kind: kind, query: finalQuery, confidence: tell.confidence))
                 }
             }
         }
@@ -409,7 +444,7 @@ struct HeuristicDetector: MentionDetector {
             guard !key.isEmpty else { continue }
             let tokens = key.split(separator: " ").map(String.init)
             // Any mention sharing a token with a roster name is dropped, whatever
-            // its kind: the tagger is gone, but a cue can still capture a name.
+            // its kind: the tagger is gone, but a tell can still capture a name.
             if mention.kind != .quote, tokens.contains(where: { excludedTokens.contains($0) }) { continue }
             if let existing = byKey[key] {
                 // "It's called apprenticeship patterns ... book": the book wins
@@ -420,7 +455,7 @@ struct HeuristicDetector: MentionDetector {
             }
             byKey[key] = mention
         }
-        // Two cues can capture the same thing at different lengths. Keep the
+        // Two tells can capture the same thing at different lengths. Keep the
         // tighter one - the multi-word title inside "the book called X" - but
         // when the contained one is a single word ("haiku" inside "haiku
         // deck") keep the longer, which is the real name.
@@ -490,7 +525,7 @@ struct HeuristicDetector: MentionDetector {
         return words.joined(separator: " ")
     }
 
-    /// Length and shape checks so a cue that swallowed half a sentence does
+    /// Length and shape checks so a tell that swallowed half a sentence does
     /// not become a query.
     private static func acceptable(_ phrase: String, kind: Mention.Kind) -> String? {
         let trimmed = phrase.trimmingCharacters(in: .whitespacesAndNewlines)

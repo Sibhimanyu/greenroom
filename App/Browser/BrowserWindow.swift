@@ -1725,7 +1725,7 @@ enum BrowserWindowController {
 
     /// Opens a URL in a new tab. With `focus` false the window comes forward
     /// but the app is NOT activated, so whatever the teacher had in front
-    /// stays in front - Prompter's Open uses this: a card should land in the
+    /// stays in front - Cues's Open uses this: a card should land in the
     /// reading window, not drag them to it. A closed window opens tiled, as
     /// on Start.
     static func open(_ url: URL, focus: Bool, layout: WorkspaceLayout) {

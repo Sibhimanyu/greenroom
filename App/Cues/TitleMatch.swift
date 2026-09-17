@@ -4,7 +4,7 @@
 //
 //  Does this result actually answer what the teacher said?
 //
-//  Phase 3 of docs/prompter-search-improvement-plan.md asks for one shared
+//  Phase 3 of docs/cues-search-improvement-plan.md asks for one shared
 //  scoring rule instead of a different hand-written check per source. This is
 //  it, and it replaces a rule that was wrong in both directions.
 //
@@ -148,5 +148,55 @@ enum TitleMatch {
             }
         }
         return result.padding(toLength: 4, withPad: "0", startingAt: 0)
+    }
+
+    /// True when Wikipedia had to disambiguate the phrase.
+    ///
+    /// `answers` asks whether the words said appear in the title, and a real
+    /// class showed that is not enough on its own. "shut down" was answered by
+    /// "Shut Down (Blackpink song)" and "first time" by "The First Time
+    /// (Glee)": every spoken word is present, so the check passed, and the
+    /// teacher got a K-pop single mid-lesson.
+    ///
+    /// A parenthetical is the giveaway. It means the bare phrase was ambiguous
+    /// and the encyclopedia picked a sense on our behalf, which is not
+    /// evidence about what the teacher meant.
+    ///
+    /// A padding rule was tried alongside this - reject a title carrying more
+    /// words than were said - and removed. It does reject "Beverly" answered by
+    /// "The Beverly Hillbillies", but it cannot tell that from "monospace"
+    /// answered by "Monospaced font", where the extra word is the category and
+    /// the match is right. Titles that merely add a word are still accepted;
+    /// "Beverly" and "white column" survive this gate and are the known cost.
+    static func guessedTheSense(title: String, said: String) -> Bool {
+        _ = said
+        return title.contains("(")
+    }
+
+    /// True when a Wikipedia description names a film, album, song or novel.
+    ///
+    /// Wikipedia has an article for almost any ordinary English phrase, so an
+    /// exact title match is weaker evidence than it looks. Replaying one real
+    /// class, "interesting story" answered with the 1904 film and "personal
+    /// problems" with a 1980 one directed by Bill Gunn - both exact titles,
+    /// both useless in a reading lesson.
+    ///
+    /// The year is what makes this safe. Testing for the work-form word alone
+    /// would reject "American film director", a perfectly good `.person`
+    /// answer; a four-digit year beside it means the description is dating a
+    /// release, not describing a job. Only `.thing` and `.topic` consult this:
+    /// a `.book` SHOULD match a novel, and a `.video` a film.
+    static func namesACreativeWork(description: String) -> Bool {
+        let text = description.lowercased()
+        let forms = ["film", "album", "song", "single", "novel", "play",
+                     "video game", "series", "manga", "opera", "musical"]
+        // "song by ...", with no year to date it.
+        for form in ["song by", "album by", "single by", "novel by", "studio album",
+                     "extended play"] where text.hasPrefix(form) {
+            return true
+        }
+        let hasYear = text.range(of: #"\b(1[5-9]\d\d|20\d\d)\b"#, options: .regularExpression) != nil
+        guard hasYear else { return false }
+        return forms.contains { text.contains($0) }
     }
 }

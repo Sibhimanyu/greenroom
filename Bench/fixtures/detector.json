@@ -1,7 +1,7 @@
 {
   "_readme": [
     "Fixtures for the word-pattern detector. Phase 1 of",
-    "docs/prompter-search-improvement-plan.md.",
+    "docs/cues-search-improvement-plan.md.",
     "",
     "Sanitized and synthetic. They are written in the shape of a real recorded",
     "class (Indian English, Tamil words the transcriber renders phonetically,",

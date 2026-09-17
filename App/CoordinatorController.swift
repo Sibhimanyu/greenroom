@@ -24,7 +24,7 @@ final class CoordinatorController: ObservableObject {
     /// the ghost police may have hidden - deadlocking the app into
     /// force-quit territory.
     func prepareForTermination() {
-        stopPrompter()
+        stopCues()
         layoutFollowTask?.cancel()
         ghostWindowPolice?.cancel()
         peopleViewTask?.cancel()
@@ -55,7 +55,7 @@ final class CoordinatorController: ObservableObject {
     ///     with capture live crashed it in its own shutdown - the
     ///     "OBS quit unexpectedly" dialog).
     func windDownForQuit() async {
-        stopPrompter()
+        stopCues()
         // Perceived-instant quit: our windows vanish NOW; the teardown
         // below finishes headless. Cmd-Q sitting on a visible frozen
         // window for 4-10s read as a hang (reported live).
@@ -740,59 +740,59 @@ final class CoordinatorController: ObservableObject {
         }
     }
 
-    // MARK: Prompter - see App/Prompter/. Off by default. Listens to the
+    // MARK: Cues - see App/Cues/. Off by default. Listens to the
     // teacher's microphone during a class, on this Mac, and offers link cards;
     // the only thing that leaves is the search phrase, and each one is logged.
-    @Published var prompterEnabled: Bool {
+    @Published var cuesEnabled: Bool {
         didSet {
-            defaults.set(prompterEnabled, forKey: "prompterEnabled")
-            Analytics.setting("prompter", on: prompterEnabled)
+            defaults.set(cuesEnabled, forKey: "prompterEnabled")
+            Analytics.setting("prompter", on: cuesEnabled)
         }
     }
     /// Whether video mentions may use the YouTube Data API (when a Google
     /// account is connected). Off means every video card is a search link.
-    @Published var prompterVideoSearch: Bool {
+    @Published var cuesVideoSearch: Bool {
         didSet {
-            defaults.set(prompterVideoSearch, forKey: "prompterVideoSearch")
-            Analytics.setting("prompter_video_search", on: prompterVideoSearch)
+            defaults.set(cuesVideoSearch, forKey: "prompterVideoSearch")
+            Analytics.setting("prompter_video_search", on: cuesVideoSearch)
         }
     }
     /// Whether Apple's on-device model finds mentions instead of the word
     /// patterns. Off by default: it finds more and interrupts more - measured
     /// at 264 lookups a class against the patterns' 16.
-    @Published var prompterUseModel: Bool {
+    @Published var cuesUseModel: Bool {
         didSet {
-            defaults.set(prompterUseModel, forKey: "prompterUseModel")
-            Analytics.setting("prompter_model_detector", on: prompterUseModel)
+            defaults.set(cuesUseModel, forKey: "prompterUseModel")
+            Analytics.setting("prompter_model_detector", on: cuesUseModel)
         }
     }
     /// Whether the class transcript is written to the session folder beside
-    /// the recording. On by default: a teacher who turned Prompter on wants
+    /// the recording. On by default: a teacher who turned Cues on wants
     /// the record of what was said. Off keeps it in memory only.
-    @Published var prompterSaveTranscript: Bool {
+    @Published var cuesSaveTranscript: Bool {
         didSet {
-            defaults.set(prompterSaveTranscript, forKey: "prompterSaveTranscript")
-            Analytics.setting("prompter_save_transcript", on: prompterSaveTranscript)
+            defaults.set(cuesSaveTranscript, forKey: "prompterSaveTranscript")
+            Analytics.setting("prompter_save_transcript", on: cuesSaveTranscript)
         }
     }
     /// Transcription language, as a locale identifier. Empty = the system's.
-    @Published var prompterLocaleIdentifier: String {
-        didSet { defaults.set(prompterLocaleIdentifier, forKey: "prompterLocaleIdentifier") }
+    @Published var cuesLocaleIdentifier: String {
+        didSet { defaults.set(cuesLocaleIdentifier, forKey: "prompterLocaleIdentifier") }
     }
     /// Mirrors for the macOS 14+ UI (menu bar, main window): the engine
-    /// itself is macOS 26-only and lives behind `prompterEngine`.
-    @Published var prompterListening = false
-    @Published var prompterPaused = false
-    @Published var prompterCardCount = 0
+    /// itself is macOS 26-only and lives behind `cuesEngine`.
+    @Published var cuesListening = false
+    @Published var cuesPaused = false
+    @Published var cuesCardCount = 0
     /// True while the participants panel is the surface (the menu-bar label
     /// carries the waveform then); false when the status item is.
-    @Published var prompterOnRail = false
-    /// The PrompterController, held untyped so this class compiles on macOS
-    /// 14. See CoordinatorController+Prompter.swift.
-    var prompterEngine: AnyObject?
-    var prompterTickTask: Task<Void, Never>?
-    let prompterMenuBar = PrompterMenuBar()
-    var prompterSurfaceReported = false
+    @Published var cuesOnRail = false
+    /// The CuesController, held untyped so this class compiles on macOS
+    /// 14. See CoordinatorController+Cues.swift.
+    var cuesEngine: AnyObject?
+    var cuesTickTask: Task<Void, Never>?
+    let cuesMenuBar = CuesMenuBar()
+    var cuesSurfaceReported = false
 
     // MARK: YouTube upload - see CoordinatorController+YouTube.swift. Off by
     // default; the one place class content can leave the Mac.
@@ -954,11 +954,11 @@ final class CoordinatorController: ObservableObject {
         browserSearchSuggestions = searchSuggestions
         BrowserWindowController.searchSuggestions = searchSuggestions
         browserClosesOnStop = defaults.bool(forKey: "browserClosesOnStop")
-        prompterEnabled = defaults.bool(forKey: "prompterEnabled")
-        prompterVideoSearch = (defaults.object(forKey: "prompterVideoSearch") as? Bool) ?? true
-        prompterUseModel = defaults.bool(forKey: "prompterUseModel")
-        prompterSaveTranscript = (defaults.object(forKey: "prompterSaveTranscript") as? Bool) ?? true
-        prompterLocaleIdentifier = defaults.string(forKey: "prompterLocaleIdentifier") ?? ""
+        cuesEnabled = defaults.bool(forKey: "prompterEnabled")
+        cuesVideoSearch = (defaults.object(forKey: "prompterVideoSearch") as? Bool) ?? true
+        cuesUseModel = defaults.bool(forKey: "prompterUseModel")
+        cuesSaveTranscript = (defaults.object(forKey: "prompterSaveTranscript") as? Bool) ?? true
+        cuesLocaleIdentifier = defaults.string(forKey: "prompterLocaleIdentifier") ?? ""
         youtubeUploadMode = YouTubeUploadMode(rawValue: defaults.string(forKey: "youtubeUploadMode") ?? "") ?? .off
         youtubePrivacy = defaults.string(forKey: "youtubePrivacy") ?? "unlisted"
         youtubeClientID = defaults.string(forKey: "youtubeClientID") ?? ""
@@ -1173,10 +1173,10 @@ final class CoordinatorController: ObservableObject {
                 try Task.checkCancellation()
                 mark(.meeting, .done)
 
-                // Only now, with the meeting live: Prompter never listens
+                // Only now, with the meeting live: Cues never listens
                 // outside a class. Off by default; logs why when it cannot
                 // start rather than blocking anything here.
-                startPrompterIfEnabled()
+                startCuesIfEnabled()
 
                 // The meeting flow above has returned, so the session is
                 // live - start the tape if the setting says so. Uses the
@@ -1251,8 +1251,8 @@ final class CoordinatorController: ObservableObject {
         // without this, its meeting setup raced the OBS teardown below.
         startTask?.cancel()
         // The microphone tap goes first: the class is over, so is listening.
-        stopPrompter()
-        prompterSurfaceReported = false
+        stopCues()
+        cuesSurfaceReported = false
         Task {
             log("Stopping\u{2026}")
             // Chat teardown first: close the window before leave() flips
@@ -3503,6 +3503,12 @@ struct SettingsTransfer: Codable {
     var browserRestoresTabs: Bool?
     var browserSearchSuggestions: Bool?
     var browserClosesOnStop: Bool?
+    // These five keep the old spelling on purpose. They are not internal
+    // names: SettingsTransfer is Codable with no CodingKeys, so each property
+    // name IS a key in the settings file the teacher exports. Renaming them
+    // would make every file exported before the feature became "Cues" fail to
+    // import its Cues settings, and pinning them with CodingKeys would mean
+    // listing all forty-odd properties of this struct by hand.
     var prompterEnabled: Bool?
     var prompterVideoSearch: Bool?
     var prompterUseModel: Bool?
@@ -3545,11 +3551,11 @@ extension CoordinatorController {
             browserRestoresTabs: browserRestoresTabs,
             browserSearchSuggestions: browserSearchSuggestions,
             browserClosesOnStop: browserClosesOnStop,
-            prompterEnabled: prompterEnabled,
-            prompterVideoSearch: prompterVideoSearch,
-            prompterUseModel: prompterUseModel,
-            prompterSaveTranscript: prompterSaveTranscript,
-            prompterLocaleIdentifier: prompterLocaleIdentifier,
+            prompterEnabled: cuesEnabled,
+            prompterVideoSearch: cuesVideoSearch,
+            prompterUseModel: cuesUseModel,
+            prompterSaveTranscript: cuesSaveTranscript,
+            prompterLocaleIdentifier: cuesLocaleIdentifier,
             youtubeUploadMode: youtubeUploadMode.rawValue,
             youtubePrivacy: youtubePrivacy,
             youtubeClientID: youtubeClientID,
@@ -3593,11 +3599,11 @@ extension CoordinatorController {
         if let value = transfer.browserRestoresTabs { browserRestoresTabs = value }
         if let value = transfer.browserSearchSuggestions { browserSearchSuggestions = value }
         if let value = transfer.browserClosesOnStop { browserClosesOnStop = value }
-        if let value = transfer.prompterEnabled { prompterEnabled = value }
-        if let value = transfer.prompterVideoSearch { prompterVideoSearch = value }
-        if let value = transfer.prompterUseModel { prompterUseModel = value }
-        if let value = transfer.prompterSaveTranscript { prompterSaveTranscript = value }
-        if let value = transfer.prompterLocaleIdentifier { prompterLocaleIdentifier = value }
+        if let value = transfer.prompterEnabled { cuesEnabled = value }
+        if let value = transfer.prompterVideoSearch { cuesVideoSearch = value }
+        if let value = transfer.prompterUseModel { cuesUseModel = value }
+        if let value = transfer.prompterSaveTranscript { cuesSaveTranscript = value }
+        if let value = transfer.prompterLocaleIdentifier { cuesLocaleIdentifier = value }
         // The OAuth client travels (a colleague shares the same Google Cloud
         // app); the connected account never does - each Mac connects its own.
         if let value = transfer.youtubeUploadMode, let mode = YouTubeUploadMode(rawValue: value) { youtubeUploadMode = mode }

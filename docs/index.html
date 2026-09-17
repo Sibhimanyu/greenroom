@@ -19,6 +19,14 @@
     --green-soft: #e8f3df;
       --card-shadow: 0 1px 2px rgba(16, 24, 40, 0.04), 0 12px 32px rgba(16, 24, 40, 0.08);
   }
+  /* Neutral on purpose: "coming soon" is neither a local-green claim nor an
+     amber leaves-your-Mac one, so it takes the DESIGN.md neutrals. */
+  .soon {
+    display: inline-block; font-size: 10.5px; font-weight: 800; letter-spacing: .05em;
+    text-transform: uppercase; padding: 3px 8px; border-radius: 999px;
+    background: var(--bg-soft); color: var(--body); border: 1px solid var(--line);
+    vertical-align: middle; margin-left: 8px; white-space: nowrap;
+  }
 
   * { box-sizing: border-box; }
   html { scroll-behavior: smooth; }
@@ -449,13 +457,14 @@
       <div class="run">
         <div class="n">＋</div>
         <div>
-          <h3>Cues: the link, while you are still talking</h3>
+          <h3>Cues: the link, while you are still talking <span class="soon">Coming soon</span></h3>
           <p>Turn it on and Greenroom listens to <em>your</em> microphone during the class. Name a
           book and its cover appears on your reference display; mention a video you saw, a place,
           a person, a word worth a picture, and a card is waiting with the link. One click opens it
           in the reading window without leaving the page; one sends it to the class chat. Speech
           becomes text on the Mac with Apple's models; only the short search phrase goes out, and
-          every one is written down. Off by default, macOS 26.</p>
+          every one is written down. Not in the current release; it arrives in a later
+          version, off by default.</p>
         </div>
       </div>
       <div class="run">

@@ -454,8 +454,17 @@ struct OnboardingView: View {
 
     private var cuesStep: some View {
         VStack(alignment: .leading, spacing: 14) {
-            stepHeader("Cues (optional)", "While you teach, Greenroom can listen to your microphone and offer links for the books, videos, topics and places you mention \u{2014} on the participants panel or in the menu bar, one click to open, one to send to the chat.")
-            if #available(macOS 26.0, *) {
+            stepHeader(CuesAvailability.isReleased ? "Cues (optional)" : "Cues (coming soon)",
+                       CuesAvailability.isReleased
+                           ? "While you teach, Greenroom can listen to your microphone and offer links for the books, videos, topics and places you mention \u{2014} on the participants panel or in the menu bar, one click to open, one to send to the chat."
+                           : "A later version will listen to your microphone while you teach and offer links for the books, videos, topics and places you mention. It is not in this release, and nothing here is listening.")
+            if !CuesAvailability.isReleased {
+                Form {
+                    CuesComingSoonRows(compact: true)
+                }
+                .formStyle(.grouped)
+                .scrollContentBackground(.hidden)
+            } else if #available(macOS 26.0, *) {
                 Form {
                     CuesSetupRows(compact: true)
                 }

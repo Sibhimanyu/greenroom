@@ -17,7 +17,9 @@ import SwiftUI
 struct CuesSettingsTab: View {
     var body: some View {
         Form {
-            if #available(macOS 26.0, *) {
+            if !CuesAvailability.isReleased {
+                CuesComingSoonRows()
+            } else if #available(macOS 26.0, *) {
                 CuesSetupRows(compact: false)
                 CuesTryItRows()
                 #if DEBUG

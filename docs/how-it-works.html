@@ -155,6 +155,14 @@
   }
   .ep .tag.out { background: var(--net-soft); color: var(--net-text); }
   .ep .tag.local { background: var(--green-soft); color: var(--green); }
+  /* Neutral on purpose: "coming soon" is neither a local-green claim nor an
+     amber leaves-your-Mac one, so it takes the DESIGN.md neutrals. */
+  .soon {
+    display: inline-block; font-size: 10.5px; font-weight: 800; letter-spacing: .05em;
+    text-transform: uppercase; padding: 3px 8px; border-radius: 999px;
+    background: var(--bg-soft); color: var(--body); border: 1px solid var(--line);
+    vertical-align: middle; margin-left: 8px; white-space: nowrap;
+  }
   .ep h3 { font-size: 14px; font-weight: 700; margin-bottom: 6px; font-family: ui-monospace, Menlo, monospace; }
   .ep p { font-size: 13.5px; color: var(--body); }
 
@@ -750,8 +758,9 @@
   <div class="wrap">
     <div class="sec-head">
       <p class="kicker">07 &middot; Cues</p>
-      <h2>How a link card gets made, and what leaves at each step</h2>
-      <p>Off by default, macOS 26 only. Turn it on in Settings &rarr; Cues and, while a class is live, Greenroom listens to <em>your</em> microphone and offers link cards for what you mention. Here is the pipeline, with the one point where anything crosses.</p>
+      <h2>How a link card gets made, and what leaves at each step <span class="soon">Coming soon</span></h2>
+      <p><strong>Cues is not in the current release.</strong> Settings &rarr; Cues shows it as coming soon, nothing listens to your microphone, and none of the network calls below happen. This section describes how it will work when it ships, and is kept here because the behaviour it documents is what you will be agreeing to then.</p>
+      <p>Off by default, macOS 26 only. Once released, you turn it on in Settings &rarr; Cues and, while a class is live, Greenroom listens to <em>your</em> microphone and offers link cards for what you mention. Here is the pipeline, with the one point where anything crosses.</p>
     </div>
 
     <figure class="viz">
@@ -885,8 +894,8 @@
       <p>In perspective: these are app-level Zoom API keys scoped to running meetings under your account — not your Zoom password — and revocable anytime in the Zoom Marketplace. The optional "export settings" file used to set up a colleague's Mac also contains them in plaintext by design; hand it over directly and delete it after importing.</p>
     </div>
     <div class="caveat" style="margin-top:18px">
-      <h3>With Cues on, the search phrases say what your class was about</h3>
-      <p>Cues sends only the phrase it built — never audio, never the transcript, never a name from the meeting — but a term's worth of phrases to Google Books, Wikipedia and YouTube is still a record of what you taught, seen by those services like any search you typed yourself. Greenroom adds nothing to identify you beyond the connection itself (and, for YouTube video search, your own connected account). It is off by default; it pauses while you are muted; the menu bar can stop it for a class; and the log names every phrase, so you can see exactly what left.</p>
+      <h3>With Cues on, the search phrases say what your class was about <span class="soon">Coming soon</span></h3>
+      <p>This applies once Cues ships; it is not in the current release and sends nothing today. Cues sends only the phrase it built — never audio, never the transcript, never a name from the meeting — but a term's worth of phrases to Google Books, Wikipedia and YouTube is still a record of what you taught, seen by those services like any search you typed yourself. Greenroom adds nothing to identify you beyond the connection itself (and, for YouTube video search, your own connected account). It is off by default; it pauses while you are muted; the menu bar can stop it for a class; and the log names every phrase, so you can see exactly what left.</p>
       <p>Two more limits, plainly: it hears your <em>microphone</em>, so a student's voice coming out of your speakers can reach it as room sound (a headset removes that); and the word-pattern fallback, used when Apple Intelligence is off, finds fewer things than the model does.</p>
     </div>
   </div>

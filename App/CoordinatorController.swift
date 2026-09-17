@@ -3601,7 +3601,9 @@ extension CoordinatorController {
         if let value = transfer.browserRestoresTabs { browserRestoresTabs = value }
         if let value = transfer.browserSearchSuggestions { browserSearchSuggestions = value }
         if let value = transfer.browserClosesOnStop { browserClosesOnStop = value }
-        if let value = transfer.prompterEnabled { cuesEnabled = value }
+        // A colleague's export can carry prompterEnabled=true. It must not
+        // switch on a feature this build is holding back.
+        if let value = transfer.prompterEnabled, CuesAvailability.isReleased { cuesEnabled = value }
         if let value = transfer.prompterVideoSearch { cuesVideoSearch = value }
         if let value = transfer.prompterUseModel { cuesUseModel = value }
         if let value = transfer.prompterSaveTranscript { cuesSaveTranscript = value }

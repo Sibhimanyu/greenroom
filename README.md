@@ -57,8 +57,7 @@ the same drag-to-Applications experience.
 
 ### Requirements
 
-- macOS 14 or later (**Cues**, the opt-in live link suggestions,
-  needs macOS 26 — the app runs without it on 14 and 15)
+- macOS 14 or later
 - [OBS Studio](https://obsproject.com) (free) — Greenroom launches and
   drives it in the background; you never touch the OBS UI
 - The Zoom desktop app — only for the classic/hybrid flow; the default
@@ -128,13 +127,10 @@ Also available:
   The file path is logged when you stop.
 - **Menu bar → Snap Windows Back** — re-tiles everything to the session
   layout after you've dragged windows around.
-- **Cues** (Settings → Cues, off by default, macOS 26) — while the
-  class is live it listens to *your* microphone, turns it into text on the
-  Mac, and offers link cards for the books, videos, topics, people and
-  places you name: on the participants panel when there is one, otherwise
-  in a waveform menu-bar item. **Open** puts the link in your main-pane
-  browser without stealing focus; **Send** drops it in the class chat.
-  Pauses while you are muted; the menu bar has a per-class Stop.
+- **Cues** — **not in this release.** Settings → Cues shows it as coming
+  soon and there is nothing to switch on. When it ships it will listen to
+  your microphone while the class is live and offer link cards for the
+  books, videos, topics, people and places you name.
 - **Manual controls** (pull-down beside the Status toggle) — each piece of the
   session individually: open just the chat window, just the main-app
   window, or just Zoom.
@@ -234,6 +230,13 @@ client ID/secret travel in the settings export; the connected account does
 not.
 
 ### Cues
+> **Not in this release.** The tab shows a "Coming soon" row, nothing
+> listens to your microphone, and no stored preference can switch it on.
+> The code ships with the app but every entry point is gated on
+> `CuesAvailability.isReleased` in `App/Cues/CuesAvailability.swift`; set
+> that to `true` to turn the feature back on. The rest of this section
+> describes it as it behaves when released.
+
 Off by default; macOS 26 only (the tab says so on 14/15, and
 `FoundationModels.framework` is weak-linked so the app still launches
 there). **Listen during classes and suggest links** starts, once the

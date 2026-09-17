@@ -75,6 +75,11 @@ extension CoordinatorController {
     /// Called once the meeting is live. Off by default; below macOS 26 it
     /// says so once and returns.
     func startCuesIfEnabled() {
+        // Checked before `cuesEnabled`, not after: every Mac that ran an
+        // earlier build already has prompterEnabled=true sitting in its
+        // defaults, so hiding the switch alone would still start listening
+        // for anyone upgrading into this release.
+        guard CuesAvailability.isReleased else { return }
         guard cuesEnabled else { return }
         guard #available(macOS 26.0, *) else {
             log("Cues: not available on this Mac (macOS 26 required).")

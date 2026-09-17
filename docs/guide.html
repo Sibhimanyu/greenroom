@@ -132,6 +132,14 @@
     padding: 3px 8px; border-radius: 999px; margin-bottom: 10px; background: var(--green-soft); color: var(--green);
   }
   .card .tag.warn { background: var(--net-soft); color: var(--net-text); }
+  /* Neutral on purpose: "coming soon" is neither a local-green claim nor an
+     amber leaves-your-Mac one, so it takes the DESIGN.md neutrals. */
+  .soon {
+    display: inline-block; font-size: 10.5px; font-weight: 800; letter-spacing: .05em;
+    text-transform: uppercase; padding: 3px 8px; border-radius: 999px;
+    background: var(--bg-soft); color: var(--body); border: 1px solid var(--line);
+    vertical-align: middle; margin-left: 8px; white-space: nowrap;
+  }
 
   /* ---------- tables ---------- */
   .table-scroll { overflow-x: auto; border: 1px solid var(--line); border-radius: 12px; background: #fff; }
@@ -538,8 +546,8 @@
     </div>
     <div class="cards">
       <div class="card">
-        <h3>Cues shows nothing</h3>
-        <p>Check the status log for a line beginning <strong>Cues:</strong>. “Skipped — the speech model isn't downloaded” means Settings → Cues → Download, between classes. “Paused — you are muted” is Zoom's mute. If it is listening and quiet, name things plainly: “the book called Matilda”, “a video about volcanoes”. Apple Intelligence off means fewer cards, not none.</p>
+        <h3>Cues shows nothing <span class="soon">Coming soon</span></h3>
+        <p>Cues is not in the current release. Settings &rarr; Cues shows it as coming soon and there is nothing to switch on, so nothing is listening and no cards appear. It arrives in a later version.</p>
       </div>
       <div class="card">
         <h3>A window is in the wrong place</h3>

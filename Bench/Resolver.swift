@@ -331,7 +331,8 @@ func runResolverBench(verbose: Bool) async -> Bool {
 
     let compositeOK = await runCompositeBench()
     let rulesOK = runRulesBench()
-    let ok = failures.isEmpty && concurrent && compositeOK && rulesOK
+    let statusOK = runStatusBench()
+    let ok = failures.isEmpty && concurrent && compositeOK && rulesOK && statusOK
     return ok
 }
 
@@ -437,6 +438,50 @@ func runCompositeBench() async -> Bool {
 
 /// Rules that decide whether a phrase is worth anything, checked directly.
 /// Cheaper and more precise than reaching them through a whole resolution.
+/// The status line must report the class tally, never the display window.
+///
+/// Replays what a real class did to the old code: 82 links arriving into a
+/// window that keeps 12. The window is meant to saturate. The sentence the
+/// teacher reads is not.
+func runStatusBench() -> Bool {
+    print("  status line")
+    var ok = true
+    let keep = 12
+    var window: [String] = []
+    var found = 0
+    for i in 0..<82 {
+        found += 1
+        let key = "link-\(i)"
+        window.removeAll { $0 == key }
+        window.insert(key, at: 0)
+        if window.count > keep { window.removeLast(window.count - keep) }
+    }
+
+    let saturated = window.count == keep
+    print("    window saturated at \(window.count) of \(found)  \(saturated ? "as designed" : "UNEXPECTED")")
+    ok = ok && saturated
+
+    let line = CuesStatus.listening(linksFound: found)
+    let honest = line.contains("82 links")
+    print("    reads \u{201C}\(line)\u{201D}  \(honest ? "ok" : "REGRESSION - reporting the window, not the class")")
+    ok = ok && honest
+
+    // The exact shape of the bug: the window size must never be the number.
+    let wrong = CuesStatus.listening(linksFound: window.count)
+    let distinguishable = wrong != line
+    print("    window-as-count would read \u{201C}\(wrong)\u{201D}  \(distinguishable ? "ok, distinguishable" : "INDISTINGUISHABLE")")
+    ok = ok && distinguishable
+
+    for (n, want) in [(0, "Cues is listening"), (1, "1 link"), (2, "2 links")] {
+        let got = CuesStatus.listening(linksFound: n)
+        let pass = got.contains(want)
+        if !pass { print("    FAIL  \(n) -> \u{201C}\(got)\u{201D}, wanted \u{201C}\(want)\u{201D}") }
+        ok = ok && pass
+    }
+    print("")
+    return ok
+}
+
 func runRulesBench() -> Bool {
     print("  quotation rule")
     var ok = true

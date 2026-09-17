@@ -194,3 +194,24 @@ struct CuesSurfaceState {
 
     static let empty = CuesSurfaceState()
 }
+
+
+/// What the menu bar says while a class is running.
+///
+/// This exists as its own function because getting the number wrong here is
+/// invisible in code review and glaring in a classroom. The status line used
+/// to read `cards.count`, which is not a tally: it is a display window capped
+/// at twelve that also sheds anything older than thirty minutes. On a real
+/// 43-minute class on 7 Sep it filled about four minutes in and then read
+/// "12 links" for the remaining thirty-nine, while the class went on to find
+/// eighty-two. The teacher could talk all lesson and watch a frozen number.
+///
+/// The window is a budget for a rail with three visible slots. The tally is a
+/// fact about the class. They are different numbers and only one of them
+/// belongs in a sentence that says how many links were found.
+enum CuesStatus {
+    static func listening(linksFound: Int) -> String {
+        guard linksFound > 0 else { return "Cues is listening" }
+        return "Cues is listening \u{00B7} \(linksFound) link\(linksFound == 1 ? "" : "s")"
+    }
+}

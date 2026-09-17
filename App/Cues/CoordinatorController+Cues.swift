@@ -108,7 +108,7 @@ extension CoordinatorController {
             engine.stop()
         }
         cuesListening = false
-        cuesCardCount = 0
+        cuesLinkCount = 0
         ParticipantGridWindowController.applyCues(.empty)
     }
 
@@ -119,7 +119,7 @@ extension CoordinatorController {
         cuesTickTask = nil
         cuesMenuBar.setVisible(false)
         cuesListening = false
-        cuesCardCount = 0
+        cuesLinkCount = 0
         ParticipantGridWindowController.applyCues(.empty)
     }
 
@@ -133,14 +133,14 @@ extension CoordinatorController {
             // is listening.
             cuesListening = false
             cuesPaused = false
-            cuesCardCount = 0
+            cuesLinkCount = 0
             cuesMenuBar.setVisible(false)
             ParticipantGridWindowController.applyCues(.empty)
             return
         }
         engine.setPaused(zoomChatClient.isJoined && zoomChatClient.iAmMuted)
         cuesListening = true
-        cuesCardCount = engine.cards.count
+        cuesLinkCount = engine.linksFound
         cuesPaused = engine.isPaused
 
         let state = cuesSurfaceState(engine)

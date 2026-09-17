@@ -75,7 +75,13 @@ final class CuesController: ObservableObject {
 
     private var configuration = Configuration()
     /// Links written to the prompts file this session, for the closing line.
-    private var promptsWritten = 0
+    /// Links offered this class, cumulative.
+    ///
+    /// NOT `cards.count`: that is a display window of at most `keepCards` that
+    /// also drops anything older than `cardLifetime`, so it stops climbing a
+    /// few minutes into a lesson. This is what the menu bar reports and what
+    /// the closing log line has always counted.
+    @Published private(set) var linksFound = 0
     /// Where the shown window starts in `cards`. The rail has three slots and
     /// keeps eight, so without this the older five were written to the file
     /// and never seen.
@@ -183,9 +189,9 @@ final class CuesController: ObservableObject {
         }
         let count = transcript.totalFinalized
         let saved = configuration.transcriptFile
-        let links = promptsWritten
+        let links = linksFound
         let savedLinks = links > 0 ? configuration.linksFile : nil
-        promptsWritten = 0
+        linksFound = 0
         transcript.reset()
         isListening = false
         isSpeaking = false
@@ -669,6 +675,6 @@ final class CuesController: ObservableObject {
         rotationOffset = 0
         lastRotation = Date()
         appendToPromptsFile(card, foundBy: foundBy)
-        promptsWritten += 1
+        linksFound += 1
     }
 }

@@ -57,7 +57,7 @@ struct MenuBarView: View {
         if coordinator.cuesListening {
             Text(coordinator.cuesPaused
                  ? "Cues is paused \u{2014} you are muted"
-                 : "Cues is listening \u{00B7} \(coordinator.cuesCardCount) link\(coordinator.cuesCardCount == 1 ? "" : "s")")
+                 : CuesStatus.listening(linksFound: coordinator.cuesLinkCount))
             Button("Stop Cues for This Session") {
                 coordinator.stopCuesForClass()
             }

@@ -95,12 +95,24 @@ actor LinkResolver {
     private var timings: [CueCard.Source: [Double]] = [:]
     private var failures: [CueCard.Source: Int] = [:]
     private(set) var totalResolved = 0
+    private var reportedSessionCap = false
     /// True once YouTube said the quota is gone for the day, so every further
     /// video mention becomes a search link without asking again.
     private var youtubeQuotaExhausted = false
 
     /// Per-session ceilings, per source.
-    private let caps: [CueCard.Source: Int] = [.googleBooks: 60, .openLibrary: 60, .wikipedia: 60, .wikiquote: 30, .youtube: 20, .search: 200, .dictionary: 200, .images: 200]
+    /// Per-source request ceilings. Runaway guards, not budgets: a class should
+    /// never reach one.
+    ///
+    /// Wikipedia was 60, and the 7 Sep class spent all 60 before halfway - so
+    /// its genuinely good later terms ("prefrontal cortex", "Generative AI")
+    /// could not reach the encyclopedia at all and fell through to a picture
+    /// search. Worse, `allowed` said nothing when it stood a source down, so
+    /// the feature quietly got worse mid-lesson with no line in the log.
+    ///
+    /// YouTube stays at 20: that one is a real external quota shared with
+    /// uploads, and raising it would spend the teacher's own allowance.
+    private let caps: [CueCard.Source: Int] = [.googleBooks: 200, .openLibrary: 200, .wikipedia: 400, .wikiquote: 100, .youtube: 20, .search: 400, .dictionary: 400, .images: 400]
     private var sessionCap: Int { configuration.sessionCap }
     private let maxInFlight = 2
 
@@ -125,6 +137,9 @@ actor LinkResolver {
         timings.removeAll()
         failures.removeAll()
         totalResolved = 0
+        reportedSessionCap = false
+        reportedCeilings = []
+        ceilingNotes = []
         youtubeQuotaExhausted = false
     }
 
@@ -159,7 +174,11 @@ actor LinkResolver {
         if let cached = cache[key] { return Resolution(cards: cached.cards, skipped: true) }
         guard !resolvedKeys.contains(key) else { return Resolution(skipped: true) }
         guard totalResolved < sessionCap else {
-            return Resolution(notes: ["session limit of \(sessionCap) lookups reached \u{2014} no more cards this class"], skipped: true)
+            // Said once. The 7 Sep class wrote this same line forty-three times.
+            let notes = reportedSessionCap ? []
+                : ["session limit of \(sessionCap) links reached \u{2014} no more cards this class"]
+            reportedSessionCap = true
+            return Resolution(notes: notes, skipped: true)
         }
         // The per-minute brake, checked before anything is sent.
         let now = Date()
@@ -192,6 +211,13 @@ actor LinkResolver {
         if !resolution.cards.isEmpty {
             totalResolved += 1
             cache[key] = resolution
+        }
+        // Carry any ceiling notice out to the status log. Cached before this
+        // point on purpose: the notice is about this class, not this query, and
+        // must not be replayed from the cache on a later repeat.
+        if !ceilingNotes.isEmpty {
+            resolution.notes.append(contentsOf: ceilingNotes)
+            ceilingNotes = []
         }
         return resolution
     }
@@ -692,9 +718,22 @@ actor LinkResolver {
 
     /// Cap and back-off check for one source. A host that failed three times
     /// running is left alone for five minutes.
+    /// Sources whose ceiling has already been reported this class.
+    private var reportedCeilings: Set<CueCard.Source> = []
+    /// Ceiling notices waiting to be attached to the next resolution.
+    private var ceilingNotes: [String] = []
+
     private func allowed(_ source: CueCard.Source, host: String) -> Bool {
         if let until = backoffUntil[host], until > Date() { return false }
-        return counts[source, default: 0] < caps[source, default: 0]
+        guard counts[source, default: 0] < caps[source, default: 0] else {
+            // Once, not once per mention. A silent stand-down is how the 7 Sep
+            // class lost Wikipedia for its whole second half without a word.
+            if reportedCeilings.insert(source).inserted {
+                ceilingNotes.append("\(source.label) has answered \(caps[source, default: 0]) times this class \u{2014} no more from that source")
+            }
+            return false
+        }
+        return true
     }
 
     private func fetchJSON(_ url: URL, source: CueCard.Source, host: String,

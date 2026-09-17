@@ -783,7 +783,9 @@ final class CoordinatorController: ObservableObject {
     /// itself is macOS 26-only and lives behind `cuesEngine`.
     @Published var cuesListening = false
     @Published var cuesPaused = false
-    @Published var cuesCardCount = 0
+    /// Links Cues has offered this class. Mirrored for the 14+ menu bar, which
+    /// cannot see the engine type.
+    @Published var cuesLinkCount = 0
     /// True while the participants panel is the surface (the menu-bar label
     /// carries the waveform then); false when the status item is.
     @Published var cuesOnRail = false

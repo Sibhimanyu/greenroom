@@ -465,16 +465,25 @@ struct RecordingsView: View {
                 // A picker rather than a split: on a 460pt pane the transcript
                 // and the video each want the whole width, and stacking them
                 // gives both half a pane and neither enough.
-                Picker("", selection: $detailTab) {
-                    ForEach(DetailTab.allCases) { tab in Text(tab.rawValue).tag(tab) }
+                //
+                // Picker and pane are both held back with Cues. The transcript
+                // is read from transcript.txt and the Cues pipeline is the only
+                // thing that writes it, so with Cues out of the release the tab
+                // would be empty for every class this build records. Hidden
+                // beats shown-and-empty: a feature that cannot fill itself
+                // reads as broken, where an absent one reads as not-yet.
+                if CuesAvailability.isReleased {
+                    Picker("", selection: $detailTab) {
+                        ForEach(DetailTab.allCases) { tab in Text(tab.rawValue).tag(tab) }
+                    }
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
+                    .frame(maxWidth: 260)
+                    .padding(.top, 10)
+                    .padding(.bottom, 8)
                 }
-                .pickerStyle(.segmented)
-                .labelsHidden()
-                .frame(maxWidth: 260)
-                .padding(.top, 10)
-                .padding(.bottom, 8)
 
-                if detailTab == .transcript {
+                if CuesAvailability.isReleased, detailTab == .transcript {
                     if let folder = folder(for: selection) {
                         SessionTranscriptView(folder: folder)
                     } else {

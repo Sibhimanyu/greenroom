@@ -10,6 +10,10 @@
 //
 import Foundation
 import CoreGraphics
+// CGDisplayCreateUUIDFromDisplayID moved out of CoreGraphics and into
+// ColorSync in the Xcode 27 SDK. DisplayResolver.swift gets it for free
+// through AppKit; this file imports neither, so it needs it by name.
+import ColorSync
 import AVFoundation
 
 enum LocalDeviceResolver {

@@ -34,6 +34,11 @@ import Foundation
 struct MarksNote: Codable, Identifiable, Hashable {
 
     /// Schema version of THIS line. See the file note.
+    ///
+    /// v2 added `author`. A v1 line decodes unchanged because the field is
+    /// optional, and a v1 reader ignores a field it does not know - which is
+    /// the whole reason the version sits on the line rather than governing
+    /// the file. Nothing had to be migrated and no file had to be rewritten.
     var v: Int = MarksNote.schemaVersion
 
     var id: UUID = UUID()
@@ -55,7 +60,21 @@ struct MarksNote: Codable, Identifiable, Hashable {
     /// recording exists, and the only timestamp left if it is ever deleted.
     var markedAt: Date
 
-    static let schemaVersion = 1
+    /// Who typed it. Nil on every note written before there was more than one
+    /// evaluator, which is why it is optional rather than defaulted: a blank
+    /// string would be indistinguishable from someone who declined to give a
+    /// name, and "written before this existed" is a different fact.
+    var author: String?
+
+    static let schemaVersion = 2
+
+    /// What to show when a note has no author: the folder's own evaluator.
+    static let soleAuthor = "You"
+
+    /// The name to display for this note among `others`.
+    func authorLabel(soleAuthor label: String = MarksNote.soleAuthor) -> String {
+        author ?? label
+    }
 
     /// `12:04` - where this note sits in the recording, for a human.
     ///
@@ -132,5 +151,72 @@ enum MarksNotesFile {
             guard let data = line.data(using: .utf8) else { return nil }
             return try? decoder.decode(MarksNote.self, from: data)
         }
+    }
+}
+
+extension MarksNotesFile {
+
+    /// Folds another evaluator's notes into this presentation's file.
+    ///
+    /// By `id`, which is a UUID minted when the note was typed, so the same
+    /// file imported twice adds nothing the second time. That matters more
+    /// than it sounds: a teacher collecting notes from two TAs over email is
+    /// going to import the same attachment again at some point, and a merge
+    /// that duplicated on every pass would quietly double somebody's
+    /// contribution to the analysis.
+    ///
+    /// Sorted by offset on the way out, so the merged file reads as one
+    /// timeline of the presentation rather than as two files stapled
+    /// together.
+    ///
+    /// Returns how many were actually new.
+    @discardableResult
+    static func merge(_ incoming: [MarksNote], into folder: URL) -> Int {
+        let existing = load(in: folder)
+        let known = Set(existing.map(\.id))
+        let fresh = incoming.filter { !known.contains($0.id) }
+        guard !fresh.isEmpty else { return 0 }
+
+        let combined = (existing + fresh).sorted {
+            $0.atMs == $1.atMs ? $0.markedAt < $1.markedAt : $0.atMs < $1.atMs
+        }
+        // Rewritten rather than appended: the append path is for the live
+        // window, where order is time's own doing and a rewrite mid-
+        // presentation would be a chance to lose everything. Importing is not
+        // live, nothing else holds the file open, and the sorted order is the
+        // point of merging at all.
+        replace(combined, in: folder)
+        return fresh.count
+    }
+
+    /// Writes the whole file. Only the importer needs this; the live path
+    /// appends, so a crash cannot cost more than the note being typed.
+    static func replace(_ notes: [MarksNote], in folder: URL) {
+        try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        let body = notes.compactMap { note -> String? in
+            guard let data = try? encoder.encode(note) else { return nil }
+            return String(data: data, encoding: .utf8)
+        }.joined(separator: "\n")
+        try? (body + "\n").write(to: url(in: folder), atomically: true, encoding: .utf8)
+    }
+
+    /// Reads a notes file from anywhere - a TA's export, dropped in.
+    static func read(from file: URL) -> [MarksNote] {
+        guard let text = try? String(contentsOf: file, encoding: .utf8) else { return [] }
+        return text.split(separator: "\n").compactMap { line in
+            guard let data = line.data(using: .utf8) else { return nil }
+            return try? decoder.decode(MarksNote.self, from: data)
+        }
+    }
+
+    /// Every distinct author in a set of notes, in the order they first
+    /// appear, with unattributed notes folded under one name.
+    static func authors(in notes: [MarksNote], soleAuthor label: String = MarksNote.soleAuthor) -> [String] {
+        var seen: [String] = []
+        for note in notes {
+            let name = note.authorLabel(soleAuthor: label)
+            if !seen.contains(name) { seen.append(name) }
+        }
+        return seen
     }
 }

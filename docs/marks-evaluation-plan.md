@@ -382,3 +382,87 @@ Priya Raman - 2026-09-18 10-44/
 - **The meeting feed as a capture source.** Still local camera only.
 - **Whether the speaker sees notes live.** Still not discussed; today they see
   nothing until the report.
+
+## The three gaps, closed (2026-09-18)
+
+### More than one evaluator — without a transport
+
+The plan's 10x extension. It arrives as files, not as a network.
+
+Notes are files (approach A), so a second evaluator is a second
+`notes.jsonl`, handed over however people already hand files over, and
+merging is a union by `id` — the same attachment imported twice adds nothing
+the second time. A transport would have bought a server, a pairing flow, a
+failure mode mid-presentation and an answer to "what happens when the TA's
+laptop sleeps", all to save an email. When there is a live meeting to carry
+it, a transport can be added underneath this same merge and nothing above it
+changes.
+
+`MarksNote` is at **v2**: it gained an `author`. A v1 line decodes unchanged,
+because the field is optional and the version is on the line rather than on
+the file. Nothing was migrated and no file was rewritten.
+
+What the merge buys is `MarksAgreement`, and it is arithmetic like
+`MarksCohort`, not a question put to a model:
+
+- **Moments more than one evaluator wrote about**, clustered within twenty
+  seconds — wide enough that one person typing as it happens and another
+  waiting to see how it resolves still count as one moment.
+- **"The evaluators rarely wrote about the same moment"**, flagged for
+  action. Two people watching one presentation and noticing different things
+  is usually a rubric that has not been agreed, rather than a presentation
+  that was ambiguous. That is a fact about the marking, which is exactly what
+  premise 3 is about.
+- **"Nothing X wrote lines up with anyone else"** — either they were watching
+  for something nobody else was, or their clock and the recording's disagree.
+
+### The meeting feed — refused by the SDK, reached another way
+
+`MarksCaptureEngine` is the abstraction the plan asked for on day one,
+written now that there is a second conformance to shape it. Two engines:
+
+- **Camera** — a person presenting in the room.
+- **Screen** — a window or a display, via ScreenCaptureKit.
+
+The screen engine is the answer to the remote presenter, and it is a
+deliberate detour. Marks cannot ask the Meeting SDK for a student's video:
+the SDK renders into one container, that video cannot leave the container's
+window (DESIGN.md, 2026-08-24 — the re-parenting experiment drew black), and
+the capability matrix rules out a second container. What Marks *can* do is
+point at the window the student is already visible in. That works with
+Greenroom's own participants panel, with the native Zoom app, with Meet in a
+browser, with a recording being played back — and unlike anything routed
+through the SDK it can be tested on this Mac with no meeting and no second
+person.
+
+It captures **system audio**, not the microphone, which is the opposite of
+the camera engine's choice and right for each: a camera in the room hears the
+room, a window on screen is heard through the machine playing it.
+
+**This is the first thing in Greenroom to want Screen Recording permission.**
+Until now that permission belonged entirely to OBS, and three places said so
+— `README.md`, `docs/guide.html` and the transparency page, which literally
+claimed "Greenroom contains no screen-capture code". All three were rewritten
+in the same commit. They now say what is true: the code exists, Marks is held
+back so nothing in the shipping build can reach it, macOS never asks, and
+when Marks ships this becomes a fourth permission.
+
+### Does the speaker see notes live — the teacher decides, per presentation
+
+`MarksSpeakerView`: one column, large type, newest at the bottom, no controls
+— readable across a room, for the second display or a mirrored iPad.
+
+**It is off unless it is asked for, every single time, and the setting is not
+stored.** A persisted preference would mean a teacher who once coached a
+rehearsal is silently still coaching in an exam three weeks later, and the
+student would be the one to find out. Marks opens as an evaluation tool on
+every launch; coaching is something you turn on for the next twenty minutes.
+That is the plan's open question answered by refusing to answer it once for
+everybody.
+
+### Still not built
+
+- A live transport for multi-evaluator notes. The merge is the seam it would
+  go under.
+- The Zoom meeting feed as a direct capture source. Blocked by the SDK, not
+  by effort.

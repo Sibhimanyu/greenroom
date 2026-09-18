@@ -51,6 +51,14 @@ final class MarksController: ObservableObject {
     /// what they have already said.
     @Published private(set) var notes: [MarksNote] = []
 
+    /// Whether the speaker is watching the notes land.
+    ///
+    /// Deliberately NOT persisted. See MarksSpeakerView: a stored preference
+    /// would mean a teacher who once coached a rehearsal is silently still
+    /// coaching in an exam three weeks later, and the student would be the
+    /// one to find out. Marks opens as an evaluation tool every launch.
+    @Published var speakerIsWatching = false
+
     // MARK: The note being typed
 
     @Published var draft: String = "" {
@@ -63,26 +71,30 @@ final class MarksController: ObservableObject {
 
     // MARK: Camera
 
-    let recorder = MarksRecorder()
-
-    /// Remembered between presentations: which camera is pointed at the front
-    /// of the room is a property of the room, not of the student.
-    @Published var cameraUID: String {
-        didSet {
-            defaults.set(cameraUID, forKey: Self.cameraKey)
-            recorder.useCamera(uid: cameraUID)
-        }
-    }
+    let recorder: MarksRecorder
 
     @Published private(set) var cameras: [LocalDeviceResolver.Camera] = []
 
+    /// Where the picture comes from. Remembered between presentations: which
+    /// camera points at the front of the room, or which window a remote class
+    /// appears in, is a property of the room and the setup rather than of the
+    /// student standing up today.
+    var source: MarksSourceKind { recorder.source }
+
     private let defaults: UserDefaults
     private static let cameraKey = "marksCameraUID"
+    private static let sourceKey = "marksSource"
     private var bag: Set<AnyCancellable> = []
+
+    /// One instance, because two windows show the same presentation: the
+    /// evaluator's and, when it is asked for, the speaker's. Greenroom
+    /// already shares one CoordinatorController across scenes for the same
+    /// reason - SwiftUI scenes do not otherwise share view state.
+    static let shared = MarksController()
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
-        self.cameraUID = defaults.string(forKey: Self.cameraKey) ?? ""
+        self.recorder = MarksRecorder(source: Self.storedSource(defaults))
         // The window's own state is derived from the recorder's, so it has to
         // redraw when the recorder changes. ObservableObject does not nest.
         recorder.objectWillChange
@@ -94,8 +106,69 @@ final class MarksController: ObservableObject {
 
     func windowAppeared() {
         cameras = LocalDeviceResolver.availableCameras()
-        if cameraUID.isEmpty { cameraUID = cameras.first?.id ?? "" }
-        recorder.startPreview(cameraUID: cameraUID.isEmpty ? nil : cameraUID)
+        Task {
+            await recorder.startPreview()
+            await recorder.refreshScreenTargets()
+        }
+    }
+
+    /// Points Marks at a different camera, window or display, and remembers
+    /// it. Nothing happens mid-recording; the recorder refuses too.
+    func use(source: MarksSourceKind) {
+        Task {
+            await recorder.use(source: source)
+            Self.store(source, in: defaults)
+        }
+    }
+
+    func refreshSources() {
+        cameras = LocalDeviceResolver.availableCameras()
+        Task { await recorder.refreshScreenTargets() }
+    }
+
+    /// What the source picker should say it is pointed at right now.
+    var sourceLabel: String {
+        switch recorder.source {
+        case .camera(let uid):
+            if let named = cameras.first(where: { $0.id == uid })?.name { return named }
+            return cameras.first?.name ?? "Camera"
+        case .window(let id):
+            return recorder.screenTargets.first { $0.kind == .window && $0.id == id }?.title
+                ?? "A window"
+        case .display(let id):
+            return recorder.screenTargets.first { $0.kind == .display && $0.id == id }?.title
+                ?? "Whole screen"
+        }
+    }
+
+    // MARK: Remembering the source
+
+    /// Stored as a short string rather than a Codable enum so a source that
+    /// no longer exists - a camera unplugged, a window closed - degrades to
+    /// "the first camera" instead of failing to decode and taking the whole
+    /// preference with it.
+    private static func storedSource(_ defaults: UserDefaults) -> MarksSourceKind {
+        let raw = defaults.string(forKey: sourceKey) ?? ""
+        if raw.hasPrefix("display:"), let id = UInt32(raw.dropFirst("display:".count)) {
+            return .display(id: id)
+        }
+        // A window id is not stable across launches - the window will have a
+        // different one, or be gone - so a stored window falls back to the
+        // camera rather than pointing at whatever now holds that number.
+        return .camera(uid: defaults.string(forKey: cameraKey) ?? "")
+    }
+
+    private static func store(_ source: MarksSourceKind, in defaults: UserDefaults) {
+        switch source {
+        case .camera(let uid):
+            defaults.set(uid, forKey: cameraKey)
+            defaults.set("camera", forKey: sourceKey)
+        case .display(let id):
+            defaults.set("display:\(id)", forKey: sourceKey)
+        case .window:
+            // Not remembered, for the reason in storedSource.
+            defaults.set("window", forKey: sourceKey)
+        }
     }
 
     func windowDisappeared() {
@@ -176,7 +249,12 @@ final class MarksController: ObservableObject {
 
         let note = MarksNote(atMs: draftAtMs ?? recorder.positionMs,
                              text: text,
-                             markedAt: draftStartedAt ?? Date())
+                             markedAt: draftStartedAt ?? Date(),
+                             // nil when this Mac's evaluator never gave a
+                             // name, which is the single-evaluator case and
+                             // is not a gap to fill in with a guess. See
+                             // MarksIdentity.
+                             author: MarksIdentity.signature)
         notes.append(note)
         MarksNotesFile.append(note, in: folder)
         clearDraft()

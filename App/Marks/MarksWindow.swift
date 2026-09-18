@@ -22,7 +22,7 @@ import AVFoundation
 import SwiftUI
 
 struct MarksWindow: View {
-    @StateObject private var marks = MarksController()
+    @ObservedObject private var marks = MarksController.shared
     @Environment(\.openWindow) private var openWindow
 
     /// Focus goes here and stays here. The evaluator's hands should never
@@ -110,6 +110,20 @@ struct MarksWindow: View {
                       : "Name the presenter first, and wait for the camera.")
             }
 
+            // Coaching, turned on for this presentation only. Quiet and
+            // unlabelled-by-default because the answer is usually no; see
+            // MarksSpeakerView for why it is never remembered.
+            Button {
+                marks.speakerIsWatching.toggle()
+                if marks.speakerIsWatching { openWindow(id: "marks-speaker") }
+            } label: {
+                Image(systemName: marks.speakerIsWatching ? "eye.fill" : "eye.slash")
+            }
+            .controlSize(.large)
+            .help(marks.speakerIsWatching
+                  ? "The speaker is watching the notes as you write them. Click to stop showing them."
+                  : "Show the notes to the speaker as you write them, on another display. Off for every new presentation.")
+
             // The way through to the other half. Quiet, because during a
             // presentation it is the last thing the evaluator should be
             // looking at, and the presentation they just finished will be at
@@ -133,8 +147,15 @@ struct MarksWindow: View {
             ZStack {
                 RoundedRectangle(cornerRadius: 10)
                     .fill(Color.black)
-                CameraPreview(session: marks.recorder.session)
-                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                if marks.recorder.source.isScreen {
+                    if let layer = marks.recorder.screenLayer {
+                        ScreenPreview(layer: layer)
+                            .clipShape(RoundedRectangle(cornerRadius: 10))
+                    }
+                } else if let session = marks.recorder.cameraSession {
+                    CameraPreview(session: session)
+                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                }
                 if !marks.recorder.isPreviewing {
                     // A control that is not ready says so (DESIGN.md).
                     VStack(spacing: 8) {
@@ -152,19 +173,7 @@ struct MarksWindow: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
 
             HStack(spacing: 12) {
-                if marks.cameras.count > 1 {
-                    Picker("Camera", selection: $marks.cameraUID) {
-                        ForEach(marks.cameras) { camera in
-                            Text(camera.name).tag(camera.id)
-                        }
-                    }
-                    .labelsHidden()
-                    .frame(maxWidth: 260)
-                    .disabled(marks.recorder.isRecording)
-                    .help(marks.recorder.isRecording
-                          ? "The camera cannot change while the tape is rolling."
-                          : "Which camera is pointed at the presenter.")
-                }
+                sourcePicker
 
                 if let failure = marks.recorder.failure {
                     // The failure lands on the surface the evaluator was
@@ -311,6 +320,47 @@ struct MarksWindow: View {
         .opacity(marks.canTakeNotes ? 1 : 0.55)
     }
 
+    /// One control for every source, rather than a camera picker beside a
+    /// window picker. The evaluator is answering one question - where is the
+    /// person I am watching - and it has one answer at a time.
+    private var sourcePicker: some View {
+        Menu {
+            Section("In the room") {
+                ForEach(marks.cameras) { camera in
+                    Button {
+                        marks.use(source: .camera(uid: camera.id))
+                    } label: {
+                        Label(camera.name, systemImage: "video")
+                    }
+                }
+                if marks.cameras.isEmpty {
+                    Text("No camera found")
+                }
+            }
+            Section("On this screen") {
+                ForEach(marks.recorder.screenTargets) { target in
+                    Button {
+                        marks.use(source: target.sourceKind)
+                    } label: {
+                        Label("\(target.title) \u{2014} \(target.subtitle)",
+                              systemImage: target.kind == .display ? "display" : "macwindow")
+                    }
+                }
+            }
+            Divider()
+            Button("Look again for windows") { marks.refreshSources() }
+        } label: {
+            Label(marks.sourceLabel,
+                  systemImage: marks.recorder.source.isScreen ? "macwindow" : "video")
+        }
+        .menuStyle(.button)
+        .fixedSize()
+        .disabled(marks.recorder.isRecording)
+        .help(marks.recorder.isRecording
+              ? "The source cannot change while the tape is rolling."
+              : "Where the person you are watching is: a camera in the room, or the window they are on screen in.")
+    }
+
     private func eyebrow(_ text: String) -> some View {
         Text(text)
             .font(.system(size: 10, weight: .semibold, design: .monospaced))
@@ -368,6 +418,55 @@ struct CameraPreview: NSViewRepresentable {
             CATransaction.begin()
             CATransaction.setDisableActions(true)
             preview.frame = bounds
+            CATransaction.commit()
+        }
+    }
+}
+
+/// The screen engine's own layer, put on screen.
+///
+/// A sibling of CameraPreview rather than a shared "preview view": one draws
+/// an AVCaptureSession and the other draws sample buffers that have already
+/// been handed over, and the only thing they have in common is a rectangle.
+struct ScreenPreview: NSViewRepresentable {
+    let layer: AVSampleBufferDisplayLayer
+
+    func makeNSView(context: Context) -> Host {
+        let host = Host()
+        host.attach(layer)
+        return host
+    }
+
+    func updateNSView(_ host: Host, context: Context) {
+        host.attach(layer)
+    }
+
+    final class Host: NSView {
+        private weak var attached: AVSampleBufferDisplayLayer?
+
+        override init(frame frameRect: NSRect) {
+            super.init(frame: frameRect)
+            wantsLayer = true
+            layer = CALayer()
+        }
+
+        required init?(coder: NSCoder) { nil }
+
+        func attach(_ incoming: AVSampleBufferDisplayLayer) {
+            guard attached !== incoming else { return }
+            attached?.removeFromSuperlayer()
+            attached = incoming
+            layer?.addSublayer(incoming)
+            needsLayout = true
+        }
+
+        override func layout() {
+            super.layout()
+            // As in CameraPreview: a CALayer animates its own frame, so every
+            // live resize would drag the picture behind the window edge.
+            CATransaction.begin()
+            CATransaction.setDisableActions(true)
+            attached?.frame = bounds
             CATransaction.commit()
         }
     }

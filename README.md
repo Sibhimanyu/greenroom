@@ -94,7 +94,12 @@ anytime from the **?** button in the main window. The short version:
    | Accessibility | First time a Zoom/native window is tiled | Moving windows of apps that have no AppleScript dictionary — the native Zoom meeting window, and any non-Chrome main app |
 
    Screen Recording permission belongs to **OBS**, not Greenroom — OBS
-   asks for it itself the first time it captures your display.
+   asks for it itself the first time it captures your display. (Greenroom
+   does now contain screen-capture code of its own: **Marks** can record a
+   remote presenter from the window they appear in. Marks is not in this
+   release and no entry point can reach it, so macOS never asks. When Marks
+   ships this becomes a fourth permission, asked the first time you point it
+   at a window.)
 
    **Credential storage note:** the Zoom app credentials are kept in
    Greenroom's local preferences (`UserDefaults`) in **plain text** — not

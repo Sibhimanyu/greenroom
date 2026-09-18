@@ -113,6 +113,19 @@ struct GreenroomApp: App {
         .defaultSize(width: 1180, height: 700)
         .commandsRemoved()
 
+        // The speaker's own view of the notes, when the teacher turns it on.
+        // A window of its own so it can go on the second display, or be
+        // handed over on a mirrored iPad, without dragging the note box with
+        // it.
+        Window("Marks \u{2014} What your evaluator is writing", id: "marks-speaker") {
+            if MarksAvailability.isReleased {
+                MarksSpeakerView()
+                    .tint(Brand.green)
+            }
+        }
+        .defaultSize(width: 520, height: 640)
+        .commandsRemoved()
+
         // Text label rather than an image: a glyph that fails to render
         // leaves an invisible item, and text makes the item's presence
         // unambiguous when diagnosing "it's not showing up". (A template

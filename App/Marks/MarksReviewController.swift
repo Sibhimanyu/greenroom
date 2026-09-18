@@ -26,6 +26,28 @@ final class MarksReviewController: ObservableObject {
     @Published private(set) var analysis: MarksAnalysis?
     @Published private(set) var cohortFindings: [MarksCohort.Finding] = []
 
+    /// What more than one evaluator's notes say about each other. Empty
+    /// whenever only one person wrote, which is the normal case.
+    @Published private(set) var agreementFindings: [MarksCohort.Finding] = []
+
+    /// The name this Mac signs its notes with. Blank until someone needs it,
+    /// which is the moment a second evaluator's notes arrive.
+    @Published var evaluatorName: String = MarksIdentity.current() {
+        didSet { MarksIdentity.set(evaluatorName) }
+    }
+
+    /// Who wrote the notes in the presentation on screen.
+    var authors: [String] {
+        MarksNotesFile.authors(in: notes, soleAuthor: soleAuthorLabel)
+    }
+
+    /// What an unsigned note is called here. The evaluator's own name when
+    /// they have given one, so a merged file does not end up with "You" and
+    /// their name as two different people.
+    private var soleAuthorLabel: String {
+        evaluatorName.isEmpty ? MarksNote.soleAuthor : evaluatorName
+    }
+
     @Published private(set) var isAnalysing = false
     @Published private(set) var isCutting = false
     @Published private(set) var cutProgress: (done: Int, total: Int)?
@@ -71,6 +93,7 @@ final class MarksReviewController: ObservableObject {
         }
 
         notes = presentation.notes()
+        agreementFindings = MarksAgreement.findings(in: notes, soleAuthor: soleAuthorLabel)
         // An existing rubric is this presentation's own snapshot. A new one
         // starts from whatever the teacher is marking the rest of the cohort
         // on - see MarksRubric for why the snapshot then stops following it.
@@ -163,7 +186,11 @@ final class MarksReviewController: ObservableObject {
             notes: notes,
             scoring: scoring.markedCount > 0 ? scoring : nil,
             presenter: selected.presenter,
-            consistency: cohortFindings.map { "\($0.headline). \($0.detail)" })
+            // Both kinds of consistency travel together into the analysis:
+            // how this student was marked against the group, and how the
+            // evaluators agreed with each other. Frozen at the moment the
+            // report was produced - see MarksAnalysis.
+            consistency: (agreementFindings + cohortFindings).map { "\($0.headline). \($0.detail)" })
 
         produced.save(in: selected.folder)
         analysis = produced
@@ -210,6 +237,44 @@ final class MarksReviewController: ObservableObject {
             status = "Cut \(result.exported.count) \(result.exported.count == 1 ? "clip" : "clips") into the folder."
         } else {
             status = "Cut \(result.exported.count); \(result.failed.count) could not be cut."
+        }
+    }
+}
+
+extension MarksReviewController {
+
+    /// Folds another evaluator's notes into this presentation.
+    ///
+    /// A file, handed over however people already hand files over. See
+    /// MarksAgreement for why there is no transport: notes are files, so a
+    /// second evaluator is a second file, and a server would buy an email.
+    ///
+    /// Merging is a union by id, so the same attachment imported twice adds
+    /// nothing the second time.
+    func importNotes(from file: URL) {
+        guard let selected else { return }
+        let incoming = MarksNotesFile.read(from: file)
+        guard !incoming.isEmpty else {
+            status = "\(file.lastPathComponent) had no notes in it."
+            return
+        }
+        let unsigned = incoming.filter { $0.author == nil }.count
+        let added = MarksNotesFile.merge(incoming, into: selected.folder)
+
+        notes = MarksNotesFile.load(in: selected.folder)
+        agreementFindings = MarksAgreement.findings(in: notes, soleAuthor: soleAuthorLabel)
+        refreshSelectedRow()
+
+        if added == 0 {
+            status = "Already had all \(incoming.count) of those notes."
+        } else if unsigned > 0 {
+            // Worth saying rather than silently folding them in: unsigned
+            // notes merge under this Mac's own name, which is wrong if they
+            // came from someone else, and the fix is for THEM to set a name
+            // before exporting.
+            status = "Added \(added) \(added == 1 ? "note" : "notes"). \(unsigned) had no author and will read as yours."
+        } else {
+            status = "Added \(added) \(added == 1 ? "note" : "notes") from \(MarksNotesFile.authors(in: incoming).joined(separator: ", "))."
         }
     }
 }

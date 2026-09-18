@@ -176,15 +176,34 @@ struct MarksReviewWindow: View {
                       ? "Turns the notes into feedback for the speaker, on this Mac."
                       : "Apple Intelligence is unavailable, so this counts what is in the notes instead of writing about them.")
 
+                // One Export menu rather than a button per output. The
+                // evaluator is answering one question - how am I handing this
+                // over - and the four answers differ in form, not in kind.
                 Menu {
-                    Button("For the speaker\u{2026}") { review.exportReport(for: .speaker) }
-                    Button("For me, with the consistency check\u{2026}") { review.exportReport(for: .evaluator) }
+                    Section("Written") {
+                        Button("Report for the speaker\u{2026}") { review.exportReport(for: .speaker) }
+                        Button("Report for me, with the consistency check\u{2026}") { review.exportReport(for: .evaluator) }
+                    }
+                    Section("Video") {
+                        Button("Video with the notes written on it\u{2026}") {
+                            Task { await review.exportAnnotatedVideo() }
+                        }
+                        .disabled(review.selected?.hasRecording != true)
+                        Button("Subtitles beside the recording\u{2026}") {
+                            Task { await review.exportSubtitles() }
+                        }
+                        .disabled(review.selected?.hasRecording != true)
+                    }
                 } label: {
-                    Label("Write report.md", systemImage: "square.and.arrow.down")
+                    if review.isExportingVideo {
+                        Text("Rendering \(Int(review.videoProgress * 100))%\u{2026}")
+                    } else {
+                        Label("Export", systemImage: "square.and.arrow.down")
+                    }
                 }
                 .menuStyle(.button)
                 .fixedSize()
-                .disabled(review.selected == nil || review.notes.isEmpty)
+                .disabled(review.selected == nil || review.notes.isEmpty || review.isExportingVideo)
 
                 Button {
                     importNotes()

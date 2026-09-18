@@ -52,6 +52,12 @@ final class MarksReviewController: ObservableObject {
     @Published private(set) var isCutting = false
     @Published private(set) var cutProgress: (done: Int, total: Int)?
 
+    /// The annotated video is the one thing in Marks that re-encodes, so it
+    /// is the one thing that takes minutes. Its progress is reported rather
+    /// than spun at - DESIGN.md asks that a wait say how much is left.
+    @Published private(set) var isExportingVideo = false
+    @Published private(set) var videoProgress: Double = 0
+
     /// What just happened, in a sentence, under the actions that caused it.
     /// DESIGN.md asks that a result land on the surface the user was already
     /// watching rather than in a log somewhere else.
@@ -276,5 +282,62 @@ extension MarksReviewController {
         } else {
             status = "Added \(added) \(added == 1 ? "note" : "notes") from \(MarksNotesFile.authors(in: incoming).joined(separator: ", "))."
         }
+    }
+}
+
+// MARK: - Handing the presentation over as video
+
+extension MarksReviewController {
+
+    /// Writes the recording again with the notes drawn into the picture.
+    ///
+    /// The point of this over report.md: reading "at 6:40 you lost the
+    /// thread" and WATCHING yourself lose the thread while the sentence
+    /// appears are not the same feedback, and the second needs no
+    /// cross-referencing between a document and a scrubber.
+    func exportAnnotatedVideo() async {
+        guard let selected, let recording = selected.recording,
+              !notes.isEmpty, !isExportingVideo else { return }
+        isExportingVideo = true
+        videoProgress = 0
+        status = "Rendering the notes into the video\u{2026}"
+        defer { isExportingVideo = false; videoProgress = 0 }
+
+        let output = selected.folder.appendingPathComponent(MarksVideoExport.annotatedFileName)
+        do {
+            let written = try await MarksVideoExport.exportAnnotated(
+                recording: recording,
+                notes: notes,
+                presenter: selected.presenter,
+                presentedAt: selected.presentedAt,
+                // Names only when there is more than one person to tell
+                // apart. A name on every card when one person wrote them all
+                // is the same word repeated down the whole video.
+                showAuthors: authors.count > 1,
+                to: output,
+                onProgress: { [weak self] progress in self?.videoProgress = progress })
+            status = "Wrote \(written.lastPathComponent)."
+            refreshSelectedRow()
+        } catch {
+            status = error.localizedDescription
+        }
+    }
+
+    /// Writes the notes as subtitles beside the recording.
+    ///
+    /// Seconds rather than minutes, because nothing is re-encoded, and every
+    /// player can turn them off. YouTube takes the file directly. The cost is
+    /// that it is a second file to keep next to the first.
+    func exportSubtitles() async {
+        guard let selected, let recording = selected.recording, !notes.isEmpty else { return }
+        let duration = (try? await AVURLAsset(url: recording).load(.duration))?.seconds ?? 0
+        guard let written = MarksVideoExport.writeSubtitles(
+            for: notes, duration: duration,
+            showAuthors: authors.count > 1, in: selected.folder) else {
+            status = "The subtitles could not be written."
+            return
+        }
+        status = "Wrote \(written.lastPathComponent). Open the recording in QuickTime or VLC and turn subtitles on."
+        refreshSelectedRow()
     }
 }

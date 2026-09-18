@@ -466,3 +466,48 @@ everybody.
   go under.
 - The Zoom meeting feed as a direct capture source. Blocked by the SDK, not
   by effort.
+
+## Handing it over as video (2026-09-18)
+
+`report.md` is the document a teacher sends. This is the other half of the
+same thought: a student watching themselves present, with the note the
+teacher typed appearing at the moment it was typed about. Reading "at 6:40
+you lost the thread" and watching yourself lose the thread while the sentence
+appears are not the same feedback, and the second needs no cross-referencing
+between a document and a scrubber.
+
+`App/Marks/MarksVideoExport.swift`, two outputs:
+
+- **Video with the notes written on it** - `presentation-with-notes.mp4`. One
+  file, plays anywhere, cannot be separated from its notes. Costs a
+  re-encode, so minutes rather than seconds, and the notes can never be
+  turned off.
+- **Subtitles** - `notes.srt`. Written in a second, no re-encode, nothing
+  lost, every player can toggle them, YouTube takes the file directly. But it
+  is a second file to keep beside the first, and a student who double-clicks
+  the video may never see it.
+
+A teacher sending one file to one student wants the first. A teacher
+uploading a term of presentations wants the second.
+
+**Timing.** A card appears two seconds BEFORE its note and stays six, cut
+short when the next note is due but never under two and a half. The lead is
+the same rule that runs through all of Marks - a note is stamped at its first
+keystroke, so the thing it describes is already happening. The floor matters
+more than the ceiling: two notes typed nine seconds apart are a teacher
+reacting quickly, and the first flashing past in half a second would be the
+one the student most needed to read.
+
+**The look** follows DESIGN.md: one near-black card bottom-left, system font
+for the words, mono for the timestamp, the logo's lime on the timestamp only,
+no ornament. Sizes derive from the video's own height, so a 720p capture and
+a 1080p one produce the same picture at different scales. The card is
+measured to its own text, because a note can be two words or three lines and
+a fixed height would clip exactly the part the teacher went to the trouble of
+writing.
+
+**Verified by rendering.** Twenty seconds of flat grey were synthesised,
+annotated, and read back frame by frame: 25% of the bottom-left corner is
+non-grey while a note is up and 0% in the one-second gap between cards. That
+is the overlay actually reaching the pixels, not just the export reporting
+success.

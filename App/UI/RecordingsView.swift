@@ -104,11 +104,16 @@ struct RecordingsView: View {
     enum DetailTab: String, CaseIterable, Identifiable {
         case recording = "Recording"
         case transcript = "Transcript"
-        /// Screenroom's half: analyse this session, read the notes, mark the
-        /// rubric, open the report. It lives here rather than in a window of
-        /// its own because a second list of ~/Documents/Greenroom is one list
-        /// too many - see ScreenroomAnalysisPane.
+        /// Screenroom's three, flat rather than nested.
+        ///
+        /// They were one "Analysis" tab holding a second segmented control of
+        /// Analysis / Notes / Rubric, which put two pickers one under the
+        /// other with the word "Analysis" in both. That reads as a bug, not a
+        /// hierarchy. Five flat tabs is one decision instead of two, and the
+        /// word appears once.
         case analysis = "Analysis"
+        case notes = "Notes"
+        case rubric = "Rubric"
         var id: String { rawValue }
 
         var isAvailable: Bool {
@@ -118,7 +123,7 @@ struct RecordingsView: View {
             // too, so a build with Screenroom in it can fill this tab even
             // when Cues is held back.
             case .transcript: return CuesAvailability.isReleased || ScreenroomAvailability.isReleased
-            case .analysis: return ScreenroomAvailability.isReleased
+            case .analysis, .notes, .rubric: return ScreenroomAvailability.isReleased
             }
         }
     }
@@ -468,6 +473,17 @@ struct RecordingsView: View {
         }
     }
 
+    /// Which of Screenroom's panes the current tab wants, or nil when the
+    /// tab belongs to something else.
+    private var screenroomPane: ScreenroomAnalysisPane.Pane? {
+        switch detailTab {
+        case .analysis: return .analysis
+        case .notes: return .notes
+        case .rubric: return .rubric
+        case .recording, .transcript: return nil
+        }
+    }
+
     /// The class folder a recording belongs to, for the transcript pane.
     private func folder(for recording: Recording) -> URL? {
         sessions.first {
@@ -478,23 +494,18 @@ struct RecordingsView: View {
     @ViewBuilder private var detail: some View {
         if let selection {
             VStack(spacing: 0) {
-                // A picker rather than a split: on a 460pt pane the transcript
-                // and the video each want the whole width, and stacking them
-                // gives both half a pane and neither enough.
+                // A picker rather than a split: on a 460pt pane the
+                // transcript and the video each want the whole width, and
+                // stacking them gives both half a pane and neither enough.
                 //
-                // Picker and pane are both held back with Cues. The transcript
-                // is read from transcript.txt and the Cues pipeline is the only
-                // thing that writes it, so with Cues out of the release the tab
-                // would be empty for every class this build records. Hidden
-                // beats shown-and-empty: a feature that cannot fill itself
-                // reads as broken, where an absent one reads as not-yet.
-                // Shown when there is more than one tab to show. The
-                // transcript pane used to be gated on Cues alone, because the
-                // Cues pipeline was the only thing that wrote transcript.txt;
-                // Screenroom's Analyse writes one too, so either feature can
-                // now fill it. Hidden when neither is in the build: a tab that
-                // cannot fill itself reads as broken, where an absent one
-                // reads as not-yet.
+                // Leading-aligned, sharing the left edge of everything under
+                // it. It used to be centred while the pane below was
+                // left-aligned, which gave the detail three different left
+                // edges and no reason for any of them.
+                //
+                // Hidden when there is only one tab: a feature that cannot
+                // fill itself reads as broken, where an absent one reads as
+                // not-yet.
                 let tabs = DetailTab.allCases.filter(\.isAvailable)
                 if tabs.count > 1 {
                     Picker("", selection: $detailTab) {
@@ -502,16 +513,22 @@ struct RecordingsView: View {
                     }
                     .pickerStyle(.segmented)
                     .labelsHidden()
-                    .frame(maxWidth: 320)
-                    .padding(.top, 10)
-                    .padding(.bottom, 8)
+                    // Sized to its own labels rather than to a number that
+                    // goes stale the moment a tab is renamed. Measured: the
+                    // five come to 352pt against a pane that is never
+                    // narrower than 460.
+                    .fixedSize()
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 16)
+                    .padding(.top, 12)
+                    .padding(.bottom, 10)
                 }
 
-                if detailTab == .analysis, DetailTab.analysis.isAvailable {
-                    ScreenroomAnalysisPane(folder: folder(for: selection)) { ms in
+                if let pane = screenroomPane, DetailTab.analysis.isAvailable {
+                    ScreenroomAnalysisPane(folder: folder(for: selection),
+                                           showing: pane) { ms in
                         seek(to: Double(ms) / 1000)
                     }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                 } else if detailTab == .transcript, DetailTab.transcript.isAvailable {
                     if let folder = folder(for: selection) {
                         SessionTranscriptView(folder: folder)

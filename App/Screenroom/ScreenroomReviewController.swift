@@ -26,31 +26,7 @@ final class ScreenroomReviewController: ObservableObject {
     @Published private(set) var analysis: ScreenroomAnalysis?
     @Published private(set) var cohortFindings: [ScreenroomCohort.Finding] = []
 
-    /// What more than one evaluator's notes say about each other. Empty
-    /// whenever only one person wrote, which is the normal case.
-    @Published private(set) var agreementFindings: [ScreenroomCohort.Finding] = []
-
-    /// The name this Mac signs its notes with. Blank until someone needs it,
-    /// which is the moment a second evaluator's notes arrive.
-    @Published var evaluatorName: String = ScreenroomIdentity.current() {
-        didSet { ScreenroomIdentity.set(evaluatorName) }
-    }
-
-    /// Who wrote the notes in the presentation on screen.
-    var authors: [String] {
-        ScreenroomNotesFile.authors(in: notes, soleAuthor: soleAuthorLabel)
-    }
-
-    /// What an unsigned note is called here. The evaluator's own name when
-    /// they have given one, so a merged file does not end up with "You" and
-    /// their name as two different people.
-    private var soleAuthorLabel: String {
-        evaluatorName.isEmpty ? ScreenroomNote.soleAuthor : evaluatorName
-    }
-
     @Published private(set) var isAnalysing = false
-    @Published private(set) var isCutting = false
-    @Published private(set) var cutProgress: (done: Int, total: Int)?
 
     /// The annotated video is the one thing in Screenroom that re-encodes, so it
     /// is the one thing that takes minutes. Its progress is reported rather
@@ -86,15 +62,6 @@ final class ScreenroomReviewController: ObservableObject {
 
     let player = AVPlayer()
 
-    /// How much run-up a clip gets before the note it was cut for.
-    ///
-    /// Fifteen seconds, and not symmetric, because of how the note was
-    /// stamped: ScreenroomController marks a note at its FIRST KEYSTROKE, so the
-    /// thing being described already happened. The clip has to reach back
-    /// past it. Five seconds afterwards is enough to see how it resolved.
-    static let clipLeadInMs = 15_000
-    static let clipTailMs = 5_000
-
     init() {
         _ = ScreenroomDefaults.migrated
         refresh()
@@ -123,7 +90,6 @@ final class ScreenroomReviewController: ObservableObject {
         }
 
         notes = presentation.notes()
-        agreementFindings = ScreenroomAgreement.findings(in: notes, soleAuthor: soleAuthorLabel)
         // An existing rubric is this presentation's own snapshot. A new one
         // starts from whatever the teacher is marking the rest of the cohort
         // on - see ScreenroomRubric for why the snapshot then stops following it.
@@ -222,11 +188,9 @@ final class ScreenroomReviewController: ObservableObject {
             notes: notes,
             scoring: scoring.markedCount > 0 ? scoring : nil,
             presenter: selected.presenter,
-            // Both kinds of consistency travel together into the analysis:
-            // how this student was marked against the group, and how the
-            // evaluators agreed with each other. Frozen at the moment the
-            // report was produced - see ScreenroomAnalysis.
-            consistency: (agreementFindings + cohortFindings).map { "\($0.headline). \($0.detail)" })
+            // Frozen at the moment the report was produced, not recomputed
+            // on read - see ScreenroomAnalysis.
+            consistency: cohortFindings.map { "\($0.headline). \($0.detail)" })
 
         produced.save(in: selected.folder)
         analysis = produced
@@ -251,68 +215,6 @@ final class ScreenroomReviewController: ObservableObject {
         refreshSelectedRow()
     }
 
-    /// Cuts the recording to each note.
-    ///
-    /// Passthrough, through the exporter the class clips already use, so
-    /// twelve clips cost seconds rather than minutes and lose no quality.
-    func cutClips() async {
-        guard let selected, let recording = selected.recording, !notes.isEmpty, !isCutting else { return }
-        isCutting = true
-        cutProgress = (0, notes.count)
-        defer { isCutting = false; cutProgress = nil }
-
-        let clips = notes.map { note in
-            SessionClip(startMs: max(0, note.atMs - Self.clipLeadInMs),
-                        endMs: note.atMs + Self.clipTailMs,
-                        markedAt: note.markedAt)
-        }
-        let result = await SessionClipExporter.exportAll(clips, from: recording) { [weak self] done, total in
-            self?.cutProgress = (done, total)
-        }
-        if result.failed.isEmpty {
-            status = "Cut \(result.exported.count) \(result.exported.count == 1 ? "clip" : "clips") into the folder."
-        } else {
-            status = "Cut \(result.exported.count); \(result.failed.count) could not be cut."
-        }
-    }
-}
-
-extension ScreenroomReviewController {
-
-    /// Folds another evaluator's notes into this presentation.
-    ///
-    /// A file, handed over however people already hand files over. See
-    /// ScreenroomAgreement for why there is no transport: notes are files, so a
-    /// second evaluator is a second file, and a server would buy an email.
-    ///
-    /// Merging is a union by id, so the same attachment imported twice adds
-    /// nothing the second time.
-    func importNotes(from file: URL) {
-        guard let selected else { return }
-        let incoming = ScreenroomNotesFile.read(from: file)
-        guard !incoming.isEmpty else {
-            status = "\(file.lastPathComponent) had no notes in it."
-            return
-        }
-        let unsigned = incoming.filter { $0.author == nil }.count
-        let added = ScreenroomNotesFile.merge(incoming, into: selected.folder)
-
-        notes = ScreenroomNotesFile.load(in: selected.folder)
-        agreementFindings = ScreenroomAgreement.findings(in: notes, soleAuthor: soleAuthorLabel)
-        refreshSelectedRow()
-
-        if added == 0 {
-            status = "Already had all \(incoming.count) of those notes."
-        } else if unsigned > 0 {
-            // Worth saying rather than silently folding them in: unsigned
-            // notes merge under this Mac's own name, which is wrong if they
-            // came from someone else, and the fix is for THEM to set a name
-            // before exporting.
-            status = "Added \(added) \(added == 1 ? "note" : "notes"). \(unsigned) had no author and will read as yours."
-        } else {
-            status = "Added \(added) \(added == 1 ? "note" : "notes") from \(ScreenroomNotesFile.authors(in: incoming).joined(separator: ", "))."
-        }
-    }
 }
 
 // MARK: - Handing the presentation over as video
@@ -340,10 +242,6 @@ extension ScreenroomReviewController {
                 notes: notes,
                 presenter: selected.presenter,
                 presentedAt: selected.presentedAt,
-                // Names only when there is more than one person to tell
-                // apart. A name on every card when one person wrote them all
-                // is the same word repeated down the whole video.
-                showAuthors: authors.count > 1,
                 to: output,
                 onProgress: { [weak self] progress in self?.videoProgress = progress })
             status = "Wrote \(written.lastPathComponent)."
@@ -363,7 +261,7 @@ extension ScreenroomReviewController {
         let duration = (try? await AVURLAsset(url: recording).load(.duration))?.seconds ?? 0
         guard let written = ScreenroomVideoExport.writeSubtitles(
             for: notes, duration: duration,
-            showAuthors: authors.count > 1, in: selected.folder) else {
+            in: selected.folder) else {
             status = "The subtitles could not be written."
             return
         }

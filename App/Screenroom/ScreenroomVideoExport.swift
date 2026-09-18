@@ -98,13 +98,12 @@ enum ScreenroomVideoExport {
     /// SubRip, because it is the format every player and YouTube already
     /// takes. WebVTT would be the more modern answer and QuickTime does not
     /// read it.
-    static func subRip(for notes: [ScreenroomNote], duration: Double, showAuthors: Bool) -> String {
+    static func subRip(for notes: [ScreenroomNote], duration: Double) -> String {
         windows(for: notes, duration: duration).enumerated().map { index, window in
-            let author = showAuthors ? "\(window.note.authorLabel()): " : ""
             return """
             \(index + 1)
             \(subRipStamp(window.start)) --> \(subRipStamp(window.end))
-            \(author)\(window.note.text)
+            \(window.note.text)
 
             """
         }.joined(separator: "\n")
@@ -123,8 +122,8 @@ enum ScreenroomVideoExport {
 
     @discardableResult
     static func writeSubtitles(for notes: [ScreenroomNote], duration: Double,
-                               showAuthors: Bool, in folder: URL) -> URL? {
-        let text = subRip(for: notes, duration: duration, showAuthors: showAuthors)
+                               in folder: URL) -> URL? {
+        let text = subRip(for: notes, duration: duration)
         let target = folder.appendingPathComponent(subtitleFileName)
         guard (try? text.write(to: target, atomically: true, encoding: .utf8)) != nil else { return nil }
         return target
@@ -139,12 +138,17 @@ enum ScreenroomVideoExport {
     /// once as layers and opacity animations, and AVFoundation renders it
     /// offline at whatever frame rate the export runs at. Drawing per frame
     /// would mean owning a render loop to produce a picture that does not
-    /// move.
+    /// Renders a new file with the notes drawn into the picture.
+    ///
+    /// Core Animation layers through AVVideoCompositionCoreAnimationTool,
+    /// rather than drawing each frame by hand: the whole overlay is described
+    /// once as layers and opacity animations, and AVFoundation renders it
+    /// offline. Drawing per frame would mean owning a render loop to produce
+    /// a picture that does not move.
     static func exportAnnotated(recording: URL,
                                 notes: [ScreenroomNote],
                                 presenter: String,
                                 presentedAt: Date,
-                                showAuthors: Bool,
                                 to output: URL,
                                 onProgress: (@MainActor (Double) -> Void)? = nil) async throws -> URL {
         let asset = AVURLAsset(url: recording)
@@ -203,7 +207,6 @@ enum ScreenroomVideoExport {
                                    notes: notes,
                                    presenter: presenter,
                                    presentedAt: presentedAt,
-                                   showAuthors: showAuthors,
                                    duration: duration.seconds)
         parent.addSublayer(overlay)
 
@@ -255,7 +258,6 @@ enum ScreenroomVideoExport {
                              notes: [ScreenroomNote],
                              presenter: String,
                              presentedAt: Date,
-                             showAuthors: Bool,
                              duration: Double) -> CALayer {
         let overlay = CALayer()
         overlay.frame = CGRect(origin: .zero, size: size)
@@ -269,8 +271,7 @@ enum ScreenroomVideoExport {
         }
 
         for window in windows(for: notes, duration: duration) {
-            let card = noteCard(window.note, width: cardWidth, height: size.height,
-                                showAuthor: showAuthors)
+            let card = noteCard(window.note, width: cardWidth, height: size.height)
             // Bottom-left, above the margin. Core Animation's origin is
             // bottom-left here, which is the one place in this app that is
             // true, so the card's y IS the margin rather than a subtraction.
@@ -304,11 +305,9 @@ enum ScreenroomVideoExport {
         return card
     }
 
-    static func noteCard(_ note: ScreenroomNote, width: CGFloat, height: CGFloat, showAuthor: Bool) -> CALayer {
+    static func noteCard(_ note: ScreenroomNote, width: CGFloat, height: CGFloat) -> CALayer {
         let text = NSMutableAttributedString()
-        let stamp = showAuthor
-            ? "\(note.offsetLabel)   \(note.authorLabel())"
-            : note.offsetLabel
+        let stamp = note.offsetLabel
         text.append(NSAttributedString(string: stamp + "\n", attributes: [
             .font: NSFont.monospacedSystemFont(ofSize: height * 0.021, weight: .semibold),
             // The lime from the logo. It is barred as TEXT on white

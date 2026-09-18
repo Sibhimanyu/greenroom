@@ -165,7 +165,7 @@ struct ContentView: View {
             Spacer(minLength: 0)
         }
         .padding(20)
-        .frame(minWidth: 580, minHeight: preferredWindowHeight)
+        .frame(minWidth: Self.minimumWindowWidth, minHeight: preferredWindowHeight)
         // The window OPENS at the preferred size every time, regardless
         // of the size it was closed at (explicit request) - SwiftUI
         // persists scene geometry across launches and defaultSize only
@@ -244,6 +244,28 @@ struct ContentView: View {
         return height
     }
 
+    /// The width the button row needs, and therefore the window's.
+    ///
+    /// Worked out from the row rather than chosen. Five bordered `.large`
+    /// buttons at their LONGEST labels - "Stop Recording", not "Record", and
+    /// Start's 130pt floor - plus four 10pt gaps, 20pt padding each side, and
+    /// enough left for the Spacer to still read as a gap. That comes to
+    /// 720pt; the row was clipping "Screenroom" at 620.
+    ///
+    /// Longest labels on purpose: a window sized for the idle state reflows
+    /// the moment a recording starts, which is the one moment nothing on
+    /// screen should move.
+    ///
+    /// Two values because the last button is not always there. Screenroom is
+    /// held out of releases, and a shipping window should not carry 100pt of
+    /// margin for a button nobody can see - so the released width is the one
+    /// that has always been there.
+    static var minimumWindowWidth: CGFloat { ScreenroomAvailability.isReleased ? 720 : 580 }
+
+    /// What the window opens at: the minimum plus the 40pt of breathing room
+    /// the original pair (580/620) already used.
+    static var defaultWindowWidth: CGFloat { ScreenroomAvailability.isReleased ? 760 : 620 }
+
     /// Height of the open log. Eight lines.
     private static let statusLogHeight: CGFloat = 180
 
@@ -257,7 +279,7 @@ struct ContentView: View {
     private func resizeWindow(animated: Bool) {
         guard let window = NSApp.windows.first(where: { $0.title == "Greenroom" }) else { return }
         let content = window.contentRect(forFrameRect: window.frame)
-        let width = animated ? content.width : 620
+        let width = animated ? content.width : Self.defaultWindowWidth
         let target = NSRect(x: content.minX, y: content.maxY - preferredWindowHeight,
                             width: width, height: preferredWindowHeight)
         window.setFrame(window.frameRect(forContentRect: target), display: true, animate: animated)

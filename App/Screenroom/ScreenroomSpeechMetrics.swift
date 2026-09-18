@@ -6,7 +6,7 @@
 //
 //  Filler words, pace, pauses. All of it is arithmetic over a transcript with
 //  word timings, so all of it stays here rather than going to a model - the
-//  same rule ScreenroomCohort and ScreenroomAgreement follow, and for the same reason:
+//  same rule ScreenroomCohort follows, and for the same reason:
 //  a number that can be recomputed and argued with is worth more to a student
 //  disputing feedback than a sentence that sounds confident.
 //

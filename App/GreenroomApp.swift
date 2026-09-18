@@ -53,7 +53,10 @@ struct GreenroomApp: App {
                 .environmentObject(coordinator)
                 .tint(Brand.green)
         }
-        .defaultSize(width: 620, height: 400)
+        // Derived from the button row, not chosen - see
+        // ContentView.minimumWindowWidth. It grows when Screenroom is in the
+        // build, because that is when there is a fifth button in the row.
+        .defaultSize(width: ContentView.defaultWindowWidth, height: 400)
         .commands {
             CommandGroup(after: .appInfo) {
                 Button("Check for Updates\u{2026}") {

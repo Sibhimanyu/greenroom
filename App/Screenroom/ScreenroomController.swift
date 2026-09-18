@@ -249,13 +249,8 @@ final class ScreenroomController: ObservableObject {
         guard !text.isEmpty, let folder else { clearDraft(); return }
 
         let note = ScreenroomNote(atMs: draftAtMs ?? recorder.positionMs,
-                             text: text,
-                             markedAt: draftStartedAt ?? Date(),
-                             // nil when this Mac's evaluator never gave a
-                             // name, which is the single-evaluator case and
-                             // is not a gap to fill in with a guess. See
-                             // ScreenroomIdentity.
-                             author: ScreenroomIdentity.signature)
+                                  text: text,
+                                  markedAt: draftStartedAt ?? Date())
         notes.append(note)
         ScreenroomNotesFile.append(note, in: folder)
         clearDraft()

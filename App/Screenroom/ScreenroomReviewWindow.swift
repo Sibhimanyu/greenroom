@@ -17,7 +17,6 @@
 //
 import AVKit
 import AppKit
-import UniformTypeIdentifiers
 import SwiftUI
 
 struct ScreenroomReviewWindow: View {
@@ -209,26 +208,6 @@ struct ScreenroomReviewWindow: View {
                 .fixedSize()
                 .disabled(review.selected == nil || review.notes.isEmpty || review.isExportingVideo)
 
-                Button {
-                    importNotes()
-                } label: {
-                    Label("Import notes", systemImage: "person.2")
-                }
-                .disabled(review.selected == nil)
-                .help("Fold another evaluator's notes.jsonl into this presentation.")
-
-                Button {
-                    Task { await review.cutClips() }
-                } label: {
-                    if let progress = review.cutProgress {
-                        Text("Cutting \(progress.done)/\(progress.total)\u{2026}")
-                    } else {
-                        Label("Cut to the notes", systemImage: "scissors")
-                    }
-                }
-                .disabled(review.selected?.hasRecording != true || review.notes.isEmpty || review.isCutting)
-                .help("Cuts one clip per note, each starting fifteen seconds before it.")
-
                 Spacer(minLength: 0)
 
                 if let folder = review.selected?.folder {
@@ -296,21 +275,10 @@ struct ScreenroomReviewWindow: View {
                         review.seek(to: note)
                     } label: {
                         VStack(alignment: .leading, spacing: 3) {
-                            HStack(spacing: 6) {
-                                Text(note.offsetLabel)
-                                    .font(.system(size: 10, weight: .semibold, design: .monospaced))
-                                    .monospacedDigit()
-                                    .foregroundStyle(Brand.green)
-                                // Only when there is more than one person to
-                                // tell apart. A name on every note in the
-                                // single-evaluator case is noise repeating
-                                // the same word down the whole column.
-                                if review.authors.count > 1 {
-                                    Text(note.authorLabel(soleAuthor: review.authors.first ?? ScreenroomNote.soleAuthor))
-                                        .font(.system(size: 10, design: .monospaced))
-                                        .foregroundStyle(.tertiary)
-                                }
-                            }
+                            Text(note.offsetLabel)
+                                .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                                .monospacedDigit()
+                                .foregroundStyle(Brand.green)
                             Text(note.text)
                                 .font(.callout)
                                 .foregroundStyle(.primary)
@@ -377,11 +345,6 @@ struct ScreenroomReviewWindow: View {
                         .monospacedDigit()
                 }
 
-                if !review.agreementFindings.isEmpty {
-                    Divider()
-                    agreementBlock
-                }
-
                 if !review.cohortFindings.isEmpty {
                     Divider()
                     consistencyBlock
@@ -436,47 +399,6 @@ struct ScreenroomReviewWindow: View {
         }
     }
 
-    /// Shown only when more than one person wrote. The name field lives here
-    /// rather than in Settings because this is the first moment it matters,
-    /// and a field that appears when it is needed is one a teacher never has
-    /// to go looking for.
-    private var agreementBlock: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            eyebrow("EVALUATORS")
-            HStack(spacing: 6) {
-                Text("You sign notes as")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                TextField("your name", text: $review.evaluatorName)
-                    .textFieldStyle(.roundedBorder)
-                    .font(.caption)
-            }
-            ForEach(review.agreementFindings) { finding in
-                findingRow(finding)
-            }
-        }
-    }
-
-    private func findingRow(_ finding: ScreenroomCohort.Finding) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: 6) {
-            Image(systemName: finding.weight == .check
-                  ? "exclamationmark.circle.fill" : "equal.circle")
-                .font(.caption)
-                .foregroundStyle(finding.weight == .check
-                                 ? AnyShapeStyle(Color.orange)
-                                 : AnyShapeStyle(.tertiary))
-            VStack(alignment: .leading, spacing: 2) {
-                Text(finding.headline)
-                    .font(.caption.weight(.medium))
-                    .fixedSize(horizontal: false, vertical: true)
-                Text(finding.detail)
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-        }
-    }
-
     private var consistencyBlock: some View {
         VStack(alignment: .leading, spacing: 8) {
             eyebrow("CONSISTENCY")
@@ -504,18 +426,6 @@ struct ScreenroomReviewWindow: View {
                 }
             }
         }
-    }
-
-    /// Opens a notes file. NSOpenPanel rather than a drop target: the file
-    /// arrives as an email attachment, so it is in Downloads, and a panel is
-    /// the shortest path from there.
-    private func importNotes() {
-        let panel = NSOpenPanel()
-        panel.allowedContentTypes = [.json, .plainText, .data]
-        panel.allowsMultipleSelection = false
-        panel.message = "Pick another evaluator's notes.jsonl for this presentation."
-        guard panel.runModal() == .OK, let file = panel.url else { return }
-        review.importNotes(from: file)
     }
 
     // MARK: The deeper pass

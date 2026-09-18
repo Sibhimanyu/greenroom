@@ -422,6 +422,25 @@ Priya Raman - 2026-09-18 10-44/
 
 ## The three gaps, closed (2026-09-18)
 
+### More than one evaluator - built, then removed
+
+Built on 2026-09-18 and removed the same day, on the author's call: notes
+gained an `author`, a second evaluator's `notes.jsonl` could be imported and
+merged by id, and `ScreenroomAgreement` reported where two evaluators had and
+had not written about the same moment.
+
+Nobody had asked for it. It was built because the plan called it the 10x
+extension, which is a reason to keep an idea and not a reason to ship a
+button. Without a transport the flow was "have your TA email you a file",
+which is a worse version of a conversation, and the import button was the only
+door to about two hundred lines of analysis that could otherwise never run.
+
+The pieces are in git if a real second evaluator ever turns up. `notes.jsonl`
+stays at v2 rather than reverting to v1: v2 lines with an `author` in them
+exist on the machines this was built on, and a reader seeing one is entitled
+to believe a claim that was briefly true. The field now decodes and is
+ignored, which is the property that made per-line versioning worth having.
+
 ### More than one evaluator — without a transport
 
 The plan's 10x extension. It arrives as files, not as a network.
@@ -682,3 +701,21 @@ were not said. A false "um" in a student's report is worse than a missed one.
   the author's Mac and on a lot of developers' Macs, and on none of the Macs
   this is for. The external tool Screenroom does require, whisper, earns it by
   being the thing that cannot be replaced; a format conversion does not.
+
+## Two features removed (2026-09-18)
+
+Both on the author's call, both after being built, and both for the same
+reason: they answered questions nobody had asked.
+
+**Cut to the notes** cut one clip per note out of the recording. It was
+written before the annotated video export existed, and once that shipped it
+was redundant - a student watching `presentation-with-notes.mp4` sees every
+note in place, in order, without opening twenty files. Clip cutting for
+*classes* is untouched; that is `⌥⌘1`/`2`/`5` and a different feature.
+
+**Import notes** is covered above.
+
+What both had in common is worth writing down, because it is the failure mode
+of building fast: each was a reasonable idea, implemented well, verified, and
+of no use to the person the tool is for. The test that would have caught them
+earlier is not "is this good" but "who asked".

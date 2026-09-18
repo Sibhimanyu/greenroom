@@ -273,7 +273,7 @@
         <tbody>
           <tr><td><strong>Camera &amp; Microphone</strong></td><td>The first meeting connection</td><td>The built-in meeting client runs inside Greenroom, so your video and mic are opened in its process.</td></tr>
           <tr><td><strong>Screen Recording</strong></td><td>The first Start, asked by <strong>OBS</strong></td><td>OBS captures your screen. Greenroom asks for none of its own in this release — only <em>Marks</em>, which is held back, would.</td></tr>
-          <tr><td><strong>Speech Recognition</strong></td><td>Never in this release</td><td>Only <em>Marks</em>, which is held back, asks for it — to turn a recorded presentation into text on this Mac. It refuses to transcribe rather than send audio to Apple.</td></tr>
+          <tr><td><strong>Speech Recognition</strong></td><td>Never in this release</td><td>Only <em>Marks</em>, which is held back, and only if you pick Apple's transcriber over the default. Either way the audio stays on this Mac: the default is a local whisper binary, and Apple's path refuses to transcribe rather than fall back to Apple's servers.</td></tr>
           <tr><td><strong>Accessibility</strong></td><td>The first time a Zoom or other native window is tiled</td><td>Moving windows of apps that have no scripting dictionary. Not needed for the main pane when <strong>Greenroom Browser</strong> is your main app.</td></tr>
           <tr><td><strong>Automation</strong></td><td>The first time an external browser (Chrome, Ulaa…) is tiled</td><td>Opening and sizing that browser's window through its own dictionary. Greenroom Browser needs none.</td></tr>
         </tbody>

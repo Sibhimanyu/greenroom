@@ -576,6 +576,42 @@ struct MarksReviewWindow: View {
                 .padding(.top, 2)
             }
 
+            // Which transcriber, shown before the button rather than in a
+            // preference pane, because the choice changes what the numbers
+            // above it are worth.
+            Picker("", selection: Binding(
+                get: { review.transcriberSettings.engine },
+                set: { review.transcriberSettings.engine = $0; review.saveTranscriberSettings() })) {
+                ForEach(MarksTranscriberSettings.Engine.allCases) { Text($0.label).tag($0) }
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+
+            if review.transcriberSettings.engine == .whisper && !review.whisperReady {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Whisper is not set up on this Mac. Two commands in a Terminal:")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Text("brew install whisper-cpp")
+                        .font(.system(size: 10, design: .monospaced))
+                        .textSelection(.enabled)
+                    Text(review.whisperDownloadCommand)
+                        .font(.system(size: 10, design: .monospaced))
+                        .textSelection(.enabled)
+                        .lineLimit(4)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(8)
+                .background(RoundedRectangle(cornerRadius: 6)
+                    .fill(Color(nsColor: .controlBackgroundColor)))
+            } else if review.transcriberSettings.engine == .apple {
+                Text("Apple's recogniser is built for dictation: it smooths out \"um\" and \"you know\" before Marks ever sees them, so filler words cannot be counted from it. Everything else still works.")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
             Button {
                 Task { await review.prepareMaterial() }
             } label: {
@@ -589,8 +625,9 @@ struct MarksReviewWindow: View {
                           systemImage: "waveform.and.person.filled")
                 }
             }
-            .disabled(review.selected?.hasRecording != true || review.isPreparing)
-            .help("Transcribes the recording on this Mac and pulls one still every twenty seconds. Nothing leaves the Mac in this step.")
+            .disabled(review.selected?.hasRecording != true || review.isPreparing
+                      || (review.transcriberSettings.engine == .whisper && !review.whisperReady))
+            .help("Transcribes the recording on this Mac and pulls one still every twenty seconds. Nothing leaves the Mac in this step, whichever engine you pick.")
         }
     }
 

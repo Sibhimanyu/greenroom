@@ -28,9 +28,21 @@ struct MarksSpokenWord: Codable, Hashable {
 
 struct MarksSpeechMetrics: Codable, Hashable {
 
-    var v: Int = 1
+    var v: Int = 2
     var wordCount: Int
     var durationMs: Int
+
+    /// Which transcriber produced the words these numbers came from.
+    var engine: String = "unknown"
+
+    /// Whether that transcriber returns what was actually said.
+    ///
+    /// This is the most important field in the file. Apple's recogniser is
+    /// built for dictation and smooths disfluencies away, so a filler count
+    /// taken from it is not a rough figure - it is a measurement of how well
+    /// the recogniser deleted the evidence, and it reads as a confident zero.
+    /// Everything that prints a filler number checks this first.
+    var verbatim: Bool = false
 
     /// Words per minute over the whole presentation.
     var wordsPerMinute: Double
@@ -40,7 +52,11 @@ struct MarksSpeechMetrics: Codable, Hashable {
     var paceWindow: [PaceWindow] = []
 
     var fillers: [Filler] = []
-    var fillerCount: Int { fillers.reduce(0) { $0 + $1.count } }
+
+    /// Zero when the transcript was not verbatim, whatever the array holds.
+    /// The count is what gets printed and compared, so the guard belongs on
+    /// it rather than on each of its readers remembering.
+    var fillerCount: Int { verbatim ? fillers.reduce(0) { $0 + $1.count } : 0 }
     var fillersPerMinute: Double
 
     var pauses: [Pause] = []
@@ -103,7 +119,8 @@ struct MarksSpeechMetrics: Codable, Hashable {
 
     // MARK: The pass
 
-    static func measure(words: [MarksSpokenWord], durationMs: Int) -> MarksSpeechMetrics {
+    static func measure(words: [MarksSpokenWord], durationMs: Int,
+                        engine: String = "unknown", verbatim: Bool = false) -> MarksSpeechMetrics {
         let ordered = words.sorted { $0.atMs < $1.atMs }
         let minutes = max(0.001, Double(durationMs) / 60_000)
 
@@ -167,6 +184,8 @@ struct MarksSpeechMetrics: Codable, Hashable {
         return MarksSpeechMetrics(
             wordCount: ordered.count,
             durationMs: durationMs,
+            engine: engine,
+            verbatim: verbatim,
             wordsPerMinute: Double(ordered.count) / minutes,
             paceWindow: windows,
             fillers: fillers,
@@ -199,7 +218,11 @@ struct MarksSpeechMetrics: Codable, Hashable {
             out.append("Pace varied: fastest around \(offsetLabel(fastest.startMs)) at \(Int(fastest.wordsPerMinute.rounded())) wpm, slowest around \(offsetLabel(slowest.startMs)) at \(Int(slowest.wordsPerMinute.rounded())).")
         }
 
-        if fillerCount > 0 {
+        // The filler line always says where it stands, because a number
+        // that cannot be trusted and does not say so is worse than no number.
+        if !verbatim {
+            out.append("Filler words were NOT counted: \(engine) returns a cleaned-up transcript, so the words this would count have already been removed from it. Transcribe with whisper to get a real figure.")
+        } else if fillerCount > 0 {
             let top = fillers.prefix(3).map { "\"\($0.word)\" \($0.count)\u{00D7}" }.joined(separator: ", ")
             out.append("\(fillerCount) filler \(fillerCount == 1 ? "word" : "words"), \(String(format: "%.1f", fillersPerMinute)) a minute. Most used: \(top).")
         } else {

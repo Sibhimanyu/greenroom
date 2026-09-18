@@ -590,3 +590,58 @@ in Greenroom whose destination Greenroom does not control. It is off by
 default, the command is shown rather than hidden, and the transparency page,
 the guide and the README all say plainly that what a cloud agent does with a
 transcript and stills of a named student is between the teacher and it.
+
+## Verbatim, or the numbers mean nothing (2026-09-18)
+
+The first version of the transcription step used Apple's `SFSpeechRecognizer`
+because it is already there and needs nothing installed. That was wrong, and
+wrong in the worst available way: silently.
+
+Apple's recogniser is built for dictation. "um, I think, uh, we should" is
+noise a person did not mean to type, so it smooths disfluencies away and
+punctuates what is left. Correct for dictation. Fatal here, because
+`MarksSpeechMetrics` exists to count exactly the words it removes. A filler
+count taken from an Apple transcript is not a rough figure; it is a
+measurement of how well Apple deleted the evidence, and it arrives as a
+confident zero next to a student's name.
+
+**Measured, not assumed.** The same sentence, spoken by `say` and handed to
+whisper.cpp:
+
+```text
+spoken:  "Um, good morning everyone. So today I want to, uh, you know,
+          talk about how tigers are, like, basically disappearing."
+whisper: "Um, good morning everyone, so today I want to, uh, you know,
+          talk about how tigers are, like, basically disappearing."
+```
+
+Every filler kept, each with a millisecond offset. `-ml 1 -sow` is the
+documented way to get word-level timings out of whisper.cpp: maximum segment
+length of one, split on word rather than on token, so each JSON segment is a
+single word.
+
+No `--prompt` priming, deliberately. Seeding whisper with a line of fillers is
+the usual trick for making it keep them, and it was tried: the output was
+identical with and without. A prompt that changes nothing on clean input can
+only hurt on messy input, by biasing the model toward hearing fillers that
+were not said. A false "um" in a student's report is worse than a missed one.
+
+### What changed
+
+- **whisper.cpp is the default**, found on `PATH` through a login shell, with
+  its model discovered under `~/Library/Application Support/Greenroom/whisper/`
+  first so a stale test model in a Homebrew share directory cannot win.
+- **Apple's is kept as a fallback**, not deleted: a Mac with no whisper should
+  still get a transcript and an agent pass, just not a filler count. Its
+  `addsPunctuation` is now off, since punctuation is invented by a model
+  reading the words back and this path's whole problem is that too much has
+  already been decided about the text.
+- **`speech.json` is at v2** and records `engine` and `verbatim`. When
+  `verbatim` is false, `fillerCount` returns zero whatever the array holds -
+  the guard is on the number everything prints, rather than on each reader
+  remembering - and the report says in a sentence that fillers were not
+  counted and why.
+- **Audio is converted in-app**, not by shelling out to ffmpeg. ffmpeg is on
+  the author's Mac and on a lot of developers' Macs, and on none of the Macs
+  this is for. The external tool Marks does require, whisper, earns it by
+  being the thing that cannot be replaced; a format conversion does not.

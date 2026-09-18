@@ -68,6 +68,9 @@ final class MarksReviewController: ObservableObject {
     @Published private(set) var prepareStep = ""
     @Published private(set) var prepareProgress: Double = 0
 
+    @Published var transcriberSettings = MarksTranscriberSettings.load()
+    @Published private(set) var whisperReady = MarksWhisper.resolvedBinary != nil
+                                               && MarksWhisper.findModel() != nil
     @Published var agentSettings = MarksAgentSettings.load()
     @Published private(set) var isRunningAgent = false
     /// What the agent is saying as it says it. Agents take minutes and go
@@ -383,11 +386,21 @@ extension MarksReviewController {
         status = nil
         defer { isPreparing = false; prepareStep = ""; prepareProgress = 0 }
 
-        prepareStep = "Transcribing on this Mac"
+        prepareStep = transcriberSettings.engine == .whisper
+            ? "Transcribing with whisper"
+            : "Transcribing with Apple"
         do {
             let words = try await MarksTranscriber.transcribe(
                 recording: recording, into: selected.folder,
-                onProgress: { [weak self] fraction in self?.prepareProgress = fraction })
+                settings: transcriberSettings,
+                onProgress: { [weak self] fraction in self?.prepareProgress = fraction },
+                onOutput: { [weak self] piece in
+                    // whisper prints its progress on stderr; showing the tail
+                    // of it is the difference between a five-minute wait and
+                    // a five-minute wait that looks like a hang.
+                    self?.prepareStep = piece.split(separator: "\n").last.map(String.init)
+                        ?? "Transcribing"
+                })
             hasTranscript = !words.isEmpty
             metrics = MarksSpeechMetrics.load(in: selected.folder)
         } catch {
@@ -450,4 +463,12 @@ extension MarksReviewController {
     }
 
     func saveAgentSettings() { agentSettings.save() }
+
+    func saveTranscriberSettings() {
+        transcriberSettings.save()
+        whisperReady = MarksWhisper.resolvedBinary != nil && MarksWhisper.findModel() != nil
+    }
+
+    /// The one line that fetches a model, for the teacher to paste.
+    var whisperDownloadCommand: String { MarksWhisper.downloadCommand }
 }

@@ -769,8 +769,8 @@
         <p class="note">A camera, or a window on your screen, written straight to a file in <span class="mono">~/Documents/Greenroom</span>. This is the first thing in Greenroom that asks for <strong>Screen Recording</strong> permission of its own; until Marks ships, that permission still belongs entirely to OBS.</p>
       </div>
       <div class="scope">
-        <div class="who">Transcription <span>stays here, or does not happen</span></div>
-        <p class="note">Apple's speech recogniser, pinned to on&#8209;device. If this Mac has no local model for the language, Marks <em>refuses to transcribe at all</em> rather than let a recording of a named student go to Apple's servers.</p>
+        <div class="who">Transcription <span>stays here, whichever engine</span></div>
+        <p class="note">Two engines, both local. The default is <strong>whisper.cpp</strong> &mdash; a binary on your Mac reading a file on your Mac &mdash; because it returns what was actually said. Apple's recogniser is the fallback and is built for dictation: it smooths &ldquo;um&rdquo; and &ldquo;you know&rdquo; away before Marks sees them, so with it the filler count is not shown at all rather than shown as a confident zero. Apple's path is pinned to on&#8209;device and <em>refuses to transcribe</em> rather than fall back to Apple's servers, which it would otherwise do silently when a local model is missing.</p>
       </div>
       <div class="scope">
         <div class="who">Fillers, pace, marking drift <span>stays here</span></div>

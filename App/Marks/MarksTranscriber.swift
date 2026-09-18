@@ -5,28 +5,79 @@
 //  Turning presentation.mov into words, with the time each one was said.
 //
 //  Everything downstream needs this. Filler counts, pace, pauses and any
-//  agent pass worth running all start from a transcript with timings; without
-//  it Marks can only report what the teacher typed, which is the half it
-//  already had.
+//  agent pass worth running all start from a transcript with timings.
 //
-//  **On-device only, and it refuses rather than falling back.**
-//  SFSpeechRecognizer will happily send audio to Apple's servers when the
-//  on-device model is missing, and it does it silently - the API returns
-//  results either way. That would make a recording of a named student leave
-//  this Mac because a model had not downloaded, which is not a trade anybody
-//  agreed to. So `requiresOnDeviceRecognition` is set, `supportsOnDeviceRecognition`
-//  is checked first, and a Mac that cannot do it locally is told so.
+//  **Two engines, and the default is not Apple's.**
 //
-//  This is different from Cues, which uses SpeechAnalyzer (macOS 26) on a
-//  live microphone stream. A finished file on macOS 14 is a different problem
-//  with a different API, and SFSpeechRecognizer is the one that has existed
-//  since 10.15. It costs an Info.plist key that this app deliberately did not
-//  have - NSSpeechRecognitionUsageDescription - and the comment there was
-//  updated to say why it now does.
+//  Apple's SFSpeechRecognizer is already here and needs nothing installed,
+//  which made it the obvious first choice and the wrong one. It is built for
+//  dictation: "um, I think, uh, we should" is noise a person did not mean to
+//  type, so it smooths disfluencies away and punctuates what is left. Correct
+//  for dictation, fatal here - MarksSpeechMetrics exists to count exactly the
+//  words Apple removes, so a filler count taken from an Apple transcript
+//  measures how well Apple deleted the evidence and reads as a confident
+//  zero. whisper.cpp returns what was actually said (see MarksWhisper for the
+//  measurement) and is the default.
+//
+//  Apple's is kept as a fallback rather than deleted, because a Mac with no
+//  whisper installed should still get a transcript and an agent pass - just
+//  not a filler count. When it is used, `speech.json` records the engine and
+//  sets `verbatim` to false, and every surface that prints a filler number
+//  says plainly that it did not count them and why.
+//
+//  **Whichever engine runs, nothing leaves the Mac.** whisper.cpp is a local
+//  binary over a local file. Apple's path is pinned to on-device recognition
+//  and REFUSES rather than falling back: SFSpeechRecognizer will silently
+//  send audio to Apple's servers when the local model is missing, returning
+//  results either way with no indication which happened, and a recording of a
+//  named student should not leave because a download had not finished.
 //
 import AVFoundation
 import Foundation
 import Speech
+
+/// Which transcriber to use, and where its model is.
+struct MarksTranscriberSettings: Codable, Equatable {
+
+    enum Engine: String, Codable, CaseIterable, Identifiable {
+        /// whisper.cpp. Verbatim; needs a binary and a model.
+        case whisper
+        /// Apple's. Built in, needs nothing, removes the fillers.
+        case apple
+        var id: String { rawValue }
+
+        var label: String {
+            switch self {
+            case .whisper: return "Whisper (verbatim)"
+            case .apple: return "Apple (cleaned up)"
+            }
+        }
+
+        var isVerbatim: Bool { self == .whisper }
+    }
+
+    var engine: Engine = .whisper
+    /// Empty means "find the best one on this Mac".
+    var modelPath: String = ""
+    /// `en_IN` for Apple, `en` for whisper - the two name languages
+    /// differently, and the engines convert as needed.
+    var language: String = "en_IN"
+
+    static let key = "marksTranscriberSettings"
+
+    static func load(_ defaults: UserDefaults = .standard) -> MarksTranscriberSettings {
+        guard let data = defaults.data(forKey: key),
+              let decoded = try? JSONDecoder().decode(MarksTranscriberSettings.self, from: data) else {
+            return MarksTranscriberSettings()
+        }
+        return decoded
+    }
+
+    func save(_ defaults: UserDefaults = .standard) {
+        guard let data = try? JSONEncoder().encode(self) else { return }
+        defaults.set(data, forKey: Self.key)
+    }
+}
 
 enum MarksTranscriber {
 
@@ -75,10 +126,46 @@ enum MarksTranscriber {
     /// carries the timings that MarksSpeechMetrics needs. Two files rather
     /// than one because the readable one should stay readable - a text file
     /// full of millisecond offsets is neither.
+    /// Transcribes with whichever engine is configured.
     static func transcribe(recording: URL,
                            into folder: URL,
-                           locale identifier: String = defaultLocale,
-                           onProgress: (@MainActor (Double) -> Void)? = nil) async throws -> [MarksSpokenWord] {
+                           settings: MarksTranscriberSettings,
+                           onProgress: (@MainActor (Double) -> Void)? = nil,
+                           onOutput: (@MainActor (String) -> Void)? = nil) async throws -> [MarksSpokenWord] {
+        let durationMs = Int(((try? await AVURLAsset(url: recording).load(.duration))?.seconds ?? 0) * 1000)
+
+        switch settings.engine {
+        case .whisper:
+            guard let model = settings.modelPath.isEmpty
+                    ? MarksWhisper.findModel()
+                    : URL(fileURLWithPath: settings.modelPath) else {
+                throw MarksWhisper.Failure.noModel
+            }
+            // The WAV lives beside the recording only while whisper reads it.
+            let wav = folder.appendingPathComponent("audio-for-transcription.wav")
+            defer { try? FileManager.default.removeItem(at: wav) }
+            _ = try await MarksAudio.extractWAV(from: recording, to: wav)
+            // whisper names languages without a region.
+            let language = String(settings.language.prefix(2))
+            let words = try await MarksWhisper.transcribe(
+                wav: wav, model: model, language: language, onOutput: onOutput)
+            try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            write(words, in: folder, durationMs: durationMs,
+                  engine: "whisper.cpp (\(model.lastPathComponent))", verbatim: true)
+            return words
+
+        case .apple:
+            return try await transcribeWithApple(
+                recording: recording, into: folder,
+                locale: settings.language, durationMs: durationMs, onProgress: onProgress)
+        }
+    }
+
+    private static func transcribeWithApple(recording: URL,
+                                            into folder: URL,
+                                            locale identifier: String,
+                                            durationMs: Int,
+                                            onProgress: (@MainActor (Double) -> Void)? = nil) async throws -> [MarksSpokenWord] {
         let status = await authorize()
         guard status == .authorized else { throw Failure.denied }
 
@@ -93,7 +180,10 @@ enum MarksTranscriber {
         // Timings are the entire point; without this the segments come back
         // with no useful offsets and the metrics have nothing to measure.
         request.taskHint = .dictation
-        if #available(macOS 13.0, *) { request.addsPunctuation = true }
+        // Off. Punctuation is invented by a language model reading the words
+        // back, and this path's whole problem is already that too much has
+        // been decided about the text before Marks sees it.
+        if #available(macOS 13.0, *) { request.addsPunctuation = false }
 
         let total = (try? await AVURLAsset(url: recording).load(.duration))?.seconds ?? 0
 
@@ -127,7 +217,8 @@ enum MarksTranscriber {
         guard !words.isEmpty else { throw Failure.noSpeech }
 
         try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-        write(words, in: folder, durationMs: Int(total * 1000))
+        write(words, in: folder, durationMs: durationMs > 0 ? durationMs : Int(total * 1000),
+              engine: "Apple Speech", verbatim: false)
         return words
     }
 
@@ -137,7 +228,8 @@ enum MarksTranscriber {
     /// reliably give sentences, so this breaks on a long pause instead -
     /// which is usually where a sentence ended anyway, and is at least a
     /// break the speaker actually made.
-    static func write(_ words: [MarksSpokenWord], in folder: URL, durationMs: Int) {
+    static func write(_ words: [MarksSpokenWord], in folder: URL, durationMs: Int,
+                      engine: String, verbatim: Bool) {
         var lines: [String] = []
         var current: [String] = []
         var lineStart = words.first?.atMs ?? 0
@@ -163,7 +255,8 @@ enum MarksTranscriber {
             try? data.write(to: folder.appendingPathComponent(wordsFileName), options: .atomic)
         }
 
-        MarksSpeechMetrics.measure(words: words, durationMs: durationMs).save(in: folder)
+        MarksSpeechMetrics.measure(words: words, durationMs: durationMs,
+                                   engine: engine, verbatim: verbatim).save(in: folder)
     }
 
     static func loadWords(in folder: URL) -> [MarksSpokenWord] {

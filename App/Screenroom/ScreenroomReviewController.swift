@@ -527,18 +527,20 @@ extension ScreenroomReviewController {
     /// Where a note typed right now would land.
     var notePosition: Int { currentPosition?() ?? 0 }
 
-    /// Adds a note at the player's current position.
+    /// Adds a note, at the moment the caller says rather than at the moment
+    /// it is committed.
     ///
-    /// The live window stamps a note from its FIRST KEYSTROKE, because there
-    /// the thing being described is already happening and the evaluator is
-    /// behind it. Here the recording is paused or scrubbed to the moment
-    /// deliberately, so the playhead IS the answer and there is nothing to
-    /// correct for.
-    func addNote(_ text: String) {
+    /// `at` is where the player was when the first character was typed. The
+    /// earlier version read the playhead here, at Return, which was wrong
+    /// whenever the recording was still running: a note about something at
+    /// 3:12 landed at 3:31, having drifted by however long the sentence took
+    /// to write. The live window has always stamped from the first keystroke;
+    /// this is the same rule, arrived at from the other direction.
+    func addNote(_ text: String, at ms: Int? = nil) {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, let folder = selected?.folder else { return }
         notes = ScreenroomNotesFile.add(
-            ScreenroomNote(atMs: notePosition, text: trimmed, markedAt: Date()),
+            ScreenroomNote(atMs: ms ?? notePosition, text: trimmed, markedAt: Date()),
             in: folder)
         refreshSelectedRow()
     }

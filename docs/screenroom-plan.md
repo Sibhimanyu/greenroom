@@ -1011,3 +1011,40 @@ playhead is already the answer.
 The file is rewritten in time order rather than appended, because a note added
 at 2:14 belongs at 2:14 and not at the end. The live path still appends, so a
 crash mid-presentation cannot cost more than the note being typed.
+
+## The recording stops being a tab (2026-09-18)
+
+From a design review of the Sessions window, prompted by: "I am having to add
+notes without even being able to watch the video live. like i have to switch
+between tabs again and again."
+
+The player lived inside a **Recording** tab and the notes inside a **Notes**
+tab. They were mutually exclusive, so writing a note about something at 3:12
+meant leaving the video to do it. That is the feature failing at its one job -
+Screenroom exists to tie notes to moments.
+
+It was also a **correctness bug**. The note took its timestamp from the
+playhead, read at the moment Return was pressed. The recording does not pause
+when the tab changes, so the stamp kept advancing while you hunted for the tab
+and wrote the sentence: a note about 3:12 landed at 3:31.
+
+Both fixed by the same change. **The material is always on screen**: the player
+and its scrubber sit permanently at the top of the detail pane, and the tabs
+below switch only the work - Clips, Transcript, Analysis, Notes.
+
+That also fixes a category error. Recording and Transcript are *views of the
+material*; Analysis and Notes are *your work on it*. Four peers in one row said
+they were the same kind of thing. Now the material is above the line and the
+work is below it.
+
+The stamp freezes at the **first keystroke**, which is the rule the live window
+has always followed. It is right in both cases: paused, it is the same number;
+playing, it is the moment you reacted. Verified against a model of a running
+playhead - a sentence taking nineteen seconds to type still lands at 3:12.
+
+### Left open
+
+- **Notes can be deleted but not edited.** A typo means delete and retype, and
+  a note is prose typed in a hurry, so typos are the expected case.
+- **No keyboard path.** Adding a note while watching is two-handed and there is
+  no shortcut to add one at the current time, and no key to pause.

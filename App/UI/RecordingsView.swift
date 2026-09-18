@@ -99,10 +99,12 @@ struct RecordingsView: View {
     /// Which half of the detail pane is showing. The recording is what the
     /// window was built for; the transcript is what a teacher wants the day
     /// after, and it had no home in the app at all.
-    @State private var detailTab: DetailTab = .recording
+    @State private var detailTab: DetailTab = .analysis
 
     enum DetailTab: String, CaseIterable, Identifiable {
-        case recording = "Recording"
+        /// What used to be "Recording" minus the player, which now sits above
+        /// the tabs permanently. Clips, the upload line, the YouTube links.
+        case clips = "Clips"
         case transcript = "Transcript"
         /// Screenroom's three, flat rather than nested.
         ///
@@ -117,7 +119,7 @@ struct RecordingsView: View {
 
         var isAvailable: Bool {
             switch self {
-            case .recording: return true
+            case .clips: return true
             // No longer Cues-only: Screenroom's Analyse writes transcript.txt
             // too, so a build with Screenroom in it can fill this tab even
             // when Cues is held back.
@@ -478,7 +480,7 @@ struct RecordingsView: View {
         switch detailTab {
         case .analysis: return .analysis
         case .notes: return .notes
-        case .recording, .transcript: return nil
+        case .clips, .transcript: return nil
         }
     }
 
@@ -492,56 +494,22 @@ struct RecordingsView: View {
     @ViewBuilder private var detail: some View {
         if let selection {
             VStack(spacing: 0) {
-                // A picker rather than a split: on a 460pt pane the
-                // transcript and the video each want the whole width, and
-                // stacking them gives both half a pane and neither enough.
+                // THE PICTURE IS NOT A TAB.
                 //
-                // Leading-aligned, sharing the left edge of everything under
-                // it. It used to be centred while the pane below was
-                // left-aligned, which gave the detail three different left
-                // edges and no reason for any of them.
+                // It used to be: the player lived inside a "Recording" tab and
+                // the notes inside a "Notes" tab, so writing a note about
+                // something at 3:12 meant leaving the video to do it. Reported
+                // as "I am having to add notes without even being able to
+                // watch the video live" - and it was worse than awkward, since
+                // the playhead kept running while you hunted for the tab, so
+                // the note landed wherever the video got to rather than where
+                // the thing happened.
                 //
-                // Hidden when there is only one tab: a feature that cannot
-                // fill itself reads as broken, where an absent one reads as
-                // not-yet.
-                let tabs = DetailTab.allCases.filter(\.isAvailable)
-                if tabs.count > 1 {
-                    Picker("", selection: $detailTab) {
-                        ForEach(tabs) { tab in Text(tab.rawValue).tag(tab) }
-                    }
-                    .pickerStyle(.segmented)
-                    .labelsHidden()
-                    // Sized to its own labels rather than to a number that
-                    // goes stale the moment a tab is renamed. Measured: the
-                    // four come to well under the pane's 460pt minimum.
-                    .fixedSize()
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 16)
-                    .padding(.top, 12)
-                    .padding(.bottom, 10)
-                }
-
-                if let pane = screenroomPane, DetailTab.analysis.isAvailable {
-                    ScreenroomAnalysisPane(
-                        folder: folder(for: selection),
-                        showing: pane,
-                        seek: { ms in seek(to: Double(ms) / 1000) },
-                        // The playhead this window is already tracking, so a
-                        // note added while watching back lands on the frame
-                        // on screen.
-                        position: { Int(playhead * 1000) })
-                } else if detailTab == .transcript, DetailTab.transcript.isAvailable {
-                    if let folder = folder(for: selection) {
-                        SessionTranscriptView(folder: folder)
-                    } else {
-                        Text("This recording is not in a class folder, so it has no transcript.")
-                            .font(.system(size: 12))
-                            .foregroundStyle(.secondary)
-                            .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    }
-                } else {
-                    recordingDetail
-                }
+                // The material is always on screen. The tabs below switch only
+                // the WORK done on it.
+                stage(for: selection)
+                Divider()
+                work(for: selection)
             }
         } else {
             Text("Select a recording to play it")
@@ -550,26 +518,79 @@ struct RecordingsView: View {
         }
     }
 
-    @ViewBuilder private var recordingDetail: some View {
-        if let player, let selection {
-            VStack(spacing: 0) {
+    /// The recording and its scrubber, permanently.
+    @ViewBuilder private func stage(for selection: Recording) -> some View {
+        VStack(spacing: 0) {
+            if let player {
                 PlayerView(player: player)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-                Divider()
-                ClipTimeline(duration: duration,
-                             playhead: playhead,
-                             clips: selection.clips,
-                             onSeek: seek)
-                    .frame(height: 54)
-                    .padding(.horizontal, 12)
-                    .padding(.top, 10)
-                uploadLine(for: selection)
-                clipList(for: selection)
+            } else {
+                ProgressView()
+                    .controlSize(.small)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
-        } else {
-            ProgressView()
-                .controlSize(.small)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            ClipTimeline(duration: duration,
+                         playhead: playhead,
+                         clips: selection.clips,
+                         onSeek: seek)
+                .frame(height: 54)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+        }
+        // Both halves flex, with a floor each: the video must stay big enough
+        // to read a face, and the work must stay tall enough to type into.
+        .frame(minHeight: 220, maxHeight: .infinity)
+    }
+
+    /// Everything you do to the recording, under it.
+    @ViewBuilder private func work(for selection: Recording) -> some View {
+        VStack(spacing: 0) {
+            let tabs = DetailTab.allCases.filter(\.isAvailable)
+            if tabs.count > 1 {
+                // Leading-aligned, sharing the left edge of everything under
+                // it, and sized to its own labels rather than to a number that
+                // goes stale the moment a tab is renamed.
+                Picker("", selection: $detailTab) {
+                    ForEach(tabs) { tab in Text(tab.rawValue).tag(tab) }
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .fixedSize()
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 16)
+                .padding(.top, 10)
+                .padding(.bottom, 8)
+            }
+
+            if let pane = screenroomPane, DetailTab.analysis.isAvailable {
+                ScreenroomAnalysisPane(
+                    folder: folder(for: selection),
+                    showing: pane,
+                    seek: { ms in seek(to: Double(ms) / 1000) },
+                    position: { Int(playhead * 1000) })
+            } else if detailTab == .transcript, DetailTab.transcript.isAvailable {
+                if let folder = folder(for: selection) {
+                    SessionTranscriptView(folder: folder)
+                } else {
+                    Text("This recording is not in a class folder, so it has no transcript.")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
+            } else {
+                clipsDetail(for: selection)
+            }
+        }
+        .frame(minHeight: 260, maxHeight: .infinity)
+    }
+
+    /// The clips, the upload line, the YouTube links. What the old Recording
+    /// tab held once the player moved out of it.
+    @ViewBuilder private func clipsDetail(for selection: Recording) -> some View {
+        VStack(spacing: 0) {
+            uploadLine(for: selection)
+            clipList(for: selection)
+            Spacer(minLength: 0)
         }
     }
 

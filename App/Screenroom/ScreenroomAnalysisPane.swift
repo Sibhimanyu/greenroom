@@ -44,6 +44,14 @@ struct ScreenroomAnalysisPane: View {
     @ObservedObject private var review = ScreenroomReviewController.shared
     @Environment(\.openWindow) private var openWindow
     @State private var draft = ""
+    /// Where the player was when this note's FIRST character was typed.
+    ///
+    /// Read at Return, it drifted: the recording keeps playing while the
+    /// sentence is written, so a note about something at 3:12 landed at 3:31.
+    /// Frozen at the first keystroke it is right either way - paused, it is
+    /// the same number; playing, it is the moment you reacted. Same rule the
+    /// live window follows, now for the same reason.
+    @State private var draftAtMs: Int?
     @FocusState private var composerFocused: Bool
 
     var body: some View {
@@ -323,13 +331,22 @@ struct ScreenroomAnalysisPane: View {
     /// playhead is already the answer.
     private var composer: some View {
         HStack(alignment: .firstTextBaseline, spacing: 10) {
-            Text(Self.stamp(review.notePosition))
+            Text(Self.stamp(draftAtMs ?? review.notePosition))
                 .font(.system(size: 11, weight: .semibold, design: .monospaced))
                 .monospacedDigit()
                 .foregroundStyle(draft.isEmpty ? AnyShapeStyle(.tertiary) : AnyShapeStyle(Brand.text))
                 .frame(width: 42, alignment: .leading)
 
             TextField(folder == nil ? "Pick a session" : "Add a note here", text: $draft, axis: .vertical)
+                .onChange(of: draft) { old, new in
+                    let wasEmpty = old.trimmingCharacters(in: .whitespaces).isEmpty
+                    let isEmpty = new.trimmingCharacters(in: .whitespaces).isEmpty
+                    if wasEmpty && !isEmpty {
+                        draftAtMs = review.notePosition
+                    } else if isEmpty {
+                        draftAtMs = nil
+                    }
+                }
                 .textFieldStyle(.plain)
                 .font(.callout)
                 .lineLimit(1...4)
@@ -346,8 +363,9 @@ struct ScreenroomAnalysisPane: View {
     }
 
     private func commit() {
-        review.addNote(draft)
+        review.addNote(draft, at: draftAtMs)
         draft = ""
+        draftAtMs = nil
         composerFocused = true
     }
 

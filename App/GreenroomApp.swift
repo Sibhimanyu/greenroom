@@ -100,6 +100,19 @@ struct GreenroomApp: App {
         .defaultSize(width: 1000, height: 620)
         .commandsRemoved()
 
+        // The other half: presentations that already happened. A separate
+        // window rather than a mode inside the first, because the live one
+        // holds a camera and a recording and must not be navigated away from
+        // while a student is still speaking.
+        Window("Marks \u{2014} Past Presentations", id: "marks-review") {
+            if MarksAvailability.isReleased {
+                MarksReviewWindow()
+                    .tint(Brand.green)
+            }
+        }
+        .defaultSize(width: 1180, height: 700)
+        .commandsRemoved()
+
         // Text label rather than an image: a glyph that fails to render
         // leaves an invisible item, and text makes the item's presence
         // unambiguous when diagnosing "it's not showing up". (A template

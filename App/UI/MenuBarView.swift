@@ -87,6 +87,9 @@ struct MenuBarView: View {
             Button("Open Marks\u{2026}") {
                 openWindow(id: "marks")
             }
+            Button("Past Presentations\u{2026}") {
+                openWindow(id: "marks-review")
+            }
         }
 
         Divider()

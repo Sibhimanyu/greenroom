@@ -1,6 +1,6 @@
 # Marks: evaluated presentations
 
-Status: **approach chosen 2026-09-18; the note box is built.** The office-hours
+Status: **built 2026-09-18, both halves.** The office-hours
 record below is unchanged from 2026-09-17 apart from this header and the
 "What is built" section at the foot, which is the part that is now true rather
 than proposed.
@@ -290,3 +290,95 @@ push the best notes furthest from the thing they describe.
 - The AI pass over notes (approach C's idea, still the cheapest good one).
 - The meeting feed as a second capture source.
 - Whether the speaker sees notes live or only after. Still not discussed.
+
+## The second half (2026-09-18)
+
+The pass that turns a watched presentation into something the speaker is
+handed.
+
+| Piece | File |
+|---|---|
+| The rubric, and the marks | `App/Marks/MarksRubric.swift` |
+| Consistency across the cohort | `App/Marks/MarksCohort.swift` |
+| The analysis, and `analysis.json` | `App/Marks/MarksAnalysis.swift` |
+| The pass over the notes | `App/Marks/MarksAnalyst.swift` |
+| `report.md` | `App/Marks/MarksReport.swift` |
+| Finding what is on disk | `App/Marks/MarksLibrary.swift` |
+| Review: player, notes, rubric, actions | `App/Marks/MarksReviewWindow.swift`, `MarksReviewController.swift` |
+
+### The AI reads your notes, not the video
+
+Approach C's idea, taken into approach A as the plan recommended. A pass over
+twelve students' notes is a few hundred words of text; a pass over twelve
+students' video is a batch job with a bill attached. It runs on-device through
+the same `FoundationModels` framework Cues uses - no key, no bill, and nothing
+about a student's performance leaving the Mac.
+
+**When the model is not there, the pass still runs.** Apple Intelligence is
+off on most Macs and absent from all of them before macOS 26. A report that
+failed on those machines would make the feature conditional on a setting the
+teacher may not control, so there are two engines and the analysis records
+which one wrote it. The counted engine claims nothing it cannot show: how many
+notes, across how long, where the longest silence was, which rubric line
+scored lowest. `report.md` names the engine in its last line either way.
+
+### Consistency is arithmetic, and stays that way
+
+Premise 3 is the reason this is worth building, and it is deliberately NOT the
+model's job. Every finding in `MarksCohort` is a mean, a spread or one
+correlation. A model asked "were these marked consistently?" would answer
+confidently either way and could not show its working, which is the wrong
+property for the one output whose entire purpose is to be shown to a student
+arguing about a grade.
+
+Three findings:
+
+- **The order effect** - the classic nobody can see from inside a Friday
+  afternoon. Correlation between the order presentations were marked in and
+  what they scored. Needs five presentations; flags at |r| >= 0.5.
+- **Out-of-step lines** - this student's mark on one criterion against the
+  group's. A unanimous group is the strongest baseline there is, so it answers
+  to a plain distance; a group that disagreed with itself answers to its own
+  spread.
+- **Overall harshness** - this student's total against the group's.
+
+### Two audiences, two documents
+
+The cohort findings are about the MARKER, not the student. "Marks drifted
+downward through the session" is a fact about an afternoon, and putting it in
+the student's copy invites an argument about somebody else's grade. So
+`report.md` is written for one of two audiences and the speaker's copy has
+none of it. The teacher's copy does, because when a grade *is* questioned, the
+person answering should already have looked.
+
+### The rubric is per-teacher with a per-presentation snapshot
+
+The open question, answered. A teacher marking a cohort should not retype the
+rubric twelve times, so the current rubric carries in `UserDefaults`. But a
+rubric edited in November must not silently re-interpret marks given in
+September, so each presentation stores its own copy of the criteria it was
+marked against, and nothing later rewrites them. That snapshot is also what
+makes the cohort pass honest: it only compares presentations whose criteria
+actually match.
+
+### The folder, in full
+
+```text
+Priya Raman - 2026-09-18 10-44/
+  presentation.mov       the speaker
+  notes.jsonl            one line per note, stamped into the recording
+  rubric.json            the criteria as they were, and the marks
+  analysis.json          what the pass produced, and which engine produced it
+  report.md              the thing the speaker is handed
+  session.json           title, for the Sessions window
+  Clip 10-46-12 (20s).mp4   one per note, on request
+```
+
+### Still not built
+
+- **More than one evaluator.** A TA or the student's peers typing notes into
+  one session from their own machines - approach C's 10x extension. Needs a
+  transport; nothing here has one.
+- **The meeting feed as a capture source.** Still local camera only.
+- **Whether the speaker sees notes live.** Still not discussed; today they see
+  nothing until the report.

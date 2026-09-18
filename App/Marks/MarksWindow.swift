@@ -23,6 +23,7 @@ import SwiftUI
 
 struct MarksWindow: View {
     @StateObject private var marks = MarksController()
+    @Environment(\.openWindow) private var openWindow
 
     /// Focus goes here and stays here. The evaluator's hands should never
     /// have to find the box again once the presentation has started.
@@ -108,6 +109,18 @@ struct MarksWindow: View {
                       ? "Starts recording and opens the note box."
                       : "Name the presenter first, and wait for the camera.")
             }
+
+            // The way through to the other half. Quiet, because during a
+            // presentation it is the last thing the evaluator should be
+            // looking at, and the presentation they just finished will be at
+            // the top of that window's list anyway.
+            Button {
+                openWindow(id: "marks-review")
+            } label: {
+                Image(systemName: "list.bullet.rectangle")
+            }
+            .controlSize(.large)
+            .help("Past presentations: the recording, the notes, the rubric and the report.")
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 12)

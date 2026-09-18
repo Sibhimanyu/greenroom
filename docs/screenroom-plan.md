@@ -832,3 +832,47 @@ the outermost `{...}` it can find. When even that fails the whole output
 becomes the summary - worse-looking and still readable, rather than nothing.
 Verified against clean JSON, fenced-and-prefaced JSON, prose with no JSON in it
 at all, and an object with numbers and a wrong-typed field in its arrays.
+
+## One library: classes and presentations (2026-09-18)
+
+There were two windows listing the same folders. **Sessions** had the player,
+the clips, the YouTube links, rename and delete. **Past Presentations** had the
+notes, the rubric and the report. Two lists of `~/Documents/Greenroom` is one
+too many, and the split was an accident of the order things were built rather
+than a distinction a teacher would draw.
+
+It also left the analysis unreachable for the thing Greenroom mostly records.
+A class recorded through Start has a video, a microphone track and a teacher
+who was in the room - everything the analysis needs. It was invisible only
+because `ScreenroomLibrary` looked for `notes.jsonl`, and a class has none.
+
+**The notes are what a presentation has EXTRA, not what makes a folder worth
+opening.** A transcript, filler counts, pace and an agent pass need a
+recording. The rubric works on anything. So the library now lists any folder
+holding something to analyse, and Screenroom's half moved into Sessions as a
+third detail tab beside Recording and Transcript.
+
+Merged **into** Sessions rather than the other way around: Sessions already had
+the player, the clips list, the YouTube links, delete-to-trash, rename and the
+disk banner, and porting all of that into a newer window would have risked
+shipped features to save writing one pane.
+
+Two consequences worth recording:
+
+- **The Transcript tab is no longer Cues-only.** It was gated on
+  `CuesAvailability` because the Cues pipeline was the only thing that wrote
+  `transcript.txt`. Screenroom's Analyse writes one too, so either feature can
+  now fill it, and the tab appears when either is in the build.
+- **A note seeks the window's own player.** The controller takes an
+  `externalSeek` closure, because Sessions has a player with a scrubber
+  already on screen and a second hidden one would be the wrong picture moving.
+
+### Finding the recording in a folder
+
+`presentation.mov` when Screenroom recorded it; otherwise the largest playable
+file that is neither a clip nor Screenroom's own annotated export. Largest
+rather than first, because a class whose tape was stopped and restarted leaves
+several files and the long one is the class. Verified against a folder holding
+an OBS `.mkv`, a `Clip ….mp4`, a `presentation.mov` and a bigger
+`presentation-with-notes.mp4` - the clip is never mistaken for the source, and
+neither is the export.

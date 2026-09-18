@@ -87,9 +87,6 @@ struct MenuBarView: View {
             Button("Open Screenroom\u{2026}") {
                 openWindow(id: "screenroom")
             }
-            Button("Past Presentations\u{2026}") {
-                openWindow(id: "screenroom-review")
-            }
         }
 
         Divider()

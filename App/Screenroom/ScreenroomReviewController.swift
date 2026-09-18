@@ -64,6 +64,14 @@ final class ScreenroomReviewController: ObservableObject {
 
     let player = AVPlayer()
 
+    /// Set by whichever window owns the picture.
+    ///
+    /// Screenroom's analysis now lives inside the Sessions window, which has
+    /// its own player with its own scrubber, so a note must seek THAT rather
+    /// than a second one nobody can see. Milliseconds in, because the caller
+    /// knows about AVPlayer and this does not need to.
+    var externalSeek: ((Int) -> Void)?
+
     /// One instance. The review window and the report window are two views
     /// of one presentation, and SwiftUI scenes do not otherwise share state.
     static let shared = ScreenroomReviewController()
@@ -82,6 +90,15 @@ final class ScreenroomReviewController: ObservableObject {
         } else if selected == nil {
             select(presentations.first)
         }
+    }
+
+    /// Points the analysis at a folder the Sessions window has selected.
+    /// Cheap and idempotent: re-selecting the same folder does nothing, which
+    /// matters because SwiftUI will call this on every redraw.
+    func select(folder: URL?) {
+        guard selected?.folder != folder else { return }
+        refresh()
+        select(presentations.first { $0.folder == folder })
     }
 
     func select(_ presentation: ScreenroomPresentation?) {
@@ -123,9 +140,16 @@ final class ScreenroomReviewController: ObservableObject {
     /// was stamped when the evaluator started typing, so the moment it
     /// describes is just behind it.
     func seek(to note: ScreenroomNote) {
+        // Lands slightly BEFORE the note for the reason that runs through all
+        // of Screenroom: the note was stamped when the evaluator started
+        // typing, so the moment it describes is just behind it.
+        let target = max(0, note.atMs - 4_000)
+        if let externalSeek {
+            externalSeek(target)
+            return
+        }
         guard player.currentItem != nil else { return }
-        let target = max(0, Double(note.atMs - 4_000) / 1000)
-        player.seek(to: CMTime(seconds: target, preferredTimescale: 600),
+        player.seek(to: CMTime(seconds: Double(target) / 1000, preferredTimescale: 600),
                     toleranceBefore: .zero, toleranceAfter: .zero)
         player.play()
     }

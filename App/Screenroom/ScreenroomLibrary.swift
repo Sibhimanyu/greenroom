@@ -43,11 +43,19 @@ struct ScreenroomPresentation: Identifiable, Hashable {
 
 enum ScreenroomLibrary {
 
-    /// Every presentation under ~/Documents/Greenroom, newest first.
+    /// Every session under ~/Documents/Greenroom, newest first - classes and
+    /// presentations alike.
+    ///
+    /// It used to list only folders containing notes.jsonl, which meant a
+    /// class recorded through Greenroom's own Start button was invisible here
+    /// even though the analysis works on it perfectly well: a transcript,
+    /// filler counts, pace and an agent pass need a recording, not notes. The
+    /// notes are what a presentation has EXTRA, not what makes a folder
+    /// worth opening.
     ///
     /// One level deep, because that is how deep sessions go. A recursive walk
-    /// would also find clips folders and anything a teacher dragged in there,
-    /// and would get slower every term for no gain.
+    /// would also find clips folders and anything a teacher dragged in, and
+    /// would get slower every term for no gain.
     static func presentations() -> [ScreenroomPresentation] {
         let root = GreenroomScene.recordingsDirectory
         guard let folders = try? FileManager.default.contentsOfDirectory(
@@ -56,22 +64,53 @@ enum ScreenroomLibrary {
 
         return folders.compactMap { folder -> ScreenroomPresentation? in
             guard (try? folder.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory == true else { return nil }
-            let notesFile = ScreenroomNotesFile.url(in: folder)
-            guard FileManager.default.fileExists(atPath: notesFile.path) else { return nil }
 
-            let recording = folder.appendingPathComponent(ScreenroomRecorder.recordingFileName)
-            let hasRecording = FileManager.default.fileExists(atPath: recording.path)
+            let notes = ScreenroomNotesFile.load(in: folder)
+            let recording = recording(in: folder)
+            // A folder earns a place here by holding something to analyse.
+            // Notes with no recording still qualify - the notes are the point.
+            guard recording != nil || !notes.isEmpty else { return nil }
+
             let metadata = SessionMetadata.load(in: folder)
-
             return ScreenroomPresentation(
                 folder: folder,
                 presenter: metadata.title ?? trimStamp(from: folder.lastPathComponent),
                 presentedAt: date(of: folder),
-                recording: hasRecording ? recording : nil,
-                noteCount: ScreenroomNotesFile.load(in: folder).count)
+                recording: recording,
+                noteCount: notes.count)
         }
         .sorted { $0.presentedAt > $1.presentedAt }
     }
+
+    /// The recording to analyse in a folder, whatever produced it.
+    ///
+    /// `presentation.mov` when Screenroom recorded it, and otherwise the
+    /// largest playable file that is not a clip and not something Screenroom
+    /// itself wrote. Largest rather than first: a class whose tape was stopped
+    /// and restarted leaves several files, and the long one is the class.
+    static func recording(in folder: URL) -> URL? {
+        let manager = FileManager.default
+        let own = folder.appendingPathComponent(ScreenroomRecorder.recordingFileName)
+        if manager.fileExists(atPath: own.path) { return own }
+
+        guard let files = try? manager.contentsOfDirectory(
+            at: folder, includingPropertiesForKeys: [.fileSizeKey],
+            options: [.skipsHiddenFiles]) else { return nil }
+
+        return files.filter { file in
+            let name = file.lastPathComponent
+            return playableExtensions.contains(file.pathExtension.lowercased())
+                && !name.hasPrefix(SessionClipExporter.clipPrefix)
+                && name != ScreenroomVideoExport.annotatedFileName
+        }
+        .max {
+            let a = (try? $0.resourceValues(forKeys: [.fileSizeKey]))?.fileSize ?? 0
+            let b = (try? $1.resourceValues(forKeys: [.fileSizeKey]))?.fileSize ?? 0
+            return a < b
+        }
+    }
+
+    static let playableExtensions = ["mov", "mp4", "mkv", "m4v"]
 
     /// Everything marked, shaped for the consistency pass.
     ///

@@ -132,19 +132,6 @@ struct GreenroomApp: App {
         .defaultSize(width: 1000, height: 620)
         .commandsRemoved()
 
-        // The other half: presentations that already happened. A separate
-        // window rather than a mode inside the first, because the live one
-        // holds a camera and a recording and must not be navigated away from
-        // while a student is still speaking.
-        Window("Screenroom \u{2014} Past Presentations", id: "screenroom-review") {
-            if ScreenroomAvailability.isReleased {
-                ScreenroomReviewWindow()
-                    .tint(Brand.green)
-            }
-        }
-        .defaultSize(width: 1180, height: 700)
-        .commandsRemoved()
-
         // The speaker's own view of the notes, when the teacher turns it on.
         // A window of its own so it can go on the second display, or be
         // handed over on a mirrored iPad, without dragging the note box with

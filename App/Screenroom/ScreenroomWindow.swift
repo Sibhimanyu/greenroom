@@ -129,12 +129,12 @@ struct ScreenroomWindow: View {
             // looking at, and the presentation they just finished will be at
             // the top of that window's list anyway.
             Button {
-                openWindow(id: "screenroom-review")
+                openWindow(id: "screenroom-report")
             } label: {
-                Image(systemName: "list.bullet.rectangle")
+                Image(systemName: "chart.bar.doc.horizontal")
             }
             .controlSize(.large)
-            .help("Past presentations: the recording, the notes, the rubric and the report.")
+            .help("The report for the presentation you just finished. Everything recorded lives in Sessions.")
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 12)

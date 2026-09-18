@@ -104,7 +104,23 @@ struct RecordingsView: View {
     enum DetailTab: String, CaseIterable, Identifiable {
         case recording = "Recording"
         case transcript = "Transcript"
+        /// Screenroom's half: analyse this session, read the notes, mark the
+        /// rubric, open the report. It lives here rather than in a window of
+        /// its own because a second list of ~/Documents/Greenroom is one list
+        /// too many - see ScreenroomAnalysisPane.
+        case analysis = "Analysis"
         var id: String { rawValue }
+
+        var isAvailable: Bool {
+            switch self {
+            case .recording: return true
+            // No longer Cues-only: Screenroom's Analyse writes transcript.txt
+            // too, so a build with Screenroom in it can fill this tab even
+            // when Cues is held back.
+            case .transcript: return CuesAvailability.isReleased || ScreenroomAvailability.isReleased
+            case .analysis: return ScreenroomAvailability.isReleased
+            }
+        }
     }
     /// Presented as a sheet from ContentView, so the environment object
     /// arrives with it; used for the YouTube upload button and state.
@@ -472,18 +488,31 @@ struct RecordingsView: View {
                 // would be empty for every class this build records. Hidden
                 // beats shown-and-empty: a feature that cannot fill itself
                 // reads as broken, where an absent one reads as not-yet.
-                if CuesAvailability.isReleased {
+                // Shown when there is more than one tab to show. The
+                // transcript pane used to be gated on Cues alone, because the
+                // Cues pipeline was the only thing that wrote transcript.txt;
+                // Screenroom's Analyse writes one too, so either feature can
+                // now fill it. Hidden when neither is in the build: a tab that
+                // cannot fill itself reads as broken, where an absent one
+                // reads as not-yet.
+                let tabs = DetailTab.allCases.filter(\.isAvailable)
+                if tabs.count > 1 {
                     Picker("", selection: $detailTab) {
-                        ForEach(DetailTab.allCases) { tab in Text(tab.rawValue).tag(tab) }
+                        ForEach(tabs) { tab in Text(tab.rawValue).tag(tab) }
                     }
                     .pickerStyle(.segmented)
                     .labelsHidden()
-                    .frame(maxWidth: 260)
+                    .frame(maxWidth: 320)
                     .padding(.top, 10)
                     .padding(.bottom, 8)
                 }
 
-                if CuesAvailability.isReleased, detailTab == .transcript {
+                if detailTab == .analysis, DetailTab.analysis.isAvailable {
+                    ScreenroomAnalysisPane(folder: folder(for: selection)) { ms in
+                        seek(to: Double(ms) / 1000)
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                } else if detailTab == .transcript, DetailTab.transcript.isAvailable {
                     if let folder = folder(for: selection) {
                         SessionTranscriptView(folder: folder)
                     } else {

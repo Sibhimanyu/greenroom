@@ -10,7 +10,13 @@ build/
 
 # Proprietary Zoom Meeting SDK (~600 MB) - not redistributable; download
 # it with your own Zoom Marketplace account. See Vendor/README.md.
-Vendor/ZoomSDK/
+#
+# No trailing slash, deliberately. A Conductor workspace is a git worktree
+# and git never copies ignored files into one, so the SDK gets symlinked in
+# rather than copied. "Vendor/ZoomSDK/" matches a directory only, so the
+# symlink showed up untracked and an absolute local path could have been
+# committed to this public repo.
+Vendor/ZoomSDK
 
 # Claude Code local settings
 .claude/settings.local.json

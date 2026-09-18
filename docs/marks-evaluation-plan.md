@@ -1,8 +1,9 @@
 # Marks: evaluated presentations
 
-Status: **idea, not started.** No code, no decision on approach. This records
-an office-hours session on 2026-09-17 so the thinking survives; it is a
-starting point for a conversation, not an agreed plan.
+Status: **approach chosen 2026-09-18; the note box is built.** The office-hours
+record below is unchanged from 2026-09-17 apart from this header and the
+"What is built" section at the foot, which is the part that is now true rather
+than proposed.
 
 ## What it is
 
@@ -187,6 +188,29 @@ reviewer actually needs. **Take C's notes-first AI idea into whichever is
 chosen; it is the cheapest good idea in the set and it is independent of the
 others.**
 
+### Chosen: A, with a standalone camera
+
+Decided 2026-09-18. **A**, as recommended, with two things settled that the
+session had left open.
+
+**The capture source is a local camera, not the meeting.** The Meeting SDK
+renders into one container and its video cannot leave that container's window
+- tried, drew black, recorded in DESIGN.md on 2026-08-24 - so building on the
+meeting feed means building inside `ParticipantGridWindow.swift` and testing
+only by running a real class with a real second person in it. A local camera
+opens with no session, no OBS and no credentials, which is the difference
+between a note box that can be worked on and one that can be demonstrated
+once a morning. It also serves the in-room case the session called half the
+product. The meeting feed becomes a second source later, at which point the
+protocol the session asked for gets written with two real conformances in
+front of it rather than one imagined one.
+
+**Marks records its own file.** OBS records the composite - your shared screen
+with you keyed into the corner - which is the right picture for a class and
+the wrong one for evaluating a speaker. Marks wants the speaker, so it writes
+`presentation.mov` itself and every note is an exact offset into that one
+file.
+
 ## Open questions
 
 - Which approach. Nothing else can start until this is answered.
@@ -204,3 +228,65 @@ others.**
 No web search and no cross-model review were run; both were declined in
 session. Before building, check prior art for timeline-annotation and rubric
 libraries, and confirm the name "Marks" is not taken in this space.
+
+---
+
+## What is built (2026-09-18)
+
+The first surface: a window that opens a camera on the person presenting and
+takes notes timed to the recording. Held out of every release behind
+`MarksAvailability.isReleased`, the same way Cues is - the code ships in any
+build made from main, so the gate exists before the first release that
+contains it rather than after somebody finds it.
+
+| Piece | File |
+|---|---|
+| The release gate, and the list of doors | `App/Marks/MarksAvailability.swift` |
+| The note, and `notes.jsonl` | `App/Marks/MarksNote.swift` |
+| Camera, microphone and `presentation.mov` | `App/Marks/MarksRecorder.swift` |
+| Presentation, folder and note-taking | `App/Marks/MarksController.swift` |
+| The window | `App/Marks/MarksWindow.swift` |
+
+### The folder is the contract
+
+One presentation is one folder under `~/Documents/Greenroom`, named for the
+presenter and the time, exactly as a class folder is:
+
+```text
+Priya Raman - 2026-09-18 10-44/
+  presentation.mov   the speaker, camera and microphone
+  notes.jsonl        one JSON object per line, one line per note
+  session.json       title, so the Sessions window lists it by name
+```
+
+`notes.jsonl` is the whole API for the post-processing pass. Nothing links
+against Greenroom to read it:
+
+```json
+{"atMs":74500,"id":"C7E268BE-…","markedAt":"2026-09-18T06:14:41Z","text":"Room went quiet here — he let the pause run.","v":1}
+```
+
+- `atMs` is milliseconds into `presentation.mov` - what a player seeks to and
+  an exporter cuts at, and still true after the folder is moved.
+- `v` is on every line, not in a header, so a line read in isolation still
+  says what it is.
+- Dates are ISO 8601 rather than Foundation's seconds-since-2001, because
+  something written in another language is going to read this.
+- Appended per note, so a crash mid-presentation keeps every note up to it,
+  and a torn final line costs only itself.
+
+### The one design decision worth knowing
+
+**A note is stamped from its first keystroke, not from Return.** The moment
+worth marking is the moment the evaluator noticed something - which is when
+their hands moved. Everything after is them finding the words, and the long,
+considered note is exactly the kind worth writing, so stamping on Return would
+push the best notes furthest from the thing they describe.
+
+### Not built yet
+
+- The post-processing pass. Nothing reads `notes.jsonl` back.
+- The rubric. Open question below, untouched.
+- The AI pass over notes (approach C's idea, still the cheapest good one).
+- The meeting feed as a second capture source.
+- Whether the speaker sees notes live or only after. Still not discussed.

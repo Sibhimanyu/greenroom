@@ -81,6 +81,14 @@ struct MenuBarView: View {
         }
         .disabled(coordinator.isConnectingChat || coordinator.meetingNumber.isEmpty)
 
+        // Marks needs no session, so unlike everything above it there is
+        // nothing to disable it on.
+        if MarksAvailability.isReleased {
+            Button("Open Marks\u{2026}") {
+                openWindow(id: "marks")
+            }
+        }
+
         Divider()
 
         Button("Show Greenroom") {

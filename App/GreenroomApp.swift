@@ -68,6 +68,38 @@ struct GreenroomApp: App {
                 .tint(Brand.green)
         }
 
+        // Marks: evaluated presentations (App/Marks/, and
+        // docs/marks-evaluation-plan.md). A Window, not a WindowGroup, for
+        // the reason recorded above - and a separate scene rather than a
+        // sheet on the main window because it holds a live camera and a
+        // recording, so it has to outlive whatever the main window is doing.
+        //
+        // Deliberately NOT given the coordinator: Marks runs without a
+        // class, a meeting or OBS, and handing it the session object would
+        // quietly make that untrue the first time someone reached for it.
+        // Two gates, because one is not enough and the scene cannot be the
+        // one that moves.
+        //
+        // A Window scene contributes its own item to the Window menu, so a
+        // gated-off Marks would still be listed there and open an empty
+        // window. The obvious fix - wrapping the scene in `if` - does not
+        // compile: SceneBuilder has no empty scene to infer for the other
+        // branch. `.commandsRemoved()` is the documented way to drop a
+        // scene's menu contribution, and it is applied unconditionally
+        // because Marks has its own two entry points and does not want a
+        // third that bypasses them.
+        //
+        // The body is gated as well, so even a stray openWindow(id: "marks")
+        // opens an empty window rather than an unreleased feature.
+        Window("Marks", id: "marks") {
+            if MarksAvailability.isReleased {
+                MarksWindow()
+                    .tint(Brand.green)
+            }
+        }
+        .defaultSize(width: 1000, height: 620)
+        .commandsRemoved()
+
         // Text label rather than an image: a glyph that fails to render
         // leaves an invisible item, and text makes the item's presence
         // unambiguous when diagnosing "it's not showing up". (A template

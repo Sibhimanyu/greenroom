@@ -210,55 +210,88 @@ struct ScreenroomAnalysisPane: View {
         return s < 60 ? "\(s)s" : String(format: "%dm %02ds", s / 60, s % 60)
     }
 
+    /// The analysed state, deliberately small.
+    ///
+    /// It used to print the whole summary at 15pt into a pane a few hundred
+    /// points tall, which is a five-line paragraph becoming a fourteen-line
+    /// wall you scroll. Reported as exactly that. A paragraph is the report's
+    /// job; this pane's job is to say whether the thing has been analysed,
+    /// give the few numbers worth a glance, and get out of the way.
+    ///
+    /// So: the numbers, the shortest useful list, and the door to the rest.
     private func analysed(_ analysis: ScreenroomAnalysis) -> some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 18) {
-                Text(analysis.summary)
-                    .font(.system(size: 15))
-                    .lineSpacing(3)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .textSelection(.enabled)
+            VStack(alignment: .leading, spacing: 16) {
+                headline
 
-                bullets("What worked", analysis.strengths)
-                bullets("What to change", analysis.workOn)
-                bullets("Across the whole thing", analysis.patterns)
-
-                if !analysis.marks.isEmpty { marks(analysis) }
-
-                if let metrics = review.metrics, metrics.wordCount > 0 {
-                    Divider()
-                    eyebrow("SPEECH")
-                    VStack(alignment: .leading, spacing: 4) {
-                        ForEach(metrics.sentences, id: \.self) { sentence in
-                            HStack(alignment: .firstTextBaseline, spacing: 6) {
-                                Text("\u{2022}").foregroundStyle(.tertiary)
-                                Text(sentence).font(.caption)
+                if !analysis.workOn.isEmpty {
+                    VStack(alignment: .leading, spacing: 6) {
+                        eyebrow("TO CHANGE")
+                        // Two lines each, three at most. The full sentences,
+                        // the reasoning and the marks are in the report.
+                        ForEach(analysis.workOn.prefix(3), id: \.self) { item in
+                            HStack(alignment: .firstTextBaseline, spacing: 7) {
+                                Circle().fill(Brand.fill).frame(width: 4, height: 4)
+                                    .offset(y: -3)
+                                Text(item).font(.callout).lineLimit(2)
                                     .fixedSize(horizontal: false, vertical: true)
                             }
                         }
                     }
                 }
 
-                Divider()
                 HStack(spacing: 10) {
                     Button {
                         openWindow(id: "screenroom-report")
                     } label: {
-                        Label("Open the report", systemImage: "chart.bar.doc.horizontal")
+                        Label("Open the full report", systemImage: "chart.bar.doc.horizontal")
                     }
                     .buttonStyle(.borderedProminent)
                     Button("Analyse again") { Task { await review.analyse() } }
+                        .controlSize(.regular)
                     Spacer(minLength: 0)
                 }
+
                 Text(analysis.engine)
                     .font(.caption2).foregroundStyle(.tertiary)
-                if let status = review.status {
-                    Text(status).font(.caption2).foregroundStyle(.tertiary)
-                }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(16)
         }
+    }
+
+    /// The four numbers, small. The report has the same four at four times
+    /// the size, which is the difference between a glance and a document.
+    private var headline: some View {
+        HStack(spacing: 8) {
+            if review.scoring.markedCount > 0 {
+                stat(review.scoring.totalLabel, "MARKS")
+            }
+            if let m = review.metrics, m.wordCount > 0 {
+                stat("\(Int(m.wordsPerMinute.rounded()))", "WORDS/MIN")
+                stat(m.verbatim ? String(format: "%.1f", m.fillersPerMinute) : "\u{2014}",
+                     "FILLERS/MIN")
+            }
+            stat("\(review.notes.count)", review.notes.count == 1 ? "NOTE" : "NOTES")
+        }
+    }
+
+    private func stat(_ value: String, _ label: String) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(value)
+                .font(.system(size: 18, weight: .semibold, design: .monospaced))
+                .monospacedDigit()
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+            Text(label)
+                .font(.system(size: 9, weight: .semibold, design: .monospaced))
+                .foregroundStyle(.tertiary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .background(RoundedRectangle(cornerRadius: 6)
+            .fill(Color(nsColor: .controlBackgroundColor)))
     }
 
     // MARK: Notes
@@ -372,44 +405,6 @@ struct ScreenroomAnalysisPane: View {
     static func stamp(_ ms: Int) -> String {
         let total = max(0, ms / 1000)
         return String(format: "%d:%02d", total / 60, total % 60)
-    }
-
-    /// The rubric as it was MARKED, not as a form to fill in.
-    ///
-    /// Each line carries the reason next to the number, because a score with
-    /// nothing behind it is an assertion rather than feedback - survivable
-    /// while a teacher typed both and could remember their own reasoning, not
-    /// survivable when something else does the marking and the student asks
-    /// why.
-    private func marks(_ analysis: ScreenroomAnalysis) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Divider()
-            HStack(alignment: .firstTextBaseline) {
-                eyebrow("MARKS")
-                Spacer()
-                Text(review.scoring.totalLabel)
-                    .font(.system(size: 12, weight: .semibold, design: .monospaced))
-                    .monospacedDigit()
-            }
-            ForEach(analysis.marks, id: \.title) { mark in
-                VStack(alignment: .leading, spacing: 2) {
-                    HStack(alignment: .firstTextBaseline, spacing: 8) {
-                        Text("\(mark.score)")
-                            .font(.system(size: 12, weight: .semibold, design: .monospaced))
-                            .monospacedDigit()
-                            .foregroundStyle(Brand.text)
-                            .frame(width: 18, alignment: .trailing)
-                        Text(mark.title).font(.callout.weight(.medium))
-                    }
-                    if !mark.reason.isEmpty {
-                        Text(mark.reason)
-                            .font(.caption).foregroundStyle(.secondary)
-                            .fixedSize(horizontal: false, vertical: true)
-                            .padding(.leading, 26)
-                    }
-                }
-            }
-        }
     }
 
     // MARK: Furniture

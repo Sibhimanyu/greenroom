@@ -32,9 +32,15 @@ struct RecordingsView: View {
         var upload: SessionMetadata.Upload?
         var id: URL { url }
 
+        /// Without the seconds.
+        ///
+        /// "Fri, 18 Sep at 9:16:17 PM" measures 149pt and was what held the
+        /// sidebar open at 240pt minimum. The seconds disambiguated two
+        /// recordings inside one minute, which the file size already does,
+        /// and they cost fifty points of a column the video wants.
         var title: String {
             date.formatted(.dateTime.weekday(.abbreviated).day().month(.abbreviated)
-                .hour().minute().second())
+                .hour().minute())
         }
         var sizeLabel: String {
             ByteCountFormatter.string(fromByteCount: sizeBytes, countStyle: .file)
@@ -143,7 +149,9 @@ struct RecordingsView: View {
             Divider()
             if sessions.isEmpty { emptyState } else { browser }
         }
-        .frame(minWidth: 900, minHeight: 560)
+        // The video, its scrubber and the work under it all want height, and
+        // the sidebar gives back 85pt of width.
+        .frame(minWidth: 1_180, minHeight: 720)
         .onAppear(perform: reload)
         .onChange(of: selection) { newSelection in load(newSelection) }
         // An upload finishing while the window is open should show up here.
@@ -331,7 +339,12 @@ struct RecordingsView: View {
                     }
                 }
             }
-            .frame(minWidth: 240, idealWidth: 280, maxWidth: 340)
+            // Sized to the row label plus padding, rather than to a number
+            // chosen before the label was. Measured: "Fri, 18 Sep at 9:16 PM"
+            // is 132pt, so 172 is the floor and 180 is the floor with room to
+            // be wrong in. The weekday stays - a teacher looks for Friday's
+            // class - and only the seconds went.
+            .frame(minWidth: 180, idealWidth: 200, maxWidth: 260)
             // The key everyone reaches for first. The context menu still works,
             // but nobody should have to discover it.
             .onDeleteCommand { if let target = selection { confirmingDelete = target } }

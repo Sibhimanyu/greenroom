@@ -38,9 +38,13 @@ struct ScreenroomAnalysisPane: View {
     let showing: Pane
     /// Seeks the window's own player, in milliseconds.
     let seek: (Int) -> Void
+    /// Where that player currently is, in milliseconds.
+    let position: () -> Int
 
     @ObservedObject private var review = ScreenroomReviewController.shared
     @Environment(\.openWindow) private var openWindow
+    @State private var draft = ""
+    @FocusState private var composerFocused: Bool
 
     var body: some View {
         Group {
@@ -59,6 +63,7 @@ struct ScreenroomAnalysisPane: View {
     /// already made.
     private func adopt() {
         review.externalSeek = seek
+        review.currentPosition = position
         review.select(folder: folder)
     }
 
@@ -250,49 +255,114 @@ struct ScreenroomAnalysisPane: View {
 
     // MARK: Notes
 
-    @ViewBuilder
     private var notes: some View {
-        if review.notes.isEmpty {
-            placeholder("text.badge.plus", "No notes on this one",
-                        "Notes come from recording through Screenroom, where you type while the person is still speaking. A class recorded with Start has none, and everything else still works.")
-        } else {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 0) {
-                    ForEach(Array(review.notes.enumerated()), id: \.element.id) { index, note in
-                        Button {
-                            review.seek(to: note)
-                        } label: {
-                            HStack(alignment: .firstTextBaseline, spacing: 12) {
-                                Text(note.offsetLabel)
-                                    .font(.system(size: 11, weight: .semibold, design: .monospaced))
-                                    .monospacedDigit()
-                                    .foregroundStyle(Brand.text)
-                                    .frame(width: 42, alignment: .leading)
-                                Text(note.text).font(.callout).foregroundStyle(.primary)
-                                    .multilineTextAlignment(.leading)
-                                    .fixedSize(horizontal: false, vertical: true)
-                                Spacer(minLength: 0)
-                            }
-                            .padding(.vertical, 9)
-                            .contentShape(Rectangle())
+        VStack(spacing: 0) {
+            if review.notes.isEmpty {
+                placeholder("text.badge.plus", "No notes yet",
+                            "Type while the person is still speaking in Screenroom, or add them here while you watch it back \u{2014} each one lands wherever the player is.")
+            } else {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 0) {
+                        ForEach(Array(review.notes.enumerated()), id: \.element.id) { index, note in
+                            noteRow(note)
+                            if index < review.notes.count - 1 { Divider().opacity(0.4) }
                         }
-                        .buttonStyle(.plain)
-                        .help("Play from just before this note.")
-                        if index < review.notes.count - 1 { Divider().opacity(0.4) }
                     }
+                    .padding(16)
                 }
-                .padding(16)
             }
+            Divider()
+            composer
         }
+    }
+
+    private func noteRow(_ note: ScreenroomNote) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 12) {
+            Button {
+                review.seek(to: note)
+            } label: {
+                HStack(alignment: .firstTextBaseline, spacing: 12) {
+                    Text(note.offsetLabel)
+                        .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                        .monospacedDigit()
+                        .foregroundStyle(Brand.text)
+                        .frame(width: 42, alignment: .leading)
+                    Text(note.text).font(.callout).foregroundStyle(.primary)
+                        .multilineTextAlignment(.leading)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Spacer(minLength: 0)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help("Play from just before this note.")
+
+            Button {
+                review.deleteNote(note)
+            } label: {
+                Image(systemName: "xmark.circle.fill")
+                    .foregroundStyle(.tertiary)
+            }
+            .buttonStyle(.plain)
+            .help("Delete this note.")
+        }
+        .padding(.vertical, 9)
+    }
+
+    /// Adding a note while watching it back.
+    ///
+    /// The whole reason this exists: a class recorded through Start has no
+    /// notes at all, and a presentation often ends with fewer than the
+    /// evaluator meant to take, because typing while somebody is speaking is
+    /// the hardest part of the job. Watching it back is the second pass, and
+    /// the second pass needs somewhere to write.
+    ///
+    /// Stamped at the PLAYER's position, not at the first keystroke. The live
+    /// window corrects for the evaluator being behind the moment; here the
+    /// recording has been scrubbed to the moment deliberately, so the
+    /// playhead is already the answer.
+    private var composer: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 10) {
+            Text(Self.stamp(review.notePosition))
+                .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                .monospacedDigit()
+                .foregroundStyle(draft.isEmpty ? AnyShapeStyle(.tertiary) : AnyShapeStyle(Brand.text))
+                .frame(width: 42, alignment: .leading)
+
+            TextField(folder == nil ? "Pick a session" : "Add a note here", text: $draft, axis: .vertical)
+                .textFieldStyle(.plain)
+                .font(.callout)
+                .lineLimit(1...4)
+                .focused($composerFocused)
+                .disabled(folder == nil)
+                .onSubmit { commit() }
+
+            Button("Add") { commit() }
+                .disabled(draft.trimmingCharacters(in: .whitespaces).isEmpty)
+                .controlSize(.small)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+    }
+
+    private func commit() {
+        review.addNote(draft)
+        draft = ""
+        composerFocused = true
+    }
+
+    static func stamp(_ ms: Int) -> String {
+        let total = max(0, ms / 1000)
+        return String(format: "%d:%02d", total / 60, total % 60)
     }
 
     /// The rubric as it was MARKED, not as a form to fill in.
     ///
     /// Each line carries the reason next to the number, because a score with
     /// nothing behind it is an assertion rather than feedback - survivable
-    /// while a teacher typed both and could remember their own reasoning,
-    /// not survivable when something else does the marking and the student
-    /// asks why.
+    /// while a teacher typed both and could remember their own reasoning, not
+    /// survivable when something else does the marking and the student asks
+    /// why.
     private func marks(_ analysis: ScreenroomAnalysis) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             Divider()

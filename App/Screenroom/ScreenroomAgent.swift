@@ -62,13 +62,20 @@ struct ScreenroomAgentSettings: Codable, Equatable {
         /// that changes its flags should cost one field rather than a release.
         ///
         /// Both read the brief from stdin, both are pinned to a read-only
-        /// sandbox, and both are pointed at the presentation's folder.
+        /// sandbox, and both are pointed at the session's folder.
+        ///
+        /// Both also stream structured events - `--output-format stream-json`
+        /// for Claude Code, `--json` for Codex - so the window can say what
+        /// the agent is DOING rather than leaving a spinner up for two
+        /// minutes. Without them the only thing on stdout is the answer, and
+        /// the only honest thing to show is nothing at all, which is what the
+        /// first version did and it read as a hang.
         var defaultCommand: String {
             switch self {
             case .claudeCode:
-                return #"claude -p --allowedTools "Read,Glob,Grep" --add-dir "$MARKS_FOLDER""#
+                return #"claude -p --output-format stream-json --verbose --allowedTools "Read,Glob,Grep" --add-dir "$SCREENROOM_FOLDER""#
             case .codex:
-                return #"codex exec -s read-only --skip-git-repo-check -C "$MARKS_FOLDER" -"#
+                return #"codex exec -s read-only --skip-git-repo-check --json -C "$SCREENROOM_FOLDER" -"#
             case .custom:
                 return ""
             }
@@ -242,6 +249,9 @@ enum ScreenroomAgent {
         process.currentDirectoryURL = folder
         // The command templates refer to it, and a custom command can too.
         var environment = ProcessInfo.processInfo.environment
+        // Referred to by the default commands, and available to a custom one.
+        environment["SCREENROOM_FOLDER"] = folder.path
+        // The old name, for a command written before the rename.
         environment["MARKS_FOLDER"] = folder.path
         process.environment = environment
 
@@ -264,22 +274,63 @@ enum ScreenroomAgent {
         // Read both pipes concurrently. Draining only one deadlocks the
         // moment the other's buffer fills, which a chatty agent does quickly.
         //
-        // STDERR is what gets shown, not stdout. Progress goes to stderr;
-        // stdout is the ANSWER. Streaming stdout put the JSON being written
-        // on screen a character at a time - the report's own sentences,
-        // truncated mid-word, presented as if they were progress.
-        async let collected = drain(output.fileHandleForReading, onOutput: nil)
-        async let problems = drain(errors.fileHandleForReading, onOutput: onOutput)
+        // stdout is now READ rather than shown: it carries the event stream,
+        // which says what the agent is doing, and the answer arrives inside
+        // it. The first version streamed it straight to the window, which put
+        // the report's own sentences on screen a character at a time.
+        async let collected = readStream(output.fileHandleForReading, onOutput: onOutput)
+        async let problems = drain(errors.fileHandleForReading, onOutput: nil)
 
-        let text = await collected
+        let reader = await collected
         let errorText = await problems
         process.waitUntilExit()
 
         guard process.terminationStatus == 0 else {
             throw Failure.failed(code: process.terminationStatus,
-                                 output: errorText.isEmpty ? text : errorText)
+                                 output: errorText.isEmpty ? reader.result : errorText)
         }
-        return text
+        return reader.result
+    }
+
+    /// Reads stdout a line at a time, showing what each event means.
+    ///
+    /// Line-buffered because a pipe hands over arbitrary chunks and half a
+    /// JSON object parses as nothing. The activity is de-duplicated: an agent
+    /// reading four files in a row would otherwise flicker "Thinking…"
+    /// between each, which reads as noise rather than as progress.
+    private static func readStream(_ handle: FileHandle,
+                                   onOutput: (@MainActor (String) -> Void)?) async -> StreamReader {
+        await withCheckedContinuation { (continuation: CheckedContinuation<StreamReader, Never>) in
+            DispatchQueue.global(qos: .userInitiated).async {
+                var reader = StreamReader()
+                var pending = ""
+                var lastShown = ""
+
+                func flush(_ line: String) {
+                    guard let activity = reader.consume(line), activity != lastShown else { return }
+                    lastShown = activity
+                    if let onOutput {
+                        let turns = reader.turns
+                        Task { @MainActor in
+                            onOutput(turns > 1 ? "\(activity)  (turn \(turns))\n" : "\(activity)\n")
+                        }
+                    }
+                }
+
+                while true {
+                    let chunk = handle.availableData
+                    if chunk.isEmpty { break }
+                    pending += String(decoding: chunk, as: UTF8.self)
+                    while let newline = pending.firstIndex(of: "\n") {
+                        let line = String(pending[pending.startIndex..<newline])
+                        pending = String(pending[pending.index(after: newline)...])
+                        flush(line + "\n")
+                    }
+                }
+                if !pending.isEmpty { flush(pending) }
+                continuation.resume(returning: reader)
+            }
+        }
     }
 
     private static func drain(_ handle: FileHandle,
@@ -378,5 +429,122 @@ extension ScreenroomAgent {
         (value as? [Any] ?? []).compactMap { $0 as? String }
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { $0.count > 2 }
+    }
+}
+
+// MARK: - Reading what the agent is doing
+
+extension ScreenroomAgent {
+
+    /// Turns a CLI's event stream into two things: a line saying what it is
+    /// doing, and eventually the answer.
+    ///
+    /// The agent step is the long one - minutes, while everything before it
+    /// takes seconds - and it used to show a spinner and nothing else,
+    /// because the only thing on stdout was the answer and showing that
+    /// meant showing the report being written a character at a time.
+    ///
+    /// Both CLIs will emit newline-delimited JSON events if asked, and the
+    /// events say exactly what a person wants to know: which file it is
+    /// reading, what it is running, how many turns in it is. Their shapes are
+    /// completely different, so both are handled by looking for what each
+    /// actually emits rather than by a shared abstraction that neither fits.
+    ///
+    /// A command that emits no JSON at all - somebody's own script - falls
+    /// back to treating stdout as the answer, which is what always happened.
+    struct StreamReader {
+        /// The answer, once an event carried it.
+        private(set) var answer: String?
+        /// Everything stdout said, for a command that does not stream events.
+        private(set) var raw = ""
+        /// True once anything parsed, so the fallback knows to stay out.
+        private(set) var structured = false
+        private(set) var turns = 0
+
+        /// Consumes one line and returns something to show, if there is any.
+        mutating func consume(_ line: String) -> String? {
+            let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty else { return nil }
+
+            // An event is a JSON object with a `type`. Anything else - including
+            // a perfectly good JSON object without one - is the ANSWER, and
+            // belongs in raw.
+            //
+            // Requiring the type matters: a custom command that prints the
+            // report as plain JSON was being recognised as an event with an
+            // unknown type and dropped on the floor, so its output vanished.
+            guard trimmed.hasPrefix("{"),
+                  let data = trimmed.data(using: .utf8),
+                  let event = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let type = event["type"] as? String else {
+                raw += line
+                return nil
+            }
+            structured = true
+
+            switch type {
+            // Claude Code
+            case "assistant":
+                guard let content = (event["message"] as? [String: Any])?["content"] as? [[String: Any]]
+                else { return nil }
+                for block in content where block["type"] as? String == "tool_use" {
+                    return describe(tool: block["name"] as? String ?? "a tool",
+                                    input: block["input"] as? [String: Any])
+                }
+                turns += 1
+                return "Thinking\u{2026}"
+            case "result":
+                answer = event["result"] as? String
+                return nil
+
+            // Codex
+            case "item.started", "item.completed":
+                guard let item = event["item"] as? [String: Any] else { return nil }
+                switch item["type"] as? String {
+                case "command_execution":
+                    let command = (item["command"] as? String) ?? ""
+                    return "Running " + String(command.prefix(60))
+                case "agent_message":
+                    // The last one is the answer; each is also a sign of life.
+                    if let text = item["text"] as? String, !text.isEmpty {
+                        answer = text
+                        return nil
+                    }
+                    return nil
+                default: return nil
+                }
+            case "turn.started":
+                turns += 1
+                return "Thinking\u{2026}"
+            default:
+                return nil
+            }
+        }
+
+        /// Whatever the answer turned out to be.
+        var result: String { answer ?? raw }
+
+        /// "Reading transcript.txt" rather than "Read" - the file is the
+        /// interesting half, and it is what tells a watcher the agent has
+        /// found the material rather than flailing.
+        private func describe(tool: String, input: [String: Any]?) -> String {
+            // A PATH is shortened to its last component, because the folder
+            // is the same every time and the file name is the news. A PATTERN
+            // is not: "frames/*.jpg" shortened the same way becomes "*.jpg",
+            // which throws away the only part that says what was being looked
+            // for.
+            let file = ((input?["file_path"] as? String) ?? (input?["path"] as? String))
+                .map { URL(fileURLWithPath: $0).lastPathComponent }
+            let pattern = input?["pattern"] as? String
+
+            switch tool {
+            case "Read": return file.map { "Reading \($0)" } ?? "Reading the folder"
+            case "Glob", "Grep":
+                guard let what = pattern ?? file else { return "Looking through the folder" }
+                return "Looking for \(what)"
+            case "Bash": return "Running a command"
+            default: return (file ?? pattern).map { "\(tool): \($0)" } ?? tool
+            }
+        }
     }
 }

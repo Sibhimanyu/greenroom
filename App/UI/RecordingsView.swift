@@ -522,10 +522,14 @@ struct RecordingsView: View {
                 }
 
                 if let pane = screenroomPane, DetailTab.analysis.isAvailable {
-                    ScreenroomAnalysisPane(folder: folder(for: selection),
-                                           showing: pane) { ms in
-                        seek(to: Double(ms) / 1000)
-                    }
+                    ScreenroomAnalysisPane(
+                        folder: folder(for: selection),
+                        showing: pane,
+                        seek: { ms in seek(to: Double(ms) / 1000) },
+                        // The playhead this window is already tracking, so a
+                        // note added while watching back lands on the frame
+                        // on screen.
+                        position: { Int(playhead * 1000) })
                 } else if detailTab == .transcript, DetailTab.transcript.isAvailable {
                     if let folder = folder(for: selection) {
                         SessionTranscriptView(folder: folder)

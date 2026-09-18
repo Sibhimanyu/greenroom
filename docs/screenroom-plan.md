@@ -958,3 +958,56 @@ ends it, and the stderr reader finishes rather than hanging when it does.
 
 Nothing is written until a run finishes, so stopping is safe. After three
 minutes the pane says so, rather than offering the excuse up front.
+
+## Two more, from screenshots (2026-09-18)
+
+### The agent step showed nothing at all
+
+Everything before it takes seconds; it takes minutes. A spinner and a step
+counter for two minutes is not much better than a stuck bar.
+
+The cause was a fix that went too far. Streaming the agent's **stdout** put the
+report's own sentences on screen a character at a time, so it was switched to
+**stderr** - and `claude -p` writes nothing to stderr, so the window went
+silent for the longest step in the run.
+
+Both CLIs will stream structured events if asked: `--output-format stream-json
+--verbose` for Claude Code, `--json` for Codex. Their shapes are completely
+different and both are handled by what each actually emits rather than through
+a shared abstraction neither fits. What the window shows now is what the agent
+is doing:
+
+```text
+Reading transcript.txt
+Looking for frames/*.jpg
+Thinking…  (turn 3)
+```
+
+The answer arrives inside the stream too - Claude's `result` event, Codex's
+last `agent_message` - so stdout is read rather than displayed. A command that
+streams nothing falls back to treating stdout as the answer, which is what
+always happened.
+
+Two bugs the tests caught rather than the eye: a glob **pattern** was being run
+through `lastPathComponent`, so `frames/*.jpg` displayed as `*.jpg` and threw
+away the only informative part; and a custom command printing the report as
+plain JSON had its output silently dropped, because any line starting with `{`
+was being treated as an event. An event is now a JSON object **with a `type`** -
+anything else is the answer.
+
+### Notes can be added while watching it back
+
+A class recorded through Start has no notes at all, and a presentation often
+ends with fewer than the evaluator meant to take, because typing while somebody
+is speaking is the hardest part of the job. Watching it back is the second
+pass, and the second pass needed somewhere to write.
+
+The Notes tab has a composer at its foot, and notes can be deleted. A note
+added here is stamped at the **player's position** rather than at the first
+keystroke: the live window corrects for the evaluator being behind the moment,
+but here the recording has been scrubbed to the moment deliberately, so the
+playhead is already the answer.
+
+The file is rewritten in time order rather than appended, because a note added
+at 2:14 belongs at 2:14 and not at the end. The live path still appends, so a
+crash mid-presentation cannot cost more than the note being typed.

@@ -119,6 +119,11 @@ final class ScreenroomReviewController: ObservableObject {
 
     let player = AVPlayer()
 
+    /// Where the window's player currently is, in milliseconds. Set by
+    /// whoever owns the picture, so a note added while watching back lands at
+    /// the frame on screen rather than at the end of the file.
+    var currentPosition: (() -> Int)?
+
     /// Set by whichever window owns the picture.
     ///
     /// Screenroom's analysis now lives inside the Sessions window, which has
@@ -513,4 +518,34 @@ extension ScreenroomReviewController {
 
     /// Says what just happened, on whichever surface is watching.
     func report(_ message: String) { status = message }
+}
+
+// MARK: - Notes, added while watching it back
+
+extension ScreenroomReviewController {
+
+    /// Where a note typed right now would land.
+    var notePosition: Int { currentPosition?() ?? 0 }
+
+    /// Adds a note at the player's current position.
+    ///
+    /// The live window stamps a note from its FIRST KEYSTROKE, because there
+    /// the thing being described is already happening and the evaluator is
+    /// behind it. Here the recording is paused or scrubbed to the moment
+    /// deliberately, so the playhead IS the answer and there is nothing to
+    /// correct for.
+    func addNote(_ text: String) {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, let folder = selected?.folder else { return }
+        notes = ScreenroomNotesFile.add(
+            ScreenroomNote(atMs: notePosition, text: trimmed, markedAt: Date()),
+            in: folder)
+        refreshSelectedRow()
+    }
+
+    func deleteNote(_ note: ScreenroomNote) {
+        guard let folder = selected?.folder else { return }
+        notes = ScreenroomNotesFile.remove(note.id, in: folder)
+        refreshSelectedRow()
+    }
 }

@@ -144,3 +144,38 @@ enum ScreenroomNotesFile {
         }
     }
 }
+
+extension ScreenroomNotesFile {
+
+    /// Rewrites the file, in time order.
+    ///
+    /// The live path appends, so a crash mid-presentation cannot cost more
+    /// than the note being typed. Editing afterwards is not live: nothing
+    /// else holds the file open, and a note added while watching back belongs
+    /// where it happened rather than at the end.
+    static func replace(_ notes: [ScreenroomNote], in folder: URL) {
+        try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        let ordered = notes.sorted {
+            $0.atMs == $1.atMs ? $0.markedAt < $1.markedAt : $0.atMs < $1.atMs
+        }
+        let body = ordered.compactMap { note -> String? in
+            guard let data = try? encoder.encode(note) else { return nil }
+            return String(data: data, encoding: .utf8)
+        }.joined(separator: "\n")
+        try? (body + "\n").write(to: url(in: folder), atomically: true, encoding: .utf8)
+    }
+
+    /// Adds a note at a point in the recording and returns the new list.
+    @discardableResult
+    static func add(_ note: ScreenroomNote, in folder: URL) -> [ScreenroomNote] {
+        let all = load(in: folder) + [note]
+        replace(all, in: folder)
+        return load(in: folder)
+    }
+
+    @discardableResult
+    static func remove(_ id: UUID, in folder: URL) -> [ScreenroomNote] {
+        replace(load(in: folder).filter { $0.id != id }, in: folder)
+        return load(in: folder)
+    }
+}

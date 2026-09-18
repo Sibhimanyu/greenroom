@@ -174,19 +174,20 @@ enum ScreenroomAgent {
 
         out.append("## What to write")
         out.append("")
-        out.append("Print a Markdown report to standard output and nothing else \u{2014} no preamble, no commentary about what you are about to do. Do not create or modify any files; you have read-only access and the teacher's app saves your output.")
+        out.append("Print ONE JSON object to standard output and nothing else. No prose before it, no code fence around it, no commentary about what you are about to do. Do not create or modify any files; you have read-only access and the teacher's app saves your output.")
         out.append("")
-        out.append("Structure it as:")
-        out.append("")
-        out.append("1. **How it went** \u{2014} three or four sentences to the student, in the second person. Specific to this presentation.")
-        out.append("2. **What worked** \u{2014} each point tied to a moment, with its timestamp.")
-        out.append("3. **What to change next time** \u{2014} each one actionable, with the timestamp of where it showed.")
-        out.append("4. **Habits** \u{2014} what the counted numbers say about how they speak, and whether it got better or worse across the talk.")
-        if frameCount > 0 {
-            out.append("5. **What the stills show** \u{2014} only what is actually visible in them, naming the frames you are talking about.")
+        out.append("```")
+        out.append("""
+        {
+          "summary": "Three or four sentences to the student, second person, specific to this presentation.",
+          "strengths": ["One short sentence each, tied to a moment with its time in words.", "..."],
+          "workOn": ["One short sentence each, actionable next time, tied to where it showed.", "..."],
+          "patterns": ["Things true of the whole talk rather than one moment.", "..."]
         }
+        """.trimmingCharacters(in: .whitespacesAndNewlines))
+        out.append("```")
         out.append("")
-        out.append("Where the teacher's notes and your own reading disagree, say so and prefer the teacher's. They were in the room.")
+        out.append("At most four entries in each array, and an empty array is a correct answer when the notes record nothing of that kind. Where the teacher's notes and your own reading disagree, say so and prefer the teacher's. They were in the room.")
         out.append("")
 
         if let metrics {
@@ -297,5 +298,47 @@ enum ScreenroomAgent {
 
     static func existingReport(in folder: URL) -> String? {
         try? String(contentsOf: folder.appendingPathComponent(reportFileName), encoding: .utf8)
+    }
+}
+
+extension ScreenroomAgent {
+
+    /// Turns whatever the agent printed into the same shape the on-device
+    /// pass produces, so the report renders identically whichever engine ran.
+    ///
+    /// Tolerant on purpose. Agents wrap JSON in a code fence, or say "Here is
+    /// the report:" first, however plainly they are told not to - and a
+    /// student's feedback is not worth losing to a stray backtick. So this
+    /// takes the outermost {...} it can find and parses that. When even that
+    /// fails the whole output becomes the summary, which is worse-looking and
+    /// still readable, rather than nothing at all.
+    static func analysis(from output: String, engine: String,
+                         consistency: [String]) -> ScreenroomAnalysis {
+        let trimmed = output.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        if let open = trimmed.firstIndex(of: "{"), let close = trimmed.lastIndex(of: "}"),
+           open < close,
+           let data = String(trimmed[open...close]).data(using: .utf8),
+           let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+
+            let summary = (object["summary"] as? String)?
+                .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            if !summary.isEmpty {
+                return ScreenroomAnalysis(
+                    engine: engine,
+                    summary: summary,
+                    strengths: strings(object["strengths"]),
+                    workOn: strings(object["workOn"]),
+                    patterns: strings(object["patterns"]),
+                    consistency: consistency)
+            }
+        }
+        return ScreenroomAnalysis(engine: engine, summary: trimmed, consistency: consistency)
+    }
+
+    private static func strings(_ value: Any?) -> [String] {
+        (value as? [Any] ?? []).compactMap { $0 as? String }
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { $0.count > 2 }
     }
 }

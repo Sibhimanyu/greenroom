@@ -45,20 +45,17 @@ final class ScreenroomReviewController: ObservableObject {
     @Published private(set) var frameCount = 0
     @Published private(set) var hasTranscript = false
 
-    @Published private(set) var isPreparing = false
-    @Published private(set) var prepareStep = ""
-    @Published private(set) var prepareProgress: Double = 0
+    /// One run, one step name, one bar. DESIGN.md: name the step, never just
+    /// spin - a pass stuck on transcription should look different from one
+    /// about to finish.
+    @Published private(set) var step = ""
+    @Published private(set) var progress: Double = 0
 
-    @Published var transcriberSettings = ScreenroomTranscriberSettings.load()
-    @Published private(set) var whisperReady = ScreenroomWhisper.resolvedBinary != nil
-                                               && ScreenroomWhisper.findModel() != nil
-    @Published var agentSettings = ScreenroomAgentSettings.load()
-    @Published private(set) var isRunningAgent = false
-    /// What the agent is saying as it says it. Agents take minutes and go
-    /// quiet while they think; a window that showed nothing until the end
-    /// would be indistinguishable from one that had hung.
-    @Published private(set) var agentLog = ""
-    @Published private(set) var agentReport: String?
+    /// What the outside tools are saying as they say it. whisper prints its
+    /// progress and agents go quiet for minutes at a time; a window that
+    /// showed nothing until the end would be indistinguishable from one that
+    /// had hung.
+    @Published private(set) var log = ""
 
     /// What just happened, in a sentence, under the actions that caused it.
     /// DESIGN.md asks that a result land on the surface the user was already
@@ -108,8 +105,7 @@ final class ScreenroomReviewController: ObservableObject {
         frameCount = ScreenroomFrames.existing(in: presentation.folder).count
         hasTranscript = FileManager.default.fileExists(
             atPath: presentation.folder.appendingPathComponent(ScreenroomTranscriber.transcriptFileName).path)
-        agentReport = ScreenroomAgent.existingReport(in: presentation.folder)
-        agentLog = ""
+        log = ""
 
         if let recording = presentation.recording {
             player.replaceCurrentItem(with: AVPlayerItem(url: recording))
@@ -187,44 +183,117 @@ final class ScreenroomReviewController: ObservableObject {
 
     // MARK: The pass
 
+    /// THE pipeline. One button, one order, no decisions.
+    ///
+    /// The six controls this replaced - whisper or Apple, prepare or not,
+    /// agent or not, which agent, its command, and a separate "read the
+    /// notes" - were six ways of asking the same question, which is "make me
+    /// a report". Setup is a setting; running is a button.
+    ///
+    /// Every stage is best-effort and the next one still runs. A Mac with no
+    /// whisper still gets stills, a presentation with no recording still gets
+    /// a report from the notes alone, and a failed agent still leaves the
+    /// on-device pass to write something. The report says which engine wrote
+    /// each part, so a degraded run is visible rather than silent.
     func analyse() async {
         guard let selected, !isAnalysing else { return }
         isAnalysing = true
+        log = ""
         status = nil
-        defer { isAnalysing = false }
+        defer { isAnalysing = false; step = ""; progress = 0 }
 
-        let produced = await ScreenroomAnalyst.analyse(
-            notes: notes,
-            scoring: scoring.markedCount > 0 ? scoring : nil,
-            presenter: selected.presenter,
-            // Frozen at the moment the report was produced, not recomputed
-            // on read - see ScreenroomAnalysis.
-            consistency: cohortFindings.map { "\($0.headline). \($0.detail)" })
+        if let recording = selected.recording {
+            await transcribe(recording, into: selected.folder)
+            await takeStills(recording, into: selected.folder)
+        }
+
+        step = "Comparing against the group"
+        progress = 0
+        recomputeCohort()
+
+        let consistency = cohortFindings.map { "\($0.headline). \($0.detail)" }
+        let produced = await write(consistency: consistency, for: selected)
 
         produced.save(in: selected.folder)
         analysis = produced
         analysisRuns += 1
-        status = "Read \(notes.count) \(notes.count == 1 ? "note" : "notes") \u{2014} \(produced.engine)."
-    }
-
-    // MARK: Output
-
-    func exportReport(for audience: ScreenroomReport.Audience) {
-        guard let selected else { return }
-        let markdown = ScreenroomReport.markdown(presenter: selected.presenter,
-                                            presentedAt: selected.presentedAt,
-                                            notes: notes,
-                                            scoring: scoring.markedCount > 0 ? scoring : nil,
-                                            analysis: analysis,
-                                            for: audience)
-        guard let written = ScreenroomReport.write(markdown, in: selected.folder) else {
-            status = "The report could not be written into the folder."
-            return
-        }
-        status = "Wrote \(written.lastPathComponent)."
+        status = "\(produced.engine)."
         refreshSelectedRow()
     }
 
+    // MARK: The stages
+
+    private func transcribe(_ recording: URL, into folder: URL) async {
+        step = "Transcribing"
+        progress = 0
+        do {
+            _ = try await ScreenroomTranscriber.transcribe(
+                recording: recording, into: folder,
+                settings: ScreenroomTranscriberSettings.resolved(),
+                onProgress: { [weak self] fraction in self?.progress = fraction },
+                onOutput: { [weak self] piece in self?.log += piece })
+            hasTranscript = true
+            metrics = ScreenroomSpeechMetrics.load(in: folder)
+        } catch {
+            // Not fatal. The notes are still the most valuable thing here,
+            // and a report built from them alone is the thing this started as.
+            status = error.localizedDescription
+        }
+    }
+
+    private func takeStills(_ recording: URL, into folder: URL) async {
+        step = "Taking stills"
+        progress = 0
+        do {
+            let frames = try await ScreenroomFrames.extract(
+                from: recording, into: folder,
+                onProgress: { [weak self] done, total in
+                    self?.progress = total > 0 ? Double(done) / Double(total) : 0
+                })
+            frameCount = frames.count
+        } catch {
+            status = error.localizedDescription
+        }
+    }
+
+    /// The engine ladder, walked automatically: the agent when one is set up,
+    /// Apple's on-device model when it is not, and arithmetic when neither is
+    /// available. Never a question put to the teacher mid-presentation.
+    private func write(consistency: [String], for presentation: ScreenroomPresentation) async -> ScreenroomAnalysis {
+        let settings = ScreenroomAgentSettings.load()
+        if settings.enabled, !settings.command.trimmingCharacters(in: .whitespaces).isEmpty {
+            step = "Your agent is reading it"
+            progress = 0
+            let brief = ScreenroomAgent.brief(presenter: presentation.presenter,
+                                              notes: notes,
+                                              metrics: metrics,
+                                              scoring: scoring.markedCount > 0 ? scoring : nil,
+                                              frameCount: frameCount,
+                                              hasTranscript: hasTranscript)
+            ScreenroomAgent.writeBrief(brief, in: presentation.folder)
+            do {
+                let output = try await ScreenroomAgent.run(
+                    settings: settings, brief: brief, in: presentation.folder,
+                    onOutput: { [weak self] piece in self?.log += piece })
+                ScreenroomAgent.writeReport(output, in: presentation.folder)
+                return ScreenroomAgent.analysis(from: output,
+                                                engine: settings.kind.label,
+                                                consistency: consistency)
+            } catch {
+                // Falls through to the on-device pass rather than failing the
+                // run. A missing CLI should cost the extra detail, not the
+                // report.
+                status = error.localizedDescription
+            }
+        }
+
+        step = "Reading the notes"
+        progress = 0
+        return await ScreenroomAnalyst.analyse(notes: notes,
+                                               scoring: scoring.markedCount > 0 ? scoring : nil,
+                                               presenter: presentation.presenter,
+                                               consistency: consistency)
+    }
 }
 
 // MARK: - Handing the presentation over as video
@@ -233,10 +302,9 @@ extension ScreenroomReviewController {
 
     /// Writes the recording again with the notes drawn into the picture.
     ///
-    /// The point of this over report.md: reading "at 6:40 you lost the
-    /// thread" and WATCHING yourself lose the thread while the sentence
-    /// appears are not the same feedback, and the second needs no
-    /// cross-referencing between a document and a scrubber.
+    /// Reading "at 6:40 you lost the thread" and WATCHING yourself lose the
+    /// thread while the sentence appears are not the same feedback, and the
+    /// second needs no cross-referencing between a document and a scrubber.
     func exportAnnotatedVideo() async {
         guard let selected, let recording = selected.recording,
               !notes.isEmpty, !isExportingVideo else { return }
@@ -261,127 +329,19 @@ extension ScreenroomReviewController {
         }
     }
 
-    /// Writes the notes as subtitles beside the recording.
-    ///
-    /// Seconds rather than minutes, because nothing is re-encoded, and every
-    /// player can turn them off. YouTube takes the file directly. The cost is
-    /// that it is a second file to keep next to the first.
+    /// Writes the notes as subtitles beside the recording. Seconds rather than
+    /// minutes, because nothing is re-encoded.
     func exportSubtitles() async {
         guard let selected, let recording = selected.recording, !notes.isEmpty else { return }
         let duration = (try? await AVURLAsset(url: recording).load(.duration))?.seconds ?? 0
         guard let written = ScreenroomVideoExport.writeSubtitles(
-            for: notes, duration: duration,
-            in: selected.folder) else {
+            for: notes, duration: duration, in: selected.folder) else {
             status = "The subtitles could not be written."
             return
         }
-        status = "Wrote \(written.lastPathComponent). Open the recording in QuickTime or VLC and turn subtitles on."
+        status = "Wrote \(written.lastPathComponent)."
         refreshSelectedRow()
     }
-}
-
-// MARK: - Material, and the agent that reads it
-
-extension ScreenroomReviewController {
-
-    /// Transcribes the recording and pulls stills out of it.
-    ///
-    /// Both are inputs to a deeper pass and neither is cheap, so they are one
-    /// button rather than two: a teacher pressing "prepare" is not making a
-    /// choice between them, and the failure of one should not silently leave
-    /// the other undone.
-    func prepareMaterial() async {
-        guard let selected, let recording = selected.recording, !isPreparing else { return }
-        isPreparing = true
-        prepareProgress = 0
-        status = nil
-        defer { isPreparing = false; prepareStep = ""; prepareProgress = 0 }
-
-        prepareStep = transcriberSettings.engine == .whisper
-            ? "Transcribing with whisper"
-            : "Transcribing with Apple"
-        do {
-            let words = try await ScreenroomTranscriber.transcribe(
-                recording: recording, into: selected.folder,
-                settings: transcriberSettings,
-                onProgress: { [weak self] fraction in self?.prepareProgress = fraction },
-                onOutput: { [weak self] piece in
-                    // whisper prints its progress on stderr; showing the tail
-                    // of it is the difference between a five-minute wait and
-                    // a five-minute wait that looks like a hang.
-                    self?.prepareStep = piece.split(separator: "\n").last.map(String.init)
-                        ?? "Transcribing"
-                })
-            hasTranscript = !words.isEmpty
-            metrics = ScreenroomSpeechMetrics.load(in: selected.folder)
-        } catch {
-            // Not fatal. Frames are still worth having, and a folder with
-            // pictures and no transcript is more use than neither.
-            status = error.localizedDescription
-        }
-
-        prepareStep = "Taking stills"
-        prepareProgress = 0
-        do {
-            let frames = try await ScreenroomFrames.extract(
-                from: recording, into: selected.folder,
-                onProgress: { [weak self] done, total in
-                    self?.prepareProgress = total > 0 ? Double(done) / Double(total) : 0
-                })
-            frameCount = frames.count
-        } catch {
-            status = error.localizedDescription
-        }
-
-        if status == nil {
-            status = "Ready: \(hasTranscript ? "transcript" : "no transcript"), \(frameCount) stills."
-        }
-        refreshSelectedRow()
-    }
-
-    /// Writes the brief and hands it to the configured agent.
-    func runAgent() async {
-        guard let selected, !isRunningAgent else { return }
-        isRunningAgent = true
-        agentLog = ""
-        status = nil
-        defer { isRunningAgent = false }
-
-        let text = ScreenroomAgent.brief(presenter: selected.presenter,
-                                    notes: notes,
-                                    metrics: metrics,
-                                    scoring: scoring.markedCount > 0 ? scoring : nil,
-                                    frameCount: frameCount,
-                                    hasTranscript: hasTranscript)
-        ScreenroomAgent.writeBrief(text, in: selected.folder)
-
-        do {
-            let output = try await ScreenroomAgent.run(
-                settings: agentSettings, brief: text, in: selected.folder,
-                onOutput: { [weak self] piece in self?.agentLog += piece })
-            let trimmed = output.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !trimmed.isEmpty else {
-                status = "The agent finished but printed nothing."
-                return
-            }
-            ScreenroomAgent.writeReport(trimmed, in: selected.folder)
-            agentReport = trimmed
-            status = "Wrote \(ScreenroomAgent.reportFileName)."
-            refreshSelectedRow()
-        } catch {
-            status = error.localizedDescription
-        }
-    }
-
-    func saveAgentSettings() { agentSettings.save() }
-
-    func saveTranscriberSettings() {
-        transcriberSettings.save()
-        whisperReady = ScreenroomWhisper.resolvedBinary != nil && ScreenroomWhisper.findModel() != nil
-    }
-
-    /// The one line that fetches a model, for the teacher to paste.
-    var whisperDownloadCommand: String { ScreenroomWhisper.downloadCommand }
 }
 
 extension ScreenroomReviewController {

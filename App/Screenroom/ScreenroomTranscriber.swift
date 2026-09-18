@@ -65,6 +65,24 @@ struct ScreenroomTranscriberSettings: Codable, Equatable {
 
     static let key = "screenroomTranscriberSettings"
 
+    /// What the pipeline actually uses. There is no picker any more.
+    ///
+    /// Whisper when this Mac has it, Apple's when it does not. That is not a
+    /// preference, it is a fact about the Mac: Apple's recogniser deletes the
+    /// disfluencies the whole speech analysis exists to count, so nobody would
+    /// choose it, and offering the choice only invited somebody to get it
+    /// wrong. A Mac without whisper still gets a transcript and a report - it
+    /// just gets no filler count, and the report says so in a sentence.
+    static func resolved(_ defaults: UserDefaults = .standard) -> ScreenroomTranscriberSettings {
+        var settings = load(defaults)
+        settings.engine = whisperIsReady ? .whisper : .apple
+        return settings
+    }
+
+    static var whisperIsReady: Bool {
+        ScreenroomWhisper.resolvedBinary != nil && ScreenroomWhisper.findModel() != nil
+    }
+
     static func load(_ defaults: UserDefaults = .standard) -> ScreenroomTranscriberSettings {
         guard let data = defaults.data(forKey: key),
               let decoded = try? JSONDecoder().decode(ScreenroomTranscriberSettings.self, from: data) else {

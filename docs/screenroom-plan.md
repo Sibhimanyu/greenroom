@@ -781,3 +781,54 @@ point of the PDF is that it is what is on screen. Pagination slices the tall
 render a page at a time; verified by rendering a long view, reading the pages
 back with `CGPDFDocument` and measuring the ink on each, so "three pages" is
 three pages with content on them rather than one page and two blanks.
+
+## One pipeline (2026-09-18)
+
+The analysis had grown six controls for one outcome: whisper or Apple, a
+prepare-material button, an agent on/off toggle, which agent, its command, and
+then separately a "read the notes" button. Six ways of asking the same
+question, which is *make me a report*.
+
+**Setup is a setting. Running is a button.**
+
+Press **Analyse** and the pipeline runs in one order, every time:
+
+```text
+transcribe  ->  take stills  ->  count the speech  ->  compare the marking
+            ->  write the report  ->  open it
+```
+
+### What stopped being a choice
+
+- **The transcriber.** Whisper when this Mac has it, Apple's when it does not.
+  That is a fact about the Mac, not a preference: Apple's deletes the
+  disfluencies the speech analysis exists to count, so nobody would choose it,
+  and offering the choice only invited somebody to get it wrong. Settings
+  reports which one will run, as a fact rather than a control.
+- **Preparing the material.** There was never a reason to transcribe and then
+  not analyse.
+- **Which engine writes it.** A ladder, walked automatically: your agent when
+  one is set up, Apple's on-device model when it is not, arithmetic when
+  neither is available. The report names the engine, so a degraded run is
+  visible rather than silent.
+
+### Every stage is best-effort
+
+A Mac with no whisper still gets stills. A presentation with no recording still
+gets a report from the notes alone. A failed agent falls through to the
+on-device pass rather than failing the run. A missing CLI should cost the extra
+detail, not the report.
+
+### The agent now returns the same shape as everything else
+
+It used to print free-form Markdown into `agent-report.md`, which the report
+could not lay out beside the on-device pass. It is now asked for one JSON
+object with the same four fields the on-device model fills, so the dashboard
+renders identically whichever engine ran.
+
+The parser is deliberately tolerant. Agents wrap JSON in a code fence and say
+"Here is the report:" first, however plainly they are told not to, so it takes
+the outermost `{...}` it can find. When even that fails the whole output
+becomes the summary - worse-looking and still readable, rather than nothing.
+Verified against clean JSON, fenced-and-prefaced JSON, prose with no JSON in it
+at all, and an object with numbers and a wrong-typed field in its arrays.

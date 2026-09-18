@@ -511,3 +511,82 @@ annotated, and read back frame by frame: 25% of the bottom-left corner is
 non-grey while a note is up and 0% in the one-second gap between cards. That
 is the overlay actually reaching the pixels, not just the export reporting
 success.
+
+## Your own agent (2026-09-18)
+
+Marks' own passes are deliberately small: an on-device model writing feedback
+from the notes, and arithmetic over rubrics and timestamps. That is the right
+floor - it works on a Mac with nothing configured and it costs nothing. It is
+not a ceiling. A teacher who already runs Claude Code or Codex has a much
+larger model a keystroke away, and what Marks has assembled is exactly the
+material such a thing is good at reading.
+
+No API keys, no accounts, no model configuration inside Greenroom. Marks
+writes a brief and runs the CLI you already have, in your own login shell,
+with your own credentials.
+
+### First, give it something to read
+
+A coding agent cannot watch an `.mov`. Handing one a video file and asking
+about body language gets a confident answer about a file it never opened. So
+"prepare" does two things, both on this Mac:
+
+- **`MarksTranscriber`** - Apple's speech recogniser over `presentation.mov`,
+  pinned to on-device. `SFSpeechRecognizer` will silently fall back to
+  Apple's servers when the local model is missing, which would send a
+  recording of a named student off the Mac because a download had not
+  happened. So it checks `supportsOnDeviceRecognition` first and **refuses
+  rather than falls back**. Writes `transcript.txt` and `words.json`.
+- **`MarksFrames`** - one still every twenty seconds into `frames/`. Twenty
+  because a ten-minute talk then gives thirty images, which a model attends
+  to properly; every five seconds gives a hundred and twenty, which it skims.
+
+### Then count what can be counted
+
+`MarksSpeechMetrics`: filler words, words per minute in half-minute windows,
+pauses over two seconds, talk ratio. Same rule as `MarksCohort` and
+`MarksAgreement` - it is arithmetic and it stays arithmetic. It also makes
+the agent pass better: one handed "you said 'basically' 34 times, 4.1 a
+minute" spends its attention on what that means, where one asked to count
+spends it counting, and gets it wrong.
+
+The filler list is stated openly so it can be argued with, and carries the
+Indian-English ones that actually turn up in this classroom. "So" is
+deliberately excluded: it opens a sentence legitimately far too often, and
+flagging it produces a number a student will correctly ignore, which teaches
+them to ignore the rest.
+
+### The brief says what the agent cannot know
+
+`BRIEF.md` is written into the folder - a file, so the teacher can read
+exactly what is being asked in their student's name, and edit it. Its most
+important section is the one about limits:
+
+- It cannot watch the video; there is no video it can open.
+- From stills it CAN judge posture, reading off a screen, facing the room,
+  what is on the slide. It CANNOT judge gesture, movement, pace, energy or
+  eye contact - twenty seconds apart is far too coarse - and is told not to
+  infer them.
+- It cannot hear anything. Tone, volume and nerves are not available.
+- Where its reading and the teacher's notes disagree, prefer the teacher's.
+  They were in the room.
+
+### Read-only, and the output comes back through stdout
+
+Both CLIs take a read-only sandbox and both are pinned to one in the default
+commands. An agent that cannot write cannot damage a folder holding the only
+copy of a student's presentation, and Marks saving the output itself means
+there is nothing to negotiate about permissions in a non-interactive shell.
+
+Verified against the real binaries rather than their documentation:
+`codex exec` refuses outright without `--skip-git-repo-check` when the folder
+is not a git repository, which a Documents folder never is. Both defaults
+were run end to end before being committed.
+
+### This is the one thing that can leave the Mac
+
+Everything else in Marks runs here. This does not, and it is the only feature
+in Greenroom whose destination Greenroom does not control. It is off by
+default, the command is shown rather than hidden, and the transparency page,
+the guide and the README all say plainly that what a cloud agent does with a
+transcript and stills of a named student is between the teacher and it.

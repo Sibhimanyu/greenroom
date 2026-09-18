@@ -753,6 +753,67 @@
   </div>
 </section>
 
+<!-- ============ 6b. MARKS ============ -->
+<section id="Marks">
+  <div class="wrap">
+    <div class="sec-head">
+      <p class="kicker">06b &middot; Marks</p>
+      <h2>Evaluated presentations, and the one switch that can send one away <span class="soon">Coming soon</span></h2>
+      <p><strong>Marks is not in the current release.</strong> No entry point in the shipping build can reach it and none of what follows happens. It is documented here because the behaviour is what you would be agreeing to when it ships, and because one part of it breaks a promise the rest of this page makes.</p>
+      <p>Marks records a person presenting, lets a teacher type notes timed into the recording, and turns those notes into a report. Almost all of it runs on your Mac and nothing about it touches the network:</p>
+    </div>
+
+    <div class="scopes">
+      <div class="scope">
+        <div class="who">Recording <span>stays here</span></div>
+        <p class="note">A camera, or a window on your screen, written straight to a file in <span class="mono">~/Documents/Greenroom</span>. This is the first thing in Greenroom that asks for <strong>Screen Recording</strong> permission of its own; until Marks ships, that permission still belongs entirely to OBS.</p>
+      </div>
+      <div class="scope">
+        <div class="who">Transcription <span>stays here, or does not happen</span></div>
+        <p class="note">Apple's speech recogniser, pinned to on&#8209;device. If this Mac has no local model for the language, Marks <em>refuses to transcribe at all</em> rather than let a recording of a named student go to Apple's servers.</p>
+      </div>
+      <div class="scope">
+        <div class="who">Fillers, pace, marking drift <span>stays here</span></div>
+        <p class="note">Arithmetic over timestamps and rubric numbers. No model is involved, which is deliberate: these are the numbers a student may dispute, and a number you can recompute is worth more than a sentence that sounds confident.</p>
+      </div>
+      <div class="scope">
+        <div class="who">Written feedback <span>stays here</span></div>
+        <p class="note">Apple's on&#8209;device language model, the same one Cues uses, reading the teacher's notes. Nothing crosses. When Apple Intelligence is unavailable the report is counted from the notes instead, and says so.</p>
+      </div>
+    </div>
+
+    <div class="sec-head">
+
+      <h3>The exception: your own agent</h3>
+      <p>Marks can hand a presentation to a command&#8209;line coding agent you already have &mdash; Claude Code, Codex, or any command you write yourself. <strong>This is the one part of Greenroom that can send your material to a third party, and it is the only feature whose destination Greenroom does not control.</strong></p>
+      <p>What that means concretely, when and only when you turn the switch on and press the button:</p>
+    </div>
+
+    <div class="scopes">
+      <div class="scope">
+        <div class="who">The brief <span>written where you can read it</span></div>
+        <p class="note">Greenroom writes <span class="mono">BRIEF.md</span> into the presentation's folder, so you can read exactly what is being asked in your student's name before anything runs, and edit it if you disagree.</p>
+      </div>
+      <div class="scope">
+        <div class="who">The command <span>yours, shown in full</span></div>
+        <p class="note">It runs in your own login shell with your own credentials, and the exact command is displayed in the window rather than hidden in a preference. Greenroom holds no API key and has no account of its own.</p>
+      </div>
+      <div class="scope">
+        <div class="who">Read&#8209;only <span>it cannot change the folder</span></div>
+        <p class="note">The agent is given read access to that one folder &mdash; the transcript, the notes, the counted numbers, the stills. It cannot alter them, and Greenroom saves what it prints rather than letting it write files. That folder may hold the only copy of a student's presentation.</p>
+      </div>
+      <div class="scope">
+        <div class="who">Where it goes <span>we cannot tell you</span></div>
+        <p class="note"><strong>Whatever that agent then does with a transcript and photographs of a named student is between you and it.</strong> If it is a cloud service, that material leaves your Mac. Greenroom cannot say where it goes and does not pretend to. This is the only feature on this page whose destination is not ours to describe.</p>
+      </div>
+    </div>
+
+    <div class="sec-head">
+      <p>The switch is off, the default is that no agent runs, and every other part of Marks works without it.</p>
+    </div>
+  </div>
+</section>
+
 <!-- ============ 7. PROMPTER ============ -->
 <section class="soft" id="Cues">
   <div class="wrap">

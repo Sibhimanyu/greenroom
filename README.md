@@ -99,7 +99,20 @@ anytime from the **?** button in the main window. The short version:
    remote presenter from the window they appear in. Marks is not in this
    release and no entry point can reach it, so macOS never asks. When Marks
    ships this becomes a fourth permission, asked the first time you point it
-   at a window.)
+   at a window — and a fifth, Speech Recognition, the first time it
+   transcribes one.)
+
+   **One more thing about Marks, stated here because the rest of this README
+   is a list of things that stay on your Mac:** Marks can hand a presentation
+   to a command-line agent you already have (Claude Code, Codex, or a command
+   you write). That is the only feature in Greenroom whose destination
+   Greenroom does not control. It is off by default, the exact command is
+   shown before it runs, the agent gets read-only access to one folder, and
+   what a cloud agent then does with a transcript and stills of a named
+   student is between you and it. Everything else in Marks — recording,
+   transcription, filler counts, marking-consistency checks and the written
+   feedback — runs on your Mac.
+   See the [how-it-works page](https://sibhimanyu.github.io/greenroom/how-it-works.html#Marks).
 
    **Credential storage note:** the Zoom app credentials are kept in
    Greenroom's local preferences (`UserDefaults`) in **plain text** — not

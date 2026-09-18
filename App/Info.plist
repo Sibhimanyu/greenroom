@@ -14,10 +14,15 @@
 	<string>Greenroom sends the composited video (your screen with you in it) to the Zoom meeting from inside the app, so it needs the camera the meeting uses. With Marks (not in this release), it also records the person presenting straight to a file in Documents/Greenroom, which stays on this Mac.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Your microphone goes to the Zoom meeting, drives the level meter on the participants panel, and is recorded alongside the picture when Marks records a presentation (not in this release; the file stays on this Mac). With Cues turned on (off by default), Greenroom also turns your speech into text on this Mac to suggest links; the audio and the text never leave the Mac and are not saved.</string>
-	<!-- No NSSpeechRecognitionUsageDescription on purpose: Cues uses
-	     SpeechAnalyzer with audio the app already holds, which runs on this
-	     Mac and asks for no speech-recognition permission. Adding the key
-	     would imply a TCC prompt and a cloud path that do not exist. -->
+	<!-- Cues does NOT need this key: it uses SpeechAnalyzer with audio the
+	     app already holds, which runs on this Mac and asks for no
+	     speech-recognition permission. Marks does, because transcribing a
+	     finished file on macOS 14 means SFSpeechRecognizer, which is gated
+	     by this permission. It is pinned to on-device recognition and
+	     refuses rather than falling back to Apple's servers - see
+	     App/Marks/MarksTranscriber.swift. -->
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>With Marks (not in this release), Greenroom turns a recorded presentation into text on this Mac so it can count filler words and pace. It refuses to transcribe at all rather than send the audio to Apple.</string>
 	<key>SUEnableAutomaticChecks</key>
 	<true/>
 	<key>SUFeedURL</key>

@@ -58,6 +58,24 @@ final class MarksReviewController: ObservableObject {
     @Published private(set) var isExportingVideo = false
     @Published private(set) var videoProgress: Double = 0
 
+    // MARK: Material for a deeper pass
+
+    @Published private(set) var metrics: MarksSpeechMetrics?
+    @Published private(set) var frameCount = 0
+    @Published private(set) var hasTranscript = false
+
+    @Published private(set) var isPreparing = false
+    @Published private(set) var prepareStep = ""
+    @Published private(set) var prepareProgress: Double = 0
+
+    @Published var agentSettings = MarksAgentSettings.load()
+    @Published private(set) var isRunningAgent = false
+    /// What the agent is saying as it says it. Agents take minutes and go
+    /// quiet while they think; a window that showed nothing until the end
+    /// would be indistinguishable from one that had hung.
+    @Published private(set) var agentLog = ""
+    @Published private(set) var agentReport: String?
+
     /// What just happened, in a sentence, under the actions that caused it.
     /// DESIGN.md asks that a result land on the surface the user was already
     /// watching rather than in a log somewhere else.
@@ -105,6 +123,12 @@ final class MarksReviewController: ObservableObject {
         // on - see MarksRubric for why the snapshot then stops following it.
         scoring = presentation.scoring() ?? MarksScoring(rubric: MarksRubricStore.current())
         analysis = presentation.analysis()
+        metrics = MarksSpeechMetrics.load(in: presentation.folder)
+        frameCount = MarksFrames.existing(in: presentation.folder).count
+        hasTranscript = FileManager.default.fileExists(
+            atPath: presentation.folder.appendingPathComponent(MarksTranscriber.transcriptFileName).path)
+        agentReport = MarksAgent.existingReport(in: presentation.folder)
+        agentLog = ""
 
         if let recording = presentation.recording {
             player.replaceCurrentItem(with: AVPlayerItem(url: recording))
@@ -340,4 +364,90 @@ extension MarksReviewController {
         status = "Wrote \(written.lastPathComponent). Open the recording in QuickTime or VLC and turn subtitles on."
         refreshSelectedRow()
     }
+}
+
+// MARK: - Material, and the agent that reads it
+
+extension MarksReviewController {
+
+    /// Transcribes the recording and pulls stills out of it.
+    ///
+    /// Both are inputs to a deeper pass and neither is cheap, so they are one
+    /// button rather than two: a teacher pressing "prepare" is not making a
+    /// choice between them, and the failure of one should not silently leave
+    /// the other undone.
+    func prepareMaterial() async {
+        guard let selected, let recording = selected.recording, !isPreparing else { return }
+        isPreparing = true
+        prepareProgress = 0
+        status = nil
+        defer { isPreparing = false; prepareStep = ""; prepareProgress = 0 }
+
+        prepareStep = "Transcribing on this Mac"
+        do {
+            let words = try await MarksTranscriber.transcribe(
+                recording: recording, into: selected.folder,
+                onProgress: { [weak self] fraction in self?.prepareProgress = fraction })
+            hasTranscript = !words.isEmpty
+            metrics = MarksSpeechMetrics.load(in: selected.folder)
+        } catch {
+            // Not fatal. Frames are still worth having, and a folder with
+            // pictures and no transcript is more use than neither.
+            status = error.localizedDescription
+        }
+
+        prepareStep = "Taking stills"
+        prepareProgress = 0
+        do {
+            let frames = try await MarksFrames.extract(
+                from: recording, into: selected.folder,
+                onProgress: { [weak self] done, total in
+                    self?.prepareProgress = total > 0 ? Double(done) / Double(total) : 0
+                })
+            frameCount = frames.count
+        } catch {
+            status = error.localizedDescription
+        }
+
+        if status == nil {
+            status = "Ready: \(hasTranscript ? "transcript" : "no transcript"), \(frameCount) stills."
+        }
+        refreshSelectedRow()
+    }
+
+    /// Writes the brief and hands it to the configured agent.
+    func runAgent() async {
+        guard let selected, !isRunningAgent else { return }
+        isRunningAgent = true
+        agentLog = ""
+        status = nil
+        defer { isRunningAgent = false }
+
+        let text = MarksAgent.brief(presenter: selected.presenter,
+                                    notes: notes,
+                                    metrics: metrics,
+                                    scoring: scoring.markedCount > 0 ? scoring : nil,
+                                    frameCount: frameCount,
+                                    hasTranscript: hasTranscript)
+        MarksAgent.writeBrief(text, in: selected.folder)
+
+        do {
+            let output = try await MarksAgent.run(
+                settings: agentSettings, brief: text, in: selected.folder,
+                onOutput: { [weak self] piece in self?.agentLog += piece })
+            let trimmed = output.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty else {
+                status = "The agent finished but printed nothing."
+                return
+            }
+            MarksAgent.writeReport(trimmed, in: selected.folder)
+            agentReport = trimmed
+            status = "Wrote \(MarksAgent.reportFileName)."
+            refreshSelectedRow()
+        } catch {
+            status = error.localizedDescription
+        }
+    }
+
+    func saveAgentSettings() { agentSettings.save() }
 }

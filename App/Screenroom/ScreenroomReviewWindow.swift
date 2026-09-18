@@ -1,5 +1,5 @@
 //
-//  MarksReviewWindow.swift
+//  ScreenroomReviewWindow.swift
 //  Greenroom
 //
 //  Afterwards: the recording, the notes that point into it, the rubric, and
@@ -20,8 +20,8 @@ import AppKit
 import UniformTypeIdentifiers
 import SwiftUI
 
-struct MarksReviewWindow: View {
-    @StateObject private var review = MarksReviewController()
+struct ScreenroomReviewWindow: View {
+    @StateObject private var review = ScreenroomReviewController()
     @State private var tab: Tab = .notes
 
     private enum Tab: String, CaseIterable {
@@ -75,7 +75,7 @@ struct MarksReviewWindow: View {
                     Text("Nothing recorded yet.")
                         .font(.callout)
                         .foregroundStyle(.secondary)
-                    Text("Marks lists every folder in Documents/Greenroom that has notes in it.")
+                    Text("Screenroom lists every folder in Documents/Greenroom that has notes in it.")
                         .font(.caption)
                         .foregroundStyle(.tertiary)
                         .multilineTextAlignment(.center)
@@ -97,7 +97,7 @@ struct MarksReviewWindow: View {
         }
     }
 
-    private func row(_ presentation: MarksPresentation) -> some View {
+    private func row(_ presentation: ScreenroomPresentation) -> some View {
         VStack(alignment: .leading, spacing: 2) {
             Text(presentation.presenter)
                 .font(.callout.weight(.medium))
@@ -176,7 +176,7 @@ struct MarksReviewWindow: View {
                 }
                 .buttonStyle(.borderedProminent)
                 .disabled(review.notes.isEmpty || review.isAnalysing)
-                .help(MarksAnalyst.modelAvailability.available
+                .help(ScreenroomAnalyst.modelAvailability.available
                       ? "Turns the notes into feedback for the speaker, on this Mac."
                       : "Apple Intelligence is unavailable, so this counts what is in the notes instead of writing about them.")
 
@@ -246,8 +246,8 @@ struct MarksReviewWindow: View {
                 Text(status)
                     .font(.caption)
                     .foregroundStyle(.secondary)
-            } else if !MarksAnalyst.modelAvailability.available,
-                      let reason = MarksAnalyst.modelAvailability.reason {
+            } else if !ScreenroomAnalyst.modelAvailability.available,
+                      let reason = ScreenroomAnalyst.modelAvailability.reason {
                 Text("Written feedback needs Apple Intelligence \u{2014} \(reason). The report still lists everything the notes recorded.")
                     .font(.caption)
                     .foregroundStyle(.tertiary)
@@ -306,7 +306,7 @@ struct MarksReviewWindow: View {
                                 // single-evaluator case is noise repeating
                                 // the same word down the whole column.
                                 if review.authors.count > 1 {
-                                    Text(note.authorLabel(soleAuthor: review.authors.first ?? MarksNote.soleAuthor))
+                                    Text(note.authorLabel(soleAuthor: review.authors.first ?? ScreenroomNote.soleAuthor))
                                         .font(.system(size: 10, design: .monospaced))
                                         .foregroundStyle(.tertiary)
                                 }
@@ -329,7 +329,7 @@ struct MarksReviewWindow: View {
         }
     }
 
-    private func analysisBlock(_ analysis: MarksAnalysis) -> some View {
+    private func analysisBlock(_ analysis: ScreenroomAnalysis) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             eyebrow(analysis.engine.uppercased())
             Text(analysis.summary)
@@ -393,7 +393,7 @@ struct MarksReviewWindow: View {
         .disabled(review.selected == nil)
     }
 
-    private func criterionRow(_ criterion: MarksCriterion) -> some View {
+    private func criterionRow(_ criterion: ScreenroomCriterion) -> some View {
         let mark = review.scoring.score(for: criterion)
         return VStack(alignment: .leading, spacing: 6) {
             Text(criterion.title)
@@ -408,7 +408,7 @@ struct MarksReviewWindow: View {
                 ForEach(1...max(1, criterion.maxScore), id: \.self) { value in
                     Button {
                         // Pressing the mark it already has clears it. An
-                        // unmarked line is a real state - see MarksScore - and
+                        // unmarked line is a real state - see ScreenroomScore - and
                         // there has to be a way back to it.
                         review.setScore(mark.score == value ? nil : value, for: criterion)
                     } label: {
@@ -457,7 +457,7 @@ struct MarksReviewWindow: View {
         }
     }
 
-    private func findingRow(_ finding: MarksCohort.Finding) -> some View {
+    private func findingRow(_ finding: ScreenroomCohort.Finding) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: 6) {
             Image(systemName: finding.weight == .check
                   ? "exclamationmark.circle.fill" : "equal.circle")
@@ -582,7 +582,7 @@ struct MarksReviewWindow: View {
             Picker("", selection: Binding(
                 get: { review.transcriberSettings.engine },
                 set: { review.transcriberSettings.engine = $0; review.saveTranscriberSettings() })) {
-                ForEach(MarksTranscriberSettings.Engine.allCases) { Text($0.label).tag($0) }
+                ForEach(ScreenroomTranscriberSettings.Engine.allCases) { Text($0.label).tag($0) }
             }
             .pickerStyle(.segmented)
             .labelsHidden()
@@ -606,7 +606,7 @@ struct MarksReviewWindow: View {
                 .background(RoundedRectangle(cornerRadius: 6)
                     .fill(Color(nsColor: .controlBackgroundColor)))
             } else if review.transcriberSettings.engine == .apple {
-                Text("Apple's recogniser is built for dictation: it smooths out \"um\" and \"you know\" before Marks ever sees them, so filler words cannot be counted from it. Everything else still works.")
+                Text("Apple's recogniser is built for dictation: it smooths out \"um\" and \"you know\" before Screenroom ever sees them, so filler words cannot be counted from it. Everything else still works.")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -660,13 +660,13 @@ struct MarksReviewWindow: View {
                         // edited command with a default is the kind of thing
                         // that costs somebody an afternoon.
                         if kind != .custom,
-                           MarksAgentSettings.Kind.allCases.map(\.defaultCommand)
+                           ScreenroomAgentSettings.Kind.allCases.map(\.defaultCommand)
                             .contains(review.agentSettings.command) {
                             review.agentSettings.command = kind.defaultCommand
                         }
                         review.saveAgentSettings()
                     })) {
-                    ForEach(MarksAgentSettings.Kind.allCases) { Text($0.label).tag($0) }
+                    ForEach(ScreenroomAgentSettings.Kind.allCases) { Text($0.label).tag($0) }
                 }
                 .pickerStyle(.segmented)
                 .labelsHidden()
@@ -682,12 +682,12 @@ struct MarksReviewWindow: View {
                     .font(.system(size: 10, design: .monospaced))
                     .lineLimit(1...4)
 
-                Text("Runs in your login shell, in this presentation's folder, with the brief on standard input. Read-only: the agent cannot change these files, and Marks saves what it prints.")
+                Text("Runs in your login shell, in this presentation's folder, with the brief on standard input. Read-only: the agent cannot change these files, and Screenroom saves what it prints.")
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
                     .fixedSize(horizontal: false, vertical: true)
 
-                Text("This is the one part of Marks that may leave your Mac. Whatever your agent does with a transcript and stills of a named student is between you and it.")
+                Text("This is the one part of Screenroom that may leave your Mac. Whatever your agent does with a transcript and stills of a named student is between you and it.")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)

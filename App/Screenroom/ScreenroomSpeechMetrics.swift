@@ -1,12 +1,12 @@
 //
-//  MarksSpeechMetrics.swift
+//  ScreenroomSpeechMetrics.swift
 //  Greenroom
 //
 //  The countable half of what Yoodli-shaped products do.
 //
 //  Filler words, pace, pauses. All of it is arithmetic over a transcript with
 //  word timings, so all of it stays here rather than going to a model - the
-//  same rule MarksCohort and MarksAgreement follow, and for the same reason:
+//  same rule ScreenroomCohort and ScreenroomAgreement follow, and for the same reason:
 //  a number that can be recomputed and argued with is worth more to a student
 //  disputing feedback than a sentence that sounds confident.
 //
@@ -18,7 +18,7 @@
 import Foundation
 
 /// One word, and when it was said.
-struct MarksSpokenWord: Codable, Hashable {
+struct ScreenroomSpokenWord: Codable, Hashable {
     var text: String
     var atMs: Int
     var durationMs: Int
@@ -26,7 +26,7 @@ struct MarksSpokenWord: Codable, Hashable {
     var endMs: Int { atMs + durationMs }
 }
 
-struct MarksSpeechMetrics: Codable, Hashable {
+struct ScreenroomSpeechMetrics: Codable, Hashable {
 
     var v: Int = 2
     var wordCount: Int
@@ -119,8 +119,8 @@ struct MarksSpeechMetrics: Codable, Hashable {
 
     // MARK: The pass
 
-    static func measure(words: [MarksSpokenWord], durationMs: Int,
-                        engine: String = "unknown", verbatim: Bool = false) -> MarksSpeechMetrics {
+    static func measure(words: [ScreenroomSpokenWord], durationMs: Int,
+                        engine: String = "unknown", verbatim: Bool = false) -> ScreenroomSpeechMetrics {
         let ordered = words.sorted { $0.atMs < $1.atMs }
         let minutes = max(0.001, Double(durationMs) / 60_000)
 
@@ -181,7 +181,7 @@ struct MarksSpeechMetrics: Codable, Hashable {
 
         let speakingMs = ordered.reduce(0) { $0 + $1.durationMs }
 
-        return MarksSpeechMetrics(
+        return ScreenroomSpeechMetrics(
             wordCount: ordered.count,
             durationMs: durationMs,
             engine: engine,
@@ -252,9 +252,9 @@ struct MarksSpeechMetrics: Codable, Hashable {
 
     static func url(in folder: URL) -> URL { folder.appendingPathComponent(fileName) }
 
-    static func load(in folder: URL) -> MarksSpeechMetrics? {
+    static func load(in folder: URL) -> ScreenroomSpeechMetrics? {
         guard let data = try? Data(contentsOf: url(in: folder)) else { return nil }
-        return try? JSONDecoder().decode(MarksSpeechMetrics.self, from: data)
+        return try? JSONDecoder().decode(ScreenroomSpeechMetrics.self, from: data)
     }
 
     @discardableResult

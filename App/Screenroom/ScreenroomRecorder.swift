@@ -1,31 +1,31 @@
 //
-//  MarksRecorder.swift
+//  ScreenroomRecorder.swift
 //  Greenroom
 //
-//  One recorder, two engines: whichever source Marks is pointed at.
+//  One recorder, two engines: whichever source Screenroom is pointed at.
 //
 //  The window binds to this and nothing else, so adding the screen engine
 //  changed no view code beyond the picture itself and the picker that chooses
-//  it. Which is the test of whether the abstraction in MarksCaptureEngine was
+//  it. Which is the test of whether the abstraction in ScreenroomCaptureEngine was
 //  worth writing.
 //
 //  What stays here rather than in an engine: the clock, the file name, and
 //  the rule that a source cannot change while the tape is rolling. All three
-//  are true of Marks, not of a way of capturing.
+//  are true of Screenroom, not of a way of capturing.
 //
 import AVFoundation
 import Combine
 import Foundation
 
 @MainActor
-final class MarksRecorder: ObservableObject {
+final class ScreenroomRecorder: ObservableObject {
 
     /// One presentation is one folder, and this is the file in it. The
     /// library finds presentations by their notes, but everything that plays,
     /// seeks or cuts looks for this name.
     static let recordingFileName = "presentation.mov"
 
-    @Published private(set) var source: MarksSourceKind
+    @Published private(set) var source: ScreenroomSourceKind
 
     @Published private(set) var isPreviewing = false
     @Published private(set) var isRecording = false
@@ -39,10 +39,10 @@ final class MarksRecorder: ObservableObject {
 
     /// Every window on screen worth pointing at. Empty until asked for, and
     /// re-read each time the picker opens: windows come and go.
-    @Published private(set) var screenTargets: [MarksScreenEngine.Target] = []
+    @Published private(set) var screenTargets: [ScreenroomScreenEngine.Target] = []
 
-    private var camera: MarksCameraEngine?
-    private var screen: MarksScreenEngine?
+    private var camera: ScreenroomCameraEngine?
+    private var screen: ScreenroomScreenEngine?
     private var tick: Timer?
 
     /// The camera preview needs the session; the screen preview needs the
@@ -53,22 +53,22 @@ final class MarksRecorder: ObservableObject {
     var cameraSession: AVCaptureSession? { camera?.session }
     var screenLayer: AVSampleBufferDisplayLayer? { screen?.displayLayer }
 
-    init(source: MarksSourceKind) {
+    init(source: ScreenroomSourceKind) {
         self.source = source
     }
 
-    private var engine: MarksCaptureEngine? {
+    private var engine: ScreenroomCaptureEngine? {
         source.isScreen ? screen : camera
     }
 
     // MARK: Source
 
-    /// Points Marks at something else, building the engine for it on first
+    /// Points Screenroom at something else, building the engine for it on first
     /// use. Refused mid-recording: one file, one source. Both engines refuse
     /// too, so this is belt and braces on the one rule that cannot be allowed
     /// to slip - a source swapped mid-tape orphans every offset already
     /// written.
-    func use(source newSource: MarksSourceKind) async {
+    func use(source newSource: ScreenroomSourceKind) async {
         guard !isRecording, newSource != source else { return }
 
         if source.isScreen != newSource.isScreen {
@@ -81,7 +81,7 @@ final class MarksRecorder: ObservableObject {
             if let camera {
                 camera.use(cameraUID: uid)
             } else {
-                let engine = MarksCameraEngine(cameraUID: uid)
+                let engine = ScreenroomCameraEngine(cameraUID: uid)
                 adopt(engine)
                 camera = engine
                 await engine.startPreview()
@@ -90,7 +90,7 @@ final class MarksRecorder: ObservableObject {
             if let screen {
                 screen.use(target: newSource)
             } else {
-                let engine = MarksScreenEngine(target: newSource)
+                let engine = ScreenroomScreenEngine(target: newSource)
                 adopt(engine)
                 screen = engine
                 await engine.startPreview()
@@ -99,7 +99,7 @@ final class MarksRecorder: ObservableObject {
         syncFromEngine()
     }
 
-    private func adopt(_ engine: MarksCaptureEngine) {
+    private func adopt(_ engine: ScreenroomCaptureEngine) {
         engine.onChange = { [weak self] in self?.syncFromEngine() }
     }
 
@@ -118,18 +118,18 @@ final class MarksRecorder: ObservableObject {
     // MARK: Preview
 
     /// Opens whatever the stored source asks for. Building the engine lazily
-    /// rather than in init is what keeps a closed Marks window off the camera
+    /// rather than in init is what keeps a closed Screenroom window off the camera
     /// and off the screen-recording permission entirely.
     func startPreview() async {
         if engine == nil {
             switch source {
             case .camera(let uid):
-                let engine = MarksCameraEngine(cameraUID: uid)
+                let engine = ScreenroomCameraEngine(cameraUID: uid)
                 adopt(engine)
                 camera = engine
                 await engine.startPreview()
             case .window, .display:
-                let engine = MarksScreenEngine(target: source)
+                let engine = ScreenroomScreenEngine(target: source)
                 adopt(engine)
                 screen = engine
                 await engine.startPreview()
@@ -146,7 +146,7 @@ final class MarksRecorder: ObservableObject {
     }
 
     func refreshScreenTargets() async {
-        screenTargets = await MarksScreenEngine.targets()
+        screenTargets = await ScreenroomScreenEngine.targets()
     }
 
     // MARK: Recording

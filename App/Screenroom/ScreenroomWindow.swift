@@ -1,8 +1,8 @@
 //
-//  MarksWindow.swift
+//  ScreenroomWindow.swift
 //  Greenroom
 //
-//  Marks' one surface: the person presenting on the left, the notes being
+//  Screenroom' one surface: the person presenting on the left, the notes being
 //  taken about them on the right.
 //
 //  The shape is the Classroom Console's, deliberately. That window settled on
@@ -21,8 +21,8 @@
 import AVFoundation
 import SwiftUI
 
-struct MarksWindow: View {
-    @ObservedObject private var marks = MarksController.shared
+struct ScreenroomWindow: View {
+    @ObservedObject private var screenroom = ScreenroomController.shared
     @Environment(\.openWindow) private var openWindow
 
     /// Focus goes here and stays here. The evaluator's hands should never
@@ -46,9 +46,9 @@ struct MarksWindow: View {
         }
         .frame(minWidth: 900, minHeight: 560)
         .tint(Brand.green)
-        .onAppear { marks.windowAppeared() }
-        .onDisappear { marks.windowDisappeared() }
-        .onChange(of: marks.recorder.isRecording) { _, recording in
+        .onAppear { screenroom.windowAppeared() }
+        .onDisappear { screenroom.windowDisappeared() }
+        .onChange(of: screenroom.recorder.isRecording) { _, recording in
             // The box takes focus the instant the tape rolls, so the first
             // note costs no click.
             if recording { composerFocused = true }
@@ -60,7 +60,7 @@ struct MarksWindow: View {
     private var header: some View {
         HStack(spacing: 12) {
             VStack(alignment: .leading, spacing: 2) {
-                Text("Marks")
+                Text("Screenroom")
                     .font(.system(size: 17, weight: .bold))
                 Text("Notes while they present, timed to the tape.")
                     .font(.caption)
@@ -71,56 +71,56 @@ struct MarksWindow: View {
 
             VStack(alignment: .leading, spacing: 4) {
                 eyebrow("PRESENTER")
-                TextField("Who is presenting", text: $marks.presenter)
+                TextField("Who is presenting", text: $screenroom.presenter)
                     .textFieldStyle(.roundedBorder)
                     .frame(width: 200)
-                    .disabled(marks.recorder.isRecording)
+                    .disabled(screenroom.recorder.isRecording)
                     .help("Names this presentation's folder in Documents/Greenroom, next to the classes.")
             }
 
             Spacer(minLength: 16)
 
-            if marks.recorder.isRecording {
+            if screenroom.recorder.isRecording {
                 HStack(spacing: 6) {
                     Image(systemName: "record.circle.fill")
                         .foregroundStyle(.red)
-                    Text(marks.elapsedLabel)
+                    Text(screenroom.elapsedLabel)
                         .font(.system(size: 15, weight: .semibold, design: .monospaced))
                         .monospacedDigit()
                 }
                 .help("How long the recording has been running.")
             }
 
-            if marks.recorder.isRecording {
-                Button("Finish") { marks.finish() }
+            if screenroom.recorder.isRecording {
+                Button("Finish") { screenroom.finish() }
                     .controlSize(.large)
                     .keyboardShortcut(".", modifiers: .command)
                     .help("Stops the recording and closes the file. Your notes stay on screen.")
             } else {
                 Button {
-                    marks.start()
+                    screenroom.start()
                 } label: {
                     Label("Start Presentation", systemImage: "record.circle")
                 }
                 .buttonStyle(.borderedProminent)
                 .controlSize(.large)
-                .disabled(!marks.canStart)
-                .help(marks.canStart
+                .disabled(!screenroom.canStart)
+                .help(screenroom.canStart
                       ? "Starts recording and opens the note box."
                       : "Name the presenter first, and wait for the camera.")
             }
 
             // Coaching, turned on for this presentation only. Quiet and
             // unlabelled-by-default because the answer is usually no; see
-            // MarksSpeakerView for why it is never remembered.
+            // ScreenroomSpeakerView for why it is never remembered.
             Button {
-                marks.speakerIsWatching.toggle()
-                if marks.speakerIsWatching { openWindow(id: "marks-speaker") }
+                screenroom.speakerIsWatching.toggle()
+                if screenroom.speakerIsWatching { openWindow(id: "screenroom-speaker") }
             } label: {
-                Image(systemName: marks.speakerIsWatching ? "eye.fill" : "eye.slash")
+                Image(systemName: screenroom.speakerIsWatching ? "eye.fill" : "eye.slash")
             }
             .controlSize(.large)
-            .help(marks.speakerIsWatching
+            .help(screenroom.speakerIsWatching
                   ? "The speaker is watching the notes as you write them. Click to stop showing them."
                   : "Show the notes to the speaker as you write them, on another display. Off for every new presentation.")
 
@@ -129,7 +129,7 @@ struct MarksWindow: View {
             // looking at, and the presentation they just finished will be at
             // the top of that window's list anyway.
             Button {
-                openWindow(id: "marks-review")
+                openWindow(id: "screenroom-review")
             } label: {
                 Image(systemName: "list.bullet.rectangle")
             }
@@ -147,16 +147,16 @@ struct MarksWindow: View {
             ZStack {
                 RoundedRectangle(cornerRadius: 10)
                     .fill(Color.black)
-                if marks.recorder.source.isScreen {
-                    if let layer = marks.recorder.screenLayer {
+                if screenroom.recorder.source.isScreen {
+                    if let layer = screenroom.recorder.screenLayer {
                         ScreenPreview(layer: layer)
                             .clipShape(RoundedRectangle(cornerRadius: 10))
                     }
-                } else if let session = marks.recorder.cameraSession {
+                } else if let session = screenroom.recorder.cameraSession {
                     CameraPreview(session: session)
                         .clipShape(RoundedRectangle(cornerRadius: 10))
                 }
-                if !marks.recorder.isPreviewing {
+                if !screenroom.recorder.isPreviewing {
                     // A control that is not ready says so (DESIGN.md).
                     VStack(spacing: 8) {
                         ProgressView().controlSize(.small)
@@ -175,7 +175,7 @@ struct MarksWindow: View {
             HStack(spacing: 12) {
                 sourcePicker
 
-                if let failure = marks.recorder.failure {
+                if let failure = screenroom.recorder.failure {
                     // The failure lands on the surface the evaluator was
                     // already watching, named where it happened.
                     Label(failure, systemImage: "exclamationmark.triangle.fill")
@@ -187,7 +187,7 @@ struct MarksWindow: View {
 
                 Spacer(minLength: 0)
 
-                if let folder = marks.folder {
+                if let folder = screenroom.folder {
                     Button {
                         NSWorkspace.shared.activateFileViewerSelecting([folder])
                     } label: {
@@ -213,8 +213,8 @@ struct MarksWindow: View {
             HStack {
                 eyebrow("NOTES")
                 Spacer()
-                if !marks.notes.isEmpty {
-                    Text("\(marks.notes.count)")
+                if !screenroom.notes.isEmpty {
+                    Text("\(screenroom.notes.count)")
                         .font(.system(size: 10, weight: .semibold, design: .monospaced))
                         .foregroundStyle(.tertiary)
                 }
@@ -236,7 +236,7 @@ struct MarksWindow: View {
         ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 12) {
-                    ForEach(marks.notes) { note in
+                    ForEach(screenroom.notes) { note in
                         noteRow(note).id(note.id)
                     }
                 }
@@ -244,20 +244,20 @@ struct MarksWindow: View {
                 .padding(.vertical, 4)
             }
             // Allowed motion: scroll-to-latest, as the chat window does.
-            .onChange(of: marks.notes.count) { _, _ in
-                guard let last = marks.notes.last else { return }
+            .onChange(of: screenroom.notes.count) { _, _ in
+                guard let last = screenroom.notes.last else { return }
                 withAnimation(.snappy(duration: 0.25)) {
                     proxy.scrollTo(last.id, anchor: .bottom)
                 }
             }
             .overlay {
-                if marks.notes.isEmpty { emptyNotes }
+                if screenroom.notes.isEmpty { emptyNotes }
             }
         }
         .frame(maxHeight: .infinity)
     }
 
-    private func noteRow(_ note: MarksNote) -> some View {
+    private func noteRow(_ note: ScreenroomNote) -> some View {
         VStack(alignment: .leading, spacing: 3) {
             Text(note.offsetLabel)
                 .font(.system(size: 10, weight: .semibold, design: .monospaced))
@@ -273,10 +273,10 @@ struct MarksWindow: View {
 
     private var emptyNotes: some View {
         VStack(spacing: 6) {
-            Text(marks.canTakeNotes ? "Nothing noted yet." : "No presentation running.")
+            Text(screenroom.canTakeNotes ? "Nothing noted yet." : "No presentation running.")
                 .font(.callout)
                 .foregroundStyle(.secondary)
-            Text(marks.canTakeNotes
+            Text(screenroom.canTakeNotes
                  ? "Type what you see. Return files it."
                  : "Name the presenter and press Start Presentation.")
                 .font(.caption)
@@ -291,25 +291,25 @@ struct MarksWindow: View {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 // The stamp the next note will carry, live. The evaluator can
                 // see where it lands rather than having to trust it.
-                Text(marks.canTakeNotes ? marks.draftOffsetLabel : "\u{2013}\u{2013}:\u{2013}\u{2013}")
+                Text(screenroom.canTakeNotes ? screenroom.draftOffsetLabel : "\u{2013}\u{2013}:\u{2013}\u{2013}")
                     .font(.system(size: 11, weight: .semibold, design: .monospaced))
                     .monospacedDigit()
-                    .foregroundStyle(marks.draft.isEmpty
+                    .foregroundStyle(screenroom.draft.isEmpty
                                      ? AnyShapeStyle(.tertiary)
                                      : AnyShapeStyle(Brand.green))
                     .frame(width: 38, alignment: .leading)
 
-                TextField(marks.canTakeNotes ? "What did you see?" : "Not recording",
-                          text: $marks.draft, axis: .vertical)
+                TextField(screenroom.canTakeNotes ? "What did you see?" : "Not recording",
+                          text: $screenroom.draft, axis: .vertical)
                     .textFieldStyle(.plain)
                     .font(.callout)
                     .lineLimit(1...4)
                     .focused($composerFocused)
-                    .disabled(!marks.canTakeNotes)
-                    .onSubmit { marks.commitDraft() }
+                    .disabled(!screenroom.canTakeNotes)
+                    .onSubmit { screenroom.commitDraft() }
             }
 
-            Text(marks.canTakeNotes
+            Text(screenroom.canTakeNotes
                  ? "Return files the note. It is stamped from your first keystroke."
                  : "Notes need a running presentation to point into.")
                 .font(.system(size: 10))
@@ -317,7 +317,7 @@ struct MarksWindow: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
-        .opacity(marks.canTakeNotes ? 1 : 0.55)
+        .opacity(screenroom.canTakeNotes ? 1 : 0.55)
     }
 
     /// One control for every source, rather than a camera picker beside a
@@ -326,21 +326,21 @@ struct MarksWindow: View {
     private var sourcePicker: some View {
         Menu {
             Section("In the room") {
-                ForEach(marks.cameras) { camera in
+                ForEach(screenroom.cameras) { camera in
                     Button {
-                        marks.use(source: .camera(uid: camera.id))
+                        screenroom.use(source: .camera(uid: camera.id))
                     } label: {
                         Label(camera.name, systemImage: "video")
                     }
                 }
-                if marks.cameras.isEmpty {
+                if screenroom.cameras.isEmpty {
                     Text("No camera found")
                 }
             }
             Section("On this screen") {
-                ForEach(marks.recorder.screenTargets) { target in
+                ForEach(screenroom.recorder.screenTargets) { target in
                     Button {
-                        marks.use(source: target.sourceKind)
+                        screenroom.use(source: target.sourceKind)
                     } label: {
                         Label("\(target.title) \u{2014} \(target.subtitle)",
                               systemImage: target.kind == .display ? "display" : "macwindow")
@@ -348,15 +348,15 @@ struct MarksWindow: View {
                 }
             }
             Divider()
-            Button("Look again for windows") { marks.refreshSources() }
+            Button("Look again for windows") { screenroom.refreshSources() }
         } label: {
-            Label(marks.sourceLabel,
-                  systemImage: marks.recorder.source.isScreen ? "macwindow" : "video")
+            Label(screenroom.sourceLabel,
+                  systemImage: screenroom.recorder.source.isScreen ? "macwindow" : "video")
         }
         .menuStyle(.button)
         .fixedSize()
-        .disabled(marks.recorder.isRecording)
-        .help(marks.recorder.isRecording
+        .disabled(screenroom.recorder.isRecording)
+        .help(screenroom.recorder.isRecording
               ? "The source cannot change while the tape is rolling."
               : "Where the person you are watching is: a camera in the room, or the window they are on screen in.")
     }

@@ -1,5 +1,5 @@
 //
-//  MarksVideoExport.swift
+//  ScreenroomVideoExport.swift
 //  Greenroom
 //
 //  The presentation with the notes written on it.
@@ -34,7 +34,7 @@ import AVFoundation
 import AppKit
 import Foundation
 
-enum MarksVideoExport {
+enum ScreenroomVideoExport {
 
     enum Failure: LocalizedError {
         case noVideoTrack
@@ -73,13 +73,13 @@ enum MarksVideoExport {
     /// When each note appears and disappears, in seconds.
     ///
     /// Each one starts slightly BEFORE its timestamp for the reason that runs
-    /// through all of Marks: a note is stamped at its first keystroke, so the
+    /// through all of Screenroom: a note is stamped at its first keystroke, so the
     /// thing it describes is already happening. Two seconds of lead means the
     /// student sees the sentence as the moment arrives rather than after it
     /// has gone.
     static let leadSeconds: Double = 2
 
-    static func windows(for notes: [MarksNote], duration: Double) -> [(note: MarksNote, start: Double, end: Double)] {
+    static func windows(for notes: [ScreenroomNote], duration: Double) -> [(note: ScreenroomNote, start: Double, end: Double)] {
         let ordered = notes.sorted { $0.atMs < $1.atMs }
         return ordered.enumerated().map { index, note in
             let start = max(0, Double(note.atMs) / 1000 - leadSeconds)
@@ -98,7 +98,7 @@ enum MarksVideoExport {
     /// SubRip, because it is the format every player and YouTube already
     /// takes. WebVTT would be the more modern answer and QuickTime does not
     /// read it.
-    static func subRip(for notes: [MarksNote], duration: Double, showAuthors: Bool) -> String {
+    static func subRip(for notes: [ScreenroomNote], duration: Double, showAuthors: Bool) -> String {
         windows(for: notes, duration: duration).enumerated().map { index, window in
             let author = showAuthors ? "\(window.note.authorLabel()): " : ""
             return """
@@ -122,7 +122,7 @@ enum MarksVideoExport {
     }
 
     @discardableResult
-    static func writeSubtitles(for notes: [MarksNote], duration: Double,
+    static func writeSubtitles(for notes: [ScreenroomNote], duration: Double,
                                showAuthors: Bool, in folder: URL) -> URL? {
         let text = subRip(for: notes, duration: duration, showAuthors: showAuthors)
         let target = folder.appendingPathComponent(subtitleFileName)
@@ -141,7 +141,7 @@ enum MarksVideoExport {
     /// would mean owning a render loop to produce a picture that does not
     /// move.
     static func exportAnnotated(recording: URL,
-                                notes: [MarksNote],
+                                notes: [ScreenroomNote],
                                 presenter: String,
                                 presentedAt: Date,
                                 showAuthors: Bool,
@@ -190,7 +190,7 @@ enum MarksVideoExport {
         videoComposition.instructions = [instruction]
 
         // The layer tree the tool renders: the video underneath, everything
-        // Marks draws on top.
+        // Screenroom draws on top.
         let parent = CALayer()
         parent.frame = CGRect(origin: .zero, size: renderSize)
         parent.isGeometryFlipped = false
@@ -224,7 +224,7 @@ enum MarksVideoExport {
         session.videoComposition = videoComposition
 
         // This one re-encodes, unlike the clip exporter, so it is the only
-        // thing in Marks that takes minutes. Reported rather than hidden
+        // thing in Screenroom that takes minutes. Reported rather than hidden
         // behind a spinner - DESIGN.md asks that a wait say how much is left.
         let ticker = Task { @MainActor in
             while !Task.isCancelled {
@@ -252,7 +252,7 @@ enum MarksVideoExport {
     /// Everything drawn over the video: an opening card, then one note card
     /// at a time.
     static func overlayLayer(size: CGSize,
-                             notes: [MarksNote],
+                             notes: [ScreenroomNote],
                              presenter: String,
                              presentedAt: Date,
                              showAuthors: Bool,
@@ -304,7 +304,7 @@ enum MarksVideoExport {
         return card
     }
 
-    static func noteCard(_ note: MarksNote, width: CGFloat, height: CGFloat, showAuthor: Bool) -> CALayer {
+    static func noteCard(_ note: ScreenroomNote, width: CGFloat, height: CGFloat, showAuthor: Bool) -> CALayer {
         let text = NSMutableAttributedString()
         let stamp = showAuthor
             ? "\(note.offsetLabel)   \(note.authorLabel())"

@@ -1,5 +1,5 @@
 //
-//  MarksAgreement.swift
+//  ScreenroomAgreement.swift
 //  Greenroom
 //
 //  When more than one person watched, what did they agree about?
@@ -21,12 +21,12 @@
 //  What the merge buys is the interesting part: two people watching the same
 //  four minutes and writing about different things is a fact about the
 //  rubric, not about the student. That is worth surfacing to a teacher, and
-//  like MarksCohort it is arithmetic over timestamps rather than a question
+//  like ScreenroomCohort it is arithmetic over timestamps rather than a question
 //  put to a model.
 //
 import Foundation
 
-enum MarksAgreement {
+enum ScreenroomAgreement {
 
     /// How close two notes have to be to count as being about the same moment.
     ///
@@ -39,22 +39,22 @@ enum MarksAgreement {
     /// A moment more than one evaluator wrote about.
     struct Moment: Identifiable, Hashable {
         let atMs: Int
-        let notes: [MarksNote]
+        let notes: [ScreenroomNote]
         var id: Int { atMs }
-        var authors: [String] { MarksNotesFile.authors(in: notes) }
+        var authors: [String] { ScreenroomNotesFile.authors(in: notes) }
     }
 
     /// Everything worth saying about a presentation two or more people noted.
     /// Empty when only one person did, which is the normal case and not a
     /// deficiency to report.
-    static func findings(in notes: [MarksNote], soleAuthor: String = MarksNote.soleAuthor) -> [MarksCohort.Finding] {
-        let authors = MarksNotesFile.authors(in: notes, soleAuthor: soleAuthor)
+    static func findings(in notes: [ScreenroomNote], soleAuthor: String = ScreenroomNote.soleAuthor) -> [ScreenroomCohort.Finding] {
+        let authors = ScreenroomNotesFile.authors(in: notes, soleAuthor: soleAuthor)
         guard authors.count >= 2 else { return [] }
 
-        var findings: [MarksCohort.Finding] = []
+        var findings: [ScreenroomCohort.Finding] = []
         let shared = sharedMoments(in: notes, soleAuthor: soleAuthor)
 
-        findings.append(MarksCohort.Finding(
+        findings.append(ScreenroomCohort.Finding(
             weight: .note,
             headline: "\(authors.count) people took notes on this presentation",
             detail: "\(authors.joined(separator: ", ")). \(notes.count) notes between them, \(shared.count) \(shared.count == 1 ? "moment" : "moments") that more than one of them wrote about."))
@@ -69,12 +69,12 @@ enum MarksAgreement {
         if let smallest = perAuthor.min(), smallest >= 3 {
             let overlap = Double(shared.count) / Double(smallest)
             if overlap <= 0.25 {
-                findings.append(MarksCohort.Finding(
+                findings.append(ScreenroomCohort.Finding(
                     weight: .check,
                     headline: "The evaluators rarely wrote about the same moment",
                     detail: "Only \(shared.count) of \(smallest) notes from the person who wrote least overlap with anyone else's. Two people watching one presentation and noticing different things usually means the rubric has not been agreed, rather than that the presentation was ambiguous."))
             } else if overlap >= 0.6 {
-                findings.append(MarksCohort.Finding(
+                findings.append(ScreenroomCohort.Finding(
                     weight: .note,
                     headline: "The evaluators largely noticed the same moments",
                     detail: "\(shared.count) of \(smallest) notes from the person who wrote least line up with someone else's, within \(sameMomentMs / 1000) seconds."))
@@ -89,7 +89,7 @@ enum MarksAgreement {
             let sharedIDs = Set(shared.flatMap { $0.notes.map(\.id) })
             let alone = mine.filter { !sharedIDs.contains($0.id) }
             guard alone.count == mine.count, mine.count >= 4 else { continue }
-            findings.append(MarksCohort.Finding(
+            findings.append(ScreenroomCohort.Finding(
                 weight: .check,
                 headline: "Nothing \(author) wrote lines up with anyone else",
                 detail: "All \(mine.count) of their notes sit more than \(sameMomentMs / 1000) seconds from every other note. Either they were watching for something nobody else was, or their clock and the recording's do not agree."))
@@ -105,13 +105,13 @@ enum MarksAgreement {
     /// cluster's start: three people writing ten seconds apart in a chain are
     /// describing one moment, and a fixed-window-from-the-start rule would
     /// cut that chain in the middle for no reason a human would recognise.
-    static func sharedMoments(in notes: [MarksNote],
-                              soleAuthor: String = MarksNote.soleAuthor) -> [Moment] {
+    static func sharedMoments(in notes: [ScreenroomNote],
+                              soleAuthor: String = ScreenroomNote.soleAuthor) -> [Moment] {
         let ordered = notes.sorted { $0.atMs < $1.atMs }
         guard ordered.count >= 2 else { return [] }
 
         var moments: [Moment] = []
-        var cluster: [MarksNote] = []
+        var cluster: [ScreenroomNote] = []
 
         func close() {
             let authors = Set(cluster.map { $0.authorLabel(soleAuthor: soleAuthor) })
@@ -133,11 +133,11 @@ enum MarksAgreement {
 /// Who is typing, on this Mac.
 ///
 /// One name, kept in preferences. Asked for only when it matters - a single
-/// evaluator never needs one, and Marks does not open with a form. It is
+/// evaluator never needs one, and Screenroom does not open with a form. It is
 /// filled in the moment a second person's notes are imported, because that is
 /// the first time "who wrote this" has an answer worth recording.
-enum MarksIdentity {
-    private static let key = "marksEvaluatorName"
+enum ScreenroomIdentity {
+    private static let key = "screenroomEvaluatorName"
 
     static func current(_ defaults: UserDefaults = .standard) -> String {
         defaults.string(forKey: key)?.trimmingCharacters(in: .whitespaces) ?? ""

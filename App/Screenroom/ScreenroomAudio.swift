@@ -1,5 +1,5 @@
 //
-//  MarksAudio.swift
+//  ScreenroomAudio.swift
 //  Greenroom
 //
 //  Pulling a plain 16 kHz mono WAV out of the recording.
@@ -13,13 +13,13 @@
 //  on the author's Mac and on a lot of developers' Macs, and on none of the
 //  Macs this is actually for. A feature that silently requires a Homebrew
 //  install is a feature that works in testing and fails in a classroom. The
-//  external tool that Marks DOES require - whisper - earns it by being the
+//  external tool that Screenroom DOES require - whisper - earns it by being the
 //  thing that cannot be replaced; a format conversion does not.
 //
 import AVFoundation
 import Foundation
 
-enum MarksAudio {
+enum ScreenroomAudio {
 
     enum Failure: LocalizedError {
         case noAudioTrack
@@ -85,7 +85,7 @@ enum MarksAudio {
             throw Failure.failed(reader.error?.localizedDescription ?? "The recording could not be read.")
         }
 
-        let queue = DispatchQueue(label: "com.sibhimanyu.greenroom.marks.audio")
+        let queue = DispatchQueue(label: "com.sibhimanyu.greenroom.screenroom.audio")
         await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
             writerInput.requestMediaDataWhenReady(on: queue) {
                 while writerInput.isReadyForMoreMediaData {

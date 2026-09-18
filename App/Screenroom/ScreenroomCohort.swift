@@ -1,5 +1,5 @@
 //
-//  MarksCohort.swift
+//  ScreenroomCohort.swift
 //  Greenroom
 //
 //  The thing a human evaluator genuinely cannot do for themselves.
@@ -21,13 +21,13 @@
 //
 import Foundation
 
-struct MarksCohort {
+struct ScreenroomCohort {
 
     /// One presentation's marks, reduced to what a comparison needs.
     struct Entry: Identifiable {
         let folder: URL
         let presenter: String
-        let scoring: MarksScoring
+        let scoring: ScreenroomScoring
         /// When the marking happened - the axis the order effect is measured
         /// along. Falls back to the folder's own date when a rubric was never
         /// saved with a timestamp.
@@ -127,7 +127,7 @@ struct MarksCohort {
         for criterion in subject.scoring.rubric.criteria {
             guard let mine = subject.scoring.score(for: criterion).score else { continue }
             // Peers are matched by TITLE, since ids differ across snapshots of
-            // the same rubric (see MarksRubric.asksTheSameAs).
+            // the same rubric (see ScreenroomRubric.asksTheSameAs).
             let theirs: [Int] = peers.compactMap { peer in
                 guard let match = peer.scoring.rubric.criteria.first(where: { $0.title == criterion.title })
                 else { return nil }

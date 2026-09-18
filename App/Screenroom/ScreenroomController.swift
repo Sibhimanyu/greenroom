@@ -1,8 +1,8 @@
 //
-//  MarksController.swift
+//  ScreenroomController.swift
 //  Greenroom
 //
-//  Marks: a presentation, the camera watching it, and the notes taken while
+//  Screenroom: a presentation, the camera watching it, and the notes taken while
 //  it happens. See docs/marks-evaluation-plan.md.
 //
 //  The plan's premise 4 is the one that shapes this file: the evaluator is
@@ -32,7 +32,7 @@ import Combine
 import Foundation
 
 @MainActor
-final class MarksController: ObservableObject {
+final class ScreenroomController: ObservableObject {
 
     // MARK: The presentation
 
@@ -49,14 +49,14 @@ final class MarksController: ObservableObject {
     /// This presentation's notes, oldest first. Kept in memory as well as on
     /// disk because the list on screen is the evaluator's only way of seeing
     /// what they have already said.
-    @Published private(set) var notes: [MarksNote] = []
+    @Published private(set) var notes: [ScreenroomNote] = []
 
     /// Whether the speaker is watching the notes land.
     ///
-    /// Deliberately NOT persisted. See MarksSpeakerView: a stored preference
+    /// Deliberately NOT persisted. See ScreenroomSpeakerView: a stored preference
     /// would mean a teacher who once coached a rehearsal is silently still
     /// coaching in an exam three weeks later, and the student would be the
-    /// one to find out. Marks opens as an evaluation tool every launch.
+    /// one to find out. Screenroom opens as an evaluation tool every launch.
     @Published var speakerIsWatching = false
 
     // MARK: The note being typed
@@ -71,7 +71,7 @@ final class MarksController: ObservableObject {
 
     // MARK: Camera
 
-    let recorder: MarksRecorder
+    let recorder: ScreenroomRecorder
 
     @Published private(set) var cameras: [LocalDeviceResolver.Camera] = []
 
@@ -79,22 +79,23 @@ final class MarksController: ObservableObject {
     /// camera points at the front of the room, or which window a remote class
     /// appears in, is a property of the room and the setup rather than of the
     /// student standing up today.
-    var source: MarksSourceKind { recorder.source }
+    var source: ScreenroomSourceKind { recorder.source }
 
     private let defaults: UserDefaults
-    private static let cameraKey = "marksCameraUID"
-    private static let sourceKey = "marksSource"
+    private static let cameraKey = "screenroomCameraUID"
+    private static let sourceKey = "screenroomSource"
     private var bag: Set<AnyCancellable> = []
 
     /// One instance, because two windows show the same presentation: the
     /// evaluator's and, when it is asked for, the speaker's. Greenroom
     /// already shares one CoordinatorController across scenes for the same
     /// reason - SwiftUI scenes do not otherwise share view state.
-    static let shared = MarksController()
+    static let shared = ScreenroomController()
 
     init(defaults: UserDefaults = .standard) {
+        _ = ScreenroomDefaults.migrated
         self.defaults = defaults
-        self.recorder = MarksRecorder(source: Self.storedSource(defaults))
+        self.recorder = ScreenroomRecorder(source: Self.storedSource(defaults))
         // The window's own state is derived from the recorder's, so it has to
         // redraw when the recorder changes. ObservableObject does not nest.
         recorder.objectWillChange
@@ -112,9 +113,9 @@ final class MarksController: ObservableObject {
         }
     }
 
-    /// Points Marks at a different camera, window or display, and remembers
+    /// Points Screenroom at a different camera, window or display, and remembers
     /// it. Nothing happens mid-recording; the recorder refuses too.
-    func use(source: MarksSourceKind) {
+    func use(source: ScreenroomSourceKind) {
         Task {
             await recorder.use(source: source)
             Self.store(source, in: defaults)
@@ -147,7 +148,7 @@ final class MarksController: ObservableObject {
     /// no longer exists - a camera unplugged, a window closed - degrades to
     /// "the first camera" instead of failing to decode and taking the whole
     /// preference with it.
-    private static func storedSource(_ defaults: UserDefaults) -> MarksSourceKind {
+    private static func storedSource(_ defaults: UserDefaults) -> ScreenroomSourceKind {
         let raw = defaults.string(forKey: sourceKey) ?? ""
         if raw.hasPrefix("display:"), let id = UInt32(raw.dropFirst("display:".count)) {
             return .display(id: id)
@@ -158,7 +159,7 @@ final class MarksController: ObservableObject {
         return .camera(uid: defaults.string(forKey: cameraKey) ?? "")
     }
 
-    private static func store(_ source: MarksSourceKind, in defaults: UserDefaults) {
+    private static func store(_ source: ScreenroomSourceKind, in defaults: UserDefaults) {
         switch source {
         case .camera(let uid):
             defaults.set(uid, forKey: cameraKey)
@@ -186,7 +187,7 @@ final class MarksController: ObservableObject {
     }
 
     /// Names the folder and starts recording. Both at once: a presentation
-    /// that is being recorded is the only kind Marks has, so there is no
+    /// that is being recorded is the only kind Screenroom has, so there is no
     /// separate "new presentation" step to forget.
     func start() {
         guard canStart else { return }
@@ -247,16 +248,16 @@ final class MarksController: ObservableObject {
         let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty, let folder else { clearDraft(); return }
 
-        let note = MarksNote(atMs: draftAtMs ?? recorder.positionMs,
+        let note = ScreenroomNote(atMs: draftAtMs ?? recorder.positionMs,
                              text: text,
                              markedAt: draftStartedAt ?? Date(),
                              // nil when this Mac's evaluator never gave a
                              // name, which is the single-evaluator case and
                              // is not a gap to fill in with a guess. See
-                             // MarksIdentity.
-                             author: MarksIdentity.signature)
+                             // ScreenroomIdentity.
+                             author: ScreenroomIdentity.signature)
         notes.append(note)
-        MarksNotesFile.append(note, in: folder)
+        ScreenroomNotesFile.append(note, in: folder)
         clearDraft()
     }
 

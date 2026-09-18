@@ -1,5 +1,5 @@
 //
-//  MarksFrames.swift
+//  ScreenroomFrames.swift
 //  Greenroom
 //
 //  Stills from the recording, so something that cannot watch a video can
@@ -21,7 +21,7 @@ import AVFoundation
 import AppKit
 import Foundation
 
-enum MarksFrames {
+enum ScreenroomFrames {
 
     static let folderName = "frames"
 

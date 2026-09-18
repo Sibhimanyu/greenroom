@@ -1,10 +1,10 @@
 //
-//  MarksCameraEngine.swift
+//  ScreenroomCameraEngine.swift
 //  Greenroom
 //
 //  The camera source: a person presenting in the room.
 //
-//  This is phase 1's recorder, moved behind MarksCaptureEngine unchanged in
+//  This is phase 1's recorder, moved behind ScreenroomCaptureEngine unchanged in
 //  behaviour. The notes that matter are still the two it was written with:
 //
 //   - Offsets come from `recordedDuration`, the movie output's own position
@@ -21,7 +21,7 @@
 import Foundation
 
 @MainActor
-final class MarksCameraEngine: NSObject, MarksCaptureEngine {
+final class ScreenroomCameraEngine: NSObject, ScreenroomCaptureEngine {
 
     var onChange: (() -> Void)?
 
@@ -36,7 +36,7 @@ final class MarksCameraEngine: NSObject, MarksCaptureEngine {
 
     private var videoInput: AVCaptureDeviceInput?
     private var audioInput: AVCaptureDeviceInput?
-    private let sessionQueue = DispatchQueue(label: "com.sibhimanyu.greenroom.marks.camera")
+    private let sessionQueue = DispatchQueue(label: "com.sibhimanyu.greenroom.screenroom.camera")
 
     /// Which camera. Changing it reconfigures the running preview.
     var cameraUID: String
@@ -158,10 +158,10 @@ final class MarksCameraEngine: NSObject, MarksCaptureEngine {
 
     // MARK: Devices and permission
 
-    /// Marks has a camera picker where the OBS composite deliberately does
+    /// Screenroom has a camera picker where the OBS composite deliberately does
     /// not (LocalDeviceResolver.physicalCameraUID). The difference is what the
     /// camera is pointed at: the composite always wants the one looking at
-    /// you, so there was nothing to decide, while Marks is as likely to want
+    /// you, so there was nothing to decide, while Screenroom is as likely to want
     /// an external camera pointed at a student at the front of the room. That
     /// is a real choice, made once per room, so it gets a control.
     private static func resolveCamera(uid: String) -> AVCaptureDevice? {
@@ -179,7 +179,7 @@ final class MarksCameraEngine: NSObject, MarksCaptureEngine {
     }
 }
 
-extension MarksCameraEngine: AVCaptureFileOutputRecordingDelegate {
+extension ScreenroomCameraEngine: AVCaptureFileOutputRecordingDelegate {
 
     nonisolated func fileOutput(_ output: AVCaptureFileOutput,
                                 didFinishRecordingTo outputFileURL: URL,

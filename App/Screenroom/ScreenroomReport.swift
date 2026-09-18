@@ -1,5 +1,5 @@
 //
-//  MarksReport.swift
+//  ScreenroomReport.swift
 //  Greenroom
 //
 //  The thing the speaker is actually handed.
@@ -20,7 +20,7 @@
 //
 import Foundation
 
-enum MarksReport {
+enum ScreenroomReport {
 
     enum Audience {
         /// What the student is handed. Their presentation, their notes, their
@@ -42,9 +42,9 @@ enum MarksReport {
     /// opened the rubric should still be able to send something.
     static func markdown(presenter: String,
                          presentedAt: Date,
-                         notes: [MarksNote],
-                         scoring: MarksScoring?,
-                         analysis: MarksAnalysis?,
+                         notes: [ScreenroomNote],
+                         scoring: ScreenroomScoring?,
+                         analysis: ScreenroomAnalysis?,
                          for audience: Audience) -> String {
         var out: [String] = []
 

@@ -1,15 +1,15 @@
 //
-//  MarksScreenEngine.swift
+//  ScreenroomScreenEngine.swift
 //  Greenroom
 //
 //  The screen source: a remote presenter, captured from the window they are
 //  already visible in.
 //
-//  This is the detour around a wall. Marks cannot ask the Zoom Meeting SDK
+//  This is the detour around a wall. Screenroom cannot ask the Zoom Meeting SDK
 //  for a student's video - the SDK renders into one container, that video
 //  cannot leave the container's window (DESIGN.md, 2026-08-24; the
 //  re-parenting experiment drew black) and the capability matrix rules out a
-//  second container. What Marks can do is point at the window the student is
+//  second container. What Screenroom can do is point at the window the student is
 //  already on screen in. That works with Greenroom's own participants panel,
 //  with the native Zoom app, with Meet in a browser, with a recording being
 //  played back - and, unlike anything routed through the SDK, it can be
@@ -34,7 +34,7 @@ import Foundation
 import ScreenCaptureKit
 
 @MainActor
-final class MarksScreenEngine: NSObject, MarksCaptureEngine {
+final class ScreenroomScreenEngine: NSObject, ScreenroomCaptureEngine {
 
     // MARK: What can be captured
 
@@ -46,7 +46,7 @@ final class MarksScreenEngine: NSObject, MarksCaptureEngine {
         /// The app the window belongs to, or the resolution for a display.
         let subtitle: String
 
-        var sourceKind: MarksSourceKind {
+        var sourceKind: ScreenroomSourceKind {
             kind == .window ? .window(id: id) : .display(id: id)
         }
     }
@@ -96,14 +96,14 @@ final class MarksScreenEngine: NSObject, MarksCaptureEngine {
     /// them.
     let displayLayer = AVSampleBufferDisplayLayer()
 
-    var target: MarksSourceKind
+    var target: ScreenroomSourceKind
 
     private var stream: SCStream?
 
     /// Everything the capture callback touches. It runs on `captureQueue` and
     /// nowhere else, and `state` is only read from the main actor through
     /// `positionMs`, under the lock.
-    private let captureQueue = DispatchQueue(label: "com.sibhimanyu.greenroom.marks.screen")
+    private let captureQueue = DispatchQueue(label: "com.sibhimanyu.greenroom.screenroom.screen")
     private let lock = NSLock()
     private nonisolated(unsafe) var writer: AVAssetWriter?
     private nonisolated(unsafe) var videoInput: AVAssetWriterInput?
@@ -112,7 +112,7 @@ final class MarksScreenEngine: NSObject, MarksCaptureEngine {
     private nonisolated(unsafe) var latestPositionMs: Int = 0
     private nonisolated(unsafe) var writing = false
 
-    init(target: MarksSourceKind) {
+    init(target: ScreenroomSourceKind) {
         self.target = target
         super.init()
         displayLayer.videoGravity = .resizeAspect
@@ -155,7 +155,7 @@ final class MarksScreenEngine: NSObject, MarksCaptureEngine {
 
     /// Points at something else. Refused mid-recording for the camera's
     /// reason: one file, one source.
-    func use(target newTarget: MarksSourceKind) {
+    func use(target newTarget: ScreenroomSourceKind) {
         guard !isRecording else { return }
         target = newTarget
         stopPreview()
@@ -299,7 +299,7 @@ final class MarksScreenEngine: NSObject, MarksCaptureEngine {
 
 // MARK: - Frames
 
-extension MarksScreenEngine: SCStreamOutput, SCStreamDelegate {
+extension ScreenroomScreenEngine: SCStreamOutput, SCStreamDelegate {
 
     nonisolated func stream(_ stream: SCStream, didOutputSampleBuffer sampleBuffer: CMSampleBuffer,
                             of type: SCStreamOutputType) {

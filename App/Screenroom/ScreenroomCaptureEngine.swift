@@ -1,5 +1,5 @@
 //
-//  MarksCaptureEngine.swift
+//  ScreenroomCaptureEngine.swift
 //  Greenroom
 //
 //  Where the picture comes from.
@@ -20,7 +20,7 @@
 //     SDK renders video into one container and it cannot leave that
 //     container's window (DESIGN.md, 2026-08-24 - the re-parenting experiment
 //     drew black), and the capability matrix is explicit that a second
-//     container is not a thing. So Marks cannot ask the SDK for the student's
+//     container is not a thing. So Screenroom cannot ask the SDK for the student's
 //     video. It can point at the window the student is already visible in,
 //     which works with Zoom, with Meet, with anything, and needs no meeting
 //     running to test.
@@ -35,7 +35,7 @@ import Foundation
 /// larger starts describing the camera, and the screen engine has no answer
 /// for most of what a camera knows.
 @MainActor
-protocol MarksCaptureEngine: AnyObject {
+protocol ScreenroomCaptureEngine: AnyObject {
 
     /// Told about every state change, because the engines reach these
     /// conclusions on their own queues and at their own times.
@@ -68,10 +68,10 @@ protocol MarksCaptureEngine: AnyObject {
 }
 
 /// Which kind of source, and which one of them.
-enum MarksSourceKind: Hashable {
+enum ScreenroomSourceKind: Hashable {
     /// A camera by AVFoundation uniqueID. Empty means "the first real one".
     case camera(uid: String)
-    /// A window by CGWindowID, as listed by MarksScreenEngine.
+    /// A window by CGWindowID, as listed by ScreenroomScreenEngine.
     case window(id: UInt32)
     /// A whole display by its CoreGraphics id.
     case display(id: UInt32)

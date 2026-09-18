@@ -1,5 +1,5 @@
 //
-//  MarksLibrary.swift
+//  ScreenroomLibrary.swift
 //  Greenroom
 //
 //  Finding the presentations already on disk.
@@ -10,14 +10,14 @@
 //  and nothing can drift out of step with the files because there is nothing
 //  else to drift.
 //
-//  A folder is a Marks presentation when it contains notes.jsonl. Not when it
+//  A folder is a Screenroom presentation when it contains notes.jsonl. Not when it
 //  contains a recording - classes have those too - and not by a marker file,
 //  which would be one more thing to write, forget to write, and have to
 //  repair.
 //
 import Foundation
 
-struct MarksPresentation: Identifiable, Hashable {
+struct ScreenroomPresentation: Identifiable, Hashable {
     let folder: URL
     /// The name the teacher typed, from session.json, falling back to the
     /// folder name with its timestamp trimmed off.
@@ -29,11 +29,11 @@ struct MarksPresentation: Identifiable, Hashable {
 
     var hasRecording: Bool { recording != nil }
 
-    func notes() -> [MarksNote] { MarksNotesFile.load(in: folder) }
-    func scoring() -> MarksScoring? { MarksScoring.load(in: folder) }
-    func analysis() -> MarksAnalysis? { MarksAnalysis.load(in: folder) }
+    func notes() -> [ScreenroomNote] { ScreenroomNotesFile.load(in: folder) }
+    func scoring() -> ScreenroomScoring? { ScreenroomScoring.load(in: folder) }
+    func analysis() -> ScreenroomAnalysis? { ScreenroomAnalysis.load(in: folder) }
     var hasReport: Bool {
-        FileManager.default.fileExists(atPath: MarksReport.url(in: folder).path)
+        FileManager.default.fileExists(atPath: ScreenroomReport.url(in: folder).path)
     }
 
     var dateLabel: String {
@@ -41,34 +41,34 @@ struct MarksPresentation: Identifiable, Hashable {
     }
 }
 
-enum MarksLibrary {
+enum ScreenroomLibrary {
 
     /// Every presentation under ~/Documents/Greenroom, newest first.
     ///
     /// One level deep, because that is how deep sessions go. A recursive walk
     /// would also find clips folders and anything a teacher dragged in there,
     /// and would get slower every term for no gain.
-    static func presentations() -> [MarksPresentation] {
+    static func presentations() -> [ScreenroomPresentation] {
         let root = GreenroomScene.recordingsDirectory
         guard let folders = try? FileManager.default.contentsOfDirectory(
             at: root, includingPropertiesForKeys: [.isDirectoryKey, .creationDateKey],
             options: [.skipsHiddenFiles]) else { return [] }
 
-        return folders.compactMap { folder -> MarksPresentation? in
+        return folders.compactMap { folder -> ScreenroomPresentation? in
             guard (try? folder.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory == true else { return nil }
-            let notesFile = MarksNotesFile.url(in: folder)
+            let notesFile = ScreenroomNotesFile.url(in: folder)
             guard FileManager.default.fileExists(atPath: notesFile.path) else { return nil }
 
-            let recording = folder.appendingPathComponent(MarksRecorder.recordingFileName)
+            let recording = folder.appendingPathComponent(ScreenroomRecorder.recordingFileName)
             let hasRecording = FileManager.default.fileExists(atPath: recording.path)
             let metadata = SessionMetadata.load(in: folder)
 
-            return MarksPresentation(
+            return ScreenroomPresentation(
                 folder: folder,
                 presenter: metadata.title ?? trimStamp(from: folder.lastPathComponent),
                 presentedAt: date(of: folder),
                 recording: hasRecording ? recording : nil,
-                noteCount: MarksNotesFile.load(in: folder).count)
+                noteCount: ScreenroomNotesFile.load(in: folder).count)
         }
         .sorted { $0.presentedAt > $1.presentedAt }
     }
@@ -78,10 +78,10 @@ enum MarksLibrary {
     /// Presentations with no rubric saved are dropped rather than counted as
     /// zero: a presentation nobody marked says nothing about how the marker
     /// was marking.
-    static func cohortEntries() -> [MarksCohort.Entry] {
+    static func cohortEntries() -> [ScreenroomCohort.Entry] {
         presentations().compactMap { presentation in
             guard let scoring = presentation.scoring() else { return nil }
-            return MarksCohort.Entry(
+            return ScreenroomCohort.Entry(
                 folder: presentation.folder,
                 presenter: presentation.presenter,
                 scoring: scoring,

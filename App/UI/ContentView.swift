@@ -139,15 +139,15 @@ struct ContentView: View {
                 .controlSize(.large)
                 .help("Every past class: its recordings and clips with a player, its YouTube links, and a name you can change.")
 
-                // Marks lives beside Sessions rather than beside Start: it is
+                // Screenroom lives beside Sessions rather than beside Start: it is
                 // not a step in the session cascade, it is a second thing this
                 // app does. Held out of the build entirely until it is ready
-                // (see MarksAvailability).
-                if MarksAvailability.isReleased {
+                // (see ScreenroomAvailability).
+                if ScreenroomAvailability.isReleased {
                     Button {
-                        openWindow(id: "marks")
+                        openWindow(id: "screenroom")
                     } label: {
-                        Label("Marks", systemImage: "text.badge.star")
+                        Label("Screenroom", systemImage: "text.badge.star")
                     }
                     .controlSize(.large)
                     .help("Evaluate a presentation: record the speaker and take notes timed to the recording.")

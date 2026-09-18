@@ -1,5 +1,5 @@
 //
-//  MarksSpeakerView.swift
+//  ScreenroomSpeakerView.swift
 //  Greenroom
 //
 //  The notes, shown to the person being evaluated, while it is happening.
@@ -12,7 +12,7 @@
 //  **It is off unless it is asked for, every time.** Not a stored preference:
 //  a setting that persists would mean a teacher who once coached a rehearsal
 //  is silently still coaching in an exam three weeks later, and the student
-//  would be the one to find out. Marks opens as an evaluation tool on every
+//  would be the one to find out. Screenroom opens as an evaluation tool on every
 //  launch, and coaching is a thing you deliberately turn on for the next
 //  twenty minutes.
 //
@@ -23,14 +23,14 @@
 //
 import SwiftUI
 
-struct MarksSpeakerView: View {
-    @ObservedObject private var marks = MarksController.shared
+struct ScreenroomSpeakerView: View {
+    @ObservedObject private var screenroom = ScreenroomController.shared
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             header
             Divider()
-            if marks.notes.isEmpty {
+            if screenroom.notes.isEmpty {
                 empty
             } else {
                 list
@@ -42,13 +42,13 @@ struct MarksSpeakerView: View {
 
     private var header: some View {
         HStack(spacing: 10) {
-            if marks.recorder.isRecording {
+            if screenroom.recorder.isRecording {
                 Image(systemName: "record.circle.fill").foregroundStyle(.red)
             }
-            Text(marks.presenter.isEmpty ? "Your presentation" : marks.presenter)
+            Text(screenroom.presenter.isEmpty ? "Your presentation" : screenroom.presenter)
                 .font(.title3.weight(.semibold))
             Spacer()
-            Text(marks.elapsedLabel)
+            Text(screenroom.elapsedLabel)
                 .font(.system(size: 15, weight: .semibold, design: .monospaced))
                 .monospacedDigit()
                 .foregroundStyle(.secondary)
@@ -59,10 +59,10 @@ struct MarksSpeakerView: View {
 
     private var empty: some View {
         VStack(spacing: 8) {
-            Text(marks.canTakeNotes ? "Nothing yet." : "Not started.")
+            Text(screenroom.canTakeNotes ? "Nothing yet." : "Not started.")
                 .font(.title3)
                 .foregroundStyle(.secondary)
-            Text(marks.canTakeNotes
+            Text(screenroom.canTakeNotes
                  ? "Notes will appear here as they are written."
                  : "This window shows the notes as they are written.")
                 .font(.callout)
@@ -77,7 +77,7 @@ struct MarksSpeakerView: View {
         ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 18) {
-                    ForEach(marks.notes) { note in
+                    ForEach(screenroom.notes) { note in
                         VStack(alignment: .leading, spacing: 4) {
                             Text(note.offsetLabel)
                                 .font(.system(size: 12, weight: .semibold, design: .monospaced))
@@ -93,8 +93,8 @@ struct MarksSpeakerView: View {
                 }
                 .padding(24)
             }
-            .onChange(of: marks.notes.count) { _, _ in
-                guard let last = marks.notes.last else { return }
+            .onChange(of: screenroom.notes.count) { _, _ in
+                guard let last = screenroom.notes.last else { return }
                 withAnimation(.snappy(duration: 0.25)) {
                     proxy.scrollTo(last.id, anchor: .bottom)
                 }

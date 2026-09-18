@@ -1,4 +1,4 @@
-# Marks: evaluated presentations
+# Screenroom: evaluated presentations
 
 Status: **built 2026-09-18, both halves.** The office-hours
 record below is unchanged from 2026-09-17 apart from this header and the
@@ -42,7 +42,7 @@ Swap "here is a link about the book you mentioned" for "you have said
   from, so the capture source is an abstraction from day one even though only
   one source gets implemented first.
 - **A sub-brand inside Greenroom, not a second app.** See Positioning.
-- **The name is Marks.** See Naming.
+- **The name is Screenroom.** See Naming.
 
 ## Premises
 
@@ -97,6 +97,43 @@ hypothetical. Splitting later is cheap *because* the name already carries
 equity by then.
 
 ## Naming
+
+**Screenroom.** Renamed from Marks on 2026-09-18, after the feature was built.
+
+> Greenroom is where you wait before. Screenroom is where you watch it back.
+
+One word, the same shape as the app it lives in, and it names the room whose
+whole purpose is this: in film post-production the screening room is where the
+director, the crew and the performers sit down together to watch what was
+captured and assess the performances. That is the feature, described by an
+industry that has been doing it for a century.
+
+Two things pushed Marks out, neither of them taste:
+
+1. **"Marks" already means something else in Greenroom.** `⌥⌘1`/`2`/`5` during
+   a class *marks* the last few minutes as a clip, and the Sessions window
+   says "Marks appear here afterwards". Two unrelated things under one word,
+   in one app.
+2. **It named the smallest part.** The scores are one tab. The notes, the
+   recording, the transcript, the clips, the report and the agent pass are the
+   rest, and none of them are marks.
+
+A web search of the current field — Yoodli, Poised, Orai, Huru, Speakio,
+Cuebo, Vocal Image, Quantified, Second Nature, Hyperbound, Marlee, Fluently,
+Noctie, Trophi, Orratio, Speaking.app, EchoPitch, Talktune, Kendo — found
+nothing using Screenroom, which also closes the "confirm the name is not
+taken" item this document opened with.
+
+Also considered at the rename, from a search of theatre, film and classical
+rhetoric vocabulary: **Actio** (the classical canon of delivery — voice,
+gesture, presence — exactly what is being evaluated, but needs explaining
+once), **Ballot** (a debate judge's decision plus written feedback; precise,
+but electoral and emphasises judging over helping), **Booth** (where the one
+person who sees the whole show sits; closer to Cues than to this), and
+**Cutting Room** (where footage is logged and cut; matches the clip export and
+nothing else).
+
+### The original 2026-09-17 argument for Marks, kept as history
 
 **Marks.**
 
@@ -205,9 +242,9 @@ product. The meeting feed becomes a second source later, at which point the
 protocol the session asked for gets written with two real conformances in
 front of it rather than one imagined one.
 
-**Marks records its own file.** OBS records the composite - your shared screen
+**Screenroom records its own file.** OBS records the composite - your shared screen
 with you keyed into the corner - which is the right picture for a class and
-the wrong one for evaluating a speaker. Marks wants the speaker, so it writes
+the wrong one for evaluating a speaker. Screenroom wants the speaker, so it writes
 `presentation.mov` itself and every note is an exact offset into that one
 file.
 
@@ -227,7 +264,7 @@ file.
 
 No web search and no cross-model review were run; both were declined in
 session. Before building, check prior art for timeline-annotation and rubric
-libraries, and confirm the name "Marks" is not taken in this space.
+libraries, and confirm the name "Screenroom" is not taken in this space.
 
 ---
 
@@ -235,17 +272,17 @@ libraries, and confirm the name "Marks" is not taken in this space.
 
 The first surface: a window that opens a camera on the person presenting and
 takes notes timed to the recording. Held out of every release behind
-`MarksAvailability.isReleased`, the same way Cues is - the code ships in any
+`ScreenroomAvailability.isReleased`, the same way Cues is - the code ships in any
 build made from main, so the gate exists before the first release that
 contains it rather than after somebody finds it.
 
 | Piece | File |
 |---|---|
-| The release gate, and the list of doors | `App/Marks/MarksAvailability.swift` |
-| The note, and `notes.jsonl` | `App/Marks/MarksNote.swift` |
-| Camera, microphone and `presentation.mov` | `App/Marks/MarksRecorder.swift` |
-| Presentation, folder and note-taking | `App/Marks/MarksController.swift` |
-| The window | `App/Marks/MarksWindow.swift` |
+| The release gate, and the list of doors | `App/Screenroom/ScreenroomAvailability.swift` |
+| The note, and `notes.jsonl` | `App/Screenroom/ScreenroomNote.swift` |
+| Camera, microphone and `presentation.mov` | `App/Screenroom/ScreenroomRecorder.swift` |
+| Presentation, folder and note-taking | `App/Screenroom/ScreenroomController.swift` |
+| The window | `App/Screenroom/ScreenroomWindow.swift` |
 
 ### The folder is the contract
 
@@ -298,13 +335,13 @@ handed.
 
 | Piece | File |
 |---|---|
-| The rubric, and the marks | `App/Marks/MarksRubric.swift` |
-| Consistency across the cohort | `App/Marks/MarksCohort.swift` |
-| The analysis, and `analysis.json` | `App/Marks/MarksAnalysis.swift` |
-| The pass over the notes | `App/Marks/MarksAnalyst.swift` |
-| `report.md` | `App/Marks/MarksReport.swift` |
-| Finding what is on disk | `App/Marks/MarksLibrary.swift` |
-| Review: player, notes, rubric, actions | `App/Marks/MarksReviewWindow.swift`, `MarksReviewController.swift` |
+| The rubric, and the marks | `App/Screenroom/ScreenroomRubric.swift` |
+| Consistency across the cohort | `App/Screenroom/ScreenroomCohort.swift` |
+| The analysis, and `analysis.json` | `App/Screenroom/ScreenroomAnalysis.swift` |
+| The pass over the notes | `App/Screenroom/ScreenroomAnalyst.swift` |
+| `report.md` | `App/Screenroom/ScreenroomReport.swift` |
+| Finding what is on disk | `App/Screenroom/ScreenroomLibrary.swift` |
+| Review: player, notes, rubric, actions | `App/Screenroom/ScreenroomReviewWindow.swift`, `ScreenroomReviewController.swift` |
 
 ### The AI reads your notes, not the video
 
@@ -325,7 +362,7 @@ scored lowest. `report.md` names the engine in its last line either way.
 ### Consistency is arithmetic, and stays that way
 
 Premise 3 is the reason this is worth building, and it is deliberately NOT the
-model's job. Every finding in `MarksCohort` is a mean, a spread or one
+model's job. Every finding in `ScreenroomCohort` is a mean, a spread or one
 correlation. A model asked "were these marked consistently?" would answer
 confidently either way and could not show its working, which is the wrong
 property for the one output whose entire purpose is to be shown to a student
@@ -344,7 +381,7 @@ Three findings:
 
 ### Two audiences, two documents
 
-The cohort findings are about the MARKER, not the student. "Marks drifted
+The cohort findings are about the MARKER, not the student. "Screenroom drifted
 downward through the session" is a fact about an afternoon, and putting it in
 the student's copy invites an argument about somebody else's grade. So
 `report.md` is written for one of two audiences and the speaker's copy has
@@ -398,12 +435,12 @@ laptop sleeps", all to save an email. When there is a live meeting to carry
 it, a transport can be added underneath this same merge and nothing above it
 changes.
 
-`MarksNote` is at **v2**: it gained an `author`. A v1 line decodes unchanged,
+`ScreenroomNote` is at **v2**: it gained an `author`. A v1 line decodes unchanged,
 because the field is optional and the version is on the line rather than on
 the file. Nothing was migrated and no file was rewritten.
 
-What the merge buys is `MarksAgreement`, and it is arithmetic like
-`MarksCohort`, not a question put to a model:
+What the merge buys is `ScreenroomAgreement`, and it is arithmetic like
+`ScreenroomCohort`, not a question put to a model:
 
 - **Moments more than one evaluator wrote about**, clustered within twenty
   seconds — wide enough that one person typing as it happens and another
@@ -418,17 +455,17 @@ What the merge buys is `MarksAgreement`, and it is arithmetic like
 
 ### The meeting feed — refused by the SDK, reached another way
 
-`MarksCaptureEngine` is the abstraction the plan asked for on day one,
+`ScreenroomCaptureEngine` is the abstraction the plan asked for on day one,
 written now that there is a second conformance to shape it. Two engines:
 
 - **Camera** — a person presenting in the room.
 - **Screen** — a window or a display, via ScreenCaptureKit.
 
 The screen engine is the answer to the remote presenter, and it is a
-deliberate detour. Marks cannot ask the Meeting SDK for a student's video:
+deliberate detour. Screenroom cannot ask the Meeting SDK for a student's video:
 the SDK renders into one container, that video cannot leave the container's
 window (DESIGN.md, 2026-08-24 — the re-parenting experiment drew black), and
-the capability matrix rules out a second container. What Marks *can* do is
+the capability matrix rules out a second container. What Screenroom *can* do is
 point at the window the student is already visible in. That works with
 Greenroom's own participants panel, with the native Zoom app, with Meet in a
 browser, with a recording being played back — and unlike anything routed
@@ -443,19 +480,19 @@ room, a window on screen is heard through the machine playing it.
 Until now that permission belonged entirely to OBS, and three places said so
 — `README.md`, `docs/guide.html` and the transparency page, which literally
 claimed "Greenroom contains no screen-capture code". All three were rewritten
-in the same commit. They now say what is true: the code exists, Marks is held
+in the same commit. They now say what is true: the code exists, Screenroom is held
 back so nothing in the shipping build can reach it, macOS never asks, and
-when Marks ships this becomes a fourth permission.
+when Screenroom ships this becomes a fourth permission.
 
 ### Does the speaker see notes live — the teacher decides, per presentation
 
-`MarksSpeakerView`: one column, large type, newest at the bottom, no controls
+`ScreenroomSpeakerView`: one column, large type, newest at the bottom, no controls
 — readable across a room, for the second display or a mirrored iPad.
 
 **It is off unless it is asked for, every single time, and the setting is not
 stored.** A persisted preference would mean a teacher who once coached a
 rehearsal is silently still coaching in an exam three weeks later, and the
-student would be the one to find out. Marks opens as an evaluation tool on
+student would be the one to find out. Screenroom opens as an evaluation tool on
 every launch; coaching is something you turn on for the next twenty minutes.
 That is the plan's open question answered by refusing to answer it once for
 everybody.
@@ -476,7 +513,7 @@ you lost the thread" and watching yourself lose the thread while the sentence
 appears are not the same feedback, and the second needs no cross-referencing
 between a document and a scrubber.
 
-`App/Marks/MarksVideoExport.swift`, two outputs:
+`App/Screenroom/ScreenroomVideoExport.swift`, two outputs:
 
 - **Video with the notes written on it** - `presentation-with-notes.mp4`. One
   file, plays anywhere, cannot be separated from its notes. Costs a
@@ -492,7 +529,7 @@ uploading a term of presentations wants the second.
 
 **Timing.** A card appears two seconds BEFORE its note and stays six, cut
 short when the next note is due but never under two and a half. The lead is
-the same rule that runs through all of Marks - a note is stamped at its first
+the same rule that runs through all of Screenroom - a note is stamped at its first
 keystroke, so the thing it describes is already happening. The floor matters
 more than the ceiling: two notes typed nine seconds apart are a teacher
 reacting quickly, and the first flashing past in half a second would be the
@@ -514,14 +551,14 @@ success.
 
 ## Your own agent (2026-09-18)
 
-Marks' own passes are deliberately small: an on-device model writing feedback
+Screenroom' own passes are deliberately small: an on-device model writing feedback
 from the notes, and arithmetic over rubrics and timestamps. That is the right
 floor - it works on a Mac with nothing configured and it costs nothing. It is
 not a ceiling. A teacher who already runs Claude Code or Codex has a much
-larger model a keystroke away, and what Marks has assembled is exactly the
+larger model a keystroke away, and what Screenroom has assembled is exactly the
 material such a thing is good at reading.
 
-No API keys, no accounts, no model configuration inside Greenroom. Marks
+No API keys, no accounts, no model configuration inside Greenroom. Screenroom
 writes a brief and runs the CLI you already have, in your own login shell,
 with your own credentials.
 
@@ -531,21 +568,21 @@ A coding agent cannot watch an `.mov`. Handing one a video file and asking
 about body language gets a confident answer about a file it never opened. So
 "prepare" does two things, both on this Mac:
 
-- **`MarksTranscriber`** - Apple's speech recogniser over `presentation.mov`,
+- **`ScreenroomTranscriber`** - Apple's speech recogniser over `presentation.mov`,
   pinned to on-device. `SFSpeechRecognizer` will silently fall back to
   Apple's servers when the local model is missing, which would send a
   recording of a named student off the Mac because a download had not
   happened. So it checks `supportsOnDeviceRecognition` first and **refuses
   rather than falls back**. Writes `transcript.txt` and `words.json`.
-- **`MarksFrames`** - one still every twenty seconds into `frames/`. Twenty
+- **`ScreenroomFrames`** - one still every twenty seconds into `frames/`. Twenty
   because a ten-minute talk then gives thirty images, which a model attends
   to properly; every five seconds gives a hundred and twenty, which it skims.
 
 ### Then count what can be counted
 
-`MarksSpeechMetrics`: filler words, words per minute in half-minute windows,
-pauses over two seconds, talk ratio. Same rule as `MarksCohort` and
-`MarksAgreement` - it is arithmetic and it stays arithmetic. It also makes
+`ScreenroomSpeechMetrics`: filler words, words per minute in half-minute windows,
+pauses over two seconds, talk ratio. Same rule as `ScreenroomCohort` and
+`ScreenroomAgreement` - it is arithmetic and it stays arithmetic. It also makes
 the agent pass better: one handed "you said 'basically' 34 times, 4.1 a
 minute" spends its attention on what that means, where one asked to count
 spends it counting, and gets it wrong.
@@ -575,7 +612,7 @@ important section is the one about limits:
 
 Both CLIs take a read-only sandbox and both are pinned to one in the default
 commands. An agent that cannot write cannot damage a folder holding the only
-copy of a student's presentation, and Marks saving the output itself means
+copy of a student's presentation, and Screenroom saving the output itself means
 there is nothing to negotiate about permissions in a non-interactive shell.
 
 Verified against the real binaries rather than their documentation:
@@ -585,7 +622,7 @@ were run end to end before being committed.
 
 ### This is the one thing that can leave the Mac
 
-Everything else in Marks runs here. This does not, and it is the only feature
+Everything else in Screenroom runs here. This does not, and it is the only feature
 in Greenroom whose destination Greenroom does not control. It is off by
 default, the command is shown rather than hidden, and the transparency page,
 the guide and the README all say plainly that what a cloud agent does with a
@@ -600,7 +637,7 @@ wrong in the worst available way: silently.
 Apple's recogniser is built for dictation. "um, I think, uh, we should" is
 noise a person did not mean to type, so it smooths disfluencies away and
 punctuates what is left. Correct for dictation. Fatal here, because
-`MarksSpeechMetrics` exists to count exactly the words it removes. A filler
+`ScreenroomSpeechMetrics` exists to count exactly the words it removes. A filler
 count taken from an Apple transcript is not a rough figure; it is a
 measurement of how well Apple deleted the evidence, and it arrives as a
 confident zero next to a student's name.
@@ -643,5 +680,5 @@ were not said. A false "um" in a student's report is worse than a missed one.
   counted and why.
 - **Audio is converted in-app**, not by shelling out to ffmpeg. ffmpeg is on
   the author's Mac and on a lot of developers' Macs, and on none of the Macs
-  this is for. The external tool Marks does require, whisper, earns it by
+  this is for. The external tool Screenroom does require, whisper, earns it by
   being the thing that cannot be replaced; a format conversion does not.

@@ -1,8 +1,8 @@
 //
-//  MarksReviewController.swift
+//  ScreenroomReviewController.swift
 //  Greenroom
 //
-//  The second half of Marks: opening a presentation that has already
+//  The second half of Screenroom: opening a presentation that has already
 //  happened, marking it, running the pass over the notes, and producing the
 //  report.
 //
@@ -16,43 +16,43 @@ import Combine
 import Foundation
 
 @MainActor
-final class MarksReviewController: ObservableObject {
+final class ScreenroomReviewController: ObservableObject {
 
-    @Published private(set) var presentations: [MarksPresentation] = []
-    @Published private(set) var selected: MarksPresentation?
+    @Published private(set) var presentations: [ScreenroomPresentation] = []
+    @Published private(set) var selected: ScreenroomPresentation?
 
-    @Published private(set) var notes: [MarksNote] = []
-    @Published var scoring: MarksScoring = MarksScoring(rubric: MarksRubricStore.current())
-    @Published private(set) var analysis: MarksAnalysis?
-    @Published private(set) var cohortFindings: [MarksCohort.Finding] = []
+    @Published private(set) var notes: [ScreenroomNote] = []
+    @Published var scoring: ScreenroomScoring = ScreenroomScoring(rubric: ScreenroomRubricStore.current())
+    @Published private(set) var analysis: ScreenroomAnalysis?
+    @Published private(set) var cohortFindings: [ScreenroomCohort.Finding] = []
 
     /// What more than one evaluator's notes say about each other. Empty
     /// whenever only one person wrote, which is the normal case.
-    @Published private(set) var agreementFindings: [MarksCohort.Finding] = []
+    @Published private(set) var agreementFindings: [ScreenroomCohort.Finding] = []
 
     /// The name this Mac signs its notes with. Blank until someone needs it,
     /// which is the moment a second evaluator's notes arrive.
-    @Published var evaluatorName: String = MarksIdentity.current() {
-        didSet { MarksIdentity.set(evaluatorName) }
+    @Published var evaluatorName: String = ScreenroomIdentity.current() {
+        didSet { ScreenroomIdentity.set(evaluatorName) }
     }
 
     /// Who wrote the notes in the presentation on screen.
     var authors: [String] {
-        MarksNotesFile.authors(in: notes, soleAuthor: soleAuthorLabel)
+        ScreenroomNotesFile.authors(in: notes, soleAuthor: soleAuthorLabel)
     }
 
     /// What an unsigned note is called here. The evaluator's own name when
     /// they have given one, so a merged file does not end up with "You" and
     /// their name as two different people.
     private var soleAuthorLabel: String {
-        evaluatorName.isEmpty ? MarksNote.soleAuthor : evaluatorName
+        evaluatorName.isEmpty ? ScreenroomNote.soleAuthor : evaluatorName
     }
 
     @Published private(set) var isAnalysing = false
     @Published private(set) var isCutting = false
     @Published private(set) var cutProgress: (done: Int, total: Int)?
 
-    /// The annotated video is the one thing in Marks that re-encodes, so it
+    /// The annotated video is the one thing in Screenroom that re-encodes, so it
     /// is the one thing that takes minutes. Its progress is reported rather
     /// than spun at - DESIGN.md asks that a wait say how much is left.
     @Published private(set) var isExportingVideo = false
@@ -60,7 +60,7 @@ final class MarksReviewController: ObservableObject {
 
     // MARK: Material for a deeper pass
 
-    @Published private(set) var metrics: MarksSpeechMetrics?
+    @Published private(set) var metrics: ScreenroomSpeechMetrics?
     @Published private(set) var frameCount = 0
     @Published private(set) var hasTranscript = false
 
@@ -68,10 +68,10 @@ final class MarksReviewController: ObservableObject {
     @Published private(set) var prepareStep = ""
     @Published private(set) var prepareProgress: Double = 0
 
-    @Published var transcriberSettings = MarksTranscriberSettings.load()
-    @Published private(set) var whisperReady = MarksWhisper.resolvedBinary != nil
-                                               && MarksWhisper.findModel() != nil
-    @Published var agentSettings = MarksAgentSettings.load()
+    @Published var transcriberSettings = ScreenroomTranscriberSettings.load()
+    @Published private(set) var whisperReady = ScreenroomWhisper.resolvedBinary != nil
+                                               && ScreenroomWhisper.findModel() != nil
+    @Published var agentSettings = ScreenroomAgentSettings.load()
     @Published private(set) var isRunningAgent = false
     /// What the agent is saying as it says it. Agents take minutes and go
     /// quiet while they think; a window that showed nothing until the end
@@ -89,18 +89,21 @@ final class MarksReviewController: ObservableObject {
     /// How much run-up a clip gets before the note it was cut for.
     ///
     /// Fifteen seconds, and not symmetric, because of how the note was
-    /// stamped: MarksController marks a note at its FIRST KEYSTROKE, so the
+    /// stamped: ScreenroomController marks a note at its FIRST KEYSTROKE, so the
     /// thing being described already happened. The clip has to reach back
     /// past it. Five seconds afterwards is enough to see how it resolved.
     static let clipLeadInMs = 15_000
     static let clipTailMs = 5_000
 
-    init() { refresh() }
+    init() {
+        _ = ScreenroomDefaults.migrated
+        refresh()
+    }
 
     // MARK: Loading
 
     func refresh() {
-        presentations = MarksLibrary.presentations()
+        presentations = ScreenroomLibrary.presentations()
         if let selected, let again = presentations.first(where: { $0.folder == selected.folder }) {
             self.selected = again
         } else if selected == nil {
@@ -108,7 +111,7 @@ final class MarksReviewController: ObservableObject {
         }
     }
 
-    func select(_ presentation: MarksPresentation?) {
+    func select(_ presentation: ScreenroomPresentation?) {
         selected = presentation
         status = nil
         guard let presentation else {
@@ -120,17 +123,17 @@ final class MarksReviewController: ObservableObject {
         }
 
         notes = presentation.notes()
-        agreementFindings = MarksAgreement.findings(in: notes, soleAuthor: soleAuthorLabel)
+        agreementFindings = ScreenroomAgreement.findings(in: notes, soleAuthor: soleAuthorLabel)
         // An existing rubric is this presentation's own snapshot. A new one
         // starts from whatever the teacher is marking the rest of the cohort
-        // on - see MarksRubric for why the snapshot then stops following it.
-        scoring = presentation.scoring() ?? MarksScoring(rubric: MarksRubricStore.current())
+        // on - see ScreenroomRubric for why the snapshot then stops following it.
+        scoring = presentation.scoring() ?? ScreenroomScoring(rubric: ScreenroomRubricStore.current())
         analysis = presentation.analysis()
-        metrics = MarksSpeechMetrics.load(in: presentation.folder)
-        frameCount = MarksFrames.existing(in: presentation.folder).count
+        metrics = ScreenroomSpeechMetrics.load(in: presentation.folder)
+        frameCount = ScreenroomFrames.existing(in: presentation.folder).count
         hasTranscript = FileManager.default.fileExists(
-            atPath: presentation.folder.appendingPathComponent(MarksTranscriber.transcriptFileName).path)
-        agentReport = MarksAgent.existingReport(in: presentation.folder)
+            atPath: presentation.folder.appendingPathComponent(ScreenroomTranscriber.transcriptFileName).path)
+        agentReport = ScreenroomAgent.existingReport(in: presentation.folder)
         agentLog = ""
 
         if let recording = presentation.recording {
@@ -148,7 +151,7 @@ final class MarksReviewController: ObservableObject {
     /// Lands slightly BEFORE the note for the same reason clips do: the note
     /// was stamped when the evaluator started typing, so the moment it
     /// describes is just behind it.
-    func seek(to note: MarksNote) {
+    func seek(to note: ScreenroomNote) {
         guard player.currentItem != nil else { return }
         let target = max(0, Double(note.atMs - 4_000) / 1000)
         player.seek(to: CMTime(seconds: target, preferredTimescale: 600),
@@ -158,12 +161,12 @@ final class MarksReviewController: ObservableObject {
 
     // MARK: Marking
 
-    func setScore(_ value: Int?, for criterion: MarksCriterion) {
+    func setScore(_ value: Int?, for criterion: ScreenroomCriterion) {
         scoring.set(value, for: criterion)
         persistScoring()
     }
 
-    func setComment(_ text: String, for criterion: MarksCriterion) {
+    func setComment(_ text: String, for criterion: ScreenroomCriterion) {
         scoring.setComment(text, for: criterion)
         persistScoring()
     }
@@ -175,14 +178,14 @@ final class MarksReviewController: ObservableObject {
         guard let folder = selected?.folder else { return }
         scoring.save(in: folder)
         // The rubric the teacher is actually using, for the next student.
-        MarksRubricStore.save(scoring.rubric)
+        ScreenroomRubricStore.save(scoring.rubric)
         recomputeCohort()
         refreshSelectedRow()
     }
 
     private func refreshSelectedRow() {
         guard let folder = selected?.folder else { return }
-        presentations = MarksLibrary.presentations()
+        presentations = ScreenroomLibrary.presentations()
         selected = presentations.first { $0.folder == folder } ?? selected
     }
 
@@ -197,14 +200,14 @@ final class MarksReviewController: ObservableObject {
             cohortFindings = []
             return
         }
-        var entries = MarksLibrary.cohortEntries()
+        var entries = ScreenroomLibrary.cohortEntries()
         // The version on disk may be a keystroke behind what is on screen.
         entries.removeAll { $0.folder == selected.folder }
-        let subject = MarksCohort.Entry(folder: selected.folder,
+        let subject = ScreenroomCohort.Entry(folder: selected.folder,
                                         presenter: selected.presenter,
                                         scoring: scoring,
                                         markedAt: scoring.markedAt ?? selected.presentedAt)
-        cohortFindings = MarksCohort.findings(for: subject, among: entries + [subject])
+        cohortFindings = ScreenroomCohort.findings(for: subject, among: entries + [subject])
     }
 
     // MARK: The pass
@@ -215,14 +218,14 @@ final class MarksReviewController: ObservableObject {
         status = nil
         defer { isAnalysing = false }
 
-        let produced = await MarksAnalyst.analyse(
+        let produced = await ScreenroomAnalyst.analyse(
             notes: notes,
             scoring: scoring.markedCount > 0 ? scoring : nil,
             presenter: selected.presenter,
             // Both kinds of consistency travel together into the analysis:
             // how this student was marked against the group, and how the
             // evaluators agreed with each other. Frozen at the moment the
-            // report was produced - see MarksAnalysis.
+            // report was produced - see ScreenroomAnalysis.
             consistency: (agreementFindings + cohortFindings).map { "\($0.headline). \($0.detail)" })
 
         produced.save(in: selected.folder)
@@ -232,15 +235,15 @@ final class MarksReviewController: ObservableObject {
 
     // MARK: Output
 
-    func exportReport(for audience: MarksReport.Audience) {
+    func exportReport(for audience: ScreenroomReport.Audience) {
         guard let selected else { return }
-        let markdown = MarksReport.markdown(presenter: selected.presenter,
+        let markdown = ScreenroomReport.markdown(presenter: selected.presenter,
                                             presentedAt: selected.presentedAt,
                                             notes: notes,
                                             scoring: scoring.markedCount > 0 ? scoring : nil,
                                             analysis: analysis,
                                             for: audience)
-        guard let written = MarksReport.write(markdown, in: selected.folder) else {
+        guard let written = ScreenroomReport.write(markdown, in: selected.folder) else {
             status = "The report could not be written into the folder."
             return
         }
@@ -274,28 +277,28 @@ final class MarksReviewController: ObservableObject {
     }
 }
 
-extension MarksReviewController {
+extension ScreenroomReviewController {
 
     /// Folds another evaluator's notes into this presentation.
     ///
     /// A file, handed over however people already hand files over. See
-    /// MarksAgreement for why there is no transport: notes are files, so a
+    /// ScreenroomAgreement for why there is no transport: notes are files, so a
     /// second evaluator is a second file, and a server would buy an email.
     ///
     /// Merging is a union by id, so the same attachment imported twice adds
     /// nothing the second time.
     func importNotes(from file: URL) {
         guard let selected else { return }
-        let incoming = MarksNotesFile.read(from: file)
+        let incoming = ScreenroomNotesFile.read(from: file)
         guard !incoming.isEmpty else {
             status = "\(file.lastPathComponent) had no notes in it."
             return
         }
         let unsigned = incoming.filter { $0.author == nil }.count
-        let added = MarksNotesFile.merge(incoming, into: selected.folder)
+        let added = ScreenroomNotesFile.merge(incoming, into: selected.folder)
 
-        notes = MarksNotesFile.load(in: selected.folder)
-        agreementFindings = MarksAgreement.findings(in: notes, soleAuthor: soleAuthorLabel)
+        notes = ScreenroomNotesFile.load(in: selected.folder)
+        agreementFindings = ScreenroomAgreement.findings(in: notes, soleAuthor: soleAuthorLabel)
         refreshSelectedRow()
 
         if added == 0 {
@@ -307,14 +310,14 @@ extension MarksReviewController {
             // before exporting.
             status = "Added \(added) \(added == 1 ? "note" : "notes"). \(unsigned) had no author and will read as yours."
         } else {
-            status = "Added \(added) \(added == 1 ? "note" : "notes") from \(MarksNotesFile.authors(in: incoming).joined(separator: ", "))."
+            status = "Added \(added) \(added == 1 ? "note" : "notes") from \(ScreenroomNotesFile.authors(in: incoming).joined(separator: ", "))."
         }
     }
 }
 
 // MARK: - Handing the presentation over as video
 
-extension MarksReviewController {
+extension ScreenroomReviewController {
 
     /// Writes the recording again with the notes drawn into the picture.
     ///
@@ -330,9 +333,9 @@ extension MarksReviewController {
         status = "Rendering the notes into the video\u{2026}"
         defer { isExportingVideo = false; videoProgress = 0 }
 
-        let output = selected.folder.appendingPathComponent(MarksVideoExport.annotatedFileName)
+        let output = selected.folder.appendingPathComponent(ScreenroomVideoExport.annotatedFileName)
         do {
-            let written = try await MarksVideoExport.exportAnnotated(
+            let written = try await ScreenroomVideoExport.exportAnnotated(
                 recording: recording,
                 notes: notes,
                 presenter: selected.presenter,
@@ -358,7 +361,7 @@ extension MarksReviewController {
     func exportSubtitles() async {
         guard let selected, let recording = selected.recording, !notes.isEmpty else { return }
         let duration = (try? await AVURLAsset(url: recording).load(.duration))?.seconds ?? 0
-        guard let written = MarksVideoExport.writeSubtitles(
+        guard let written = ScreenroomVideoExport.writeSubtitles(
             for: notes, duration: duration,
             showAuthors: authors.count > 1, in: selected.folder) else {
             status = "The subtitles could not be written."
@@ -371,7 +374,7 @@ extension MarksReviewController {
 
 // MARK: - Material, and the agent that reads it
 
-extension MarksReviewController {
+extension ScreenroomReviewController {
 
     /// Transcribes the recording and pulls stills out of it.
     ///
@@ -390,7 +393,7 @@ extension MarksReviewController {
             ? "Transcribing with whisper"
             : "Transcribing with Apple"
         do {
-            let words = try await MarksTranscriber.transcribe(
+            let words = try await ScreenroomTranscriber.transcribe(
                 recording: recording, into: selected.folder,
                 settings: transcriberSettings,
                 onProgress: { [weak self] fraction in self?.prepareProgress = fraction },
@@ -402,7 +405,7 @@ extension MarksReviewController {
                         ?? "Transcribing"
                 })
             hasTranscript = !words.isEmpty
-            metrics = MarksSpeechMetrics.load(in: selected.folder)
+            metrics = ScreenroomSpeechMetrics.load(in: selected.folder)
         } catch {
             // Not fatal. Frames are still worth having, and a folder with
             // pictures and no transcript is more use than neither.
@@ -412,7 +415,7 @@ extension MarksReviewController {
         prepareStep = "Taking stills"
         prepareProgress = 0
         do {
-            let frames = try await MarksFrames.extract(
+            let frames = try await ScreenroomFrames.extract(
                 from: recording, into: selected.folder,
                 onProgress: { [weak self] done, total in
                     self?.prepareProgress = total > 0 ? Double(done) / Double(total) : 0
@@ -436,16 +439,16 @@ extension MarksReviewController {
         status = nil
         defer { isRunningAgent = false }
 
-        let text = MarksAgent.brief(presenter: selected.presenter,
+        let text = ScreenroomAgent.brief(presenter: selected.presenter,
                                     notes: notes,
                                     metrics: metrics,
                                     scoring: scoring.markedCount > 0 ? scoring : nil,
                                     frameCount: frameCount,
                                     hasTranscript: hasTranscript)
-        MarksAgent.writeBrief(text, in: selected.folder)
+        ScreenroomAgent.writeBrief(text, in: selected.folder)
 
         do {
-            let output = try await MarksAgent.run(
+            let output = try await ScreenroomAgent.run(
                 settings: agentSettings, brief: text, in: selected.folder,
                 onOutput: { [weak self] piece in self?.agentLog += piece })
             let trimmed = output.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -453,9 +456,9 @@ extension MarksReviewController {
                 status = "The agent finished but printed nothing."
                 return
             }
-            MarksAgent.writeReport(trimmed, in: selected.folder)
+            ScreenroomAgent.writeReport(trimmed, in: selected.folder)
             agentReport = trimmed
-            status = "Wrote \(MarksAgent.reportFileName)."
+            status = "Wrote \(ScreenroomAgent.reportFileName)."
             refreshSelectedRow()
         } catch {
             status = error.localizedDescription
@@ -466,9 +469,9 @@ extension MarksReviewController {
 
     func saveTranscriberSettings() {
         transcriberSettings.save()
-        whisperReady = MarksWhisper.resolvedBinary != nil && MarksWhisper.findModel() != nil
+        whisperReady = ScreenroomWhisper.resolvedBinary != nil && ScreenroomWhisper.findModel() != nil
     }
 
     /// The one line that fetches a model, for the teacher to paste.
-    var whisperDownloadCommand: String { MarksWhisper.downloadCommand }
+    var whisperDownloadCommand: String { ScreenroomWhisper.downloadCommand }
 }

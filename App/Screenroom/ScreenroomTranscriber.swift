@@ -1,5 +1,5 @@
 //
-//  MarksTranscriber.swift
+//  ScreenroomTranscriber.swift
 //  Greenroom
 //
 //  Turning presentation.mov into words, with the time each one was said.
@@ -13,10 +13,10 @@
 //  which made it the obvious first choice and the wrong one. It is built for
 //  dictation: "um, I think, uh, we should" is noise a person did not mean to
 //  type, so it smooths disfluencies away and punctuates what is left. Correct
-//  for dictation, fatal here - MarksSpeechMetrics exists to count exactly the
+//  for dictation, fatal here - ScreenroomSpeechMetrics exists to count exactly the
 //  words Apple removes, so a filler count taken from an Apple transcript
 //  measures how well Apple deleted the evidence and reads as a confident
-//  zero. whisper.cpp returns what was actually said (see MarksWhisper for the
+//  zero. whisper.cpp returns what was actually said (see ScreenroomWhisper for the
 //  measurement) and is the default.
 //
 //  Apple's is kept as a fallback rather than deleted, because a Mac with no
@@ -37,7 +37,7 @@ import Foundation
 import Speech
 
 /// Which transcriber to use, and where its model is.
-struct MarksTranscriberSettings: Codable, Equatable {
+struct ScreenroomTranscriberSettings: Codable, Equatable {
 
     enum Engine: String, Codable, CaseIterable, Identifiable {
         /// whisper.cpp. Verbatim; needs a binary and a model.
@@ -63,12 +63,12 @@ struct MarksTranscriberSettings: Codable, Equatable {
     /// differently, and the engines convert as needed.
     var language: String = "en_IN"
 
-    static let key = "marksTranscriberSettings"
+    static let key = "screenroomTranscriberSettings"
 
-    static func load(_ defaults: UserDefaults = .standard) -> MarksTranscriberSettings {
+    static func load(_ defaults: UserDefaults = .standard) -> ScreenroomTranscriberSettings {
         guard let data = defaults.data(forKey: key),
-              let decoded = try? JSONDecoder().decode(MarksTranscriberSettings.self, from: data) else {
-            return MarksTranscriberSettings()
+              let decoded = try? JSONDecoder().decode(ScreenroomTranscriberSettings.self, from: data) else {
+            return ScreenroomTranscriberSettings()
         }
         return decoded
     }
@@ -79,7 +79,7 @@ struct MarksTranscriberSettings: Codable, Equatable {
     }
 }
 
-enum MarksTranscriber {
+enum ScreenroomTranscriber {
 
     enum Failure: LocalizedError {
         case denied
@@ -92,7 +92,7 @@ enum MarksTranscriber {
             case .denied:
                 return "Speech recognition is not allowed. Turn it on in System Settings \u{2192} Privacy & Security \u{2192} Speech Recognition."
             case .noLocalModel(let locale):
-                return "This Mac cannot transcribe \(locale) without sending audio to Apple, so Marks will not transcribe at all. Add the language in System Settings \u{2192} General \u{2192} Language & Region and try again."
+                return "This Mac cannot transcribe \(locale) without sending audio to Apple, so Screenroom will not transcribe at all. Add the language in System Settings \u{2192} General \u{2192} Language & Region and try again."
             case .noSpeech:
                 return "No speech was found in that recording."
             case .failed(let reason):
@@ -115,7 +115,7 @@ enum MarksTranscriber {
         }
         guard recognizer.isAvailable else { return (false, "the recogniser is not available right now") }
         guard recognizer.supportsOnDeviceRecognition else {
-            return (false, "this Mac has no on-device model for \(identifier), and Marks will not send audio to Apple")
+            return (false, "this Mac has no on-device model for \(identifier), and Screenroom will not send audio to Apple")
         }
         return (true, nil)
     }
@@ -123,31 +123,31 @@ enum MarksTranscriber {
     /// Transcribes the recording and writes both files into the folder.
     ///
     /// `transcript.txt` is for a person and for an agent to read; `words.json`
-    /// carries the timings that MarksSpeechMetrics needs. Two files rather
+    /// carries the timings that ScreenroomSpeechMetrics needs. Two files rather
     /// than one because the readable one should stay readable - a text file
     /// full of millisecond offsets is neither.
     /// Transcribes with whichever engine is configured.
     static func transcribe(recording: URL,
                            into folder: URL,
-                           settings: MarksTranscriberSettings,
+                           settings: ScreenroomTranscriberSettings,
                            onProgress: (@MainActor (Double) -> Void)? = nil,
-                           onOutput: (@MainActor (String) -> Void)? = nil) async throws -> [MarksSpokenWord] {
+                           onOutput: (@MainActor (String) -> Void)? = nil) async throws -> [ScreenroomSpokenWord] {
         let durationMs = Int(((try? await AVURLAsset(url: recording).load(.duration))?.seconds ?? 0) * 1000)
 
         switch settings.engine {
         case .whisper:
             guard let model = settings.modelPath.isEmpty
-                    ? MarksWhisper.findModel()
+                    ? ScreenroomWhisper.findModel()
                     : URL(fileURLWithPath: settings.modelPath) else {
-                throw MarksWhisper.Failure.noModel
+                throw ScreenroomWhisper.Failure.noModel
             }
             // The WAV lives beside the recording only while whisper reads it.
             let wav = folder.appendingPathComponent("audio-for-transcription.wav")
             defer { try? FileManager.default.removeItem(at: wav) }
-            _ = try await MarksAudio.extractWAV(from: recording, to: wav)
+            _ = try await ScreenroomAudio.extractWAV(from: recording, to: wav)
             // whisper names languages without a region.
             let language = String(settings.language.prefix(2))
-            let words = try await MarksWhisper.transcribe(
+            let words = try await ScreenroomWhisper.transcribe(
                 wav: wav, model: model, language: language, onOutput: onOutput)
             try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
             write(words, in: folder, durationMs: durationMs,
@@ -165,7 +165,7 @@ enum MarksTranscriber {
                                             into folder: URL,
                                             locale identifier: String,
                                             durationMs: Int,
-                                            onProgress: (@MainActor (Double) -> Void)? = nil) async throws -> [MarksSpokenWord] {
+                                            onProgress: (@MainActor (Double) -> Void)? = nil) async throws -> [ScreenroomSpokenWord] {
         let status = await authorize()
         guard status == .authorized else { throw Failure.denied }
 
@@ -182,12 +182,12 @@ enum MarksTranscriber {
         request.taskHint = .dictation
         // Off. Punctuation is invented by a language model reading the words
         // back, and this path's whole problem is already that too much has
-        // been decided about the text before Marks sees it.
+        // been decided about the text before Screenroom sees it.
         if #available(macOS 13.0, *) { request.addsPunctuation = false }
 
         let total = (try? await AVURLAsset(url: recording).load(.duration))?.seconds ?? 0
 
-        let words: [MarksSpokenWord] = try await withCheckedThrowingContinuation { continuation in
+        let words: [ScreenroomSpokenWord] = try await withCheckedThrowingContinuation { continuation in
             var resumed = false
             recognizer.recognitionTask(with: request) { result, error in
                 guard !resumed else { return }
@@ -207,7 +207,7 @@ enum MarksTranscriber {
                 guard result.isFinal else { return }
                 resumed = true
                 continuation.resume(returning: result.bestTranscription.segments.map {
-                    MarksSpokenWord(text: $0.substring,
+                    ScreenroomSpokenWord(text: $0.substring,
                                     atMs: Int($0.timestamp * 1000),
                                     durationMs: Int($0.duration * 1000))
                 })
@@ -228,7 +228,7 @@ enum MarksTranscriber {
     /// reliably give sentences, so this breaks on a long pause instead -
     /// which is usually where a sentence ended anyway, and is at least a
     /// break the speaker actually made.
-    static func write(_ words: [MarksSpokenWord], in folder: URL, durationMs: Int,
+    static func write(_ words: [ScreenroomSpokenWord], in folder: URL, durationMs: Int,
                       engine: String, verbatim: Bool) {
         var lines: [String] = []
         var current: [String] = []
@@ -255,13 +255,13 @@ enum MarksTranscriber {
             try? data.write(to: folder.appendingPathComponent(wordsFileName), options: .atomic)
         }
 
-        MarksSpeechMetrics.measure(words: words, durationMs: durationMs,
+        ScreenroomSpeechMetrics.measure(words: words, durationMs: durationMs,
                                    engine: engine, verbatim: verbatim).save(in: folder)
     }
 
-    static func loadWords(in folder: URL) -> [MarksSpokenWord] {
+    static func loadWords(in folder: URL) -> [ScreenroomSpokenWord] {
         guard let data = try? Data(contentsOf: folder.appendingPathComponent(wordsFileName)) else { return [] }
-        return (try? JSONDecoder().decode([MarksSpokenWord].self, from: data)) ?? []
+        return (try? JSONDecoder().decode([ScreenroomSpokenWord].self, from: data)) ?? []
     }
 
     private static func stamp(_ ms: Int) -> String {

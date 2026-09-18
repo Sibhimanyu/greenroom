@@ -1,5 +1,5 @@
 //
-//  MarksRubric.swift
+//  ScreenroomRubric.swift
 //  Greenroom
 //
 //  What the presentation is being marked against, and what it scored.
@@ -17,14 +17,14 @@
 //     against, so every presentation stores its own copy of the criteria it
 //     was marked on, and nothing later can rewrite them.
 //
-//  That snapshot is also what makes the cohort pass honest: MarksCohort only
+//  That snapshot is also what makes the cohort pass honest: ScreenroomCohort only
 //  compares presentations whose criteria actually match, rather than assuming
 //  that two things both called "Structure" meant the same thing.
 //
 import Foundation
 
 /// One line of a rubric: a thing being judged, and the range it is judged on.
-struct MarksCriterion: Codable, Identifiable, Hashable {
+struct ScreenroomCriterion: Codable, Identifiable, Hashable {
     var id: UUID = UUID()
     var title: String
     /// One line telling the evaluator what this criterion is actually asking,
@@ -35,9 +35,9 @@ struct MarksCriterion: Codable, Identifiable, Hashable {
 }
 
 /// The criteria, as a set. Named so a teacher can keep more than one.
-struct MarksRubric: Codable, Hashable {
+struct ScreenroomRubric: Codable, Hashable {
     var name: String
-    var criteria: [MarksCriterion]
+    var criteria: [ScreenroomCriterion]
 
     /// A starting point, not a recommendation.
     ///
@@ -45,16 +45,16 @@ struct MarksRubric: Codable, Hashable {
     /// does not get filled in while a student is still standing up. These are
     /// the ones that recur in every speaking rubric the author could find;
     /// they are meant to be edited.
-    static let starter = MarksRubric(name: "Presentation", criteria: [
-        MarksCriterion(title: "Structure",
+    static let starter = ScreenroomRubric(name: "Presentation", criteria: [
+        ScreenroomCriterion(title: "Structure",
                        hint: "Did it open, go somewhere, and land?"),
-        MarksCriterion(title: "Clarity",
+        ScreenroomCriterion(title: "Clarity",
                        hint: "Could you follow it without already knowing the subject?"),
-        MarksCriterion(title: "Delivery",
+        ScreenroomCriterion(title: "Delivery",
                        hint: "Pace, volume, eye contact, filler."),
-        MarksCriterion(title: "Evidence",
+        ScreenroomCriterion(title: "Evidence",
                        hint: "Were the claims backed by something?"),
-        MarksCriterion(title: "Response",
+        ScreenroomCriterion(title: "Response",
                        hint: "How they handled questions and the unexpected."),
     ])
 
@@ -64,13 +64,13 @@ struct MarksRubric: Codable, Hashable {
     /// By the criteria's TITLES rather than their ids: a teacher who retypes a
     /// rubric rather than editing it has still made the same rubric, and an
     /// id comparison would quietly refuse to compare a whole term's work.
-    func asksTheSameAs(_ other: MarksRubric) -> Bool {
+    func asksTheSameAs(_ other: ScreenroomRubric) -> Bool {
         criteria.map(\.title) == other.criteria.map(\.title)
     }
 }
 
 /// One criterion's mark on one presentation.
-struct MarksScore: Codable, Identifiable, Hashable {
+struct ScreenroomScore: Codable, Identifiable, Hashable {
     var criterionID: UUID
     /// nil while the evaluator has not marked this line yet - which is a real
     /// state and not a zero. A zero is a judgement; an unmarked line is not.
@@ -81,42 +81,42 @@ struct MarksScore: Codable, Identifiable, Hashable {
 
 /// The rubric a presentation was marked on, with its marks. One `rubric.json`
 /// per presentation folder.
-struct MarksScoring: Codable {
-    var v: Int = MarksScoring.schemaVersion
-    var rubric: MarksRubric
-    var scores: [MarksScore]
+struct ScreenroomScoring: Codable {
+    var v: Int = ScreenroomScoring.schemaVersion
+    var rubric: ScreenroomRubric
+    var scores: [ScreenroomScore]
     var markedAt: Date?
 
     static let schemaVersion = 1
     static let fileName = "rubric.json"
 
-    init(rubric: MarksRubric) {
+    init(rubric: ScreenroomRubric) {
         self.rubric = rubric
-        self.scores = rubric.criteria.map { MarksScore(criterionID: $0.id, score: nil) }
+        self.scores = rubric.criteria.map { ScreenroomScore(criterionID: $0.id, score: nil) }
         self.markedAt = nil
     }
 
     // MARK: Reading the marks
 
-    func score(for criterion: MarksCriterion) -> MarksScore {
+    func score(for criterion: ScreenroomCriterion) -> ScreenroomScore {
         scores.first { $0.criterionID == criterion.id }
-            ?? MarksScore(criterionID: criterion.id, score: nil)
+            ?? ScreenroomScore(criterionID: criterion.id, score: nil)
     }
 
-    mutating func set(_ value: Int?, for criterion: MarksCriterion) {
+    mutating func set(_ value: Int?, for criterion: ScreenroomCriterion) {
         if let index = scores.firstIndex(where: { $0.criterionID == criterion.id }) {
             scores[index].score = value
         } else {
-            scores.append(MarksScore(criterionID: criterion.id, score: value))
+            scores.append(ScreenroomScore(criterionID: criterion.id, score: value))
         }
         markedAt = Date()
     }
 
-    mutating func setComment(_ text: String, for criterion: MarksCriterion) {
+    mutating func setComment(_ text: String, for criterion: ScreenroomCriterion) {
         if let index = scores.firstIndex(where: { $0.criterionID == criterion.id }) {
             scores[index].comment = text
         } else {
-            scores.append(MarksScore(criterionID: criterion.id, score: nil, comment: text))
+            scores.append(ScreenroomScore(criterionID: criterion.id, score: nil, comment: text))
         }
     }
 
@@ -168,9 +168,9 @@ struct MarksScoring: Codable {
         return decoder
     }()
 
-    static func load(in folder: URL) -> MarksScoring? {
+    static func load(in folder: URL) -> ScreenroomScoring? {
         guard let data = try? Data(contentsOf: url(in: folder)) else { return nil }
-        return try? decoder.decode(MarksScoring.self, from: data)
+        return try? decoder.decode(ScreenroomScoring.self, from: data)
     }
 
     @discardableResult
@@ -182,18 +182,18 @@ struct MarksScoring: Codable {
 }
 
 /// The rubric a new presentation starts from: whatever was used last.
-enum MarksRubricStore {
-    private static let key = "marksDefaultRubric"
+enum ScreenroomRubricStore {
+    private static let key = "screenroomDefaultRubric"
 
-    static func current(_ defaults: UserDefaults = .standard) -> MarksRubric {
+    static func current(_ defaults: UserDefaults = .standard) -> ScreenroomRubric {
         guard let data = defaults.data(forKey: key),
-              let rubric = try? JSONDecoder().decode(MarksRubric.self, from: data) else {
+              let rubric = try? JSONDecoder().decode(ScreenroomRubric.self, from: data) else {
             return .starter
         }
         return rubric
     }
 
-    static func save(_ rubric: MarksRubric, to defaults: UserDefaults = .standard) {
+    static func save(_ rubric: ScreenroomRubric, to defaults: UserDefaults = .standard) {
         guard let data = try? JSONEncoder().encode(rubric) else { return }
         defaults.set(data, forKey: key)
     }

@@ -1,31 +1,31 @@
 //
-//  MarksAgent.swift
+//  ScreenroomAgent.swift
 //  Greenroom
 //
 //  Handing the presentation to whatever agent you already run.
 //
-//  Marks' own passes are deliberately small: an on-device model writing
+//  Screenroom' own passes are deliberately small: an on-device model writing
 //  feedback from the notes, and arithmetic over rubrics and timestamps.
 //  That is the right floor - it works on a Mac with nothing configured and it
 //  costs nothing. It is not a ceiling. A teacher who already pays for Claude
 //  Code or Codex has a much larger model a keystroke away, and the material
-//  Marks has assembled is exactly what such a thing is good at reading.
+//  Screenroom has assembled is exactly what such a thing is good at reading.
 //
 //  So: no API keys, no accounts, no model configuration inside Greenroom.
-//  Marks writes a brief and runs the CLI you already have, in your own shell,
+//  Screenroom writes a brief and runs the CLI you already have, in your own shell,
 //  with your own credentials. Whatever you have configured is what runs.
 //
 //  WHAT THE AGENT CAN AND CANNOT SEE, stated plainly because the alternative
 //  is a confident answer about a file nothing opened:
 //
-//   - **It cannot watch the video.** No coding agent takes an .mov. Marks
-//     extracts stills every twenty seconds instead (MarksFrames) and the
+//   - **It cannot watch the video.** No coding agent takes an .mov. Screenroom
+//     extracts stills every twenty seconds instead (ScreenroomFrames) and the
 //     brief tells the agent what that does and does not support. Posture,
 //     reading off a screen, facing the room, what is on the slide: yes.
 //     Gesture and pace from pictures: no, and the brief says not to try.
 //   - **It reads the transcript, not the audio.** Tone and volume are gone.
 //     The countable things - filler words, words per minute, pauses - are
-//     already counted (MarksSpeechMetrics) and handed over as numbers, so
+//     already counted (ScreenroomSpeechMetrics) and handed over as numbers, so
 //     the agent spends its attention on what they mean rather than on
 //     arithmetic it would get wrong.
 //
@@ -33,7 +33,7 @@
 //  the agent writing files. Both CLIs can be told to take a read-only
 //  sandbox, and both are, in the default commands below. An agent that cannot
 //  write cannot damage a folder holding the only copy of a student's
-//  presentation, and Marks saving the output itself means there is nothing to
+//  presentation, and Screenroom saving the output itself means there is nothing to
 //  negotiate about permissions in a non-interactive shell.
 //
 //  Verified against the real binaries rather than their documentation:
@@ -42,7 +42,7 @@
 //
 import Foundation
 
-struct MarksAgentSettings: Codable, Equatable {
+struct ScreenroomAgentSettings: Codable, Equatable {
 
     enum Kind: String, Codable, CaseIterable, Identifiable {
         case claudeCode
@@ -77,16 +77,16 @@ struct MarksAgentSettings: Codable, Equatable {
 
     var kind: Kind = .claudeCode
     var command: String = Kind.claudeCode.defaultCommand
-    /// Off until someone turns it on. Everything else in Marks runs on this
+    /// Off until someone turns it on. Everything else in Screenroom runs on this
     /// Mac; this is the one part that may not, so it is never the default.
     var enabled: Bool = false
 
-    static let key = "marksAgentSettings"
+    static let key = "screenroomAgentSettings"
 
-    static func load(_ defaults: UserDefaults = .standard) -> MarksAgentSettings {
+    static func load(_ defaults: UserDefaults = .standard) -> ScreenroomAgentSettings {
         guard let data = defaults.data(forKey: key),
-              let decoded = try? JSONDecoder().decode(MarksAgentSettings.self, from: data) else {
-            return MarksAgentSettings()
+              let decoded = try? JSONDecoder().decode(ScreenroomAgentSettings.self, from: data) else {
+            return ScreenroomAgentSettings()
         }
         return decoded
     }
@@ -97,7 +97,7 @@ struct MarksAgentSettings: Codable, Equatable {
     }
 }
 
-enum MarksAgent {
+enum ScreenroomAgent {
 
     static let briefFileName = "BRIEF.md"
     static let reportFileName = "agent-report.md"
@@ -110,9 +110,9 @@ enum MarksAgent {
         var errorDescription: String? {
             switch self {
             case .noCommand:
-                return "No agent command is set. Settings \u{2192} Marks."
+                return "No agent command is set. Settings \u{2192} Screenroom."
             case .notFound(let name):
-                return "\(name) is not on this Mac's PATH. Open a Terminal, run `which \(name)`, and put the full path in Settings \u{2192} Marks."
+                return "\(name) is not on this Mac's PATH. Open a Terminal, run `which \(name)`, and put the full path in Settings \u{2192} Screenroom."
             case .failed(let code, let output):
                 let tail = output.split(separator: "\n").suffix(6).joined(separator: "\n")
                 return "The agent exited with code \(code).\n\(tail)"
@@ -129,9 +129,9 @@ enum MarksAgent {
     /// can edit it before running, and the folder ends up holding the
     /// question next to the answer.
     static func brief(presenter: String,
-                      notes: [MarksNote],
-                      metrics: MarksSpeechMetrics?,
-                      scoring: MarksScoring?,
+                      notes: [ScreenroomNote],
+                      metrics: ScreenroomSpeechMetrics?,
+                      scoring: ScreenroomScoring?,
                       frameCount: Int,
                       hasTranscript: Bool) -> String {
         var out: [String] = []
@@ -224,7 +224,7 @@ enum MarksAgent {
     /// live in /usr/local/bin, a Homebrew prefix, or a version manager's
     /// shim - are simply not findable from here. `zsh -lc` reads the user's
     /// own profile, which is the only way to run what they would run.
-    static func run(settings: MarksAgentSettings,
+    static func run(settings: ScreenroomAgentSettings,
                     brief: String,
                     in folder: URL,
                     onOutput: (@MainActor (String) -> Void)? = nil) async throws -> String {

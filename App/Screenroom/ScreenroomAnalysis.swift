@@ -1,10 +1,10 @@
 //
-//  MarksAnalysis.swift
+//  ScreenroomAnalysis.swift
 //  Greenroom
 //
 //  What the second pass produced, and the file it lives in.
 //
-//  Kept apart from the thing that produces it (MarksAnalyst) because the two
+//  Kept apart from the thing that produces it (ScreenroomAnalyst) because the two
 //  have different lifetimes: an analysis written in September must still open
 //  in June, after the model behind it has changed or become unavailable. So
 //  the file records which engine wrote it, and every field is plain text that
@@ -17,8 +17,8 @@
 //
 import Foundation
 
-struct MarksAnalysis: Codable, Hashable {
-    var v: Int = MarksAnalysis.schemaVersion
+struct ScreenroomAnalysis: Codable, Hashable {
+    var v: Int = ScreenroomAnalysis.schemaVersion
     var generatedAt: Date = Date()
 
     /// Which pass wrote this, in the words the report will print.
@@ -36,7 +36,7 @@ struct MarksAnalysis: Codable, Hashable {
     /// observation.
     var patterns: [String] = []
 
-    /// MarksCohort's findings, flattened to text at the moment they were
+    /// ScreenroomCohort's findings, flattened to text at the moment they were
     /// computed. Not recomputed on read: the cohort changes as the term goes
     /// on, and a report handed to a student in week 3 should still say what it
     /// said in week 3.
@@ -60,9 +60,9 @@ struct MarksAnalysis: Codable, Hashable {
         return decoder
     }()
 
-    static func load(in folder: URL) -> MarksAnalysis? {
+    static func load(in folder: URL) -> ScreenroomAnalysis? {
         guard let data = try? Data(contentsOf: url(in: folder)) else { return nil }
-        return try? decoder.decode(MarksAnalysis.self, from: data)
+        return try? decoder.decode(ScreenroomAnalysis.self, from: data)
     }
 
     @discardableResult

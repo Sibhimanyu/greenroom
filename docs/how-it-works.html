@@ -595,7 +595,7 @@
           <div class="bar-labels"><span class="u none">not requested in this release</span><span class="r">OBS does the class capture</span></div>
           <div class="bar"></div>
         </div>
-        <p class="note">For the class itself, OBS holds this permission and does the capture; Greenroom only hands it the identifier of the display to show. Greenroom now does contain screen-capture code of its own — <em>Marks</em> can record a remote presenter from the window they appear in — but Marks is not in this release and nothing in the shipping build can reach it, so macOS never asks. When Marks ships, this becomes a permission Greenroom asks for the first time you point it at a window, and this card will say so.</p>
+        <p class="note">For the class itself, OBS holds this permission and does the capture; Greenroom only hands it the identifier of the display to show. Greenroom now does contain screen-capture code of its own — <em>Screenroom</em> can record a remote presenter from the window they appear in — but Screenroom is not in this release and nothing in the shipping build can reach it, so macOS never asks. When Screenroom ships, this becomes a permission Greenroom asks for the first time you point it at a window, and this card will say so.</p>
       </div>
 
       <div class="scope">
@@ -754,23 +754,23 @@
 </section>
 
 <!-- ============ 6b. MARKS ============ -->
-<section id="Marks">
+<section id="Screenroom">
   <div class="wrap">
     <div class="sec-head">
-      <p class="kicker">06b &middot; Marks</p>
+      <p class="kicker">06b &middot; Screenroom</p>
       <h2>Evaluated presentations, and the one switch that can send one away <span class="soon">Coming soon</span></h2>
-      <p><strong>Marks is not in the current release.</strong> No entry point in the shipping build can reach it and none of what follows happens. It is documented here because the behaviour is what you would be agreeing to when it ships, and because one part of it breaks a promise the rest of this page makes.</p>
-      <p>Marks records a person presenting, lets a teacher type notes timed into the recording, and turns those notes into a report. Almost all of it runs on your Mac and nothing about it touches the network:</p>
+      <p><strong>Screenroom is not in the current release.</strong> No entry point in the shipping build can reach it and none of what follows happens. It is documented here because the behaviour is what you would be agreeing to when it ships, and because one part of it breaks a promise the rest of this page makes.</p>
+      <p>Screenroom records a person presenting, lets a teacher type notes timed into the recording, and turns those notes into a report. Almost all of it runs on your Mac and nothing about it touches the network:</p>
     </div>
 
     <div class="scopes">
       <div class="scope">
         <div class="who">Recording <span>stays here</span></div>
-        <p class="note">A camera, or a window on your screen, written straight to a file in <span class="mono">~/Documents/Greenroom</span>. This is the first thing in Greenroom that asks for <strong>Screen Recording</strong> permission of its own; until Marks ships, that permission still belongs entirely to OBS.</p>
+        <p class="note">A camera, or a window on your screen, written straight to a file in <span class="mono">~/Documents/Greenroom</span>. This is the first thing in Greenroom that asks for <strong>Screen Recording</strong> permission of its own; until Screenroom ships, that permission still belongs entirely to OBS.</p>
       </div>
       <div class="scope">
         <div class="who">Transcription <span>stays here, whichever engine</span></div>
-        <p class="note">Two engines, both local. The default is <strong>whisper.cpp</strong> &mdash; a binary on your Mac reading a file on your Mac &mdash; because it returns what was actually said. Apple's recogniser is the fallback and is built for dictation: it smooths &ldquo;um&rdquo; and &ldquo;you know&rdquo; away before Marks sees them, so with it the filler count is not shown at all rather than shown as a confident zero. Apple's path is pinned to on&#8209;device and <em>refuses to transcribe</em> rather than fall back to Apple's servers, which it would otherwise do silently when a local model is missing.</p>
+        <p class="note">Two engines, both local. The default is <strong>whisper.cpp</strong> &mdash; a binary on your Mac reading a file on your Mac &mdash; because it returns what was actually said. Apple's recogniser is the fallback and is built for dictation: it smooths &ldquo;um&rdquo; and &ldquo;you know&rdquo; away before Screenroom sees them, so with it the filler count is not shown at all rather than shown as a confident zero. Apple's path is pinned to on&#8209;device and <em>refuses to transcribe</em> rather than fall back to Apple's servers, which it would otherwise do silently when a local model is missing.</p>
       </div>
       <div class="scope">
         <div class="who">Fillers, pace, marking drift <span>stays here</span></div>
@@ -785,7 +785,7 @@
     <div class="sec-head">
 
       <h3>The exception: your own agent</h3>
-      <p>Marks can hand a presentation to a command&#8209;line coding agent you already have &mdash; Claude Code, Codex, or any command you write yourself. <strong>This is the one part of Greenroom that can send your material to a third party, and it is the only feature whose destination Greenroom does not control.</strong></p>
+      <p>Screenroom can hand a presentation to a command&#8209;line coding agent you already have &mdash; Claude Code, Codex, or any command you write yourself. <strong>This is the one part of Greenroom that can send your material to a third party, and it is the only feature whose destination Greenroom does not control.</strong></p>
       <p>What that means concretely, when and only when you turn the switch on and press the button:</p>
     </div>
 
@@ -809,7 +809,7 @@
     </div>
 
     <div class="sec-head">
-      <p>The switch is off, the default is that no agent runs, and every other part of Marks works without it.</p>
+      <p>The switch is off, the default is that no agent runs, and every other part of Screenroom works without it.</p>
     </div>
   </div>
 </section>

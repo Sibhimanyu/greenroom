@@ -1,5 +1,5 @@
 //
-//  MarksNote.swift
+//  ScreenroomNote.swift
 //  Greenroom
 //
 //  One evaluator's note, and the file they live in.
@@ -31,7 +31,7 @@
 import Foundation
 
 /// A single timestamped note, as it appears on one line of `notes.jsonl`.
-struct MarksNote: Codable, Identifiable, Hashable {
+struct ScreenroomNote: Codable, Identifiable, Hashable {
 
     /// Schema version of THIS line. See the file note.
     ///
@@ -39,7 +39,7 @@ struct MarksNote: Codable, Identifiable, Hashable {
     /// optional, and a v1 reader ignores a field it does not know - which is
     /// the whole reason the version sits on the line rather than governing
     /// the file. Nothing had to be migrated and no file had to be rewritten.
-    var v: Int = MarksNote.schemaVersion
+    var v: Int = ScreenroomNote.schemaVersion
 
     var id: UUID = UUID()
 
@@ -72,7 +72,7 @@ struct MarksNote: Codable, Identifiable, Hashable {
     static let soleAuthor = "You"
 
     /// The name to display for this note among `others`.
-    func authorLabel(soleAuthor label: String = MarksNote.soleAuthor) -> String {
+    func authorLabel(soleAuthor label: String = ScreenroomNote.soleAuthor) -> String {
         author ?? label
     }
 
@@ -89,7 +89,7 @@ struct MarksNote: Codable, Identifiable, Hashable {
 }
 
 /// Reads and writes a presentation's `notes.jsonl`.
-enum MarksNotesFile {
+enum ScreenroomNotesFile {
 
     static let fileName = "notes.jsonl"
 
@@ -122,7 +122,7 @@ enum MarksNotesFile {
     /// complete between notes - which is what makes "the recording crashed
     /// and I still have my notes" true rather than hoped for.
     @discardableResult
-    static func append(_ note: MarksNote, in folder: URL) -> Bool {
+    static func append(_ note: ScreenroomNote, in folder: URL) -> Bool {
         guard let data = try? encoder.encode(note) else { return false }
         var line = data
         line.append(0x0A)
@@ -145,16 +145,16 @@ enum MarksNotesFile {
     /// A line that will not decode is skipped rather than failing the read:
     /// one truncated last line from a hard kill must not cost the evaluator
     /// the forty notes above it.
-    static func load(in folder: URL) -> [MarksNote] {
+    static func load(in folder: URL) -> [ScreenroomNote] {
         guard let text = try? String(contentsOf: url(in: folder), encoding: .utf8) else { return [] }
         return text.split(separator: "\n").compactMap { line in
             guard let data = line.data(using: .utf8) else { return nil }
-            return try? decoder.decode(MarksNote.self, from: data)
+            return try? decoder.decode(ScreenroomNote.self, from: data)
         }
     }
 }
 
-extension MarksNotesFile {
+extension ScreenroomNotesFile {
 
     /// Folds another evaluator's notes into this presentation's file.
     ///
@@ -171,7 +171,7 @@ extension MarksNotesFile {
     ///
     /// Returns how many were actually new.
     @discardableResult
-    static func merge(_ incoming: [MarksNote], into folder: URL) -> Int {
+    static func merge(_ incoming: [ScreenroomNote], into folder: URL) -> Int {
         let existing = load(in: folder)
         let known = Set(existing.map(\.id))
         let fresh = incoming.filter { !known.contains($0.id) }
@@ -191,7 +191,7 @@ extension MarksNotesFile {
 
     /// Writes the whole file. Only the importer needs this; the live path
     /// appends, so a crash cannot cost more than the note being typed.
-    static func replace(_ notes: [MarksNote], in folder: URL) {
+    static func replace(_ notes: [ScreenroomNote], in folder: URL) {
         try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         let body = notes.compactMap { note -> String? in
             guard let data = try? encoder.encode(note) else { return nil }
@@ -201,17 +201,17 @@ extension MarksNotesFile {
     }
 
     /// Reads a notes file from anywhere - a TA's export, dropped in.
-    static func read(from file: URL) -> [MarksNote] {
+    static func read(from file: URL) -> [ScreenroomNote] {
         guard let text = try? String(contentsOf: file, encoding: .utf8) else { return [] }
         return text.split(separator: "\n").compactMap { line in
             guard let data = line.data(using: .utf8) else { return nil }
-            return try? decoder.decode(MarksNote.self, from: data)
+            return try? decoder.decode(ScreenroomNote.self, from: data)
         }
     }
 
     /// Every distinct author in a set of notes, in the order they first
     /// appear, with unattributed notes folded under one name.
-    static func authors(in notes: [MarksNote], soleAuthor label: String = MarksNote.soleAuthor) -> [String] {
+    static func authors(in notes: [ScreenroomNote], soleAuthor label: String = ScreenroomNote.soleAuthor) -> [String] {
         var seen: [String] = []
         for note in notes {
             let name = note.authorLabel(soleAuthor: label)

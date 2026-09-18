@@ -1,5 +1,5 @@
 //
-//  MarksWhisper.swift
+//  ScreenroomWhisper.swift
 //  Greenroom
 //
 //  Verbatim transcription, through whisper.cpp.
@@ -9,7 +9,7 @@
 //  dictation, where "um, I think, uh, we should" is noise the user did not
 //  mean to type, so it smooths disfluencies out and punctuates what is left.
 //  That is the correct behaviour for dictation and it is fatal here:
-//  MarksSpeechMetrics exists to count exactly the words Apple is removing.
+//  ScreenroomSpeechMetrics exists to count exactly the words Apple is removing.
 //  A filler count taken from an Apple transcript is not an approximation, it
 //  is a measurement of how good Apple is at deleting the evidence, and it
 //  would have read as a confident zero.
@@ -33,7 +33,7 @@
 //
 import Foundation
 
-enum MarksWhisper {
+enum ScreenroomWhisper {
 
     enum Failure: LocalizedError {
         case noBinary
@@ -44,7 +44,7 @@ enum MarksWhisper {
         var errorDescription: String? {
             switch self {
             case .noBinary:
-                return "whisper-cli was not found. Install it with `brew install whisper-cpp`, or point Marks at your own transcriber."
+                return "whisper-cli was not found. Install it with `brew install whisper-cpp`, or point Screenroom at your own transcriber."
             case .noModel:
                 return "No whisper model was found. Download one into ~/Library/Application Support/Greenroom/whisper/ \u{2014} see the Deep tab for the exact command."
             case .noWords:
@@ -55,7 +55,7 @@ enum MarksWhisper {
         }
     }
 
-    /// Where a model can live, in the order Marks looks.
+    /// Where a model can live, in the order Screenroom looks.
     ///
     /// Greenroom's own folder first, so a teacher who followed the
     /// instructions in the window wins over whatever a package manager left
@@ -105,7 +105,7 @@ enum MarksWhisper {
         return nil
     }
 
-    /// The model Marks suggests, and the one line that fetches it.
+    /// The model Screenroom suggests, and the one line that fetches it.
     ///
     /// base.en: 141 MB, and on Apple silicon it transcribes a ten-minute talk
     /// in well under a minute. small.en is noticeably better on accented
@@ -126,7 +126,7 @@ enum MarksWhisper {
     static func transcribe(wav: URL,
                            model: URL,
                            language: String,
-                           onOutput: (@MainActor (String) -> Void)? = nil) async throws -> [MarksSpokenWord] {
+                           onOutput: (@MainActor (String) -> Void)? = nil) async throws -> [ScreenroomSpokenWord] {
         let base = wav.deletingPathExtension()
         let jsonURL = base.appendingPathExtension("json")
         try? FileManager.default.removeItem(at: jsonURL)
@@ -150,7 +150,7 @@ enum MarksWhisper {
         try process.run()
 
         // Both pipes drained, because whisper is chatty on stderr and a full
-        // buffer there stops the process dead - the same deadlock MarksAgent
+        // buffer there stops the process dead - the same deadlock ScreenroomAgent
         // has a comment about.
         async let out = drain(output.fileHandleForReading, onOutput: onOutput)
         async let err = drain(errors.fileHandleForReading, onOutput: onOutput)
@@ -173,7 +173,7 @@ enum MarksWhisper {
     /// whisper.cpp's JSON: `transcription` is an array of segments, each with
     /// `offsets.from`/`.to` in milliseconds and a `text`. With `-ml 1 -sow`
     /// each one is a word, arriving with its leading space still attached.
-    static func parse(_ data: Data) -> [MarksSpokenWord] {
+    static func parse(_ data: Data) -> [ScreenroomSpokenWord] {
         guard let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let segments = root["transcription"] as? [[String: Any]] else { return [] }
 
@@ -187,7 +187,7 @@ enum MarksWhisper {
             // down.
             guard !text.isEmpty else { return nil }
             let to = offsets["to"] as? Int ?? from
-            return MarksSpokenWord(text: text, atMs: from, durationMs: max(0, to - from))
+            return ScreenroomSpokenWord(text: text, atMs: from, durationMs: max(0, to - from))
         }
     }
 
@@ -198,7 +198,7 @@ enum MarksWhisper {
         throw Failure.noBinary
     }
 
-    /// Resolved through a LOGIN shell for the reason MarksAgent explains: a
+    /// Resolved through a LOGIN shell for the reason ScreenroomAgent explains: a
     /// GUI app inherits almost no PATH, so a Homebrew binary is simply not
     /// findable from here without reading the user's own profile.
     static var resolvedBinary: String? {

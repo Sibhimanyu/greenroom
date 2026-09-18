@@ -1,5 +1,5 @@
 //
-//  MarksAnalyst.swift
+//  ScreenroomAnalyst.swift
 //  Greenroom
 //
 //  The second pass: reads what the evaluator wrote and turns it into
@@ -60,7 +60,7 @@ struct GeneratedFeedback {
 }
 #endif
 
-enum MarksAnalyst {
+enum ScreenroomAnalyst {
 
     /// Whether the on-device model can run here, and why not when it cannot.
     /// Mirrors FoundationModelsDetector so Settings and this window say the
@@ -84,7 +84,7 @@ enum MarksAnalyst {
                 }
             }
         }
-        return (false, "Marks needs macOS 26 for the written pass")
+        return (false, "Screenroom needs macOS 26 for the written pass")
         #else
         return (false, "this build has no on-device model")
         #endif
@@ -99,14 +99,14 @@ enum MarksAnalyst {
     ///
     /// `consistency` comes in already computed rather than being worked out
     /// here: it is arithmetic over the whole cohort and has nothing to do with
-    /// which engine writes the prose. See MarksCohort for why those findings
+    /// which engine writes the prose. See ScreenroomCohort for why those findings
     /// are deliberately kept away from the model.
-    static func analyse(notes: [MarksNote],
-                        scoring: MarksScoring?,
+    static func analyse(notes: [ScreenroomNote],
+                        scoring: ScreenroomScoring?,
                         presenter: String,
-                        consistency: [String]) async -> MarksAnalysis {
+                        consistency: [String]) async -> ScreenroomAnalysis {
         guard !notes.isEmpty else {
-            return MarksAnalysis(
+            return ScreenroomAnalysis(
                 engine: countedEngine,
                 summary: "No notes were taken during this presentation, so there is nothing to report back.",
                 consistency: consistency)
@@ -148,10 +148,10 @@ enum MarksAnalyst {
     """
 
     @available(macOS 26.0, *)
-    private static func writtenPass(notes: [MarksNote],
-                                    scoring: MarksScoring?,
+    private static func writtenPass(notes: [ScreenroomNote],
+                                    scoring: ScreenroomScoring?,
                                     presenter: String,
-                                    consistency: [String]) async -> MarksAnalysis? {
+                                    consistency: [String]) async -> ScreenroomAnalysis? {
         let session = LanguageModelSession(instructions: instructions)
         do {
             let response = try await session.respond(
@@ -161,7 +161,7 @@ enum MarksAnalyst {
             let content = response.content
             let summary = content.summary.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !summary.isEmpty else { return nil }
-            return MarksAnalysis(
+            return ScreenroomAnalysis(
                 engine: writtenEngine,
                 summary: summary,
                 strengths: clean(content.strengths),
@@ -177,7 +177,7 @@ enum MarksAnalyst {
     }
 
     @available(macOS 26.0, *)
-    private static func prompt(notes: [MarksNote], scoring: MarksScoring?, presenter: String) -> String {
+    private static func prompt(notes: [ScreenroomNote], scoring: ScreenroomScoring?, presenter: String) -> String {
         var lines: [String] = []
         lines.append("Student: \(presenter.isEmpty ? "the speaker" : presenter)")
         if let last = notes.map(\.atMs).max() {
@@ -216,9 +216,9 @@ enum MarksAnalyst {
     /// should still produce a report, and because a teacher deciding whether
     /// to trust the written pass benefits from having seen what the honest
     /// floor looks like.
-    static func countedPass(notes: [MarksNote],
-                            scoring: MarksScoring?,
-                            consistency: [String]) -> MarksAnalysis {
+    static func countedPass(notes: [ScreenroomNote],
+                            scoring: ScreenroomScoring?,
+                            consistency: [String]) -> ScreenroomAnalysis {
         let span = notes.map(\.atMs).max() ?? 0
         var patterns: [String] = []
 
@@ -254,19 +254,19 @@ enum MarksAnalyst {
                 workOn.append("\(weakest.0) was the lowest-scoring line on the rubric.")
             }
             if let strongest = lines.max(by: { $0.1 < $1.1 }), strongest.1 >= 0.8 {
-                return MarksAnalysis(engine: countedEngine, summary: summary,
+                return ScreenroomAnalysis(engine: countedEngine, summary: summary,
                                      strengths: ["\(strongest.0) was the highest-scoring line on the rubric."],
                                      workOn: workOn, patterns: patterns, consistency: consistency)
             }
         }
-        return MarksAnalysis(engine: countedEngine, summary: summary,
+        return ScreenroomAnalysis(engine: countedEngine, summary: summary,
                              workOn: workOn, patterns: patterns, consistency: consistency)
     }
 
     /// The longest run of presentation with no note in it, measured between
     /// consecutive notes. Not from zero to the first note: an evaluator
     /// settling in is not a silence worth reporting.
-    static func longestGap(in notes: [MarksNote]) -> (startMs: Int, endMs: Int, lengthMs: Int)? {
+    static func longestGap(in notes: [ScreenroomNote]) -> (startMs: Int, endMs: Int, lengthMs: Int)? {
         let ordered = notes.map(\.atMs).sorted()
         guard ordered.count >= 2 else { return nil }
         var best: (Int, Int, Int)?

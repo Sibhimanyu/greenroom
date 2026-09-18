@@ -114,28 +114,87 @@ struct ScreenroomAnalysisPane: View {
         .padding(32)
     }
 
-    /// A named step and a bar, never a bare spinner - DESIGN.md's waiting rule.
-    /// The tail of the tool's own output sits under it, because whisper and an
-    /// agent both go quiet for minutes and a still window is indistinguishable
-    /// from a hung one.
+    /// What a wait should say.
+    ///
+    /// The first version was a determinate bar and a step name. On the agent
+    /// step the bar sat at zero for two minutes, because an agent reports
+    /// nothing until it answers - and a bar that does not move is not a
+    /// progress bar, it is a picture of a hang. Reported as exactly that.
+    ///
+    /// So: a bar only where something can fill it, a spinner where nothing
+    /// can, and three things that are always true either way - which step of
+    /// how many, how long it has been going, and the last complete line the
+    /// tool itself printed. Plus a way out.
     private var running: some View {
-        VStack(spacing: 14) {
-            ProgressView(value: review.progress)
-                .progressViewStyle(.linear)
-                .frame(maxWidth: 280)
-            Text(review.step.isEmpty ? "Working\u{2026}" : review.step)
-                .font(.callout.weight(.medium))
+        VStack(spacing: 16) {
+            VStack(spacing: 10) {
+                if review.isDeterminate {
+                    ProgressView(value: review.progress)
+                        .progressViewStyle(.linear)
+                        .frame(width: 280)
+                } else {
+                    ProgressView()
+                        .progressViewStyle(.circular)
+                        .controlSize(.small)
+                }
+
+                Text(review.step.isEmpty ? "Working\u{2026}" : review.step)
+                    .font(.title3.weight(.medium))
+
+                HStack(spacing: 6) {
+                    if review.stepCount > 0 {
+                        Text("Step \(review.stepIndex) of \(review.stepCount)")
+                        Text("\u{00B7}")
+                    }
+                    Text(Self.clock(review.elapsed))
+                        .monospacedDigit()
+                    if review.isDeterminate, review.progress > 0 {
+                        Text("\u{00B7}")
+                        Text("\(Int(review.progress * 100))%").monospacedDigit()
+                    }
+                }
+                .font(.system(size: 11, design: .monospaced))
+                .foregroundStyle(.tertiary)
+            }
+
             if !review.log.isEmpty {
-                Text(review.log.suffix(280))
+                // The tool's own words, and only whole lines of them. This
+                // used to be the last 280 CHARACTERS of stdout, which is the
+                // answer being written - so it showed half-sentences of the
+                // report itself and read as corruption.
+                Text(review.log)
                     .font(.system(size: 10, design: .monospaced))
                     .foregroundStyle(.tertiary)
                     .multilineTextAlignment(.center)
                     .lineLimit(3)
-                    .frame(maxWidth: 420)
+                    .truncationMode(.head)
+                    .frame(maxWidth: 460)
+                    .textSelection(.enabled)
+            }
+
+            Button("Stop", role: .destructive) { review.cancel() }
+                .controlSize(.small)
+                .disabled(!review.isCancellable)
+                .help("Stops the run and closes whatever it started.")
+
+            if review.elapsed > 180 {
+                // Said only once it is genuinely long, so it reads as help
+                // rather than as an excuse offered up front.
+                Text("Longer than three minutes usually means a big recording or a busy agent. Stopping is safe \u{2014} nothing is written until it finishes.")
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: 380)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding(32)
+    }
+
+    static func clock(_ seconds: TimeInterval) -> String {
+        let s = max(0, Int(seconds))
+        return s < 60 ? "\(s)s" : String(format: "%dm %02ds", s / 60, s % 60)
     }
 
     private func analysed(_ analysis: ScreenroomAnalysis) -> some View {

@@ -149,6 +149,7 @@ enum ScreenroomTranscriber {
                            into folder: URL,
                            settings: ScreenroomTranscriberSettings,
                            onProgress: (@MainActor (Double) -> Void)? = nil,
+                           onStart: ((Process) -> Void)? = nil,
                            onOutput: (@MainActor (String) -> Void)? = nil) async throws -> [ScreenroomSpokenWord] {
         let durationMs = Int(((try? await AVURLAsset(url: recording).load(.duration))?.seconds ?? 0) * 1000)
 
@@ -166,7 +167,8 @@ enum ScreenroomTranscriber {
             // whisper names languages without a region.
             let language = String(settings.language.prefix(2))
             let words = try await ScreenroomWhisper.transcribe(
-                wav: wav, model: model, language: language, onOutput: onOutput)
+                wav: wav, model: model, language: language,
+                onStart: onStart, onOutput: onOutput)
             try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
             write(words, in: folder, durationMs: durationMs,
                   engine: "whisper.cpp (\(model.lastPathComponent))", verbatim: true)

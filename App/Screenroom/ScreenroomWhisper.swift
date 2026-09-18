@@ -126,6 +126,7 @@ enum ScreenroomWhisper {
     static func transcribe(wav: URL,
                            model: URL,
                            language: String,
+                           onStart: ((Process) -> Void)? = nil,
                            onOutput: (@MainActor (String) -> Void)? = nil) async throws -> [ScreenroomSpokenWord] {
         let base = wav.deletingPathExtension()
         let jsonURL = base.appendingPathExtension("json")
@@ -148,11 +149,14 @@ enum ScreenroomWhisper {
         process.standardOutput = output
         process.standardError = errors
         try process.run()
+        onStart?(process)
 
         // Both pipes drained, because whisper is chatty on stderr and a full
         // buffer there stops the process dead - the same deadlock ScreenroomAgent
         // has a comment about.
-        async let out = drain(output.fileHandleForReading, onOutput: onOutput)
+        // stderr only: whisper's progress goes there, and stdout is the
+        // transcript itself.
+        async let out = drain(output.fileHandleForReading, onOutput: nil)
         async let err = drain(errors.fileHandleForReading, onOutput: onOutput)
         _ = await out
         let problems = await err

@@ -231,6 +231,7 @@ enum ScreenroomAgent {
     static func run(settings: ScreenroomAgentSettings,
                     brief: String,
                     in folder: URL,
+                    onStart: ((Process) -> Void)? = nil,
                     onOutput: (@MainActor (String) -> Void)? = nil) async throws -> String {
         let command = settings.command.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !command.isEmpty else { throw Failure.noCommand }
@@ -250,17 +251,25 @@ enum ScreenroomAgent {
         process.standardError = errors
 
         try process.run()
+        // Handed out so a stop can reach it. A Task cancellation alone would
+        // leave the CLI running, still spending tokens, still holding the
+        // folder open.
+        onStart?(process)
 
         // Written and closed before reading: these agents do not begin until
         // stdin is at EOF, so holding it open deadlocks the whole thing.
         input.fileHandleForWriting.write(Data(brief.utf8))
         try? input.fileHandleForWriting.close()
 
-        // Read both pipes concurrently. Draining only stdout deadlocks the
-        // moment a chatty agent fills the stderr buffer - which both of these
-        // do, since progress goes to stderr.
-        async let collected = drain(output.fileHandleForReading, onOutput: onOutput)
-        async let problems = drain(errors.fileHandleForReading, onOutput: nil)
+        // Read both pipes concurrently. Draining only one deadlocks the
+        // moment the other's buffer fills, which a chatty agent does quickly.
+        //
+        // STDERR is what gets shown, not stdout. Progress goes to stderr;
+        // stdout is the ANSWER. Streaming stdout put the JSON being written
+        // on screen a character at a time - the report's own sentences,
+        // truncated mid-word, presented as if they were progress.
+        async let collected = drain(output.fileHandleForReading, onOutput: nil)
+        async let problems = drain(errors.fileHandleForReading, onOutput: onOutput)
 
         let text = await collected
         let errorText = await problems

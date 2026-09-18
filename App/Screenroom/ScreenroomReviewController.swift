@@ -51,11 +51,66 @@ final class ScreenroomReviewController: ObservableObject {
     @Published private(set) var step = ""
     @Published private(set) var progress: Double = 0
 
+    /// Where this step sits in the run, so a wait has a shape: "3 of 4" says
+    /// more about how much is left than any bar can when the bar cannot move.
+    @Published private(set) var stepIndex = 0
+    @Published private(set) var stepCount = 0
+
+    /// False for a step that genuinely cannot report progress - an agent
+    /// thinking, or Apple's recogniser working through a file. A determinate
+    /// bar pinned at zero for two minutes is not a progress bar, it is a
+    /// picture of a hang, and that is exactly how it was read.
+    @Published private(set) var isDeterminate = true
+
+    /// Seconds since the run started, ticked once a second. The single most
+    /// useful "is this stuck" signal there is, and the cheapest.
+    @Published private(set) var elapsed: TimeInterval = 0
+    private var elapsedTimer: Timer?
+
+    /// The whole run, so it can be stopped.
+    private var runTask: Task<Void, Never>?
+    /// The child process, if a step has one. Cancelling a Task does not kill
+    /// a CLI: whisper would keep burning a core and an agent would keep
+    /// spending tokens on an answer nobody is waiting for.
+    private var childProcess: Process?
+
+    var isCancellable: Bool { runTask != nil }
+
     /// What the outside tools are saying as they say it. whisper prints its
     /// progress and agents go quiet for minutes at a time; a window that
     /// showed nothing until the end would be indistinguishable from one that
     /// had hung.
+    /// The last few COMPLETE lines the running tool printed.
+    ///
+    /// Lines rather than a character count: taking the last 280 characters cut
+    /// words in half and showed the middle of whatever was being written, which
+    /// reads as corruption rather than as progress.
     @Published private(set) var log = ""
+
+    /// The raw stream, kept apart from what is shown.
+    ///
+    /// Folding the two together was a bug: the displayed value is three lines
+    /// joined WITHOUT a trailing newline, so the next chunk to arrive was
+    /// concatenated onto the end of the last line and the two ran together.
+    /// Caught by a test, not by looking.
+    private var logBuffer = ""
+
+    private func note(_ piece: String) {
+        logBuffer += piece
+        // Bounded: whisper prints a line per segment and would otherwise grow
+        // this without limit over a long recording.
+        if logBuffer.count > 4_000 { logBuffer = String(logBuffer.suffix(2_000)) }
+        let lines = logBuffer
+            .components(separatedBy: .newlines)
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+        log = lines.suffix(3).joined(separator: "\n")
+    }
+
+    private func clearLog() {
+        logBuffer = ""
+        log = ""
+    }
 
     /// What just happened, in a sentence, under the actions that caused it.
     /// DESIGN.md asks that a result land on the surface the user was already
@@ -221,27 +276,61 @@ final class ScreenroomReviewController: ObservableObject {
     /// each part, so a degraded run is visible rather than silent.
     func analyse() async {
         guard let selected, !isAnalysing else { return }
+
+        let task = Task { await run(selected) }
+        runTask = task
+        await task.value
+        runTask = nil
+    }
+
+    /// Stops the run and kills whatever it started.
+    ///
+    /// Both, and in that order. Cancelling the Task alone leaves the CLI
+    /// running - whisper burning a core, an agent still spending tokens on an
+    /// answer nobody will read - because a child process knows nothing about
+    /// Swift concurrency.
+    func cancel() {
+        childProcess?.terminate()
+        childProcess = nil
+        runTask?.cancel()
+        runTask = nil
+        step = "Stopping\u{2026}"
+    }
+
+    private func run(_ selected: ScreenroomPresentation) async {
         isAnalysing = true
-        log = ""
+        clearLog()
         status = nil
-        defer { isAnalysing = false; step = ""; progress = 0 }
+        startClock()
+
+        // Counted up front so the readout can say "2 of 4" rather than
+        // leaving the length of the wait a mystery.
+        stepCount = (selected.recording != nil ? 2 : 0) + 2
+        stepIndex = 0
+        defer {
+            isAnalysing = false
+            step = ""
+            progress = 0
+            stepIndex = 0
+            isDeterminate = true
+            childProcess = nil
+            stopClock()
+        }
 
         if let recording = selected.recording {
             await transcribe(recording, into: selected.folder)
+            if Task.isCancelled { status = "Stopped."; return }
             await takeStills(recording, into: selected.folder)
+            if Task.isCancelled { status = "Stopped."; return }
         }
 
-        step = "Comparing against the group"
-        progress = 0
+        begin("Comparing against the group", determinate: true)
         recomputeCohort()
 
         let consistency = cohortFindings.map { "\($0.headline). \($0.detail)" }
         let produced = await write(consistency: consistency, for: selected)
+        if Task.isCancelled { status = "Stopped."; return }
 
-        // The rubric is marked BY the pass, so its marks land here rather
-        // than being typed in beforehand. Saved as rubric.json exactly as a
-        // typed one was, so the cohort comparison and the report read it
-        // without knowing the difference - except that markedBy says who.
         if !produced.marks.isEmpty {
             scoring.apply(produced.marks.map { ($0.title, $0.score, $0.reason) },
                           by: produced.engine)
@@ -257,11 +346,36 @@ final class ScreenroomReviewController: ObservableObject {
         refreshSelectedRow()
     }
 
+    /// Moves to the next step, naming it and saying whether its bar can move.
+    private func begin(_ name: String, determinate: Bool) {
+        stepIndex += 1
+        step = name
+        progress = 0
+        isDeterminate = determinate
+        clearLog()
+    }
+
+    private func startClock() {
+        elapsed = 0
+        elapsedTimer?.invalidate()
+        let started = Date()
+        elapsedTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
+            Task { @MainActor in self?.elapsed = Date().timeIntervalSince(started) }
+        }
+    }
+
+    private func stopClock() {
+        elapsedTimer?.invalidate()
+        elapsedTimer = nil
+    }
+
     // MARK: The stages
 
     private func transcribe(_ recording: URL, into folder: URL) async {
-        step = "Transcribing"
-        progress = 0
+        let whisper = ScreenroomTranscriberSettings.whisperIsReady
+        // whisper reports how far through the file it is; Apple's recogniser
+        // does not until it finishes.
+        begin(whisper ? "Transcribing with whisper" : "Transcribing", determinate: whisper)
         do {
             _ = try await ScreenroomTranscriber.transcribe(
                 recording: recording, into: folder,
@@ -278,8 +392,7 @@ final class ScreenroomReviewController: ObservableObject {
     }
 
     private func takeStills(_ recording: URL, into folder: URL) async {
-        step = "Taking stills"
-        progress = 0
+        begin("Taking stills", determinate: true)
         do {
             let frames = try await ScreenroomFrames.extract(
                 from: recording, into: folder,
@@ -298,8 +411,10 @@ final class ScreenroomReviewController: ObservableObject {
     private func write(consistency: [String], for presentation: ScreenroomPresentation) async -> ScreenroomAnalysis {
         let settings = ScreenroomAgentSettings.load()
         if settings.enabled, !settings.command.trimmingCharacters(in: .whitespaces).isEmpty {
-            step = "Your agent is reading it"
-            progress = 0
+            // An agent reports nothing until it answers, so the bar is not
+            // pretended into existence. Elapsed time and its own last line
+            // carry the wait instead.
+            begin("Your agent is reading it", determinate: false)
             let brief = ScreenroomAgent.brief(presenter: presentation.presenter,
                                               notes: notes,
                                               metrics: metrics,
@@ -310,7 +425,10 @@ final class ScreenroomReviewController: ObservableObject {
             do {
                 let output = try await ScreenroomAgent.run(
                     settings: settings, brief: brief, in: presentation.folder,
-                    onOutput: { [weak self] piece in self?.log += piece })
+                    onStart: { [weak self] process in
+                        Task { @MainActor in self?.childProcess = process }
+                    },
+                    onOutput: { [weak self] piece in self?.note(piece) })
                 ScreenroomAgent.writeReport(output, in: presentation.folder)
                 return ScreenroomAgent.analysis(from: output,
                                                 engine: settings.kind.label,
@@ -323,8 +441,7 @@ final class ScreenroomReviewController: ObservableObject {
             }
         }
 
-        step = "Reading the notes"
-        progress = 0
+        begin("Reading the notes", determinate: false)
         return await ScreenroomAnalyst.analyse(notes: notes,
                                                scoring: scoring,
                                                presenter: presentation.presenter,

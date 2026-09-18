@@ -923,3 +923,38 @@ The grade is the teacher's responsibility and currently nothing lets them
 change one. Deliberate for now, since the point of the change was to remove the
 form, but a teacher who thinks the engine's 3 should be a 4 has no recourse
 short of editing `rubric.json` by hand.
+
+## The waiting state was lying (2026-09-18)
+
+Reported from two screenshots, and both problems were real.
+
+**The bar sat at zero.** On the agent step it was a determinate bar with
+nothing to fill it, because an agent reports nothing at all until it answers.
+A bar that does not move is not a progress bar, it is a picture of a hang, and
+that is exactly how it read.
+
+Now: determinate where something can fill it (whisper reports how far through
+the file it is; stills report done-of-total), indeterminate where nothing can
+(an agent thinking, Apple's recogniser working). Plus three things that are
+true either way - **which step of how many**, **how long it has been going**,
+and **the last complete line the tool itself printed**.
+
+**It was showing stdout.** The log tail was the agent's standard output, which
+is the *answer*: the report's own sentences appeared a character at a time,
+truncated mid-word, presented as progress. Progress goes to **stderr** in both
+whisper and the agent CLIs. Swapped, in both.
+
+It also kept the last 280 characters rather than the last few lines, which cut
+words in half. Whole lines now - and the raw stream is kept apart from what is
+shown, because folding them together glued each arriving chunk onto the end of
+the displayed line. That one was caught by a test rather than by looking.
+
+**There was no way out.** There is a Stop now, and it terminates the child
+process as well as cancelling the task. Both, in that order: a cancelled Swift
+Task leaves the CLI running - whisper burning a core, an agent still spending
+tokens on an answer nobody will read - because a child process knows nothing
+about Swift concurrency. Verified: a cancelled Task leaves it alive, terminate()
+ends it, and the stderr reader finishes rather than hanging when it does.
+
+Nothing is written until a run finishes, so stopping is safe. After three
+minutes the pane says so, rather than offering the excuse up front.

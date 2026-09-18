@@ -28,6 +28,11 @@ final class ScreenroomReviewController: ObservableObject {
 
     @Published private(set) var isAnalysing = false
 
+    /// Bumped each time a pass finishes, so the window can open the report
+    /// on a NEW analysis without also opening it every time a presentation
+    /// that already had one is selected.
+    @Published private(set) var analysisRuns = 0
+
     /// The annotated video is the one thing in Screenroom that re-encodes, so it
     /// is the one thing that takes minutes. Its progress is reported rather
     /// than spun at - DESIGN.md asks that a wait say how much is left.
@@ -58,9 +63,13 @@ final class ScreenroomReviewController: ObservableObject {
     /// What just happened, in a sentence, under the actions that caused it.
     /// DESIGN.md asks that a result land on the surface the user was already
     /// watching rather than in a log somewhere else.
-    @Published private(set) var status: String?
+    @Published fileprivate(set) var status: String?
 
     let player = AVPlayer()
+
+    /// One instance. The review window and the report window are two views
+    /// of one presentation, and SwiftUI scenes do not otherwise share state.
+    static let shared = ScreenroomReviewController()
 
     init() {
         _ = ScreenroomDefaults.migrated
@@ -194,6 +203,7 @@ final class ScreenroomReviewController: ObservableObject {
 
         produced.save(in: selected.folder)
         analysis = produced
+        analysisRuns += 1
         status = "Read \(notes.count) \(notes.count == 1 ? "note" : "notes") \u{2014} \(produced.engine)."
     }
 
@@ -372,4 +382,22 @@ extension ScreenroomReviewController {
 
     /// The one line that fetches a model, for the teacher to paste.
     var whisperDownloadCommand: String { ScreenroomWhisper.downloadCommand }
+}
+
+extension ScreenroomReviewController {
+
+    /// The report as text, for whichever audience. Built on demand rather
+    /// than held, so it can never be stale against the notes on screen.
+    func reportMarkdown(for audience: ScreenroomReport.Audience) -> String? {
+        guard let selected else { return nil }
+        return ScreenroomReport.markdown(presenter: selected.presenter,
+                                         presentedAt: selected.presentedAt,
+                                         notes: notes,
+                                         scoring: scoring.markedCount > 0 ? scoring : nil,
+                                         analysis: analysis,
+                                         for: audience)
+    }
+
+    /// Says what just happened, on whichever surface is watching.
+    func report(_ message: String) { status = message }
 }

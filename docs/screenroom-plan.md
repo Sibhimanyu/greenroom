@@ -719,3 +719,65 @@ What both had in common is worth writing down, because it is the failure mode
 of building fast: each was a reasonable idea, implemented well, verified, and
 of no use to the person the tool is for. The test that would have caught them
 earlier is not "is this good" but "who asked".
+
+## The report becomes a dashboard (2026-09-18)
+
+It was living in the 320pt notes column, which is the right width for a queue
+of notes and the wrong one for a document somebody is about to send a student:
+the summary wrapped to nine lines, the rubric was a list of numbers, and the
+speech figures were four sentences of prose carrying numbers a chart answers
+in a glance.
+
+`ScreenroomReportView` is its own window: the four headline numbers, the
+summary, what worked and what to change, the rubric as meters, pace over time,
+filler words, the notes on a time axis, every note, the consistency block, and
+a provenance line saying which engine wrote which part. It opens itself when a
+pass finishes, because that is the point of pressing the button.
+
+### Every chart is one series
+
+Not a limitation - the subject. This is one student's presentation, so a
+categorical palette would be colouring rows by their position in a list. One
+series means one hue, no legend (the heading names it), and the de-emphasis
+grey for everything that is context rather than data. Nothing here needs a
+colourblind-safety pass because nothing here asks a reader to tell two colours
+apart.
+
+Three things are deliberately **not** charts:
+
+- The four headline numbers are **stat tiles**. A one-bar bar chart is the
+  classic way to turn a number into a worse number.
+- A rubric line is a ratio against a limit, so it is a **meter** - a filled
+  track - not a bar on a shared axis. Five meters at five different maxima on
+  one axis would compare things that are not comparable. The group's average
+  appears as a hairline on the track: one bar against a baseline, which is
+  what "how does this compare" actually asks, rather than a second series.
+- The notes are **marks on a time axis**. They have position, not magnitude.
+
+### Colour
+
+`Brand.fill` (the logo's lime) for fills, `Brand.text` for anything green with
+words in it, grey for context, and **no amber anywhere** - amber means "leaves
+your Mac" in this app, and a rubric line is not network traffic. The
+consistency findings carry an icon and a label rather than a warning colour,
+which is what a status mark is supposed to do regardless.
+
+`Brand` gained `text` and `fill` in this change, which starts closing the
+first item on DESIGN.md's drift list: green text was using the asset-catalog
+accent (`#5FA83C`, retired) at about 3.3 contrast. `Brand.text` is
+`--brand-green` #2F6118 in light mode and the lime in dark mode, because the
+rule is about the background rather than about the colour.
+
+### Export asks where the file goes
+
+Writing `report.md` into the folder is right for a file the app owns and wrong
+for a document about to be sent to a student. Every export now opens a save
+panel, defaulting to the presentation's folder and to a name built from the
+student's own: `Priya Raman - 18 Sep 2026.pdf`.
+
+PDF is rendered from the dashboard itself through `ImageRenderer`, not laid
+out a second time - a second layout is a second thing to keep in step, and the
+point of the PDF is that it is what is on screen. Pagination slices the tall
+render a page at a time; verified by rendering a long view, reading the pages
+back with `CGPDFDocument` and measuring the ink on each, so "three pages" is
+three pages with content on them rather than one page and two blanks.

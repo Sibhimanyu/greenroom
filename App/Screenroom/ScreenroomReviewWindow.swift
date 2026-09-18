@@ -20,7 +20,8 @@ import AppKit
 import SwiftUI
 
 struct ScreenroomReviewWindow: View {
-    @StateObject private var review = ScreenroomReviewController()
+    @Environment(\.openWindow) private var openWindow
+    @ObservedObject private var review = ScreenroomReviewController.shared
     @State private var tab: Tab = .notes
 
     private enum Tab: String, CaseIterable {
@@ -48,6 +49,12 @@ struct ScreenroomReviewWindow: View {
         .frame(minWidth: 1_060, minHeight: 620)
         .tint(Brand.green)
         .onAppear { review.refresh() }
+        // The report is the point of pressing the button, so it opens itself.
+        // Watching a counter rather than `analysis` so that merely selecting a
+        // presentation that already has one does not throw a window at you.
+        .onChange(of: review.analysisRuns) { _, _ in
+            openWindow(id: "screenroom-report")
+        }
     }
 
     // MARK: Which presentation
@@ -110,7 +117,7 @@ struct ScreenroomReviewWindow: View {
                 }
                 if presentation.hasReport {
                     Image(systemName: "doc.text.fill")
-                        .foregroundStyle(Brand.green)
+                        .foregroundStyle(Brand.text)
                         .help("A report has been written for this one.")
                 }
             }
@@ -178,6 +185,14 @@ struct ScreenroomReviewWindow: View {
                 .help(ScreenroomAnalyst.modelAvailability.available
                       ? "Turns the notes into feedback for the speaker, on this Mac."
                       : "Apple Intelligence is unavailable, so this counts what is in the notes instead of writing about them.")
+
+                Button {
+                    openWindow(id: "screenroom-report")
+                } label: {
+                    Label("Open the report", systemImage: "chart.bar.doc.horizontal")
+                }
+                .disabled(review.selected == nil)
+                .help("The full report: the marks, the pace, the fillers and every note, in one place.")
 
                 // One Export menu rather than a button per output. The
                 // evaluator is answering one question - how am I handing this
@@ -278,7 +293,7 @@ struct ScreenroomReviewWindow: View {
                             Text(note.offsetLabel)
                                 .font(.system(size: 10, weight: .semibold, design: .monospaced))
                                 .monospacedDigit()
-                                .foregroundStyle(Brand.green)
+                                .foregroundStyle(Brand.text)
                             Text(note.text)
                                 .font(.callout)
                                 .foregroundStyle(.primary)

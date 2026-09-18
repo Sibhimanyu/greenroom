@@ -262,7 +262,7 @@ struct ScreenroomWindow: View {
             Text(note.offsetLabel)
                 .font(.system(size: 10, weight: .semibold, design: .monospaced))
                 .monospacedDigit()
-                .foregroundStyle(Brand.green)
+                .foregroundStyle(Brand.text)
             Text(note.text)
                 .font(.callout)
                 .textSelection(.enabled)

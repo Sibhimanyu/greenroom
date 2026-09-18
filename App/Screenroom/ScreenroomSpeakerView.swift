@@ -82,7 +82,7 @@ struct ScreenroomSpeakerView: View {
                             Text(note.offsetLabel)
                                 .font(.system(size: 12, weight: .semibold, design: .monospaced))
                                 .monospacedDigit()
-                                .foregroundStyle(Brand.green)
+                                .foregroundStyle(Brand.text)
                             Text(note.text)
                                 .font(.title3)
                                 .fixedSize(horizontal: false, vertical: true)

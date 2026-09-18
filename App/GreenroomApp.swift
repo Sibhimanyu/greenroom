@@ -7,6 +7,7 @@
 //  editing a setting there is instantly reflected in the main window's
 //  behavior, not a separate copy.
 //
+import AppKit
 import SwiftUI
 import Sparkle
 
@@ -27,6 +28,34 @@ enum AppLinks {
 /// (reported live, twice). An explicit .tint outranks that negotiation.
 enum Brand {
     static let green = Color("AccentColor")
+
+    /// Green that is allowed to be TEXT.
+    ///
+    /// `Brand.green` is the asset-catalog accent, which controls tint and is a
+    /// FILL. DESIGN.md's hard rule is that the logo's lime fails AA at every
+    /// text size on white (2.25), so anything green with words in it uses this
+    /// instead: `--brand-green` #2F6118, which measures 7.38.
+    ///
+    /// Dynamic, because the rule is about the background and not about the
+    /// colour. #2F6118 on a dark window is as unreadable as lime on a white
+    /// one, so dark mode gets the lime - where it passes comfortably. Written
+    /// as an NSColor because SwiftUI has no appearance-aware Color literal.
+    static let text = Color(nsColor: NSColor(name: nil) { appearance in
+        let dark = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+        return dark
+            ? NSColor(srgbRed: 0x78 / 255, green: 0xC0 / 255, blue: 0x00 / 255, alpha: 1)
+            : NSColor(srgbRed: 0x2F / 255, green: 0x61 / 255, blue: 0x18 / 255, alpha: 1)
+    })
+
+    /// The logo's lime, `--accent-lime` #78C000. Fills, tints, shapes. Never
+    /// text - see `Brand.text`.
+    static let fill = Color(nsColor: NSColor(srgbRed: 0x78 / 255,
+                                             green: 0xC0 / 255,
+                                             blue: 0x00 / 255, alpha: 1))
+
+    /// The de-emphasis grey charts draw context in, so the one series that
+    /// matters is the only thing carrying colour.
+    static let recessive = Color(nsColor: .tertiaryLabelColor)
 }
 
 @main
@@ -127,6 +156,17 @@ struct GreenroomApp: App {
             }
         }
         .defaultSize(width: 520, height: 640)
+        .commandsRemoved()
+
+        // The report, full width. It used to live in the 320pt column beside
+        // the player, which is the right width for a queue of notes and the
+        // wrong one for a document somebody is about to send a student.
+        Window("Screenroom \u{2014} Report", id: "screenroom-report") {
+            if ScreenroomAvailability.isReleased {
+                ScreenroomReportView()
+            }
+        }
+        .defaultSize(width: 960, height: 760)
         .commandsRemoved()
 
         // Text label rather than an image: a glyph that fails to render

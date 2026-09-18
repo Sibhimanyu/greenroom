@@ -31,7 +31,7 @@ import SwiftUI
 
 struct ScreenroomAnalysisPane: View {
 
-    enum Pane { case analysis, notes, rubric }
+    enum Pane { case analysis, notes }
 
     /// The folder the window has selected. Nil while nothing is.
     let folder: URL?
@@ -47,7 +47,6 @@ struct ScreenroomAnalysisPane: View {
             switch showing {
             case .analysis: analysis
             case .notes: notes
-            case .rubric: rubric
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -152,6 +151,8 @@ struct ScreenroomAnalysisPane: View {
                 bullets("What to change", analysis.workOn)
                 bullets("Across the whole thing", analysis.patterns)
 
+                if !analysis.marks.isEmpty { marks(analysis) }
+
                 if let metrics = review.metrics, metrics.wordCount > 0 {
                     Divider()
                     eyebrow("SPEECH")
@@ -226,67 +227,41 @@ struct ScreenroomAnalysisPane: View {
         }
     }
 
-    // MARK: Rubric
-
-    @ViewBuilder
-    private var rubric: some View {
-        if folder == nil {
-            placeholder("checklist", "Nothing selected", "Pick a session on the left.")
-        } else {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 18) {
-                    ForEach(review.scoring.rubric.criteria) { criterion in
-                        criterionRow(criterion)
-                    }
-                    Divider()
-                    HStack {
-                        Text("Total").font(.callout.weight(.semibold))
-                        Spacer()
-                        Text(review.scoring.totalLabel)
-                            .font(.system(size: 13, weight: .semibold, design: .monospaced))
+    /// The rubric as it was MARKED, not as a form to fill in.
+    ///
+    /// Each line carries the reason next to the number, because a score with
+    /// nothing behind it is an assertion rather than feedback - survivable
+    /// while a teacher typed both and could remember their own reasoning,
+    /// not survivable when something else does the marking and the student
+    /// asks why.
+    private func marks(_ analysis: ScreenroomAnalysis) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Divider()
+            HStack(alignment: .firstTextBaseline) {
+                eyebrow("MARKS")
+                Spacer()
+                Text(review.scoring.totalLabel)
+                    .font(.system(size: 12, weight: .semibold, design: .monospaced))
+                    .monospacedDigit()
+            }
+            ForEach(analysis.marks, id: \.title) { mark in
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                        Text("\(mark.score)")
+                            .font(.system(size: 12, weight: .semibold, design: .monospaced))
                             .monospacedDigit()
+                            .foregroundStyle(Brand.text)
+                            .frame(width: 18, alignment: .trailing)
+                        Text(mark.title).font(.callout.weight(.medium))
+                    }
+                    if !mark.reason.isEmpty {
+                        Text(mark.reason)
+                            .font(.caption).foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .padding(.leading, 26)
                     }
                 }
-                .padding(16)
             }
-        }
-    }
-
-    private func criterionRow(_ criterion: ScreenroomCriterion) -> some View {
-        let mark = review.scoring.score(for: criterion)
-        return VStack(alignment: .leading, spacing: 6) {
-            Text(criterion.title).font(.callout.weight(.medium))
-            if !criterion.hint.isEmpty {
-                Text(criterion.hint).font(.caption).foregroundStyle(.tertiary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            HStack(spacing: 4) {
-                ForEach(1...max(1, criterion.maxScore), id: \.self) { value in
-                    Button {
-                        // Pressing the mark it already has clears it: unmarked
-                        // is a real state and there has to be a way back to it.
-                        review.setScore(mark.score == value ? nil : value, for: criterion)
-                    } label: {
-                        Text("\(value)")
-                            .font(.system(size: 11, weight: .semibold, design: .monospaced))
-                            .frame(width: 26, height: 24)
-                            .background(RoundedRectangle(cornerRadius: 6)
-                                .fill(mark.score == value
-                                      ? AnyShapeStyle(Brand.fill)
-                                      : AnyShapeStyle(Color(nsColor: .controlBackgroundColor))))
-                            .foregroundStyle(mark.score == value ? Color.white : Color.primary)
-                            .overlay(RoundedRectangle(cornerRadius: 6)
-                                .strokeBorder(Color(nsColor: .separatorColor).opacity(0.5), lineWidth: 1))
-                    }
-                    .buttonStyle(.plain)
-                }
-                Spacer(minLength: 0)
-            }
-            TextField("Why", text: Binding(
-                get: { review.scoring.score(for: criterion).comment },
-                set: { review.setComment($0, for: criterion) }))
-                .textFieldStyle(.roundedBorder)
-                .font(.caption)
         }
     }
 

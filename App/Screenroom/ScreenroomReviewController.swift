@@ -238,6 +238,18 @@ final class ScreenroomReviewController: ObservableObject {
         let consistency = cohortFindings.map { "\($0.headline). \($0.detail)" }
         let produced = await write(consistency: consistency, for: selected)
 
+        // The rubric is marked BY the pass, so its marks land here rather
+        // than being typed in beforehand. Saved as rubric.json exactly as a
+        // typed one was, so the cohort comparison and the report read it
+        // without knowing the difference - except that markedBy says who.
+        if !produced.marks.isEmpty {
+            scoring.apply(produced.marks.map { ($0.title, $0.score, $0.reason) },
+                          by: produced.engine)
+            scoring.save(in: selected.folder)
+            ScreenroomRubricStore.save(scoring.rubric)
+            recomputeCohort()
+        }
+
         produced.save(in: selected.folder)
         analysis = produced
         analysisRuns += 1
@@ -291,7 +303,7 @@ final class ScreenroomReviewController: ObservableObject {
             let brief = ScreenroomAgent.brief(presenter: presentation.presenter,
                                               notes: notes,
                                               metrics: metrics,
-                                              scoring: scoring.markedCount > 0 ? scoring : nil,
+                                              scoring: scoring,
                                               frameCount: frameCount,
                                               hasTranscript: hasTranscript)
             ScreenroomAgent.writeBrief(brief, in: presentation.folder)
@@ -314,7 +326,7 @@ final class ScreenroomReviewController: ObservableObject {
         step = "Reading the notes"
         progress = 0
         return await ScreenroomAnalyst.analyse(notes: notes,
-                                               scoring: scoring.markedCount > 0 ? scoring : nil,
+                                               scoring: scoring,
                                                presenter: presentation.presenter,
                                                consistency: consistency)
     }

@@ -182,12 +182,15 @@ enum ScreenroomAgent {
           "summary": "Three or four sentences to the student, second person, specific to this presentation.",
           "strengths": ["One short sentence each, tied to a moment with its time in words.", "..."],
           "workOn": ["One short sentence each, actionable next time, tied to where it showed.", "..."],
-          "patterns": ["Things true of the whole talk rather than one moment.", "..."]
+          "patterns": ["Things true of the whole talk rather than one moment.", "..."],
+          "marks": [{"title": "<a rubric line, copied exactly>", "score": 3, "reason": "One line saying why that score and not the one above or below it."}]
         }
         """.trimmingCharacters(in: .whitespacesAndNewlines))
         out.append("```")
         out.append("")
-        out.append("At most four entries in each array, and an empty array is a correct answer when the notes record nothing of that kind. Where the teacher's notes and your own reading disagree, say so and prefer the teacher's. They were in the room.")
+        out.append("At most four entries in strengths, workOn and patterns, and an empty array is a correct answer when the notes record nothing of that kind. Where the teacher's notes and your own reading disagree, say so and prefer the teacher's. They were in the room.")
+        out.append("")
+        out.append("**Marking.** Give every rubric line below a score and a reason. Copy each title exactly. The reason is the important half: a number with nothing behind it is an assertion, not feedback, and the student will ask why. Say what would have earned the mark above. Mark what the evidence here supports and nothing more \u{2014} if the material cannot tell you about a line, give it the middle of its range and say that you could not judge it.")
         out.append("")
 
         if let metrics {
@@ -330,10 +333,36 @@ extension ScreenroomAgent {
                     strengths: strings(object["strengths"]),
                     workOn: strings(object["workOn"]),
                     patterns: strings(object["patterns"]),
+                    marks: marks(object["marks"]),
                     consistency: consistency)
             }
         }
         return ScreenroomAnalysis(engine: engine, summary: trimmed, consistency: consistency)
+    }
+
+    /// The marks, defensively. A model asked for an integer will hand back
+    /// "4", 4.0 or "4/5" often enough that insisting on Int loses the whole
+    /// rubric to one bad line.
+    private static func marks(_ value: Any?) -> [ScreenroomAnalysis.Mark] {
+        (value as? [Any] ?? []).compactMap { entry in
+            guard let row = entry as? [String: Any],
+                  let title = (row["title"] as? String)?
+                    .trimmingCharacters(in: .whitespacesAndNewlines),
+                  !title.isEmpty else { return nil }
+            let score: Int?
+            switch row["score"] {
+            case let n as Int: score = n
+            case let d as Double: score = Int(d.rounded())
+            case let text as String:
+                score = Int(text.prefix(while: { $0.isNumber }))
+            default: score = nil
+            }
+            guard let score else { return nil }
+            return ScreenroomAnalysis.Mark(
+                title: title, score: score,
+                reason: (row["reason"] as? String)?
+                    .trimmingCharacters(in: .whitespacesAndNewlines) ?? "")
+        }
     }
 
     private static func strings(_ value: Any?) -> [String] {

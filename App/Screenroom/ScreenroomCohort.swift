@@ -13,7 +13,7 @@
 //  is defensible when a grade is questioned.
 //
 //  Deliberately NOT the language model's job. Every finding here is
-//  arithmetic: means, spreads and one correlation. A model asked "were these
+//  arithmetic: means and spreads. A model asked "were these
 //  marked consistently?" would answer confidently either way and could not
 //  show its working, which is exactly the wrong property for something whose
 //  whole purpose is to be shown to a student who is arguing about a grade.
@@ -50,14 +50,9 @@ struct ScreenroomCohort {
         let detail: String
     }
 
-    /// How few presentations make a comparison meaningless.
-    ///
-    /// Three is the floor for saying anything at all about a spread, and five
-    /// for the order effect - a correlation over four points is noise wearing
-    /// a number. Stated here rather than buried so the thresholds can be
-    /// argued with.
+    /// Three is the floor for saying anything at all about a spread. Stated
+    /// here rather than buried so it can be argued with.
     static let minimumForSpread = 3
-    static let minimumForOrderEffect = 5
 
     /// Everything worth saying about `subject` relative to the others marked
     /// on the same rubric.
@@ -83,7 +78,6 @@ struct ScreenroomCohort {
         var findings: [Finding] = []
         findings.append(contentsOf: overallHarshness(subject: subject, peers: peers))
         findings.append(contentsOf: perCriterion(subject: subject, peers: peers))
-        findings.append(contentsOf: orderEffect(among: [subject] + peers))
         return findings
     }
 
@@ -107,7 +101,7 @@ struct ScreenroomCohort {
         let notable = unanimous ? abs(delta) >= 0.10 : abs(delta) >= spread
         guard notable else {
             return [Finding(weight: .note,
-                            headline: "Marked in line with the rest of the group",
+                            headline: "In line with the rest of the group",
                             detail: "\(percent(mine)) against a group average of \(percent(average)) over \(theirs.count + 1) presentations.")]
         }
         let direction = delta > 0 ? "above" : "below"
@@ -116,7 +110,7 @@ struct ScreenroomCohort {
             : "the group's own spread is \(percent(spread))"
         return [Finding(
             weight: .note,
-            headline: "Marked well \(direction) the group",
+            headline: "Scored well \(direction) the group",
             detail: "\(percent(mine)) against a group average of \(percent(average)), and \(against). Worth a second look only if nothing about the presentation explains it.")]
     }
 
@@ -162,31 +156,6 @@ struct ScreenroomCohort {
         return findings
     }
 
-    // MARK: Did the afternoon drift?
-
-    /// The classic, and the one nobody can see from inside: marks sliding up
-    /// or down as the session goes on. Measured as the correlation between
-    /// the order the presentations were marked in and what they scored.
-    private static func orderEffect(among entries: [Entry]) -> [Finding] {
-        let ordered = entries.sorted { $0.markedAt < $1.markedAt }
-        let fractions = ordered.compactMap(\.scoring.fraction)
-        guard fractions.count == ordered.count, fractions.count >= minimumForOrderEffect else { return [] }
-        let positions = (0..<fractions.count).map(Double.init)
-        guard let r = correlation(positions, fractions) else { return [] }
-        guard abs(r) >= 0.5 else {
-            return [Finding(weight: .note,
-                            headline: "No drift across the marking order",
-                            detail: "Scores show no trend from the first presentation marked to the last (r = \(twoDecimals(r)) over \(fractions.count)).")]
-        }
-        let direction = r < 0 ? "downward" : "upward"
-        let first = fractions.first ?? 0
-        let last = fractions.last ?? 0
-        return [Finding(
-            weight: .check,
-            headline: "Marks drifted \(direction) through the session",
-            detail: "Scores trend \(direction) with the order marked (r = \(twoDecimals(r)) over \(fractions.count) presentations; first \(percent(first)), last \(percent(last))). This is the drift a marker cannot see from inside an afternoon \u{2014} worth re-reading the first and last few against each other before the grades go out.")]
-    }
-
     // MARK: Arithmetic
 
     static func mean(_ values: [Double]) -> Double {
@@ -202,22 +171,6 @@ struct ScreenroomCohort {
         let average = mean(values)
         let variance = values.map { ($0 - average) * ($0 - average) }.reduce(0, +) / Double(values.count)
         return variance.squareRoot()
-    }
-
-    /// Pearson's r, or nil when either side does not vary at all.
-    static func correlation(_ a: [Double], _ b: [Double]) -> Double? {
-        guard a.count == b.count, a.count > 1 else { return nil }
-        let meanA = mean(a), meanB = mean(b)
-        var top = 0.0, leftSum = 0.0, rightSum = 0.0
-        for (x, y) in zip(a, b) {
-            let dx = x - meanA, dy = y - meanB
-            top += dx * dy
-            leftSum += dx * dx
-            rightSum += dy * dy
-        }
-        let bottom = (leftSum * rightSum).squareRoot()
-        guard bottom > 0 else { return nil }
-        return top / bottom
     }
 
     private static func percent(_ value: Double) -> String { "\(Int((value * 100).rounded()))%" }

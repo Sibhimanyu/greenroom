@@ -876,3 +876,50 @@ several files and the long one is the class. Verified against a folder holding
 an OBS `.mkv`, a `Clip ….mp4`, a `presentation.mov` and a bigger
 `presentation-with-notes.mp4` - the clip is never mistaken for the source, and
 neither is the export.
+
+## The rubric becomes an answer (2026-09-18)
+
+It was a form: five criteria, a row of buttons, and a teacher clicking numbers
+before or after watching. It is now an output of the analysis. The pass that
+reads the notes, the transcript, the stills and the counted speech marks every
+line and says why in one sentence.
+
+**The reason is the important half.** A score with nothing behind it is an
+assertion, not feedback. That was survivable while a teacher typed both and
+could remember their own reasoning; it is not survivable when something else
+does the marking and the student asks why. So every mark carries its reason
+next to the number wherever the number appears, and `rubric.json` records
+`markedBy` - a mark from a large model reading a transcript and one from a
+teacher who was in the room are different kinds of claim.
+
+Both engines mark. The agent is asked for a `marks` array in the same JSON it
+already returns; the on-device model gets a `GeneratedMark` in its schema. The
+counted fallback cannot mark and says so rather than leaving a silence:
+counting cannot judge.
+
+The parsing is defensive, because models asked for an integer answer `"3"`,
+`2.0` and sometimes 9 on a scale of 5. Scores are clamped to the criterion's
+own maximum - a total that beats its own denominator is the first thing a
+student notices - titles match case-insensitively, and a line that is not in
+the rubric is ignored rather than invented.
+
+### What this cost: the drift finding
+
+The plan's premise 3 was the reason `ScreenroomCohort` existed. You grade
+twelve students on a Friday afternoon, your standards drift, and you cannot see
+it from inside your own afternoon. That premise is **void** once the marking is
+done by an engine: it marks each student in a separate run with no memory of
+the others, so there is no afternoon and no fatigue and no drift to find.
+
+The order-effect correlation has been removed rather than left in to report a
+number that could only ever be noise. What survives is the plainer and still
+useful question - where does this student sit against the group, and is any one
+line out of step with it - which is worth knowing before the grades go out and
+when a grade is questioned.
+
+### Open: there is no way to disagree with a mark
+
+The grade is the teacher's responsibility and currently nothing lets them
+change one. Deliberate for now, since the point of the change was to remove the
+form, but a teacher who thinks the engine's 3 should be a 4 has no recourse
+short of editing `rubric.json` by hand.

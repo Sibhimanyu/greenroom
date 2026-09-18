@@ -57,6 +57,20 @@ struct GeneratedFeedback {
 
     @Guide(description: "Things true of the notes taken as a whole rather than of any single note: a theme that recurs, a stretch of the presentation nothing was written about, the same observation made more than once. Empty when there is no such pattern.", .maximumCount(3))
     var patterns: [String]
+
+    @Guide(description: "One entry for every rubric line you were given, in the same order, with its title copied exactly.", .maximumCount(8))
+    var marks: [GeneratedMark]
+}
+
+@available(macOS 26.0, *)
+@Generable
+struct GeneratedMark {
+    @Guide(description: "The rubric line's title, copied exactly as it was given to you.")
+    var title: String
+    @Guide(description: "The score for this line, within the range you were given.")
+    var score: Int
+    @Guide(description: "One line saying why this score rather than the one above or below it. Say what would have earned the higher mark. If the notes cannot tell you about this line, say so instead of guessing.")
+    var reason: String
 }
 #endif
 
@@ -167,6 +181,13 @@ enum ScreenroomAnalyst {
                 strengths: clean(content.strengths),
                 workOn: clean(content.workOn),
                 patterns: clean(content.patterns),
+                marks: content.marks.compactMap { mark in
+                    let title = mark.title.trimmingCharacters(in: .whitespacesAndNewlines)
+                    guard !title.isEmpty else { return nil }
+                    return ScreenroomAnalysis.Mark(
+                        title: title, score: mark.score,
+                        reason: mark.reason.trimmingCharacters(in: .whitespacesAndNewlines))
+                },
                 consistency: consistency)
         } catch {
             // Guardrail refusals, context overflows and everything else land
@@ -188,14 +209,12 @@ enum ScreenroomAnalyst {
         for note in notes {
             lines.append("- at \(note.offsetLabel): \(note.text)")
         }
-        if let scoring, scoring.markedCount > 0 {
+        if let scoring {
             lines.append("")
-            lines.append("The teacher also marked a rubric. Use it to weight what matters, not as something to describe:")
+            lines.append("Mark every one of these lines. Copy each title exactly, score within its range, and give one line of reasoning:")
             for criterion in scoring.rubric.criteria {
-                guard let value = scoring.score(for: criterion).score else { continue }
-                let comment = scoring.score(for: criterion).comment
-                lines.append("- \(criterion.title): \(value) out of \(criterion.maxScore)"
-                             + (comment.isEmpty ? "" : " \u{2014} \(comment)"))
+                lines.append("- \(criterion.title) (0 to \(criterion.maxScore))"
+                             + (criterion.hint.isEmpty ? "" : " \u{2014} \(criterion.hint)"))
             }
         }
         return lines.joined(separator: "\n")
@@ -239,10 +258,8 @@ enum ScreenroomAnalyst {
         }
 
         var summary = "This report lists the notes taken during the presentation. "
-        if let scoring, scoring.markedCount > 0 {
-            summary += "The rubric was marked \(scoring.totalLabel). "
-        }
-        summary += "It was counted from the notes rather than written, so it describes what was recorded and does not interpret it."
+        summary += "It was counted from the notes rather than written, so it describes what was recorded and does not interpret it"
+        summary += scoring == nil ? "." : ", and the rubric is not marked: counting cannot judge."
 
         var workOn: [String] = []
         if let scoring, scoring.markedCount > 0 {

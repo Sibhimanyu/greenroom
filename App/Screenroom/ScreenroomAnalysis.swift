@@ -36,6 +36,21 @@ struct ScreenroomAnalysis: Codable, Hashable {
     /// observation.
     var patterns: [String] = []
 
+    /// The rubric, as marked by whatever wrote this. Title, score and the
+    /// one line saying why.
+    ///
+    /// Carried on the analysis rather than only in rubric.json because the
+    /// two are one act now: the pass that reads the notes is the pass that
+    /// marks, and an analysis that arrived without its marks would be half a
+    /// judgement.
+    var marks: [Mark] = []
+
+    struct Mark: Codable, Hashable {
+        var title: String
+        var score: Int
+        var reason: String
+    }
+
     /// ScreenroomCohort's findings, flattened to text at the moment they were
     /// computed. Not recomputed on read: the cohort changes as the term goes
     /// on, and a report handed to a student in week 3 should still say what it

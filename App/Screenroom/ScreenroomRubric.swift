@@ -72,9 +72,16 @@ struct ScreenroomRubric: Codable, Hashable {
 /// One criterion's mark on one presentation.
 struct ScreenroomScore: Codable, Identifiable, Hashable {
     var criterionID: UUID
-    /// nil while the evaluator has not marked this line yet - which is a real
-    /// state and not a zero. A zero is a judgement; an unmarked line is not.
+    /// nil while nothing has marked this line yet - which is a real state and
+    /// not a zero. A zero is a judgement; an unmarked line is not.
     var score: Int?
+    /// WHY this mark. Written by whatever did the marking, in one line, and
+    /// shown next to the number wherever the number is shown.
+    ///
+    /// A score with no reason is not feedback, it is an assertion. That was
+    /// survivable while a teacher typed both and could remember their own
+    /// reasoning; it is not survivable when something else does the marking
+    /// and the student asks why.
     var comment: String = ""
     var id: UUID { criterionID }
 }
@@ -86,6 +93,16 @@ struct ScreenroomScoring: Codable {
     var rubric: ScreenroomRubric
     var scores: [ScreenroomScore]
     var markedAt: Date?
+
+    /// What did the marking, in the words the report will print.
+    ///
+    /// The rubric used to be a form the teacher filled in. It is now an
+    /// output of the analysis: the same pass that reads the notes and the
+    /// transcript scores each line and says why. So the file has to record
+    /// which engine's judgement it is holding - a mark from a large model
+    /// reading a transcript and one from a teacher who was in the room are
+    /// different kinds of claim.
+    var markedBy: String?
 
     static let schemaVersion = 1
     static let fileName = "rubric.json"
@@ -101,6 +118,26 @@ struct ScreenroomScoring: Codable {
     func score(for criterion: ScreenroomCriterion) -> ScreenroomScore {
         scores.first { $0.criterionID == criterion.id }
             ?? ScreenroomScore(criterionID: criterion.id, score: nil)
+    }
+
+    /// Applies a whole set of marks at once, matched by criterion TITLE.
+    ///
+    /// By title rather than id, because whatever produced them was reading
+    /// the rubric as words and has no idea what a UUID is.
+    mutating func apply(_ marks: [(title: String, score: Int, reason: String)], by engine: String) {
+        for mark in marks {
+            guard let criterion = rubric.criteria.first(where: {
+                $0.title.compare(mark.title, options: .caseInsensitive) == .orderedSame
+            }) else { continue }
+            // Clamped rather than trusted: a model asked for 1-5 will
+            // occasionally answer 7, and a total that exceeds its own maximum
+            // is the kind of thing a student notices first.
+            let clamped = min(max(mark.score, 0), criterion.maxScore)
+            set(clamped, for: criterion)
+            setComment(mark.reason, for: criterion)
+        }
+        markedBy = engine
+        markedAt = Date()
     }
 
     mutating func set(_ value: Int?, for criterion: ScreenroomCriterion) {

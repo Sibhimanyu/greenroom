@@ -113,7 +113,6 @@ struct RecordingsView: View {
         /// word appears once.
         case analysis = "Analysis"
         case notes = "Notes"
-        case rubric = "Rubric"
         var id: String { rawValue }
 
         var isAvailable: Bool {
@@ -123,7 +122,7 @@ struct RecordingsView: View {
             // too, so a build with Screenroom in it can fill this tab even
             // when Cues is held back.
             case .transcript: return CuesAvailability.isReleased || ScreenroomAvailability.isReleased
-            case .analysis, .notes, .rubric: return ScreenroomAvailability.isReleased
+            case .analysis, .notes: return ScreenroomAvailability.isReleased
             }
         }
     }
@@ -479,7 +478,6 @@ struct RecordingsView: View {
         switch detailTab {
         case .analysis: return .analysis
         case .notes: return .notes
-        case .rubric: return .rubric
         case .recording, .transcript: return nil
         }
     }
@@ -515,8 +513,7 @@ struct RecordingsView: View {
                     .labelsHidden()
                     // Sized to its own labels rather than to a number that
                     // goes stale the moment a tab is renamed. Measured: the
-                    // five come to 352pt against a pane that is never
-                    // narrower than 460.
+                    // four come to well under the pane's 460pt minimum.
                     .fixedSize()
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal, 16)

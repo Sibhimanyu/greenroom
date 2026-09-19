@@ -90,10 +90,34 @@ struct ScreenroomAgentSettings: Codable, Equatable {
 
     static let key = "screenroomAgentSettings"
 
+    /// Commands this app shipped as a default and has since replaced.
+    ///
+    /// A stored command is upgraded only when it matches one of these
+    /// exactly. Anything else is something the teacher wrote or edited, and
+    /// overwriting that is the kind of thing that costs somebody an
+    /// afternoon.
+    ///
+    /// This exists because it bit: a command saved before the event-streaming
+    /// flags were added kept running without them, so the window showed a
+    /// spinner and nothing else while the agent worked - the whole activity
+    /// display was dead for anyone who had used the feature once before.
+    /// Defaults do not update themselves.
+    private static let supersededCommands: Set<String> = [
+        #"claude -p --allowedTools "Read,Glob,Grep" --add-dir "$MARKS_FOLDER""#,
+        #"claude -p --allowedTools "Read,Glob,Grep" --add-dir "$SCREENROOM_FOLDER""#,
+        #"codex exec -s read-only --skip-git-repo-check -C "$MARKS_FOLDER" -"#,
+        #"codex exec -s read-only --skip-git-repo-check -C "$SCREENROOM_FOLDER" -"#,
+    ]
+
     static func load(_ defaults: UserDefaults = .standard) -> ScreenroomAgentSettings {
         guard let data = defaults.data(forKey: key),
-              let decoded = try? JSONDecoder().decode(ScreenroomAgentSettings.self, from: data) else {
+              var decoded = try? JSONDecoder().decode(ScreenroomAgentSettings.self, from: data) else {
             return ScreenroomAgentSettings()
+        }
+        let stored = decoded.command.trimmingCharacters(in: .whitespacesAndNewlines)
+        if supersededCommands.contains(stored), decoded.kind != .custom {
+            decoded.command = decoded.kind.defaultCommand
+            decoded.save(defaults)
         }
         return decoded
     }

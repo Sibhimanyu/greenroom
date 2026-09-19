@@ -56,6 +56,12 @@ struct ScreenroomTranscriberSettings: Codable, Equatable {
         var isVerbatim: Bool { self == .whisper }
     }
 
+    /// Stored, but not obeyed: `resolved()` sets it from what this Mac has.
+    ///
+    /// Kept in the file rather than removed so a settings export written by
+    /// an older build still decodes, and so the last value is visible when
+    /// debugging. Reading it directly is a bug - it said "apple" on a Mac
+    /// that had been running whisper for a day.
     var engine: Engine = .whisper
     /// Empty means "find the best one on this Mac".
     var modelPath: String = ""

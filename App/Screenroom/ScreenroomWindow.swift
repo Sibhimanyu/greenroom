@@ -69,14 +69,11 @@ struct ScreenroomWindow: View {
 
             Divider().frame(height: 28)
 
-            VStack(alignment: .leading, spacing: 4) {
-                eyebrow("PRESENTER \u{00B7} OPTIONAL")
-                TextField(ScreenroomController.defaultName, text: $screenroom.presenter)
-                    .textFieldStyle(.roundedBorder)
-                    .frame(width: 200)
-                    .disabled(screenroom.recorder.isRecording)
-                    .help("Optional. Names this presentation's folder in Documents/Greenroom; left empty it is named for the time, and you can rename it afterwards in Sessions.")
-            }
+            TextField("Name the presenter", text: $screenroom.presenter)
+                .textFieldStyle(.roundedBorder)
+                .frame(width: 190)
+                .disabled(screenroom.recorder.isRecording)
+                .help("Optional. Names this presentation's folder in Documents/Greenroom; left empty it is named for the time, and you can rename it afterwards in Sessions.")
 
             if !screenroom.recorder.isRecording {
                 Text(screenroom.folderPreview)

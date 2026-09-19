@@ -62,23 +62,29 @@ struct ContentView: View {
     /// on yesterday's answer. Shown BEFORE Start rather than after, so a wrong
     /// name is something you notice rather than something you discover in the
     /// folder afterwards.
+    /// Two things, neither of which repeats the other.
+    ///
+    /// It was three: an eyebrow reading CLASS NAME, a placeholder reading
+    /// "Class", and a preview reading "Class - 2026-09-19 08-53". The word
+    /// "class" three times in one row, and a reader has to check all three to
+    /// find the one that carries information.
+    ///
+    /// Now the placeholder says what to DO and the preview says what you will
+    /// GET. The eyebrow went: a field that says "Name this class" does not
+    /// also need a label saying CLASS NAME.
     @ViewBuilder private var classNameField: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text("CLASS NAME")
-                .font(.system(size: 10, weight: .semibold, design: .monospaced))
+        HStack(spacing: 10) {
+            TextField("Name this class", text: $coordinator.className)
+                .textFieldStyle(.roundedBorder)
+                .frame(maxWidth: 260)
+                .disabled(coordinator.isRunning || coordinator.virtualCamActive)
+                .help("Names this session's folder in Documents/Greenroom. Leave it empty and the folder is named by date and time instead.")
+            Text(folderPreview)
+                .font(.system(size: 11, design: .monospaced))
                 .foregroundStyle(.tertiary)
-            HStack(spacing: 8) {
-                TextField("Class", text: $coordinator.className)
-                    .textFieldStyle(.roundedBorder)
-                    .frame(maxWidth: 280)
-                    .disabled(coordinator.isRunning || coordinator.virtualCamActive)
-                    .help("Names this session's folder in Documents/Greenroom. Leave it empty and the folder is named by date and time instead.")
-                Text(folderPreview)
-                    .font(.system(size: 11, design: .monospaced))
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-            }
+                .lineLimit(1)
+                .truncationMode(.middle)
+                .help("The folder this session will be saved in.")
         }
     }
 
@@ -234,7 +240,10 @@ struct ContentView: View {
     /// two extra rows, plus the log when it is shown. Measured from the
     /// accessibility tree rather than guessed, on the 4px scale.
     private var preferredWindowHeight: CGFloat {
-        var height: CGFloat = 372
+        // 356, not 372: the class-name row lost its eyebrow and the 4pt above
+        // it, which is ~19pt of content. A height measured for a layout that
+        // changed is 19pt of dead space at the bottom of the window.
+        var height: CGFloat = 356
         if coordinator.meetingMode == .join { height += 64 }
         if statusShown { height += Self.statusLogHeight + 12 }
         return height

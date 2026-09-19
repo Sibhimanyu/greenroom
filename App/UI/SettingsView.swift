@@ -183,6 +183,10 @@ private struct WebcamSettingsTab: View {
 
             Divider()
 
+            CameraSwitchSection()
+
+            Divider()
+
             Toggle(isOn: $coordinator.clipBufferEnabled) {
                 SettingLabel(title: "Keep the last 5 minutes clippable",
                              subtitle: "\u{2325}\u{2318}1 / 2 / 5 save the last minutes as a clip, recording or not. About 300 MB in memory, never on disk until you press.")
@@ -832,6 +836,172 @@ struct WebcamShapePreview: View {
 /// character ended up in a saved URL.
 private enum LayoutSettingsFocus: Hashable {
     case websiteURL
+}
+
+/// Setting up the two-camera cut.
+///
+/// The hard part of this feature is not the software, it is aiming a camera,
+/// and that cannot be done blind. So the angle this camera currently reads is
+/// on screen the whole time the tab is open - move the camera, watch the
+/// number fall. Nothing cuts while you are in here; see
+/// CameraDirector.startObserving.
+private struct CameraSwitchSection: View {
+    @EnvironmentObject private var coordinator: CoordinatorController
+    @State private var cameras: [LocalDeviceResolver.Camera] = []
+    /// Which camera the preview and the angle readout are currently on.
+    @State private var aiming: String?
+
+    private var settings: Binding<CameraDirectorSettings> { $coordinator.cameraDirectorSettings }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Toggle(isOn: settings.enabled) {
+                SettingLabel(title: "Cut between cameras as you turn",
+                             subtitle: "For two monitors. Put a camera on each, and the class sees whichever one you are facing instead of the side of your head.")
+            }
+
+            if coordinator.cameraDirectorSettings.enabled {
+                chooser
+                dwell
+                readout
+            }
+        }
+        .onAppear { cameras = LocalDeviceResolver.availableCameras() }
+    }
+
+    // MARK: Which cameras, and in what order
+
+    private var chooser: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("CAMERAS, IN ORDER \u{00B7} A SESSION STARTS ON THE FIRST")
+                .font(.system(size: 9, weight: .semibold, design: .monospaced))
+                .tracking(0.5)
+                .foregroundStyle(.tertiary)
+
+            if cameras.count < 2 {
+                Text("Only one camera is plugged in, so there is nothing to cut to. Your iPhone counts \u{2014} put it on the other monitor and it appears here as a camera.")
+                    .font(.caption).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            ForEach(cameras) { camera in
+                let position = coordinator.cameraDirectorSettings.cameraUIDs.firstIndex(of: camera.id)
+                Toggle(isOn: Binding(
+                    get: { position != nil },
+                    set: { wanted in toggle(camera, on: wanted) })) {
+                    HStack(spacing: 8) {
+                        // The order is the whole point, so it is a number
+                        // rather than a checkmark: "which one do I start on"
+                        // is the question a teacher actually has.
+                        Text(position.map { "\($0 + 1)" } ?? "\u{2013}")
+                            .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                            .foregroundStyle(position == nil ? AnyShapeStyle(.tertiary) : AnyShapeStyle(Brand.text))
+                            .frame(width: 14, alignment: .trailing)
+                        Text(camera.name)
+                        if coordinator.cameraDirector.liveCameraName == camera.name {
+                            Text("LIVE")
+                                .font(.system(size: 8, weight: .bold, design: .monospaced))
+                                .foregroundStyle(.white)
+                                .padding(.horizontal, 4).padding(.vertical, 1)
+                                .background(Brand.fill, in: Capsule())
+                        }
+                        Spacer(minLength: 8)
+                        // Aiming the second camera is the setup task, and the
+                        // angle below reports whichever camera OBS is on. So
+                        // there has to be a way to put it on this one.
+                        if !coordinator.virtualCamActive {
+                            Button("Aim this one") {
+                                aiming = camera.id
+                                coordinator.previewCamera(uid: camera.id)
+                            }
+                            .controlSize(.small)
+                            .disabled(aiming == camera.id)
+                        }
+                    }
+                }
+                .toggleStyle(.checkbox)
+            }
+            Button("Refresh the list") { cameras = LocalDeviceResolver.availableCameras() }
+                .controlSize(.small)
+        }
+    }
+
+    /// Ticking a camera appends it, so the order follows the order they were
+    /// chosen in. That makes "the first one" something the teacher decided
+    /// rather than something the device enumeration decided for them.
+    private var aimingName: String? {
+        aiming.flatMap { uid in cameras.first { $0.id == uid }?.name }
+    }
+
+    private func toggle(_ camera: LocalDeviceResolver.Camera, on: Bool) {
+        var uids = coordinator.cameraDirectorSettings.cameraUIDs
+        if on {
+            guard !uids.contains(camera.id) else { return }
+            uids.append(camera.id)
+        } else {
+            uids.removeAll { $0 == camera.id }
+        }
+        coordinator.cameraDirectorSettings.cameraUIDs = uids
+    }
+
+    // MARK: How patient it is
+
+    private var dwell: some View {
+        HStack(spacing: 10) {
+            Text("Cut after").font(.callout)
+            Slider(value: settings.dwellSeconds, in: 1...6, step: 0.5)
+                .frame(width: 180)
+            Text(String(format: "%.1fs", coordinator.cameraDirectorSettings.dwellSeconds))
+                .font(.system(size: 12, design: .monospaced))
+                .monospacedDigit()
+                .frame(width: 42, alignment: .leading)
+            Text("of looking away")
+                .font(.caption).foregroundStyle(.secondary)
+            Spacer()
+        }
+    }
+
+    // MARK: Proof that it is working
+
+    /// The number that makes this setup-able.
+    ///
+    /// Aim the camera, read the angle, aim again. Below the threshold it is
+    /// looking at you; above it, this camera would hand over. Without this a
+    /// teacher is guessing, and the first thing they would do is guess wrong
+    /// and decide the feature is broken.
+    private var readout: some View {
+        let degrees = coordinator.cameraDirector.offAxisDegrees
+        let threshold = coordinator.cameraDirectorSettings.awayDegrees
+        return VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 10) {
+                Text(degrees.map { "\(Int($0.rounded()))\u{00B0}" } ?? "\u{2014}")
+                    .font(.system(size: 22, weight: .semibold, design: .monospaced))
+                    .monospacedDigit()
+                    .foregroundStyle((degrees ?? .infinity) <= threshold
+                                     ? AnyShapeStyle(Brand.text) : AnyShapeStyle(.secondary))
+                    .frame(width: 60, alignment: .leading)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(degrees == nil
+                         ? "No face in this camera right now."
+                         : ((degrees ?? 0) <= threshold
+                            ? "Looking at this camera."
+                            : "Turned away \u{2014} in a session this is when it would hand over."))
+                        .font(.caption)
+                    Text(aimingName.map { "Measured through \($0). Move it and watch this change." }
+                         ?? "Off the lens, measured live. Move the camera and watch it change.")
+                        .font(.caption2).foregroundStyle(.tertiary)
+                }
+                Spacer()
+            }
+            if coordinator.virtualCamActive, coordinator.cameraDirector.cuts > 0 {
+                Text("\(coordinator.cameraDirector.cuts) cut\(coordinator.cameraDirector.cuts == 1 ? "" : "s") this session.")
+                    .font(.caption2).foregroundStyle(.tertiary)
+            }
+        }
+        .padding(10)
+        .background(RoundedRectangle(cornerRadius: 8)
+            .fill(Color(nsColor: .controlBackgroundColor)))
+    }
 }
 
 private struct LayoutSettingsTab: View {

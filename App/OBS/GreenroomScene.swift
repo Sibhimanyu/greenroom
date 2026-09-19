@@ -375,6 +375,41 @@ enum GreenroomScene {
                            displayLabel: displayLabel)
     }
 
+    /// Points the one webcam source at a different camera, live.
+    ///
+    /// This is how CameraDirector cuts between a camera on each monitor, and
+    /// the reason there is one source rather than two. Twenty-two things in
+    /// this file hang off `webcamSourceName` - the chroma key, the shape
+    /// mask, the square crop, the transform, the layer order - and most of
+    /// them carry a comment recording what it cost to get right. A second
+    /// webcam source would need every one of them duplicated, and every
+    /// duplicate is somewhere for the two to drift apart. Swapping the device
+    /// underneath keeps all of it working because it is the same source.
+    ///
+    /// Patching a live source in place is the thing this file warns against
+    /// everywhere else, and the warning does not apply here: it is about
+    /// `screen_capture`, whose ScreenCaptureKit audio callback segfaults OBS
+    /// when reconfigured. The webcam source is already patched in place on
+    /// every start - see the re-apply in ensureConfigured, added because OBS
+    /// can deserialize a scene before AVFoundation has listed the devices.
+    ///
+    /// What it costs: OBS closes one camera and opens the other, so there is
+    /// a short hitch. That is acceptable HERE and nowhere else, because a cut
+    /// only happens after the teacher has looked away for a full two seconds.
+    /// A deliberate, rare, gated change reads as a camera cut. The same call
+    /// on a timer would read as a fault.
+    static func setWebcamDevice(client: OBSWebSocketClient, uid: String, name: String?) async {
+        // Both keys, for the same reason ensureConfigured writes both: the
+        // input kind is resolved at runtime and an older OBS may still be on
+        // av_capture_input v1, which reads `uid` and has never heard of
+        // `device`. An unknown key is ignored, so carrying both costs nothing.
+        _ = try? await client.request("SetInputSettings", data: [
+            "inputName": webcamSourceName,
+            "inputSettings": ["device": uid, "device_name": name ?? "", "uid": uid],
+            "overlay": true
+        ])
+    }
+
     /// Shows/hides the webcam's scene item - screen-only sessions (no
     /// camera connected) hide it so a dead device isn't a black box.
     private static func setWebcamItemEnabled(client: OBSWebSocketClient, enabled: Bool) async throws {

@@ -315,6 +315,28 @@ final class CoordinatorController: ObservableObject {
     /// off once starting completes.
     @Published private(set) var isRunning = false
     @Published private(set) var virtualCamActive = false
+
+    /// Cuts between a camera on each monitor while a class runs. Owned here
+    /// because it lives exactly as long as the session does - see start()
+    /// and stop().
+    let cameraDirector = CameraDirector()
+
+    @Published var cameraDirectorSettings: CameraDirectorSettings = CameraDirectorSettings.load() {
+        didSet {
+            guard cameraDirectorSettings != oldValue else { return }
+            cameraDirectorSettings.save(defaults)
+            Analytics.setting("camera_director", on: cameraDirectorSettings.isUsable)
+            // Applied live: a teacher who turns it on mid-class should not
+            // have to end the session to get it.
+            if virtualCamActive, client.isConnected {
+                if cameraDirectorSettings.isUsable {
+                    cameraDirector.start(client: client, settings: cameraDirectorSettings)
+                } else {
+                    cameraDirector.stop()
+                }
+            }
+        }
+    }
     @Published private(set) var isStopping = false
     private var startTask: Task<Void, Never>?
 
@@ -1326,6 +1348,10 @@ final class CoordinatorController: ObservableObject {
                 }
                 isRecording = false
             }
+            // Before anything else touches the socket: nothing should be
+            // asking OBS for webcam screenshots while the session is being
+            // torn down underneath it.
+            cameraDirector.stop()
             _ = try? await client.request("StopVirtualCam")
             // Park BEFORE disconnecting. windDownForQuit parks too, but it
             // is gated on `client.isConnected` and the disconnect below is
@@ -1677,6 +1703,14 @@ final class CoordinatorController: ObservableObject {
                 }
                 await applyShapeForPreview()
             }
+            // The angle readout in Settings rides on the same warm OBS the
+            // preview just secured. Never while a class is running: the real
+            // director is on that socket with cutting switched ON, and
+            // restarting it here would put the shot back on camera one
+            // mid-sentence.
+            if !virtualCamActive, cameraDirectorSettings.enabled {
+                cameraDirector.startObserving(client: client)
+            }
             while !Task.isCancelled {
                 if let response = try? await client.request("GetSourceScreenshot", data: [
                     "sourceName": GreenroomScene.sceneName,
@@ -1697,10 +1731,31 @@ final class CoordinatorController: ObservableObject {
     /// Stops the frame polling. The connection deliberately stays up -
     /// Start verifies and reuses it (see connectWithRetry), and a warm
     /// idle OBS holds no session state to corrupt.
+    /// Points the warm OBS scene at one camera so Settings can show its
+    /// angle while it is being aimed.
+    ///
+    /// Aiming the SECOND camera is the whole setup task, and without this it
+    /// cannot be done: the readout reports whichever camera OBS happens to be
+    /// on, which is the built-in one. So the teacher would aim a camera they
+    /// could not see a number for.
+    ///
+    /// Idle only. Mid-class this would cut the shot to a camera nobody chose.
+    func previewCamera(uid: String) {
+        guard !virtualCamActive, client.isConnected else { return }
+        Task {
+            await GreenroomScene.setWebcamDevice(
+                client: client, uid: uid, name: LocalDeviceResolver.cameraName(uid: uid))
+        }
+    }
+
     func stopShapePreview() {
         shapePreviewTask?.cancel()
         shapePreviewTask = nil
         shapePreviewFrame = nil
+        // Only the settings-window observer. A live session's director is
+        // started from start() and stopped from stop(), and closing the
+        // Settings window must not touch it.
+        if !virtualCamActive { cameraDirector.stop() }
     }
 
     /// Re-applies the chosen shape to the warm OBS scene so the live
@@ -3378,6 +3433,11 @@ final class CoordinatorController: ObservableObject {
         try await GreenroomScene.startVirtualCam(client: client)
         virtualCamActive = true
 
+        if cameraDirectorSettings.isUsable {
+            cameraDirector.start(client: client, settings: cameraDirectorSettings)
+            log("Watching for which camera you're facing \u{2014} \(cameraDirectorSettings.cameraUIDs.count) cameras, cutting after \(Int(cameraDirectorSettings.dwellSeconds))s of looking away.")
+        }
+
         log("Ready \u{2014} \u{201C}OBS Virtual Camera\u{201D} is live.")
         log("First time only: in Zoom, go to Settings \u{2192} Video and pick \u{201C}OBS Virtual Camera\u{201D}. Zoom remembers that choice for every call after this.")
     }
@@ -3556,6 +3616,12 @@ struct SettingsTransfer: Codable {
     var customUIMode: Bool?
     var clipBufferEnabled: Bool?
     var participantPanelOnMainDisplay: Bool?
+    /// Carried whole, including the camera identifiers. They mean nothing on
+    /// another Mac, and that is handled where it matters rather than here -
+    /// CameraDirectorSettings.availableOnly drops any camera that is not
+    /// plugged in, so an imported config degrades to off instead of cutting
+    /// to a device that does not exist.
+    var cameraDirector: CameraDirectorSettings?
     /// Where the webcam sits in the composite. Dragged into place by hand,
     /// which makes it the most annoying thing in this list to redo.
     var bubbleWidthFraction: Double?
@@ -3622,6 +3688,7 @@ extension CoordinatorController {
             customUIMode: customUIMode,
             clipBufferEnabled: clipBufferEnabled,
             participantPanelOnMainDisplay: participantPanelOnMainDisplay,
+            cameraDirector: cameraDirectorSettings,
             bubbleWidthFraction: bubbleWidthFraction,
             bubbleRightInset: bubbleRightInset,
             bubbleBottomInset: bubbleBottomInset,
@@ -3703,6 +3770,7 @@ extension CoordinatorController {
         if let value = transfer.customUIMode { customUIMode = value }
         if let value = transfer.clipBufferEnabled { clipBufferEnabled = value }
         if let value = transfer.participantPanelOnMainDisplay { participantPanelOnMainDisplay = value }
+        if let value = transfer.cameraDirector { cameraDirectorSettings = value }
         if let value = transfer.bubbleWidthFraction { bubbleWidthFraction = value }
         if let value = transfer.bubbleRightInset { bubbleRightInset = value }
         if let value = transfer.bubbleBottomInset { bubbleBottomInset = value }

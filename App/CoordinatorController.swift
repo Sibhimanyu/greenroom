@@ -776,6 +776,20 @@ final class CoordinatorController: ObservableObject {
         }
     }
     /// Transcription language, as a locale identifier. Empty = the system's.
+    /// Listen through whisper instead of Apple's recogniser.
+    ///
+    /// Off by default: Apple's is faster and needs nothing installed, and it
+    /// is what every measurement in the bench and the plan was taken against.
+    /// whisper hears names properly - which is the difference between a card
+    /// and no card for a book title - and costs about a second more before a
+    /// word is settled. Which matters more is a judgement about the class.
+    @Published var cuesUseWhisper: Bool {
+        didSet {
+            defaults.set(cuesUseWhisper, forKey: "cuesUseWhisper")
+            Analytics.setting("cues_whisper", on: cuesUseWhisper)
+        }
+    }
+
     @Published var cuesLocaleIdentifier: String {
         didSet { defaults.set(cuesLocaleIdentifier, forKey: "prompterLocaleIdentifier") }
     }
@@ -960,6 +974,7 @@ final class CoordinatorController: ObservableObject {
         cuesVideoSearch = (defaults.object(forKey: "prompterVideoSearch") as? Bool) ?? true
         cuesUseModel = defaults.bool(forKey: "prompterUseModel")
         cuesSaveTranscript = (defaults.object(forKey: "prompterSaveTranscript") as? Bool) ?? true
+        cuesUseWhisper = defaults.bool(forKey: "cuesUseWhisper")
         cuesLocaleIdentifier = defaults.string(forKey: "prompterLocaleIdentifier") ?? ""
         youtubeUploadMode = YouTubeUploadMode(rawValue: defaults.string(forKey: "youtubeUploadMode") ?? "") ?? .off
         youtubePrivacy = defaults.string(forKey: "youtubePrivacy") ?? "unlisted"

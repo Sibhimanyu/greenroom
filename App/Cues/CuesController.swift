@@ -44,6 +44,9 @@ final class CuesController: ObservableObject {
         /// Settings -> Cues -> "Also suggest links for things I mention
         /// without naming them". Off by default: see chooseDetector.
         var useModelDetector = false
+        /// Listen through whisper rather than Apple's recogniser. See
+        /// CuesWhisperTranscriber for what it buys and what it costs.
+        var useWhisper = false
         /// Where to write the class transcript, or nil to keep it in memory
         /// only. Set to a file inside the session's folder when Settings ->
         /// Cues -> "Save the transcript with the class" is on.
@@ -99,6 +102,10 @@ final class CuesController: ObservableObject {
     }
     private var transcript = RollingTranscript()
     private var transcriber: Transcriber?
+    private var whisperTranscriber: CuesWhisperTranscriber?
+    /// For the status log, so a class's transcript can be read knowing what
+    /// produced it.
+    private(set) var transcriberName = "Apple"
     private var detector: MentionDetector = HeuristicDetector()
     private let resolver = LinkResolver()
     private var eventTask: Task<Void, Never>?
@@ -186,6 +193,7 @@ final class CuesController: ObservableObject {
         if let transcriber {
             self.transcriber = nil
             Task { await transcriber.stop() }
+            Task { await whisperTranscriber?.stop() }
         }
         let count = transcript.totalFinalized
         let saved = configuration.transcriptFile
@@ -389,10 +397,24 @@ final class CuesController: ObservableObject {
     }
 
     private func startPipeline(input: Transcriber.Input?, locale: Locale) async -> Bool {
-        let transcriber = Transcriber()
-        self.transcriber = transcriber
         let source: Transcriber.Input = input ?? .microphone(MicStream())
-        let events = transcriber.start(input: source, locale: locale)
+
+        // Two transcribers behind one stream of events. The detector, the
+        // resolver and everything downstream never learn which one ran -
+        // whisper's sliding windows are turned into settled sentences by
+        // CuesStabiliser before they get here, which is the whole reason that
+        // type exists.
+        let events: AsyncStream<Transcriber.Event>
+        if configuration.useWhisper, case .microphone = source, let whisper = CuesWhisperTranscriber() {
+            self.whisperTranscriber = whisper
+            transcriberName = "whisper"
+            events = whisper.start(input: source, locale: locale)
+        } else {
+            let transcriber = Transcriber()
+            self.transcriber = transcriber
+            transcriberName = "Apple"
+            events = transcriber.start(input: source, locale: locale)
+        }
         isListening = true
         isPaused = false
         restartAttempted = false
@@ -547,6 +569,7 @@ final class CuesController: ObservableObject {
         if let transcriber {
             self.transcriber = nil
             Task { await transcriber.stop() }
+            Task { await whisperTranscriber?.stop() }
         }
         isListening = false
         isSpeaking = false

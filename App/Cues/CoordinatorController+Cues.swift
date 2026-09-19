@@ -44,6 +44,7 @@ extension CoordinatorController {
         configuration.localeIdentifier = cuesLocaleIdentifier
         configuration.videoSearch = cuesVideoSearch
         configuration.useModelDetector = cuesUseModel
+        configuration.useWhisper = cuesUseWhisper && CuesWhisperTranscriber.isAvailable
         // Beside the recording and the clips, in the folder named for this
         // class. Nil when the teacher turned saving off, or before a session
         // has a folder of its own.

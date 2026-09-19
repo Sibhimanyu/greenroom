@@ -112,6 +112,27 @@ struct CuesSetupRows: View {
                 Task { await assets.refresh(preferredLocale: coordinator.cuesLocaleIdentifier) }
             }
 
+            Toggle(isOn: $coordinator.cuesUseWhisper) {
+
+
+                SettingLabel(title: "Listen with whisper instead of Apple's recogniser",
+
+
+                             subtitle: CuesWhisperTranscriber.isAvailable
+
+
+                             ? "Hears names and titles properly, which is the difference between a card and no card. About a second slower before a word settles."
+
+
+                             : "Needs whisper on this Mac \u{2014} set it up in Settings \u{2192} Screenroom.")
+
+
+            }
+
+
+            .disabled(!CuesWhisperTranscriber.isAvailable)
+
+
             Toggle(isOn: $coordinator.cuesUseModel) {
                 SettingLabel(title: "Also suggest links for things I mention without naming them",
                              subtitle: FoundationModelsDetector.isAvailable

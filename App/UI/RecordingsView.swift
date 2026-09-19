@@ -77,6 +77,17 @@ struct RecordingsView: View {
 
         var isEmpty: Bool { recordings.isEmpty && clipFiles.isEmpty && links.isEmpty }
 
+        /// Which half of the app made this.
+        ///
+        /// Told from the files, not from a flag written at the time: a folder
+        /// copied from another Mac, or one made before the distinction
+        /// existed, still classifies correctly. Screenroom names its
+        /// recording `presentation.mov`; a class is whatever OBS wrote.
+        var kind: Kind {
+            recordings.contains { $0.url.lastPathComponent == ScreenroomRecorder.recordingFileName }
+                ? .presentation : .klass
+        }
+
         /// One recording, nothing else. The overwhelmingly common shape.
         ///
         /// A Section header naming the class above a single row naming the
@@ -99,6 +110,9 @@ struct RecordingsView: View {
     static let playableExtensions = ["mov", "mp4", "mkv", "m4v"]
 
     @State private var sessions: [Session] = []
+    /// Which half is being looked at. Persisted, because a teacher who marks
+    /// presentations all term should not pick the same tab every morning.
+    @AppStorage("sessionsKind") private var kind: Kind = .klass
     @State private var freeBytes: Int64?
     @State private var usedBytes: Int64 = 0
     @State private var selection: Recording?
@@ -118,6 +132,32 @@ struct RecordingsView: View {
     /// window was built for; the transcript is what a teacher wants the day
     /// after, and it had no home in the app at all.
     @State private var detailTab: DetailTab = .analysis
+
+    /// Classes and presentations are both sessions and are not the same
+    /// thing, and one list of both was what made the sidebar confusing: a
+    /// row called "Test1" is a class or a student depending on which half of
+    /// the app you were in.
+    enum Kind: String, CaseIterable, Identifiable {
+        case klass = "Classes"
+        case presentation = "Presentations"
+        var id: String { rawValue }
+
+        var symbol: String { self == .klass ? "person.3" : "person.wave.2" }
+
+        var emptyLine: String {
+            switch self {
+            case .klass: return "No classes recorded yet."
+            case .presentation: return "No presentations recorded yet."
+            }
+        }
+
+        var emptyDetail: String {
+            switch self {
+            case .klass: return "Press Start on the main window to run one."
+            case .presentation: return "Open Screenroom to record someone presenting."
+            }
+        }
+    }
 
     enum DetailTab: String, CaseIterable, Identifiable {
         /// What used to be "Recording" minus the player, which now sits above
@@ -293,10 +333,45 @@ struct RecordingsView: View {
 
     // MARK: Browser
 
+    /// The sessions of the kind being looked at.
+    ///
+    /// Loose legacy recordings have no folder and no presentation.mov, so
+    /// they classify as classes, which is what they were.
+    private var shown: [Session] { sessions.filter { $0.kind == kind } }
+
     private var browser: some View {
         HSplitView {
+            VStack(spacing: 0) {
+                // Two halves of one app, told apart rather than mixed. The
+                // counts are on the control so an empty list is explained by
+                // the tab rather than looking like lost work.
+                Picker("", selection: $kind) {
+                    ForEach(Kind.allCases) { k in
+                        let count = sessions.filter { $0.kind == k }.count
+                        Text(count > 0 ? "\(k.rawValue)  \(count)" : k.rawValue).tag(k)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .padding(.horizontal, 10)
+                .padding(.top, 10)
+                .padding(.bottom, 8)
+
+                if shown.isEmpty {
+                    VStack(spacing: 6) {
+                        Image(systemName: kind.symbol)
+                            .font(.system(size: 26, weight: .light))
+                            .foregroundStyle(.tertiary)
+                        Text(kind.emptyLine).font(.callout).foregroundStyle(.secondary)
+                        Text(kind.emptyDetail)
+                            .font(.caption).foregroundStyle(.tertiary)
+                            .multilineTextAlignment(.center)
+                    }
+                    .padding(.horizontal, 16)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else {
             List(selection: $selection) {
-                ForEach(sessions) { session in
+                ForEach(shown) { session in
                     if session.isSingle, let only = session.recordings.first {
                         singleRow(session, only).tag(only)
                     } else {
@@ -354,6 +429,8 @@ struct RecordingsView: View {
                     }
                     }
                 }
+                }
+            }
             }
             // Sized to the row label plus padding, rather than to a number
             // chosen before the label was. Measured: "Fri, 18 Sep at 9:16 PM"
@@ -940,6 +1017,15 @@ struct RecordingsView: View {
         }
 
         sessions = found.sorted { $0.date > $1.date }
+        // A selection that belongs to the other half would leave the detail
+        // pane showing a recording the sidebar does not list.
+        if let current = selection,
+           !shown.contains(where: { session in
+               session.recordings.contains(current) || session.clipFiles.contains(current)
+           }) {
+            selection = nil
+            teardownPlayer()
+        }
         // A selection whose file just went to the Trash must not linger.
         if let current = selection, !allRecordings.contains(where: { $0.url == current.url }) {
             teardownPlayer()

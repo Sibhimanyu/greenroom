@@ -650,6 +650,7 @@ struct RecordingsView: View {
             if let pane = screenroomPane, DetailTab.analysis.isAvailable {
                 ScreenroomAnalysisPane(
                     folder: folder(for: selection),
+                    recording: selection.url,
                     showing: pane,
                     seek: { ms in seek(to: Double(ms) / 1000) },
                     position: { Int(playhead * 1000) })

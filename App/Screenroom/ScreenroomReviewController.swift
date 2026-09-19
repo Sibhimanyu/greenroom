@@ -119,6 +119,28 @@ final class ScreenroomReviewController: ObservableObject {
 
     let player = AVPlayer()
 
+    /// The recording the window has SELECTED, which is not always the one
+    /// the folder's artifacts describe.
+    ///
+    /// A class folder can hold more than one recording - the tape was
+    /// stopped and restarted - and every artifact in it (transcript.txt,
+    /// speech.json, notes.jsonl, frames/) is folder-level, so it describes
+    /// exactly one of them: whichever ScreenroomLibrary picked, the longest.
+    /// Selecting the other one and analysing used to bind the transcript, the
+    /// metrics and every note offset to a file you were not watching, with
+    /// nothing said about it.
+    @Published var selectedRecording: URL?
+
+    /// The recording this folder's artifacts describe.
+    var analysisTarget: URL? { selected?.recording }
+
+    /// True when the window is showing one recording and the analysis would
+    /// be about another.
+    var selectionMismatch: Bool {
+        guard let selectedRecording, let analysisTarget else { return false }
+        return selectedRecording != analysisTarget
+    }
+
     /// Where the window's player currently is, in milliseconds. Set by
     /// whoever owns the picture, so a note added while watching back lands at
     /// the frame on screen rather than at the end of the file.

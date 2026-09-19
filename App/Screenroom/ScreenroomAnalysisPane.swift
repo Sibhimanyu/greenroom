@@ -35,6 +35,9 @@ struct ScreenroomAnalysisPane: View {
 
     /// The folder the window has selected. Nil while nothing is.
     let folder: URL?
+    /// The recording the window is playing, which is not always the one the
+    /// folder's artifacts describe. See ScreenroomReviewController.
+    let recording: URL?
     let showing: Pane
     /// Seeks the window's own player, in milliseconds.
     let seek: (Int) -> Void
@@ -73,13 +76,16 @@ struct ScreenroomAnalysisPane: View {
         review.externalSeek = seek
         review.currentPosition = position
         review.select(folder: folder)
+        review.selectedRecording = recording
     }
 
     // MARK: Analysis
 
     @ViewBuilder
     private var analysis: some View {
-        if review.isAnalysing {
+        if review.selectionMismatch {
+            otherTake
+        } else if review.isAnalysing {
             running
         } else if let analysis = review.analysis {
             analysed(analysis)
@@ -405,6 +411,36 @@ struct ScreenroomAnalysisPane: View {
     static func stamp(_ ms: Int) -> String {
         let total = max(0, ms / 1000)
         return String(format: "%d:%02d", total / 60, total % 60)
+    }
+
+    /// Shown when the selected recording is not the one the folder's
+    /// artifacts describe.
+    ///
+    /// Refusing rather than analysing the other file quietly. A transcript, a
+    /// filler count and a set of note offsets that belong to a recording you
+    /// are not watching are all wrong in a way nothing on screen would have
+    /// admitted: click a note and the player jumps to a time measured against
+    /// a different take.
+    private var otherTake: some View {
+        VStack(spacing: 10) {
+            Image(systemName: "rectangle.on.rectangle.slash")
+                .font(.system(size: 30, weight: .light))
+                .foregroundStyle(.tertiary)
+            Text("Another take is selected")
+                .font(.title3.weight(.medium))
+            Text("This session holds more than one recording, and the analysis describes \(review.analysisTarget?.lastPathComponent ?? "the longest one"). Notes and timings from a different take would point at the wrong moments, so they are not shown here.")
+                .font(.callout).foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: 400)
+            if let target = review.analysisTarget {
+                Text(target.lastPathComponent)
+                    .font(.system(size: 10, design: .monospaced))
+                    .foregroundStyle(.tertiary)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding(32)
     }
 
     // MARK: Furniture

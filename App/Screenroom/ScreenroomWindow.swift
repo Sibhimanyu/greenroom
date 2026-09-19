@@ -399,7 +399,17 @@ struct CameraPreview: NSViewRepresentable {
         private let preview = AVCaptureVideoPreviewLayer()
 
         var session: AVCaptureSession? {
-            didSet { preview.session = session }
+            didSet {
+                preview.session = session
+                // The preview matches the recording. A mirrored preview over
+                // an unmirrored file is worse than either: you frame the shot
+                // against one picture and get the other.
+                if let connection = preview.connection,
+                   connection.isVideoMirroringSupported {
+                    connection.automaticallyAdjustsVideoMirroring = false
+                    connection.isVideoMirrored = false
+                }
+            }
         }
 
         override init(frame frameRect: NSRect) {

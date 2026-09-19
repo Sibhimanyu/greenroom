@@ -103,6 +103,24 @@ final class ScreenroomCameraEngine: NSObject, ScreenroomCaptureEngine {
             }
             if session.canAddOutput(self.movieOutput) { session.addOutput(self.movieOutput) }
             session.sessionPreset = .high
+
+            // NOT MIRRORED, said out loud rather than left to a default.
+            //
+            // macOS mirrors a front-facing camera automatically, because the
+            // usual job is a self-view and a self-view should behave like a
+            // mirror. This camera is pointed at somebody PRESENTING - a
+            // student at the front of a room - and a mirrored record of them
+            // is just wrong: their right hand is on the wrong side, and any
+            // writing behind them is backwards.
+            //
+            // automaticallyAdjustsVideoMirroring has to go false first, or
+            // the system overrules isVideoMirrored at the next configuration
+            // change.
+            for connection in self.movieOutput.connections
+            where connection.isVideoMirroringSupported {
+                connection.automaticallyAdjustsVideoMirroring = false
+                connection.isVideoMirrored = false
+            }
             session.commitConfiguration()
             if !session.isRunning { session.startRunning() }
 

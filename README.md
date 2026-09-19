@@ -145,10 +145,9 @@ Also available:
   The file path is logged when you stop.
 - **Menu bar → Snap Windows Back** — re-tiles everything to the session
   layout after you've dragged windows around.
-- **Cues** — **not in this release.** Settings → Cues shows it as coming
-  soon and there is nothing to switch on. When it ships it will listen to
-  your microphone while the class is live and offer link cards for the
-  books, videos, topics, people and places you name.
+- **Cues** — off by default, macOS 26 only. Turn it on in Settings → Cues
+  and it listens to your microphone while the class is live, offering link
+  cards for the books, videos, topics, people and places you name.
 - **Manual controls** (pull-down beside the Status toggle) — each piece of the
   session individually: open just the chat window, just the main-app
   window, or just Zoom.
@@ -248,12 +247,9 @@ client ID/secret travel in the settings export; the connected account does
 not.
 
 ### Cues
-> **Not in this release.** The tab shows a "Coming soon" row, nothing
-> listens to your microphone, and no stored preference can switch it on.
-> The code ships with the app but every entry point is gated on
-> `CuesAvailability.isReleased` in `App/Cues/CuesAvailability.swift`; set
-> that to `true` to turn the feature back on. The rest of this section
-> describes it as it behaves when released.
+> Released 2026-09-19. Every entry point still reads
+> `CuesAvailability.isReleased` in `App/Cues/CuesAvailability.swift`, so one
+> line puts it back behind the curtain if a class goes badly.
 
 Off by default; macOS 26 only (the tab says so on 14/15, and
 `FoundationModels.framework` is weak-linked so the app still launches

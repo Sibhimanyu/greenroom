@@ -109,6 +109,23 @@ struct GreenroomApp: App {
         // Deliberately NOT given the coordinator: Screenroom runs without a
         // class, a meeting or OBS, and handing it the session object would
         // quietly make that untrue the first time someone reached for it.
+        // Sessions is a WINDOW, not a sheet.
+        //
+        // As a sheet it was attached to the main window, and AppKit moves a
+        // parent to make room for a sheet that does not fit - so opening
+        // Sessions shoved Greenroom up the screen. Reported as "the greenroom
+        // window moves up in a weird way... it seems like the modal is somehow
+        // mounted to the greenroom window", which is exactly what a sheet is.
+        //
+        // It is also not modal in any real sense: you read it while the main
+        // window is doing nothing, and a teacher may well want both open.
+        Window("Sessions", id: "sessions") {
+            RecordingsView()
+                .environmentObject(coordinator)
+                .tint(Brand.green)
+        }
+        .defaultSize(width: 1_180, height: 760)
+
         // Two gates, because one is not enough and the scene cannot be the
         // one that moves.
         //

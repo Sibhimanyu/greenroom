@@ -15,7 +15,6 @@ struct ContentView: View {
     @EnvironmentObject private var coordinator: CoordinatorController
     @Environment(\.openSettings) private var openSettings
     @Environment(\.openWindow) private var openWindow
-    @State private var showRecordings = false
     @State private var showSavePreset = false
     @State private var presetNameDraft = ""
     /// Hidden by default: the log is diagnostic detail, opened when something
@@ -132,7 +131,7 @@ struct ContentView: View {
                 .help("Records exactly what participants see \u{2014} your shared screen with you in it. Saved to Documents/Greenroom when stopped.")
 
                 Button {
-                    showRecordings = true
+                    openWindow(id: "sessions")
                 } label: {
                     Label("Sessions", systemImage: "film.stack")
                 }
@@ -181,9 +180,6 @@ struct ContentView: View {
         .sheet(isPresented: $coordinator.showOnboarding) {
             OnboardingView()
                 .environmentObject(coordinator)
-        }
-        .sheet(isPresented: $showRecordings) {
-            RecordingsView()
         }
     }
 

@@ -2,11 +2,12 @@
 //  CuesAvailability.swift
 //  Greenroom
 //
-//  The one switch that holds Cues out of a release.
+//  The one switch that holds Cues in or out of a release.
 //
 //  Cues works. It has shipped through real classes, it has a bench, and the
-//  code is all here. It is held back because a release goes out before the
-//  feature is ready to be supported in front of people who did not build it.
+//  code is all here. It was held back because a release goes out before a
+//  feature is ready to be supported in front of people who did not build it;
+//  it is on now so it can be tested in a real class again.
 //
 //  This exists as a single constant rather than as "leave the toggle off"
 //  because the toggle is not the only door. `prompterEnabled` is already
@@ -27,13 +28,20 @@ import SwiftUI
 
 enum CuesAvailability {
 
-    /// False while Cues is held out of the release. See the file note.
+    /// True since 2026-09-19, on the author's call: "unlock it so we can
+    /// start testing."
+    ///
+    /// The four doors below are kept rather than deleted. The switch is how
+    /// Cues goes back behind the curtain if a class goes badly, and the
+    /// reasoning in the file note - that a stored `prompterEnabled` and an
+    /// imported settings file are doors the toggle does not close - is still
+    /// why they all read this constant instead of the preference.
     ///
     /// The four gates read this directly rather than through a combined
     /// "can it run here" helper, so a macOS 14 Mac sees the coming-soon row
     /// too, instead of the older "Cues needs macOS 26" sentence for a
     /// feature that is not in the build on any OS.
-    static let isReleased = false
+    static let isReleased = true
 }
 
 /// What Settings and Onboarding show in place of the real controls.

@@ -80,6 +80,55 @@ enum ScreenroomWhisper {
             .appendingPathComponent("Greenroom/whisper", isDirectory: true)
     }
 
+    /// One model file on disk.
+    struct Model: Identifiable, Hashable {
+        let url: URL
+        let bytes: Int64
+        var id: URL { url }
+        var name: String { url.deletingPathExtension().lastPathComponent
+            .replacingOccurrences(of: "ggml-", with: "") }
+        var sizeLabel: String { ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file) }
+    }
+
+    /// Every model on this Mac, smallest first.
+    ///
+    /// Smallest first because that is the speed order, and the ordering a
+    /// person picking one is thinking in: base is fast and adequate, small is
+    /// slower and better on accented speech. Test fixtures are excluded by
+    /// name - they are deliberately useless and would otherwise appear as a
+    /// choice.
+    static func availableModels() -> [Model] {
+        var seen = Set<String>()
+        var models: [Model] = []
+        for folder in modelSearchPaths {
+            guard let files = try? FileManager.default.contentsOfDirectory(
+                at: folder, includingPropertiesForKeys: [.fileSizeKey],
+                options: [.skipsHiddenFiles]) else { continue }
+            for file in files where file.pathExtension == "bin"
+                && !file.lastPathComponent.contains("for-tests") {
+                guard seen.insert(file.lastPathComponent).inserted else { continue }
+                let bytes = Int64((try? file.resourceValues(forKeys: [.fileSizeKey]))?.fileSize ?? 0)
+                models.append(Model(url: file, bytes: bytes))
+            }
+        }
+        return models.sorted { $0.bytes < $1.bytes }
+    }
+
+    /// The other sizes, and the one line that fetches each.
+    ///
+    /// Offered rather than downloaded: the app has no business pulling a
+    /// gigabyte over somebody's connection without being asked, and a teacher
+    /// who wants the better model can paste a line.
+    static let offeredModels: [(name: String, size: String, note: String)] = [
+        ("ggml-base.en.bin", "141 MB", "Fast. Fine for clear speech in a quiet room."),
+        ("ggml-small.en.bin", "465 MB", "Noticeably better on accents and crosstalk."),
+        ("ggml-medium.en.bin", "1.4 GB", "Better again, and several times slower."),
+    ]
+
+    static func downloadCommand(for name: String) -> String {
+        "mkdir -p \"\(installFolder.path)\" && curl -L -o \"\(installFolder.path)/\(name)\" https://huggingface.co/ggerganov/whisper.cpp/resolve/main/\(name)"
+    }
+
     /// The best model on this Mac, or nil.
     ///
     /// Bigger is better and slower, and the sort puts the biggest FILE first

@@ -17,15 +17,26 @@ command -v xcodegen >/dev/null || { echo "xcodegen not found: brew install xcode
 
 xcodegen generate >/dev/null
 
-# -quiet still prints warnings; the grep keeps the report readable while letting
-# a real failure through with its message intact.
-if ! xcodebuild -project Greenroom.xcodeproj -scheme CuesBench \
-        -configuration Debug build 2>&1 | grep -E "error:|BUILD FAILED" ; then
-    :  # grep found nothing, which here means the build was clean
-else
+# Judged by xcodebuild's own exit status, not by grepping its output.
+#
+# The grep that used to decide this matched any line containing "error:",
+# which on an Xcode whose CoreDevice plug-in fails to load includes
+#   Details: No locator class for device extension ... error: Error Domain=...
+# printed on every single invocation. The bench then reported "build failed"
+# for a build that had succeeded. Environment noise is not a compile error.
+_BENCH_LOG=$(mktemp)
+xcodebuild -project Greenroom.xcodeproj -scheme CuesBench \
+        -configuration Debug build >"$_BENCH_LOG" 2>&1
+_BENCH_RC=$?
+if [ "$_BENCH_RC" -ne 0 ]; then
+    # Compiler diagnostics only: they start with an absolute path.
+    grep -E "^/.*(error|warning): " "$_BENCH_LOG" | sort -u | head -20 >&2
+    grep -E "\*\* BUILD FAILED" "$_BENCH_LOG" >&2
+    rm -f "$_BENCH_LOG"
     echo "build failed" >&2
     exit 2
 fi
+rm -f "$_BENCH_LOG" 
 
 BIN=$(xcodebuild -project Greenroom.xcodeproj -scheme CuesBench \
         -configuration Debug -showBuildSettings 2>/dev/null \

@@ -13,7 +13,7 @@
 	<key>NSCameraUsageDescription</key>
 	<string>Greenroom sends the composited video (your screen with you in it) to the Zoom meeting from inside the app, so it needs the camera the meeting uses. With Marks (not in this release), it also records the person presenting straight to a file in Documents/Greenroom, which stays on this Mac.</string>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>Your microphone goes to the Zoom meeting, drives the level meter on the participants panel, and is recorded alongside the picture when Marks records a presentation (not in this release; the file stays on this Mac). With Cues turned on (off by default), Greenroom also turns your speech into text on this Mac to suggest links; the audio and the text never leave the Mac and are not saved.</string>
+	<string>Your microphone goes to the Zoom meeting, drives the level meter on the participants panel, and is recorded alongside the picture when Marks records a presentation (not in this release; the file stays on this Mac). With Cues turned on (off by default, macOS 26 only), Greenroom also turns your speech into text on this Mac to suggest links; the audio and the text never leave the Mac and are not saved.</string>
 	<!-- Cues does NOT need this key: it uses SpeechAnalyzer with audio the
 	     app already holds, which runs on this Mac and asks for no
 	     speech-recognition permission. Marks does, because transcribing a

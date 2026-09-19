@@ -76,6 +76,18 @@ struct RecordingsView: View {
         var id: String { folder?.path ?? "__loose__" }
 
         var isEmpty: Bool { recordings.isEmpty && clipFiles.isEmpty && links.isEmpty }
+
+        /// One recording, nothing else. The overwhelmingly common shape.
+        ///
+        /// A Section header naming the class above a single row naming the
+        /// same class at a different time is two headings for one thing, and
+        /// that is what the sidebar looked like: "Test1", then under it "Fri,
+        /// 18 Sep at 9:16 PM". The header exists for the session that really
+        /// does hold several things; for the one that does not, it is
+        /// furniture around a single row.
+        var isSingle: Bool {
+            recordings.count == 1 && clipFiles.isEmpty && links.isEmpty
+        }
         var clipCount: Int { recordings.reduce(0) { $0 + $1.clips.count } + clipFiles.count }
         var sizeBytes: Int64 {
             recordings.reduce(0) { $0 + $1.sizeBytes } + clipFiles.reduce(0) { $0 + $1.sizeBytes }
@@ -285,6 +297,9 @@ struct RecordingsView: View {
         HSplitView {
             List(selection: $selection) {
                 ForEach(sessions) { session in
+                    if session.isSingle, let only = session.recordings.first {
+                        singleRow(session, only).tag(only)
+                    } else {
                     Section {
                         ForEach(session.recordings) { recording in
                             recordingRow(recording).tag(recording)
@@ -337,6 +352,7 @@ struct RecordingsView: View {
                             }
                         }
                     }
+                    }
                 }
             }
             // Sized to the row label plus padding, rather than to a number
@@ -351,6 +367,62 @@ struct RecordingsView: View {
 
             detail
                 .frame(minWidth: 460, maxWidth: .infinity, maxHeight: .infinity)
+        }
+    }
+
+    /// One session, one row: its name, and underneath it when and how big.
+    ///
+    /// The name leads because that is what a teacher is looking for. The date
+    /// is the subtitle rather than the title, which is the other way round
+    /// from how this list used to read.
+    private func singleRow(_ session: Session, _ recording: Recording) -> some View {
+        HStack(spacing: 6) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(session.displayTitle)
+                    .lineLimit(1).truncationMode(.middle)
+                HStack(spacing: 6) {
+                    Text(recording.title)
+                    Text("\u{00B7}")
+                    Text(recording.sizeLabel)
+                    if let upload = recording.upload {
+                        Text("\u{00B7} YouTube \u{00B7} \(upload.privacy)")
+                            .foregroundStyle(Color.accentColor)
+                    }
+                }
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+            }
+            Spacer(minLength: 0)
+            if session.folder != nil {
+                Button {
+                    renameDraft = session.customTitle ?? ""
+                    renaming = session
+                } label: {
+                    Image(systemName: "pencil").font(.system(size: 10))
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.secondary)
+                .help("Rename this session")
+            }
+        }
+        .contextMenu {
+            if let folder = session.folder {
+                Button("Rename\u{2026}") {
+                    renameDraft = session.customTitle ?? ""
+                    renaming = session
+                }
+                Button("Show in Finder") {
+                    NSWorkspace.shared.activateFileViewerSelecting([folder])
+                }
+                Divider()
+            }
+            if let upload = recording.upload, let url = URL(string: upload.url) {
+                Button("Open on YouTube") { NSWorkspace.shared.open(url) }
+                Button("Copy YouTube link") { copy(upload.url) }
+                Divider()
+            }
+            Button("Move to Trash", role: .destructive) { confirmingDelete = recording }
         }
     }
 

@@ -21,7 +21,9 @@ import SwiftUI
 
 struct ScreenroomSettingsTab: View {
     @State private var agent = ScreenroomAgentSettings.load()
+    @State private var transcriber = ScreenroomTranscriberSettings.load()
     @State private var whisperReady = ScreenroomTranscriberSettings.whisperIsReady
+    @State private var models = ScreenroomWhisper.availableModels()
 
     var body: some View {
         Form {
@@ -36,20 +38,64 @@ struct ScreenroomSettingsTab: View {
                                  ? "Verbatim, on this Mac. Filler words can be counted."
                                  : "Apple's recogniser tidies speech up, so filler words are not counted.")
                 }
-                if !whisperReady {
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text("Two commands in a Terminal add the verbatim one:")
-                            .font(.caption).foregroundStyle(.secondary)
-                        Text("brew install whisper-cpp")
-                            .font(.system(size: 10, design: .monospaced)).textSelection(.enabled)
-                        Text(ScreenroomWhisper.downloadCommand)
-                            .font(.system(size: 10, design: .monospaced)).textSelection(.enabled)
-                            .lineLimit(3).fixedSize(horizontal: false, vertical: true)
-                        Button("Check again") {
-                            whisperReady = ScreenroomTranscriberSettings.whisperIsReady
+
+                // Which model, when there is more than one to choose between.
+                // A single model is a fact, not a decision, and a picker with
+                // one row in it is furniture.
+                if whisperReady, models.count > 1 {
+                    Picker(selection: Binding(
+                        get: { ScreenroomTranscriberSettings.resolvedModel()?.path ?? "" },
+                        set: { transcriber.modelPath = $0; transcriber.save() })) {
+                        ForEach(models) { model in
+                            Text("\(model.name)  \u{00B7}  \(model.sizeLabel)").tag(model.url.path)
                         }
-                        .controlSize(.small)
+                    } label: {
+                        SettingLabel(title: "Model",
+                                     subtitle: "Bigger is better on accents and slower on everything.")
                     }
+                } else if whisperReady, let only = models.first {
+                    LabeledContent {
+                        Text("\(only.name)  \u{00B7}  \(only.sizeLabel)")
+                            .font(.system(size: 12, design: .monospaced))
+                            .foregroundStyle(.secondary)
+                    } label: {
+                        SettingLabel(title: "Model", subtitle: "The only one on this Mac.")
+                    }
+                }
+
+                DisclosureGroup("Add another model") {
+                    VStack(alignment: .leading, spacing: 10) {
+                        if !whisperReady {
+                            Text("whisper itself is missing. First:")
+                                .font(.caption).foregroundStyle(.secondary)
+                            Text("brew install whisper-cpp")
+                                .font(.system(size: 10, design: .monospaced)).textSelection(.enabled)
+                        }
+                        ForEach(ScreenroomWhisper.offeredModels, id: \.name) { offer in
+                            VStack(alignment: .leading, spacing: 3) {
+                                HStack(spacing: 6) {
+                                    Text(offer.name.replacingOccurrences(of: "ggml-", with: "")
+                                        .replacingOccurrences(of: ".bin", with: ""))
+                                        .font(.caption.weight(.medium))
+                                    Text(offer.size).font(.caption2).foregroundStyle(.tertiary)
+                                    if models.contains(where: { $0.url.lastPathComponent == offer.name }) {
+                                        Text("installed").font(.caption2).foregroundStyle(Brand.text)
+                                    }
+                                }
+                                Text(offer.note).font(.caption2).foregroundStyle(.secondary)
+                                if !models.contains(where: { $0.url.lastPathComponent == offer.name }) {
+                                    Text(ScreenroomWhisper.downloadCommand(for: offer.name))
+                                        .font(.system(size: 9, design: .monospaced))
+                                        .textSelection(.enabled)
+                                        .lineLimit(3)
+                                        .fixedSize(horizontal: false, vertical: true)
+                                }
+                            }
+                        }
+                        Button("Look again") { refresh() }
+                            .controlSize(.small)
+                    }
+                    .padding(.top, 4)
                 }
             } header: {
                 Text("Speech")
@@ -98,6 +144,12 @@ struct ScreenroomSettingsTab: View {
         }
         .formStyle(.grouped)
         .frame(width: 520)
-        .onAppear { whisperReady = ScreenroomTranscriberSettings.whisperIsReady }
+        .onAppear { refresh() }
+    }
+
+    private func refresh() {
+        transcriber = ScreenroomTranscriberSettings.load()
+        models = ScreenroomWhisper.availableModels()
+        whisperReady = ScreenroomTranscriberSettings.whisperIsReady
     }
 }

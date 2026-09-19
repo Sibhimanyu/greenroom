@@ -80,7 +80,21 @@ struct ScreenroomTranscriberSettings: Codable, Equatable {
     }
 
     static var whisperIsReady: Bool {
-        ScreenroomWhisper.resolvedBinary != nil && ScreenroomWhisper.findModel() != nil
+        ScreenroomWhisper.resolvedBinary != nil && resolvedModel() != nil
+    }
+
+    /// The model to run: the one chosen, when it is still on disk, and
+    /// otherwise the best one there is.
+    ///
+    /// Falling back rather than failing, because a model can be deleted or a
+    /// folder moved between one session and the next, and a teacher should
+    /// not meet that as an error on the morning they needed a transcript.
+    static func resolvedModel(_ defaults: UserDefaults = .standard) -> URL? {
+        let chosen = load(defaults).modelPath
+        if !chosen.isEmpty, FileManager.default.fileExists(atPath: chosen) {
+            return URL(fileURLWithPath: chosen)
+        }
+        return ScreenroomWhisper.findModel()
     }
 
     static func load(_ defaults: UserDefaults = .standard) -> ScreenroomTranscriberSettings {
@@ -155,9 +169,7 @@ enum ScreenroomTranscriber {
 
         switch settings.engine {
         case .whisper:
-            guard let model = settings.modelPath.isEmpty
-                    ? ScreenroomWhisper.findModel()
-                    : URL(fileURLWithPath: settings.modelPath) else {
+            guard let model = ScreenroomTranscriberSettings.resolvedModel() else {
                 throw ScreenroomWhisper.Failure.noModel
             }
             // The WAV lives beside the recording only while whisper reads it.

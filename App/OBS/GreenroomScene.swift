@@ -53,10 +53,44 @@ enum GreenroomScene {
     /// The date is always present even when a name was given: two runs of the
     /// same class on the same day would otherwise collide, and a teacher who
     /// records the same lesson twice is exactly who needs to tell them apart.
-    static func sessionFolderName(className: String, started: Date) -> String {
+    /// `fallback` names the thing when nobody typed a name.
+    ///
+    /// "Class" for a Greenroom session and "Presentation" for a Screenroom
+    /// one. They land in the same list now, so an unnamed session should say
+    /// which kind it is rather than leaving two identical-looking rows.
+    static func sessionFolderName(className: String, started: Date,
+                                  fallback: String = "Class") -> String {
         let stamp = sessionStampFormatter.string(from: started)
         let cleaned = sanitizedClassName(className)
-        return cleaned.isEmpty ? "Class - \(stamp)" : "\(cleaned) - \(stamp)"
+        return cleaned.isEmpty ? "\(fallback) - \(stamp)" : "\(cleaned) - \(stamp)"
+    }
+
+    /// A folder that does not already exist, by adding "(2)", "(3)" and so on.
+    ///
+    /// The stamp is minute-resolution, which is plenty for classes - nobody
+    /// starts two a minute apart - and not enough for presentations, which
+    /// run two minutes each and get recorded back to back. Two in one minute
+    /// produced the SAME folder name, and Screenroom deletes an existing
+    /// presentation.mov before recording on the grounds that it must be a
+    /// previous attempt at the same presentation. So the second student's
+    /// recording destroyed the first student's.
+    ///
+    /// Reachable only rarely while a name was required and every unnamed one
+    /// would have collided the moment it stopped being.
+    static func uniqueSessionFolder(named name: String, in root: URL) -> URL {
+        let manager = FileManager.default
+        var candidate = root.appendingPathComponent(name, isDirectory: true)
+        var counter = 2
+        // A folder that exists but holds nothing is a session that was
+        // started and abandoned; reusing it is right, and stop() already
+        // removes those.
+        while manager.fileExists(atPath: candidate.path),
+              let contents = try? manager.contentsOfDirectory(atPath: candidate.path),
+              !contents.isEmpty {
+            candidate = root.appendingPathComponent("\(name) (\(counter))", isDirectory: true)
+            counter += 1
+        }
+        return candidate
     }
 
     /// Trims a typed class name down to something safe as a folder name.

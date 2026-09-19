@@ -181,10 +181,26 @@ final class ScreenroomController: ObservableObject {
 
     // MARK: The tape
 
+    /// A name is not required.
+    ///
+    /// It was, and that was one field between a teacher and the Record
+    /// button at the moment a student had already started speaking. An
+    /// unnamed presentation gets "Presentation - <when>", which is a worse
+    /// name than "Priya" and a far better outcome than a missed opening.
+    /// Renaming afterwards is one right-click in Sessions.
     var canStart: Bool {
         recorder.isPreviewing && !recorder.isRecording
-            && !presenter.trimmingCharacters(in: .whitespaces).isEmpty
     }
+
+    /// What this presentation's folder will be called, shown as you type so
+    /// the default is something you can see rather than something you find
+    /// out about afterwards.
+    var folderPreview: String {
+        GreenroomScene.sessionFolderName(className: presenter, started: Date(),
+                                         fallback: Self.defaultName)
+    }
+
+    static let defaultName = "Presentation"
 
     /// Names the folder and starts recording. Both at once: a presentation
     /// that is being recorded is the only kind Screenroom has, so there is no
@@ -193,9 +209,12 @@ final class ScreenroomController: ObservableObject {
         guard canStart else { return }
         let started = Date()
         let name = GreenroomScene.sessionFolderName(
-            className: presenter, started: started)
-        let target = GreenroomScene.recordingsDirectory
-            .appendingPathComponent(name, isDirectory: true)
+            className: presenter, started: started, fallback: Self.defaultName)
+        // Never onto an existing one: two presentations inside the same
+        // minute share a stamp, and recording into the first one's folder
+        // deletes the first one's video.
+        let target = GreenroomScene.uniqueSessionFolder(
+            named: name, in: GreenroomScene.recordingsDirectory)
 
         folder = target
         notes = []
@@ -204,7 +223,10 @@ final class ScreenroomController: ObservableObject {
         // The Sessions window reads this, so a presentation is findable there
         // under the presenter's name rather than as a bare folder date.
         var metadata = SessionMetadata()
-        metadata.title = GreenroomScene.sanitizedClassName(presenter)
+        // Only a name somebody chose. An empty title leaves the folder name
+        // to speak for itself, which is what Sessions falls back to.
+        let typed = GreenroomScene.sanitizedClassName(presenter)
+        metadata.title = typed.isEmpty ? nil : typed
         try? FileManager.default.createDirectory(at: target, withIntermediateDirectories: true)
         metadata.save(in: target)
 

@@ -1087,10 +1087,12 @@ final class CoordinatorController: ObservableObject {
         statusLines = []
         let startedAt = Date()
         sessionStartedAt = startedAt
-        // Named now, created later - see sessionFolder.
-        sessionFolder = GreenroomScene.recordingsDirectory.appendingPathComponent(
-            GreenroomScene.sessionFolderName(className: className, started: startedAt),
-            isDirectory: true)
+        // Named now, created later - see sessionFolder. Unique, so two
+        // starts inside one minute cannot land in each other's folder; the
+        // stamp only goes to the minute.
+        sessionFolder = GreenroomScene.uniqueSessionFolder(
+            named: GreenroomScene.sessionFolderName(className: className, started: startedAt),
+            in: GreenroomScene.recordingsDirectory)
         // Shape only. No meeting number, no preset name - see Analytics.swift.
         Analytics.track(.sessionStart, [
             .mode: meetingMode == .join ? "join" : "start",

@@ -70,12 +70,21 @@ struct ScreenroomWindow: View {
             Divider().frame(height: 28)
 
             VStack(alignment: .leading, spacing: 4) {
-                eyebrow("PRESENTER")
-                TextField("Who is presenting", text: $screenroom.presenter)
+                eyebrow("PRESENTER \u{00B7} OPTIONAL")
+                TextField(ScreenroomController.defaultName, text: $screenroom.presenter)
                     .textFieldStyle(.roundedBorder)
                     .frame(width: 200)
                     .disabled(screenroom.recorder.isRecording)
-                    .help("Names this presentation's folder in Documents/Greenroom, next to the classes.")
+                    .help("Optional. Names this presentation's folder in Documents/Greenroom; left empty it is named for the time, and you can rename it afterwards in Sessions.")
+            }
+
+            if !screenroom.recorder.isRecording {
+                Text(screenroom.folderPreview)
+                    .font(.system(size: 11, design: .monospaced))
+                    .foregroundStyle(.tertiary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .help("The folder this presentation will be saved in.")
             }
 
             Spacer(minLength: 16)
@@ -107,7 +116,7 @@ struct ScreenroomWindow: View {
                 .disabled(!screenroom.canStart)
                 .help(screenroom.canStart
                       ? "Starts recording and opens the note box."
-                      : "Name the presenter first, and wait for the camera.")
+                      : "Waiting for the camera.")
             }
 
             // Coaching, turned on for this presentation only. Quiet and
@@ -278,7 +287,7 @@ struct ScreenroomWindow: View {
                 .foregroundStyle(.secondary)
             Text(screenroom.canTakeNotes
                  ? "Type what you see. Return files it."
-                 : "Name the presenter and press Start Presentation.")
+                 : "Press Start Presentation.")
                 .font(.caption)
                 .foregroundStyle(.tertiary)
                 .multilineTextAlignment(.center)

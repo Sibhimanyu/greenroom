@@ -182,10 +182,10 @@ struct OnboardingView: View {
 
                 DisclosureGroup("Setting up from scratch? The full walkthrough (\u{2248}10 minutes, once)", isExpanded: $scratchExpanded) {
                     VStack(alignment: .leading, spacing: 12) {
-                        scratchStep(1, "Create a **General App** \u{2014} on its **Features \u{2192} Embed** page toggle **Meeting SDK** on, then copy its **Client ID + Secret** into Settings \u{2192} Meeting Chat.",
+                        scratchStep(1, "Create a **General App** \u{2014} on its **Features \u{2192} Embed** page toggle **Meeting SDK** on, then copy its **Client ID + Secret** into Settings \u{2192} Zoom.",
                                     buttonTitle: "Create app on marketplace.zoom.us\u{2026}",
                                     url: "https://marketplace.zoom.us/develop/create")
-                        scratchStep(2, "Create a **Server-to-Server OAuth** app \u{2014} copy its **Account ID, Client ID and Secret** into Settings \u{2192} Start Meeting.",
+                        scratchStep(2, "Create a **Server-to-Server OAuth** app \u{2014} copy its **Account ID, Client ID and Secret** into the same Settings \u{2192} Zoom page.",
                                     buttonTitle: "Create app on marketplace.zoom.us\u{2026}",
                                     url: "https://marketplace.zoom.us/develop/create")
                         scratchStep(3, "On the Server-to-Server app's **Scopes** page, add these four (search each name):", buttonTitle: nil, url: nil)

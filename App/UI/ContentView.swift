@@ -303,7 +303,7 @@ struct ContentView: View {
             switch coordinator.meetingMode {
             case .create:
                 if coordinator.s2sAccountID.isEmpty || coordinator.s2sClientID.isEmpty {
-                    Text("Needs the Start Meeting credentials \u{2014} add them in Settings (\u{2318},).")
+                    Text("Needs the Server-to-Server credentials \u{2014} add them in Settings (\u{2318},) \u{2192} Zoom.")
                         .font(.caption)
                         .foregroundStyle(.orange)
                 } else {

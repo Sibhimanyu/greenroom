@@ -210,13 +210,15 @@ every other app can only be moved via the Accessibility API. The warning
 has an *Open Settings…* button and clears itself once you flip the
 switch.
 
-### Meeting Chat
+### Zoom
+
+#### Meeting SDK app
 Client ID + Secret of the Meeting SDK Marketplace app (General App →
 Features → Embed → Meeting SDK). Powers the built-in meeting client and
 the chat window. **Only works in meetings hosted under the same Zoom
 account as these credentials** — see limitations below.
 
-### Start Meeting
+#### Server-to-Server OAuth app
 Account ID / Client ID / Secret of the Server-to-Server OAuth Marketplace
 app — powers "New Meeting". Also here:
 

@@ -1072,7 +1072,7 @@ final class CoordinatorController: ObservableObject {
         switch meetingMode {
         case .create:
             guard !s2sAccountID.isEmpty, !s2sClientID.isEmpty, !s2sClientSecret.isEmpty else {
-                log("Can't create a meeting yet \u{2014} add the Start Meeting credentials in Settings (\u{2318},).")
+                log("Can't create a meeting yet \u{2014} add the Server-to-Server credentials in Settings (\u{2318},) \u{2192} Zoom.")
                 return
             }
         case .join:
@@ -1778,7 +1778,7 @@ final class CoordinatorController: ObservableObject {
             ])
         }
         guard !sdkClientID.isEmpty, !sdkClientSecret.isEmpty else {
-            log("No Meeting Chat credentials \u{2014} starting the meeting via the native Zoom app instead.")
+            log("No Meeting SDK credentials \u{2014} starting the meeting via the native Zoom app instead.")
             ZoomLauncher.startAsHost(meetingNumber: meeting.number, zak: zak)
             return
         }
@@ -2736,7 +2736,7 @@ final class CoordinatorController: ObservableObject {
             ])
         }
         guard !sdkClientID.isEmpty, !sdkClientSecret.isEmpty else {
-            log("No Meeting Chat credentials \u{2014} starting the meeting via the native Zoom app instead (no chat window).")
+            log("No Meeting SDK credentials \u{2014} starting the meeting via the native Zoom app instead (no chat window).")
             ZoomLauncher.startAsHost(meetingNumber: meeting.number, zak: zak)
             return
         }
@@ -2769,7 +2769,7 @@ final class CoordinatorController: ObservableObject {
         loadSecretsIfNeeded()
         guard !isLoadingScheduled else { return }
         guard !s2sAccountID.isEmpty, !s2sClientID.isEmpty, !s2sClientSecret.isEmpty else {
-            log("Can't list your Zoom meetings \u{2014} add the Start Meeting credentials in Settings (\u{2318},) first.")
+            log("Can't list your Zoom meetings \u{2014} add the Server-to-Server credentials in Settings (\u{2318},) \u{2192} Zoom first.")
             return
         }
         isLoadingScheduled = true
@@ -2868,7 +2868,7 @@ final class CoordinatorController: ObservableObject {
         guard !sdkClientID.isEmpty, !sdkClientSecret.isEmpty else {
             // Reached silently-skippable from the one-button session flow -
             // say why the chat window didn't appear instead of nothing.
-            log("Chat window skipped \u{2014} add the Meeting Chat credentials in Settings (\u{2318},) to enable it.")
+            log("Chat window skipped \u{2014} add the Meeting SDK credentials in Settings (\u{2318},) \u{2192} Zoom to enable it.")
             return
         }
         isConnectingChat = true

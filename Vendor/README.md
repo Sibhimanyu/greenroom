@@ -34,7 +34,7 @@ features run off TWO Marketplace apps:
    inside this, not its own app type anymore).
 3. On its **Features** page -> **Embed** tab, toggle **Meeting SDK** on.
 4. From **App Credentials**, copy the **Client ID** and **Client Secret**
-   into Greenroom's Settings -> Meeting Chat tab (both are stored in
+   into Greenroom's Settings -> Zoom tab (both are stored in
    local app preferences / UserDefaults in plaintext - see
    `App/Zoom/SecretStore.swift`; the app uses no Keychain - never put
    either in this repo).
@@ -50,7 +50,7 @@ Scheduled-meetings list, and hosting your own meetings):**
    - `meeting:read:meeting:admin` - recurring meetings' next times
    - `user:read:token:admin` - the ZAK that host-starts your own meetings
 3. Copy its **Account ID**, **Client ID**, and **Client Secret** into
-   Greenroom's Settings -> Start Meeting tab.
+   Greenroom's Settings -> Zoom tab.
 4. Verify with the setup guide's "Test Zoom Connection" button (? on
    the main window -> credentials step).
 

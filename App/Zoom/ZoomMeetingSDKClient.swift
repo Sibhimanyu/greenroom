@@ -1019,7 +1019,7 @@ enum ZoomMeetingSDKError: LocalizedError {
                                 status: ZoomSDKMeetingStatus) -> String {
         switch error {
         case ZoomSDKMeetingError_PasswordError:
-            return "Zoom rejected the meeting passcode. Check it in Settings \u{2192} Start Meeting."
+            return "Zoom rejected the meeting passcode. Check it in Settings \u{2192} Zoom."
         case ZoomSDKMeetingError_MeetingNotStart:
             return "That meeting has not been started yet by its host."
         case ZoomSDKMeetingError_MeetingNotExist:

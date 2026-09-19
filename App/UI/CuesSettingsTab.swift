@@ -77,96 +77,99 @@ struct CuesSetupRows: View {
             }
         }
 
+        // Three rows, not nine.
+        //
+        // The tab had grown a row per decision: Apple's model, the language,
+        // the engine, the whisper model, the model detector, the transcript,
+        // YouTube search. Nine settings between a teacher and "start
+        // listening", when eight of them are set once and never touched.
+        //
+        // What stays visible is what you would change: whether it listens,
+        // what it listens with, and which model. The rest is behind a
+        // disclosure, which is not hiding it - it is saying it is not a
+        // morning decision.
         Section {
-            LabeledContent {
-                HStack(spacing: 10) {
-                    switch assets.status {
-                    case .downloading(let fraction):
-                        ProgressView(value: fraction).frame(width: 110)
-                        Text(assets.status.label).font(.caption).foregroundStyle(.secondary)
-                    case .installed:
-                        Label(assets.status.label, systemImage: "checkmark.circle.fill").foregroundStyle(Brand.green)
-                    case .notDownloaded, .failed:
-                        Text(assets.status.label).font(.caption).foregroundStyle(.secondary).lineLimit(1)
-                        Button("Download\u{2026}") { download() }
-                            .disabled(inClass)
-                            .help(inClass ? "Not during a class." : "From Apple, once, through the system\u{2019}s asset service.")
-                    case .unsupported, .unknown:
-                        Text(assets.status.label).font(.caption).foregroundStyle(.secondary)
-                    }
-                }
+            Picker(selection: $coordinator.cuesUseWhisper) {
+                Text("Apple").tag(false)
+                Text("Whisper").tag(true)
             } label: {
-                SettingLabel(title: "Apple\u{2019}s speech model", subtitle: "Apple\u{2019}s, downloaded once. Never during a class.")
-            }
-
-            Picker(selection: $coordinator.cuesLocaleIdentifier) {
-                Text("System (\(ModelAssets.displayName(Locale.current)))").tag("")
-                ForEach(locales, id: \.identifier) { locale in
-                    Text(ModelAssets.displayName(locale)).tag(locale.identifier)
-                }
-            } label: {
-                SettingLabel(title: "Language", subtitle: "What you teach in.")
-            }
-            .disabled(inClass)
-            .onChange(of: coordinator.cuesLocaleIdentifier) { _ in
-                Task { await assets.refresh(preferredLocale: coordinator.cuesLocaleIdentifier) }
-            }
-
-            Toggle(isOn: $coordinator.cuesUseWhisper) {
-
-
-                SettingLabel(title: "Listen with whisper instead of Apple's recogniser",
-
-
+                SettingLabel(title: "Listens with",
                              subtitle: CuesWhisperTranscriber.isAvailable
-
-
-                             ? "Hears names and titles properly, which is the difference between a card and no card. About a second slower before a word settles."
-
-
-                             : "Needs whisper on this Mac \u{2014} set it up in Settings \u{2192} Screenroom.")
-
-
+                             ? "Whisper hears names and titles properly. Apple\u{2019}s is about a second quicker and tidies them away."
+                             : "Whisper needs setting up in Settings \u{2192} Screenroom.")
             }
+            .pickerStyle(.segmented)
+            .disabled(inClass || !CuesWhisperTranscriber.isAvailable)
 
-
-            .disabled(!CuesWhisperTranscriber.isAvailable)
-
-            // The model Cues will listen through, set here rather than only
-            // in the Screenroom tab. It is one value shared by both features
-            // - one whisper model per Mac - and a setting you cannot see from
-            // where it applies is a setting you cannot change.
             if coordinator.cuesUseWhisper, CuesWhisperTranscriber.isAvailable {
                 WhisperModelPicker(
                     subtitle: "Bigger hears accents better and takes longer per window. Shared with Screenroom.")
+            } else {
+                LabeledContent {
+                    HStack(spacing: 10) {
+                        switch assets.status {
+                        case .downloading(let fraction):
+                            ProgressView(value: fraction).frame(width: 110)
+                            Text(assets.status.label).font(.caption).foregroundStyle(.secondary)
+                        case .installed:
+                            Label(assets.status.label, systemImage: "checkmark.circle.fill")
+                                .foregroundStyle(Brand.text)
+                        case .notDownloaded, .failed:
+                            Text(assets.status.label).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                            Button("Download\u{2026}") { download() }
+                                .disabled(inClass)
+                                .help(inClass ? "Not during a class." : "From Apple, once, through the system\u{2019}s asset service.")
+                        case .unsupported, .unknown:
+                            Text(assets.status.label).font(.caption).foregroundStyle(.secondary)
+                        }
+                    }
+                } label: {
+                    SettingLabel(title: "Apple\u{2019}s speech model",
+                                 subtitle: "Downloaded once. Never during a class.")
+                }
             }
 
+            DisclosureGroup("More") {
+                Picker(selection: $coordinator.cuesLocaleIdentifier) {
+                    Text("System (\(ModelAssets.displayName(Locale.current)))").tag("")
+                    ForEach(locales, id: \.identifier) { locale in
+                        Text(ModelAssets.displayName(locale)).tag(locale.identifier)
+                    }
+                } label: {
+                    SettingLabel(title: "Language", subtitle: "What you teach in.")
+                }
+                .disabled(inClass)
+                .onChange(of: coordinator.cuesLocaleIdentifier) { _ in
+                    Task { await assets.refresh(preferredLocale: coordinator.cuesLocaleIdentifier) }
+                }
 
-            Toggle(isOn: $coordinator.cuesUseModel) {
-                SettingLabel(title: "Also suggest links for things I mention without naming them",
-                             subtitle: FoundationModelsDetector.isAvailable
-                                 ? "Apple\u{2019}s language model reads each sentence. Finds much more, and interrupts much more."
-                                 : "Needs Apple Intelligence, which is off \u{2014} \(FoundationModelsDetector.unavailableReason ?? "unavailable").")
-            }
-            .disabled(!FoundationModelsDetector.isAvailable || inClass)
+                Toggle(isOn: $coordinator.cuesUseModel) {
+                    SettingLabel(title: "Also suggest links for things I mention without naming them",
+                                 subtitle: FoundationModelsDetector.isAvailable
+                                     ? "Apple\u{2019}s language model reads each sentence. Finds much more, and interrupts much more."
+                                     : "Needs Apple Intelligence, which is off \u{2014} \(FoundationModelsDetector.unavailableReason ?? "unavailable").")
+                }
+                .disabled(!FoundationModelsDetector.isAvailable || inClass)
 
-            LabeledContent("Mentions found by") {
-                Text(coordinator.cuesUseModel && FoundationModelsDetector.isAvailable
-                     ? "Apple Intelligence" : "Word patterns")
+                LabeledContent("Mentions found by") {
+                    Text(coordinator.cuesUseModel && FoundationModelsDetector.isAvailable
+                         ? "Apple Intelligence" : "Word patterns")
+                }
+
+                Toggle(isOn: $coordinator.cuesSaveTranscript) {
+                    SettingLabel(title: "Save the transcript and links with the class",
+                                 subtitle: "transcript.txt for what was said and cues.txt for what was suggested, in the class folder beside the recording. Off keeps both in memory only.")
+                }
+
+                Toggle(isOn: $coordinator.cuesVideoSearch) {
+                    SettingLabel(title: "Video links may use YouTube search",
+                                 subtitle: coordinator.youtubeConnected
+                                     ? "Top result on your connected Google account, up to 20 a class."
+                                     : "No Google account connected \u{2014} video cards are search links until then.")
+                }
             }
 
-            Toggle(isOn: $coordinator.cuesSaveTranscript) {
-                SettingLabel(title: "Save the transcript and links with the class",
-                             subtitle: "transcript.txt for what was said and cues.txt for what was suggested, in the class folder beside the recording. Off keeps both in memory only.")
-            }
-
-            Toggle(isOn: $coordinator.cuesVideoSearch) {
-                SettingLabel(title: "Video links may use YouTube search",
-                             subtitle: coordinator.youtubeConnected
-                                 ? "Top result on your connected Google account, up to 20 a class."
-                                 : "No Google account connected \u{2014} video cards are search links until then.")
-            }
-        } header: { if !compact { Text("How it works") } }
+        } header: { if !compact { Text("Listening") } }
 
         // Run once on appear and again when the switch is turned on.
         Color.clear.frame(height: 0)
@@ -261,72 +264,76 @@ struct CuesDebugRows: View {
     @EnvironmentObject private var coordinator: CoordinatorController
     @StateObject private var bench = CuesController()
     @State private var text = "We\u{2019}re reading the book called Charlotte\u{2019}s Web by E. B. White, and I watched a video about spiders."
-    @State private var query = "Charlotte\u{2019}s Web"
-    @State private var kind: Mention.Kind = .book
     @State private var result = ""
 
     var body: some View {
+        // One flow, not four buttons.
+        //
+        // It was Detect, Resolve, Feed audio file, Inject sample cards and
+        // Clear, spread across three rows - five controls to answer one
+        // question, which is whether a sentence turns into a card. Detect and
+        // Resolve were always used together: a mention nobody could resolve
+        // and a card nobody detected are each half an answer.
+        //
+        // So: type a sentence, press once, see what it found and what it
+        // would put on screen. The audio button stays because it is the only
+        // way to exercise the transcriber, which is now the part most likely
+        // to be wrong.
         Section {
-            LabeledContent("Detect from text") {
-                HStack {
-                    TextField("", text: $text).labelsHidden().frame(maxWidth: 340)
-                    Button("Detect") {
-                        Task {
-                            let mentions = await bench.debugDetect(text, configuration: coordinator.cuesConfiguration())
-                            result = mentions.isEmpty ? "no mentions" : mentions.map { "\($0.kind.rawValue): \($0.query) (\(Int($0.confidence * 100))%)" }.joined(separator: "  \u{00B7}  ")
-                        }
+            DisclosureGroup("Try a sentence") {
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        TextField("", text: $text).labelsHidden()
+                        Button("Run") { run() }
+                        Button("Audio file\u{2026}") { feedAudio() }
+                    }
+                    if !bench.liveTail.isEmpty {
+                        Text(bench.liveTail).font(.caption).foregroundStyle(.secondary)
+                    }
+                    if !result.isEmpty {
+                        Text(result)
+                            .font(.system(.caption, design: .monospaced))
+                            .textSelection(.enabled)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
                 }
-            }
-            LabeledContent("Resolve a query") {
-                HStack {
-                    TextField("", text: $query).labelsHidden()
-                    Picker("", selection: $kind) {
-                        ForEach(Mention.Kind.allCases, id: \.self) { Text($0.rawValue).tag($0) }
-                    }
-                    .labelsHidden()
-                    .frame(width: 90)
-                    Button("Resolve") {
-                        Task {
-                            await bench.debugResolve(query, kind: kind, configuration: coordinator.cuesConfiguration())
-                            result = bench.cards.map { "\($0.source.label): \($0.title) \u{2192} \($0.url.absoluteString) \($0.thumbnail == nil ? "(no image)" : "(image)")" }.joined(separator: "\n")
-                            if result.isEmpty { result = "no card - see status log" }
-                        }
-                    }
-                }
-            }
-            LabeledContent("Surfaces") {
-                HStack {
-                    Button("Feed audio file\u{2026}") {
-                        let panel = NSOpenPanel()
-                        panel.allowedContentTypes = [.audio]
-                        panel.allowsMultipleSelection = false
-                        guard panel.runModal() == .OK, let url = panel.url else { return }
-                        Task { await bench.debugFeed(file: url, configuration: coordinator.cuesConfiguration()) }
-                    }
-                    Button("Inject sample cards") {
-                        if let engine = coordinator.cues {
-                            engine.debugInjectSampleCards()
-                        } else {
-                            coordinator.cuesEngine = CuesController()
-                            coordinator.cues?.debugInjectSampleCards()
-                        }
-                        coordinator.cuesTickTask?.cancel()
-                        coordinator.cuesTickTask = Task { @MainActor in
-                            while !Task.isCancelled {
-                                coordinator.syncCuesSurfaces()
-                                try? await Task.sleep(nanoseconds: 1_000_000_000)
-                            }
-                        }
-                    }
-                    Button("Clear") { coordinator.stopCues() }
-                }
-            }
-            if !bench.liveTail.isEmpty { Text(bench.liveTail).font(.caption) }
-            if !result.isEmpty {
-                Text(result).font(.system(.caption, design: .monospaced)).textSelection(.enabled)
+                .padding(.top, 4)
             }
         } header: { Text("Debug") }
+    }
+
+    /// Detect, then resolve everything detected. The two halves of the one
+    /// question, run together because neither answers it alone.
+    private func run() {
+        Task {
+            let configuration = coordinator.cuesConfiguration()
+            let mentions = await bench.debugDetect(text, configuration: configuration)
+            guard !mentions.isEmpty else { result = "no mentions"; return }
+
+            var lines = mentions.map {
+                "detected  \($0.kind.rawValue): \($0.query)  (\(Int($0.confidence * 100))%)"
+            }
+            for mention in mentions {
+                await bench.debugResolve(mention.query, kind: mention.kind, configuration: configuration)
+                if bench.cards.isEmpty {
+                    lines.append("  \u{2192} no card \u{2014} see the status log")
+                } else {
+                    lines.append(contentsOf: bench.cards.map {
+                        "  \u{2192} \($0.source.label): \($0.title)"
+                    })
+                }
+            }
+            result = lines.joined(separator: "\n")
+        }
+    }
+
+    private func feedAudio() {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.audio]
+        panel.allowsMultipleSelection = false
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        result = ""
+        Task { await bench.debugFeed(file: url, configuration: coordinator.cuesConfiguration()) }
     }
 }
 #endif

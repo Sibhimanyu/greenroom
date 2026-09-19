@@ -52,6 +52,13 @@ final class ScreenroomReviewController: ObservableObject {
     /// re-decoding a twenty-minute word list on each pass would be felt.
     @Published private(set) var words: [ScreenroomSpokenWord] = []
     @Published private(set) var frameCount = 0
+
+    /// The stills themselves, not just how many.
+    ///
+    /// They were extracted for the agent to read and then never shown to the
+    /// person who recorded them, which was a waste of the one thing on this
+    /// page that is literally a picture of the presentation.
+    @Published private(set) var frames: [URL] = []
     @Published private(set) var hasTranscript = false
 
     /// One run, one step name, one bar. DESIGN.md: name the step, never just
@@ -201,6 +208,8 @@ final class ScreenroomReviewController: ObservableObject {
             metrics = nil
             presence = nil
             words = []
+            frames = []
+            frameCount = 0
             cohortFindings = []
             player.replaceCurrentItem(with: nil)
             return
@@ -215,7 +224,8 @@ final class ScreenroomReviewController: ObservableObject {
         metrics = ScreenroomSpeechMetrics.load(in: presentation.folder)
         presence = ScreenroomPresence.load(in: presentation.folder)
         words = ScreenroomTranscriber.loadWords(in: presentation.folder)
-        frameCount = ScreenroomFrames.existing(in: presentation.folder).count
+        frames = ScreenroomFrames.existing(in: presentation.folder)
+        frameCount = frames.count
         hasTranscript = FileManager.default.fileExists(
             atPath: presentation.folder.appendingPathComponent(ScreenroomTranscriber.transcriptFileName).path)
         log = ""
@@ -461,6 +471,7 @@ final class ScreenroomReviewController: ObservableObject {
                 onProgress: { [weak self] done, total in
                     self?.progress = total > 0 ? Double(done) / Double(total) : 0
                 })
+            self.frames = frames
             frameCount = frames.count
         } catch {
             status = error.localizedDescription

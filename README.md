@@ -299,7 +299,11 @@ recorded in the class folder's `session.json` (`links`) and shown in
 Sessions as "Links from class". Engine: `App/Cues/`.
 
 ### Transfer
-Export/import every setting above as one JSON file — the whole point is
+Export/import every setting above as one JSON file — including the webcam
+position you dragged into place, your rubric, and your agent command. Three
+things deliberately stay behind: the whisper model's file path (an absolute
+path to the exporting Mac; the receiving one picks its own best model), the
+connected Google account, and whether onboarding has been seen — the whole point is
 setting up a teammate's machine without them ever touching the Zoom
 Marketplace. **The export contains the secrets in plaintext**; hand it
 over directly and have them delete it after importing.

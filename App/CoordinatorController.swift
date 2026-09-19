@@ -3546,6 +3546,35 @@ struct SettingsTransfer: Codable {
     var keepOBSWarm: Bool?
     var meetingPresets: [MeetingPreset]?
     var workspaceLayout: WorkspaceLayout?
+
+    // Added 2026-09-19, after an audit found fourteen real settings that a
+    // teacher had set and an export did not carry. A colleague importing the
+    // file got a Mac configured most of the way and no sign of which part was
+    // missing, which is the worst shape a transfer can take.
+    var useBuiltInClient: Bool?
+    var userDisplayName: String?
+    var customUIMode: Bool?
+    var clipBufferEnabled: Bool?
+    var participantPanelOnMainDisplay: Bool?
+    /// Where the webcam sits in the composite. Dragged into place by hand,
+    /// which makes it the most annoying thing in this list to redo.
+    var bubbleWidthFraction: Double?
+    var bubbleRightInset: Double?
+    var bubbleBottomInset: Double?
+    var cutoutHeightFraction: Double?
+    var cutoutRightInset: Double?
+    var cuesUseWhisper: Bool?
+    /// The agent command, as JSON. Portable: it is a command line, and the
+    /// Mac that imports it either has that CLI or does not.
+    var screenroomAgent: String?
+    /// The teacher's rubric, as JSON. Authored content - the one thing here
+    /// nobody could reconstruct from memory.
+    var screenroomRubric: String?
+    /// The transcription LANGUAGE only. The model path is deliberately left
+    /// behind: it is an absolute path to a file on the Mac that exported it,
+    /// and importing it would point a colleague's Greenroom at a model they
+    /// do not have. The receiving Mac picks its own best model.
+    var screenroomLanguage: String?
     // Legacy fields from Chrome-only-era exports - still imported, never
     // written anymore.
     var chromeLayout: String?
@@ -3587,7 +3616,21 @@ extension CoordinatorController {
             autoRecordOnStart: autoRecordOnStart,
             keepOBSWarm: keepOBSWarm,
             meetingPresets: meetingPresets,
-            workspaceLayout: workspaceLayout
+            workspaceLayout: workspaceLayout,
+            useBuiltInClient: useBuiltInClient,
+            userDisplayName: userDisplayName,
+            customUIMode: customUIMode,
+            clipBufferEnabled: clipBufferEnabled,
+            participantPanelOnMainDisplay: participantPanelOnMainDisplay,
+            bubbleWidthFraction: bubbleWidthFraction,
+            bubbleRightInset: bubbleRightInset,
+            bubbleBottomInset: bubbleBottomInset,
+            cutoutHeightFraction: cutoutHeightFraction,
+            cutoutRightInset: cutoutRightInset,
+            cuesUseWhisper: cuesUseWhisper,
+            screenroomAgent: Self.jsonString(forKey: ScreenroomAgentSettings.key),
+            screenroomRubric: Self.jsonString(forKey: "screenroomDefaultRubric"),
+            screenroomLanguage: ScreenroomTranscriberSettings.load().language
         )
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
@@ -3597,6 +3640,24 @@ extension CoordinatorController {
     /// Assigning through the @Published properties (not UserDefaults
     /// directly) means every didSet persistence hook fires on its own - the
     /// import needs no separate save step.
+    /// A Data-shaped preference, as text, so it survives a JSON round trip.
+    ///
+    /// ScreenroomAgentSettings and the rubric are stored as encoded JSON in
+    /// UserDefaults rather than as individual keys. Carrying them as strings
+    /// keeps the transfer file readable and means neither type has to be
+    /// imported into SettingsTransfer, which would couple the transfer format
+    /// to types that are still moving.
+    static func jsonString(forKey key: String) -> String? {
+        guard let data = UserDefaults.standard.data(forKey: key) else { return nil }
+        return String(data: data, encoding: .utf8)
+    }
+
+    static func setJSONString(_ value: String, forKey key: String) {
+        guard let data = value.data(using: .utf8),
+              (try? JSONSerialization.jsonObject(with: data)) != nil else { return }
+        UserDefaults.standard.set(data, forKey: key)
+    }
+
     func importSettings(from data: Data) throws {
         let transfer = try JSONDecoder().decode(SettingsTransfer.self, from: data)
         // One import assigns every field; that is not twenty deliberate changes.
@@ -3637,6 +3698,40 @@ extension CoordinatorController {
         if let value = transfer.hideSelfView { hideSelfView = value }
         if let value = transfer.speakerTileShortcutEnabled { speakerTileShortcutEnabled = value }
         if let value = transfer.autoRecordOnStart { autoRecordOnStart = value }
+        if let value = transfer.useBuiltInClient { useBuiltInClient = value }
+        if let value = transfer.userDisplayName { userDisplayName = value }
+        if let value = transfer.customUIMode { customUIMode = value }
+        if let value = transfer.clipBufferEnabled { clipBufferEnabled = value }
+        if let value = transfer.participantPanelOnMainDisplay { participantPanelOnMainDisplay = value }
+        if let value = transfer.bubbleWidthFraction { bubbleWidthFraction = value }
+        if let value = transfer.bubbleRightInset { bubbleRightInset = value }
+        if let value = transfer.bubbleBottomInset { bubbleBottomInset = value }
+        if let value = transfer.cutoutHeightFraction { cutoutHeightFraction = value }
+        if let value = transfer.cutoutRightInset { cutoutRightInset = value }
+        // Same rule as prompterEnabled: a colleague's file must not switch on
+        // a transcriber this Mac cannot run.
+        if let value = transfer.cuesUseWhisper {
+            // Whisper is checked only where the check exists. On macOS 14/15
+            // Cues cannot run at all, so the value is carried and left for
+            // the OS that can use it rather than being forced to false and
+            // lost on the next export.
+            if #available(macOS 26.0, *) {
+                cuesUseWhisper = value && CuesWhisperTranscriber.isAvailable
+            } else {
+                cuesUseWhisper = value
+            }
+        }
+        if let value = transfer.screenroomAgent {
+            Self.setJSONString(value, forKey: ScreenroomAgentSettings.key)
+        }
+        if let value = transfer.screenroomRubric {
+            Self.setJSONString(value, forKey: "screenroomDefaultRubric")
+        }
+        if let value = transfer.screenroomLanguage {
+            var settings = ScreenroomTranscriberSettings.load()
+            settings.language = value
+            settings.save()
+        }
         if let value = transfer.keepOBSWarm { keepOBSWarm = value }
         if let value = transfer.meetingPresets { meetingPresets = value }
         if let value = transfer.workspaceLayout {

@@ -1048,3 +1048,43 @@ playhead - a sentence taking nineteen seconds to type still lands at 3:12.
   a note is prose typed in a hurry, so typos are the expected case.
 - **No keyboard path.** Adding a note while watching is two-handed and there is
   no shortcut to add one at the current time, and no key to pause.
+
+## Which whisper model, measured (2026-09-19)
+
+Asked whether a bigger model would help. Tested on a real 42-second talk in
+Indian English rather than on synthetic speech, because the question is about
+this voice.
+
+| Model | How it heard the subject of the talk |
+|---|---|
+| `base.en` (141 MB) | "**Old man** shopping has revolutionized how we back this" |
+| `small.en` (465 MB) | "**All 9** shopping has revolutionized how we back things" |
+| `small` multilingual (465 MB) | "**Online shopping** has revolutionized how we practice" |
+
+**Bigger did not help. Multilingual did.** The `.en` models are trained on
+English-only data that skews American; the multilingual models see far more
+accented English. `small` and `small.en` are the same 465 MB and are not
+equally good at the same job, which is invisible in a file listing - and the
+picker used to rank by file size, so it chose between them at random.
+
+Ranking is now by capability: bigger family wins, and within a family
+multilingual wins. The family ordering is conventional and was not measured
+here; a medium English-only model against a small multilingual is an open
+question on this voice.
+
+### The bigger problem was the audio
+
+```text
+mean volume   -45.2 dBFS
+near-silent   38.7 of 42 seconds
+```
+
+Normal speech sits around -20 to -25 dBFS. That recording is roughly twenty
+decibels down, barely above the noise floor - a microphone far away, or input
+gain near zero. Normalising it to -24 dB helped the multilingual model a little
+and did not rescue `small.en`, which still heard "All of mine shopping".
+
+So: quiet audio hurts, the model choice hurts more, and no model fixes missing
+signal. This is the honest explanation for cards that were not useful - the
+detector can only find a name the transcript contains, and the transcript did
+not contain the subject of the talk.

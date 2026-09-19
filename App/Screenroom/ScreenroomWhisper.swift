@@ -80,23 +80,60 @@ enum ScreenroomWhisper {
             .appendingPathComponent("Greenroom/whisper", isDirectory: true)
     }
 
-    /// One model file on disk.
+    /// One model file on disk, and what it is good for.
     struct Model: Identifiable, Hashable {
         let url: URL
         let bytes: Int64
         var id: URL { url }
-        var name: String { url.deletingPathExtension().lastPathComponent
-            .replacingOccurrences(of: "ggml-", with: "") }
+
+        /// `ggml-small.en.bin` -> `small.en`.
+        var name: String {
+            url.deletingPathExtension().lastPathComponent
+                .replacingOccurrences(of: "ggml-", with: "")
+        }
+
+        /// `small.en` -> `small`. Quantisation suffixes come off too, since
+        /// `small.en-q5_0` is still a small English-only model.
+        var family: String {
+            var base = name
+            if let dash = base.range(of: "-q", options: .backwards) { base = String(base[..<dash.lowerBound]) }
+            return base.replacingOccurrences(of: ".en", with: "")
+        }
+
+        /// The `.en` models are trained on English-only data that skews
+        /// American. The multilingual ones see far more accented English.
+        var isEnglishOnly: Bool { name.contains(".en") }
+
         var sizeLabel: String { ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file) }
+
+        /// What the picker shows. The variant matters more than the bytes and
+        /// is invisible in the file size: `small` and `small.en` are both
+        /// 465 MB and are not equally good at the same job.
+        var label: String {
+            "\(family)  \u{00B7}  \(isEnglishOnly ? "English-only" : "multilingual")  \u{00B7}  \(sizeLabel)"
+        }
+
+        /// Bigger family wins; within a family, multilingual wins.
+        ///
+        /// Measured on a real 42-second talk in Indian English: `small.en`
+        /// heard the subject of the talk as "All 9 shopping" where the
+        /// same-sized multilingual `small` heard "Online shopping". Both are
+        /// 465 MB, so ranking by file size picked between them at random.
+        /// The family ordering is the conventional one and was not measured
+        /// here - a medium English-only model against a small multilingual is
+        /// an open question on this voice.
+        var rank: Int {
+            let families = ["tiny": 0, "base": 1, "small": 2, "medium": 3]
+            let tier = families[family] ?? (family.hasPrefix("large") ? 4 : 0)
+            return tier * 2 + (isEnglishOnly ? 0 : 1)
+        }
     }
 
-    /// Every model on this Mac, smallest first.
+    /// Every model on this Mac, worst first, so the last is the best.
     ///
-    /// Smallest first because that is the speed order, and the ordering a
-    /// person picking one is thinking in: base is fast and adequate, small is
-    /// slower and better on accented speech. Test fixtures are excluded by
-    /// name - they are deliberately useless and would otherwise appear as a
-    /// choice.
+    /// Ordered by capability rather than by bytes - see `Model.rank`. Test
+    /// fixtures are excluded by name: they are deliberately useless and would
+    /// otherwise appear as a choice.
     static func availableModels() -> [Model] {
         var seen = Set<String>()
         var models: [Model] = []
@@ -111,7 +148,7 @@ enum ScreenroomWhisper {
                 models.append(Model(url: file, bytes: bytes))
             }
         }
-        return models.sorted { $0.bytes < $1.bytes }
+        return models.sorted { $0.rank == $1.rank ? $0.bytes < $1.bytes : $0.rank < $1.rank }
     }
 
     /// The other sizes, and the one line that fetches each.
@@ -120,9 +157,10 @@ enum ScreenroomWhisper {
     /// gigabyte over somebody's connection without being asked, and a teacher
     /// who wants the better model can paste a line.
     static let offeredModels: [(name: String, size: String, note: String)] = [
-        ("ggml-base.en.bin", "141 MB", "Fast. Fine for clear speech in a quiet room."),
-        ("ggml-small.en.bin", "465 MB", "Noticeably better on accents and crosstalk."),
-        ("ggml-medium.en.bin", "1.4 GB", "Better again, and several times slower."),
+        ("ggml-small.bin", "465 MB", "Multilingual. Best tested here on accented English \u{2014} it heard \u{201C}online shopping\u{201D} where the English-only model of the same size heard \u{201C}All 9 shopping\u{201D}."),
+        ("ggml-medium.bin", "1.5 GB", "Multilingual, better again, and about three times slower."),
+        ("ggml-base.en.bin", "141 MB", "English-only and fast. Fine for clear American or British English, weak on accents."),
+        ("ggml-small.en.bin", "465 MB", "English-only. Same size as the multilingual small and worse on the voice tested here."),
     ]
 
     static func downloadCommand(for name: String) -> String {
@@ -131,27 +169,10 @@ enum ScreenroomWhisper {
 
     /// The best model on this Mac, or nil.
     ///
-    /// Bigger is better and slower, and the sort puts the biggest FILE first
-    /// rather than reading names: whisper models are named by a convention
-    /// that has changed more than once, and the byte count has not.
-    /// Test fixtures are excluded by name because they are deliberately
-    /// useless and would otherwise win on a Mac with nothing else.
+    /// Best by `Model.rank`, not by file size. Size was the wrong proxy the
+    /// moment two 465 MB files turned out to be very different at the job.
     static func findModel() -> URL? {
-        for folder in modelSearchPaths {
-            guard let files = try? FileManager.default.contentsOfDirectory(
-                at: folder, includingPropertiesForKeys: [.fileSizeKey],
-                options: [.skipsHiddenFiles]) else { continue }
-            let models = files.filter {
-                $0.pathExtension == "bin" && !$0.lastPathComponent.contains("for-tests")
-            }
-            let best = models.max {
-                let a = (try? $0.resourceValues(forKeys: [.fileSizeKey]))?.fileSize ?? 0
-                let b = (try? $1.resourceValues(forKeys: [.fileSizeKey]))?.fileSize ?? 0
-                return a < b
-            }
-            if let best { return best }
-        }
-        return nil
+        availableModels().last?.url
     }
 
     /// The model Screenroom suggests, and the one line that fetches it.

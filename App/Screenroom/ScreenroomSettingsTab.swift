@@ -47,15 +47,15 @@ struct ScreenroomSettingsTab: View {
                         get: { ScreenroomTranscriberSettings.resolvedModel()?.path ?? "" },
                         set: { transcriber.modelPath = $0; transcriber.save() })) {
                         ForEach(models) { model in
-                            Text("\(model.name)  \u{00B7}  \(model.sizeLabel)").tag(model.url.path)
+                            Text(model.label).tag(model.url.path)
                         }
                     } label: {
                         SettingLabel(title: "Model",
-                                     subtitle: "Bigger is better on accents and slower on everything.")
+                                     subtitle: "Multilingual beats English-only on accents, even at the same size.")
                     }
                 } else if whisperReady, let only = models.first {
                     LabeledContent {
-                        Text("\(only.name)  \u{00B7}  \(only.sizeLabel)")
+                        Text(only.label)
                             .font(.system(size: 12, design: .monospaced))
                             .foregroundStyle(.secondary)
                     } label: {

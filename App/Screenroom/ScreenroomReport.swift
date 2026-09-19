@@ -45,6 +45,8 @@ enum ScreenroomReport {
                          notes: [ScreenroomNote],
                          scoring: ScreenroomScoring?,
                          analysis: ScreenroomAnalysis?,
+                         metrics: ScreenroomSpeechMetrics? = nil,
+                         presence: ScreenroomPresence? = nil,
                          for audience: Audience) -> String {
         var out: [String] = []
 
@@ -80,6 +82,47 @@ enum ScreenroomReport {
             }
             out.append("| **Total** | **\(scoring.totalLabel)** | |")
             out.append("")
+        }
+
+        // The measured half, kept apart from the written half above and
+        // labelled as counted. A student who disagrees with a sentence can
+        // argue about it; a student who disagrees with a count can go and
+        // look at the timestamp.
+        if let metrics, metrics.wordCount > 0 {
+            out.append("## How you delivered it")
+            out.append("")
+            out.append("Counted from the recording, not written by a model.")
+            out.append("")
+            out.append("| | |")
+            out.append("|---|---|")
+            out.append("| Pace | \(Int(metrics.wordsPerMinute.rounded())) words a minute |")
+            if metrics.verbatim {
+                out.append("| Filler words | \(metrics.fillerCount) (\(String(format: "%.1f", metrics.fillersPerMinute)) a minute) |")
+                out.append("| Hedges and softeners | \(metrics.hedgeCount) |")
+            }
+            if metrics.wordsPerRun > 0 {
+                out.append("| Sentence length | \(Int(metrics.wordsPerRun.rounded())) words on average |")
+            }
+            if metrics.vocabulary > 0 {
+                out.append("| Vocabulary variety | \(Int((metrics.vocabulary * 100).rounded()))% |")
+            }
+            out.append("| Talking | \(Int((metrics.talkRatio * 100).rounded()))% of the time |")
+            if let presence, presence.sampleCount > 0 {
+                out.append("| Facing the room | \(Int((presence.facingRatio * 100).rounded()))% of frames with a face in them |")
+                if let ratio = presence.gestureRatio {
+                    out.append("| Hands up and moving | \(Int((ratio * 100).rounded()))% of frames |")
+                }
+            }
+            out.append("")
+            if metrics.verbatim, !metrics.fillers.isEmpty {
+                out.append("Most-used fillers: " + metrics.fillers.prefix(5)
+                    .map { "**\(escape($0.word))** \($0.count)\u{00D7}" }.joined(separator: ", ") + ".")
+                out.append("")
+            }
+            if presence != nil {
+                out.append("_\"Facing the room\" is the angle of the head, sampled every two seconds. It is not eye contact: nothing here measured where your eyes were pointed._")
+                out.append("")
+            }
         }
 
         if !notes.isEmpty {

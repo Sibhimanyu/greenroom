@@ -42,6 +42,15 @@ final class ScreenroomReviewController: ObservableObject {
     // MARK: Material for a deeper pass
 
     @Published private(set) var metrics: ScreenroomSpeechMetrics?
+
+    /// What the camera saw, counted by Vision. Nil when the pass has not run
+    /// or there was no recording to run it over.
+    @Published private(set) var presence: ScreenroomPresence?
+
+    /// Every word with its timing, for the transcript that marks its own
+    /// fillers. Held rather than re-read per frame: the report scrolls, and
+    /// re-decoding a twenty-minute word list on each pass would be felt.
+    @Published private(set) var words: [ScreenroomSpokenWord] = []
     @Published private(set) var frameCount = 0
     @Published private(set) var hasTranscript = false
 
@@ -189,6 +198,9 @@ final class ScreenroomReviewController: ObservableObject {
         guard let presentation else {
             notes = []
             analysis = nil
+            metrics = nil
+            presence = nil
+            words = []
             cohortFindings = []
             player.replaceCurrentItem(with: nil)
             return
@@ -201,6 +213,8 @@ final class ScreenroomReviewController: ObservableObject {
         scoring = presentation.scoring() ?? ScreenroomScoring(rubric: ScreenroomRubricStore.current())
         analysis = presentation.analysis()
         metrics = ScreenroomSpeechMetrics.load(in: presentation.folder)
+        presence = ScreenroomPresence.load(in: presentation.folder)
+        words = ScreenroomTranscriber.loadWords(in: presentation.folder)
         frameCount = ScreenroomFrames.existing(in: presentation.folder).count
         hasTranscript = FileManager.default.fileExists(
             atPath: presentation.folder.appendingPathComponent(ScreenroomTranscriber.transcriptFileName).path)
@@ -221,6 +235,24 @@ final class ScreenroomReviewController: ObservableObject {
     /// Lands slightly BEFORE the note for the same reason clips do: the note
     /// was stamped when the evaluator started typing, so the moment it
     /// describes is just behind it.
+    /// Jumps the recording to a moment, landing a little before it.
+    ///
+    /// Everything on the report that names a time is clickable, so the same
+    /// lead-in every note gets applies to a filler word and to a stretch of
+    /// looking away: you need the run-up to hear or see what is being
+    /// pointed at.
+    func seek(toMs ms: Int, lead: Int = 2_000) {
+        let target = max(0, ms - lead)
+        if let externalSeek {
+            externalSeek(target)
+            return
+        }
+        guard player.currentItem != nil else { return }
+        player.seek(to: CMTime(seconds: Double(target) / 1000, preferredTimescale: 600),
+                    toleranceBefore: .zero, toleranceAfter: .zero)
+        player.play()
+    }
+
     func seek(to note: ScreenroomNote) {
         // Lands slightly BEFORE the note for the reason that runs through all
         // of Screenroom: the note was stamped when the evaluator started
@@ -332,7 +364,7 @@ final class ScreenroomReviewController: ObservableObject {
 
         // Counted up front so the readout can say "2 of 4" rather than
         // leaving the length of the wait a mystery.
-        stepCount = (selected.recording != nil ? 2 : 0) + 2
+        stepCount = (selected.recording != nil ? 3 : 0) + 2
         stepIndex = 0
         defer {
             isAnalysing = false
@@ -348,6 +380,8 @@ final class ScreenroomReviewController: ObservableObject {
             await transcribe(recording, into: selected.folder)
             if Task.isCancelled { status = "Stopped."; return }
             await takeStills(recording, into: selected.folder)
+            if Task.isCancelled { status = "Stopped."; return }
+            await watch(recording, into: selected.folder)
             if Task.isCancelled { status = "Stopped."; return }
         }
 
@@ -411,6 +445,7 @@ final class ScreenroomReviewController: ObservableObject {
                 onOutput: { [weak self] piece in self?.log += piece })
             hasTranscript = true
             metrics = ScreenroomSpeechMetrics.load(in: folder)
+            words = ScreenroomTranscriber.loadWords(in: folder)
         } catch {
             // Not fatal. The notes are still the most valuable thing here,
             // and a report built from them alone is the thing this started as.
@@ -432,6 +467,36 @@ final class ScreenroomReviewController: ObservableObject {
         }
     }
 
+    /// Counts what the camera saw: how often the presenter faced the room,
+    /// how often their hands were up and moving.
+    ///
+    /// Not fatal when it fails, like every other stage here. A recording of
+    /// a screen share with no person in it produces a presence file full of
+    /// "no face", which is the correct answer, and the report simply leaves
+    /// the section out rather than printing a zero that reads as a failing
+    /// grade for someone who was never on camera.
+    private func watch(_ recording: URL, into folder: URL) async {
+        begin("Watching the recording", determinate: true)
+        do {
+            let seen = try await ScreenroomPresence.measure(
+                recording: recording,
+                onProgress: { [weak self] done, total in
+                    self?.progress = total > 0 ? Double(done) / Double(total) : 0
+                })
+            if seen.samples.contains(where: { $0.face || $0.body }) {
+                seen.save(in: folder)
+                presence = seen
+            } else {
+                // Nobody in shot. Remove any file from an earlier run rather
+                // than leaving a stale one to be read as current.
+                try? FileManager.default.removeItem(at: ScreenroomPresence.url(in: folder))
+                presence = nil
+            }
+        } catch {
+            status = error.localizedDescription
+        }
+    }
+
     /// The engine ladder, walked automatically: the agent when one is set up,
     /// Apple's on-device model when it is not, and arithmetic when neither is
     /// available. Never a question put to the teacher mid-presentation.
@@ -445,6 +510,7 @@ final class ScreenroomReviewController: ObservableObject {
             let brief = ScreenroomAgent.brief(presenter: presentation.presenter,
                                               notes: notes,
                                               metrics: metrics,
+                                              presence: presence,
                                               scoring: scoring,
                                               frameCount: frameCount,
                                               hasTranscript: hasTranscript)
@@ -535,6 +601,8 @@ extension ScreenroomReviewController {
                                          notes: notes,
                                          scoring: scoring.markedCount > 0 ? scoring : nil,
                                          analysis: analysis,
+                                         metrics: metrics,
+                                         presence: presence,
                                          for: audience)
     }
 

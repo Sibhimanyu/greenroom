@@ -162,6 +162,7 @@ enum ScreenroomAgent {
     static func brief(presenter: String,
                       notes: [ScreenroomNote],
                       metrics: ScreenroomSpeechMetrics?,
+                      presence: ScreenroomPresence?,
                       scoring: ScreenroomScoring?,
                       frameCount: Int,
                       hasTranscript: Bool) -> String {
@@ -178,7 +179,10 @@ enum ScreenroomAgent {
         }
         out.append("- `notes.jsonl` \u{2014} notes the teacher typed WHILE watching, one JSON object per line. `atMs` is milliseconds into the recording. These are the most valuable thing here: they are a human in the room deciding what mattered, and nothing in the video recovers them.")
         if metrics != nil {
-            out.append("- `speech.json` \u{2014} filler words, pace and pauses, already counted. Do not recount them; use them.")
+            out.append("- `speech.json` \u{2014} filler words, hedges, pace, pauses, sentence length, sentence openers and vocabulary variety, already counted. Do not recount them; use them.")
+        }
+        if presence != nil {
+            out.append("- `presence.json` \u{2014} the recording sampled every two seconds by Apple's Vision framework: whether a face was found, which way the head was turned, whether the hands were up, how far the wrists moved. Already counted.")
         }
         if scoring != nil {
             out.append("- `rubric.json` \u{2014} the criteria the teacher marked against, and their marks.")
@@ -194,8 +198,12 @@ enum ScreenroomAgent {
         out.append("")
         out.append("- **You cannot watch the video.** There is no video here you can open.")
         if frameCount > 0 {
-            out.append("- **From the stills you CAN judge:** posture, whether they are reading off a screen, whether they face the room, what is on the slide behind them, changes in any of that over time.")
-            out.append("- **From the stills you CANNOT judge:** gesture, movement, pace, energy, or eye contact in any moment you do not have a frame for. Twenty seconds apart is far too coarse for those. Do not infer them.")
+            out.append("- **From the stills you CAN judge:** posture, whether they are reading off a screen, what is on the slide behind them, changes in any of that over time.")
+            out.append("- **From the stills you CANNOT judge:** gesture, movement, pace or energy in any moment you do not have a frame for. Twenty seconds apart is far too coarse for those. Do not infer them.")
+        }
+        if presence != nil {
+            out.append("- **Head direction and hand movement ARE measured** for you, every two seconds, and are in the numbers below. Use those figures rather than reading them off the stills.")
+            out.append("- **The facing figure is NOT eye contact.** It is the angle of the head. Do not write the phrase \"eye contact\" anywhere; nothing here measured where the eyes were pointed.")
         }
         out.append("- **You cannot hear anything.** Tone, volume, warmth, nerves in the voice: not available. The transcript is words only.")
         if metrics != nil {
@@ -224,10 +232,11 @@ enum ScreenroomAgent {
         out.append("**Marking.** Give every rubric line below a score and a reason. Copy each title exactly. The reason is the important half: a number with nothing behind it is an assertion, not feedback, and the student will ask why. Say what would have earned the mark above. Mark what the evidence here supports and nothing more \u{2014} if the material cannot tell you about a line, give it the middle of its range and say that you could not judge it.")
         out.append("")
 
-        if let metrics {
+        if metrics != nil || presence != nil {
             out.append("## The counted numbers")
             out.append("")
-            for sentence in metrics.sentences { out.append("- \(sentence)") }
+            for sentence in metrics?.sentences ?? [] { out.append("- \(sentence)") }
+            for sentence in presence?.sentences ?? [] { out.append("- \(sentence)") }
             out.append("")
         }
 

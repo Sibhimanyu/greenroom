@@ -83,9 +83,9 @@ struct RecordingsView: View {
         /// copied from another Mac, or one made before the distinction
         /// existed, still classifies correctly. Screenroom names its
         /// recording `presentation.mov`; a class is whatever OBS wrote.
-        var kind: Kind {
+        var source: Source {
             recordings.contains { $0.url.lastPathComponent == ScreenroomRecorder.recordingFileName }
-                ? .presentation : .klass
+                ? .screen : .green
         }
 
         /// One recording, nothing else. The overwhelmingly common shape.
@@ -112,7 +112,7 @@ struct RecordingsView: View {
     @State private var sessions: [Session] = []
     /// Which half is being looked at. Persisted, because a teacher who marks
     /// presentations all term should not pick the same tab every morning.
-    @AppStorage("sessionsKind") private var kind: Kind = .klass
+    @AppStorage("sessionsFilter") private var filter: Filter = .all
     @State private var freeBytes: Int64?
     @State private var usedBytes: Int64 = 0
     @State private var selection: Recording?
@@ -133,28 +133,55 @@ struct RecordingsView: View {
     /// after, and it had no home in the app at all.
     @State private var detailTab: DetailTab = .analysis
 
-    /// Classes and presentations are both sessions and are not the same
-    /// thing, and one list of both was what made the sidebar confusing: a
-    /// row called "Test1" is a class or a student depending on which half of
-    /// the app you were in.
-    enum Kind: String, CaseIterable, Identifiable {
-        case klass = "Classes"
-        case presentation = "Presentations"
+    /// Which half of the app made a session.
+    ///
+    /// Greenroom makes Greens, Screenroom makes Screens. Named from the two
+    /// halves rather than from what they contain, because "Classes" and
+    /// "Presentations" are words this app does not otherwise use and they
+    /// throw away the vocabulary everything else is built on.
+    enum Source {
+        case green, screen
+
+        /// Singular, for a folder name: "Green - 2026-09-19 08-30".
+        var defaultName: String { self == .green ? "Green" : "Screen" }
+    }
+
+    /// What the sidebar is showing.
+    enum Filter: String, CaseIterable, Identifiable {
+        case all = "All"
+        case greens = "Greens"
+        case screens = "Screens"
         var id: String { rawValue }
 
-        var symbol: String { self == .klass ? "person.3" : "person.wave.2" }
+        var source: Source? {
+            switch self {
+            case .all: return nil
+            case .greens: return .green
+            case .screens: return .screen
+            }
+        }
+
+        var symbol: String {
+            switch self {
+            case .all: return "tray.full"
+            case .greens: return "person.3"
+            case .screens: return "person.wave.2"
+            }
+        }
 
         var emptyLine: String {
             switch self {
-            case .klass: return "No classes recorded yet."
-            case .presentation: return "No presentations recorded yet."
+            case .all: return "Nothing recorded yet."
+            case .greens: return "No Greens yet."
+            case .screens: return "No Screens yet."
             }
         }
 
         var emptyDetail: String {
             switch self {
-            case .klass: return "Press Start on the main window to run one."
-            case .presentation: return "Open Screenroom to record someone presenting."
+            case .all: return "Run a class, or record someone presenting."
+            case .greens: return "A Green is a class. Press Start on the main window to run one."
+            case .screens: return "A Screen is a presentation. Open Screenroom to record one."
             }
         }
     }
@@ -337,7 +364,10 @@ struct RecordingsView: View {
     ///
     /// Loose legacy recordings have no folder and no presentation.mov, so
     /// they classify as classes, which is what they were.
-    private var shown: [Session] { sessions.filter { $0.kind == kind } }
+    private var shown: [Session] {
+        guard let wanted = filter.source else { return sessions }
+        return sessions.filter { $0.source == wanted }
+    }
 
     private var browser: some View {
         HSplitView {
@@ -345,10 +375,13 @@ struct RecordingsView: View {
                 // Two halves of one app, told apart rather than mixed. The
                 // counts are on the control so an empty list is explained by
                 // the tab rather than looking like lost work.
-                Picker("", selection: $kind) {
-                    ForEach(Kind.allCases) { k in
-                        let count = sessions.filter { $0.kind == k }.count
-                        Text(count > 0 ? "\(k.rawValue)  \(count)" : k.rawValue).tag(k)
+                Picker("", selection: $filter) {
+                    ForEach(Filter.allCases) { option in
+                        let count = option.source
+                            .map { wanted in sessions.filter { $0.source == wanted }.count }
+                            ?? sessions.count
+                        Text(count > 0 ? "\(option.rawValue)  \(count)" : option.rawValue)
+                            .tag(option)
                     }
                 }
                 .pickerStyle(.segmented)
@@ -359,11 +392,11 @@ struct RecordingsView: View {
 
                 if shown.isEmpty {
                     VStack(spacing: 6) {
-                        Image(systemName: kind.symbol)
+                        Image(systemName: filter.symbol)
                             .font(.system(size: 26, weight: .light))
                             .foregroundStyle(.tertiary)
-                        Text(kind.emptyLine).font(.callout).foregroundStyle(.secondary)
-                        Text(kind.emptyDetail)
+                        Text(filter.emptyLine).font(.callout).foregroundStyle(.secondary)
+                        Text(filter.emptyDetail)
                             .font(.caption).foregroundStyle(.tertiary)
                             .multilineTextAlignment(.center)
                     }

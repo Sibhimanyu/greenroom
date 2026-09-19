@@ -55,11 +55,13 @@ enum GreenroomScene {
     /// records the same lesson twice is exactly who needs to tell them apart.
     /// `fallback` names the thing when nobody typed a name.
     ///
-    /// "Class" for a Greenroom session and "Presentation" for a Screenroom
-    /// one. They land in the same list now, so an unnamed session should say
-    /// which kind it is rather than leaving two identical-looking rows.
+    /// "Green" for a Greenroom session, "Screen" for a Screenroom one. Named
+    /// from the two halves of the app rather than from what they contain:
+    /// "Class" and "Presentation" are words this app does not otherwise use,
+    /// and an unnamed folder should carry the same vocabulary as the tab it
+    /// appears under.
     static func sessionFolderName(className: String, started: Date,
-                                  fallback: String = "Class") -> String {
+                                  fallback: String = "Green") -> String {
         let stamp = sessionStampFormatter.string(from: started)
         let cleaned = sanitizedClassName(className)
         return cleaned.isEmpty ? "\(fallback) - \(stamp)" : "\(cleaned) - \(stamp)"

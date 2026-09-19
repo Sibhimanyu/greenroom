@@ -117,6 +117,6 @@ enum ScreenroomExport {
             .split(whereSeparator: \.isWhitespace).joined(separator: " ")
             .trimmingCharacters(in: .whitespaces)
         let stamp = date.formatted(.dateTime.day().month(.abbreviated).year())
-        return cleaned.isEmpty ? "Presentation - \(stamp)" : "\(String(cleaned.prefix(60))) - \(stamp)"
+        return cleaned.isEmpty ? "Screen - \(stamp)" : "\(String(cleaned.prefix(60))) - \(stamp)"
     }
 }

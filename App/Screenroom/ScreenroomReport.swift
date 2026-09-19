@@ -49,6 +49,10 @@ enum ScreenroomReport {
         var out: [String] = []
 
         let name = presenter.trimmingCharacters(in: .whitespaces)
+        // "Presentation", not "Screen". Greens and Screens are the app's own
+        // words for its two halves and they are useful inside the app; this
+        // document goes to a student who has never seen Greenroom, and a
+        // heading reading "# Screen" would mean nothing to them.
         out.append("# \(name.isEmpty ? "Presentation" : name)")
         out.append("")
         out.append(presentedAt.formatted(.dateTime.weekday(.wide).day().month(.wide).year().hour().minute()))

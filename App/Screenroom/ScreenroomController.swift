@@ -200,7 +200,7 @@ final class ScreenroomController: ObservableObject {
                                          fallback: Self.defaultName)
     }
 
-    static let defaultName = "Presentation"
+    static let defaultName = "Screen"
 
     /// Names the folder and starts recording. Both at once: a presentation
     /// that is being recorded is the only kind Screenroom has, so there is no

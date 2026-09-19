@@ -124,7 +124,9 @@ struct ScreenroomSettingsTab: View {
             }
         }
         .formStyle(.grouped)
-        .frame(width: 520)
+        // No width of its own. SettingsView sizes the window (760pt) and
+        // every other tab fills it; pinning this one to 520 made it the only
+        // tab sitting in half the pane.
         .onAppear { refresh() }
     }
 

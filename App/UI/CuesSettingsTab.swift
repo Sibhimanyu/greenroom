@@ -170,20 +170,24 @@ struct CuesSetupRows: View {
             }
 
         } header: { if !compact { Text("Listening") } }
-
-        // Run once on appear and again when the switch is turned on.
-        Color.clear.frame(height: 0)
-            .task {
-                locales = await ModelAssets.supportedLocales()
+        // On the section, not on a zero-height Color.clear.
+        //
+        // A grouped Form draws its own container around EVERY top-level
+        // child, so an invisible view used only to hang .task off still got a
+        // rounded empty box drawn around it. A modifier belongs on something
+        // already on screen.
+        .task {
+            locales = await ModelAssets.supportedLocales()
+            await assets.refresh(preferredLocale: coordinator.cuesLocaleIdentifier)
+        }
+        .onChange(of: coordinator.cuesEnabled) { enabled in
+            guard enabled, !inClass else { return }
+            Task {
                 await assets.refresh(preferredLocale: coordinator.cuesLocaleIdentifier)
+                if assets.status == .notDownloaded { download() }
             }
-            .onChange(of: coordinator.cuesEnabled) { enabled in
-                guard enabled, !inClass else { return }
-                Task {
-                    await assets.refresh(preferredLocale: coordinator.cuesLocaleIdentifier)
-                    if assets.status == .notDownloaded { download() }
-                }
-            }
+        }
+
     }
 
     private func download() {
@@ -203,7 +207,12 @@ struct CuesSetupRows: View {
     }
 }
 
-/// Thirty seconds of live transcription and detection, no lookups.
+/// The real pipeline, outside a class: listen, detect, look up, show cards.
+///
+/// It used to stop at the mentions and say "nothing is looked up", which
+/// answers a question nobody was asking. What a teacher wants to know before
+/// a class is whether this produces USEFUL CARDS, and finding that out meant
+/// teaching one.
 @available(macOS 26.0, *)
 struct CuesTryItRows: View {
     @EnvironmentObject private var coordinator: CoordinatorController
@@ -217,20 +226,25 @@ struct CuesTryItRows: View {
             LabeledContent {
                 HStack(spacing: 10) {
                     if tester.isListening {
-                        Button("Stop") { tester.stop() }
                         if tester.isSpeaking {
-                            Label("Hearing you", systemImage: "waveform").font(.caption).foregroundStyle(Brand.green)
+                            Label("Hearing you", systemImage: "waveform")
+                                .font(.caption).foregroundStyle(Brand.text)
                         }
+                        Button("Stop") { tester.stop() }
                     } else {
-                        Button("Try it (30 s)") {
-                            Task { await tester.startTest(seconds: 30, configuration: coordinator.cuesConfiguration()) }
+                        Button("Start listening") {
+                            Task {
+                                await tester.startTest(seconds: 120,
+                                                       configuration: coordinator.cuesConfiguration(),
+                                                       lookUp: true)
+                            }
                         }
-                        .disabled(inClass || !assets.status.isInstalled)
+                        .disabled(inClass || !ready)
                     }
                 }
             } label: {
                 SettingLabel(title: "Try it",
-                             subtitle: tester.status.isEmpty ? "Live text and the mentions found. Nothing is looked up." : tester.status)
+                             subtitle: tester.status.isEmpty ? readyLine : tester.status)
             }
 
             if tester.isListening || !tester.liveTail.isEmpty {
@@ -239,21 +253,38 @@ struct CuesTryItRows: View {
                     .foregroundStyle(tester.isListening ? .primary : .secondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
-            if !tester.testMentions.isEmpty {
-                // Mono eyebrow + prose, the card grammar in miniature.
-                VStack(alignment: .leading, spacing: 3) {
-                    ForEach(Array(tester.testMentions.enumerated()), id: \.offset) { _, mention in
-                        HStack(spacing: 8) {
-                            Text(mention.kind.eyebrow)
-                                .font(.system(size: 10, weight: .semibold, design: .monospaced))
-                                .foregroundStyle(.tertiary)
-                                .frame(width: 48, alignment: .leading)
-                            Text(mention.query)
-                        }
+
+            // The cards themselves, which is the point of pressing the button.
+            ForEach(tester.cards) { card in
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Text(card.kind.eyebrow)
+                        .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                        .foregroundStyle(.tertiary)
+                        .frame(width: 48, alignment: .leading)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(card.title).lineLimit(2)
+                        Text(card.source.label).font(.caption).foregroundStyle(.secondary)
                     }
+                    Spacer(minLength: 0)
+                    Button("Open") { NSWorkspace.shared.open(card.url) }
+                        .controlSize(.small)
                 }
             }
         }
+    }
+
+    /// Whichever engine is selected has to be ready, not just Apple's.
+    private var ready: Bool {
+        coordinator.cuesUseWhisper ? CuesWhisperTranscriber.isAvailable : assets.status.isInstalled
+    }
+
+    private var readyLine: String {
+        guard ready else {
+            return coordinator.cuesUseWhisper
+                ? "Whisper is not set up on this Mac yet."
+                : "Apple\u{2019}s speech model has not finished downloading."
+        }
+        return "Listens for two minutes and shows the cards it would put up in a class."
     }
 }
 

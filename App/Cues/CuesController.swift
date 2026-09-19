@@ -115,6 +115,12 @@ final class CuesController: ObservableObject {
     private var lastDetection = Date.distantPast
     private var restartAttempted = false
     private var lookupsInFlight = 0
+    /// Listening outside a class, WITHOUT looking anything up.
+    ///
+    /// Kept as the quiet mode, for checking that speech becomes text and
+    /// text becomes mentions. `startTest(lookUp: true)` is the loud one - it
+    /// runs the whole pipeline and makes real cards, which is the only way
+    /// to answer "would this have helped in a class" without teaching one.
     private var testMode = false
     private var startedAt = Date()
 
@@ -262,13 +268,18 @@ final class CuesController: ObservableObject {
 
     /// Thirty seconds of live transcription with detection but no lookups, for
     /// Settings → Cues → Try it. Nothing leaves the Mac.
-    func startTest(seconds: TimeInterval, configuration: Configuration) async {
+    /// `lookUp` runs the real thing: detect, resolve, and put cards up.
+    func startTest(seconds: TimeInterval, configuration: Configuration,
+                   lookUp: Bool = false) async {
         guard !isListening else { return }
         self.configuration = configuration
-        testMode = true
+        testMode = !lookUp
+        cards = []
         testMentions = []
         liveTail = ""
-        status = "Listening\u{2026} say something."
+        status = lookUp
+            ? "Listening\u{2026} name a book, a tool, a place."
+            : "Listening\u{2026} say something."
         chooseDetector()
         let locale = await Transcriber.resolvedLocale(preferred: configuration.localeIdentifier)
         guard await startPipeline(input: nil, locale: locale) else {
@@ -277,10 +288,16 @@ final class CuesController: ObservableObject {
         }
         Task { [weak self] in
             try? await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
-            guard let self, self.testMode else { return }
-            self.status = self.testMentions.isEmpty
-                ? "Done. Nothing findable was named \u{2014} try \u{201C}the book called Matilda\u{201D}."
-                : "Done. \(self.testMentions.count) mention\(self.testMentions.count == 1 ? "" : "s") found; nothing was looked up."
+            guard let self, self.isListening else { return }
+            if lookUp {
+                self.status = self.cards.isEmpty
+                    ? "Done. Nothing was found \u{2014} try \u{201C}the book called Matilda\u{201D}."
+                    : "Done. \(self.cards.count) card\(self.cards.count == 1 ? "" : "s")."
+            } else {
+                self.status = self.testMentions.isEmpty
+                    ? "Done. Nothing findable was named \u{2014} try \u{201C}the book called Matilda\u{201D}."
+                    : "Done. \(self.testMentions.count) mention\(self.testMentions.count == 1 ? "" : "s") found; nothing was looked up."
+            }
             self.stop()
         }
     }

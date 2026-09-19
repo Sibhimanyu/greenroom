@@ -37,6 +37,12 @@ import Foundation
 import Speech
 
 /// Which transcriber to use, and where its model is.
+///
+/// Named for Screenroom because that is where it was written, and it is no
+/// longer only Screenroom's: Cues listens through the same whisper model, and
+/// nobody wants two on one Mac. Both settings tabs show the same picker
+/// (WhisperModelPicker) rather than one owning it and the other inheriting it
+/// invisibly. The name is a leftover, not a scope.
 struct ScreenroomTranscriberSettings: Codable, Equatable {
 
     enum Engine: String, Codable, CaseIterable, Identifiable {

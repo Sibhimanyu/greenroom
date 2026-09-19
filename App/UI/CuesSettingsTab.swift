@@ -96,7 +96,7 @@ struct CuesSetupRows: View {
                     }
                 }
             } label: {
-                SettingLabel(title: "Speech model", subtitle: "Apple\u{2019}s, downloaded once. Never during a class.")
+                SettingLabel(title: "Apple\u{2019}s speech model", subtitle: "Apple\u{2019}s, downloaded once. Never during a class.")
             }
 
             Picker(selection: $coordinator.cuesLocaleIdentifier) {
@@ -131,6 +131,15 @@ struct CuesSetupRows: View {
 
 
             .disabled(!CuesWhisperTranscriber.isAvailable)
+
+            // The model Cues will listen through, set here rather than only
+            // in the Screenroom tab. It is one value shared by both features
+            // - one whisper model per Mac - and a setting you cannot see from
+            // where it applies is a setting you cannot change.
+            if coordinator.cuesUseWhisper, CuesWhisperTranscriber.isAvailable {
+                WhisperModelPicker(
+                    subtitle: "Bigger hears accents better and takes longer per window. Shared with Screenroom.")
+            }
 
 
             Toggle(isOn: $coordinator.cuesUseModel) {

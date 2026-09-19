@@ -39,28 +39,9 @@ struct ScreenroomSettingsTab: View {
                                  : "Apple's recogniser tidies speech up, so filler words are not counted.")
                 }
 
-                // Which model, when there is more than one to choose between.
-                // A single model is a fact, not a decision, and a picker with
-                // one row in it is furniture.
-                if whisperReady, models.count > 1 {
-                    Picker(selection: Binding(
-                        get: { ScreenroomTranscriberSettings.resolvedModel()?.path ?? "" },
-                        set: { transcriber.modelPath = $0; transcriber.save() })) {
-                        ForEach(models) { model in
-                            Text(model.label).tag(model.url.path)
-                        }
-                    } label: {
-                        SettingLabel(title: "Model",
-                                     subtitle: "Multilingual beats English-only on accents, even at the same size.")
-                    }
-                } else if whisperReady, let only = models.first {
-                    LabeledContent {
-                        Text(only.label)
-                            .font(.system(size: 12, design: .monospaced))
-                            .foregroundStyle(.secondary)
-                    } label: {
-                        SettingLabel(title: "Model", subtitle: "The only one on this Mac.")
-                    }
+                if whisperReady {
+                    WhisperModelPicker(
+                        subtitle: "Multilingual beats English-only on accents, even at the same size. Shared with Cues.")
                 }
 
                 DisclosureGroup("Add another model") {

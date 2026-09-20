@@ -25,6 +25,19 @@
 	<string>With Marks (not in this release), Greenroom turns a recorded presentation into text on this Mac so it can count filler words and pace. It refuses to transcribe at all rather than send the audio to Apple.</string>
 	<key>SUEnableAutomaticChecks</key>
 	<true/>
+	<key>SUScheduledCheckInterval</key>
+	<!-- Six hours, not Sparkle's default of twenty-four.
+
+	     Greenroom is opened for a class and then mostly left alone, so the
+	     check that matters is the one at launch: four windows a day means a
+	     fix pushed in the morning reaches an afternoon lesson rather than
+	     waiting for tomorrow. The check itself is one small XML file.
+
+	     Frequency is only safe to raise because UpdateGate refuses every
+	     scheduled check while a session is live. Without that, a shorter
+	     interval is just a better chance of putting a dialog on a screen
+	     thirty students are watching. -->
+	<integer>21600</integer>
 	<key>SUFeedURL</key>
 	<string>https://sibhimanyu.github.io/greenroom/appcast.xml</string>
 	<key>SUPublicEDKey</key>

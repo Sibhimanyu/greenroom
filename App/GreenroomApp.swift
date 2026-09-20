@@ -64,11 +64,15 @@ struct GreenroomApp: App {
     @StateObject private var coordinator = CoordinatorController()
 
     /// Sparkle auto-updater: checks the appcast (SUFeedURL in Info.plist)
-    /// periodically and offers "Install and Relaunch" - installed copies
-    /// stop needing hand-delivered zips. Updates are EdDSA-verified
-    /// against SUPublicEDKey, so only zips signed with our key install.
+    /// every SUScheduledCheckInterval and offers "Install and Relaunch" -
+    /// installed copies stop needing hand-delivered zips. Updates are
+    /// EdDSA-verified against SUPublicEDKey, so only zips signed with our key
+    /// install. Nothing installs unattended: SUAutomaticallyUpdate is
+    /// deliberately unset, so an update is always an offer.
+    /// UpdateGate refuses a scheduled check while a class is running - the
+    /// interval in Info.plist says how often, the gate says when not.
     private let updaterController = SPUStandardUpdaterController(
-        startingUpdater: true, updaterDelegate: nil, userDriverDelegate: nil)
+        startingUpdater: true, updaterDelegate: UpdateGate.shared, userDriverDelegate: nil)
 
     var body: some Scene {
         // Window (single, id-addressable), not WindowGroup: closing the

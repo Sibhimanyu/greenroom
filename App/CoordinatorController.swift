@@ -321,6 +321,10 @@ final class CoordinatorController: ObservableObject {
     /// and stop().
     let cameraDirector = CameraDirector()
 
+    /// Looks through one camera directly, for aiming it in Settings. Never
+    /// running at the same time as a session - see aimCamera.
+    let cameraProbe = CameraProbe()
+
     @Published var cameraDirectorSettings: CameraDirectorSettings = CameraDirectorSettings.load() {
         didSet {
             guard cameraDirectorSettings != oldValue else { return }
@@ -1703,14 +1707,6 @@ final class CoordinatorController: ObservableObject {
                 }
                 await applyShapeForPreview()
             }
-            // The angle readout in Settings rides on the same warm OBS the
-            // preview just secured. Never while a class is running: the real
-            // director is on that socket with cutting switched ON, and
-            // restarting it here would put the shot back on camera one
-            // mid-sentence.
-            if !virtualCamActive, cameraDirectorSettings.enabled {
-                cameraDirector.startObserving(client: client)
-            }
             while !Task.isCancelled {
                 if let response = try? await client.request("GetSourceScreenshot", data: [
                     "sourceName": GreenroomScene.sceneName,
@@ -1731,31 +1727,28 @@ final class CoordinatorController: ObservableObject {
     /// Stops the frame polling. The connection deliberately stays up -
     /// Start verifies and reuses it (see connectWithRetry), and a warm
     /// idle OBS holds no session state to corrupt.
-    /// Points the warm OBS scene at one camera so Settings can show its
-    /// angle while it is being aimed.
+    /// Looks through one camera so Settings can show the angle it reads you
+    /// at while it is being aimed.
     ///
-    /// Aiming the SECOND camera is the whole setup task, and without this it
-    /// cannot be done: the readout reports whichever camera OBS happens to be
-    /// on, which is the built-in one. So the teacher would aim a camera they
-    /// could not see a number for.
+    /// Greenroom's own capture session, NOT OBS. Aiming a camera happens at a
+    /// desk before a class with nothing else running, and the first version
+    /// of this went through OBS - so with OBS shut, as it normally is, the
+    /// window reported "no face" to somebody sitting in front of their
+    /// camera. See CameraProbe.
     ///
-    /// Idle only. Mid-class this would cut the shot to a camera nobody chose.
-    func previewCamera(uid: String) {
-        guard !virtualCamActive, client.isConnected else { return }
-        Task {
-            await GreenroomScene.setWebcamDevice(
-                client: client, uid: uid, name: LocalDeviceResolver.cameraName(uid: uid))
-        }
+    /// Idle only. During a class the director owns the cameras and this would
+    /// be a second opener of one of them for no reason.
+    func aimCamera(uid: String) {
+        guard !virtualCamActive else { return }
+        cameraProbe.start(uid: uid)
     }
+
+    func stopAiming() { cameraProbe.stop() }
 
     func stopShapePreview() {
         shapePreviewTask?.cancel()
         shapePreviewTask = nil
         shapePreviewFrame = nil
-        // Only the settings-window observer. A live session's director is
-        // started from start() and stopped from stop(), and closing the
-        // Settings window must not touch it.
-        if !virtualCamActive { cameraDirector.stop() }
     }
 
     /// Re-applies the chosen shape to the warm OBS scene so the live
@@ -3434,6 +3427,8 @@ final class CoordinatorController: ObservableObject {
         virtualCamActive = true
 
         if cameraDirectorSettings.isUsable {
+            // Nothing else may hold a camera once the director owns them.
+            cameraProbe.stop()
             cameraDirector.start(client: client, settings: cameraDirectorSettings)
             log("Watching for which camera you're facing \u{2014} \(cameraDirectorSettings.cameraUIDs.count) cameras, cutting after \(Int(cameraDirectorSettings.dwellSeconds))s of looking away.")
         }

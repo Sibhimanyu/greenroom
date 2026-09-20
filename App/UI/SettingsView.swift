@@ -102,6 +102,15 @@ private struct WebcamSettingsTab: View {
 
     var body: some View {
         Form {
+            // FIRST, above the shape picker, and the reason is one line of
+            // feedback: it was originally at the bottom of this tab, under a
+            // 400pt preview in a 730pt window, and the person who asked for
+            // the feature could not find it. Which camera comes before what
+            // shape the camera is cut into anyway.
+            CameraSwitchSection()
+
+            Divider()
+
             Picker("Bubble shape", selection: $coordinator.webcamShape) {
                 ForEach(WebcamShape.allCases) { shape in
                     Text(shape.label).tag(shape)
@@ -180,10 +189,6 @@ private struct WebcamSettingsTab: View {
             if isAdjustable {
                 placementControls
             }
-
-            Divider()
-
-            CameraSwitchSection()
 
             Divider()
 
@@ -867,6 +872,12 @@ private struct CameraSwitchSection: View {
             }
         }
         .onAppear { cameras = LocalDeviceResolver.availableCameras() }
+        .onDisappear {
+            // A settings window left open would otherwise hold a camera - and
+            // its light on - for as long as the app ran.
+            coordinator.stopAiming()
+            aiming = nil
+        }
     }
 
     // MARK: Which cameras, and in what order
@@ -910,9 +921,9 @@ private struct CameraSwitchSection: View {
                         // angle below reports whichever camera OBS is on. So
                         // there has to be a way to put it on this one.
                         if !coordinator.virtualCamActive {
-                            Button("Aim this one") {
+                            Button(aiming == camera.id ? "Looking\u{2026}" : "Aim this one") {
                                 aiming = camera.id
-                                coordinator.previewCamera(uid: camera.id)
+                                coordinator.aimCamera(uid: camera.id)
                             }
                             .controlSize(.small)
                             .disabled(aiming == camera.id)
@@ -931,6 +942,12 @@ private struct CameraSwitchSection: View {
     /// rather than something the device enumeration decided for them.
     private var aimingName: String? {
         aiming.flatMap { uid in cameras.first { $0.id == uid }?.name }
+    }
+
+    /// The live reading. During a class it is the director's, because the
+    /// director owns the cameras then; otherwise it is the probe's.
+    private var sight: CameraSight {
+        coordinator.virtualCamActive ? coordinator.cameraDirector.sight : coordinator.cameraProbe.sight
     }
 
     private func toggle(_ camera: LocalDeviceResolver.Camera, on: Bool) {
@@ -970,26 +987,23 @@ private struct CameraSwitchSection: View {
     /// teacher is guessing, and the first thing they would do is guess wrong
     /// and decide the feature is broken.
     private var readout: some View {
-        let degrees = coordinator.cameraDirector.offAxisDegrees
         let threshold = coordinator.cameraDirectorSettings.awayDegrees
+        let degrees = sight.degrees
+        let here = (degrees ?? .infinity) <= threshold
         return VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 10) {
                 Text(degrees.map { "\(Int($0.rounded()))\u{00B0}" } ?? "\u{2014}")
                     .font(.system(size: 22, weight: .semibold, design: .monospaced))
                     .monospacedDigit()
-                    .foregroundStyle((degrees ?? .infinity) <= threshold
-                                     ? AnyShapeStyle(Brand.text) : AnyShapeStyle(.secondary))
+                    .foregroundStyle(here ? AnyShapeStyle(Brand.text) : AnyShapeStyle(.secondary))
                     .frame(width: 60, alignment: .leading)
                 VStack(alignment: .leading, spacing: 1) {
-                    Text(degrees == nil
-                         ? "No face in this camera right now."
-                         : ((degrees ?? 0) <= threshold
-                            ? "Looking at this camera."
-                            : "Turned away \u{2014} in a session this is when it would hand over."))
+                    Text(headline)
                         .font(.caption)
-                    Text(aimingName.map { "Measured through \($0). Move it and watch this change." }
-                         ?? "Off the lens, measured live. Move the camera and watch it change.")
+                        .fixedSize(horizontal: false, vertical: true)
+                    Text(detail)
                         .font(.caption2).foregroundStyle(.tertiary)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
                 Spacer()
             }
@@ -1001,6 +1015,41 @@ private struct CameraSwitchSection: View {
         .padding(10)
         .background(RoundedRectangle(cornerRadius: 8)
             .fill(Color(nsColor: .controlBackgroundColor)))
+    }
+
+    /// One line per state, and never the wrong one.
+    ///
+    /// The first version printed "No face in this camera right now" whenever
+    /// the angle was missing - including when nothing was looking at all,
+    /// which is what a reader saw while sitting in front of their own camera.
+    /// Every branch here is a different thing to DO about it.
+    private var headline: String {
+        switch sight {
+        case .idle:
+            return aiming == nil
+                ? "Press \u{201C}Aim this one\u{201D} on a camera to see the angle it reads you at."
+                : "Opening the camera\u{2026}"
+        case .noPicture(let why):
+            return why
+        case .noFace:
+            return "A picture, but nobody in it."
+        case .noAngle:
+            return "Found a face, but couldn\u{2019}t measure which way it is turned."
+        case .seen(let degrees):
+            return degrees <= coordinator.cameraDirectorSettings.awayDegrees
+                ? "Looking at this camera."
+                : "Turned away \u{2014} in a session this is when it would hand over."
+        }
+    }
+
+    private var detail: String {
+        if coordinator.virtualCamActive {
+            return "Measured through OBS while the class runs."
+        }
+        guard let aimingName else {
+            return "Nothing is looking through a camera yet."
+        }
+        return "Looking through \(aimingName). Move it and watch this change."
     }
 }
 

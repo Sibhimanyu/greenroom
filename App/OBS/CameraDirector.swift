@@ -116,6 +116,35 @@ struct CameraDirectorSettings: Codable, Equatable {
     }
 }
 
+/// What a look at a camera actually found.
+///
+/// This replaced an `Optional<Double>`, and the reason is a bug that went
+/// straight to the person who asked for the feature: with OBS not running
+/// there was no frame to look at, the angle stayed nil, and the settings
+/// window said "No face in this camera right now" to somebody sitting in
+/// front of their camera with their face in it. One nil was carrying three
+/// different failures - no picture, no face in the picture, and a face whose
+/// angle Vision would not report - and only one of them was the one being
+/// printed.
+enum CameraSight: Equatable {
+    /// Nothing is looking yet.
+    case idle
+    /// No picture arrived at all.
+    case noPicture(String)
+    /// A picture, with nobody in it.
+    case noFace
+    /// A face, but Vision would not give an angle for it. Rare, and worth
+    /// saying rather than rounding to zero - zero means "looking right at
+    /// you", which is the opposite of "I could not tell".
+    case noAngle
+    case seen(Double)
+
+    var degrees: Double? {
+        if case .seen(let value) = self { return value }
+        return nil
+    }
+}
+
 @MainActor
 final class CameraDirector: ObservableObject {
 
@@ -123,10 +152,10 @@ final class CameraDirector: ObservableObject {
     /// when the director is not running.
     @Published private(set) var liveCameraName: String?
 
-    /// What it last saw, in degrees off the lens, or nil when no face was
-    /// found. Published so the settings window can prove it is working
-    /// without anyone having to leave the room and come back.
-    @Published private(set) var offAxisDegrees: Double?
+    /// What it last saw.
+    @Published private(set) var sight: CameraSight = .idle
+
+    var offAxisDegrees: Double? { sight.degrees }
 
     /// How long the current camera has been looked away from.
     @Published private(set) var awaySeconds: Double = 0
@@ -138,10 +167,6 @@ final class CameraDirector: ObservableObject {
     private var task: Task<Void, Never>?
     private var settings = CameraDirectorSettings()
     private var index = 0
-
-    /// False in the settings window, where the point is to SEE the angle
-    /// while aiming a camera, not to have the picture cut about.
-    private var cutting = true
 
     /// When to cut. See `Switcher`.
     private var switcher = Switcher(dwellSeconds: 2, cameraCount: 0)
@@ -165,7 +190,6 @@ final class CameraDirector: ObservableObject {
         let settings = requested.availableOnly()
         guard settings.isUsable else { return }
         self.settings = settings
-        cutting = true
         index = 0
         switcher = Switcher(dwellSeconds: settings.dwellSeconds,
                             cameraCount: settings.cameraUIDs.count)
@@ -175,30 +199,11 @@ final class CameraDirector: ObservableObject {
         task = Task { [weak self] in await self?.watch(client: client) }
     }
 
-    /// Watches without ever cutting, for the settings window.
-    ///
-    /// Aiming a camera is the hard part of setting this up, and it is
-    /// impossible to do blind: the teacher has to know whether this camera
-    /// reads them at eight degrees or thirty-four. So the same measurement
-    /// runs while the Webcam tab is open - OBS is already warm there for the
-    /// shape preview - and the number goes on screen. Nothing switches.
-    func startObserving(client: OBSWebSocketClient) {
-        stop()
-        cutting = false
-        index = 0
-        cuts = 0
-        awaySeconds = 0
-        settings = CameraDirectorSettings.load()
-        switcher = Switcher(dwellSeconds: settings.dwellSeconds,
-                            cameraCount: max(1, settings.cameraUIDs.count))
-        task = Task { [weak self] in await self?.watch(client: client) }
-    }
-
     func stop() {
         task?.cancel()
         task = nil
         liveCameraName = nil
-        offAxisDegrees = nil
+        sight = .idle
         awaySeconds = 0
     }
 
@@ -214,18 +219,21 @@ final class CameraDirector: ObservableObject {
     }
 
     private func tick(client: OBSWebSocketClient) async {
-        guard let frame = await Self.grab(client: client) else { return }
-        let reading = Self.offAxis(in: frame)
-        offAxisDegrees = reading
+        guard let frame = await Self.grab(client: client) else {
+            sight = .noPicture("OBS isn't sending a webcam picture.")
+            return
+        }
+        let reading = Self.look(at: frame)
+        sight = reading
 
         // No face is treated the same as a face turned away. It is the same
         // thing from the class's side: this camera is not showing them
         // anybody who is talking to them.
-        let lookingHere = (reading ?? .infinity) <= settings.awayDegrees
+        let lookingHere = (reading.degrees ?? .infinity) <= settings.awayDegrees
         let verdict = switcher.advance(lookingHere: lookingHere,
                                        elapsed: Double(Self.everyMs) / 1_000_000_000)
         awaySeconds = switcher.awaySeconds
-        guard cutting, verdict else { return }
+        guard verdict else { return }
         await cut(client: client)
     }
 
@@ -281,7 +289,7 @@ final class CameraDirector: ObservableObject {
         cuts += 1
         switcher.cut()
         awaySeconds = 0
-        offAxisDegrees = nil
+        sight = .idle
         // Do not judge the new camera until it has actually opened.
         try? await Task.sleep(nanoseconds: UInt64(Self.settleSeconds * 1_000_000_000))
     }
@@ -314,7 +322,10 @@ final class CameraDirector: ObservableObject {
     /// reason to cut, because the other camera would see exactly the same
     /// thing. So pitch is weighted down rather than ignored: a head tipped
     /// right back is still not looking at this camera.
-    static func offAxis(in frame: CGImage) -> Double? {
+    static func offAxis(in frame: CGImage) -> Double? { look(at: frame).degrees }
+
+    /// The same measurement, saying which of the three ways it failed.
+    static func look(at frame: CGImage) -> CameraSight {
         let request = VNDetectFaceRectanglesRequest()
         // Yaw needs revision 3, and pitch needs it too. Without asking, the
         // OS picks, and a revision without them reports nil - which would
@@ -328,16 +339,16 @@ final class CameraDirector: ObservableObject {
         guard let face = (request.results ?? []).max(by: { left, right in
             left.boundingBox.width * left.boundingBox.height
                 < right.boundingBox.width * right.boundingBox.height
-        }) else { return nil }
+        }) else { return .noFace }
 
         // A face with no yaw at all is not evidence of anything. Reporting it
         // as zero would say "looking straight at you" on the strength of a
         // missing measurement.
-        guard let yaw = face.yaw?.doubleValue else { return nil }
+        guard let yaw = face.yaw?.doubleValue else { return .noAngle }
         let pitch = face.pitch?.doubleValue ?? 0
         let yawDegrees = yaw * 180 / .pi
         let pitchDegrees = pitch * 180 / .pi
-        return hypot(yawDegrees, pitchDegrees * Self.pitchWeight)
+        return .seen(hypot(yawDegrees, pitchDegrees * Self.pitchWeight))
     }
 
     /// See `offAxis`. Looking down at your own screen is not a reason to cut.

@@ -24,6 +24,7 @@ import SwiftUI
 struct ScreenroomWindow: View {
     @ObservedObject private var screenroom = ScreenroomController.shared
     @Environment(\.openWindow) private var openWindow
+    @Environment(\.dismissWindow) private var dismissWindow
 
     /// Focus goes here and stays here. The evaluator's hands should never
     /// have to find the box again once the presentation has started.
@@ -121,7 +122,16 @@ struct ScreenroomWindow: View {
             // ScreenroomSpeakerView for why it is never remembered.
             Button {
                 screenroom.speakerIsWatching.toggle()
-                if screenroom.speakerIsWatching { openWindow(id: "screenroom-speaker") }
+                // Both directions. Toggling ON without opening the window
+                // would be a button that does nothing; toggling OFF without
+                // closing it is worse - the teacher believes they have
+                // stopped showing the student their notes, and the student
+                // is still reading them.
+                if screenroom.speakerIsWatching {
+                    openWindow(id: "screenroom-speaker")
+                } else {
+                    dismissWindow(id: "screenroom-speaker")
+                }
             } label: {
                 Image(systemName: screenroom.speakerIsWatching ? "eye.fill" : "eye.slash")
             }
@@ -130,17 +140,6 @@ struct ScreenroomWindow: View {
                   ? "The speaker is watching the notes as you write them. Click to stop showing them."
                   : "Show the notes to the speaker as you write them, on another display. Off for every new presentation.")
 
-            // The way through to the other half. Quiet, because during a
-            // presentation it is the last thing the evaluator should be
-            // looking at, and the presentation they just finished will be at
-            // the top of that window's list anyway.
-            Button {
-                openWindow(id: "screenroom-report")
-            } label: {
-                Image(systemName: "chart.bar.doc.horizontal")
-            }
-            .controlSize(.large)
-            .help("The report for the presentation you just finished. Everything recorded lives in Sessions.")
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 12)

@@ -21,6 +21,7 @@
 //  the bottom, no controls at all. The teacher puts it on the second display
 //  or hands over an iPad mirroring it.
 //
+import AppKit
 import SwiftUI
 
 struct ScreenroomSpeakerView: View {
@@ -38,6 +39,14 @@ struct ScreenroomSpeakerView: View {
         }
         .frame(minWidth: 420, minHeight: 360)
         .tint(Brand.green)
+        // Closing this window is the other way of saying "stop showing the
+        // speaker my notes", and the eye in the Screenroom header has to
+        // agree. Without this it stayed open-eyed over a window that was no
+        // longer there, and the next click turned coaching OFF when the
+        // teacher meant to turn it on.
+        .background(WindowCloseWatcher {
+            ScreenroomController.shared.speakerIsWatching = false
+        })
     }
 
     private var header: some View {
@@ -99,6 +108,56 @@ struct ScreenroomSpeakerView: View {
                     proxy.scrollTo(last.id, anchor: .bottom)
                 }
             }
+        }
+    }
+}
+
+/// Calls back when the window this view is in closes.
+///
+/// AppKit's own notification rather than SwiftUI's `onDisappear`, because the
+/// two do not mean the same thing. `onDisappear` fires when a view leaves the
+/// hierarchy, which for a window scene depends on how SwiftUI decides to keep
+/// it around; `NSWindow.willCloseNotification` fires when the window closes,
+/// which is the actual event being described. Observed on the window
+/// instance, so it needs no window identifier and cannot be confused by
+/// another window closing.
+private struct WindowCloseWatcher: NSViewRepresentable {
+
+    let onClose: @MainActor () -> Void
+
+    func makeNSView(context: Context) -> NSView {
+        let view = NSView(frame: .zero)
+        // Deferred: a view has no window until it has been added to one, and
+        // makeNSView runs before that.
+        DispatchQueue.main.async {
+            context.coordinator.watch(view.window, onClose: onClose)
+        }
+        return view
+    }
+
+    func updateNSView(_ view: NSView, context: Context) {
+        // A second chance, for the case where the first hop still found no
+        // window - a window scene opening for the first time.
+        DispatchQueue.main.async {
+            context.coordinator.watch(view.window, onClose: onClose)
+        }
+    }
+
+    func makeCoordinator() -> Coordinator { Coordinator() }
+
+    final class Coordinator {
+        private var token: NSObjectProtocol?
+
+        func watch(_ window: NSWindow?, onClose: @escaping @MainActor () -> Void) {
+            guard token == nil, let window else { return }
+            token = NotificationCenter.default.addObserver(
+                forName: NSWindow.willCloseNotification, object: window, queue: .main) { _ in
+                    MainActor.assumeIsolated { onClose() }
+                }
+        }
+
+        deinit {
+            if let token { NotificationCenter.default.removeObserver(token) }
         }
     }
 }

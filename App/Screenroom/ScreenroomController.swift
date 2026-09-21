@@ -223,6 +223,9 @@ final class ScreenroomController: ObservableObject {
         // The Sessions window reads this, so a presentation is findable there
         // under the presenter's name rather than as a bare folder date.
         var metadata = SessionMetadata()
+        // Recorded now, so that deleting the video later cannot change what
+        // this session was. See SessionMetadata.kind.
+        metadata.kind = SessionMetadata.Kind.screen.rawValue
         // Only a name somebody chose. An empty title leaves the folder name
         // to speak for itself, which is what Sessions falls back to.
         let typed = GreenroomScene.sanitizedClassName(presenter)

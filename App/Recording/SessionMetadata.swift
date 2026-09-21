@@ -44,6 +44,35 @@ struct SessionMetadata: Codable {
     var uploads: [Upload] = []
     var links: [Link] = []
 
+    /// Which half of the app made this folder, recorded at the time rather
+    /// than guessed afterwards.
+    ///
+    /// The guess was `presentation.mov` is here, so it is a Screen. That is
+    /// right until the video goes, and the video goes for an ordinary reason:
+    /// these files are ~290MB and a teacher clearing space keeps the notes
+    /// and the report and deletes the tape. At that point the session stopped
+    /// being what it was, which is not something a deleted file should be
+    /// able to decide.
+    ///
+    /// Optional, and absence is not an error. Every folder made before this
+    /// existed has no kind and is classified by the old rule, so nothing
+    /// needed migrating and nothing on disk moved.
+    ///
+    /// Only Screenroom writes it. A class folder is created empty so OBS has
+    /// somewhere to put a clip, and `stop()` deletes it again if the session
+    /// left nothing behind - writing a manifest into it at that moment would
+    /// make every unrecorded morning leave a folder. A Green is therefore
+    /// told by the absence of a mark, which is exactly what the old rule
+    /// already said.
+    var kind: String?
+
+    enum Kind: String {
+        case screen
+        /// Nothing writes this yet - see the note on `kind`. It exists so the
+        /// reading side is symmetric and a future writer needs no new case.
+        case green
+    }
+
     static let fileName = "session.json"
 
     static func url(in folder: URL) -> URL { folder.appendingPathComponent(fileName) }

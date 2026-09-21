@@ -73,19 +73,37 @@ struct RecordingsView: View {
         /// Cues cards the teacher opened or sent during this class
         /// (session.json). Never the ones merely shown.
         var links: [SessionMetadata.Link] = []
+        /// What the folder says it is (session.json), when it says anything.
+        var kind: String?
         var id: String { folder?.path ?? "__loose__" }
 
-        var isEmpty: Bool { recordings.isEmpty && clipFiles.isEmpty && links.isEmpty }
+        /// Nothing here at all. A folder that says what it is is not empty
+        /// even with no tape in it - its notes and its report are the part a
+        /// student gets sent.
+        var isEmpty: Bool {
+            recordings.isEmpty && clipFiles.isEmpty && links.isEmpty && kind == nil
+        }
 
         /// Which half of the app made this.
         ///
-        /// Told from the files, not from a flag written at the time: a folder
-        /// copied from another Mac, or one made before the distinction
-        /// existed, still classifies correctly. Screenroom names its
-        /// recording `presentation.mov`; a class is whatever OBS wrote.
+        /// What the folder SAYS first, what its files suggest second.
+        ///
+        /// The files alone were the whole rule, and they are still the rule
+        /// for every folder made before session.json carried a kind - which
+        /// is why nothing had to be migrated or moved. But a rule read off
+        /// the files says a Screen stops being a Screen the moment somebody
+        /// deletes its 290MB video to get the space back, keeping the notes
+        /// and the report. What a session WAS is not something a deleted file
+        /// gets to decide, so Screenroom now writes it down at the start.
         var source: Source {
-            recordings.contains { $0.url.lastPathComponent == ScreenroomRecorder.recordingFileName }
-                ? .screen : .green
+            switch kind {
+            case SessionMetadata.Kind.screen.rawValue: return .screen
+            case SessionMetadata.Kind.green.rawValue: return .green
+            default:
+                return recordings.contains {
+                    $0.url.lastPathComponent == ScreenroomRecorder.recordingFileName
+                } ? .screen : .green
+            }
         }
 
         /// One recording, nothing else. The overwhelmingly common shape.
@@ -1018,7 +1036,13 @@ struct RecordingsView: View {
             let metadata = SessionMetadata.load(in: folder)
             // A class with no tape but with links it looked at is still a
             // class worth listing.
-            guard !recordings.isEmpty || !clips.isEmpty || !metadata.links.isEmpty else { return nil }
+            // A presentation whose video has been deleted is still a
+            // presentation: its notes, its marks and its report are all
+            // still here, and they are the half a teacher actually sends to
+            // a student. Dropping it made a folder full of work vanish from
+            // the one window built to find it.
+            let isMarked = metadata.kind != nil
+            guard !recordings.isEmpty || !clips.isEmpty || !metadata.links.isEmpty || isMarked else { return nil }
             let withUploads = recordings.map { recording in
                 var copy = recording
                 copy.upload = metadata.upload(for: recording.url)
@@ -1027,10 +1051,17 @@ struct RecordingsView: View {
             return Session(folder: folder,
                            title: folder.lastPathComponent,
                            customTitle: metadata.title,
-                           date: (recordings + clips).map(\.date).max() ?? metadata.links.map(\.at).max() ?? .distantPast,
+                           // The folder name last, not nothing: a session
+                           // whose video was deleted has no file to date it
+                           // by, and .distantPast would bury it at the end of
+                           // a list sorted by when things happened.
+                           date: (recordings + clips).map(\.date).max()
+                               ?? metadata.links.map(\.at).max()
+                               ?? ScreenroomLibrary.date(of: folder),
                            recordings: withUploads,
                            clipFiles: clips,
-                           links: metadata.links.sorted { $0.at < $1.at })
+                           links: metadata.links.sorted { $0.at < $1.at },
+                           kind: metadata.kind)
         }
 
         // Everything recorded before sessions had folders.

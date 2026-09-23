@@ -503,18 +503,25 @@ in the same commit. They now say what is true: the code exists, Screenroom is he
 back so nothing in the shipping build can reach it, macOS never asks, and
 when Screenroom ships this becomes a fourth permission.
 
-### Does the speaker see notes live — the teacher decides, per presentation
+### Does the speaker see notes live — no, and the feature is gone (2026-09-23)
 
-`ScreenroomSpeakerView`: one column, large type, newest at the bottom, no controls
-— readable across a room, for the second display or a mirrored iPad.
+The plan's open question was "live makes it coaching, after makes it
+evaluation", and it was first answered by refusing to answer: a per-
+presentation toggle, never stored, opening a second window the speaker could
+read across a room.
 
-**It is off unless it is asked for, every single time, and the setting is not
-stored.** A persisted preference would mean a teacher who once coached a
-rehearsal is silently still coaching in an exam three weeks later, and the
-student would be the one to find out. Screenroom opens as an evaluation tool on
-every launch; coaching is something you turn on for the next twenty minutes.
-That is the plan's open question answered by refusing to answer it once for
-everybody.
+It is removed. Screenroom is an evaluation tool, and notes written while
+somebody is still talking are for the person writing them. A speaker reading
+live criticism mid-sentence is being coached whether or not that was the
+intention, and the switch that decides which of those is happening is one more
+thing to get wrong in front of a student.
+
+What remains is the report, which is the thing a speaker is actually handed.
+
+Removed with it: `ScreenroomSpeakerView`, the `screenroom-speaker` window
+scene, and `speakerIsWatching`. The toggle in the header had cost the
+Screenroom header its strapline and pushed its minimum width to 950; both went
+back.
 
 ### Still not built
 

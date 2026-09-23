@@ -51,14 +51,6 @@ final class ScreenroomController: ObservableObject {
     /// what they have already said.
     @Published private(set) var notes: [ScreenroomNote] = []
 
-    /// Whether the speaker is watching the notes land.
-    ///
-    /// Deliberately NOT persisted. See ScreenroomSpeakerView: a stored preference
-    /// would mean a teacher who once coached a rehearsal is silently still
-    /// coaching in an exam three weeks later, and the student would be the
-    /// one to find out. Screenroom opens as an evaluation tool every launch.
-    @Published var speakerIsWatching = false
-
     // MARK: The note being typed
 
     @Published var draft: String = "" {

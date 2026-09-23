@@ -45,6 +45,8 @@ struct ScreenroomAnalysisPane: View {
     let position: () -> Int
     /// Sets that player's speed.
     var rate: (Float) -> Void = { _ in }
+    /// Plays that player from the start, jumping over the given spans.
+    var skip: ([ClosedRange<Double>]) -> Void = { _ in }
 
     @ObservedObject private var review = ScreenroomReviewController.shared
     @Environment(\.openWindow) private var openWindow
@@ -77,6 +79,7 @@ struct ScreenroomAnalysisPane: View {
     private func adopt() {
         review.externalSeek = seek
         review.externalRate = rate
+        review.externalSkip = skip
         review.currentPosition = position
         review.select(folder: folder)
         review.selectedRecording = recording

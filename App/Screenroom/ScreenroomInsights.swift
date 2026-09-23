@@ -155,10 +155,15 @@ enum ScreenroomInsights {
         guard others.count >= 2 else { return nil }
         let above = others.filter { $0 < value }.count
         let below = others.filter { $0 > value }.count
-        if above >= below {
-            return "\(higher.prefix(1).uppercased() + higher.dropFirst()) than \(above) of \(others.count) other talks in this library."
+        func phrase(_ word: String, _ n: Int) -> String {
+            let lead = word.prefix(1).uppercased() + word.dropFirst()
+            // "Faster than 2 of 2" is a sentence nobody says.
+            return n == others.count ? "\(lead) than every other talk in this library."
+                : "\(lead) than \(n) of \(others.count) other talks in this library."
         }
-        return "\(lower.prefix(1).uppercased() + lower.dropFirst()) than \(below) of \(others.count) other talks in this library."
+        // Level with everyone: "more than 0 of 2" was the old answer here.
+        if above == 0, below == 0 { return "Level with the other \(others.count) talks in this library." }
+        return above >= below ? phrase(higher, above) : phrase(lower, below)
     }
 
     // MARK: Helpers

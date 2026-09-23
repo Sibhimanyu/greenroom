@@ -136,6 +136,10 @@ struct RecordingsView: View {
     @State private var selection: Recording?
     @State private var player: AVPlayer?
     @State private var duration: Double = 0
+    /// Set while the recording is playing with its fillers cut out: the
+    /// observer that jumps over them, so it can be taken away again.
+    @State private var skipObserver: Any?
+    @ObservedObject private var review = ScreenroomReviewController.shared
     @State private var playhead: Double = 0
     @State private var timeObserver: Any?
     @State private var trashError: String?
@@ -744,6 +748,9 @@ struct RecordingsView: View {
             ClipTimeline(duration: duration,
                          playhead: playhead,
                          clips: selection.clips,
+                         marks: marks(for: selection),
+                         skipping: skipObserver != nil,
+                         onStopSkipping: stopSkipping,
                          onSeek: seek)
                 .frame(height: 54)
                 .padding(.horizontal, 12)
@@ -781,7 +788,8 @@ struct RecordingsView: View {
                     showing: pane,
                     seek: { ms in seek(to: Double(ms) / 1000) },
                     position: { Int(playhead * 1000) },
-                    rate: { player?.rate = $0 })
+                    rate: { player?.rate = $0 },
+                    skip: { playSkipping($0) })
             } else if detailTab == .transcript, DetailTab.transcript.isAvailable {
                 if let folder = folder(for: selection) {
                     SessionTranscriptView(folder: folder)
@@ -926,10 +934,46 @@ struct RecordingsView: View {
     }
 
     private func teardownPlayer() {
+        stopSkipping()
         if let timeObserver { player?.removeTimeObserver(timeObserver) }
         timeObserver = nil
         player?.pause()
         player = nil
+    }
+
+    /// Plays from the start and jumps over each span as the playhead
+    /// reaches it. A boundary observer rather than the quarter-second
+    /// playhead tick: a filler lasts about that long, so polling would hear
+    /// half of every one.
+    private func playSkipping(_ spans: [ClosedRange<Double>]) {
+        guard let player, !spans.isEmpty else { return }
+        stopSkipping()
+        let starts = spans.map { NSValue(time: CMTime(seconds: $0.lowerBound, preferredTimescale: 600)) }
+        skipObserver = player.addBoundaryTimeObserver(forTimes: starts, queue: .main) { [player] in
+            let now = player.currentTime().seconds
+            guard let span = spans.first(where: { $0.contains(now + 0.02) }) else { return }
+            player.seek(to: CMTime(seconds: span.upperBound, preferredTimescale: 600),
+                        toleranceBefore: .zero, toleranceAfter: .zero)
+        }
+        player.rate = 1
+        seek(to: 0)
+    }
+
+    private func stopSkipping() {
+        if let skipObserver { player?.removeTimeObserver(skipObserver) }
+        skipObserver = nil
+    }
+
+    /// Fillers and notes for the recording on screen, when Screenroom has
+    /// analysed THIS take. Nothing otherwise - a mark measured against a
+    /// different take points at the wrong moment.
+    private func marks(for selection: Recording) -> ClipTimeline.Marks {
+        guard ScreenroomAvailability.isReleased,
+              let folder = folder(for: selection),
+              review.selected?.folder == folder else { return .init() }
+        let found = review.scrubberMarks
+        return .init(fillers: found.fillers.map { Double($0) / 1000 },
+                     notes: found.notes.map { Double($0) / 1000 })
     }
 
     private func seek(to seconds: Double) {
@@ -1185,9 +1229,20 @@ struct RecordingsView: View {
 /// are blocks on the timeline, positioned by where they actually are, and
 /// clicking one jumps the player to it.
 private struct ClipTimeline: View {
+    /// Screenroom's moments, in seconds, drawn as ticks over the track so
+    /// the player itself shows where the fillers and notes fell.
+    struct Marks {
+        var fillers: [Double] = []
+        var notes: [Double] = []
+        var isEmpty: Bool { fillers.isEmpty && notes.isEmpty }
+    }
+
     let duration: Double
     let playhead: Double
     let clips: [SessionClip]
+    var marks = Marks()
+    var skipping = false
+    var onStopSkipping: () -> Void = {}
     let onSeek: (Double) -> Void
 
     var body: some View {
@@ -1211,6 +1266,25 @@ private struct ClipTimeline: View {
                                 .help("\(clip.durationLabel), marked at \(clip.markedAtLabel.replacingOccurrences(of: "-", with: ":"))")
                         }
 
+                        // Fillers as short ticks in the lower half, notes as
+                        // taller ones - two kinds of moment, told apart by
+                        // shape rather than by a second colour.
+                        ForEach(Array(marks.fillers.enumerated()), id: \.offset) { _, at in
+                            Capsule()
+                                .fill(Brand.fill)
+                                .frame(width: 2, height: 9)
+                                .offset(x: width * min(1, at / duration) - 1, y: 6)
+                                .allowsHitTesting(false)
+                        }
+                        ForEach(Array(marks.notes.enumerated()), id: \.offset) { _, at in
+                            Capsule()
+                                .fill(Color.primary.opacity(0.75))
+                                .frame(width: 3, height: 22)
+                                .offset(x: width * min(1, at / duration) - 1.5)
+                                .onTapGesture { onSeek(max(0, at - 4)) }
+                                .help("A note")
+                        }
+
                         Rectangle()
                             .fill(Color.primary)
                             .frame(width: 2, height: 30)
@@ -1229,13 +1303,33 @@ private struct ClipTimeline: View {
             }
             .frame(height: 30)
 
-            HStack {
+            HStack(spacing: 12) {
                 Text(RecordingsView.offsetLabel(Int(playhead * 1000)))
+                if skipping {
+                    // Said on the player, because the player is what is
+                    // behaving differently: every filler is being jumped.
+                    HStack(spacing: 6) {
+                        Text("Playing without fillers")
+                        Button("Stop", action: onStopSkipping)
+                            .buttonStyle(.link)
+                    }
+                    .font(.system(size: 11))
+                } else if !marks.isEmpty {
+                    Text(markLegend)
+                        .font(.system(size: 11))
+                }
                 Spacer()
                 Text(duration > 0 ? RecordingsView.offsetLabel(Int(duration * 1000)) : "\u{2014}")
             }
             .font(.system(size: 10, design: .monospaced))
             .foregroundStyle(.secondary)
         }
+    }
+
+    private var markLegend: String {
+        var parts: [String] = []
+        if !marks.fillers.isEmpty { parts.append("short ticks: \(marks.fillers.count) filler\(marks.fillers.count == 1 ? "" : "s")") }
+        if !marks.notes.isEmpty { parts.append("tall: \(marks.notes.count) note\(marks.notes.count == 1 ? "" : "s")") }
+        return parts.joined(separator: " \u{00B7} ")
     }
 }

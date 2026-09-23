@@ -201,6 +201,42 @@ final class ScreenroomReviewController: ObservableObject {
     /// fastest way to show a fast talker what their pace costs a listener.
     var externalRate: ((Float) -> Void)?
 
+    /// Plays the recording from the start, jumping over every filler as it
+    /// comes. Hearing your own talk with the "um"s gone is the argument for
+    /// pausing instead, made in your own voice.
+    var externalSkip: (([ClosedRange<Double>]) -> Void)?
+
+    func playWithoutFillers() {
+        let ranges = fillerRanges
+        guard !ranges.isEmpty else { return }
+        externalSkip?(ranges)
+    }
+
+    /// Each filler's span in seconds, from the word timings, padded a
+    /// little either side so the cut does not leave half a syllable.
+    var fillerRanges: [ClosedRange<Double>] {
+        guard let metrics, metrics.verbatim else { return [] }
+        var out: [ClosedRange<Double>] = []
+        for filler in metrics.fillers {
+            let length = filler.word.split(separator: " ").count
+            for at in filler.atMs {
+                guard let index = words.firstIndex(where: { $0.atMs == at }) else { continue }
+                let last = words[min(words.count - 1, index + length - 1)]
+                out.append((Double(max(0, at - 60)) / 1000)...(Double(last.endMs + 60) / 1000))
+            }
+        }
+        return out.sorted { $0.lowerBound < $1.lowerBound }
+    }
+
+    /// Moments the Sessions scrubber should mark for this recording: every
+    /// filler and every note, in milliseconds. Empty when the selected take
+    /// is not the one analysed, since the times would point at the wrong one.
+    var scrubberMarks: (fillers: [Int], notes: [Int]) {
+        guard !selectionMismatch else { return ([], []) }
+        return ((metrics?.verbatim ?? false) ? metrics?.fillers.flatMap(\.atMs) ?? [] : [],
+                notes.map(\.atMs))
+    }
+
     /// Plays from a moment at a given speed, on whichever player is showing.
     func play(fromMs ms: Int, rate: Float) {
         seek(toMs: ms, lead: 0)

@@ -869,6 +869,7 @@ struct ScreenroomReportView: View {
                         : share <= ScreenroomInsights.fillerShare ? "Under 3% of words. A pause instead of a filler keeps it there."
                         : "Try getting under 3% by pausing instead.",
                     detail: m.fillerCount == 0 ? nil : AnyView(fillerDetail(m)),
+                    action: m.fillerCount == 0 ? nil : ("Play without fillers", { review.playWithoutFillers() }),
                     standing: ScreenroomInsights.standing(
                         share, among: peers.filter(\.verbatim).map { Double($0.fillerCount) / Double(max(1, $0.wordCount)) },
                         higher: "more fillers", lower: "fewer fillers")))
@@ -1006,7 +1007,12 @@ struct ScreenroomReportView: View {
                     Text("Pace through the talk")
                         .font(.system(size: 13, weight: .semibold))
                         .foregroundStyle(.secondary)
-                    paceCurve(curve, durationMs: m.durationMs)
+                    // Redrawn twice a second so the dotted line follows the
+                    // Sessions player while the recording plays.
+                    TimelineView(.periodic(from: .now, by: 0.5)) { _ in
+                        paceCurve(curve, durationMs: m.durationMs,
+                                  playheadMs: review.currentPosition?() ?? 0)
+                    }
                     Text("**Vary your pace** to keep a room with you. **Practise the stretches** where it runs flat.")
                         .font(.system(size: 12))
                         .foregroundStyle(.secondary)
@@ -1071,7 +1077,8 @@ struct ScreenroomReportView: View {
 
     /// The pace line, broken wherever the speaker went quiet, over the
     /// comfortable band on a fixed scale.
-    private func paceCurve(_ curve: [ScreenroomInsights.PacePoint], durationMs: Int) -> some View {
+    private func paceCurve(_ curve: [ScreenroomInsights.PacePoint], durationMs: Int,
+                           playheadMs: Int = 0) -> some View {
         let band = ScreenroomSpeechMetrics.comfortablePace
         let scale = Self.gaugeScale
         return Chart {
@@ -1085,6 +1092,13 @@ struct ScreenroomReportView: View {
                     .foregroundStyle(Brand.fill)
                     .lineStyle(StrokeStyle(lineWidth: 2.5, lineCap: .round))
                     .interpolationMethod(.monotone)
+            }
+            // Where the player is: a hairline in the label colour, so it
+            // reads as a cursor over the data rather than as more of it.
+            if playheadMs > 0, playheadMs < durationMs {
+                RuleMark(x: .value("Now", Double(playheadMs) / 1000))
+                    .foregroundStyle(Color(nsColor: .labelColor).opacity(0.7))
+                    .lineStyle(StrokeStyle(lineWidth: 1))
             }
         }
         .chartXScale(domain: 0...max(1, Double(durationMs) / 1000))

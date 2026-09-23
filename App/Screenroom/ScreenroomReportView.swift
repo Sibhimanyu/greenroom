@@ -1117,7 +1117,12 @@ struct ScreenroomReportView: View {
                                inside: "In the comfortable range",
                                above: "Faster than the comfortable range",
                                range: "comfortable 115\u{2013}180"))
-            if m.verbatim {
+            if m.verbatim, m.fillerCount == 0 {
+                // "0.0 a minute · 0 in total" is three ways of saying none.
+                out.append(Reading(label: "Filler words", value: "None", unit: "in the whole talk",
+                                   side: .inside, verdict: "No filler words counted",
+                                   range: "usual 0\u{2013}2 a minute", meter: nil))
+            } else if m.verbatim {
                 out.append(reading("Filler words", value: m.fillersPerMinute,
                                    shown: String(format: "%.1f", m.fillersPerMinute),
                                    unit: "a minute \u{00B7} \(m.fillerCount) in total",

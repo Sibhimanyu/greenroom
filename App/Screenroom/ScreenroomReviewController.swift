@@ -83,6 +83,27 @@ final class ScreenroomReviewController: ObservableObject {
     @Published private(set) var elapsed: TimeInterval = 0
     private var elapsedTimer: Timer?
 
+    /// What the running step is and when it began, the steps still to come,
+    /// and how long the recording is - everything an estimate of the rest is
+    /// made from. See ScreenroomETA.
+    private var stage: ScreenroomStage?
+    private var stageStarted = Date()
+    private var upcoming: [ScreenroomStage] = []
+    private var recordingSeconds: TimeInterval = 0
+
+    /// Roughly how much is left, or nil when there is no honest way to say.
+    /// Read on every tick of `elapsed`, so it moves with the clock.
+    var eta: ScreenroomETA.Estimate? {
+        guard let stage else { return nil }
+        let current = ScreenroomETA.currentStep(
+            stage: stage, determinate: isDeterminate, progress: progress,
+            stepElapsed: Date().timeIntervalSince(stageStarted),
+            expected: ScreenroomTimings.expected(stage, recordingSeconds: recordingSeconds))
+        return ScreenroomETA.estimate(
+            current: current,
+            upcoming: upcoming.map { ScreenroomTimings.expected($0, recordingSeconds: recordingSeconds) })
+    }
+
     /// The whole run, so it can be stopped.
     private var runTask: Task<Void, Never>?
     /// The child process, if a step has one. Cancelling a Task does not kill
@@ -376,12 +397,19 @@ final class ScreenroomReviewController: ObservableObject {
         // leaving the length of the wait a mystery.
         stepCount = (selected.recording != nil ? 3 : 0) + 2
         stepIndex = 0
+        upcoming = Self.plan(for: selected)
+        recordingSeconds = 0
+        if let recording = selected.recording {
+            recordingSeconds = (try? await AVURLAsset(url: recording).load(.duration))?.seconds ?? 0
+        }
         defer {
             isAnalysing = false
             step = ""
             progress = 0
             stepIndex = 0
             isDeterminate = true
+            stage = nil
+            upcoming = []
             childProcess = nil
             stopClock()
         }
@@ -395,7 +423,7 @@ final class ScreenroomReviewController: ObservableObject {
             if Task.isCancelled { status = "Stopped."; return }
         }
 
-        begin("Comparing against the group", determinate: true)
+        begin("Comparing against the group", .cohort, determinate: true)
         recomputeCohort()
 
         let consistency = cohortFindings.map { "\($0.headline). \($0.detail)" }
@@ -417,13 +445,46 @@ final class ScreenroomReviewController: ObservableObject {
         refreshSelectedRow()
     }
 
+    /// The steps a run over this presentation expects to take, in order.
+    /// The agent can still fail over to the notes pass; the estimate simply
+    /// follows whichever step actually begins.
+    private static func plan(for selected: ScreenroomPresentation) -> [ScreenroomStage] {
+        var stages: [ScreenroomStage] = []
+        if selected.recording != nil {
+            stages += [ScreenroomTranscriberSettings.whisperIsReady ? .transcribeWhisper : .transcribeApple,
+                       .stills, .watch]
+        }
+        stages.append(.cohort)
+        let agent = ScreenroomAgentSettings.load()
+        if agent.enabled, !agent.command.trimmingCharacters(in: .whitespaces).isEmpty {
+            stages.append(.agent(agent.kind.rawValue))
+        } else {
+            stages.append(.notes)
+        }
+        return stages
+    }
+
     /// Moves to the next step, naming it and saying whether its bar can move.
-    private func begin(_ name: String, determinate: Bool) {
+    private func begin(_ name: String, _ stage: ScreenroomStage, determinate: Bool) {
         stepIndex += 1
         step = name
         progress = 0
         isDeterminate = determinate
+        self.stage = stage
+        stageStarted = Date()
+        if let index = upcoming.firstIndex(of: stage) {
+            upcoming.removeFirst(index + 1)
+        }
         clearLog()
+    }
+
+    /// Remembers what the running step took, for the next run's estimate.
+    /// Only on success: a step that failed in two seconds says nothing about
+    /// how long it takes to work.
+    private func finishStage() {
+        guard let stage, !Task.isCancelled else { return }
+        ScreenroomTimings.record(stage, seconds: Date().timeIntervalSince(stageStarted),
+                                 recordingSeconds: recordingSeconds)
     }
 
     private func startClock() {
@@ -446,13 +507,15 @@ final class ScreenroomReviewController: ObservableObject {
         let whisper = ScreenroomTranscriberSettings.whisperIsReady
         // whisper reports how far through the file it is; Apple's recogniser
         // does not until it finishes.
-        begin(whisper ? "Transcribing with whisper" : "Transcribing", determinate: whisper)
+        begin(whisper ? "Transcribing with whisper" : "Transcribing",
+              whisper ? .transcribeWhisper : .transcribeApple, determinate: whisper)
         do {
             _ = try await ScreenroomTranscriber.transcribe(
                 recording: recording, into: folder,
                 settings: ScreenroomTranscriberSettings.resolved(),
                 onProgress: { [weak self] fraction in self?.progress = fraction },
                 onOutput: { [weak self] piece in self?.log += piece })
+            finishStage()
             hasTranscript = true
             metrics = ScreenroomSpeechMetrics.load(in: folder)
             words = ScreenroomTranscriber.loadWords(in: folder)
@@ -464,13 +527,14 @@ final class ScreenroomReviewController: ObservableObject {
     }
 
     private func takeStills(_ recording: URL, into folder: URL) async {
-        begin("Taking stills", determinate: true)
+        begin("Taking stills", .stills, determinate: true)
         do {
             let frames = try await ScreenroomFrames.extract(
                 from: recording, into: folder,
                 onProgress: { [weak self] done, total in
                     self?.progress = total > 0 ? Double(done) / Double(total) : 0
                 })
+            finishStage()
             self.frames = frames
             frameCount = frames.count
         } catch {
@@ -487,13 +551,14 @@ final class ScreenroomReviewController: ObservableObject {
     /// the section out rather than printing a zero that reads as a failing
     /// grade for someone who was never on camera.
     private func watch(_ recording: URL, into folder: URL) async {
-        begin("Watching the recording", determinate: true)
+        begin("Watching the recording", .watch, determinate: true)
         do {
             let seen = try await ScreenroomPresence.measure(
                 recording: recording,
                 onProgress: { [weak self] done, total in
                     self?.progress = total > 0 ? Double(done) / Double(total) : 0
                 })
+            finishStage()
             if seen.samples.contains(where: { $0.face || $0.body }) {
                 seen.save(in: folder)
                 presence = seen
@@ -517,7 +582,7 @@ final class ScreenroomReviewController: ObservableObject {
             // An agent reports nothing until it answers, so the bar is not
             // pretended into existence. Elapsed time and its own last line
             // carry the wait instead.
-            begin("Your agent is reading it", determinate: false)
+            begin("Your agent is reading it", .agent(settings.kind.rawValue), determinate: false)
             let brief = ScreenroomAgent.brief(presenter: presentation.presenter,
                                               notes: notes,
                                               metrics: metrics,
@@ -533,6 +598,7 @@ final class ScreenroomReviewController: ObservableObject {
                         Task { @MainActor in self?.childProcess = process }
                     },
                     onOutput: { [weak self] piece in self?.note(piece) })
+                finishStage()
                 ScreenroomAgent.writeReport(output, in: presentation.folder)
                 return ScreenroomAgent.analysis(from: output,
                                                 engine: settings.kind.label,
@@ -545,11 +611,13 @@ final class ScreenroomReviewController: ObservableObject {
             }
         }
 
-        begin("Reading the notes", determinate: false)
-        return await ScreenroomAnalyst.analyse(notes: notes,
-                                               scoring: scoring,
-                                               presenter: presentation.presenter,
-                                               consistency: consistency)
+        begin("Reading the notes", .notes, determinate: false)
+        let analysis = await ScreenroomAnalyst.analyse(notes: notes,
+                                                       scoring: scoring,
+                                                       presenter: presentation.presenter,
+                                                       consistency: consistency)
+        finishStage()
+        return analysis
     }
 }
 

@@ -160,6 +160,15 @@ struct ScreenroomAnalysisPane: View {
                 Text(review.step.isEmpty ? "Working\u{2026}" : review.step)
                     .font(.title3.weight(.medium))
 
+                // Only when it can be said honestly; see ScreenroomETA. On a
+                // first run nothing is known yet, and the clock below still
+                // says the thing is moving.
+                if let eta = review.eta {
+                    Text(ScreenroomETA.label(eta))
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                }
+
                 HStack(spacing: 6) {
                     if review.stepCount > 0 {
                         Text("Step \(review.stepIndex) of \(review.stepCount)")

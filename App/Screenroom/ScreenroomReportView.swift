@@ -904,33 +904,44 @@ struct ScreenroomReportView: View {
         }
     }
 
-    /// The stills, evenly sampled to fit the column. Already on disk and,
-    /// until now, only ever read by the agent.
+    /// The stills, each at its own moment on the map's time axis.
+    ///
+    /// They used to share the width equally, so three stills from a short
+    /// talk grew to a third of the column each and towered over every row
+    /// below them, and none of them sat above the moment it was taken. Now
+    /// each is one fixed size, centred on its timestamp and nudged inside the
+    /// edges, so reading a column downwards still means one moment.
     private var filmstrip: some View {
-        // Six at 16:9 fills the column at roughly the camera's own shape.
-        // Nine squeezed into 52pt cropped every still to a forehead.
         let wanted = 6
         let all = review.frames
         let step = max(1, all.count / wanted)
         let shown = stride(from: 0, to: all.count, by: step).prefix(wanted).map { all[$0] }
-        return HStack(spacing: 2) {
-            ForEach(shown, id: \.self) { url in
-                Button { review.seek(toMs: Self.stamp(of: url), lead: 0) } label: {
-                    Group {
-                        if let image = NSImage(contentsOf: url) {
-                            Image(nsImage: image).resizable().aspectRatio(contentMode: .fill)
-                        } else {
-                            Color(nsColor: .separatorColor).opacity(0.3)
+        let span = mapSpan
+        return GeometryReader { geo in
+            let cell = min(Self.stillWidth, geo.size.width / 5)
+            ZStack(alignment: .topLeading) {
+                ForEach(shown, id: \.self) { url in
+                    let at = CGFloat(Double(Self.stamp(of: url)) / span)
+                    Button { review.seek(toMs: Self.stamp(of: url), lead: 0) } label: {
+                        Group {
+                            if let image = NSImage(contentsOf: url) {
+                                Image(nsImage: image).resizable().aspectRatio(contentMode: .fill)
+                            } else {
+                                Color(nsColor: .separatorColor).opacity(0.3)
+                            }
                         }
+                        .frame(width: cell, height: cell * 9 / 16)
+                        .clipShape(RoundedRectangle(cornerRadius: 6))
                     }
-                    .frame(maxWidth: .infinity)
-                    .aspectRatio(16 / 9, contentMode: .fit)
-                    .clipShape(RoundedRectangle(cornerRadius: 6))
+                    .buttonStyle(.plain)
+                    .offset(x: min(max(0, geo.size.width * at - cell / 2), geo.size.width - cell))
                 }
-                .buttonStyle(.plain)
             }
         }
+        .frame(height: Self.stillWidth * 9 / 16)
     }
+
+    static let stillWidth: CGFloat = 120
 
     /// The moment a still was taken, read back off its own file name.
     ///

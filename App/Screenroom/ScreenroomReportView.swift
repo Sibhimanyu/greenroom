@@ -1057,10 +1057,19 @@ struct ScreenroomReportView: View {
         let readings = self.readings
         return Group {
             if !readings.isEmpty {
-                LazyVGrid(columns: [GridItem(.flexible(), spacing: 12, alignment: .top),
-                                    GridItem(.flexible(), spacing: 12, alignment: .top)],
-                          alignment: .leading, spacing: 12) {
-                    ForEach(readings) { card($0) }
+                // Two to a row, and an odd one out takes the whole row rather
+                // than leaving a card-shaped hole beside it.
+                let rows = stride(from: 0, to: readings.count, by: 2).map {
+                    Array(readings[$0..<min($0 + 2, readings.count)])
+                }
+                Grid(horizontalSpacing: 12, verticalSpacing: 12) {
+                    ForEach(rows, id: \.first!.id) { row in
+                        GridRow(alignment: .top) {
+                            ForEach(row) { reading in
+                                card(reading).gridCellColumns(row.count == 1 ? 2 : 1)
+                            }
+                        }
+                    }
                 }
             }
         }

@@ -74,7 +74,9 @@ struct ScreenroomReportView: View {
                     if hasMap { map }
                     if let analysis = review.analysis { prose(analysis) }
                     if review.scoring.markedCount > 0 { rubric }
-                    if let metrics = review.metrics, !metrics.paceWindow.isEmpty { pace(metrics) }
+                    // Under three windows a line is two points, and the card above
+                    // already says the one thing it could.
+                    if let metrics = review.metrics, metrics.paceWindow.count >= 3 { pace(metrics) }
                     if let metrics = review.metrics, metrics.fillerCount > 0 { fillers(metrics) }
                     if let metrics = review.metrics, metrics.hedgeCount > 0 { hedges(metrics) }
                     if let metrics = review.metrics, metrics.runs.count >= Self.enoughSentences { sentenceShape(metrics) }
@@ -293,12 +295,14 @@ struct ScreenroomReportView: View {
                     yStart: .value("Slow", ScreenroomSpeechMetrics.comfortablePace.lowerBound),
                     yEnd: .value("Fast", ScreenroomSpeechMetrics.comfortablePace.upperBound))
                     .foregroundStyle(Brand.fill.opacity(0.10))
+                // Each window drawn at its middle, not its start: at its start
+                // the line stopped half a window short of the end of the talk.
                 ForEach(metrics.paceWindow, id: \.startMs) { window in
-                    AreaMark(x: .value("At", Double(window.startMs) / 1000),
+                    AreaMark(x: .value("At", Self.middle(of: window, in: metrics)),
                              y: .value("Words per minute", window.wordsPerMinute))
                         .foregroundStyle(Brand.fill.opacity(0.18))
                         .interpolationMethod(.monotone)
-                    LineMark(x: .value("At", Double(window.startMs) / 1000),
+                    LineMark(x: .value("At", Self.middle(of: window, in: metrics)),
                              y: .value("Words per minute", window.wordsPerMinute))
                         .foregroundStyle(Brand.fill)
                         .lineStyle(StrokeStyle(lineWidth: 2))
@@ -314,6 +318,7 @@ struct ScreenroomReportView: View {
                             .foregroundStyle(.secondary)
                     }
             }
+            .chartXScale(domain: 0...max(1, Double(metrics.durationMs) / 1000))
             .chartXAxis {
                 AxisMarks(values: .automatic(desiredCount: 6)) { value in
                     // Hairline, never dashed: dashing is noise.
@@ -338,6 +343,13 @@ struct ScreenroomReportView: View {
             }
             .frame(height: 150)
         }
+    }
+
+    /// The middle of a half-minute window, in seconds, never past the end.
+    static func middle(of window: ScreenroomSpeechMetrics.PaceWindow,
+                       in metrics: ScreenroomSpeechMetrics) -> Double {
+        let end = min(window.startMs + 30_000, metrics.durationMs)
+        return Double(window.startMs + end) / 2000
     }
 
     // MARK: Fillers — magnitude, one hue for every bar

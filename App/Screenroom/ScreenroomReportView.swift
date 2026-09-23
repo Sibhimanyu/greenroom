@@ -758,6 +758,14 @@ struct ScreenroomReportView: View {
     private func wordBars(_ items: [ScreenroomSpeechMetrics.Filler], limit: Int) -> some View {
         let shown = Array(items.prefix(limit))
         let rest = items.dropFirst(limit)
+        if items.count < 3 {
+            // One or two bars is the one-bar bar chart this file's header
+            // rules out: a full-width stripe to say "it's" three times.
+            Text(items.map { "\u{201C}\($0.word)\u{201D} \($0.count == 1 ? "once" : "\($0.count) times")" }
+                .joined(separator: ", ") + ".")
+                .font(.callout)
+                .fixedSize(horizontal: false, vertical: true)
+        } else {
         VStack(alignment: .leading, spacing: 8) {
             Chart(shown) { item in
                 BarMark(x: .value("Times", item.count), y: .value("Word", item.word))
@@ -784,6 +792,7 @@ struct ScreenroomReportView: View {
                     .font(.caption).foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
+        }
         }
     }
 

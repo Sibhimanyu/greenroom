@@ -565,9 +565,9 @@ struct ScreenroomReportView: View {
         section("ON CAMERA",
                 trailing: "head angle, sampled every \(seen.everyMs / 1000) seconds \u{00B7} not eye contact") {
             VStack(alignment: .leading, spacing: 16) {
+                // Facing the room is a card at the top of the page; saying
+                // it again here as a tile was the same number twice.
                 HStack(spacing: 12) {
-                    tile("\(Int((seen.facingRatio * 100).rounded()))%", "FACING THE ROOM",
-                         note: "of frames with a face")
                     tile("\(Int((seen.onCameraRatio * 100).rounded()))%", "IN SHOT")
                     if let ratio = seen.gestureRatio, let rate = seen.gesturesPerMinute {
                         tile("\(Int((ratio * 100).rounded()))%", "HANDS UP",
@@ -585,6 +585,9 @@ struct ScreenroomReportView: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
 
+                // The same strip is the Facing row of the map when the map is
+                // drawn, so it is only shown here when the map is not.
+                if !hasMap {
                 VStack(alignment: .leading, spacing: 5) {
                     eyebrow("WHERE THEY WERE LOOKING")
                     presenceStrip(seen)
@@ -596,6 +599,7 @@ struct ScreenroomReportView: View {
                     }
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
+                }
                 }
 
                 if let away = seen.longestAway {

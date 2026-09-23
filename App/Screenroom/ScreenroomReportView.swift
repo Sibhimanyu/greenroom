@@ -137,18 +137,26 @@ struct ScreenroomReportView: View {
         }
     }
 
+    /// A number with a name, in the same shape as the reading cards at the
+    /// top: the name first in plain words, then the number and what it is
+    /// out of. It used to be a mono number over a lime capitals label, a
+    /// second visual language for the same kind of fact.
     private func tile(_ value: String, _ label: String, note: String? = nil) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(value)
-                .font(.system(size: 34, weight: .semibold, design: .monospaced))
-                .monospacedDigit()
-                .foregroundStyle(.primary)
-                .lineLimit(1)
-                .minimumScaleFactor(0.6)
-            VStack(alignment: .leading, spacing: 2) {
-                eyebrow(label)
+        VStack(alignment: .leading, spacing: 8) {
+            Text(label)
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(.secondary)
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text(value)
+                    .font(.system(size: 26, weight: .semibold))
+                    .monospacedDigit()
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.6)
                 if let note {
-                    Text(note).font(.caption).foregroundStyle(.secondary)
+                    Text(note)
+                        .font(.system(size: 13))
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
             }
         }
@@ -462,10 +470,10 @@ struct ScreenroomReportView: View {
         section("SENTENCE SHAPE", trailing: "measured between breaths, not from punctuation") {
             VStack(alignment: .leading, spacing: 16) {
                 HStack(spacing: 12) {
-                    tile("\(Int(m.wordsPerRun.rounded()))", "WORDS PER SENTENCE")
-                    tile("\(m.runs.count)", "SENTENCES")
+                    tile("\(Int(m.wordsPerRun.rounded()))", "Words per sentence")
+                    tile("\(m.runs.count)", "Sentences")
                     tile(String(format: "%.0fs", Double(m.longestRunMs) / 1000),
-                         "LONGEST WITHOUT A BREATH",
+                         "Longest without a breath",
                          note: "from \(Self.clock(m.longestRunStartMs / 1000))")
                 }
                 if m.starters.count >= 2, m.runs.count >= 6 {
@@ -486,9 +494,9 @@ struct ScreenroomReportView: View {
         section("VOCABULARY", trailing: "variety measured over fifty-word windows") {
             VStack(alignment: .leading, spacing: 16) {
                 HStack(spacing: 12) {
-                    tile("\(Int((m.vocabulary * 100).rounded()))%", "VARIETY",
+                    tile("\(Int((m.vocabulary * 100).rounded()))%", "Variety",
                          note: "different words per fifty said")
-                    tile("\(m.uniqueWords)", "DIFFERENT WORDS",
+                    tile("\(m.uniqueWords)", "Different words",
                          note: "of \(m.wordCount) spoken")
                 }
                 if !m.repeated.isEmpty {
@@ -568,9 +576,9 @@ struct ScreenroomReportView: View {
                 // Facing the room is a card at the top of the page; saying
                 // it again here as a tile was the same number twice.
                 HStack(spacing: 12) {
-                    tile("\(Int((seen.onCameraRatio * 100).rounded()))%", "IN SHOT")
+                    tile("\(Int((seen.onCameraRatio * 100).rounded()))%", "In shot")
                     if let ratio = seen.gestureRatio, let rate = seen.gesturesPerMinute {
-                        tile("\(Int((ratio * 100).rounded()))%", "HANDS UP",
+                        tile("\(Int((ratio * 100).rounded()))%", "Hands up",
                              note: String(format: "%.1f movements a minute", rate))
                     }
                 }

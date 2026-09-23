@@ -61,6 +61,12 @@ final class ScreenroomReviewController: ObservableObject {
     @Published private(set) var frames: [URL] = []
     @Published private(set) var hasTranscript = false
 
+    /// Every OTHER talk's speech figures and camera figures, for the
+    /// "faster than 3 of 5 other talks" line under each reading. Read once
+    /// per selection, from files already on disk.
+    @Published private(set) var peerMetrics: [ScreenroomSpeechMetrics] = []
+    @Published private(set) var peerPresence: [ScreenroomPresence] = []
+
     /// One run, one step name, one bar. DESIGN.md: name the step, never just
     /// spin - a pass stuck on transcription should look different from one
     /// about to finish.
@@ -191,6 +197,20 @@ final class ScreenroomReviewController: ObservableObject {
     /// knows about AVPlayer and this does not need to.
     var externalSeek: ((Int) -> Void)?
 
+    /// Sets the playing speed of that same player. "Hear it slower" is the
+    /// fastest way to show a fast talker what their pace costs a listener.
+    var externalRate: ((Float) -> Void)?
+
+    /// Plays from a moment at a given speed, on whichever player is showing.
+    func play(fromMs ms: Int, rate: Float) {
+        seek(toMs: ms, lead: 0)
+        if let externalRate {
+            externalRate(rate)
+        } else {
+            player.rate = rate
+        }
+    }
+
     /// One instance. The review window and the report window are two views
     /// of one presentation, and SwiftUI scenes do not otherwise share state.
     static let shared = ScreenroomReviewController()
@@ -247,6 +267,11 @@ final class ScreenroomReviewController: ObservableObject {
         words = ScreenroomTranscriber.loadWords(in: presentation.folder)
         frames = ScreenroomFrames.existing(in: presentation.folder)
         frameCount = frames.count
+        let others = presentations.filter { $0.folder != presentation.folder }
+        peerMetrics = others.compactMap { ScreenroomSpeechMetrics.load(in: $0.folder) }
+            .filter { $0.wordCount > 0 }
+        peerPresence = others.compactMap { ScreenroomPresence.load(in: $0.folder) }
+            .filter { $0.sampleCount > 0 }
         hasTranscript = FileManager.default.fileExists(
             atPath: presentation.folder.appendingPathComponent(ScreenroomTranscriber.transcriptFileName).path)
         log = ""

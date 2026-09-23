@@ -43,6 +43,8 @@ struct ScreenroomAnalysisPane: View {
     let seek: (Int) -> Void
     /// Where that player currently is, in milliseconds.
     let position: () -> Int
+    /// Sets that player's speed.
+    var rate: (Float) -> Void = { _ in }
 
     @ObservedObject private var review = ScreenroomReviewController.shared
     @Environment(\.openWindow) private var openWindow
@@ -74,6 +76,7 @@ struct ScreenroomAnalysisPane: View {
     /// already made.
     private func adopt() {
         review.externalSeek = seek
+        review.externalRate = rate
         review.currentPosition = position
         review.select(folder: folder)
         review.selectedRecording = recording

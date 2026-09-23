@@ -20,11 +20,12 @@
 //
 //  What is deliberately NOT a chart:
 //
-//   - The headline readings are cards that say, in a sentence, where each
-//     number sits against its comfortable range. They were dials, and the
-//     dials were reported as unreadable: a ring does not say whether 137 is
-//     fine, and the same three numbers were then drawn a second time as
-//     bars further down. One card per reading, said once.
+//   - The readings are rows, sorted into "What to work on" and "What went
+//     well", in the grammar Yoodli uses (see ScreenroomInsights). Each is a
+//     name and a value said in words; opened, a tip, the evidence, a way to
+//     hear it and where the talk sits against the others. They were dials,
+//     then cards, then eight sections of detail below the map; the rows
+//     hold all of it and show only what is asked for.
 //   - A rubric line is a ratio against a limit, so it is a meter - a filled
 //     track - rather than a bar on a shared axis. Five meters at five
 //     different maxima on one axis would compare things that are not
@@ -54,6 +55,8 @@ import SwiftUI
 
 struct ScreenroomReportView: View {
     @ObservedObject private var review = ScreenroomReviewController.shared
+    /// Rows the teacher has opened or closed, flipping each one's default.
+    @State private var toggled: Set<String> = []
 
     /// One column, capped and centred. A report is reading material; a
     /// dashboard stretched to 1600pt puts eleven words on a line.
@@ -66,26 +69,14 @@ struct ScreenroomReportView: View {
                     empty
                 } else {
                     header
-                    // The readings, then the map, then what to do about
-                    // them, then the detail. Each reading says in words
-                    // where it sits, so the top of the page can be read
-                    // without decoding a single chart.
-                    glance
+                    // The readings as rows sorted into what to work on and
+                    // what went well, then the map, then the summary. Every
+                    // row says in words where it landed; its detail opens
+                    // in place rather than living four screens down.
+                    insightGroups
                     if hasMap { map }
                     if let analysis = review.analysis { prose(analysis) }
                     if review.scoring.markedCount > 0 { rubric }
-                    // Under three windows a line is two points, and the card above
-                    // already says the one thing it could.
-                    if let metrics = review.metrics, metrics.paceWindow.count >= 3 { pace(metrics) }
-                    if let metrics = review.metrics, metrics.fillerCount > 0 { fillers(metrics) }
-                    if let metrics = review.metrics, metrics.hedgeCount > 0 { hedges(metrics) }
-                    if let metrics = review.metrics, metrics.runs.count >= Self.enoughSentences { sentenceShape(metrics) }
-                    if let metrics = review.metrics, metrics.vocabulary > 0 { vocabulary(metrics) }
-                    if let metrics = review.metrics, metrics.wordCount > 0 { airTime(metrics) }
-                    if let seen = review.presence, seen.sampleCount > 0 { onCamera(seen) }
-                    if let metrics = review.metrics, metrics.verbatim, !metrics.careful.isEmpty {
-                        careful(metrics)
-                    }
                     if !review.notes.isEmpty { timeline }
                     if !review.notes.isEmpty { noteList }
                     if !review.words.isEmpty { transcript }
@@ -295,359 +286,6 @@ struct ScreenroomReportView: View {
             }
         guard peers.count >= 2 else { return nil }
         return peers.reduce(0, +) / Double(peers.count)
-    }
-
-    // MARK: Pace — one series over time
-
-    private func pace(_ metrics: ScreenroomSpeechMetrics) -> some View {
-        section("PACE", trailing: "words per minute, in half-minute windows") {
-            Chart {
-                // The comfortable range as shading behind the line, so a
-                // dip below it or a spike above it reads without the reader
-                // holding a number in their head.
-                RectangleMark(
-                    xStart: .value("From", 0),
-                    xEnd: .value("To", Double(metrics.durationMs) / 1000),
-                    yStart: .value("Slow", ScreenroomSpeechMetrics.comfortablePace.lowerBound),
-                    yEnd: .value("Fast", ScreenroomSpeechMetrics.comfortablePace.upperBound))
-                    .foregroundStyle(Brand.fill.opacity(0.10))
-                // Each window drawn at its middle, not its start: at its start
-                // the line stopped half a window short of the end of the talk.
-                ForEach(metrics.paceWindow, id: \.startMs) { window in
-                    AreaMark(x: .value("At", Self.middle(of: window, in: metrics)),
-                             y: .value("Words per minute", window.wordsPerMinute))
-                        .foregroundStyle(Brand.fill.opacity(0.18))
-                        .interpolationMethod(.monotone)
-                    LineMark(x: .value("At", Self.middle(of: window, in: metrics)),
-                             y: .value("Words per minute", window.wordsPerMinute))
-                        .foregroundStyle(Brand.fill)
-                        .lineStyle(StrokeStyle(lineWidth: 2))
-                        .interpolationMethod(.monotone)
-                }
-                // The average as a baseline to read the shape against.
-                RuleMark(y: .value("Average", metrics.wordsPerMinute))
-                    .foregroundStyle(Brand.recessive)
-                    .lineStyle(StrokeStyle(lineWidth: 1))
-                    .annotation(position: .top, alignment: .trailing) {
-                        Text("average \(Int(metrics.wordsPerMinute.rounded()))")
-                            .font(.system(size: 11, design: .monospaced))
-                            .foregroundStyle(.secondary)
-                    }
-            }
-            .chartXScale(domain: 0...max(1, Double(metrics.durationMs) / 1000))
-            .chartXAxis {
-                AxisMarks(values: .automatic(desiredCount: 6)) { value in
-                    // Hairline, never dashed: dashing is noise.
-                    AxisGridLine().foregroundStyle(Color(nsColor: .separatorColor).opacity(0.4))
-                    AxisValueLabel {
-                        if let seconds = value.as(Double.self) {
-                            Text(Self.clock(Int(seconds)))
-                                .font(.system(size: 11, design: .monospaced))
-                        }
-                    }
-                }
-            }
-            .chartYAxis {
-                AxisMarks(position: .leading, values: .automatic(desiredCount: 4)) { value in
-                    AxisGridLine().foregroundStyle(Color(nsColor: .separatorColor).opacity(0.4))
-                    AxisValueLabel {
-                        if let wpm = value.as(Double.self) {
-                            Text("\(Int(wpm))").font(.system(size: 11, design: .monospaced))
-                        }
-                    }
-                }
-            }
-            .frame(height: 150)
-        }
-    }
-
-    /// The middle of a half-minute window, in seconds, never past the end.
-    static func middle(of window: ScreenroomSpeechMetrics.PaceWindow,
-                       in metrics: ScreenroomSpeechMetrics) -> Double {
-        let end = min(window.startMs + 30_000, metrics.durationMs)
-        return Double(window.startMs + end) / 2000
-    }
-
-    // MARK: Fillers — magnitude, one hue for every bar
-
-    private func fillers(_ metrics: ScreenroomSpeechMetrics) -> some View {
-        // Past six, the tail is noise on a chart and belongs in a sentence.
-        let shown = Array(metrics.fillers.prefix(6))
-        let rest = metrics.fillers.dropFirst(6)
-        return section("FILLER WORDS", trailing: "\(metrics.fillerCount) in total") {
-            VStack(alignment: .leading, spacing: 10) {
-                Chart(shown) { filler in
-                    BarMark(x: .value("Times", filler.count),
-                            y: .value("Word", filler.word))
-                        // One series, one colour. Darkening the bigger bars
-                        // would double-encode length as hue and tell the
-                        // reader nothing the length has not already said.
-                        .foregroundStyle(Brand.fill)
-                        .cornerRadius(4)
-                        .annotation(position: .trailing, alignment: .leading) {
-                            Text("\(filler.count)")
-                                .font(.system(size: 11, weight: .medium, design: .monospaced))
-                                .monospacedDigit()
-                                .foregroundStyle(.secondary)
-                        }
-                }
-                .chartXAxis(.hidden)
-                .chartYAxis {
-                    AxisMarks(position: .leading) { _ in
-                        AxisValueLabel().font(.system(size: 11))
-                    }
-                }
-                .frame(height: CGFloat(shown.count) * 26 + 12)
-
-                if !rest.isEmpty {
-                    Text("Also " + rest.map { "\u{201C}\($0.word)\u{201D} \($0.count)\u{00D7}" }
-                        .joined(separator: ", ") + ".")
-                        .font(.caption).foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-
-                // Where they fell matters more than how many. Thirty-one
-                // fillers spread evenly is a habit; thirty-one in the last
-                // two minutes is nerves running out of script.
-                strip("every one of them, in order \u{00B7} click to play",
-                      times: metrics.fillers.flatMap(\.atMs))
-
-                fillerHeat(metrics)
-
-                if let worst = metrics.fillers.first {
-                    HStack(alignment: .firstTextBaseline, spacing: 8) {
-                        Text("\u{201C}\(worst.word)\u{201D}")
-                            .font(.callout.weight(.medium))
-                        Spacer(minLength: 0)
-                        ForEach(worst.atMs.prefix(8), id: \.self) { at in timeChip(at) }
-                        if worst.atMs.count > 8 {
-                            Text("+\(worst.atMs.count - 8)")
-                                .font(.system(size: 11, design: .monospaced))
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-
-    // MARK: Hedges, counted the same way fillers are
-
-    private func hedges(_ m: ScreenroomSpeechMetrics) -> some View {
-        section("HEDGES AND SOFTENERS",
-                trailing: "\(m.hedgeCount) in total \u{00B7} they soften the claim, not change it") {
-            VStack(alignment: .leading, spacing: 12) {
-                wordBars(m.hedges, limit: 6)
-                strip("where they landed", times: m.hedges.flatMap(\.atMs))
-            }
-        }
-    }
-
-    // MARK: Words worth a second look
-
-    private func careful(_ m: ScreenroomSpeechMetrics) -> some View {
-        section("WORTH A SECOND LOOK", trailing: "not errors, not scored") {
-            VStack(alignment: .leading, spacing: 8) {
-                ForEach(m.careful) { item in
-                    HStack(alignment: .firstTextBaseline, spacing: 10) {
-                        Text("\u{201C}\(item.word)\u{201D}").font(.callout.weight(.medium))
-                        Text(item.count == 1 ? "once" : "\(item.count) times")
-                            .font(.caption).foregroundStyle(.secondary)
-                        Spacer(minLength: 0)
-                        ForEach(item.atMs.prefix(6), id: \.self) { at in
-                            timeChip(at)
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    // MARK: Sentence shape
-
-    private func sentenceShape(_ m: ScreenroomSpeechMetrics) -> some View {
-        section("SENTENCE SHAPE", trailing: "measured between breaths, not from punctuation") {
-            VStack(alignment: .leading, spacing: 16) {
-                HStack(spacing: 12) {
-                    tile("\(Int(m.wordsPerRun.rounded()))", "Words per sentence")
-                    tile("\(m.runs.count)", "Sentences")
-                    tile(String(format: "%.0fs", Double(m.longestRunMs) / 1000),
-                         "Longest without a breath",
-                         note: "from \(Self.clock(m.longestRunStartMs / 1000))")
-                }
-                if m.starters.count >= 2, m.runs.count >= 6 {
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text("HOW THEY OPENED")
-                            .font(.system(size: 11, weight: .semibold, design: .monospaced))
-                            .tracking(0.8).foregroundStyle(.secondary)
-                        wordBars(m.starters, limit: 6)
-                    }
-                }
-            }
-        }
-    }
-
-    // MARK: Vocabulary
-
-    private func vocabulary(_ m: ScreenroomSpeechMetrics) -> some View {
-        section("VOCABULARY", trailing: "variety measured over fifty-word windows") {
-            VStack(alignment: .leading, spacing: 16) {
-                HStack(spacing: 12) {
-                    tile("\(Int((m.vocabulary * 100).rounded()))%", "Variety",
-                         note: "different words per fifty said")
-                    tile("\(m.uniqueWords)", "Different words",
-                         note: "of \(m.wordCount) spoken")
-                }
-                if !m.repeated.isEmpty {
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text("LEANED ON MOST \u{00B7} COMMON WORDS EXCLUDED")
-                            .font(.system(size: 11, weight: .semibold, design: .monospaced))
-                            .tracking(0.8).foregroundStyle(.secondary)
-                        wordBars(m.repeated, limit: 8)
-                    }
-                }
-            }
-        }
-    }
-
-    // MARK: Air time
-
-    private func airTime(_ m: ScreenroomSpeechMetrics) -> some View {
-        section("AIR TIME", trailing: "talking against silence") {
-            VStack(alignment: .leading, spacing: 12) {
-                GeometryReader { geo in
-                    HStack(spacing: 2) {
-                        RoundedRectangle(cornerRadius: 3).fill(Brand.fill)
-                            .frame(width: max(2, geo.size.width * m.talkRatio))
-                        RoundedRectangle(cornerRadius: 3)
-                            .fill(Color(nsColor: .separatorColor).opacity(0.3))
-                    }
-                }
-                .frame(height: 16)
-                HStack {
-                    Text("\(Int((m.talkRatio * 100).rounded()))% talking")
-                        .foregroundStyle(Brand.text)
-                    Spacer()
-                    Text("\(Int(((1 - m.talkRatio) * 100).rounded()))% silence")
-                        .foregroundStyle(.secondary)
-                }
-                .font(.system(size: 11, weight: .medium, design: .monospaced))
-
-                if !m.pauses.isEmpty {
-                    Text("LONGEST PAUSES \u{00B7} SILENCE IS WHERE A ROOM CATCHES UP")
-                        .font(.system(size: 11, weight: .semibold, design: .monospaced))
-                        .tracking(0.8).foregroundStyle(.secondary)
-                        .padding(.top, 4)
-                    HStack(spacing: 6) {
-                        ForEach(m.pauses.prefix(8)) { pause in
-                            Button { review.seek(toMs: pause.startMs) } label: {
-                                VStack(spacing: 1) {
-                                    Text(String(format: "%.1fs", Double(pause.lengthMs) / 1000))
-                                        .font(.system(size: 11, weight: .semibold, design: .monospaced))
-                                    Text(Self.clock(pause.startMs / 1000))
-                                        .font(.system(size: 11, design: .monospaced))
-                                        .foregroundStyle(.secondary)
-                                }
-                                .padding(.vertical, 5).padding(.horizontal, 8)
-                                .background(RoundedRectangle(cornerRadius: 6)
-                                    .fill(Color(nsColor: .controlBackgroundColor)))
-                            }
-                            .buttonStyle(.plain)
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    // MARK: What the camera saw
-
-    /// The honest version of the "eye contact" figure these tools report.
-    ///
-    /// Vision gives the angle of the head, not the direction of the eyes, so
-    /// the heading says FACING THE ROOM and the footnote says why. A number
-    /// labelled eye contact that cannot see eyes is the kind of thing a
-    /// student repeats in an interview.
-    private func onCamera(_ seen: ScreenroomPresence) -> some View {
-        section("ON CAMERA",
-                trailing: "head angle, sampled every \(seen.everyMs / 1000) seconds \u{00B7} not eye contact") {
-            VStack(alignment: .leading, spacing: 16) {
-                // Facing the room is a card at the top of the page; saying
-                // it again here as a tile was the same number twice.
-                HStack(spacing: 12) {
-                    tile("\(Int((seen.onCameraRatio * 100).rounded()))%", "In shot")
-                    if let ratio = seen.gestureRatio, let rate = seen.gesturesPerMinute {
-                        tile("\(Int((ratio * 100).rounded()))%", "Hands up",
-                             note: String(format: "%.1f movements a minute", rate))
-                    }
-                }
-
-                // Said out loud rather than shown as a zero. A head-and-
-                // shoulders webcam shot never has a wrist in it, and "0%
-                // hands up" reads as a verdict on a presenter who did
-                // nothing wrong except sit close to the camera.
-                if !seen.sawBody {
-                    Text("No gesture figures: the framing is too tight to find a body, so the hands were never in shot. Record from further back.")
-                        .font(.caption).foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-
-                // The same strip is the Facing row of the map when the map is
-                // drawn, so it is only shown here when the map is not.
-                if !hasMap {
-                VStack(alignment: .leading, spacing: 5) {
-                    eyebrow("WHERE THEY WERE LOOKING")
-                    presenceStrip(seen)
-                    HStack(spacing: 14) {
-                        key(Brand.fill, "facing the room")
-                        key(Color(nsColor: .labelColor).opacity(0.6), "turned away")
-                        key(Color(nsColor: .separatorColor).opacity(0.5), "no face in shot")
-                        Spacer()
-                    }
-                    .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
-                }
-                }
-
-                if let away = seen.longestAway {
-                    Button { review.seek(toMs: away.startMs) } label: {
-                        Text("Longest stretch turned away or out of shot: \(String(format: "%.0f", Double(away.lengthMs) / 1000))s from \(Self.clock(away.startMs / 1000)).")
-                            .font(.caption).foregroundStyle(.secondary)
-                            .underline()
-                    }
-                    .buttonStyle(.plain)
-                }
-
-                if seen.sawBody, seen.samples.contains(where: { $0.motion > 0 }) {
-                    VStack(alignment: .leading, spacing: 5) {
-                        eyebrow("HAND MOVEMENT")
-                        Chart(seen.samples) { sample in
-                            AreaMark(x: .value("At", Double(sample.atMs) / 1000),
-                                     y: .value("Movement", sample.motion))
-                                .foregroundStyle(Brand.fill.opacity(0.3))
-                                .interpolationMethod(.monotone)
-                        }
-                        .chartYAxis(.hidden)
-                        .chartXAxis {
-                            AxisMarks(values: .automatic(desiredCount: 6)) { value in
-                                AxisGridLine().foregroundStyle(Color(nsColor: .separatorColor).opacity(0.4))
-                                AxisValueLabel {
-                                    if let s = value.as(Double.self) {
-                                        Text(Self.clock(Int(s))).font(.system(size: 11, design: .monospaced))
-                                    }
-                                }
-                            }
-                        }
-                        .frame(height: 70)
-                    }
-                }
-
-                Text("Head angle and wrist position, measured on this Mac by Vision. Not eye contact \u{2014} nothing here can see where the eyes pointed. Movement only \u{2014} whether a gesture helped is a judgement.")
-                    .font(.caption).foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-        }
     }
 
     private func key(_ colour: Color, _ label: String) -> some View {
@@ -1051,219 +689,562 @@ struct ScreenroomReportView: View {
         return 1_800_000
     }
 
-    // MARK: The readings, said in words
+    // MARK: The readings, as rows
 
     /// Below this many breaths, "words per sentence" is the length of the
     /// whole recording: a 42-second clip read in one breath reported a
     /// 96-word sentence and "1 stretches of speech".
     static let enoughSentences = 3
 
-    /// One reading: the number, what it is measured in, and where it sits
-    /// against the range a room follows comfortably - said in words, not
-    /// left for the reader to work out from an arc.
-    fileprivate struct Reading: Identifiable {
-        enum Side { case below, inside, above }
-        let label: String
+    /// Set by the off-screen renderer so every row is drawn open. Never set
+    /// in the app.
+    nonisolated(unsafe) static var expandAll = false
+
+    /// One reading. The shape is the one Yoodli settled on, studied from its
+    /// own published screenshots: a name, the value said the way a person
+    /// would say it, and - opened - one sentence to act on, the evidence, a
+    /// way to hear it, and where the talk sits against the others.
+    fileprivate struct Insight: Identifiable {
+        let id: String
+        let name: String
         let value: String
-        let unit: String
-        let side: Side?
-        let verdict: String
-        let range: String?
-        /// 0...1 positions on the meter. Nil draws no meter.
-        let meter: (value: Double, low: Double, high: Double)?
-        var id: String { label }
+        let good: Bool
+        let tip: String
+        var detail: AnyView? = nil
+        var action: (label: String, run: () -> Void)? = nil
+        var standing: String? = nil
     }
 
-    /// Four or five cards, two to a row.
+    /// Two groups, sorted by the result rather than by the metric: the same
+    /// row sits under "went well" in one talk and "to work on" in the next,
+    /// so the teacher sees where everything landed before opening anything.
     ///
-    /// These replace four dials and a second section that repeated the same
-    /// three numbers as bars. The dials were reported as unreadable: 8pt
-    /// captions colliding with the ring, and nothing on them saying whether
-    /// 137 was fine. Each card now says it in a sentence; the meter under it
-    /// is the evidence, not the message.
-    ///
-    /// The wording describes where the reading sits against the range and
-    /// stops there. "Faster than the comfortable range" is a measurement;
-    /// "too fast" would be a judgement the teacher gets to make.
-    private var glance: some View {
-        let readings = self.readings
-        return Group {
-            if !readings.isEmpty {
-                // Two to a row, and an odd one out takes the whole row rather
-                // than leaving a card-shaped hole beside it.
-                let rows = stride(from: 0, to: readings.count, by: 2).map {
-                    Array(readings[$0..<min($0 + 2, readings.count)])
+    /// These replace the reading cards and eight detail sections that used
+    /// to follow the map. The detail is still all here; it is one click
+    /// away instead of four screens down.
+    @ViewBuilder
+    private var insightGroups: some View {
+        let all = insights
+        let well = all.filter(\.good)
+        let work = all.filter { !$0.good }
+        if !all.isEmpty {
+            VStack(alignment: .leading, spacing: 28) {
+                if !work.isEmpty {
+                    insightGroup("What to work on", symbol: "flag.fill", work, openFirst: true)
                 }
-                Grid(horizontalSpacing: 12, verticalSpacing: 12) {
-                    ForEach(rows, id: \.first!.id) { row in
-                        GridRow(alignment: .top) {
-                            ForEach(row) { reading in
-                                card(reading).gridCellColumns(row.count == 1 ? 2 : 1)
-                            }
+                if !well.isEmpty {
+                    insightGroup("What went well", symbol: "checkmark.circle.fill", well,
+                                 openFirst: work.isEmpty)
+                }
+            }
+        }
+    }
+
+    private func insightGroup(_ title: String, symbol: String, _ items: [Insight],
+                              openFirst: Bool) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Label {
+                Text(title).font(.system(size: 16, weight: .semibold))
+            } icon: {
+                Image(systemName: symbol)
+                    .foregroundStyle(symbol == "flag.fill" ? AnyShapeStyle(.primary) : AnyShapeStyle(Brand.text))
+            }
+            .padding(.bottom, 2)
+            ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
+                insightRow(item, openByDefault: openFirst && index == 0)
+            }
+        }
+    }
+
+    private func insightRow(_ item: Insight, openByDefault: Bool) -> some View {
+        // Toggling flips the default rather than setting a state, so the one
+        // row that opens itself can still be closed.
+        let isOpen = Self.expandAll || (openByDefault != toggled.contains(item.id))
+        return VStack(spacing: 0) {
+            Button {
+                withAnimation(.snappy(duration: 0.25)) {
+                    if toggled.contains(item.id) { toggled.remove(item.id) } else { toggled.insert(item.id) }
+                }
+            } label: {
+                HStack(spacing: 10) {
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                        .rotationEffect(.degrees(isOpen ? 90 : 0))
+                        .frame(width: 12)
+                    Text(item.name)
+                        .font(.system(size: 14, weight: .medium))
+                    Spacer(minLength: 16)
+                    Text(item.value)
+                        .font(.system(size: 14, weight: .semibold))
+                        .monospacedDigit()
+                        // Green only where it went well: a green "No pauses"
+                        // under "What to work on" read as praise.
+                        .foregroundStyle(item.good ? AnyShapeStyle(Brand.text) : AnyShapeStyle(.primary))
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 13)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+
+            if isOpen {
+                Divider().opacity(0.6)
+                VStack(spacing: 16) {
+                    Text(item.tip)
+                        .font(.system(size: 13))
+                        .multilineTextAlignment(.center)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: .infinity)
+                        .padding(12)
+                        .background(RoundedRectangle(cornerRadius: 6).fill(Brand.fill.opacity(0.10)))
+                    if let detail = item.detail { detail }
+                    if let action = item.action {
+                        Button(action: action.run) {
+                            Label(action.label, systemImage: "play.circle.fill")
                         }
+                        .buttonStyle(.bordered)
+                    }
+                    if let standing = item.standing {
+                        Text(standing)
+                            .font(.system(size: 12))
+                            .foregroundStyle(.secondary)
+                            .multilineTextAlignment(.center)
+                    }
+                }
+                .padding(16)
+            }
+        }
+        .background(RoundedRectangle(cornerRadius: 10)
+            .fill(Color(nsColor: .controlBackgroundColor)))
+        .overlay(RoundedRectangle(cornerRadius: 10)
+            .strokeBorder(isOpen ? AnyShapeStyle(Brand.fill.opacity(0.7))
+                                 : AnyShapeStyle(Color(nsColor: .separatorColor).opacity(0.5)),
+                          lineWidth: 1))
+    }
+
+    // MARK: What each row says
+
+    private var insights: [Insight] {
+        var out: [Insight] = []
+        let words = review.words
+        let peers = review.peerMetrics
+        func percent(_ x: Double) -> String { "\(Int((x * 100).rounded()))%" }
+
+        if let m = review.metrics, m.wordCount > 0 {
+            let band = ScreenroomSpeechMetrics.comfortablePace
+            let wpm = m.wordsPerMinute
+            let curve = ScreenroomInsights.paceCurve(words, durationMs: m.durationMs)
+            let fast = wpm > band.upperBound, slow = wpm < band.lowerBound
+            var pace = Insight(
+                id: "pace", name: "Pacing", value: "\(Int(wpm.rounded())) words/minute",
+                good: !fast && !slow,
+                tip: fast ? "Your pace was fast. Try speaking slower than \(Int(band.upperBound)) words a minute."
+                    : slow ? "Your pace was slow. Try speaking faster than \(Int(band.lowerBound)) words a minute."
+                    : "Your pace sounded comfortable, inside \(Int(band.lowerBound))\u{2013}\(Int(band.upperBound)) words a minute.",
+                detail: AnyView(paceDetail(m, curve: curve)),
+                standing: ScreenroomInsights.standing(wpm, among: peers.map(\.wordsPerMinute),
+                                                     higher: "faster", lower: "slower"))
+            if fast || slow {
+                // From the stretch that most needs hearing: the fastest for a
+                // fast talker, the slowest for a slow one.
+                let pick = fast ? curve.max { $0.wordsPerMinute < $1.wordsPerMinute }
+                                : curve.min { $0.wordsPerMinute < $1.wordsPerMinute }
+                let from = max(0, Int(((pick?.seconds ?? 0) - 5) * 1000))
+                let rate: Float = fast ? 0.75 : 1.25
+                pace.action = ("Play from \(Self.clock(from / 1000)) at \(fast ? "0.75" : "1.25")\u{00D7} speed",
+                               { review.play(fromMs: from, rate: rate) })
+            }
+            out.append(pace)
+
+            if m.verbatim {
+                let share = Double(m.fillerCount) / Double(m.wordCount)
+                out.append(Insight(
+                    id: "fillers", name: "Filler words",
+                    value: m.fillerCount == 0 ? "None" : "\(m.fillerCount) filler\(m.fillerCount == 1 ? "" : "s"), \(percent(share))",
+                    good: share <= ScreenroomInsights.fillerShare,
+                    tip: m.fillerCount == 0 ? "Nice work. You didn\u{2019}t use any filler words."
+                        : share <= ScreenroomInsights.fillerShare ? "Under 3% of words. A pause instead of a filler keeps it there."
+                        : "Try getting under 3% by pausing instead.",
+                    detail: m.fillerCount == 0 ? nil : AnyView(fillerDetail(m)),
+                    standing: ScreenroomInsights.standing(
+                        share, among: peers.filter(\.verbatim).map { Double($0.fillerCount) / Double(max(1, $0.wordCount)) },
+                        higher: "more fillers", lower: "fewer fillers")))
+
+                let softShare = Double(m.hedgeCount) / Double(m.wordCount)
+                out.append(Insight(
+                    id: "softeners", name: "Softening words",
+                    value: m.hedgeCount == 0 ? "None" : "\(m.hedgeCount) softener\(m.hedgeCount == 1 ? "" : "s"), \(percent(softShare))",
+                    good: softShare <= ScreenroomInsights.softenerShare,
+                    tip: m.hedgeCount == 0 ? "No softeners. Every claim was said as if it was meant."
+                        : softShare <= ScreenroomInsights.softenerShare ? "Under 4% of words, so claims still sounded sure."
+                        : "Try cutting a few. Without them a claim sounds sure and says the same thing.",
+                    detail: m.hedgeCount == 0 ? nil : AnyView(countedWords(m.hedges))))
+            } else {
+                out.append(Insight(
+                    id: "fillers", name: "Filler words", value: "Not counted", good: false,
+                    tip: "This transcript was tidied by the recogniser, so there were no fillers left in it to count. Transcribe with whisper to count them."))
+            }
+
+            let repeats = ScreenroomInsights.repeats(in: words)
+            if !words.isEmpty {
+                let share = Double(repeats.count) / Double(m.wordCount)
+                out.append(Insight(
+                    id: "repetition", name: "Repetition",
+                    value: repeats.first.map { repeats.count == 1 ? "\u{201C}\($0.phrase)\u{201D}" : "\u{201C}\($0.phrase)\u{201D} +\(repeats.count - 1)" } ?? "None",
+                    good: share <= ScreenroomInsights.repetitionShare,
+                    tip: repeats.isEmpty ? "No restarts. Each sentence was said once."
+                        : share <= ScreenroomInsights.repetitionShare ? "A few restarts, under 4% of words. That is ordinary speech."
+                        : "Restarts usually mean the next sentence was not ready yet. A pause buys the same time.",
+                    detail: repeats.isEmpty ? nil : AnyView(momentList(repeats.prefix(8).map { ($0.phrase, $0.atMs) }))))
+            }
+
+            if m.runs.count >= Self.enoughSentences, m.wordsPerRun > 0 {
+                let band = ScreenroomInsights.sentenceBand
+                let long = m.wordsPerRun > band.upperBound, short = m.wordsPerRun < band.lowerBound
+                out.append(Insight(
+                    id: "sentences", name: "Sentence length",
+                    value: "\(Int(m.wordsPerRun.rounded())) words a breath",
+                    good: !long && !short,
+                    tip: long ? "Longer than usual. Try ending sentences sooner; the breath is where a listener catches up."
+                        : short ? "Shorter than usual. Try joining a few thoughts so the talk flows."
+                        : "In the usual range of 8\u{2013}20 words between breaths.",
+                    detail: AnyView(HStack(spacing: 8) {
+                        Text("Longest without a breath: \(String(format: "%.0f", Double(m.longestRunMs) / 1000))s")
+                            .font(.callout)
+                        timeChip(m.longestRunStartMs)
+                    })))
+            }
+
+            if m.runs.count >= 6, let top = m.starters.first {
+                let share = Double(top.count) / Double(m.runs.count)
+                out.append(Insight(
+                    id: "openers", name: "Sentence starters",
+                    value: "\u{201C}\(top.word)\u{201D} \(percent(share))",
+                    good: share < ScreenroomInsights.openerShare,
+                    tip: share < ScreenroomInsights.openerShare ? "Sentences opened in different ways."
+                        : "\u{201C}\(top.word)\u{201D} opened \(percent(share)) of sentences. Over 15% on one word sounds like a missing transition; a pause works instead.",
+                    detail: AnyView(wordBars(m.starters, limit: 6))))
+            }
+
+            if m.vocabulary > 0 {
+                out.append(Insight(
+                    id: "vocabulary", name: "Vocabulary",
+                    value: "\(percent(m.vocabulary)) varied",
+                    good: m.vocabulary >= 0.5,
+                    tip: m.vocabulary >= 0.5 ? "\(m.uniqueWords) different words out of \(m.wordCount) spoken."
+                        : "Many words came round again. Try a different word for the second mention.",
+                    detail: m.repeated.isEmpty ? nil : AnyView(VStack(alignment: .leading, spacing: 6) {
+                        subhead("LEANED ON MOST \u{00B7} COMMON WORDS EXCLUDED")
+                        wordBars(m.repeated, limit: 8)
+                    }.frame(maxWidth: .infinity, alignment: .leading)),
+                    standing: ScreenroomInsights.standing(m.vocabulary, among: peers.map(\.vocabulary),
+                                                         higher: "more varied", lower: "less varied")))
+            }
+
+            out.append(Insight(
+                id: "pauses", name: "Pauses",
+                value: m.pauses.isEmpty ? "No pauses" : "\(m.pauses.count) pause\(m.pauses.count == 1 ? "" : "s")",
+                good: m.talkRatio <= ScreenroomInsights.talkCeiling,
+                tip: m.talkRatio <= ScreenroomInsights.talkCeiling ? "Pauses left room for each point to land."
+                    : "Talking \(percent(m.talkRatio)) of the time. Try a one-second pause after each point, so it lands.",
+                detail: AnyView(airTimeDetail(m))))
+
+            if !words.isEmpty {
+                let asked = ScreenroomInsights.questions(in: words)
+                out.append(Insight(
+                    id: "questions", name: "Questions",
+                    value: asked.isEmpty ? "None" : "\(asked.count)",
+                    good: true,
+                    tip: asked.isEmpty ? "No questions asked. A question to the room is the quickest way to bring it back."
+                        : "Every question asked, in order.",
+                    detail: asked.isEmpty ? nil : AnyView(momentList(asked.map { ($0.text, $0.atMs) }))))
+            }
+
+            if m.verbatim, !m.careful.isEmpty {
+                out.append(Insight(
+                    id: "careful", name: "Worth a second look",
+                    value: "\(m.careful.count) word\(m.careful.count == 1 ? "" : "s")",
+                    good: false,
+                    tip: "Not errors, and not scored. Words a second reader might want to check.",
+                    detail: AnyView(countedWords(m.careful))))
+            }
+        }
+
+        if let seen = review.presence, seen.sampleCount > 0 {
+            let good = seen.facingRatio >= ScreenroomInsights.facingFloor
+            out.append(Insight(
+                id: "facing", name: "Facing the room",
+                value: "\(percent(seen.facingRatio))",
+                good: good,
+                tip: good ? "Facing the room most of the time."
+                    : "Turned away for most of the talk. Look up at the start of each new point.",
+                detail: AnyView(facingDetail(seen)),
+                standing: ScreenroomInsights.standing(seen.facingRatio,
+                                                     among: review.peerPresence.map(\.facingRatio),
+                                                     higher: "facing the room more", lower: "facing the room less")))
+        }
+        return out
+    }
+
+    // MARK: Row details
+
+    /// A half-dial, the pace line and one sentence under it.
+    ///
+    /// The dial is the one place a gauge earns its keep: pace is read
+    /// against slow and fast, not against zero. The words sit OUTSIDE the
+    /// arc - the old dials put an 8pt caption inside the ring and it
+    /// collided with the stroke.
+    private func paceDetail(_ m: ScreenroomSpeechMetrics,
+                            curve: [ScreenroomInsights.PacePoint]) -> some View {
+        VStack(spacing: 18) {
+            paceGauge(m.wordsPerMinute)
+            if curve.count >= 3 {
+                VStack(spacing: 8) {
+                    Text("Pace through the talk")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                    paceCurve(curve, durationMs: m.durationMs)
+                    Text("**Vary your pace** to keep a room with you. **Practise the stretches** where it runs flat.")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                }
+            }
+        }
+    }
+
+    private static let gaugeScale: ClosedRange<Double> = 60...240
+
+    private func paceGauge(_ wpm: Double) -> some View {
+        let band = ScreenroomSpeechMetrics.comfortablePace
+        let scale = Self.gaugeScale
+        func at(_ x: Double) -> Double {
+            min(1, max(0, (x - scale.lowerBound) / (scale.upperBound - scale.lowerBound)))
+        }
+        let inside = band.contains(wpm)
+        return VStack(spacing: 2) {
+            ZStack {
+                Canvas { context, size in
+                    let centre = CGPoint(x: size.width / 2, y: size.height - 6)
+                    let radius = min(size.width / 2, size.height) - 12
+                    func arc(_ from: Double, _ to: Double) -> Path {
+                        var p = Path()
+                        p.addArc(center: centre, radius: radius,
+                                 startAngle: .degrees(180 + 180 * from),
+                                 endAngle: .degrees(180 + 180 * to), clockwise: false)
+                        return p
+                    }
+                    context.stroke(arc(0, 1), with: .color(Color(nsColor: .separatorColor).opacity(0.6)),
+                                   style: StrokeStyle(lineWidth: 12, lineCap: .butt))
+                    context.stroke(arc(at(band.lowerBound), at(band.upperBound)),
+                                   with: .color(Brand.fill.opacity(0.45)),
+                                   style: StrokeStyle(lineWidth: 12, lineCap: .butt))
+                    // The needle, from the hub to just inside the arc.
+                    let angle = Double.pi * (1 + at(wpm))
+                    let tip = CGPoint(x: centre.x + cos(angle) * (radius - 4),
+                                      y: centre.y + sin(angle) * (radius - 4))
+                    var needle = Path()
+                    needle.move(to: centre)
+                    needle.addLine(to: tip)
+                    let ink = inside ? Brand.fill : Color(nsColor: .labelColor)
+                    context.stroke(needle, with: .color(ink), style: StrokeStyle(lineWidth: 3, lineCap: .round))
+                    context.fill(Path(ellipseIn: CGRect(x: centre.x - 5, y: centre.y - 5, width: 10, height: 10)),
+                                 with: .color(ink))
+                }
+                .frame(width: 200, height: 108)
+                // The three words, outside the arc.
+                Text("Comfortable").offset(y: -66)
+                Text("Slow").rotationEffect(.degrees(-60)).offset(x: -90, y: -34)
+                Text("Fast").rotationEffect(.degrees(60)).offset(x: 90, y: -34)
+            }
+            .font(.system(size: 12, weight: .semibold))
+            .foregroundStyle(.secondary)
+            .frame(width: 260, height: 124)
+            Text("\(Int(wpm.rounded()))")
+                .font(.system(size: 30, weight: .semibold))
+                .monospacedDigit()
+        }
+    }
+
+    /// The pace line, broken wherever the speaker went quiet, over the
+    /// comfortable band on a fixed scale.
+    private func paceCurve(_ curve: [ScreenroomInsights.PacePoint], durationMs: Int) -> some View {
+        let band = ScreenroomSpeechMetrics.comfortablePace
+        let scale = Self.gaugeScale
+        return Chart {
+            RectangleMark(xStart: .value("From", 0), xEnd: .value("To", Double(durationMs) / 1000),
+                          yStart: .value("Slow", band.lowerBound), yEnd: .value("Fast", band.upperBound))
+                .foregroundStyle(Brand.fill.opacity(0.14))
+            ForEach(curve, id: \.self) { point in
+                LineMark(x: .value("At", point.seconds),
+                         y: .value("Words per minute", min(scale.upperBound, max(scale.lowerBound, point.wordsPerMinute))),
+                         series: .value("Stretch", point.segment))
+                    .foregroundStyle(Brand.fill)
+                    .lineStyle(StrokeStyle(lineWidth: 2.5, lineCap: .round))
+                    .interpolationMethod(.monotone)
+            }
+        }
+        .chartXScale(domain: 0...max(1, Double(durationMs) / 1000))
+        .chartYScale(domain: scale)
+        .chartXAxis {
+            AxisMarks(values: .automatic(desiredCount: 5)) { value in
+                AxisGridLine().foregroundStyle(Color(nsColor: .separatorColor).opacity(0.4))
+                AxisValueLabel {
+                    if let s = value.as(Double.self) {
+                        Text(Self.clock(Int(s))).font(.system(size: 11, design: .monospaced))
+                    }
+                }
+            }
+        }
+        .chartYAxis {
+            AxisMarks(position: .leading, values: [60, 150, 240]) { value in
+                AxisGridLine().foregroundStyle(Color(nsColor: .separatorColor).opacity(0.4))
+                AxisValueLabel {
+                    if let v = value.as(Double.self) {
+                        Text("\(Int(v))").font(.system(size: 11, design: .monospaced))
+                    }
+                }
+            }
+        }
+        .frame(height: 160)
+    }
+
+    private func fillerDetail(_ m: ScreenroomSpeechMetrics) -> some View {
+        VStack(spacing: 16) {
+            countedWords(m.fillers)
+            strip("every one of them, in order \u{00B7} click to play", times: m.fillers.flatMap(\.atMs))
+            fillerHeat(m)
+        }
+    }
+
+    /// "um (20)   uh (18)   like (4)" - the word, then how many, spread
+    /// across the row. Past six the tail goes into a sentence.
+    private func countedWords(_ items: [ScreenroomSpeechMetrics.Filler]) -> some View {
+        let shown = Array(items.prefix(6))
+        let rest = items.dropFirst(6)
+        return VStack(spacing: 8) {
+            HStack(spacing: 0) {
+                ForEach(shown) { item in
+                    Button { review.seek(toMs: item.atMs.first ?? 0) } label: {
+                        Text("\(item.word) (\(item.count))")
+                            .font(.system(size: 14))
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Play the first one.")
+                }
+            }
+            if !rest.isEmpty {
+                Text("Also " + rest.map { "\u{201C}\($0.word)\u{201D} \($0.count)\u{00D7}" }.joined(separator: ", ") + ".")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    /// A list of moments: what was said, and a chip that plays it.
+    private func momentList(_ items: [(String, Int)]) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            ForEach(Array(items.enumerated()), id: \.offset) { _, item in
+                HStack(alignment: .firstTextBaseline, spacing: 10) {
+                    timeChip(item.1)
+                    Text(item.0)
+                        .font(.callout)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Spacer(minLength: 0)
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func airTimeDetail(_ m: ScreenroomSpeechMetrics) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            GeometryReader { geo in
+                HStack(spacing: 2) {
+                    RoundedRectangle(cornerRadius: 3).fill(Brand.fill)
+                        .frame(width: max(2, geo.size.width * m.talkRatio))
+                    RoundedRectangle(cornerRadius: 3)
+                        .fill(Color(nsColor: .separatorColor).opacity(0.5))
+                }
+            }
+            .frame(height: 14)
+            HStack {
+                key(Brand.fill, "talking \(Int((m.talkRatio * 100).rounded()))%")
+                key(Color(nsColor: .separatorColor).opacity(0.5), "silence \(Int(((1 - m.talkRatio) * 100).rounded()))%")
+                Spacer()
+            }
+            .font(.system(size: 12))
+            .foregroundStyle(.secondary)
+            if !m.pauses.isEmpty {
+                subhead("LONGEST PAUSES")
+                HStack(spacing: 6) {
+                    ForEach(m.pauses.prefix(8)) { pause in
+                        Button { review.seek(toMs: pause.startMs) } label: {
+                            VStack(spacing: 1) {
+                                Text(String(format: "%.1fs", Double(pause.lengthMs) / 1000))
+                                    .font(.system(size: 12, weight: .semibold, design: .monospaced))
+                                Text(Self.clock(pause.startMs / 1000))
+                                    .font(.system(size: 11, design: .monospaced))
+                                    .foregroundStyle(.secondary)
+                            }
+                            .padding(.vertical, 5).padding(.horizontal, 8)
+                            .background(RoundedRectangle(cornerRadius: 6)
+                                .fill(Color(nsColor: .textBackgroundColor)))
+                        }
+                        .buttonStyle(.plain)
                     }
                 }
             }
         }
     }
 
-    private var readings: [Reading] {
-        var out: [Reading] = []
-        if let m = review.metrics, m.wordCount > 0 {
-            out.append(reading("Pace", value: m.wordsPerMinute, shown: "\(Int(m.wordsPerMinute.rounded()))",
-                               unit: "words a minute",
-                               band: ScreenroomSpeechMetrics.comfortablePace, scale: 0...260,
-                               below: "Slower than the comfortable range",
-                               inside: "In the comfortable range",
-                               above: "Faster than the comfortable range",
-                               range: "comfortable 115\u{2013}180"))
-            if m.verbatim, m.fillerCount == 0 {
-                // "0.0 a minute · 0 in total" is three ways of saying none.
-                out.append(Reading(label: "Filler words", value: "None", unit: "in the whole talk",
-                                   side: .inside, verdict: "No filler words counted",
-                                   range: "usual 0\u{2013}2 a minute", meter: nil))
-            } else if m.verbatim {
-                out.append(reading("Filler words", value: m.fillersPerMinute,
-                                   shown: String(format: "%.1f", m.fillersPerMinute),
-                                   unit: "a minute \u{00B7} \(m.fillerCount) in total",
-                                   band: 0...2, scale: 0...12,
-                                   below: "Fewer than usual",
-                                   inside: "Within the usual range",
-                                   above: "More than the usual range",
-                                   range: "usual 0\u{2013}2"))
-            } else {
-                out.append(Reading(label: "Filler words", value: "\u{2014}", unit: "not counted",
-                                   side: nil,
-                                   verdict: "This transcript was tidied, so fillers could not be counted. Transcribe with whisper to count them.",
-                                   range: nil, meter: nil))
-            }
-            if m.runs.count >= Self.enoughSentences, m.wordsPerRun > 0 {
-                out.append(reading("Sentence length", value: m.wordsPerRun,
-                                   shown: "\(Int(m.wordsPerRun.rounded()))",
-                                   unit: "words between breaths",
-                                   band: 8...20, scale: 0...45,
-                                   below: "Shorter than usual",
-                                   inside: "In the usual range",
-                                   above: "Longer than usual",
-                                   range: "usual 8\u{2013}20"))
-            }
-        }
-        if let seen = review.presence, seen.sampleCount > 0 {
-            out.append(reading("Facing the room", value: seen.facingRatio,
-                               shown: "\(Int((seen.facingRatio * 100).rounded()))%",
-                               unit: "of the time a face was in shot",
-                               band: 0.6...1, scale: 0...1,
-                               // Under 60% is not the same claim as under half.
-                               below: seen.facingRatio < 0.5 ? "Turned away more often than not"
-                                   : "Facing the room less often than usual",
-                               inside: "Facing the room most of the time",
-                               above: "Facing the room most of the time",
-                               range: "aim for 60%+"))
-        }
-        if review.scoring.markedCount > 0, review.scoring.availableOnMarkedLines > 0 {
-            // Out of what was actually marked, not out of the whole rubric:
-            // a half-filled rubric reports the half it has.
-            let outOf = Double(review.scoring.availableOnMarkedLines)
-            let share = Double(review.scoring.awarded) / outOf
-            let lines = review.scoring.rubric.criteria.count
-            out.append(Reading(
-                label: "Marks", value: review.scoring.totalLabel,
-                unit: review.scoring.isComplete ? "overall"
-                    : "\(review.scoring.markedCount) of \(lines) lines marked",
-                side: nil,
-                verdict: "\(Int((share * 100).rounded()))% of the marks available",
-                range: nil,
-                meter: (share, 0, 0)))
-        }
-        return out
-    }
-
-    private func reading(_ label: String, value: Double, shown: String, unit: String,
-                         band: ClosedRange<Double>, scale: ClosedRange<Double>,
-                         below: String, inside: String, above: String,
-                         range: String) -> Reading {
-        let width = max(0.001, scale.upperBound - scale.lowerBound)
-        func at(_ x: Double) -> Double { min(1, max(0, (x - scale.lowerBound) / width)) }
-        let side: Reading.Side = value < band.lowerBound ? .below
-            : value > band.upperBound ? .above : .inside
-        let verdict = side == .below ? below : side == .above ? above : inside
-        return Reading(label: label, value: shown, unit: unit, side: side, verdict: verdict,
-                       range: range,
-                       meter: (at(value), at(band.lowerBound), at(band.upperBound)))
-    }
-
-    private func card(_ r: Reading) -> some View {
+    /// Head angle, not gaze - said on the row itself, because a number
+    /// labelled eye contact that cannot see eyes is the kind of thing a
+    /// student repeats in an interview.
+    private func facingDetail(_ seen: ScreenroomPresence) -> some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text(r.label)
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(.secondary)
-
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Text(r.value)
-                    .font(.system(size: 32, weight: .semibold))
-                    .monospacedDigit()
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.6)
-                Text(r.unit)
-                    .font(.system(size: 13))
-                    .foregroundStyle(.secondary)
-                    .lineLimit(2)
-                    .fixedSize(horizontal: false, vertical: true)
+            presenceStrip(seen, height: 14)
+            HStack(spacing: 14) {
+                key(Brand.fill, "facing the room")
+                key(Color(nsColor: .labelColor).opacity(0.6), "turned away")
+                key(Color(nsColor: .separatorColor).opacity(0.5), "no face in shot")
+                Spacer()
             }
-
-            if let meter = r.meter { cardMeter(meter, inside: r.side != .below && r.side != .above) }
-
-            HStack(alignment: .firstTextBaseline, spacing: 6) {
-                // Shape carries the side, never colour alone.
-                if let side = r.side {
-                    Image(systemName: side == .inside ? "checkmark.circle.fill"
-                          : side == .above ? "arrow.up.circle.fill" : "arrow.down.circle.fill")
-                        .foregroundStyle(side == .inside ? AnyShapeStyle(Brand.text) : AnyShapeStyle(.primary))
+            .font(.system(size: 12))
+            .foregroundStyle(.secondary)
+            HStack(spacing: 16) {
+                Text("In shot \(Int((seen.onCameraRatio * 100).rounded()))% of the time")
+                if let ratio = seen.gestureRatio {
+                    Text("Hands up \(Int((ratio * 100).rounded()))%")
                 }
-                Text(r.verdict)
-                    .font(.system(size: 13, weight: .medium))
-                    .fixedSize(horizontal: false, vertical: true)
-                Spacer(minLength: 8)
-                if let range = r.range {
-                    Text(range)
-                        .font(.system(size: 12))
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
+                Spacer()
+            }
+            .font(.callout)
+            if let away = seen.longestAway {
+                HStack(spacing: 8) {
+                    Text("Longest stretch turned away: \(String(format: "%.0f", Double(away.lengthMs) / 1000))s")
+                        .font(.callout)
+                    timeChip(away.startMs)
                 }
             }
+            if !seen.sawBody {
+                Text("No gesture figures: the framing is too tight to find a body. Record from further back.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+            Text("Measured from head angle every \(seen.everyMs / 1000) seconds by Vision on this Mac. Not eye contact \u{2014} nothing here can see where the eyes pointed.")
+                .font(.caption).foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(16)
-        .background(RoundedRectangle(cornerRadius: 10)
-            .fill(Color(nsColor: .controlBackgroundColor)))
-        .overlay(RoundedRectangle(cornerRadius: 10)
-            .strokeBorder(Color(nsColor: .separatorColor).opacity(0.5), lineWidth: 1))
     }
 
-    /// The range shaded, the reading as a marker. A band of zero width is a
-    /// plain fill meter - the marks, which have no "comfortable" range.
-    private func cardMeter(_ m: (value: Double, low: Double, high: Double), inside: Bool) -> some View {
-        GeometryReader { geo in
-            let w = geo.size.width
-            ZStack(alignment: .leading) {
-                Capsule().fill(Color(nsColor: .separatorColor).opacity(0.5))
-                    .frame(height: 6)
-                if m.high > m.low {
-                    Rectangle().fill(Brand.fill.opacity(0.35))
-                        .frame(width: w * (m.high - m.low), height: 6)
-                        .offset(x: w * m.low)
-                    Capsule()
-                        .fill(inside ? AnyShapeStyle(Brand.fill) : AnyShapeStyle(Color(nsColor: .labelColor)))
-                        .frame(width: 4, height: 16)
-                        .offset(x: min(w - 4, max(0, w * m.value - 2)))
-                } else {
-                    Capsule().fill(Brand.fill)
-                        .frame(width: max(6, w * m.value), height: 6)
-                }
-            }
-            .frame(height: 16)
-        }
-        .frame(height: 16)
+    private func subhead(_ text: String) -> some View {
+        Text(text)
+            .font(.system(size: 11, weight: .semibold, design: .monospaced))
+            .tracking(0.8)
+            .foregroundStyle(.secondary)
     }
 
     // MARK: The rubric as a shape

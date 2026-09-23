@@ -780,7 +780,8 @@ struct RecordingsView: View {
                     recording: selection.url,
                     showing: pane,
                     seek: { ms in seek(to: Double(ms) / 1000) },
-                    position: { Int(playhead * 1000) })
+                    position: { Int(playhead * 1000) },
+                    rate: { player?.rate = $0 })
             } else if detailTab == .transcript, DetailTab.transcript.isAvailable {
                 if let folder = folder(for: selection) {
                     SessionTranscriptView(folder: folder)

@@ -390,16 +390,15 @@ struct RecordingsView: View {
     private var browser: some View {
         HSplitView {
             VStack(spacing: 0) {
-                // Two halves of one app, told apart rather than mixed. The
-                // counts are on the control so an empty list is explained by
-                // the tab rather than looking like lost work.
+                // Two halves of one app, told apart rather than mixed.
+                //
+                // No counts on the tabs. They were there to explain an empty
+                // list, but the empty state under this control already says
+                // so in a sentence - and a number beside every tab is read
+                // on every glance, forever, to answer a question asked once.
                 Picker("", selection: $filter) {
                     ForEach(Filter.allCases) { option in
-                        let count = option.source
-                            .map { wanted in sessions.filter { $0.source == wanted }.count }
-                            ?? sessions.count
-                        Text(count > 0 ? "\(option.rawValue)  \(count)" : option.rawValue)
-                            .tag(option)
+                        Text(option.rawValue).tag(option)
                     }
                 }
                 .pickerStyle(.segmented)

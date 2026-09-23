@@ -162,23 +162,29 @@ struct ScreenroomReportView: View {
 
     // MARK: Prose
 
+    /// Headed like every other section, and held to a reading measure. At
+    /// 17pt across the full column it ran to 130 characters a line with no
+    /// heading, which read as a wall rather than a summary.
     private func prose(_ analysis: ScreenroomAnalysis) -> some View {
-        VStack(alignment: .leading, spacing: 20) {
-            if !analysis.summary.isEmpty {
-                Text(analysis.summary)
-                    .font(.system(size: 17))
-                    .lineSpacing(4)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .textSelection(.enabled)
-            }
+        section("IN SHORT") {
+            VStack(alignment: .leading, spacing: 24) {
+                if !analysis.summary.isEmpty {
+                    Text(analysis.summary)
+                        .font(.system(size: 15))
+                        .lineSpacing(5)
+                        .frame(maxWidth: 680, alignment: .leading)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .textSelection(.enabled)
+                }
             if !analysis.strengths.isEmpty || !analysis.workOn.isEmpty {
                 HStack(alignment: .top, spacing: 32) {
                     bulletColumn("WHAT WORKED", analysis.strengths)
                     bulletColumn("WHAT TO CHANGE", analysis.workOn)
                 }
             }
-            if !analysis.patterns.isEmpty {
-                bulletColumn("ACROSS THE WHOLE THING", analysis.patterns)
+                if !analysis.patterns.isEmpty {
+                    bulletColumn("ACROSS THE WHOLE THING", analysis.patterns)
+                }
             }
         }
     }
@@ -187,7 +193,9 @@ struct ScreenroomReportView: View {
     private func bulletColumn(_ title: String, _ items: [String]) -> some View {
         if !items.isEmpty {
             VStack(alignment: .leading, spacing: 8) {
-                eyebrow(title)
+                Text(title)
+                    .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                    .tracking(0.8).foregroundStyle(.secondary)
                 ForEach(items, id: \.self) { item in
                     HStack(alignment: .firstTextBaseline, spacing: 8) {
                         Circle().fill(Brand.fill).frame(width: 5, height: 5)

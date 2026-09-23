@@ -45,7 +45,11 @@ struct ScreenroomWindow: View {
                     .frame(width: Self.notesWidth)
             }
         }
-        .frame(minWidth: 900, minHeight: 560)
+        // 950, measured rather than chosen: the header needs 943 points at
+        // its widest - name block, presenter field, folder preview, Start,
+        // and the speaker toggle - and a minimum below that does not make the
+        // window smaller, it makes the folder preview vanish into an ellipsis.
+        .frame(minWidth: 950, minHeight: 560)
         .tint(Brand.green)
         .onAppear { screenroom.windowAppeared() }
         .onDisappear { screenroom.windowDisappeared() }
@@ -60,13 +64,14 @@ struct ScreenroomWindow: View {
 
     private var header: some View {
         HStack(spacing: 12) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Screenroom")
-                    .font(.system(size: 17, weight: .bold))
-                Text("Notes while they present, timed to the tape.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
+            // No strapline. "Notes while they present, timed to the tape."
+            // was the widest thing in the most contended row in the app - 248
+            // of the header's points against 85 for the name alone - and the
+            // window's own title bar already says Screenroom. A tagline earns
+            // its place on a landing page, not in a tool somebody opens every
+            // morning.
+            Text("Screenroom")
+                .font(.system(size: 17, weight: .bold))
 
             Divider().frame(height: 28)
 
@@ -117,28 +122,42 @@ struct ScreenroomWindow: View {
                       : "Waiting for the camera.")
             }
 
-            // Coaching, turned on for this presentation only. Quiet and
-            // unlabelled-by-default because the answer is usually no; see
+            // Coaching, turned on for this presentation only. See
             // ScreenroomSpeakerView for why it is never remembered.
-            Button {
-                screenroom.speakerIsWatching.toggle()
-                // Both directions. Toggling ON without opening the window
-                // would be a button that does nothing; toggling OFF without
-                // closing it is worse - the teacher believes they have
-                // stopped showing the student their notes, and the student
-                // is still reading them.
-                if screenroom.speakerIsWatching {
+            //
+            // A LATCHING TOGGLE WITH WORDS ON IT, after two goes at an icon.
+            // It was a crossed-out eye, which every other app on the machine
+            // uses for "hide this preview" or "show my password" - so it read
+            // as being about what the TEACHER can see, when it is about what
+            // the SPEAKER can see. The person who asked for the feature had
+            // to ask what the button did, and then said the icon made no
+            // sense. Two rounds of that is the icon telling you it cannot
+            // carry the meaning on its own.
+            //
+            // Toggle rather than Button because it is genuinely on or off and
+            // stays that way, and .button style draws it filled while it is
+            // on - so the state is in the control instead of in a glyph swap
+            // nobody is watching for.
+            Toggle(isOn: $screenroom.speakerIsWatching) {
+                Label("Speaker sees notes", systemImage: "display")
+            }
+            .toggleStyle(.button)
+            .controlSize(.large)
+            .onChange(of: screenroom.speakerIsWatching) { _, watching in
+                // Both directions. Turning it ON without opening the window
+                // would be a control that does nothing; turning it OFF
+                // without closing the window is worse - the teacher believes
+                // they have stopped putting their notes in front of the
+                // student, and the student carries on reading them.
+                if watching {
                     openWindow(id: "screenroom-speaker")
                 } else {
                     dismissWindow(id: "screenroom-speaker")
                 }
-            } label: {
-                Image(systemName: screenroom.speakerIsWatching ? "eye.fill" : "eye.slash")
             }
-            .controlSize(.large)
             .help(screenroom.speakerIsWatching
-                  ? "The speaker is watching the notes as you write them. Click to stop showing them."
-                  : "Show the notes to the speaker as you write them, on another display. Off for every new presentation.")
+                  ? "The speaker is reading your notes as you write them, in a window you can put on another display. Click to stop."
+                  : "Opens a window showing your notes to the speaker as you write them \u{2014} for coaching, not for an exam. Off again for every new presentation.")
 
         }
         .padding(.horizontal, 20)

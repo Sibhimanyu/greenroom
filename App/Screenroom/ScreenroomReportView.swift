@@ -20,8 +20,11 @@
 //
 //  What is deliberately NOT a chart:
 //
-//   - The four headline numbers are stat tiles. A one-bar bar chart is the
-//     classic way to turn a number into a worse number.
+//   - The headline readings are cards that say, in a sentence, where each
+//     number sits against its comfortable range. They were dials, and the
+//     dials were reported as unreadable: a ring does not say whether 137 is
+//     fine, and the same three numbers were then drawn a second time as
+//     bars further down. One card per reading, said once.
 //   - A rubric line is a ratio against a limit, so it is a meter - a filled
 //     track - rather than a bar on a shared axis. Five meters at five
 //     different maxima on one axis would compare things that are not
@@ -29,9 +32,9 @@
 //   - The notes are marks on a time axis, not a series. They have no
 //     magnitude; only position.
 //   - Pace, filler rate and sentence length are read against a band rather
-//     than against zero, so each is a marker on a track with the comfortable
-//     range shaded. A bar chart of "your pace" would ask the reader to
-//     compare one bar against nothing.
+//     than against zero, so each card's meter is a marker on a track with the
+//     comfortable range shaded. A bar chart of "your pace" would ask the
+//     reader to compare one bar against nothing.
 //   - Fillers, looking away and gesture all happen AT times, so each also
 //     gets a strip along the same time axis. Where something clusters is
 //     usually the finding; a total is only the headline.
@@ -63,25 +66,24 @@ struct ScreenroomReportView: View {
                     empty
                 } else {
                     header
-                    // Dials, then the map, then the charts. The written
-                    // sections used to sit third and pushed every chart
-                    // below the fold, so the page opened as an essay about
-                    // a presentation rather than as a picture of one.
-                    dials
+                    // The readings, then the map, then what to do about
+                    // them, then the detail. Each reading says in words
+                    // where it sits, so the top of the page can be read
+                    // without decoding a single chart.
+                    glance
                     if hasMap { map }
+                    if let analysis = review.analysis { prose(analysis) }
                     if review.scoring.markedCount > 0 { rubric }
-                    if let metrics = review.metrics, metrics.wordCount > 0 { bands(metrics) }
                     if let metrics = review.metrics, !metrics.paceWindow.isEmpty { pace(metrics) }
                     if let metrics = review.metrics, metrics.fillerCount > 0 { fillers(metrics) }
                     if let metrics = review.metrics, metrics.hedgeCount > 0 { hedges(metrics) }
-                    if let metrics = review.metrics, !metrics.runs.isEmpty { sentenceShape(metrics) }
+                    if let metrics = review.metrics, metrics.runs.count >= Self.enoughSentences { sentenceShape(metrics) }
                     if let metrics = review.metrics, metrics.vocabulary > 0 { vocabulary(metrics) }
                     if let metrics = review.metrics, metrics.wordCount > 0 { airTime(metrics) }
                     if let seen = review.presence, seen.sampleCount > 0 { onCamera(seen) }
                     if let metrics = review.metrics, metrics.verbatim, !metrics.careful.isEmpty {
                         careful(metrics)
                     }
-                    if let analysis = review.analysis { prose(analysis) }
                     if !review.notes.isEmpty { timeline }
                     if !review.notes.isEmpty { noteList }
                     if !review.words.isEmpty { transcript }
@@ -103,7 +105,7 @@ struct ScreenroomReportView: View {
         VStack(spacing: 8) {
             Text("No presentation selected.")
                 .font(.title3).foregroundStyle(.secondary)
-            Text("Pick one in Past Presentations.")
+            Text("Pick one in Sessions.")
                 .font(.callout).foregroundStyle(.tertiary)
         }
         .frame(maxWidth: .infinity, minHeight: 400)
@@ -133,29 +135,6 @@ struct ScreenroomReportView: View {
         }
     }
 
-    // MARK: The four numbers
-
-    /// A KPI row, not a grouped bar chart. Four headline numbers whose only
-    /// relationship is that they describe the same twenty minutes.
-    private var headline: some View {
-        HStack(spacing: 12) {
-            if review.scoring.markedCount > 0 {
-                tile(review.scoring.totalLabel, "MARKS",
-                     note: review.scoring.isComplete ? nil : "\(review.scoring.markedCount) of \(review.scoring.rubric.criteria.count) lines")
-            }
-            if let m = review.metrics, m.wordCount > 0 {
-                tile("\(Int(m.wordsPerMinute.rounded()))", "WORDS / MIN")
-                if m.verbatim {
-                    tile(String(format: "%.1f", m.fillersPerMinute), "FILLERS / MIN",
-                         note: "\(m.fillerCount) in total")
-                } else {
-                    tile("\u{2014}", "FILLERS / MIN", note: "not counted")
-                }
-            }
-            tile("\(review.notes.count)", review.notes.count == 1 ? "NOTE" : "NOTES")
-        }
-    }
-
     private func tile(_ value: String, _ label: String, note: String? = nil) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(value)
@@ -167,7 +146,7 @@ struct ScreenroomReportView: View {
             VStack(alignment: .leading, spacing: 2) {
                 eyebrow(label)
                 if let note {
-                    Text(note).font(.caption2).foregroundStyle(.tertiary)
+                    Text(note).font(.caption).foregroundStyle(.secondary)
                 }
             }
         }
@@ -331,8 +310,8 @@ struct ScreenroomReportView: View {
                     .lineStyle(StrokeStyle(lineWidth: 1))
                     .annotation(position: .top, alignment: .trailing) {
                         Text("average \(Int(metrics.wordsPerMinute.rounded()))")
-                            .font(.system(size: 9, design: .monospaced))
-                            .foregroundStyle(.tertiary)
+                            .font(.system(size: 11, design: .monospaced))
+                            .foregroundStyle(.secondary)
                     }
             }
             .chartXAxis {
@@ -342,7 +321,7 @@ struct ScreenroomReportView: View {
                     AxisValueLabel {
                         if let seconds = value.as(Double.self) {
                             Text(Self.clock(Int(seconds)))
-                                .font(.system(size: 9, design: .monospaced))
+                                .font(.system(size: 11, design: .monospaced))
                         }
                     }
                 }
@@ -352,7 +331,7 @@ struct ScreenroomReportView: View {
                     AxisGridLine().foregroundStyle(Color(nsColor: .separatorColor).opacity(0.4))
                     AxisValueLabel {
                         if let wpm = value.as(Double.self) {
-                            Text("\(Int(wpm))").font(.system(size: 9, design: .monospaced))
+                            Text("\(Int(wpm))").font(.system(size: 11, design: .monospaced))
                         }
                     }
                 }
@@ -379,7 +358,7 @@ struct ScreenroomReportView: View {
                         .cornerRadius(4)
                         .annotation(position: .trailing, alignment: .leading) {
                             Text("\(filler.count)")
-                                .font(.system(size: 10, weight: .medium, design: .monospaced))
+                                .font(.system(size: 11, weight: .medium, design: .monospaced))
                                 .monospacedDigit()
                                 .foregroundStyle(.secondary)
                         }
@@ -395,7 +374,7 @@ struct ScreenroomReportView: View {
                 if !rest.isEmpty {
                     Text("Also " + rest.map { "\u{201C}\($0.word)\u{201D} \($0.count)\u{00D7}" }
                         .joined(separator: ", ") + ".")
-                        .font(.caption).foregroundStyle(.tertiary)
+                        .font(.caption).foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
 
@@ -415,8 +394,8 @@ struct ScreenroomReportView: View {
                         ForEach(worst.atMs.prefix(8), id: \.self) { at in timeChip(at) }
                         if worst.atMs.count > 8 {
                             Text("+\(worst.atMs.count - 8)")
-                                .font(.system(size: 10, design: .monospaced))
-                                .foregroundStyle(.tertiary)
+                                .font(.system(size: 11, design: .monospaced))
+                                .foregroundStyle(.secondary)
                         }
                     }
                 }
@@ -424,85 +403,6 @@ struct ScreenroomReportView: View {
         }
     }
 
-
-    // MARK: Read against a band, not against zero
-
-    /// Three numbers that mean nothing on their own.
-    ///
-    /// 142 words a minute is neither good nor bad until you know what a room
-    /// follows comfortably, so each of these is a marker on a track with the
-    /// comfortable range shaded behind it. The shading is the finding; the
-    /// number is the label. Nothing here says "too fast" - the band is drawn
-    /// and the reader decides, because what counts as too fast depends on the
-    /// subject, the room, and how much English the audience has.
-    private func bands(_ m: ScreenroomSpeechMetrics) -> some View {
-        section("HOW IT LANDED", trailing: "shaded range is where a room follows comfortably") {
-            VStack(spacing: 16) {
-                bandMeter("Pace", value: m.wordsPerMinute, unit: "words a minute",
-                          band: ScreenroomSpeechMetrics.comfortablePace, scale: 0...260)
-                if m.verbatim {
-                    bandMeter("Fillers", value: m.fillersPerMinute, unit: "a minute",
-                              band: 0...2, scale: 0...12,
-                              note: "\(m.fillerCount) in total")
-                }
-                if m.wordsPerRun > 0 {
-                    bandMeter("Sentence length", value: m.wordsPerRun, unit: "words between breaths",
-                              band: 8...20, scale: 0...45,
-                              note: "\(m.runs.count) stretches of speech")
-                }
-            }
-        }
-    }
-
-    private func bandMeter(_ label: String, value: Double, unit: String,
-                           band: ClosedRange<Double>, scale: ClosedRange<Double>,
-                           note: String? = nil) -> some View {
-        let width = max(0.001, scale.upperBound - scale.lowerBound)
-        func fraction(_ x: Double) -> Double {
-            min(1, max(0, (x - scale.lowerBound) / width))
-        }
-        let inside = band.contains(value)
-        return VStack(alignment: .leading, spacing: 6) {
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Text(label).font(.callout.weight(.medium))
-                Text(unit).font(.caption2).foregroundStyle(.tertiary)
-                Spacer()
-                if let note {
-                    Text(note).font(.caption2).foregroundStyle(.tertiary)
-                }
-                Text(value < 10 ? String(format: "%.1f", value) : "\(Int(value.rounded()))")
-                    .font(.system(size: 15, weight: .semibold, design: .monospaced))
-                    .monospacedDigit()
-            }
-            GeometryReader { geo in
-                ZStack(alignment: .leading) {
-                    Capsule().fill(Color(nsColor: .separatorColor).opacity(0.25))
-                    // The comfortable range. Lime at low opacity: it is the
-                    // context, not the reading.
-                    Capsule().fill(Brand.fill.opacity(0.22))
-                        .frame(width: geo.size.width * (fraction(band.upperBound) - fraction(band.lowerBound)))
-                        .offset(x: geo.size.width * fraction(band.lowerBound))
-                    // This speaker. A solid marker, and hollow when it sits
-                    // outside the band - shape, never colour alone.
-                    Capsule()
-                        .fill(inside ? AnyShapeStyle(Brand.fill) : AnyShapeStyle(Color(nsColor: .labelColor)))
-                        .frame(width: 4, height: 18)
-                        .offset(x: geo.size.width * fraction(value) - 2)
-                }
-                .frame(height: 18)
-            }
-            .frame(height: 18)
-            HStack {
-                Text("\(Int(scale.lowerBound))")
-                Spacer()
-                Text("\(Int(band.lowerBound))\u{2013}\(Int(band.upperBound))")
-                Spacer()
-                Text("\(Int(scale.upperBound))")
-            }
-            .font(.system(size: 9, design: .monospaced))
-            .foregroundStyle(.tertiary)
-        }
-    }
 
     // MARK: Hedges, counted the same way fillers are
 
@@ -525,7 +425,7 @@ struct ScreenroomReportView: View {
                     HStack(alignment: .firstTextBaseline, spacing: 10) {
                         Text("\u{201C}\(item.word)\u{201D}").font(.callout.weight(.medium))
                         Text(item.count == 1 ? "once" : "\(item.count) times")
-                            .font(.caption).foregroundStyle(.tertiary)
+                            .font(.caption).foregroundStyle(.secondary)
                         Spacer(minLength: 0)
                         ForEach(item.atMs.prefix(6), id: \.self) { at in
                             timeChip(at)
@@ -551,8 +451,8 @@ struct ScreenroomReportView: View {
                 if m.starters.count >= 2, m.runs.count >= 6 {
                     VStack(alignment: .leading, spacing: 6) {
                         Text("HOW THEY OPENED")
-                            .font(.system(size: 8, weight: .semibold, design: .monospaced))
-                            .tracking(0.5).foregroundStyle(.tertiary)
+                            .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                            .tracking(0.8).foregroundStyle(.secondary)
                         wordBars(m.starters, limit: 6)
                     }
                 }
@@ -574,8 +474,8 @@ struct ScreenroomReportView: View {
                 if !m.repeated.isEmpty {
                     VStack(alignment: .leading, spacing: 6) {
                         Text("LEANED ON MOST \u{00B7} COMMON WORDS EXCLUDED")
-                            .font(.system(size: 8, weight: .semibold, design: .monospaced))
-                            .tracking(0.5).foregroundStyle(.tertiary)
+                            .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                            .tracking(0.8).foregroundStyle(.secondary)
                         wordBars(m.repeated, limit: 8)
                     }
                 }
@@ -602,14 +502,14 @@ struct ScreenroomReportView: View {
                         .foregroundStyle(Brand.text)
                     Spacer()
                     Text("\(Int(((1 - m.talkRatio) * 100).rounded()))% silence")
-                        .foregroundStyle(.tertiary)
+                        .foregroundStyle(.secondary)
                 }
                 .font(.system(size: 11, weight: .medium, design: .monospaced))
 
                 if !m.pauses.isEmpty {
                     Text("LONGEST PAUSES \u{00B7} SILENCE IS WHERE A ROOM CATCHES UP")
-                        .font(.system(size: 8, weight: .semibold, design: .monospaced))
-                        .tracking(0.5).foregroundStyle(.tertiary)
+                        .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                        .tracking(0.8).foregroundStyle(.secondary)
                         .padding(.top, 4)
                     HStack(spacing: 6) {
                         ForEach(m.pauses.prefix(8)) { pause in
@@ -618,8 +518,8 @@ struct ScreenroomReportView: View {
                                     Text(String(format: "%.1fs", Double(pause.lengthMs) / 1000))
                                         .font(.system(size: 11, weight: .semibold, design: .monospaced))
                                     Text(Self.clock(pause.startMs / 1000))
-                                        .font(.system(size: 9, design: .monospaced))
-                                        .foregroundStyle(.tertiary)
+                                        .font(.system(size: 11, design: .monospaced))
+                                        .foregroundStyle(.secondary)
                                 }
                                 .padding(.vertical, 5).padding(.horizontal, 8)
                                 .background(RoundedRectangle(cornerRadius: 6)
@@ -661,7 +561,7 @@ struct ScreenroomReportView: View {
                 // nothing wrong except sit close to the camera.
                 if !seen.sawBody {
                     Text("No gesture figures: the framing is too tight to find a body, so the hands were never in shot. Record from further back.")
-                        .font(.caption2).foregroundStyle(.tertiary)
+                        .font(.caption).foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
 
@@ -670,12 +570,12 @@ struct ScreenroomReportView: View {
                     presenceStrip(seen)
                     HStack(spacing: 14) {
                         key(Brand.fill, "facing the room")
-                        key(Color(nsColor: .labelColor).opacity(0.35), "turned away")
-                        key(Color(nsColor: .separatorColor).opacity(0.4), "no face in shot")
+                        key(Color(nsColor: .labelColor).opacity(0.6), "turned away")
+                        key(Color(nsColor: .separatorColor).opacity(0.5), "no face in shot")
                         Spacer()
                     }
-                    .font(.system(size: 9))
-                    .foregroundStyle(.tertiary)
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
                 }
 
                 if let away = seen.longestAway {
@@ -702,7 +602,7 @@ struct ScreenroomReportView: View {
                                 AxisGridLine().foregroundStyle(Color(nsColor: .separatorColor).opacity(0.4))
                                 AxisValueLabel {
                                     if let s = value.as(Double.self) {
-                                        Text(Self.clock(Int(s))).font(.system(size: 9, design: .monospaced))
+                                        Text(Self.clock(Int(s))).font(.system(size: 11, design: .monospaced))
                                     }
                                 }
                             }
@@ -712,7 +612,7 @@ struct ScreenroomReportView: View {
                 }
 
                 Text("Head angle and wrist position, measured on this Mac by Vision. Not eye contact \u{2014} nothing here can see where the eyes pointed. Movement only \u{2014} whether a gesture helped is a judgement.")
-                    .font(.caption2).foregroundStyle(.tertiary)
+                    .font(.caption).foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
@@ -720,7 +620,7 @@ struct ScreenroomReportView: View {
 
     private func key(_ colour: Color, _ label: String) -> some View {
         HStack(spacing: 4) {
-            RoundedRectangle(cornerRadius: 1).fill(colour).frame(width: 10, height: 6)
+            RoundedRectangle(cornerRadius: 2).fill(colour).frame(width: 12, height: 8)
             Text(label)
         }
     }
@@ -736,8 +636,8 @@ struct ScreenroomReportView: View {
                     let x = size.width * CGFloat(Double(sample.atMs) / span)
                     let colour: Color = sample.facing
                         ? Brand.fill
-                        : (sample.face ? Color(nsColor: .labelColor).opacity(0.35)
-                                       : Color(nsColor: .separatorColor).opacity(0.4))
+                        : (sample.face ? Color(nsColor: .labelColor).opacity(0.6)
+                                       : Color(nsColor: .separatorColor).opacity(0.5))
                     context.fill(Path(CGRect(x: x, y: 0, width: width + 0.5, height: size.height)),
                                  with: .color(colour))
                 }
@@ -771,16 +671,16 @@ struct ScreenroomReportView: View {
             VStack(alignment: .leading, spacing: 10) {
                 if !(m?.verbatim ?? false) {
                     Text("Tidied by the recogniser, so there are no crutch words left in it to mark. Transcribe with whisper for the verbatim version.")
-                        .font(.caption2).foregroundStyle(.tertiary)
+                        .font(.caption).foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 ForEach(runs.isEmpty ? [ScreenroomSpeechMetrics.Run(startMs: review.words.first?.atMs ?? 0, endMs: review.words.last?.endMs ?? 0, words: review.words.count, opener: "")] : runs) { run in
                     Button { review.seek(toMs: run.startMs, lead: 500) } label: {
                         HStack(alignment: .firstTextBaseline, spacing: 12) {
                             Text(Self.clock(run.startMs / 1000))
-                                .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                                .font(.system(size: 11, weight: .semibold, design: .monospaced))
                                 .monospacedDigit()
-                                .foregroundStyle(.tertiary)
+                                .foregroundStyle(.secondary)
                                 .frame(width: 40, alignment: .trailing)
                             Text(line(for: run, fillerAt: fillerAt, hedgeAt: hedgeAt))
                                 .font(.system(size: 14))
@@ -833,7 +733,7 @@ struct ScreenroomReportView: View {
                     .cornerRadius(4)
                     .annotation(position: .trailing, alignment: .leading) {
                         Text("\(item.count)")
-                            .font(.system(size: 10, weight: .medium, design: .monospaced))
+                            .font(.system(size: 11, weight: .medium, design: .monospaced))
                             .monospacedDigit()
                             .foregroundStyle(.secondary)
                     }
@@ -849,7 +749,7 @@ struct ScreenroomReportView: View {
             if !rest.isEmpty {
                 Text("Also " + rest.map { "\u{201C}\($0.word)\u{201D} \($0.count)\u{00D7}" }
                     .joined(separator: ", ") + ".")
-                    .font(.caption).foregroundStyle(.tertiary)
+                    .font(.caption).foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
@@ -863,7 +763,7 @@ struct ScreenroomReportView: View {
             let span = max(Double(review.metrics?.durationMs ?? 0),
                            Double((times.max() ?? 0) + 1))
             VStack(alignment: .leading, spacing: 4) {
-                Text(label).font(.caption2).foregroundStyle(.tertiary)
+                Text(label).font(.caption).foregroundStyle(.secondary)
                 GeometryReader { geo in
                     Canvas { context, size in
                         context.fill(Path(roundedRect: CGRect(x: 0, y: size.height / 2 - 2,
@@ -890,7 +790,7 @@ struct ScreenroomReportView: View {
     private func timeChip(_ ms: Int) -> some View {
         Button { review.seek(toMs: ms) } label: {
             Text(Self.clock(ms / 1000))
-                .font(.system(size: 10, weight: .medium, design: .monospaced))
+                .font(.system(size: 11, weight: .medium, design: .monospaced))
                 .monospacedDigit()
                 .foregroundStyle(Brand.text)
                 .padding(.vertical, 2).padding(.horizontal, 5)
@@ -916,27 +816,28 @@ struct ScreenroomReportView: View {
     /// anywhere to play from there.
     private var map: some View {
         let span = mapSpan
-        return section("THE WHOLE TALK", trailing: "one column is one moment \u{00B7} click to play") {
-            VStack(alignment: .leading, spacing: 5) {
+        return section("THE WHOLE TALK", trailing: "read a column downwards for one moment \u{00B7} click anywhere to play") {
+            VStack(alignment: .leading, spacing: 8) {
                 if !review.frames.isEmpty {
                     mapRow("") { filmstrip }
                 }
                 if let m = review.metrics, !m.paceWindow.isEmpty {
-                    mapRow("PACE") { paceRibbon(m, span: span) }
+                    mapRow("Pace") { paceRibbon(m, span: span) }
                 }
                 if let m = review.metrics, m.fillerCount > 0 {
-                    mapRow("FILLERS") { tickRow(m.fillers.flatMap(\.atMs), span: span, height: 14) }
+                    mapRow("Fillers") { tickRow(m.fillers.flatMap(\.atMs), span: span, height: 16) }
                 }
                 if let m = review.metrics, m.hedgeCount > 0 {
-                    mapRow("HEDGES") { tickRow(m.hedges.flatMap(\.atMs), span: span, height: 14) }
+                    mapRow("Hedges") { tickRow(m.hedges.flatMap(\.atMs), span: span, height: 16) }
                 }
                 if let seen = review.presence, seen.sampleCount > 0 {
-                    mapRow("FACING") { presenceStrip(seen, height: 14) }
+                    mapRow("Facing") { presenceStrip(seen, height: 16) }
                 }
                 if !review.notes.isEmpty {
-                    mapRow("NOTES") { tickRow(review.notes.map(\.atMs), span: span, height: 14) }
+                    mapRow("Notes") { tickRow(review.notes.map(\.atMs), span: span, height: 16) }
                 }
                 mapRow("") { mapAxis(span: span) }
+                mapRow("") { mapKey }
             }
         }
     }
@@ -953,12 +854,11 @@ struct ScreenroomReportView: View {
     /// filmstrip above them - starts at the same x.
     private func mapRow<Content: View>(_ label: String,
                                        @ViewBuilder content: () -> Content) -> some View {
-        HStack(spacing: 8) {
+        HStack(spacing: 12) {
             Text(label)
-                .font(.system(size: 8, weight: .semibold, design: .monospaced))
-                .tracking(0.5)
-                .foregroundStyle(.tertiary)
-                .frame(width: 52, alignment: .trailing)
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(.secondary)
+                .frame(width: 56, alignment: .trailing)
             content()
         }
     }
@@ -966,7 +866,9 @@ struct ScreenroomReportView: View {
     /// The stills, evenly sampled to fit the column. Already on disk and,
     /// until now, only ever read by the agent.
     private var filmstrip: some View {
-        let wanted = 9
+        // Six at 16:9 fills the column at roughly the camera's own shape.
+        // Nine squeezed into 52pt cropped every still to a forehead.
+        let wanted = 6
         let all = review.frames
         let step = max(1, all.count / wanted)
         let shown = stride(from: 0, to: all.count, by: step).prefix(wanted).map { all[$0] }
@@ -980,9 +882,9 @@ struct ScreenroomReportView: View {
                             Color(nsColor: .separatorColor).opacity(0.3)
                         }
                     }
-                    .frame(height: 52)
                     .frame(maxWidth: .infinity)
-                    .clipShape(RoundedRectangle(cornerRadius: 3))
+                    .aspectRatio(16 / 9, contentMode: .fit)
+                    .clipShape(RoundedRectangle(cornerRadius: 6))
                 }
                 .buttonStyle(.plain)
             }
@@ -1004,35 +906,52 @@ struct ScreenroomReportView: View {
     }
 
     /// Pace as a ribbon rather than a line: one block per half-minute, its
-    /// height the words per minute, hollow where it left the comfortable
-    /// band. At this size a line chart would be four pixels of wiggle; a
-    /// ribbon reads as a shape at a glance, which is all this row is for.
+    /// height the words per minute, on a FIXED scale with the comfortable
+    /// band shaded behind it.
+    ///
+    /// It used to be scaled to its own peak, so the fastest window always
+    /// hit the top and a talk at a steady 137 drew as one solid green slab
+    /// that said nothing. Against a fixed scale and the band, a block that
+    /// rises out of the shading is a stretch that ran fast, visibly.
     private func paceRibbon(_ m: ScreenroomSpeechMetrics, span: Double) -> some View {
-        let peak = max(m.paceWindow.map(\.wordsPerMinute).max() ?? 1, 1)
+        let band = ScreenroomSpeechMetrics.comfortablePace
+        let top = max(260, m.paceWindow.map(\.wordsPerMinute).max() ?? 0)
         return GeometryReader { geo in
             Canvas { context, size in
-                let band = ScreenroomSpeechMetrics.comfortablePace
+                func y(_ wpm: Double) -> CGFloat { size.height * CGFloat(1 - wpm / top) }
+                context.fill(Path(CGRect(x: 0, y: y(band.upperBound), width: size.width,
+                                         height: y(band.lowerBound) - y(band.upperBound))),
+                             with: .color(Brand.fill.opacity(0.12)))
                 for window in m.paceWindow {
                     let x = size.width * CGFloat(Double(window.startMs) / span)
-                    let next = size.width * CGFloat(Double(window.startMs + 30_000) / span)
-                    let height = size.height * CGFloat(window.wordsPerMinute / peak)
-                    let rect = CGRect(x: x, y: size.height - height,
-                                      width: max(1, next - x - 1), height: height)
+                    let next = size.width * CGFloat(min(span, Double(window.startMs + 30_000)) / span)
+                    let rect = CGRect(x: x, y: y(window.wordsPerMinute),
+                                      width: max(1, next - x - 2),
+                                      height: size.height - y(window.wordsPerMinute))
                     let inside = band.contains(window.wordsPerMinute)
-                    context.fill(Path(roundedRect: rect, cornerRadius: 1),
-                                 with: .color(inside ? Brand.fill : Brand.fill.opacity(0.28)))
-                    if !inside {
-                        context.stroke(Path(roundedRect: rect, cornerRadius: 1),
-                                       with: .color(Color(nsColor: .labelColor).opacity(0.45)),
-                                       lineWidth: 1)
-                    }
+                    context.fill(Path(roundedRect: rect, cornerRadius: 2),
+                                 with: .color(inside ? Brand.fill : Color(nsColor: .labelColor).opacity(0.6)))
                 }
             }
             .gesture(SpatialTapGesture().onEnded { value in
                 review.seek(toMs: Int(span * Double(value.location.x / max(1, geo.size.width))))
             })
         }
-        .frame(height: 26)
+        .frame(height: 40)
+        .help("Words per minute in each half-minute. Green is inside the comfortable 115\u{2013}180; grey is outside it.")
+    }
+
+    /// What the colours in the map mean. Said once, under it, rather than
+    /// left for the reader to guess that two greys are two different things.
+    private var mapKey: some View {
+        HStack(spacing: 16) {
+            key(Brand.fill, "pace in range \u{00B7} facing the room")
+            key(Color(nsColor: .labelColor).opacity(0.6), "pace out of range \u{00B7} turned away")
+            key(Color(nsColor: .separatorColor).opacity(0.5), "no face in shot")
+            Spacer(minLength: 0)
+        }
+        .font(.system(size: 11))
+        .foregroundStyle(.secondary)
     }
 
     /// Moments, as ticks on the shared axis.
@@ -1062,13 +981,13 @@ struct ScreenroomReportView: View {
             ZStack(alignment: .topLeading) {
                 ForEach(Array(stride(from: 0.0, through: span, by: max(30_000, tickEvery(span)))), id: \.self) { at in
                     Text(Self.clock(Int(at / 1000)))
-                        .font(.system(size: 8, design: .monospaced))
-                        .foregroundStyle(.tertiary)
+                        .font(.system(size: 11, design: .monospaced))
+                        .foregroundStyle(.secondary)
                         .offset(x: geo.size.width * CGFloat(at / span))
                 }
             }
         }
-        .frame(height: 12)
+        .frame(height: 14)
     }
 
     /// Six or so labels, on a round number of seconds.
@@ -1080,103 +999,205 @@ struct ScreenroomReportView: View {
         return 1_800_000
     }
 
-    // MARK: The headline, as dials
+    // MARK: The readings, said in words
 
-    /// Four dials rather than four numbers.
+    /// Below this many breaths, "words per sentence" is the length of the
+    /// whole recording: a 42-second clip read in one breath reported a
+    /// 96-word sentence and "1 stretches of speech".
+    static let enoughSentences = 3
+
+    /// One reading: the number, what it is measured in, and where it sits
+    /// against the range a room follows comfortably - said in words, not
+    /// left for the reader to work out from an arc.
+    fileprivate struct Reading: Identifiable {
+        enum Side { case below, inside, above }
+        let label: String
+        let value: String
+        let unit: String
+        let side: Side?
+        let verdict: String
+        let range: String?
+        /// 0...1 positions on the meter. Nil draws no meter.
+        let meter: (value: Double, low: Double, high: Double)?
+        var id: String { label }
+    }
+
+    /// Four or five cards, two to a row.
     ///
-    /// The numbers were correct and read as a spreadsheet. A dial carries the
-    /// same figure plus the thing the figure is missing - where it sits
-    /// against the range a room follows comfortably - without the reader
-    /// having to hold two numbers at once. The comfortable range is the
-    /// pale arc; the reading is the solid one.
-    private var dials: some View {
-        HStack(spacing: 10) {
-            if let m = review.metrics, m.wordCount > 0 {
-                dial("PACE", display: "\(Int(m.wordsPerMinute.rounded()))", caption: "words a minute",
-                     value: m.wordsPerMinute, scale: 0...260,
-                     band: ScreenroomSpeechMetrics.comfortablePace)
-                if m.verbatim {
-                    dial("FILLERS", display: String(format: "%.1f", m.fillersPerMinute), caption: "a minute",
-                         value: m.fillersPerMinute, scale: 0...12, band: 0...2)
+    /// These replace four dials and a second section that repeated the same
+    /// three numbers as bars. The dials were reported as unreadable: 8pt
+    /// captions colliding with the ring, and nothing on them saying whether
+    /// 137 was fine. Each card now says it in a sentence; the meter under it
+    /// is the evidence, not the message.
+    ///
+    /// The wording describes where the reading sits against the range and
+    /// stops there. "Faster than the comfortable range" is a measurement;
+    /// "too fast" would be a judgement the teacher gets to make.
+    private var glance: some View {
+        let readings = self.readings
+        return Group {
+            if !readings.isEmpty {
+                LazyVGrid(columns: [GridItem(.flexible(), spacing: 12, alignment: .top),
+                                    GridItem(.flexible(), spacing: 12, alignment: .top)],
+                          alignment: .leading, spacing: 12) {
+                    ForEach(readings) { card($0) }
                 }
-                if m.wordsPerRun > 0 {
-                    dial("SENTENCE", display: "\(Int(m.wordsPerRun.rounded()))", caption: "words long",
-                         value: m.wordsPerRun, scale: 0...45, band: 8...20)
-                }
-            }
-            if let seen = review.presence, seen.sampleCount > 0 {
-                dial("FACING", display: "\(Int((seen.facingRatio * 100).rounded()))%", caption: "the room",
-                     value: seen.facingRatio, scale: 0...1, band: 0.6...1)
-            }
-            if review.scoring.markedCount > 0, review.scoring.availableOnMarkedLines > 0 {
-                // Out of what was actually marked, not out of the whole
-                // rubric: a half-filled rubric reports the half it has.
-                let outOf = Double(review.scoring.availableOnMarkedLines)
-                dial("MARKS", display: review.scoring.totalLabel, caption: "overall",
-                     value: Double(review.scoring.awarded), scale: 0...outOf,
-                     band: (outOf * 0.7)...outOf)
             }
         }
     }
 
-    /// A three-quarter arc, opening at the bottom. Not a full ring: a ring
-    /// reads as a proportion of a whole, and pace is not a proportion of
-    /// anything.
-    private func dial(_ label: String, display: String, caption: String,
-                      value: Double, scale: ClosedRange<Double>,
-                      band: ClosedRange<Double>) -> some View {
+    private var readings: [Reading] {
+        var out: [Reading] = []
+        if let m = review.metrics, m.wordCount > 0 {
+            out.append(reading("Pace", value: m.wordsPerMinute, shown: "\(Int(m.wordsPerMinute.rounded()))",
+                               unit: "words a minute",
+                               band: ScreenroomSpeechMetrics.comfortablePace, scale: 0...260,
+                               below: "Slower than the comfortable range",
+                               inside: "In the comfortable range",
+                               above: "Faster than the comfortable range",
+                               range: "comfortable 115\u{2013}180"))
+            if m.verbatim {
+                out.append(reading("Filler words", value: m.fillersPerMinute,
+                                   shown: String(format: "%.1f", m.fillersPerMinute),
+                                   unit: "a minute \u{00B7} \(m.fillerCount) in total",
+                                   band: 0...2, scale: 0...12,
+                                   below: "Fewer than usual",
+                                   inside: "Within the usual range",
+                                   above: "More than the usual range",
+                                   range: "usual 0\u{2013}2"))
+            } else {
+                out.append(Reading(label: "Filler words", value: "\u{2014}", unit: "not counted",
+                                   side: nil,
+                                   verdict: "This transcript was tidied, so fillers could not be counted. Transcribe with whisper to count them.",
+                                   range: nil, meter: nil))
+            }
+            if m.runs.count >= Self.enoughSentences, m.wordsPerRun > 0 {
+                out.append(reading("Sentence length", value: m.wordsPerRun,
+                                   shown: "\(Int(m.wordsPerRun.rounded()))",
+                                   unit: "words between breaths",
+                                   band: 8...20, scale: 0...45,
+                                   below: "Shorter than usual",
+                                   inside: "In the usual range",
+                                   above: "Longer than usual",
+                                   range: "usual 8\u{2013}20"))
+            }
+        }
+        if let seen = review.presence, seen.sampleCount > 0 {
+            out.append(reading("Facing the room", value: seen.facingRatio,
+                               shown: "\(Int((seen.facingRatio * 100).rounded()))%",
+                               unit: "of the time a face was in shot",
+                               band: 0.6...1, scale: 0...1,
+                               // Under 60% is not the same claim as under half.
+                               below: seen.facingRatio < 0.5 ? "Turned away more often than not"
+                                   : "Facing the room less often than usual",
+                               inside: "Facing the room most of the time",
+                               above: "Facing the room most of the time",
+                               range: "aim for 60%+"))
+        }
+        if review.scoring.markedCount > 0, review.scoring.availableOnMarkedLines > 0 {
+            // Out of what was actually marked, not out of the whole rubric:
+            // a half-filled rubric reports the half it has.
+            let outOf = Double(review.scoring.availableOnMarkedLines)
+            let share = Double(review.scoring.awarded) / outOf
+            let lines = review.scoring.rubric.criteria.count
+            out.append(Reading(
+                label: "Marks", value: review.scoring.totalLabel,
+                unit: review.scoring.isComplete ? "overall"
+                    : "\(review.scoring.markedCount) of \(lines) lines marked",
+                side: nil,
+                verdict: "\(Int((share * 100).rounded()))% of the marks available",
+                range: nil,
+                meter: (share, 0, 0)))
+        }
+        return out
+    }
+
+    private func reading(_ label: String, value: Double, shown: String, unit: String,
+                         band: ClosedRange<Double>, scale: ClosedRange<Double>,
+                         below: String, inside: String, above: String,
+                         range: String) -> Reading {
         let width = max(0.001, scale.upperBound - scale.lowerBound)
         func at(_ x: Double) -> Double { min(1, max(0, (x - scale.lowerBound) / width)) }
-        let inside = band.contains(value)
-        return VStack(spacing: 8) {
-            ZStack {
-                // The arcs are drawn around a fixed centre, so they need a
-                // square to live in. Without this frame the dial stretches
-                // to the column width and the ring sits off to the left of
-                // its own number.
-                ZStack {
-                    arc(from: 0, to: 1)
-                        .stroke(Color(nsColor: .separatorColor).opacity(0.3),
-                                style: StrokeStyle(lineWidth: 7, lineCap: .round))
-                    arc(from: at(band.lowerBound), to: at(band.upperBound))
-                        .stroke(Brand.fill.opacity(0.28), style: StrokeStyle(lineWidth: 7, lineCap: .butt))
-                    arc(from: 0, to: at(value))
-                        .stroke(inside ? AnyShapeStyle(Brand.fill) : AnyShapeStyle(Color(nsColor: .labelColor).opacity(0.65)),
-                                style: StrokeStyle(lineWidth: 7, lineCap: .round))
-                }
-                .frame(width: 78, height: 78)
-                VStack(spacing: 0) {
-                    Text(display)
-                        .font(.system(size: 22, weight: .semibold, design: .monospaced))
-                        .monospacedDigit()
-                        .lineLimit(1).minimumScaleFactor(0.5)
-                    Text(caption)
-                        .font(.system(size: 8))
-                        .foregroundStyle(.tertiary)
-                        .lineLimit(1).minimumScaleFactor(0.6)
-                }
-                .padding(.horizontal, 10)
+        let side: Reading.Side = value < band.lowerBound ? .below
+            : value > band.upperBound ? .above : .inside
+        let verdict = side == .below ? below : side == .above ? above : inside
+        return Reading(label: label, value: shown, unit: unit, side: side, verdict: verdict,
+                       range: range,
+                       meter: (at(value), at(band.lowerBound), at(band.upperBound)))
+    }
+
+    private func card(_ r: Reading) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(r.label)
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(.secondary)
+
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text(r.value)
+                    .font(.system(size: 32, weight: .semibold))
+                    .monospacedDigit()
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.6)
+                Text(r.unit)
+                    .font(.system(size: 13))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
             }
-            .frame(height: 78)
-            eyebrow(label)
+
+            if let meter = r.meter { cardMeter(meter, inside: r.side != .below && r.side != .above) }
+
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                // Shape carries the side, never colour alone.
+                if let side = r.side {
+                    Image(systemName: side == .inside ? "checkmark.circle.fill"
+                          : side == .above ? "arrow.up.circle.fill" : "arrow.down.circle.fill")
+                        .foregroundStyle(side == .inside ? AnyShapeStyle(Brand.text) : AnyShapeStyle(.primary))
+                }
+                Text(r.verdict)
+                    .font(.system(size: 13, weight: .medium))
+                    .fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: 8)
+                if let range = r.range {
+                    Text(range)
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+            }
         }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(16)
         .background(RoundedRectangle(cornerRadius: 10)
             .fill(Color(nsColor: .controlBackgroundColor)))
         .overlay(RoundedRectangle(cornerRadius: 10)
             .strokeBorder(Color(nsColor: .separatorColor).opacity(0.5), lineWidth: 1))
     }
 
-    /// 0...1 across a 270-degree sweep starting at the lower left.
-    private func arc(from start: Double, to end: Double) -> Path {
-        var path = Path()
-        let sweep = 270.0
-        path.addArc(center: CGPoint(x: 39, y: 39), radius: 32,
-                    startAngle: .degrees(135 + sweep * start),
-                    endAngle: .degrees(135 + sweep * max(start, end)),
-                    clockwise: false)
-        return path
+    /// The range shaded, the reading as a marker. A band of zero width is a
+    /// plain fill meter - the marks, which have no "comfortable" range.
+    private func cardMeter(_ m: (value: Double, low: Double, high: Double), inside: Bool) -> some View {
+        GeometryReader { geo in
+            let w = geo.size.width
+            ZStack(alignment: .leading) {
+                Capsule().fill(Color(nsColor: .separatorColor).opacity(0.5))
+                    .frame(height: 6)
+                if m.high > m.low {
+                    Rectangle().fill(Brand.fill.opacity(0.35))
+                        .frame(width: w * (m.high - m.low), height: 6)
+                        .offset(x: w * m.low)
+                    Capsule()
+                        .fill(inside ? AnyShapeStyle(Brand.fill) : AnyShapeStyle(Color(nsColor: .labelColor)))
+                        .frame(width: 4, height: 16)
+                        .offset(x: min(w - 4, max(0, w * m.value - 2)))
+                } else {
+                    Capsule().fill(Brand.fill)
+                        .frame(width: max(6, w * m.value), height: 6)
+                }
+            }
+            .frame(height: 16)
+        }
+        .frame(height: 16)
     }
 
     // MARK: The rubric as a shape
@@ -1261,7 +1282,7 @@ struct ScreenroomReportView: View {
                             Text(criterion.title).font(.caption)
                             Spacer(minLength: 8)
                             Text("\(Int((mine[index] * 100).rounded()))%")
-                                .font(.system(size: 10, design: .monospaced))
+                                .font(.system(size: 11, design: .monospaced))
                                 .foregroundStyle(.secondary)
                         }
                     }
@@ -1269,7 +1290,7 @@ struct ScreenroomReportView: View {
                         HStack(spacing: 6) {
                             Rectangle().fill(Color(nsColor: .labelColor).opacity(0.4))
                                 .frame(width: 10, height: 1)
-                            Text("the group").font(.caption2).foregroundStyle(.tertiary)
+                            Text("the group").font(.caption).foregroundStyle(.secondary)
                         }
                         .padding(.top, 2)
                     }
@@ -1298,8 +1319,8 @@ struct ScreenroomReportView: View {
             let peak = max(perMinute.max() ?? 1, 1)
             VStack(alignment: .leading, spacing: 5) {
                 Text("BY THE MINUTE")
-                    .font(.system(size: 8, weight: .semibold, design: .monospaced))
-                    .tracking(0.5).foregroundStyle(.tertiary)
+                    .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                    .tracking(0.8).foregroundStyle(.secondary)
                 HStack(spacing: 3) {
                     ForEach(Array(perMinute.enumerated()), id: \.offset) { minute, count in
                         Button { review.seek(toMs: minute * 60_000, lead: 0) } label: {
@@ -1309,11 +1330,11 @@ struct ScreenroomReportView: View {
                                                              : 0.25 + 0.75 * Double(count) / Double(peak)))
                                     .frame(height: 28)
                                     .overlay(Text(count == 0 ? "" : "\(count)")
-                                        .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                                        .font(.system(size: 11, weight: .semibold, design: .monospaced))
                                         .foregroundStyle(Brand.text))
                                 Text("\(minute)")
-                                    .font(.system(size: 8, design: .monospaced))
-                                    .foregroundStyle(.tertiary)
+                                    .font(.system(size: 11, design: .monospaced))
+                                    .foregroundStyle(.secondary)
                             }
                         }
                         .buttonStyle(.plain)
@@ -1350,8 +1371,8 @@ struct ScreenroomReportView: View {
                     Spacer()
                     Text(Self.clock(Int(span / 1000)))
                 }
-                .font(.system(size: 9, design: .monospaced))
-                .foregroundStyle(.tertiary)
+                .font(.system(size: 11, design: .monospaced))
+                .foregroundStyle(.secondary)
             }
         }
     }
@@ -1423,7 +1444,7 @@ struct ScreenroomReportView: View {
             Divider()
             Text(provenanceLine)
                 .font(.caption)
-                .foregroundStyle(.tertiary)
+                .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
                 .padding(.top, 4)
         }
@@ -1451,12 +1472,15 @@ struct ScreenroomReportView: View {
     @ViewBuilder
     private func section<Content: View>(_ title: String, trailing: String? = nil,
                                         @ViewBuilder content: () -> Content) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .firstTextBaseline) {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack(alignment: .firstTextBaseline, spacing: 16) {
                 eyebrow(title)
-                Spacer()
+                Spacer(minLength: 0)
                 if let trailing {
-                    Text(trailing).font(.caption2).foregroundStyle(.tertiary)
+                    Text(trailing)
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.trailing)
                 }
             }
             content()
@@ -1465,8 +1489,8 @@ struct ScreenroomReportView: View {
 
     private func eyebrow(_ text: String) -> some View {
         Text(text)
-            .font(.system(size: 10, weight: .semibold, design: .monospaced))
-            .tracking(0.8)
+            .font(.system(size: 12, weight: .semibold, design: .monospaced))
+            .tracking(1)
             .foregroundStyle(Brand.text)
     }
 

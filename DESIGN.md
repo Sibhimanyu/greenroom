@@ -28,6 +28,33 @@ ships, not by inventing a new look.
   - Green arrow = stays on the machine. Amber arrow = crosses to the internet.
   - Thick stroke = a continuous stream. Thin stroke = a one-shot message.
 
+## Logo
+
+The mark (chosen 2026-09-24) is one heavy G whose right side is a person: a lime
+square head over a body the width of the stroke, and one arm raised into the
+counter. The full rules are in
+`Branding/greenroom-mark/greenroom-brand-guidelines.ai`; the masters and every
+export are in `Branding/greenroom-mark/`. Start from the master, never redraw.
+
+- **Unit:** x, the G's stroke. The head is x square, the body x wide, the arm
+  0.6x. Keep x of clear space on every side.
+- **Colour:** deep `#00401C` for the structure, lime `#78C000` for the head.
+  Reversed: white structure, lime head. One colour: all deep or all white. On a
+  lime ground use the deep-only version.
+- **Name:** always written in full as "Greenroom", in the bold system face, in
+  one colour: `--brand-deep` on light, white on dark. Never lime, never
+  two-tone, and the mark never stands in for the name's G.
+- **Lockup:** the gap to the name is x and the name's capitals are 0.55 of the
+  mark's height. The site header is a 26px mark, 19px name, 6px gap.
+- **App icon:** the reversed mark on a deep tile (824 on 1024, r 185), mark 520
+  wide. At 16 and 32px the mark is drawn 620 wide so the head and arm stay open.
+- **Minimum size:** 24px tall on screen, 8mm in print. Smaller than that, use
+  the small-size app icon.
+- **Files:** lockups `Branding/greenroom-logo{,-dark}.{png,svg}`, mark
+  `Branding/greenroom-mark.{png,svg}`, site `docs/logo-mark.png`,
+  `docs/favicon.png`, `docs/apple-touch-icon.png`, app
+  `Branding/greenroom-mark/Greenroom.icns`.
+
 ## Typography
 
 Two voices, on purpose. Prose is the human speaking, mono is the machine.
@@ -286,14 +313,19 @@ Ranked by user-visible impact. None of these block anything today.
 1. App accent `#5FA83C` is retired in favour of the logo pair. Update the
    colorset and `ContentView.brandGreen`. (Site side done 2026-09-03: every
    page's `--green` is `#2F6118`, `--green-hover` is `#00401C`, and the
-   how-it-works diagram strokes no longer hardcode `#3D7A22`.)
-2. Amber diagram labels under 14px move from `--net` to `--net-text` (they
+   how-it-works diagram strokes no longer hardcode `#3D7A22`.) The new mark's
+   app side (app icon, `LogoMark`, the lime colorset, a one-colour name in the
+   window header) is prepared with the app work and lands with its release.
+2. The DMG background (`Branding/dmg-background.tiff`, drawn by
+   `scripts/dmg-background.py`) still sets the retired two-tone lime name.
+   Redraw it for the new mark before the next DMG.
+3. Amber diagram labels under 14px move from `--net` to `--net-text` (they
    currently fail AA body contrast).
-3. `docs/index.html` h2 scale differs from `docs/how-it-works.html`. Adopt the
+4. `docs/index.html` h2 scale differs from `docs/how-it-works.html`. Adopt the
    canonical scale above.
-4. Border radii collapse to the four tokens.
-5. Off-scale gaps round to the 4px scale.
-6. `docs/index.html` brand logo links to `href="#"`. Point it at `index.html`.
+5. Border radii collapse to the four tokens.
+6. Off-scale gaps round to the 4px scale.
+7. `docs/index.html` brand logo links to `href="#"`. Point it at `index.html`.
 
 ## Decisions Log
 
@@ -324,3 +356,4 @@ Ranked by user-visible impact. None of these block anything today.
 | 2026-09-04 | "No AI" becomes "No cloud AI" across the transparency page | Cues runs Apple's speech and language models on the Mac, so the old chip and the "orchestrator (no AI)" label would have been false the day it shipped. The claim that survives, and is drawn, is where the models run and what crosses: the microphone stream into Greenroom is a thick green line because it never leaves; the lookups are a thin amber line because a few words do. Off by default, and the page says so at every mention. |
 | 2026-09-04 | Cues's cards are a rail block under the needs block, and a menu-bar popover otherwise | The reference display is the teacher-only surface the panel already owns, and the rail's discipline (fixed pool, in-place updates, one measuring/placing walk) is exactly what a poll-driven card list needs. With no panel, an AppKit status item and popover because a SwiftUI menu-bar extra with a window style activates the app, and a card must never pull Greenroom in front of the page being read. Exactly one waveform in the menu bar at a time: on GR while the rail is the surface, on its own item otherwise. |
 | 2026-09-03 | The timeline page uses one series and a step line, with releases as markers | The only honest quantity available for every release is the size of the code; a step line says "this is what shipped, until the next one shipped" rather than implying growth between releases. Single series, so brand green carries it and no legend is needed; three direct labels tell the story, the table carries the rest. The build that never launched is a hollow amber marker, never red: danger is reserved for the "what it never does" claims. |
+| 2026-09-24 | A new mark: one G with the teacher in it, and the name in one deep green | The old mark was a gradient cascade of panes into a device, which broke this document's own "no gradients" rule. The new one is flat, built on a single unit (the G's stroke), survives at 16px with its own small-size artwork, and reads as a letter and a person without forming a second letter ("Ei", "Gi" and "Gj" were all tried and rejected). The name drops the lime "Green" because lime fails as text at every size. |

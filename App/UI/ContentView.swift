@@ -171,6 +171,10 @@ struct ContentView: View {
         }
         .padding(20)
         .frame(minWidth: Self.minimumWindowWidth, minHeight: preferredWindowHeight)
+        // Pinned to the top while the window catches up to a new height.
+        // Without it, the content is taller than the window for the length
+        // of the resize and gets centred - everything jumps up, then back.
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         // The window OPENS at the preferred size every time, regardless
         // of the size it was closed at (explicit request) - SwiftUI
         // persists scene geometry across launches and defaultSize only
@@ -284,7 +288,19 @@ struct ContentView: View {
         let width = animated ? content.width : Self.defaultWindowWidth
         let target = NSRect(x: content.minX, y: content.maxY - preferredWindowHeight,
                             width: width, height: preferredWindowHeight)
-        window.setFrame(window.frameRect(forContentRect: target), display: true, animate: animated)
+        let frame = window.frameRect(forContentRect: target)
+        guard animated else {
+            window.setFrame(frame, display: true)
+            return
+        }
+        // The animator proxy, not setFrame(_:display:animate:). That one runs
+        // its own blocking loop, so the click that asked for the resize sat
+        // unanswered until the window finished moving.
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0.25 // DESIGN.md: layout moves, ease-in-out
+            context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+            window.animator().setFrame(frame, display: true)
+        }
     }
 
     private var meetingSection: some View {
@@ -464,8 +480,13 @@ struct ContentView: View {
                 statusShown.toggle()
             } label: {
                 HStack(spacing: 6) {
-                    Image(systemName: statusShown ? "chevron.down" : "chevron.right")
+                    // One glyph, turned - not chevron.right swapped for
+                    // chevron.down. The two are different widths, so the
+                    // swap nudged "Status" sideways on every click.
+                    Image(systemName: "chevron.right")
                         .font(.system(size: 9, weight: .semibold))
+                        .rotationEffect(.degrees(statusShown ? 90 : 0))
+                        .frame(width: 10)
                     Text("Status")
                     // The count is a machine fact, so mono - and it is what says
                     // "something happened" while the log is closed.
@@ -475,6 +496,14 @@ struct ContentView: View {
                             .foregroundStyle(.secondary)
                     }
                 }
+                // A plain button only takes clicks on its drawn pixels, so
+                // the gap between chevron and word, and the space around
+                // them, used to fall through. The whole row is the target,
+                // plus 4pt above and below that the layout never sees - the
+                // window height is measured, and the row must not grow.
+                .padding(.vertical, 4)
+                .contentShape(Rectangle())
+                .padding(.vertical, -4)
             }
             .buttonStyle(.plain)
             .font(.callout)

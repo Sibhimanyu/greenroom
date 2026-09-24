@@ -290,8 +290,17 @@ struct ContentView: View {
         guard let window = NSApp.windows.first(where: { $0.title == "Greenroom" }) else { return }
         let content = window.contentRect(forFrameRect: window.frame)
         let width = animated ? content.width : Self.defaultWindowWidth
-        let target = NSRect(x: content.minX, y: content.maxY - preferredWindowHeight,
-                            width: width, height: preferredWindowHeight)
+        // The content view is full-size: it runs under the title bar, so
+        // contentRect is the whole window. preferredWindowHeight is the
+        // content BELOW the title bar, so the bar's height goes on top.
+        // Without it every resize aimed 32pt short of what SwiftUI would
+        // allow, then snapped the rest of the way (or squeezed the content)
+        // once the animation ended - the jitter on Status and on the
+        // New/Join switch.
+        let titleBar = window.frame.height - window.contentLayoutRect.height
+        let height = preferredWindowHeight + titleBar
+        let target = NSRect(x: content.minX, y: content.maxY - height,
+                            width: width, height: height)
         let frame = window.frameRect(forContentRect: target)
         guard animated else {
             window.setFrame(frame, display: true)

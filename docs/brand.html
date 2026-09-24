@@ -1,0 +1,498 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Greenroom brand — the mark, the colours, and why</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Greenroom's brand guidelines and design decisions: the mark and how it is built, clear space, colour, the app icon, the name, type, and the reasons behind each choice.">
+<link rel="icon" type="image/png" href="favicon.png?v=4">
+<link rel="apple-touch-icon" href="apple-touch-icon.png?v=4">
+<style>
+  :root {
+    --ink: #101828;
+    --body: #475467;
+    --faint: #98a2b3;
+    --line: #eaecf0;
+    --bg-soft: #f9fafb;
+    --green: #2f6118;
+    --green-hover: #00401c;
+    --green-soft: #e8f3df;
+    --lime: #78c000;
+    --net: #b9770e;
+    --net-text: #96600a;
+    --net-soft: #fdf4e3;
+    --danger: #b42318;
+  }
+
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  html, body { overflow-x: clip; }
+  body {
+    margin: 0; background: #fff; color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    font-size: 16px; line-height: 1.6; -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 1120px; margin: 0 auto; padding: 0 24px; }
+  a { color: var(--green); text-decoration: none; }
+  a:hover { color: var(--green-hover); }
+  :focus-visible { outline: 2px solid var(--green); outline-offset: 3px; border-radius: 4px; }
+  h1, h2, h3, h4 { text-wrap: balance; margin: 0; }
+  p { margin: 0; }
+  .mono, code { font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+  code { font-size: 12.5px; background: var(--bg-soft); border: 1px solid var(--line); border-radius: 6px; padding: 1px 5px; }
+  img { display: block; max-width: 100%; height: auto; }
+
+  .btn {
+    display: inline-flex; align-items: center; gap: 8px;
+    background: var(--green); color: #fff; font-weight: 600; font-size: 15px;
+    padding: 12px 22px; border-radius: 10px; transition: background .2s, transform .15s;
+  }
+  .btn:hover { background: var(--green-hover); color: #fff; transform: translateY(-1px); }
+
+  /* ---------- nav ---------- */
+  nav.top {
+    position: sticky; top: 0; background: rgba(255,255,255,.92);
+    backdrop-filter: blur(10px); border-bottom: 1px solid var(--line); z-index: 50;
+  }
+  .nav-inner { display: flex; align-items: center; height: 64px; gap: 32px; }
+  .brand { display: flex; align-items: center; gap: 6px; font-weight: 700; font-size: 19px; color: var(--green-hover); } /* the lockup: gap x, name in --brand-deep (Branding/greenroom-mark) */
+  .brand img { display: block; }
+  .nav-links { display: flex; gap: 26px; margin: 0 auto; }
+  .nav-links a { color: var(--body); font-size: 14.5px; font-weight: 500; }
+  .nav-links a:hover, .nav-links a[aria-current] { color: var(--ink); }
+  .nav-links a[aria-current] { font-weight: 600; }
+  .nav-cta { display: flex; align-items: center; gap: 18px; }
+  .nav-cta .btn { padding: 9px 18px; font-size: 14px; }
+  .nav-cta .gh { color: var(--body); font-size: 14.5px; font-weight: 500; }
+  .nav-cta .gh:hover { color: var(--ink); }
+  @media (max-width: 760px) {
+    .nav-inner { flex-wrap: wrap; height: auto; padding: 10px 24px 12px; row-gap: 8px; }
+    .nav-links { order: 3; width: 100%; gap: 20px; margin: 0; }
+    .nav-cta { margin-left: auto; }
+    .nav-cta .gh { display: none; }
+  }
+
+  /* ---------- hero ---------- */
+  .page-hero { padding: 60px 0 8px; text-align: center; }
+  .eyebrow {
+    display: inline-flex; align-items: center; gap: 8px;
+    background: var(--green-soft); color: var(--green);
+    font-size: 13px; font-weight: 600; padding: 5px 12px; border-radius: 999px; margin-bottom: 20px;
+  }
+  h1 { font-size: clamp(30px, 4.6vw, 46px); line-height: 1.1; font-weight: 800; letter-spacing: -.025em; max-width: 22ch; margin: 0 auto; }
+  .page-hero .lede { margin: 18px auto 0; font-size: 17.5px; color: var(--body); max-width: 60ch; }
+  .hero-mark { width: 132px; margin: 34px auto 0; }
+  .contents { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px 8px; margin: 30px auto 0; max-width: 860px; }
+  .contents a {
+    font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 12px; letter-spacing: .02em;
+    color: var(--body); border: 1px solid var(--line); border-radius: 999px; padding: 5px 11px; background: #fff;
+  }
+  .contents a:hover { color: var(--green); border-color: var(--green); }
+  .contents a b { color: var(--green); font-weight: 700; margin-right: 6px; }
+
+  /* ---------- sections ---------- */
+  section { padding: 56px 0; }
+  section.soft { background: var(--bg-soft); border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+  .sec-head { max-width: 720px; margin-bottom: 28px; }
+  .kicker {
+    font-family: ui-monospace, "SF Mono", Menlo, monospace; text-transform: uppercase; letter-spacing: .08em;
+    color: var(--green); font-size: 12.5px; font-weight: 700; margin-bottom: 8px;
+  }
+  h2 { font-size: clamp(24px, 3.2vw, 32px); font-weight: 800; letter-spacing: -.02em; line-height: 1.15; }
+  .sec-head p { margin-top: 12px; color: var(--body); font-size: 16.5px; }
+  h3 { font-size: 16.5px; font-weight: 700; margin-bottom: 6px; }
+
+  /* ---------- frames (DESIGN.md: 1px --line, r 14, 18-20 padding) ---------- */
+  .frame { border: 1px solid var(--line); border-radius: 14px; background: #fff; padding: 18px; }
+  .frame img { margin: 0 auto; }
+  .caption { margin-top: 12px; font-size: 14.5px; color: var(--body); max-width: 76ch; }
+
+  /* ---------- cards ---------- */
+  .grid { display: grid; gap: 14px; }
+  .grid.two { grid-template-columns: repeat(2, 1fr); }
+  .grid.three { grid-template-columns: repeat(3, 1fr); }
+  .grid.four { grid-template-columns: repeat(4, 1fr); }
+  @media (max-width: 900px) { .grid.four { grid-template-columns: repeat(2, 1fr); } .grid.three { grid-template-columns: 1fr; } }
+  @media (max-width: 640px) { .grid.two, .grid.four { grid-template-columns: 1fr; } }
+  .card { border: 1px solid var(--line); border-radius: 14px; padding: 18px 20px; background: #fff; }
+  .card p, .card li { font-size: 14.5px; color: var(--body); }
+  .card ul { margin: 6px 0 0; padding-left: 18px; display: flex; flex-direction: column; gap: 5px; }
+  .card strong { color: var(--ink); font-weight: 600; }
+
+  /* the mark's three readings */
+  .reading { text-align: left; }
+  .reading .tile { background: var(--bg-soft); border-radius: 10px; padding: 8px; margin-bottom: 14px; }
+  .reading .tile img { width: 100%; max-width: 265px; margin: 0 auto; }
+
+  /* versions */
+  .version .tile { border-radius: 10px; padding: 34px 0; margin-bottom: 12px; border: 1px solid var(--line); }
+  .version .tile img { width: 88px; margin: 0 auto; }
+  .version .deep { background: var(--green-hover); border-color: var(--green-hover); }
+  .version .ink { background: var(--ink); border-color: var(--ink); }
+
+  /* ---------- colour swatches ---------- */
+  .swatch .chip { height: 108px; border-radius: 10px; margin-bottom: 12px; border: 1px solid transparent; display: flex; align-items: flex-end; padding: 12px; font-weight: 700; font-size: 15px; }
+  .swatch .hex { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 14px; color: var(--ink); }
+  .swatch .meta { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 12.5px; color: var(--body); margin-top: 2px; }
+  .swatch p { margin-top: 8px; font-size: 14px; color: var(--body); }
+  .grid.five { grid-template-columns: repeat(5, 1fr); }
+  @media (max-width: 960px) { .grid.five { grid-template-columns: repeat(3, 1fr); } }
+  @media (max-width: 640px) { .grid.five { grid-template-columns: repeat(2, 1fr); } }
+
+  /* ---------- the icon at its real sizes ---------- */
+  .sizes { display: flex; align-items: flex-end; gap: 28px; flex-wrap: wrap; }
+  .sizes figure { margin: 0; text-align: center; }
+  .sizes figcaption { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 12px; color: var(--body); margin-top: 8px; }
+  .sizes.dark { background: #1e1e1e; border-radius: 14px; padding: 20px 24px; }
+  .sizes.dark figcaption { color: var(--faint); }
+
+  /* lockups */
+  .lockup-light { padding: 34px 28px; }
+  .lockup-dark { padding: 34px 28px; background: var(--green-hover); border-color: var(--green-hover); }
+  .lockup-light img, .lockup-dark img { width: min(360px, 100%); margin: 0; }
+
+  /* ---------- tables ---------- */
+  .table-scroll { overflow-x: auto; border: 1px solid var(--line); border-radius: 14px; background: #fff; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th, td { text-align: left; vertical-align: top; padding: 11px 14px; border-bottom: 1px solid var(--line); }
+  th { font-size: 11.5px; text-transform: uppercase; letter-spacing: .04em; color: var(--faint); font-weight: 700; }
+  td { color: var(--body); }
+  td strong { color: var(--ink); font-weight: 600; }
+  td.date { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 12.5px; white-space: nowrap; color: var(--body); }
+  tr:last-child td { border-bottom: 0; }
+  .table-note { margin-top: 12px; font-size: 13.5px; color: var(--body); max-width: 76ch; }
+
+  /* rules lists */
+  .rules { max-width: 860px; border-top: 1px solid var(--line); }
+  .rule { display: grid; grid-template-columns: 170px 1fr; gap: 0 24px; padding: 16px 0; border-bottom: 1px solid var(--line); }
+  .rule .k { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 12.5px; letter-spacing: .06em; text-transform: uppercase; color: var(--green); padding-top: 2px; }
+  .rule p { font-size: 15px; color: var(--body); max-width: 66ch; }
+  .rule p strong { color: var(--ink); }
+  @media (max-width: 640px) { .rule { grid-template-columns: 1fr; gap: 4px; } }
+
+  /* callout: the one hard rule */
+  .callout { background: #fff; border: 1px solid var(--line); border-left: 3px solid var(--danger); border-radius: 14px; padding: 16px 20px; max-width: 860px; margin-top: 22px; }
+  .callout h3 { font-size: 15px; margin-bottom: 6px; }
+  .callout p { font-size: 14.5px; color: var(--body); }
+
+  /* downloads */
+  .dl a { display: flex; justify-content: space-between; gap: 16px; align-items: baseline; padding: 13px 0; border-bottom: 1px solid var(--line); color: var(--ink); }
+  .dl a:hover .f { color: var(--green); }
+  .dl .f { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 13.5px; }
+  .dl .w { font-size: 14px; color: var(--body); text-align: right; }
+
+  footer { border-top: 1px solid var(--line); padding: 30px 0 38px; font-size: 14px; color: var(--faint); }
+  footer a { color: var(--body); }
+  footer a:hover { color: var(--ink); }
+  .footer-inner { width: 100%; display: flex; justify-content: space-between; align-items: baseline; gap: 16px; flex-wrap: wrap; }
+  @media (max-width: 700px) { .footer-inner { justify-content: center; text-align: center; } }
+  @media (prefers-reduced-motion: reduce) { .btn:hover { transform: none; } html { scroll-behavior: auto; } }
+</style>
+</head>
+<body>
+
+<nav class="top">
+  <div class="wrap nav-inner">
+    <a class="brand" href="index.html">
+      <img src="logo-mark.png" width="25" height="26" alt="">
+      <span>Greenroom</span>
+    </a>
+    <div class="nav-links">
+      <a href="index.html">Overview</a>
+      <a href="guide.html">Guide</a>
+      <a href="how-it-works.html">Privacy &amp; safety</a>
+      <a href="timeline.html">Timeline</a>
+      <a href="brand.html" aria-current="page">Brand</a>
+    </div>
+    <div class="nav-cta">
+      <a class="gh" href="https://github.com/Sibhimanyu/greenroom">GitHub</a>
+      <a class="btn" href="https://github.com/Sibhimanyu/greenroom/releases/download/v0.6.0/Greenroom-0.6.0.dmg">Download</a>
+    </div>
+  </div>
+</nav>
+
+<header class="page-hero">
+  <div class="wrap">
+    <span class="eyebrow">Brand guidelines · v1.0 · September 2026</span>
+    <h1>One G, and someone in it</h1>
+    <p class="lede">The Greenroom mark, how it is built, the colours and type around it, and the reasons behind each choice. Everything here comes from the same geometry as the files in <code>Branding/greenroom-mark</code>.</p>
+    <img class="hero-mark" src="brand/mark-colour.svg" width="132" height="137" alt="The Greenroom mark: a heavy green G whose right side is a person, with a lime square head and one arm raised.">
+    <nav class="contents" aria-label="On this page">
+      <a href="#mark"><b>01</b>The mark</a>
+      <a href="#construction"><b>02</b>Construction</a>
+      <a href="#space"><b>03</b>Clear space</a>
+      <a href="#colour"><b>04</b>Colour</a>
+      <a href="#versions"><b>05</b>Versions</a>
+      <a href="#icon"><b>06</b>App icon</a>
+      <a href="#name"><b>07</b>The name</a>
+      <a href="#type"><b>08</b>Type</a>
+      <a href="#misuse"><b>09</b>Misuse</a>
+      <a href="#app"><b>10</b>In the app</a>
+      <a href="#decisions"><b>11</b>Decisions</a>
+      <a href="#files"><b>12</b>Files</a>
+    </nav>
+  </div>
+</header>
+
+<section id="mark">
+  <div class="wrap">
+    <div class="sec-head">
+      <div class="kicker">01 · The mark</div>
+      <h2>A letter, a person, and a gesture</h2>
+      <p>Greenroom sets up a screen-shared class in one click. The mark is the letter G drawn as one heavy stroke, with the teacher standing in it: a square head, a body the width of the stroke, and an arm raised to greet the room.</p>
+    </div>
+    <div class="grid three">
+      <div class="card reading">
+        <div class="tile"><img src="brand/reading-1.png" width="265" height="195" alt="The G highlighted: the back, both arms and the body."></div>
+        <h3>The letter</h3>
+        <p>A single heavy G. Its right-hand side doubles as the body, so the letter and the person are one shape, never two characters side by side.</p>
+      </div>
+      <div class="card reading">
+        <div class="tile"><img src="brand/reading-2.png" width="265" height="195" alt="The person highlighted: the lime head, the body and the arm."></div>
+        <h3>The person</h3>
+        <p>The lime square is the head, dropped into the G's mouth and centred over the body. It is the only lime in the mark and the first thing the eye finds.</p>
+      </div>
+      <div class="card reading">
+        <div class="tile"><img src="brand/reading-3.png" width="265" height="195" alt="The arm highlighted, rising from the shoulder."></div>
+        <h3>The gesture</h3>
+        <p>The arm rises from the shoulder into the counter, where a G's crossbar would be. Level, it read as a letter; raised, it reads as someone ready and welcoming.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="construction" class="soft">
+  <div class="wrap">
+    <div class="sec-head">
+      <div class="kicker">02 · Construction</div>
+      <h2>Built on one measurement</h2>
+      <p>Every part is sized from <strong>x</strong>, the stroke of the G. The head is x square and the body is x wide, so the person and the letter are drawn with the same pen.</p>
+    </div>
+    <div class="frame"><img src="brand/construction.png" width="860" height="670" style="max-width:min(640px, 100%)" alt="The mark with dimension lines: x for the stroke, head and body, 0.32x for the mouth, 0.17x for the neck, and a red centre line through the head and body." loading="lazy"></div>
+    <div class="table-scroll" style="margin-top:18px">
+      <table>
+        <thead><tr><th>Part</th><th>Measure</th></tr></thead>
+        <tbody>
+          <tr><td><strong>x</strong></td><td>235 on the mark's 1000 grid: the stroke of the G</td></tr>
+          <tr><td><strong>Mark</strong></td><td>965 × 1000 (about 4.1x by 4.25x)</td></tr>
+          <tr><td><strong>Head</strong></td><td>x square, corner radius 75, on the same axis as the body</td></tr>
+          <tr><td><strong>Body</strong></td><td>x wide, 0.17x below the head, ending on the G's base</td></tr>
+          <tr><td><strong>Arm</strong></td><td>0.6x thick, raised 12.6° from the shoulder, round tip</td></tr>
+          <tr><td><strong>Corners</strong></td><td>outer radius 240, bottom-right 140, inner 40</td></tr>
+          <tr><td><strong>Mouth</strong></td><td>the top arm stops 0.32x short of the head</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<section id="space">
+  <div class="wrap">
+    <div class="sec-head">
+      <div class="kicker">03 · Clear space and minimum size</div>
+      <h2>Give it room</h2>
+      <p>Keep at least <strong>x</strong> (one head) clear on every side. The mark stays whole at <strong>24 px</strong> tall on screen and <strong>8 mm</strong> in print. Smaller than that, use the app icon's small-size artwork instead of the bare mark.</p>
+    </div>
+    <div class="frame"><img src="brand/clear-space.png" width="1720" height="670" alt="The mark inside a dashed boundary one head-width away on every side, beside the mark at 24, 48 and 8 mm sizes." loading="lazy"></div>
+  </div>
+</section>
+
+<section id="colour" class="soft">
+  <div class="wrap">
+    <div class="sec-head">
+      <div class="kicker">04 · Colour</div>
+      <h2>Two greens and white</h2>
+      <p>The mark is a deep structural green with a lime head. Text that has to be green uses its own, darker green. The same tokens run the site and the app.</p>
+    </div>
+    <div class="grid five">
+      <div class="card swatch"><div class="chip" style="background:#00401c;color:#fff">Deep</div><div class="hex">#00401C</div><div class="meta">RGB 0 · 64 · 28 · 12.0:1</div><p>The mark's structure, reversed grounds, high emphasis.</p></div>
+      <div class="card swatch"><div class="chip" style="background:#78c000;color:#00401c">Lime</div><div class="hex">#78C000</div><div class="meta">RGB 120 · 192 · 0 · 2.25:1</div><p>The head. Fills and tints only, never text.</p></div>
+      <div class="card swatch"><div class="chip" style="background:#fff;color:#101828;border-color:#eaecf0">White</div><div class="hex">#FFFFFF</div><div class="meta">RGB 255 · 255 · 255</div><p>Grounds, and the mark reversed on deep.</p></div>
+      <div class="card swatch"><div class="chip" style="background:#2f6118;color:#fff">Brand green</div><div class="hex">#2F6118</div><div class="meta">RGB 47 · 97 · 24 · 7.38:1</div><p>Links, buttons, eyebrows: green that is text.</p></div>
+      <div class="card swatch"><div class="chip" style="background:#101828;color:#fff">Ink</div><div class="hex">#101828</div><div class="meta">RGB 16 · 24 · 40 · 17.7:1</div><p>Headings and primary text.</p></div>
+    </div>
+    <div class="callout">
+      <h3>Lime is never text</h3>
+      <p>On white it measures 2.25:1, under the bar for text at every size. It is the head of the mark and a fill. Anything green with words in it uses <code>#2F6118</code>. Contrast figures are against white. No CMYK or Pantone values are defined yet; proof print from the hex values.</p>
+    </div>
+  </div>
+</section>
+
+<section id="versions">
+  <div class="wrap">
+    <div class="sec-head">
+      <div class="kicker">05 · Versions</div>
+      <h2>Four versions, one shape</h2>
+      <p>Use the colour mark wherever you can. The others exist for grounds and processes where two colours will not hold.</p>
+    </div>
+    <div class="grid four">
+      <div class="card version"><div class="tile"><img src="brand/mark-colour.svg" width="88" height="91" alt="Colour mark on white"></div><h3>Colour</h3><p>On white and light grounds. The default.</p></div>
+      <div class="card version"><div class="tile deep"><img src="brand/mark-reversed.svg" width="88" height="91" alt="Reversed mark on deep green"></div><h3>Reversed</h3><p>On deep green and dark grounds. The lime head stays lime.</p></div>
+      <div class="card version"><div class="tile"><img src="brand/mark-deep.svg" width="88" height="91" alt="Deep green only mark"></div><h3>Deep green only</h3><p>One-colour print, embossing, stamps, and on a lime ground.</p></div>
+      <div class="card version"><div class="tile ink"><img src="brand/mark-white.svg" width="88" height="91" alt="White only mark on ink"></div><h3>White only</h3><p>One colour on dark or photographic grounds.</p></div>
+    </div>
+  </div>
+</section>
+
+<section id="icon" class="soft">
+  <div class="wrap">
+    <div class="sec-head">
+      <div class="kicker">06 · App icon</div>
+      <h2>The app icon</h2>
+      <p>The reversed mark on a deep green tile: an 824-point tile on a 1024 canvas, corner radius 185, mark 520 wide. At 32 px and below the mark is drawn 620 wide, so the head and the arm stay open where the icon is seen most, in the Dock and in menus.</p>
+    </div>
+    <div class="grid two">
+      <div class="frame"><img src="brand/app-icon.svg" width="280" height="280" alt="The Greenroom app icon: the reversed mark on a deep green rounded tile."></div>
+      <div>
+        <div class="frame">
+          <div class="sizes">
+            <figure><img src="brand/icon-128@2x.png" width="128" height="128" alt=""><figcaption>128</figcaption></figure>
+            <figure><img src="brand/icon-64@2x.png" width="64" height="64" alt=""><figcaption>64</figcaption></figure>
+            <figure><img src="brand/icon-32@2x.png" width="32" height="32" alt=""><figcaption>32 *</figcaption></figure>
+            <figure><img src="brand/icon-16@2x.png" width="16" height="16" alt=""><figcaption>16 *</figcaption></figure>
+          </div>
+        </div>
+        <div class="sizes dark" style="margin-top:14px">
+          <figure><img src="brand/icon-64@2x.png" width="64" height="64" alt=""><figcaption>64</figcaption></figure>
+          <figure><img src="brand/icon-32@2x.png" width="32" height="32" alt=""><figcaption>32 *</figcaption></figure>
+          <figure><img src="brand/icon-16@2x.png" width="16" height="16" alt=""><figcaption>16 *</figcaption></figure>
+        </div>
+        <p class="caption">Shown at actual size. * The small-size artwork. The app ships them all in <code>Greenroom.icns</code>. The menu bar uses the mark alone, as a one-colour template image 16 points tall.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="name">
+  <div class="wrap">
+    <div class="sec-head">
+      <div class="kicker">07 · The name</div>
+      <h2>Always written in full</h2>
+      <p>Greenroom is set in the system face, bold, tracked in slightly, in one colour: deep green on light, white on dark.</p>
+    </div>
+    <div class="grid two">
+      <div class="frame lockup-light"><img src="brand/lockup.svg" width="360" height="87" alt="The horizontal lockup: the mark beside the name Greenroom in deep green."></div>
+      <div class="frame lockup-dark"><img src="brand/lockup-dark.svg" width="360" height="87" alt="The reversed lockup: the mark and the name Greenroom in white on deep green."></div>
+    </div>
+    <div class="rules" style="margin-top:22px">
+      <div class="rule"><div class="k">Gap</div><p>The space between the mark and the name is <strong>x</strong>. The name's capitals are 0.55 of the mark's height.</p></div>
+      <div class="rule"><div class="k">Colour</div><p><strong>One colour.</strong> Never a two-tone "Green" and "room", and never lime.</p></div>
+      <div class="rule"><div class="k">In full</div><p>The mark never stands in for the name's G. "reenroom" beside a mark reads as a misspelling, to screen readers and search engines as much as to people.</p></div>
+      <div class="rule"><div class="k">Header</div><p>This site's header is the lockup at small size: a 26 px mark, a 19 px name, a 6 px gap.</p></div>
+    </div>
+  </div>
+</section>
+
+<section id="type" class="soft">
+  <div class="wrap">
+    <div class="sec-head">
+      <div class="kicker">08 · Type</div>
+      <h2>The system voice</h2>
+      <p>Two voices, on purpose. Prose is the human speaking, in the Mac's own face. Mono is the machine: paths, ports, versions, anything you could paste into a terminal.</p>
+    </div>
+    <div class="table-scroll">
+      <table>
+        <thead><tr><th>Role</th><th>Size</th><th>Weight</th><th>Tracking</th><th>Line height</th></tr></thead>
+        <tbody>
+          <tr><td><strong>h1</strong></td><td>30 to 46 px</td><td>800</td><td>−0.025em</td><td>1.1</td></tr>
+          <tr><td><strong>h2</strong></td><td>24 to 32 px</td><td>800</td><td>−0.02em</td><td>1.15</td></tr>
+          <tr><td><strong>h3</strong></td><td>15.5 to 17 px</td><td>700</td><td>0</td><td>1.3</td></tr>
+          <tr><td><strong>Lede</strong></td><td>17.5 px</td><td>400</td><td>0</td><td>1.6</td></tr>
+          <tr><td><strong>Body</strong></td><td>16 px</td><td>400</td><td>0</td><td>1.6</td></tr>
+          <tr><td><strong>Caption</strong></td><td>14.5 px</td><td>400</td><td>0</td><td>1.5</td></tr>
+          <tr><td><strong>Eyebrow</strong></td><td>10 to 13.5 px, mono, uppercase</td><td>700</td><td>0.08em</td><td>1.4</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="table-note">Display, body and UI: SF Pro through the system stack. Machine facts and section eyebrows: SF Mono. The eyebrow, like <span class="mono" style="color:var(--green);font-size:12.5px;letter-spacing:.08em">01 · THE MARK</span>, is the closest thing the brand has to a typographic signature.</p>
+  </div>
+</section>
+
+<section id="misuse">
+  <div class="wrap">
+    <div class="sec-head">
+      <div class="kicker">09 · Backgrounds and misuse</div>
+      <h2>Where it sits, and what not to do</h2>
+      <p>Keep contrast high and grounds plain. On lime, switch to the deep-green-only mark so the head does not vanish. The mark only works as drawn: each of the mistakes below breaks the letter, the person, or both.</p>
+    </div>
+    <div class="grid">
+      <div class="frame"><img src="brand/backgrounds.png" width="1720" height="670" alt="Approved grounds: white, soft grey, deep green, ink, and lime with the deep-only mark. Avoided: mid green, amber, and a low-contrast tint." loading="lazy"></div>
+      <div class="frame"><img src="brand/misuse.png" width="1720" height="672" alt="Nine mistakes: stretching, rotating, recolouring, gradients, outlining, moving the pieces, setting the name in lime, low-contrast grounds, and using the mark as the name's G." loading="lazy"></div>
+    </div>
+  </div>
+</section>
+
+<section id="app" class="soft">
+  <div class="wrap">
+    <div class="sec-head">
+      <div class="kicker">10 · In the app</div>
+      <h2>The brand stays in the mark</h2>
+      <p>In the app the brand is the mark and the name. The controls stay quiet around it.</p>
+    </div>
+    <div class="rules">
+      <div class="rule"><div class="k">Accent</div><p>The app's tint is <code>#5FA83C</code>, not the logo's lime. The lime is the head of the mark and a fill.</p></div>
+      <div class="rule"><div class="k">One green button</div><p>In the main window's button row only <strong>Start</strong> is green. End Session, Record, Sessions and Screenroom are the standard neutral macOS button.</p></div>
+      <div class="rule"><div class="k">Header</div><p>The mark is sized to the name beside it and has a reversed version for dark appearance. Both are vector, so they stay sharp at the size shown.</p></div>
+      <div class="rule"><div class="k">Green text</div><p>In light appearance, green text uses <code>#2F6118</code>. The accent is too light to read as text on white.</p></div>
+      <div class="rule"><div class="k">Menu bar</div><p>The mark alone, as a one-colour template image, so macOS tints it like its own items. Recording swaps it for a record glyph and REC: a change of shape, not of colour.</p></div>
+    </div>
+  </div>
+</section>
+
+<section id="decisions">
+  <div class="wrap">
+    <div class="sec-head">
+      <div class="kicker">11 · Design decisions</div>
+      <h2>What was chosen, and why</h2>
+      <p>The brand's decisions and the reasons behind them, oldest first. The full log, including every product decision, lives in <a href="https://github.com/Sibhimanyu/greenroom/blob/main/DESIGN.md#decisions-log">DESIGN.md</a>.</p>
+    </div>
+    <div class="table-scroll">
+      <table>
+        <thead><tr><th>Date</th><th>Decision</th><th>Why</th></tr></thead>
+        <tbody>
+          <tr><td class="date">2026-08-18</td><td><strong>Codify the shipped system instead of inventing a new one</strong></td><td>Two live pages and a shipped app already shared a coherent language. A rebrand would have orphaned all three.</td></tr>
+          <tr><td class="date">2026-08-18</td><td><strong>The brand greens become a two-role pair</strong></td><td>Four unrelated greens existed across the site, the app and the logo. The logo already paired a deep green with a lime highlight; splitting them by role also fixed link contrast.</td></tr>
+          <tr><td class="date">2026-08-18</td><td><strong>Lime is barred from text</strong></td><td>It measures 2.25:1 on white, failing at every text size. It is safe as a fill.</td></tr>
+          <tr><td class="date">2026-08-18</td><td><strong>Keep the system font</strong></td><td>This is a Mac utility, so SF reads as native to the platform the product ships on, not as a skipped typography decision.</td></tr>
+          <tr><td class="date">2026-08-18</td><td><strong>Mono becomes the eyebrow's voice</strong></td><td>A typographic signature without leaving the platform font, and it matches the technical honesty of the privacy page.</td></tr>
+          <tr><td class="date">2026-09-24</td><td><strong>A new mark: one G with the teacher in it</strong></td><td>The old mark was a gradient cascade of panes into a device, which broke the brand's own "no gradients" rule. The new one is flat, built on one unit, and survives at 16 px with its own small-size artwork.</td></tr>
+          <tr><td class="date">2026-09-24</td><td><strong>Rejected: anything that reads as two letters</strong></td><td>A head on a narrow body beside a G read as "Ei", and later "Gi". A body dropping below the base read as "Gj". The chosen mark keeps the person inside one shape.</td></tr>
+          <tr><td class="date">2026-09-24</td><td><strong>The raised arm, not the level one</strong></td><td>The designer moved the head into the G's mouth and raised the arm from the shoulder by hand. It gave the figure life without breaking the letter, and it became the final.</td></tr>
+          <tr><td class="date">2026-09-24</td><td><strong>The name in one deep green, always in full</strong></td><td>The old two-tone name set "Green" in lime, which fails as text. The mark never replaces the name's G.</td></tr>
+          <tr><td class="date">2026-09-24</td><td><strong>The app accent stays #5FA83C</strong></td><td>Tried in the app, the logo's lime as the tint turned every button, field and link bright lime, which read as highlighter rather than brand.</td></tr>
+          <tr><td class="date">2026-09-24</td><td><strong>Neutral secondary buttons</strong></td><td>Under the green tint, secondary buttons drew a mint wash in light mode and competed with Start. Start is now the one green button.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<section id="files">
+  <div class="wrap">
+    <div class="sec-head">
+      <div class="kicker">12 · Files</div>
+      <h2>Start from these, never redraw</h2>
+      <p>Everything is exact vector geometry, kept in <code>Branding/greenroom-mark</code> in the repository.</p>
+    </div>
+    <div class="dl" style="max-width:860px;border-top:1px solid var(--line)">
+      <a href="https://github.com/Sibhimanyu/greenroom/raw/main/Branding/greenroom-mark/greenroom-brand-guidelines.ai"><span class="f">greenroom-brand-guidelines.ai</span><span class="w">These guidelines as a 13-page Illustrator file</span></a>
+      <a href="https://github.com/Sibhimanyu/greenroom/raw/main/Branding/greenroom-mark/greenroom-logo-final.ai"><span class="f">greenroom-logo-final.ai</span><span class="w">The master: construction, four versions, the icon at every size</span></a>
+      <a href="https://github.com/Sibhimanyu/greenroom/raw/main/Branding/greenroom-mark/greenroom-logo-pieces.ai"><span class="f">greenroom-logo-pieces.ai</span><span class="w">Every shape on its own layer, for experiments</span></a>
+      <a href="https://github.com/Sibhimanyu/greenroom/raw/main/Branding/greenroom-mark/Greenroom.icns"><span class="f">Greenroom.icns</span><span class="w">The macOS app icon, every size</span></a>
+      <a href="https://github.com/Sibhimanyu/greenroom/tree/main/Branding/greenroom-mark/svg"><span class="f">svg/</span><span class="w">The mark in four versions, and the app icon</span></a>
+      <a href="https://github.com/Sibhimanyu/greenroom/raw/main/Branding/greenroom-logo.svg"><span class="f">greenroom-logo.svg</span><span class="w">The horizontal lockup, with the name outlined</span></a>
+      <a href="https://github.com/Sibhimanyu/greenroom/tree/main/Branding/greenroom-mark"><span class="f">Branding/greenroom-mark/</span><span class="w">Everything, including the exploration that led here</span></a>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap footer-inner">
+    <span>Greenroom. Built for the morning readers at Zoho Schools.</span>
+    <span><a href="index.html">Overview</a> · <a href="how-it-works.html">Privacy &amp; safety</a> · <a href="timeline.html">Timeline</a> · <a href="brand.html">Brand</a> · <a href="https://github.com/Sibhimanyu/greenroom">GitHub</a> · <a href="https://github.com/Sibhimanyu/greenroom/releases">Releases</a> · <a href="https://github.com/Sibhimanyu/greenroom#readme">README</a></span>
+  </div>
+</footer>
+
+<script src="download-link.js" defer></script>
+</body>
+</html>

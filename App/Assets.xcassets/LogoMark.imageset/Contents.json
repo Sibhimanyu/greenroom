@@ -1,7 +1,7 @@
 {
   "images" : [
     {
-      "filename" : "logomark.png",
+      "filename" : "logomark.pdf",
       "idiom" : "universal"
     },
     {
@@ -11,12 +11,15 @@
           "value" : "dark"
         }
       ],
-      "filename" : "logomark-dark.png",
+      "filename" : "logomark-dark.pdf",
       "idiom" : "universal"
     }
   ],
   "info" : {
     "author" : "xcode",
     "version" : 1
+  },
+  "properties" : {
+    "preserves-vector-representation" : true
   }
 }

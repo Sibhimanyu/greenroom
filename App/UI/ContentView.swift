@@ -20,6 +20,9 @@ struct ContentView: View {
     /// Hidden by default: the log is diagnostic detail, opened when something
     /// needs explaining. Not persisted - each launch starts compact.
     @State private var statusShown = false
+    /// The window's minimum height, which TRAILS a resize instead of leading
+    /// it - see resizeWindow. Starts at 0 and is set on appear.
+    @State private var heldMinHeight: CGFloat = 0
 
     /// Start is for starting: disabled while a start is in flight AND
     /// while the session is live (Stop first, then Start - pressing Start
@@ -174,7 +177,12 @@ struct ContentView: View {
         // Pinned to the top while the window catches up to a new height.
         // Without it, the content is taller than the window for the length
         // of the resize and gets centred - everything jumps up, then back.
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        // The pin only holds if this frame is never taller than the window:
+        // with the content's own minimum (preferredWindowHeight) it was, the
+        // moment the content grew, and the hosting view centred the whole
+        // thing - the header jumped 32pt on Join and lurched on Status. So
+        // its minimum is heldMinHeight, which catches up after the window.
+        .frame(maxWidth: .infinity, minHeight: heldMinHeight, maxHeight: .infinity, alignment: .top)
         // The window OPENS at the preferred size every time, regardless
         // of the size it was closed at (explicit request) - SwiftUI
         // persists scene geometry across launches and defaultSize only
@@ -304,8 +312,15 @@ struct ContentView: View {
         let frame = window.frameRect(forContentRect: target)
         guard animated else {
             window.setFrame(frame, display: true)
+            heldMinHeight = preferredWindowHeight
             return
         }
+        // The window's minimum never outruns the window: lowered before a
+        // shrink so the window can get smaller, raised only once a grow has
+        // finished. Raised early, the content outgrows its frame mid-resize
+        // and gets centred (see body).
+        let settled = preferredWindowHeight
+        if settled < heldMinHeight { heldMinHeight = settled }
         // The animator proxy, not setFrame(_:display:animate:). That one runs
         // its own blocking loop, so the click that asked for the resize sat
         // unanswered until the window finished moving.
@@ -313,6 +328,8 @@ struct ContentView: View {
             context.duration = 0.25 // DESIGN.md: layout moves, ease-in-out
             context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
             window.animator().setFrame(frame, display: true)
+        } completionHandler: {
+            heldMinHeight = settled
         }
     }
 
@@ -575,3 +592,4 @@ struct ContentView: View {
         }
     }
 }
+

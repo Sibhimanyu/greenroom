@@ -173,13 +173,13 @@ struct GreenroomApp: App {
         .defaultSize(width: 960, height: 760)
         .commandsRemoved()
 
-        // Text label rather than an image: a glyph that fails to render
-        // leaves an invisible item, and text makes the item's presence
-        // unambiguous when diagnosing "it's not showing up". (A template
-        // image of the brand mark was tried and reverted - at 16pt the
-        // mark reads worse than plain "GR".) While recording, the label
-        // flips to a record glyph + REC - the menu bar renders extras
-        // monochrome, so the SHAPE change is the indicator, not color.
+        // The mark, as a one-colour template image (MenuBarMark, a vector
+        // PDF 16pt tall), in place of the old "GR". The old mark was tried
+        // here once and reverted because its gradient cascade read worse
+        // than text at 16pt; the flat mark keeps its G, head and arm at
+        // that size. While recording, the label flips to a record glyph +
+        // REC - the menu bar renders extras monochrome, so the SHAPE change
+        // is the indicator, not color.
         MenuBarExtra {
             MenuBarView(checkForUpdates: { updaterController.checkForUpdates(nil) })
                 .environmentObject(coordinator)
@@ -198,10 +198,10 @@ struct GreenroomApp: App {
             } else if coordinator.cuesListening && coordinator.cuesOnRail {
                 HStack(spacing: 3) {
                     Image(systemName: coordinator.cuesPaused ? "waveform.slash" : "waveform")
-                    Text("GR")
+                    Image("MenuBarMark").accessibilityLabel("Greenroom")
                 }
             } else {
-                Text("GR")
+                Image("MenuBarMark").accessibilityLabel("Greenroom")
             }
         }
         .menuBarExtraStyle(.menu)

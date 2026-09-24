@@ -1,17 +1,18 @@
-"""The mark as vector PDFs for the app's asset catalog (LogoMark): sharp at any size.
+"""The mark as vector PDFs for the app's asset catalog: sharp at any size.
 
-  python3 build_pdf_mark.py OUT_DIR   ->  logomark.pdf (light), logomark-dark.pdf (dark)
+  python3 build_pdf_mark.py OUT_DIR   ->  logomark.pdf (light), logomark-dark.pdf (dark),
+                                          menubar-mark.pdf (one-colour template, 16 pt tall)
 The geometry is explore.FINAL, written straight into PDF path operators (m / l / c / h, fill).
 """
 import sys
 from explore import FINAL
 
-S = 0.1                                            # 1000-unit grid -> a 96.5 x 100 pt page
+S = 0.1                                            # 1000-unit grid -> a 96.5 x 100 pt page (LogoMark)
 W, H = FINAL["size"]
 
 def rgb(hexv): return " ".join(f"{int(hexv[i:i + 2], 16) / 255:.4f}" for i in (1, 3, 5))
 
-def stream(cols):
+def stream(cols, S=S):
     ops = []
     for _, segs, role in FINAL["parts"]:
         ops.append(f"{rgb(cols[role])} rg")
@@ -21,8 +22,8 @@ def stream(cols):
         ops.append("f")
     return "\n".join(ops).encode()
 
-def pdf(path, cols):
-    body = stream(cols)
+def pdf(path, cols, S=S):
+    body = stream(cols, S)
     objs = [b"<< /Type /Catalog /Pages 2 0 R >>",
             b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
             f"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 {W * S:.3f} {H * S:.3f}] /Contents 4 0 R /Resources << >> >>".encode(),
@@ -38,4 +39,6 @@ def pdf(path, cols):
 d = sys.argv[1] if len(sys.argv) > 1 else "."
 pdf(f"{d}/logomark.pdf", {"struct": "#00401C", "accent": "#78C000"})
 pdf(f"{d}/logomark-dark.pdf", {"struct": "#FFFFFF", "accent": "#78C000"})
+# the menu bar: one colour (a template image takes its shape from alpha), 16 pt tall like the system's own
+pdf(f"{d}/menubar-mark.pdf", {"struct": "#000000", "accent": "#000000"}, S=0.016)
 print("wrote", d)

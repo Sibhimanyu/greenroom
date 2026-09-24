@@ -11,7 +11,7 @@
 //  NSStatusItem does not.
 //
 //  Exactly one waveform in the menu bar at a time: this item while it is the
-//  surface, the "GR" label's glyph while the rail is. The coordinator decides.
+//  surface, the menu-bar mark's glyph while the rail is. The coordinator decides.
 //
 import AppKit
 

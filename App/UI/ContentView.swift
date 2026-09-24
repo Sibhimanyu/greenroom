@@ -123,6 +123,7 @@ struct ContentView: View {
                     coordinator.confirmAndStop()
                 }
                 .controlSize(.large)
+                .tint(Self.secondaryTint)
                 .disabled(stopDisabled)
                 .help("Ends the meeting for everyone when you're hosting (leaves it otherwise), closes the chat window, and stops the camera and OBS. Ending the meeting from the Zoom window does the same \u{2014} both roads end the whole session.")
 
@@ -135,7 +136,7 @@ struct ContentView: View {
                           systemImage: coordinator.isRecording ? "stop.circle.fill" : "record.circle")
                 }
                 .controlSize(.large)
-                .tint(coordinator.isRecording ? .red : nil)
+                .tint(coordinator.isRecording ? .red : Self.secondaryTint)
                 .disabled(recordDisabled)
                 .help("Records exactly what participants see \u{2014} your shared screen with you in it. Saved to Documents/Greenroom when stopped.")
 
@@ -145,6 +146,7 @@ struct ContentView: View {
                     Label("Sessions", systemImage: "film.stack")
                 }
                 .controlSize(.large)
+                .tint(Self.secondaryTint)
                 .help("Every past class: its recordings and clips with a player, its YouTube links, and a name you can change.")
 
                 // Screenroom lives beside Sessions rather than beside Start: it is
@@ -158,6 +160,7 @@ struct ContentView: View {
                         Label("Screenroom", systemImage: "text.badge.star")
                     }
                     .controlSize(.large)
+                    .tint(Self.secondaryTint)
                     .help("Evaluate a presentation: record the speaker and take notes timed to the recording.")
                 }
             }
@@ -286,6 +289,14 @@ struct ContentView: View {
     /// What the window opens at: the minimum plus the 40pt of breathing room
     /// the original pair (580/620) already used.
     static var defaultWindowWidth: CGFloat { ScreenroomAvailability.isReleased ? 784 : 644 }
+
+    /// The button row's secondary buttons are neutral, so Start is the one
+    /// green button. Under the app-wide green tint a bordered button draws a
+    /// green label on a green wash - mint in light mode - which made the row
+    /// two styles at once (enabled mint, disabled grey) and competed with
+    /// Start. The label colour gives the standard grey bordered button with
+    /// a label that follows the appearance.
+    private static let secondaryTint = Color(nsColor: .labelColor)
 
     /// Height of the open log. Eight lines.
     private static let statusLogHeight: CGFloat = 180

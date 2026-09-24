@@ -1,5 +1,8 @@
 <p align="center">
-  <img src="Branding/greenroom-logo.png" alt="Greenroom" width="540">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="Branding/greenroom-logo-dark.png">
+    <img src="Branding/greenroom-logo.png" alt="Greenroom" width="440">
+  </picture>
 </p>
 
 <p align="center">

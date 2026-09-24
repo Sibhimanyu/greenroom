@@ -28,6 +28,33 @@ ships, not by inventing a new look.
   - Green arrow = stays on the machine. Amber arrow = crosses to the internet.
   - Thick stroke = a continuous stream. Thin stroke = a one-shot message.
 
+## Logo
+
+The mark (chosen 2026-09-24) is one heavy G whose right side is a person: a lime
+square head over a body the width of the stroke, and one arm raised into the
+counter. The full rules are in
+`Branding/greenroom-mark/greenroom-brand-guidelines.ai`; the masters and every
+export are in `Branding/greenroom-mark/`. Start from the master, never redraw.
+
+- **Unit:** x, the G's stroke. The head is x square, the body x wide, the arm
+  0.6x. Keep x of clear space on every side.
+- **Colour:** deep `#00401C` for the structure, lime `#78C000` for the head.
+  Reversed: white structure, lime head. One colour: all deep or all white. On a
+  lime ground use the deep-only version.
+- **Name:** always written in full as "Greenroom", in the bold system face, in
+  one colour: `--brand-deep` on light, white on dark. Never lime, never
+  two-tone, and the mark never stands in for the name's G.
+- **Lockup:** the gap to the name is x and the name's capitals are 0.55 of the
+  mark's height. The site header is a 26px mark, 19px name, 6px gap.
+- **App icon:** the reversed mark on a deep tile (824 on 1024, r 185), mark 520
+  wide. At 16 and 32px the mark is drawn 620 wide so the head and arm stay open.
+- **Minimum size:** 24px tall on screen, 8mm in print. Smaller than that, use
+  the small-size app icon.
+- **Files:** lockups `Branding/greenroom-logo{,-dark}.{png,svg}`, mark
+  `Branding/greenroom-mark.{png,svg}`, site `docs/logo-mark.png`,
+  `docs/favicon.png`, `docs/apple-touch-icon.png`, app
+  `Branding/greenroom-mark/Greenroom.icns`.
+
 ## Typography
 
 Two voices, on purpose. Prose is the human speaking, mono is the machine.
@@ -290,14 +317,19 @@ Ranked by user-visible impact. None of these block anything today.
    uses them. The colorset itself is still `#5FA83C`; changing it re-tints
    every control in the app and wants its own pass. (Site side done 2026-09-03: every
    page's `--green` is `#2F6118`, `--green-hover` is `#00401C`, and the
-   how-it-works diagram strokes no longer hardcode `#3D7A22`.)
-2. Amber diagram labels under 14px move from `--net` to `--net-text` (they
+   how-it-works diagram strokes no longer hardcode `#3D7A22`.) The new mark's
+   app side (app icon, `LogoMark`, the lime colorset, a one-colour name in the
+   window header) is prepared with the app work and lands with its release.
+2. The DMG background (`Branding/dmg-background.tiff`, drawn by
+   `scripts/dmg-background.py`) still sets the retired two-tone lime name.
+   Redraw it for the new mark before the next DMG.
+3. Amber diagram labels under 14px move from `--net` to `--net-text` (they
    currently fail AA body contrast).
-3. `docs/index.html` h2 scale differs from `docs/how-it-works.html`. Adopt the
+4. `docs/index.html` h2 scale differs from `docs/how-it-works.html`. Adopt the
    canonical scale above.
-4. Border radii collapse to the four tokens.
-5. Off-scale gaps round to the 4px scale.
-6. `docs/index.html` brand logo links to `href="#"`. Point it at `index.html`.
+5. Border radii collapse to the four tokens.
+6. Off-scale gaps round to the 4px scale.
+7. `docs/index.html` brand logo links to `href="#"`. Point it at `index.html`.
 
 ## Decisions Log
 
@@ -374,3 +406,4 @@ Ranked by user-visible impact. None of these block anything today.
 | 2026-09-23 | The report's readings say where they sit, in words, once (supersedes the dials) | Reported from a screenshot as unreadable. The four dials had 8pt captions colliding with the ring and nothing saying whether 137 was fine, and "How it landed" then drew the same three numbers again as bars. Now one card per reading: the number and its unit, a meter with the range shaded, and a sentence ("In the comfortable range", "Faster than the comfortable range") with a check or arrow so the side is carried by shape as well as colour. The sentence describes the position against the band and stops there; judging it is still the teacher's call. Across the page the type floor is 10pt and anything meant to be read is secondary, not tertiary, which all but vanished on a dark window. The map's pace ribbon is drawn on a fixed scale with the band behind it, because scaled to its own peak a steady talk drew as one solid green slab. Sentence length is hidden under three breaths, where it is only the length of the clip. The written takeaways move up to sit under the map. |
 | 2026-09-23 | The report's readings become rows sorted into "What to work on" and "What went well" (supersedes the reading cards) | Modelled on Yoodli's results panel, studied from its own published screenshots: each metric is one row, its name on the left and its value in words on the right ("4 fillers, 2%", "No pauses"); opened, it reads tip, evidence, a way to hear it, and where the talk sits against the others in the library. The same row moves between groups with the result, so the teacher sees where everything landed before opening anything. The grammar is borrowed, not the look: no purple, no emoji, no drop shadows. Values are green only under "went well" — a green "No pauses" under "work on" read as praise. Pace keeps a half-dial because pace is read against slow and fast, with its three words outside the arc, and its line breaks over silences. The eight detail sections below the map are folded into the rows. |
 | 2026-09-03 | The timeline page uses one series and a step line, with releases as markers | The only honest quantity available for every release is the size of the code; a step line says "this is what shipped, until the next one shipped" rather than implying growth between releases. Single series, so brand green carries it and no legend is needed; three direct labels tell the story, the table carries the rest. The build that never launched is a hollow amber marker, never red: danger is reserved for the "what it never does" claims. |
+| 2026-09-24 | A new mark: one G with the teacher in it, and the name in one deep green | The old mark was a gradient cascade of panes into a device, which broke this document's own "no gradients" rule. The new one is flat, built on a single unit (the G's stroke), survives at 16px with its own small-size artwork, and reads as a letter and a person without forming a second letter ("Ei", "Gi" and "Gj" were all tried and rejected). The name drops the lime "Green" because lime fails as text at every size. |

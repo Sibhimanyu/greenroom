@@ -198,9 +198,13 @@ struct ContentView: View {
     /// leading edge; window controls vertically centered on the row.
     private var header: some View {
         HStack(alignment: .center, spacing: 12) {
+            // The mark is sized to the name, as in the lockup (the name's
+            // capitals are 0.55 of the mark's height); the row keeps the
+            // 88pt it always had. LogoMark has a dark-appearance variant.
             Image("LogoMark")
                 .resizable()
                 .scaledToFit()
+                .frame(height: 36)
                 .frame(height: 88)
             VStack(alignment: .leading, spacing: 2) {
                 // The name in one colour, as in the lockup: deep green on

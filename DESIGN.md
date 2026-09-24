@@ -291,8 +291,9 @@ Reference: `App/UI/ParticipantGridWindow.swift`, `railColumn(available:)` and
 The app is the other half of this system. Keep it aligned.
 
 - **Accent:** `App/Assets.xcassets/AccentColor.colorset` holds the single source
-  for the app tint. Set it to `--accent-lime` `#78C000` and reference it only
-  through `Brand.green` (`App/GreenroomApp.swift`).
+  for the app tint, `#5FA83C`, referenced only through `Brand.green`
+  (`App/GreenroomApp.swift`). Not the logo's lime: as a control tint it lit up
+  every button and field (decisions log, 2026-09-24).
 - **Never hardcode brand colour in Swift.** Two constants currently duplicate a
   raw RGB value: `ContentView.brandGreen` and `SettingsView.personGreen`. The
   first should use `Brand.green`. The second is a different thing wearing the
@@ -317,9 +318,10 @@ Ranked by user-visible impact. None of these block anything today.
    uses them. The colorset itself is still `#5FA83C`; changing it re-tints
    every control in the app and wants its own pass. (Site side done 2026-09-03: every
    page's `--green` is `#2F6118`, `--green-hover` is `#00401C`, and the
-   how-it-works diagram strokes no longer hardcode `#3D7A22`.) The new mark's
-   app side (app icon, `LogoMark`, the lime colorset, a one-colour name in the
-   window header) is prepared with the app work and lands with its release.
+   how-it-works diagram strokes no longer hardcode `#3D7A22`.) Superseded
+   2026-09-24: the app accent STAYS `#5FA83C` (see the decisions log). The new
+   mark's app side is the app icon, `LogoMark` (with a dark variant) and a
+   one-colour name in the window header.
 2. The DMG background (`Branding/dmg-background.tiff`, drawn by
    `scripts/dmg-background.py`) still sets the retired two-tone lime name.
    Redraw it for the new mark before the next DMG.
@@ -407,3 +409,4 @@ Ranked by user-visible impact. None of these block anything today.
 | 2026-09-23 | The report's readings become rows sorted into "What to work on" and "What went well" (supersedes the reading cards) | Modelled on Yoodli's results panel, studied from its own published screenshots: each metric is one row, its name on the left and its value in words on the right ("4 fillers, 2%", "No pauses"); opened, it reads tip, evidence, a way to hear it, and where the talk sits against the others in the library. The same row moves between groups with the result, so the teacher sees where everything landed before opening anything. The grammar is borrowed, not the look: no purple, no emoji, no drop shadows. Values are green only under "went well" — a green "No pauses" under "work on" read as praise. Pace keeps a half-dial because pace is read against slow and fast, with its three words outside the arc, and its line breaks over silences. The eight detail sections below the map are folded into the rows. |
 | 2026-09-03 | The timeline page uses one series and a step line, with releases as markers | The only honest quantity available for every release is the size of the code; a step line says "this is what shipped, until the next one shipped" rather than implying growth between releases. Single series, so brand green carries it and no legend is needed; three direct labels tell the story, the table carries the rest. The build that never launched is a hollow amber marker, never red: danger is reserved for the "what it never does" claims. |
 | 2026-09-24 | A new mark: one G with the teacher in it, and the name in one deep green | The old mark was a gradient cascade of panes into a device, which broke this document's own "no gradients" rule. The new one is flat, built on a single unit (the G's stroke), survives at 16px with its own small-size artwork, and reads as a letter and a person without forming a second letter ("Ei", "Gi" and "Gj" were all tried and rejected). The name drops the lime "Green" because lime fails as text at every size. |
+| 2026-09-24 | The app accent stays `#5FA83C`, not the logo's lime | Tried in the app: `#78C000` as the AccentColor turned the segmented control, Start Meeting, the focus ring and every link bright lime, which read as highlighter rather than brand. The lime stays in the mark (the head) and as a fill; the controls keep the quieter green they shipped with. |

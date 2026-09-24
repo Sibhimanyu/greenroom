@@ -1,4 +1,22 @@
 {
-  "images": [ { "idiom": "universal", "filename": "logomark.png" } ],
-  "info": { "author": "xcode", "version": 1 }
+  "images" : [
+    {
+      "filename" : "logomark.png",
+      "idiom" : "universal"
+    },
+    {
+      "appearances" : [
+        {
+          "appearance" : "luminosity",
+          "value" : "dark"
+        }
+      ],
+      "filename" : "logomark-dark.png",
+      "idiom" : "universal"
+    }
+  ],
+  "info" : {
+    "author" : "xcode",
+    "version" : 1
+  }
 }

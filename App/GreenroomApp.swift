@@ -47,6 +47,15 @@ enum Brand {
             : NSColor(srgbRed: 0x2F / 255, green: 0x61 / 255, blue: 0x18 / 255, alpha: 1)
     })
 
+    /// The name "Greenroom" wherever it's set as a wordmark: one colour, as in
+    /// the lockup (Branding/greenroom-mark). `--brand-deep` #00401C on light,
+    /// white on dark. Never lime and never two-tone - DESIGN.md, Logo.
+    static let name = Color(nsColor: NSColor(name: nil) { appearance in
+        appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+            ? .white
+            : NSColor(srgbRed: 0x00 / 255, green: 0x40 / 255, blue: 0x1C / 255, alpha: 1)
+    })
+
     /// The logo's lime, `--accent-lime` #78C000. Fills, tints, shapes. Never
     /// text - see `Brand.text`.
     static let fill = Color(nsColor: NSColor(srgbRed: 0x78 / 255,

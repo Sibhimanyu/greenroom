@@ -189,11 +189,7 @@ struct ContentView: View {
         }
     }
 
-    /// The brand's leaf green (#5FA83C) - matches the "Control Flow"
-    /// lockup in Branding/greenroom-logo.png and the generated app icon.
-    private static let brandGreen = Color(red: 0.373, green: 0.659, blue: 0.235)
-
-    /// One compact row: logo + two-tone wordmark with the tagline
+    /// One compact row: logo + wordmark with the tagline
     /// UNDER the wordmark (not under the logo), so everything shares one
     /// leading edge; window controls vertically centered on the row.
     private var header: some View {
@@ -203,10 +199,11 @@ struct ContentView: View {
                 .scaledToFit()
                 .frame(height: 88)
             VStack(alignment: .leading, spacing: 2) {
-                // Two-tone wordmark, as in the logo: "Green" bright,
-                // "room" in the label color so it works on both themes.
-                (Text("Green").foregroundColor(Self.brandGreen) + Text("room"))
+                // The name in one colour, as in the lockup: deep green on
+                // light, white on dark (Brand.name).
+                Text("Greenroom")
                     .font(.system(size: 27, weight: .bold))
+                    .foregroundStyle(Brand.name)
                 Text("One click: camera on, Zoom in the meeting, your windows tiled.")
                     .font(.callout)
                     .foregroundStyle(.secondary)

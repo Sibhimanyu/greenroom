@@ -298,6 +298,16 @@ struct ContentView: View {
     /// a label that follows the appearance.
     private static let secondaryTint = Color(nsColor: .labelColor)
 
+    /// "Manual controls" is green TEXT, so on light it is --brand-green
+    /// #2F6118 (7.38:1); the accent #5FA83C measured about 2.9:1 on white,
+    /// under the bar for text (DESIGN.md). Dark keeps the accent it had -
+    /// not Brand.text's lime, which read as a highlighter in the UI.
+    private static let manualControlsTint = Color(nsColor: NSColor(name: nil) { appearance in
+        appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+            ? (NSColor(named: "AccentColor") ?? .systemGreen)
+            : NSColor(srgbRed: 0x2F / 255, green: 0x61 / 255, blue: 0x18 / 255, alpha: 1)
+    })
+
     /// Height of the open log. Eight lines.
     private static let statusLogHeight: CGFloat = 180
 
@@ -511,6 +521,7 @@ struct ContentView: View {
         }
         .menuStyle(.borderlessButton)
         .controlSize(.small)
+        .tint(Self.manualControlsTint)
         .fixedSize()
         .help("Each piece of the session on its own: the chat, the main app window, or Zoom.")
     }

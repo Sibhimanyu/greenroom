@@ -172,7 +172,10 @@ struct ContentView: View {
 
             Spacer(minLength: 0)
         }
-        .padding(20)
+        // 32pt at the sides so nothing sits at the window's edge (20pt read as
+        // about to be cut off); 20pt top and bottom, which the heights assume.
+        .padding(.horizontal, 32)
+        .padding(.vertical, 20)
         .frame(minWidth: Self.minimumWindowWidth, minHeight: preferredWindowHeight)
         // Pinned to the top while the window catches up to a new height.
         // Without it, the content is taller than the window for the length
@@ -266,9 +269,9 @@ struct ContentView: View {
     ///
     /// Worked out from the row rather than chosen. Five bordered `.large`
     /// buttons at their LONGEST labels - "Stop Recording", not "Record", and
-    /// Start's 130pt floor - plus four 10pt gaps, 20pt padding each side, and
+    /// Start's 130pt floor - plus four 10pt gaps, 32pt padding each side, and
     /// enough left for the Spacer to still read as a gap. That comes to
-    /// 720pt; the row was clipping "Screenroom" at 620.
+    /// 744pt; the row was clipping "Screenroom" at 620.
     ///
     /// Longest labels on purpose: a window sized for the idle state reflows
     /// the moment a recording starts, which is the one moment nothing on
@@ -278,11 +281,11 @@ struct ContentView: View {
     /// held out of releases, and a shipping window should not carry 100pt of
     /// margin for a button nobody can see - so the released width is the one
     /// that has always been there.
-    static var minimumWindowWidth: CGFloat { ScreenroomAvailability.isReleased ? 720 : 580 }
+    static var minimumWindowWidth: CGFloat { ScreenroomAvailability.isReleased ? 744 : 604 }
 
     /// What the window opens at: the minimum plus the 40pt of breathing room
     /// the original pair (580/620) already used.
-    static var defaultWindowWidth: CGFloat { ScreenroomAvailability.isReleased ? 760 : 620 }
+    static var defaultWindowWidth: CGFloat { ScreenroomAvailability.isReleased ? 784 : 644 }
 
     /// Height of the open log. Eight lines.
     private static let statusLogHeight: CGFloat = 180

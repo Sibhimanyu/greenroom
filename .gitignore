@@ -44,3 +44,6 @@ __pycache__/
 # apptics-config.plist.example to create it. The build script also rewrites it
 # (APP_VERSION_META) whenever a new app version is registered.
 apptics-config.plist
+
+# impeccable design hook: per-session cache (config.json is shared)
+.impeccable/hook.cache.json

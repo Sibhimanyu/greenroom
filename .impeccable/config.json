@@ -1,0 +1,35 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "all-caps-body",
+        "value": "*",
+        "files": [
+          "docs/brand.html"
+        ],
+        "createdAt": "2026-09-24T09:24:44.323Z",
+        "reason": "agent triage: short mono uppercase labels are DESIGN.md's eyebrow style (mono, uppercase, .08em), not body passages"
+      },
+      {
+        "rule": "side-tab",
+        "value": "*",
+        "files": [
+          "docs/brand.html"
+        ],
+        "createdAt": "2026-09-24T09:24:55.116Z",
+        "reason": "agent triage: the site's standard .callout (identical border-left 3px pattern on docs/guide.html); kept for consistency"
+      },
+      {
+        "rule": "cramped-padding",
+        "value": "*",
+        "files": [
+          "docs/brand.html"
+        ],
+        "createdAt": "2026-09-24T09:24:55.208Z",
+        "reason": "agent triage: only .table-scroll is flagged; it wraps tables whose cells carry 11x14px padding, same wrapper as docs/guide.html"
+      }
+    ]
+  }
+}

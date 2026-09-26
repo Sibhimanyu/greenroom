@@ -65,6 +65,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// resolve the coordinator at press time and guard on session state,
     /// mirroring the buttons' enabled states.
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // Find whisper once, off the main thread, before any view asks.
+        // See ScreenroomWhisper.resolvedBinary for why a view must never be
+        // the first to ask.
+        DispatchQueue.global(qos: .utility).async { _ = ScreenroomWhisper.resolvedBinary }
         MainActor.assumeIsolated {
             // Option+Command, not Control+Option+Command.
             //

@@ -275,7 +275,41 @@ enum ScreenroomWhisper {
     /// Resolved through a LOGIN shell for the reason ScreenroomAgent explains: a
     /// GUI app inherits almost no PATH, so a Homebrew binary is simply not
     /// findable from here without reading the user's own profile.
+    ///
+    /// Looked up once and remembered. It used to run up to three login shells
+    /// on every read, and it is read from SwiftUI - a view's @State initial
+    /// value, `isAvailable` in the Cues workbench - so every redraw paid for
+    /// them on the main thread. Worse, `waitUntilExit()` spins the run loop,
+    /// and a layout pass that ran inside that spin, in the middle of the view
+    /// update that asked, tripped SwiftUI's re-entrancy check: opening
+    /// Settings → Screenroom aborted the app. `refreshBinary()` asks again,
+    /// for "Look again" after an install.
     static var resolvedBinary: String? {
+        binaryLock.lock()
+        if let cached = cachedBinary {
+            binaryLock.unlock()
+            return cached
+        }
+        binaryLock.unlock()
+        let found = lookUpBinary()
+        binaryLock.lock()
+        cachedBinary = .some(found)
+        binaryLock.unlock()
+        return found
+    }
+
+    /// Forgets the answer, so the next read looks again.
+    static func refreshBinary() {
+        binaryLock.lock()
+        cachedBinary = nil
+        binaryLock.unlock()
+    }
+
+    private static let binaryLock = NSLock()
+    /// nil: not looked yet. .some(nil): looked, and there is none.
+    private static var cachedBinary: String??
+
+    private static func lookUpBinary() -> String? {
         for name in ["whisper-cli", "whisper-cpp", "main"] {
             let process = Process()
             process.executableURL = URL(fileURLWithPath: "/bin/zsh")
@@ -285,7 +319,10 @@ enum ScreenroomWhisper {
             process.standardError = Pipe()
             guard (try? process.run()) != nil else { continue }
             let data = pipe.fileHandleForReading.readDataToEndOfFile()
-            process.waitUntilExit()
+            // Not waitUntilExit(): that runs the run loop, which is how a
+            // layout pass got in. The output has ended, so the shell is
+            // exiting; poll for it without servicing anything else.
+            while process.isRunning { usleep(2_000) }
             let path = String(decoding: data, as: UTF8.self)
                 .trimmingCharacters(in: .whitespacesAndNewlines)
             if process.terminationStatus == 0, !path.isEmpty,

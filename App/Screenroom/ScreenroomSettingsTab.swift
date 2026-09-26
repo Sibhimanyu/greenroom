@@ -73,8 +73,11 @@ struct ScreenroomSettingsTab: View {
                                 }
                             }
                         }
-                        Button("Look again") { refresh() }
-                            .controlSize(.small)
+                        Button("Look again") {
+                            ScreenroomWhisper.refreshBinary()
+                            refresh()
+                        }
+                        .controlSize(.small)
                     }
                     .padding(.top, 4)
                 }

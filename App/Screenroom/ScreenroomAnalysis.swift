@@ -36,6 +36,44 @@ struct ScreenroomAnalysis: Codable, Hashable {
     /// observation.
     var patterns: [String] = []
 
+    /// The verdict in one line, said before anything else.
+    ///
+    /// Optional, like the two lists below it, because every analysis written
+    /// before them has none, and one of those must still open. When they are
+    /// missing the report falls back to the summary and the sentences above.
+    var headline: String?
+
+    /// The same feedback as `strengths` and `workOn`, as points the report
+    /// can draw: a few words to read at a glance, one sentence under them,
+    /// and the moment it happened so the report can show that still and play
+    /// from there. A paragraph that says "at about seventeen seconds" makes
+    /// the student find the moment themselves; a point that knows 17000 does
+    /// not.
+    var worked: [Point]?
+    var change: [Point]?
+
+    /// Whether this came as points the report can draw.
+    var hasPoints: Bool { !((worked ?? []) + (change ?? [])).isEmpty }
+
+    struct Point: Codable, Hashable {
+        var headline: String
+        var detail: String
+        /// Where in the recording this showed, when it showed at one place.
+        var atMs: Int?
+
+        /// The point as one sentence, for everything that prints text: the
+        /// exported report, the side pane, an analysis read back by an older
+        /// build.
+        var sentence: String {
+            let head = headline.trimmingCharacters(in: .whitespacesAndNewlines)
+            let rest = detail.trimmingCharacters(in: .whitespacesAndNewlines)
+            if rest.isEmpty { return head }
+            if head.isEmpty { return rest }
+            let stop = head.last.map { ".!?".contains($0) } ?? false
+            return head + (stop ? " " : ". ") + rest
+        }
+    }
+
     /// The rubric, as marked by whatever wrote this. Title, score and the
     /// one line saying why.
     ///

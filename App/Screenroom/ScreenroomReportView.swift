@@ -73,9 +73,13 @@ struct ScreenroomReportView: View {
                     // what went well, then the map, then the summary. Every
                     // row says in words where it landed; its detail opens
                     // in place rather than living four screens down.
+                    // Feedback that came as points leads: it is the answer,
+                    // and the readings below are its evidence. Sentences
+                    // stay where they were, under the map.
+                    if let analysis = review.analysis, analysis.hasPoints { prose(analysis) }
                     insightGroups
                     if hasMap { map }
-                    if let analysis = review.analysis { prose(analysis) }
+                    if let analysis = review.analysis, !analysis.hasPoints { prose(analysis) }
                     if review.scoring.markedCount > 0 { rubric }
                     if !review.notes.isEmpty { timeline }
                     if !review.notes.isEmpty { noteList }
@@ -164,7 +168,18 @@ struct ScreenroomReportView: View {
     /// Headed like every other section, and held to a reading measure. At
     /// 17pt across the full column it ran to 130 characters a line with no
     /// heading, which read as a wall rather than a summary.
+    @ViewBuilder
     private func prose(_ analysis: ScreenroomAnalysis) -> some View {
+        if analysis.hasPoints {
+            feedback(analysis)
+        } else {
+            paragraphs(analysis)
+        }
+    }
+
+    /// The analysis written before it came as points, or by the on-device
+    /// pass, which still writes sentences: shown as it always was.
+    private func paragraphs(_ analysis: ScreenroomAnalysis) -> some View {
         section("IN SHORT") {
             VStack(alignment: .leading, spacing: 24) {
                 if !analysis.summary.isEmpty {
@@ -186,6 +201,230 @@ struct ScreenroomReportView: View {
                 }
             }
         }
+    }
+
+    // MARK: Feedback, as points
+
+    /// The analysis as something to look at before anything to read.
+    ///
+    /// The paragraphs this replaces were accurate and nobody would read them
+    /// to a student: a nine-line summary, then eight sentences that each
+    /// began "at about seventeen seconds", leaving the student to find the
+    /// moment. So the verdict comes first in one line, the most important
+    /// thing to change gets the width of the page with the still from its
+    /// moment, and every other point is a card: a few words, one sentence,
+    /// its still, and a button that plays from there. The numbers on the
+    /// cards are the pins on the map, so a point can be found either way.
+    private func feedback(_ analysis: ScreenroomAnalysis) -> some View {
+        let points = numbered(analysis)
+        let lead = points.first { $0.tone == .change }
+        return section("FEEDBACK", trailing: "from \(analysis.engine)") {
+            VStack(alignment: .leading, spacing: 20) {
+                if let headline = analysis.headline, !headline.isEmpty {
+                    Text(headline)
+                        .font(.system(size: 26, weight: .bold))
+                        .tracking(-0.5)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .textSelection(.enabled)
+                }
+                if !analysis.summary.isEmpty {
+                    Text(analysis.summary)
+                        .font(.system(size: 15))
+                        .foregroundStyle(.secondary)
+                        .lineSpacing(4)
+                        .frame(maxWidth: 680, alignment: .leading)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .textSelection(.enabled)
+                }
+                if let lead { leadCard(lead) }
+                let rest = points.filter { $0.id != lead?.id }
+                let worked = rest.filter { $0.tone == .worked }
+                let change = rest.filter { $0.tone == .change }
+                if !worked.isEmpty || !change.isEmpty {
+                    HStack(alignment: .top, spacing: 16) {
+                        pointColumn("ALSO CHANGE", change)
+                        pointColumn("WHAT WORKED", worked)
+                    }
+                }
+                if !analysis.patterns.isEmpty {
+                    DisclosureGroup {
+                        VStack(alignment: .leading, spacing: 8) {
+                            ForEach(analysis.patterns, id: \.self) { item in
+                                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                                    Circle().fill(Brand.fill).frame(width: 5, height: 5).offset(y: -2)
+                                    Text(item).font(.callout)
+                                        .fixedSize(horizontal: false, vertical: true)
+                                        .textSelection(.enabled)
+                                }
+                            }
+                        }
+                        .padding(.top, 8)
+                    } label: {
+                        Text("Across the whole talk \u{00B7} \(analysis.patterns.count)")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
+        }
+    }
+
+    fileprivate struct NumberedPoint: Identifiable {
+        enum Tone { case worked, change }
+        let number: Int
+        let tone: Tone
+        let point: ScreenroomAnalysis.Point
+        var id: Int { number }
+    }
+
+    /// Things to change first, then what worked, numbered in that order so
+    /// the lead card is always 1.
+    private func numbered(_ analysis: ScreenroomAnalysis) -> [NumberedPoint] {
+        let change = (analysis.change ?? []).map { (NumberedPoint.Tone.change, $0) }
+        let worked = (analysis.worked ?? []).map { (NumberedPoint.Tone.worked, $0) }
+        return (change + worked).enumerated().map {
+            NumberedPoint(number: $0.offset + 1, tone: $0.element.0, point: $0.element.1)
+        }
+    }
+
+    /// The still nearest a moment, when there is one within twenty seconds -
+    /// the stills are twenty seconds apart, so anything further is a picture
+    /// of something else.
+    private func still(near ms: Int?) -> URL? {
+        guard let ms else { return nil }
+        return review.frames
+            .map { ($0, abs(Self.stamp(of: $0) - ms)) }
+            .filter { $0.1 <= 20_000 }
+            .min { $0.1 < $1.1 }?.0
+    }
+
+    private func pin(_ item: NumberedPoint, size: CGFloat = 22) -> some View {
+        Text("\(item.number)")
+            .font(.system(size: size * 0.55, weight: .bold))
+            .monospacedDigit()
+            .foregroundStyle(item.tone == .worked ? Color.black.opacity(0.85)
+                                                  : Color(nsColor: .textBackgroundColor))
+            .frame(width: size, height: size)
+            .background(Circle().fill(item.tone == .worked ? Brand.fill
+                                                           : Color(nsColor: .labelColor)))
+    }
+
+    @ViewBuilder
+    private func stillView(_ url: URL?, width: CGFloat) -> some View {
+        if let url, let image = NSImage(contentsOf: url) {
+            Image(nsImage: image).resizable().aspectRatio(contentMode: .fill)
+                .frame(width: width, height: width * 9 / 16)
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+        }
+    }
+
+    private func playButton(_ ms: Int) -> some View {
+        Button { review.seek(toMs: ms) } label: {
+            Label("Play \(Self.clock(ms / 1000))", systemImage: "play.fill")
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(Brand.text)
+                .padding(.vertical, 4).padding(.horizontal, 9)
+                .background(Capsule().fill(Brand.fill.opacity(0.15)))
+        }
+        .buttonStyle(.plain)
+    }
+
+    /// The one thing to change, across the page, with its moment.
+    private func leadCard(_ item: NumberedPoint) -> some View {
+        HStack(alignment: .top, spacing: 20) {
+            stillView(still(near: item.point.atMs), width: 240)
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(spacing: 8) {
+                    pin(item)
+                    Text("THE ONE THING TO CHANGE")
+                        .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                        .tracking(0.8).foregroundStyle(.secondary)
+                }
+                Text(item.point.headline.isEmpty ? item.point.detail : item.point.headline)
+                    .font(.system(size: 21, weight: .bold))
+                    .tracking(-0.3)
+                    .fixedSize(horizontal: false, vertical: true)
+                if !item.point.headline.isEmpty, !item.point.detail.isEmpty {
+                    Text(item.point.detail)
+                        .font(.system(size: 14))
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                if let ms = item.point.atMs { playButton(ms) }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .textSelection(.enabled)
+        }
+        .padding(18)
+        .background(RoundedRectangle(cornerRadius: 12).fill(Color(nsColor: .controlBackgroundColor)))
+        .overlay(RoundedRectangle(cornerRadius: 12)
+            .strokeBorder(Color(nsColor: .separatorColor).opacity(0.5), lineWidth: 1))
+    }
+
+    @ViewBuilder
+    private func pointColumn(_ title: String, _ items: [NumberedPoint]) -> some View {
+        if !items.isEmpty {
+            VStack(alignment: .leading, spacing: 10) {
+                Text(title)
+                    .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                    .tracking(0.8).foregroundStyle(.secondary)
+                ForEach(items) { pointCard($0) }
+            }
+            .frame(maxWidth: .infinity, alignment: .topLeading)
+        }
+    }
+
+    private func pointCard(_ item: NumberedPoint) -> some View {
+        HStack(alignment: .top, spacing: 12) {
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    pin(item, size: 20)
+                    Text(item.point.headline.isEmpty ? item.point.detail : item.point.headline)
+                        .font(.system(size: 15, weight: .semibold))
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                if !item.point.headline.isEmpty, !item.point.detail.isEmpty {
+                    Text(item.point.detail)
+                        .font(.system(size: 13))
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                if let ms = item.point.atMs { playButton(ms) }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .textSelection(.enabled)
+            stillView(still(near: item.point.atMs), width: 112)
+        }
+        .padding(14)
+        .background(RoundedRectangle(cornerRadius: 10).fill(Color(nsColor: .controlBackgroundColor)))
+        .overlay(RoundedRectangle(cornerRadius: 10)
+            .strokeBorder(Color(nsColor: .separatorColor).opacity(0.5), lineWidth: 1))
+    }
+
+    /// The feedback's numbered pins, on the map's time axis.
+    private func feedbackRow(_ analysis: ScreenroomAnalysis, span: Double) -> some View {
+        let placed = numbered(analysis).filter { $0.point.atMs != nil }
+        return GeometryReader { geo in
+            ZStack(alignment: .topLeading) {
+                Rectangle().fill(Color(nsColor: .separatorColor).opacity(0.3))
+                    .frame(height: 2).offset(y: 10)
+                ForEach(placed) { item in
+                    // Points at the same moment sit side by side rather than
+                    // one on top of the other, so no number is hidden.
+                    let same = placed.filter { $0.point.atMs == item.point.atMs }
+                    let slot = CGFloat(same.firstIndex { $0.id == item.id } ?? 0)
+                    let half = CGFloat(same.count) * 24 / 2
+                    let centre = min(max(half, geo.size.width * CGFloat(Double(item.point.atMs ?? 0) / span)),
+                                     geo.size.width - half)
+                    let x = centre + (slot - CGFloat(same.count - 1) / 2) * 24
+                    Button { review.seek(toMs: item.point.atMs ?? 0) } label: { pin(item) }
+                        .buttonStyle(.plain)
+                        .help(item.point.headline)
+                        .offset(x: x - 11)
+                }
+            }
+        }
+        .frame(height: 22)
     }
 
     @ViewBuilder
@@ -514,6 +753,10 @@ struct ScreenroomReportView: View {
                 }
                 if !review.notes.isEmpty {
                     mapRow("Notes") { tickRow(review.notes.map(\.atMs), span: span, height: 16) }
+                }
+                if let analysis = review.analysis, analysis.hasPoints,
+                   numbered(analysis).contains(where: { $0.point.atMs != nil }) {
+                    mapRow("Points") { feedbackRow(analysis, span: span) }
                 }
                 mapRow("") { mapAxis(span: span) }
                 mapRow("") { mapKey }

@@ -218,16 +218,19 @@ enum ScreenroomAgent {
         out.append("```")
         out.append("""
         {
-          "summary": "Three or four sentences to the student, second person, specific to this presentation.",
-          "strengths": ["One short sentence each, tied to a moment with its time in words.", "..."],
-          "workOn": ["One short sentence each, actionable next time, tied to where it showed.", "..."],
-          "patterns": ["Things true of the whole talk rather than one moment.", "..."],
+          "headline": "The verdict in six to ten words, to the student.",
+          "summary": "One or two sentences to the student, second person, specific to this presentation.",
+          "strengths": [{"headline": "At most eight words", "detail": "One sentence, second person.", "atSeconds": 17}, "..."],
+          "workOn": [{"headline": "At most eight words, what to do", "detail": "One sentence: what showed, and what to do next time.", "atSeconds": 2}, "..."],
+          "patterns": ["Things true of the whole talk rather than one moment. One sentence each.", "..."],
           "marks": [{"title": "<a rubric line, copied exactly>", "score": 3, "reason": "One line saying why that score and not the one above or below it."}]
         }
         """.trimmingCharacters(in: .whitespacesAndNewlines))
         out.append("```")
         out.append("")
         out.append("At most four entries in strengths, workOn and patterns, and an empty array is a correct answer when the notes record nothing of that kind. Where the teacher's notes and your own reading disagree, say so and prefer the teacher's. They were in the room.")
+        out.append("")
+        out.append("**Short, and anchored to a moment.** The report draws every point as a card with the still from its moment and a button that plays from there, so the words only have to say what the picture cannot. The headline is read at a glance: a few words, no numbers spelled out, no times in it. The detail is one sentence. `atSeconds` is where in the recording the point showed, as a number of seconds; for something that ran over a stretch, give where it started; leave it out only when the point is about the whole talk, and then it probably belongs in patterns. Put the most important thing to change first: the report leads with it.")
         out.append("")
         out.append("**Marking.** Give every rubric line below a score and a reason. Copy each title exactly. The reason is the important half: a number with nothing behind it is an assertion, not feedback, and the student will ask why. Say what would have earned the mark above. Mark what the evidence here supports and nothing more \u{2014} if the material cannot tell you about a line, give it the middle of its range and say that you could not judge it.")
         out.append("")
@@ -420,14 +423,27 @@ extension ScreenroomAgent {
             let summary = (object["summary"] as? String)?
                 .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
             if !summary.isEmpty {
-                return ScreenroomAnalysis(
+                let worked = points(object["strengths"])
+                let change = points(object["workOn"])
+                let headline = (object["headline"] as? String)?
+                    .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                var analysis = ScreenroomAnalysis(
                     engine: engine,
                     summary: summary,
-                    strengths: strings(object["strengths"]),
-                    workOn: strings(object["workOn"]),
+                    strengths: worked.map(\.sentence),
+                    workOn: change.map(\.sentence),
                     patterns: strings(object["patterns"]),
                     marks: marks(object["marks"]),
                     consistency: consistency)
+                analysis.headline = headline.isEmpty ? nil : headline
+                // Only kept as points when the agent wrote points. Plain
+                // sentences stay sentences, and the report shows them as it
+                // always did rather than as cards with no headline.
+                if (worked + change).contains(where: { !$0.headline.isEmpty && !$0.detail.isEmpty }) {
+                    analysis.worked = worked
+                    analysis.change = change
+                }
+                return analysis
             }
         }
         return ScreenroomAnalysis(engine: engine, summary: trimmed, consistency: consistency)
@@ -455,6 +471,40 @@ extension ScreenroomAgent {
                 title: title, score: score,
                 reason: (row["reason"] as? String)?
                     .trimmingCharacters(in: .whitespacesAndNewlines) ?? "")
+        }
+    }
+
+    /// Strengths or things to change, as points. Takes the shape the brief
+    /// asks for and the shape older briefs asked for: an object becomes a
+    /// point, a bare sentence becomes a point with no headline. The time is
+    /// read as leniently as a mark is, because "17", 17.0 and "0:17" all
+    /// turn up.
+    private static func points(_ value: Any?) -> [ScreenroomAnalysis.Point] {
+        (value as? [Any] ?? []).compactMap { entry in
+            if let text = entry as? String {
+                let text = text.trimmingCharacters(in: .whitespacesAndNewlines)
+                return text.count > 2 ? ScreenroomAnalysis.Point(headline: "", detail: text) : nil
+            }
+            guard let row = entry as? [String: Any] else { return nil }
+            let headline = (row["headline"] as? String)?
+                .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            let detail = (row["detail"] as? String)?
+                .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            guard headline.count + detail.count > 2 else { return nil }
+            return ScreenroomAnalysis.Point(headline: headline, detail: detail,
+                                            atMs: seconds(row["atSeconds"]).map { $0 * 1_000 })
+        }
+    }
+
+    private static func seconds(_ value: Any?) -> Int? {
+        switch value {
+        case let n as Int: return n >= 0 ? n : nil
+        case let d as Double: return d >= 0 ? Int(d.rounded()) : nil
+        case let text as String:
+            let parts = text.split(separator: ":").compactMap { Int($0.trimmingCharacters(in: .whitespaces)) }
+            guard !parts.isEmpty else { return nil }
+            return parts.reduce(0) { $0 * 60 + $1 }
+        default: return nil
         }
     }
 

@@ -24,6 +24,18 @@ import AVFoundation
 import Foundation
 import Speech
 
+/// One step of the pipeline, for the Debug workbench. Recorded only while a
+/// workbench is watching; a class never turns it on.
+struct CuesTraceLine: Identifiable, Hashable {
+    enum Stage: String {
+        case heard, detect, drop, name, repair, lookup, hold, note, card, skip
+    }
+    let id = UUID()
+    let at = Date()
+    let stage: Stage
+    let text: String
+}
+
 @available(macOS 26.0, *)
 @MainActor
 final class CuesController: ObservableObject {
@@ -119,6 +131,39 @@ final class CuesController: ObservableObject {
     /// roster for the rest of the session: the teacher is not in their own
     /// roster, and a Try-it run has no roster at all.
     private var spokenNames: [String] = []
+    /// Mentions the per-minute brake held back, asked again when there is
+    /// room. They used to be dropped: a Try-it run lost "Adobe Photoshop"
+    /// because the model had spent the minute on fragments.
+    private var heldBack: [(mention: Mention, at: Date)] = []
+
+    // MARK: Trace (the Debug workbench only)
+
+    @Published private(set) var trace: [CuesTraceLine] = []
+    /// Off everywhere except the Debug workbench, which is compiled out of
+    /// release builds. While off, `note` returns at once.
+    var tracing = false {
+        didSet {
+            guard tracing != oldValue else { return }
+            if tracing {
+                let sink: (String) -> Void = { [weak self] line in
+                    Task { @MainActor in self?.note(.drop, line) }
+                }
+                HeuristicDetector.traceDrop = sink
+                if #available(macOS 26.0, *) { FoundationModelsDetector.traceDrop = sink }
+            } else {
+                HeuristicDetector.traceDrop = nil
+                if #available(macOS 26.0, *) { FoundationModelsDetector.traceDrop = nil }
+            }
+        }
+    }
+
+    func note(_ stage: CuesTraceLine.Stage, _ text: String) {
+        guard tracing else { return }
+        trace.append(CuesTraceLine(stage: stage, text: text))
+        if trace.count > 600 { trace.removeFirst(trace.count - 600) }
+    }
+
+    func clearTrace() { trace.removeAll() }
     private var lastDetection = Date.distantPast
     private var restartAttempted = false
     private var lookupsInFlight = 0
@@ -129,6 +174,9 @@ final class CuesController: ObservableObject {
     /// runs the whole pipeline and makes real cards, which is the only way
     /// to answer "would this have helped in a class" without teaching one.
     private var testMode = false
+    /// Detector chosen and resolver configured, so a typed sentence can go
+    /// straight into the pipeline. See `debugSay`.
+    private var pipelineReady = false
     private var startedAt = Date()
 
     /// Twelve retained, three shown at a time, cycled. Was eight, which the
@@ -224,6 +272,8 @@ final class CuesController: ObservableObject {
         dismissedKeys.removeAll()
         vocabulary.reset()
         spokenNames.removeAll()
+        heldBack.removeAll()
+        pipelineReady = false
         if wasListening, !testMode {
             if let reason {
                 configuration.log(reason)
@@ -286,6 +336,16 @@ final class CuesController: ObservableObject {
         cards = []
         testMentions = []
         liveTail = ""
+        // The resolver was never configured here, so Try it ran on its
+        // built-in defaults - six lookups a minute, where a class gets
+        // twelve - and held back "Adobe Photoshop" in a two-minute test.
+        await resolver.reset()
+        await resolver.configure(.init(sessionCap: sessionLookupCap,
+                                       lookupsPerMinute: configuration.lookupsPerMinute,
+                                       videoSearchEnabled: configuration.videoSearch,
+                                       youtubeToken: configuration.youtubeToken))
+        startedAt = Date()
+        pipelineReady = true
         status = lookUp
             ? "Listening\u{2026} name a book, a tool, a place."
             : "Listening\u{2026} say something."
@@ -351,27 +411,28 @@ final class CuesController: ObservableObject {
                           : "Cues: mentions found by Apple Intelligence (on-device) \u{2014} more suggestions, more wrong ones.")
     }
 
-    /// Detector only, on typed text. Debug builds.
-    func debugDetect(_ text: String, configuration: Configuration) async -> [Mention] {
-        self.configuration = configuration
-        chooseDetector()
-        let names = configuration.rosterNames()
-        do {
-            return try await detector.detect(newText: text, context: "", excludedNames: names)
-        } catch {
-            configuration.log("Cues: detector error: \(error.localizedDescription)")
-            return []
+    /// A typed sentence, through exactly the path a spoken one takes: the
+    /// transcript, the detector, the repair, the resolver and the cards.
+    /// Works while listening or not. Debug builds.
+    func debugSay(_ text: String, configuration: Configuration) async {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        if !pipelineReady {
+            self.configuration = configuration
+            testMode = false
+            await resolver.reset()
+            await resolver.configure(.init(sessionCap: sessionLookupCap,
+                                           lookupsPerMinute: configuration.lookupsPerMinute,
+                                           videoSearchEnabled: configuration.videoSearch,
+                                           youtubeToken: configuration.youtubeToken))
+            chooseDetector()
+            note(.note, "detector: \(detectorName) \u{00B7} \(configuration.lookupsPerMinute) lookups a minute")
+            startedAt = Date()
+            pipelineReady = true
         }
-    }
-
-    /// Resolver only, on a typed query. Debug builds; the query IS sent.
-    func debugResolve(_ query: String, kind: Mention.Kind, configuration: Configuration) async {
-        self.configuration = configuration
-        await resolver.configure(.init(sessionCap: sessionLookupCap,
-                                       lookupsPerMinute: configuration.lookupsPerMinute,
-                                       videoSearchEnabled: configuration.videoSearch,
-                                       youtubeToken: configuration.youtubeToken))
-        await resolve([Mention(kind: kind, query: query, confidence: 1)])
+        handle(.final(trimmed))
+        // Typed text arrives whole, so there is nothing to wait for.
+        runDetection(force: true)
     }
 
     func debugInjectSampleCards() {
@@ -465,6 +526,7 @@ final class CuesController: ObservableObject {
     }
 
     private func handle(_ event: Transcriber.Event) {
+        if case .final(let text) = event, !isPaused { note(.heard, text) }
         switch event {
         case .volatile(let text):
             guard !isPaused else { return }
@@ -614,6 +676,14 @@ final class CuesController: ObservableObject {
         } else if cards.count <= CuesRailBlock.minCards {
             rotationOffset = 0
         }
+        // Held-back mentions go again, oldest first, once they are younger
+        // than two minutes; older than that the moment has passed.
+        heldBack.removeAll { Date().timeIntervalSince($0.at) > 120 }
+        if !heldBack.isEmpty, detectTask == nil {
+            let waiting = heldBack.map(\.mention)
+            heldBack.removeAll()
+            Task { [weak self] in await self?.resolve(waiting) }
+        }
         // The catch-up tick, for speech that never reaches the word count.
         let gap = detector.isCheap ? 3.0 : detectEvery
         if transcript.unprocessedWordCount > 0,
@@ -630,14 +700,25 @@ final class CuesController: ObservableObject {
         for name in HeuristicDetector.selfIntroducedNames(in: context + " " + fresh)
         where !spokenNames.contains(name) {
             spokenNames.append(name)
+            note(.name, "\u{201C}\(name)\u{201D} introduced themselves \u{2014} never looked up this session")
         }
         let names = configuration.rosterNames() + spokenNames
         let current = detector
+        let began = Date()
         detectTask = Task { [weak self] in
             defer { self?.detectTask = nil }
             do {
                 let mentions = try await current.detect(newText: fresh, context: context, excludedNames: names)
                 guard let self, !Task.isCancelled else { return }
+                let ms = Int(Date().timeIntervalSince(began) * 1000)
+                self.note(.detect, mentions.isEmpty
+                    ? "\(current.name), \(ms) ms: nothing"
+                    : "\(current.name), \(ms) ms: " + mentions.map { mention in
+                        var line = "\(mention.kind.rawValue) \u{201C}\(mention.query)\u{201D} by \(mention.foundBy.rawValue) \(Int(mention.confidence * 100))%"
+                        if let category = mention.category { line += ", said to be a \(category)" }
+                        if mention.searchQuery != mention.query { line += ", searched as \u{201C}\(mention.searchQuery)\u{201D}" }
+                        return line
+                    }.joined(separator: "; "))
                 // Log roster collisions without ever logging the transcript.
                 if let heuristic = current as? HeuristicDetector {
                     _ = heuristic
@@ -649,6 +730,7 @@ final class CuesController: ObservableObject {
                 }
             } catch {
                 guard let self else { return }
+                self.note(.drop, "\(current.name) failed: \(error.localizedDescription)")
                 if let model = current as? FoundationModelsDetector, model.consecutiveErrors >= 3 {
                     self.detector = HeuristicDetector()
                     self.detectorName = self.detector.name
@@ -667,14 +749,16 @@ final class CuesController: ObservableObject {
             // twice, is Adobe Illustrator misheard. Search for what was meant.
             if let meant = vocabulary.repair(mention.query) {
                 configuration.log("Cues: heard \u{201C}\(mention.query)\u{201D}, searched \u{201C}\(meant)\u{201D} (said earlier in this class).")
+                note(.repair, "\u{201C}\(mention.query)\u{201D} is \u{201C}\(meant)\u{201D} misheard (a name already found this session)")
                 mention = Mention(kind: mention.kind, query: meant, confidence: mention.confidence)
                 mention.foundBy = heard.foundBy
+                mention.category = heard.category
             }
-            vocabulary.learn(mention.query)
             // Roster names are filtered inside the detectors; a mention that
             // still equals a roster name here is a second line of defence.
             let names = (configuration.rosterNames() + spokenNames).map(Mention.normalize)
             if names.contains(mention.normalizedKey) {
+                note(.skip, "\u{201C}\(mention.query)\u{201D} is someone in the meeting")
                 configuration.log("Cues: skipped \u{201C}\(mention.query)\u{201D} \u{2014} matches someone in the meeting.")
                 Analytics.feature("prompter_roster_skip")
                 continue
@@ -682,7 +766,10 @@ final class CuesController: ObservableObject {
             // Already have a card for it: nothing to send. The same name as a
             // different kind is a different request - "the book, Adobe
             // Illustrator" after a card for the software - and replaces it.
-            if cards.contains(where: { $0.normalizedKey == mention.normalizedKey && $0.kind == mention.kind }) { continue }
+            if cards.contains(where: { $0.normalizedKey == mention.normalizedKey && $0.kind == mention.kind }) {
+                note(.skip, "\u{201C}\(mention.query)\u{201D} already has a \(mention.kind.rawValue) card")
+                continue
+            }
 
             lookupsInFlight += 1
             isResolving = true
@@ -690,10 +777,26 @@ final class CuesController: ObservableObject {
             lookupsInFlight -= 1
             isResolving = lookupsInFlight > 0
 
+            if resolution.heldBack {
+                heldBack.removeAll { $0.mention.normalizedKey == mention.normalizedKey && $0.mention.kind == mention.kind }
+                heldBack.append((mention, Date()))
+                if heldBack.count > 10 { heldBack.removeFirst(heldBack.count - 10) }
+                note(.hold, "\u{201C}\(mention.query)\u{201D} waits: the minute's lookups are spent")
+            }
             if resolution.skipped, resolution.cards.isEmpty {
-                for note in resolution.notes { configuration.log("Cues: \(note).") }
+                for line in resolution.notes { configuration.log("Cues: \(line)."); if !resolution.heldBack { note(.note, line) } }
                 continue
             }
+            if !resolution.sentTo.isEmpty {
+                note(.lookup, "\u{201C}\(mention.searchQuery)\u{201D} \u{2192} \(resolution.sentTo.joined(separator: " and "))")
+            }
+            for line in resolution.notes { note(.note, line) }
+            // Only a name that found something is worth remembering. Learning
+            // every name let a mishearing that found nothing ("Adobe O
+            // Strader") become the name a later correct hearing was
+            // "repaired" into.
+            if !resolution.cards.isEmpty, !resolution.searchLinkOnly { vocabulary.learn(mention.query) }
+            if resolution.cards.isEmpty { note(.note, "no card for \u{201C}\(mention.query)\u{201D}") }
             if !resolution.sentTo.isEmpty {
                 configuration.log("Cues: sent \u{201C}\(mention.searchQuery)\u{201D} to \(resolution.sentTo.joined(separator: " and ")).")
             }
@@ -702,6 +805,7 @@ final class CuesController: ObservableObject {
             }
             for note in resolution.notes { configuration.log("Cues: \(note).") }
             for card in resolution.cards.prefix(1) {
+                note(.card, "\(card.kind.eyebrow) \(card.title) \u{00B7} \(card.source.label)\(resolution.searchLinkOnly ? " (search link, nothing sent)" : "") \u{00B7} \(card.url.absoluteString)")
                 insert(card, foundBy: mention.foundBy)
                 Analytics.feature("prompter_card", source: card.source.analyticsCode)
                 if let thumbnail = resolution.thumbnails[card.id] {

@@ -853,6 +853,70 @@
    ],
    "text": "I'm Happy with how everyone did today.",
    "expect": []
+  },
+  {
+   "id": "tryit-name-then-what-it-is",
+   "tags": [
+    "thing",
+    "user-test"
+   ],
+   "text": "And moving on to Adobe Photoshop, that is more of an image editing software, which does not use vectors.",
+   "expect": [
+    {
+     "kind": "thing",
+     "query": "adobe photoshop"
+    }
+   ]
+  },
+  {
+   "id": "name-which-is-a-tool",
+   "tags": [
+    "thing"
+   ],
+   "text": "We will use Canva, which is a design tool, for the posters.",
+   "expect": [
+    {
+     "kind": "thing",
+     "query": "canva"
+    }
+   ]
+  },
+  {
+   "id": "tryit-brand-after-book",
+   "tags": [
+    "thing",
+    "user-test",
+    "regression"
+   ],
+   "text": "Um, have you guys ever heard of the book, Adobe O Strader? Have you ever heard of the brand called imago?",
+   "expect": [
+    {
+     "kind": "book",
+     "query": "adobe o strader"
+    },
+    {
+     "kind": "thing",
+     "query": "imago"
+    }
+   ]
+  },
+  {
+   "id": "trap-sentence-start-which-is",
+   "tags": [
+    "must-not-fire",
+    "category"
+   ],
+   "text": "So, which is a better tool for this?",
+   "expect": []
+  },
+  {
+   "id": "trap-it-is-a-game",
+   "tags": [
+    "must-not-fire",
+    "category"
+   ],
+   "text": "Okay, it is a game we play every Friday.",
+   "expect": []
   }
  ]
 }

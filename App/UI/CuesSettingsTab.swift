@@ -21,9 +21,13 @@ struct CuesSettingsTab: View {
                 CuesComingSoonRows()
             } else if #available(macOS 26.0, *) {
                 CuesSetupRows(compact: false)
-                CuesTryItRows()
+                // Debug builds get the workbench in place of Try it: the same
+                // listening, plus typed sentences, audio files and every step
+                // of the pipeline written out. Release builds never compile it.
                 #if DEBUG
-                CuesDebugRows()
+                CuesWorkbench()
+                #else
+                CuesTryItRows()
                 #endif
             } else {
                 Section { CuesUnavailableText() }
@@ -289,73 +293,175 @@ struct CuesTryItRows: View {
 }
 
 #if DEBUG
-/// Developer paths: each stage of the pipeline on its own, with real inputs.
+/// Try it and the old Debug rows, as one place to find out why a sentence did
+/// or did not become a card. Debug builds only - never in a release.
+///
+/// Every input goes through the path a class takes. The old "Try a sentence"
+/// detected, then looked each mention up again by name and kind alone, which
+/// threw away what the detector knew (the category the speaker said) and so
+/// tested a pipeline no class runs. Here a typed sentence is appended to the
+/// transcript like a spoken one, and the trace shows each step: what was
+/// heard, what each detector offered, what was dropped and why, what was
+/// sent where, what was held back, and the card that came of it.
 @available(macOS 26.0, *)
-struct CuesDebugRows: View {
+struct CuesWorkbench: View {
     @EnvironmentObject private var coordinator: CoordinatorController
+    @ObservedObject private var assets = ModelAssets.shared
     @StateObject private var bench = CuesController()
-    @State private var text = "We\u{2019}re reading the book called Charlotte\u{2019}s Web by E. B. White, and I watched a video about spiders."
-    @State private var result = ""
+    @State private var text = "Have you heard of the brand called imago? And moving on to Adobe Photoshop, that is more of an image editing software."
 
-    var body: some View {
-        // One flow, not four buttons.
-        //
-        // It was Detect, Resolve, Feed audio file, Inject sample cards and
-        // Clear, spread across three rows - five controls to answer one
-        // question, which is whether a sentence turns into a card. Detect and
-        // Resolve were always used together: a mention nobody could resolve
-        // and a card nobody detected are each half an answer.
-        //
-        // So: type a sentence, press once, see what it found and what it
-        // would put on screen. The audio button stays because it is the only
-        // way to exercise the transcriber, which is now the part most likely
-        // to be wrong.
-        Section {
-            DisclosureGroup("Try a sentence") {
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack {
-                        TextField("", text: $text).labelsHidden()
-                        Button("Run") { run() }
-                        Button("Audio file\u{2026}") { feedAudio() }
-                    }
-                    if !bench.liveTail.isEmpty {
-                        Text(bench.liveTail).font(.caption).foregroundStyle(.secondary)
-                    }
-                    if !result.isEmpty {
-                        Text(result)
-                            .font(.system(.caption, design: .monospaced))
-                            .textSelection(.enabled)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                }
-                .padding(.top, 4)
-            }
-        } header: { Text("Debug") }
+    private var inClass: Bool { coordinator.isRunning || coordinator.virtualCamActive }
+
+    private var ready: Bool {
+        coordinator.cuesUseWhisper ? CuesWhisperTranscriber.isAvailable : assets.status.isInstalled
     }
 
-    /// Detect, then resolve everything detected. The two halves of the one
-    /// question, run together because neither answers it alone.
-    private func run() {
-        Task {
-            let configuration = coordinator.cuesConfiguration()
-            let mentions = await bench.debugDetect(text, configuration: configuration)
-            guard !mentions.isEmpty else { result = "no mentions"; return }
-
-            var lines = mentions.map {
-                "detected  \($0.kind.rawValue): \($0.query)  (\(Int($0.confidence * 100))%)"
+    var body: some View {
+        Section {
+            LabeledContent {
+                HStack(spacing: 8) {
+                    if bench.isListening {
+                        if bench.isSpeaking {
+                            Label("Hearing you", systemImage: "waveform")
+                                .font(.caption).foregroundStyle(Brand.text)
+                        }
+                        Button("Stop") { bench.stop() }
+                    } else {
+                        Button("Listen") {
+                            Task {
+                                await bench.startTest(seconds: 300,
+                                                      configuration: coordinator.cuesConfiguration(),
+                                                      lookUp: true)
+                            }
+                        }
+                        .disabled(inClass || !ready)
+                    }
+                    Button("Audio file\u{2026}") { feedAudio() }
+                        .disabled(bench.isListening || inClass)
+                    Button("Clear") {
+                        bench.stop()
+                        bench.clearTrace()
+                    }
+                }
+            } label: {
+                SettingLabel(title: "Listen, type or play a file",
+                             subtitle: bench.status.isEmpty
+                                ? "\(coordinator.cuesUseModel ? "Word patterns, then Apple Intelligence" : "Word patterns only") \u{00B7} real lookups \u{00B7} five minutes"
+                                : bench.status)
             }
-            for mention in mentions {
-                await bench.debugResolve(mention.query, kind: mention.kind, configuration: configuration)
-                if bench.cards.isEmpty {
-                    lines.append("  \u{2192} no card \u{2014} see the status log")
-                } else {
-                    lines.append(contentsOf: bench.cards.map {
-                        "  \u{2192} \($0.source.label): \($0.title)"
-                    })
+
+            HStack {
+                TextField("What a teacher might say", text: $text)
+                    .labelsHidden()
+                    .onSubmit(say)
+                Button("Say it", action: say)
+                    .keyboardShortcut(.return, modifiers: .command)
+            }
+
+            if bench.isListening || !bench.liveTail.isEmpty {
+                Text(bench.liveTail.isEmpty ? "\u{2026}" : bench.liveTail)
+                    .font(.callout)
+                    .foregroundStyle(bench.isListening ? .primary : .secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+
+            ForEach(bench.cards) { card in
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Text(card.kind.eyebrow)
+                        .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                        .foregroundStyle(.tertiary)
+                        .frame(width: 48, alignment: .leading)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(card.title).lineLimit(2)
+                        Text(card.subtitle.isEmpty ? card.source.label : "\(card.source.label) \u{00B7} \(card.subtitle)")
+                            .font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                    }
+                    Spacer(minLength: 0)
+                    Button("Open") { NSWorkspace.shared.open(card.url) }
+                        .controlSize(.small)
                 }
             }
-            result = lines.joined(separator: "\n")
+
+            traceView
+        } header: {
+            Text("Debug \u{00B7} Cues workbench")
+        } footer: {
+            Text("Debug builds only. Lookups are real and are sent, exactly as in a class.")
         }
+        .onAppear { bench.tracing = true }
+        .onDisappear {
+            bench.stop()
+            bench.tracing = false
+        }
+    }
+
+    private var traceView: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Text("TRACE")
+                    .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                    .foregroundStyle(.secondary)
+                Text("\(bench.trace.count) steps").font(.caption2).foregroundStyle(.tertiary)
+                Spacer()
+                Button("Copy") {
+                    NSPasteboard.general.clearContents()
+                    NSPasteboard.general.setString(traceText, forType: .string)
+                }
+                .controlSize(.small)
+                .disabled(bench.trace.isEmpty)
+            }
+            ScrollViewReader { proxy in
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 3) {
+                        ForEach(bench.trace) { line in
+                            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                                Text(elapsed(line.at))
+                                    .foregroundStyle(.tertiary)
+                                Text(line.stage.rawValue.uppercased())
+                                    .fontWeight(.semibold)
+                                    .foregroundStyle(tint(line.stage))
+                                    .frame(width: 52, alignment: .leading)
+                                Text(line.text)
+                                    .foregroundStyle(line.stage == .drop || line.stage == .skip ? .secondary : .primary)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                            .font(.system(size: 11, design: .monospaced))
+                            .textSelection(.enabled)
+                            .id(line.id)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .frame(minHeight: 120, maxHeight: 340)
+                .onChange(of: bench.trace.count) { _ in
+                    if let last = bench.trace.last { proxy.scrollTo(last.id, anchor: .bottom) }
+                }
+            }
+        }
+    }
+
+    private func tint(_ stage: CuesTraceLine.Stage) -> Color {
+        switch stage {
+        case .card: return Brand.text
+        case .drop, .skip: return .secondary
+        case .hold: return .orange
+        default: return .primary
+        }
+    }
+
+    private func elapsed(_ date: Date) -> String {
+        let start = bench.trace.first?.at ?? date
+        let seconds = Int(date.timeIntervalSince(start))
+        return String(format: "%d:%02d", seconds / 60, seconds % 60)
+    }
+
+    private var traceText: String {
+        bench.trace.map { "\(elapsed($0.at))\t\($0.stage.rawValue)\t\($0.text)" }.joined(separator: "\n")
+    }
+
+    private func say() {
+        let typed = text
+        Task { await bench.debugSay(typed, configuration: coordinator.cuesConfiguration()) }
     }
 
     private func feedAudio() {
@@ -363,7 +469,6 @@ struct CuesDebugRows: View {
         panel.allowedContentTypes = [.audio]
         panel.allowsMultipleSelection = false
         guard panel.runModal() == .OK, let url = panel.url else { return }
-        result = ""
         Task { await bench.debugFeed(file: url, configuration: coordinator.cuesConfiguration()) }
     }
 }

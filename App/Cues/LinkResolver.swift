@@ -39,6 +39,8 @@ actor LinkResolver {
         /// True when the only card is a search link, so nothing was sent.
         var searchLinkOnly = false
         var skipped = false
+        /// Held back by the per-minute brake, not refused: worth asking again.
+        var heldBack = false
         /// Pictures to fetch for these cards, by card id - NOT fetched yet.
         ///
         /// A card used to wait for its own thumbnail before it could be shown,
@@ -187,7 +189,9 @@ actor LinkResolver {
         let now = Date()
         recentLookups.removeAll { now.timeIntervalSince($0) > 60 }
         guard recentLookups.count < configuration.lookupsPerMinute else {
-            return Resolution(notes: ["holding back \u{201C}\(mention.query)\u{201D} \u{2014} \(configuration.lookupsPerMinute) lookups a minute is the ceiling"], skipped: true)
+            var held = Resolution(notes: ["holding back \u{201C}\(mention.query)\u{201D} \u{2014} \(configuration.lookupsPerMinute) lookups a minute is the ceiling; it goes when there is room"], skipped: true)
+            held.heldBack = true
+            return held
         }
         recentLookups.append(now)
         resolvedKeys.insert(key)

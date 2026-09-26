@@ -41,6 +41,10 @@ struct GeneratedMention {
 
 @available(macOS 26.0, *)
 final class FoundationModelsDetector: MentionDetector {
+    /// Where the Debug workbench hears what the model offered and why each
+    /// offer was dropped. Nil in a class.
+    static var traceDrop: ((String) -> Void)?
+
     let name = "Apple Intelligence (on-device)"
     let analyticsCode = "ai"
     let isCheap = false
@@ -119,14 +123,22 @@ final class FoundationModelsDetector: MentionDetector {
                     generating: GeneratedMentions.self,
                     options: GenerationOptions(sampling: .greedy, maximumResponseTokens: 256))
                 consecutiveErrors = 0
+                if let trace = Self.traceDrop {
+                    trace("model offered: " + (response.content.mentions.isEmpty ? "nothing"
+                        : response.content.mentions.map { "\($0.kind) \u{201C}\($0.query)\u{201D} \(Int($0.confidence * 100))%" }.joined(separator: "; ")))
+                }
                 let mentions = response.content.mentions.compactMap { generated -> Mention? in
-                    guard let kind = Mention.Kind(rawValue: generated.kind.lowercased()) else { return nil }
+                    func drop(_ why: String) -> Mention? {
+                        Self.traceDrop?("model: \u{201C}\(generated.query)\u{201D} dropped \u{2014} \(why)")
+                        return nil
+                    }
+                    guard let kind = Mention.Kind(rawValue: generated.kind.lowercased()) else { return drop("unknown kind \(generated.kind)") }
                     let query = generated.query.trimmingCharacters(in: .whitespacesAndNewlines)
                         .trimmingCharacters(in: CharacterSet(charactersIn: "\"“”'."))
                     let words = query.split(separator: " ")
                     let maxWords = kind == .quote ? 30 : 7
                     let maxLength = kind == .quote ? 200 : 60
-                    guard !words.isEmpty, words.count <= maxWords, query.count >= 3, query.count <= maxLength else { return nil }
+                    guard !words.isEmpty, words.count <= maxWords, query.count >= 3, query.count <= maxLength else { return drop("too long or too short") }
                     // A quotation needs somebody to have said one was coming.
                     //
                     // This was a word-count floor, which does not work: the
@@ -138,8 +150,8 @@ final class FoundationModelsDetector: MentionDetector {
                     // now answers to the same rule, reading the lead-in too
                     // because the tell usually lands in the sentence before.
                     if kind == .quote,
-                       !HeuristicDetector.hasRecitationCue(context + " " + trimmed) { return nil }
-                    guard generated.confidence >= 0.45 else { return nil }
+                       !HeuristicDetector.hasRecitationCue(context + " " + trimmed) { return drop("a quotation nobody said was coming") }
+                    guard generated.confidence >= 0.45 else { return drop("the model was unsure (\(Int(generated.confidence * 100))%)") }
                     // The model invents items despite being told not to, and
                     // offers everyday nouns as things to look up. Both are
                     // cheap to reject here, before anything is sent.
@@ -157,7 +169,7 @@ final class FoundationModelsDetector: MentionDetector {
                         // pabulum mean?" for being in the dictionary, which is
                         // the one place being in the dictionary is the point.
                         guard Mention.normalize(trimmed).contains(Mention.normalize(query)),
-                              HeuristicDetector.asksAboutTheWord(query, in: trimmed) else { return nil }
+                              HeuristicDetector.asksAboutTheWord(query, in: trimmed) else { return drop("nobody asked what the word means") }
                     case .thing, .topic:
                         // The two kinds the model invents. A book, a video, a
                         // person or a place is a category the talk names out
@@ -169,10 +181,10 @@ final class FoundationModelsDetector: MentionDetector {
                         // lower case, and exactly what was asked for.
                         guard HeuristicDetector.worthLookingUp(query, spokenIn: trimmed)
                                 || HeuristicDetector.namedByATell(query, in: trimmed),
-                              HeuristicDetector.namesAThing(query) else { return nil }
+                              HeuristicDetector.namesAThing(query) else { return drop("an ordinary word or a scrap of talk, not a name") }
                     default:
                         guard HeuristicDetector.worthLookingUp(query, spokenIn: trimmed)
-                                || HeuristicDetector.namedByATell(query, in: trimmed) else { return nil }
+                                || HeuristicDetector.namedByATell(query, in: trimmed) else { return drop("an ordinary word, not said as a name") }
                     }
                     let mention = Mention(kind: kind, query: query,
                                           searchQuery: generated.searchQuery.trimmingCharacters(in: .whitespacesAndNewlines),
@@ -185,7 +197,7 @@ final class FoundationModelsDetector: MentionDetector {
                     // Quotes are the line itself, and a definition never
                     // leaves the Mac, so neither needs the context.
                     let enriched = mention.searchQuery.split(whereSeparator: \.isWhitespace).count >= 2
-                    guard kind == .quote || kind == .word || enriched else { return nil }
+                    guard kind == .quote || kind == .word || enriched else { return drop("the talk never said what kind of thing it is") }
                     return mention
                 }
                 return HeuristicDetector.filter(mentions, excludedNames: excludedNames)

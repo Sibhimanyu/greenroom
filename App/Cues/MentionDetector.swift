@@ -120,6 +120,10 @@ struct CompositeDetector: MentionDetector {
 
 /// Spoken tells and what follows them. No network, no model, no learning.
 struct HeuristicDetector: MentionDetector {
+    /// Where the Debug workbench hears why a captured phrase was thrown away.
+    /// Nil in a class, so nothing is built or sent.
+    static var traceDrop: ((String) -> Void)?
+
     let name = "word patterns"
     let analyticsCode = "heuristic"
     let isCheap = true
@@ -447,7 +451,12 @@ struct HeuristicDetector: MentionDetector {
             Tell(pattern: #"\b(?i:"# + introducers + #") (?i:the|this|that) (?i:"# + nouns + #"),\s*"# + span + #"(?=[.,;!?]|$)"#,
                  kind: group.kind, confidence: 0.75, namesCategory: true),
             Tell(pattern: #"\b(?i:"# + introducers + #") "# + determiner + adjectives + #" (?i:"# + nouns + #") ["“]?([A-Z][A-Za-z0-9'&-]*(?: (?:[A-Z][A-Za-z0-9'&-]*|of|the|and|a|in|to)){0,5})["”]?(?=[.,;!?]|$| (?i:by|which|that|and|is|was|about))"#,
-                 kind: group.kind, confidence: 0.75, namesCategory: true)
+                 kind: group.kind, confidence: 0.75, namesCategory: true),
+            // The name first, then what it is: "Adobe Photoshop, that is more
+            // of an image editing software", "Canva, which is a design tool".
+            // Capitalised, because nothing before it says a name is coming.
+            Tell(pattern: #"\b([A-Z][A-Za-z0-9'&-]*(?: [A-Z][A-Za-z0-9'&-]*){0,3}),? (?i:that|which|it|this) (?i:is|was|'s) (?i:more of |kind of |sort of |basically |also |just |really |actually )?(?i:a|an) (?:[a-z-]+ ){0,3}(?i:"# + nouns + #")\b"#,
+                 kind: group.kind, confidence: 0.7, namesCategory: true)
         ]
     }
 
@@ -606,16 +615,27 @@ struct HeuristicDetector: MentionDetector {
                     : [raw]
                 for piece in pieces {
                     let phrase = Self.trimToTitle(piece)
-                    guard let query = Self.acceptable(phrase, kind: tell.kind) else { continue }
+                    guard let query = Self.acceptable(phrase, kind: tell.kind) else {
+                        Self.traceDrop?("patterns: \u{201C}\(piece.trimmingCharacters(in: .whitespaces))\u{201D} (\(tell.kind.rawValue)) is not a name: a pronoun, filler or lesson part")
+                        continue
+                    }
                     // A named thing said next to "book", "story" or "novel" is a book.
+                    // Not when the speaker said what it is: "the brand called
+                    // imago" a sentence after "the book, Wonder" is a brand.
                     var kind = tell.kind
-                    if kind == .thing, Self.nearby(text, captured, words: ["book", "novel", "story", "storybook"]) { kind = .book }
-                    if kind == .thing, Self.nearby(text, captured, words: ["movie", "film", "documentary"]) { kind = .video }
+                    if kind == .thing, !tell.namesCategory, Self.nearby(text, captured, words: ["book", "novel", "story", "storybook"]) { kind = .book }
+                    if kind == .thing, !tell.namesCategory, Self.nearby(text, captured, words: ["movie", "film", "documentary"]) { kind = .video }
                     let finalQuery = Self.extended(query, in: text)
                     // Only the tells that inferred a subject from a question
                     // have to prove the phrase is not ordinary English. See Tell.
-                    if tell.guarded, !Self.worthLookingUp(finalQuery, spokenIn: text) { continue }
-                    if tell.nameShaped, !mostlyEnglish || !Self.readsAsAName(finalQuery, in: text) { continue }
+                    if tell.guarded, !Self.worthLookingUp(finalQuery, spokenIn: text) {
+                        Self.traceDrop?("patterns: \u{201C}\(finalQuery)\u{201D} is an ordinary word, asked about in passing")
+                        continue
+                    }
+                    if tell.nameShaped, !mostlyEnglish || !Self.readsAsAName(finalQuery, in: text) {
+                        Self.traceDrop?("patterns: \u{201C}\(finalQuery)\u{201D} after a \u{201C}talk about / heard of\u{201D} does not read as a name\(mostlyEnglish ? "" : " (batch is not mostly English)")")
+                        continue
+                    }
                     var mention = Mention(kind: kind, query: finalQuery, confidence: tell.confidence)
                     if tell.namesCategory, let start = Range(match.range, in: haystack)?.lowerBound {
                         mention.category = Self.category(before: captured, from: start, in: haystack)
@@ -645,7 +665,10 @@ struct HeuristicDetector: MentionDetector {
             let tokens = key.split(separator: " ").map(String.init)
             // Any mention sharing a token with a roster name is dropped, whatever
             // its kind: the tagger is gone, but a tell can still capture a name.
-            if mention.kind != .quote, tokens.contains(where: { excludedTokens.contains($0) }) { continue }
+            if mention.kind != .quote, tokens.contains(where: { excludedTokens.contains($0) }) {
+                traceDrop?("\u{201C}\(mention.query)\u{201D} shares a name with someone in the meeting")
+                continue
+            }
             if let existing = byKey[key] {
                 // "It's called apprenticeship patterns ... book": the book wins
                 // over the generic thing whatever the confidences say.

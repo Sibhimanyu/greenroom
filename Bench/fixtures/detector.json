@@ -1,217 +1,858 @@
 {
-  "_readme": [
-    "Fixtures for the word-pattern detector. Phase 1 of",
-    "docs/cues-search-improvement-plan.md.",
-    "",
-    "Sanitized and synthetic. They are written in the shape of a real recorded",
-    "class (Indian English, Tamil words the transcriber renders phonetically,",
-    "classroom management, ASR errors) but contain no real student, and no real",
-    "class transcript is checked in here. The recording that these were modelled",
-    "on stays outside the repo because it has children's names in it.",
-    "",
-    "A case with an empty `expect` is an assertion of SILENCE. Those are the",
-    "important ones: the detector's job is mostly to say nothing. Cards cost the",
-    "teacher attention in the middle of a lesson, so a false alarm is not a",
-    "neutral miss - it is an interruption.",
-    "",
-    "`query` is matched loosely: a detection answers an expectation when either",
-    "normalised phrase contains the other. Span boundaries are not what is being",
-    "scored here."
-  ],
-  "cases": [
-
-    { "id": "thing-called-tool", "tags": ["tool", "cue-called"],
-      "text": "So there is one more thing I want to show you. It is called Haiku Deck, and it makes the slides for you.",
-      "expect": [ { "kind": "thing", "query": "haiku deck" } ] },
-
-    { "id": "thing-a-tool-called", "tags": ["tool", "cue-a-tool-called"],
-      "text": "We will use a tool called Figma for this exercise, everybody open it now.",
-      "expect": [ { "kind": "thing", "query": "figma" } ] },
-
-    { "id": "thing-invented-by", "tags": ["product", "cue-invented-by"],
-      "text": "This is a new technology invented by Amazon called E Ink, and that is why the screen looks like paper.",
-      "expect": [ { "kind": "thing", "query": "e ink" } ] },
-
-    { "id": "thing-they-call-it", "tags": ["product", "cue-they-call-it"],
-      "text": "The screen does not glow at all. They call it Paperwhite, and it is easier on the eyes.",
-      "expect": [ { "kind": "thing", "query": "paperwhite" } ] },
-
-    { "id": "thing-is-a-website", "tags": ["product", "cue-is-a"],
-      "text": "BookFusion is a website where you keep your whole library, so please join it before Friday.",
-      "expect": [ { "kind": "thing", "query": "bookfusion" } ] },
-
-    { "id": "thing-introduce", "tags": ["tool", "cue-introduce", "indian-english"],
-      "text": "Now I would like to introduce this chap, um, Notion, which many of you will use later.",
-      "expect": [ { "kind": "thing", "query": "notion" } ] },
-
-    { "id": "book-called", "tags": ["book", "cue-book-called"],
-      "text": "Today we are starting the book called Charlotte's Web, and it is about a spider.",
-      "expect": [ { "kind": "book", "query": "charlottes web" } ] },
-
-    { "id": "book-quoted-title", "tags": ["book", "cue-quoted"],
-      "text": "Two years back I finished “Apprenticeship Patterns” and it changed how I work.",
-      "expect": [ { "kind": "book", "query": "apprenticeship patterns" } ] },
-
-    { "id": "person-written-by", "tags": ["person", "cue-written-by"],
-      "text": "That story was written by Eric Carle, the same person who did the caterpillar one.",
-      "expect": [ { "kind": "person", "query": "eric carle" } ] },
-
-    { "id": "person-the-author", "tags": ["person", "cue-the-author"],
-      "text": "The author Roald Dahl wrote many of the books on your shelf at home.",
-      "expect": [ { "kind": "person", "query": "roald dahl" } ] },
-
-    { "id": "video-about", "tags": ["video", "cue-video-about"],
-      "text": "I will send you a video about volcanoes, please watch it before the next class.",
-      "expect": [ { "kind": "video", "query": "volcanoes" } ] },
-
-    { "id": "video-articles-about", "tags": ["video", "cue-articles"],
-      "text": "There are articles and videos about why designers hate Comic Sans, go and read them.",
-      "expect": [ { "kind": "video", "query": "designers hate comic sans" } ] },
-
-    { "id": "topic-what-is", "tags": ["topic", "cue-what-is"],
-      "text": "Before we go further, tell me, what is monospace? Anybody?",
-      "expect": [ { "kind": "topic", "query": "monospace" } ] },
-
-    { "id": "topic-fonts-such-as", "tags": ["font", "cue-such-as"],
-      "_why": "Two fonts in one breath is two cards. The cue splits on 'and' deliberately.",
-      "text": "Then came the newer font families such as Tahoma and Verdana, which were made for screens.",
-      "expect": [
-        { "kind": "topic", "query": "tahoma" },
-        { "kind": "topic", "query": "verdana" }
-      ] },
-
-    { "id": "topic-lets-talk-about", "tags": ["topic", "cue-lets-talk"],
-      "text": "Okay, so today let us talk about photosynthesis, and then we will draw it.",
-      "expect": [ { "kind": "topic", "query": "photosynthesis" } ] },
-
-    { "id": "word-the-word-quoted", "tags": ["word", "cue-the-word"],
-      "text": "Look at the word “pabulum” in the second line there.",
-      "expect": [ { "kind": "word", "query": "pabulum" } ] },
-
-    { "id": "word-what-does-mean", "tags": ["word", "cue-what-does-mean"],
-      "text": "Somebody tell me, what does obstinate mean in this sentence?",
-      "expect": [ { "kind": "word", "query": "obstinate" } ] },
-
-    { "id": "word-meaning-of", "tags": ["word", "cue-meaning-of"],
-      "text": "We will look at the meaning of resilience and then use it in a sentence.",
-      "expect": [ { "kind": "word", "query": "resilience" } ] },
-
-    { "id": "quote-with-lead-in", "tags": ["quote", "cue-quote"],
-      "context": "and there is a very famous quote from that speech. Kennedy.",
-      "text": "Ask not what your country can do for you, ask what you can do for your country.",
-      "expect": [ { "kind": "quote", "query": "ask not what your country can do for you" } ] },
-
-    { "id": "place-the-country", "tags": ["place", "cue-the-country"],
-      "text": "It grows mostly in the country called Madagascar, far away from here.",
-      "expect": [ { "kind": "place", "query": "madagascar" } ] },
-
-    { "id": "silence-happening", "tags": ["must-not-fire", "regression", "chatter"],
-      "_why": "The live class on 5 Sep produced exactly one card and it was a dictionary entry for 'happening' out of this sentence. An eight-letter bypass in the filter admitted it. This case is why the bench exists.",
-      "text": "Okay. What is happening right now?",
-      "expect": [] },
-
-    { "id": "silence-change-all", "tags": ["must-not-fire", "chatter"],
-      "text": "All right, I have to change all of this again.",
-      "expect": [] },
-
-    { "id": "silence-long-ordinary-words", "tags": ["must-not-fire", "regression"],
-      "_why": "Every one of these is nine or ten letters and in the Mac's dictionary. The reverted bypass would have searched all of them.",
-      "text": "Everything is ready and something is different, that is the important thing at the beginning.",
-      "expect": [] },
-
-    { "id": "silence-generic-nouns", "tags": ["must-not-fire", "generic"],
-      "text": "The roads were wet yesterday and the paper was late, so the work did not finish.",
-      "expect": [] },
-
-    { "id": "silence-classroom-management", "tags": ["must-not-fire", "management"],
-      "text": "Can everybody please mute your microphone, we are starting in two minutes.",
-      "expect": [] },
-
-    { "id": "silence-attendance", "tags": ["must-not-fire", "management"],
-      "text": "Who is not here today? Put your hand up if you can hear me properly.",
-      "expect": [] },
-
-    { "id": "silence-homework-instruction", "tags": ["must-not-fire", "management"],
-      "text": "Write it down in your notebook and show it to me on Monday morning.",
-      "expect": [] },
-
-    { "id": "silence-roster-name-called", "tags": ["must-not-fire", "roster"],
-      "roster": ["Arun Kumar", "Divya", "Meera"],
-      "text": "It is called Arun Kumar, no sorry, Arun can you read the next line for us.",
-      "expect": [] },
-
-    { "id": "silence-roster-praise", "tags": ["must-not-fire", "roster"],
-      "roster": ["Kavya", "Sanjay"],
-      "text": "Very good Kavya, that was correct. Sanjay, you try the next one.",
-      "expect": [] },
-
-    { "id": "silence-tamil-phonetic", "tags": ["must-not-fire", "mixed-language", "asr"],
-      "_why": "What the en_IN model does with Tamil: plausible-looking English that means nothing. There is no Tamil speech model on this platform, so this is the normal case, not an edge case.",
-      "text": "Navari navakuti, tambi sing my library, nurua plus au nurua.",
-      "expect": [] },
-
-    { "id": "silence-numbers", "tags": ["must-not-fire", "asr"],
-      "text": "Five hundred for two people for three months, three people three months, nine hundred.",
-      "expect": [] },
-
-    { "id": "silence-exclamation", "tags": ["must-not-fire", "quote-floor"],
-      "_why": "Went to Wikiquote twice in one real class.",
-      "context": "and then she said the funniest thing.",
-      "text": "Oh my God.",
-      "expect": [] },
-
-    { "id": "silence-where-looking", "tags": ["must-not-fire", "blocklist"],
-      "text": "Go and search it on YouTube, or just put it in Google and see what comes.",
-      "expect": [] },
-
-    { "id": "silence-pronoun-called", "tags": ["must-not-fire", "blocklist"],
-      "text": "It is called that, the one we saw before, you remember it.",
-      "expect": [] },
-
-    { "id": "silence-too-short", "tags": ["must-not-fire", "floor"],
-      "text": "Yes okay.",
-      "expect": [] },
-
-    { "id": "silence-greeting", "tags": ["must-not-fire", "management"],
-      "text": "Good morning everyone, good morning, can you hear me at the back?",
-      "expect": [] },
-
-    { "id": "silence-said-to-someone", "tags": ["must-not-fire", "management"],
-      "text": "I told you already, do not open the browser until I say so.",
-      "expect": [] },
-
-    { "id": "silence-time-talk", "tags": ["must-not-fire", "generic"],
-      "text": "We have ten minutes for this and then we will take a break for lunch.",
-      "expect": [] },
-
-    { "id": "mixed-cue-in-chatter", "tags": ["tool", "mixed-language"],
-      "_why": "A real tell surviving the code-switching around it.",
-      "text": "Seri, seri, one minute. It is called Canva, and everybody has a free account already.",
-      "expect": [ { "kind": "thing", "query": "canva" } ] },
-
-    { "id": "mixed-two-in-one-batch", "tags": ["book", "person"],
-      "text": "The book called Matilda was written by Roald Dahl, and we will start it next week.",
-      "expect": [
-        { "kind": "book", "query": "matilda" },
-        { "kind": "person", "query": "roald dahl" }
-      ] },
-
-    { "id": "asr-garbled-brand", "tags": ["tool", "asr"],
-      "_why": "The transcriber writes 'Hyco deck' for Haiku Deck. Phase 3 of the plan is where ASR-variant normalisation lands; today this is expected to be captured as said and to fail at retrieval, not here.",
-      "text": "The one I mentioned before, it is called Hyco deck, try it at home.",
-      "expect": [ { "kind": "thing", "query": "hyco deck" } ] },
-
-    { "id": "silence-word-not-asked", "tags": ["must-not-fire", "word"],
-      "_why": "A word appearing is not a word being asked about. Only an explicit definition tell earns a dictionary card.",
-      "text": "The resilience of these plants is what keeps them alive through the summer.",
-      "expect": [] },
-
-    { "id": "silence-question-not-topic", "tags": ["must-not-fire", "chatter"],
-      "text": "What is the problem? Is your camera not working again?",
-      "expect": [] },
-
-    { "id": "silence-self-reference", "tags": ["must-not-fire", "management"],
-      "text": "This is the screen I was showing you yesterday, nothing has changed on it.",
-      "expect": [] }
-  ]
+ "_readme": [
+  "Fixtures for the word-pattern detector. Phase 1 of",
+  "docs/cues-search-improvement-plan.md.",
+  "",
+  "Sanitized and synthetic. They are written in the shape of a real recorded",
+  "class (Indian English, Tamil words the transcriber renders phonetically,",
+  "classroom management, ASR errors) but contain no real student, and no real",
+  "class transcript is checked in here. The recording that these were modelled",
+  "on stays outside the repo because it has children's names in it.",
+  "",
+  "A case with an empty `expect` is an assertion of SILENCE. Those are the",
+  "important ones: the detector's job is mostly to say nothing. Cards cost the",
+  "teacher attention in the middle of a lesson, so a false alarm is not a",
+  "neutral miss - it is an interruption.",
+  "",
+  "`query` is matched loosely: a detection answers an expectation when either",
+  "normalised phrase contains the other. Span boundaries are not what is being",
+  "scored here."
+ ],
+ "cases": [
+  {
+   "id": "thing-called-tool",
+   "tags": [
+    "tool",
+    "cue-called"
+   ],
+   "text": "So there is one more thing I want to show you. It is called Haiku Deck, and it makes the slides for you.",
+   "expect": [
+    {
+     "kind": "thing",
+     "query": "haiku deck"
+    }
+   ]
+  },
+  {
+   "id": "thing-a-tool-called",
+   "tags": [
+    "tool",
+    "cue-a-tool-called"
+   ],
+   "text": "We will use a tool called Figma for this exercise, everybody open it now.",
+   "expect": [
+    {
+     "kind": "thing",
+     "query": "figma"
+    }
+   ]
+  },
+  {
+   "id": "thing-invented-by",
+   "tags": [
+    "product",
+    "cue-invented-by"
+   ],
+   "text": "This is a new technology invented by Amazon called E Ink, and that is why the screen looks like paper.",
+   "expect": [
+    {
+     "kind": "thing",
+     "query": "e ink"
+    }
+   ]
+  },
+  {
+   "id": "thing-they-call-it",
+   "tags": [
+    "product",
+    "cue-they-call-it"
+   ],
+   "text": "The screen does not glow at all. They call it Paperwhite, and it is easier on the eyes.",
+   "expect": [
+    {
+     "kind": "thing",
+     "query": "paperwhite"
+    }
+   ]
+  },
+  {
+   "id": "thing-is-a-website",
+   "tags": [
+    "product",
+    "cue-is-a"
+   ],
+   "text": "BookFusion is a website where you keep your whole library, so please join it before Friday.",
+   "expect": [
+    {
+     "kind": "thing",
+     "query": "bookfusion"
+    }
+   ]
+  },
+  {
+   "id": "thing-introduce",
+   "tags": [
+    "tool",
+    "cue-introduce",
+    "indian-english"
+   ],
+   "text": "Now I would like to introduce this chap, um, Notion, which many of you will use later.",
+   "expect": [
+    {
+     "kind": "thing",
+     "query": "notion"
+    }
+   ]
+  },
+  {
+   "id": "book-called",
+   "tags": [
+    "book",
+    "cue-book-called"
+   ],
+   "text": "Today we are starting the book called Charlotte's Web, and it is about a spider.",
+   "expect": [
+    {
+     "kind": "book",
+     "query": "charlottes web"
+    }
+   ]
+  },
+  {
+   "id": "book-quoted-title",
+   "tags": [
+    "book",
+    "cue-quoted"
+   ],
+   "text": "Two years back I finished “Apprenticeship Patterns” and it changed how I work.",
+   "expect": [
+    {
+     "kind": "book",
+     "query": "apprenticeship patterns"
+    }
+   ]
+  },
+  {
+   "id": "person-written-by",
+   "tags": [
+    "person",
+    "cue-written-by"
+   ],
+   "text": "That story was written by Eric Carle, the same person who did the caterpillar one.",
+   "expect": [
+    {
+     "kind": "person",
+     "query": "eric carle"
+    }
+   ]
+  },
+  {
+   "id": "person-the-author",
+   "tags": [
+    "person",
+    "cue-the-author"
+   ],
+   "text": "The author Roald Dahl wrote many of the books on your shelf at home.",
+   "expect": [
+    {
+     "kind": "person",
+     "query": "roald dahl"
+    }
+   ]
+  },
+  {
+   "id": "video-about",
+   "tags": [
+    "video",
+    "cue-video-about"
+   ],
+   "text": "I will send you a video about volcanoes, please watch it before the next class.",
+   "expect": [
+    {
+     "kind": "video",
+     "query": "volcanoes"
+    }
+   ]
+  },
+  {
+   "id": "video-articles-about",
+   "tags": [
+    "video",
+    "cue-articles"
+   ],
+   "text": "There are articles and videos about why designers hate Comic Sans, go and read them.",
+   "expect": [
+    {
+     "kind": "video",
+     "query": "designers hate comic sans"
+    }
+   ]
+  },
+  {
+   "id": "topic-what-is",
+   "tags": [
+    "topic",
+    "cue-what-is"
+   ],
+   "text": "Before we go further, tell me, what is monospace? Anybody?",
+   "expect": [
+    {
+     "kind": "topic",
+     "query": "monospace"
+    }
+   ]
+  },
+  {
+   "id": "topic-fonts-such-as",
+   "tags": [
+    "font",
+    "cue-such-as"
+   ],
+   "_why": "Two fonts in one breath is two cards. The cue splits on 'and' deliberately.",
+   "text": "Then came the newer font families such as Tahoma and Verdana, which were made for screens.",
+   "expect": [
+    {
+     "kind": "topic",
+     "query": "tahoma"
+    },
+    {
+     "kind": "topic",
+     "query": "verdana"
+    }
+   ]
+  },
+  {
+   "id": "topic-lets-talk-about",
+   "tags": [
+    "topic",
+    "cue-lets-talk"
+   ],
+   "text": "Okay, so today let us talk about photosynthesis, and then we will draw it.",
+   "expect": [
+    {
+     "kind": "topic",
+     "query": "photosynthesis"
+    }
+   ]
+  },
+  {
+   "id": "word-the-word-quoted",
+   "tags": [
+    "word",
+    "cue-the-word"
+   ],
+   "text": "Look at the word “pabulum” in the second line there.",
+   "expect": [
+    {
+     "kind": "word",
+     "query": "pabulum"
+    }
+   ]
+  },
+  {
+   "id": "word-what-does-mean",
+   "tags": [
+    "word",
+    "cue-what-does-mean"
+   ],
+   "text": "Somebody tell me, what does obstinate mean in this sentence?",
+   "expect": [
+    {
+     "kind": "word",
+     "query": "obstinate"
+    }
+   ]
+  },
+  {
+   "id": "word-meaning-of",
+   "tags": [
+    "word",
+    "cue-meaning-of"
+   ],
+   "text": "We will look at the meaning of resilience and then use it in a sentence.",
+   "expect": [
+    {
+     "kind": "word",
+     "query": "resilience"
+    }
+   ]
+  },
+  {
+   "id": "quote-with-lead-in",
+   "tags": [
+    "quote",
+    "cue-quote"
+   ],
+   "context": "and there is a very famous quote from that speech. Kennedy.",
+   "text": "Ask not what your country can do for you, ask what you can do for your country.",
+   "expect": [
+    {
+     "kind": "quote",
+     "query": "ask not what your country can do for you"
+    }
+   ]
+  },
+  {
+   "id": "place-the-country",
+   "tags": [
+    "place",
+    "cue-the-country"
+   ],
+   "text": "It grows mostly in the country called Madagascar, far away from here.",
+   "expect": [
+    {
+     "kind": "place",
+     "query": "madagascar"
+    }
+   ]
+  },
+  {
+   "id": "silence-happening",
+   "tags": [
+    "must-not-fire",
+    "regression",
+    "chatter"
+   ],
+   "_why": "The live class on 5 Sep produced exactly one card and it was a dictionary entry for 'happening' out of this sentence. An eight-letter bypass in the filter admitted it. This case is why the bench exists.",
+   "text": "Okay. What is happening right now?",
+   "expect": []
+  },
+  {
+   "id": "silence-change-all",
+   "tags": [
+    "must-not-fire",
+    "chatter"
+   ],
+   "text": "All right, I have to change all of this again.",
+   "expect": []
+  },
+  {
+   "id": "silence-long-ordinary-words",
+   "tags": [
+    "must-not-fire",
+    "regression"
+   ],
+   "_why": "Every one of these is nine or ten letters and in the Mac's dictionary. The reverted bypass would have searched all of them.",
+   "text": "Everything is ready and something is different, that is the important thing at the beginning.",
+   "expect": []
+  },
+  {
+   "id": "silence-generic-nouns",
+   "tags": [
+    "must-not-fire",
+    "generic"
+   ],
+   "text": "The roads were wet yesterday and the paper was late, so the work did not finish.",
+   "expect": []
+  },
+  {
+   "id": "silence-classroom-management",
+   "tags": [
+    "must-not-fire",
+    "management"
+   ],
+   "text": "Can everybody please mute your microphone, we are starting in two minutes.",
+   "expect": []
+  },
+  {
+   "id": "silence-attendance",
+   "tags": [
+    "must-not-fire",
+    "management"
+   ],
+   "text": "Who is not here today? Put your hand up if you can hear me properly.",
+   "expect": []
+  },
+  {
+   "id": "silence-homework-instruction",
+   "tags": [
+    "must-not-fire",
+    "management"
+   ],
+   "text": "Write it down in your notebook and show it to me on Monday morning.",
+   "expect": []
+  },
+  {
+   "id": "silence-roster-name-called",
+   "tags": [
+    "must-not-fire",
+    "roster"
+   ],
+   "roster": [
+    "Arun Kumar",
+    "Divya",
+    "Meera"
+   ],
+   "text": "It is called Arun Kumar, no sorry, Arun can you read the next line for us.",
+   "expect": []
+  },
+  {
+   "id": "silence-roster-praise",
+   "tags": [
+    "must-not-fire",
+    "roster"
+   ],
+   "roster": [
+    "Kavya",
+    "Sanjay"
+   ],
+   "text": "Very good Kavya, that was correct. Sanjay, you try the next one.",
+   "expect": []
+  },
+  {
+   "id": "silence-tamil-phonetic",
+   "tags": [
+    "must-not-fire",
+    "mixed-language",
+    "asr"
+   ],
+   "_why": "What the en_IN model does with Tamil: plausible-looking English that means nothing. There is no Tamil speech model on this platform, so this is the normal case, not an edge case.",
+   "text": "Navari navakuti, tambi sing my library, nurua plus au nurua.",
+   "expect": []
+  },
+  {
+   "id": "silence-numbers",
+   "tags": [
+    "must-not-fire",
+    "asr"
+   ],
+   "text": "Five hundred for two people for three months, three people three months, nine hundred.",
+   "expect": []
+  },
+  {
+   "id": "silence-exclamation",
+   "tags": [
+    "must-not-fire",
+    "quote-floor"
+   ],
+   "_why": "Went to Wikiquote twice in one real class.",
+   "context": "and then she said the funniest thing.",
+   "text": "Oh my God.",
+   "expect": []
+  },
+  {
+   "id": "silence-where-looking",
+   "tags": [
+    "must-not-fire",
+    "blocklist"
+   ],
+   "text": "Go and search it on YouTube, or just put it in Google and see what comes.",
+   "expect": []
+  },
+  {
+   "id": "silence-pronoun-called",
+   "tags": [
+    "must-not-fire",
+    "blocklist"
+   ],
+   "text": "It is called that, the one we saw before, you remember it.",
+   "expect": []
+  },
+  {
+   "id": "silence-too-short",
+   "tags": [
+    "must-not-fire",
+    "floor"
+   ],
+   "text": "Yes okay.",
+   "expect": []
+  },
+  {
+   "id": "silence-greeting",
+   "tags": [
+    "must-not-fire",
+    "management"
+   ],
+   "text": "Good morning everyone, good morning, can you hear me at the back?",
+   "expect": []
+  },
+  {
+   "id": "silence-said-to-someone",
+   "tags": [
+    "must-not-fire",
+    "management"
+   ],
+   "text": "I told you already, do not open the browser until I say so.",
+   "expect": []
+  },
+  {
+   "id": "silence-time-talk",
+   "tags": [
+    "must-not-fire",
+    "generic"
+   ],
+   "text": "We have ten minutes for this and then we will take a break for lunch.",
+   "expect": []
+  },
+  {
+   "id": "mixed-cue-in-chatter",
+   "tags": [
+    "tool",
+    "mixed-language"
+   ],
+   "_why": "A real tell surviving the code-switching around it.",
+   "text": "Seri, seri, one minute. It is called Canva, and everybody has a free account already.",
+   "expect": [
+    {
+     "kind": "thing",
+     "query": "canva"
+    }
+   ]
+  },
+  {
+   "id": "mixed-two-in-one-batch",
+   "tags": [
+    "book",
+    "person"
+   ],
+   "text": "The book called Matilda was written by Roald Dahl, and we will start it next week.",
+   "expect": [
+    {
+     "kind": "book",
+     "query": "matilda"
+    },
+    {
+     "kind": "person",
+     "query": "roald dahl"
+    }
+   ]
+  },
+  {
+   "id": "asr-garbled-brand",
+   "tags": [
+    "tool",
+    "asr"
+   ],
+   "_why": "The transcriber writes 'Hyco deck' for Haiku Deck. Phase 3 of the plan is where ASR-variant normalisation lands; today this is expected to be captured as said and to fail at retrieval, not here.",
+   "text": "The one I mentioned before, it is called Hyco deck, try it at home.",
+   "expect": [
+    {
+     "kind": "thing",
+     "query": "hyco deck"
+    }
+   ]
+  },
+  {
+   "id": "silence-word-not-asked",
+   "tags": [
+    "must-not-fire",
+    "word"
+   ],
+   "_why": "A word appearing is not a word being asked about. Only an explicit definition tell earns a dictionary card.",
+   "text": "The resilience of these plants is what keeps them alive through the summer.",
+   "expect": []
+  },
+  {
+   "id": "silence-question-not-topic",
+   "tags": [
+    "must-not-fire",
+    "chatter"
+   ],
+   "text": "What is the problem? Is your camera not working again?",
+   "expect": []
+  },
+  {
+   "id": "silence-self-reference",
+   "tags": [
+    "must-not-fire",
+    "management"
+   ],
+   "text": "This is the screen I was showing you yesterday, nothing has changed on it.",
+   "expect": []
+  },
+  {
+   "id": "tryit-book-appositive",
+   "tags": [
+    "book",
+    "user-test"
+   ],
+   "text": "Um, have you guys ever heard of the book, Adobe O Strader?",
+   "expect": [
+    {
+     "kind": "book",
+     "query": "adobe o strader"
+    }
+   ]
+  },
+  {
+   "id": "tryit-brand-called-lowercase",
+   "tags": [
+    "thing",
+    "user-test"
+   ],
+   "text": "Have you ever heard of the brand called imago?",
+   "expect": [
+    {
+     "kind": "thing",
+     "query": "imago"
+    }
+   ]
+  },
+  {
+   "id": "tryit-talk-about",
+   "tags": [
+    "topic",
+    "user-test"
+   ],
+   "text": "Hi everyone, my name is Sibi and I'm gonna talk about Adobe Illustrator.",
+   "expect": [
+    {
+     "kind": "topic",
+     "query": "adobe illustrator"
+    }
+   ]
+  },
+  {
+   "id": "tryit-self-name-silent",
+   "tags": [
+    "must-not-fire",
+    "self-name"
+   ],
+   "text": "Hi everyone, my name is Sibi and I'm really happy to be here today.",
+   "expect": []
+  },
+  {
+   "id": "self-name-im",
+   "tags": [
+    "must-not-fire",
+    "self-name"
+   ],
+   "text": "Good morning, I'm Priya, and today we will read together.",
+   "expect": []
+  },
+  {
+   "id": "category-app-named",
+   "tags": [
+    "thing"
+   ],
+   "text": "There is a new app named Notion that keeps all your notes in one place.",
+   "expect": [
+    {
+     "kind": "thing",
+     "query": "notion"
+    }
+   ]
+  },
+  {
+   "id": "category-company-called",
+   "tags": [
+    "thing"
+   ],
+   "text": "It was made by a small company called Wacom in Japan.",
+   "expect": [
+    {
+     "kind": "thing",
+     "query": "wacom"
+    }
+   ]
+  },
+  {
+   "id": "category-channel-called",
+   "tags": [
+    "video"
+   ],
+   "text": "I follow a channel called Kurzgesagt for science videos.",
+   "expect": [
+    {
+     "kind": "video",
+     "query": "kurzgesagt"
+    }
+   ]
+  },
+  {
+   "id": "category-song-called",
+   "tags": [
+    "video"
+   ],
+   "text": "We will sing the song called Twinkle Twinkle Little Star.",
+   "expect": [
+    {
+     "kind": "video",
+     "query": "twinkle twinkle little star"
+    }
+   ]
+  },
+  {
+   "id": "category-font-called",
+   "tags": [
+    "thing"
+   ],
+   "text": "Designers love a font called Helvetica.",
+   "expect": [
+    {
+     "kind": "thing",
+     "query": "helvetica"
+    }
+   ]
+  },
+  {
+   "id": "category-bare-capitalised",
+   "tags": [
+    "book"
+   ],
+   "text": "Have you read the book Wonder by R. J. Palacio?",
+   "expect": [
+    {
+     "kind": "book",
+     "query": "wonder"
+    }
+   ]
+  },
+  {
+   "id": "category-artist-named",
+   "tags": [
+    "person"
+   ],
+   "text": "There was an artist named Frida Kahlo who painted herself.",
+   "expect": [
+    {
+     "kind": "person",
+     "query": "frida kahlo"
+    }
+   ]
+  },
+  {
+   "id": "category-museum-called",
+   "tags": [
+    "place"
+   ],
+   "text": "We visited a museum called the Louvre last year.",
+   "expect": [
+    {
+     "kind": "place",
+     "query": "louvre"
+    }
+   ]
+  },
+  {
+   "id": "discourse-heard-of",
+   "tags": [
+    "thing"
+   ],
+   "text": "Have you heard of Canva? It makes posters very quickly.",
+   "expect": [
+    {
+     "kind": "thing",
+     "query": "canva"
+    }
+   ]
+  },
+  {
+   "id": "discourse-check-out",
+   "tags": [
+    "thing"
+   ],
+   "text": "You should check out Khan Academy for extra practice.",
+   "expect": [
+    {
+     "kind": "thing",
+     "query": "khan academy"
+    }
+   ]
+  },
+  {
+   "id": "discourse-look-up",
+   "tags": [
+    "thing"
+   ],
+   "text": "Look up Duolingo tonight and try one lesson.",
+   "expect": [
+    {
+     "kind": "thing",
+     "query": "duolingo"
+    }
+   ]
+  },
+  {
+   "id": "trap-talk-about-lowercase",
+   "tags": [
+    "must-not-fire",
+    "discourse"
+   ],
+   "text": "Today we will talk about what happened in the story yesterday.",
+   "expect": []
+  },
+  {
+   "id": "trap-talk-about-chapter",
+   "tags": [
+    "must-not-fire",
+    "discourse"
+   ],
+   "text": "Let us talk about Chapter Four before the break.",
+   "expect": []
+  },
+  {
+   "id": "trap-heard-of-person",
+   "tags": [
+    "must-not-fire",
+    "discourse",
+    "person"
+   ],
+   "text": "Has anyone heard of Rahul from the other section?",
+   "expect": []
+  },
+  {
+   "id": "trap-talk-about-monday",
+   "tags": [
+    "must-not-fire",
+    "discourse"
+   ],
+   "text": "We will talk about Monday's test at the end.",
+   "expect": []
+  },
+  {
+   "id": "trap-appositive-adjective",
+   "tags": [
+    "must-not-fire",
+    "appositive"
+   ],
+   "text": "Make sure you use a large enough font, create enough contrast between foreground and background.",
+   "expect": []
+  },
+  {
+   "id": "trap-appositive-pronoun",
+   "tags": [
+    "must-not-fire",
+    "appositive"
+   ],
+   "text": "I read the book, it was really long.",
+   "expect": []
+  },
+  {
+   "id": "trap-check-out-page",
+   "tags": [
+    "must-not-fire",
+    "discourse"
+   ],
+   "text": "Check out page twelve and do the first exercise.",
+   "expect": []
+  },
+  {
+   "id": "trap-heard-of-it",
+   "tags": [
+    "must-not-fire",
+    "discourse"
+   ],
+   "text": "Have you heard of it? No? Okay, never mind.",
+   "expect": []
+  },
+  {
+   "id": "trap-the-book-lowercase",
+   "tags": [
+    "must-not-fire",
+    "category"
+   ],
+   "text": "Open the book and read the first two lines aloud.",
+   "expect": []
+  },
+  {
+   "id": "trap-im-mood",
+   "tags": [
+    "must-not-fire",
+    "self-name"
+   ],
+   "text": "I'm Happy with how everyone did today.",
+   "expect": []
+  }
+ ]
 }

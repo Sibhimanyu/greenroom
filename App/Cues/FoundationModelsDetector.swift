@@ -107,6 +107,7 @@ final class FoundationModelsDetector: MentionDetector {
         let trimmed = newText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard trimmed.split(whereSeparator: \.isWhitespace).count >= 3 else { return [] }
 
+        let excludedNames = excludedNames + HeuristicDetector.selfIntroducedNames(in: context + " " + trimmed)
         let roster = excludedNames.isEmpty ? "" : "\nPeople in the call (never list these): \(excludedNames.joined(separator: ", "))."
         var prompt = "Context (already handled): \(context.isEmpty ? "none" : context)\nNew words: \(trimmed)\(roster)"
 
@@ -162,10 +163,16 @@ final class FoundationModelsDetector: MentionDetector {
                         // person or a place is a category the talk names out
                         // loud; "thing" and "topic" are where a sliced-up
                         // sentence lands, so they answer to namesAThing too.
-                        guard HeuristicDetector.worthLookingUp(query, spokenIn: trimmed),
+                        //
+                        // Unless the speaker said outright that it is a name:
+                        // "the brand called imago" is a dictionary word in
+                        // lower case, and exactly what was asked for.
+                        guard HeuristicDetector.worthLookingUp(query, spokenIn: trimmed)
+                                || HeuristicDetector.namedByATell(query, in: trimmed),
                               HeuristicDetector.namesAThing(query) else { return nil }
                     default:
-                        guard HeuristicDetector.worthLookingUp(query, spokenIn: trimmed) else { return nil }
+                        guard HeuristicDetector.worthLookingUp(query, spokenIn: trimmed)
+                                || HeuristicDetector.namedByATell(query, in: trimmed) else { return nil }
                     }
                     let mention = Mention(kind: kind, query: query,
                                           searchQuery: generated.searchQuery.trimmingCharacters(in: .whitespacesAndNewlines),

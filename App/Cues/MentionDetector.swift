@@ -32,6 +32,7 @@
 //  because they are a real class with children's names in them.
 //
 import Foundation
+import NaturalLanguage
 
 protocol MentionDetector {
     /// "Apple Intelligence (on-device)" or "word patterns" - for the status
@@ -76,6 +77,9 @@ struct CompositeDetector: MentionDetector {
     let model: MentionDetector
 
     func detect(newText: String, context: String, excludedNames: [String]) async throws -> [Mention] {
+        // The speaker's own name joins the roster before either detector runs:
+        // the model is told the names to avoid, so it has to be told this one too.
+        let excludedNames = excludedNames + HeuristicDetector.selfIntroducedNames(in: context + " " + newText)
         let byPattern = try await patterns.detect(newText: newText, context: context,
                                                   excludedNames: excludedNames)
         guard byPattern.isEmpty else { return byPattern }
@@ -135,6 +139,7 @@ struct HeuristicDetector: MentionDetector {
     /// continues past them: "volcanoes on YouTube" is about volcanoes.
     private static let hardStops: Set<String> = [
         "on", "which", "that", "because", "and", "but", "so", "then", "yesterday", "today", "tomorrow",
+        "tonight", "before", "after", "during", "until", "now",
         "when", "where", "while", "okay", "ok", "right", "yeah", "or", "no", "um", "uh"
     ]
 
@@ -336,11 +341,19 @@ struct HeuristicDetector: MentionDetector {
         let kind: Mention.Kind
         let confidence: Double
         var guarded = false
+        /// The tell is a way of TALKING about something ("talk about X",
+        /// "heard of X") rather than a way of naming it, so the captured phrase
+        /// must itself read as a name. See `readsAsAName`.
+        var nameShaped = false
+        /// One of the category tells, so the noun it matched is worth keeping.
+        var namesCategory = false
     }
 
     /// A tell → a kind. Case-insensitivity is scoped to the tell words with
     /// `(?i:…)`; a blanket `(?i)` would make `[A-Z]` match anything.
-    private static let tells: [Tell] = [
+    private static let tells: [Tell] = baseTells + categoryTells + discourseTells
+
+    private static let baseTells: [Tell] = [
         // Named things: "it's called X", "they call it X", "X, they call it",
         // "a tool called X", "invented by Amazon called X", "X is a tool".
         Tell(pattern: #"\b(?i:it's|it is|this is|which is|that's|that is|that was|it was|this one is|the tool is|the app is|the site is) (?i:called|named) "# + span + #"(?=[.,;!?]|$)"#, kind: .thing, confidence: 0.75),
@@ -380,8 +393,190 @@ struct HeuristicDetector: MentionDetector {
         Tell(pattern: #"\b(?i:the country|the city|the river|the mountain|the ocean|the continent|the state|the planet) (?i:of |called )?([A-Z][A-Za-z]+(?: [A-Z][A-Za-z]+){0,2})"#, kind: .place, confidence: 0.7)
     ]
 
+
+    // MARK: Categories and discourse
+
+    /// What a speaker calls a kind of thing, and the card kind it becomes.
+    ///
+    /// The tells above were each written for one sentence heard in one class,
+    /// so each knows five or six nouns. A teacher testing Cues said "the brand
+    /// called imago" and got nothing, because "brand" was not one of them. The
+    /// grammar is the same whatever the noun, so the nouns are one list and
+    /// the grammar is written once.
+    static let categories: [(nouns: [String], kind: Mention.Kind)] = [
+        (["book", "novel", "story", "storybook", "picture book", "textbook", "comic", "comic book",
+          "graphic novel", "manga", "poem", "biography", "autobiography"], .book),
+        (["movie", "film", "documentary", "video", "cartoon", "anime", "tv show", "show", "series",
+          "song", "album", "podcast", "channel", "trailer", "ted talk"], .video),
+        (["brand", "company", "startup", "app", "application", "tool", "software", "program", "programme",
+          "website", "site", "platform", "product", "device", "gadget", "game", "service", "font",
+          "typeface", "language", "framework", "library", "magazine", "newspaper", "blog", "band",
+          "robot", "phone", "laptop", "camera", "car", "extension", "plugin", "plug-in", "chatbot", "model"], .thing),
+        (["author", "writer", "poet", "artist", "scientist", "singer", "actor", "actress", "designer",
+          "inventor", "youtuber", "painter", "musician", "athlete", "director", "entrepreneur"], .person),
+        (["city", "town", "country", "village", "river", "mountain", "lake", "island", "planet",
+          "museum", "place", "state"], .place)
+    ]
+
+    private static func alternation(_ nouns: [String]) -> String {
+        // Longest first, so "comic book" is tried before "comic".
+        nouns.sorted { $0.count > $1.count }
+            .map { NSRegularExpression.escapedPattern(for: $0).replacingOccurrences(of: " ", with: "\\s") }
+            .joined(separator: "|")
+    }
+
+    /// Verbs that introduce a thing the speaker is about to name.
+    private static let introducers = "heard of|hear of|heard about|know|knows|read|reading|recommend|recommended|tried|try|use|using|used|love|loved|like|liked|check out|checked out|look at|looked at|watch|watched|about|introduce|introducing|found|discovered|download|downloaded|install|installed"
+
+    /// One grammar, every category:
+    ///   "a brand called imago", "the new app named Notion"      (called/named)
+    ///   "heard of the book, Adobe Illustrator?"                  (appositive)
+    ///   "have you read the book Wonder"                           (bare, capitalised)
+    private static let categoryTells: [Tell] = categories.flatMap { group -> [Tell] in
+        let nouns = alternation(group.nouns)
+        let determiner = #"(?i:the|a|an|this|that|one|my|our|his|her|their|another)"#
+        let adjectives = #"(?: [a-z][a-z-]+){0,2}"#
+        return [
+            Tell(pattern: #"\b"# + determiner + adjectives + #" (?i:"# + nouns + #") (?i:called|named|titled|known as|by the name of|by the name)\s*,?\s*"# + span + #"(?=[.,;!?]|$)"#,
+                 kind: group.kind, confidence: 0.8, namesCategory: true),
+            // The appositive only after "the", "this" or "that" and straight
+            // onto the noun: "heard of the book, Wonder?". With an article
+            // and adjectives it is ordinary talk that happens to reach a
+            // comma - "use a large enough font, create enough contrast"
+            // came out of a real class as a thing to look up.
+            Tell(pattern: #"\b(?i:"# + introducers + #") (?i:the|this|that) (?i:"# + nouns + #"),\s*"# + span + #"(?=[.,;!?]|$)"#,
+                 kind: group.kind, confidence: 0.75, namesCategory: true),
+            Tell(pattern: #"\b(?i:"# + introducers + #") "# + determiner + adjectives + #" (?i:"# + nouns + #") ["“]?([A-Z][A-Za-z0-9'&-]*(?: (?:[A-Z][A-Za-z0-9'&-]*|of|the|and|a|in|to)){0,5})["”]?(?=[.,;!?]|$| (?i:by|which|that|and|is|was|about))"#,
+                 kind: group.kind, confidence: 0.75, namesCategory: true)
+        ]
+    }
+
+    /// The last category noun said before a capture: "a new brand called X"
+    /// gives "brand".
+    private static func category(before capture: Range<String.Index>, from start: String.Index, in text: String) -> String? {
+        let lead = String(text[start..<capture.lowerBound]).lowercased()
+        var best: (noun: String, at: String.Index)?
+        for noun in categories.flatMap(\.nouns) {
+            guard let found = lead.range(of: "\\b" + NSRegularExpression.escapedPattern(for: noun) + "\\b",
+                                         options: [.regularExpression, .backwards]) else { continue }
+            if best == nil || found.lowerBound > best!.at || (found.lowerBound == best!.at && noun.count > best!.noun.count) {
+                best = (noun, found.lowerBound)
+            }
+        }
+        return best?.noun
+    }
+
+    /// Ways of talking about something that do not say what kind it is:
+    /// "I'm going to talk about Adobe Illustrator", "have you heard of
+    /// Canva?". Nothing in the tell says a name follows, so the phrase has to
+    /// look like one on its own - see `readsAsAName`.
+    private static let discourseTells: [Tell] = [
+        Tell(pattern: #"\b(?i:talk|talking|talked|speak|speaking|present|presenting|tell you|telling you) (?i:about|on) "# + span + #"(?=[.,;!?]|$)"#,
+             kind: .topic, confidence: 0.6, nameShaped: true),
+        Tell(pattern: #"\b(?i:heard of|hear of|heard about|check out|checking out|look up|looking up|search for|searching for|google|googled|introduce you to|try out|trying out|download|downloaded|install|installed|signed up for|sign up for) "# + span + #"(?=[.,;!?]|$)"#,
+             kind: .thing, confidence: 0.6, nameShaped: true)
+    ]
+
+    /// Words that start a capitalised phrase that is still not a subject:
+    /// the parts of a lesson, and the calendar.
+    private static let notASubject: Set<String> = [
+        "chapter", "page", "lesson", "unit", "part", "section", "slide", "question", "exercise",
+        "number", "step", "class", "grade", "table", "figure", "activity", "homework", "task",
+        "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday",
+        "january", "february", "march", "april", "may", "june", "july", "august",
+        "september", "october", "november", "december", "mr", "mrs", "ms", "miss", "sir", "madam"
+    ]
+
+    /// True when a phrase captured by a discourse tell reads as the name of
+    /// something, not as talk.
+    ///
+    /// Capitals, but not capitals alone. Every word has to start with one
+    /// where it was said (small joining words aside), the phrase must pass
+    /// `namesAThing`, and it must not be a lesson part, a day or a month. A
+    /// single word also has to not be a person's first name by the tagger's
+    /// reckoning: "I heard of Rahul" is about a person nobody can look up.
+    /// The class this was all learned from is Indian English with Tamil
+    /// mixed in and capitalises Tamil freely, so these tells only run on a
+    /// batch that is mostly English at all.
+    static func readsAsAName(_ query: String, in text: String) -> Bool {
+        guard namesAThing(query) else { return false }
+        let joiners: Set<String> = ["of", "the", "and", "a", "an", "in", "to", "for", "on", "de"]
+        let words = query.split(separator: " ").map(String.init)
+        guard let first = words.first, !notASubject.contains(first.lowercased()) else { return false }
+        let capitalised = words.allSatisfy { word in
+            joiners.contains(word.lowercased()) || word.first.map { $0.isUppercase || $0.isNumber } == true
+        }
+        guard capitalised, words.first?.first?.isUppercase == true else { return false }
+        if words.count == 1 {
+            if blocklist.contains(first.lowercased()) || genericWords.contains(first.lowercased()) { return false }
+            if isPersonalName(first, in: text) { return false }
+        }
+        return true
+    }
+
+    /// The Mac's name tagger, asked about one word in its sentence.
+    static func isPersonalName(_ word: String, in text: String) -> Bool {
+        let tagger = NLTagger(tagSchemes: [.nameType])
+        tagger.string = text
+        var found = false
+        tagger.enumerateTags(in: text.startIndex..<text.endIndex, unit: .word, scheme: .nameType,
+                             options: [.omitWhitespace, .omitPunctuation, .joinNames]) { tag, range in
+            if tag == .personalName, text[range].split(separator: " ").contains(where: { $0 == word }) {
+                found = true
+                return false
+            }
+            return true
+        }
+        return found
+    }
+
+    /// True when the text names `query` with an explicit tell right before it:
+    /// "the brand called imago", "an app named Notion", "the book, Wonder".
+    ///
+    /// For the model's output. Its single-word finds go through
+    /// `worthLookingUp`, which drops an ordinary dictionary word said in lower
+    /// case - correct for "happening", wrong for "the brand called imago",
+    /// where the speaker said outright that the word is a name.
+    static func namedByATell(_ query: String, in text: String) -> Bool {
+        let name = NSRegularExpression.escapedPattern(for: query)
+        let nouns = alternation(categories.flatMap(\.nouns))
+        let pattern = #"(?i)\b(?:called|named|titled|known as|(?:"# + nouns + #"),?)\s+["“]?"# + name + #"\b"#
+        guard let regex = try? NSRegularExpression(pattern: pattern) else { return false }
+        return regex.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)) != nil
+    }
+
+    // MARK: The speaker's own name
+
+    /// Names people give for themselves: "my name is Sibi", "I'm Sibi and…".
+    ///
+    /// The roster keeps everyone in the meeting out of every query, but a
+    /// teacher introducing themselves is not in their own roster, and a
+    /// Try-it run has no roster at all. The model turned "my name is Sibi"
+    /// into a TOPIC card for a Wikipedia page about a different Sibi. A name
+    /// said this way is a person in the room, and joins the exclusions.
+    static func selfIntroducedNames(in text: String) -> [String] {
+        let patterns = [
+            #"\b(?i:my name is|my name's|i am called|call me|this is) ([A-Z][a-z]+(?: [A-Z][a-z]+)?)(?! (?i:is|was|app|tool|book))"#,
+            #"\b(?i:i'm|i am|it's|it is) ([A-Z][a-z]+)(?=[,.!?]| (?i:and|from|here|speaking|your|the)\b)"#
+        ]
+        var names: [String] = []
+        for pattern in patterns {
+            guard let regex = try? NSRegularExpression(pattern: pattern) else { continue }
+            for match in regex.matches(in: text, range: NSRange(text.startIndex..., in: text)) {
+                guard let range = Range(match.range(at: 1), in: text) else { continue }
+                let name = String(text[range])
+                // "I'm Happy", "call me Crazy": a dictionary word is a mood, not a name.
+                if name.split(separator: " ").count == 1, isEverydayWord(name) { continue }
+                names.append(name)
+            }
+        }
+        return names
+    }
+
     func detect(newText: String, context: String, excludedNames: [String]) async throws -> [Mention] {
         let text = Self.clean(newText)
+        let excludedNames = excludedNames + Self.selfIntroducedNames(in: Self.clean(context) + " " + text)
+        let mostlyEnglish = Self.englishRatio(text) > 0.5
         guard text.split(whereSeparator: \.isWhitespace).count >= 3 else { return [] }
         var found: [Mention] = []
 
@@ -420,7 +615,12 @@ struct HeuristicDetector: MentionDetector {
                     // Only the tells that inferred a subject from a question
                     // have to prove the phrase is not ordinary English. See Tell.
                     if tell.guarded, !Self.worthLookingUp(finalQuery, spokenIn: text) { continue }
-                    found.append(Mention(kind: kind, query: finalQuery, confidence: tell.confidence))
+                    if tell.nameShaped, !mostlyEnglish || !Self.readsAsAName(finalQuery, in: text) { continue }
+                    var mention = Mention(kind: kind, query: finalQuery, confidence: tell.confidence)
+                    if tell.namesCategory, let start = Range(match.range, in: haystack)?.lowerBound {
+                        mention.category = Self.category(before: captured, from: start, in: haystack)
+                    }
+                    found.append(mention)
                 }
             }
         }
@@ -515,6 +715,8 @@ struct HeuristicDetector: MentionDetector {
             .split(separator: " ").map(String.init)
         // Fillers the transcriber writes at the start of a phrase.
         while let first = words.first, ["um", "uh", "so", "okay", "ok", "yeah"].contains(first.lowercased()) { words.removeFirst() }
+        // "a museum called the Louvre": the article is not part of what to search.
+        if words.count > 1, let first = words.first, ["the", "a", "an"].contains(first.lowercased()) { words.removeFirst() }
         if let cut = words.indices.dropFirst(1).first(where: { hardStops.contains(words[$0].lowercased()) }) {
             words = Array(words[..<cut])
         }
@@ -538,6 +740,8 @@ struct HeuristicDetector: MentionDetector {
         let pronouns = ["i", "you", "we", "they", "he", "she", "it", "me", "us", "them", "him", "her", "my", "your", "our", "their"]
         if pronouns.contains(trimmed.lowercased()) { return nil }
         if let first = words.first?.lowercased(), pronouns.contains(first) || stopWords.contains(first) { return nil }
+        // "talk about Chapter Four": a part of the lesson, not a subject.
+        if kind == .topic || kind == .thing, let first = words.first?.lowercased(), notASubject.contains(first) { return nil }
         // Mostly filler ("a, a, successful") is a transcriber stumble, not a name.
         let fillers = words.filter { stopWords.contains($0.lowercased()) || $0.count == 1 }.count
         if words.count >= 3, fillers * 2 > words.count { return nil }

@@ -111,6 +111,44 @@ func runConsoleBench() -> Bool {
     }
 
     print("")
+    print("  mishearing repair, names said earlier in the class")
+
+    // The Try-it run that found this: "Adobe Illustrator" said twice, then
+    // transcribed "Adobe O Strader" the third time, and the book search for
+    // that found nothing.
+    var vocabulary = CuesVocabulary()
+    vocabulary.learn("Adobe Illustrator")
+    vocabulary.learn("Khan Academy")
+    let repairs: [(String, String?, String)] = [
+        ("Adobe O Strader", "Adobe Illustrator", "the misheard name becomes the one said earlier"),
+        ("Adobe Photoshop", nil, "a different product from the same maker stays itself"),
+        ("Khan Akademi", "Khan Academy", "a spelling the transcriber invented"),
+        ("Illustrator", nil, "one word is never rewritten"),
+        ("Kindle paper white", nil, "no name in the class starts with that word")
+    ]
+    for (heard, meant, why) in repairs {
+        let got = vocabulary.repair(heard)
+        let pass = got == meant
+        ok = ok && pass
+        print("    \(pass ? "ok   " : "FAIL ") \(heard) -> \(got ?? "itself")  \(why)")
+    }
+
+    print("")
+    print("  the speaker's own name")
+    let introductions: [(String, [String], String)] = [
+        ("Hi everyone, my name is Sibi and I'm gonna talk about Adobe Illustrator.", ["Sibi"], "a Try-it run made a Wikipedia card of it"),
+        ("Good morning, I'm Priya, and today we will read.", ["Priya"], "the teacher introducing themselves"),
+        ("I'm Happy with how everyone did today.", [], "a mood is not a name"),
+        ("I'm gonna show you something.", [], "lower case after I'm is not a name")
+    ]
+    for (text, expected, why) in introductions {
+        let got = HeuristicDetector.selfIntroducedNames(in: text)
+        let pass = got == expected
+        ok = ok && pass
+        print("    \(pass ? "ok   " : "FAIL ") \(got.isEmpty ? "no name" : got.joined(separator: ", "))  \(why)")
+    }
+
+    print("")
     print("  live queue layout")
 
     func layout(_ label: String, _ passed: Bool) {

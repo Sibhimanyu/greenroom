@@ -169,8 +169,11 @@ actor LinkResolver {
     // MARK: Resolve
 
     func resolve(_ mention: Mention) async -> Resolution {
-        let key = mention.normalizedKey
-        guard !key.isEmpty else { return Resolution(skipped: true) }
+        guard !mention.normalizedKey.isEmpty else { return Resolution(skipped: true) }
+        // Kind and name, not name alone. "The book, Adobe Illustrator" after a
+        // card for the software is a new request; keyed on the name it was
+        // answered from the cache with the software.
+        let key = mention.kind.rawValue + ":" + mention.normalizedKey
         if let cached = cache[key] { return Resolution(cards: cached.cards, skipped: true) }
         guard !resolvedKeys.contains(key) else { return Resolution(skipped: true) }
         guard totalResolved < sessionCap else {
@@ -269,6 +272,18 @@ actor LinkResolver {
         resolution.sentTo = hosts
         if resolution.cards.isEmpty, resolution.notes.isEmpty, !hosts.isEmpty {
             resolution.notes.append("no result for \u{201C}\(mention.query)\u{201D} (\(hosts.joined(separator: " and ")))")
+        }
+        // "Have you heard of the book, X?" is a direct request. When neither
+        // catalogue knows the title - often because the transcriber misheard
+        // it - the card is a book search the teacher can open, not silence.
+        if resolution.cards.isEmpty, mention.category != nil {
+            var components = URLComponents(string: "https://www.google.com/search")!
+            components.queryItems = [URLQueryItem(name: "tbm", value: "bks"),
+                                     URLQueryItem(name: "q", value: mention.query)]
+            resolution.cards = [CueCard(kind: .book, query: mention.query, title: mention.query,
+                                        subtitle: "Search for this book \u{00B7} nothing sent until you open it",
+                                        source: .search, url: components.url!)]
+            resolution.searchLinkOnly = true
         }
         takeThumbnails(&resolution)
         return resolution
@@ -440,7 +455,68 @@ actor LinkResolver {
     /// real entry back; a card that is never wrong and rarely useful is not
     /// worth a slot the right answer needed.
     private func resolveThing(_ mention: Mention) async -> Resolution {
-        await thingFromWikipedia(mention)
+        var resolution = await thingFromWikipedia(mention)
+        // The speaker said outright what this is ("the brand called imago")
+        // and no page fits it. Silence would be the detector ignoring a
+        // direct request, so the card is a search the teacher can open -
+        // nothing is sent until they do.
+        if resolution.cards.isEmpty, let category = mention.category {
+            var components = URLComponents(string: "https://www.google.com/search")!
+            components.queryItems = [URLQueryItem(name: "q", value: "\(mention.query) \(category)")]
+            resolution.cards = [CueCard(kind: .thing, query: mention.query,
+                                        title: mention.query,
+                                        subtitle: "Search for this \(category) \u{00B7} nothing sent until you open it",
+                                        source: .search, url: components.url!)]
+            resolution.searchLinkOnly = true
+        }
+        return resolution
+    }
+
+    /// Whether a page's one-line description is the kind of thing the speaker
+    /// said it was. Words, not a model: a brand's page says "company",
+    /// "brand" or "manufacturer"; the insect stage says none of them.
+    static func description(_ description: String, fits category: String) -> Bool {
+        let fits: [String: [String]] = [
+            "brand": ["brand", "company", "manufacturer", "corporation", "business", "retailer", "label", "maker", "firm"],
+            "company": ["company", "corporation", "business", "manufacturer", "brand", "firm", "retailer", "conglomerate", "startup"],
+            "startup": ["company", "startup", "business", "firm"],
+            "app": ["app", "application", "software", "service", "platform", "website", "program", "company"],
+            "application": ["app", "application", "software", "service", "platform", "program"],
+            "tool": ["tool", "software", "app", "application", "service", "platform", "program", "website", "device", "instrument"],
+            "software": ["software", "application", "program", "suite", "editor", "tool", "system", "platform"],
+            "program": ["software", "program", "application", "tool"],
+            "programme": ["software", "programme", "program", "application", "series", "show"],
+            "website": ["website", "site", "service", "platform", "online", "company", "portal"],
+            "site": ["website", "site", "service", "platform", "online"],
+            "platform": ["platform", "service", "software", "website", "company", "online"],
+            "service": ["service", "platform", "company", "website", "software", "app"],
+            "product": ["product", "brand", "line", "device", "software", "company"],
+            "device": ["device", "product", "line", "computer", "phone", "reader", "tablet", "model", "brand"],
+            "gadget": ["device", "product", "gadget", "line"],
+            "phone": ["phone", "smartphone", "device", "line", "model"],
+            "laptop": ["laptop", "computer", "notebook", "line", "model"],
+            "camera": ["camera", "device", "line", "model", "brand"],
+            "robot": ["robot", "device", "machine"],
+            "car": ["car", "automobile", "vehicle", "model", "manufacturer"],
+            "game": ["game"],
+            "font": ["typeface", "font"],
+            "typeface": ["typeface", "font"],
+            "language": ["language"],
+            "framework": ["framework", "library", "software"],
+            "library": ["library", "software", "framework"],
+            "magazine": ["magazine", "publication", "periodical", "journal"],
+            "newspaper": ["newspaper", "publication", "daily"],
+            "blog": ["blog", "website", "publication"],
+            "band": ["band", "group", "duo", "trio", "musician"],
+            "extension": ["extension", "software", "add-on", "plugin"],
+            "plugin": ["plugin", "plug-in", "extension", "software", "add-on"],
+            "plug-in": ["plugin", "plug-in", "extension", "software", "add-on"],
+            "chatbot": ["chatbot", "assistant", "language model", "software", "ai"],
+            "model": ["model", "language model", "ai", "software", "line", "product"]
+        ]
+        guard let words = fits[category] else { return true }
+        let lowered = description.lowercased()
+        return words.contains { lowered.range(of: "\\b\($0)", options: .regularExpression) != nil }
     }
 
     /// How long a preferred source may keep the teacher waiting once a valid
@@ -527,6 +603,9 @@ actor LinkResolver {
                     // poetic form. Everything said has to be answered now.
                     guard TitleMatch.answers(title: title, said: mention.query),
                               !TitleMatch.guessedTheSense(title: title, said: mention.query) else { return nil }
+                    // Said to be a brand, an app, a font: the page has to be one.
+                    if let category = mention.category,
+                       !Self.description(description, fits: category) { return nil }
                     let card = CueCard(kind: .thing, query: mention.query, title: title,
                                             subtitle: description.isEmpty ? "Wikipedia" : description.prefix(1).uppercased() + description.dropFirst(),
                                             source: .wikipedia, url: url)

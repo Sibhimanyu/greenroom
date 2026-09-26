@@ -257,6 +257,7 @@ targets:
       - path: Bench
         excludes: ["fixtures/**"]
       - path: App/Cues/MentionDetector.swift
+      - path: App/Cues/CuesVocabulary.swift
       - path: App/Cues/CueCard.swift
       - path: App/Cues/LinkResolver.swift
       - path: App/Cues/CuesTransport.swift

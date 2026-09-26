@@ -74,6 +74,10 @@ struct Mention: Hashable {
     /// Which detector proposed this. Defaults to the word patterns, which is
     /// what produces a Mention everywhere except the model's own leg.
     var foundBy: FoundBy = .patterns
+    /// What the speaker said this is - "brand", "app", "font" - when a tell
+    /// said it out loud. The resolver holds a page to it: "the brand called
+    /// imago" must not come back as the insect life stage.
+    var category: String?
 
     /// `searchQuery` falls back to the name, which is what the word-pattern
     /// detector always produces.

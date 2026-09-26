@@ -112,6 +112,13 @@ final class CuesController: ObservableObject {
     private var tickTask: Task<Void, Never>?
     private var detectTask: Task<Void, Never>?
     private var dismissedKeys: Set<String> = []
+    /// Names said in this class, so a later mishearing of one is searched as
+    /// the name. See CuesVocabulary.
+    private var vocabulary = CuesVocabulary()
+    /// Names people gave for themselves ("my name is Sibi"). They join the
+    /// roster for the rest of the session: the teacher is not in their own
+    /// roster, and a Try-it run has no roster at all.
+    private var spokenNames: [String] = []
     private var lastDetection = Date.distantPast
     private var restartAttempted = false
     private var lookupsInFlight = 0
@@ -215,6 +222,8 @@ final class CuesController: ObservableObject {
         cards.removeAll()
         unseenCount = 0
         dismissedKeys.removeAll()
+        vocabulary.reset()
+        spokenNames.removeAll()
         if wasListening, !testMode {
             if let reason {
                 configuration.log(reason)
@@ -618,7 +627,11 @@ final class CuesController: ObservableObject {
         lastDetection = Date()
         let (fresh, context) = transcript.unprocessedText(leadInWords: 20)
         guard !fresh.isEmpty else { return }
-        let names = configuration.rosterNames()
+        for name in HeuristicDetector.selfIntroducedNames(in: context + " " + fresh)
+        where !spokenNames.contains(name) {
+            spokenNames.append(name)
+        }
+        let names = configuration.rosterNames() + spokenNames
         let current = detector
         detectTask = Task { [weak self] in
             defer { self?.detectTask = nil }
@@ -648,17 +661,28 @@ final class CuesController: ObservableObject {
     }
 
     private func resolve(_ mentions: [Mention]) async {
-        for mention in mentions where !dismissedKeys.contains(mention.normalizedKey) {
+        for heard in mentions where !dismissedKeys.contains(heard.normalizedKey) {
+            var mention = heard
+            // "Adobe O Strader", a minute after "Adobe Illustrator" was said
+            // twice, is Adobe Illustrator misheard. Search for what was meant.
+            if let meant = vocabulary.repair(mention.query) {
+                configuration.log("Cues: heard \u{201C}\(mention.query)\u{201D}, searched \u{201C}\(meant)\u{201D} (said earlier in this class).")
+                mention = Mention(kind: mention.kind, query: meant, confidence: mention.confidence)
+                mention.foundBy = heard.foundBy
+            }
+            vocabulary.learn(mention.query)
             // Roster names are filtered inside the detectors; a mention that
             // still equals a roster name here is a second line of defence.
-            let names = configuration.rosterNames().map(Mention.normalize)
+            let names = (configuration.rosterNames() + spokenNames).map(Mention.normalize)
             if names.contains(mention.normalizedKey) {
                 configuration.log("Cues: skipped \u{201C}\(mention.query)\u{201D} \u{2014} matches someone in the meeting.")
                 Analytics.feature("prompter_roster_skip")
                 continue
             }
-            // Already have a card for it: nothing to send.
-            if cards.contains(where: { $0.normalizedKey == mention.normalizedKey }) { continue }
+            // Already have a card for it: nothing to send. The same name as a
+            // different kind is a different request - "the book, Adobe
+            // Illustrator" after a card for the software - and replaces it.
+            if cards.contains(where: { $0.normalizedKey == mention.normalizedKey && $0.kind == mention.kind }) { continue }
 
             lookupsInFlight += 1
             isResolving = true

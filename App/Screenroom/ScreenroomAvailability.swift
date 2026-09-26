@@ -21,12 +21,17 @@
 //    - MenuBarView                 (Open Screenroom)
 //    - the "marks" Window scene    (refuses to build its contents)
 //
-//  To ship Screenroom: set `isReleased` to true.
+//    - Sessions' Analysis and Notes tabs, and the scrubber's marks
+//
+//  Settings → Screenroom is not behind it and never was.
+//
+//  Shipped: `isReleased` is true. Setting it back to false hides the doors
+//  above again.
 //
 import SwiftUI
 
 enum ScreenroomAvailability {
 
-    /// False while Screenroom is unfinished. See the file note.
-    static let isReleased = false
+    /// True since Screenroom shipped. See the file note.
+    static let isReleased = true
 }

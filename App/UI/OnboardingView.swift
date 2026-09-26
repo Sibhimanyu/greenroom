@@ -385,7 +385,15 @@ struct OnboardingView: View {
             Text("One last thing").font(.largeTitle.bold())
 
             VStack(alignment: .leading, spacing: 12) {
-                Text("The first time you're in a Zoom meeting, open Zoom's **Settings \u{2192} Video** and pick **\u{201C}OBS Virtual Camera\u{201D}**. Zoom remembers it for every call after that \u{2014} it's the only manual step this app can't do for you.")
+                // Only true of the Zoom app. The built-in client picks the
+                // OBS Virtual Camera itself on every connection, so telling a
+                // teacher on the default setup to do it by hand sent them to
+                // a Zoom window they never open.
+                if coordinator.useBuiltInClient {
+                    Text("Greenroom's own meeting client picks the **OBS Virtual Camera** for you, so there is nothing to set in Zoom.")
+                } else {
+                    Text("The first time you're in a Zoom meeting, open Zoom's **Settings \u{2192} Video** and pick **\u{201C}OBS Virtual Camera\u{201D}**. Zoom remembers it for every call after that \u{2014} it's the only manual step this app can't do for you.")
+                }
                 Text("Then it's: pick **New Meeting** or **Join Existing**, hit **Start**, and everything falls into place.")
                 Text("Reopen this guide anytime with the **?** button on the main window.")
                     .foregroundStyle(.secondary)

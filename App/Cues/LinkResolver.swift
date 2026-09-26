@@ -114,6 +114,8 @@ actor LinkResolver {
     ///
     /// YouTube stays at 20: that one is a real external quota shared with
     /// uploads, and raising it would spend the teacher's own allowance.
+    /// Google Books refusals this session. See resolveBook.
+    private var googleBooksRefusals = 0
     private let caps: [CueCard.Source: Int] = [.googleBooks: 200, .openLibrary: 200, .wikipedia: 400, .wikiquote: 100, .youtube: 20, .search: 400, .dictionary: 400, .images: 400]
     private var sessionCap: Int { configuration.sessionCap }
     private let maxInFlight = 2
@@ -130,6 +132,7 @@ actor LinkResolver {
 
     /// Forgets the session's dedupe set and caps. Called at session start.
     func reset() {
+        googleBooksRefusals = 0
         resolvedKeys.removeAll()
         cache.removeAll()
         counts.removeAll()
@@ -235,42 +238,44 @@ actor LinkResolver {
         var resolution = Resolution()
         var hosts: [String] = []
 
-        if allowed(.googleBooks, host: "googleapis.com") {
-            hosts.append("Google Books")
-            switch await googleBooks(mention.searchQuery) {
-            case .success(let cards):
-                resolution.cards = cards.map { card in
-                    var copy = card
-                    copy.kind = .book
-                    copy.query = mention.query
-                    return copy
-                }
-            case .failure(let note):
-                resolution.notes.append(note)
+        // Both at once, not one after the other. Google Books refuses keyless
+        // callers routinely (HTTP 429), and waiting for that refusal before
+        // asking Open Library put ~2.5 s in front of every book card; the mega
+        // test measured 4.2 s for "the book called Wonder". Google's answer is
+        // still preferred when it has one - it has the better covers - and
+        // after it has refused twice this session it is not asked again.
+        let askGoogle = googleBooksRefusals < 2 && allowed(.googleBooks, host: "googleapis.com")
+        let askOpenLibrary = allowed(.openLibrary, host: "openlibrary.org")
+        if askGoogle { hosts.append("Google Books") }
+        if askOpenLibrary { hosts.append("Open Library") }
+        async let fromGoogle: Lookup? = askGoogle ? googleBooks(mention.searchQuery) : nil
+        async let fromOpenLibrary: Lookup? = askOpenLibrary ? openLibrary(mention.searchQuery) : nil
+        let google = await fromGoogle
+        let library = await fromOpenLibrary
+
+        func books(_ cards: [CueCard]) -> [CueCard] {
+            cards.map { card in
+                var copy = card
+                copy.kind = .book
+                copy.query = mention.query
+                return copy
             }
         }
-        if resolution.cards.isEmpty, allowed(.openLibrary, host: "openlibrary.org") {
-            hosts.append("Open Library")
-            switch await openLibrary(mention.searchQuery) {
-            case .success(let cards):
-                resolution.cards = cards.map { card in
-                    var copy = card
-                    copy.kind = .book
-                    copy.query = mention.query
-                    return copy
-                }
-                // Google Books rate-limits keyless callers freely (HTTP 429 is
-                // routine). When Open Library then delivered, the earlier
-                // failure is a footnote, not a skipped card.
-                if !cards.isEmpty {
-                    resolution.notes = resolution.notes.map { note in
-                        note.hasPrefix("lookup failed (Google Books")
-                            ? "Google Books did not answer (\(note.components(separatedBy: ", ").dropFirst().first?.replacingOccurrences(of: ") \u{2014} card skipped", with: "") ?? "error")); Open Library did"
-                            : note
-                    }
-                }
-            case .failure(let note):
-                resolution.notes.append(note)
+        if case .success(let cards)? = google, !cards.isEmpty {
+            resolution.cards = books(cards)
+        } else if case .success(let cards)? = library, !cards.isEmpty {
+            resolution.cards = books(cards)
+            if case .failure(let note)? = google {
+                resolution.notes.append("Google Books did not answer (\(note.contains("429") ? "HTTP 429" : "error")); Open Library did")
+            }
+        } else {
+            if case .failure(let note)? = google { resolution.notes.append(note) }
+            if case .failure(let note)? = library { resolution.notes.append(note) }
+        }
+        if case .failure(let note)? = google, note.contains("429") || note.contains("403") {
+            googleBooksRefusals += 1
+            if googleBooksRefusals == 2 {
+                resolution.notes.append("Google Books refused twice \u{2014} books come from Open Library for the rest of this class")
             }
         }
         resolution.sentTo = hosts

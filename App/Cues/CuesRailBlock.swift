@@ -105,9 +105,9 @@ final class CuesRailBlock: NSView {
 
     private var eyebrowText: String {
         if !state.listening && state.cards.isEmpty { return "" }
-        if state.paused { return "PROMPTER   paused" }
-        if state.cards.isEmpty { return "PROMPTER   listening" }
-        return "PROMPTER   \(state.cards.count) link\(state.cards.count == 1 ? "" : "s")"
+        if state.paused { return "CUES   paused" }
+        if state.cards.isEmpty { return "CUES   listening" }
+        return "CUES   \(state.cards.count) link\(state.cards.count == 1 ? "" : "s")"
     }
 
     /// How tall the block will be, without placing it. Zero when inactive.
@@ -142,7 +142,7 @@ final class CuesRailBlock: NSView {
             if n < wanted { need += overflowGap + overflowHeight }
             if need <= budget { best = n }
         }
-        // Never a bare "PROMPTER 4 links" with nothing under it: an eyebrow
+        // Never a bare "CUES 4 links" with nothing under it: an eyebrow
         // advertising links the teacher cannot see is worse than one card they
         // have to scroll a little to finish.
         return max(best, 1)

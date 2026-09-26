@@ -842,8 +842,17 @@ final class CuesController: ObservableObject {
                 if self.testMode {
                     self.testMentions.append(contentsOf: mentions)
                 } else {
-                    await self.resolve(mentions, heardAt: heardAt, detectBegan: began,
-                                       detectedAt: Date(), speechMs: speechMs)
+                    // Looked up on its own task, not this one. `detectTask`
+                    // gates the next detector pass, and while it waited for
+                    // lookups a finished sentence sat unread: the mega test
+                    // measured 5.8 s of waiting on "the brand called Canva"
+                    // behind a 4 s book lookup. The resolver rations its own
+                    // concurrency (two at a time), so nothing floods.
+                    let detectedAt = Date()
+                    Task { @MainActor [weak self] in
+                        await self?.resolve(mentions, heardAt: heardAt, detectBegan: began,
+                                            detectedAt: detectedAt, speechMs: speechMs)
+                    }
                 }
             } catch {
                 guard let self else { return }

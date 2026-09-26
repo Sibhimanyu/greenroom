@@ -62,40 +62,60 @@ struct ScreenroomReportView: View {
     /// dashboard stretched to 1600pt puts eleven words on a line.
     private static let column: CGFloat = 860
 
+    /// True when the view is being drawn into a PDF rather than a window.
+    ///
+    /// ImageRenderer draws nothing inside a ScrollView, so a PDF of the
+    /// scrolling view is the background and nothing else: blank white pages.
+    /// Paged, the column is drawn at its full height with no scroller, and
+    /// the Export button, which means nothing on paper, is left off.
+    private let paged: Bool
+
+    init(paged: Bool = false) {
+        self.paged = paged
+    }
+
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 28) {
-                if review.selected == nil {
-                    empty
-                } else {
-                    header
-                    // The readings as rows sorted into what to work on and
-                    // what went well, then the map, then the summary. Every
-                    // row says in words where it landed; its detail opens
-                    // in place rather than living four screens down.
-                    // Feedback that came as points leads: it is the answer,
-                    // and the readings below are its evidence. Sentences
-                    // stay where they were, under the map.
-                    if let analysis = review.analysis, analysis.hasPoints { prose(analysis) }
-                    insightGroups
-                    if hasMap { map }
-                    if let analysis = review.analysis, !analysis.hasPoints { prose(analysis) }
-                    if review.scoring.markedCount > 0 { rubric }
-                    if !review.notes.isEmpty { timeline }
-                    if !review.notes.isEmpty { noteList }
-                    if !review.words.isEmpty { transcript }
-                    if !review.cohortFindings.isEmpty { consistency }
-                    provenance
-                }
-            }
-            .frame(maxWidth: Self.column, alignment: .leading)
-            .padding(.horizontal, 32)
-            .padding(.vertical, 28)
-            .frame(maxWidth: .infinity)
+        if paged {
+            page
+                .background(Color(nsColor: .textBackgroundColor))
+                .tint(Brand.green)
+        } else {
+            ScrollView { page }
+                .background(Color(nsColor: .textBackgroundColor))
+                .frame(minWidth: 720, minHeight: 600)
+                .tint(Brand.green)
         }
-        .background(Color(nsColor: .textBackgroundColor))
-        .frame(minWidth: 720, minHeight: 600)
-        .tint(Brand.green)
+    }
+
+    private var page: some View {
+        VStack(alignment: .leading, spacing: 28) {
+            if review.selected == nil {
+                empty
+            } else {
+                header
+                // The readings as rows sorted into what to work on and
+                // what went well, then the map, then the summary. Every
+                // row says in words where it landed; its detail opens
+                // in place rather than living four screens down.
+                // Feedback that came as points leads: it is the answer,
+                // and the readings below are its evidence. Sentences
+                // stay where they were, under the map.
+                if let analysis = review.analysis, analysis.hasPoints { prose(analysis) }
+                insightGroups
+                if hasMap { map }
+                if let analysis = review.analysis, !analysis.hasPoints { prose(analysis) }
+                if review.scoring.markedCount > 0 { rubric }
+                if !review.notes.isEmpty { timeline }
+                if !review.notes.isEmpty { noteList }
+                if !review.words.isEmpty { transcript }
+                if !review.cohortFindings.isEmpty { consistency }
+                provenance
+            }
+        }
+        .frame(maxWidth: Self.column, alignment: .leading)
+        .padding(.horizontal, 32)
+        .padding(.vertical, 28)
+        .frame(maxWidth: .infinity)
     }
 
     private var empty: some View {
@@ -128,7 +148,7 @@ struct ScreenroomReportView: View {
                 .foregroundStyle(.secondary)
             }
             Spacer(minLength: 24)
-            ScreenroomExportMenu(review: review)
+            if !paged { ScreenroomExportMenu(review: review) }
         }
     }
 

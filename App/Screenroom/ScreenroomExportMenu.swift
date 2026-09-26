@@ -56,7 +56,7 @@ struct ScreenroomExportMenu: View {
     }
 
     private func savePDF() {
-        guard let data = ScreenroomExport.pdf(of: ScreenroomReportView(),
+        guard let data = ScreenroomExport.pdf(of: ScreenroomReportView(paged: true),
                                               width: 860) else {
             review.report("The PDF could not be rendered.")
             return

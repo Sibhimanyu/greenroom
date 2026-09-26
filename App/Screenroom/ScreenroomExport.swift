@@ -57,11 +57,13 @@ enum ScreenroomExport {
             for page in 0..<pages {
                 context.beginPDFPage(nil)
                 context.saveGState()
-                // Flip once for Core Graphics' bottom-left origin, then walk
-                // down the tall image a page at a time.
-                context.translateBy(x: 0, y: pageSize.height)
-                context.scaleBy(x: scale, y: -scale)
-                context.translateBy(x: 0, y: -CGFloat(page) * pageContentHeight)
+                // No flip: ImageRenderer already draws the right way up in
+                // Core Graphics' bottom-left space, with the top of the view
+                // at size.height. Flipping it again printed every page upside
+                // down and in reverse order. Page 0 is the top slice, so each
+                // page shifts the view down until its slice sits on the sheet.
+                context.scaleBy(x: scale, y: scale)
+                context.translateBy(x: 0, y: -(size.height - CGFloat(page + 1) * pageContentHeight))
                 draw(context)
                 context.restoreGState()
                 context.endPDFPage()

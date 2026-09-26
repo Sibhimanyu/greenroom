@@ -119,7 +119,8 @@ anytime from the **?** button in the main window. The short version:
    to a command-line agent you already have (Claude Code, Codex, or a command
    you write). That is the only feature in Greenroom whose destination
    Greenroom does not control. It is off by default, the exact command it
-   runs is shown in Settings → Screenroom, the agent gets read-only access to one folder, and
+   runs is shown in Settings → Screenroom, the agent gets read-only access to a temporary copy of the
+   presentation's folder with the recording left out, and
    what a cloud agent then does with a transcript and stills of a named
    student is between you and it. Greenroom does not send the audio or video. Everything
    else in Screenroom — recording, notes, transcription, the counts, and
@@ -332,8 +333,8 @@ window and is discarded at End Session. Either way it never leaves the Mac;
 the closing log line names the file or the count discarded. Caps: 30
 lookups a class, 20 YouTube, 5 cards shown / 8 kept, 10-minute card
 lifetime. **Language** picks the transcription locale (`en_IN` is
-supported; Tamil is not, as of macOS 26). **Try it (30 s)** transcribes
-and detects without looking anything up. Cards you Open or Send are
+supported; Tamil is not, as of macOS 26). **Try it** listens for two
+minutes and runs the real pipeline: live text, real lookups, real cards. Cards you Open or Send are
 recorded in the class folder's `session.json` (`links`) and shown in
 Sessions as "Links from class". Engine: `App/Cues/`.
 

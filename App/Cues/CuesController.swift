@@ -24,6 +24,20 @@ import AVFoundation
 import Foundation
 import Speech
 
+/// How long one card took, from the end of the sentence to the screen.
+struct CueTiming: Hashable {
+    /// First partial words to the finished sentence: the transcriber's share.
+    /// Nil for typed text, which arrives finished.
+    var speechMs: Int?
+    /// The finished sentence waiting for a detector pass to start.
+    var waitMs: Int
+    var detectMs: Int
+    var lookupMs: Int
+    /// Sentence finished to card on screen.
+    var totalMs: Int
+    var source: String
+}
+
 /// One step of the pipeline, for the Debug workbench. Recorded only while a
 /// workbench is watching; a class never turns it on.
 struct CuesTraceLine: Identifiable, Hashable {
@@ -39,6 +53,15 @@ struct CuesTraceLine: Identifiable, Hashable {
 @available(macOS 26.0, *)
 @MainActor
 final class CuesController: ObservableObject {
+
+    #if DEBUG
+    enum DetectorChoice: String, CaseIterable, Identifiable {
+        case patterns = "Word patterns"
+        case composite = "Patterns, then Apple Intelligence"
+        case model = "Apple Intelligence only"
+        var id: String { rawValue }
+    }
+    #endif
 
     struct Configuration {
         var localeIdentifier = ""
@@ -56,6 +79,11 @@ final class CuesController: ObservableObject {
         /// Settings -> Cues -> "Also suggest links for things I mention
         /// without naming them". Off by default: see chooseDetector.
         var useModelDetector = false
+        #if DEBUG
+        /// Debug workbench only: run exactly this detector, whatever the
+        /// setting says. Nil in a class; absent from release builds.
+        var detectorChoice: DetectorChoice?
+        #endif
         /// Listen through whisper rather than Apple's recogniser. See
         /// CuesWhisperTranscriber for what it buys and what it costs.
         var useWhisper = false
@@ -134,7 +162,19 @@ final class CuesController: ObservableObject {
     /// Mentions the per-minute brake held back, asked again when there is
     /// room. They used to be dropped: a Try-it run lost "Adobe Photoshop"
     /// because the model had spent the minute on fragments.
-    private var heldBack: [(mention: Mention, at: Date)] = []
+    private var heldBack: [(mention: Mention, at: Date, heardAt: Date)] = []
+
+    // MARK: Timing
+    //
+    // Kept in every build because it costs three dates per sentence; only the
+    // Debug workbench shows it.
+
+    /// When the words of the sentence now being spoken first appeared.
+    private var utteranceStart: Date?
+    /// The earliest finished sentence no detector has read yet.
+    private var pendingHeardAt: Date?
+    private var lastSpeechMs: Int?
+    @Published private(set) var timings: [UUID: CueTiming] = [:]
 
     // MARK: Trace (the Debug workbench only)
 
@@ -274,6 +314,9 @@ final class CuesController: ObservableObject {
         spokenNames.removeAll()
         heldBack.removeAll()
         pipelineReady = false
+        timings.removeAll()
+        utteranceStart = nil
+        pendingHeardAt = nil
         if wasListening, !testMode {
             if let reason {
                 configuration.log(reason)
@@ -350,6 +393,7 @@ final class CuesController: ObservableObject {
             ? "Listening\u{2026} name a book, a tool, a place."
             : "Listening\u{2026} say something."
         chooseDetector()
+        note(.note, "listening \u{00B7} detector: \(detectorName) \u{00B7} speech: \(configuration.useWhisper ? "whisper" : "Apple") \u{00B7} \(configuration.lookupsPerMinute) lookups a minute")
         let locale = await Transcriber.resolvedLocale(preferred: configuration.localeIdentifier)
         guard await startPipeline(input: nil, locale: locale) else {
             status = "Could not start: \(self.status)"
@@ -411,29 +455,64 @@ final class CuesController: ObservableObject {
                           : "Cues: mentions found by Apple Intelligence (on-device) \u{2014} more suggestions, more wrong ones.")
     }
 
+    #if DEBUG
+    /// Typed text as if it were being spoken: words appear one at a time as
+    /// partial results at `wordsPerSecond`, and each sentence is finished the
+    /// way the transcriber finishes one. Detection then runs on its own, as
+    /// it does in a class, so the timings are a class's timings minus the
+    /// microphone. Debug builds.
+    func debugSpeak(_ text: String, wordsPerSecond: Double, configuration: Configuration) async {
+        let sentences = text.components(separatedBy: CharacterSet(charactersIn: ".?!"))
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        guard !sentences.isEmpty else { return }
+        if !pipelineReady { await preparePipeline(configuration) }
+        let pause = UInt64(1_000_000_000 / max(0.5, wordsPerSecond))
+        var cursor = text.startIndex
+        for sentence in sentences {
+            // Keep the speaker's own punctuation on the finished sentence.
+            var finished = sentence
+            if let range = text.range(of: sentence, range: cursor..<text.endIndex) {
+                cursor = range.upperBound
+                if cursor < text.endIndex, ".?!".contains(text[cursor]) { finished += String(text[cursor]) }
+            }
+            var partial: [Substring] = []
+            for word in sentence.split(separator: " ") {
+                partial.append(word)
+                handle(.volatile(partial.joined(separator: " ")))
+                try? await Task.sleep(nanoseconds: pause)
+                guard pipelineReady else { return }
+            }
+            handle(.final(finished))
+        }
+    }
+
+    private func preparePipeline(_ configuration: Configuration) async {
+        self.configuration = configuration
+        testMode = false
+        await resolver.reset()
+        await resolver.configure(.init(sessionCap: sessionLookupCap,
+                                       lookupsPerMinute: configuration.lookupsPerMinute,
+                                       videoSearchEnabled: configuration.videoSearch,
+                                       youtubeToken: configuration.youtubeToken))
+        chooseDetector()
+        note(.note, "detector: \(detectorName) \u{00B7} \(configuration.lookupsPerMinute) lookups a minute")
+        startedAt = Date()
+        pipelineReady = true
+    }
+
     /// A typed sentence, through exactly the path a spoken one takes: the
     /// transcript, the detector, the repair, the resolver and the cards.
     /// Works while listening or not. Debug builds.
     func debugSay(_ text: String, configuration: Configuration) async {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
-        if !pipelineReady {
-            self.configuration = configuration
-            testMode = false
-            await resolver.reset()
-            await resolver.configure(.init(sessionCap: sessionLookupCap,
-                                           lookupsPerMinute: configuration.lookupsPerMinute,
-                                           videoSearchEnabled: configuration.videoSearch,
-                                           youtubeToken: configuration.youtubeToken))
-            chooseDetector()
-            note(.note, "detector: \(detectorName) \u{00B7} \(configuration.lookupsPerMinute) lookups a minute")
-            startedAt = Date()
-            pipelineReady = true
-        }
+        if !pipelineReady { await preparePipeline(configuration) }
         handle(.final(trimmed))
         // Typed text arrives whole, so there is nothing to wait for.
         runDetection(force: true)
     }
+    #endif
 
     func debugInjectSampleCards() {
         let samples: [CueCard] = [
@@ -470,6 +549,28 @@ final class CuesController: ObservableObject {
     /// precise detector is the default and the model is a switch the teacher
     /// turns on knowing what it costs.
     private func chooseDetector() {
+        #if DEBUG
+        if let choice = configuration.detectorChoice {
+            switch choice {
+            case .patterns:
+                detector = HeuristicDetector()
+            case .composite where FoundationModelsDetector.isAvailable:
+                let model = FoundationModelsDetector()
+                model.prewarm()
+                detector = CompositeDetector(model: model)
+            case .model where FoundationModelsDetector.isAvailable:
+                let model = FoundationModelsDetector()
+                model.prewarm()
+                detector = model
+            default:
+                detector = HeuristicDetector()
+                note(.note, "Apple Intelligence is not available here \u{2014} word patterns instead")
+            }
+            detectorName = detector.name
+            detectorCode = detector.analyticsCode
+            return
+        }
+        #endif
         if configuration.useModelDetector, FoundationModelsDetector.isAvailable {
             let model = FoundationModelsDetector()
             model.prewarm()
@@ -526,10 +627,17 @@ final class CuesController: ObservableObject {
     }
 
     private func handle(_ event: Transcriber.Event) {
-        if case .final(let text) = event, !isPaused { note(.heard, text) }
+        if case .final(let text) = event, !isPaused {
+            let now = Date()
+            lastSpeechMs = utteranceStart.map { Int(now.timeIntervalSince($0) * 1000) }
+            utteranceStart = nil
+            if pendingHeardAt == nil { pendingHeardAt = now }
+            note(.heard, lastSpeechMs.map { "\(text)   (\($0) ms from first words to finished sentence)" } ?? text)
+        }
         switch event {
         case .volatile(let text):
             guard !isPaused else { return }
+            if utteranceStart == nil, !text.isEmpty { utteranceStart = Date() }
             transcript.setVolatile(text)
             liveTail = transcript.display
         case .final(let text):
@@ -680,9 +788,14 @@ final class CuesController: ObservableObject {
         // than two minutes; older than that the moment has passed.
         heldBack.removeAll { Date().timeIntervalSince($0.at) > 120 }
         if !heldBack.isEmpty, detectTask == nil {
-            let waiting = heldBack.map(\.mention)
+            let waiting = heldBack
             heldBack.removeAll()
-            Task { [weak self] in await self?.resolve(waiting) }
+            Task { [weak self] in
+                for item in waiting {
+                    await self?.resolve([item.mention], heardAt: item.heardAt, detectBegan: item.heardAt,
+                                        detectedAt: item.heardAt, speechMs: nil)
+                }
+            }
         }
         // The catch-up tick, for speech that never reaches the word count.
         let gap = detector.isCheap ? 3.0 : detectEvery
@@ -705,6 +818,9 @@ final class CuesController: ObservableObject {
         let names = configuration.rosterNames() + spokenNames
         let current = detector
         let began = Date()
+        let heardAt = pendingHeardAt ?? began
+        pendingHeardAt = nil
+        let speechMs = lastSpeechMs
         detectTask = Task { [weak self] in
             defer { self?.detectTask = nil }
             do {
@@ -726,7 +842,8 @@ final class CuesController: ObservableObject {
                 if self.testMode {
                     self.testMentions.append(contentsOf: mentions)
                 } else {
-                    await self.resolve(mentions)
+                    await self.resolve(mentions, heardAt: heardAt, detectBegan: began,
+                                       detectedAt: Date(), speechMs: speechMs)
                 }
             } catch {
                 guard let self else { return }
@@ -742,7 +859,8 @@ final class CuesController: ObservableObject {
         }
     }
 
-    private func resolve(_ mentions: [Mention]) async {
+    private func resolve(_ mentions: [Mention], heardAt: Date = Date(), detectBegan: Date = Date(),
+                         detectedAt: Date = Date(), speechMs: Int? = nil) async {
         for heard in mentions where !dismissedKeys.contains(heard.normalizedKey) {
             var mention = heard
             // "Adobe O Strader", a minute after "Adobe Illustrator" was said
@@ -773,13 +891,15 @@ final class CuesController: ObservableObject {
 
             lookupsInFlight += 1
             isResolving = true
+            let lookupBegan = Date()
             let resolution = await resolver.resolve(mention)
+            let lookupMs = Int(Date().timeIntervalSince(lookupBegan) * 1000)
             lookupsInFlight -= 1
             isResolving = lookupsInFlight > 0
 
             if resolution.heldBack {
                 heldBack.removeAll { $0.mention.normalizedKey == mention.normalizedKey && $0.mention.kind == mention.kind }
-                heldBack.append((mention, Date()))
+                heldBack.append((mention, Date(), heardAt))
                 if heldBack.count > 10 { heldBack.removeFirst(heldBack.count - 10) }
                 note(.hold, "\u{201C}\(mention.query)\u{201D} waits: the minute's lookups are spent")
             }
@@ -805,7 +925,14 @@ final class CuesController: ObservableObject {
             }
             for note in resolution.notes { configuration.log("Cues: \(note).") }
             for card in resolution.cards.prefix(1) {
-                note(.card, "\(card.kind.eyebrow) \(card.title) \u{00B7} \(card.source.label)\(resolution.searchLinkOnly ? " (search link, nothing sent)" : "") \u{00B7} \(card.url.absoluteString)")
+                let timing = CueTiming(speechMs: speechMs,
+                                       waitMs: max(0, Int(detectBegan.timeIntervalSince(heardAt) * 1000)),
+                                       detectMs: max(0, Int(detectedAt.timeIntervalSince(detectBegan) * 1000)),
+                                       lookupMs: lookupMs,
+                                       totalMs: Int(Date().timeIntervalSince(heardAt) * 1000),
+                                       source: card.source.label)
+                timings[card.id] = timing
+                note(.card, "\(card.kind.eyebrow) \(card.title) \u{00B7} \(card.source.label)\(resolution.searchLinkOnly ? " (search link, nothing sent)" : "") \u{00B7} \(timing.totalMs) ms after the sentence ended (wait \(timing.waitMs), detect \(timing.detectMs), lookup \(timing.lookupMs)) \u{00B7} \(card.url.absoluteString)")
                 insert(card, foundBy: mention.foundBy)
                 Analytics.feature("prompter_card", source: card.source.analyticsCode)
                 if let thumbnail = resolution.thumbnails[card.id] {

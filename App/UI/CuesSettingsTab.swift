@@ -309,11 +309,28 @@ struct CuesWorkbench: View {
     @ObservedObject private var assets = ModelAssets.shared
     @StateObject private var bench = CuesController()
     @State private var text = "Have you heard of the brand called imago? And moving on to Adobe Photoshop, that is more of an image editing software."
+    /// The workbench's own choices. They start from Settings and change
+    /// nothing there: trying Apple Intelligence here does not turn it on
+    /// for the next class.
+    @State private var detector: CuesController.DetectorChoice = .patterns
+    @State private var useWhisper = false
+    /// Typed text arrives as speech - a word at a time, then the sentence -
+    /// so detection starts when it would in a class, not all at once.
+    @State private var asSpeech = true
+    @State private var wordsPerSecond = 2.5
+    @State private var seeded = false
 
     private var inClass: Bool { coordinator.isRunning || coordinator.virtualCamActive }
 
     private var ready: Bool {
-        coordinator.cuesUseWhisper ? CuesWhisperTranscriber.isAvailable : assets.status.isInstalled
+        useWhisper ? CuesWhisperTranscriber.isAvailable : assets.status.isInstalled
+    }
+
+    private func configuration() -> CuesController.Configuration {
+        var configuration = coordinator.cuesConfiguration()
+        configuration.detectorChoice = detector
+        configuration.useWhisper = useWhisper && CuesWhisperTranscriber.isAvailable
+        return configuration
     }
 
     var body: some View {
@@ -330,7 +347,7 @@ struct CuesWorkbench: View {
                         Button("Listen") {
                             Task {
                                 await bench.startTest(seconds: 300,
-                                                      configuration: coordinator.cuesConfiguration(),
+                                                      configuration: configuration(),
                                                       lookUp: true)
                             }
                         }
@@ -346,8 +363,38 @@ struct CuesWorkbench: View {
             } label: {
                 SettingLabel(title: "Listen, type or play a file",
                              subtitle: bench.status.isEmpty
-                                ? "\(coordinator.cuesUseModel ? "Word patterns, then Apple Intelligence" : "Word patterns only") \u{00B7} real lookups \u{00B7} five minutes"
+                                ? "\(detector.rawValue) \u{00B7} \(useWhisper ? "whisper" : "Apple speech") \u{00B7} real lookups"
                                 : bench.status)
+            }
+
+            Picker(selection: $detector) {
+                ForEach(CuesController.DetectorChoice.allCases) { Text($0.rawValue).tag($0) }
+            } label: {
+                SettingLabel(title: "Detector", subtitle: "For the workbench only. Settings keeps its own choice.")
+            }
+            Picker(selection: $useWhisper) {
+                Text("Apple").tag(false)
+                Text("Whisper").tag(true)
+            } label: {
+                SettingLabel(title: "Speech to text",
+                             subtitle: CuesWhisperTranscriber.isAvailable ? "Applies to Listen." : "Whisper is not set up on this Mac.")
+            }
+            .disabled(!CuesWhisperTranscriber.isAvailable)
+            if useWhisper {
+                WhisperModelPicker(subtitle: "Shared with Cues and Screenroom.")
+            }
+            Toggle(isOn: $asSpeech) {
+                SettingLabel(title: "Typed text arrives as speech",
+                             subtitle: "A word at a time, then the sentence, so detection starts when it would in a class.")
+            }
+            if asSpeech {
+                LabeledContent {
+                    Stepper(value: $wordsPerSecond, in: 1...5, step: 0.5) {
+                        Text(String(format: "%.1f words a second", wordsPerSecond)).monospacedDigit()
+                    }
+                } label: {
+                    SettingLabel(title: "Speaking pace", subtitle: "Teachers speak at about 2 to 3.")
+                }
             }
 
             HStack {
@@ -365,20 +412,18 @@ struct CuesWorkbench: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
 
-            ForEach(bench.cards) { card in
-                HStack(alignment: .firstTextBaseline, spacing: 8) {
-                    Text(card.kind.eyebrow)
-                        .font(.system(size: 10, weight: .semibold, design: .monospaced))
-                        .foregroundStyle(.tertiary)
-                        .frame(width: 48, alignment: .leading)
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text(card.title).lineLimit(2)
-                        Text(card.subtitle.isEmpty ? card.source.label : "\(card.source.label) \u{00B7} \(card.subtitle)")
-                            .font(.caption).foregroundStyle(.secondary).lineLimit(1)
+            if !bench.cards.isEmpty || bench.isListening {
+                HStack(alignment: .top, spacing: 20) {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("WHAT THE CLASS DISPLAY SHOWS")
+                            .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                            .foregroundStyle(.secondary)
+                        CuesRailPreview(state: surfaceState)
+                            .frame(width: 300, height: 380)
+                            .background(Color(nsColor: .windowBackgroundColor))
+                            .clipShape(RoundedRectangle(cornerRadius: 8))
                     }
-                    Spacer(minLength: 0)
-                    Button("Open") { NSWorkspace.shared.open(card.url) }
-                        .controlSize(.small)
+                    latencyView
                 }
             }
 
@@ -388,7 +433,17 @@ struct CuesWorkbench: View {
         } footer: {
             Text("Debug builds only. Lookups are real and are sent, exactly as in a class.")
         }
-        .onAppear { bench.tracing = true }
+        .onAppear {
+            bench.tracing = true
+            if !seeded {
+                seeded = true
+                detector = coordinator.cuesUseModel ? .composite : .patterns
+                useWhisper = coordinator.cuesUseWhisper && CuesWhisperTranscriber.isAvailable
+            }
+        }
+        // A different detector or engine is a different pipeline: start over.
+        .onChange(of: detector) { _ in bench.stop() }
+        .onChange(of: useWhisper) { _ in bench.stop() }
         .onDisappear {
             bench.stop()
             bench.tracing = false
@@ -440,6 +495,64 @@ struct CuesWorkbench: View {
         }
     }
 
+    /// Every card with where its time went, newest first, and the run's
+    /// median and slowest.
+    private var latencyView: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("LATENCY")
+                .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                .foregroundStyle(.secondary)
+            let totals = bench.cards.compactMap { bench.timings[$0.id]?.totalMs }.sorted()
+            if !totals.isEmpty {
+                Text("median \(seconds(totals[totals.count / 2])) \u{00B7} slowest \(seconds(totals.last ?? 0)) \u{00B7} \(totals.count) card\(totals.count == 1 ? "" : "s")")
+                    .font(.system(size: 11, design: .monospaced))
+            }
+            ForEach(bench.cards) { card in
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(spacing: 6) {
+                        Text(card.kind.eyebrow)
+                            .font(.system(size: 9, weight: .semibold, design: .monospaced))
+                            .foregroundStyle(.tertiary)
+                        Text(card.title).lineLimit(1)
+                        Spacer(minLength: 0)
+                        if let timing = bench.timings[card.id] {
+                            Text(seconds(timing.totalMs)).monospacedDigit().fontWeight(.semibold)
+                        }
+                    }
+                    .font(.callout)
+                    if let timing = bench.timings[card.id] {
+                        Text(breakdown(timing))
+                            .font(.system(size: 10, design: .monospaced))
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
+            Spacer(minLength: 0)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func breakdown(_ timing: CueTiming) -> String {
+        var parts: [String] = []
+        if let speech = timing.speechMs { parts.append("speech \(speech)") }
+        parts.append("wait \(timing.waitMs)")
+        parts.append("detect \(timing.detectMs)")
+        parts.append("lookup \(timing.lookupMs) (\(timing.source))")
+        return parts.joined(separator: " \u{00B7} ") + " ms"
+    }
+
+    private func seconds(_ ms: Int) -> String { String(format: "%.2f s", Double(ms) / 1000) }
+
+    private var surfaceState: CuesSurfaceState {
+        var state = CuesSurfaceState()
+        state.listening = bench.isListening || !bench.cards.isEmpty
+        state.resolving = bench.isResolving
+        state.cards = bench.surfaceCards
+        state.open = { NSWorkspace.shared.open($0.url) }
+        state.dismiss = { bench.dismiss($0) }
+        return state
+    }
+
     private func tint(_ stage: CuesTraceLine.Stage) -> Color {
         switch stage {
         case .card: return Brand.text
@@ -461,7 +574,13 @@ struct CuesWorkbench: View {
 
     private func say() {
         let typed = text
-        Task { await bench.debugSay(typed, configuration: coordinator.cuesConfiguration()) }
+        let configuration = configuration()
+        if asSpeech {
+            let pace = wordsPerSecond
+            Task { await bench.debugSpeak(typed, wordsPerSecond: pace, configuration: configuration) }
+        } else {
+            Task { await bench.debugSay(typed, configuration: configuration) }
+        }
     }
 
     private func feedAudio() {
@@ -469,7 +588,34 @@ struct CuesWorkbench: View {
         panel.allowedContentTypes = [.audio]
         panel.allowsMultipleSelection = false
         guard panel.runModal() == .OK, let url = panel.url else { return }
-        Task { await bench.debugFeed(file: url, configuration: coordinator.cuesConfiguration()) }
+        Task { await bench.debugFeed(file: url, configuration: configuration()) }
+    }
+}
+
+/// The class display's own Cues block, hosted here so the workbench shows
+/// exactly what the reference display would: the same view, the same state.
+@available(macOS 26.0, *)
+struct CuesRailPreview: NSViewRepresentable {
+    let state: CuesSurfaceState
+
+    final class Host: NSView {
+        let block = CuesRailBlock(frame: .zero)
+        override init(frame: NSRect) {
+            super.init(frame: frame)
+            addSubview(block)
+        }
+        required init?(coder: NSCoder) { fatalError() }
+        override func layout() {
+            super.layout()
+            block.place(x: 12, width: bounds.width - 24, top: bounds.height - 4, available: bounds.height - 8)
+        }
+    }
+
+    func makeNSView(context: Context) -> Host { Host(frame: .zero) }
+
+    func updateNSView(_ host: Host, context: Context) {
+        _ = host.block.apply(state)
+        host.needsLayout = true
     }
 }
 #endif

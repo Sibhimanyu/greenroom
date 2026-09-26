@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <title>Greenroom timeline — every release since the first morning</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="description" content="How Greenroom grew, release by release: 18 versions in four weeks, from a one-click OBS + Zoom script to a teaching console with its own browser and a way onto YouTube.">
+<meta name="description" content="How Greenroom grew, release by release: 20 versions in seven weeks, from a one-click OBS + Zoom script to a classroom console with its own browser, a way onto YouTube, and a room for watching a talk back.">
 <link rel="icon" type="image/png" href="favicon.png?v=4">
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=4">
 <style>
@@ -237,17 +237,17 @@
 </nav>
 
 <header class="wrap page-hero">
-  <span class="eyebrow">Changelog · 18 releases · Aug 6 – Sep 4, 2026</span>
-  <h1>From a script to a stage, in <span class="accent">four weeks.</span></h1>
+  <span class="eyebrow">Changelog · 20 releases · Aug 6 – Sep 26, 2026</span>
+  <h1>From a script to a stage, in <span class="accent">seven weeks.</span></h1>
   <p class="lede">Greenroom started as the one-click version of a teacher's 7:50 ritual. Every version since was
   cut from a real morning class: something broke, something was missing, and the fix shipped before the next one.
   This is the whole record, including the build that never launched.</p>
 
   <div class="stats" aria-label="Totals">
-    <div class="stat"><div class="v">18</div><div class="l">releases</div></div>
-    <div class="stat"><div class="v">29<small>days</small></div><div class="l">first release to latest</div></div>
-    <div class="stat"><div class="v">202</div><div class="l">commits</div></div>
-    <div class="stat"><div class="v">4.3k <small>→</small> 20.3k</div><div class="l">lines of Swift</div></div>
+    <div class="stat"><div class="v">20</div><div class="l">releases</div></div>
+    <div class="stat"><div class="v">51<small>days</small></div><div class="l">first release to latest</div></div>
+    <div class="stat"><div class="v">326</div><div class="l">commits</div></div>
+    <div class="stat"><div class="v">4.3k <small>→</small> 38.6k</div><div class="l">lines of Swift</div></div>
     <div class="stat"><div class="v">1</div><div class="l">build that never launched</div></div>
   </div>
 </header>
@@ -257,91 +257,99 @@
   <div class="wrap">
     <div class="sec-head">
       <p class="kicker">01 · The shape of it</p>
-      <h2>Two bursts, a steady climb, and a second wind</h2>
+      <h2>Two bursts, a steady climb, and a second wind that kept going</h2>
       <p>Lines of Swift in the app at each release, on the day it shipped. The size of the code is a blunt measure, but it
       shows where the work went: a first day that produced most of the app, ten days of hardening in the 0.3 series,
-      one Sunday (0.4.0) that doubled it, and two September mornings that gave it a browser and a way onto YouTube.</p>
+      one Sunday (0.4.0) that doubled it, and two September mornings that gave it a browser and a way onto YouTube. Then the
+      two largest releases of all: a console for the class (0.8.0), and Screenroom (0.9.0), which added more code than the
+      whole app had in its first week.</p>
     </div>
 
     <figure class="viz">
       <div class="frame">
         <div class="tip" id="tip" role="status" aria-live="polite"></div>
         <svg class="svg-wide" viewBox="0 0 960 340" role="img" aria-labelledby="chart-title chart-desc">
-          <title id="chart-title">Lines of Swift per release, August 6 to September 4, 2026</title>
-          <desc id="chart-desc">A step chart. 0.1.0 on August 6 has 4,274 lines. The 0.3 series through August 20 stays between 6,000 and 8,000. 0.4.0 on August 24 jumps to 16,588. 0.6.0 on September 3 reaches 18,781 and 0.7.0 on September 4 reaches 20,290. 0.3.0 is marked as the release that never launched. The data table below lists every value.</desc>
+          <title id="chart-title">Lines of Swift per release, August 6 to September 26, 2026</title>
+          <desc id="chart-desc">A step chart. 0.1.0 on August 6 has 4,274 lines. The 0.3 series through August 20 stays between 6,000 and 8,000. 0.4.0 on August 24 jumps to 16,588. 0.6.0 on September 3 reaches 18,781 and 0.7.0 on September 4 reaches 20,290. 0.8.0 on September 18 reaches 27,115 and 0.9.0 on September 26 reaches 38,621. 0.3.0 is marked as the release that never launched. The data table below lists every value.</desc>
 
           <!-- grid: recessive -->
           <g stroke="#eaecf0" stroke-width="1">
             <line x1="70" y1="40" x2="920" y2="40"/>
-            <line x1="70" y1="84" x2="920" y2="84"/>
-            <line x1="70" y1="128" x2="920" y2="128"/>
-            <line x1="70" y1="172" x2="920" y2="172"/>
-            <line x1="70" y1="216" x2="920" y2="216"/>
+            <line x1="70" y1="95" x2="920" y2="95"/>
+            <line x1="70" y1="150" x2="920" y2="150"/>
+            <line x1="70" y1="205" x2="920" y2="205"/>
           </g>
           <line x1="70" y1="260" x2="920" y2="260" stroke="#d0d5dd" stroke-width="1.2"/>
           <g font-size="11" fill="#98a2b3" text-anchor="end">
-            <text x="60" y="44">25k</text>
-            <text x="60" y="88">20k</text>
-            <text x="60" y="132">15k</text>
-            <text x="60" y="176">10k</text>
-            <text x="60" y="220">5k</text>
+            <text x="60" y="44">40k</text>
+            <text x="60" y="99">30k</text>
+            <text x="60" y="154">20k</text>
+            <text x="60" y="209">10k</text>
             <text x="60" y="264">0</text>
           </g>
           <g font-size="11" fill="#98a2b3" text-anchor="middle">
             <text x="70" y="284">Aug 6</text>
-            <text x="268" y="284">Aug 13</text>
-            <text x="467" y="284">Aug 20</text>
-            <text x="665" y="284">Aug 27</text>
-            <text x="863" y="284">Sep 3</text>
+            <text x="184.4" y="284">Aug 13</text>
+            <text x="298.8" y="284">Aug 20</text>
+            <text x="413.3" y="284">Aug 27</text>
+            <text x="527.7" y="284">Sep 3</text>
+            <text x="642.1" y="284">Sep 10</text>
+            <text x="756.5" y="284">Sep 17</text>
+            <text x="871" y="284">Sep 24</text>
           </g>
           <text x="70" y="308" font-size="10.5" font-weight="700" letter-spacing="1.1" fill="#667085">RELEASE DAY →</text>
           <text x="920" y="308" font-size="10.5" font-weight="700" letter-spacing="1.1" fill="#667085" text-anchor="end">LINES OF SWIFT IN App/</text>
 
           <!-- eras -->
           <g font-family="ui-monospace, SF Mono, Menlo, monospace" font-size="10.5" letter-spacing=".08em" fill="#2f6118" font-weight="700">
-            <text x="84" y="24">FOUNDATION</text>
-            <text x="322" y="24" text-anchor="middle">SELF-UPDATING · HARDENED IN CLASS</text>
-            <text x="587" y="24" text-anchor="middle">TEACHING SURFACE</text>
-            <text x="912" y="24" text-anchor="end">BROWSER · YOUTUBE</text>
+            <text x="70" y="24">FOUNDATION</text>
+            <text x="218" y="24" text-anchor="middle">HARDENED IN CLASS</text>
+            <text x="372" y="24" text-anchor="middle">TEACHING SURFACE</text>
+            <text x="544" y="24" text-anchor="middle">BROWSER · YOUTUBE</text>
+            <text x="912" y="24" text-anchor="end">CONSOLE · CUES · SCREENROOM</text>
           </g>
+          <!-- era rules span the days each era covers -->
           <g stroke="#2f6118" stroke-width="1" opacity=".35">
-            <line x1="70" y1="30" x2="125" y2="30"/>
-            <line x1="168" y1="30" x2="495" y2="30"/>
-            <line x1="580" y1="30" x2="610" y2="30"/>
-            <line x1="870" y1="30" x2="920" y2="30"/>
+            <line x1="70" y1="30" x2="84" y2="30"/>
+            <line x1="88" y1="30" x2="315" y2="30"/>
+            <line x1="364" y1="30" x2="381" y2="30"/>
+            <line x1="528" y1="30" x2="560" y2="30"/>
+            <line x1="773" y1="30" x2="920" y2="30"/>
           </g>
 
           <!-- the series: one step line, brand green, 2px -->
-          <path d="M70,222.4 H76.8 V222.4 H88.1 V207.3 H89.6 V207 H112.8 V206.8 H174.8 V206.8 H188.4 V206.2 H389 V205 H418.8 V200.3 H420.8 V198.9 H422.5 V196.6 H440.3 V195 H474.3 V189.4 H585.1 V114 H585.7 V113.9 H588.2 V112.1 H877 V112 H878.7 V94.7 H903 V81.4 H920"
+          <path d="M70,236.5 H73.9 V236.5 H80.4 V227.1 H81.3 V226.9 H94.8 V226.8 H130.6 V226.8 H138.3 V226.4 H254 V225.6 H271.2 V222.7 H272.3 V221.8 H273.4 V220.4 H283.7 V219.4 H303.3 V215.9 H367.2 V168.8 H367.4 V168.7 H369 V167.6 H535.5 V167.5 H536.4 V156.7 H546.8 V148.4 H774.9 V110.9 H910 V47.6 H920"
                 fill="none" stroke="#2f6118" stroke-width="2" stroke-linejoin="round"/>
 
           <!-- direct labels: only the ones that carry the story -->
-          <text x="96" y="231" font-size="11" fill="#475467">4.3k · 0.1.0</text>
-          <text x="596" y="106" font-size="11" fill="#475467">16.6k · 0.4.0</text>
-          <text x="896" y="76" font-size="11" fill="#475467" text-anchor="end">20.3k · 0.7.0</text>
-          <text x="124" y="195" font-size="10.5" fill="#96600a">0.3.0 · never launched</text>
-          <line x1="112.8" y1="199" x2="112.8" y2="206" stroke="#b9770e" stroke-width="1"/>
+          <text x="86" y="247" font-size="11" fill="#475467">4.3k · 0.1.0</text>
+          <text x="378" y="160" font-size="11" fill="#475467">16.6k · 0.4.0</text>
+          <text x="898" y="51" font-size="11" fill="#475467" text-anchor="end">38.6k · 0.9.0</text>
+          <text x="106" y="210" font-size="10.5" fill="#96600a">0.3.0 · never launched</text>
+          <line x1="94.8" y1="214" x2="94.8" y2="221" stroke="#b9770e" stroke-width="1"/>
 
           <!-- markers: >= 8px, 2px white ring so the clusters stay legible -->
           <g id="dots" fill="#2f6118" stroke="#fff" stroke-width="2">
-            <g class="dot" tabindex="0" data-v="0.1.0" data-d="Wed Aug 6" data-l="4,274" data-c="1" data-h="First packaged build: virtual camera, Zoom, tiled layout."><circle cx="76.8" cy="222.4" r="4.5"/></g>
-            <g class="dot" tabindex="0" data-v="0.2.0" data-d="Wed Aug 6" data-l="5,989" data-c="39" data-h="Most of the app: scheduled meetings, presenter mode, people view, recordings, shortcuts, warm OBS."><circle cx="88.1" cy="207.3" r="4.5"/></g>
-            <g class="dot" tabindex="0" data-v="0.2.1" data-d="Wed Aug 6" data-l="6,020" data-c="4" data-h="No more “quit unexpectedly” dialog; Greenroom returns to the front when a session ends."><circle cx="89.6" cy="207" r="4.5"/></g>
-            <g class="dot" tabindex="0" data-v="0.3.0" data-d="Thu Aug 7" data-l="6,041" data-c="7" data-h="Shipped without the Sparkle framework and could not start. Downloads removed."><circle cx="112.8" cy="206.8" r="4.5" fill="#fff" stroke="#b9770e" stroke-width="2"/></g>
-            <g class="dot" tabindex="0" data-v="0.3.1" data-d="Sat Aug 9" data-l="6,041" data-c="2" data-h="Self-updating app (Sparkle, EdDSA-signed). The last version anyone installs by hand."><circle cx="174.8" cy="206.8" r="4.5"/></g>
-            <g class="dot" tabindex="0" data-v="0.3.2" data-d="Sun Aug 10" data-l="6,108" data-c="4" data-h="Browsers get their own window again; OBS stops crashing on quit."><circle cx="188.4" cy="206.2" r="4.5"/></g>
-            <g class="dot" tabindex="0" data-v="0.3.3" data-d="Sun Aug 17" data-l="6,246" data-c="5" data-h="Meeting presets; the “Is it safe?” page; honest about plaintext credentials."><circle cx="389" cy="205" r="4.5"/></g>
-            <g class="dot" tabindex="0" data-v="0.3.4" data-d="Mon Aug 18" data-l="6,781" data-c="11" data-h="No more windows bursting open full-screen; safe quitting; ⌥⌘Z quick-hide; pick the participant display."><circle cx="418.8" cy="200.3" r="4.5"/></g>
-            <g class="dot" tabindex="0" data-v="0.3.5" data-d="Mon Aug 18" data-l="6,947" data-c="9" data-h="Dual display done right: speaker tile on the main screen, grid with controls on the second."><circle cx="420.8" cy="198.9" r="4.5"/></g>
-            <g class="dot" tabindex="0" data-v="0.3.6" data-d="Mon Aug 18" data-l="7,205" data-c="8" data-h="Drag to resize the layout; changes apply live; End Session asks first; fragmented MP4."><circle cx="422.5" cy="196.6" r="4.5"/></g>
-            <g class="dot" tabindex="0" data-v="0.3.7" data-d="Tue Aug 19" data-l="7,385" data-c="19" data-h="Design-system pass: brand green everywhere; the participant grid finally stays put."><circle cx="440.3" cy="195" r="4.5"/></g>
-            <g class="dot" tabindex="0" data-v="0.3.8" data-d="Wed Aug 20" data-l="8,018" data-c="9" data-h="OBS quits quietly; windows go to the right display; recording space shown."><circle cx="474.3" cy="189.4" r="4.5"/></g>
-            <g class="dot" tabindex="0" data-v="0.4.0" data-d="Sun Aug 24" data-l="16,588" data-c="52" data-h="Clips after the fact; the participants panel; chat rebuilt. The app doubles in a day."><circle cx="585.1" cy="114" r="4.5"/></g>
-            <g class="dot" tabindex="0" data-v="0.4.1" data-d="Sun Aug 24" data-l="16,599" data-c="2" data-h="The meeting tile is identified first, always."><circle cx="585.7" cy="113.9" r="4.5"/></g>
-            <g class="dot" tabindex="0" data-v="0.5.0" data-d="Sun Aug 24" data-l="16,802" data-c="4" data-h="The live speaker window works; participant video is stable; photos preview in chat."><circle cx="588.2" cy="112.1" r="4.5"/></g>
-            <g class="dot" tabindex="0" data-v="0.5.1" data-d="Wed Sep 3" data-l="16,821" data-c="2" data-h="Recordings have sound: every earlier clip carried a silent track."><circle cx="877" cy="112" r="4.5"/></g>
-            <g class="dot" tabindex="0" data-v="0.6.0" data-d="Wed Sep 3" data-l="18,781" data-c="7" data-h="Greenroom Browser: a WebKit window of its own, tabs, find, history, and yesterday's tabs back on Start."><circle cx="878.7" cy="94.7" r="4.5"/></g>
-            <g class="dot" tabindex="0" data-v="0.7.0" data-d="Thu Sep 4" data-l="20,290" data-c="24" data-h="Recordings go to YouTube; the Sessions window keeps every class, its links and its name; analytics count features and settings."><circle cx="903" cy="81.4" r="4.5"/></g>
+            <g class="dot" tabindex="0" data-v="0.1.0" data-d="Wed Aug 6" data-l="4,274" data-c="1" data-h="First packaged build: virtual camera, Zoom, tiled layout."><circle cx="73.9" cy="236.5" r="4.5"/></g>
+            <g class="dot" tabindex="0" data-v="0.2.0" data-d="Wed Aug 6" data-l="5,989" data-c="39" data-h="Most of the app: scheduled meetings, presenter mode, people view, recordings, shortcuts, warm OBS."><circle cx="80.4" cy="227.1" r="4.5"/></g>
+            <g class="dot" tabindex="0" data-v="0.2.1" data-d="Wed Aug 6" data-l="6,020" data-c="4" data-h="No more “quit unexpectedly” dialog; Greenroom returns to the front when a session ends."><circle cx="81.3" cy="226.9" r="4.5"/></g>
+            <g class="dot" tabindex="0" data-v="0.3.0" data-d="Thu Aug 7" data-l="6,041" data-c="7" data-h="Shipped without the Sparkle framework and could not start. Downloads removed."><circle cx="94.8" cy="226.8" r="4.5" fill="#fff" stroke="#b9770e" stroke-width="2"/></g>
+            <g class="dot" tabindex="0" data-v="0.3.1" data-d="Sat Aug 9" data-l="6,041" data-c="2" data-h="Self-updating app (Sparkle, EdDSA-signed). The last version anyone installs by hand."><circle cx="130.6" cy="226.8" r="4.5"/></g>
+            <g class="dot" tabindex="0" data-v="0.3.2" data-d="Sun Aug 10" data-l="6,108" data-c="4" data-h="Browsers get their own window again; OBS stops crashing on quit."><circle cx="138.3" cy="226.4" r="4.5"/></g>
+            <g class="dot" tabindex="0" data-v="0.3.3" data-d="Sun Aug 17" data-l="6,246" data-c="5" data-h="Meeting presets; the “Is it safe?” page; honest about plaintext credentials."><circle cx="254" cy="225.6" r="4.5"/></g>
+            <g class="dot" tabindex="0" data-v="0.3.4" data-d="Mon Aug 18" data-l="6,781" data-c="11" data-h="No more windows bursting open full-screen; safe quitting; ⌥⌘Z quick-hide; pick the participant display."><circle cx="271.2" cy="222.7" r="4.5"/></g>
+            <g class="dot" tabindex="0" data-v="0.3.5" data-d="Mon Aug 18" data-l="6,947" data-c="9" data-h="Dual display done right: speaker tile on the main screen, grid with controls on the second."><circle cx="272.3" cy="221.8" r="4.5"/></g>
+            <g class="dot" tabindex="0" data-v="0.3.6" data-d="Mon Aug 18" data-l="7,205" data-c="8" data-h="Drag to resize the layout; changes apply live; End Session asks first; fragmented MP4."><circle cx="273.4" cy="220.4" r="4.5"/></g>
+            <g class="dot" tabindex="0" data-v="0.3.7" data-d="Tue Aug 19" data-l="7,385" data-c="19" data-h="Design-system pass: brand green everywhere; the participant grid finally stays put."><circle cx="283.7" cy="219.4" r="4.5"/></g>
+            <g class="dot" tabindex="0" data-v="0.3.8" data-d="Wed Aug 20" data-l="8,018" data-c="9" data-h="OBS quits quietly; windows go to the right display; recording space shown."><circle cx="303.3" cy="215.9" r="4.5"/></g>
+            <g class="dot" tabindex="0" data-v="0.4.0" data-d="Sun Aug 24" data-l="16,588" data-c="52" data-h="Clips after the fact; the participants panel; chat rebuilt. The app doubles in a day."><circle cx="367.2" cy="168.8" r="4.5"/></g>
+            <g class="dot" tabindex="0" data-v="0.4.1" data-d="Sun Aug 24" data-l="16,599" data-c="2" data-h="The meeting tile is identified first, always."><circle cx="367.4" cy="168.7" r="4.5"/></g>
+            <g class="dot" tabindex="0" data-v="0.5.0" data-d="Sun Aug 24" data-l="16,802" data-c="4" data-h="The live speaker window works; participant video is stable; photos preview in chat."><circle cx="369" cy="167.6" r="4.5"/></g>
+            <g class="dot" tabindex="0" data-v="0.5.1" data-d="Wed Sep 3" data-l="16,821" data-c="2" data-h="Recordings have sound: every earlier clip carried a silent track."><circle cx="535.5" cy="167.5" r="4.5"/></g>
+            <g class="dot" tabindex="0" data-v="0.6.0" data-d="Wed Sep 3" data-l="18,781" data-c="7" data-h="Greenroom Browser: a WebKit window of its own, tabs, find, history, and yesterday's tabs back on Start."><circle cx="536.4" cy="156.7" r="4.5"/></g>
+            <g class="dot" tabindex="0" data-v="0.7.0" data-d="Thu Sep 4" data-l="20,290" data-c="19" data-h="Recordings go to YouTube; the Sessions window keeps every class, its links and its name; analytics count features and settings."><circle cx="546.8" cy="148.4" r="4.5"/></g>
+            <g class="dot" tabindex="0" data-v="0.8.0" data-d="Thu Sep 18" data-l="27,115" data-c="51" data-h="The participants panel becomes a classroom console: a header that stays put, a Live Queue, the grid takes the window. Cues is built and held back."><circle cx="774.9" cy="110.9" r="4.5"/></g>
+            <g class="dot" tabindex="0" data-v="0.9.0" data-d="Fri Sep 26" data-l="38,621" data-c="71" data-h="Screenroom records a talk and reports on it; Cues is here; the camera follows where you turn; the new mark."><circle cx="910" cy="47.6" r="4.5"/></g>
           </g>
         </svg>
       </div>
@@ -373,7 +381,9 @@
             <tr><td><span class="mono">0.5.0</span></td><td>Aug 24, 07:02</td><td class="num">4</td><td class="num">16,802</td><td>Live speaker window</td></tr>
             <tr><td><span class="mono">0.5.1</span></td><td>Sep 3, 11:24</td><td class="num">2</td><td class="num">16,821</td><td>Recordings have sound</td></tr>
             <tr><td><span class="mono">0.6.0</span></td><td>Sep 3, 12:49</td><td class="num">7</td><td class="num">18,781</td><td>Greenroom Browser</td></tr>
-            <tr><td><span class="mono">0.7.0</span></td><td>Sep 4</td><td class="num">24</td><td class="num">20,290</td><td>YouTube upload, Sessions</td></tr>
+            <tr><td><span class="mono">0.7.0</span></td><td>Sep 4, 04:06</td><td class="num">19</td><td class="num">20,290</td><td>YouTube upload, Sessions</td></tr>
+            <tr><td><span class="mono">0.8.0</span></td><td>Sep 18, 02:53</td><td class="num">51</td><td class="num">27,115</td><td>Classroom console</td></tr>
+            <tr><td><span class="mono">0.9.0</span></td><td>Sep 26, 09:22</td><td class="num">71</td><td class="num">38,621</td><td>Screenroom, Cues, camera switching</td></tr>
           </tbody>
         </table>
       </div>
@@ -670,13 +680,80 @@
           </div>
         </div>
         <div class="rel minor">
-          <div class="meta"><div class="ver">0.7.0</div><div class="date">Thu Sep 4</div><div class="size">20,290 lines · 24 commits</div></div>
+          <div class="meta"><div class="ver">0.7.0</div><div class="date">Thu Sep 4 · 04:06</div><div class="size">20,290 lines · 19 commits</div></div>
           <div class="spine"><span class="node"></span></div>
           <div class="card">
             <span class="tag new">New</span>
             <h4>Recordings go to YouTube, and every class has a home</h4>
             <p>Off by default and its own channel on the safety page: a finished recording uploads as unlisted, asked or automatic, in the background.</p>
             <div class="feats"><span class="feat">YouTube upload</span><span class="feat">Ask / automatic</span><span class="feat">Sessions window</span><span class="feat">Rename a class, or its video</span><span class="feat soft">Feature &amp; setting counts</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Era 5 -->
+    <div class="era">
+      <div class="era-head">
+        <div class="when">Sep 18 – 26 · 8 days</div>
+        <div>
+          <h3>A console for the class, and a room for student talks</h3>
+          <p>The participants panel stops being one long column and becomes a console. Then the two things built beside it ship: Cues, which listens in class, and Screenroom, where a student's talk is recorded, marked and watched back.</p>
+        </div>
+        <figure class="era-art">
+          <svg viewBox="0 0 300 170" role="img" aria-label="The stage by September 26: the main screen with Greenroom's browser, the teacher bubble, Zoom tile and chat; a second display holding the classroom console, with a header bar, the participant grid, a live queue column and a Cues card; badges for two cameras and Cues.">
+            <rect x="6" y="26" width="172" height="118" rx="8" fill="#fff" stroke="#98a2b3" stroke-width="1.2"/>
+            <path d="M6,34 a8,8 0 0 1 8,-8 h156 a8,8 0 0 1 8,8 v6 h-172 z" fill="#f9fafb" stroke="#98a2b3" stroke-width="1.2"/>
+            <!-- Greenroom Browser, as in September -->
+            <rect x="14" y="48" width="100" height="88" rx="4" fill="#fff" stroke="#2f6118" stroke-width="1.3"/>
+            <rect x="14" y="48" width="100" height="9" rx="4" fill="#f2f4f7"/>
+            <rect x="18" y="50" width="24" height="7" rx="2.5" fill="#fff" stroke="#d0d5dd"/><rect x="44" y="51" width="20" height="5" rx="2.5" fill="#e4e7ec"/>
+            <g fill="#e4e7ec"><rect x="20" y="64" width="60" height="5" rx="2.5" fill="#d0d5dd"/><rect x="20" y="76" width="88" height="3.5" rx="1.75"/><rect x="20" y="84" width="82" height="3.5" rx="1.75"/><rect x="20" y="92" width="86" height="3.5" rx="1.75"/><rect x="20" y="104" width="70" height="3.5" rx="1.75"/></g>
+            <circle cx="98" cy="120" r="11" fill="#e8f3df" stroke="#2f6118" stroke-width="1.4"/><circle cx="98" cy="117" r="3.6" fill="#78c000"/><path d="M90.5,128 a7.5,6 0 0 1 15,0" fill="#78c000"/>
+            <rect x="120" y="48" width="50" height="38" rx="4" fill="#101828"/><circle cx="145" cy="65" r="7" fill="#475467"/>
+            <rect x="120" y="92" width="50" height="44" rx="4" fill="#fff" stroke="#d0d5dd"/><rect x="125" y="98" width="30" height="6" rx="3" fill="#f2f4f7"/><rect x="138" y="108" width="28" height="6" rx="3" fill="#e8f3df"/><rect x="125" y="118" width="24" height="6" rx="3" fill="#f2f4f7"/>
+            <!-- second display: the classroom console -->
+            <rect x="188" y="26" width="106" height="118" rx="8" fill="#101828" stroke="#98a2b3" stroke-width="1.2"/>
+            <rect x="194" y="32" width="94" height="10" rx="3" fill="#1d2939"/><rect x="198" y="35.5" width="30" height="3" rx="1.5" fill="#98a2b3"/><rect x="266" y="34" width="18" height="6" rx="3" fill="#475467"/>
+            <g fill="#344054"><rect x="194" y="46" width="18" height="14" rx="3"/><rect x="215" y="46" width="18" height="14" rx="3"/><rect x="236" y="46" width="18" height="14" rx="3"/><rect x="194" y="63" width="18" height="14" rx="3"/><rect x="215" y="63" width="18" height="14" rx="3"/><rect x="236" y="63" width="18" height="14" rx="3"/><rect x="194" y="80" width="18" height="14" rx="3"/><rect x="215" y="80" width="18" height="14" rx="3"/><rect x="236" y="80" width="18" height="14" rx="3"/><rect x="194" y="97" width="18" height="14" rx="3"/><rect x="215" y="97" width="18" height="14" rx="3"/><rect x="236" y="97" width="18" height="14" rx="3"/></g>
+            <circle cx="229" cy="49" r="2.6" fill="#78c000"/><circle cx="208" cy="83" r="2.6" fill="#78c000"/>
+            <!-- the live queue, in its own column -->
+            <rect x="258" y="46" width="30" height="65" rx="3" fill="#1d2939"/>
+            <rect x="261" y="50" width="24" height="8" rx="2.5" fill="#344054"/><circle cx="265" cy="54" r="2" fill="#78c000"/>
+            <rect x="261" y="61" width="24" height="8" rx="2.5" fill="#344054"/><circle cx="265" cy="65" r="2" fill="#78c000"/>
+            <rect x="261" y="72" width="24" height="8" rx="2.5" fill="#344054"/>
+            <!-- a Cues card -->
+            <rect x="194" y="116" width="94" height="22" rx="4" fill="#1d2939"/>
+            <rect x="198" y="120" width="56" height="14" rx="3" fill="#e8f3df"/><rect x="202" y="124" width="34" height="3" rx="1.5" fill="#2f6118"/><rect x="202" y="129" width="24" height="2.5" rx="1.25" fill="#98a2b3"/>
+            <rect x="258" y="122" width="26" height="10" rx="5" fill="#2f6118"/>
+            <!-- badges -->
+            <rect x="8" y="2" width="92" height="16" rx="8" fill="#e8f3df" stroke="#2f6118"/>
+            <text x="54" y="13.5" font-size="8.5" text-anchor="middle" fill="#2f6118" font-weight="700">⇄ two cameras</text>
+            <rect x="196" y="2" width="90" height="16" rx="8" fill="#e8f3df" stroke="#2f6118"/>
+            <text x="241" y="13.5" font-size="8.5" text-anchor="middle" fill="#2f6118" font-weight="700">Cues · on this Mac</text>
+            <text x="150" y="166" font-size="8.5" text-anchor="middle" fill="#2f6118" font-weight="700" letter-spacing=".08em" font-family="ui-monospace, SF Mono, Menlo, monospace">CLASSROOM CONSOLE · CUES · TWO CAMERAS</text>
+          </svg>
+        </figure>
+      </div>
+      <div class="rail">
+        <div class="rel minor">
+          <div class="meta"><div class="ver">0.8.0</div><div class="date">Thu Sep 18 · 02:53</div><div class="size">27,115 lines · 51 commits</div></div>
+          <div class="spine"><span class="node"></span></div>
+          <div class="card">
+            <span class="tag new">New</span><span class="tag fix">Fixed</span>
+            <h4>The participants panel becomes a classroom console</h4>
+            <p>The one long rail is gone. Everything that competed for space in it has its own place, and <strong>End session</strong> is always in reach. The fixes were all found by running real classes. Cues is built and runs, but it is held back: nothing listens to the microphone in this release.</p>
+            <div class="feats"><span class="feat">Session header</span><span class="feat">Live Queue</span><span class="feat">The grid takes the window</span><span class="feat">Inspector drawer</span><span class="feat soft">Folds for a laptop screen</span></div>
+          </div>
+        </div>
+        <div class="rel minor">
+          <div class="meta"><div class="ver">0.9.0</div><div class="date">Fri Sep 26 · 09:22</div><div class="size">38,621 lines · 71 commits</div></div>
+          <div class="spine"><span class="node"></span></div>
+          <div class="card">
+            <span class="tag new">New</span><span class="tag fix">Fixed</span>
+            <h4>Screenroom, Cues, and a camera that follows you</h4>
+            <p>Screenroom records a student's talk, takes your notes as they speak, and counts pace, filler words, pauses and time facing the room on this Mac. An agent you already run can write the feedback; the video and audio are not sent. Cues, held back in 0.8.0, is here on macOS 26.</p>
+            <div class="feats"><span class="feat">Screenroom</span><span class="feat">Cues</span><span class="feat">Camera switching</span><span class="feat">Sessions: two lists</span><span class="feat">The new mark</span><span class="feat soft">Aiming a camera without OBS</span><span class="feat soft">Updates never during a class</span></div>
           </div>
         </div>
       </div>

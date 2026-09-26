@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <title>Greenroom guide — your first morning</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="description" content="Everything a first-time Greenroom user needs: the first-run setup, the main window, every shortcut, the menu bar, the starter settings, and where recordings go.">
+<meta name="description" content="Everything a first-time Greenroom user needs: the first-run setup, the main window, every shortcut, the menu bar, the starter settings, Screenroom, and where recordings go.">
 <link rel="icon" type="image/png" href="favicon.png?v=4">
 <link rel="apple-touch-icon" href="apple-touch-icon.png?v=4">
 <style>
@@ -207,8 +207,8 @@
   <span class="eyebrow">Guide · your first morning</span>
   <h1>Everything you touch, <span class="accent">and nothing you don't.</span></h1>
   <p class="lede">Greenroom is one button and a handful of settings. This page is the whole of it: what to do
-  before the first Start, what the main window and the menu bar offer, every shortcut, the starter settings, and where
-  your recordings end up. Read it once; after that the app is the <strong>Start</strong> button.</p>
+  before the first Start, what the main window and the menu bar offer, every shortcut, the starter settings, where
+  your recordings end up, and Screenroom for student presentations. Read it once; after that the app is the <strong>Start</strong> button.</p>
   <nav class="contents" aria-label="On this page">
     <a href="#before"><b>01</b>Before the first Start</a>
     <a href="#window"><b>02</b>The main window</a>
@@ -217,7 +217,8 @@
     <a href="#menubar"><b>05</b>The menu bar</a>
     <a href="#settings"><b>06</b>Settings</a>
     <a href="#recordings"><b>07</b>Recordings &amp; clips</a>
-    <a href="#trouble"><b>08</b>If something looks wrong</a>
+    <a href="#screenroom"><b>08</b>Screenroom</a>
+    <a href="#trouble"><b>09</b>If something looks wrong</a>
   </nav>
 </header>
 
@@ -235,7 +236,8 @@
         <div class="n">01</div>
         <div>
           <h3>Install, and open it once the hard way</h3>
-          <p>Download the disk image (the Download button), open it, drag <strong>Greenroom.app</strong> into
+          <p>Greenroom runs on macOS 14 or later. A few features need macOS 26, and each one says so where it is described below.
+          Download the disk image (the Download button), open it, drag <strong>Greenroom.app</strong> into
           Applications. It updates itself from there, so the image need not be the newest version. The app isn't notarized, so the first open is blocked:
           System Settings → Privacy &amp; Security → <strong>Open Anyway</strong> (macOS 14 and earlier: right-click → Open).
           From then on it updates itself.</p>
@@ -271,9 +273,9 @@
       <table>
         <thead><tr><th>Permission</th><th>When macOS asks</th><th>What it's for</th></tr></thead>
         <tbody>
-          <tr><td><strong>Camera &amp; Microphone</strong></td><td>The first meeting connection</td><td>The built-in meeting client runs inside Greenroom, so your video and mic are opened in its process.</td></tr>
-          <tr><td><strong>Screen Recording</strong></td><td>The first Start, asked by <strong>OBS</strong></td><td>OBS captures your screen. Greenroom asks for none of its own in this release — only <em>Screenroom</em>, which is held back, would.</td></tr>
-          <tr><td><strong>Speech Recognition</strong></td><td>Never in this release</td><td>Only <em>Screenroom</em>, which is held back, and only if you pick Apple's transcriber over the default. Either way the audio stays on this Mac: the default is a local whisper binary, and Apple's path refuses to transcribe rather than fall back to Apple's servers.</td></tr>
+          <tr><td><strong>Camera &amp; Microphone</strong></td><td>The first meeting connection, or the first Screenroom recording</td><td>The built-in meeting client runs inside Greenroom, so your video and mic are opened in its process. Screenroom uses the same two to record a talk.</td></tr>
+          <tr><td><strong>Screen Recording</strong></td><td>The first Start, asked by <strong>OBS</strong>; again for Greenroom only if Screenroom records a screen or window</td><td>OBS captures your screen for the class. Greenroom itself asks only when you point Screenroom at a screen or a window instead of a camera.</td></tr>
+          <tr><td><strong>Speech Recognition</strong></td><td>The first time Screenroom transcribes with Apple's recogniser</td><td>Only when this Mac has no whisper. Either way the audio stays on this Mac: whisper runs locally, and Apple's path is pinned to on-device and refuses to transcribe rather than fall back to Apple's servers.</td></tr>
           <tr><td><strong>Accessibility</strong></td><td>The first time a Zoom or other native window is tiled</td><td>Moving windows of apps that have no scripting dictionary. Not needed for the main pane when <strong>Greenroom Browser</strong> is your main app.</td></tr>
           <tr><td><strong>Automation</strong></td><td>The first time an external browser (Chrome, Ulaa…) is tiled</td><td>Opening and sizing that browser's window through its own dictionary. Greenroom Browser needs none.</td></tr>
         </tbody>
@@ -310,7 +312,8 @@
         <h3>While the class runs</h3>
         <ul>
           <li><strong>End Session</strong> asks first, because it can end the meeting for the whole class.</li>
-          <li><strong>Sessions</strong> opens every past class: recordings and clips with a built-in player, the YouTube link once a recording is uploaded, a name you can change, and how much disk is left.</li>
+          <li><strong>Sessions</strong> opens its own window with every past class and presentation: recordings and clips with a built-in player, the transcript, the YouTube link once a recording is uploaded, a name you can change, and how much disk is left.</li>
+          <li><strong>Screenroom</strong>, beside Sessions, opens the window for recording and marking a student's presentation. It needs no meeting. See <a href="#screenroom">Screenroom</a> below.</li>
           <li><strong>Status</strong> (closed by default; the number beside it is how many lines are waiting) says what each step did and why, newest line in view. The window grows downward to show it and nothing above moves.</li>
           <li><strong>Manual controls</strong>, the pull-down on the same row, runs one piece at a time: just the chat window, just the main-app window, just Zoom.</li>
         </ul>
@@ -337,7 +340,7 @@
       <div class="run"><div class="n">02</div><div><h3>The meeting starts or joins</h3><p>Inside Greenroom's built-in client. A meeting a crash left live on the account is ended first, so the new one can start.</p></div></div>
       <div class="run"><div class="n">03</div><div><h3>Your main app opens, tiled to its slice</h3><p>The reading doc in the pane you sized in Settings. With Greenroom Browser, yesterday's tabs come back too.</p></div></div>
       <div class="run"><div class="n">04</div><div><h3>The Zoom tile and chat fill the side column</h3><p>The live speaker above, the class chat below. Both are real windows you can drag; Snap Windows Back returns them.</p></div></div>
-      <div class="run"><div class="n">05</div><div><h3>Greenroom's own window drops to the back</h3><p>Your main app is focused. Teach. The menu bar <strong>GR</strong> item and the shortcuts below are all you need until the end.</p></div></div>
+      <div class="run"><div class="n">05</div><div><h3>Greenroom's own window drops to the back</h3><p>Your main app is focused. If Cues is on, it starts listening. If you turned on automatic recording (off by default), recording starts too. Teach. The Greenroom item in the menu bar and the shortcuts below are all you need until the end.</p></div></div>
     </div>
     <p class="table-note" style="margin-top:18px">The <a href="how-it-works.html#sequence">Privacy &amp; safety page</a> draws the same five steps as every message the app sends, if you want to see exactly what talks to what.</p>
   </div>
@@ -361,7 +364,7 @@
           <tr><td class="keys"><kbd>⌥⌘R</kbd></td><td><strong>Record</strong> / stop recording</td><td>Records exactly what the class sees: the composited screen with you in it. The menu bar shows <strong>REC</strong> while it runs.</td></tr>
           <tr><td class="keys"><kbd>⌥⌘S</kbd></td><td><strong>Snap Windows Back</strong></td><td>Re-tiles everything to the saved layout after you've dragged windows around. Also re-asserts the webcam layer in OBS.</td></tr>
           <tr><td class="keys"><kbd>⌥⌘Z</kbd></td><td><strong>Hide / show the speaker tile</strong></td><td>The chat takes the whole column while the tile is hidden. Needs <em>Quick-hide mode</em> on in Settings → Layout → Meeting view.</td></tr>
-          <tr><td class="keys"><kbd>⌥⌘1</kbd> <kbd>⌥⌘2</kbd> <kbd>⌥⌘5</kbd></td><td><strong>Clip</strong> the last 1, 2 or 5 minutes</td><td>Works whether or not you were recording. Saved into the session's folder, named for the time it happened.</td></tr>
+          <tr><td class="keys"><kbd>⌥⌘1</kbd> <kbd>⌥⌘2</kbd> <kbd>⌥⌘5</kbd></td><td><strong>Clip</strong> the last 1, 2 or 5 minutes</td><td>Works during a session, whether or not you were recording: Greenroom keeps the last 5 minutes in memory. Saved into the class folder, named for the time it happened. A clip holds your screen, your webcam and your mic, not the other participants or Zoom's audio.</td></tr>
         </tbody>
       </table>
     </div>
@@ -392,9 +395,9 @@
   <div class="wrap">
     <div class="sec-head">
       <p class="kicker">05 · The menu bar</p>
-      <h2>The <span class="mono" style="font-size:.8em;background:var(--bg-soft);border:1px solid var(--line);border-radius:6px;padding:2px 8px">GR</span> item, for when Greenroom's window is at the back</h2>
+      <h2>The Greenroom item, for when Greenroom's window is at the back</h2>
       <p>During a class Greenroom deliberately stays behind your main app. Everything you might need mid-lesson is in the menu bar
-      instead; while recording, the label becomes a record glyph and <strong>REC</strong>. With Cues listening, a waveform joins
+      instead, under the Greenroom mark. While recording, the mark becomes a record glyph and <strong>REC</strong>. With Cues listening, a waveform joins
       it — or, when there is no participants panel to hold the cards, a separate waveform item appears whose popover is where the
       cards live.</p>
     </div>
@@ -410,8 +413,9 @@
           <tr><td><strong>Cues is listening · N links</strong></td><td>Only while Cues is on and a class is live. Reads “paused” while you are muted in Zoom.</td></tr>
           <tr><td><strong>Stop Cues for This Session</strong></td><td>Stops listening for the rest of this class; the setting stays on for the next one.</td></tr>
           <tr><td><strong>Open Chat Window</strong></td><td>Just the chat, for a meeting you're in some other way.</td></tr>
+          <tr><td><strong>Open Screenroom…</strong></td><td>The presentation window. Works with no class running.</td></tr>
           <tr><td><strong>Show Greenroom</strong></td><td>Brings the main window forward.</td></tr>
-          <tr><td><strong>Check for Updates…</strong></td><td>Updates are checked on their own too; this is the manual version.</td></tr>
+          <tr><td><strong>Check for Updates…</strong></td><td>Updates are checked on their own too, four times a day and never during a live class. This is the manual version. It is also in the app menu.</td></tr>
           <tr><td><strong>How It Works &amp; Privacy…</strong></td><td>Opens the <a href="how-it-works.html">Privacy &amp; safety</a> page.</td></tr>
           <tr><td><strong>Quit Greenroom</strong></td><td>Asks first if a class is running; finishes any recording and winds OBS down on the way out.</td></tr>
         </tbody>
@@ -436,7 +440,8 @@
           <ul>
             <li><strong>Bubble shape</strong>: square, circle, rounded rectangle, cutout, or presenter. Cutout and presenter key your background away and need a real green screen behind you; presenter shrinks the shared screen into a panel with you standing at full height in front of it.</li>
             <li><strong>Position and size</strong>: drag the bubble in the live preview. The preview shows the actual composite once OBS is warm.</li>
-            <li><strong>Keep the last 5 minutes clippable</strong> (on) powers <kbd>⌥⌘1/2/5</kbd>. <strong>Start recording automatically with the meeting</strong> if every class should be kept.</li>
+            <li><strong>Keep the last 5 minutes clippable</strong> (on) powers <kbd>⌥⌘1/2/5</kbd>. <strong>Start recording automatically with the meeting</strong> (off) if every class should be kept.</li>
+            <li><strong>Cut between cameras as you turn</strong> (off) is for two monitors with a camera on each. Pick two or more cameras; an iPhone can be one of them. During a class, the Mac watches which way your head is facing. Turn more than about 25° away for 2 seconds and the class sees the next camera in the list. Only one camera is live at a time, and all of it happens on this Mac. Aiming a camera here does not need OBS running.</li>
           </ul>
           <p class="later">Later: <em>Keep OBS ready in the background</em> makes Start near-instant at the cost of OBS staying open between sessions.</p>
         </div>
@@ -469,13 +474,23 @@
         <div>
           <ul>
             <li><strong>Listen during classes and suggest links</strong>: while a class is live, what you say becomes text on this Mac and, when you name a book, a video, a topic, a person or a place, a link card appears on the participants panel — or in a waveform menu-bar item when there is no second display. <strong>Open</strong> puts it in your main-pane browser without stealing focus; <strong>Send</strong> drops the link in the class chat; <strong>×</strong> dismisses it for the class.</li>
-            <li><strong>Speech model</strong>: Apple's, downloaded once from here when you turn the switch on. Never during a class — a Start that finds it missing carries on without Cues and says so in the status log.</li>
+            <li><strong>Speech model</strong>: Apple's, downloaded once from here when you turn the switch on, or whisper, the same local model Screenroom uses. Either way the speech becomes text on this Mac. Nothing downloads during a class — a Start that finds the model missing carries on without Cues and says so in the status log.</li>
             <li><strong>Language</strong> (Indian English by default when that is your system language), and <strong>Video links may use YouTube search</strong> — off, or with no Google account connected, video cards are “search YouTube for…” links that send nothing until opened.</li>
             <li><strong>Also suggest links for things I mention without naming them</strong> (off) hands the listening to Apple&rsquo;s on-device language model instead of the word patterns. It catches things you refer to in passing, without saying &ldquo;it&rsquo;s called&hellip;&rdquo; &mdash; and it interrupts far more often. Tested against a real lesson it found everything and suggested about twenty-five wrong things for every right one, so it is off unless you want that trade.</li>
             <li><strong>Save the transcript with the class</strong> (on) writes everything Cues heard to <code>transcript.txt</code> in the class folder, beside the recording, a line per sentence with its time. Turn it off to keep the text in memory only.</li>
             <li><strong>Try it (30 s)</strong> shows the live text and what would be looked up, and looks nothing up.</li>
           </ul>
-          <p class="later">What leaves the Mac is the short search phrase only — to Google Books, Open Library, Wikipedia and, if allowed, YouTube — and each one is written to the status log. Never the audio, never the transcript, never a name from the meeting. The <a href="how-it-works.html#Cues">Privacy &amp; safety page</a> draws the whole pipeline. Below macOS 26 the tab is one sentence and the rest of Greenroom is unchanged.</p>
+          <p class="later">What leaves the Mac is the short search phrase only — to Google Books, Open Library, Wikipedia and, if allowed, YouTube — and each one is written to the status log. Never the audio, never the transcript, never a name from the meeting. The <a href="how-it-works.html#Cues">Privacy &amp; safety page</a> draws the whole pipeline. Cues needs macOS 26. Below that the tab is one sentence, nothing listens, and the rest of Greenroom is unchanged.</p>
+        </div>
+      </div>
+      <div class="setting">
+        <div class="tab">Screenroom <span>set up once per Mac</span></div>
+        <div>
+          <ul>
+            <li><strong>Transcriber</strong>: whisper if this Mac has it, otherwise Apple's recogniser, kept on-device. Whisper is what counts filler words. The tab shows the two commands to install it (<code>brew install whisper-cpp</code>, then a model download) and which model is installed. The model is shared with Cues.</li>
+            <li><strong>Hand each presentation to my agent</strong> (off): Claude Code, Codex, or a command of your own, run in your login shell. It writes the feedback. See <a href="#screenroom">Screenroom</a> for what it is given.</li>
+          </ul>
+          <p class="later">The agent is the one part of Screenroom that can send anything off the Mac, and where it goes is up to the agent you chose. Leave it off and the feedback is written on this Mac, or not at all.</p>
         </div>
       </div>
       <div class="setting">
@@ -517,9 +532,14 @@
     <div class="prose">
       <p>Everything lands in <code>~/Documents/Greenroom</code>, in a folder named for the session. A <strong>recording</strong> is the
       whole class as the students saw it: the shared screen with you keyed in, and your voice. A <strong>clip</strong> is the last
-      one, two or five minutes, saved after the fact from a rolling buffer, named for the moment (<code>Clip 9:41 (2 min).mp4</code>).
+      one, two or five minutes, saved after the fact with <kbd>⌥⌘1</kbd>, <kbd>⌥⌘2</kbd> or <kbd>⌥⌘5</kbd>, named for the moment
+      (<code>Clip 9:41 (2 min).mp4</code>). During a session Greenroom keeps the last 5 minutes in memory, so a clip works even when
+      you were not recording. It holds what the class saw from you: your screen, your webcam and your mic. It does not hold the
+      other participants or Zoom's audio.
       Recordings are written as fragmented MP4, so a crash or power cut loses seconds, not the file.</p>
-      <p>The <strong>Sessions</strong> button in the main window lists every class with a player, shows how much room they take and how
+      <p>The <strong>Sessions</strong> button in the main window opens its own window. Classes and presentations are two separate
+      lists behind one toggle at the top: <strong>Greens</strong> are classes, <strong>Screens</strong> are Screenroom presentations,
+      and <strong>All</strong> shows both. It shows every session with a player, shows how much room they take and how
       much disk is left, and warns before a class if there may not be enough for a full one. Deleting there moves the file to the Trash.
       A class can be renamed there (the pencil next to its name); the folder on disk keeps its date.</p>
       <p>With Settings → YouTube turned on, a recording can go to your channel the moment it stops: unlisted or private, one
@@ -528,21 +548,77 @@
       any recording can be uploaded, or uploaded again, from there. The file stays in the folder either way.</p>
       <p>With Cues on, the class folder also holds <code>transcript.txt</code> &mdash; what the microphone heard, timed from the start of the session. And the cards you <em>opened or sent</em> are kept with it — <strong>Links from class</strong>
       under the class in Sessions, with Open and Copy. Cards that were only shown are not recorded, and nothing of the transcript ever is.</p>
+      <p>A class with a transcript can be summarised. Open its <strong>Transcript</strong> tab in Sessions and press
+      <strong>Summarise on this Mac</strong>. Apple's on-device model writes it, with no cloud call, and it is saved as
+      <code>summary.md</code> in the class folder. This needs <strong>macOS 26 with Apple Intelligence turned on</strong>, and a
+      transcript, which only exists if Cues was on for that class.</p>
     </div>
   </div>
 </section>
 
 <!-- ============ 08 ============ -->
-<section class="soft" id="trouble">
+<section class="soft" id="screenroom">
   <div class="wrap">
     <div class="sec-head">
-      <p class="kicker">08 · If something looks wrong</p>
-      <h2>The six fixes that cover most mornings</h2>
+      <p class="kicker">08 · Screenroom</p>
+      <h2>Record a student's talk, mark it, get a report</h2>
+      <p>Screenroom is for evaluating a presentation. Open it with the <strong>Screenroom</strong> button in the main window,
+      or menu bar → <strong>Open Screenroom…</strong>. It needs no meeting, no OBS and no Zoom credentials. It runs on macOS 14
+      or later; only one way of writing the feedback needs macOS 26.</p>
+    </div>
+    <div class="runlog">
+      <div class="run"><div class="n">01</div><div><h3>Record their talk</h3><p>A camera and a microphone, saved as <code>presentation.mov</code>. Or point it at a screen or a window, for a student presenting remotely; then it records the Mac's sound instead of the mic. A presentation doesn't need a name, and one can never overwrite another.</p></div></div>
+      <div class="run"><div class="n">02</div><div><h3>Mark as they speak</h3><p>Type notes while it records. Each note is stamped at the moment you started typing it, not when you pressed Return. You can add notes afterwards too, while watching it back in Sessions.</p></div></div>
+      <div class="run"><div class="n">03</div><div><h3>Get the report</h3><p>The report opens in its own window, as a dashboard, and can be exported to a file you choose. In Sessions → Screens, each presentation has <strong>Analysis</strong> and <strong>Notes</strong> tabs, and the filler words and notes show as marks on the scrubber.</p></div></div>
+    </div>
+    <div class="cards" style="margin-top:22px">
+      <div class="card">
+        <span class="tag">On this Mac</span>
+        <h3>What is counted</h3>
+        <ul>
+          <li><strong>Pace</strong>: words per minute, with a gauge.</li>
+          <li><strong>Filler words</strong>: um, uh and the rest. These need whisper. With Apple's recogniser they show <strong>Not counted</strong>, because it tidies fillers out of the text.</li>
+          <li><strong>Pauses</strong> of 2 seconds or more.</li>
+          <li><strong>Facing the room</strong>: how much of the time their head was within 20° of the camera.</li>
+        </ul>
+        <p style="margin-top:10px">This is counting, not AI. The talk is transcribed on this Mac too, by whisper or by Apple's recogniser kept on-device.</p>
+      </div>
+      <div class="card">
+        <span class="tag">Written feedback</span>
+        <h3>Three ways, best first</h3>
+        <ul>
+          <li><strong>Your agent</strong>, if you set one up in Settings → Screenroom (off by default).</li>
+          <li><strong>Apple's on-device model</strong>. Needs <strong>macOS 26 with Apple Intelligence turned on</strong>.</li>
+          <li><strong>Neither</strong>: you get the counted report and your notes, with no written feedback.</li>
+        </ul>
+        <p style="margin-top:10px">Whichever writes it also scores each line of your rubric and gives a reason for each score. The report says which one wrote it.</p>
+      </div>
+    </div>
+    <div class="callout amber">
+      <h3>The agent is the one part that can leave the Mac</h3>
+      <p>With the agent on, Screenroom runs Claude Code, Codex or your own command in your login shell. It can read the transcript,
+      your notes, a still every 20 seconds, the counts, the rubric and the student's name, read-only, in that presentation's folder.
+      The audio and video are not given to it. Where it sends what it reads is up to the agent you chose. With the agent off,
+      nothing about the presentation leaves this Mac.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 09 ============ -->
+<section id="trouble">
+  <div class="wrap">
+    <div class="sec-head">
+      <p class="kicker">09 · If something looks wrong</p>
+      <h2>The fixes that cover most mornings</h2>
     </div>
     <div class="cards">
       <div class="card">
         <h3>Cues shows nothing</h3>
         <p>Three things to check, in order. It is <strong>off by default</strong> &mdash; turn it on in Settings &rarr; Cues. It needs <strong>macOS 26</strong>; on 14 or 15 the tab says so. And it only listens <strong>while a class is live</strong>, so nothing happens until you press Start.</p>
+      </div>
+      <div class="card">
+        <h3>Screenroom says fillers are "Not counted"</h3>
+        <p>That report was transcribed with Apple's recogniser, which drops filler words. Install whisper with the commands in Settings &rarr; Screenroom, then press <strong>Analyse again</strong> on that presentation. No written feedback, only counts? Turn on the agent there, or use a Mac on <strong>macOS 26</strong> with Apple Intelligence on.</p>
       </div>
       <div class="card">
         <h3>A window is in the wrong place</h3>
@@ -572,7 +648,7 @@
   </div>
 </section>
 
-<section class="cta-band">
+<section class="soft cta-band">
   <div class="wrap">
     <h2>That's the whole manual.</h2>
     <p>Tomorrow it's one button. The rest of the site explains why you can trust it, and how it got here.</p>

@@ -191,7 +191,7 @@
   }
   .step h3 { font-size: 16.5px; font-weight: 700; margin-bottom: 8px; }
   .step p { font-size: 14.5px; color: var(--body); }
-  .step code {
+  .step code, .run code {
     font-family: ui-monospace, "SF Mono", Menlo, monospace;
     font-size: 13px;
     background: var(--bg-soft);
@@ -463,8 +463,17 @@
           a person, a word worth a picture, and a card is waiting with the link. One click opens it
           in the reading window without leaving the page; one sends it to the class chat. Speech
           becomes text on the Mac with Apple's models; only the short search phrase goes out, and
-          every one is written down. Not in the current release; it arrives in a later
-          version, off by default.</p>
+          every one is written down. Off by default; needs macOS 26.</p>
+        </div>
+      </div>
+      <div class="run">
+        <div class="n">＋</div>
+        <div>
+          <h3>It cuts to the camera you face</h3>
+          <p>Pick two or more cameras in Settings → Webcam and turn camera switching on. Turn
+          away from the live camera for two seconds and Greenroom cuts to the next one, so the
+          class keeps your face when you turn to the other screen. An iPhone works as the
+          second camera. The head-turn check runs on the Mac.</p>
         </div>
       </div>
       <div class="run">
@@ -472,7 +481,10 @@
         <div>
           <h3>Recording, when you want it</h3>
           <p>One press records exactly what the class saw, the composited screen with you in
-          the corner, straight to a file for anyone who missed the morning.</p>
+          the corner, straight to a file for anyone who missed the morning. Connect your
+          YouTube channel and it can upload itself when the recording stops, unlisted, with the
+          link copied for you. That needs a Google Cloud client of your own, once; the guide
+          walks through it.</p>
         </div>
       </div>
       <div class="run">
@@ -481,8 +493,20 @@
           <h3>Clip the good bits, after they happen</h3>
           <p>Something great just happened? Press ⌥⌘1, 2 or 5 and the last one, two or five
           minutes are saved as a clip — recording or not. A rolling five-minute buffer makes it
-          possible: held in memory, overwritten as it ages, written to disk only when you ask.
+          possible while the class is running: held in memory, overwritten as it ages, written to
+          disk only when you ask. It holds what the class saw from you: your screen, your camera,
+          your microphone.
           Every clip lands in a folder named for the class, never loose in a pile.</p>
+        </div>
+      </div>
+      <div class="run">
+        <div class="n">＋</div>
+        <div>
+          <h3>Every class, filed</h3>
+          <p>The Sessions window keeps each class with its recording, clips, transcript and
+          YouTube link, and each presentation in a list of its own. With a Cues transcript, one
+          click writes a summary of the class on this Mac with Apple's on-device model. Summaries
+          need macOS 26 with Apple Intelligence turned on.</p>
         </div>
       </div>
       <div class="run">
@@ -506,7 +530,58 @@
   </div>
 </section>
 
-<section id="how">
+<section id="screenroom">
+  <div class="wrap">
+    <div class="sec-head">
+      <p class="kicker">Screenroom</p>
+      <h2>Feedback on a student's talk, while it is fresh</h2>
+      <p>Screenroom is the other room in Greenroom: for when a student presents rather than
+      when you teach. Open it from the main window or the menu bar.</p>
+    </div>
+    <div class="runlog">
+      <div class="run">
+        <div class="n">01</div>
+        <div>
+          <h3>Record their talk</h3>
+          <p>The camera and microphone, or a screen or window if they are presenting slides,
+          straight to a file in the presentation's folder.</p>
+        </div>
+      </div>
+      <div class="run">
+        <div class="n">02</div>
+        <div>
+          <h3>Mark what to improve, as they speak</h3>
+          <p>Type a note while they talk. Each one is stamped at the moment you started typing
+          it, so it lands on the moment you saw, not the moment you pressed Return.</p>
+        </div>
+      </div>
+      <div class="run">
+        <div class="n">03</div>
+        <div>
+          <h3>Counted on your Mac</h3>
+          <p>Pace in words a minute, filler words, pauses and how much of the talk they faced
+          the room. The talk is transcribed on the Mac and the numbers are counted, not guessed.
+          Filler words need whisper (<code>brew install whisper-cpp</code> and a model; Settings →
+          Screenroom shows the commands).</p>
+        </div>
+      </div>
+      <div class="run">
+        <div class="n">04</div>
+        <div>
+          <h3>Feedback, written by the AI you choose</h3>
+          <p>Hand each presentation to the agent you already run: Claude Code, Codex, or a
+          command of your own. It reads the transcript, your notes, a few stills and the counts;
+          the audio and video are not sent. That is the one part of Screenroom that can leave the
+          Mac, and it is off until you turn it on. Without an agent, Apple's on-device model
+          writes the feedback on macOS 26 with Apple Intelligence; on older macOS the report
+          has the counts and your notes.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="soft" id="how">
   <div class="wrap">
     <div class="sec-head">
       <p class="kicker">Getting started</p>
@@ -539,7 +614,7 @@
   </div>
 </section>
 
-<section class="soft" id="story">
+<section id="story">
   <div class="wrap story-grid">
     <div>
       <div class="sec-head" style="margin-bottom: 24px;">
@@ -571,7 +646,8 @@
 <section class="cta-band">
   <div class="wrap">
     <h2>Mornings are for reading,<br>not window management.</h2>
-    <p>Free and open source. macOS 14+, with the free OBS Studio alongside.</p>
+    <p>Free and open source. macOS 14+, with the free OBS Studio alongside. Cues, class
+    summaries and Screenroom's on-Mac feedback need macOS 26.</p>
     <div class="hero-actions">
       <a class="btn" href="https://github.com/Sibhimanyu/greenroom/releases/download/v0.6.0/Greenroom-0.6.0.dmg">Download for Mac</a>
       <a class="textlink" href="https://github.com/Sibhimanyu/greenroom">View on GitHub <span class="arrow">→</span></a>

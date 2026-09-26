@@ -26,7 +26,13 @@ One click sets up your whole morning-meeting workspace:
   works) on one side of the screen, with the Zoom meeting tile stacked
   over a standalone chat window in the remaining column.
 
-Press **Stop** and it all tears down cleanly.
+Press **End Session** and it all tears down cleanly.
+
+Around that, for the class itself: **Cues** suggests links for what you
+mention while you teach, **Clips** keeps the last five minutes ready to
+save, **Sessions** keeps each class's recording, clips, transcript and an
+on-device summary, and **Screenroom** records and marks a student's
+presentation.
 
 ---
 
@@ -61,6 +67,10 @@ the same drag-to-Applications experience.
 ### Requirements
 
 - macOS 14 or later
+- macOS 26 for three things only: **Cues**, the **class summary** in
+  Sessions (also needs Apple Intelligence on), and **Screenroom's written
+  feedback on the Mac** when no agent is set up (also needs Apple
+  Intelligence on). Everything else, Screenroom included, runs on macOS 14+.
 - [OBS Studio](https://obsproject.com) (free) — Greenroom launches and
   drives it in the background; you never touch the OBS UI
 - The Zoom desktop app — only for the classic/hybrid flow; the default
@@ -97,24 +107,23 @@ anytime from the **?** button in the main window. The short version:
    | Accessibility | First time a Zoom/native window is tiled | Moving windows of apps that have no AppleScript dictionary — the native Zoom meeting window, and any non-Chrome main app |
 
    Screen Recording permission belongs to **OBS**, not Greenroom — OBS
-   asks for it itself the first time it captures your display. (Greenroom
-   does now contain screen-capture code of its own: **Screenroom** can record a
-   remote presenter from the window they appear in. Screenroom is not in this
-   release and no entry point can reach it, so macOS never asks. When Screenroom
-   ships this becomes a fourth permission, asked the first time you point it
-   at a window — and a fifth, Speech Recognition, the first time it
-   transcribes one.)
+   asks for it itself the first time it captures your display. The one
+   exception is **Screenroom**: Greenroom asks for Screen Recording itself
+   the first time you point Screenroom at a screen or window instead of the
+   camera. Screenroom also asks for the microphone and for Speech
+   Recognition (used on-device only) the first time it records and
+   transcribes a presentation.
 
    **One more thing about Screenroom, stated here because the rest of this README
    is a list of things that stay on your Mac:** Screenroom can hand a presentation
    to a command-line agent you already have (Claude Code, Codex, or a command
    you write). That is the only feature in Greenroom whose destination
-   Greenroom does not control. It is off by default, the exact command is
-   shown before it runs, the agent gets read-only access to one folder, and
+   Greenroom does not control. It is off by default, the exact command it
+   runs is shown in Settings → Screenroom, the agent gets read-only access to one folder, and
    what a cloud agent then does with a transcript and stills of a named
-   student is between you and it. Everything else in Screenroom — recording,
-   transcription, filler counts, marking-consistency checks and the written
-   feedback — runs on your Mac.
+   student is between you and it. Greenroom does not send the audio or video. Everything
+   else in Screenroom — recording, notes, transcription, the counts, and
+   (with no agent) the written feedback — runs on your Mac.
    See the [how-it-works page](https://sibhimanyu.github.io/greenroom/how-it-works.html#Screenroom).
 
    **Credential storage note:** the Zoom app credentials are kept in
@@ -132,25 +141,43 @@ anytime from the **?** button in the main window. The short version:
 1. Pick **New Meeting** (creates a fresh meeting under your Zoom account,
    you host) or **Join Existing** (paste a link with the **Paste Link**
    button, or type the meeting ID/passcode).
-2. Press **Start**. In order: OBS launches hidden and the virtual camera
+2. Press **Start** (or ⌥⌘G). In order: OBS launches hidden and the virtual camera
    goes live → the meeting starts/joins → your main app opens tiled to
    its slice → the Zoom tile and chat window fill the side column →
    Greenroom's own window drops to the back and your main app is focused.
 3. Work. The chat window is a real chat client for the meeting — no need
    to open Zoom's chat panel over your shared screen.
-4. Press **Stop** (main window or menu bar): leaves/ends the meeting,
-   closes the chat, stops the virtual camera, quits OBS.
+4. Press **End Session** (main window or menu bar): leaves/ends the
+   meeting, closes the chat, stops the virtual camera, quits OBS.
 
 Also available:
 
 - **Record** (main window or menu bar) — records exactly what the virtual
-  camera is sending (screen + webcam composite, not other participants).
-  The file path is logged when you stop.
+  camera is sending (screen + webcam composite, not other participants)
+  into the class folder in `Documents/Greenroom`. Auto-record on Start is
+  off by default.
+- **Clips** — while a session runs, Greenroom keeps the last 5 minutes in
+  memory (on by default: *Keep the last 5 minutes clippable*). **⌥⌘1**,
+  **⌥⌘2** or **⌥⌘5** saves the last 1, 2 or 5 minutes into the class
+  folder, whether you are recording or not. A clip holds what the class
+  saw from you: your composited screen, your webcam and your mic. Not other
+  participants, not Zoom audio.
+- **Sessions** (its own window) — two lists behind one toggle, **Classes**
+  and **Presentations**. A class shows its recording, clips, transcript (if
+  Cues wrote one) and YouTube status with Open / Copy link. In the
+  Transcript tab, **Summarise on this Mac** writes `summary.md` into the
+  class folder with Apple's on-device model, never a cloud call. It needs
+  macOS 26 with Apple Intelligence on, and a transcript, so Cues must have
+  been on for that class.
 - **Menu bar → Snap Windows Back** — re-tiles everything to the session
   layout after you've dragged windows around.
 - **Cues** — off by default, macOS 26 only. Turn it on in Settings → Cues
   and it listens to your microphone while the class is live, offering link
-  cards for the books, videos, topics, people and places you name.
+  cards for the books, videos, topics, people and places you name. Nothing
+  opens by itself: you click **Open** or send the card to the chat.
+- **Screenroom** (main window button, or menu bar → *Open Screenroom…*) —
+  for evaluating a student's presentation. See
+  [Screenroom](#screenroom) below.
 - **Manual controls** (pull-down beside the Status toggle) — each piece of the
   session individually: open just the chat window, just the main-app
   window, or just Zoom.
@@ -170,6 +197,13 @@ programmatically and is Apple-silicon-only; this one works on any Mac and
 needs no per-meeting toggle.) Both keyed modes need a real green screen
 behind you; tune the key in OBS → webcam source → Filters if edges look
 rough. Shape changes apply on the next Start.
+
+**Camera switching** (off by default): pick two or more cameras here and
+turn it on. An iPhone through Continuity Camera can be the second one.
+During a class, Vision reads your head direction on the live camera; turn
+more than about 25° away for 2 seconds and it cuts to the next camera in
+the list. One camera feed is live at a time, and it all runs on the Mac.
+Aiming a camera no longer needs OBS running.
 
 ### Layout
 The tiled-workspace arrangement, with a live schematic that previews
@@ -193,7 +227,7 @@ every change:
     Automation permission. Sign-ins persist between sessions, and
     **Reopen last session's tabs on Start** (on by default) brings back
     the tabs from the last run alongside the configured website. **Close
-    the browser window when the session ends** (off by default) makes Stop
+    the browser window when the session ends** (off by default) makes End Session
     close it too — tabs are kept for the next Start. Pick
     Chrome (or any other browser) instead when you need extensions.
 - **Main pane width** — ½, ⅔, or ¾ of the screen — and which **side** it
@@ -252,7 +286,7 @@ client ID/secret travel in the settings export; the connected account does
 not.
 
 ### Cues
-> Released 2026-09-19. Every entry point still reads
+> Released in 0.9.0. Every entry point still reads
 > `CuesAvailability.isReleased` in `App/Cues/CuesAvailability.swift`, so one
 > line puts it back behind the curtain if a class goes badly.
 
@@ -260,9 +294,11 @@ Off by default; macOS 26 only (the tab says so on 14/15, and
 `FoundationModels.framework` is weak-linked so the app still launches
 there). **Listen during classes and suggest links** starts, once the
 meeting is live, an `AVAudioEngine` tap on the default input device
-feeding Apple's `SpeechAnalyzer`/`SpeechTranscriber` (on-device; the
-model asset is downloaded once from Apple through the system asset
-service — from this tab, never during a class). Finalised sentences go to a mention detector. **Cue-phrase patterns by
+feeding a speech-to-text engine on the Mac: Apple's
+`SpeechAnalyzer`/`SpeechTranscriber` (the model asset is downloaded once
+from Apple through the system asset service — from this tab, never during
+a class), or whisper (`whisper-cpp`, with the model shared with Screenroom
+and selectable from this tab). Finalised sentences go to a mention detector. **Cue-phrase patterns by
 default** ("it's called X", "the word X", a quotation): measured against a
 recorded class at 16 lookups, 90% recall, 56% precision. Apple's on-device
 `FoundationModels` model is available behind *Also suggest links for things
@@ -300,6 +336,52 @@ supported; Tamil is not, as of macOS 26). **Try it (30 s)** transcribes
 and detects without looking anything up. Cards you Open or Send are
 recorded in the class folder's `session.json` (`links`) and shown in
 Sessions as "Links from class". Engine: `App/Cues/`.
+
+### Screenroom
+> Released in 0.9.0. Every entry point reads
+> `ScreenroomAvailability.isReleased` in
+> `App/Screenroom/ScreenroomAvailability.swift`.
+
+For evaluating a student's presentation. Open it from the main window's
+**Screenroom** button or the menu bar's *Open Screenroom…*. Runs on
+macOS 14+; only the on-Mac written feedback needs macOS 26.
+
+- **Record their talk** — camera and mic to `presentation.mov`, or a
+  screen/window source (which records the Mac's sound). A presentation
+  doesn't need a name, and one can't overwrite another.
+- **Mark as they speak** — type notes while recording; each note is
+  stamped at the moment you started typing it. Notes can be added
+  afterwards too.
+- **Counted on the Mac** (no AI) — pace in words per minute (with a
+  gauge), filler words, pauses of 2 s or more, and facing the room (head
+  direction via Vision, within 20°).
+- **Transcribed on the Mac** — whisper.cpp, or Apple's recogniser pinned to
+  on-device (it refuses rather than send audio to Apple). Filler words
+  need whisper: Apple's recogniser tidies them out, so with it they show
+  "Not counted".
+- **Written feedback**, in order of preference: your agent if one is set
+  up; otherwise Apple's on-device model (**macOS 26 with Apple Intelligence
+  on**); otherwise the counted report and your notes, with no written
+  feedback. Each rubric line gets a score and a reason.
+- **The report** opens as a dashboard with a save panel for exporting.
+  Sessions → **Presentations** shows it again with Analysis and Notes tabs,
+  and filler and note marks on the scrubber.
+
+Setup, in Settings → Screenroom:
+
+1. **whisper** (for filler counts): `brew install whisper-cpp`, then
+   download a model. The tab shows the commands and picks up what is
+   installed; the model is shared with Cues.
+2. **Your agent** (optional, off by default): *Hand each presentation to my
+   agent* — Claude Code, Codex, or a command of your own, run through your
+   login shell. It reads the transcript, your notes, a still every 20
+   seconds, the counts, the rubric and the student's name, read-only in the
+   presentation's folder. Audio and video are not sent.
+
+**What can leave the Mac:** only what your agent sends, if you turn one on.
+That is the one part of Screenroom (and of Greenroom's class tools) whose
+destination Greenroom does not control. Everything else stays on the Mac.
+Engine: `App/Screenroom/`.
 
 ### Transfer
 Export/import every setting above as one JSON file — including the webcam
@@ -374,7 +456,7 @@ Non-obvious build/runtime notes, learned the hard way:
 - **OBS Safe Mode kills the automation socket.** If OBS crashed last time,
   it shows a "Run in Safe Mode?" dialog on the next launch; Safe Mode
   disables the websocket server Greenroom drives it with. Always choose
-  "Run in Normal Mode". Greenroom quits OBS cleanly on Stop precisely so
+  "Run in Normal Mode". Greenroom quits OBS cleanly on End Session precisely so
   this prompt (and stale-state carryover) doesn't happen.
 - **The Zoom SDK's real API names differ from its docs** in several places
   (`ZoomSDK.shared()` not `.sharedSDK()`, chat on

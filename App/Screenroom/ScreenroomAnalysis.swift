@@ -125,3 +125,80 @@ struct ScreenroomAnalysis: Codable, Hashable {
         return (try? data.write(to: Self.url(in: folder), options: .atomic)) != nil
     }
 }
+
+extension ScreenroomAnalysis {
+
+    /// The feedback with any claim the counts disprove taken out.
+    ///
+    /// A report in the mega test praised "No filler words at all" beside a
+    /// counted row reading 2 fillers, with both "um"s highlighted in the
+    /// transcript. The brief now tells every writer the counts win; this is
+    /// the check for when one does not listen. Only claims a count can settle
+    /// are touched, and only when the count is verbatim (whisper): a tidied
+    /// transcript cannot prove there were fillers.
+    /// `strict` also holds every point to the report's grade for pace,
+    /// pauses and facing. Only for the on-device model: an agent that writes
+    /// "a strong close, facing the room" while facing was low overall is
+    /// right about the moment, and the blunt rule would throw that away.
+    func agreeing(with metrics: ScreenroomSpeechMetrics?, presence: ScreenroomPresence? = nil,
+                  strict: Bool = false) -> ScreenroomAnalysis {
+        var fixed = self
+        // Nothing here measures the eyes; the facing figure is head direction.
+        // Every writer is told so, and the small one still says "eye contact".
+        func honest(_ text: String) -> String {
+            text.replacingOccurrences(of: #"(?i)\b(your |more |better |good |make |making )?eye contact"#,
+                                      with: "facing the room", options: .regularExpression)
+        }
+        fixed.summary = honest(summary)
+        fixed.strengths = strengths.map(honest)
+        fixed.workOn = workOn.map(honest)
+        fixed.patterns = patterns.map(honest)
+        fixed.worked = worked?.map { var p = $0; p.headline = honest(p.headline); p.detail = honest(p.detail); return p }
+        fixed.change = change?.map { var p = $0; p.headline = honest(p.headline); p.detail = honest(p.detail); return p }
+
+        guard let metrics, metrics.verbatim, metrics.wordCount > 0 else { return fixed }
+        let claimsNone = #"(?i)\b(no|zero|without (a |any )?(single )?)\s*(filler|crutch)|not (a single|one) filler|filler[- ]free"#
+        let aboutFillers = #"(?i)\bfiller"#
+        func says(_ pattern: String, _ text: String) -> Bool { text.range(of: pattern, options: .regularExpression) != nil }
+        if metrics.fillerCount > 0 {
+            fixed.strengths = fixed.strengths.filter { !says(claimsNone, $0) }
+            fixed.patterns = fixed.patterns.filter { !says(claimsNone, $0) }
+            fixed.worked = fixed.worked?.filter { !says(claimsNone, $0.headline) && !says(claimsNone, $0.detail) }
+        }
+        // Few enough to count as a strength on the report: advice to cut
+        // them contradicts the row beside it.
+        if Double(metrics.fillerCount) / Double(metrics.wordCount) <= ScreenroomInsights.fillerShare {
+            fixed.workOn = fixed.workOn.filter { !says(aboutFillers, $0) }
+            fixed.change = fixed.change?.filter { !says(aboutFillers, $0.headline) && !says(aboutFillers, $0.detail) }
+        }
+        return strict ? fixed.agreeing(pace: metrics, presence: presence) : fixed
+    }
+
+    /// The same rule for the other graded readings: advice to improve what
+    /// the report marks as going well, or praise for what it marks as worth
+    /// working on, is dropped. The on-device model, told the pace was
+    /// comfortable, still wrote "Improve your pacing".
+    private func agreeing(pace metrics: ScreenroomSpeechMetrics, presence: ScreenroomPresence?) -> ScreenroomAnalysis {
+        var graded: [(pattern: String, good: Bool)] = [
+            (#"(?i)\b(pace|pacing|speed|too fast|too slow|slow down|speed up)\b"#,
+             ScreenroomSpeechMetrics.comfortablePace.contains(metrics.wordsPerMinute)),
+            (#"(?i)\b(pause|pauses|pausing|breath)"#, metrics.talkRatio <= ScreenroomInsights.talkCeiling)
+        ]
+        if let presence, presence.sampleCount > 0 {
+            graded.append((#"(?i)\b(facing|face the (room|camera|audience)|looking away|turned away|head)\b"#,
+                           presence.facingRatio >= ScreenroomInsights.facingFloor))
+        }
+        func mentions(_ pattern: String, _ text: String) -> Bool { text.range(of: pattern, options: .regularExpression) != nil }
+        var fixed = self
+        for (pattern, good) in graded {
+            if good {
+                fixed.workOn = fixed.workOn.filter { !mentions(pattern, $0) }
+                fixed.change = fixed.change?.filter { !mentions(pattern, $0.headline) }
+            } else {
+                fixed.strengths = fixed.strengths.filter { !mentions(pattern, $0) }
+                fixed.worked = fixed.worked?.filter { !mentions(pattern, $0.headline) }
+            }
+        }
+        return fixed
+    }
+}

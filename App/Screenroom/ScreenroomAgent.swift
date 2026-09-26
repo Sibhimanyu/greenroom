@@ -143,7 +143,8 @@ enum ScreenroomAgent {
             case .noCommand:
                 return "No agent command is set. Settings \u{2192} Screenroom."
             case .notFound(let name):
-                return "\(name) is not on this Mac's PATH. Open a Terminal, run `which \(name)`, and put the full path in Settings \u{2192} Screenroom."
+                let product = name == "claude" ? "Claude Code" : name == "codex" ? "Codex" : name
+                return "Couldn\u{2019}t find \(product) on this Mac, so the feedback was written without it. Install \(product) and sign in, or pick another agent in Settings \u{2192} Screenroom."
             case .failed(let code, let output):
                 let tail = output.split(separator: "\n").suffix(6).joined(separator: "\n")
                 return "The agent exited with code \(code).\n\(tail)"
@@ -208,6 +209,10 @@ enum ScreenroomAgent {
         out.append("- **You cannot hear anything.** Tone, volume, warmth, nerves in the voice: not available. The transcript is words only.")
         if metrics != nil {
             out.append("- **The counted numbers are reliable** and already computed. Interpreting them is your job; recomputing them is not.")
+            out.append("- **Never contradict a counted number.** If fillers were counted, do not say there were none or praise the talk for having none; if the talk ran with no pauses, do not praise its pauses. Where your reading and a count disagree, the count wins.")
+            if let metrics, metrics.verbatim {
+                out.append("- Filler words counted in this talk: \(metrics.fillerCount).")
+            }
         }
         out.append("")
 
@@ -271,6 +276,33 @@ enum ScreenroomAgent {
     /// live in /usr/local/bin, a Homebrew prefix, or a version manager's
     /// shim - are simply not findable from here. `zsh -lc` reads the user's
     /// own profile, which is the only way to run what they would run.
+    /// What the agent may read, copied out of the presentation's folder:
+    /// the brief and everything it lists, and nothing that is audio or video.
+    static let agentReadable: Set<String> = [
+        "BRIEF.md", "transcript.txt", "notes.jsonl", "speech.json", "presence.json",
+        "rubric.json", "words.json", "session.json", "frames"
+    ]
+
+    /// A temporary folder holding only `agentReadable`. Falls back to the
+    /// presentation's own folder if the copy cannot be made, so a full disk
+    /// costs the wall, not the report.
+    static func stageWorkspace(from folder: URL) -> URL {
+        let files = FileManager.default
+        let workspace = files.temporaryDirectory
+            .appendingPathComponent("greenroom-agent-\(UUID().uuidString)", isDirectory: true)
+        do {
+            try files.createDirectory(at: workspace, withIntermediateDirectories: true)
+            for name in (try files.contentsOfDirectory(atPath: folder.path)) where agentReadable.contains(name) {
+                try files.copyItem(at: folder.appendingPathComponent(name),
+                                   to: workspace.appendingPathComponent(name))
+            }
+            return workspace
+        } catch {
+            try? files.removeItem(at: workspace)
+            return folder
+        }
+    }
+
     static func run(settings: ScreenroomAgentSettings,
                     brief: String,
                     in folder: URL,
@@ -279,16 +311,23 @@ enum ScreenroomAgent {
         let command = settings.command.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !command.isEmpty else { throw Failure.noCommand }
 
+        // The agent works in a copy of the folder with no recording in it.
+        // The brief never offered the video, but presentation.mov sat in the
+        // folder the agent could read, so "not sent" was a promise rather
+        // than a wall. Now there is nothing there to open.
+        let workspace = stageWorkspace(from: folder)
+        defer { if workspace != folder { try? FileManager.default.removeItem(at: workspace) } }
+
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/bin/zsh")
         process.arguments = ["-lc", command]
-        process.currentDirectoryURL = folder
+        process.currentDirectoryURL = workspace
         // The command templates refer to it, and a custom command can too.
         var environment = ProcessInfo.processInfo.environment
         // Referred to by the default commands, and available to a custom one.
-        environment["SCREENROOM_FOLDER"] = folder.path
+        environment["SCREENROOM_FOLDER"] = workspace.path
         // The old name, for a command written before the rename.
-        environment["MARKS_FOLDER"] = folder.path
+        environment["MARKS_FOLDER"] = workspace.path
         process.environment = environment
 
         let input = Pipe(), output = Pipe(), errors = Pipe()
@@ -322,6 +361,13 @@ enum ScreenroomAgent {
         process.waitUntilExit()
 
         guard process.terminationStatus == 0 else {
+            // 127 is the shell saying the program is not there. "The agent
+            // exited with code 127" was accurate and meant nothing to a
+            // teacher; name the program and say what to do.
+            if process.terminationStatus == 127 {
+                let program = command.split(separator: " ").first.map(String.init) ?? command
+                throw Failure.notFound(program)
+            }
             throw Failure.failed(code: process.terminationStatus,
                                  output: errorText.isEmpty ? reader.result : errorText)
         }

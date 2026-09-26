@@ -664,6 +664,7 @@ final class ScreenroomReviewController: ObservableObject {
                 return ScreenroomAgent.analysis(from: output,
                                                 engine: settings.kind.label,
                                                 consistency: consistency)
+                    .agreeing(with: metrics, presence: presence)
             } catch {
                 // Falls through to the on-device pass rather than failing the
                 // run. A missing CLI should cost the extra detail, not the
@@ -676,9 +677,13 @@ final class ScreenroomReviewController: ObservableObject {
         let analysis = await ScreenroomAnalyst.analyse(notes: notes,
                                                        scoring: scoring,
                                                        presenter: presentation.presenter,
-                                                       consistency: consistency)
+                                                       consistency: consistency,
+                                                       measured: ScreenroomInsights.verdicts(metrics: metrics, presence: presence))
         finishStage()
-        return analysis
+        // Strict only when the small model wrote it; the counted pass has
+        // nothing to contradict.
+        return analysis.agreeing(with: metrics, presence: presence,
+                                 strict: analysis.engine == ScreenroomAnalyst.writtenEngine)
     }
 }
 

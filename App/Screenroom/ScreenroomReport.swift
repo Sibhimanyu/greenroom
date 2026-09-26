@@ -61,6 +61,13 @@ enum ScreenroomReport {
         out.append("")
 
         if let analysis {
+            // The verdict first, as the report window shows it. It was left
+            // out of the file the student is handed, so the one line the
+            // report leads with never reached them.
+            if let headline = analysis.headline?.trimmingCharacters(in: .whitespacesAndNewlines), !headline.isEmpty {
+                out.append("## \(escape(headline))")
+                out.append("")
+            }
             if !analysis.summary.isEmpty {
                 out.append(analysis.summary)
                 out.append("")

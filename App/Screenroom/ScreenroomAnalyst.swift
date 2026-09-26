@@ -118,7 +118,8 @@ enum ScreenroomAnalyst {
     static func analyse(notes: [ScreenroomNote],
                         scoring: ScreenroomScoring?,
                         presenter: String,
-                        consistency: [String]) async -> ScreenroomAnalysis {
+                        consistency: [String],
+                        measured: [String] = []) async -> ScreenroomAnalysis {
         guard !notes.isEmpty else {
             return ScreenroomAnalysis(
                 engine: countedEngine,
@@ -130,7 +131,8 @@ enum ScreenroomAnalyst {
         if #available(macOS 26.0, *), modelAvailability.available {
             if let written = await writtenPass(notes: notes, scoring: scoring,
                                                presenter: presenter,
-                                               consistency: consistency) {
+                                               consistency: consistency,
+                                               measured: measured) {
                 return written
             }
             // Fall through. A model that refused or errored is not a reason to
@@ -158,18 +160,23 @@ enum ScreenroomAnalyst {
     A note is an observation, not a verdict. Where a note describes something neutral, treat it as \
     context rather than forcing it into a strength or a fault. \
     Use the timestamps to tell when in the presentation something happened, and to notice a stretch the \
-    notes say nothing about. Do not quote a timestamp as a number in your sentences; say it in words.
+    notes say nothing about. Do not quote a timestamp as a number in your sentences; say it in words. \
+    Never tell the student to work on something a note praises: a note that says a part went well is a \
+    strength, and advice to improve that part contradicts the teacher. \
+    Figures measured on the teacher's Mac may follow the notes. They are reliable; use them as evidence \
+    and never contradict them, but do not build advice on a figure alone when the notes say nothing.
     """
 
     @available(macOS 26.0, *)
     private static func writtenPass(notes: [ScreenroomNote],
                                     scoring: ScreenroomScoring?,
                                     presenter: String,
-                                    consistency: [String]) async -> ScreenroomAnalysis? {
+                                    consistency: [String],
+                                    measured: [String]) async -> ScreenroomAnalysis? {
         let session = LanguageModelSession(instructions: instructions)
         do {
             let response = try await session.respond(
-                to: prompt(notes: notes, scoring: scoring, presenter: presenter),
+                to: prompt(notes: notes, scoring: scoring, presenter: presenter, measured: measured),
                 generating: GeneratedFeedback.self,
                 options: GenerationOptions(sampling: .greedy, maximumResponseTokens: 700))
             let content = response.content
@@ -198,7 +205,8 @@ enum ScreenroomAnalyst {
     }
 
     @available(macOS 26.0, *)
-    private static func prompt(notes: [ScreenroomNote], scoring: ScreenroomScoring?, presenter: String) -> String {
+    private static func prompt(notes: [ScreenroomNote], scoring: ScreenroomScoring?, presenter: String,
+                               measured: [String] = []) -> String {
         var lines: [String] = []
         lines.append("Student: \(presenter.isEmpty ? "the speaker" : presenter)")
         if let last = notes.map(\.atMs).max() {
@@ -208,6 +216,11 @@ enum ScreenroomAnalyst {
         lines.append("The teacher's notes, in order:")
         for note in notes {
             lines.append("- at \(note.offsetLabel): \(note.text)")
+        }
+        if !measured.isEmpty {
+            lines.append("")
+            lines.append("Measured on the teacher's Mac (reliable, never contradict):")
+            for figure in measured { lines.append("- \(figure)") }
         }
         if let scoring {
             lines.append("")

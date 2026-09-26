@@ -176,3 +176,39 @@ enum ScreenroomInsights {
         text.trimmingCharacters(in: .punctuationCharacters.union(.whitespaces))
     }
 }
+
+extension ScreenroomInsights {
+
+    /// The report's own verdicts, as sentences a small model cannot misread.
+    ///
+    /// Given the raw figures ("2 filler words, 2.9 a minute"), Apple's
+    /// on-device model wrote "your speech was mostly filler words" and told
+    /// the student to work on them. Each line here says the figure, then the
+    /// verdict the report's rows reach with the same thresholds, so the
+    /// written feedback and the rows on screen cannot disagree.
+    static func verdicts(metrics: ScreenroomSpeechMetrics?, presence: ScreenroomPresence?) -> [String] {
+        var lines: [String] = []
+        if let m = metrics, m.wordCount > 0 {
+            let band = ScreenroomSpeechMetrics.comfortablePace
+            let wpm = Int(m.wordsPerMinute.rounded())
+            let comfortable = band.contains(m.wordsPerMinute)
+            lines.append("Pace: \(wpm) words a minute. \(comfortable ? "Comfortable. This went well." : "Outside the comfortable \(Int(band.lowerBound)) to \(Int(band.upperBound)). Worth working on.")")
+            if m.verbatim {
+                let share = Double(m.fillerCount) / Double(m.wordCount)
+                lines.append(share <= fillerShare
+                    ? "Filler words: \(m.fillerCount) in \(m.wordCount) words. Few. This went well; do not advise reducing them."
+                    : "Filler words: \(m.fillerCount) in \(m.wordCount) words (\(Int((share * 100).rounded()))%). Worth working on.")
+            }
+            lines.append(m.talkRatio <= talkCeiling
+                ? "Pauses: there were pauses between points. This went well."
+                : "Pauses: speaking \(Int((m.talkRatio * 100).rounded()))% of the time, almost no pauses. Worth working on.")
+        }
+        if let p = presence, p.sampleCount > 0 {
+            let percent = Int((p.facingRatio * 100).rounded())
+            lines.append(p.facingRatio >= facingFloor
+                ? "Facing the room: \(percent)% of the time, by head direction. This went well."
+                : "Facing the room: \(percent)% of the time, by head direction. Worth working on. This is head direction, not eye contact; never say eye contact.")
+        }
+        return lines
+    }
+}

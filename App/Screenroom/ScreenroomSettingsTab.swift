@@ -120,7 +120,7 @@ struct ScreenroomSettingsTab: View {
             } footer: {
                 Text(agent.enabled
                      ? "This is the one part of Greenroom that can leave your Mac. It runs read-only in the presentation's folder and cannot change anything in it, but what a cloud agent does with a transcript and stills of a named student is between you and it."
-                     : "Off. Screenroom writes the report on this Mac, using Apple's on-device model.")
+                     : offFooter)
             }
         }
         .formStyle(.grouped)
@@ -128,6 +128,23 @@ struct ScreenroomSettingsTab: View {
         // every other tab fills it; pinning this one to 520 made it the only
         // tab sitting in half the pane.
         .onAppear { refresh() }
+    }
+
+    /// What happens with no agent depends on the Mac, so the footer says
+    /// which. Below macOS 26, or with Apple Intelligence off, there is no
+    /// on-device model to write with, and the report is the counted one.
+    private var offFooter: String {
+        let model = ScreenroomAnalyst.modelAvailability
+        if model.available {
+            return "Off. Screenroom writes the report on this Mac, using Apple's on-device model."
+        }
+        let why: String
+        if #available(macOS 26.0, *) {
+            why = "Apple's on-device model is not ready here (\(model.reason ?? "not available"))"
+        } else {
+            why = "Feedback written on this Mac needs macOS 26 with Apple Intelligence"
+        }
+        return "Off. \(why), so the report has the counts and your notes, with no written feedback. Turn on an agent to have it written."
     }
 
     private func refresh() {

@@ -213,6 +213,11 @@ struct RecordingsView: View {
         /// the tabs permanently. Clips, the upload line, the YouTube links.
         case clips = "Clips"
         case transcript = "Transcript"
+        /// What Cues offered in the class and the teacher opened or sent. It
+        /// was a disclosure in the sidebar, under the class, where it pushed
+        /// the recordings down and read as part of the list rather than as
+        /// something about the class.
+        case links = "Links"
         /// Screenroom's three, flat rather than nested.
         ///
         /// They were one "Analysis" tab holding a second segmented control of
@@ -231,6 +236,7 @@ struct RecordingsView: View {
             // too, so a build with Screenroom in it can fill this tab even
             // when Cues is held back.
             case .transcript: return CuesAvailability.isReleased || ScreenroomAvailability.isReleased
+            case .links: return CuesAvailability.isReleased
             case .analysis, .notes: return ScreenroomAvailability.isReleased
             }
         }
@@ -436,9 +442,6 @@ struct RecordingsView: View {
                         ForEach(session.clipFiles) { clip in
                             clipFileRow(clip).tag(clip)
                         }
-                        if !session.links.isEmpty {
-                            linksRow(session.links)
-                        }
                     } header: {
                         HStack(spacing: 6) {
                             Text(session.displayTitle).lineLimit(1).truncationMode(.middle)
@@ -586,46 +589,6 @@ struct RecordingsView: View {
         }
     }
 
-    /// "Links from class": what Cues offered and the teacher opened or
-    /// sent. Collapsed by default so a class with twelve links does not push
-    /// its recording off the list.
-    private func linksRow(_ links: [SessionMetadata.Link]) -> some View {
-        DisclosureGroup {
-            ForEach(links) { link in
-                HStack(spacing: 6) {
-                    Text(link.kind.uppercased())
-                        .font(.system(size: 9, weight: .semibold, design: .monospaced))
-                        .foregroundStyle(.tertiary)
-                        .frame(width: 44, alignment: .leading)
-                    Text(link.title).lineLimit(1).truncationMode(.tail)
-                    Spacer(minLength: 4)
-                    if link.action == "sent" {
-                        Image(systemName: "paperplane").font(.system(size: 9)).foregroundStyle(.secondary)
-                            .help("Sent to the class chat")
-                    }
-                }
-                .font(.caption)
-                .contextMenu {
-                    if let url = URL(string: link.url) {
-                        Button("Open") { NSWorkspace.shared.open(url) }
-                    }
-                    Button("Copy link") { copy(link.url) }
-                }
-                .onTapGesture(count: 2) {
-                    if let url = URL(string: link.url) { NSWorkspace.shared.open(url) }
-                }
-            }
-        } label: {
-            HStack(spacing: 6) {
-                Image(systemName: "link").font(.system(size: 10)).foregroundStyle(.secondary)
-                Text("Links from class").font(.caption)
-                Text("\(links.count)")
-                    .font(.system(size: 10, weight: .semibold, design: .monospaced))
-                    .foregroundStyle(.secondary)
-            }
-        }
-    }
-
     private func copy(_ text: String) {
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(text, forType: .string)
@@ -696,7 +659,7 @@ struct RecordingsView: View {
         switch detailTab {
         case .analysis: return .analysis
         case .notes: return .notes
-        case .clips, .transcript: return nil
+        case .clips, .transcript, .links: return nil
         }
     }
 
@@ -799,11 +762,62 @@ struct RecordingsView: View {
                         .foregroundStyle(.secondary)
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
+            } else if detailTab == .links, DetailTab.links.isAvailable {
+                linksDetail(for: selection)
             } else {
                 clipsDetail(for: selection)
             }
         }
         .frame(minHeight: 260, maxHeight: .infinity)
+    }
+
+    /// The class's links, full width: what it was, where it goes, whether it
+    /// went to the chat, and Open and Copy on every row.
+    @ViewBuilder private func linksDetail(for selection: Recording) -> some View {
+        let links = sessions.first {
+            $0.recordings.contains(selection) || $0.clipFiles.contains(selection)
+        }?.links ?? []
+        if links.isEmpty {
+            VStack(spacing: 6) {
+                Text("No links from this class")
+                    .font(.system(size: 13, weight: .semibold))
+                Text("With Cues on, the cards you open or send in a class are kept here.")
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 0) {
+                    ForEach(links) { link in
+                        HStack(spacing: 10) {
+                            Text(link.kind.uppercased())
+                                .font(.system(size: 9, weight: .semibold, design: .monospaced))
+                                .foregroundStyle(.tertiary)
+                                .frame(width: 52, alignment: .leading)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(link.title).font(.system(size: 13)).lineLimit(1)
+                                Text(URL(string: link.url)?.host ?? link.url)
+                                    .font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
+                            }
+                            Spacer(minLength: 8)
+                            Label(link.action == "sent" ? "Sent to chat" : "Opened",
+                                  systemImage: link.action == "sent" ? "paperplane" : "arrow.up.forward.square")
+                                .font(.system(size: 11)).foregroundStyle(.secondary)
+                            Text(link.at.formatted(date: .omitted, time: .shortened))
+                                .font(.system(size: 11).monospacedDigit()).foregroundStyle(.tertiary)
+                            if let url = URL(string: link.url) {
+                                Button("Open") { NSWorkspace.shared.open(url) }.controlSize(.small)
+                            }
+                            Button("Copy") { copy(link.url) }.controlSize(.small)
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 8)
+                        Divider().padding(.leading, 16)
+                    }
+                }
+            }
+        }
     }
 
     /// The clips, the upload line, the YouTube links. What the old Recording

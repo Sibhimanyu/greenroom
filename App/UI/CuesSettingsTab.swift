@@ -259,11 +259,8 @@ struct CuesTryItRows: View {
                              subtitle: tester.status.isEmpty ? readyLine : tester.status)
             }
 
-            if tester.isListening || !tester.liveTail.isEmpty {
-                Text(tester.liveTail.isEmpty ? "\u{2026}" : tester.liveTail)
-                    .font(.callout)
-                    .foregroundStyle(tester.isListening ? .primary : .secondary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+            if tester.isListening || !tester.heardSoFar.isEmpty {
+                CuesHeardText(text: tester.heardSoFar, listening: tester.isListening)
             }
 
             // The cards themselves, which is the point of pressing the button.
@@ -413,11 +410,8 @@ struct CuesWorkbench: View {
                     .keyboardShortcut(.return, modifiers: .command)
             }
 
-            if bench.isListening || !bench.liveTail.isEmpty {
-                Text(bench.liveTail.isEmpty ? "\u{2026}" : bench.liveTail)
-                    .font(.callout)
-                    .foregroundStyle(bench.isListening ? .primary : .secondary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+            if bench.isListening || !bench.heardSoFar.isEmpty {
+                CuesHeardText(text: bench.heardSoFar, listening: bench.isListening)
             }
 
             if !bench.cards.isEmpty || bench.isListening {
@@ -627,3 +621,34 @@ struct CuesRailPreview: NSViewRepresentable {
     }
 }
 #endif
+
+/// Everything Try it has heard, in a box that scrolls and keeps up with the
+/// newest words. It showed the class display's last-few-sentences view, so
+/// the start of what the teacher said vanished while they were still reading
+/// it back.
+@available(macOS 26.0, *)
+struct CuesHeardText: View {
+    let text: String
+    let listening: Bool
+
+    var body: some View {
+        ScrollViewReader { proxy in
+            ScrollView {
+                VStack(alignment: .leading, spacing: 0) {
+                    Text(text.isEmpty ? "\u{2026}" : text)
+                        .font(.callout)
+                        .foregroundStyle(listening ? .primary : .secondary)
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Color.clear.frame(height: 1).id("end")
+                }
+            }
+            .frame(minHeight: 44, maxHeight: 220)
+            .onChange(of: text) { _ in
+                guard listening else { return }
+                proxy.scrollTo("end", anchor: .bottom)
+            }
+        }
+    }
+}

@@ -110,6 +110,27 @@ final class CuesController: ObservableObject {
     @Published private(set) var unseenCount = 0
     /// The Settings "Try it" readout: recent finals plus the live tail.
     @Published private(set) var liveTail = ""
+    /// Everything heard since Try it started, for Try it and the workbench.
+    ///
+    /// `liveTail` is the class display's view: the last few sentences, so the
+    /// rail never grows. In Try it that cut off what the teacher had just said
+    /// while they were still reading it. This keeps the whole run, and stays
+    /// after Stop until the next start. Not kept in a class.
+    @Published private(set) var heardSoFar = ""
+    private var heardFinals: [String] = []
+    private var keepsWholeTranscript = false
+
+    private func updateHeardSoFar(volatile: String = "") {
+        guard keepsWholeTranscript else { return }
+        let tail = volatile.trimmingCharacters(in: .whitespacesAndNewlines)
+        heardSoFar = (heardFinals + (tail.isEmpty ? [] : [tail])).joined(separator: " ")
+    }
+
+    private func startWholeTranscript() {
+        keepsWholeTranscript = true
+        heardFinals = []
+        heardSoFar = ""
+    }
     /// Mentions found during a test run, for the same panel.
     @Published private(set) var testMentions: [Mention] = []
     @Published private(set) var status = ""
@@ -251,6 +272,7 @@ final class CuesController: ObservableObject {
     func start(configuration: Configuration) async -> Bool {
         guard !isListening else { return true }
         self.configuration = configuration
+        keepsWholeTranscript = false
         stoppedForClass = false
         testMode = false
         startedAt = Date()
@@ -379,6 +401,7 @@ final class CuesController: ObservableObject {
         cards = []
         testMentions = []
         liveTail = ""
+        startWholeTranscript()
         // The resolver was never configured here, so Try it ran on its
         // built-in defaults - six lookups a minute, where a class gets
         // twelve - and held back "Adobe Photoshop" in a two-minute test.
@@ -420,6 +443,7 @@ final class CuesController: ObservableObject {
     func debugFeed(file url: URL, configuration: Configuration) async {
         guard !isListening else { return }
         self.configuration = configuration
+        startWholeTranscript()
         testMode = false
         await resolver.reset()
         await resolver.configure(.init(sessionCap: sessionLookupCap,
@@ -489,6 +513,7 @@ final class CuesController: ObservableObject {
 
     private func preparePipeline(_ configuration: Configuration) async {
         self.configuration = configuration
+        startWholeTranscript()
         testMode = false
         await resolver.reset()
         await resolver.configure(.init(sessionCap: sessionLookupCap,
@@ -640,11 +665,17 @@ final class CuesController: ObservableObject {
             if utteranceStart == nil, !text.isEmpty { utteranceStart = Date() }
             transcript.setVolatile(text)
             liveTail = transcript.display
+            updateHeardSoFar(volatile: text)
         case .final(let text):
             guard !isPaused else { return }
             transcript.appendFinal(text)
             appendToTranscriptFile(text)
             liveTail = transcript.display
+            if keepsWholeTranscript {
+                let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !trimmed.isEmpty { heardFinals.append(trimmed) }
+                updateHeardSoFar()
+            }
             // A free detector runs on the sentence that just landed; there is
             // nothing to ration and every wait is delay the teacher feels.
             // A model pass is seconds of work, so it still waits for enough

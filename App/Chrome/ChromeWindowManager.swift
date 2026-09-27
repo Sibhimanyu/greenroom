@@ -74,14 +74,52 @@ enum ChromeWindowManager {
             \(urlLine)
             set index of targetWindow to 1
             activate
+            return id of targetWindow
         end tell
         """
 
-        guard let failure = await runAppleScript(source) else { return nil }
+        let (failure, output) = await runAppleScriptCapturing(source)
+        guard let failure else {
+            // Remembered so End Session can close exactly this window, and
+            // not whichever one happens to be in front by then.
+            let id = output.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !id.isEmpty { sessionWindowIDs[bundleID] = id }
+            return nil
+        }
         if failure.code == -1743 {
             return "Greenroom isn't authorized to control \(appName) yet. Approve it in System Settings \u{2192} Privacy & Security \u{2192} Automation, then try again."
         }
         return "Couldn't position the \(appName) window: \(failure.message) (code \(failure.code))"
+    }
+
+    /// The window each browser's Start opened, by its scripting id.
+    /// Kept as text and compared as text: Ulaa answers `id of window` in a
+    /// form that never equals the same number written in a script, so
+    /// `id of candidate is 487374464` matched nothing (seen live).
+    private static var sessionWindowIDs: [String: String] = [:]
+
+    /// Closes the window this session's Start opened in `bundleID`, and only
+    /// that one. Every other window and tab the teacher has is left alone.
+    /// Returns a line for the status log, or nil when there was nothing to
+    /// close (no window remembered, or the teacher already closed it).
+    static func closeSessionWindow(bundleID: String) async -> String? {
+        guard let id = sessionWindowIDs.removeValue(forKey: bundleID),
+              !NSRunningApplication.runningApplications(withBundleIdentifier: bundleID).isEmpty else { return nil }
+        let appName = AppCatalog.displayName(forBundleID: bundleID) ?? bundleID
+        let source = """
+        tell application id "\(bundleID)"
+            repeat with candidate in windows
+                if (id of candidate as text) is "\(id)" then
+                    close candidate
+                    return "closed"
+                end if
+            end repeat
+        end tell
+        return "gone"
+        """
+        let (failure, output) = await runAppleScriptCapturing(source)
+        if let failure { return "Couldn't close the \(appName) window: \(failure.message)" }
+        return output.contains("closed") ? "Closed the \(appName) window Start opened." : nil
     }
 
     /// Re-tiles Chrome's existing front window to its slice WITHOUT
@@ -118,6 +156,38 @@ enum ChromeWindowManager {
     /// Returns nil on success, or (code, stderr text) on failure - with
     /// osascript's "(-1743)" automation-permission marker surfaced as the
     /// code so callers keep their specific guidance.
+    /// runAppleScript, keeping what the script returned (its stdout).
+    private static func runAppleScriptCapturing(_ source: String, timeout: TimeInterval = 30) async -> ((code: Int, message: String)?, String) {
+        await withCheckedContinuation { continuation in
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
+            process.arguments = ["-e", source]
+            let stderrPipe = Pipe(), stdoutPipe = Pipe()
+            process.standardError = stderrPipe
+            process.standardOutput = stdoutPipe
+            let watchdog = DispatchWorkItem { [weak process] in
+                if process?.isRunning == true { process?.terminate() }
+            }
+            DispatchQueue.global().asyncAfter(deadline: .now() + timeout, execute: watchdog)
+            process.terminationHandler = { finished in
+                watchdog.cancel()
+                let output = String(data: stdoutPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+                let message = String(data: stderrPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8)?
+                    .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                if finished.terminationStatus == 0 {
+                    continuation.resume(returning: (nil, output))
+                } else {
+                    let code = message.contains("-1743") ? -1743 : Int(finished.terminationStatus)
+                    continuation.resume(returning: ((code, message.isEmpty ? "script timed out or was killed" : message), output))
+                }
+            }
+            do { try process.run() } catch {
+                watchdog.cancel()
+                continuation.resume(returning: ((-1, error.localizedDescription), ""))
+            }
+        }
+    }
+
     private static func runAppleScript(_ source: String, timeout: TimeInterval = 30) async -> (code: Int, message: String)? {
         await withCheckedContinuation { continuation in
             let process = Process()

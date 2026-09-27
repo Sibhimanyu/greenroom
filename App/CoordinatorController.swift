@@ -757,8 +757,10 @@ final class CoordinatorController: ObservableObject {
             Analytics.setting("browser_search_suggestions", on: browserSearchSuggestions)
         }
     }
-    /// Built-in browser only: whether Stop also closes the browser window.
-    /// Off by default - an external main app is never closed by Stop either.
+    /// Whether End Session also closes the browser window Start opened.
+    /// Greenroom Browser's window, or the one window a Chromium browser
+    /// (Chrome, Ulaa, Edge...) was asked to make for this session - never the
+    /// teacher's other windows. Off by default.
     @Published var browserClosesOnStop: Bool {
         didSet {
             defaults.set(browserClosesOnStop, forKey: "browserClosesOnStop")
@@ -1317,6 +1319,9 @@ final class CoordinatorController: ObservableObject {
             if browserClosesOnStop, AppCatalog.isBuiltInBrowser(mainAppBundleID), BrowserWindowController.isOpen {
                 BrowserWindowController.close()
                 log("Closed the Greenroom Browser window.")
+            } else if browserClosesOnStop, AppCatalog.isBrowser(mainAppBundleID),
+                      let line = await ChromeWindowManager.closeSessionWindow(bundleID: mainAppBundleID) {
+                log(line)
             }
             // Custom UI: stop the SDK rendering into views that are about to
             // go away, then drop our window.

@@ -1111,6 +1111,13 @@ private struct LayoutSettingsTab: View {
                     SettingLabel(title: "Close the browser window when the session ends",
                                  subtitle: "Tabs are kept for the next Start.")
                 }
+            } else if AppCatalog.isBrowser(coordinator.mainAppBundleID) {
+                // The same switch for an outside browser, which Greenroom
+                // can close only because it made that window itself.
+                Toggle(isOn: $coordinator.browserClosesOnStop) {
+                    SettingLabel(title: "Close the window Start opened when the session ends",
+                                 subtitle: "Only that window. Your other \(AppCatalog.displayName(forBundleID: coordinator.mainAppBundleID) ?? "browser") windows and tabs stay open. Works with Chrome and browsers built like it (Ulaa, Edge, Brave).")
+                }
             }
 
             if needsAccessibility && !hasAccessibilityPermission {

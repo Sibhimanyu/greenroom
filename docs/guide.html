@@ -72,7 +72,7 @@
   .nav-cta .gh:hover { color: var(--ink); }
   @media (max-width: 760px) {
     .nav-inner { flex-wrap: wrap; height: auto; padding: 10px 24px 12px; row-gap: 8px; }
-    .nav-links { order: 3; width: 100%; gap: 20px; margin: 0; }
+    .nav-links { order: 3; width: 100%; gap: 4px 20px; margin: 0; flex-wrap: wrap; }
     .nav-cta { margin-left: auto; }
     .nav-cta .gh { display: none; }
   }
@@ -191,6 +191,7 @@
     </a>
     <div class="nav-links">
       <a href="index.html">Overview</a>
+      <a href="1.0.html">What's new</a>
       <a href="guide.html" aria-current="page">Guide</a>
       <a href="how-it-works.html">Privacy &amp; safety</a>
       <a href="timeline.html">Timeline</a>
@@ -441,7 +442,7 @@
             <li><strong>Bubble shape</strong>: square, circle, rounded rectangle, cutout, or presenter. Cutout and presenter key your background away and need a real green screen behind you; presenter shrinks the shared screen into a panel with you standing at full height in front of it.</li>
             <li><strong>Position and size</strong>: drag the bubble in the live preview. The preview shows the actual composite once OBS is warm.</li>
             <li><strong>Keep the last 5 minutes clippable</strong> (on) powers <kbd>⌥⌘1/2/5</kbd>. <strong>Start recording automatically with the meeting</strong> (off) if every class should be kept.</li>
-            <li><strong>Cut between cameras as you turn</strong> (off) is for two monitors with a camera on each. Pick two or more cameras; an iPhone can be one of them. During a class, the Mac watches which way your head is facing. Turn more than about 25° away for 2 seconds and the class sees the next camera in the list. Only one camera is live at a time, and all of it happens on this Mac. Aiming a camera here does not need OBS running.</li>
+            <li><strong>Cut between cameras as you turn</strong> (off) is for two monitors with a camera on each. Pick two or more cameras; an iPhone can be one of them. During a class every chosen camera is open, and the Mac compares them: the class gets whichever camera sees your face most head-on, once it is clearly better than the live one for the delay you set, 1 second by default. It reads which way your head points, not your eyes, so a camera on top of a monitor works while you look at that screen. Looking down at the floor, or away from every camera, switches nothing. During a class, this section shows each camera's angle side by side. <strong>When it switches</strong> picks a hard cut or a short crossfade. While it waits, a bar fills along the bottom of your self view; the class never sees it. The first camera opens at Start and the others once the meeting is live, so an iPhone is not woken until the class needs it. All of it happens on this Mac. Aiming a camera here does not need OBS running.</li>
           </ul>
           <p class="later">Later: <em>Keep OBS ready in the background</em> makes Start near-instant at the cost of OBS staying open between sessions.</p>
         </div>
@@ -451,7 +452,7 @@
         <div>
           <ul>
             <li><strong>Main app</strong>: every installed app, with <strong>Greenroom Browser</strong> first. For any browser an <strong>Open website</strong> field appears; that page opens on Start.</li>
-            <li><strong>Drag the handles</strong> in the schematic: between the panes for the main app's width, between Zoom and Chat to balance the column. <strong>Main pane side</strong> puts it left or right. Changes re-tile a live session on their own.</li>
+            <li><strong>Main pane width</strong> sets the main app to ½, ⅔ or ¾ of the screen in one click. Or <strong>drag the handles</strong> in the schematic: between the panes for any width, between Zoom and Chat to balance the column. <strong>Main pane side</strong> puts it left or right. Changes re-tile a live session on their own.</li>
             <li><strong>Side column</strong>: turn the Zoom tile or the chat window off and it simply isn't tiled.</li>
             <li><strong>Meeting view</strong>: hide your own tile; <strong>Quick-hide mode</strong> starts with the speaker hidden and gives <kbd>⌥⌘Z</kbd> its job.</li>
           </ul>
@@ -474,11 +475,11 @@
         <div>
           <ul>
             <li><strong>Listen during classes and suggest links</strong>: while a class is live, what you say becomes text on this Mac and, when you name a book, a video, a topic, a person or a place, a link card appears on the participants panel — or in a waveform menu-bar item when there is no second display. <strong>Open</strong> puts it in your main-pane browser without stealing focus; <strong>Send</strong> drops the link in the class chat; <strong>×</strong> dismisses it for the class.</li>
-            <li><strong>Speech model</strong>: Apple's, downloaded once from here when you turn the switch on, or whisper, the same local model Screenroom uses. Either way the speech becomes text on this Mac. Nothing downloads during a class — a Start that finds the model missing carries on without Cues and says so in the status log.</li>
+            <li><strong>Speech model</strong>: Apple's, downloaded once from here when you turn the switch on, or whisper, the same local model Screenroom uses. whisper hears names better. If it is missing, this tab shows only the part that is: <strong>Install</strong> runs Homebrew for the program, and <strong>Download</strong> fetches the model with a progress bar. Either way the speech becomes text on this Mac. Nothing downloads during a class — a Start that finds the model missing carries on without Cues and says so in the status log.</li>
             <li><strong>Language</strong> (Indian English by default when that is your system language), and <strong>Video links may use YouTube search</strong> — off, or with no Google account connected, video cards are “search YouTube for…” links that send nothing until opened.</li>
             <li><strong>Also suggest links for things I mention without naming them</strong> (off) hands the listening to Apple&rsquo;s on-device language model instead of the word patterns. It catches things you refer to in passing, without saying &ldquo;it&rsquo;s called&hellip;&rdquo; &mdash; and it interrupts far more often. Tested against a real lesson it found everything and suggested about twenty-five wrong things for every right one, so it is off unless you want that trade.</li>
             <li><strong>Save the transcript with the class</strong> (on) writes everything Cues heard to <code>transcript.txt</code> in the class folder, beside the recording, a line per sentence with its time. Turn it off to keep the text in memory only.</li>
-            <li><strong>Try it</strong> listens for two minutes and runs the real thing: the live text, real lookups, and the cards a class would get.</li>
+            <li><strong>Try it</strong> listens for two minutes and runs the real thing: the live text, real lookups, and the cards a class would get. Everything it heard stays in a box that scrolls, until the next Try it.</li>
           </ul>
           <p class="later">What leaves the Mac is the short search phrase only — to Google Books, Open Library, Wikipedia and, if allowed, YouTube — and each one is written to the status log. Never the audio, never the transcript, never a name from the meeting. The <a href="how-it-works.html#Cues">Privacy &amp; safety page</a> draws the whole pipeline. Cues needs macOS 26. Below that the tab is one sentence, nothing listens, and the rest of Greenroom is unchanged.</p>
         </div>
@@ -487,7 +488,7 @@
         <div class="tab">Screenroom <span>set up once per Mac</span></div>
         <div>
           <ul>
-            <li><strong>Transcriber</strong>: whisper if this Mac has it, otherwise Apple's recogniser, kept on-device. Whisper is what counts filler words. The tab shows the two commands to install it (<code>brew install whisper-cpp</code>, then a model download) and which model is installed. The model is shared with Cues.</li>
+            <li><strong>Transcriber</strong>: whisper if this Mac has it, otherwise Apple's recogniser, kept on-device. Whisper is what counts filler words. No Terminal: <strong>Install</strong> runs Homebrew for the program (without Homebrew it links to <a href="https://brew.sh">brew.sh</a>), and every model under <em>Add another model</em> has a <strong>Download</strong> button. The model is shared with Cues. The setup guide has this page too, as <em>Screenroom (optional)</em>.</li>
             <li><strong>Hand each presentation to my agent</strong> (off): Claude Code, Codex, or a command of your own, run in your login shell. It writes the feedback. See <a href="#screenroom">Screenroom</a> for what it is given.</li>
           </ul>
           <p class="later">The agent is the one part of Screenroom that can send anything off the Mac, and where it goes is up to the agent you chose. Leave it off and the feedback is written on this Mac, or not at all.</p>
@@ -546,8 +547,8 @@
       question on a small card if you chose <em>Ask</em>, progress in the menu bar, and the link on your clipboard when it finishes.
       The link is kept with the class in Sessions (Open / Copy / Rename under the recording; Rename changes the title on YouTube), and
       any recording can be uploaded, or uploaded again, from there. The file stays in the folder either way.</p>
-      <p>With Cues on, the class folder also holds <code>transcript.txt</code> &mdash; what the microphone heard, timed from the start of the session. And the cards you <em>opened or sent</em> are kept with it — <strong>Links from class</strong>
-      under the class in Sessions, with Open and Copy. Cards that were only shown are not recorded, and nothing of the transcript ever is.</p>
+      <p>With Cues on, the class folder also holds <code>transcript.txt</code> &mdash; what the microphone heard, timed from the start of the session. And the cards you <em>opened or sent</em> are kept with it, in the class's <strong>Links</strong> tab in Sessions, beside Clips and
+      Transcript: what kind of link, its title, where it goes, whether you opened it or sent it to chat, when, and Open / Copy. Cards that were only shown are not recorded, and nothing of the transcript ever is.</p>
       <p>A class with a transcript can be summarised. Open its <strong>Transcript</strong> tab in Sessions and press
       <strong>Summarise on this Mac</strong>. Apple's on-device model writes it, with no cloud call, and it is saved as
       <code>summary.md</code> in the class folder. This needs <strong>macOS 26 with Apple Intelligence turned on</strong>, and a
@@ -569,7 +570,7 @@
     <div class="runlog">
       <div class="run"><div class="n">01</div><div><h3>Record their talk</h3><p>A camera and a microphone, saved as <code>presentation.mov</code>. Or point it at a screen or a window, for a student presenting remotely; then it records the Mac's sound instead of the mic. A presentation doesn't need a name, and one can never overwrite another.</p></div></div>
       <div class="run"><div class="n">02</div><div><h3>Mark as they speak</h3><p>Type notes while it records. Each note is stamped at the moment you started typing it, not when you pressed Return. You can add notes afterwards too, while watching it back in Sessions.</p></div></div>
-      <div class="run"><div class="n">03</div><div><h3>Get the report</h3><p>The report opens in its own window, as a dashboard, and can be exported to a file you choose. In Sessions → Screens, each presentation has <strong>Analysis</strong> and <strong>Notes</strong> tabs, and the filler words and notes show as marks on the scrubber.</p></div></div>
+      <div class="run"><div class="n">03</div><div><h3>Get the report</h3><p>Press <strong>Analyse</strong>. The report opens in its own window, with each reading sorted into <em>What to work on</em> and <em>What went well</em>. When your agent wrote the feedback, it leads with a one-line verdict and each point carries the moment it happened, and plays from there. <strong>Play without fillers</strong> plays the talk with every filler skipped. <strong>Export</strong> saves a PDF, Markdown, the video with the notes on it, or subtitles. In Sessions → Screens, each presentation has <strong>Analysis</strong> and <strong>Notes</strong> tabs, and the filler words and notes show as marks on the scrubber.</p></div></div>
     </div>
     <div class="cards" style="margin-top:22px">
       <div class="card">
@@ -618,7 +619,7 @@
       </div>
       <div class="card">
         <h3>Screenroom says fillers are "Not counted"</h3>
-        <p>That report was transcribed with Apple's recogniser, which drops filler words. Install whisper with the commands in Settings &rarr; Screenroom, then press <strong>Analyse again</strong> on that presentation. No written feedback, only counts? Turn on the agent there, or use a Mac on <strong>macOS 26</strong> with Apple Intelligence on.</p>
+        <p>That report was transcribed with Apple's recogniser, which drops filler words. Install whisper from Settings &rarr; Screenroom (one button for the program, one for the model), then press <strong>Analyse again</strong> on that presentation. No written feedback, only counts? Turn on the agent there, or use a Mac on <strong>macOS 26</strong> with Apple Intelligence on.</p>
       </div>
       <div class="card">
         <h3>A window is in the wrong place</h3>

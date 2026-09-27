@@ -88,7 +88,7 @@
      of disappearing. */
   @media (max-width: 760px) {
     .nav-inner { flex-wrap: wrap; height: auto; padding: 10px 24px 12px; row-gap: 8px; }
-    .nav-links { order: 3; width: 100%; gap: 20px; margin: 0; }
+    .nav-links { order: 3; width: 100%; gap: 4px 20px; margin: 0; flex-wrap: wrap; }
     .nav-cta .gh { display: none; }
   }
 
@@ -118,6 +118,22 @@
     color: var(--green);
     margin-bottom: 20px;
   }
+  /* The release pill: lime is the chip's fill, never the text. */
+  .announce {
+    display: inline-flex; align-items: center; gap: 8px;
+    margin-bottom: 24px; padding: 4px 12px 4px 4px;
+    border: 1px solid var(--line); border-radius: 999px;
+    font-size: 14px; font-weight: 600; color: var(--ink);
+    transition: border-color 0.2s;
+  }
+  .announce:hover { border-color: var(--green); }
+  .announce-chip {
+    font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 10.5px; font-weight: 700;
+    letter-spacing: .08em; text-transform: uppercase;
+    background: #78c000; color: var(--green-hover); padding: 2px 8px; border-radius: 999px;
+  }
+  .announce .arrow { display: inline-block; transition: transform 0.2s; color: var(--green); }
+  .announce:hover .arrow { transform: translateX(3px); }
   h1 {
     font-size: clamp(38px, 5.4vw, 58px);
     line-height: 1.06;
@@ -293,6 +309,7 @@
     </a>
     <div class="nav-links">
       <a href="index.html" aria-current="page">Overview</a>
+      <a href="1.0.html">What's new</a>
       <a href="guide.html">Guide</a>
       <a href="how-it-works.html">Privacy &amp; safety</a>
       <a href="timeline.html">Timeline</a>
@@ -307,6 +324,7 @@
 
 <header class="wrap hero">
   <div class="hero-copy">
+    <a class="announce" href="1.0.html"><span class="announce-chip">New</span>Greenroom 1.0: now it's in the class with you <span class="arrow">→</span></a>
     <span class="eyebrow">macOS · free · open source</span>
     <h1>Your whole class setup, in <span class="accent">one click.</span></h1>
     <p class="lede">Greenroom starts the virtual camera, opens the Zoom meeting, and puts every
@@ -391,12 +409,13 @@
   <div class="wrap">
     <div class="sec-head">
       <p class="kicker">Watch</p>
-      <h2>The whole idea, in 37 seconds</h2>
+      <h2>Greenroom 1.0, in 55 seconds</h2>
     </div>
-    <video class="intro-video" controls muted playsinline preload="metadata" poster="greenroom-intro-poster.jpg">
-      <source src="greenroom-intro.mp4" type="video/mp4">
-      Your browser can't play this video. <a href="greenroom-intro.mp4">Download it instead</a>.
+    <video class="intro-video" controls muted playsinline preload="metadata" poster="greenroom-1.0-poster.jpg">
+      <source src="greenroom-1.0-launch.mp4" type="video/mp4">
+      Your browser can't play this video. <a href="greenroom-1.0-launch.mp4">Download it instead</a>.
     </video>
+    <p style="margin-top:24px;text-align:center"><a class="textlink" href="1.0.html">Everything new in 1.0 <span class="arrow">→</span></a></p>
   </div>
 </section>
 
@@ -413,8 +432,9 @@
         <div>
           <h3>The camera starts</h3>
           <p>OBS runs hidden and publishes a virtual camera: the whole screen, with the teacher
-          keyed into a corner bubble or cut out of the background entirely. Students see the
-          book <em>and</em> you.</p>
+          keyed into a corner bubble, cut out of the background entirely, or standing at full
+          height in front of the page in <strong>Presenter</strong>. Students see the book
+          <em>and</em> you.</p>
         </div>
       </div>
       <div class="run">
@@ -463,7 +483,9 @@
           a person, a word worth a picture, and a card is waiting with the link. One click opens it
           in the reading window without leaving the page; one sends it to the class chat. Speech
           becomes text on the Mac with Apple's models; only the short search phrase goes out, and
-          every one is written down. Off by default; needs macOS 26.</p>
+          every one is written down. It listens with Apple's speech model or with whisper, which
+          hears names better and sets itself up from Settings with one button. The links you used
+          are kept with the class, in a Links tab in Sessions. Off by default; needs macOS 26.</p>
         </div>
       </div>
       <div class="run">
@@ -471,9 +493,9 @@
         <div>
           <h3>It cuts to the camera you face</h3>
           <p>Pick two or more cameras in Settings → Webcam and turn camera switching on. Turn
-          away from the live camera for two seconds and Greenroom cuts to the next one, so the
-          class keeps your face when you turn to the other screen. An iPhone works as the
-          second camera. The head-turn check runs on the Mac.</p>
+          to the other screen and, once its camera has the better view of your face, Greenroom
+          switches to it in about a second, with no black frame. Looking down at your notes switches nothing.
+          An iPhone works as the second camera. The head-turn check runs on the Mac.</p>
         </div>
       </div>
       <div class="run">
@@ -503,8 +525,8 @@
         <div class="n">＋</div>
         <div>
           <h3>Every class, filed</h3>
-          <p>The Sessions window keeps each class with its recording, clips, transcript and
-          YouTube link, and each presentation in a list of its own. With a Cues transcript, one
+          <p>The Sessions window keeps each class with its recording, clips, transcript, links
+          and YouTube link, and each presentation in a list of its own: All, Greens, Screens. With a Cues transcript, one
           click writes a summary of the class on this Mac with Apple's on-device model. Summaries
           need macOS 26 with Apple Intelligence turned on.</p>
         </div>
@@ -560,9 +582,10 @@
         <div>
           <h3>Counted on your Mac</h3>
           <p>Pace in words a minute, filler words, pauses and how much of the talk they faced
-          the room. The talk is transcribed on the Mac and the numbers are counted, not guessed.
-          Filler words need whisper (<code>brew install whisper-cpp</code> and a model; Settings →
-          Screenroom shows the commands).</p>
+          the room. The talk is transcribed on the Mac and the numbers are counted, not guessed,
+          then sorted into what to work on and what went well. <strong>Play without fillers</strong>
+          plays the talk back with every “um” skipped. Filler words need whisper; Settings →
+          Screenroom installs it and downloads the model for you.</p>
         </div>
       </div>
       <div class="run">
@@ -574,7 +597,8 @@
           the audio and video are not sent. That is the one part of Screenroom that can leave the
           Mac, and it is off until you turn it on. Without an agent, Apple's on-device model
           writes the feedback on macOS 26 with Apple Intelligence; on older macOS the report
-          has the counts and your notes.</p>
+          has the counts and your notes. From an agent, each point of feedback plays from its moment. The
+          report exports as a PDF, or as the video with your notes drawn on it.</p>
         </div>
       </div>
     </div>

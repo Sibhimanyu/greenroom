@@ -70,7 +70,7 @@
   .nav-cta .gh:hover { color: var(--ink); }
   @media (max-width: 760px) {
     .nav-inner { flex-wrap: wrap; height: auto; padding: 10px 24px 12px; row-gap: 8px; }
-    .nav-links { order: 3; width: 100%; gap: 20px; margin: 0; }
+    .nav-links { order: 3; width: 100%; gap: 4px 20px; margin: 0; flex-wrap: wrap; }
     .nav-cta .gh { display: none; }
   }
 
@@ -202,6 +202,7 @@
     </a>
     <div class="nav-links">
       <a href="index.html">Overview</a>
+      <a href="1.0.html">What's new</a>
       <a href="guide.html">Guide</a>
       <a href="how-it-works.html" aria-current="page">Privacy &amp; safety</a>
       <a href="timeline.html">Timeline</a>
@@ -307,7 +308,7 @@
 
           <!-- The speech model: Apple's, fetched once through the system's
                asset service, or a whisper model you download once with the
-               commands in Settings. Either way a file on this Mac. Dashed
+               Download button in Settings. Either way a file on this Mac. Dashed
                like the settings box - configuration, not a process. -->
           <rect x="282" y="450" width="188" height="44" rx="10" fill="#fff" stroke="#2f6118" stroke-dasharray="4 3"/>
           <text x="376" y="469" font-size="12" font-weight="700" text-anchor="middle" fill="#101828">Speech model</text>
@@ -576,7 +577,7 @@
           <div class="bar-labels"><span class="u">live meeting video · Screenroom</span><span class="r">unused</span></div>
           <div class="bar"><div class="used" style="width:72%"></div></div>
         </div>
-        <p class="note">Zoom's Meeting SDK runs inside Greenroom, so the camera <em>is</em> opened in its process — that's exactly why it holds this. In a class it is used for the meeting: your composited picture, read from the OBS Virtual Camera, on its way to Zoom. <em>Screenroom</em> opens a camera too, only while you record a presentation, and writes it to <span class="mono">presentation.mov</span> in that presentation's folder. <em>Camera switching</em> does not open a camera itself: it reads frames of your webcam from OBS over the localhost socket and hands them to Apple's Vision framework on this Mac (see <a href="#ondevice">camera switching</a>).</p>
+        <p class="note">Zoom's Meeting SDK runs inside Greenroom, so the camera <em>is</em> opened in its process — that's exactly why it holds this. In a class it is used for the meeting: your composited picture, read from the OBS Virtual Camera, on its way to Zoom. <em>Screenroom</em> opens a camera too, only while you record a presentation, and writes it to <span class="mono">presentation.mov</span> in that presentation's folder. <em>Camera switching</em> does not open a camera itself: it reads frames of your cameras from OBS over the localhost socket and hands them to Apple's Vision framework on this Mac (see <a href="#ondevice">camera switching</a>).</p>
       </div>
 
       <div class="scope">
@@ -641,8 +642,8 @@
   <div class="wrap">
     <div class="sec-head center">
       <p class="kicker">05 · Every network call</p>
-      <h2>Nine channels. That's the whole list.</h2>
-      <p>Four are Greenroom's own. Two exist only when you choose <em>Greenroom Browser</em> as the main app, and one of those has its own switch. The seventh carries class content — your recording — and the eighth carries the search phrases <em>Cues</em> builds from what you say. The ninth is not Greenroom's at all: it is whatever the agent you give <em>Screenroom</em> does with a presentation. All three are off until you turn them on.</p>
+      <h2>Ten channels. That's the whole list.</h2>
+      <p>Four are Greenroom's own. Two exist only when you choose <em>Greenroom Browser</em> as the main app, and one of those has its own switch. The seventh carries class content — your recording — and the eighth carries the search phrases <em>Cues</em> builds from what you say. The ninth is not Greenroom's at all: it is whatever the agent you give <em>Screenroom</em> does with a presentation. All three are off until you turn them on. The tenth happens only when you press a button to set up whisper, and carries nothing of yours.</p>
     </div>
     <div class="eps">
       <div class="ep">
@@ -716,6 +717,15 @@
         transcript, your notes, a still every 20 seconds, the counts, the rubric and the student's name. Greenroom makes no
         network call for this; the agent does, to wherever it runs its model. For Claude Code and Codex that is their own
         service. For your own command, only you know. See <a href="#Screenroom">Screenroom</a> for exactly what it can reach.</p>
+      </div>
+      <div class="ep">
+        <span class="tag out">Leaves your Mac · only when you press it</span>
+        <h3>huggingface.co · Homebrew</h3>
+        <p>Setting up whisper for <em>Cues</em> or <em>Screenroom</em>. <strong>Download</strong> fetches a model file over HTTPS
+        from <span class="mono">huggingface.co/ggerganov/whisper.cpp</span> into <span class="mono">~/Library/Application Support/Greenroom/whisper</span>,
+        with progress and Cancel. <strong>Install</strong> runs your own Homebrew (<span class="mono">brew install whisper-cpp</span>), which
+        fetches the program the way Homebrew always does; its output is shown as it runs. Both are one-off downloads: nothing
+        about you, your class or your recordings is sent, and nothing downloads without a press. The recommended model is 465&nbsp;MB; the largest offered is 1.5&nbsp;GB.</p>
       </div>
       <div class="ep">
         <span class="tag local">Stays local</span>
@@ -1032,7 +1042,7 @@
     <div class="scopes">
       <div class="scope">
         <div class="who">Camera switching <span>Apple's Vision · on this Mac</span></div>
-        <p class="note">Settings &rarr; Webcam: pick two or more cameras and turn it on. An iPhone through Continuity Camera can be one of them. During a class, Greenroom reads frames of the live camera from OBS over the localhost socket, and Apple's Vision framework works out which way your head is turned, on this Mac. Turn more than about 25&deg; away for two seconds and it cuts to the next camera in the list. One camera feed is live at a time. Nothing is sent anywhere; the only thing that changes is which camera the class sees.</p>
+        <p class="note">Settings &rarr; Webcam: pick two or more cameras and turn it on. An iPhone through Continuity Camera can be one of them. During a class every chosen camera is open in OBS, and only one is shown. Greenroom reads frames of each of them over the localhost socket, and Apple's Vision framework works out which way your head is turned, on this Mac. It compares the cameras: the class gets whichever one sees your face most head-on, once it is clearly better than the live one for the delay you set, 1 second by default, as a cut or a short crossfade. It reads head direction, not your eyes. Looking at the floor, or away from every camera, switches nothing. The first camera opens at Start and the others once the meeting is live. Nothing is sent anywhere; the only thing that changes is which camera the class sees.</p>
       </div>
       <div class="scope">
         <div class="who">Class summary <span>Apple's on-device model · macOS 26</span></div>
@@ -1060,10 +1070,10 @@
             <tr><td><strong>Built-in browser</strong></td><td><span class="mono">WKWebView</span> (Apple WebKit)</td><td>Renders the pages you open in Greenroom's own window when <em>Greenroom Browser</em> is the main app. Persistent cookies in WebKit's data store; history in one local JSON file under Application Support; downloads to ~/Downloads; no extensions. Optional Google completions behind one switch.</td></tr>
             <tr><td><strong>Screen &amp; camera capture</strong> (class)</td><td>Performed by <strong>OBS</strong></td><td>For a class, Greenroom does no capture of its own; it resolves display/camera identifiers only.</td></tr>
             <tr><td><strong>Recording</strong> (Screenroom)</td><td><span class="mono">AVFoundation</span>; <span class="mono">ScreenCaptureKit</span> for the screen source</td><td>Only while you record a presentation. A camera and microphone, or a screen or window with the Mac's sound, to <span class="mono">presentation.mov</span> in its own folder under <span class="mono">~/Documents/Greenroom</span>. Screen Recording permission is asked for only when you pick a screen or window.</td></tr>
-            <tr><td><strong>Transcription</strong> (Screenroom)</td><td><span class="mono">whisper.cpp</span>, or Apple <span class="mono">SFSpeechRecognizer</span></td><td>whisper is a binary you install (<span class="mono">brew install whisper-cpp</span>) plus a model you download; it reads a file on this Mac. Apple's recogniser is pinned to on-device and refuses to run rather than send audio to Apple; it needs the speech-recognition permission.</td></tr>
+            <tr><td><strong>Transcription</strong> (Screenroom)</td><td><span class="mono">whisper.cpp</span>, or Apple <span class="mono">SFSpeechRecognizer</span></td><td>whisper is a binary from Homebrew (<span class="mono">brew install whisper-cpp</span>, which Settings can run for you) plus a model downloaded from huggingface.co with a button; it reads a file on this Mac. Apple's recogniser is pinned to on-device and refuses to run rather than send audio to Apple; it needs the speech-recognition permission.</td></tr>
             <tr><td><strong>Counts</strong> (Screenroom)</td><td>Arithmetic over timestamps; Apple <span class="mono">Vision</span></td><td>Pace, filler words (whisper only), pauses of 2 s or more, and facing the room (head direction within 20&deg;). No model writes these numbers.</td></tr>
             <tr><td><strong>Written feedback</strong> (Screenroom)</td><td>Your agent, or Apple <span class="mono">FoundationModels</span></td><td>The first that is set up: your agent (off by default), run in your login shell, reading the transcript, notes, stills every 20 s, counts, rubric and the student's name; it works in a temporary copy of the folder without <span class="mono">presentation.mov</span>, and the default Claude Code and Codex commands are read-only there. Otherwise Apple's on-device model, on <strong>macOS 26 with Apple Intelligence on</strong>. Otherwise the counted report only.</td></tr>
-            <tr><td><strong>Camera switching</strong></td><td>OBS <span class="mono">GetSourceScreenshot</span> + Apple <span class="mono">Vision</span></td><td>Off by default; needs two or more cameras. Reads frames of the live webcam source over the localhost socket and checks head direction on this Mac; turned more than ~25&deg; away for 2 s cuts to the next camera. One camera feed live at a time. Nothing sent.</td></tr>
+            <tr><td><strong>Camera switching</strong></td><td>OBS <span class="mono">GetSourceScreenshot</span> + Apple <span class="mono">Vision</span></td><td>Off by default; needs two or more cameras. Every chosen camera is open in OBS and one is shown. Reads frames of each over the localhost socket and checks head direction on this Mac; switches to whichever camera has your head most head-on, once it is clearly better for 1 s by default. Extra cameras open only once the meeting is live. Nothing sent.</td></tr>
             <tr><td><strong>Class summary</strong></td><td>Apple <span class="mono">FoundationModels</span> (on-device)</td><td>Only when you press <em>Summarise on this Mac</em> in Sessions. Reads the class transcript, writes <span class="mono">summary.md</span> into the class folder. Never a cloud call. <strong>macOS 26 with Apple Intelligence on</strong>, and a transcript from Cues.</td></tr>
             <tr><td><strong>Global shortcuts</strong></td><td>Carbon <span class="mono">RegisterEventHotKey</span></td><td>Eight fixed combos (⌥⌘ G/X/R/S/Z and 1/2/5). Receives an opaque ID only — no event taps.</td></tr>
             <tr><td><strong>Launch/quit apps</strong></td><td><span class="mono">NSWorkspace</span></td><td>OBS, Zoom, and your chosen main app.</td></tr>

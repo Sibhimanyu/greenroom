@@ -1,0 +1,605 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Greenroom 1.0: same one click, now it's in the class with you</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Greenroom 1.0 for macOS: Cues finds the link while you teach, the camera follows your face, clips save the moment after it happens, and Screenroom turns a student's talk into feedback they can see.">
+<meta property="og:title" content="Greenroom 1.0">
+<meta property="og:description" content="Same one click. Now it's in the class with you.">
+<meta property="og:image" content="greenroom-1.0-poster.jpg">
+<link rel="icon" type="image/png" href="favicon.png?v=4">
+<link rel="apple-touch-icon" href="apple-touch-icon.png?v=4">
+<style>
+  :root {
+    --ink: #101828;
+    --body: #475467;
+    --faint: #98a2b3;
+    --line: #eaecf0;
+    --bg-soft: #f9fafb;
+    --green: #2f6118;       /* --brand-green */
+    --green-hover: #00401c; /* --brand-deep */
+    --lime: #78c000;        /* --accent-lime: fills only, never text */
+    --green-soft: #e8f3df;
+    --net-text: #96600a;
+    --card-shadow: 0 1px 2px rgba(16, 24, 40, 0.04), 0 12px 32px rgba(16, 24, 40, 0.08);
+    --mono: ui-monospace, "SF Mono", Menlo, monospace;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    background: #fff;
+    color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    font-size: 16px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 1120px; margin: 0 auto; padding: 0 24px; }
+  a { color: var(--green); text-decoration: none; }
+  a:hover { color: var(--green-hover); }
+  :focus-visible { outline: 2px solid var(--green); outline-offset: 3px; border-radius: 4px; }
+  h1, h2, h3 { text-wrap: balance; margin: 0; }
+  p { margin: 0; }
+  code, kbd, .mono { font-family: var(--mono); }
+  kbd {
+    font-size: 13px; background: var(--bg-soft); border: 1px solid var(--line);
+    border-radius: 6px; padding: 1px 6px; color: var(--ink);
+  }
+
+  .btn {
+    display: inline-flex; align-items: center; gap: 8px;
+    background: var(--green); color: #fff;
+    font-weight: 600; font-size: 15px;
+    padding: 12px 20px; border-radius: 10px;
+    transition: background 0.2s, transform 0.15s;
+  }
+  .btn:hover { background: var(--green-hover); color: #fff; transform: translateY(-1px); }
+  .textlink { font-weight: 600; font-size: 15px; color: var(--ink); background: none; border: 0; padding: 0; cursor: pointer; font-family: inherit; }
+  .textlink:hover { color: var(--green); }
+  .textlink .arrow { display: inline-block; transition: transform 0.2s; }
+  .textlink:hover .arrow { transform: translateX(3px); }
+
+  /* ---------- nav (same as every page) ---------- */
+  nav {
+    position: sticky; top: 0;
+    background: rgba(255, 255, 255, 0.92);
+    backdrop-filter: blur(10px);
+    border-bottom: 1px solid var(--line);
+    z-index: 50;
+  }
+  .nav-inner { display: flex; align-items: center; height: 64px; gap: 32px; }
+  .brand { display: flex; align-items: center; gap: 6px; font-weight: 700; font-size: 19px; color: var(--green-hover); }
+  .nav-links { display: flex; gap: 24px; margin: 0 auto; }
+  .nav-links a { color: var(--body); font-size: 14.5px; font-weight: 500; }
+  .nav-links a:hover, .nav-links a[aria-current] { color: var(--ink); }
+  .nav-links a[aria-current] { font-weight: 600; }
+  .nav-cta { display: flex; align-items: center; gap: 16px; }
+  .nav-cta .btn { padding: 8px 16px; font-size: 14px; }
+  .nav-cta .gh { color: var(--body); font-size: 14.5px; font-weight: 500; }
+  .nav-cta .gh:hover { color: var(--ink); }
+  @media (max-width: 760px) {
+    .nav-inner { flex-wrap: wrap; height: auto; padding: 12px 24px; row-gap: 8px; }
+    .nav-links { order: 3; width: 100%; gap: 4px 20px; margin: 0; flex-wrap: wrap; }
+    .nav-cta { margin-left: auto; }
+    .nav-cta .gh { display: none; }
+  }
+
+  /* ---------- chips ---------- */
+  .eyebrow {
+    display: block;
+    font-family: var(--mono); font-size: 12.5px;
+    letter-spacing: 0.08em; text-transform: uppercase;
+    color: var(--green);
+  }
+  /* NEW is a fill on lime with deep text: lime never carries text itself. */
+  .new {
+    display: inline-block; vertical-align: 2px; margin-left: 8px;
+    font-family: var(--mono); font-size: 11px; font-weight: 700; letter-spacing: .08em;
+    background: var(--lime); color: var(--green-hover);
+    padding: 2px 8px; border-radius: 999px;
+  }
+
+  /* ---------- hero ---------- */
+  .hero { padding: 64px 24px 48px; text-align: center; }
+  .hero .eyebrow { margin-bottom: 20px; }
+  .version {
+    display: inline-flex; align-items: center; gap: 12px;
+    margin-bottom: 24px;
+  }
+  .version img { display: block; }
+  .version b { font-size: 28px; font-weight: 800; letter-spacing: -0.02em; color: var(--green-hover); }
+  .version span {
+    font-size: 17px; font-weight: 800; padding: 2px 10px; border-radius: 6px;
+    background: var(--lime); color: var(--green-hover);
+  }
+  h1 {
+    font-size: clamp(34px, 5vw, 52px);
+    line-height: 1.08; font-weight: 800; letter-spacing: -0.025em;
+    max-width: 18ch; margin: 0 auto;
+  }
+  h1 .accent { color: var(--green); }
+  .lede { margin: 24px auto 32px; font-size: 17.5px; color: var(--body); max-width: 60ch; }
+  .hero-actions { display: flex; align-items: center; justify-content: center; gap: 24px; flex-wrap: wrap; }
+  .hero-note { margin-top: 20px; font-size: 14px; color: var(--body); }
+
+  /* ---------- film ---------- */
+  #film { padding: 8px 0 64px; }
+  .film {
+    display: block; width: 100%; max-width: 1040px; margin: 0 auto;
+    border-radius: 14px; border: 1px solid var(--line);
+    box-shadow: var(--card-shadow); background: #00401c;
+    aspect-ratio: 16 / 9;
+  }
+  .chapters {
+    max-width: 1040px; margin: 16px auto 0;
+    display: flex; flex-wrap: wrap; gap: 8px; justify-content: center;
+  }
+  .chapters button {
+    font: 500 13px/1 var(--mono); letter-spacing: .02em;
+    color: var(--body); background: #fff;
+    border: 1px solid var(--line); border-radius: 999px;
+    padding: 8px 12px; cursor: pointer;
+    transition: border-color .2s, color .2s;
+  }
+  .chapters button:hover { border-color: var(--green); color: var(--green); }
+  .chapters button b { font-weight: 700; color: var(--green); margin-right: 4px; }
+
+  /* ---------- sections ---------- */
+  section { padding: 64px 0; }
+  section.soft { background: var(--bg-soft); border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+  .sec-head { max-width: 640px; margin-bottom: 48px; }
+  .sec-head .eyebrow { margin-bottom: 12px; }
+  h2 { font-size: clamp(24px, 3.2vw, 32px); font-weight: 800; letter-spacing: -0.02em; line-height: 1.15; }
+  .sec-head p { margin-top: 12px; color: var(--body); font-size: 17px; }
+
+  /* ---------- feature rows ---------- */
+  .features { display: flex; flex-direction: column; gap: 64px; }
+  .feature {
+    display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr);
+    gap: 48px; align-items: center;
+  }
+  .feature:nth-child(even) .still { order: 2; }
+  .still {
+    margin: 0; border-radius: 14px; overflow: hidden;
+    border: 1px solid var(--line); background: #fff;
+    box-shadow: var(--card-shadow);
+  }
+  .still img { display: block; width: 100%; height: auto; }
+  .feature .eyebrow { margin-bottom: 12px; }
+  .feature h3 { font-size: 24px; font-weight: 800; letter-spacing: -0.015em; line-height: 1.2; margin-bottom: 12px; }
+  .feature p { color: var(--body); font-size: 16px; }
+  .feature p + p { margin-top: 12px; }
+  .feature .needs { font-size: 14px; color: var(--body); }
+  .feature .textlink { margin-top: 16px; display: inline-block; font-size: 14.5px; }
+  @media (max-width: 860px) {
+    .feature { grid-template-columns: 1fr; gap: 24px; }
+    .feature:nth-child(even) .still { order: 0; }
+  }
+
+  /* ---------- the mark ---------- */
+  .mark-grid { display: grid; grid-template-columns: auto 1fr; gap: 48px; align-items: center; }
+  .mark-grid img { display: block; }
+  .mark-steps { display: flex; gap: 32px; flex-wrap: wrap; margin-top: 24px; }
+  .mark-steps div { font-size: 15px; color: var(--body); }
+  .mark-steps b { display: block; font-family: var(--mono); font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--green); font-weight: 500; margin-bottom: 4px; }
+  @media (max-width: 700px) { .mark-grid { grid-template-columns: 1fr; gap: 24px; } }
+
+  /* ---------- on your Mac ---------- */
+  .ledger { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+  .ledger .col { background: #fff; border: 1px solid var(--line); border-radius: 14px; padding: 24px; }
+  .ledger h3 { font-size: 16px; font-weight: 700; margin-bottom: 12px; display: flex; align-items: center; gap: 8px; }
+  .ledger h3 i { width: 24px; height: 3px; border-radius: 2px; display: inline-block; }
+  .ledger .local h3 i { background: var(--green); }
+  .ledger .out h3 i { background: #b9770e; }
+  .ledger ul { margin: 0; padding-left: 18px; color: var(--body); font-size: 15px; }
+  .ledger li + li { margin-top: 8px; }
+  .ledger .out h3 { color: var(--net-text); }
+  .ledger .local h3 { color: var(--green); }
+  @media (max-width: 760px) { .ledger { grid-template-columns: 1fr; } }
+
+  /* ---------- also in 1.0 ---------- */
+  .also { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px 32px; }
+  .also div { border-top: 1px solid var(--line); padding-top: 16px; }
+  .also h3 { font-size: 16px; font-weight: 700; margin-bottom: 4px; }
+  .also p { font-size: 14.5px; color: var(--body); }
+  @media (max-width: 860px) { .also { grid-template-columns: 1fr 1fr; } }
+  @media (max-width: 560px) { .also { grid-template-columns: 1fr; } }
+
+  /* ---------- get it ---------- */
+  .get { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+  .get .col { border: 1px solid var(--line); border-radius: 14px; padding: 24px; background: #fff; }
+  .get h3 { font-size: 17px; font-weight: 700; margin-bottom: 8px; }
+  .get p { color: var(--body); font-size: 15px; }
+  .get p + p { margin-top: 8px; }
+  .get .btn { margin-top: 16px; }
+  @media (max-width: 760px) { .get { grid-template-columns: 1fr; } }
+  .reqs { margin-top: 24px; font-size: 14px; color: var(--body); max-width: 72ch; }
+
+  /* ---------- cta ---------- */
+  .cta-band { text-align: center; }
+  .cta-band h2 { margin-bottom: 12px; }
+  .cta-band p { color: var(--body); font-size: 17px; max-width: 46ch; margin: 0 auto 32px; text-wrap: balance; }
+
+  footer { border-top: 1px solid var(--line); padding: 32px 0 40px; font-size: 14px; color: var(--body); }
+  footer a { color: var(--body); }
+  footer a:hover { color: var(--ink); }
+  .footer-inner { width: 100%; display: flex; justify-content: space-between; align-items: baseline; gap: 16px; flex-wrap: wrap; }
+  @media (max-width: 700px) { .footer-inner { justify-content: center; text-align: center; } }
+
+  html, body { overflow-x: clip; }
+  @media (max-width: 700px) {
+    .hero { padding: 48px 24px 32px; }
+    section { padding: 56px 0; }
+    .features { gap: 48px; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .btn:hover { transform: none; }
+    html { scroll-behavior: auto; }
+  }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="wrap nav-inner">
+    <a class="brand" href="index.html">
+      <img src="logo-mark.png" width="25" height="26" alt="">
+      <span>Greenroom</span>
+    </a>
+    <div class="nav-links">
+      <a href="index.html">Overview</a>
+      <a href="1.0.html" aria-current="page">What's new</a>
+      <a href="guide.html">Guide</a>
+      <a href="how-it-works.html">Privacy &amp; safety</a>
+      <a href="timeline.html">Timeline</a>
+      <a href="brand.html">Brand</a>
+    </div>
+    <div class="nav-cta">
+      <a class="gh" href="https://github.com/Sibhimanyu/greenroom">GitHub</a>
+      <a class="btn" href="https://github.com/Sibhimanyu/greenroom/releases/download/v0.9.6/Greenroom-0.9.6.dmg">Download</a>
+    </div>
+  </div>
+</nav>
+
+<header class="wrap hero">
+  <div class="version">
+    <img src="logo-mark.png" width="38" height="40" alt="">
+    <b>Greenroom</b><span>1.0</span>
+  </div>
+  <h1>Same one click. Now it's in the class <span class="accent">with you.</span></h1>
+  <p class="lede">Start still sets up the whole class: the camera, the Zoom meeting, and every window in its
+  place. Greenroom 1.0 is about what happens after the click. It finds the link while you are still
+  talking, follows your face from screen to screen, saves the moment nobody was recording, and, in
+  Screenroom, turns a student's talk into feedback they can see.</p>
+  <div class="hero-actions">
+    <a class="btn" href="https://github.com/Sibhimanyu/greenroom/releases/download/v0.9.6/Greenroom-0.9.6.dmg">Download for Mac</a>
+    <a class="textlink" href="#film">Watch the film <span class="arrow">→</span></a>
+  </div>
+  <p class="hero-note">Free and open source, for macOS 14 or later. Already have it? Menu bar → <strong>Check for Updates…</strong></p>
+</header>
+
+<section id="film">
+  <div class="wrap">
+    <video class="film" controls muted playsinline preload="metadata" poster="greenroom-1.0-poster.jpg">
+      <source src="greenroom-1.0-launch.mp4" type="video/mp4">
+      Your browser can't play this video. <a href="greenroom-1.0-launch.mp4">Download it instead</a>.
+    </video>
+    <div class="chapters" aria-label="Jump to a part of the film">
+      <button type="button" data-t="0"><b>0:00</b>One click</button>
+      <button type="button" data-t="11"><b>0:11</b>Cues</button>
+      <button type="button" data-t="15"><b>0:15</b>Camera switching</button>
+      <button type="button" data-t="18"><b>0:18</b>Clips</button>
+      <button type="button" data-t="22"><b>0:22</b>YouTube upload</button>
+      <button type="button" data-t="27"><b>0:27</b>Greenroom Browser</button>
+      <button type="button" data-t="31"><b>0:31</b>Screenroom</button>
+      <button type="button" data-t="45"><b>0:45</b>On your Mac</button>
+    </div>
+  </div>
+</section>
+
+<section class="soft" id="class">
+  <div class="wrap">
+    <div class="sec-head">
+      <span class="eyebrow">01 · In the class</span>
+      <h2>It listens, it watches which way you face, and it never misses the good bit</h2>
+      <p>Everything here runs while you teach, and none of it needs you to stop and click.</p>
+    </div>
+    <div class="features">
+
+      <div class="feature">
+        <figure class="still"><img src="release/cues.jpg" width="960" height="540" loading="lazy" alt="Cues in the film: the teacher says “the book we're reading is called Wonder”, the word lights up, and the book's page opens in Greenroom Browser."></figure>
+        <div>
+          <span class="eyebrow">Cues<span class="new">NEW</span></span>
+          <h3>Say it. The link is ready.</h3>
+          <p>Name a book, a video, a place or a person while you teach, and a card is waiting on
+          your reference display. <strong>Open</strong> puts it in the reading window without leaving the
+          page; <strong>Send</strong> drops the link in the class chat. It hears a thing however you name
+          it (“the book, <em>Wonder</em>”, “have you heard of…”) and searches for what you meant.</p>
+          <p>It listens with Apple's speech model, or with whisper, which is better at names. whisper
+          now sets itself up from Settings with one button. The links you used are kept with the class,
+          in a <strong>Links</strong> tab in Sessions.</p>
+          <p class="needs">Off by default. Needs macOS 26. Only the short search phrase leaves the Mac.</p>
+          <button class="textlink" type="button" data-t="11">Watch this part <span class="arrow">→</span></button>
+        </div>
+      </div>
+
+      <div class="feature">
+        <figure class="still"><img src="release/camera.jpg" width="960" height="540" loading="lazy" alt="Camera switching in the film: two camera windows; the live one shows the teacher turned away, with a bar filling for 1.6 seconds before the switch."></figure>
+        <div>
+          <span class="eyebrow">Camera switching<span class="new">NEW</span></span>
+          <h3>The class keeps your face when you turn.</h3>
+          <p>Two monitors, a camera on each; an iPhone can be one of them. Every chosen camera stays
+          open, and the class gets whichever one sees your face most head-on, once it has been clearly
+          better for about a second. Pick a hard cut or a short crossfade.</p>
+          <p>It reads which way your head points, not your eyes, so looking down at your notes switches
+          nothing. A bar over your self view fills while it waits; the class never sees it.</p>
+          <p class="needs">Off by default. Runs on the Mac with Apple's Vision.</p>
+          <button class="textlink" type="button" data-t="15">Watch this part <span class="arrow">→</span></button>
+        </div>
+      </div>
+
+      <div class="feature">
+        <figure class="still"><img src="release/clips.jpg" width="960" height="540" loading="lazy" alt="Clips in the film: the Sessions player with the last two minutes marked in lime and a new clip card beside it."></figure>
+        <div>
+          <span class="eyebrow">Clips</span>
+          <h3>Keep the good bit, even unrecorded.</h3>
+          <p>The best moments aren't planned. Press <kbd>⌥⌘1</kbd>, <kbd>⌥⌘2</kbd> or <kbd>⌥⌘5</kbd> and the
+          last one, two or five minutes become a clip, even if you weren't recording. The last five
+          minutes of the class are held in memory and written to disk only when you ask.</p>
+          <button class="textlink" type="button" data-t="18">Watch this part <span class="arrow">→</span></button>
+        </div>
+      </div>
+
+      <div class="feature">
+        <figure class="still"><img src="release/browser.jpg" width="960" height="540" loading="lazy" alt="Greenroom Browser in the film: three tabs from the last session, with the note “Reopened from your last session”."></figure>
+        <div>
+          <span class="eyebrow">Greenroom Browser</span>
+          <h3>Its own browser, and yesterday's tabs.</h3>
+          <p>Pick Greenroom Browser as the main app and the reading page opens in a window Greenroom
+          tiles itself, beside the Zoom tile and the chat. The tabs you had last session come back on the
+          next Start. Because Greenroom owns the window, it needs no Accessibility permission to place it.</p>
+          <button class="textlink" type="button" data-t="27">Watch this part <span class="arrow">→</span></button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<section id="after">
+  <div class="wrap">
+    <div class="sec-head">
+      <span class="eyebrow">02 · After the class</span>
+      <h2>Class over. It's filed, and it's on YouTube.</h2>
+    </div>
+    <div class="features">
+      <div class="feature">
+        <figure class="still"><img src="release/youtube.jpg" width="960" height="540" loading="lazy" alt="Sessions in the film: the class “Chapter 4” with its recording, two clips, transcript and a YouTube link, and a one-line summary written on the Mac."></figure>
+        <div>
+          <span class="eyebrow">YouTube upload · Sessions</span>
+          <h3>Uploaded, filed and summarised.</h3>
+          <p>Connect your channel and a finished recording can upload itself, unlisted or private, with
+          the link on your clipboard when it lands. Every class is kept in Sessions with its recording,
+          clips, transcript and links.</p>
+          <p>With a Cues transcript, one click writes a summary of the class on this Mac with Apple's
+          on-device model.</p>
+          <p class="needs">YouTube needs a Google Cloud client of your own, once; the <a href="guide.html">guide</a> walks through it. Summaries need macOS 26 with Apple Intelligence on.</p>
+          <button class="textlink" type="button" data-t="22">Watch this part <span class="arrow">→</span></button>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="soft" id="screenroom">
+  <div class="wrap">
+    <div class="sec-head">
+      <span class="eyebrow">03 · Screenroom<span class="new">NEW</span></span>
+      <h2>When class ends, Screenroom begins.</h2>
+      <p>Greenroom is the room you wait in before you go on. Screenroom is where you watch it back.
+      It is for when a student presents: record their talk, mark it as they speak, and hand them a
+      report they can see. It needs no meeting, no OBS and no Zoom account.</p>
+    </div>
+    <div class="features">
+
+      <div class="feature">
+        <figure class="still"><img src="release/screenroom.jpg" width="960" height="540" loading="lazy" alt="The Screenroom window in the film: a student presenting, with two timed notes, “0:12 Strong opening” and “0:31 Reading from notes”."></figure>
+        <div>
+          <span class="eyebrow">Record and mark</span>
+          <h3>Notes that land on the moment.</h3>
+          <p>A camera and a microphone, or a screen or window for a student presenting remotely. Type a
+          note while they talk: it is stamped at the moment you started typing, not when you pressed
+          Return, and it lands on the tape there. You can add more afterwards while watching it back.</p>
+          <button class="textlink" type="button" data-t="31">Watch this part <span class="arrow">→</span></button>
+        </div>
+      </div>
+
+      <div class="feature">
+        <figure class="still"><img src="release/report.jpg" width="960" height="540" loading="lazy" alt="A Screenroom report in the film: “What to work on” and “What went well”, with pacing at 134 words a minute on a gauge."></figure>
+        <div>
+          <span class="eyebrow">The report</span>
+          <h3>A report, one click after the talk.</h3>
+          <p>One <strong>Analyse</strong> button. Pace, filler words, pauses and how much they faced the
+          room are counted, not guessed, and sorted into what to work on and what went well. When your agent
+          writes the feedback, each point plays from its moment. <strong>Play without fillers</strong> lets them hear the talk
+          with every “um” skipped.</p>
+          <p>Export it as a PDF, or as the video with your notes drawn on it.</p>
+          <p class="needs">Filler words need whisper, which Settings → Screenroom installs for you.</p>
+          <button class="textlink" type="button" data-t="39">Watch this part <span class="arrow">→</span></button>
+        </div>
+      </div>
+
+      <div class="feature">
+        <figure class="still"><img src="release/trust.jpg" width="960" height="540" loading="lazy" alt="The film's trust frame: “Transcribed on your Mac. Analysed by the AI you choose.” The recording and transcript stay on the Mac; an arrow leads to “Your AI agent: Claude Code or Codex”."></figure>
+        <div>
+          <span class="eyebrow">The written feedback</span>
+          <h3>Written by the agent you already use.</h3>
+          <p>If you already use Claude Code or Codex, Screenroom can hand each presentation to it. The
+          agent reads the transcript, your notes, a still every 20 seconds and the counts. It never gets
+          the recording. This is off until you turn it on.</p>
+          <p>Without an agent, Apple's on-device model writes the feedback on macOS 26 with Apple
+          Intelligence. Without either, the report has the counts and your notes.</p>
+          <button class="textlink" type="button" data-t="45">Watch this part <span class="arrow">→</span></button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<section id="mac">
+  <div class="wrap">
+    <div class="sec-head">
+      <span class="eyebrow">04 · On your Mac</span>
+      <h2>Transcribed on your Mac. No cloud AI built in.</h2>
+      <p>Greenroom listens to your class and watches your camera, so here is exactly where each thing
+      goes. The <a href="how-it-works.html">Privacy &amp; safety page</a> draws every process and network call.</p>
+    </div>
+    <div class="ledger">
+      <div class="col local">
+        <h3><i></i>Stays on this Mac</h3>
+        <ul>
+          <li>Your microphone, and everything Cues and Screenroom transcribe from it.</li>
+          <li>Your camera frames, including the head-direction check for camera switching.</li>
+          <li>Recordings, clips, transcripts, summaries and Screenroom reports, in <span class="mono">~/Documents/Greenroom</span>.</li>
+          <li>The last five minutes held for clips, in memory until you ask.</li>
+        </ul>
+      </div>
+      <div class="col out">
+        <h3><i></i>Leaves only if you turn it on</h3>
+        <ul>
+          <li><strong>Cues</strong>: the short search phrase for each card, to Wikipedia, Google Books, Open Library and, if you allow it, YouTube. Each one is written to the log.</li>
+          <li><strong>YouTube upload</strong>: your own recording, to your own channel.</li>
+          <li><strong>Screenroom's agent</strong>: the transcript, notes and stills, to the agent you chose.</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="soft" id="mark">
+  <div class="wrap mark-grid">
+    <img src="brand/mark-colour.svg" width="120" height="125" alt="The Greenroom mark: a heavy green G whose right side is a person, with a lime square head and one arm raised.">
+    <div>
+      <span class="eyebrow">A new mark</span>
+      <h2 style="margin-top:12px">A teacher, ready for class.</h2>
+      <div class="mark-steps">
+        <div><b>A G.</b>One heavy stroke, the letter.</div>
+        <div><b>With a teacher in it.</b>A square head, a body the width of the stroke.</div>
+        <div><b>Arm up.</b>Raised to greet the room.</div>
+      </div>
+      <p style="margin-top:24px"><a class="textlink" href="brand.html">How the mark was made <span class="arrow">→</span></a></p>
+    </div>
+  </div>
+</section>
+
+<section id="also">
+  <div class="wrap">
+    <div class="sec-head">
+      <span class="eyebrow">05 · Also in 1.0</span>
+      <h2>The smaller things</h2>
+    </div>
+    <div class="also">
+      <div>
+        <h3>Presenter, on any Mac</h3>
+        <p>A webcam shape that turns the shared screen into a panel with you standing in front of it at full height. Needs a green screen, like Cutout.</p>
+      </div>
+      <div>
+        <h3>The main pane, any width</h3>
+        <p>One click for ½, ⅔ or ¾ of the screen, or drag the divider in the Layout schematic to any width between.</p>
+      </div>
+      <div>
+        <h3>whisper in one button</h3>
+        <p>No Terminal. Greenroom installs the program through Homebrew and downloads the model, with progress, for Cues and Screenroom alike.</p>
+      </div>
+      <div>
+        <h3>Greens and Screens</h3>
+        <p>Sessions keeps classes and presentations apart behind one toggle: All, Greens, Screens.</p>
+      </div>
+      <div>
+        <h3>Updates that wait for the bell</h3>
+        <p>Greenroom checks four times a day and never during a live class. Nothing installs without you pressing the button.</p>
+      </div>
+      <div>
+        <h3>Set up once, hand it on</h3>
+        <p>Every setting, including your rubric and agent command, exports as one file a colleague imports.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="soft" id="get">
+  <div class="wrap">
+    <div class="sec-head">
+      <span class="eyebrow">06 · Get it</span>
+      <h2>Greenroom 1.0. Available now.</h2>
+    </div>
+    <div class="get">
+      <div class="col">
+        <h3>New to Greenroom</h3>
+        <p>Download the disk image and drag Greenroom into Applications. It isn't notarized, so the
+        first open needs System Settings → Privacy &amp; Security → <strong>Open Anyway</strong>, once.</p>
+        <p>Then import the settings file from whoever set it up, and the built-in guide does the rest.</p>
+        <a class="btn" href="https://github.com/Sibhimanyu/greenroom/releases/download/v0.9.6/Greenroom-0.9.6.dmg">Download for Mac</a>
+      </div>
+      <div class="col">
+        <h3>Already have it</h3>
+        <p>Menu bar → <strong>Check for Updates…</strong>, then <strong>Install and Relaunch</strong>. Or
+        wait: Greenroom offers the update on its own, never in the middle of a class.</p>
+        <p>Your settings, sessions and recordings carry over.</p>
+        <p style="margin-top:16px"><a class="textlink" href="guide.html">The guide covers every button and setting <span class="arrow">→</span></a></p>
+      </div>
+    </div>
+    <p class="reqs">Needs macOS 14 or later and the free <a href="https://obsproject.com">OBS Studio</a>
+    for the class camera. Cues, class summaries and Screenroom's on-Mac feedback need macOS 26. Zoom
+    features need a one-time credentials file.</p>
+  </div>
+</section>
+
+<section class="cta-band">
+  <div class="wrap">
+    <h2>Set up. Teach. Watch it back.</h2>
+    <p>Everything after the click, free and open source, for macOS.</p>
+    <div class="hero-actions">
+      <a class="btn" href="https://github.com/Sibhimanyu/greenroom/releases/download/v0.9.6/Greenroom-0.9.6.dmg">Download for Mac</a>
+      <a class="textlink" href="https://github.com/Sibhimanyu/greenroom">View on GitHub <span class="arrow">→</span></a>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap footer-inner">
+    <span>Greenroom. Built for the morning readers at Zoho Schools.</span>
+    <span><a href="index.html">Overview</a> · <a href="guide.html">Guide</a> · <a href="how-it-works.html">Privacy &amp; safety</a> · <a href="timeline.html">Timeline</a> · <a href="brand.html">Brand</a> · <a href="https://github.com/Sibhimanyu/greenroom">GitHub</a> · <a href="https://github.com/Sibhimanyu/greenroom/releases">Releases</a></span>
+  </div>
+</footer>
+
+<script>
+(function () {
+  var video = document.querySelector(".film");
+  if (!video) return;
+  // Chapter buttons and "Watch this part" jump the film to that moment.
+  document.querySelectorAll("[data-t]").forEach(function (b) {
+    b.addEventListener("click", function () {
+      video.currentTime = parseFloat(b.getAttribute("data-t")) || 0;
+      video.scrollIntoView({ behavior: "smooth", block: "center" });
+      video.play().catch(function () {});
+    });
+  });
+  if (!("IntersectionObserver" in window)) return;
+  if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  // Muted autoplay while at least half the player is on screen, as on the
+  // Overview page; the controls are right there to unmute.
+  new IntersectionObserver(function (entries) {
+    entries.forEach(function (entry) {
+      if (entry.intersectionRatio >= 0.5) video.play().catch(function () {});
+      else video.pause();
+    });
+  }, { threshold: [0, 0.5] }).observe(video);
+})();
+</script>
+<script src="download-link.js" defer></script>
+</body>
+</html>

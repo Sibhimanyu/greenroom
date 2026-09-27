@@ -2,10 +2,15 @@
 //  WhisperSetupRows.swift
 //  Greenroom
 //
-//  The rows that get whisper working, for any Form that needs it: the setup
+//  One row that gets whisper working, for any Form that needs it: the setup
 //  guide's Cues and Screenroom pages, Settings → Cues and Settings →
-//  Screenroom. They show only what is missing - the program, then the model -
-//  and nothing once both are there. See WhisperInstaller.
+//  Screenroom. One line, one button, one progress bar - whatever is missing
+//  is done in order behind it. Nothing shows once whisper works. See
+//  WhisperInstaller.
+//
+//  It was two rows (the program, then a model) over a list of every model with
+//  a paragraph and a curl command each. The teacher's question is only "can
+//  this listen properly?", so that is the only question the row answers.
 //
 import SwiftUI
 
@@ -19,69 +24,45 @@ struct WhisperSetupRows: View {
         // Read through the revision so a change on disk redraws this.
         let _ = installer.revision
         Group {
-            if case .failed(let why) = installer.phase {
+            if !installer.isReady {
                 LabeledContent {
-                    Button("Try again") { retry() }
+                    control
                 } label: {
-                    SettingLabel(title: "Whisper setup stopped", subtitle: why)
+                    SettingLabel(title: "Whisper", subtitle: subtitle)
                 }
-            }
-            if !installer.hasProgram {
-                programRow
-            } else if !installer.hasModel {
-                modelRow
             }
         }
         .onChange(of: installer.revision) { _ in onChange() }
     }
 
-    private var programRow: some View {
-        LabeledContent {
-            if case .installingProgram = installer.phase {
-                ProgressView().controlSize(.small)
-            } else if WhisperInstaller.homebrew != nil {
-                Button("Install whisper") { installer.installProgram() }
-            } else {
-                HStack(spacing: 8) {
-                    Link("Get Homebrew", destination: URL(string: "https://brew.sh")!)
-                    Button("Look again") { installer.noteChange() }
-                }
+    @ViewBuilder private var control: some View {
+        switch installer.phase {
+        case .installingProgram:
+            ProgressView().controlSize(.small)
+        case .downloading(_, let fraction, _):
+            HStack(spacing: 8) {
+                ProgressView(value: fraction).frame(width: 110)
+                Button("Cancel") { installer.cancel() }.controlSize(.small)
             }
-        } label: {
-            SettingLabel(title: "Whisper isn\u{2019}t installed",
-                         subtitle: programSubtitle)
+        default:
+            if !installer.hasProgram, WhisperInstaller.homebrew == nil {
+                Link("Get Homebrew first", destination: URL(string: "https://brew.sh")!)
+            } else {
+                Button(installer.phase == .idle ? "Set up whisper" : "Try again") { installer.setUp() }
+            }
         }
     }
 
-    private var programSubtitle: String {
-        if case .installingProgram(let line) = installer.phase { return line }
-        return WhisperInstaller.homebrew != nil
-            ? "Hears names and counts filler words, on this Mac. Installed with Homebrew, one press."
-            : "Hears names and counts filler words, on this Mac. It installs with Homebrew, which this Mac does not have yet."
-    }
-
-    private var modelRow: some View {
-        LabeledContent {
-            if case .downloading(_, let fraction, _) = installer.phase {
-                HStack(spacing: 8) {
-                    ProgressView(value: fraction).frame(width: 110)
-                    Button("Cancel") { installer.cancel() }.controlSize(.small)
-                }
-            } else {
-                Button("Download (465 MB)") { installer.download() }
+    private var subtitle: String {
+        switch installer.phase {
+        case .installingProgram(let line): return "Installing\u{2026} \(line)"
+        case .downloading(_, _, let detail): return "Downloading the model \u{00B7} \(detail)"
+        case .failed(let why): return why
+        default:
+            if !installer.hasProgram, WhisperInstaller.homebrew == nil {
+                return "Hears names properly and counts filler words, on this Mac. It installs with Homebrew, which this Mac doesn\u{2019}t have yet; come back after."
             }
-        } label: {
-            SettingLabel(title: "Whisper needs a model",
-                         subtitle: modelSubtitle)
+            return "Hears names properly and counts filler words, on this Mac. One press: about 465 MB, once."
         }
-    }
-
-    private var modelSubtitle: String {
-        if case .downloading(_, _, let detail) = installer.phase { return "Downloading \u{00B7} \(detail)" }
-        return "Multilingual small: the one tested best on accented English. Downloaded once, into Greenroom\u{2019}s folder."
-    }
-
-    private func retry() {
-        if !installer.hasProgram { installer.installProgram() } else { installer.download() }
     }
 }

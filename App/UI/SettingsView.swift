@@ -107,10 +107,14 @@ private struct WebcamSettingsTab: View {
             // 400pt preview in a 730pt window, and the person who asked for
             // the feature could not find it. Which camera comes before what
             // shape the camera is cut into anyway.
-            CameraSwitchSection()
+            Section {
+                CameraSwitchSection()
+            } header: { Text("Camera switching") }
 
-            Divider()
-
+            // Grouped like every other tab. It was the one tab on a plain Form
+            // with Dividers and its own padding, so its rows did not line up
+            // with the rest of Settings and the tab did not scroll the same way.
+            Section {
             Picker("Bubble shape", selection: $coordinator.webcamShape) {
                 ForEach(WebcamShape.allCases) { shape in
                     Text(shape.label).tag(shape)
@@ -189,9 +193,9 @@ private struct WebcamSettingsTab: View {
             if isAdjustable {
                 placementControls
             }
+            } header: { Text("How you appear") }
 
-            Divider()
-
+            Section {
             Toggle(isOn: $coordinator.clipBufferEnabled) {
                 SettingLabel(title: "Keep the last 5 minutes clippable",
                              subtitle: "\u{2325}\u{2318}1 / 2 / 5 save the last minutes as a clip, recording or not. About 300 MB in memory, never on disk until you press.")
@@ -204,8 +208,9 @@ private struct WebcamSettingsTab: View {
                 SettingLabel(title: "Keep OBS ready in the background",
                              subtitle: "Start skips OBS\u{2019}s cold launch. OBS still quits with Greenroom.")
             }
+            } header: { Text("Recording") }
         }
-        .padding(20)
+        .formStyle(.grouped)
     }
 
     /// Numbers and a hint, under the preview.

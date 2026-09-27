@@ -64,6 +64,20 @@ final class WhisperInstaller: NSObject, ObservableObject {
         revision += 1
     }
 
+    /// The one button: whatever is missing, in order. The program first if
+    /// it is not here, then the recommended model.
+    func setUp() {
+        guard !isBusy else { return }
+        if !hasProgram {
+            downloadAfterProgram = true
+            installProgram()
+        } else if !hasModel {
+            download()
+        }
+    }
+
+    private var downloadAfterProgram = false
+
     // MARK: The program
 
     func installProgram() {
@@ -104,7 +118,12 @@ final class WhisperInstaller: NSObject, ObservableObject {
                 self.noteChange()
                 if status == 0, self.hasProgram {
                     self.phase = .idle
+                    if self.downloadAfterProgram, !self.hasModel {
+                        self.downloadAfterProgram = false
+                        self.download()
+                    }
                 } else {
+                    self.downloadAfterProgram = false
                     self.phase = .failed("Homebrew could not install whisper (exit \(status)). Run \u{201C}brew install whisper-cpp\u{201D} in Terminal to see why.")
                 }
             }

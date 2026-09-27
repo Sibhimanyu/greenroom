@@ -37,7 +37,7 @@ struct ScreenroomSettingsTab: View {
                     SettingLabel(title: "Transcriber",
                                  subtitle: whisperReady
                                  ? "Verbatim, on this Mac. Filler words can be counted."
-                                 : "Apple's recogniser tidies speech up, so filler words are not counted.")
+                                 : "Apple\u{2019}s, until whisper is set up. It tidies speech, so filler words are not counted.")
                 }
 
                 // The program and a first model, as buttons, when either is
@@ -49,42 +49,18 @@ struct ScreenroomSettingsTab: View {
                         subtitle: "Multilingual beats English-only on accents, even at the same size. Shared with Cues.")
                 }
 
-                DisclosureGroup("Add another model") {
-                    VStack(alignment: .leading, spacing: 10) {
-                        ForEach(ScreenroomWhisper.offeredModels, id: \.name) { offer in
-                            VStack(alignment: .leading, spacing: 3) {
-                                HStack(spacing: 6) {
-                                    Text(offer.name.replacingOccurrences(of: "ggml-", with: "")
-                                        .replacingOccurrences(of: ".bin", with: ""))
-                                        .font(.caption.weight(.medium))
-                                    Text(offer.size).font(.caption2).foregroundStyle(.tertiary)
-                                    if models.contains(where: { $0.url.lastPathComponent == offer.name }) {
-                                        Text("installed").font(.caption2).foregroundStyle(Brand.text)
-                                    }
-                                }
-                                Text(offer.note).font(.caption2).foregroundStyle(.secondary)
-                                if !models.contains(where: { $0.url.lastPathComponent == offer.name }) {
-                                    if case .downloading(let model, let fraction, let detail) = installer.phase, model == offer.name {
-                                        HStack(spacing: 8) {
-                                            ProgressView(value: fraction).frame(width: 110)
-                                            Text(detail).font(.caption2).foregroundStyle(.secondary)
-                                            Button("Cancel") { installer.cancel() }.controlSize(.small)
-                                        }
-                                    } else {
-                                        Button("Download (\(offer.size))") { installer.download(offer.name) }
-                                            .controlSize(.small)
-                                            .disabled(installer.isBusy)
-                                    }
-                                }
+                // Other sizes, only once whisper works, one line each. It was
+                // a paragraph and a curl command per model, which read as a
+                // manual rather than a choice.
+                if whisperReady {
+                    DisclosureGroup("Other models") {
+                        VStack(alignment: .leading, spacing: 8) {
+                            ForEach(ScreenroomWhisper.offeredModels, id: \.name) { offer in
+                                modelLine(offer.name, size: offer.size)
                             }
                         }
-                        Button("Look again") {
-                            installer.noteChange()
-                            refresh()
-                        }
-                        .controlSize(.small)
+                        .padding(.top, 4)
                     }
-                    .padding(.top, 4)
                 }
             } header: {
                 Text("Speech")
@@ -101,12 +77,12 @@ struct ScreenroomSettingsTab: View {
                 if agent.enabled {
                     Picker(selection: Binding(get: { agent.kind }, set: { kind in
                         agent.kind = kind
-                        // Only replace a command the teacher has not edited.
-                        if kind != .custom,
-                           ScreenroomAgentSettings.Kind.allCases.map(\.defaultCommand)
-                            .contains(agent.command) {
-                            agent.command = kind.defaultCommand
-                        }
+                        // A named agent always brings its own command back.
+                        // It used to keep an edited command across a switch,
+                        // so a slip in the Claude Code line followed the
+                        // teacher to Codex. Only "a command of my own" keeps
+                        // what was typed, because that is the point of it.
+                        if kind != .custom { agent.command = kind.defaultCommand }
                         agent.save()
                     })) {
                         ForEach(ScreenroomAgentSettings.Kind.allCases) { Text($0.label).tag($0) }
@@ -122,6 +98,18 @@ struct ScreenroomSettingsTab: View {
                         .textFieldStyle(.roundedBorder)
                         .font(.system(size: 10, design: .monospaced))
                         .lineLimit(1...4)
+                    if agent.kind != .custom, agent.command != agent.kind.defaultCommand {
+                        HStack {
+                            Text("Edited from the \(agent.kind.label) default.")
+                                .font(.caption).foregroundStyle(.secondary)
+                            Spacer()
+                            Button("Revert to default") {
+                                agent.command = agent.kind.defaultCommand
+                                agent.save()
+                            }
+                            .controlSize(.small)
+                        }
+                    }
                 }
             } header: {
                 Text("Your agent")
@@ -156,6 +144,35 @@ struct ScreenroomSettingsTab: View {
         }
         return "Off. \(why), so the report has the counts and your notes, with no written feedback. Turn on an agent to have it written."
     }
+
+    /// One model: what it is in a few words, and a button or a tick.
+    @ViewBuilder
+    private func modelLine(_ name: String, size: String) -> some View {
+        let installed = models.contains { $0.url.lastPathComponent == name }
+        HStack(spacing: 8) {
+            Text(Self.shortName[name] ?? name).font(.callout)
+            Text(size).font(.caption).foregroundStyle(.tertiary)
+            Spacer()
+            if installed {
+                Label("Installed", systemImage: "checkmark.circle.fill")
+                    .labelStyle(.titleAndIcon).font(.caption).foregroundStyle(Brand.text)
+            } else if case .downloading(let model, let fraction, _) = installer.phase, model == name {
+                ProgressView(value: fraction).frame(width: 90)
+                Button("Cancel") { installer.cancel() }.controlSize(.small)
+            } else {
+                Button("Download") { installer.download(name) }
+                    .controlSize(.small)
+                    .disabled(installer.isBusy)
+            }
+        }
+    }
+
+    private static let shortName: [String: String] = [
+        "ggml-small.bin": "Small, multilingual (recommended)",
+        "ggml-medium.bin": "Medium, multilingual: better, three times slower",
+        "ggml-base.en.bin": "Base, English only: fast, weak on accents",
+        "ggml-small.en.bin": "Small, English only",
+    ]
 
     private func refresh() {
         transcriber = ScreenroomTranscriberSettings.load()

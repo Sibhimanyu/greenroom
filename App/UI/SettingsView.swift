@@ -1149,6 +1149,8 @@ private struct CameraSwitchSection: View {
 }
 
 private struct LayoutSettingsTab: View {
+    /// Half, two thirds, three quarters - what the fixed widths used to be.
+    private static let widthPresets: [Double] = [0.5, 2.0 / 3.0, 0.75]
     @EnvironmentObject private var coordinator: CoordinatorController
     @FocusState private var focus: LayoutSettingsFocus?
     @State private var apps: [AppInfo] = []
@@ -1221,13 +1223,31 @@ private struct LayoutSettingsTab: View {
                 }
                 .pickerStyle(.segmented)
 
+                // Presets AND the drag, not one instead of the other. The fixed
+                // widths were replaced by the drag handles in August, which made
+                // any width possible and the three common ones fiddly: getting
+                // exactly half by hand is a hunt for a pixel. A width the handles
+                // left somewhere else simply has no segment lit.
+                Picker("Main pane width", selection: Binding(
+                    get: { Self.widthPresets.first { abs($0 - coordinator.workspaceLayout.clampedMainFraction) < 0.005 } ?? -1 },
+                    set: { fraction in
+                        withAnimation(.snappy(duration: 0.25)) {
+                            coordinator.workspaceLayout.mainFraction = fraction
+                        }
+                    })) {
+                    Text("\u{00BD}").tag(0.5)
+                    Text("\u{2154}").tag(2.0 / 3.0)
+                    Text("\u{00BE}").tag(0.75)
+                }
+                .pickerStyle(.segmented)
+
                 LayoutSchematicView(layout: $coordinator.workspaceLayout,
                                     appName: coordinator.mainAppDisplayName,
                                     appIcon: AppCatalog.icon(forBundleID: coordinator.mainAppBundleID))
                     .frame(height: 140)
                     .padding(.vertical, 4)
 
-                Text("Drag the handles to size the panes. A live session re-tiles on Snap Windows Back (\u{2325}\u{2318}S).")
+                Text("Pick a width or drag the handles to size the panes. A live session re-tiles as you change it.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

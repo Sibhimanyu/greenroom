@@ -237,11 +237,12 @@ every change:
     the browser window when the session ends** (off by default) makes End Session
     close it too — tabs are kept for the next Start. Pick
     Chrome (or any other browser) instead when you need extensions.
-- **Main pane width** — ½, ⅔, or ¾ of the screen — and which **side** it
-  sits on. The side column is whatever's left.
+- **Main pane width** — one click for ½, ⅔, or ¾ of the screen, or drag the
+  divider in the schematic to any width from 35% to 85% — and which **side**
+  it sits on. The side column is whatever's left.
 - **Side column** — toggles for the **Zoom meeting tile** and the **chat
-  window**, plus a slider for how much of the column's height the Zoom
-  tile takes (the chat gets the rest; a lone occupant takes the whole
+  window**, plus a handle in the schematic for how much of the column's
+  height the Zoom tile takes (the chat gets the rest; a lone occupant takes the whole
   column). Toggle one off and it simply isn't tiled — the window stays
   wherever it is.
 - **Open the main app automatically on Start** — the opt-out for the

@@ -67,7 +67,9 @@
   .nav-cta .gh:hover { color: var(--ink); }
   @media (max-width: 760px) {
     .nav-inner { flex-wrap: wrap; height: auto; padding: 10px 24px 12px; row-gap: 8px; }
-    .nav-links { order: 3; width: 100%; gap: 4px 20px; margin: 0; flex-wrap: wrap; }
+    .nav-links { order: 3; width: calc(100% + 48px); margin: 0 -24px; padding: 0 16px; gap: 0; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+    .nav-links::-webkit-scrollbar { display: none; }
+    .nav-links a { flex: none; padding: 10px 8px; white-space: nowrap; }
     .nav-cta { margin-left: auto; }
     .nav-cta .gh { display: none; }
   }
@@ -187,6 +189,25 @@
   .footer-inner { width: 100%; display: flex; justify-content: space-between; align-items: baseline; gap: 16px; flex-wrap: wrap; }
   @media (max-width: 700px) { .footer-inner { justify-content: center; text-align: center; } }
   @media (prefers-reduced-motion: reduce) { .btn:hover { transform: none; } html { scroll-behavior: auto; } }
+  /* ---------- phones (shared by every page) ---------- */
+  footer a { display: inline-block; padding: 6px 2px; }
+  .film:fullscreen, .intro-video:fullscreen { border: 0; border-radius: 0; box-shadow: none; background: #000; }
+  .film:-webkit-full-screen, .intro-video:-webkit-full-screen { border: 0; border-radius: 0; box-shadow: none; background: #000; }
+  /* A table of three or more columns becomes one card per row on a phone:
+     the first cell is the title, each other cell is labelled with its column. */
+  @media (max-width: 640px) {
+    table.stack thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+    table.stack, table.stack tbody, table.stack tr, table.stack td { display: block; width: auto; }
+    table.stack tr { padding: 12px 16px; border-bottom: 1px solid #eaecf0; }
+    table.stack tr:last-child { border-bottom: 0; }
+    table.stack td { padding: 2px 0; border: 0; white-space: normal; text-align: left; }
+    table.stack td:first-child { color: #101828; font-weight: 600; padding-bottom: 4px; }
+    table.stack td + td[data-label]::before {
+      content: attr(data-label); display: block; margin-top: 8px;
+      font: 700 11px/1.4 ui-monospace, "SF Mono", Menlo, monospace;
+      letter-spacing: .06em; text-transform: uppercase; color: #475467;
+    }
+  }
 </style>
 </head>
 <body>
@@ -392,16 +413,16 @@
       <p>Two voices, on purpose. Prose is the human speaking, in the Mac's own face. Mono is the machine: paths, ports, versions, anything you could paste into a terminal.</p>
     </div>
     <div class="table-scroll">
-      <table>
+      <table class="stack">
         <thead><tr><th>Role</th><th>Size</th><th>Weight</th><th>Tracking</th><th>Line height</th></tr></thead>
         <tbody>
-          <tr><td><strong>h1</strong></td><td>30 to 46 px</td><td>800</td><td>−0.025em</td><td>1.1</td></tr>
-          <tr><td><strong>h2</strong></td><td>24 to 32 px</td><td>800</td><td>−0.02em</td><td>1.15</td></tr>
-          <tr><td><strong>h3</strong></td><td>15.5 to 17 px</td><td>700</td><td>0</td><td>1.3</td></tr>
-          <tr><td><strong>Lede</strong></td><td>17.5 px</td><td>400</td><td>0</td><td>1.6</td></tr>
-          <tr><td><strong>Body</strong></td><td>16 px</td><td>400</td><td>0</td><td>1.6</td></tr>
-          <tr><td><strong>Caption</strong></td><td>14.5 px</td><td>400</td><td>0</td><td>1.5</td></tr>
-          <tr><td><strong>Eyebrow</strong></td><td>10 to 13.5 px, mono, uppercase</td><td>700</td><td>0.08em</td><td>1.4</td></tr>
+          <tr><td data-label="Role"><strong>h1</strong></td><td data-label="Size">30 to 46 px</td><td data-label="Weight">800</td><td data-label="Tracking">−0.025em</td><td data-label="Line height">1.1</td></tr>
+          <tr><td data-label="Role"><strong>h2</strong></td><td data-label="Size">24 to 32 px</td><td data-label="Weight">800</td><td data-label="Tracking">−0.02em</td><td data-label="Line height">1.15</td></tr>
+          <tr><td data-label="Role"><strong>h3</strong></td><td data-label="Size">15.5 to 17 px</td><td data-label="Weight">700</td><td data-label="Tracking">0</td><td data-label="Line height">1.3</td></tr>
+          <tr><td data-label="Role"><strong>Lede</strong></td><td data-label="Size">17.5 px</td><td data-label="Weight">400</td><td data-label="Tracking">0</td><td data-label="Line height">1.6</td></tr>
+          <tr><td data-label="Role"><strong>Body</strong></td><td data-label="Size">16 px</td><td data-label="Weight">400</td><td data-label="Tracking">0</td><td data-label="Line height">1.6</td></tr>
+          <tr><td data-label="Role"><strong>Caption</strong></td><td data-label="Size">14.5 px</td><td data-label="Weight">400</td><td data-label="Tracking">0</td><td data-label="Line height">1.5</td></tr>
+          <tr><td data-label="Role"><strong>Eyebrow</strong></td><td data-label="Size">10 to 13.5 px, mono, uppercase</td><td data-label="Weight">700</td><td data-label="Tracking">0.08em</td><td data-label="Line height">1.4</td></tr>
         </tbody>
       </table>
     </div>
@@ -448,20 +469,20 @@
       <p>The brand's decisions and the reasons behind them, oldest first. The full log, including every product decision, lives in <a href="https://github.com/Sibhimanyu/greenroom/blob/main/DESIGN.md#decisions-log">DESIGN.md</a>.</p>
     </div>
     <div class="table-scroll">
-      <table>
+      <table class="stack">
         <thead><tr><th>Date</th><th>Decision</th><th>Why</th></tr></thead>
         <tbody>
-          <tr><td class="date">2026-08-18</td><td><strong>Codify the shipped system instead of inventing a new one</strong></td><td>Two live pages and a shipped app already shared a coherent language. A rebrand would have orphaned all three.</td></tr>
-          <tr><td class="date">2026-08-18</td><td><strong>The brand greens become a two-role pair</strong></td><td>Four unrelated greens existed across the site, the app and the logo. The logo already paired a deep green with a lime highlight; splitting them by role also fixed link contrast.</td></tr>
-          <tr><td class="date">2026-08-18</td><td><strong>Lime is barred from text</strong></td><td>It measures 2.25:1 on white, failing at every text size. It is safe as a fill.</td></tr>
-          <tr><td class="date">2026-08-18</td><td><strong>Keep the system font</strong></td><td>This is a Mac utility, so SF reads as native to the platform the product ships on, not as a skipped typography decision.</td></tr>
-          <tr><td class="date">2026-08-18</td><td><strong>Mono becomes the eyebrow's voice</strong></td><td>A typographic signature without leaving the platform font, and it matches the technical honesty of the privacy page.</td></tr>
-          <tr><td class="date">2026-09-24</td><td><strong>A new mark: one G with the teacher in it</strong></td><td>The old mark was a gradient cascade of panes into a device, which broke the brand's own "no gradients" rule. The new one is flat, built on one unit, and survives at 16 px with its own small-size artwork.</td></tr>
-          <tr><td class="date">2026-09-24</td><td><strong>Rejected: anything that reads as two letters</strong></td><td>A head on a narrow body beside a G read as "Ei", and later "Gi". A body dropping below the base read as "Gj". The chosen mark keeps the person inside one shape.</td></tr>
-          <tr><td class="date">2026-09-24</td><td><strong>The raised arm, not the level one</strong></td><td>The designer moved the head into the G's mouth and raised the arm from the shoulder by hand. It gave the figure life without breaking the letter, and it became the final.</td></tr>
-          <tr><td class="date">2026-09-24</td><td><strong>The name in one deep green, always in full</strong></td><td>The old two-tone name set "Green" in lime, which fails as text. The mark never replaces the name's G.</td></tr>
-          <tr><td class="date">2026-09-24</td><td><strong>The app accent stays #5FA83C</strong></td><td>Tried in the app, the logo's lime as the tint turned every button, field and link bright lime, which read as highlighter rather than brand.</td></tr>
-          <tr><td class="date">2026-09-24</td><td><strong>Neutral secondary buttons</strong></td><td>Under the green tint, secondary buttons drew a mint wash in light mode and competed with Start. Start is now the one green button.</td></tr>
+          <tr><td class="date" data-label="Date">2026-08-18</td><td data-label="Decision"><strong>Codify the shipped system instead of inventing a new one</strong></td><td data-label="Why">Two live pages and a shipped app already shared a coherent language. A rebrand would have orphaned all three.</td></tr>
+          <tr><td class="date" data-label="Date">2026-08-18</td><td data-label="Decision"><strong>The brand greens become a two-role pair</strong></td><td data-label="Why">Four unrelated greens existed across the site, the app and the logo. The logo already paired a deep green with a lime highlight; splitting them by role also fixed link contrast.</td></tr>
+          <tr><td class="date" data-label="Date">2026-08-18</td><td data-label="Decision"><strong>Lime is barred from text</strong></td><td data-label="Why">It measures 2.25:1 on white, failing at every text size. It is safe as a fill.</td></tr>
+          <tr><td class="date" data-label="Date">2026-08-18</td><td data-label="Decision"><strong>Keep the system font</strong></td><td data-label="Why">This is a Mac utility, so SF reads as native to the platform the product ships on, not as a skipped typography decision.</td></tr>
+          <tr><td class="date" data-label="Date">2026-08-18</td><td data-label="Decision"><strong>Mono becomes the eyebrow's voice</strong></td><td data-label="Why">A typographic signature without leaving the platform font, and it matches the technical honesty of the privacy page.</td></tr>
+          <tr><td class="date" data-label="Date">2026-09-24</td><td data-label="Decision"><strong>A new mark: one G with the teacher in it</strong></td><td data-label="Why">The old mark was a gradient cascade of panes into a device, which broke the brand's own "no gradients" rule. The new one is flat, built on one unit, and survives at 16 px with its own small-size artwork.</td></tr>
+          <tr><td class="date" data-label="Date">2026-09-24</td><td data-label="Decision"><strong>Rejected: anything that reads as two letters</strong></td><td data-label="Why">A head on a narrow body beside a G read as "Ei", and later "Gi". A body dropping below the base read as "Gj". The chosen mark keeps the person inside one shape.</td></tr>
+          <tr><td class="date" data-label="Date">2026-09-24</td><td data-label="Decision"><strong>The raised arm, not the level one</strong></td><td data-label="Why">The designer moved the head into the G's mouth and raised the arm from the shoulder by hand. It gave the figure life without breaking the letter, and it became the final.</td></tr>
+          <tr><td class="date" data-label="Date">2026-09-24</td><td data-label="Decision"><strong>The name in one deep green, always in full</strong></td><td data-label="Why">The old two-tone name set "Green" in lime, which fails as text. The mark never replaces the name's G.</td></tr>
+          <tr><td class="date" data-label="Date">2026-09-24</td><td data-label="Decision"><strong>The app accent stays #5FA83C</strong></td><td data-label="Why">Tried in the app, the logo's lime as the tint turned every button, field and link bright lime, which read as highlighter rather than brand.</td></tr>
+          <tr><td class="date" data-label="Date">2026-09-24</td><td data-label="Decision"><strong>Neutral secondary buttons</strong></td><td data-label="Why">Under the green tint, secondary buttons drew a mint wash in light mode and competed with Start. Start is now the one green button.</td></tr>
         </tbody>
       </table>
     </div>
@@ -495,5 +516,14 @@
 </footer>
 
 <script src="download-link.js" defer></script>
+<script>
+// On a phone the nav is one swipeable row; start it at the current page.
+(function () {
+  var cur = document.querySelector(".nav-links [aria-current]");
+  if (!cur) return;
+  var row = cur.parentElement;
+  if (row.scrollWidth > row.clientWidth) row.scrollLeft = cur.offsetLeft - (row.clientWidth - cur.offsetWidth) / 2;
+})();
+</script>
 </body>
 </html>

@@ -67,7 +67,9 @@
   .nav-cta .gh:hover { color: var(--ink); }
   @media (max-width: 760px) {
     .nav-inner { flex-wrap: wrap; height: auto; padding: 10px 24px 12px; row-gap: 8px; }
-    .nav-links { order: 3; width: 100%; gap: 4px 20px; margin: 0; flex-wrap: wrap; }
+    .nav-links { order: 3; width: calc(100% + 48px); margin: 0 -24px; padding: 0 16px; gap: 0; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+    .nav-links::-webkit-scrollbar { display: none; }
+    .nav-links a { flex: none; padding: 10px 8px; white-space: nowrap; }
     .nav-cta { margin-left: auto; }
     .nav-cta .gh { display: none; }
   }
@@ -182,7 +184,7 @@
   .rel .card p { font-size: 14.5px; color: var(--body); max-width: 66ch; }
   .rel .card p strong { color: var(--ink); font-weight: 600; }
   .tag {
-    display: inline-block; font-size: 10.5px; font-weight: 800; letter-spacing: .05em; text-transform: uppercase;
+    display: inline-block; font-size: 11px; font-weight: 800; letter-spacing: .05em; text-transform: uppercase;
     padding: 3px 8px; border-radius: 999px; margin-bottom: 8px; vertical-align: middle;
   }
   .tag.new { background: var(--green-soft); color: var(--green); }
@@ -212,6 +214,25 @@
   .footer-inner { width: 100%; display: flex; justify-content: space-between; align-items: baseline; gap: 16px; flex-wrap: wrap; }
   @media (max-width: 700px) { .footer-inner { justify-content: center; text-align: center; } }
   @media (prefers-reduced-motion: reduce) { .btn:hover { transform: none; } html { scroll-behavior: auto; } }
+  /* ---------- phones (shared by every page) ---------- */
+  footer a { display: inline-block; padding: 6px 2px; }
+  .film:fullscreen, .intro-video:fullscreen { border: 0; border-radius: 0; box-shadow: none; background: #000; }
+  .film:-webkit-full-screen, .intro-video:-webkit-full-screen { border: 0; border-radius: 0; box-shadow: none; background: #000; }
+  /* A table of three or more columns becomes one card per row on a phone:
+     the first cell is the title, each other cell is labelled with its column. */
+  @media (max-width: 640px) {
+    table.stack thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+    table.stack, table.stack tbody, table.stack tr, table.stack td { display: block; width: auto; }
+    table.stack tr { padding: 12px 16px; border-bottom: 1px solid #eaecf0; }
+    table.stack tr:last-child { border-bottom: 0; }
+    table.stack td { padding: 2px 0; border: 0; white-space: normal; text-align: left; }
+    table.stack td:first-child { color: #101828; font-weight: 600; padding-bottom: 4px; }
+    table.stack td + td[data-label]::before {
+      content: attr(data-label); display: block; margin-top: 8px;
+      font: 700 11px/1.4 ui-monospace, "SF Mono", Menlo, monospace;
+      letter-spacing: .06em; text-transform: uppercase; color: #475467;
+    }
+  }
 </style>
 </head>
 <body>
@@ -362,29 +383,29 @@
     <details class="table">
       <summary>Data table: every release, with commits and lines</summary>
       <div class="table-scroll">
-        <table>
+        <table class="stack">
           <thead><tr><th>Version</th><th>Published</th><th class="num">Commits</th><th class="num">Swift lines</th><th>Headline</th></tr></thead>
           <tbody>
-            <tr><td><span class="mono">0.1.0</span></td><td>Aug 6, 05:47</td><td class="num">1</td><td class="num">4,274</td><td>First packaged build</td></tr>
-            <tr><td><span class="mono">0.2.0</span></td><td>Aug 6, 15:15</td><td class="num">39</td><td class="num">5,989</td><td>Most of the app</td></tr>
-            <tr><td><span class="mono">0.2.1</span></td><td>Aug 6, 16:37</td><td class="num">4</td><td class="num">6,020</td><td>Clean quit</td></tr>
-            <tr><td><span class="mono">0.3.0</span></td><td>Aug 7, 12:21</td><td class="num">7</td><td class="num">6,041</td><td>Never launched</td></tr>
-            <tr><td><span class="mono">0.3.1</span></td><td>Aug 9, 16:55</td><td class="num">2</td><td class="num">6,041</td><td>Self-updating</td></tr>
-            <tr><td><span class="mono">0.3.2</span></td><td>Aug 10, 04:13</td><td class="num">4</td><td class="num">6,108</td><td>Browser windows, quiet OBS</td></tr>
-            <tr><td><span class="mono">0.3.3</span></td><td>Aug 17, 06:08</td><td class="num">5</td><td class="num">6,246</td><td>Presets, transparency page</td></tr>
-            <tr><td><span class="mono">0.3.4</span></td><td>Aug 18, 07:22</td><td class="num">11</td><td class="num">6,781</td><td>Stability from real classes</td></tr>
-            <tr><td><span class="mono">0.3.5</span></td><td>Aug 18, 09:03</td><td class="num">9</td><td class="num">6,947</td><td>Dual display done right</td></tr>
-            <tr><td><span class="mono">0.3.6</span></td><td>Aug 18, 10:34</td><td class="num">8</td><td class="num">7,205</td><td>Drag-to-resize layout</td></tr>
-            <tr><td><span class="mono">0.3.7</span></td><td>Aug 19, 01:47</td><td class="num">19</td><td class="num">7,385</td><td>Design-system pass</td></tr>
-            <tr><td><span class="mono">0.3.8</span></td><td>Aug 20, 06:30</td><td class="num">9</td><td class="num">8,018</td><td>Right display, quiet quit</td></tr>
-            <tr><td><span class="mono">0.4.0</span></td><td>Aug 24, 04:23</td><td class="num">52</td><td class="num">16,588</td><td>Clips, participants panel</td></tr>
-            <tr><td><span class="mono">0.4.1</span></td><td>Aug 24, 04:41</td><td class="num">2</td><td class="num">16,599</td><td>Tile identified first</td></tr>
-            <tr><td><span class="mono">0.5.0</span></td><td>Aug 24, 07:02</td><td class="num">4</td><td class="num">16,802</td><td>Live speaker window</td></tr>
-            <tr><td><span class="mono">0.5.1</span></td><td>Sep 3, 11:24</td><td class="num">2</td><td class="num">16,821</td><td>Recordings have sound</td></tr>
-            <tr><td><span class="mono">0.6.0</span></td><td>Sep 3, 12:49</td><td class="num">7</td><td class="num">18,781</td><td>Greenroom Browser</td></tr>
-            <tr><td><span class="mono">0.7.0</span></td><td>Sep 4, 04:06</td><td class="num">19</td><td class="num">20,290</td><td>YouTube upload, Sessions</td></tr>
-            <tr><td><span class="mono">0.8.0</span></td><td>Sep 18, 02:53</td><td class="num">51</td><td class="num">27,115</td><td>Classroom console</td></tr>
-            <tr><td><span class="mono">0.9.0</span></td><td>Sep 26, 09:22</td><td class="num">71</td><td class="num">38,621</td><td>Screenroom, Cues, camera switching</td></tr>
+            <tr><td data-label="Version"><span class="mono">0.1.0</span></td><td data-label="Published">Aug 6, 05:47</td><td class="num" data-label="Commits">1</td><td class="num" data-label="Swift lines">4,274</td><td data-label="Headline">First packaged build</td></tr>
+            <tr><td data-label="Version"><span class="mono">0.2.0</span></td><td data-label="Published">Aug 6, 15:15</td><td class="num" data-label="Commits">39</td><td class="num" data-label="Swift lines">5,989</td><td data-label="Headline">Most of the app</td></tr>
+            <tr><td data-label="Version"><span class="mono">0.2.1</span></td><td data-label="Published">Aug 6, 16:37</td><td class="num" data-label="Commits">4</td><td class="num" data-label="Swift lines">6,020</td><td data-label="Headline">Clean quit</td></tr>
+            <tr><td data-label="Version"><span class="mono">0.3.0</span></td><td data-label="Published">Aug 7, 12:21</td><td class="num" data-label="Commits">7</td><td class="num" data-label="Swift lines">6,041</td><td data-label="Headline">Never launched</td></tr>
+            <tr><td data-label="Version"><span class="mono">0.3.1</span></td><td data-label="Published">Aug 9, 16:55</td><td class="num" data-label="Commits">2</td><td class="num" data-label="Swift lines">6,041</td><td data-label="Headline">Self-updating</td></tr>
+            <tr><td data-label="Version"><span class="mono">0.3.2</span></td><td data-label="Published">Aug 10, 04:13</td><td class="num" data-label="Commits">4</td><td class="num" data-label="Swift lines">6,108</td><td data-label="Headline">Browser windows, quiet OBS</td></tr>
+            <tr><td data-label="Version"><span class="mono">0.3.3</span></td><td data-label="Published">Aug 17, 06:08</td><td class="num" data-label="Commits">5</td><td class="num" data-label="Swift lines">6,246</td><td data-label="Headline">Presets, transparency page</td></tr>
+            <tr><td data-label="Version"><span class="mono">0.3.4</span></td><td data-label="Published">Aug 18, 07:22</td><td class="num" data-label="Commits">11</td><td class="num" data-label="Swift lines">6,781</td><td data-label="Headline">Stability from real classes</td></tr>
+            <tr><td data-label="Version"><span class="mono">0.3.5</span></td><td data-label="Published">Aug 18, 09:03</td><td class="num" data-label="Commits">9</td><td class="num" data-label="Swift lines">6,947</td><td data-label="Headline">Dual display done right</td></tr>
+            <tr><td data-label="Version"><span class="mono">0.3.6</span></td><td data-label="Published">Aug 18, 10:34</td><td class="num" data-label="Commits">8</td><td class="num" data-label="Swift lines">7,205</td><td data-label="Headline">Drag-to-resize layout</td></tr>
+            <tr><td data-label="Version"><span class="mono">0.3.7</span></td><td data-label="Published">Aug 19, 01:47</td><td class="num" data-label="Commits">19</td><td class="num" data-label="Swift lines">7,385</td><td data-label="Headline">Design-system pass</td></tr>
+            <tr><td data-label="Version"><span class="mono">0.3.8</span></td><td data-label="Published">Aug 20, 06:30</td><td class="num" data-label="Commits">9</td><td class="num" data-label="Swift lines">8,018</td><td data-label="Headline">Right display, quiet quit</td></tr>
+            <tr><td data-label="Version"><span class="mono">0.4.0</span></td><td data-label="Published">Aug 24, 04:23</td><td class="num" data-label="Commits">52</td><td class="num" data-label="Swift lines">16,588</td><td data-label="Headline">Clips, participants panel</td></tr>
+            <tr><td data-label="Version"><span class="mono">0.4.1</span></td><td data-label="Published">Aug 24, 04:41</td><td class="num" data-label="Commits">2</td><td class="num" data-label="Swift lines">16,599</td><td data-label="Headline">Tile identified first</td></tr>
+            <tr><td data-label="Version"><span class="mono">0.5.0</span></td><td data-label="Published">Aug 24, 07:02</td><td class="num" data-label="Commits">4</td><td class="num" data-label="Swift lines">16,802</td><td data-label="Headline">Live speaker window</td></tr>
+            <tr><td data-label="Version"><span class="mono">0.5.1</span></td><td data-label="Published">Sep 3, 11:24</td><td class="num" data-label="Commits">2</td><td class="num" data-label="Swift lines">16,821</td><td data-label="Headline">Recordings have sound</td></tr>
+            <tr><td data-label="Version"><span class="mono">0.6.0</span></td><td data-label="Published">Sep 3, 12:49</td><td class="num" data-label="Commits">7</td><td class="num" data-label="Swift lines">18,781</td><td data-label="Headline">Greenroom Browser</td></tr>
+            <tr><td data-label="Version"><span class="mono">0.7.0</span></td><td data-label="Published">Sep 4, 04:06</td><td class="num" data-label="Commits">19</td><td class="num" data-label="Swift lines">20,290</td><td data-label="Headline">YouTube upload, Sessions</td></tr>
+            <tr><td data-label="Version"><span class="mono">0.8.0</span></td><td data-label="Published">Sep 18, 02:53</td><td class="num" data-label="Commits">51</td><td class="num" data-label="Swift lines">27,115</td><td data-label="Headline">Classroom console</td></tr>
+            <tr><td data-label="Version"><span class="mono">0.9.0</span></td><td data-label="Published">Sep 26, 09:22</td><td class="num" data-label="Commits">71</td><td class="num" data-label="Swift lines">38,621</td><td data-label="Headline">Screenroom, Cues, camera switching</td></tr>
           </tbody>
         </table>
       </div>
@@ -815,5 +836,14 @@
 })();
 </script>
 <script src="download-link.js" defer></script>
+<script>
+// On a phone the nav is one swipeable row; start it at the current page.
+(function () {
+  var cur = document.querySelector(".nav-links [aria-current]");
+  if (!cur) return;
+  var row = cur.parentElement;
+  if (row.scrollWidth > row.clientWidth) row.scrollLeft = cur.offsetLeft - (row.clientWidth - cur.offsetWidth) / 2;
+})();
+</script>
 </body>
 </html>

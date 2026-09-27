@@ -70,7 +70,9 @@
   .nav-cta .gh:hover { color: var(--ink); }
   @media (max-width: 760px) {
     .nav-inner { flex-wrap: wrap; height: auto; padding: 10px 24px 12px; row-gap: 8px; }
-    .nav-links { order: 3; width: 100%; gap: 4px 20px; margin: 0; flex-wrap: wrap; }
+    .nav-links { order: 3; width: calc(100% + 48px); margin: 0 -24px; padding: 0 16px; gap: 0; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+    .nav-links::-webkit-scrollbar { display: none; }
+    .nav-links a { flex: none; padding: 10px 8px; white-space: nowrap; }
     .nav-cta .gh { display: none; }
   }
 
@@ -146,10 +148,13 @@
 
   /* ---------- endpoints ---------- */
   .eps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
-  @media (max-width: 820px) { .eps { grid-template-columns: 1fr; } }
+  @media (max-width: 820px) { .eps { grid-template-columns: minmax(0, 1fr); } }
+  /* Hostnames and paths are long unbroken strings; let them wrap on a phone. */
+  .ep { min-width: 0; }
+  .ep h3, .ep .mono { overflow-wrap: anywhere; }
   .ep { border: 1px solid var(--line); border-radius: 12px; padding: 18px; background: #fff; }
   .ep .tag {
-    display: inline-block; font-size: 10.5px; font-weight: 800; letter-spacing: .05em;
+    display: inline-block; font-size: 11px; font-weight: 800; letter-spacing: .05em;
     text-transform: uppercase; padding: 3px 8px; border-radius: 999px; margin-bottom: 10px;
   }
   .ep .tag.out { background: var(--net-soft); color: var(--net-text); }
@@ -190,6 +195,25 @@
   footer a:hover { color: var(--ink); }
   .footer-inner { width: 100%; display: flex; justify-content: space-between; align-items: baseline; gap: 16px; flex-wrap: wrap; }
   @media (max-width: 700px) { .footer-inner { justify-content: center; text-align: center; } }
+  /* ---------- phones (shared by every page) ---------- */
+  footer a { display: inline-block; padding: 6px 2px; }
+  .film:fullscreen, .intro-video:fullscreen { border: 0; border-radius: 0; box-shadow: none; background: #000; }
+  .film:-webkit-full-screen, .intro-video:-webkit-full-screen { border: 0; border-radius: 0; box-shadow: none; background: #000; }
+  /* A table of three or more columns becomes one card per row on a phone:
+     the first cell is the title, each other cell is labelled with its column. */
+  @media (max-width: 640px) {
+    table.stack thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+    table.stack, table.stack tbody, table.stack tr, table.stack td { display: block; width: auto; }
+    table.stack tr { padding: 12px 16px; border-bottom: 1px solid #eaecf0; }
+    table.stack tr:last-child { border-bottom: 0; }
+    table.stack td { padding: 2px 0; border: 0; white-space: normal; text-align: left; }
+    table.stack td:first-child { color: #101828; font-weight: 600; padding-bottom: 4px; }
+    table.stack td + td[data-label]::before {
+      content: attr(data-label); display: block; margin-top: 8px;
+      font: 700 11px/1.4 ui-monospace, "SF Mono", Menlo, monospace;
+      letter-spacing: .06em; text-transform: uppercase; color: #475467;
+    }
+  }
 </style>
 </head>
 <body>
@@ -1062,30 +1086,30 @@
     </div>
     <div class="appendix">
       <div class="table-scroll">
-        <table>
+        <table class="stack">
           <thead><tr><th>Capability</th><th>How</th><th>Scope / limit</th></tr></thead>
           <tbody>
-            <tr><td><strong>Move windows</strong></td><td><span class="mono">AXUIElement</span></td><td>Reads title/size/position; sets position/size/minimized. Named apps only. No contents, no pixels.</td></tr>
-            <tr><td><strong>Open browser window</strong></td><td>Apple Events via <span class="mono">osascript</span></td><td>External Chromium-family browsers only: <span class="mono">activate</span>, new window, set bounds &amp; configured address. No history/tab access.</td></tr>
-            <tr><td><strong>Built-in browser</strong></td><td><span class="mono">WKWebView</span> (Apple WebKit)</td><td>Renders the pages you open in Greenroom's own window when <em>Greenroom Browser</em> is the main app. Persistent cookies in WebKit's data store; history in one local JSON file under Application Support; downloads to ~/Downloads; no extensions. Optional Google completions behind one switch.</td></tr>
-            <tr><td><strong>Screen &amp; camera capture</strong> (class)</td><td>Performed by <strong>OBS</strong></td><td>For a class, Greenroom does no capture of its own; it resolves display/camera identifiers only.</td></tr>
-            <tr><td><strong>Recording</strong> (Screenroom)</td><td><span class="mono">AVFoundation</span>; <span class="mono">ScreenCaptureKit</span> for the screen source</td><td>Only while you record a presentation. A camera and microphone, or a screen or window with the Mac's sound, to <span class="mono">presentation.mov</span> in its own folder under <span class="mono">~/Documents/Greenroom</span>. Screen Recording permission is asked for only when you pick a screen or window.</td></tr>
-            <tr><td><strong>Transcription</strong> (Screenroom)</td><td><span class="mono">whisper.cpp</span>, or Apple <span class="mono">SFSpeechRecognizer</span></td><td>whisper is a binary from Homebrew (<span class="mono">brew install whisper-cpp</span>, which Settings can run for you) plus a model downloaded from huggingface.co with a button; it reads a file on this Mac. Apple's recogniser is pinned to on-device and refuses to run rather than send audio to Apple; it needs the speech-recognition permission.</td></tr>
-            <tr><td><strong>Counts</strong> (Screenroom)</td><td>Arithmetic over timestamps; Apple <span class="mono">Vision</span></td><td>Pace, filler words (whisper only), pauses of 2 s or more, and facing the room (head direction within 20&deg;). No model writes these numbers.</td></tr>
-            <tr><td><strong>Written feedback</strong> (Screenroom)</td><td>Your agent, or Apple <span class="mono">FoundationModels</span></td><td>The first that is set up: your agent (off by default), run in your login shell, reading the transcript, notes, stills every 20 s, counts, rubric and the student's name; it works in a temporary copy of the folder without <span class="mono">presentation.mov</span>, and the default Claude Code and Codex commands are read-only there. Otherwise Apple's on-device model, on <strong>macOS 26 with Apple Intelligence on</strong>. Otherwise the counted report only.</td></tr>
-            <tr><td><strong>Camera switching</strong></td><td>OBS <span class="mono">GetSourceScreenshot</span> + Apple <span class="mono">Vision</span></td><td>Off by default; needs two or more cameras. Every chosen camera is open in OBS and one is shown. Reads frames of each over the localhost socket and checks head direction on this Mac; switches to whichever camera has your head most head-on, once it is clearly better for 1 s by default. Extra cameras open only once the meeting is live. Nothing sent.</td></tr>
-            <tr><td><strong>Class summary</strong></td><td>Apple <span class="mono">FoundationModels</span> (on-device)</td><td>Only when you press <em>Summarise on this Mac</em> in Sessions. Reads the class transcript, writes <span class="mono">summary.md</span> into the class folder. Never a cloud call. <strong>macOS 26 with Apple Intelligence on</strong>, and a transcript from Cues.</td></tr>
-            <tr><td><strong>Global shortcuts</strong></td><td>Carbon <span class="mono">RegisterEventHotKey</span></td><td>Eight fixed combos (⌥⌘ G/X/R/S/Z and 1/2/5). Receives an opaque ID only — no event taps.</td></tr>
-            <tr><td><strong>Launch/quit apps</strong></td><td><span class="mono">NSWorkspace</span></td><td>OBS, Zoom, and your chosen main app.</td></tr>
-            <tr><td><strong>Meetings</strong></td><td>Zoom Meeting SDK + REST</td><td>Creates/joins meetings under your own Zoom account with your Marketplace credentials; lists the account's scheduled and live meetings, and ends a meeting left live by a crashed session before starting a new one.</td></tr>
-            <tr><td><strong>Updates</strong></td><td>Sparkle, EdDSA-signed</td><td>Appcast on GitHub Pages; installs only releases signed with the developer's key. System profiling disabled.</td></tr>
-            <tr><td><strong>YouTube upload</strong></td><td>YouTube Data API v3, OAuth 2.0 (PKCE, loopback)</td><td>Off by default. Resumable upload of a finished recording to the connected account's channel, and title changes from the Sessions window; scope <span class="mono">youtube.force-ssl</span> (upload and edit own videos). Refresh token stored like the Zoom credentials (plain preferences); revoked at Google on Disconnect.</td></tr>
-            <tr><td><strong>Speech to text</strong> (Cues)</td><td>Apple <span class="mono">SpeechAnalyzer</span> / <span class="mono">SpeechTranscriber</span>, or <span class="mono">whisper.cpp</span></td><td><strong>macOS 26</strong>, off by default. whisper is selectable in Settings &rarr; Cues and uses the same local model as Screenroom. Own <span class="mono">AVAudioEngine</span> tap on the default input device only; runs between the meeting going live and End Session, never outside a class. Text held in memory (&le; 90 s) for matching, and written to <span class="mono">transcript.txt</span> in the class folder unless that is switched off. Never in analytics, never sent anywhere. Model asset from Apple via the system asset service, downloaded once from Settings. No speech-recognition permission involved.</td></tr>
-            <tr><td><strong>Mention detection</strong> (Cues)</td><td>Apple <span class="mono">FoundationModels</span> (on-device) or regex + <span class="mono">NLTagger</span></td><td>Reads the new sentences and returns up to five short phrases with a kind, plus a fuller search query built from the surrounding words. Off by default: measured against a recorded class it found everything but suggested roughly twenty-five times more wrong things than the word patterns, so a teacher turns it on knowingly. Roster names (meeting participants, waiting room, you) are excluded and any collision is dropped and logged. <span class="mono">FoundationModels.framework</span> is weak-linked so the app launches on macOS 14/15, where the tab says the feature needs 26.</td></tr>
-            <tr><td><strong>Link lookups</strong> (Cues)</td><td><span class="mono">URLSession</span>, HTTPS, fixed <span class="mono">User-Agent</span></td><td>Wikipedia REST title search (the richer phrase and the bare name at once); Google Books (keyless) &rarr; Open Library; YouTube Data API <span class="mono">search.list</span> only with a connected account and the switch on, otherwise a search-page link; and, for a named product, a <span class="mono">GET</span> of the guessed domain read only as far as its <span class="mono">&lt;title&gt;</span>. Before anything is sent: the phrase must have been spoken, a lone word that is in the Mac&rsquo;s dictionary is dropped unless it was said as a name, and roster names are dropped. Per class: 30 lookups, 6 a minute, 20 YouTube; two in flight; five-minute back-off after three failures per host. Every request logged with its phrase and host.</td></tr>
-            <tr><td><strong>Entitlements</strong></td><td>Hardened Runtime</td><td><span class="mono">device.camera</span>, <span class="mono">device.audio-input</span>. Nothing else. Screen Recording and speech recognition are macOS privacy permissions rather than entitlements, and macOS asks for them only when Screenroom uses them.</td></tr>
-            <tr><td><strong>Frameworks</strong></td><td>Apple's own + Zoom SDK + Sparkle</td><td>AppKit, SwiftUI, WebKit, AVFoundation, ScreenCaptureKit, Vision, ApplicationServices, Carbon, CryptoKit, NaturalLanguage; <span class="mono">Speech</span> and <span class="mono">FoundationModels</span> weak-linked. <strong>No cloud AI SDK. Every model Greenroom runs is Apple's or whisper, on the Mac.</strong> The one route to a model elsewhere is Screenroom's agent, which is your program, not Greenroom's.</td></tr>
-            <tr><td><strong>macOS versions</strong></td><td>&mdash;</td><td>macOS 14 or later. Needs <strong>macOS 26</strong>: Cues; the class summary (with Apple Intelligence on); Screenroom's written feedback when no agent is set up (with Apple Intelligence on). Screenroom's recording, notes, transcription, counts and agent feedback run on macOS 14.</td></tr>
+            <tr><td data-label="Capability"><strong>Move windows</strong></td><td data-label="How"><span class="mono">AXUIElement</span></td><td data-label="Scope / limit">Reads title/size/position; sets position/size/minimized. Named apps only. No contents, no pixels.</td></tr>
+            <tr><td data-label="Capability"><strong>Open browser window</strong></td><td data-label="How">Apple Events via <span class="mono">osascript</span></td><td data-label="Scope / limit">External Chromium-family browsers only: <span class="mono">activate</span>, new window, set bounds &amp; configured address. No history/tab access.</td></tr>
+            <tr><td data-label="Capability"><strong>Built-in browser</strong></td><td data-label="How"><span class="mono">WKWebView</span> (Apple WebKit)</td><td data-label="Scope / limit">Renders the pages you open in Greenroom's own window when <em>Greenroom Browser</em> is the main app. Persistent cookies in WebKit's data store; history in one local JSON file under Application Support; downloads to ~/Downloads; no extensions. Optional Google completions behind one switch.</td></tr>
+            <tr><td data-label="Capability"><strong>Screen &amp; camera capture</strong> (class)</td><td data-label="How">Performed by <strong>OBS</strong></td><td data-label="Scope / limit">For a class, Greenroom does no capture of its own; it resolves display/camera identifiers only.</td></tr>
+            <tr><td data-label="Capability"><strong>Recording</strong> (Screenroom)</td><td data-label="How"><span class="mono">AVFoundation</span>; <span class="mono">ScreenCaptureKit</span> for the screen source</td><td data-label="Scope / limit">Only while you record a presentation. A camera and microphone, or a screen or window with the Mac's sound, to <span class="mono">presentation.mov</span> in its own folder under <span class="mono">~/Documents/Greenroom</span>. Screen Recording permission is asked for only when you pick a screen or window.</td></tr>
+            <tr><td data-label="Capability"><strong>Transcription</strong> (Screenroom)</td><td data-label="How"><span class="mono">whisper.cpp</span>, or Apple <span class="mono">SFSpeechRecognizer</span></td><td data-label="Scope / limit">whisper is a binary from Homebrew (<span class="mono">brew install whisper-cpp</span>, which Settings can run for you) plus a model downloaded from huggingface.co with a button; it reads a file on this Mac. Apple's recogniser is pinned to on-device and refuses to run rather than send audio to Apple; it needs the speech-recognition permission.</td></tr>
+            <tr><td data-label="Capability"><strong>Counts</strong> (Screenroom)</td><td data-label="How">Arithmetic over timestamps; Apple <span class="mono">Vision</span></td><td data-label="Scope / limit">Pace, filler words (whisper only), pauses of 2 s or more, and facing the room (head direction within 20&deg;). No model writes these numbers.</td></tr>
+            <tr><td data-label="Capability"><strong>Written feedback</strong> (Screenroom)</td><td data-label="How">Your agent, or Apple <span class="mono">FoundationModels</span></td><td data-label="Scope / limit">The first that is set up: your agent (off by default), run in your login shell, reading the transcript, notes, stills every 20 s, counts, rubric and the student's name; it works in a temporary copy of the folder without <span class="mono">presentation.mov</span>, and the default Claude Code and Codex commands are read-only there. Otherwise Apple's on-device model, on <strong>macOS 26 with Apple Intelligence on</strong>. Otherwise the counted report only.</td></tr>
+            <tr><td data-label="Capability"><strong>Camera switching</strong></td><td data-label="How">OBS <span class="mono">GetSourceScreenshot</span> + Apple <span class="mono">Vision</span></td><td data-label="Scope / limit">Off by default; needs two or more cameras. Every chosen camera is open in OBS and one is shown. Reads frames of each over the localhost socket and checks head direction on this Mac; switches to whichever camera has your head most head-on, once it is clearly better for 1 s by default. Extra cameras open only once the meeting is live. Nothing sent.</td></tr>
+            <tr><td data-label="Capability"><strong>Class summary</strong></td><td data-label="How">Apple <span class="mono">FoundationModels</span> (on-device)</td><td data-label="Scope / limit">Only when you press <em>Summarise on this Mac</em> in Sessions. Reads the class transcript, writes <span class="mono">summary.md</span> into the class folder. Never a cloud call. <strong>macOS 26 with Apple Intelligence on</strong>, and a transcript from Cues.</td></tr>
+            <tr><td data-label="Capability"><strong>Global shortcuts</strong></td><td data-label="How">Carbon <span class="mono">RegisterEventHotKey</span></td><td data-label="Scope / limit">Eight fixed combos (⌥⌘ G/X/R/S/Z and 1/2/5). Receives an opaque ID only — no event taps.</td></tr>
+            <tr><td data-label="Capability"><strong>Launch/quit apps</strong></td><td data-label="How"><span class="mono">NSWorkspace</span></td><td data-label="Scope / limit">OBS, Zoom, and your chosen main app.</td></tr>
+            <tr><td data-label="Capability"><strong>Meetings</strong></td><td data-label="How">Zoom Meeting SDK + REST</td><td data-label="Scope / limit">Creates/joins meetings under your own Zoom account with your Marketplace credentials; lists the account's scheduled and live meetings, and ends a meeting left live by a crashed session before starting a new one.</td></tr>
+            <tr><td data-label="Capability"><strong>Updates</strong></td><td data-label="How">Sparkle, EdDSA-signed</td><td data-label="Scope / limit">Appcast on GitHub Pages; installs only releases signed with the developer's key. System profiling disabled.</td></tr>
+            <tr><td data-label="Capability"><strong>YouTube upload</strong></td><td data-label="How">YouTube Data API v3, OAuth 2.0 (PKCE, loopback)</td><td data-label="Scope / limit">Off by default. Resumable upload of a finished recording to the connected account's channel, and title changes from the Sessions window; scope <span class="mono">youtube.force-ssl</span> (upload and edit own videos). Refresh token stored like the Zoom credentials (plain preferences); revoked at Google on Disconnect.</td></tr>
+            <tr><td data-label="Capability"><strong>Speech to text</strong> (Cues)</td><td data-label="How">Apple <span class="mono">SpeechAnalyzer</span> / <span class="mono">SpeechTranscriber</span>, or <span class="mono">whisper.cpp</span></td><td data-label="Scope / limit"><strong>macOS 26</strong>, off by default. whisper is selectable in Settings &rarr; Cues and uses the same local model as Screenroom. Own <span class="mono">AVAudioEngine</span> tap on the default input device only; runs between the meeting going live and End Session, never outside a class. Text held in memory (&le; 90 s) for matching, and written to <span class="mono">transcript.txt</span> in the class folder unless that is switched off. Never in analytics, never sent anywhere. Model asset from Apple via the system asset service, downloaded once from Settings. No speech-recognition permission involved.</td></tr>
+            <tr><td data-label="Capability"><strong>Mention detection</strong> (Cues)</td><td data-label="How">Apple <span class="mono">FoundationModels</span> (on-device) or regex + <span class="mono">NLTagger</span></td><td data-label="Scope / limit">Reads the new sentences and returns up to five short phrases with a kind, plus a fuller search query built from the surrounding words. Off by default: measured against a recorded class it found everything but suggested roughly twenty-five times more wrong things than the word patterns, so a teacher turns it on knowingly. Roster names (meeting participants, waiting room, you) are excluded and any collision is dropped and logged. <span class="mono">FoundationModels.framework</span> is weak-linked so the app launches on macOS 14/15, where the tab says the feature needs 26.</td></tr>
+            <tr><td data-label="Capability"><strong>Link lookups</strong> (Cues)</td><td data-label="How"><span class="mono">URLSession</span>, HTTPS, fixed <span class="mono">User-Agent</span></td><td data-label="Scope / limit">Wikipedia REST title search (the richer phrase and the bare name at once); Google Books (keyless) &rarr; Open Library; YouTube Data API <span class="mono">search.list</span> only with a connected account and the switch on, otherwise a search-page link; and, for a named product, a <span class="mono">GET</span> of the guessed domain read only as far as its <span class="mono">&lt;title&gt;</span>. Before anything is sent: the phrase must have been spoken, a lone word that is in the Mac&rsquo;s dictionary is dropped unless it was said as a name, and roster names are dropped. Per class: 30 lookups, 6 a minute, 20 YouTube; two in flight; five-minute back-off after three failures per host. Every request logged with its phrase and host.</td></tr>
+            <tr><td data-label="Capability"><strong>Entitlements</strong></td><td data-label="How">Hardened Runtime</td><td data-label="Scope / limit"><span class="mono">device.camera</span>, <span class="mono">device.audio-input</span>. Nothing else. Screen Recording and speech recognition are macOS privacy permissions rather than entitlements, and macOS asks for them only when Screenroom uses them.</td></tr>
+            <tr><td data-label="Capability"><strong>Frameworks</strong></td><td data-label="How">Apple's own + Zoom SDK + Sparkle</td><td data-label="Scope / limit">AppKit, SwiftUI, WebKit, AVFoundation, ScreenCaptureKit, Vision, ApplicationServices, Carbon, CryptoKit, NaturalLanguage; <span class="mono">Speech</span> and <span class="mono">FoundationModels</span> weak-linked. <strong>No cloud AI SDK. Every model Greenroom runs is Apple's or whisper, on the Mac.</strong> The one route to a model elsewhere is Screenroom's agent, which is your program, not Greenroom's.</td></tr>
+            <tr><td data-label="Capability"><strong>macOS versions</strong></td><td data-label="How">&mdash;</td><td data-label="Scope / limit">macOS 14 or later. Needs <strong>macOS 26</strong>: Cues; the class summary (with Apple Intelligence on); Screenroom's written feedback when no agent is set up (with Apple Intelligence on). Screenroom's recording, notes, transcription, counts and agent feedback run on macOS 14.</td></tr>
           </tbody>
         </table>
       </div>
@@ -1157,5 +1181,14 @@
 </footer>
 
 <script src="download-link.js" defer></script>
+<script>
+// On a phone the nav is one swipeable row; start it at the current page.
+(function () {
+  var cur = document.querySelector(".nav-links [aria-current]");
+  if (!cur) return;
+  var row = cur.parentElement;
+  if (row.scrollWidth > row.clientWidth) row.scrollLeft = cur.offsetLeft - (row.clientWidth - cur.offsetWidth) / 2;
+})();
+</script>
 </body>
 </html>

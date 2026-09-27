@@ -22,7 +22,7 @@
   /* Neutral on purpose: "coming soon" is neither a local-green claim nor an
      amber leaves-your-Mac one, so it takes the DESIGN.md neutrals. */
   .soon {
-    display: inline-block; font-size: 10.5px; font-weight: 800; letter-spacing: .05em;
+    display: inline-block; font-size: 11px; font-weight: 800; letter-spacing: .05em;
     text-transform: uppercase; padding: 3px 8px; border-radius: 999px;
     background: var(--bg-soft); color: var(--body); border: 1px solid var(--line);
     vertical-align: middle; margin-left: 8px; white-space: nowrap;
@@ -88,7 +88,9 @@
      of disappearing. */
   @media (max-width: 760px) {
     .nav-inner { flex-wrap: wrap; height: auto; padding: 10px 24px 12px; row-gap: 8px; }
-    .nav-links { order: 3; width: 100%; gap: 4px 20px; margin: 0; flex-wrap: wrap; }
+    .nav-links { order: 3; width: calc(100% + 48px); margin: 0 -24px; padding: 0 16px; gap: 0; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+    .nav-links::-webkit-scrollbar { display: none; }
+    .nav-links a { flex: none; padding: 10px 8px; white-space: nowrap; }
     .nav-cta .gh { display: none; }
   }
 
@@ -128,7 +130,7 @@
   }
   .announce:hover { border-color: var(--green); }
   .announce-chip {
-    font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 10.5px; font-weight: 700;
+    font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 11px; font-weight: 700;
     letter-spacing: .08em; text-transform: uppercase;
     background: #78c000; color: var(--green-hover); padding: 2px 8px; border-radius: 999px;
   }
@@ -296,6 +298,25 @@
   @media (prefers-reduced-motion: reduce) {
     .btn:hover { transform: none; }
     html { scroll-behavior: auto; }
+  }
+  /* ---------- phones (shared by every page) ---------- */
+  footer a { display: inline-block; padding: 6px 2px; }
+  .film:fullscreen, .intro-video:fullscreen { border: 0; border-radius: 0; box-shadow: none; background: #000; }
+  .film:-webkit-full-screen, .intro-video:-webkit-full-screen { border: 0; border-radius: 0; box-shadow: none; background: #000; }
+  /* A table of three or more columns becomes one card per row on a phone:
+     the first cell is the title, each other cell is labelled with its column. */
+  @media (max-width: 640px) {
+    table.stack thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+    table.stack, table.stack tbody, table.stack tr, table.stack td { display: block; width: auto; }
+    table.stack tr { padding: 12px 16px; border-bottom: 1px solid #eaecf0; }
+    table.stack tr:last-child { border-bottom: 0; }
+    table.stack td { padding: 2px 0; border: 0; white-space: normal; text-align: left; }
+    table.stack td:first-child { color: #101828; font-weight: 600; padding-bottom: 4px; }
+    table.stack td + td[data-label]::before {
+      content: attr(data-label); display: block; margin-top: 8px;
+      font: 700 11px/1.4 ui-monospace, "SF Mono", Menlo, monospace;
+      letter-spacing: .06em; text-transform: uppercase; color: #475467;
+    }
   }
 </style>
 </head>
@@ -709,5 +730,14 @@
 })();
 </script>
 <script src="download-link.js" defer></script>
+<script>
+// On a phone the nav is one swipeable row; start it at the current page.
+(function () {
+  var cur = document.querySelector(".nav-links [aria-current]");
+  if (!cur) return;
+  var row = cur.parentElement;
+  if (row.scrollWidth > row.clientWidth) row.scrollLeft = cur.offsetLeft - (row.clientWidth - cur.offsetWidth) / 2;
+})();
+</script>
 </body>
 </html>

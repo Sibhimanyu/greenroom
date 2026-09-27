@@ -59,13 +59,21 @@ enum ChromeWindowManager {
             "set URL of active tab of targetWindow to \"\($0.absoluteString)\""
         } ?? ""
 
+        // Activate LAST, not first. `activate` sends macOS to the desktop
+        // holding the app's front window; with Ulaa already open full screen
+        // on another desktop, Start jumped there and `make new window` then
+        // opened the session's window on top of that full-screen space. Made
+        // and placed while the class's desktop is still the current one, the
+        // new window lands here; raised to index 1 before `activate`, it is
+        // the window activation brings forward, so nothing switches desktops.
         let source = """
         tell application id "\(bundleID)"
-            activate
             \(windowLine)
             delay 0.3
             set bounds of targetWindow to \(boundsList)
             \(urlLine)
+            set index of targetWindow to 1
+            activate
         end tell
         """
 

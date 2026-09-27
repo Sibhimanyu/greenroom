@@ -258,7 +258,7 @@
     </div>
     <div class="nav-cta">
       <a class="gh" href="https://github.com/Sibhimanyu/greenroom">GitHub</a>
-      <a class="btn" href="https://github.com/Sibhimanyu/greenroom/releases/download/v0.9.7/Greenroom-0.9.7.dmg">Download</a>
+      <a class="btn" href="https://github.com/Sibhimanyu/greenroom/releases/download/v0.9.6/Greenroom-0.9.6.dmg">Download</a>
     </div>
   </div>
 </nav>
@@ -274,8 +274,8 @@
   talking, follows your face from screen to screen, saves the moment nobody was recording, and, in
   Screenroom, turns a student's talk into feedback they can see.</p>
   <div class="hero-actions">
-    <a class="btn" href="https://github.com/Sibhimanyu/greenroom/releases/download/v0.9.7/Greenroom-0.9.7.dmg">Download for Mac</a>
-    <a class="textlink" href="#film">Watch the film <span class="arrow">→</span></a>
+    <a class="btn" href="https://github.com/Sibhimanyu/greenroom/releases/download/v0.9.6/Greenroom-0.9.6.dmg">Download for Mac</a>
+    <a class="textlink" href="#film" data-fullscreen>Watch the film <span class="arrow">→</span></a>
   </div>
   <p class="hero-note">Free and open source, for macOS 14 or later. Already have it? Menu bar → <strong>Check for Updates…</strong></p>
 </header>
@@ -542,7 +542,7 @@
         <p>Download the disk image and drag Greenroom into Applications. It isn't notarized, so the
         first open needs System Settings → Privacy &amp; Security → <strong>Open Anyway</strong>, once.</p>
         <p>Then import the settings file from whoever set it up, and the built-in guide does the rest.</p>
-        <a class="btn" href="https://github.com/Sibhimanyu/greenroom/releases/download/v0.9.7/Greenroom-0.9.7.dmg">Download for Mac</a>
+        <a class="btn" href="https://github.com/Sibhimanyu/greenroom/releases/download/v0.9.6/Greenroom-0.9.6.dmg">Download for Mac</a>
       </div>
       <div class="col">
         <h3>Already have it</h3>
@@ -563,7 +563,7 @@
     <h2>Set up. Teach. Watch it back.</h2>
     <p>Everything after the click, free and open source, for macOS.</p>
     <div class="hero-actions">
-      <a class="btn" href="https://github.com/Sibhimanyu/greenroom/releases/download/v0.9.7/Greenroom-0.9.7.dmg">Download for Mac</a>
+      <a class="btn" href="https://github.com/Sibhimanyu/greenroom/releases/download/v0.9.6/Greenroom-0.9.6.dmg">Download for Mac</a>
       <a class="textlink" href="https://github.com/Sibhimanyu/greenroom">View on GitHub <span class="arrow">→</span></a>
     </div>
   </div>
@@ -588,12 +588,27 @@
       video.play().catch(function () {});
     });
   });
+  // "Watch the film" plays it from the start, full screen, with sound. The
+  // click is the user gesture that lets a browser unmute and go full
+  // screen; without script the link still scrolls to the player.
+  var watch = document.querySelector("[data-fullscreen]");
+  if (watch) watch.addEventListener("click", function (e) {
+    e.preventDefault();
+    video.muted = false;
+    video.currentTime = 0;
+    if (video.requestFullscreen) video.requestFullscreen().catch(function () {});
+    else if (video.webkitRequestFullscreen) video.webkitRequestFullscreen();
+    else if (video.webkitEnterFullscreen) video.webkitEnterFullscreen(); // iPhone Safari
+    else video.scrollIntoView({ behavior: "smooth", block: "center" });
+    video.play().catch(function () {});
+  });
   if (!("IntersectionObserver" in window)) return;
   if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
   // Muted autoplay while at least half the player is on screen, as on the
   // Overview page; the controls are right there to unmute.
   new IntersectionObserver(function (entries) {
     entries.forEach(function (entry) {
+      if (document.fullscreenElement || document.webkitFullscreenElement) return;
       if (entry.intersectionRatio >= 0.5) video.play().catch(function () {});
       else video.pause();
     });

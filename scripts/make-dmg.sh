@@ -5,7 +5,8 @@
 # The window geometry below is paired with scripts/dmg-background.py - the
 # backdrop is drawn for these exact icon slots, so the two must move together.
 #
-# Requires: nothing beyond macOS for the default plain image. The styled one
+# Requires: nothing beyond macOS for the default plain image (Finder lays out
+# its window, so the shell running this needs to be allowed to control Finder). The styled one
 # (GREENROOM_DMG_STYLE=styled) needs create-dmg and Pillow for the backdrop.
 set -euo pipefail
 
@@ -39,8 +40,8 @@ cp -R "$APP" "$STAGE/Greenroom.app"
 # Two ways to build it.
 #
 # Plain (the default): an empty read-write image, the app and an
-# Applications link copied in, then compressed. No artwork, and it works on
-# every Mac this has run on. `hdiutil create -srcfolder` - which create-dmg
+# Applications link copied in, the backdrop and icon layout set by Finder,
+# then compressed. It works on every Mac this has run on. `hdiutil create -srcfolder` - which create-dmg
 # and the obvious one-liner both use - fails with "Resource busy" on some
 # Macs, and each failure costs about two and a half minutes before it says
 # so; create-dmg then retried five times with doubling waits, which is where
@@ -49,6 +50,7 @@ cp -R "$APP" "$STAGE/Greenroom.app"
 # Styled (GREENROOM_DMG_STYLE=styled): create-dmg with the backdrop, for a
 # Mac where -srcfolder works. Falls back to plain if it does not.
 STYLED=0
+STYLED_PLAIN=0
 if [ "${GREENROOM_DMG_STYLE:-plain}" = "styled" ] && create-dmg --hdiutil-retries 1 \
   --volname "Greenroom $VERSION" \
   --volicon "$APP/Contents/Resources/AppIcon.icns" \
@@ -67,9 +69,56 @@ else
   SIZE_MB=$(( $(du -sm "$STAGE/Greenroom.app" | cut -f1) + 64 ))
   hdiutil create -size "${SIZE_MB}m" -fs HFS+ -volname "Greenroom $VERSION" -type UDIF "$RW" -quiet
   MOUNT="$(mktemp -d)"
-  hdiutil attach "$RW" -nobrowse -noautoopen -mountpoint "$MOUNT" -quiet
+  # Browsable (no -nobrowse): Finder has to see the volume to lay it out.
+  hdiutil attach "$RW" -noautoopen -mountpoint "$MOUNT" -quiet
   ditto "$STAGE/Greenroom.app" "$MOUNT/Greenroom.app"
   ln -s /Applications "$MOUNT/Applications"
+  # The artwork and the icon layout, on this plain image too. It is only
+  # `hdiutil create -srcfolder` that fails here, not Finder: the backdrop is
+  # copied in, and Finder is asked to lay the window out and save it in the
+  # volume's .DS_Store - the same AppleScript create-dmg runs. 1.0.0 first
+  # shipped without it, as a bare window with two icons and no instructions.
+  # Any failure leaves the plain window rather than failing the release.
+  [ -f "$BG" ] || python3 "$REPO_DIR/scripts/dmg-background.py" "$BG" || true
+  if [ -f "$BG" ]; then
+    mkdir -p "$MOUNT/.background"
+    cp "$BG" "$MOUNT/.background/background.tiff"
+    cp "$APP/Contents/Resources/AppIcon.icns" "$MOUNT/.VolumeIcon.icns" 2>/dev/null \
+      && SetFile -a C "$MOUNT" 2>/dev/null || true
+    if osascript <<APPLESCRIPT
+tell application "Finder"
+  set theDisk to (POSIX file "$MOUNT" as alias)
+  open theDisk
+  set theWindow to container window of theDisk
+  set current view of theWindow to icon view
+  set toolbar visible of theWindow to false
+  set statusbar visible of theWindow to false
+  set bounds of theWindow to {200, 120, $((200 + WIN_W)), $((120 + WIN_H))}
+  set viewOptions to icon view options of theWindow
+  set arrangement of viewOptions to not arranged
+  set icon size of viewOptions to 128
+  set text size of viewOptions to 13
+  set background picture of viewOptions to file ".background:background.tiff" of theDisk
+  set position of item "Greenroom.app" of theDisk to {$APP_X, $APP_Y}
+  set position of item "Applications" of theDisk to {$DEST_X, $DEST_Y}
+  close theWindow
+  open theDisk
+  update theDisk without registering applications
+  delay 2
+  close container window of theDisk
+end tell
+APPLESCRIPT
+    then
+      # Finder writes .DS_Store on its own schedule; wait for it.
+      for _ in $(seq 1 20); do [ -f "$MOUNT/.DS_Store" ] && break; sleep 0.5; done
+      [ -f "$MOUNT/.DS_Store" ] && STYLED_PLAIN=1 || echo "Finder saved no layout; the window will be plain."
+    else
+      echo "Finder could not style the window; it will be plain."
+    fi
+    for f in .background .VolumeIcon.icns .fseventsd .Trashes; do
+      [ -e "$MOUNT/$f" ] && { chflags hidden "$MOUNT/$f"; SetFile -a V "$MOUNT/$f" 2>/dev/null; } || true
+    done
+  fi
   sync
   # Spotlight starts indexing a fresh volume at once and holds it; a plain
   # detach then fails "busy". Nothing is writing by now, so force is safe.
@@ -113,4 +162,4 @@ hdiutil detach "$VERIFY" -force -quiet
 rmdir "$VERIFY" 2>/dev/null || true
 [ "$MISSING" -eq 0 ] || { rm -f "$DMG"; echo "Refusing to ship a broken disk image."; exit 1; }
 
-echo "Built $DMG ($(du -h "$DMG" | cut -f1))"
+echo "Built $DMG ($(du -h "$DMG" | cut -f1))$([ "$STYLED" -eq 1 ] || [ "$STYLED_PLAIN" -eq 1 ] && echo ", with the background" || echo ", plain window")"

@@ -24,6 +24,7 @@ struct ScreenroomSettingsTab: View {
     @State private var transcriber = ScreenroomTranscriberSettings.load()
     @State private var whisperReady = ScreenroomTranscriberSettings.whisperIsReady
     @State private var models = ScreenroomWhisper.availableModels()
+    @ObservedObject private var installer = WhisperInstaller.shared
 
     var body: some View {
         Form {
@@ -39,6 +40,10 @@ struct ScreenroomSettingsTab: View {
                                  : "Apple's recogniser tidies speech up, so filler words are not counted.")
                 }
 
+                // The program and a first model, as buttons, when either is
+                // missing. See WhisperInstaller.
+                WhisperSetupRows(onChange: refresh)
+
                 if whisperReady {
                     WhisperModelPicker(
                         subtitle: "Multilingual beats English-only on accents, even at the same size. Shared with Cues.")
@@ -46,12 +51,6 @@ struct ScreenroomSettingsTab: View {
 
                 DisclosureGroup("Add another model") {
                     VStack(alignment: .leading, spacing: 10) {
-                        if !whisperReady {
-                            Text("whisper itself is missing. First:")
-                                .font(.caption).foregroundStyle(.secondary)
-                            Text("brew install whisper-cpp")
-                                .font(.system(size: 10, design: .monospaced)).textSelection(.enabled)
-                        }
                         ForEach(ScreenroomWhisper.offeredModels, id: \.name) { offer in
                             VStack(alignment: .leading, spacing: 3) {
                                 HStack(spacing: 6) {
@@ -65,16 +64,22 @@ struct ScreenroomSettingsTab: View {
                                 }
                                 Text(offer.note).font(.caption2).foregroundStyle(.secondary)
                                 if !models.contains(where: { $0.url.lastPathComponent == offer.name }) {
-                                    Text(ScreenroomWhisper.downloadCommand(for: offer.name))
-                                        .font(.system(size: 9, design: .monospaced))
-                                        .textSelection(.enabled)
-                                        .lineLimit(3)
-                                        .fixedSize(horizontal: false, vertical: true)
+                                    if case .downloading(let model, let fraction, let detail) = installer.phase, model == offer.name {
+                                        HStack(spacing: 8) {
+                                            ProgressView(value: fraction).frame(width: 110)
+                                            Text(detail).font(.caption2).foregroundStyle(.secondary)
+                                            Button("Cancel") { installer.cancel() }.controlSize(.small)
+                                        }
+                                    } else {
+                                        Button("Download (\(offer.size))") { installer.download(offer.name) }
+                                            .controlSize(.small)
+                                            .disabled(installer.isBusy)
+                                    }
                                 }
                             }
                         }
                         Button("Look again") {
-                            ScreenroomWhisper.refreshBinary()
+                            installer.noteChange()
                             refresh()
                         }
                         .controlSize(.small)
@@ -122,7 +127,7 @@ struct ScreenroomSettingsTab: View {
                 Text("Your agent")
             } footer: {
                 Text(agent.enabled
-                     ? "This is the one part of Greenroom that can leave your Mac. It runs read-only in the presentation's folder and cannot change anything in it, but what a cloud agent does with a transcript and stills of a named student is between you and it."
+                     ? "This is the one part of Greenroom that can leave your Mac. It reads a copy of the presentation's folder without the recording, read-only, but what a cloud agent does with a transcript and stills of a named student is between you and it."
                      : offFooter)
             }
         }
@@ -131,6 +136,8 @@ struct ScreenroomSettingsTab: View {
         // every other tab fills it; pinning this one to 520 made it the only
         // tab sitting in half the pane.
         .onAppear { refresh() }
+        // A model downloaded from any of the per-model buttons.
+        .onChange(of: installer.revision) { _ in refresh() }
     }
 
     /// What happens with no agent depends on the Mac, so the footer says

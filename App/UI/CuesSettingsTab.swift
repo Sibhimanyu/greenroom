@@ -64,6 +64,8 @@ struct SettingLabel: View {
 struct CuesSetupRows: View {
     @EnvironmentObject private var coordinator: CoordinatorController
     @ObservedObject private var assets = ModelAssets.shared
+    /// Watched so "Listens with" turns on the moment whisper lands.
+    @ObservedObject private var whisper = WhisperInstaller.shared
     @State private var locales: [Locale] = []
     var compact: Bool
 
@@ -100,10 +102,16 @@ struct CuesSetupRows: View {
                 SettingLabel(title: "Listens with",
                              subtitle: CuesWhisperTranscriber.isAvailable
                              ? "Whisper hears names and titles properly. Apple\u{2019}s is about a second quicker and tidies them away."
-                             : "Whisper needs setting up in Settings \u{2192} Screenroom.")
+                             : "Whisper hears names and titles properly. Set it up below, once.")
             }
             .pickerStyle(.segmented)
             .disabled(inClass || !CuesWhisperTranscriber.isAvailable)
+
+            // The setup itself, here, rather than a pointer to another tab
+            // that only offered Terminal commands.
+            if !CuesWhisperTranscriber.isAvailable, !inClass {
+                WhisperSetupRows()
+            }
 
             if coordinator.cuesUseWhisper, CuesWhisperTranscriber.isAvailable {
                 WhisperModelPicker(

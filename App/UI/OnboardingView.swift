@@ -25,7 +25,7 @@ struct OnboardingView: View {
     @State private var testResults: [TestResult] = []
     @State private var connectingYouTube = false
 
-    private let stepCount = 8
+    private let stepCount = 9
     private let timer = Timer.publish(every: 1.5, on: .main, in: .common).autoconnect()
 
     var body: some View {
@@ -56,6 +56,7 @@ struct OnboardingView: View {
         case 4: permissionsStep
         case 5: youtubeStep
         case 6: cuesStep
+        case 7: screenroomStep
         default: readyStep
         }
     }
@@ -484,6 +485,20 @@ struct OnboardingView: View {
             } else {
                 CuesUnavailableText()
             }
+        }
+    }
+
+    // MARK: Screenroom (optional) - the Settings tab itself, so the two can
+    // never disagree. A teacher who evaluates presentations sets up whisper
+    // and the agent here on setup day, not in the first minute of a student's
+    // talk.
+
+    private var screenroomStep: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            stepHeader("Screenroom (optional)",
+                       "For marking a student\u{2019}s presentation: record it, type notes as they speak, and get a report on pace, filler words, pauses and facing the room. Skip this if you only teach classes; it lives in Settings \u{2192} Screenroom too.")
+            ScreenroomSettingsTab()
+                .scrollContentBackground(.hidden)
         }
     }
 

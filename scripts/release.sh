@@ -9,8 +9,8 @@
 # - commits the bump + appcast, pushes, creates the GitHub release
 #   with both the zip and the DMG attached
 #
-# Requires: xcodegen, gh (authed), create-dmg, Pillow (for the DMG
-# backdrop), the Sparkle EdDSA private key in the login Keychain
+# Requires: xcodegen, gh (authed), (create-dmg and Pillow only for a
+# styled DMG, GREENROOM_DMG_STYLE=styled), the Sparkle EdDSA private key in the login Keychain
 # (generate_keys created it), and Vendor/ZoomSDK in place.
 set -euo pipefail
 

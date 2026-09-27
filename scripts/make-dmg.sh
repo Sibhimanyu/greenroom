@@ -5,8 +5,8 @@
 # The window geometry below is paired with scripts/dmg-background.py - the
 # backdrop is drawn for these exact icon slots, so the two must move together.
 #
-# Requires: create-dmg (brew install create-dmg), and Pillow for the backdrop
-# regeneration step (skipped if Branding/dmg-background.tiff is already there).
+# Requires: nothing beyond macOS for the default plain image. The styled one
+# (GREENROOM_DMG_STYLE=styled) needs create-dmg and Pillow for the backdrop.
 set -euo pipefail
 
 APP="${1:?usage: make-dmg.sh <Greenroom.app> <version> [out-dir]}"
@@ -22,7 +22,9 @@ APP_X=160; APP_Y=198
 DEST_X=460; DEST_Y=198
 
 [ -d "$APP" ] || { echo "No such app bundle: $APP"; exit 1; }
-[ -f "$BG" ] || python3 "$REPO_DIR/scripts/dmg-background.py" "$BG"
+if [ "${GREENROOM_DMG_STYLE:-plain}" = "styled" ] && [ ! -f "$BG" ]; then
+  python3 "$REPO_DIR/scripts/dmg-background.py" "$BG"
+fi
 
 mkdir -p "$OUT_DIR"
 rm -f "$DMG"
@@ -34,7 +36,20 @@ STAGE="$(mktemp -d)"
 trap 'rm -rf "$STAGE" "${STAGE}.rw.dmg"' EXIT
 cp -R "$APP" "$STAGE/Greenroom.app"
 
-create-dmg \
+# Two ways to build it.
+#
+# Plain (the default): an empty read-write image, the app and an
+# Applications link copied in, then compressed. No artwork, and it works on
+# every Mac this has run on. `hdiutil create -srcfolder` - which create-dmg
+# and the obvious one-liner both use - fails with "Resource busy" on some
+# Macs, and each failure costs about two and a half minutes before it says
+# so; create-dmg then retried five times with doubling waits, which is where
+# releases were losing their time.
+#
+# Styled (GREENROOM_DMG_STYLE=styled): create-dmg with the backdrop, for a
+# Mac where -srcfolder works. Falls back to plain if it does not.
+STYLED=0
+if [ "${GREENROOM_DMG_STYLE:-plain}" = "styled" ] && create-dmg --hdiutil-retries 1 \
   --volname "Greenroom $VERSION" \
   --volicon "$APP/Contents/Resources/AppIcon.icns" \
   --background "$BG" \
@@ -44,12 +59,27 @@ create-dmg \
   --app-drop-link "$DEST_X" "$DEST_Y" \
   --format ULMO \
   --no-internet-enable \
-  "$DMG" "$STAGE"
+  "$DMG" "$STAGE"; then
+  STYLED=1
+else
+  rm -f "$DMG"
+  RW="${STAGE}.rw.dmg"
+  SIZE_MB=$(( $(du -sm "$STAGE/Greenroom.app" | cut -f1) + 64 ))
+  hdiutil create -size "${SIZE_MB}m" -fs HFS+ -volname "Greenroom $VERSION" -type UDIF "$RW" -quiet
+  MOUNT="$(mktemp -d)"
+  hdiutil attach "$RW" -nobrowse -noautoopen -mountpoint "$MOUNT" -quiet
+  ditto "$STAGE/Greenroom.app" "$MOUNT/Greenroom.app"
+  ln -s /Applications "$MOUNT/Applications"
+  sync
+  # Spotlight starts indexing a fresh volume at once and holds it; a plain
+  # detach then fails "busy". Nothing is writing by now, so force is safe.
+  sleep 2
+  hdiutil detach "$MOUNT" -force -quiet
+  rmdir "$MOUNT" 2>/dev/null || true
+  hdiutil convert "$RW" -format UDZO -o "$DMG" -quiet
+fi
 
-# create-dmg leaves .VolumeIcon.icns and .background/ in the volume root with
-# no invisible bit - a dot prefix alone is not enough, and Finder shows them
-# to anyone who has hidden files switched on. Setting the flag needs a
-# writable image, so round-trip through UDRW and recompress.
+if [ "$STYLED" -eq 1 ]; then
 echo "Hiding volume support files..."
 hdiutil convert "$DMG" -format UDRW -o "${STAGE}.rw.dmg" -quiet
 MOUNT="$(mktemp -d)"
@@ -61,6 +91,7 @@ hdiutil detach "$MOUNT" -quiet
 rmdir "$MOUNT" 2>/dev/null || true
 rm -f "$DMG"
 hdiutil convert "${STAGE}.rw.dmg" -format ULMO -o "$DMG" -quiet
+fi
 
 # Verify the packaged app the same way release.sh gates the zip: a valid
 # signature proves nothing about whether every linked framework made it in.
@@ -77,7 +108,8 @@ while read -r lib; do
     MISSING=1
   fi
 done < <(otool -L "$VERIFY/Greenroom.app/Contents/MacOS/Greenroom" | awk '/@rpath/ {print $1}')
-hdiutil detach "$VERIFY" -quiet
+sleep 1
+hdiutil detach "$VERIFY" -force -quiet
 rmdir "$VERIFY" 2>/dev/null || true
 [ "$MISSING" -eq 0 ] || { rm -f "$DMG"; echo "Refusing to ship a broken disk image."; exit 1; }
 

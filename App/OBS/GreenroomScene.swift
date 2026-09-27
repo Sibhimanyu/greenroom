@@ -34,6 +34,27 @@ enum GreenroomScene {
     static let webcamSourceName = "Greenroom Webcam"
     static let micSourceName = "Greenroom Mic"
 
+    /// One source per camera CameraDirector cuts between. Slot 0 keeps the
+    /// name the webcam always had, so a one-camera session is exactly the
+    /// scene it always was and a warm OBS from an older build is reused, not
+    /// rebuilt. The others are "Greenroom Webcam 2", "3" and so on.
+    static func cameraSourceName(slot: Int) -> String {
+        slot == 0 ? webcamSourceName : "\(webcamSourceName) \(slot + 1)"
+    }
+
+    /// Whether a source name is one of the camera slots.
+    static func cameraSlot(of name: String) -> Int? {
+        if name == webcamSourceName { return 0 }
+        let prefix = webcamSourceName + " "
+        guard name.hasPrefix(prefix), let number = Int(name.dropFirst(prefix.count)),
+              number >= 2 else { return nil }
+        return number - 1
+    }
+
+    /// Past this, a leftover slot is not looked for. Nobody has five
+    /// monitors each with a camera on it, and the sweep has to stop somewhere.
+    static let maxCameraSlots = 6
+
     /// Where recordings land on every Mac: ~/Documents/Greenroom, created
     /// on demand. Written into OBS's profile on each session start (see
     /// configureRecordingPath) so it holds regardless of what OBS's own
@@ -184,6 +205,10 @@ enum GreenroomScene {
     static let shapeMaskFilterName = "Greenroom Shape Mask"
     static let screenMaskFilterName = "Greenroom Screen Panel Mask"
     static let cropFilterName = "Greenroom Square Crop"
+    /// A Color Correction filter used for nothing but its opacity, last in
+    /// each camera's chain. It is what a crossfade turns. Everywhere else it
+    /// sits at full, which makes it invisible.
+    static let fadeFilterName = "Greenroom Fade"
 
     struct BubbleLayout {
         var widthFraction: Double = 0.24
@@ -209,7 +234,8 @@ enum GreenroomScene {
     @discardableResult
     static func ensureConfigured(client: OBSWebSocketClient,
                                  bubble: BubbleLayout = BubbleLayout(),
-                                 preferredDisplayUUID: String = "") async throws -> SetupResult {
+                                 preferredDisplayUUID: String = "",
+                                 cameraUIDs: [String] = []) async throws -> SetupResult {
         // OBS remembers whether the virtual cam was running when it last
         // quit and auto-resumes it on launch - confirmed by testing, that
         // left an active output blocking SetVideoSettings below ("Video
@@ -252,10 +278,15 @@ enum GreenroomScene {
         // (the class still gets the shared screen; the teacher's video
         // returns next Start once a camera is back). Reported to the
         // caller via the return value so the status log can say so.
-        let webcamUID = LocalDeviceResolver.physicalCameraUID()
-        // Still resolved, because `device_name` is part of what makes the OBS
-        // source work - see the settings written below.
-        let cameraLabel = webcamUID.flatMap { LocalDeviceResolver.cameraName(uid: $0) }
+        //
+        // `cameraUIDs` is CameraDirector's list when it is switched on, and
+        // then the session starts on ITS first camera rather than on whichever
+        // camera the resolver likes best - the two used to disagree, and the
+        // settings window would call one camera live while OBS showed another.
+        let cameras = cameraUIDs.isEmpty
+            ? LocalDeviceResolver.physicalCameraUID().map { [$0] } ?? []
+            : cameraUIDs
+        let webcamUID = cameras.first
 
         // capture_audio: false is load-bearing, not tidiness. OBS's macOS
         // ScreenCaptureKit source sets up a system-audio receive queue
@@ -287,53 +318,15 @@ enum GreenroomScene {
                                   kind: screenKind, settings: screenSettings)
             screenLive = try await screenCaptureIsLive(client: client)
         }
-        if let webcamUID {
-            // `device` is the key av_capture_input_v2 actually reads. `uid` is
-            // the OLD v1 name, and writing only that is why the source came up
-            // with an empty Device field and a black picture: OBS accepted the
-            // setting, stored it, and never looked at it. Confirmed against the
-            // running OBS, which lists `device` among its properties with
-            // exactly the AVFoundation uniqueIDs used here, and answers
-            // "Unable to find a property by that name" for `uid`.
-            //
-            // Both are written because the input kind is resolved at runtime
-            // (see bestInputKind) and could still come back as v1 on an older
-            // OBS. An unknown key is ignored, so carrying both costs nothing
-            // and covers either.
-            let webcamSettings: [String: Any] = [
-                "device": webcamUID,
-                "device_name": cameraLabel ?? "",
-                "uid": webcamUID
-            ]
-            try await ensureInput(client: client, name: webcamSourceName, kind: webcamKind,
-                                   settings: webcamSettings,
-                                   isCorrectlyConfigured: {
-                                       ($0["device"] as? String) == webcamUID
-                                           || ($0["uid"] as? String) == webcamUID
-                                   })
-
-            try await ensureFilter(client: client, source: webcamSourceName, name: chromaKeyFilterName, kind: chromaKind)
-            try await setChromaKey(client: client, enabled: bubble.shape.usesChromaKey, kind: chromaKind)
-            try await ensureShapeMask(client: client, shape: bubble.shape)
-
-            // Confirmed by testing: OBS can log "No device selected" for this
-            // source at startup even though its saved settings already have the
-            // right uid - a startup race where AVFoundation's device list isn't
-            // populated yet at the exact moment OBS deserializes the scene
-            // collection, and it never retries on its own. Re-applying the same
-            // uid here (well after startup, unlike the screen source this one
-            // isn't implicated in any crash) forces OBS to re-attempt opening it.
-            _ = try? await client.request("SetInputSettings", data: [
-                "inputName": webcamSourceName,
-                "inputSettings": webcamSettings,
-                "overlay": true
-            ])
-            try await setWebcamItemEnabled(client: client, enabled: true)
+        if !cameras.isEmpty {
+            try await ensureCameraInputs(client: client, uids: cameras, shape: bubble.shape,
+                                         webcamKind: webcamKind, chromaKind: chromaKind)
         } else {
             // Screen-only: a leftover webcam source (its device now gone)
             // must not sit as a frozen/black box in the frame - disable
             // its scene item; re-enabled next Start with a camera.
             try await setWebcamItemEnabled(client: client, enabled: false)
+            await removeCameraSlots(client: client, from: 1)
         }
 
         // The only audio in the recording. Screen capture has its audio off
@@ -375,39 +368,268 @@ enum GreenroomScene {
                            displayLabel: displayLabel)
     }
 
-    /// Points the one webcam source at a different camera, live.
+    // MARK: Cameras
+
+    /// Every camera the session can cut to, open at once, shaped and placed
+    /// the same, with only slot 0 showing.
     ///
-    /// This is how CameraDirector cuts between a camera on each monitor, and
-    /// the reason there is one source rather than two. Twenty-two things in
-    /// this file hang off `webcamSourceName` - the chroma key, the shape
-    /// mask, the square crop, the transform, the layer order - and most of
-    /// them carry a comment recording what it cost to get right. A second
-    /// webcam source would need every one of them duplicated, and every
-    /// duplicate is somewhere for the two to drift apart. Swapping the device
-    /// underneath keeps all of it working because it is the same source.
+    /// This replaced pointing one source at a different device on every cut,
+    /// and the reason is what that cost. OBS had to close one camera and open
+    /// the other, so the picture froze or went black for most of a second,
+    /// and the director then waited another second and a half before it
+    /// could trust what the new camera saw. With every camera already open, a
+    /// cut is a visibility change: nothing to open and nothing to wait for.
     ///
-    /// Patching a live source in place is the thing this file warns against
-    /// everywhere else, and the warning does not apply here: it is about
-    /// `screen_capture`, whose ScreenCaptureKit audio callback segfaults OBS
-    /// when reconfigured. The webcam source is already patched in place on
-    /// every start - see the re-apply in ensureConfigured, added because OBS
-    /// can deserialize a scene before AVFoundation has listed the devices.
+    /// The case for one source was that everything in this file hangs off it
+    /// - the chroma key, the shape mask, the square crop, the transform, the
+    /// layer order - and a copy is somewhere for two cameras to drift apart.
+    /// That is answered by never writing a copy. Each of those functions
+    /// takes the source it works on, and every caller walks the camera slots,
+    /// so there is still one piece of code per rule, run once per camera.
     ///
-    /// What it costs: OBS closes one camera and opens the other, so there is
-    /// a short hitch. That is acceptable HERE and nowhere else, because a cut
-    /// only happens after the teacher has looked away for a full two seconds.
-    /// A deliberate, rare, gated change reads as a camera cut. The same call
-    /// on a timer would read as a fault.
-    static func setWebcamDevice(client: OBSWebSocketClient, uid: String, name: String?) async {
-        // Both keys, for the same reason ensureConfigured writes both: the
-        // input kind is resolved at runtime and an older OBS may still be on
-        // av_capture_input v1, which reads `uid` and has never heard of
-        // `device`. An unknown key is ignored, so carrying both costs nothing.
-        _ = try? await client.request("SetInputSettings", data: [
-            "inputName": webcamSourceName,
-            "inputSettings": ["device": uid, "device_name": name ?? "", "uid": uid],
-            "overlay": true
+    /// Hidden is not closed. OBS's macOS capture source has no "deactivate
+    /// when not showing" setting (checked against the mac-avcapture plugin in
+    /// OBS 32), so a hidden camera keeps delivering frames. That is what
+    /// makes the cut instant, and it is what lets the director look through a
+    /// camera the class cannot see.
+    private static func ensureCameraInputs(client: OBSWebSocketClient, uids: [String],
+                                           shape: WebcamShape,
+                                           webcamKind: String, chromaKind: String) async throws {
+        for (slot, uid) in uids.enumerated() {
+            let name = cameraSourceName(slot: slot)
+            // `device` is the key av_capture_input_v2 actually reads. `uid` is
+            // the OLD v1 name, and writing only that is why the source came up
+            // with an empty Device field and a black picture: OBS accepted the
+            // setting, stored it, and never looked at it. Confirmed against the
+            // running OBS, which lists `device` among its properties with
+            // exactly the AVFoundation uniqueIDs used here, and answers
+            // "Unable to find a property by that name" for `uid`.
+            //
+            // Both are written because the input kind is resolved at runtime
+            // (see bestInputKind) and could still come back as v1 on an older
+            // OBS. An unknown key is ignored, so carrying both costs nothing
+            // and covers either. `device_name` is part of what makes the
+            // source work too, which is why the name is still resolved.
+            let settings: [String: Any] = [
+                "device": uid,
+                "device_name": LocalDeviceResolver.cameraName(uid: uid) ?? "",
+                "uid": uid
+            ]
+            try await ensureInput(client: client, name: name, kind: webcamKind,
+                                   settings: settings,
+                                   isCorrectlyConfigured: {
+                                       ($0["device"] as? String) == uid
+                                           || ($0["uid"] as? String) == uid
+                                   })
+
+            // Confirmed by testing: OBS can log "No device selected" for this
+            // source at startup even though its saved settings already have the
+            // right uid - a startup race where AVFoundation's device list isn't
+            // populated yet at the exact moment OBS deserializes the scene
+            // collection, and it never retries on its own. Re-applying the same
+            // uid here (well after startup, unlike the screen source this one
+            // isn't implicated in any crash) forces OBS to re-attempt opening it.
+            _ = try? await client.request("SetInputSettings", data: [
+                "inputName": name,
+                "inputSettings": settings,
+                "overlay": true
+            ])
+        }
+        // The crop and the mask are cut to each camera's real size, which a
+        // camera opened a moment ago does not have yet. All of them are
+        // opening at once by now, so this waits once for the lot.
+        await waitForCameraFrames(client: client, count: uids.count)
+
+        let fadeKind = try await bestFilterKind(client: client, containing: ["color_filter_v2", "color_filter"])
+        for slot in uids.indices {
+            let name = cameraSourceName(slot: slot)
+            try await ensureFilter(client: client, source: name, name: chromaKeyFilterName, kind: chromaKind)
+            try await setChromaKey(client: client, source: name, enabled: shape.usesChromaKey, kind: chromaKind)
+            try await ensureShapeMask(client: client, source: name, shape: shape)
+            try await ensureFade(client: client, source: name, kind: fadeKind)
+        }
+        await removeCameraSlots(client: client, from: uids.count)
+        try await showOnlyCamera(client: client, slot: 0)
+    }
+
+    /// Up to two seconds for every camera to report a size. Not an error when
+    /// one does not: the crop and mask fall back to 16:9 exactly as they
+    /// always have, and the next Start gets it right.
+    private static func waitForCameraFrames(client: OBSWebSocketClient, count: Int) async {
+        for _ in 0..<10 {
+            let items = (try? await sceneItems(client: client)) ?? []
+            let sized = items.filter { item in
+                guard let slot = (item["sourceName"] as? String).flatMap(cameraSlot(of:)), slot < count,
+                      let transform = item["sceneItemTransform"] as? [String: Any],
+                      let width = transform["sourceWidth"] as? Double else { return false }
+                return width > 0
+            }
+            if sized.count >= count { return }
+            try? await Task.sleep(nanoseconds: 200_000_000)
+        }
+    }
+
+    /// Removes camera slots from `first` upward, so a camera taken out of
+    /// the list is actually let go - its light off - rather than kept open
+    /// behind the picture by a source nobody will show again.
+    private static func removeCameraSlots(client: OBSWebSocketClient, from first: Int) async {
+        guard first < maxCameraSlots,
+              let names = try? await inputNames(client: client) else { return }
+        for slot in max(first, 1)..<maxCameraSlots where names.contains(cameraSourceName(slot: slot)) {
+            await removeInputAndWait(client: client, name: cameraSourceName(slot: slot))
+        }
+    }
+
+    /// Changes which cameras a RUNNING session has, for the director being
+    /// switched on or off mid-class.
+    ///
+    /// Safe with the virtual camera live: it creates and removes inputs and
+    /// sets filters and transforms, and never touches the video settings OBS
+    /// refuses to change while an output is active. The one visible cost is
+    /// when the first camera in the list is not the one already showing -
+    /// that source has to be rebuilt, which is a single hitch at the moment
+    /// the teacher changed the setting, not one per cut.
+    static func setLiveCameras(client: OBSWebSocketClient, uids: [String], bubble: BubbleLayout) async throws {
+        guard !uids.isEmpty else { return }
+        let webcamKind = try await bestInputKind(client: client, containing: ["av_capture", "dshow", "v4l2"])
+        let chromaKind = try await bestFilterKind(client: client, containing: ["chroma_key_filter_v2", "chroma_key"])
+        try await ensureCameraInputs(client: client, uids: uids, shape: bubble.shape,
+                                     webcamKind: webcamKind, chromaKind: chromaKind)
+        try await applyLiveLayout(client: client, bubble: bubble)
+    }
+
+    /// Hides every camera but one, and puts that one on top.
+    private static func showOnlyCamera(client: OBSWebSocketClient, slot: Int) async throws {
+        let items = try await sceneItems(client: client)
+        for item in items {
+            guard let itemSlot = (item["sourceName"] as? String).flatMap(cameraSlot(of:)),
+                  let itemId = item["sceneItemId"] as? Int else { continue }
+            _ = try? await client.request("SetSceneItemEnabled", data: [
+                "sceneName": sceneName, "sceneItemId": itemId, "sceneItemEnabled": itemSlot == slot
+            ])
+        }
+        try await enforceLayerOrder(client: client)
+    }
+
+    /// Cuts, or crossfades, from one camera to another.
+    ///
+    /// The incoming camera goes on top before it is shown, so in a bubble it
+    /// covers the outgoing one rather than appearing behind it and changing
+    /// nothing until the outgoing one vanishes.
+    ///
+    /// The crossfade is not the same curve both ways, on purpose. Two
+    /// straight lines meet at half and half, and half of one opaque bubble
+    /// over half of another lets 25% of the shared screen show through the
+    /// middle of the teacher's face. The incoming camera rises on an eased
+    /// curve and the outgoing one falls as one minus its square, which keeps
+    /// the bubble at least 87% solid throughout, while Cutout, which has
+    /// nothing behind the person but the screen, still reads as an ordinary
+    /// dissolve. Both ends are eased: the first version fell as 1 - t
+    /// squared, which is steepest at the very end, so the outgoing camera
+    /// vanished with a snap after a gentle start.
+    ///
+    /// Timed from the clock, not by counting steps, and sent without waiting
+    /// on OBS - see OBSWebSocketClient.fireBatch - so the steps go out every
+    /// frame and both cameras change in the same one.
+    static func switchCamera(client: OBSWebSocketClient, to slot: Int, from previous: Int,
+                             fadeSeconds: Double) async {
+        guard let items = try? await sceneItems(client: client),
+              let incoming = items.first(where: { ($0["sourceName"] as? String) == cameraSourceName(slot: slot) }),
+              let incomingID = incoming["sceneItemId"] as? Int else { return }
+        let incomingName = cameraSourceName(slot: slot)
+        let outgoingName = cameraSourceName(slot: previous)
+
+        let fadeKind = fadeSeconds > 0 ? await fadeFilterKind(client: client, source: incomingName) : nil
+        if let fadeKind {
+            await setFade(client: client, source: incomingName, opacity: 0, kind: fadeKind)
+        }
+        _ = try? await client.request("SetSceneItemIndex", data: [
+            "sceneName": sceneName, "sceneItemId": incomingID, "sceneItemIndex": items.count - 1
         ])
+        _ = try? await client.request("SetSceneItemEnabled", data: [
+            "sceneName": sceneName, "sceneItemId": incomingID, "sceneItemEnabled": true
+        ])
+
+        if let fadeKind {
+            let clock = ContinuousClock()
+            let began = clock.now
+            while true {
+                let elapsed = clock.now - began
+                let seconds = Double(elapsed.components.seconds)
+                    + Double(elapsed.components.attoseconds) / 1e18
+                let t = min(1, seconds / fadeSeconds)
+                guard t < 1 else { break }
+                let rising = fadeCurve(t)
+                client.fireBatch([
+                    fadeRequest(source: incomingName, opacity: rising, kind: fadeKind),
+                    fadeRequest(source: outgoingName, opacity: 1 - rising * rising, kind: fadeKind)
+                ])
+                // Sixty a second, a step per frame at OBS's highest usual rate.
+                try? await Task.sleep(nanoseconds: 16_666_667)
+            }
+            // The last values are waited for. The steps were not, and OBS
+            // runs requests on a pool, so one could land late; these land
+            // after all of them and leave the fade exactly finished.
+            await setFade(client: client, source: incomingName, opacity: 1, kind: fadeKind)
+            await setFade(client: client, source: outgoingName, opacity: 0, kind: fadeKind)
+        }
+
+        // Every other camera, not just the outgoing one: a switch is also the
+        // moment to put right anything a failed earlier switch left showing.
+        for item in items {
+            guard let itemSlot = (item["sourceName"] as? String).flatMap(cameraSlot(of:)),
+                  itemSlot != slot,
+                  let itemId = item["sceneItemId"] as? Int else { continue }
+            _ = try? await client.request("SetSceneItemEnabled", data: [
+                "sceneName": sceneName, "sceneItemId": itemId, "sceneItemEnabled": false
+            ])
+        }
+        // Back to full while nobody can see it, ready for the next time it is
+        // shown - and so a screenshot through it reads a face, not a ghost.
+        if let fadeKind {
+            await setFade(client: client, source: outgoingName, opacity: 1, kind: fadeKind)
+        }
+    }
+
+    /// Creates the fade filter if missing, puts it at full, and makes it the
+    /// last filter in the chain so it fades the finished bubble - after the
+    /// key, the crop and the mask - and not something they then redraw.
+    private static func ensureFade(client: OBSWebSocketClient, source: String, kind: String) async throws {
+        try await ensureFilter(client: client, source: source, name: fadeFilterName, kind: kind)
+        await setFade(client: client, source: source, opacity: 1, kind: kind)
+        let list = try? await client.request("GetSourceFilterList", data: ["sourceName": source])
+        let count = ((list?["filters"] as? [[String: Any]]) ?? []).count
+        _ = try? await client.request("SetSourceFilterIndex", data: [
+            "sourceName": source, "filterName": fadeFilterName, "filterIndex": max(0, count - 1)
+        ])
+    }
+
+    private static func fadeFilterKind(client: OBSWebSocketClient, source: String) async -> String? {
+        let filter = try? await client.request("GetSourceFilter", data: [
+            "sourceName": source, "filterName": fadeFilterName
+        ])
+        return filter?["filterKind"] as? String
+    }
+
+    /// Smoothstep: eases in and out, so the fade starts and finishes without
+    /// a visible jolt at either end.
+    private static func fadeCurve(_ t: Double) -> Double { t * t * (3 - 2 * t) }
+
+    /// `opacity` is the same trap here as in the chroma key: 0-1 on the v2
+    /// filter, an int percent on v1. See setChromaKey.
+    private static func fadeRequest(source: String, opacity: Double,
+                                    kind: String) -> (type: String, data: [String: Any]) {
+        let value: Any = kind.hasSuffix("_v2") ? opacity : Int((opacity * 100).rounded())
+        return ("SetSourceFilterSettings", [
+            "sourceName": source, "filterName": fadeFilterName,
+            "filterSettings": ["opacity": value], "overlay": true
+        ])
+    }
+
+    private static func setFade(client: OBSWebSocketClient, source: String,
+                                opacity: Double, kind: String) async {
+        let request = fadeRequest(source: source, opacity: opacity, kind: kind)
+        _ = try? await client.request(request.type, data: request.data)
     }
 
     /// Shows/hides the webcam's scene item - screen-only sessions (no
@@ -551,20 +773,40 @@ enum GreenroomScene {
     /// the webcam UNDERNEATH the screen: the overlay vanishes behind the
     /// shared screen. Asserted explicitly at every session setup instead
     /// of ever trusting creation order.
+    ///
+    /// With more than one camera, every camera goes above the screen and the
+    /// one showing goes last, on top of them all. Only one is ever enabled,
+    /// so their order among themselves is invisible except during a
+    /// crossfade - which sets it for itself.
     static func enforceLayerOrder(client: OBSWebSocketClient) async throws {
         let items = try await sceneItems(client: client)
-        guard
-            let webcam = items.first(where: { ($0["sourceName"] as? String) == webcamSourceName }),
-            let webcamID = webcam["sceneItemId"] as? Int,
-            let webcamIndex = webcam["sceneItemIndex"] as? Int
-        else { return }
+        let all = cameraItems(items)
+        let showing = { (item: [String: Any]) in (item["sceneItemEnabled"] as? Bool) == true }
+        let cameras = all.filter { !showing($0) } + all.filter(showing)
         let topIndex = items.count - 1
-        guard webcamIndex != topIndex else { return }
-        _ = try await client.request("SetSceneItemIndex", data: [
-            "sceneName": sceneName,
-            "sceneItemId": webcamID,
-            "sceneItemIndex": topIndex
-        ])
+        if cameras.count == 1,
+           let index = cameras[0]["sceneItemIndex"] as? Int, index == topIndex { return }
+        for camera in cameras {
+            guard let itemID = camera["sceneItemId"] as? Int else { continue }
+            _ = try await client.request("SetSceneItemIndex", data: [
+                "sceneName": sceneName,
+                "sceneItemId": itemID,
+                "sceneItemIndex": topIndex
+            ])
+        }
+    }
+
+    /// The scene items of every camera slot, slot 0 first.
+    private static func cameraItems(_ items: [[String: Any]]) -> [[String: Any]] {
+        items
+            .compactMap { item in (item["sourceName"] as? String).flatMap(cameraSlot(of:)).map { ($0, item) } }
+            .sorted { $0.0 < $1.0 }
+            .map(\.1)
+    }
+
+    /// Names of the camera sources this scene actually holds.
+    private static func cameraSourceNames(client: OBSWebSocketClient) async throws -> [String] {
+        cameraItems(try await sceneItems(client: client)).compactMap { $0["sourceName"] as? String }
     }
 
     /// Names of ALL inputs OBS knows about, scene-membership aside. OBS
@@ -695,11 +937,12 @@ enum GreenroomScene {
     /// 0-1 float (default 1), the obsolete v1 an int percent (default
     /// 100). Writing the v2 value into a v1 filter = 1% opacity = an
     /// invisible webcam, which is exactly how the Cutout bug shipped.
-    private static func setChromaKey(client: OBSWebSocketClient, enabled: Bool, kind: String) async throws {
+    private static func setChromaKey(client: OBSWebSocketClient, source: String,
+                                     enabled: Bool, kind: String) async throws {
         if enabled {
             let opacity: Any = kind.hasSuffix("_v2") ? 1.0 : 100
             _ = try? await client.request("SetSourceFilterSettings", data: [
-                "sourceName": webcamSourceName,
+                "sourceName": source,
                 "filterName": chromaKeyFilterName,
                 "filterSettings": [
                     "key_color_type": "green",
@@ -711,7 +954,7 @@ enum GreenroomScene {
             ])
         }
         _ = try? await client.request("SetSourceFilterEnabled", data: [
-            "sourceName": webcamSourceName,
+            "sourceName": source,
             "filterName": chromaKeyFilterName,
             "filterEnabled": enabled
         ])
@@ -740,9 +983,9 @@ enum GreenroomScene {
 
     /// The camera's own width/height, or 16:9 when OBS cannot tell us yet -
     /// the same fallback `layoutCutout` uses, for the same reason.
-    private static func webcamSourceAspect(client: OBSWebSocketClient) async throws -> Double {
+    private static func webcamSourceAspect(client: OBSWebSocketClient, source: String) async throws -> Double {
         let items = try await sceneItems(client: client)
-        guard let webcam = items.first(where: { ($0["sourceName"] as? String) == webcamSourceName }),
+        guard let webcam = items.first(where: { ($0["sourceName"] as? String) == source }),
               let transform = webcam["sceneItemTransform"] as? [String: Any],
               let width = transform["sourceWidth"] as? Double,
               let height = transform["sourceHeight"] as? Double,
@@ -766,16 +1009,16 @@ enum GreenroomScene {
     /// Index 0 is load-bearing: the mask is stretched over whatever reaches it,
     /// so cropping AFTER the mask would stretch an ellipse rather than produce
     /// a circle.
-    private static func ensureSquareCrop(client: OBSWebSocketClient,
+    private static func ensureSquareCrop(client: OBSWebSocketClient, source: String,
                                          enabled: Bool, aspect: Double) async throws {
-        let list = try await client.request("GetSourceFilterList", data: ["sourceName": webcamSourceName])
+        let list = try await client.request("GetSourceFilterList", data: ["sourceName": source])
         let filters = (list["filters"] as? [[String: Any]]) ?? []
         let exists = filters.contains { ($0["filterName"] as? String) == cropFilterName }
 
         guard enabled, aspect > 1 else {
             if exists {
                 _ = try? await client.request("RemoveSourceFilter", data: [
-                    "sourceName": webcamSourceName, "filterName": cropFilterName
+                    "sourceName": source, "filterName": cropFilterName
                 ])
             }
             return
@@ -785,7 +1028,7 @@ enum GreenroomScene {
         // aspect: a 1280x720 camera loses 280 from each side, a 1920x1080 one
         // loses 420.
         let items = try await sceneItems(client: client)
-        guard let webcam = items.first(where: { ($0["sourceName"] as? String) == webcamSourceName }),
+        guard let webcam = items.first(where: { ($0["sourceName"] as? String) == source }),
               let transform = webcam["sceneItemTransform"] as? [String: Any],
               let width = transform["sourceWidth"] as? Double,
               let height = transform["sourceHeight"] as? Double,
@@ -797,17 +1040,17 @@ enum GreenroomScene {
 
         if exists {
             _ = try await client.request("SetSourceFilterSettings", data: [
-                "sourceName": webcamSourceName, "filterName": cropFilterName,
+                "sourceName": source, "filterName": cropFilterName,
                 "filterSettings": settings, "overlay": false
             ])
         } else {
             _ = try await client.request("CreateSourceFilter", data: [
-                "sourceName": webcamSourceName, "filterName": cropFilterName,
+                "sourceName": source, "filterName": cropFilterName,
                 "filterKind": "crop_filter", "filterSettings": settings
             ])
         }
         _ = try? await client.request("SetSourceFilterIndex", data: [
-            "sourceName": webcamSourceName, "filterName": cropFilterName, "filterIndex": 0
+            "sourceName": source, "filterName": cropFilterName, "filterIndex": 0
         ])
     }
 
@@ -818,22 +1061,22 @@ enum GreenroomScene {
     /// (filterKind "mask_filter_v2") in alpha-mask mode against a generated
     /// PNG - confirmed against OBS's own bundled mask_alpha_filter.effect
     /// shader rather than guessed.
-    private static func ensureShapeMask(client: OBSWebSocketClient, shape: WebcamShape) async throws {
+    private static func ensureShapeMask(client: OBSWebSocketClient, source: String, shape: WebcamShape) async throws {
         // Crop FIRST, then mask against whatever aspect survives the crop. The
         // mask is stretched over the source, so the two have to agree or the
         // shape comes out skewed - see MaskImageGenerator.maskImageURL.
-        let camera = try await webcamSourceAspect(client: client)
-        try await ensureSquareCrop(client: client, enabled: shape.cropsToSquare, aspect: camera)
+        let camera = try await webcamSourceAspect(client: client, source: source)
+        try await ensureSquareCrop(client: client, source: source, enabled: shape.cropsToSquare, aspect: camera)
         let maskAspect = shape.cropsToSquare ? 1 : camera
 
-        let list = try await client.request("GetSourceFilterList", data: ["sourceName": webcamSourceName])
+        let list = try await client.request("GetSourceFilterList", data: ["sourceName": source])
         let filters = (list["filters"] as? [[String: Any]]) ?? []
         let exists = filters.contains { ($0["filterName"] as? String) == shapeMaskFilterName }
 
         guard let maskURL = MaskImageGenerator.maskImageURL(for: shape, aspect: maskAspect) else {
             if exists {
                 _ = try? await client.request("RemoveSourceFilter", data: [
-                    "sourceName": webcamSourceName, "filterName": shapeMaskFilterName
+                    "sourceName": source, "filterName": shapeMaskFilterName
                 ])
             }
             return
@@ -842,12 +1085,12 @@ enum GreenroomScene {
         let settings: [String: Any] = ["type": "mask_alpha_filter.effect", "image_path": maskURL.path]
         if exists {
             _ = try await client.request("SetSourceFilterSettings", data: [
-                "sourceName": webcamSourceName, "filterName": shapeMaskFilterName,
+                "sourceName": source, "filterName": shapeMaskFilterName,
                 "filterSettings": settings, "overlay": false
             ])
         } else {
             _ = try await client.request("CreateSourceFilter", data: [
-                "sourceName": webcamSourceName, "filterName": shapeMaskFilterName,
+                "sourceName": source, "filterName": shapeMaskFilterName,
                 "filterKind": "mask_filter_v2", "filterSettings": settings
             ])
         }
@@ -877,8 +1120,13 @@ enum GreenroomScene {
 
         let chromaKind = try await bestFilterKind(client: client,
                                                   containing: ["chroma_key_filter_v2", "chroma_key"])
-        try await setChromaKey(client: client, enabled: bubble.shape.usesChromaKey, kind: chromaKind)
-        try await ensureShapeMask(client: client, shape: bubble.shape)
+        let fadeKind = try await bestFilterKind(client: client, containing: ["color_filter_v2", "color_filter"])
+        for camera in try await cameraSourceNames(client: client) {
+            try await setChromaKey(client: client, source: camera, enabled: bubble.shape.usesChromaKey, kind: chromaKind)
+            try await ensureShapeMask(client: client, source: camera, shape: bubble.shape)
+            // Again, because a mask created just now went in after it.
+            try await ensureFade(client: client, source: camera, kind: fadeKind)
+        }
         try await layoutScene(client: client, layout: bubble, canvasWidth: width, canvasHeight: height)
         try await enforceLayerOrder(client: client)
     }
@@ -907,10 +1155,15 @@ enum GreenroomScene {
     /// screen edge like a news presenter.
     private static func layoutCutout(client: OBSWebSocketClient, layout: BubbleLayout,
                                      canvasWidth: Int, canvasHeight: Int) async throws {
-        let items = try await sceneItems(client: client)
-        guard let webcam = items.first(where: { ($0["sourceName"] as? String) == webcamSourceName }),
-              let itemId = webcam["sceneItemId"] as? Int else { return }
+        for webcam in cameraItems(try await sceneItems(client: client)) {
+            guard let itemId = webcam["sceneItemId"] as? Int else { continue }
+            try await layoutCutout(client: client, item: webcam, itemId: itemId, layout: layout,
+                                   canvasWidth: canvasWidth, canvasHeight: canvasHeight)
+        }
+    }
 
+    private static func layoutCutout(client: OBSWebSocketClient, item webcam: [String: Any], itemId: Int,
+                                     layout: BubbleLayout, canvasWidth: Int, canvasHeight: Int) async throws {
         let width = Double(canvasWidth)
         let height = Double(canvasHeight)
         let transform = webcam["sceneItemTransform"] as? [String: Any]
@@ -1053,10 +1306,16 @@ enum GreenroomScene {
     }
 
     private static func positionBubble(client: OBSWebSocketClient, layout: BubbleLayout, canvasWidth: Int, canvasHeight: Int) async throws {
-        let items = try await sceneItems(client: client)
-        guard let item = items.first(where: { ($0["sourceName"] as? String) == webcamSourceName }),
-              let itemId = item["sceneItemId"] as? Int else { return }
+        for item in cameraItems(try await sceneItems(client: client)) {
+            guard let itemId = item["sceneItemId"] as? Int,
+                  let source = item["sourceName"] as? String else { continue }
+            try await positionBubble(client: client, source: source, itemId: itemId, layout: layout,
+                                     canvasWidth: canvasWidth, canvasHeight: canvasHeight)
+        }
+    }
 
+    private static func positionBubble(client: OBSWebSocketClient, source: String, itemId: Int,
+                                       layout: BubbleLayout, canvasWidth: Int, canvasHeight: Int) async throws {
         let width = Double(canvasWidth)
         let height = Double(canvasHeight)
 
@@ -1071,7 +1330,7 @@ enum GreenroomScene {
         // get a box shaped like it. Either way SCALE_INNER now has nothing left
         // to letterbox.
         let boxWidth = width * layout.widthFraction
-        let aspect = layout.shape.cropsToSquare ? 1 : try await webcamSourceAspect(client: client)
+        let aspect = layout.shape.cropsToSquare ? 1 : try await webcamSourceAspect(client: client, source: source)
         let boxHeight = boxWidth / aspect
         let x = width - width * layout.rightInset - boxWidth
         let y = height - height * layout.bottomInset - boxHeight
@@ -1125,8 +1384,8 @@ enum GreenroomScene {
         // height (the canvas edge crops the overflow, so the waist-down
         // disappears exactly like Apple's Large overlay) and center it
         // around the left third, where a centered subject ends up standing.
-        if let webcam = items.first(where: { ($0["sourceName"] as? String) == webcamSourceName }),
-           let webcamId = webcam["sceneItemId"] as? Int {
+        for webcam in cameraItems(items) {
+            guard let webcamId = webcam["sceneItemId"] as? Int else { continue }
             let transform = webcam["sceneItemTransform"] as? [String: Any]
             let sourceWidth = (transform?["sourceWidth"] as? Double) ?? 0
             let sourceHeight = (transform?["sourceHeight"] as? Double) ?? 0

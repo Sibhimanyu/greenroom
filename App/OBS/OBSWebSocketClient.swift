@@ -207,6 +207,24 @@ final class OBSWebSocketClient: NSObject {
         takeReadyContinuation()?.resume(throwing: error)
     }
 
+    /// Sends requests as one RequestBatch and does not wait for the answer.
+    ///
+    /// For animation only - a crossfade's in-between steps. Waiting for each
+    /// answer before sending the next is what made the fade step: a round trip
+    /// every frame paced it by OBS's reply time rather than by the clock, and
+    /// the two cameras' opacities landed in different frames. One batch puts
+    /// both in the same message, and not waiting lets the steps go out on
+    /// time. The reply (op 9) is ignored by `handle`, so nothing is left
+    /// pending. Anything whose result matters goes through `request`.
+    func fireBatch(_ requests: [(type: String, data: [String: Any])]) {
+        send(["op": 8, "d": [
+            "requestId": UUID().uuidString,
+            "haltOnFailure": false,
+            "executionType": 0,
+            "requests": requests.map { ["requestType": $0.type, "requestData": $0.data] }
+        ] as [String: Any]])
+    }
+
     private func send(_ object: [String: Any]) {
         guard let data = try? JSONSerialization.data(withJSONObject: object),
               let text = String(data: data, encoding: .utf8) else { return }

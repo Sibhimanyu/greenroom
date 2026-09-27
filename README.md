@@ -201,10 +201,16 @@ rough. Shape changes apply on the next Start.
 
 **Camera switching** (off by default): pick two or more cameras here and
 turn it on. An iPhone through Continuity Camera can be the second one.
-During a class, Vision reads your head direction on the live camera; turn
-more than about 25° away for 2 seconds and it cuts to the next camera in
-the list. One camera feed is live at a time, and it all runs on the Mac.
-Aiming a camera no longer needs OBS running.
+During a class every chosen camera is open, and Vision compares them: the
+class gets whichever camera sees your face most head-on, once it is clearly
+better than the live one for the delay you set (1 second by default). It
+reads which way your head points, not your eyes, so a camera on top of a
+monitor works while you look at that screen. Looking down at the floor, or
+away from every camera, switches nothing. Pick a hard cut or a short crossfade; a bar over your self view
+fills during the wait, and the class never sees it. The first camera opens
+at Start and the others once the meeting is live, so an iPhone is not woken
+until the class needs it. It all runs on the Mac, and aiming a camera does
+not need OBS running.
 
 ### Layout
 The tiled-workspace arrangement, with a live schematic that previews

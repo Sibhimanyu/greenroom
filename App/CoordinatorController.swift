@@ -333,16 +333,96 @@ final class CoordinatorController: ObservableObject {
             // Applied live: a teacher who turns it on mid-class should not
             // have to end the session to get it.
             if virtualCamActive, client.isConnected {
-                if cameraDirectorSettings.isUsable {
-                    cameraDirector.start(client: client, settings: cameraDirectorSettings)
-                } else {
-                    cameraDirector.stop()
-                }
+                applyCameraDirectorLive(from: oldValue)
             }
         }
     }
     @Published private(set) var isStopping = false
     private var startTask: Task<Void, Never>?
+
+    /// The cameras the scene should hold for these settings: the director's
+    /// list when it can run, otherwise none, which ensureConfigured reads as
+    /// "the one webcam it would have picked anyway".
+    private func sessionCameraUIDs(_ settings: CameraDirectorSettings) -> [String] {
+        let available = settings.availableOnly()
+        return available.isUsable ? available.cameraUIDs : []
+    }
+
+    /// Opens the cameras past the first and starts the director, once the
+    /// meeting is live.
+    ///
+    /// Not at Start, on purpose. The first camera is what the class sees
+    /// first, so it comes up with the scene and the start waits for nothing
+    /// else. The others are only there to be cut to, and until there is a
+    /// class there is nobody to cut for - while opening one early is not free:
+    /// an iPhone used as a camera wakes into Continuity Camera the moment
+    /// anything opens it, which is how this was found.
+    ///
+    /// Off the start's own path, so the recording and the tiling after it do
+    /// not wait on a camera warming up.
+    private func bringInExtraCameras() {
+        let uids = sessionCameraUIDs(cameraDirectorSettings)
+        guard uids.count > 1 else { return }
+        Task { @MainActor in
+            do {
+                try await GreenroomScene.setLiveCameras(client: client, uids: uids, bubble: bubbleLayout)
+            } catch {
+                log("Couldn't open the other cameras: \(error.localizedDescription). The class stays on the first one.")
+                return
+            }
+            // The cameras still being the ones just opened is what matters. A
+            // dwell or transition changed meanwhile is simply taken as it is now.
+            guard virtualCamActive, sessionCameraUIDs(cameraDirectorSettings) == uids,
+                  !cameraDirector.isRunning else { return }
+            cameraDirector.start(client: client, settings: cameraDirectorSettings)
+            log("Watching for which camera you're facing \u{2014} \(uids.count) cameras, all open, switching after \(String(format: "%.1f", cameraDirectorSettings.dwellSeconds))s facing another.")
+        }
+    }
+
+    /// Closes every camera but the first, for End Session.
+    ///
+    /// With OBS kept warm between classes, anything left in the scene stays
+    /// open - the iPhone would sit in Continuity Camera until Greenroom quit.
+    /// Bounded like the rest of the teardown: a wedged socket must not hold
+    /// up the end of a class.
+    private func releaseExtraCameras() async {
+        guard let list = await boundedOBSRequest("GetInputList", seconds: 2),
+              let inputs = list["inputs"] as? [[String: Any]] else { return }
+        for name in inputs.compactMap({ $0["inputName"] as? String })
+        where (GreenroomScene.cameraSlot(of: name) ?? 0) > 0 {
+            _ = await boundedOBSRequest("RemoveInput", data: ["inputName": name], seconds: 2)
+        }
+    }
+
+    /// A change to the camera settings, mid-class.
+    ///
+    /// Only a change of CAMERAS rebuilds anything. The dwell slider and the
+    /// cut-or-crossfade choice are retuned in place: restarting the director
+    /// for them would put it back on the first camera while OBS was showing
+    /// another.
+    private func applyCameraDirectorLive(from old: CameraDirectorSettings) {
+        let before = sessionCameraUIDs(old)
+        let after = sessionCameraUIDs(cameraDirectorSettings)
+        guard before != after else {
+            cameraDirector.retune(cameraDirectorSettings)
+            return
+        }
+        cameraDirector.stop()
+        let fallback = LocalDeviceResolver.physicalCameraUID().map { [$0] } ?? []
+        Task { @MainActor in
+            do {
+                try await GreenroomScene.setLiveCameras(client: client,
+                                                        uids: after.isEmpty ? fallback : after,
+                                                        bubble: bubbleLayout)
+            } catch {
+                log("Couldn't change the cameras: \(error.localizedDescription)")
+                return
+            }
+            // Only if the cameras did not change again while these were being set up.
+            guard virtualCamActive, sessionCameraUIDs(cameraDirectorSettings) == after else { return }
+            cameraDirector.start(client: client, settings: cameraDirectorSettings)
+        }
+    }
 
     @Published var meetingNumber = ""
     @Published var meetingPassword = ""
@@ -1050,6 +1130,16 @@ final class CoordinatorController: ObservableObject {
                 Task { @MainActor in self?.chatSessionDidEnd() }
             }
             .store(in: &cancellables)
+
+        // The switch countdown over the self view. Pushed rather than polled:
+        // it changes three times a second while counting and not at all
+        // otherwise.
+        cameraDirector.$pendingSwitch
+            .removeDuplicates()
+            .sink { pending in
+                Task { @MainActor in ParticipantGridWindowController.applyCameraSwitch(pending) }
+            }
+            .store(in: &cancellables)
     }
 
     private var cancellables = Set<AnyCancellable>()
@@ -1219,6 +1309,7 @@ final class CoordinatorController: ObservableObject {
 
                 try Task.checkCancellation()
                 mark(.meeting, .done)
+                bringInExtraCameras()
 
                 // Only now, with the meeting live: Cues never listens
                 // outside a class. Off by default; logs why when it cannot
@@ -1362,6 +1453,7 @@ final class CoordinatorController: ObservableObject {
             // torn down underneath it.
             cameraDirector.stop()
             _ = try? await client.request("StopVirtualCam")
+            await releaseExtraCameras()
             // Park BEFORE disconnecting. windDownForQuit parks too, but it
             // is gated on `client.isConnected` and the disconnect below is
             // exactly what makes that false - so "End Session, then quit",
@@ -3407,7 +3499,10 @@ final class CoordinatorController: ObservableObject {
         let setup = try await GreenroomScene.ensureConfigured(
             client: client,
             bubble: bubbleLayout,
-            preferredDisplayUUID: screenCaptureDisplayUUID)
+            preferredDisplayUUID: screenCaptureDisplayUUID,
+            // The first camera only. The rest join once the meeting is live -
+            // see bringInExtraCameras.
+            cameraUIDs: Array(sessionCameraUIDs(cameraDirectorSettings).prefix(1)))
         if !setup.webcamActive {
             log("No webcam connected \u{2014} running screen-only. Plug a camera in and press Start (or Snap Windows Back) to bring your video back.")
         }
@@ -3434,8 +3529,6 @@ final class CoordinatorController: ObservableObject {
         if cameraDirectorSettings.isUsable {
             // Nothing else may hold a camera once the director owns them.
             cameraProbe.stop()
-            cameraDirector.start(client: client, settings: cameraDirectorSettings)
-            log("Watching for which camera you're facing \u{2014} \(cameraDirectorSettings.cameraUIDs.count) cameras, cutting after \(Int(cameraDirectorSettings.dwellSeconds))s of looking away.")
         }
 
         log("Ready \u{2014} \u{201C}OBS Virtual Camera\u{201D} is live.")

@@ -136,6 +136,64 @@ final class OBSProcessManager {
         }
     }
 
+    /// Takes every camera but the first out of OBS's saved scenes, BEFORE launch.
+    ///
+    /// Found on a Mac whose second camera is an iPhone: every time Greenroom
+    /// opened, the phone woke up into Continuity Camera. Greenroom prewarms OBS
+    /// at launch, OBS instantiates every source in its scene collection at
+    /// startup - active scene or not - and the collection still held
+    /// "Greenroom Webcam 2" from the last class. So opening the app opened the
+    /// phone's camera, hours before any class.
+    ///
+    /// The extra cameras only exist for the camera director, which only runs
+    /// once a meeting is live and adds them itself (see
+    /// CoordinatorController.bringInExtraCameras), and End Session removes them
+    /// again. This catches what that cannot: OBS is stopped with SIGKILL, so
+    /// what it last saved to disk is whatever it saved, and a crash or a
+    /// force-quit mid-class leaves the extra camera in the file.
+    ///
+    /// Every collection, for the same reason seedReplayBufferConfig does every
+    /// profile. A collection with no Greenroom camera in it is not rewritten.
+    /// This one IS parse-and-reserialise, unlike the INI edits: it is JSON,
+    /// which has nothing a round trip can drop, and OBS reads it by key.
+    static func dropExtraCameraSources() {
+        guard NSRunningApplication.runningApplications(withBundleIdentifier: bundleIdentifier).isEmpty else { return }
+        let scenes = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Library/Application Support/obs-studio/basic/scenes")
+        guard let files = try? FileManager.default.contentsOfDirectory(
+            at: scenes, includingPropertiesForKeys: nil) else { return }
+        for file in files where file.pathExtension == "json" {
+            guard let data = try? Data(contentsOf: file),
+                  let cleaned = withoutExtraCameras(data) else { continue }
+            try? cleaned.write(to: file, options: .atomic)
+        }
+    }
+
+    /// The same collection with the extra camera sources and every scene item
+    /// that shows them removed, or nil when there was nothing to remove.
+    static func withoutExtraCameras(_ data: Data) -> Data? {
+        guard var root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              var sources = root["sources"] as? [[String: Any]] else { return nil }
+        let isExtra = { (name: Any?) -> Bool in
+            guard let name = name as? String, let slot = GreenroomScene.cameraSlot(of: name) else { return false }
+            return slot > 0
+        }
+        guard sources.contains(where: { isExtra($0["name"]) }) else { return nil }
+
+        sources.removeAll { isExtra($0["name"]) }
+        // A scene lists what it shows by name. Left in, an item would point
+        // at a source that no longer exists.
+        for index in sources.indices {
+            guard var settings = sources[index]["settings"] as? [String: Any],
+                  let items = settings["items"] as? [[String: Any]] else { continue }
+            settings["items"] = items.filter { !isExtra($0["name"]) }
+            sources[index]["settings"] = settings
+        }
+        root["sources"] = sources
+        return try? JSONSerialization.data(withJSONObject: root,
+                                           options: [.prettyPrinted, .withoutEscapingSlashes])
+    }
+
     /// Sets one key inside one section of an INI, adding the key - or the whole
     /// section - when it is missing.
     ///
@@ -191,6 +249,9 @@ final class OBSProcessManager {
         try seedWebSocketConfig()
         // Before launch, for the same reason as the websocket config above.
         Self.seedReplayBufferConfig(seconds: GreenroomScene.replayBufferSeconds)
+        // Before launch, because OBS opens every source it saved the moment it
+        // starts - see dropExtraCameraSources.
+        Self.dropExtraCameraSources()
 
         let configuration = NSWorkspace.OpenConfiguration()
         configuration.arguments = [

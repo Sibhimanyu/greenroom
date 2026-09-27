@@ -332,6 +332,12 @@ enum ParticipantGridWindowController {
         root?.applyCues(state)
     }
 
+    /// The camera director's countdown, pushed each time it changes. Nil
+    /// clears it. No-op when the panel is closed.
+    static func applyCameraSwitch(_ pending: CameraDirector.PendingSwitch?) {
+        root?.applyCameraSwitch(pending)
+    }
+
     fileprivate static func report(_ message: String) { log?(message) }
     fileprivate static func requestEndSession() { endSession?() }
     fileprivate static func requestShowChat() { showChat?() }
@@ -422,6 +428,7 @@ private final class RootView: NSView {
     private let railContent = NSView()
     private let railDivider = NSView()
     private let selfViewHost = NSView()
+    private let switchCountdown = SwitchCountdownView(frame: .zero)
     /// The corner overlay that replaced the rail's self-view block.
     private let selfPreview = SelfPreviewView(frame: .zero)
     /// Hidden before the class is live, and whenever the teacher turns it off.
@@ -766,6 +773,7 @@ private final class RootView: NSView {
         selfViewHost.layer?.cornerRadius = 10        // DESIGN.md radius-md
         selfViewHost.layer?.masksToBounds = true
         railContent.addSubview(selfViewHost)
+        selfViewHost.addSubview(switchCountdown)
 
         // The preview goes on the window, above the grid, so the grid never
         // measures around it. Actions are the two that are about you.
@@ -999,10 +1007,15 @@ private final class RootView: NSView {
         if selfVideo !== view {
             selfVideo?.removeFromSuperview()
             view.autoresizingMask = [.width, .height]
-            host.addSubview(view)
+            // Under the switch countdown, which is drawn over the picture.
+            host.addSubview(view, positioned: .below, relativeTo: switchCountdown)
             selfVideo = view
         }
         view.frame = host.bounds
+    }
+
+    func applyCameraSwitch(_ pending: CameraDirector.PendingSwitch?) {
+        switchCountdown.apply(pending, readingSeconds: CameraDirector.readingSeconds)
     }
 
     func detachAllVideo() {
@@ -1917,6 +1930,7 @@ private final class RootView: NSView {
         var y = top - height
         selfViewHost.frame = NSRect(x: x, y: y, width: width, height: height)
         selfVideo?.frame = selfViewHost.bounds
+        switchCountdown.frame = selfViewHost.bounds
 
         // Caption and meter share the picture's edges, so the block reads as one
         // unit rather than three things that happen to be stacked.
@@ -3440,6 +3454,137 @@ private final class DotView: NSView {
     override func draw(_ dirtyRect: NSRect) {
         fill.setFill()
         NSBezierPath(ovalIn: bounds).fill()
+    }
+}
+
+// MARK: - Camera switch countdown
+
+/// The camera director's dwell, made visible over the self view.
+///
+/// A teacher turns to the other monitor and for a second nothing happens.
+/// Without this, that second reads as "it didn't notice me". With it, a bar
+/// along the bottom of their own picture fills over exactly that second,
+/// naming the camera it is about to switch to, and the switch lands as the
+/// bar arrives. Look back early and it drains away - the glance being ignored,
+/// shown rather than guessed at.
+///
+/// Drawn by Greenroom over the Zoom self view and nowhere else. It is not in
+/// the OBS scene, so the class never sees a countdown in the teacher's picture.
+///
+/// Readings come three times a second. Each one is animated linearly over the
+/// time until the next, so the bar moves continuously instead of in three
+/// steps - which is the only motion here, and it is the state itself.
+@MainActor
+private final class SwitchCountdownView: NSView {
+    private let track = CALayer()
+    private let fill = CALayer()
+    private let pill = NSView()
+    private let label = NSTextField(labelWithString: "")
+    private var fraction: Double = 0
+    private var showing = false
+
+    private static let barHeight: CGFloat = 4
+
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        wantsLayer = true
+        alphaValue = 0
+
+        track.backgroundColor = NSColor.black.withAlphaComponent(0.45).cgColor
+        layer?.addSublayer(track)
+        // A fill colour, so the accent is allowed - see DESIGN.md, Brand greens.
+        fill.backgroundColor = RootView.accent.cgColor
+        fill.anchorPoint = CGPoint(x: 0, y: 0.5)
+        layer?.addSublayer(fill)
+
+        pill.wantsLayer = true
+        pill.layer?.backgroundColor = NSColor.black.withAlphaComponent(0.6).cgColor
+        pill.layer?.cornerRadius = 6
+        addSubview(pill)
+        label.font = .systemFont(ofSize: 11, weight: .medium)
+        label.textColor = .white
+        label.lineBreakMode = .byTruncatingTail
+        pill.addSubview(label)
+    }
+
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    /// Decoration over a picture. Clicks go to whatever is underneath.
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
+    override func layout() {
+        super.layout()
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        track.frame = CGRect(x: 0, y: 0, width: bounds.width, height: Self.barHeight)
+        fill.bounds = CGRect(x: 0, y: 0, width: bounds.width * fraction, height: Self.barHeight)
+        fill.position = CGPoint(x: 0, y: Self.barHeight / 2)
+        CATransaction.commit()
+        layoutPill()
+    }
+
+    private func layoutPill() {
+        let size = label.intrinsicContentSize
+        let width = min(ceil(size.width) + 14, max(0, bounds.width - 16))
+        pill.frame = NSRect(x: 8, y: Self.barHeight + 6, width: width, height: 20)
+        label.frame = NSRect(x: 7, y: (20 - ceil(size.height)) / 2, width: width - 14, height: ceil(size.height))
+    }
+
+    func apply(_ pending: CameraDirector.PendingSwitch?, readingSeconds: Double) {
+        let still = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        guard let pending else {
+            // A look that did not last: drain, then go.
+            guard showing else { return }
+            showing = false
+            setFraction(0, seconds: still ? 0 : 0.2, timing: .easeIn)
+            fade(to: 0, seconds: still ? 0 : 0.2)
+            return
+        }
+
+        label.stringValue = "\u{2192} \(pending.cameraName)"
+        layoutPill()
+        if !showing {
+            showing = true
+            setFraction(0, seconds: 0, timing: .linear)
+            fade(to: 1, seconds: still ? 0 : 0.15)
+        }
+        if pending.landed {
+            // It switched. Finish the bar and let it go, rather than draining it,
+            // which would say the opposite of what just happened.
+            showing = false
+            setFraction(1, seconds: still ? 0 : 0.12, timing: .easeOut)
+            fade(to: 0, seconds: still ? 0 : 0.25, delay: still ? 0 : 0.2)
+            return
+        }
+        setFraction(pending.progress, seconds: still ? 0 : readingSeconds, timing: .linear)
+    }
+
+    private func setFraction(_ value: Double, seconds: Double, timing: CAMediaTimingFunctionName) {
+        fraction = value
+        CATransaction.begin()
+        CATransaction.setDisableActions(seconds == 0)
+        CATransaction.setAnimationDuration(seconds)
+        CATransaction.setAnimationTimingFunction(CAMediaTimingFunction(name: timing))
+        fill.bounds = CGRect(x: 0, y: 0, width: bounds.width * value, height: Self.barHeight)
+        CATransaction.commit()
+    }
+
+    private func fade(to alpha: CGFloat, seconds: Double, delay: Double = 0) {
+        let run = { [weak self] in
+            guard let self else { return }
+            // A newer countdown may have started during the delay.
+            if alpha == 0, self.showing { return }
+            NSAnimationContext.runAnimationGroup { context in
+                context.duration = seconds
+                context.timingFunction = CAMediaTimingFunction(name: alpha > 0 ? .easeOut : .easeIn)
+                self.animator().alphaValue = alpha
+            }
+        }
+        if delay > 0 {
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) { run() }
+        } else {
+            run()
+        }
     }
 }
 

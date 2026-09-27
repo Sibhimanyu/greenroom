@@ -22,22 +22,33 @@
 //  teacher is facing. The angle is fixed by where the lens is, which is the
 //  only thing that actually fixes it.
 //
-//  HOW THE DECISION IS MADE, and the compromise in it.
+//  HOW THE DECISION IS MADE.
 //
-//  Only ONE camera is live at a time, because Greenroom keeps one OBS webcam
-//  source and swaps which device it points at - see the note on
-//  GreenroomScene.setWebcamDevice for why a second source was not worth what
-//  it would cost. That means this cannot compare the two cameras and pick the
-//  better one. It watches the camera it is on, and when that camera stops
-//  seeing a face pointed at it, it moves to the next one in the ring.
+//  Every camera is open at once, one OBS source each, and only the live one
+//  is shown - see GreenroomScene.ensureCameraInputs. So this can look through
+//  all of them, and it compares them: the shot goes to whichever camera has
+//  the teacher's face most head-on, once it has been clearly better than the
+//  live one for the dwell. With three cameras it goes straight to the right
+//  one instead of trying them in turn. See `Chooser`.
 //
-//  With two cameras that converges in one step and reads exactly like a
-//  multicam cut. With three it may take two. The dwell is what keeps it from
-//  hunting: nothing switches until the current camera has been looked away
-//  from continuously for `dwellSeconds`, so a glance at a note costs nothing.
+//  It used to be the other way round. One source had its device swapped
+//  underneath it, so only one camera could be seen, and the director could
+//  only say "this camera has lost you" and move to the next in the ring.
+//  Every cut then waited for OBS to close one camera and open the other -
+//  a freeze or a flash of black - and a further second and a half before
+//  the new camera's picture could be trusted. That was most of why a cut
+//  felt slow, and none of it is left.
+//
+//  The dwell is still what keeps it from hunting: nothing switches until
+//  the other camera has seen the teacher face-on for `dwellSeconds`, so a
+//  glance at a note costs nothing. Because the evidence is now positive it
+//  can be much shorter than it was.
+//
+//  It still falls back to the old ring when no other camera can be seen at
+//  all - see `Chooser`.
 //
 //  IT WATCHES THROUGH OBS, not through its own capture session. The frames
-//  come from GetSourceScreenshot on the webcam source, which is how the shape
+//  come from GetSourceScreenshot on each camera source, which is how the shape
 //  preview already works. That avoids resting the whole feature on whether
 //  macOS will hand the same camera to two processes at once - which it may
 //  well do, but an architecture should not rest on a guess, and the unsigned
@@ -61,22 +72,33 @@ struct CameraDirectorSettings: Codable, Equatable {
     /// LocalDeviceResolver hands out.
     var cameraUIDs: [String] = []
 
-    /// How long the teacher must be looking away from the live camera before
-    /// the shot moves.
+    /// How long another camera must have the teacher clearly more head-on
+    /// than the live one before the shot moves.
     ///
-    /// Two seconds, because the failure modes either side are not symmetric.
-    /// Too short and the shot cuts every time they glance at a note, which is
-    /// unwatchable. Too long and they finish the sentence before the camera
-    /// catches up, which is merely late. Late is better.
-    var dwellSeconds: Double = 2.0
+    /// The failure modes either side are not symmetric. Too short and the
+    /// shot cuts every time they glance at a note, which is unwatchable. Too
+    /// long and they finish the sentence before the camera catches up, which
+    /// is merely late. Late is better.
+    ///
+    /// One second, down from two. Two was set when the only evidence was
+    /// "this camera has lost you", which a glance at a note also produces. A
+    /// second camera actually seeing the teacher's face turned to it is much
+    /// harder to fake by accident. Saved settings keep whatever they had.
+    var dwellSeconds: Double = 1.0
 
-    /// How far off the lens counts as looking away.
+    /// How far off the lens the settings window calls "looking at this
+    /// camera", while a camera is being aimed.
     ///
-    /// Twenty-five degrees. A teacher reading their own screen under the
-    /// camera sits around seventeen, so this deliberately does NOT trip on
-    /// that - there is nothing to cut to, and cutting would be wrong. Two
-    /// monitors side by side put the other one past thirty.
+    /// Only that. The switching itself compares the cameras against each
+    /// other (see CameraDirector.Chooser) and has no fixed line, because
+    /// where the angles fall depends on where each camera is mounted. For
+    /// aiming, one number to get under is still the easiest instruction:
+    /// twenty-five degrees, which a teacher reading the screen under the
+    /// camera sits comfortably inside.
     var awayDegrees: Double = 25
+
+    /// What the class sees at the moment the shot moves.
+    var transition: CameraTransition = .cut
 
     static let key = "cameraDirectorSettings"
 
@@ -113,6 +135,53 @@ struct CameraDirectorSettings: Codable, Equatable {
     func save(_ defaults: UserDefaults = .standard) {
         guard let data = try? JSONEncoder().encode(self) else { return }
         defaults.set(data, forKey: Self.key)
+    }
+}
+
+/// Decoded key by key, because the synthesized decoder refuses a whole value
+/// over one missing key - and every settings blob saved before `transition`
+/// existed is missing it. That would not have been a crash. It would have
+/// been worse: `load` falls back to defaults, so adding a setting would have
+/// quietly switched the feature off and forgotten which cameras were chosen,
+/// on every Mac and in every exported config.
+extension CameraDirectorSettings {
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let fallback = CameraDirectorSettings()
+        enabled = try container.decodeIfPresent(Bool.self, forKey: .enabled) ?? fallback.enabled
+        cameraUIDs = try container.decodeIfPresent([String].self, forKey: .cameraUIDs) ?? fallback.cameraUIDs
+        dwellSeconds = try container.decodeIfPresent(Double.self, forKey: .dwellSeconds) ?? fallback.dwellSeconds
+        awayDegrees = try container.decodeIfPresent(Double.self, forKey: .awayDegrees) ?? fallback.awayDegrees
+        // An unknown case, from a newer build, is a cut rather than a failure.
+        transition = (try? container.decodeIfPresent(CameraTransition.self, forKey: .transition))
+            .flatMap { $0 } ?? fallback.transition
+    }
+}
+
+enum CameraTransition: String, Codable, CaseIterable, Identifiable {
+    /// Straight from one camera to the other, as a vision mixer does it.
+    case cut
+    /// A short dissolve, for anyone who finds a hard cut abrupt.
+    case crossfade
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .cut: return "Cut"
+        case .crossfade: return "Crossfade"
+        }
+    }
+
+    /// Half a second. Long enough to read as a dissolve rather than a
+    /// glitch, short enough that the teacher is not two people for a whole
+    /// word. It was four tenths while the fade stepped; with the steps
+    /// smooth, the extra tenth is what lets the ease at each end show.
+    var fadeSeconds: Double {
+        switch self {
+        case .cut: return 0
+        case .crossfade: return 0.5
+        }
     }
 }
 
@@ -164,39 +233,107 @@ final class CameraDirector: ObservableObject {
     /// did anything at all.
     @Published private(set) var cuts = 0
 
+    /// A switch that is on its way, for the countdown bar over the self view.
+    ///
+    /// The dwell is the part of this feature a teacher cannot otherwise see:
+    /// they turn to the other monitor and for a second nothing happens, which
+    /// reads as "it didn't notice". Showing the second fill up says it did,
+    /// and when it will act. Nil whenever nothing is counting down - including
+    /// looking at the floor, where no camera has the teacher and nothing is
+    /// going to switch.
+    @Published private(set) var pendingSwitch: PendingSwitch?
+
+    /// Every camera's smoothed angle to the teacher, by slot, nil where it
+    /// sees no face. What the decision is actually made on, so the settings
+    /// window can show both numbers side by side instead of only the live one.
+    @Published private(set) var angles: [Double?] = []
+
+    /// The camera names, by slot, for showing `angles` against.
+    var cameraNamesInOrder: [String] { cameraNames }
+
+    /// The slot showing.
+    var liveSlot: Int { live }
+
+    struct PendingSwitch: Equatable {
+        /// The camera it will switch to.
+        var cameraName: String
+        /// 0 to 1, of the dwell.
+        var progress: Double
+        /// The switch is happening now. The bar finishes and fades rather than
+        /// draining, which is what a look that did not last looks like.
+        var landed = false
+    }
+
+    /// How long one reading stands for, so a bar can glide to the next value
+    /// instead of stepping three times a second.
+    static let readingSeconds = Double(everyMs) / 1_000_000_000
+
     private var task: Task<Void, Never>?
     private var settings = CameraDirectorSettings()
-    private var index = 0
+    /// The slot showing, which is also the index into `settings.cameraUIDs`.
+    private var live = 0
+    private var cameraNames: [String] = []
 
-    /// When to cut. See `Switcher`.
-    private var switcher = Switcher(dwellSeconds: 2, cameraCount: 0)
+    /// When to cut, and to where. See `Chooser`.
+    private var chooser = Chooser(dwellSeconds: 1)
 
-    /// How often to look. Twice a second is far more than the decision needs
-    /// - it turns on a two-second dwell - and it keeps the screenshot traffic
-    /// on the OBS socket to something that cannot compete with a class.
-    private static let everyMs: UInt64 = 500_000_000
+    /// Each camera's last screenshot, hashed. A live camera never produces
+    /// the same JPEG twice - sensor noise alone sees to that - so a repeat
+    /// means OBS is handing back a frozen frame. For a hidden camera that
+    /// would be the worst possible reading: the face-on picture from the
+    /// last time it was live, still "seeing" the teacher long after they
+    /// turned away, pulling the shot back to it. A repeat counts as no
+    /// picture, which drops the director to the blind ring rather than
+    /// letting it trust a photograph.
+    private var lastFrames: [Int: Int] = [:]
 
-    /// Long enough after a cut for the new device to have opened and produced
-    /// a frame. Judging during this window would read the black of a camera
-    /// still starting up as "nobody there" and cut straight onwards.
+    /// How often to look. A bit over three times a second: often enough that
+    /// a one-second dwell is judged on three readings rather than two, and
+    /// with a quarter-width screenshot per camera it is still nothing next to
+    /// what the virtual camera itself moves over the socket.
+    private static let everyMs: UInt64 = 300_000_000
+
+    /// Long enough for the cameras to have opened at the start of a session.
+    /// Judging sooner would read the black of a camera still starting up as
+    /// "nobody there". Only at the start now: a cut goes to a camera that is
+    /// already open and was seen with a face in it a moment ago.
     private static let settleSeconds: Double = 1.5
 
     // MARK: Running
 
     /// Starts watching. Safe to call when already running, and does nothing
     /// at all when the feature is off or there is only one camera.
+    ///
+    /// The camera sources must already match `requested` - Start builds them
+    /// through ensureConfigured, and a change mid-class goes through
+    /// GreenroomScene.setLiveCameras first. Either way slot 0 is showing.
     func start(client: OBSWebSocketClient, settings requested: CameraDirectorSettings) {
         stop()
         let settings = requested.availableOnly()
         guard settings.isUsable else { return }
         self.settings = settings
-        index = 0
-        switcher = Switcher(dwellSeconds: settings.dwellSeconds,
-                            cameraCount: settings.cameraUIDs.count)
+        live = 0
+        lastFrames = [:]
+        cameraNames = settings.cameraUIDs.enumerated().map { slot, uid in
+            LocalDeviceResolver.cameraName(uid: uid) ?? "Camera \(slot + 1)"
+        }
+        chooser = Chooser(dwellSeconds: settings.dwellSeconds)
         cuts = 0
         awaySeconds = 0
-        liveCameraName = LocalDeviceResolver.cameraName(uid: settings.cameraUIDs[0])
+        liveCameraName = cameraNames[0]
         task = Task { [weak self] in await self?.watch(client: client) }
+    }
+
+    /// Takes new timing or a new transition without touching which camera is
+    /// live. Restarting for that would reset the director to slot 0 while OBS
+    /// was still showing another - the settings window would name one camera
+    /// and the class would see the other.
+    func retune(_ requested: CameraDirectorSettings) {
+        guard isRunning else { return }
+        let settings = requested.availableOnly()
+        guard settings.cameraUIDs == self.settings.cameraUIDs else { return }
+        self.settings = settings
+        chooser.dwellSeconds = settings.dwellSeconds
     }
 
     func stop() {
@@ -205,12 +342,14 @@ final class CameraDirector: ObservableObject {
         liveCameraName = nil
         sight = .idle
         awaySeconds = 0
+        pendingSwitch = nil
+        angles = []
     }
 
     var isRunning: Bool { task != nil }
 
     private func watch(client: OBSWebSocketClient) async {
-        // Let the session get its first frame up before judging it.
+        // Let the session get its first frames up before judging them.
         try? await Task.sleep(nanoseconds: UInt64(Self.settleSeconds * 1_000_000_000))
         while !Task.isCancelled {
             await tick(client: client)
@@ -219,97 +358,238 @@ final class CameraDirector: ObservableObject {
     }
 
     private func tick(client: OBSWebSocketClient) async {
-        guard let frame = await Self.grab(client: client) else {
-            sight = .noPicture("OBS isn't sending a webcam picture.")
-            return
+        var frames: [CGImage?] = []
+        for slot in settings.cameraUIDs.indices {
+            let grabbed = await Self.grab(client: client, slot: slot)
+            let frozen = grabbed != nil && lastFrames[slot] == grabbed?.hash
+            lastFrames[slot] = grabbed?.hash
+            frames.append(frozen ? nil : grabbed?.image)
         }
-        let reading = Self.look(at: frame)
-        sight = reading
+        guard !Task.isCancelled else { return }
+        // Vision off the main thread: it is now one face search per camera
+        // per tick, and the settings window is on this thread.
+        let sights = await Task.detached(priority: .userInitiated) {
+            frames.map { frame in frame.map(CameraDirector.look(at:)) ?? .noPicture("") }
+        }.value
+
+        if case .noPicture = sights[live] {
+            sight = .noPicture("OBS isn't sending a webcam picture.")
+        } else {
+            sight = sights[live]
+        }
 
         // No face is treated the same as a face turned away. It is the same
         // thing from the class's side: this camera is not showing them
         // anybody who is talking to them.
-        let lookingHere = (reading.degrees ?? .infinity) <= settings.awayDegrees
-        let verdict = switcher.advance(lookingHere: lookingHere,
-                                       elapsed: Double(Self.everyMs) / 1_000_000_000)
-        awaySeconds = switcher.awaySeconds
-        guard verdict else { return }
-        await cut(client: client)
+        let readings = sights.map { sight -> Chooser.Reading in
+            switch sight {
+            case .noPicture, .idle: return .noPicture
+            case .seen(let degrees): return .face(degrees)
+            case .noFace, .noAngle: return .nobody
+            }
+        }
+        let target = chooser.advance(readings: readings, live: live,
+                                     elapsed: Double(Self.everyMs) / 1_000_000_000)
+        awaySeconds = chooser.awaySeconds
+        if angles != chooser.angles { angles = chooser.angles }
+        pendingSwitch = chooser.progress.map { candidate, progress in
+            PendingSwitch(cameraName: cameraName(slot: candidate), progress: progress)
+        }
+        guard let target, !Task.isCancelled else { return }
+        await cut(client: client, to: target)
     }
 
-    /// When to cut, with no OBS and no camera anywhere in it.
+    /// When to cut and where to, with no OBS and no camera anywhere in it.
     ///
-    /// Pulled out of `tick` so the two rules that matter can be tested
-    /// against a script of readings rather than against a teacher sitting in
-    /// front of a webcam turning their head: the dwell, which stops a glance
-    /// from cutting, and the hunt guard, which stops an empty room from
-    /// cycling the shot round every camera forever.
-    struct Switcher {
+    /// Pulled out of `tick` so the rules that matter can be checked against
+    /// a script of readings rather than against a teacher sitting in front of
+    /// a webcam turning their head.
+    ///
+    /// **The cameras are compared, not judged one at a time.** Every tick,
+    /// each camera's angle to the teacher's head is smoothed, and the shot
+    /// goes to whichever camera has them most head-on - once it has been
+    /// clearly better than the live one, by `marginDegrees`, for the whole
+    /// dwell.
+    ///
+    /// This replaced two fixed cut-offs - the live camera past 25 degrees,
+    /// another inside 25 - and the reason is what they did on a real desk.
+    /// With the second camera on top of an external monitor, looking at that
+    /// monitor reads as a head tipped down, so where the angles fell depended
+    /// as much on where each camera was mounted as on where the teacher was
+    /// looking, and a single noisy reading could land a camera inside the
+    /// line and start a switch nobody wanted. Comparing asks the question
+    /// that is actually wanted - which camera has the better view of this
+    /// face right now - and a mounting that tips every reading by the same
+    /// amount changes nothing.
+    ///
+    ///  - **The margin** is what stops two near-equal cameras trading the
+    ///    shot back and forth: the live one keeps it until another is
+    ///    clearly better, and a camera just cut away from has to earn it back
+    ///    the same way.
+    ///  - **The ceiling** is the no-hunting rule. A camera further off than
+    ///    `ceilingDegrees` is not "facing" anyone, however much better it is
+    ///    than the other; looking at the floor or out of the window leaves
+    ///    the shot where it is. See also `CameraDirector.score`, which makes a
+    ///    head tipped down at the shoes score like one.
+    ///  - **The old ring, as a fallback.** When no other camera sends a picture
+    ///    at all there is nothing to compare, so it does what it did before
+    ///    every camera was open at once: once the live camera has lost the
+    ///    teacher for the dwell, try the next one, and stop after a full lap
+    ///    with nobody found.
+    struct Chooser {
+        enum Reading: Equatable {
+            /// No picture arrived from this camera.
+            case noPicture
+            /// A picture with no usable face in it.
+            case nobody
+            /// A face, this far off the lens - see `CameraDirector.score`.
+            case face(Double)
+        }
+
         var dwellSeconds: Double
-        var cameraCount: Int
 
-        private(set) var awaySeconds: Double = 0
-        /// Cameras tried since one of them last saw a face pointed at it.
-        private(set) var triedSinceGood = 0
+        /// How much better another camera must be before it can take the shot.
+        static let marginDegrees: Double = 10
+        /// Past this, a camera is not facing the teacher at all.
+        static let ceilingDegrees: Double = 40
+        /// Each reading's weight against the running value. Half: a real turn
+        /// shows in two readings, a one-frame blip is halved before it counts.
+        static let smoothing: Double = 0.5
 
-        /// Feeds in one reading. True means cut now.
-        mutating func advance(lookingHere: Bool, elapsed: Double) -> Bool {
-            if lookingHere {
-                awaySeconds = 0
-                triedSinceGood = 0
-                return false
+        /// Each camera's smoothed angle, nil when it has not seen a face.
+        private(set) var angles: [Double?] = []
+        /// Readings in a row without a face, per camera. One is forgiven -
+        /// Vision drops the odd frame - so a blink of the detector does not
+        /// hand the shot to the other camera.
+        private var misses: [Int] = []
+        /// The camera the evidence points to, and for how long it has.
+        private(set) var candidate: Int?
+        private(set) var candidateSeconds: Double = 0
+        /// How long the live camera has been without the teacher, with no
+        /// other camera to compare against.
+        private(set) var blindSeconds: Double = 0
+        /// Blind cuts since a camera last saw the teacher.
+        private(set) var blindTries = 0
+
+        init(dwellSeconds: Double) {
+            self.dwellSeconds = dwellSeconds
+        }
+
+        /// Whatever is being waited on, for the settings window.
+        var awaySeconds: Double { candidate != nil ? candidateSeconds : blindSeconds }
+
+        private mutating func smooth(_ readings: [Reading]) {
+            if angles.count != readings.count {
+                angles = Array(repeating: nil, count: readings.count)
+                misses = Array(repeating: 0, count: readings.count)
             }
-            awaySeconds += elapsed
-            guard awaySeconds >= dwellSeconds else { return false }
-            guard triedSinceGood < cameraCount - 1 else {
-                // Every camera has been tried and none found anybody. Hold
-                // this one: nothing is gained by cutting round an empty room,
-                // and the recording would be unwatchable. Pinned rather than
-                // left to grow so the moment somebody comes back it is one
-                // dwell away from being right again.
-                awaySeconds = dwellSeconds
-                return false
+            for (index, reading) in readings.enumerated() {
+                if case .face(let degrees) = reading {
+                    angles[index] = angles[index].map { $0 + (degrees - $0) * Self.smoothing } ?? degrees
+                    misses[index] = 0
+                } else {
+                    misses[index] += 1
+                    if misses[index] > 1 { angles[index] = nil }
+                }
             }
-            return true
+        }
+
+        /// Feeds in one reading per camera. A camera index means cut to it now.
+        mutating func advance(readings: [Reading], live: Int, elapsed: Double) -> Int? {
+            guard readings.indices.contains(live) else { return nil }
+            smooth(readings)
+            let liveAngle = angles[live]
+            let others = readings.indices.filter { $0 != live }
+
+            let best = others
+                .compactMap { index in angles[index].map { (index, $0) } }
+                .filter { $0.1 <= Self.ceilingDegrees }
+                .min { $0.1 < $1.1 }
+            if let (index, angle) = best,
+               liveAngle.map({ $0 - angle >= Self.marginDegrees }) ?? true {
+                candidateSeconds = index == candidate ? candidateSeconds + elapsed : elapsed
+                candidate = index
+                blindSeconds = 0
+                return candidateSeconds >= dwellSeconds ? index : nil
+            }
+            candidate = nil
+            candidateSeconds = 0
+
+            let liveHasThem = liveAngle.map { $0 <= Self.ceilingDegrees } ?? false
+            if liveHasThem { blindTries = 0 }
+            let blind = others.allSatisfy { readings[$0] == .noPicture }
+            guard blind, !liveHasThem else {
+                blindSeconds = 0
+                return nil
+            }
+            // Capped so the moment a camera finds somebody it is one dwell
+            // from being right, not a long-banked absence.
+            blindSeconds = min(blindSeconds + elapsed, dwellSeconds)
+            guard blindSeconds >= dwellSeconds, blindTries < readings.count - 1 else { return nil }
+            return (live + 1) % readings.count
+        }
+
+        /// How far the current candidate is toward a cut, 0 to 1. Nil when no
+        /// camera is winning, which includes every blind-ring wait: that one
+        /// is a guess, and a countdown would promise something it may not do.
+        var progress: (candidate: Int, fraction: Double)? {
+            guard let candidate, dwellSeconds > 0 else { return nil }
+            return (candidate, min(1, candidateSeconds / dwellSeconds))
         }
 
         /// Called after a cut lands.
-        mutating func cut() {
-            triedSinceGood += 1
-            awaySeconds = 0
+        mutating func didCut(blind: Bool) {
+            blindTries = blind ? blindTries + 1 : 0
+            candidate = nil
+            candidateSeconds = 0
+            blindSeconds = 0
         }
     }
 
-    private func cut(client: OBSWebSocketClient) async {
-        index = (index + 1) % settings.cameraUIDs.count
-        let uid = settings.cameraUIDs[index]
-        let name = LocalDeviceResolver.cameraName(uid: uid)
-        await GreenroomScene.setWebcamDevice(client: client, uid: uid, name: name)
-        liveCameraName = name
+    private func cut(client: OBSWebSocketClient, to target: Int) async {
+        let blind = chooser.candidate != target
+        if !blind {
+            pendingSwitch = PendingSwitch(cameraName: cameraName(slot: target), progress: 1, landed: true)
+        }
+        let previous = live
+        live = target
+        await GreenroomScene.switchCamera(client: client, to: target, from: previous,
+                                          fadeSeconds: settings.transition.fadeSeconds)
+        liveCameraName = cameraName(slot: target)
+        pendingSwitch = nil
         cuts += 1
-        switcher.cut()
+        chooser.didCut(blind: blind)
         awaySeconds = 0
-        sight = .idle
-        // Do not judge the new camera until it has actually opened.
-        try? await Task.sleep(nanoseconds: UInt64(Self.settleSeconds * 1_000_000_000))
+    }
+
+    /// From the names read at start, not from the device list: the countdown
+    /// asks three times a second, and every ask of the list is an AVFoundation
+    /// discovery session.
+    private func cameraName(slot: Int) -> String {
+        cameraNames.indices.contains(slot) ? cameraNames[slot] : "Camera \(slot + 1)"
     }
 
     // MARK: Looking
 
-    /// One frame of the webcam source, small. Same route the shape preview
+    /// One frame of one camera source, small. Same route the shape preview
     /// takes, at a quarter the width - this is measuring the angle of a head,
-    /// not showing anybody a picture.
-    static func grab(client: OBSWebSocketClient) async -> CGImage? {
+    /// not showing anybody a picture. Works on a hidden camera: OBS renders a
+    /// source for a screenshot whether or not the scene is showing it.
+    static func grab(client: OBSWebSocketClient, slot: Int) async -> (image: CGImage, hash: Int)? {
         guard let response = try? await client.request("GetSourceScreenshot", data: [
-            "sourceName": GreenroomScene.webcamSourceName,
+            "sourceName": GreenroomScene.cameraSourceName(slot: slot),
             "imageFormat": "jpg",
             "imageWidth": 320
         ]),
               let dataString = response["imageData"] as? String,
               let comma = dataString.firstIndex(of: ","),
               let data = Data(base64Encoded: String(dataString[dataString.index(after: comma)...])),
-              let image = NSImage(data: data) else { return nil }
-        return image.cgImage(forProposedRect: nil, context: nil, hints: nil)
+              let image = NSImage(data: data),
+              let frame = image.cgImage(forProposedRect: nil, context: nil, hints: nil) else { return nil }
+        // The string, not `data`: Foundation hashes at most the first 80 bytes
+        // of a Data, which in a JPEG is the header - identical on every frame,
+        // so every frame would have looked frozen. A String hashes it all.
+        return (frame, dataString.hashValue)
     }
 
     /// How far off the lens the biggest face in the frame is pointed, in
@@ -322,10 +602,10 @@ final class CameraDirector: ObservableObject {
     /// reason to cut, because the other camera would see exactly the same
     /// thing. So pitch is weighted down rather than ignored: a head tipped
     /// right back is still not looking at this camera.
-    static func offAxis(in frame: CGImage) -> Double? { look(at: frame).degrees }
+    nonisolated static func offAxis(in frame: CGImage) -> Double? { look(at: frame).degrees }
 
     /// The same measurement, saying which of the three ways it failed.
-    static func look(at frame: CGImage) -> CameraSight {
+    nonisolated static func look(at frame: CGImage) -> CameraSight {
         let request = VNDetectFaceRectanglesRequest()
         // Yaw needs revision 3, and pitch needs it too. Without asking, the
         // OS picks, and a revision without them reports nil - which would
@@ -348,9 +628,35 @@ final class CameraDirector: ObservableObject {
         let pitch = face.pitch?.doubleValue ?? 0
         let yawDegrees = yaw * 180 / .pi
         let pitchDegrees = pitch * 180 / .pi
-        return .seen(hypot(yawDegrees, pitchDegrees * Self.pitchWeight))
+        return .seen(score(yaw: yawDegrees, pitch: pitchDegrees))
     }
 
-    /// See `offAxis`. Looking down at your own screen is not a reason to cut.
-    static let pitchWeight: Double = 0.4
+    /// How far off a camera a head is pointed, in degrees, from its yaw and
+    /// pitch.
+    ///
+    /// Yaw counts fully: it is what separates two monitors side by side.
+    /// Pitch counts lightly up to `pitchKnee` and fully past it, and the knee
+    /// is the fix for a real misfire. Weighting ALL pitch down, as this used
+    /// to, was right for a teacher reading the screen under the camera -
+    /// fifteen or twenty-five degrees down, normal, not a reason to cut - and
+    /// wrong for a teacher looking at their shoes, which at fifty degrees down
+    /// scored twenty, inside the "facing" range. So a camera could win while
+    /// nobody was looking at any camera at all. Past the knee a head is not
+    /// reading a screen, it is looking at the floor, and it scores like it.
+    ///
+    /// Steeply past it - two and a half to one - so forty-five degrees down
+    /// scores past the ceiling in Chooser: that is the floor, not a screen.
+    /// Continuous at the knee, so a head tipping slowly down does not jump.
+    nonisolated static func score(yaw: Double, pitch: Double) -> Double {
+        let down = abs(pitch)
+        let counted = down <= pitchKnee
+            ? down * pitchWeight
+            : pitchKnee * pitchWeight + (down - pitchKnee) * 2.5
+        return hypot(yaw, counted)
+    }
+
+    /// See `score`. Reading your own screen is not a reason to cut.
+    nonisolated static let pitchWeight: Double = 0.4
+    /// See `score`. Past this, a head is looking at the floor.
+    nonisolated static let pitchKnee: Double = 30
 }

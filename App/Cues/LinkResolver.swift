@@ -262,9 +262,9 @@ actor LinkResolver {
             }
         }
         if case .success(let cards)? = google, !cards.isEmpty {
-            resolution.cards = books(cards)
+            resolution.cards = books(Self.closestFirst(cards, query: mention.searchQuery))
         } else if case .success(let cards)? = library, !cards.isEmpty {
-            resolution.cards = books(cards)
+            resolution.cards = books(Self.closestFirst(cards, query: mention.searchQuery))
             if case .failure(let note)? = google {
                 resolution.notes.append("Google Books did not answer (\(note.contains("429") ? "HTTP 429" : "error")); Open Library did")
             }
@@ -359,12 +359,36 @@ actor LinkResolver {
     /// The top result has to look like what was said. "Matilda" must not come
     /// back as "Matilda's Big Book of Tax Law" - a loose match here is where
     /// false cards come from.
-    private static func titleMatches(_ title: String, query: String) -> Bool {
-        let a = Set(Mention.normalize(title).split(separator: " ").map(String.init))
+    ///
+    /// A one-word title also has to be short. Containing the word was the
+    /// whole test, so "Wonder" came back as Hawthorne's "A Wonder Book for
+    /// Girls and Boys" whenever Open Library listed it first. A subtitle
+    /// after a colon does not count against it: "Wonder: A Novel" is Wonder.
+    static func titleMatches(_ title: String, query: String) -> Bool {
+        let main = title.split(separator: ":", maxSplits: 1).first.map(String.init) ?? title
+        let a = Set(Mention.normalize(main).split(separator: " ").map(String.init))
         let b = Set(Mention.normalize(query).split(separator: " ").map(String.init))
         guard !a.isEmpty, !b.isEmpty else { return false }
         let overlap = a.intersection(b).count
+        if b.count == 1, a.count > 3 { return false }
         return Double(overlap) / Double(b.count) >= 0.6
+    }
+
+    /// Closest title first: the exact title, then the one with the fewest
+    /// words that were not said. Catalogues order by popularity, which is how
+    /// a longer title with the word in it gets ahead of the book itself.
+    static func closestFirst(_ cards: [CueCard], query: String) -> [CueCard] {
+        let said = Mention.normalize(query)
+        func distance(_ card: CueCard) -> Int {
+            let main = card.title.split(separator: ":", maxSplits: 1).first.map(String.init) ?? card.title
+            let title = Mention.normalize(main)
+            if title == said { return 0 }
+            let extra = Set(title.split(separator: " ")).subtracting(Set(said.split(separator: " "))).count
+            return 1 + extra
+        }
+        return cards.enumerated()
+            .sorted { (distance($0.element), $0.offset) < (distance($1.element), $1.offset) }
+            .map(\.element)
     }
 
     // MARK: Wikipedia

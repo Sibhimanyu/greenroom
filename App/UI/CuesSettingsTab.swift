@@ -242,7 +242,7 @@ struct CuesTryItRows: View {
                             Label("Hearing you", systemImage: "waveform")
                                 .font(.caption).foregroundStyle(Brand.text)
                         }
-                        Button("Stop") { tester.stop() }
+                        Button("Stop") { tester.finishTest() }
                     } else {
                         Button("Start listening") {
                             Task {

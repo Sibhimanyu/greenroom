@@ -164,8 +164,29 @@ struct ScreenroomSpeechMetrics: Codable, Hashable {
     /// student will correctly ignore, which teaches them to ignore the rest.
     static let fillerWords: Set<String> = [
         "um", "uh", "er", "erm", "hmm", "mm",
+        // whisper writes a spoken "uh" as "Ah" often enough to matter.
+        "ah",
         "like", "actually", "basically", "literally",
         "right", "yeah", "okay",
+    ]
+
+    /// Fillers that are also ordinary words, counted only when the speaker
+    /// set them off: "it, like, slowly rises" is a crutch, "a bit like the
+    /// bubbles" and "volcanoes like Mount St. Helens" are comparisons. The
+    /// sign is punctuation straight after the word - whisper writes the
+    /// set-off kind as "like," - or another filler right behind it.
+    static let setOffOnly: Set<String> = ["like", "right", "okay"]
+
+    /// Where "like" sits when it is filling: after these...
+    static let likeAfter: Set<String> = [
+        "i", "you", "he", "she", "it", "we", "they", "and", "so", "but", "just",
+        "um", "uh", "ah", "was", "is", "are", "were", "its", "thats",
+    ]
+    /// ...and not in front of these, which make it a comparison or a verb.
+    static let likeBefore: Set<String> = [
+        "the", "a", "an", "this", "that", "these", "those", "my", "your", "his",
+        "her", "our", "their", "its", "me", "him", "them", "us", "it", "you",
+        "i", "he", "she", "we", "they", "to",
     ]
 
     /// Two-word fillers, checked before the single words so "you know" is not
@@ -242,7 +263,11 @@ struct ScreenroomSpeechMetrics: Codable, Hashable {
     static func measure(words: [ScreenroomSpokenWord], durationMs: Int,
                         engine: String = "unknown", verbatim: Bool = false) -> ScreenroomSpeechMetrics {
         let ordered = words.sorted { $0.atMs < $1.atMs }
-        let minutes = max(0.001, Double(durationMs) / 60_000)
+        // Rates are per minute of talking, first word to last. Dividing by
+        // the whole recording counted the silence before and after the talk
+        // as slow speech: a 145-word-a-minute talk read as 81.
+        let spanMs = (ordered.last?.endMs ?? 0) - (ordered.first?.atMs ?? 0)
+        let minutes = max(0.001, Double(spanMs > 0 ? spanMs : durationMs) / 60_000)
 
         // Pace, in thirty-second windows.
         var windows: [PaceWindow] = []
@@ -268,6 +293,23 @@ struct ScreenroomSpeechMetrics: Codable, Hashable {
         // the same word - "kind of" is a filler and stays one; it is not
         // also a hedge.
         var claimed = Set<Int>()
+        // Words that are only fillers when set off are claimed out of the
+        // count when they are not, so they are not hedges either.
+        for (index, word) in normalised.enumerated() where setOffOnly.contains(word) {
+            let raw = ordered[index].text.trimmingCharacters(in: .whitespaces)
+            let setOff = raw.last.map { ",.;!?…".contains($0) } ?? false
+            let next = index + 1 < normalised.count ? normalised[index + 1] : ""
+            let previous = index > 0 ? normalised[index - 1] : ""
+            let fillerNext = fillerWords.subtracting(setOffOnly).contains(next)
+            // whisper does not always punctuate - one run of the same talk
+            // came back all lower case with no commas - so "like" also goes
+            // by its neighbours: after a pronoun or a joining word, and not
+            // in front of a noun phrase, it is the crutch ("it like slowly
+            // rises"); after a noun or before "the" it is a comparison.
+            let crutchByContext = word == "like"
+                && Self.likeAfter.contains(previous) && !Self.likeBefore.contains(next)
+            if !setOff && !fillerNext && !crutchByContext { claimed.insert(index) }
+        }
         let fillers = tally(normalised, at: ordered, singles: fillerWords,
                             phrases: fillerPhrases, claimed: &claimed)
         let hedges = tally(normalised, at: ordered, singles: hedgeWords,

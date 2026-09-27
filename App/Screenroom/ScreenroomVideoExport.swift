@@ -354,6 +354,12 @@ enum ScreenroomVideoExport {
         // take the corner radius and the fade with it.
         label.isGeometryFlipped = true
         label.frame = CGRect(x: padding, y: padding, width: textWidth, height: textHeight)
+        // Drawn now. An export renders the tree offline and never asks a
+        // text layer to display itself, so without this every card came out
+        // as an empty near-black slab on a dark picture: a whole annotated
+        // video with no note visible in it.
+        label.setNeedsDisplay()
+        label.displayIfNeeded()
         card.addSublayer(label)
         return card
     }

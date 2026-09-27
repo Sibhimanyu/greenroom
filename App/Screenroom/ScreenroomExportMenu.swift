@@ -101,7 +101,11 @@ struct ScreenroomExportMenu: View {
             working = false
             let existing = folder.appendingPathComponent(ScreenroomVideoExport.subtitleFileName)
             guard FileManager.default.fileExists(atPath: existing.path) else { return }
-            if let url = ScreenroomExport.copy(existing, suggested: "\(base).srt", type: .plainText) {
+            // Its own type, not .plainText: the save panel adds the extension
+            // of whatever type it is given, and plain text made "name.srt.txt",
+            // which no player picks up as subtitles.
+            let subRip = UTType(filenameExtension: "srt", conformingTo: .plainText) ?? .plainText
+            if let url = ScreenroomExport.copy(existing, suggested: "\(base).srt", type: subRip) {
                 review.report("Saved \(url.lastPathComponent).")
             }
         }

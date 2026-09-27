@@ -425,17 +425,28 @@ final class CuesController: ObservableObject {
         Task { [weak self] in
             try? await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
             guard let self, self.isListening else { return }
-            if lookUp {
-                self.status = self.cards.isEmpty
-                    ? "Done. Nothing was found \u{2014} try \u{201C}the book called Matilda\u{201D}."
-                    : "Done. \(self.cards.count) card\(self.cards.count == 1 ? "" : "s")."
-            } else {
-                self.status = self.testMentions.isEmpty
-                    ? "Done. Nothing findable was named \u{2014} try \u{201C}the book called Matilda\u{201D}."
-                    : "Done. \(self.testMentions.count) mention\(self.testMentions.count == 1 ? "" : "s") found; nothing was looked up."
-            }
-            self.stop()
+            self.finishTest(lookUp: lookUp, word: "Done")
         }
+    }
+
+    /// Ends a Try it run, by its timer or by Stop, and keeps what it found.
+    ///
+    /// Both used to go through `stop()`, which is the end-of-class path: it
+    /// empties the cards, and the Stop button left the line under Try it
+    /// saying "Listening…" over a test that had finished.
+    func finishTest(lookUp: Bool = true, word: String = "Stopped") {
+        if lookUp {
+            status = cards.isEmpty
+                ? "\(word). Nothing was found \u{2014} try \u{201C}the book called Matilda\u{201D}."
+                : "\(word). \(cards.count) card\(cards.count == 1 ? "" : "s")."
+        } else {
+            status = testMentions.isEmpty
+                ? "\(word). Nothing findable was named \u{2014} try \u{201C}the book called Matilda\u{201D}."
+                : "\(word). \(testMentions.count) mention\(testMentions.count == 1 ? "" : "s") found; nothing was looked up."
+        }
+        let kept = cards
+        stop()
+        cards = kept
     }
 
     /// Runs an audio file through the same pipeline, lookups included. Debug

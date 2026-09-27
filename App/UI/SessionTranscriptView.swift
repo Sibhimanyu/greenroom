@@ -85,7 +85,9 @@ struct SessionTranscriptView: View {
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             } else if lines.isEmpty {
-                Text("No transcript for this class. Cues writes one only when it was listening and \u{201C}Save the transcript and links with the class\u{201D} is on.")
+                Text(SessionSummary.hasTranscript(in: folder)
+                     ? "Nothing was said that the speech model could make out: this class's transcript is only room sound."
+                     : "No transcript for this class. Cues writes one only when it was listening and \u{201C}Save the transcript and links with the class\u{201D} is on.")
                     .font(.system(size: 12))
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)

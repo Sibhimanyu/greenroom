@@ -261,6 +261,17 @@ struct RecordingsView: View {
         .frame(minWidth: 1_180, minHeight: 720)
         .onAppear(perform: reload)
         .onChange(of: selection) { newSelection in load(newSelection) }
+        // A presentation finished in Screenroom while this window was open
+        // only appeared after closing and reopening it. Coming back to the
+        // app, or to this window, is when a teacher expects to see it.
+        .onReceive(NotificationCenter.default.publisher(for: NSWindow.didBecomeKeyNotification)) { _ in reload() }
+        // Switching to Screens kept showing the class that was open under
+        // Greens, beside a list that did not contain it.
+        .onChange(of: filter) { _ in
+            if let current = selection, !shown.contains(where: { $0.recordings.contains(current) || $0.clipFiles.contains(current) }) {
+                selection = nil
+            }
+        }
         // An upload finishing while the window is open should show up here.
         .onChange(of: coordinator.isUploadingToYouTube) { _ in reload() }
         .onDisappear(perform: teardownPlayer)
@@ -940,7 +951,9 @@ struct RecordingsView: View {
             forInterval: CMTime(seconds: 0.25, preferredTimescale: 600), queue: .main) { time in
                 playhead = time.seconds
             }
-        item.play()
+        // Loaded, not played. Opening a class to read its transcript or copy
+        // its link started the recording with sound, on a Mac that is often
+        // in a staffroom.
         Task {
             let asset = AVURLAsset(url: recording.url)
             duration = (try? await asset.load(.duration))?.seconds ?? 0

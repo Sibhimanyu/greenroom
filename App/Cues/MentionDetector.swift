@@ -377,7 +377,11 @@ struct HeuristicDetector: MentionDetector {
         // phrase itself is the query.
         Tell(pattern: #"\b(?i:quot(?:e|es|ation|ations)|famous (?:line|lines|words|saying)|as (?:he|she|they) (?:said|says|put it))\b[^.?!]*[.?!]\s*(?:[A-Z][A-Za-z.'-]+(?: [A-Z][A-Za-z.'-]+)?[.!]\s*)?(?:(?i:and so|so|um|uh|okay|ok),?\s*)?([^.?!]{25,160})"#, kind: .quote, confidence: 0.7),
         // Books: "the book called X", quoted titles after read/reading.
-        Tell(pattern: #"\b(?i:the|a|this|that) (?i:book|story|novel|picture book|storybook) (?i:called|named|titled) "# + span + #"(?=[.,;!?]|$)"#, kind: .book, confidence: 0.8),
+        // The title may be followed by its author: "the book called Wonder
+        // by R J Palacio", quoted or not. Without the "by" ending it, the
+        // author was swallowed into the title and the whole phrase refused
+        // for being mostly initials.
+        Tell(pattern: #"\b(?i:the|a|this|that) (?i:book|story|novel|picture book|storybook) (?i:called|named|titled) "# + span + #"(?=[.,;!?]|$|\s+(?i:by)\s)"#, kind: .book, confidence: 0.8),
         Tell(pattern: #"\b(?i:reading|read|finished|started) (?i:the book |a book |the story )?["“]([^"”]{2,60})["”]"#, kind: .book, confidence: 0.75),
         Tell(pattern: #"\b(?i:book|story|novel) ["“]([^"”]{2,60})["”]"#, kind: .book, confidence: 0.75),
         // Videos and articles: "a video about X", "articles and videos about

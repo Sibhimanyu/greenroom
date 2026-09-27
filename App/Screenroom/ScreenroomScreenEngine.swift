@@ -28,6 +28,7 @@
 //  commit that added this file, because a claim that stops being true is
 //  worse than one that was never made.
 //
+import AppKit
 import AVFoundation
 import CoreGraphics
 import Foundation
@@ -59,6 +60,20 @@ final class ScreenroomScreenEngine: NSObject, ScreenroomCaptureEngine {
     /// windows are dropped too - capturing the window you are typing notes
     /// into is a hall of mirrors, and it is the one mistake this list can
     /// prevent outright.
+    /// Whether this app may see other windows at all. Without it the list
+    /// below is empty rather than an error, which is why it is asked here.
+    static var canListWindows: Bool { CGPreflightScreenCaptureAccess() }
+
+    /// Shows macOS's own prompt the first time. After a refusal macOS never
+    /// prompts again, so the Screen Recording pane is opened instead - the
+    /// only place the answer can be changed.
+    static func askForPermission() {
+        if CGRequestScreenCaptureAccess() { return }
+        if let pane = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture") {
+            NSWorkspace.shared.open(pane)
+        }
+    }
+
     static func targets() async -> [Target] {
         guard let content = try? await SCShareableContent.excludingDesktopWindows(
             false, onScreenWindowsOnly: true) else { return [] }

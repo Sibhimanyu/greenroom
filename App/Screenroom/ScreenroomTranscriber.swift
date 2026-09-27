@@ -190,9 +190,14 @@ enum ScreenroomTranscriber {
             _ = try await ScreenroomAudio.extractWAV(from: recording, to: wav)
             // whisper names languages without a region.
             let language = String(settings.language.prefix(2))
-            let words = try await ScreenroomWhisper.transcribe(
+            let heard = try await ScreenroomWhisper.transcribe(
                 wav: wav, model: model, language: language,
                 onStart: onStart, onOutput: onOutput)
+            // whisper's timings, moved onto the audio. Without this a pause is
+            // whatever whisper stretched a word across, and the Play buttons
+            // land in silence. See SpeechActivity.
+            let words = alignToSpeech(heard, wav: wav)
+            guard !words.isEmpty else { throw ScreenroomWhisper.Failure.noWords }
             try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
             write(words, in: folder, durationMs: durationMs,
                   engine: "whisper.cpp (\(model.lastPathComponent))", verbatim: true)
@@ -203,6 +208,20 @@ enum ScreenroomTranscriber {
                 recording: recording, into: folder,
                 locale: settings.language, durationMs: durationMs, onProgress: onProgress)
         }
+    }
+
+    /// Reads the WAV whisper just read and aligns its words to where the
+    /// voice actually is. Any trouble reading it leaves whisper's timings.
+    static func alignToSpeech(_ words: [ScreenroomSpokenWord], wav: URL) -> [ScreenroomSpokenWord] {
+        guard let file = try? AVAudioFile(forReading: wav),
+              let buffer = AVAudioPCMBuffer(pcmFormat: file.processingFormat,
+                                            frameCapacity: AVAudioFrameCount(file.length)),
+              (try? file.read(into: buffer)) != nil,
+              let channel = buffer.floatChannelData?[0] else { return words }
+        let samples = UnsafeBufferPointer(start: channel, count: Int(buffer.frameLength))
+        let levels = SpeechActivity.levels(samples, sampleRate: file.processingFormat.sampleRate)
+        let voiced = SpeechActivity.voiced(levels, threshold: SpeechActivity.threshold(floorFrom: levels))
+        return SpeechActivity.align(words, to: voiced)
     }
 
     private static func transcribeWithApple(recording: URL,

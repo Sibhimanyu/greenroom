@@ -48,7 +48,7 @@ struct WhisperModelPicker: View {
                         .foregroundStyle(.secondary)
                 } label: {
                     SettingLabel(title: "Whisper model",
-                                 subtitle: "The only one on this Mac. Add another in Settings \u{2192} Screenroom.")
+                                 subtitle: "The only one on this Mac. Other models, on the Screenroom tab, adds more.")
                 }
             } else {
                 LabeledContent {

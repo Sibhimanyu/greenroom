@@ -319,6 +319,18 @@ struct ScreenroomWindow: View {
                 }
             }
             Section("On this screen") {
+                // Without Screen Recording, ScreenCaptureKit lists nothing,
+                // not even the whole screen, and says nothing either. The
+                // menu used to show an empty section and a "Look again" that
+                // could never find anything; it now says what is missing and
+                // asks for it.
+                if !ScreenroomScreenEngine.canListWindows {
+                    Text("Needs Screen Recording permission")
+                    Button("Allow Screen Recording\u{2026}") {
+                        ScreenroomScreenEngine.askForPermission()
+                        screenroom.refreshSources()
+                    }
+                }
                 ForEach(screenroom.recorder.screenTargets) { target in
                     Button {
                         screenroom.use(source: target.sourceKind)

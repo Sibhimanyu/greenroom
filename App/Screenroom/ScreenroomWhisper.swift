@@ -251,7 +251,9 @@ enum ScreenroomWhisper {
         guard let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let segments = root["transcription"] as? [[String: Any]] else { return [] }
 
-        return segments.compactMap { segment in
+        // Sound labels out before anything counts them: "[BLANK_AUDIO]" as a
+        // word is a filler count, a pace and a card that nobody said.
+        return WhisperNoise.drop(segments.compactMap { segment in
             guard let raw = segment["text"] as? String,
                   let offsets = segment["offsets"] as? [String: Any],
                   let from = offsets["from"] as? Int else { return nil }
@@ -262,7 +264,7 @@ enum ScreenroomWhisper {
             guard !text.isEmpty else { return nil }
             let to = offsets["to"] as? Int ?? from
             return ScreenroomSpokenWord(text: text, atMs: from, durationMs: max(0, to - from))
-        }
+        })
     }
 
     // MARK: Finding the binary

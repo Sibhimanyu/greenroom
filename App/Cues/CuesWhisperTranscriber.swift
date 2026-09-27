@@ -58,6 +58,12 @@ final class CuesWhisperTranscriber {
     private var ringStartMs = 0
     private var elapsedMs = 0
     private let sampleRate: Double = 16_000
+    /// The room's recent levels, thirty seconds of them, for telling a quiet
+    /// voice from a quiet room. See SpeechActivity.
+    private var roomLevels: [Float] = []
+    /// Settled words whose sentence has not ended yet. See
+    /// CuesStabiliser.completeSentences.
+    private var unfinished: [CuesHypothesisWord] = []
 
     private var mic: MicStream?
     private var pump: Task<Void, Never>?
@@ -169,18 +175,46 @@ final class CuesWhisperTranscriber {
         // out to thirty seconds internally either way.
         guard samples.count > Int(sampleRate * 0.8) else { return }
 
+        // Nobody talking, no pass. whisper given a quiet room writes
+        // "[BLANK_AUDIO]" at best and whole sentences nobody said at worst,
+        // and one of those made a card ("Second language") in a test. The
+        // floor comes from the last thirty seconds, so a window that is all
+        // speech is still judged against the room rather than against itself.
+        let levels = SpeechActivity.levels(samples, sampleRate: sampleRate)
+        roomLevels.append(contentsOf: levels.suffix(max(1, stepMs / SpeechActivity.frameMs)))
+        if roomLevels.count > 1_500 { roomLevels.removeFirst(roomLevels.count - 1_500) }
+        let voiced = SpeechActivity.voiced(levels, threshold: SpeechActivity.threshold(floorFrom: roomLevels + levels))
+        guard !voiced.isEmpty else {
+            // The room went quiet: whatever sentence was left open is over.
+            if !unfinished.isEmpty {
+                for sentence in CuesStabiliser.sentences(from: unfinished) {
+                    continuation.yield(.final(sentence))
+                }
+                unfinished = []
+            }
+            continuation.yield(.speech(false))
+            return
+        }
+
         let wav = work.appendingPathComponent("window.wav")
         guard writeWAV(samples, to: wav) else { return }
 
-        guard let words = await transcribe(wav: wav, offsetMs: startMs) else { return }
+        guard let heard = await transcribe(wav: wav, offsetMs: startMs) else { return }
+        // And no words from the quiet parts of a window that has a voice in
+        // it somewhere. A second of slack, because whisper's word timings
+        // wander by about that much.
+        let words = heard.filter {
+            SpeechActivity.overlaps(($0.atMs - startMs)...max($0.atMs - startMs, $0.endMs - startMs),
+                                    voiced, slackMs: 1_000)
+        }
         let settled = stabiliser.accept(words, now: now, windowStartMs: startMs)
 
-        if !settled.isEmpty {
-            for sentence in CuesStabiliser.sentences(from: settled) {
-                continuation.yield(.final(sentence))
-            }
+        let (sentences, rest) = CuesStabiliser.completeSentences(from: unfinished + settled, now: now)
+        unfinished = rest
+        for sentence in sentences {
+            continuation.yield(.final(sentence))
         }
-        let tail = stabiliser.volatileWords.map(\.text).joined(separator: " ")
+        let tail = (unfinished + stabiliser.volatileWords).map(\.text).joined(separator: " ")
         if !tail.isEmpty { continuation.yield(.volatile(tail)) }
         continuation.yield(.speech(!words.isEmpty))
     }

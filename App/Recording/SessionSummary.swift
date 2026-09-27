@@ -41,7 +41,19 @@ enum SessionSummary {
         folder.appendingPathComponent("summary.md")
     }
 
+    /// Whether the class has a transcript file at all, spoken or not.
+    static func hasTranscript(in folder: URL) -> Bool {
+        FileManager.default.fileExists(atPath: transcriptURL(in: folder).path)
+    }
+
     /// The transcript's spoken lines, comments and blanks dropped.
+    ///
+    /// whisper's sound labels go too - "[BLANK_AUDIO]", "(birds chirping)",
+    /// half a "[no audio]" - including in transcripts saved before Cues
+    /// stopped writing them. A class that was all room sound then reads as
+    /// what it was, nothing said, instead of as sixty lines for Summarise
+    /// to invent a lesson from ("the different parts of speech", from a
+    /// transcript with no speech in it).
     static func lines(in folder: URL) -> [Line] {
         guard let raw = try? String(contentsOf: transcriptURL(in: folder), encoding: .utf8) else {
             return []
@@ -49,8 +61,8 @@ enum SessionSummary {
         return raw.split(separator: "\n").compactMap { row -> Line? in
             guard !row.hasPrefix("#") else { return nil }
             let parts = row.split(separator: "\t", maxSplits: 1).map(String.init)
-            guard parts.count == 2, !parts[1].isEmpty else { return nil }
-            return Line(stamp: parts[0], text: parts[1])
+            guard parts.count == 2, let text = WhisperNoise.clean(parts[1]) else { return nil }
+            return Line(stamp: parts[0], text: text)
         }
     }
 
@@ -156,6 +168,9 @@ enum SessionSummary {
     /// the only case that actually matters. ~4000 characters is near 1000
     /// tokens, leaving the instructions and the reply plenty of room.
     private static let chunkBudget = 4000
+
+    /// Below this many words the transcript is a few sentences, not a class.
+    static let minimumWords = 40
 
     /// Groups consecutive lines into passes of at most `budget` characters.
     static func chunk(_ spoken: [Line], budget: Int) -> [[Line]] {
@@ -307,6 +322,12 @@ enum SessionSummary {
         let spoken = lines(in: folder)
         guard !spoken.isEmpty else {
             return .problem("Nothing was transcribed for this class, so there is nothing to summarise.")
+        }
+        // A few words is not a lesson. Given one, the model writes a lesson
+        // anyway; the instructions tell it not to and it does not listen.
+        let wordCount = spoken.reduce(0) { $0 + $1.text.split(separator: " ").count }
+        guard wordCount >= minimumWords else {
+            return .problem("Only \(wordCount) word\(wordCount == 1 ? " was" : "s were") heard in this class, which is too little to summarise.")
         }
 
         var budget = chunkBudget

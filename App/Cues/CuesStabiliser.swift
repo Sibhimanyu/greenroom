@@ -162,6 +162,31 @@ struct CuesStabiliser {
     ///
     /// Split on terminal punctuation, and on a silence long enough to be a
     /// full stop the speaker made but the model did not write down.
+    /// Whole sentences only, and the unfinished words that follow them.
+    ///
+    /// `sentences(from:)` ends its last sentence wherever the batch ends, and
+    /// a batch of settled words ends wherever two passes stopped agreeing -
+    /// often mid-sentence. "I watched a video" and "about volcanoes." then
+    /// reached the detector as two sentences, neither of which is a mention,
+    /// and the card was never made. The tail is held here until its sentence
+    /// ends, the speaker pauses, or it has waited `holdMs`.
+    static func completeSentences(from words: [CuesHypothesisWord], now: Int,
+                                  gapMs: Int = 700, holdMs: Int = 2_500) -> (sentences: [String], rest: [CuesHypothesisWord]) {
+        var cut = 0
+        for (index, word) in words.enumerated() {
+            let endsSentence = word.text.hasSuffix(".") || word.text.hasSuffix("?") || word.text.hasSuffix("!")
+            let longGap = index + 1 < words.count && words[index + 1].atMs - word.endMs >= gapMs
+            if endsSentence || longGap { cut = index + 1 }
+        }
+        var rest = Array(words[cut...])
+        var done = Array(words[..<cut])
+        if let last = rest.last, now - last.endMs >= holdMs {
+            done += rest
+            rest = []
+        }
+        return (sentences(from: done, gapMs: gapMs), rest)
+    }
+
     static func sentences(from words: [CuesHypothesisWord], gapMs: Int = 700) -> [String] {
         var out: [String] = []
         var current: [String] = []

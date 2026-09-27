@@ -49,7 +49,7 @@ struct CuesStabiliser {
     ///
     /// Measured from when it was spoken. Once a word has left the window it
     /// cannot be re-examined, so holding it back only loses it.
-    var forceAfterMs: Int = 8_000
+    var forceAfterMs: Int = 4_000
 
     /// Words settled so far, oldest first.
     private(set) var committed: [CuesHypothesisWord] = []
@@ -57,18 +57,65 @@ struct CuesStabiliser {
     private(set) var volatileWords: [CuesHypothesisWord] = []
 
     private var previous: [CuesHypothesisWord] = []
+    /// Just past the START of the last settled word. Not its end: whisper
+    /// often stretches the last word of a window to the window's edge, and
+    /// using that end skipped the next words ("everyone", a whole closing
+    /// sentence) as if already settled.
     private var committedUntilMs = 0
+
+    /// How close to the window's leading edge a word counts as cut off.
+    ///
+    /// The first word of a window is often only half in it, and whisper
+    /// guesses it from half a syllable. A word that starts this close to the
+    /// edge is taken from the PREVIOUS pass, which heard it whole.
+    var edgeMs: Int = 500
+
+    /// Where settling a word moves the mark to: a short word past its start,
+    /// or its end if that comes sooner. See `committedUntilMs`.
+    private func settledMark(_ word: CuesHypothesisWord) -> Int {
+        min(max(word.endMs, word.atMs + 1), word.atMs + 400)
+    }
 
     /// Feeds one pass and returns the words that just became settled.
     ///
-    /// `now` is how far into the session the audio behind this pass reaches,
-    /// so the ageing rule has something to measure against.
-    mutating func accept(_ hypothesis: [CuesHypothesisWord], now: Int) -> [CuesHypothesisWord] {
-        // Anything already settled is not up for discussion.
-        let fresh = hypothesis.filter { $0.atMs >= committedUntilMs }
-        let priorFresh = previous.filter { $0.atMs >= committedUntilMs }
+    /// `now` is how far into the session the audio behind this pass reaches;
+    /// `windowStartMs` is where this pass's audio begins.
+    ///
+    /// The first version compared the two passes word by word from their
+    /// fronts. That holds while the window is still filling, and breaks for
+    /// good the moment it slides: the previous pass still starts with words
+    /// the new window no longer contains, so its first word is set against a
+    /// different word, the two never agree again, and nothing is committed
+    /// after the first six seconds. Its safety net committed a word after
+    /// eight seconds - but a word only stays in a six-second window for six,
+    /// so the net fired on words that were already gone. Replayed through
+    /// real whisper passes, a fifteen-second passage settled "So for me,
+    /// learned computer science practically" and lost everything after it:
+    /// "TI 83", "agentic coding", all of it.
+    ///
+    /// Now: whatever the previous pass heard that is leaving the window is
+    /// committed on its reading, because nothing will look at it again; and
+    /// agreement is only asked of words both passes can still see.
+    mutating func accept(_ hypothesis: [CuesHypothesisWord], now: Int,
+                         windowStartMs: Int = 0) -> [CuesHypothesisWord] {
+        let edge = windowStartMs + edgeMs
+        var settled: [CuesHypothesisWord] = []
 
-        // LocalAgreement-2: the prefix both passes say.
+        // Leaving: heard by the last pass, not (whole) in this one.
+        if windowStartMs > 0 {
+            let leaving = previous.filter { $0.atMs >= committedUntilMs && $0.atMs < edge && !repeatsLast($0, committed.last) }
+            if let last = leaving.last {
+                settled.append(contentsOf: leaving)
+                committedUntilMs = max(committedUntilMs, settledMark(last))
+            }
+        }
+
+        // LocalAgreement-2 over what both passes still see, from the same
+        // point in time.
+        let floor = max(committedUntilMs, windowStartMs > 0 ? edge : 0)
+        let lastSettled = settled.last ?? committed.last
+        let fresh = hypothesis.filter { $0.atMs >= floor && !repeatsLast($0, lastSettled) }
+        let priorFresh = previous.filter { $0.atMs >= floor && !repeatsLast($0, lastSettled) }
         var agreed: [CuesHypothesisWord] = []
         for (a, b) in zip(priorFresh, fresh) {
             guard a.key == b.key, !a.key.isEmpty else { break }
@@ -76,26 +123,35 @@ struct CuesStabiliser {
             agreed.append(b)
         }
 
-        // The word nobody will ever agree on. Committed on the current guess
-        // rather than left to block everything behind it.
-        if agreed.isEmpty, let oldest = fresh.first, now - oldest.atMs >= forceAfterMs {
+        // The word nobody will ever agree on, while the window is still
+        // filling and nothing is leaving yet.
+        if agreed.isEmpty, settled.isEmpty, let oldest = fresh.first, now - oldest.atMs >= forceAfterMs {
             agreed = [oldest]
         }
 
         if let last = agreed.last {
-            committed.append(contentsOf: agreed)
-            committedUntilMs = max(committedUntilMs, last.endMs)
+            settled.append(contentsOf: agreed)
+            committedUntilMs = max(committedUntilMs, settledMark(last))
         }
+        committed.append(contentsOf: settled)
         previous = hypothesis
-        volatileWords = fresh.filter { $0.atMs >= committedUntilMs }
-        return agreed
+        volatileWords = hypothesis.filter { $0.atMs >= committedUntilMs }
+        return settled
+    }
+
+    /// The same word heard again by a later pass, a little earlier or later
+    /// than the copy just settled. Passes shift timings by a few hundred
+    /// milliseconds, so without this "learned" and "to" were settled twice.
+    private func repeatsLast(_ word: CuesHypothesisWord, _ last: CuesHypothesisWord?) -> Bool {
+        guard let last else { return false }
+        return word.key == last.key && abs(word.atMs - last.atMs) < 1_200
     }
 
     /// Everything still unsettled, committed because listening stopped.
     mutating func flush() -> [CuesHypothesisWord] {
         let rest = volatileWords
         committed.append(contentsOf: rest)
-        if let last = rest.last { committedUntilMs = max(committedUntilMs, last.endMs) }
+        if let last = rest.last { committedUntilMs = max(committedUntilMs, settledMark(last)) }
         previous = []
         volatileWords = []
         return rest

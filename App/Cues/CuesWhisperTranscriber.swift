@@ -173,7 +173,7 @@ final class CuesWhisperTranscriber {
         guard writeWAV(samples, to: wav) else { return }
 
         guard let words = await transcribe(wav: wav, offsetMs: startMs) else { return }
-        let settled = stabiliser.accept(words, now: now)
+        let settled = stabiliser.accept(words, now: now, windowStartMs: startMs)
 
         if !settled.isEmpty {
             for sentence in CuesStabiliser.sentences(from: settled) {

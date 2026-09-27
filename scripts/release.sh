@@ -37,7 +37,13 @@ sed -i '' "s/CURRENT_PROJECT_VERSION: \"[0-9]*\"/CURRENT_PROJECT_VERSION: \"$BUI
 xcodegen generate
 xcodebuild -project Greenroom.xcodeproj -scheme Greenroom -configuration Release build | grep -E "BUILD" | tail -1
 
-APP=$(ls -d "$HOME"/Library/Developer/Xcode/DerivedData/Greenroom-*/Build/Products/Release/Greenroom.app | head -1)
+# This project's own build folder, asked of Xcode. It was the first
+# Greenroom-*/Release app in DerivedData, which is right only while this
+# checkout's folder happens to sort first: every Conductor workspace and
+# scratch worktree has its own, and any of them could have been packaged.
+APP="$(xcodebuild -project Greenroom.xcodeproj -scheme Greenroom -configuration Release -showBuildSettings 2>/dev/null \
+  | awk -F' = ' '/ BUILT_PRODUCTS_DIR/ {print $2; exit}')/Greenroom.app"
+[ -d "$APP" ] || { echo "No Release build at $APP"; exit 1; }
 codesign --verify --deep --strict "$APP"
 
 rm -rf "$DIST" && mkdir -p "$DIST"

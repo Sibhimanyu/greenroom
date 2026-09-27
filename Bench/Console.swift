@@ -134,6 +134,25 @@ func runConsoleBench() -> Bool {
     }
 
     print("")
+    print("  spoken names against page titles")
+    let titleCases: [(String, String?, String, Bool, String)] = [
+        ("AI-assisted software development", "Agentic coding", "agentic coding", true, "a redirect that is what was said"),
+        ("TI-89 series", "Ti-89 calculator", "TI-83 calculators", false, "83 is not 89, whatever soundex says"),
+        ("TI-83 series", nil, "TI-83", true, "the hyphenated spoken form finds the series"),
+        ("Haiku", nil, "haiku deck", false, "a broader page is still not the thing"),
+    ]
+    for (title, matched, said, expected, why) in titleCases {
+        let got = TitleMatch.pageAnswers(title: title, matchedTitle: matched, said: said)
+        let pass = got == expected
+        ok = ok && pass
+        print("    \(pass ? "ok   " : "FAIL ") \(said) -> \(title): \(got ? "yes" : "no ")  \(why)")
+    }
+    let variants = TitleMatch.spokenVariants("TI 83 calculators")
+    let variantsPass = variants.contains("TI-83") && !variants.contains("TI 83 calculators")
+    ok = ok && variantsPass
+    print("    \(variantsPass ? "ok   " : "FAIL ") TI 83 calculators is also tried as \(variants.joined(separator: ", "))")
+
+    print("")
     print("  the speaker's own name")
     let introductions: [(String, [String], String)] = [
         ("Hi everyone, my name is Sibi and I'm gonna talk about Adobe Illustrator.", ["Sibi"], "a Try-it run made a Wikipedia card of it"),

@@ -390,8 +390,8 @@ actor LinkResolver {
                 // on 6 Sep turned "Jao Maa" into the Wikipedia page for Jan
                 // Mayen, an Arctic island, and served it as a topic. Three of
                 // the four kinds that reach Wikipedia had no title check at all.
-                guard TitleMatch.answers(title: title, said: mention.query),
-                              !TitleMatch.guessedTheSense(title: title, said: mention.query) else { return nil }
+                guard TitleMatch.pageAnswers(title: title, matchedTitle: page["matched_title"] as? String,
+                                             said: mention.query) else { return nil }
                 let description = (page["description"] as? String) ?? "Wikipedia"
                 // Topics answer to the creative-work rule as well; books and
                 // videos deliberately do not.
@@ -428,7 +428,8 @@ actor LinkResolver {
     private func encyclopediaEntry(searching query: String, fallingBackTo name: String,
                                    confidence: Double) async -> Resolution {
         guard Mention.normalize(query) != Mention.normalize(name) else {
-            return await resolveWikipedia(Mention(kind: .topic, query: query, confidence: confidence))
+            let only = await resolveWikipedia(Mention(kind: .topic, query: query, confidence: confidence))
+            return only.cards.isEmpty ? await respelled(name, confidence: confidence, otherwise: only) : only
         }
         async let richResult = resolveWikipedia(Mention(kind: .topic, query: query, confidence: confidence))
         async let bareResult = resolveWikipedia(Mention(kind: .topic, query: name, confidence: confidence))
@@ -436,7 +437,20 @@ actor LinkResolver {
         var bare = await bareResult
         guard rich.cards.isEmpty else { return rich }
         bare.notes = rich.notes + bare.notes
-        return bare
+        guard bare.cards.isEmpty else { return bare }
+        return await respelled(name, confidence: confidence, otherwise: bare)
+    }
+
+    /// The spoken-form retry for topics, people and places. See resolveThing.
+    private func respelled(_ name: String, confidence: Double, otherwise: Resolution) async -> Resolution {
+        for variant in TitleMatch.spokenVariants(name).prefix(2) {
+            var retry = await resolveWikipedia(Mention(kind: .topic, query: variant, confidence: confidence))
+            guard !retry.cards.isEmpty else { continue }
+            retry.cards = retry.cards.map { var card = $0; card.query = name; return card }
+            retry.notes.insert("found as \u{201C}\(variant)\u{201D}", at: 0)
+            return retry
+        }
+        return otherwise
     }
 
     // MARK: Things - tools, products, companies
@@ -465,6 +479,21 @@ actor LinkResolver {
     /// worth a slot the right answer needed.
     private func resolveThing(_ mention: Mention) async -> Resolution {
         var resolution = await thingFromWikipedia(mention)
+        // Said, not written: "TI 83 calculators" is the page "TI-83 series",
+        // and a title search for the spoken words found the TI-89. Two more
+        // tries, in the forms titles use, before giving up.
+        if resolution.cards.isEmpty {
+            for variant in TitleMatch.spokenVariants(mention.query).prefix(2) {
+                var respelled = Mention(kind: mention.kind, query: variant, confidence: mention.confidence)
+                respelled.category = mention.category
+                var retry = await thingFromWikipedia(respelled)
+                guard !retry.cards.isEmpty else { continue }
+                retry.cards = retry.cards.map { var card = $0; card.query = mention.query; return card }
+                retry.notes.insert("found as \u{201C}\(variant)\u{201D}", at: 0)
+                resolution = retry
+                break
+            }
+        }
         // The speaker said outright what this is ("the brand called imago")
         // and no page fits it. Silence would be the detector ignoring a
         // direct request, so the card is a search the teacher can open -
@@ -610,8 +639,8 @@ actor LinkResolver {
                     // been said, which let a title that is a subset of the
                     // phrase win: "haiku deck" matched the page "Haiku", the
                     // poetic form. Everything said has to be answered now.
-                    guard TitleMatch.answers(title: title, said: mention.query),
-                              !TitleMatch.guessedTheSense(title: title, said: mention.query) else { return nil }
+                    guard TitleMatch.pageAnswers(title: title, matchedTitle: page["matched_title"] as? String,
+                                                 said: mention.query) else { return nil }
                     // Said to be a brand, an app, a font: the page has to be one.
                     if let category = mention.category,
                        !Self.description(description, fits: category) { return nil }

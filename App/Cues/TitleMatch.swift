@@ -47,6 +47,56 @@ enum TitleMatch {
     ///
     /// - `said` is the phrase as spoken (the mention's query).
     /// - `title` is what the source returned.
+    /// A search result, with the redirect that found it.
+    ///
+    /// Wikipedia's title search answers "agentic coding" with the page "AI-
+    /// assisted software development" and `matched_title: "Agentic coding"`:
+    /// a redirect the encyclopedia itself keeps for exactly those words. The
+    /// title check alone threw that away, because the page's title shares no
+    /// word with what was said. A redirect that answers what was said is the
+    /// strongest match there is - someone wrote it for that phrase.
+    static func pageAnswers(title: String, matchedTitle: String?, said: String) -> Bool {
+        if answers(title: title, said: said), !guessedTheSense(title: title, said: said) { return true }
+        guard let matchedTitle else { return false }
+        return answers(title: matchedTitle, said: said) && !guessedTheSense(title: matchedTitle, said: said)
+    }
+
+    /// Other ways a spoken name is written, most likely first.
+    ///
+    /// Speech gives "TI 83 calculators"; the page is "TI-83 series", and a
+    /// title search for the spoken words found the TI-89. Letters and a number
+    /// said apart are one hyphenated name in writing, and a trailing word for
+    /// what the thing is ("calculators", "app", "software") is description,
+    /// not name. Only ever the words that were said, rearranged.
+    static func spokenVariants(_ said: String) -> [String] {
+        let trimmed = said.trimmingCharacters(in: .whitespaces)
+        func hyphenated(_ text: String) -> String {
+            text.replacingOccurrences(of: #"\b([A-Za-z]{1,4}) (\d{1,4}[A-Za-z]?)\b"#, with: "$1-$2",
+                                      options: .regularExpression)
+        }
+        var words = trimmed.split(separator: " ").map(String.init)
+        var stripped: String?
+        if words.count >= 2, let last = words.last, describingWords.contains(last.lowercased()) {
+            words.removeLast()
+            stripped = words.joined(separator: " ")
+        }
+        var out: [String] = []
+        for candidate in [hyphenated(trimmed), stripped.map(hyphenated), stripped] {
+            guard let candidate, Mention.normalize(candidate) != Mention.normalize(trimmed) || candidate != trimmed,
+                  candidate != trimmed, !out.contains(candidate), !candidate.isEmpty else { continue }
+            out.append(candidate)
+        }
+        return out
+    }
+
+    private static let describingWords: Set<String> = [
+        "calculator", "calculators", "software", "app", "apps", "application", "tool", "tools",
+        "device", "devices", "phone", "phones", "program", "programs", "website", "site",
+        "platform", "game", "games", "machine", "machines", "computer", "computers",
+        "language", "framework", "library", "console", "consoles", "camera", "cameras",
+        "laptop", "laptops", "tablet", "tablets", "series", "brand", "company"
+    ]
+
     static func answers(title: String, said: String) -> Bool {
         let saidTokens = tokens(said)
         let titleTokens = tokens(title)
@@ -61,8 +111,10 @@ enum TitleMatch {
                 // Nothing spelled close enough. Allow ONE token of the title to
                 // match only by sound - enough to rescue a mangled brand, not
                 // enough for a phonetic key to carry a whole wrong title.
-                guard phoneticUsed == 0,
-                      let sounded = remaining.firstIndex(where: { soundex(token) == soundex($0) })
+                // Never for a number. Soundex drops digits, so "83" and "89"
+                // key alike and "TI 83 calculators" was served the TI-89.
+                guard phoneticUsed == 0, !token.contains(where: \.isNumber),
+                      let sounded = remaining.firstIndex(where: { !$0.contains(where: \.isNumber) && soundex(token) == soundex($0) })
                 else { return false }
                 phoneticUsed += 1
                 remaining.remove(at: sounded)

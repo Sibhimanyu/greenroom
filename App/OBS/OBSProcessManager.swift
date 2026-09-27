@@ -136,6 +136,62 @@ final class OBSProcessManager {
         }
     }
 
+    /// Records with the Mac's hardware H.264 encoder instead of x264, BEFORE
+    /// launch.
+    ///
+    /// Found from a class that froze and a laptop that ran hot. OBS's log for
+    /// it read "skipped frames due to encoding lag: 3042/8542 (35.6%)": a third
+    /// of the recording never encoded, and the picture going to the class
+    /// stalled for fifteen seconds at a time. The profile was on x264, OBS's
+    /// default, which encodes on the CPU - and Greenroom sets the canvas to
+    /// the screen's native pixels (fitCanvasToScreenSource), which on a
+    /// MacBook Pro is 3024x1964, six megapixels a frame thirty times a second.
+    /// Short classes got away with it. Five minutes, with two cameras open
+    /// and Cues listening, did not.
+    ///
+    /// `apple_h264` is OBS's Simple-mode name for VideoToolbox's hardware
+    /// encoder, present on every Mac OBS runs on, and it does the same work on
+    /// the media engine for a fraction of the heat. Recording, the replay
+    /// buffer and clips all take it: RecQuality=Stream means the recording
+    /// shares the stream encoder, so both keys are set.
+    ///
+    /// Only x264 is replaced. A teacher who picked an encoder themselves in
+    /// OBS keeps it. Advanced mode keeps its encoder in a separate JSON that is
+    /// not touched here.
+    static func seedHardwareEncoder() {
+        guard let profiles = try? FileManager.default.contentsOfDirectory(
+            at: profilesDirectory, includingPropertiesForKeys: nil) else { return }
+        for profile in profiles {
+            let ini = profile.appendingPathComponent("basic.ini")
+            guard let text = try? String(contentsOf: ini, encoding: .utf8) else { continue }
+            var updated = text
+            for key in ["StreamEncoder", "RecEncoder"] {
+                let current = value(in: updated, section: "SimpleOutput", key: key)
+                guard current == nil || current == "x264" else { continue }
+                updated = setting(updated, section: "SimpleOutput", key: key, value: "apple_h264")
+            }
+            if updated != text {
+                try? updated.write(to: ini, atomically: true, encoding: .utf8)
+            }
+        }
+    }
+
+    /// One key's value inside one section of an INI, or nil when absent.
+    static func value(in text: String, section: String, key: String) -> String? {
+        var inSection = false
+        for line in text.components(separatedBy: "\n") {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            if trimmed.hasPrefix("[") && trimmed.hasSuffix("]") {
+                inSection = (trimmed == "[\(section)]")
+                continue
+            }
+            if inSection, trimmed.hasPrefix("\(key)=") {
+                return String(trimmed.dropFirst(key.count + 1))
+            }
+        }
+        return nil
+    }
+
     /// Takes every camera but the first out of OBS's saved scenes, BEFORE launch.
     ///
     /// Found on a Mac whose second camera is an iPhone: every time Greenroom
@@ -249,6 +305,9 @@ final class OBSProcessManager {
         try seedWebSocketConfig()
         // Before launch, for the same reason as the websocket config above.
         Self.seedReplayBufferConfig(seconds: GreenroomScene.replayBufferSeconds)
+        // Before launch, for the same reason: the encoder is chosen when OBS
+        // reads the profile.
+        Self.seedHardwareEncoder()
         // Before launch, because OBS opens every source it saved the moment it
         // starts - see dropExtraCameraSources.
         Self.dropExtraCameraSources()

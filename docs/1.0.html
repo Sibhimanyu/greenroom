@@ -129,9 +129,13 @@
   .film {
     display: block; width: 100%; max-width: 1040px; margin: 0 auto;
     border-radius: 14px; border: 1px solid var(--line);
-    box-shadow: var(--card-shadow); background: #00401c;
+    box-shadow: var(--card-shadow); background: #00401c; color: #fff;
     aspect-ratio: 16 / 9;
   }
+  /* Full screen is the video alone: no frame, and a 16:9 film on a 16:10
+     screen letterboxes in black rather than in the poster's green. */
+  .film:fullscreen { border: 0; border-radius: 0; box-shadow: none; background: #000; }
+  .film:-webkit-full-screen { border: 0; border-radius: 0; box-shadow: none; background: #000; }
   .chapters {
     max-width: 1040px; margin: 16px auto 0;
     display: flex; flex-wrap: wrap; gap: 8px; justify-content: center;

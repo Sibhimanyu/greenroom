@@ -97,13 +97,17 @@ struct ScreenroomReportView: View {
                 // what went well, then the map, then the summary. Every
                 // row says in words where it landed; its detail opens
                 // in place rather than living four screens down.
-                // Feedback that came as points leads: it is the answer,
-                // and the readings below are its evidence. Sentences
-                // stay where they were, under the map.
-                if let analysis = review.analysis, analysis.hasPoints { prose(analysis) }
+                // On paper, feedback that came as points leads: a PDF
+                // cannot open a row, so the answer goes first and the
+                // readings below are its evidence. In the window the rows
+                // lead, as they did before points existed - a screen of
+                // cards above them pushed the part a teacher opens and
+                // closes out of sight - and the feedback follows the map.
+                let pointsLead = paged && review.analysis?.hasPoints == true
+                if pointsLead, let analysis = review.analysis { prose(analysis) }
                 insightGroups
                 if hasMap { map }
-                if let analysis = review.analysis, !analysis.hasPoints { prose(analysis) }
+                if !pointsLead, let analysis = review.analysis { prose(analysis) }
                 if review.scoring.markedCount > 0 { rubric }
                 if !review.notes.isEmpty { timeline }
                 if !review.notes.isEmpty { noteList }

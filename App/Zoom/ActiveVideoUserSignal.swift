@@ -16,6 +16,7 @@
 //  Zoom switches on keeps the caption and the picture on the same person.
 //
 import Foundation
+import ZoomSDK
 
 @MainActor
 enum ActiveVideoUserSignal {
@@ -69,6 +70,13 @@ enum ActiveVideoUserSignal {
     private static func set(_ id: UInt32?) {
         // 0 is the SDK's "nobody", not a user.
         let id = id == 0 ? nil : id
+        // Never the teacher. Zoom's active-speaker view does not draw the
+        // local user, but its events name them whenever they talk - seen live
+        // as "Sibhimanyu V (you) · host" over a student's camera. The event is
+        // dropped and the last student named keeps the caption; until one has
+        // been, there is no caption rather than a wrong one.
+        if let id, ZoomSDK.shared().getMeetingService()?.getMeetingActionController()
+            .getUserByUserID(id)?.isMySelf() == true { return }
         guard id != currentUserID else { return }
         currentUserID = id
         NotificationCenter.default.post(name: didChange, object: nil)

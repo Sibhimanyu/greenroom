@@ -5,22 +5,18 @@ where to start.
 
 ## Participant panel and live speaker
 
-- [ ] **Speaker window names the wrong person.** The name bar and title read
-  "Sibhimanyu V (you) · host" while the window shows a student's camera. The
-  name comes from `onActiveVideoUserChanged` / `onActiveSpeakerVideoUserChanged`
-  (`App/Zoom/ActiveVideoUserSignal.swift`), which disagree with the picture
-  `ZoomSDKActiveVideoElement` actually draws. Start by logging both events
-  next to `dataTypeChanged user=1` in `~/Library/Logs/Greenroom-video.log`,
-  and consider hiding the host from the caption (the teacher is never who
-  this window is for).
+- [x] **Speaker window names the wrong person.** Fixed: Zoom's events name
+  the teacher whenever they talk, but its active-speaker view never draws
+  them, so an event naming yourself is now ignored and the last student named
+  keeps the caption (`ActiveVideoUserSignal.set`). **Verify in a real class.**
 - [ ] **Verify in a real class:** the chat moves under the speaker window the
   moment it first appears (`showActiveSpeakerInColumn`), Snap Back with the
   speaker window open, and ⌥⌘Z hide/show.
 - [ ] **Verify in a real class:** clicking outside the student drawer, or the
   same student again, closes it; clicking another student switches.
-- [ ] When the class drops below three and the speaker window closes, the
-  quick-hide flag stays false, so the rail can offer "Hide Speaker" with no
-  window behind it.
+- [x] When the class drops below three and the speaker window closes, the
+  quick-hide flag now goes back to hidden, so the rail offers Show Speaker
+  instead of Hide Speaker for a window that no longer exists.
 
 ## Ending a class
 

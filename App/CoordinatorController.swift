@@ -2605,6 +2605,10 @@ final class CoordinatorController: ObservableObject {
             if let controller = activeSpeakerWindowController {
                 controller.destroyActiveSpeaker()
                 activeSpeakerWindowController = nil
+                // With no window the column is chat-only, which is what
+                // "hidden" means - left false, the rail kept offering
+                // Hide Speaker for a window that no longer existed.
+                speakerTileQuickHidden = true
                 ChatWindowController.fillSideColumn(layout: workspaceLayout)
                 log("Live speaker window closed \u{2014} it needs three people in the class.")
             }

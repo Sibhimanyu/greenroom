@@ -886,15 +886,21 @@ private struct CameraSwitchSection: View {
                              subtitle: "For two monitors. Put a camera on each, and the class sees whichever one you are facing instead of the side of your head.")
             }
 
-            if coordinator.cameraDirectorSettings.enabled {
-                LiveReadings(director: coordinator.cameraDirector, probe: coordinator.cameraProbe) {
-                    chooser
-                }
+            // Shown whether or not switching is on, like the rest of Settings.
+            // Choosing and aiming the cameras stays live - it is the setup a
+            // teacher does BEFORE trusting the feature, and the angle readout
+            // is how they check it - while the two settings that only shape a
+            // cut grey out until there are cuts to shape.
+            LiveReadings(director: coordinator.cameraDirector, probe: coordinator.cameraProbe) {
+                chooser
+            }
+            Group {
                 dwell
                 transition
-                LiveReadings(director: coordinator.cameraDirector, probe: coordinator.cameraProbe) {
-                    readout
-                }
+            }
+            .disabled(!coordinator.cameraDirectorSettings.enabled)
+            LiveReadings(director: coordinator.cameraDirector, probe: coordinator.cameraProbe) {
+                readout
             }
         }
         .onAppear { cameras = LocalDeviceResolver.availableCameras() }
@@ -1304,14 +1310,18 @@ private struct LayoutSettingsTab: View {
                                      : "Zoom\u{2019}s participant grid, full-screen on your reference monitor.")
                 }
 
-                if coordinator.peopleViewOnStart, coordinator.customUIMode {
+                // Greyed out rather than hidden while the view is off, like the
+                // rest of Settings. The main-display option stays hidden with
+                // Zoom's own grid, because there it does not exist at all.
+                if coordinator.customUIMode {
                     Toggle(isOn: $coordinator.participantPanelOnMainDisplay) {
                         SettingLabel(title: "Allow it on this screen when no second display is connected",
                                      subtitle: "It is large and covers the workspace; for trying the panel without a second monitor.")
                     }
+                    .disabled(!coordinator.peopleViewOnStart)
                 }
 
-                if coordinator.peopleViewOnStart {
+                Group {
                     Picker("Participant-view display", selection: $coordinator.peopleViewDisplayUUID) {
                         Text("Automatic (a non-main display)").tag("")
                         ForEach(displays) { display in
@@ -1328,6 +1338,7 @@ private struct LayoutSettingsTab: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
+                .disabled(!coordinator.peopleViewOnStart)
             }
             .onReceive(NotificationCenter.default.publisher(for: NSApplication.didChangeScreenParametersNotification)) { _ in
                 displays = DisplayResolver.connectedDisplays()

@@ -74,7 +74,10 @@ struct ScreenroomSettingsTab: View {
                     SettingLabel(title: "Hand each presentation to my agent",
                                  subtitle: "A bigger model than the one on this Mac, reading the transcript, the stills and your notes.")
                 }
-                if agent.enabled {
+                // Greyed out rather than hidden while the agent is off, like
+                // the rest of Settings: which agent and what it would run are
+                // worth seeing before deciding to hand it anything.
+                Group {
                     Picker(selection: Binding(get: { agent.kind }, set: { kind in
                         agent.kind = kind
                         // A named agent always brings its own command back.
@@ -111,6 +114,7 @@ struct ScreenroomSettingsTab: View {
                         }
                     }
                 }
+                .disabled(!agent.enabled)
             } header: {
                 Text("Your agent")
             } footer: {

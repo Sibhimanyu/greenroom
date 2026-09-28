@@ -182,6 +182,12 @@ struct CuesSetupRows: View {
             }
 
         } header: { if !compact { Text("Listening") } }
+        // Greyed out, not hidden, while Cues itself is off: the choices are
+        // still worth seeing - they say what turning it on gets you - but a
+        // live-looking control that changes nothing reads as broken. Try it
+        // stays usable, because it is how a teacher decides whether to turn
+        // Cues on in the first place.
+        .disabled(!coordinator.cuesEnabled)
         // On the section, not on a zero-height Color.clear.
         //
         // A grouped Form draws its own container around EVERY top-level

@@ -611,11 +611,15 @@ final class CoordinatorController: ObservableObject {
                 log("No live speaker window yet \u{2014} it opens when three people are in the class.")
                 return
             }
+            // The flag follows the window here too: it is what the other
+            // layout paths read to decide whether the chat fills the column.
             if window.isVisible {
+                speakerTileQuickHidden = true
                 window.orderOut(nil)
                 ChatWindowController.fillSideColumn(layout: workspaceLayout)
                 log("Live speaker hidden \u{2014} chat has the full column. \u{2325}\u{2318}Z shows it.")
             } else {
+                speakerTileQuickHidden = false
                 placeActiveSpeakerWindow()
                 log("Live speaker shown \u{2014} \u{2325}\u{2318}Z hides it again.")
             }
@@ -1140,6 +1144,8 @@ final class CoordinatorController: ObservableObject {
                 Task { @MainActor in ParticipantGridWindowController.applyCameraSwitch(pending) }
             }
             .store(in: &cancellables)
+
+        cameraDirector.log = { [weak self] line in self?.log(line) }
     }
 
     private var cancellables = Set<AnyCancellable>()
@@ -1296,7 +1302,7 @@ final class CoordinatorController: ObservableObject {
                     ZoomLauncher.join(meetingNumber: meeting.number, password: meeting.password)
                     Task {
                         if await zoomChatClient.promoteFirstOtherParticipantToHost(timeout: 90) {
-                            log("Host role handed to your Zoom \u{2014} full host controls live in your client now. (Stop leaves the meeting; end it from Zoom when you're done.)")
+                            log("Host role handed to your Zoom \u{2014} full host controls live in your client now. (End session still ends the meeting for everyone.)")
                         }
                     }
                 case .join where useBuiltInClient && !sdkClientID.isEmpty && !sdkClientSecret.isEmpty:
@@ -1393,6 +1399,7 @@ final class CoordinatorController: ObservableObject {
         cuesSurfaceReported = false
         Task {
             log("Stopping\u{2026}")
+            var savedRecording: String?
             // Chat teardown first: close the window before leave() flips
             // isJoined, so the meeting-ended observer sees it already
             // closed and doesn't double-log.
@@ -1431,7 +1438,7 @@ final class CoordinatorController: ObservableObject {
             // zVideoUIBridge dealloc SEGVs look like that teardown racing
             // in-flight window manipulation.
             try? await Task.sleep(nanoseconds: 300_000_000)
-            zoomChatClient.leave()
+            endMeetingForEveryone(askedSDKToEnd: zoomChatClient.leave())
 
             // Finalize any in-progress recording BEFORE OBS is quit -
             // killing OBS mid-record leaves a truncated/unplayable file.
@@ -1444,7 +1451,10 @@ final class CoordinatorController: ObservableObject {
                     log("Recording saved: \(path)" + (marks > 0 ? " (\(marks) clip\(marks == 1 ? "" : "s") marked)" : ""))
                     Notifier.post(title: "Recording saved",
                                   body: "\((path as NSString).lastPathComponent) \u{2014} in Documents/Greenroom.")
-                    recordingFinished(path: path)
+                    // Not yet: the YouTube question waits until the session
+                    // has finished ending, below. Asked here, it arrived in the
+                    // middle of the teardown and read as End waiting on it.
+                    savedRecording = path
                 }
                 isRecording = false
             }
@@ -1478,11 +1488,58 @@ final class CoordinatorController: ObservableObject {
             // the main app could take the stage - with the meeting over,
             // bring it home to front for the next thing.
             showMainWindow()
+            // Everything is over now - the meeting, the recording, OBS - so
+            // the upload question is the last thing, and nothing waits on it.
+            if let savedRecording { recordingFinished(path: savedRecording) }
         }
     }
 
     func launchZoom() {
         ZoomLauncher.launchZoom()
+    }
+
+    /// The meeting this session created, if it created one. Only a meeting
+    /// Greenroom made is Greenroom's to end for everyone; one the teacher
+    /// joined belongs to whoever scheduled it, and End only leaves it.
+    private var meetingCreatedHere: String?
+
+    /// End session means the class is over for everyone.
+    ///
+    /// The SDK's "end for all" is tried first, from inside the meeting. It
+    /// was the only attempt, and it cannot be checked - leaveMeeting returns
+    /// nothing - so when Zoom did not honour it, reported live, End
+    /// session left the meeting, Zoom handed host to a student, and the class
+    /// carried on without its teacher. So a meeting this session created is
+    /// also ended through the REST API - the same call the pre-flight uses on
+    /// stale meetings - which does not depend on this connection still being
+    /// host, or still being connected at all. Ending one that is already over
+    /// is harmless; Zoom answers and nothing changes.
+    private func endMeetingForEveryone(askedSDKToEnd: Bool) {
+        Self.sessionLog("End: asked the SDK to \(askedSDKToEnd ? "end the meeting for all" : "leave")")
+        guard let number = meetingCreatedHere, let id = Int64(number) else { return }
+        meetingCreatedHere = nil
+        guard !s2sAccountID.isEmpty, !s2sClientID.isEmpty, !s2sClientSecret.isEmpty else {
+            if !askedSDKToEnd {
+                log("Zoom may have kept the meeting running without you \u{2014} end it from zoom.us if students are still in it.")
+            }
+            return
+        }
+        let (account, client, secret) = (s2sAccountID, s2sClientID, s2sClientSecret)
+        Task {
+            let answer = await ZoomServerToServerClient.endMeetingReporting(
+                id: id, accountID: account, clientID: client, clientSecret: secret)
+            Self.sessionLog("End: REST end meeting \(id) HTTP \(answer.status) \(answer.ok ? "ended" : "not ended") \(answer.detail)")
+            // Zoom's own codes, not the HTTP status: a 400 was read as "already
+            // over" until one turned out to be code 4711, the app lacking the
+            // scope to end meetings at all. 3000/3001 and 404 are the meeting
+            // not running or not existing - the outcome wanted.
+            let alreadyOver = answer.status == 404 || answer.code == 3000 || answer.code == 3001
+            if answer.code == 4711 || answer.code == 4700 {
+                log("Zoom won't let Greenroom end meetings from the web: add the meeting:update:status scope to your Server-to-Server app (Zoom Marketplace \u{2192} your app \u{2192} Scopes). Until then only the in-meeting end is tried.")
+            } else if !answer.ok, !alreadyOver {
+                log("Couldn't confirm the meeting ended for everyone \u{2014} check zoom.us if students are still in it.")
+            }
+        }
     }
 
     /// What this class is called. Becomes the session folder's name.
@@ -2533,10 +2590,16 @@ final class CoordinatorController: ObservableObject {
                 controller.startActiveSpeaker()
                 // Into the side-column slot, chat tucked below - not the
                 // spec's centered default, which landed on the reading doc.
-                placeActiveSpeakerWindow()
+                showActiveSpeakerInColumn()
                 log("Live speaker window opened \u{2014} three people are in the class. \u{2325}\u{2318}Z hides and shows it.")
-            } else if activeSpeakerWindowController?.isShowingVideo == false {
-                activeSpeakerWindowController?.startActiveSpeaker()
+            } else if let controller = activeSpeakerWindowController, !controller.isShowingVideo {
+                // The retry calls showWindow, which brings back a window the
+                // teacher had hidden - at its old frame, over a chat that had
+                // refilled the column. Re-tile only on that hidden->shown
+                // edge, not on every roster change.
+                let wasVisible = activeSpeakerWindowVisible
+                controller.startActiveSpeaker()
+                if !wasVisible, activeSpeakerWindowVisible { showActiveSpeakerInColumn() }
             }
         } else {
             if let controller = activeSpeakerWindowController {
@@ -2561,6 +2624,38 @@ final class CoordinatorController: ObservableObject {
             let ax = CGRect(x: slot.origin.x, y: screen.frame.height - slot.maxY,
                             width: slot.width, height: slot.height)
             ChatWindowController.adjustBelowZoom(actualZoomFrameAX: ax, layout: workspaceLayout)
+        }
+    }
+
+    private var activeSpeakerWindowVisible: Bool {
+        activeSpeakerWindowController?.window?.isVisible == true
+    }
+
+    /// The speaker window has just come on screen: split the column and make
+    /// the quick-hide flag say so.
+    ///
+    /// Reported live: the window opened when students joined, sat at the top
+    /// of the column, and the chat underneath kept the full height. The flag
+    /// was the reason. Quick-hide mode is on by default, so the flag starts
+    /// every custom-UI session as "hidden", and nothing set it false when the
+    /// speaker window appeared. Every path that trusts it - the end of
+    /// presentMeetingSurfaces, Snap Windows Back, a live layout change - then
+    /// stretched the chat back over the whole column, under a speaker window
+    /// that was plainly on screen. Opening in the same pass as
+    /// presentMeetingSurfaces (three people already in when the teacher
+    /// joins) hits it at once: the speaker is placed, then the chat is filled.
+    ///
+    /// The second pass runs after this run-loop turn, so a fill queued in the
+    /// same turn, or the SDK's own showWindow, cannot have the last word.
+    /// There is no "teacher moved it by hand" guard to respect here: the
+    /// custom-UI column has none, and placing the speaker already overrides
+    /// wherever the chat was.
+    private func showActiveSpeakerInColumn() {
+        speakerTileQuickHidden = false
+        placeActiveSpeakerWindow()
+        Task { [weak self] in
+            guard let self, self.activeSpeakerWindowVisible, !self.speakerTileQuickHidden else { return }
+            self.placeActiveSpeakerWindow()
         }
     }
 
@@ -2752,8 +2847,13 @@ final class CoordinatorController: ObservableObject {
             ChatWindowController.show(chat: zoomChatBridge, layout: workspaceLayout)
             // The live-speaker window is part of the layout now: a visible one
             // snaps back into the side-column slot with the chat below it.
-            if activeSpeakerWindowController?.window?.isVisible == true {
+            if activeSpeakerWindowVisible {
                 placeActiveSpeakerWindow()
+                // Snap Back never hides our speaker window, so the default
+                // "hidden" reset above is wrong for it: left true, the fill
+                // below and the one in presentMeetingSurfaces stretched the
+                // chat back under the speaker it had just tucked below.
+                speakerTileQuickHidden = false
             }
             // show() lays the chat out with the tile's slot reserved, which is
             // wrong when the quick-hide default just hid the tile: the column
@@ -2864,6 +2964,7 @@ final class CoordinatorController: ObservableObject {
         )
         meetingNumber = meeting.number
         meetingPassword = meeting.password
+        meetingCreatedHere = meeting.number
         log("Meeting \(meeting.number) created.")
         return meeting
     }

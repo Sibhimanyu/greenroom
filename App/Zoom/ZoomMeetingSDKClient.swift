@@ -187,9 +187,36 @@ final class ZoomMeetingSDKClient: NSObject, ObservableObject {
     /// possibly help - see the cooldown handling in participantView.
     private var lastFailureReason: [UInt32: ZoomSDKVideoSubscribeFailReason] = [:]
 
+    /// Tiles that have asked for their stream while their view was on screen.
+    ///
+    /// A tile's element is created and subscribed inside this call, BEFORE the
+    /// caller puts its view in the window - and a subscription made then never
+    /// draws. Four classes, every tile: the ones that showed video were exactly
+    /// the ones that asked a second time (a code-7 retry, a second after being
+    /// attached); every one that asked only once stayed blank with its camera
+    /// on, reporting dataType=Video the whole time. The speaker window needs
+    /// the same thing and says so in its header: in a visible window first.
+    private var subscribedOnScreen: Set<UInt32> = []
+    /// One re-ask at a time, half a second apart: several in one breath is the
+    /// burst the SDK refuses with code 7.
+    private var nextResubscribeAt = Date.distantPast
+
     /// A view rendering one participant, reused across layout passes.
     func participantView(userID: UInt32, frame: NSRect, hero: Bool = false) -> NSView? {
         guard didUseCustomUI else { return nil }
+        // A tile whose only subscription was made off screen asks again, on
+        // the SAME element, once its view is in a visible window.
+        if let existing = participantElements[userID],
+           !subscribedOnScreen.contains(userID),
+           subscriptionCooldown[userID] == nil,
+           existing.getVideoView().window?.isVisible == true,
+           Date() >= nextResubscribeAt {
+            let again = existing.subscribeVideo(true)
+            subscribedOnScreen.insert(userID)
+            nextResubscribeAt = Date().addingTimeInterval(0.5)
+            Self.videoLog("user=\(userID) re-subscribed now that its tile is on screen"
+                + " result=\(again.rawValue)")
+        }
         if let readyAt = subscriptionCooldown[userID] {
             guard Date() >= readyAt else {
                 // Still backing off. Hand back whatever is already there rather
@@ -223,6 +250,7 @@ final class ZoomMeetingSDKClient: NSObject, ObservableObject {
                 // Re-asking on the retained element carries no teardown burst
                 // and is the only thing that actually reinstates the stream.
                 let again = existing.subscribeVideo(true)
+                if existing.getVideoView().window?.isVisible == true { subscribedOnScreen.insert(userID) }
                 Self.videoLog("user=\(userID) cooldown over, re-subscribed existing element"
                     + " result=\(again.rawValue)")
                 if again == ZoomSDKError_Success { lastFailureReason[userID] = nil }
@@ -287,6 +315,7 @@ final class ZoomMeetingSDKClient: NSObject, ObservableObject {
         }
         participantElements[userID] = element
         lastRequestedFrame[userID] = frame
+        subscribedOnScreen.remove(userID)
         return element.getVideoView()
     }
 
@@ -867,7 +896,12 @@ final class ZoomMeetingSDKClient: NSObject, ObservableObject {
     /// session is over, not "the host vanished and the meeting lingers".
     /// Safe to call when not in one. The isJoined flip also feeds the
     /// coordinator's meeting-ended observer, which closes the chat window.
-    func leave() {
+    /// Returns whether it asked Zoom to END the meeting (as host) rather than
+    /// just leave. Zoom's leaveMeeting reports nothing back, so an end it
+    /// turned down looks exactly like one it honoured - see the coordinator's
+    /// endMeetingForEveryone for what covers that.
+    @discardableResult
+    func leave() -> Bool {
         // The isHosting flag only knows about explicit host STARTS - but
         // host can also arrive mid-meeting: joining your OWN meeting (the
         // Scheduled list flow) has Zoom promote you on arrival, with the
@@ -881,6 +915,7 @@ final class ZoomMeetingSDKClient: NSObject, ObservableObject {
         ZoomSDK.shared().getMeetingService()?.leaveMeeting(with: cmd)
         isJoined = false
         isHosting = false
+        return cmd == LeaveMeetingCmd_End
     }
 }
 

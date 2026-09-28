@@ -129,19 +129,35 @@ enum ZoomServerToServerClient {
                            accountID: String,
                            clientID: String,
                            clientSecret: String) async -> Bool {
+        await endMeetingReporting(id: id, accountID: accountID, clientID: clientID,
+                                  clientSecret: clientSecret).ok
+    }
+
+    /// The same call, saying what Zoom answered. End session needs the
+    /// difference between "ended it" and "it was already over": the SDK has
+    /// usually ended the meeting a moment before this arrives, and Zoom
+    /// refuses to end a meeting that is not running, which read as a failure
+    /// and put a false alarm in front of the teacher.
+    static func endMeetingReporting(id: Int64,
+                                    accountID: String,
+                                    clientID: String,
+                                    clientSecret: String) async -> (ok: Bool, status: Int, code: Int?, detail: String) {
         guard let token = try? await fetchAccessToken(accountID: accountID,
                                                       clientID: clientID,
                                                       clientSecret: clientSecret),
               let url = URL(string: "https://api.zoom.us/v2/meetings/\(id)/status")
-        else { return false }
+        else { return (false, 0, nil, "no access token") }
         var request = URLRequest(url: url)
         request.httpMethod = "PUT"
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try? JSONSerialization.data(withJSONObject: ["action": "end"])
-        guard let (_, response) = try? await URLSession.shared.data(for: request),
-              let http = response as? HTTPURLResponse else { return false }
-        return (200...299).contains(http.statusCode)
+        guard let (data, response) = try? await URLSession.shared.data(for: request),
+              let http = response as? HTTPURLResponse else { return (false, 0, nil, "no response") }
+        let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
+        let detail = [json?["code"].map { "code=\($0)" }, json?["message"] as? String]
+            .compactMap { $0 }.joined(separator: " ")
+        return ((200...299).contains(http.statusCode), http.statusCode, json?["code"] as? Int, detail)
     }
 
     /// One meeting from the account's scheduled list. The list endpoint

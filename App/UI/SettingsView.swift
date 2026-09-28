@@ -1653,7 +1653,7 @@ private struct ZoomSettingsTab: View {
                 TextField("Client ID", text: $coordinator.s2sClientID)
                 SecureField("Client Secret", text: $coordinator.s2sClientSecret)
             } header: { Text("Server-to-Server OAuth app") } footer: {
-                Text("Powers New Meeting and the scheduled list. A second Marketplace app on the same Zoom account. Scopes: meeting:write:meeting:admin, meeting:read:list_meetings:admin, meeting:read:meeting:admin, user:read:token:admin. The setup guide (?) walks through it and tests the result.")
+                Text("Powers New Meeting and the scheduled list. A second Marketplace app on the same Zoom account. Scopes: meeting:write:meeting:admin, meeting:read:list_meetings:admin, meeting:read:meeting:admin, user:read:token:admin, meeting:update:status:admin. The setup guide (?) walks through it and tests the result.")
             }
 
             Section {

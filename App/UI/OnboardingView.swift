@@ -117,10 +117,13 @@ struct OnboardingView: View {
         }
     }
 
-    /// The four scopes the Server-to-Server app needs - every one was
+    /// The five scopes the Server-to-Server app needs - every one was
     /// discovered as a live 4711 error at some point; spare the next
-    /// person that ride by handing them the full list up front.
-    private static let s2sScopes = "meeting:write:meeting:admin, meeting:read:list_meetings:admin, meeting:read:meeting:admin, user:read:token:admin"
+    /// person that ride by handing them the full list up front. The fifth,
+    /// meeting:update:status:admin, is End session's backstop: it lets the
+    /// meeting be ended for everyone from the web when the in-meeting end
+    /// does not take, and lets the pre-flight clear a meeting left running.
+    private static let s2sScopes = "meeting:write:meeting:admin, meeting:read:list_meetings:admin, meeting:read:meeting:admin, user:read:token:admin, meeting:update:status:admin"
 
     struct TestResult: Identifiable {
         let id = UUID()
@@ -189,7 +192,7 @@ struct OnboardingView: View {
                         scratchStep(2, "Create a **Server-to-Server OAuth** app \u{2014} copy its **Account ID, Client ID and Secret** into the same Settings \u{2192} Zoom page.",
                                     buttonTitle: "Create app on marketplace.zoom.us\u{2026}",
                                     url: "https://marketplace.zoom.us/develop/create")
-                        scratchStep(3, "On the Server-to-Server app's **Scopes** page, add these four (search each name):", buttonTitle: nil, url: nil)
+                        scratchStep(3, "On the Server-to-Server app's **Scopes** page, add these five (search each name):", buttonTitle: nil, url: nil)
                         scopesBox
                         scratchStep(4, "Both apps must belong to the SAME Zoom account \u{2014} that's what lets Greenroom host and chat in the meetings it creates.", buttonTitle: nil, url: nil)
                     }

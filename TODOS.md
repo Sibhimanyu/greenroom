@@ -20,7 +20,7 @@ where to start.
 
 ## Ending a class
 
-- [ ] **Add the `meeting:update:status` scope** to the Zoom Server-to-Server
+- [ ] **Add the `meeting:update:status:admin` scope** (now listed in the onboarding guide and Settings → Zoom) to the Zoom Server-to-Server
   app (Zoom Marketplace → the app → Scopes). Without it the REST backstop in
   `endMeetingForEveryone` and the pre-flight's stale-meeting cleanup both get
   Zoom error 4711 and do nothing. Account setting, not code.

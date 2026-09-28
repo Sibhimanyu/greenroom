@@ -1535,7 +1535,7 @@ final class CoordinatorController: ObservableObject {
             // not running or not existing - the outcome wanted.
             let alreadyOver = answer.status == 404 || answer.code == 3000 || answer.code == 3001
             if answer.code == 4711 || answer.code == 4700 {
-                log("Zoom won't let Greenroom end meetings from the web: add the meeting:update:status scope to your Server-to-Server app (Zoom Marketplace \u{2192} your app \u{2192} Scopes). Until then only the in-meeting end is tried.")
+                log("Zoom won't let Greenroom end meetings from the web: add the meeting:update:status:admin scope to your Server-to-Server app (Zoom Marketplace \u{2192} your app \u{2192} Scopes). Until then only the in-meeting end is tried.")
             } else if !answer.ok, !alreadyOver {
                 log("Couldn't confirm the meeting ended for everyone \u{2014} check zoom.us if students are still in it.")
             }

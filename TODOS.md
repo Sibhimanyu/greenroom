@@ -5,18 +5,13 @@ where to start.
 
 ## Participant panel and live speaker
 
-- [x] **Speaker window names the wrong person.** Fixed: Zoom's events name
-  the teacher whenever they talk, but its active-speaker view never draws
-  them, so an event naming yourself is now ignored and the last student named
-  keeps the caption (`ActiveVideoUserSignal.set`). **Verify in a real class.**
+- [ ] **Verify in a real class:** the speaker window's name bar shows the
+  student who is talking, never "(you) · host" (`ActiveVideoUserSignal.set`).
 - [ ] **Verify in a real class:** the chat moves under the speaker window the
   moment it first appears (`showActiveSpeakerInColumn`), Snap Back with the
   speaker window open, and ⌥⌘Z hide/show.
 - [ ] **Verify in a real class:** clicking outside the student drawer, or the
   same student again, closes it; clicking another student switches.
-- [x] When the class drops below three and the speaker window closes, the
-  quick-hide flag now goes back to hidden, so the rail offers Show Speaker
-  instead of Hide Speaker for a window that no longer exists.
 
 ## Ending a class
 

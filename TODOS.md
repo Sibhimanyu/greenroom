@@ -15,13 +15,11 @@ where to start.
 
 ## Ending a class
 
-- [ ] **Add the `meeting:update:status:admin` scope** (now listed in the onboarding guide and Settings → Zoom) to the Zoom Server-to-Server
-  app (Zoom Marketplace → the app → Scopes). Without it the REST backstop in
-  `endMeetingForEveryone` and the pre-flight's stale-meeting cleanup both get
-  Zoom error 4711 and do nothing. Account setting, not code.
 - [ ] **Confirm End ends the meeting for everyone.** The SDK's end-for-all is
   sent, but `leaveMeeting` reports nothing back. Watch a student device after
-  End; if they stay in, the backstop above is the only fix.
+  End. The scope for the web backstop (`meeting:update:status:admin`) was
+  added on 2026-09-28, so the session log's `End: REST end meeting` line
+  should now read `HTTP 204 ended` (or `code=3001`, already over), not 4711.
 
 ## Cameras
 

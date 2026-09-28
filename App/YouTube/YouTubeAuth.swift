@@ -10,8 +10,8 @@
 //
 //  What is kept: the refresh token, in the same plain UserDefaults slot the
 //  Zoom credentials use (SecretStore) - same honesty, same local-only risk.
-//  It grants exactly one thing (youtube.upload: add videos to the channel)
-//  and is revoked at Google when the teacher presses Disconnect.
+//  It grants managing the channel's own videos (youtube.force-ssl, see
+//  `scope`) and is revoked at Google when the teacher presses Disconnect.
 //
 import AppKit
 import CryptoKit
@@ -39,7 +39,8 @@ enum YouTubeAuth {
     /// cannot change a title afterwards, and there is no Google scope between
     /// "add only" and "manage videos" - so this is the narrowest that lets a
     /// class be renamed on YouTube after the fact. Greenroom uses it for
-    /// uploads and title changes, nothing else.
+    /// uploads, title changes, deleting a video the teacher chose to delete,
+    /// and Cues video search when that is on - nothing else.
     static let scope = "https://www.googleapis.com/auth/youtube.force-ssl"
 
     /// Tokens granted before the scope widened can upload but not rename.

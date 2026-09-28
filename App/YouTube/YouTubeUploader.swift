@@ -6,7 +6,8 @@
 //  chunks. A class recording is one to two gigabytes; a dropped Wi-Fi
 //  connection halfway through resumes from the last byte YouTube confirmed
 //  instead of starting over, and every chunk is a progress tick for the
-//  toast. No SDK: three request shapes and URLSession.
+//  toast. No SDK: a few request shapes and URLSession. After the upload,
+//  the same file renames the video and deletes it.
 //
 //  Quota, for the record: an upload costs about 1,600 of the project's
 //  10,000 daily units, so roughly six uploads a day. One class a morning is
@@ -131,6 +132,26 @@ enum YouTubeUploader {
         let (data, response) = try await URLSession.shared.data(for: request)
         let status = (response as? HTTPURLResponse)?.statusCode ?? 0
         guard (200..<300).contains(status) else {
+            if status == 403, message(in: data).localizedCaseInsensitiveContains("insufficient") {
+                throw UploadError.rejected(status, YouTubeAuth.reconnectHint)
+            }
+            throw UploadError.rejected(status, message(in: data))
+        }
+    }
+
+    /// Removes a video from the channel (videos.delete, 50 quota units).
+    /// Permanent: YouTube has no bin to restore from. A video that is
+    /// already gone - deleted in YouTube Studio, say - counts as success,
+    /// because the caller's only job afterwards is to forget the link.
+    static func delete(videoID: String, token: () async throws -> String) async throws {
+        var components = URLComponents(string: "https://www.googleapis.com/youtube/v3/videos")!
+        components.queryItems = [URLQueryItem(name: "id", value: videoID)]
+        var request = URLRequest(url: components.url!)
+        request.httpMethod = "DELETE"
+        request.setValue("Bearer \(try await token())", forHTTPHeaderField: "Authorization")
+        let (data, response) = try await URLSession.shared.data(for: request)
+        let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+        guard (200..<300).contains(status) || status == 404 else {
             if status == 403, message(in: data).localizedCaseInsensitiveContains("insufficient") {
                 throw UploadError.rejected(status, YouTubeAuth.reconnectHint)
             }

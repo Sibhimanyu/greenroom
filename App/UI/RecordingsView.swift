@@ -150,6 +150,8 @@ struct RecordingsView: View {
     @State private var renamingVideo: (upload: SessionMetadata.Upload, folder: URL)?
     @State private var videoTitleDraft = ""
     @State private var renameError: String?
+    @State private var deletingVideo: (upload: SessionMetadata.Upload, folder: URL)?
+    @State private var deleteVideoError: String?
     /// Which half of the detail pane is showing. The recording is what the
     /// window was built for; the transcript is what a teacher wants the day
     /// after, and it had no home in the app at all.
@@ -317,6 +319,37 @@ struct RecordingsView: View {
         } message: {
             Text(renameError ?? "")
         }
+        // Its own question, not a side effect of Move to Trash: YouTube has
+        // no bin, so this is the one delete in the window that is final.
+        .confirmationDialog("Delete this video from YouTube?",
+                            isPresented: Binding(get: { deletingVideo != nil },
+                                                 set: { if !$0 { deletingVideo = nil } }),
+                            titleVisibility: .visible) {
+            Button("Delete from YouTube", role: .destructive) {
+                guard let target = deletingVideo else { return }
+                deletingVideo = nil
+                Task {
+                    if let failure = await coordinator.deleteYouTubeVideo(target.upload, in: target.folder) {
+                        deleteVideoError = failure
+                    } else {
+                        ToastController.show("Deleted from YouTube", detail: "The recording is still on this Mac.")
+                    }
+                    reload()
+                }
+            }
+            Button("Cancel", role: .cancel) { deletingVideo = nil }
+        } message: {
+            Text(deletingVideo.map {
+                "\u{201C}\($0.upload.title)\u{201D} is removed from the channel for good, and its link stops working. YouTube can\u{2019}t restore it. The recording on this Mac stays, and can be uploaded again."
+            } ?? "")
+        }
+        .alert("Couldn't delete from YouTube",
+               isPresented: Binding(get: { deleteVideoError != nil },
+                                    set: { if !$0 { deleteVideoError = nil } })) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(deleteVideoError ?? "")
+        }
         .alert("Couldn't move that to the Trash",
                isPresented: Binding(get: { trashError != nil },
                                     set: { if !$0 { trashError = nil } })) {
@@ -335,9 +368,10 @@ struct RecordingsView: View {
             Button("Cancel", role: .cancel) { confirmingDelete = nil }
         } message: {
             Text(confirmingDelete.map {
-                $0.clips.isEmpty
+                ($0.clips.isEmpty
                     ? "\($0.title) goes to the Trash. You can put it back from there."
-                    : "\($0.title) and its \($0.clips.count) marked clip\($0.clips.count == 1 ? "" : "s") go to the Trash. You can put them back from there."
+                    : "\($0.title) and its \($0.clips.count) marked clip\($0.clips.count == 1 ? "" : "s") go to the Trash. You can put them back from there.")
+                + ($0.upload == nil ? "" : " Its video on YouTube stays up. To take that down too, press Delete next to its YouTube link first.")
             } ?? "")
         }
     }
@@ -565,6 +599,11 @@ struct RecordingsView: View {
             if let upload = recording.upload, let url = URL(string: upload.url) {
                 Button("Open on YouTube") { NSWorkspace.shared.open(url) }
                 Button("Copy YouTube link") { copy(upload.url) }
+                if coordinator.youtubeConnected {
+                    Button("Delete from YouTube\u{2026}", role: .destructive) {
+                        deletingVideo = (upload, recording.url.deletingLastPathComponent())
+                    }
+                }
                 Divider()
             }
             Button("Move to Trash", role: .destructive) { confirmingDelete = recording }
@@ -591,6 +630,11 @@ struct RecordingsView: View {
             if let upload = recording.upload, let url = URL(string: upload.url) {
                 Button("Open on YouTube") { NSWorkspace.shared.open(url) }
                 Button("Copy YouTube link") { copy(upload.url) }
+                if coordinator.youtubeConnected {
+                    Button("Delete from YouTube\u{2026}", role: .destructive) {
+                        deletingVideo = (upload, recording.url.deletingLastPathComponent())
+                    }
+                }
                 Divider()
             }
             Button("Show in Finder") {
@@ -634,6 +678,13 @@ struct RecordingsView: View {
                 }
                 .controlSize(.small)
                 .help("Change the title on YouTube.")
+                if coordinator.youtubeConnected {
+                    Button("Delete\u{2026}", role: .destructive) {
+                        deletingVideo = (upload, recording.url.deletingLastPathComponent())
+                    }
+                    .controlSize(.small)
+                    .help("Delete the video from YouTube. The recording on this Mac stays.")
+                }
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 8)

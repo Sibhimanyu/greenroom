@@ -187,6 +187,29 @@ extension CoordinatorController {
         }
     }
 
+    // MARK: Delete from YouTube (Sessions window)
+
+    /// Deletes an uploaded video from the channel and forgets its link.
+    /// The recording on this Mac is not touched. Returns nil on success, or
+    /// the message to show.
+    func deleteYouTubeVideo(_ upload: SessionMetadata.Upload, in folder: URL) async -> String? {
+        guard youtubeConnected else { return YouTubeAuth.AuthError.notConnected.localizedDescription }
+        let clientID = trimmedClientID
+        let clientSecret = trimmedClientSecret
+        do {
+            try await YouTubeUploader.delete(
+                videoID: upload.videoID,
+                token: { try await YouTubeAuth.accessToken(clientID: clientID, clientSecret: clientSecret) })
+            SessionMetadata.forgetUpload(videoID: upload.videoID, in: folder)
+            Analytics.feature("youtube_delete")
+            log("Deleted from YouTube: \u{201C}\(upload.title)\u{201D} (\(upload.url)). The recording is still in Documents/Greenroom.")
+            return nil
+        } catch {
+            log("Couldn't delete from YouTube: \(error.localizedDescription)")
+            return error.localizedDescription
+        }
+    }
+
     // MARK: Connect / disconnect (Settings → YouTube)
 
     func connectYouTube() async {

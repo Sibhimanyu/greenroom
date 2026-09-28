@@ -117,6 +117,15 @@ struct SessionMetadata: Codable {
         metadata.save(in: folder)
     }
 
+    /// After the video is deleted on YouTube: the recording goes back to
+    /// never having been uploaded, so Upload is offered again.
+    static func forgetUpload(videoID: String, in folder: URL) {
+        var metadata = load(in: folder)
+        guard metadata.uploads.contains(where: { $0.videoID == videoID }) else { return }
+        metadata.uploads.removeAll { $0.videoID == videoID }
+        metadata.save(in: folder)
+    }
+
     /// Remembers a link the teacher opened or sent during the class. The
     /// folder is created if the session has not written anything else yet.
     static func recordLink(in folder: URL, kind: String, title: String, url: String, action: String) {

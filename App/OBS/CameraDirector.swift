@@ -55,6 +55,7 @@
 //  probe that would have settled it cannot get camera permission to run.
 //
 import AppKit
+import AVFoundation
 import Foundation
 import Vision
 
@@ -251,6 +252,9 @@ final class CameraDirector: ObservableObject {
     /// The camera names, by slot, for showing `angles` against.
     var cameraNamesInOrder: [String] { cameraNames }
 
+    /// The status log. Set by the coordinator.
+    var log: (String) -> Void = { _ in }
+
     /// The slot showing.
     var liveSlot: Int { live }
 
@@ -287,6 +291,15 @@ final class CameraDirector: ObservableObject {
     /// letting it trust a photograph.
     private var lastFrames: [Int: Int] = [:]
 
+    /// Slots whose camera macOS says was unplugged, until it comes back.
+    ///
+    /// The screenshots alone do not always show it: OBS may hand back black
+    /// rather than a frozen frame, and black reads as "nobody there", which
+    /// the chooser rightly will not leave a camera for. macOS knows for
+    /// certain, so its word turns the slot into no picture at once.
+    private var unplugged: Set<Int> = []
+    private var deviceObservers: [NSObjectProtocol] = []
+
     /// How often to look. A bit over three times a second: often enough that
     /// a one-second dwell is judged on three readings rather than two, and
     /// with a quarter-width screenshot per camera it is still nothing next to
@@ -318,6 +331,8 @@ final class CameraDirector: ObservableObject {
             LocalDeviceResolver.cameraName(uid: uid) ?? "Camera \(slot + 1)"
         }
         chooser = Chooser(dwellSeconds: settings.dwellSeconds)
+        unplugged = []
+        watchDevices()
         cuts = 0
         awaySeconds = 0
         liveCameraName = cameraNames[0]
@@ -339,6 +354,9 @@ final class CameraDirector: ObservableObject {
     func stop() {
         task?.cancel()
         task = nil
+        deviceObservers.forEach(NotificationCenter.default.removeObserver)
+        deviceObservers = []
+        unplugged = []
         liveCameraName = nil
         sight = .idle
         awaySeconds = 0
@@ -347,6 +365,38 @@ final class CameraDirector: ObservableObject {
     }
 
     var isRunning: Bool { task != nil }
+
+    /// Unplugged and plugged back in, by the camera's unique ID.
+    ///
+    /// A camera that comes back is not given the shot back: its frame is
+    /// forgotten so it is judged fresh, and it has to earn the shot the usual
+    /// way, by having the better view for the whole dwell.
+    private func watchDevices() {
+        deviceObservers.forEach(NotificationCenter.default.removeObserver)
+        let center = NotificationCenter.default
+        func slot(of note: Notification) -> Int? {
+            guard let device = note.object as? AVCaptureDevice else { return nil }
+            return settings.cameraUIDs.firstIndex(of: device.uniqueID)
+        }
+        deviceObservers = [
+            center.addObserver(forName: AVCaptureDevice.wasDisconnectedNotification, object: nil, queue: .main) { [weak self] note in
+                MainActor.assumeIsolated {
+                    guard let self, let slot = slot(of: note) else { return }
+                    self.unplugged.insert(slot)
+                    self.log("\(self.cameraName(slot: slot)) was unplugged.")
+                }
+            },
+            center.addObserver(forName: AVCaptureDevice.wasConnectedNotification, object: nil, queue: .main) { [weak self] note in
+                MainActor.assumeIsolated {
+                    guard let self, let slot = slot(of: note), self.unplugged.contains(slot) else { return }
+                    self.unplugged.remove(slot)
+                    self.lastFrames[slot] = nil
+                    self.chooser.forget(slot)
+                    self.log("\(self.cameraName(slot: slot)) is back. It takes the shot again when it has the better view.")
+                }
+            },
+        ]
+    }
 
     private func watch(client: OBSWebSocketClient) async {
         // Let the session get its first frames up before judging them.
@@ -360,7 +410,7 @@ final class CameraDirector: ObservableObject {
     private func tick(client: OBSWebSocketClient) async {
         var frames: [CGImage?] = []
         for slot in settings.cameraUIDs.indices {
-            let grabbed = await Self.grab(client: client, slot: slot)
+            let grabbed = unplugged.contains(slot) ? nil : await Self.grab(client: client, slot: slot)
             let frozen = grabbed != nil && lastFrames[slot] == grabbed?.hash
             lastFrames[slot] = grabbed?.hash
             frames.append(frozen ? nil : grabbed?.image)
@@ -436,6 +486,13 @@ final class CameraDirector: ObservableObject {
     ///    every camera was open at once: once the live camera has lost the
     ///    teacher for the dwell, try the next one, and stop after a full lap
     ///    with nobody found.
+    ///  - **A live camera with no picture is left**, whatever the others see.
+    ///    Every rule above asks which camera has the better view, and a dead
+    ///    camera has none - so a secondary camera unplugged mid-class, with
+    ///    the main one seeing only the side of a head, held the shot on a
+    ///    frozen frame for the rest of the lesson. After `deadSeconds` the
+    ///    shot goes to the main camera (slot 0), or the first one with a
+    ///    picture, and the ceiling and margin do not get a say.
     struct Chooser {
         enum Reading: Equatable {
             /// No picture arrived from this camera.
@@ -455,6 +512,10 @@ final class CameraDirector: ObservableObject {
         /// Each reading's weight against the running value. Half: a real turn
         /// shows in two readings, a one-frame blip is halved before it counts.
         static let smoothing: Double = 0.5
+        /// How long the live camera may send no picture before it is left.
+        /// About three readings, so one screenshot OBS failed to take is not
+        /// a cut.
+        static let deadSeconds: Double = 1
 
         /// Each camera's smoothed angle, nil when it has not seen a face.
         private(set) var angles: [Double?] = []
@@ -470,6 +531,15 @@ final class CameraDirector: ObservableObject {
         private(set) var blindSeconds: Double = 0
         /// Blind cuts since a camera last saw the teacher.
         private(set) var blindTries = 0
+        /// How long the live camera has sent no picture.
+        private(set) var liveDarkSeconds: Double = 0
+        /// The last cut asked for was leaving a dead camera, not a choice.
+        private(set) var fellBack = false
+        /// Cameras left for having no picture, skipped by the blind ring
+        /// until one sends a picture again. Without this the ring, which
+        /// tries cameras that send nothing, sent the shot straight back to
+        /// the dead one, and the class bounced between the two.
+        private(set) var wentDark: Set<Int> = []
 
         init(dwellSeconds: Double) {
             self.dwellSeconds = dwellSeconds
@@ -484,6 +554,7 @@ final class CameraDirector: ObservableObject {
                 misses = Array(repeating: 0, count: readings.count)
             }
             for (index, reading) in readings.enumerated() {
+                if reading != .noPicture { wentDark.remove(index) }
                 if case .face(let degrees) = reading {
                     angles[index] = angles[index].map { $0 + (degrees - $0) * Self.smoothing } ?? degrees
                     misses[index] = 0
@@ -498,6 +569,20 @@ final class CameraDirector: ObservableObject {
         mutating func advance(readings: [Reading], live: Int, elapsed: Double) -> Int? {
             guard readings.indices.contains(live) else { return nil }
             smooth(readings)
+            fellBack = false
+
+            liveDarkSeconds = readings[live] == .noPicture ? liveDarkSeconds + elapsed : 0
+            if liveDarkSeconds >= Self.deadSeconds,
+               let fallback = ([0] + Array(readings.indices))
+                .first(where: { $0 != live && readings[$0] != .noPicture }) {
+                candidate = nil
+                candidateSeconds = 0
+                blindSeconds = 0
+                fellBack = true
+                wentDark.insert(live)
+                return fallback
+            }
+
             let liveAngle = angles[live]
             let others = readings.indices.filter { $0 != live }
 
@@ -526,7 +611,14 @@ final class CameraDirector: ObservableObject {
             // from being right, not a long-banked absence.
             blindSeconds = min(blindSeconds + elapsed, dwellSeconds)
             guard blindSeconds >= dwellSeconds, blindTries < readings.count - 1 else { return nil }
-            return (live + 1) % readings.count
+            return (1..<readings.count).lazy
+                .map { (live + $0) % readings.count }
+                .first { !wentDark.contains($0) }
+        }
+
+        /// A camera macOS says is plugged back in may be tried again.
+        mutating func forget(_ slot: Int) {
+            wentDark.remove(slot)
         }
 
         /// How far the current candidate is toward a cut, 0 to 1. Nil when no
@@ -543,12 +635,16 @@ final class CameraDirector: ObservableObject {
             candidate = nil
             candidateSeconds = 0
             blindSeconds = 0
+            liveDarkSeconds = 0
         }
     }
 
     private func cut(client: OBSWebSocketClient, to target: Int) async {
-        let blind = chooser.candidate != target
-        if !blind {
+        let fellBack = chooser.fellBack
+        let blind = !fellBack && chooser.candidate != target
+        if fellBack {
+            log("\(cameraName(slot: live)) stopped sending a picture \u{2014} back to \(cameraName(slot: target)).")
+        } else if !blind {
             pendingSwitch = PendingSwitch(cameraName: cameraName(slot: target), progress: 1, landed: true)
         }
         let previous = live

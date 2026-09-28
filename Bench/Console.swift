@@ -179,9 +179,11 @@ func runConsoleBench() -> Bool {
     // explicit that an empty queue shows no filler.
     var empty = ParticipantConsoleState()
     empty.isLive = true
-    let noSections = LiveQueueLayout.sections(for: empty, assistHeight: 0)
-    layout("quiet class: no sections, no panel",
-           noSections.isEmpty && LiveQueueLayout.contentHeight(noSections) == 0)
+    let noSections = LiveQueueLayout.sections(for: empty, cuesBody: 0)
+    // The container stands even in a quiet class with Cues off: the middle
+    // of the rail is a box at every moment, not a hole that fills.
+    layout("quiet class, Cues off: the container alone, nothing above it",
+           noSections.map(\.kind) == [.cues] && LiveQueueLayout.contentHeight(noSections) > 0)
 
     // One person waiting reads "Admit", several read "Admit all". With one
     // person the plural is a lie.
@@ -189,26 +191,54 @@ func runConsoleBench() -> Bool {
     one.isLive = true
     one.waiting = [person(1, "Priya")]
     layout("one waiting: the button says Admit",
-           LiveQueueLayout.sections(for: one, assistHeight: 0).first?.actions.first == "Admit")
+           LiveQueueLayout.sections(for: one, cuesBody: 0).first?.actions.first == "Admit")
 
     var three = ParticipantConsoleState()
     three.isLive = true
     three.waiting = [person(1, "Priya"), person(2, "Arun"), person(3, "Meera")]
     layout("three waiting: the button says Admit all",
-           LiveQueueLayout.sections(for: three, assistHeight: 0).first?.actions.first == "Admit all")
+           LiveQueueLayout.sections(for: three, cuesBody: 0).first?.actions.first == "Admit all")
 
     // The rule the plan cares about most: Assist never takes the top, and its
     // arrival never changes what is above it.
     var handsThenCards = ParticipantConsoleState()
     handsThenCards.isLive = true
     handsThenCards.hands = [person(2, "Arun")]
-    let before2 = LiveQueueLayout.sections(for: handsThenCards, assistHeight: 0)
+    let before2 = LiveQueueLayout.sections(for: handsThenCards, cuesBody: 0)
     handsThenCards.cuesCards = 3
-    let after = LiveQueueLayout.sections(for: handsThenCards, assistHeight: 140)
+    let after = LiveQueueLayout.sections(for: handsThenCards, cuesBody: 140)
     layout("a card arriving does not move the hands section",
            before2.first == after.first)
-    layout("assist lands below, never on top",
-           after.count == 2 && after.last?.kind == .assist)
+    layout("cues lands below, never on top",
+           after.count == 2 && after.last?.kind == .cues)
+
+    // Cues on with nothing held still gets its container: that is where the
+    // first link will land, so it is there before the link is. Off, nothing.
+    var listening = ParticipantConsoleState()
+    listening.isLive = true
+    listening.cuesListening = true
+    let waitingForLinks = LiveQueueLayout.sections(for: listening, cuesBody: 64)
+    layout("cues on, no links: one CUES container",
+           waitingForLinks.count == 1 && waitingForLinks.first?.kind == .cues
+            && waitingForLinks.first?.eyebrow == "CUES")
+    // 16 eyebrow + 10 gap + 8 + 64 + 8 container, inside 16 + 16 of queue pad.
+    layout("cues on, no links: wants 138pt for one card's worth",
+           LiveQueueLayout.contentHeight(waitingForLinks) == 138)
+
+    // The container reaches the bottom of whatever height the queue is given,
+    // exactly, with and without a section above it. Measure and place are one
+    // sum (DESIGN.md), so the room fed back in must reproduce the height.
+    func fills(_ state: ParticipantConsoleState, _ height: CGFloat) -> Bool {
+        let room = LiveQueueLayout.cuesRoom(for: state, height: height)
+        return LiveQueueLayout.contentHeight(
+            LiveQueueLayout.sections(for: state, cuesBody: room)) == height
+    }
+    layout("container fills a 420pt queue exactly", fills(listening, 420))
+    var listeningWithHand = listening
+    listeningWithHand.hands = [person(2, "Arun")]
+    layout("container fills under a raised hand exactly", fills(listeningWithHand, 420))
+    layout("a raised hand still comes first",
+           LiveQueueLayout.sections(for: listeningWithHand, cuesBody: 64).first?.kind == .hands)
 
     // Singular and plural read correctly, because a queue that says "1 hands
     // up" is a queue nobody trusts.
@@ -216,13 +246,13 @@ func runConsoleBench() -> Bool {
     oneHand.isLive = true
     oneHand.hands = [person(2, "Arun")]
     layout("one hand reads \"1 hand up\"",
-           LiveQueueLayout.sections(for: oneHand, assistHeight: 0).first?.eyebrow == "1 hand up")
+           LiveQueueLayout.sections(for: oneHand, cuesBody: 0).first?.eyebrow == "1 hand up")
 
     // Long queues name five and count the rest, in both sections.
     var many2 = ParticipantConsoleState()
     many2.isLive = true
     many2.hands = (1...8).map { person(UInt32($0), "Student \($0)") }
-    let manyRows = LiveQueueLayout.sections(for: many2, assistHeight: 0).first?.rows ?? []
+    let manyRows = LiveQueueLayout.sections(for: many2, cuesBody: 0).first?.rows ?? []
     layout("eight hands: five named plus a count",
            manyRows.count == 6 && manyRows.last == "+3 more")
 

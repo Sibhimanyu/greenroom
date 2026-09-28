@@ -35,6 +35,35 @@ final class CuesRailBlock: NSView {
     private var state = CuesSurfaceState.empty
     private var pulse: Timer?
 
+    /// Amber, for a lookup in flight. DESIGN.md draws anything that leaves the
+    /// Mac in amber (--net #B9770E). Shared so the Live Queue's copy of the
+    /// dot is the same colour without a second literal.
+    static let netColor = NSColor(red: 0.725, green: 0.467, blue: 0.055, alpha: 1)
+
+    /// True when a host draws the heading itself and gives the block only
+    /// the inside of a box to fill.
+    ///
+    /// The Live Queue does: its Cues container is always there while Cues is
+    /// on, so the block's own eyebrow and its 20pt group break would put a
+    /// second heading inside a box that already has one above it. Embedded,
+    /// the walk is cards and the "+N older" line only, and the heading's text
+    /// and dot go out through `onStatus` instead. Off by default, so the
+    /// Cues workbench preview draws exactly what it always drew.
+    var embedded = false {
+        didSet {
+            eyebrow.isHidden = embedded || !isActive
+            if embedded { dot.isHidden = true }
+        }
+    }
+
+    /// The heading's text and whether the amber dot shows, on every apply.
+    ///
+    /// A callback rather than a relayout because both change far more often
+    /// than the block's height does - every lookup toggles the dot - and the
+    /// window only re-lays when the height moves. Written in place by the
+    /// host, the way the block writes its own eyebrow.
+    var onStatus: ((_ text: String, _ resolving: Bool) -> Void)?
+
     override init(frame: NSRect) {
         super.init(frame: frame)
         eyebrow.font = .monospacedSystemFont(ofSize: 10, weight: .semibold)
@@ -51,7 +80,7 @@ final class CuesRailBlock: NSView {
         // leaves the Mac in amber, and a lookup is exactly that.
         dot.wantsLayer = true
         dot.layer?.cornerRadius = 3
-        dot.layer?.backgroundColor = NSColor(red: 0.725, green: 0.467, blue: 0.055, alpha: 1).cgColor // --net #B9770E
+        dot.layer?.backgroundColor = Self.netColor.cgColor
         dot.isHidden = true
         addSubview(dot)
 
@@ -79,6 +108,8 @@ final class CuesRailBlock: NSView {
     @discardableResult
     func apply(_ next: CuesSurfaceState) -> Bool {
         let before = visibleCount
+        let wasActive = isActive
+        let heldBefore = state.cards.count
         state = next
         let shown = Array(next.cards.prefix(Self.maxCards))
         for (index, view) in cards.enumerated() {
@@ -93,9 +124,17 @@ final class CuesRailBlock: NSView {
             }
         }
         eyebrow.stringValue = eyebrowText
-        eyebrow.isHidden = !isActive
-        dot.isHidden = !(isActive && next.resolving)
-        return before != visibleCount || eyebrow.isHidden == isActive
+        eyebrow.isHidden = embedded || !isActive
+        dot.isHidden = embedded || !(isActive && next.resolving)
+        onStatus?(eyebrowText, isActive && next.resolving)
+        // Compared with what it was, not with the eyebrow. The old test read
+        // `eyebrow.isHidden == isActive` one line after setting isHidden to
+        // !isActive, so it was always false: Cues starting to listen with no
+        // links yet never re-laid the rail. That was harmless while listening
+        // drew one eyebrow line; it is not now that it opens a container.
+        // The held count is here for the "+N older" line, which changes with
+        // it while the visible count sits at the cap.
+        return before != visibleCount || wasActive != isActive || heldBefore != state.cards.count
     }
 
     /// Read from the state, not from the views. The views are hidden a second
@@ -103,7 +142,7 @@ final class CuesRailBlock: NSView {
     /// fitting decision fed back in here a resize would read as a state change.
     private var visibleCount: Int { min(state.cards.count, Self.maxCards) }
 
-    private var eyebrowText: String {
+    var eyebrowText: String {
         if !state.listening && state.cards.isEmpty { return "" }
         if state.paused { return "CUES   paused" }
         if state.cards.isEmpty { return "CUES   listening" }
@@ -126,6 +165,14 @@ final class CuesRailBlock: NSView {
         walk(x: x, width: width, top: top, available: available, place: true)
     }
 
+    /// `n` cards stacked with their gaps, and nothing else. The one place a
+    /// card stack's height is written down: the walk uses it, and so does the
+    /// Live Queue when it asks for room for a full stack.
+    static func stackHeight(cards n: Int) -> CGFloat {
+        guard n > 0 else { return 0 }
+        return CGFloat(n) * CueCardView.height + CGFloat(n - 1) * cardGap
+    }
+
     /// How many of `wanted` cards fit in `budget`, counting the "+N more" line
     /// when some are left over.
     ///
@@ -133,12 +180,11 @@ final class CuesRailBlock: NSView {
     /// line - so n = wanted can fit where n = wanted - 1 does not. Walking the
     /// range and keeping the largest that fits is the only answer that is right
     /// at that boundary.
-    private static func cardsFitting(wanted: Int, budget: CGFloat) -> Int {
+    private static func cardsFitting(wanted: Int, budget: CGFloat, lead: CGFloat) -> Int {
         guard wanted > 0 else { return 0 }
         var best = 0
         for n in 1...wanted {
-            var need = eyebrowGap + CGFloat(n) * CueCardView.height
-                + CGFloat(n - 1) * cardGap
+            var need = lead + stackHeight(cards: n)
             if n < wanted { need += overflowGap + overflowHeight }
             if need <= budget { best = n }
         }
@@ -151,7 +197,9 @@ final class CuesRailBlock: NSView {
     /// One walk, measuring or placing - the rail's rule, for the rail's reason.
     private func walk(x: CGFloat, width: CGFloat, top: CGFloat,
                       available: CGFloat, place: Bool) -> CGFloat {
-        guard isActive else {
+        // Embedded with nothing held is nothing to draw: the host's empty
+        // state is what fills its box, not a zero-height block.
+        guard isActive, !(embedded && state.cards.isEmpty) else {
             if place {
                 frame = .zero
                 overflow.isHidden = true
@@ -159,23 +207,24 @@ final class CuesRailBlock: NSView {
             return 0
         }
         let wanted = min(state.cards.count, Self.maxCards)
-        let head = Self.groupGap + Self.eyebrowHeight
-        let shown = Self.cardsFitting(wanted: wanted, budget: available - head)
+        // Embedded, the host's box starts where the first card does.
+        let head = embedded ? 0 : Self.groupGap + Self.eyebrowHeight
+        let lead = embedded ? 0 : Self.eyebrowGap
+        let shown = Self.cardsFitting(wanted: wanted, budget: available - head, lead: lead)
         let hidden = max(0, state.cards.count - shown)
 
         var used = head
-        if shown > 0 {
-            used += Self.eyebrowGap + CGFloat(shown) * CueCardView.height
-                + CGFloat(shown - 1) * Self.cardGap
-        }
+        if shown > 0 { used += lead + Self.stackHeight(cards: shown) }
         if hidden > 0 { used += Self.overflowGap + Self.overflowHeight }
         guard place else { return used }
 
         frame = NSRect(x: x, y: top - used, width: width, height: used)
-        var y = used - Self.groupGap - Self.eyebrowHeight
-        eyebrow.frame = NSRect(x: 0, y: y, width: width - 12, height: Self.eyebrowHeight)
-        dot.frame = NSRect(x: width - 8, y: y + 5, width: 6, height: 6)
-        y -= Self.eyebrowGap
+        var y = used - head
+        if !embedded {
+            eyebrow.frame = NSRect(x: 0, y: y, width: width - 12, height: Self.eyebrowHeight)
+            dot.frame = NSRect(x: width - 8, y: y + 5, width: 6, height: 6)
+        }
+        y -= lead
         for (index, view) in cards.enumerated() {
             guard index < shown else {
                 view.isHidden = true

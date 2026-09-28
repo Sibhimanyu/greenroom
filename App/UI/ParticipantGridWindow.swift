@@ -96,7 +96,14 @@ enum ParticipantGridWindowController {
     /// and a pop-out needs the raw-data pipeline instead. The experiment
     /// agreed: the re-parented view landed in a visible window at the right
     /// size and still drew black.
-    static var featuredViewEnabled = true
+    ///
+    /// Off. Everyone shares the grid equally, however many are in it. The
+    /// live speaker window already draws whoever is talking, large, so a
+    /// featured tile here drew them a second time and took 58% of the grid to
+    /// do it - reported with two students, one tile twice the height of the
+    /// other, and at 80 it would leave 79 slivers under one face. Nothing
+    /// toggles this any more; ⌥⌘Z moved to the speaker window.
+    static var featuredViewEnabled = false
     private static var showMainWindow: (@MainActor () -> Void)?
 
     /// Wired once at session start. The window talks to the SDK directly rather
@@ -373,6 +380,8 @@ private final class RootView: NSView {
     /// rarely key, so Escape has to be caught before the responder chain gets
     /// a chance not to deliver it.
     private var escapeMonitor: Any?
+    /// Clicks, while the drawer is open. See `updateEscapeMonitor`.
+    private var clickMonitor: Any?
 
     /// Below this the window stops being a grid with panels beside it.
     ///
@@ -391,6 +400,10 @@ private final class RootView: NSView {
 
     private let titleLabel = NSTextField(labelWithString: "")
     private let factsLabel = NSTextField(labelWithString: "")
+    /// The keyboard shortcuts, in the bar rather than in a block under the
+    /// controls. They are standing facts about the session, like the meeting
+    /// number beside them, and the bar had room to spare.
+    private let shortcutsLabel = NSTextField(labelWithString: "")
     private let recordingLabel = NSTextField(labelWithString: "")
     private let recordingDot = DotView()
 
@@ -426,6 +439,10 @@ private final class RootView: NSView {
     /// than pushing the controls around or scrolling the whole column.
     private let queueScroll = NSScrollView()
     private let railContent = NSView()
+    /// The two rows of controls, pinned to the foot of the rail the way
+    /// Zoom pins its toolbar, so the queue between them and the picture can
+    /// take all the room there is without moving a button.
+    private let railControlsHost = NSView()
     private let railDivider = NSView()
     private let selfViewHost = NSView()
     private let switchCountdown = SwitchCountdownView(frame: .zero)
@@ -625,17 +642,23 @@ private final class RootView: NSView {
     private static let railMeterWidth: CGFloat = 200
     /// One line in the block under the controls.
     private static let railRowHeight: CGFloat = 18
-    /// Marks a control that takes a row to itself, spanning the whole column.
-    private static let railWideTag = 7002
-    private static let railWideHeight: CGFloat = 34
     /// The least the queue may have when it has anything to say: an eyebrow,
     /// one name and its buttons. Below that it is a teaser, not a queue.
     private static let railMinQueueHeight: CGFloat = 96
-    /// One control cell: a glyph over two reserved lines of caption.
-    private static let railControlHeight: CGFloat = 64
-    /// Narrower than this and an 11pt caption has nothing to say, so the group
-    /// takes another row instead.
-    private static let railMinControlWidth: CGFloat = 86
+    /// One control cell: a glyph over one line of caption, Zoom's proportions.
+    /// It was 64 with two caption lines reserved in every cell, because the
+    /// long labels wrapped; the labels are short now, so one line is enough.
+    private static let railControlHeight: CGFloat = 50
+    /// A cell is as wide as its caption plus this much air each side, and
+    /// never narrower than `railMinControlWidth`, so "Chat" and "Participants"
+    /// each get the width they need - which is how Zoom sizes its buttons. A
+    /// fixed stretched cell spread five icons across 700pt of column.
+    private static let railControlInset: CGFloat = 10
+    private static let railMinControlWidth: CGFloat = 60
+    /// Between the Greenroom row and the Zoom row. The groups are told apart by
+    /// being separate rows; the eyebrows over each cost 44pt apiece to say what
+    /// the icons already say.
+    private static let railGroupBreak: CGFloat = 8
 
     /// How to split `items` across rows in a column of `width`.
     ///
@@ -767,6 +790,7 @@ private final class RootView: NSView {
         queueScroll.autohidesScrollers = true
         queueScroll.documentView = liveQueue
         rail.addSubview(queueScroll)
+        rail.addSubview(railControlsHost)
 
         selfViewHost.wantsLayer = true
         selfViewHost.layer?.backgroundColor = NSColor.black.cgColor
@@ -829,7 +853,7 @@ private final class RootView: NSView {
         statsLabel.maximumNumberOfLines = 3
         statsLabel.usesSingleLineMode = false
         statsLabel.lineBreakMode = .byWordWrapping
-        railContent.addSubview(statsLabel)
+        railControlsHost.addSubview(statsLabel)
 
         pageLabel.font = .monospacedSystemFont(ofSize: 11, weight: .regular)
         pageLabel.textColor = .secondaryLabelColor
@@ -843,7 +867,10 @@ private final class RootView: NSView {
         factsLabel.font = .monospacedSystemFont(ofSize: 12, weight: .regular)
         factsLabel.textColor = .secondaryLabelColor
         recordingLabel.font = .systemFont(ofSize: 12, weight: .semibold)
-        for label in [titleLabel, factsLabel, recordingLabel] { topBar.addSubview(label) }
+        shortcutsLabel.font = .monospacedSystemFont(ofSize: 11, weight: .regular)
+        shortcutsLabel.textColor = .tertiaryLabelColor
+        shortcutsLabel.stringValue = "\u{2325}\u{2318}R record   \u{2325}\u{2318}S snap back   \u{2325}\u{2318}Z speaker   \u{2325}\u{2318}X end"
+        for label in [titleLabel, factsLabel, shortcutsLabel, recordingLabel] { topBar.addSubview(label) }
         topBar.addSubview(recordingDot)
 
         emptyState.font = .systemFont(ofSize: 15)
@@ -1185,6 +1212,18 @@ private final class RootView: NSView {
         recordingDot.frame = NSRect(x: recordingLabel.frame.minX - dotSize - 6,
                                     y: (Self.barHeight - dotSize) / 2,
                                     width: dotSize, height: dotSize)
+
+        // Right-aligned against whatever is rightmost, and dropped rather than
+        // overlapped on a narrow window: every one of them is also in its
+        // button's tooltip, which is where Zoom keeps its own.
+        shortcutsLabel.sizeToFit()
+        let shortcutsRight = recordingLabel.isHidden ? actionsRight : recordingDot.frame.minX - 24
+        let shortcutsX = shortcutsRight - shortcutsLabel.frame.width
+        shortcutsLabel.isHidden = shortcutsX < factsLabel.frame.maxX + 24
+        shortcutsLabel.frame = NSRect(x: shortcutsX,
+                                      y: (Self.barHeight - shortcutsLabel.frame.height) / 2,
+                                      width: shortcutsLabel.frame.width,
+                                      height: shortcutsLabel.frame.height)
     }
 
     /// The students on the current page. Everything downstream - layout, video
@@ -1377,6 +1416,19 @@ private final class RootView: NSView {
         headerButtons.forEach { $0.removeFromSuperview() }
         headerButtons = []
         moreButton = nil
+
+        // The one exception: meeting info, in the bar beside the meeting
+        // number it expands on. That is where Zoom keeps it, and in the grid
+        // it was a cell spent on something opened once a class, if that.
+        let info = ClosureButton { Self.showMeetingInfo() }
+        info.image = NSImage(systemSymbolName: "info.circle", accessibilityDescription: "Meeting info")?
+            .withSymbolConfiguration(.init(pointSize: 14, weight: .regular))
+        info.imagePosition = .imageOnly
+        info.isBordered = false
+        info.contentTintColor = .secondaryLabelColor
+        info.toolTip = "Meeting info"
+        topBar.addSubview(info)
+        headerButtons = [info]
     }
 
     /// Everything that used to be a permanently visible rail cell but is
@@ -1430,7 +1482,7 @@ private final class RootView: NSView {
         menu.addItem(.separator())
         add("End session\u{2026}") {
             Self.confirm(title: "End the session?",
-                         message: "Leaves the meeting, finishes any recording, and shuts OBS down.",
+                         message: "Ends the meeting for everyone, finishes any recording, and shuts OBS down.",
                          confirm: "End session") {
                 ParticipantGridWindowController.requestEndSession()
             }
@@ -1494,57 +1546,18 @@ private final class RootView: NSView {
     /// lesson the hard way: tearing views down on a one-second poll races the
     /// accessibility tree and drops clicks that land mid-teardown.
     private func updateNeedsBlock() {
-        let mono = NSFont.monospacedSystemFont(ofSize: 10, weight: .regular)
-        var eyebrow = ""
-        var rows: [(text: String, font: NSFont)] = []
-
-        // Waiting students, raised hands and Cues's cards have moved to the
-        // Live Queue, where each sits next to the action it needs. What is left
-        // here is the standing session facts, which belong beside the controls
-        // they describe.
+        // Empty now, and kept so the rail's walk still has a block to measure.
         //
-        // This block no longer changes height for any reason except the meeting
-        // number arriving, which is why suppressedNeedsHeight is gone: the
-        // facts used to stand down for Cues, and because the rail's WIDTH
-        // was decided from this stack, a link arriving moved the whole panel.
-        // Nothing in the rail responds to Cues any more.
-        let console = consoleState
-        // showsSessionFacts, not merely isLive.
-        //
-        // The A1 rewrite reduced this to "blank before the class, facts after",
-        // which dropped the rung that makes the column work: these facts are
-        // filler, and they yield to anything real. Left always-on they cost
-        // 116pt of a 810pt column, and with the picture and controls above them
-        // the queue was left 6pt - measured in a live session, with five links
-        // held and a six-point-tall panel to show them in.
-        //
-        // The rule lives in ParticipantConsoleState: facts show only when the
-        // class is live, nobody is waiting, no hand is up and Cues is
-        // holding nothing.
-        if !console.showsSessionFacts {
-            // Before the class, the readiness panel is already carrying the
-            // wait; during it, something more useful has the space.
-            eyebrow = ""
-        } else {
-            // Machine facts, so mono - the split DESIGN.md asks for. The meeting
-            // number is here rather than only in the top bar because the moment
-            // you need it is the moment a student cannot find the link, and it
-            // should be readable aloud without hunting.
-            eyebrow = "SESSION"
-            if !console.meetingNumber.isEmpty {
-                rows.append(("MEETING     \(console.meetingNumber)", mono))
-            }
-            rows.append((console.isRecording ? "RECORDING   local" : "RECORDING   off", mono))
-            rows.append(("\u{2325}\u{2318}G start    \u{2325}\u{2318}R record    \u{2325}\u{2318}S snap back", mono))
-            rows.append(("\u{2325}\u{2318}X end      \u{2325}\u{2318}Z speaker", mono))
-        }
-
-        needsEyebrow.stringValue = eyebrow
-        for (index, row) in needsRows.enumerated() {
-            let content = index < rows.count ? rows[index] : nil
-            row.stringValue = content?.text ?? ""
-            if let content { row.font = content.font }
-            row.isHidden = content == nil
+        // Waiting students, raised hands and Cues's cards moved to the Live
+        // Queue long ago. What stayed was a SESSION block of standing facts -
+        // meeting number, recording state, shortcuts - and the first two
+        // repeated the top bar word for word. The shortcuts moved up there
+        // too, and into each button's tooltip, so the room it held (116pt at
+        // its fullest) goes to Cues's container instead.
+        needsEyebrow.stringValue = ""
+        for row in needsRows {
+            row.stringValue = ""
+            row.isHidden = true
         }
     }
 
@@ -1609,78 +1622,80 @@ private final class RootView: NSView {
         rebuildHeaderActions()
         guard let sdk = ParticipantGridWindowController.sdk else { return }
 
+        // Short labels, one line each, the words Zoom itself uses where there
+        // is a Zoom equivalent. The long ones ("Snap windows back", "Stop my
+        // video") wrapped to two lines, so every cell reserved two, and the
+        // grid was half caption.
         railControls.append(Self.railHeader("Greenroom"))
 
         let recording = session.obsRecording
-        railControls.append(Self.railRow(recording ? "Stop recording" : "Record this class",
+        railControls.append(Self.railRow(recording ? "Stop Recording" : "Record",
                                          symbol: recording ? "stop.circle.fill" : "record.circle",
-                                         alert: recording) {
+                                         alert: recording, hint: "\u{2325}\u{2318}R") {
             ParticipantGridWindowController.requestToggleRecording()
         })
-        railControls.append(Self.railRow("Snap windows back", symbol: "rectangle.3.group") {
+        railControls.append(Self.railRow("Snap Back", symbol: "rectangle.3.group",
+                                         hint: "Snap windows back  \u{2325}\u{2318}S") {
             ParticipantGridWindowController.requestSnapBack()
         })
-        railControls.append(Self.railRow(session.speakerHidden ? "Show live speaker" : "Hide live speaker",
-                                         symbol: session.speakerHidden ? "eye" : "eye.slash") {
+        railControls.append(Self.railRow(session.speakerHidden ? "Show Speaker" : "Hide Speaker",
+                                         symbol: session.speakerHidden ? "eye" : "eye.slash",
+                                         hint: "Live speaker  \u{2325}\u{2318}Z") {
             ParticipantGridWindowController.requestToggleSpeaker()
         })
         railControls.append(Self.railRow("Chat", symbol: "bubble.left.and.bubble.right") {
             ParticipantGridWindowController.requestShowChat()
         })
-        railControls.append(Self.railRow("Greenroom window", symbol: "macwindow") {
+        railControls.append(Self.railRow("Greenroom", symbol: "macwindow",
+                                         hint: "Show the Greenroom window") {
             ParticipantGridWindowController.requestShowMainWindow()
         })
 
         railControls.append(Self.railHeader("Zoom"))
 
         let muted = sdk.iAmMuted
-        railControls.append(Self.railRow(muted ? "Unmute me" : "Mute me",
+        railControls.append(Self.railRow(muted ? "Unmute" : "Mute",
                                          symbol: muted ? "mic.slash.fill" : "mic.fill",
                                          alert: muted) {
             Self.perform(muted ? "Unmuted yourself" : "Muted yourself") { $0.setMyMute(!muted) }
         })
         let videoOn = sdk.myVideoIsOn
-        railControls.append(Self.railRow(videoOn ? "Stop my video" : "Start my video",
+        railControls.append(Self.railRow(videoOn ? "Stop Video" : "Start Video",
                                          symbol: videoOn ? "video.fill" : "video.slash.fill",
                                          alert: !videoOn) {
             Self.perform(videoOn ? "Stopped your video" : "Started your video") { $0.setMyVideo(on: !videoOn) }
         })
-        railControls.append(Self.railMenuRow("Participants (\(roster.count))",
+        // The count rides on the icon, as in Zoom, not in the caption.
+        railControls.append(Self.railMenuRow("Participants",
                                              symbol: "person.2.fill",
+                                             badge: roster.isEmpty ? nil : "\(roster.count)",
                                              items: participantItems()))
-        railControls.append(Self.railMenuRow("Reactions", symbol: "hand.thumbsup", items: reactionItems()))
-        railControls.append(Self.railMenuRow("Security", symbol: "shield.lefthalf.filled", items: securityItems()))
-        railControls.append(Self.railRow("Meeting info", symbol: "info.circle") {
-            Self.showMeetingInfo()
-        })
+        railControls.append(Self.railMenuRow("React", symbol: "hand.thumbsup", items: reactionItems()))
+        railControls.append(Self.railMenuRow("Host tools", symbol: "shield.lefthalf.filled", items: securityItems()))
 
         if !waiting.isEmpty {
-            railControls.append(Self.railRow("Admit \(waiting.count) waiting",
-                                             symbol: "person.badge.plus", alert: true) {
+            railControls.append(Self.railRow("Admit \(waiting.count)",
+                                             symbol: "person.badge.plus", alert: true,
+                                             hint: "Admit everyone waiting") {
                 Self.perform("Admitted everyone waiting") { $0.admitEveryoneWaiting() }
             })
         }
 
-        // Its own row, spanning the column, rather than one small icon cell
-        // stranded at the left of an otherwise empty line.
+        // End sits last in Zoom's row, filled red, as Zoom's own End does.
         //
-        // It stays on its own row because it is the one irreversible control
-        // in the rail, and inline next to Meeting info left red as the only
-        // thing telling them apart - no separation at all for anyone who does
-        // not parse colour quickly, or at all. What was wrong was the SHAPE:
-        // a 76pt cell alone on a 556pt line reads as a layout that ran out of
-        // buttons. Full width reads as a decision, gives the most consequential
-        // control the largest target, and costs 20pt less than the icon cell did.
-        let endSession = Self.railRow("End session", symbol: "xmark.circle.fill",
-                                      destructive: true, wide: true) {
+        // It used to be a full-width bar of its own, on the argument that the
+        // one irreversible control should not sit beside the others with only
+        // colour to tell them apart. The fill answers that better than the
+        // row did: a solid red block is a different kind of object from a
+        // borderless icon, to anyone, and it still asks before it acts.
+        railControls.append(Self.railRow("End", symbol: "xmark", destructive: true,
+                                         hint: "End session  \u{2325}\u{2318}X") {
             Self.confirm(title: "End the session?",
-                         message: "Leaves the meeting, finishes any recording, and shuts OBS down.",
+                         message: "Ends the meeting for everyone, finishes any recording, and shuts OBS down.",
                          confirm: "End session") {
                 ParticipantGridWindowController.requestEndSession()
             }
-        }
-        endSession.tag = Self.railWideTag
-        railControls.append(endSession)
+        })
 
         // Dimmed and disabled until the subsystem behind them exists. Showing
         // the full control set from the first frame is the point - the teacher
@@ -1692,7 +1707,7 @@ private final class RootView: NSView {
             (control as? NSControl)?.isEnabled = live
         }
 
-        railControls.forEach { railContent.addSubview($0) }
+        railControls.forEach { railControlsHost.addSubview($0) }
     }
 
     /// One shape, at every rail width: your picture on top, then its caption,
@@ -1718,54 +1733,60 @@ private final class RootView: NSView {
         let column = railColumn(available: available)
         let x = pad + column.x
 
-        // Layout A1: the column is two regions, not one scroller.
+        // Three regions, top to bottom: you, the queue, the controls.
         //
-        // Above, the things that must never move while a lesson is running -
-        // the picture, the meter, both control groups, End session. Below,
-        // whatever room is left belongs to the queue, and the queue scrolls
-        // inside THAT rather than pushing the controls down or dragging the
-        // whole column with it. Measured at 1432pt wide, the split is 686pt of
-        // fixed stack and 175pt of queue.
-        let stack = railStack(width: column.width, available: rail.bounds.height)
+        // The controls used to sit straight under the picture with the queue
+        // at the foot of the column. The queue is where the three things that
+        // need the teacher land - someone at the door, a hand up, a link - in
+        // that order, so it gets the middle and whatever room is left, and
+        // the controls are pinned to the bottom the way Zoom pins its toolbar:
+        // always in the same place, never pushed by what arrives above them.
+        let controlsBody = controlColumnHeight(width: column.width)
+        let controlsHeight = controlsBody + 10 + pad
+        railControlsHost.frame = NSRect(x: 0, y: 0, width: rail.bounds.width, height: controlsHeight)
+        layoutControlColumn(x: x, width: column.width, top: controlsHeight - 10)
+
+        let selfHeight = selfBlockHeight(width: column.width)
+            + needsBlockHeight(width: column.width) + pad
+        let above = max(0, rail.bounds.height - controlsHeight)
         let queueWanted = liveQueue.height(for: consoleState, width: rail.bounds.width)
+        // Never more than the room actually there, so the picture keeps its
+        // size and the controls their place; the queue scrolls inside itself.
+        let queueHeight = queueWanted == 0 ? 0 : min(queueWanted, max(0, above - selfHeight))
+        let topHeight = max(0, above - queueHeight)
 
-        // The queue never takes so much that the controls are pushed out of
-        // sight, and never less than one card's worth when it has something to
-        // say. Between those it takes what it needs.
-        let roomForQueue = max(0, rail.bounds.height - stack.total)
-        // Never more than the room actually there. The minimum used to be a
-        // claim - max(floor, room) - which on a wide window handed the queue
-        // 96pt it did not have and pushed End session, the one irreversible
-        // control in the panel, off the bottom of the column.
-        let queueHeight = queueWanted == 0 ? 0 : min(queueWanted, roomForQueue)
-        let topHeight = max(0, rail.bounds.height - queueHeight)
-
-        railScroll.frame = NSRect(x: 0, y: queueHeight,
+        railScroll.frame = NSRect(x: 0, y: controlsHeight + queueHeight,
                                   width: rail.bounds.width, height: topHeight)
-        queueScroll.frame = NSRect(x: 0, y: 0, width: rail.bounds.width, height: queueHeight)
+        queueScroll.frame = NSRect(x: 0, y: controlsHeight, width: rail.bounds.width, height: queueHeight)
         queueScroll.isHidden = queueHeight <= 0
 
-        // How far down the fixed stack the teacher had scrolled, so a card
-        // arriving does not yank them back to the top mid-read.
+        // How far down the picture's region the teacher had scrolled, so a
+        // card arriving does not yank them back to the top mid-read.
         let visibleHeight = railScroll.contentView.bounds.height
         let scrolledFromTop = lastRailDocumentHeight > 0
             ? max(0, lastRailDocumentHeight - railScroll.contentView.bounds.maxY)
             : 0
 
         // Never shorter than its own viewport, or a short stack would float.
-        let documentHeight = max(stack.total, topHeight)
+        let documentHeight = max(selfHeight, topHeight)
         railContent.frame = NSRect(x: 0, y: 0, width: rail.bounds.width, height: documentHeight)
 
         let top = documentHeight - pad
         let afterMedia = layoutSelfBlock(x: x, width: column.width, top: top)
-        let controlsTop = afterMedia - 10
-        let controlsHeight = layoutControlColumn(x: x, width: column.width, top: controlsTop)
-        _ = walkNeedsBlock(x: x, width: column.width, top: controlsTop - controlsHeight, place: true)
+        _ = walkNeedsBlock(x: x, width: column.width, top: afterMedia, place: true)
 
         railContent.scroll(NSPoint(x: 0, y: max(0, documentHeight - scrolledFromTop - visibleHeight)))
         lastRailDocumentHeight = documentHeight
 
         if queueHeight > 0 {
+            // Where the teacher had scrolled the queue to, from its top, read
+            // BEFORE the view is resized and rewritten below. This runs on
+            // every one-second poll, and it used to end by scrolling the
+            // queue back to the top unconditionally - so a scroll lasted until
+            // the next tick and then snapped, which is what "laggy" was.
+            let queueViewport = queueScroll.contentView.bounds
+            let queueFromTop = liveQueue.bounds.height > 0
+                ? max(0, liveQueue.bounds.height - queueViewport.maxY) : 0
             // Frame first, THEN write it: the view lays out from its own
             // height, so it has to know that height before it draws.
             // The VIEWPORT height, not what the queue wanted. Sized to the
@@ -1777,8 +1798,11 @@ private final class RootView: NSView {
                                      height: queueHeight)
             liveQueue.apply(consoleState, width: rail.bounds.width)
             // Non-flipped document views scroll to the bottom by default, which
-            // would open the queue showing its last row.
-            liveQueue.scroll(NSPoint(x: 0, y: liveQueue.bounds.height))
+            // would open the queue showing its last row - so the position is
+            // put back counted from the top, clamped to what now exists.
+            let maxFromTop = max(0, liveQueue.bounds.height - queueViewport.height)
+            liveQueue.scroll(NSPoint(x: 0, y: liveQueue.bounds.height - queueViewport.height
+                                             - min(queueFromTop, maxFromTop)))
         }
     }
 
@@ -1989,54 +2013,57 @@ private final class RootView: NSView {
         let gap = Self.railCellGap
         var y = top
         var pending: [NSView] = []
+        var groups = 0
+
+        func cellWidth(_ view: NSView) -> CGFloat {
+            let natural = (view as? IconCellButton)?.captionWidth ?? Self.railMinControlWidth
+            return min(width, max(Self.railMinControlWidth, (natural + Self.railControlInset * 2).rounded()))
+        }
 
         /// Lays whatever cells have piled up, then clears them.
         ///
-        /// Every row divides the column EXACTLY. The old grid used a fixed 76pt
-        /// cell and packed left, so a group of five in a seven-slot grid left
-        /// 152pt of nothing on the right while the group of six below it left
-        /// 76pt - two different ragged edges, and no response to the panel's
-        /// width at all. Cells now stretch to whatever their row needs, so the
-        /// right edge lines up with the picture above and the whole set moves
-        /// when the panel is resized.
+        /// Each cell keeps its natural width and a row is centred in the
+        /// column, the way Zoom centres its toolbar. The cells used to stretch
+        /// to divide the column exactly, which lined the grid up with the
+        /// picture's edges and spread five small icons across 700pt of panel -
+        /// the padding the teacher could see. A row that does not fit wraps.
         func flush() {
             guard !pending.isEmpty else { return }
-            var index = 0
-            for (row, count) in Self.controlRows(items: pending.count, width: width).enumerated() {
-                if row > 0 { y -= gap }
+            var rows: [[NSView]] = [[]]
+            var used: CGFloat = 0
+            for view in pending {
+                let needed = cellWidth(view) + (rows[rows.count - 1].isEmpty ? 0 : gap)
+                if !rows[rows.count - 1].isEmpty, used + needed > width {
+                    rows.append([])
+                    used = 0
+                }
+                used += cellWidth(view) + (rows[rows.count - 1].isEmpty ? 0 : gap)
+                rows[rows.count - 1].append(view)
+            }
+            for (index, row) in rows.enumerated() {
+                if index > 0 { y -= gap }
                 y -= Self.railControlHeight
-                let cellWidth = (width - CGFloat(count - 1) * gap) / CGFloat(count)
-                for slot in 0..<count {
+                let total = row.reduce(0) { $0 + cellWidth($1) } + CGFloat(row.count - 1) * gap
+                var cursor = x + ((width - total) / 2).rounded()
+                for view in row {
                     if place {
-                        pending[index].frame = NSRect(
-                            x: (x + CGFloat(slot) * (cellWidth + gap)).rounded(),
-                            y: y,
-                            width: cellWidth.rounded(),
-                            height: Self.railControlHeight)
+                        view.frame = NSRect(x: cursor, y: y, width: cellWidth(view),
+                                            height: Self.railControlHeight)
                     }
-                    index += 1
+                    cursor += cellWidth(view) + gap
                 }
             }
             pending = []
         }
 
         for control in railControls {
-            // A section eyebrow closes the open group, takes a group break above
-            // it, and spans the whole column.
+            // A group marker closes the open group. It draws nothing; the
+            // groups are separate rows with a short break between them.
             if control is NSTextField {
                 flush()
-                y -= Self.railGroupGap + 16
-                if place { control.frame = NSRect(x: x, y: y, width: width, height: 16) }
-                y -= Self.railEyebrowGap
-                continue
-            }
-            // A wide control closes the group and takes the whole column.
-            if control.tag == Self.railWideTag {
-                flush()
-                y -= Self.railGroupGap + Self.railWideHeight
-                if place {
-                    control.frame = NSRect(x: x, y: y, width: width, height: Self.railWideHeight)
-                }
+                if groups > 0 { y -= Self.railGroupBreak }
+                groups += 1
+                if place { control.frame = .zero }
                 continue
             }
             pending.append(control)
@@ -2323,6 +2350,7 @@ private final class RootView: NSView {
     /// the app's life, swallowing Escape everywhere.
     deinit {
         if let escapeMonitor { NSEvent.removeMonitor(escapeMonitor) }
+        if let clickMonitor { NSEvent.removeMonitor(clickMonitor) }
     }
 
     /// Escape closes the drawer, and only while it is open.
@@ -2342,6 +2370,35 @@ private final class RootView: NSView {
         } else if !active, let monitor = escapeMonitor {
             NSEvent.removeMonitor(monitor)
             escapeMonitor = nil
+        }
+
+        // And a click anywhere outside the drawer closes it, the way every
+        // popover on the Mac behaves. The tile's own toggle was not enough:
+        // clicking the same student again was meant to close it, but where
+        // the click landed on Zoom's video the tile never heard it, and a
+        // click on the empty grid or the rail did nothing at all - reported
+        // as "it doesn't go away".
+        //
+        // A click on a tile is handled here rather than passed on, so it
+        // toggles once instead of twice (here, then in the tile).
+        if active, clickMonitor == nil {
+            clickMonitor = NSEvent.addLocalMonitorForEvents(matching: .leftMouseDown) { [weak self] event in
+                guard let self, event.window === self.window, self.selected != nil else { return event }
+                let point = self.convert(event.locationInWindow, from: nil)
+                if !self.inspector.isHidden, self.inspector.frame.contains(point) { return event }
+                let inGrid = self.gridHost.convert(event.locationInWindow, from: nil)
+                if let (id, _) = self.tiles.first(where: { !$0.value.isHidden && $0.value.frame.contains(inGrid) }) {
+                    self.selected = (self.selected == id) ? nil : id
+                    self.selectionChanged()
+                    return nil
+                }
+                self.selected = nil
+                self.selectionChanged()
+                return event
+            }
+        } else if !active, let monitor = clickMonitor {
+            NSEvent.removeMonitor(monitor)
+            clickMonitor = nil
         }
     }
 
@@ -2375,19 +2432,22 @@ private final class RootView: NSView {
                                 symbol: String,
                                 alert: Bool = false,
                                 destructive: Bool = false,
-                                wide: Bool = false,
+                                hint: String? = nil,
                                 action: @escaping () -> Void) -> NSButton {
         // systemRed, not the brand accent: DESIGN.md bars the accent from text,
         // and red-for-muted is the convention being matched anyway.
-        IconCellButton(symbol: symbol,
-                       caption: title,
-                       tint: destructive || alert ? .systemRed : .labelColor,
-                       wide: wide,
-                       action: action)
+        let cell = IconCellButton(symbol: symbol,
+                                  caption: title,
+                                  tint: destructive || alert ? .systemRed : .labelColor,
+                                  filled: destructive,
+                                  action: action)
+        if let hint { cell.toolTip = hint.hasPrefix("\u{2325}") ? "\(title)  \(hint)" : hint }
+        return cell
     }
 
     private static func railMenuRow(_ title: String,
                                     symbol: String,
+                                    badge: String? = nil,
                                     items: [(String, () -> Void)]) -> NSView {
         let menu = NSMenu()
         for (label, action) in items {
@@ -2400,6 +2460,7 @@ private final class RootView: NSView {
         // An icon cell that pops the menu, so a menu and an action look and
         // behave alike in the grid.
         let button = IconCellButton(symbol: symbol, caption: title, tint: .labelColor) {}
+        button.badge = badge
         button.attachedMenu = menu
         return button
     }
@@ -2860,8 +2921,13 @@ private final class IconCellButton: NSButton {
     /// Set instead of an action when this cell opens a menu.
     var attachedMenu: NSMenu?
 
-    /// Wide cells lay their glyph beside the caption and span the column.
-    private let wide: Bool
+    /// Filled in the tint with the glyph and caption knocked out in white:
+    /// Zoom's End. A different kind of object from a borderless icon, which is
+    /// the point for the one control that cannot be undone.
+    private let filled: Bool
+    /// A count on the glyph's top right, Zoom's way of showing how many are
+    /// in Participants without putting it in the caption.
+    var badge: String? { didSet { needsDisplay = true } }
     private let caption: String
     private let glyph: NSImage?
 
@@ -2873,12 +2939,12 @@ private final class IconCellButton: NSButton {
     /// different heights, which is most of why the panel looked unfinished.
     /// Drawing it here pins the glyph to a fixed baseline and always reserves
     /// two lines for the caption, so every cell in a row agrees.
-    init(symbol: String, caption: String, tint: NSColor, wide: Bool = false,
+    init(symbol: String, caption: String, tint: NSColor, filled: Bool = false,
          action: @escaping () -> Void) {
         self.body = action
-        self.wide = wide
+        self.filled = filled
         self.caption = caption
-        let config = NSImage.SymbolConfiguration(pointSize: wide ? 13 : 18, weight: .medium)
+        let config = NSImage.SymbolConfiguration(pointSize: 17, weight: .medium)
         self.glyph = NSImage(systemSymbolName: symbol, accessibilityDescription: caption)?
             .withSymbolConfiguration(config)
         super.init(frame: .zero)
@@ -2914,9 +2980,12 @@ private final class IconCellButton: NSButton {
     /// under it and below anything DESIGN.md's scale contains; the app is the
     /// compact end of the system, not a different system.
     private static let captionFont = NSFont.systemFont(ofSize: 11, weight: .regular)
-    private static let wideFont = NSFont.systemFont(ofSize: 12.5, weight: .medium)
-    /// Two lines, always reserved, so glyphs share a baseline across a row.
-    static let captionLines: CGFloat = 2
+    private static let badgeFont = NSFont.monospacedDigitSystemFont(ofSize: 10, weight: .semibold)
+
+    /// The caption's one-line width, which is what the rail sizes the cell to.
+    var captionWidth: CGFloat {
+        ceil(NSAttributedString(string: caption, attributes: [.font: Self.captionFont]).size().width)
+    }
 
     required init?(coder: NSCoder) { nil }
 
@@ -2982,56 +3051,52 @@ private final class IconCellButton: NSButton {
     /// and a press is a real block of the control's own colour, so a red
     /// control flashes red and the eye has something to catch.
     override func draw(_ dirtyRect: NSRect) {
-        let background: NSColor? = isHighlighted
-            ? tint.withAlphaComponent(0.42)
+        let background: NSColor? = filled
+            ? tint.withAlphaComponent(isHighlighted ? 0.7 : hovering ? 0.92 : 0.82)
+            : isHighlighted ? tint.withAlphaComponent(0.42)
             : hovering ? NSColor.labelColor.withAlphaComponent(0.16) : nil
         if let background {
             background.setFill()
             NSBezierPath(roundedRect: bounds, xRadius: 8, yRadius: 8).fill()
         }
 
-        let ink = isEnabled ? tint : tint.withAlphaComponent(0.4)
+        let base: NSColor = filled ? .white : tint
+        let ink = isEnabled ? base : base.withAlphaComponent(0.4)
         let mark = glyph.map { Self.tinted($0, ink) }
         let paragraph = NSMutableParagraphStyle()
-        paragraph.alignment = wide ? .left : .center
+        paragraph.alignment = .center
         paragraph.lineBreakMode = .byTruncatingTail
 
-        if wide {
-            // Glyph then caption, both on the vertical centre line.
-            let text = NSAttributedString(string: caption, attributes: [
-                .font: Self.wideFont, .foregroundColor: ink, .paragraphStyle: paragraph
-            ])
-            let textSize = text.size()
-            let glyphSize = mark?.size ?? .zero
-            var x = ((bounds.width - (glyphSize.width + 8 + textSize.width)) / 2).rounded()
-            x = max(12, x)
-            mark?.draw(in: NSRect(x: x, y: ((bounds.height - glyphSize.height) / 2).rounded(),
-                                   width: glyphSize.width, height: glyphSize.height),
-                        from: .zero, operation: .sourceOver, fraction: isEnabled ? 1 : 0.4,
-                        respectFlipped: true, hints: [.interpolation: NSImageInterpolation.high.rawValue])
-            text.draw(in: NSRect(x: x + glyphSize.width + 8,
-                                 y: ((bounds.height - textSize.height) / 2).rounded(),
-                                 width: bounds.width - x - glyphSize.width - 8 - 12,
-                                 height: textSize.height))
-            return
-        }
-
-        // Caption sits on the floor of the cell in a block two lines tall,
-        // whether it uses one line or two. The glyph is pinned above it.
-        let lineHeight = Self.captionFont.boundingRectForFont.height
-        let captionHeight = (lineHeight * Self.captionLines).rounded()
-        let captionRect = NSRect(x: 3, y: 6, width: bounds.width - 6, height: captionHeight)
-        NSAttributedString(string: caption, attributes: [
-            .font: Self.captionFont, .foregroundColor: ink, .paragraphStyle: paragraph
-        ]).draw(with: captionRect, options: [.usesLineFragmentOrigin], context: nil)
-
+        // Glyph on top, caption under it, the pair centred in the cell.
+        //
+        // NSButton is flipped - y runs DOWN from the top - and this used to
+        // be drawn as if it were not: the caption "on the floor" at y=6 landed
+        // at the top, and the glyph pinned "above" it landed at the bottom.
+        // Every cell read label-first, the opposite of Zoom and of every
+        // toolbar a teacher has used.
+        let glyphSize = mark?.size ?? .zero
+        let lineHeight = ceil(Self.captionFont.boundingRectForFont.height)
+        let spacing: CGFloat = 4
+        let top = ((bounds.height - (glyphSize.height + spacing + lineHeight)) / 2).rounded()
         if let mark {
-            let size = mark.size
-            let top = bounds.height - 8 - size.height
-            mark.draw(in: NSRect(x: ((bounds.width - size.width) / 2).rounded(),
-                                  y: top, width: size.width, height: size.height),
+            mark.draw(in: NSRect(x: ((bounds.width - glyphSize.width) / 2).rounded(),
+                                  y: top, width: glyphSize.width, height: glyphSize.height),
                        from: .zero, operation: .sourceOver, fraction: isEnabled ? 1 : 0.4,
                        respectFlipped: true, hints: [.interpolation: NSImageInterpolation.high.rawValue])
+        }
+        NSAttributedString(string: caption, attributes: [
+            .font: Self.captionFont, .foregroundColor: ink, .paragraphStyle: paragraph
+        ]).draw(with: NSRect(x: 3, y: top + glyphSize.height + spacing,
+                             width: bounds.width - 6, height: lineHeight),
+                options: [.usesLineFragmentOrigin, .truncatesLastVisibleLine], context: nil)
+
+        // The count, small and quiet, just off the glyph's top right.
+        if let badge, !badge.isEmpty {
+            let text = NSAttributedString(string: badge, attributes: [
+                .font: Self.badgeFont, .foregroundColor: ink.withAlphaComponent(0.8)
+            ])
+            let glyphRight = (bounds.width + glyphSize.width) / 2
+            text.draw(at: NSPoint(x: (glyphRight + 2).rounded(), y: max(1, top - 3)))
         }
     }
 }

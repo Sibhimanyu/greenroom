@@ -56,6 +56,9 @@ struct ParticipantConsoleState: Equatable {
     var hands: [Person] = []
     var selected: UInt32?
     var cuesCards = 0
+    /// True while Cues is on for this class: listening, paused, or still
+    /// holding links from earlier. It is what gives Cues a container in the
+    /// queue before it has anything in it - see `showsCuesContainer`.
     var cuesListening = false
 
     /// The top of the Live Queue.
@@ -83,6 +86,17 @@ struct ParticipantConsoleState: Equatable {
         guard isLive, cuesCards > 0 else { return false }
         return attention == .clear
     }
+
+    /// True when the queue keeps a place for Cues, cards or not.
+    ///
+    /// A different question from `showsAssist`. That one is about who wins the
+    /// top of the queue; this one is about whether Cues has a room of its own
+    /// below it. Cards used to appear under an eyebrow in whatever height was
+    /// left over, so the first link of a class arrived as the panel changing
+    /// shape. A container that is already there when Cues is on means a link
+    /// arriving only fills a space the teacher has already seen. Off means no
+    /// container at all: an empty box for a feature not running is filler.
+    var showsCuesContainer: Bool { cuesListening || cuesCards > 0 }
 
     /// True when the standing session facts are worth the space.
     ///

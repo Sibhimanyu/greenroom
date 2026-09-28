@@ -200,10 +200,16 @@ participant rail is the one that exists today; anything similar follows it.
 - **Panels scroll rather than shrink.** When the stack does not fit, scroll it.
   Do not claw height back by clamping the media to a fraction of the panel
   height: that back-solves a media width that no longer matches the controls.
-- **In a control grid only two vertical gaps are decisions:** the break above a
-  section eyebrow (20px) and the breath below it before its first row (8px).
-  Every other gap is the cell grid itself (4px). A gap that is none of those
-  three is a bug, not a choice, however deliberate it looks on screen.
+- **Controls are drawn the way Zoom draws them:** glyph on top, one short line
+  of 11px caption under it, in Zoom's own words where Zoom has one ("Mute",
+  "Stop Video", "React", "Host tools"). A cell is as wide as its caption plus
+  10px each side, never under 60px, and a row is centred in the column rather
+  than stretched across it. A count rides on the glyph, not in the caption.
+  End is the last cell of Zoom's row, filled red.
+- **In a control grid only two vertical gaps are decisions:** the break between
+  one product's row and the next (8px) and the cell grid itself (4px). Groups
+  are told apart by being separate rows, not by eyebrows over them. A gap that
+  is neither is a bug, not a choice, however deliberate it looks on screen.
 - **Measure and place in one pass.** A panel that reports its own height to a
   scroll view must run the identical arithmetic for both. Two copies drift, and
   the failure is quiet in the worst way: if both copies share a bug the heights
@@ -410,3 +416,4 @@ Ranked by user-visible impact. None of these block anything today.
 | 2026-09-03 | The timeline page uses one series and a step line, with releases as markers | The only honest quantity available for every release is the size of the code; a step line says "this is what shipped, until the next one shipped" rather than implying growth between releases. Single series, so brand green carries it and no legend is needed; three direct labels tell the story, the table carries the rest. The build that never launched is a hollow amber marker, never red: danger is reserved for the "what it never does" claims. |
 | 2026-09-24 | A new mark: one G with the teacher in it, and the name in one deep green | The old mark was a gradient cascade of panes into a device, which broke this document's own "no gradients" rule. The new one is flat, built on a single unit (the G's stroke), survives at 16px with its own small-size artwork, and reads as a letter and a person without forming a second letter ("Ei", "Gi" and "Gj" were all tried and rejected). The name drops the lime "Green" because lime fails as text at every size. |
 | 2026-09-24 | The app accent stays `#5FA83C`, not the logo's lime | Tried in the app: `#78C000` as the AccentColor turned the segmented control, Start Meeting, the focus ring and every link bright lime, which read as highlighter rather than brand. The lime stays in the mark (the head) and as a fill; the controls keep the quieter green they shipped with. |
+| 2026-09-27 | The rail's controls take Zoom's shape and a third of the height | Reported from a screenshot: labels sat above the icons and the cells were mostly padding. The label-on-top was a bug - NSButton is flipped and the cell was drawn as if it were not. The padding was a choice: cells stretched to divide the column, so five icons spread across 700pt, and two caption lines were reserved in every cell for long labels that wrapped. Short Zoom labels, one line, natural-width cells centred in the column, no group eyebrows, End as a red cell, and the SESSION block deleted - its meeting number and recording state repeated the top bar, and its shortcuts moved into the bar and the tooltips. 386pt of controls became 108 on the reference display, and the room goes to Cues. |

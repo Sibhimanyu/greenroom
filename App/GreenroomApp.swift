@@ -10,6 +10,7 @@
 import AppKit
 import SwiftUI
 import Sparkle
+import Heresay
 
 /// App-wide external links, defined once so the in-app entry points and
 /// the site can't drift.
@@ -83,6 +84,10 @@ struct GreenroomApp: App {
     private let updaterController = SPUStandardUpdaterController(
         startingUpdater: true, updaterDelegate: UpdateGate.shared, userDriverDelegate: nil)
 
+    init() {
+        Heresay.configure(key: "pk_Bt1i6kv0DKI4Wcm-AzYdlYu2", url: URL(string: "https://heresay-sibhi-42b1.web.app")!)
+    }
+
     var body: some Scene {
         // Window (single, id-addressable), not WindowGroup: closing the
         // WindowGroup window destroyed it with NO recreation path - dock
@@ -94,6 +99,7 @@ struct GreenroomApp: App {
             ContentView()
                 .environmentObject(coordinator)
                 .tint(Brand.green)
+                .heresay()
         }
         // Derived from the button row, not chosen - see
         // ContentView.minimumWindowWidth. It grows when Screenroom is in the
@@ -105,6 +111,7 @@ struct GreenroomApp: App {
                     updaterController.checkForUpdates(nil)
                 }
             }
+            HeresayCommands()
         }
 
         Settings {

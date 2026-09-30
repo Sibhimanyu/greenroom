@@ -47,6 +47,10 @@ packages:
   Apptics:
     url: https://github.com/zoho/Apptics
     exactVersion: 3.3.17
+  # Heresay: in-app feedback (Help > Report a Problem...).
+  Heresay:
+    url: https://github.com/Sibhimanyu/heresay-swift
+    from: 0.2.0
 
 targets:
   Greenroom:
@@ -106,6 +110,7 @@ targets:
         # unconditionally, both of which ship macos-arm64_x86_64 slices.
         # Crashes bill as "Errors", which the free plan covers (5K/month).
         product: AppticsAnalyticscoreWithKSCrash
+      - package: Heresay
     # Apptics needs a build-time step, which is what its CocoaPods
     # `script_phase` provides. SPM has no equivalent, so the vendored copy of
     # the same script runs here instead (see Vendor/Apptics/README.md).

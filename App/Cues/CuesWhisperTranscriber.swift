@@ -54,9 +54,24 @@ final class CuesWhisperTranscriber {
     var stepMs = 1_000
 
     private var stabiliser = CuesStabiliser()
+    /// The ring and its clock are written by the microphone's task and read
+    /// by the pass's, which run at the same time on different threads. This
+    /// lock is the only thing between them. Without it a copy of the ring
+    /// could catch the array mid-growth and retain a buffer that had just been
+    /// freed - a crash, and the meeting runs in this process.
+    private let lock = NSLock()
     private var ring: [Float] = []
     private var ringStartMs = 0
     private var elapsedMs = 0
+    /// Passes in a row that whisper could not run. A model that will not load
+    /// fails every pass the same way, and would otherwise leave Cues silent
+    /// for a whole class with nothing said about why.
+    private var failuresInARow = 0
+    private let failuresBeforeGivingUp = 3
+    /// One window takes well under a second on Apple silicon (measured: 0.5 s
+    /// for the small model on an M5 Pro). A pass still running after this has
+    /// hung, and the next one would queue behind it forever.
+    private let passTimeout: TimeInterval = 20
     private let sampleRate: Double = 16_000
     /// The room's recent levels, thirty seconds of them, for telling a quiet
     /// voice from a quiet room. See SpeechActivity.
@@ -126,11 +141,16 @@ final class CuesWhisperTranscriber {
             }
 
             pump = Task { [weak self] in
-                guard let self else { return }
                 while !Task.isCancelled {
-                    try? await Task.sleep(nanoseconds: UInt64(self.stepMs) * 1_000_000)
-                    guard !Task.isCancelled else { break }
-                    await self.runPass(into: continuation)
+                    guard let step = self?.stepMs else { return }
+                    try? await Task.sleep(nanoseconds: UInt64(step) * 1_000_000)
+                    guard !Task.isCancelled, let self else { return }
+                    guard await self.runPass(into: continuation) else {
+                        // whisper cannot run here. Saying so is what lets
+                        // CuesController switch to Apple's recogniser.
+                        continuation.finish()
+                        return
+                    }
                 }
             }
 
@@ -140,10 +160,16 @@ final class CuesWhisperTranscriber {
         }
     }
 
+    /// Safe to call more than once and from any thread: the stream's end and
+    /// CuesController can both ask.
     func stop() async {
-        pump?.cancel(); pump = nil
-        feed?.cancel(); feed = nil
-        mic?.stop(); mic = nil
+        let (pump, feed, mic) = lock.withLock {
+            defer { self.pump = nil; self.feed = nil; self.mic = nil }
+            return (self.pump, self.feed, self.mic)
+        }
+        pump?.cancel()
+        feed?.cancel()
+        mic?.stop()
         try? FileManager.default.removeItem(at: work)
     }
 
@@ -154,6 +180,7 @@ final class CuesWhisperTranscriber {
     private func append(_ buffer: AVAudioPCMBuffer) {
         guard let channel = buffer.floatChannelData?[0] else { return }
         let count = Int(buffer.frameLength)
+        lock.lock(); defer { lock.unlock() }
         ring.append(contentsOf: UnsafeBufferPointer(start: channel, count: count))
         elapsedMs += Int(Double(count) / sampleRate * 1000)
 
@@ -167,13 +194,12 @@ final class CuesWhisperTranscriber {
 
     // MARK: One pass
 
-    private func runPass(into continuation: AsyncStream<Transcriber.Event>.Continuation) async {
-        let samples = ring
-        let startMs = ringStartMs
-        let now = elapsedMs
+    /// False when whisper has failed too many passes in a row to keep trying.
+    private func runPass(into continuation: AsyncStream<Transcriber.Event>.Continuation) async -> Bool {
+        let (samples, startMs, now) = lock.withLock { (ring, ringStartMs, elapsedMs) }
         // Under a second of audio is not worth a pass, and whisper pads it
         // out to thirty seconds internally either way.
-        guard samples.count > Int(sampleRate * 0.8) else { return }
+        guard samples.count > Int(sampleRate * 0.8) else { return true }
 
         // Nobody talking, no pass. whisper given a quiet room writes
         // "[BLANK_AUDIO]" at best and whole sentences nobody said at worst,
@@ -193,13 +219,25 @@ final class CuesWhisperTranscriber {
                 unfinished = []
             }
             continuation.yield(.speech(false))
-            return
+            return true
         }
 
         let wav = work.appendingPathComponent("window.wav")
-        guard writeWAV(samples, to: wav) else { return }
+        guard writeWAV(samples, to: wav) else { return true }
 
-        guard let heard = await transcribe(wav: wav, offsetMs: startMs) else { return }
+        let heard: [CuesHypothesisWord]
+        switch transcribe(wav: wav, offsetMs: startMs) {
+        case .heard(let words):
+            failuresInARow = 0
+            heard = words
+        case .failed(let reason):
+            failuresInARow += 1
+            guard failuresInARow < failuresBeforeGivingUp else {
+                continuation.yield(.failed("\(Self.failurePrefix)\(reason)"))
+                return false
+            }
+            return true
+        }
         // And no words from the quiet parts of a window that has a voice in
         // it somewhere. A second of slack, because whisper's word timings
         // wander by about that much.
@@ -217,30 +255,69 @@ final class CuesWhisperTranscriber {
         let tail = (unfinished + stabiliser.volatileWords).map(\.text).joined(separator: " ")
         if !tail.isEmpty { continuation.yield(.volatile(tail)) }
         continuation.yield(.speech(!words.isEmpty))
+        return true
     }
 
-    private func transcribe(wav: URL, offsetMs: Int) async -> [CuesHypothesisWord]? {
+    /// What a `.failed` event from here starts with, so CuesController can
+    /// tell whisper giving up from the microphone going away.
+    static let failurePrefix = "whisper could not run: "
+
+    private enum Pass {
+        case heard([CuesHypothesisWord])
+        case failed(String)
+    }
+
+    /// Blocks the pump's task, never the main thread: whisper is a separate
+    /// process, so whatever goes wrong inside it stays there, and this only
+    /// has to notice.
+    private func transcribe(wav: URL, offsetMs: Int) -> Pass {
         let base = wav.deletingPathExtension()
-        try? FileManager.default.removeItem(at: base.appendingPathExtension("json"))
+        let json = base.appendingPathExtension("json")
+        try? FileManager.default.removeItem(at: json)
+
+        // stderr to a file, not a pipe. A pipe nobody reads fills at 64 KB and
+        // stops whisper dead; a file also keeps the last lines for the log.
+        let errors = work.appendingPathComponent("whisper-stderr.txt")
+        FileManager.default.createFile(atPath: errors.path, contents: nil)
+        let errorHandle = try? FileHandle(forWritingTo: errors)
+        defer { try? errorHandle?.close() }
 
         let process = Process()
         process.executableURL = URL(fileURLWithPath: binary)
         process.arguments = ["-m", model.path, "-f", wav.path, "-l", "en",
                              "-ml", "1", "-sow", "-oj", "-of", base.path, "-np", "-t", "4"]
-        process.standardOutput = Pipe()
-        process.standardError = Pipe()
-        guard (try? process.run()) != nil else { return nil }
-        // Both pipes are drained by being closed when the process exits; the
-        // window is small enough that neither buffer fills.
-        process.waitUntilExit()
-        guard process.terminationStatus == 0,
-              let data = try? Data(contentsOf: base.appendingPathExtension("json")) else { return nil }
-
-        return ScreenroomWhisper.parse(data).map {
+        process.standardOutput = FileHandle.nullDevice
+        process.standardError = errorHandle ?? FileHandle.nullDevice
+        let exited = DispatchSemaphore(value: 0)
+        process.terminationHandler = { _ in exited.signal() }
+        do { try process.run() } catch {
+            return .failed("whisper-cli would not start (\(error.localizedDescription))")
+        }
+        if exited.wait(timeout: .now() + passTimeout) == .timedOut {
+            process.terminate()
+            _ = exited.wait(timeout: .now() + 2)
+            return .failed("whisper-cli took over \(Int(passTimeout)) seconds on one \(windowMs / 1000)-second window")
+        }
+        guard process.terminationStatus == 0, process.terminationReason == .exit else {
+            // A model that will not load ends in an abort and a stack trace,
+            // so the last line is a stack frame. The line that says what went
+            // wrong is the first one that says "error" or "failed".
+            let said = (try? String(contentsOf: errors, encoding: .utf8)) ?? ""
+            let lines = said.split(separator: "\n").map { $0.trimmingCharacters(in: .whitespaces) }
+            let why = lines.first { $0.range(of: #"error|failed"#, options: [.regularExpression, .caseInsensitive]) != nil }
+                ?? lines.last ?? "no message"
+            let how = process.terminationReason == .uncaughtSignal
+                ? "crashed (signal \(process.terminationStatus))" : "exited with \(process.terminationStatus)"
+            return .failed("whisper-cli \(how): \(why)")
+        }
+        guard let data = try? Data(contentsOf: json) else {
+            return .failed("whisper-cli wrote no transcript")
+        }
+        return .heard(ScreenroomWhisper.parse(data).map {
             CuesHypothesisWord(text: $0.text,
                                atMs: offsetMs + $0.atMs,
                                endMs: offsetMs + $0.endMs)
-        }
+        })
     }
 
     /// 16-bit PCM WAV, which is the only thing whisper-cli reads.

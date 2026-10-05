@@ -306,18 +306,14 @@ final class CuesController: ObservableObject {
     /// Idempotent. Synchronous from the caller's view: the pipeline is torn
     /// down on its own, and nothing else may read the transcript after this.
     func stop(reason: String? = nil) {
-        let wasListening = isListening || transcriber != nil
+        let wasListening = isListening || transcriber != nil || whisperTranscriber != nil
         eventTask?.cancel()
         eventTask = nil
         tickTask?.cancel()
         tickTask = nil
         detectTask?.cancel()
         detectTask = nil
-        if let transcriber {
-            self.transcriber = nil
-            Task { await transcriber.stop() }
-            Task { await whisperTranscriber?.stop() }
-        }
+        stopTranscribers()
         let count = transcript.totalFinalized
         let saved = configuration.transcriptFile
         let links = linksFound
@@ -705,6 +701,24 @@ final class CuesController: ObservableObject {
                 configuration.log("Cues: no microphone input \u{2014} listening is off for this session.")
                 Analytics.failure("prompter_mic")
                 stopQuietly()
+            } else if why.hasPrefix(CuesWhisperTranscriber.failurePrefix) {
+                // whisper cannot run on this Mac - a model that will not load,
+                // a program that will not start, a pass that hangs. Cues carry
+                // on with Apple's recogniser for the rest of the session, which
+                // is always there: start() checked its model before anything.
+                configuration.useWhisper = false
+                configuration.log("Cues: \(why). Listening with Apple's speech recognition for the rest of this session.")
+                Analytics.failure("prompter_whisper")
+                Task { [weak self] in
+                    guard let self else { return }
+                    let locale = await Transcriber.resolvedLocale(preferred: self.configuration.localeIdentifier)
+                    self.eventTask?.cancel()
+                    self.tickTask?.cancel()
+                    self.stopTranscribers()
+                    if !(await self.startPipeline(input: nil, locale: locale)) {
+                        self.configuration.log("Cues: Apple's speech recognition did not start either. Listening is off for the rest of this session.")
+                    }
+                }
             } else if !restartAttempted, !testMode {
                 restartAttempted = true
                 configuration.log("Cues: transcription stopped (\(why)). Trying once more\u{2026}")
@@ -714,7 +728,8 @@ final class CuesController: ObservableObject {
                     let locale = await Transcriber.resolvedLocale(preferred: self.configuration.localeIdentifier)
                     self.eventTask?.cancel()
                     self.tickTask?.cancel()
-                    if let old = self.transcriber { await old.stop() }
+                    if let old = self.transcriber { self.transcriber = nil; await old.stop() }
+                    if let old = self.whisperTranscriber { self.whisperTranscriber = nil; await old.stop() }
                     let ok = await self.startPipeline(input: nil, locale: locale)
                     self.restartAttempted = true
                     if !ok { self.configuration.log("Cues: transcription stopped again. Listening is off for the rest of this session.") }
@@ -799,16 +814,26 @@ final class CuesController: ObservableObject {
         }
     }
 
+    /// Both, separately. Only one of them runs at a time, and whisper's runs
+    /// with `transcriber` nil - so a teardown keyed on `transcriber` alone
+    /// left whisper's microphone and passes running after Cues stopped.
+    private func stopTranscribers() {
+        if let transcriber {
+            self.transcriber = nil
+            Task { await transcriber.stop() }
+        }
+        if let whisper = whisperTranscriber {
+            whisperTranscriber = nil
+            Task { await whisper.stop() }
+        }
+    }
+
     /// Tears the audio down without the "stopped" line - the caller has
     /// already logged the real reason.
     private func stopQuietly() {
         eventTask?.cancel()
         tickTask?.cancel()
-        if let transcriber {
-            self.transcriber = nil
-            Task { await transcriber.stop() }
-            Task { await whisperTranscriber?.stop() }
-        }
+        stopTranscribers()
         isListening = false
         isSpeaking = false
         transcript.reset()

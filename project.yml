@@ -50,7 +50,7 @@ packages:
   # Heresay: in-app feedback (Help > Report a Problem...).
   Heresay:
     url: https://github.com/Sibhimanyu/heresay-swift
-    from: 0.2.0
+    from: 0.2.14
 
 targets:
   Greenroom:

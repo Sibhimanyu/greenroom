@@ -100,6 +100,12 @@ struct GreenroomApp: App {
                 .environmentObject(coordinator)
                 .tint(Brand.green)
                 .heresay()
+                // Once per install, and never over onboarding: on a first
+                // run it waits for the onboarding sheet to close.
+                .onAppear { if !coordinator.showOnboarding { Heresay.introduce() } }
+                .onChange(of: coordinator.showOnboarding) { _, showing in
+                    if !showing { Heresay.introduce() }
+                }
         }
         // Derived from the button row, not chosen - see
         // ContentView.minimumWindowWidth. It grows when Screenroom is in the

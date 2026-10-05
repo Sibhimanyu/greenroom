@@ -63,8 +63,8 @@ targets:
         PRODUCT_NAME: Greenroom
         PRODUCT_BUNDLE_IDENTIFIER: com.sibhimanyu.greenroom
         # Bump alongside each GitHub release tag (vX.Y.Z).
-        MARKETING_VERSION: "1.1.0"
-        CURRENT_PROJECT_VERSION: "32"
+        MARKETING_VERSION: "1.2.0"
+        CURRENT_PROJECT_VERSION: "33"
         GENERATE_INFOPLIST_FILE: YES
         INFOPLIST_FILE: App/Info.plist
         # Brand mark (App/Assets.xcassets) - regenerate the PNGs with the

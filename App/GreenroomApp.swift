@@ -85,7 +85,11 @@ struct GreenroomApp: App {
         startingUpdater: true, updaterDelegate: UpdateGate.shared, userDriverDelegate: nil)
 
     init() {
-        Heresay.configure(key: "pk_Bt1i6kv0DKI4Wcm-AzYdlYu2", url: URL(string: "https://heresay-sibhi-42b1.web.app")!)
+        Heresay.configure(
+            key: "pk_Bt1i6kv0DKI4Wcm-AzYdlYu2",
+            url: URL(string: "https://heresay-sibhi-42b1.web.app")!,
+            nudge: .all
+        )
     }
 
     var body: some Scene {

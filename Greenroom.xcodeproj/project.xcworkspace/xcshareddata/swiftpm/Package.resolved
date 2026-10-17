@@ -1,0 +1,33 @@
+{
+  "originHash" : "fed45fe98a73fa0ab69527bdb00d5e9eddd74380027f4c8fdacadca5aa725d0d",
+  "pins" : [
+    {
+      "identity" : "apptics",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/zoho/Apptics",
+      "state" : {
+        "revision" : "f5f10c4191f4ceed97d2064a42e8465d0cb6870f",
+        "version" : "3.3.17"
+      }
+    },
+    {
+      "identity" : "heresay-swift",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/Sibhimanyu/heresay-swift",
+      "state" : {
+        "revision" : "36e233d78ac9a4d921bb82d463cb11e0dba30304",
+        "version" : "0.2.23"
+      }
+    },
+    {
+      "identity" : "sparkle",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/sparkle-project/Sparkle",
+      "state" : {
+        "revision" : "eef1a539a373c1f1a320624b1130fc5de7b2e100",
+        "version" : "2.10.0"
+      }
+    }
+  ],
+  "version" : 3
+}

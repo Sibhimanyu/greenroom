@@ -87,7 +87,7 @@ struct GreenroomApp: App {
     init() {
         Heresay.configure(
             key: "pk_Bt1i6kv0DKI4Wcm-AzYdlYu2",
-            url: URL(string: "https://heresay-sibhi-42b1.web.app")!,
+            url: URL(string: "https://heresay-sibhi.web.app")!,
             nudge: .all
         )
     }

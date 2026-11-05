@@ -141,10 +141,56 @@ Options, cheapest first:
 Recommendation: spend a day testing 1, then 2, before building pieces 3
 and 4 on top of either.
 
+#### Spike result, 2026-11-05: option 2 works end to end
+
+Tested on an M5 Pro with staged footage (a generated presenter on green,
+keyed over two busy macOS wallpapers, so the true outline is known exactly).
+Spike code is in `.context/seg-spike/` (not committed).
+
+Vision segmentation alone, 720p, 250 frames per run:
+
+| Quality | Mask size | Mean | p95 | Match to true outline (IoU) |
+|---|---|---|---|---|
+| fast | 256x192 | 5-7 ms | 13-17 ms | 0.94, jagged pink-fringed edges |
+| **balanced** | 512x384 | **12 ms** | **19-22 ms** | **0.945, clean edges and hair** |
+| accurate | 2016x1512 | 33 ms | 44 ms | 0.945, no visible gain |
+
+**Balanced is the setting.** Accurate costs three times as much for nothing
+visible.
+
+The hand-off to OBS also works, with no green screen and nothing installed:
+
+- OBS 32 ships `Syphon.framework` and a `syphon-input` source with an
+  `allow_transparency` setting.
+- The spike published the cut-out from a `SyphonMetalServer`. OBS listed
+  it, showed it, and a `GetSourceScreenshot` of the source came back 70%
+  fully transparent, with the person upright and clean-edged.
+- Two things had to be right: Syphon announces servers over distributed
+  notifications, so the publisher needs a running main run loop; and the
+  texture is published with `flipped: false`.
+
+Still open:
+
+- **Per-frame cost while OBS reads it:** 14 ms, 26 ms and 36 ms mean over
+  three runs (p95 up to 90 ms). The spike waits for the GPU on every frame
+  and the Mac was busy with other work, so this is an upper bound. The real
+  version must not block per frame. Measure on an older Mac (M1 Air) before
+  calling it done.
+- **Real webcams:** dim rooms, a chair behind the person and a busy
+  bookshelf are harder than studio-lit footage. Test with a staged person on
+  a real webcam.
+- **Who owns the camera:** Greenroom would open the camera itself and
+  `CameraDirector`'s face tracking would read from the same frames, rather
+  than OBS opening it.
+- **Linking Syphon:** the spike borrowed OBS's copy at runtime. The app
+  should bundle its own Syphon (BSD licence).
+- Option 1 (macOS's own background replacement) was not tested; it needs
+  clicking in Control Center, and option 2 makes it unnecessary.
+
 ## Order of work
 
-1. Test background removal (piece 5). It decides how far pieces 3 and 4 can
-   go.
+1. ~~Test background removal (piece 5).~~ Done 2026-11-05: Vision plus
+   Syphon works; see the spike result.
 2. One window or app (piece 1), with the fixed canvas. This is the first
    visible win.
 3. Several windows (piece 2).

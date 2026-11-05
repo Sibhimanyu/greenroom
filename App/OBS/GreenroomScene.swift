@@ -366,6 +366,7 @@ enum GreenroomScene {
         // testing: a mismatched canvas left the source unscaled at native
         // size, so only its top-left corner was visible within the frame),
         // then position the bubble off that real size rather than a guess.
+        // Anything narrower than a display gets a fixed 1080p canvas instead.
         let canvas = resolvedShare.kind == .display
             ? try await fitCanvasToScreenSource(client: client)
             : try await setFixedCanvas(client: client)

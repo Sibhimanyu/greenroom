@@ -83,9 +83,7 @@ struct ShareTarget: Codable, Equatable {
     /// the app is not running or has no window to show.
     ///
     /// `capture_audio: false` on every kind, for the crash recorded in
-    /// `ensureConfigured`. `show_hidden_windows` lets OBS find a window that
-    /// is on another Space; without it OBS only looks on the current one and
-    /// the ID resolved here would match nothing.
+    /// `ensureConfigured`.
     func resolve(displayUUID: String) -> Resolved {
         let display: [String: Any] = ["type": 0, "display_uuid": displayUUID, "capture_audio": false]
         func fallBack(_ reason: String) -> Resolved {
@@ -109,12 +107,12 @@ struct ShareTarget: Codable, Equatable {
         case .window:
             guard !appBundleID.isEmpty else { return fallBack("No window is picked to share") }
             guard let window = Self.bestWindow(for: self, among: Self.windows()) else {
-                return fallBack("\(displayName) has no window open")
+                return fallBack("\(displayName) has no window open on this screen")
             }
             let label = window.title.isEmpty ? window.appName : "\(window.appName) \u{2013} \(window.title)"
             return Resolved(kind: .window,
                             settings: ["type": 1, "window": Int(window.id), "show_shadow": false,
-                                       "show_hidden_windows": true, "capture_audio": false],
+                                       "capture_audio": false],
                             label: label, fallback: nil)
         }
     }
@@ -133,7 +131,6 @@ struct ShareTarget: Codable, Equatable {
         /// Empty without Screen Recording permission: macOS hides other apps'
         /// window titles until it is granted.
         let title: String
-        let onScreen: Bool
 
         /// The picker's tag. Title, not ID, for the reason at the top.
         var key: String { ShareTarget.windowKey(bundleID: bundleID, title: title) }
@@ -143,7 +140,13 @@ struct ShareTarget: Codable, Equatable {
         bundleID + "\u{1F}" + title
     }
 
-    /// Ordinary app windows, front to back.
+    /// Ordinary app windows on the current Space, front to back.
+    ///
+    /// On screen only. A window on another Space, or minimised, gives
+    /// ScreenCaptureKit nothing to capture: picked at Start, it was a source
+    /// that existed, reported 0x0 and showed the class an empty backdrop.
+    /// The off-screen list is also where every app's hidden helper windows
+    /// live, so leaving it out keeps the picker to windows a person can see.
     ///
     /// CGWindowList rather than ScreenCaptureKit: it needs no permission to
     /// list windows (only their titles), so the picker and the lookup at Start
@@ -154,8 +157,7 @@ struct ShareTarget: Codable, Equatable {
     /// from shows the class itself, endlessly.
     static func windows() -> [Window] {
         let ownPID = ProcessInfo.processInfo.processIdentifier
-        let onScreen = Set(windowList(.optionOnScreenOnly).compactMap { $0[kCGWindowNumber as String] as? CGWindowID })
-        return windowList(.optionAll).compactMap { info -> Window? in
+        return windowList(.optionOnScreenOnly).compactMap { info -> Window? in
             guard (info[kCGWindowLayer as String] as? Int) == 0,
                   let id = info[kCGWindowNumber as String] as? CGWindowID,
                   let pid = info[kCGWindowOwnerPID as String] as? pid_t, pid != ownPID,
@@ -167,8 +169,7 @@ struct ShareTarget: Codable, Equatable {
                   bounds.width >= 200, bounds.height >= 150 else { return nil }
             return Window(id: id, bundleID: bundleID,
                           appName: app.localizedName ?? bundleID,
-                          title: info[kCGWindowName as String] as? String ?? "",
-                          onScreen: onScreen.contains(id))
+                          title: info[kCGWindowName as String] as? String ?? "")
         }
     }
 
@@ -178,16 +179,14 @@ struct ShareTarget: Codable, Equatable {
     }
 
     /// The window to share: the saved title if it is still there, otherwise
-    /// the app's frontmost window. On-screen windows win over ones on another
-    /// Space or minimised, because a minimised window captures as nothing.
+    /// the app's frontmost window.
     static func bestWindow(for target: ShareTarget, among windows: [Window]) -> Window? {
         let own = windows.filter { $0.bundleID == target.appBundleID }
-        let ranked = own.filter(\.onScreen) + own.filter { !$0.onScreen }
         if !target.windowTitle.isEmpty,
-           let exact = ranked.first(where: { $0.title == target.windowTitle }) {
+           let exact = own.first(where: { $0.title == target.windowTitle }) {
             return exact
         }
-        return ranked.first
+        return own.first
     }
 
     /// Apps someone could share: running, with a Dock icon, not Greenroom.

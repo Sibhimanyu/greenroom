@@ -3639,7 +3639,13 @@ final class CoordinatorController: ObservableObject {
         // Never let a black picture ship silently: this is the one thing a
         // class cannot work without, and it used to fail with no message at
         // all while the webcam kept showing.
-        if !setup.screenCaptureLive {
+        if !setup.screenCaptureLive, let label = setup.shareLabel {
+            // A window or app that came up empty is nearly always one that is
+            // minimised or on another Space, not a broken capture.
+            log("\u{201C}\(label)\u{201D} came up blank \u{2014} it needs to be open on this screen, not minimised or on another desktop. Bring it here, then End and press Start.")
+            Notifier.post(title: "Shared window is blank",
+                          body: "\u{201C}\(label)\u{201D} isn\u{2019}t on this screen. Bring it here and start again.")
+        } else if !setup.screenCaptureLive {
             // Recovery deliberately does NOT claim Snap Windows Back fixes
             // this: Snap Back only re-asserts layer order, it does not rebuild
             // a source. Rebuilding happens in ensureConfigured, which runs on

@@ -12,6 +12,7 @@
 //  and picks the best match. More robust than guessing strings, and it's
 //  what a real automation client should do regardless.
 //
+import CoreGraphics
 import Foundation
 
 enum GreenroomScene {
@@ -26,11 +27,19 @@ enum GreenroomScene {
         var displayFellBack: Bool
         /// The display actually being captured, for the status log.
         var displayLabel: String?
+        /// The app or window being shared instead of the whole display.
+        var shareLabel: String? = nil
+        /// Why a picked app or window was not shared, when the display was
+        /// shared in its place.
+        var shareFellBack: String? = nil
 
     }
 
     static let sceneName = "Greenroom"
     static let screenSourceName = "Greenroom Screen"
+    /// A flat colour under everything. Invisible behind a whole display, which
+    /// fills the canvas; the frame around a shared window or app.
+    static let backdropSourceName = "Greenroom Backdrop"
     static let webcamSourceName = "Greenroom Webcam"
     static let micSourceName = "Greenroom Mic"
 
@@ -235,6 +244,7 @@ enum GreenroomScene {
     static func ensureConfigured(client: OBSWebSocketClient,
                                  bubble: BubbleLayout = BubbleLayout(),
                                  preferredDisplayUUID: String = "",
+                                 share: ShareTarget = ShareTarget(),
                                  cameraUIDs: [String] = []) async throws -> SetupResult {
         // OBS remembers whether the virtual cam was running when it last
         // quit and auto-resumes it on launch - confirmed by testing, that
@@ -298,13 +308,18 @@ enum GreenroomScene {
         // below, not from the screen), so turning the queue off removes the
         // crash path entirely. Recreated (not
         // patched) if an older scene left it on - see isCorrectlyConfigured.
-        let screenSettings: [String: Any] = ["type": 0, "display_uuid": displayUUID, "capture_audio": false]
+        //
+        // One app or one window narrows the same source rather than adding
+        // another: it is still the thing the class is looking at, and every
+        // rule below (layer order, the liveness check, the presenter panel)
+        // hangs off this one name. The type is part of the match, so moving
+        // between a display, an app and a window recreates the source.
+        let resolvedShare = share.resolve(displayUUID: displayUUID)
+        let screenSettings = resolvedShare.settings
         try await ensureInput(client: client, name: screenSourceName, kind: screenKind,
                                settings: screenSettings,
-                               isCorrectlyConfigured: {
-                                   ($0["display_uuid"] as? String) == displayUUID
-                                       && ($0["capture_audio"] as? Bool) == false
-                               })
+                               isCorrectlyConfigured: resolvedShare.matches)
+        try await ensureBackdrop(client: client)
 
         // Verify, then repair once. ensureInput can only check what OBS
         // REPORTS about a source; this checks whether the thing actually
@@ -351,7 +366,9 @@ enum GreenroomScene {
         // testing: a mismatched canvas left the source unscaled at native
         // size, so only its top-left corner was visible within the frame),
         // then position the bubble off that real size rather than a guess.
-        let canvas = try await fitCanvasToScreenSource(client: client)
+        let canvas = resolvedShare.kind == .display
+            ? try await fitCanvasToScreenSource(client: client)
+            : try await setFixedCanvas(client: client)
         try await layoutScene(client: client, layout: bubble, canvasWidth: canvas.width, canvasHeight: canvas.height)
 
         await configureRecordingPath(client: client)
@@ -365,7 +382,9 @@ enum GreenroomScene {
         return SetupResult(webcamActive: webcamUID != nil,
                            screenCaptureLive: screenLive,
                            displayFellBack: resolved.fellBack,
-                           displayLabel: displayLabel)
+                           displayLabel: displayLabel,
+                           shareLabel: resolvedShare.label,
+                           shareFellBack: resolvedShare.fallback)
     }
 
     // MARK: Cameras
@@ -779,7 +798,15 @@ enum GreenroomScene {
     /// so their order among themselves is invisible except during a
     /// crossfade - which sets it for itself.
     static func enforceLayerOrder(client: OBSWebSocketClient) async throws {
-        let items = try await sceneItems(client: client)
+        var items = try await sceneItems(client: client)
+        if let backdrop = items.first(where: { ($0["sourceName"] as? String) == backdropSourceName }),
+           let backdropId = backdrop["sceneItemId"] as? Int,
+           (backdrop["sceneItemIndex"] as? Int) != 0 {
+            _ = try await client.request("SetSceneItemIndex", data: [
+                "sceneName": sceneName, "sceneItemId": backdropId, "sceneItemIndex": 0
+            ])
+            items = try await sceneItems(client: client)
+        }
         let all = cameraItems(items)
         let showing = { (item: [String: Any]) in (item["sceneItemEnabled"] as? Bool) == true }
         let cameras = all.filter { !showing($0) } + all.filter(showing)
@@ -1132,16 +1159,112 @@ enum GreenroomScene {
     }
 
     private static func layoutScene(client: OBSWebSocketClient, layout: BubbleLayout, canvasWidth: Int, canvasHeight: Int) async throws {
+        try await placeBackdrop(client: client, canvasWidth: canvasWidth, canvasHeight: canvasHeight)
         if layout.shape.isPresenterStyle {
             try await layoutPresenter(client: client, canvasWidth: canvasWidth, canvasHeight: canvasHeight)
         } else if layout.shape == .cutout {
+            try await placeContentFullFrame(client: client, canvasWidth: canvasWidth, canvasHeight: canvasHeight)
             try await ensureScreenPanelMask(client: client, enabled: false, canvasWidth: canvasWidth, canvasHeight: canvasHeight)
             try await layoutCutout(client: client, layout: layout,
                                    canvasWidth: canvasWidth, canvasHeight: canvasHeight)
         } else {
+            try await placeContentFullFrame(client: client, canvasWidth: canvasWidth, canvasHeight: canvasHeight)
             try await ensureScreenPanelMask(client: client, enabled: false, canvasWidth: canvasWidth, canvasHeight: canvasHeight)
             try await positionBubble(client: client, layout: layout, canvasWidth: canvasWidth, canvasHeight: canvasHeight)
         }
+    }
+
+    // MARK: Shared content placement
+
+    /// Whether the screen source is a whole display, read back from OBS
+    /// rather than passed in, so a live re-layout (which has no ShareTarget to
+    /// hand) places the content for what is actually being captured.
+    private static func contentIsWholeDisplay(client: OBSWebSocketClient) async -> Bool {
+        guard let response = try? await client.request("GetInputSettings", data: ["inputName": screenSourceName]),
+              let settings = response["inputSettings"] as? [String: Any] else { return true }
+        return ((settings["type"] as? Int) ?? 0) == ShareTarget.Kind.display.obsType
+    }
+
+    /// Puts the shared content in `box`.
+    ///
+    /// A whole display is stretched to the box, which is no stretch at all:
+    /// the canvas was sized to that display, and every box handed in here has
+    /// the canvas's aspect. A window or an app has its own shape, which also
+    /// changes whenever the teacher resizes the window, so it is fitted
+    /// inside the box with its aspect kept and the backdrop showing round it.
+    /// SCALE_INNER keeps refitting by itself as the window changes size.
+    private static func placeContent(client: OBSWebSocketClient, in box: CGRect, wholeDisplay: Bool) async throws {
+        guard let screen = try await sceneItems(client: client)
+                .first(where: { ($0["sourceName"] as? String) == screenSourceName }),
+              let itemId = screen["sceneItemId"] as? Int else { return }
+        _ = try await client.request("SetSceneItemTransform", data: [
+            "sceneName": sceneName,
+            "sceneItemId": itemId,
+            "sceneItemTransform": [
+                "positionX": box.minX,
+                "positionY": box.minY,
+                "boundsType": wholeDisplay ? "OBS_BOUNDS_STRETCH" : "OBS_BOUNDS_SCALE_INNER",
+                "boundsAlignment": 0,
+                "boundsWidth": box.width,
+                "boundsHeight": box.height
+            ]
+        ])
+    }
+
+    /// The content's place for every arrangement but Presenter. Also what
+    /// undoes Presenter's inset panel when the shape changes mid-session:
+    /// before this, only the next Start put the screen back to full size.
+    private static func placeContentFullFrame(client: OBSWebSocketClient, canvasWidth: Int, canvasHeight: Int) async throws {
+        let width = Double(canvasWidth), height = Double(canvasHeight)
+        let wholeDisplay = await contentIsWholeDisplay(client: client)
+        // A window gets a margin so it reads as a window on a backdrop, not as
+        // a picture cropped by the edge of the frame.
+        let margin = wholeDisplay ? 0 : height * 0.045
+        try await placeContent(client: client,
+                               in: CGRect(x: margin, y: margin, width: width - 2 * margin, height: height - 2 * margin),
+                               wholeDisplay: wholeDisplay)
+    }
+
+    /// `--ink` (#101828) from DESIGN.md, as OBS's colour source wants it:
+    /// 0xAABBGGRR.
+    private static let backdropColor = 0xFF28_1810
+
+    private static func ensureBackdrop(client: OBSWebSocketClient) async throws {
+        let kind = try await bestInputKind(client: client, containing: ["color_source"])
+        try await ensureInput(client: client, name: backdropSourceName, kind: kind,
+                               settings: ["color": backdropColor, "width": 1920, "height": 1080],
+                               isCorrectlyConfigured: { ($0["color"] as? Int) == backdropColor })
+    }
+
+    private static func placeBackdrop(client: OBSWebSocketClient, canvasWidth: Int, canvasHeight: Int) async throws {
+        guard let backdrop = try await sceneItems(client: client)
+                .first(where: { ($0["sourceName"] as? String) == backdropSourceName }),
+              let itemId = backdrop["sceneItemId"] as? Int else { return }
+        _ = try await client.request("SetSceneItemTransform", data: [
+            "sceneName": sceneName,
+            "sceneItemId": itemId,
+            "sceneItemTransform": [
+                "positionX": 0, "positionY": 0,
+                "boundsType": "OBS_BOUNDS_STRETCH",
+                "boundsWidth": canvasWidth, "boundsHeight": canvasHeight
+            ]
+        ])
+    }
+
+    /// 1080p for anything narrower than a whole display.
+    ///
+    /// Sizing the canvas to the source, as a display does, would hand the
+    /// meeting a picture the shape of whatever window was picked - and a new
+    /// shape every time it was resized, which Zoom answers by rescaling the
+    /// whole feed. A fixed 16:9 canvas is what a camera looks like, which is
+    /// what the meeting thinks this is.
+    private static func setFixedCanvas(client: OBSWebSocketClient) async throws -> (width: Int, height: Int) {
+        let width = 1920, height = 1080
+        _ = try await client.request("SetVideoSettings", data: [
+            "baseWidth": width, "baseHeight": height,
+            "outputWidth": width, "outputHeight": height
+        ])
+        return (width, height)
     }
 
     /// Cutout's own arrangement - NOT the bubble's. Reusing the small
@@ -1362,23 +1485,25 @@ enum GreenroomScene {
         // Screen -> inset panel. Canvas and screen share an aspect ratio
         // (fitCanvasToScreenSource made the canvas the screen's native
         // size), so scaling both axes by the same fraction keeps it true.
-        if let screen = items.first(where: { ($0["sourceName"] as? String) == screenSourceName }),
-           let screenId = screen["sceneItemId"] as? Int {
-            let panelWidth = width * 0.78
-            let panelHeight = height * 0.78
-            _ = try await client.request("SetSceneItemTransform", data: [
-                "sceneName": sceneName,
-                "sceneItemId": screenId,
-                "sceneItemTransform": [
-                    "positionX": width - width * 0.025 - panelWidth,
-                    "positionY": (height - panelHeight) / 2,
-                    "boundsType": "OBS_BOUNDS_STRETCH",
-                    "boundsWidth": panelWidth,
-                    "boundsHeight": panelHeight
-                ]
-            ])
+        let panelWidth = width * 0.78
+        let panelHeight = height * 0.78
+        let wholeDisplay = await contentIsWholeDisplay(client: client)
+        try await placeContent(client: client,
+                               in: CGRect(x: width - width * 0.025 - panelWidth, y: (height - panelHeight) / 2,
+                                          width: panelWidth, height: panelHeight),
+                               wholeDisplay: wholeDisplay)
+        // The mask is drawn in the content's own aspect, or its rounded
+        // corners would be stretched into ovals on a window that is not 16:9.
+        var maskWidth = canvasWidth, maskHeight = canvasHeight
+        if !wholeDisplay,
+           let screen = items.first(where: { ($0["sourceName"] as? String) == screenSourceName }),
+           let transform = screen["sceneItemTransform"] as? [String: Any],
+           let sourceWidth = transform["sourceWidth"] as? Double, sourceWidth > 0,
+           let sourceHeight = transform["sourceHeight"] as? Double, sourceHeight > 0 {
+            maskWidth = Int(sourceWidth)
+            maskHeight = Int(sourceHeight)
         }
-        try await ensureScreenPanelMask(client: client, enabled: true, canvasWidth: canvasWidth, canvasHeight: canvasHeight)
+        try await ensureScreenPanelMask(client: client, enabled: true, canvasWidth: maskWidth, canvasHeight: maskHeight)
 
         // Webcam -> big keyed person. Scale the frame past full canvas
         // height (the canvas edge crops the overflow, so the waist-down

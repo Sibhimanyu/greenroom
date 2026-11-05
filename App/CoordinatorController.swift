@@ -1015,6 +1015,17 @@ final class CoordinatorController: ObservableObject {
         didSet { defaults.set(screenCaptureDisplayUUID, forKey: "screenCaptureDisplayUUID") }
     }
 
+    /// The whole display, one app or one window. Applied at Start: the screen
+    /// source is only ever rebuilt while the virtual camera is off (see the
+    /// crash note in GreenroomScene.ensureConfigured).
+    @Published var shareTarget: ShareTarget {
+        didSet {
+            if let data = try? JSONEncoder().encode(shareTarget) {
+                defaults.set(data, forKey: "shareTarget")
+            }
+        }
+    }
+
     @Published var peopleViewDisplayUUID: String {
         didSet { defaults.set(peopleViewDisplayUUID, forKey: "peopleViewDisplayUUID") }
     }
@@ -1099,6 +1110,8 @@ final class CoordinatorController: ObservableObject {
         analyticsEnabled = (defaults.object(forKey: "analyticsEnabled") as? Bool) ?? true
         peopleViewDisplayUUID = defaults.string(forKey: "peopleViewDisplayUUID") ?? ""
         screenCaptureDisplayUUID = defaults.string(forKey: "screenCaptureDisplayUUID") ?? ""
+        shareTarget = defaults.data(forKey: "shareTarget")
+            .flatMap { try? JSONDecoder().decode(ShareTarget.self, from: $0) } ?? ShareTarget()
         customUIMode = defaults.bool(forKey: "customUIMode")
         autoRecordOnStart = defaults.bool(forKey: "autoRecordOnStart")
         keepOBSWarm = (defaults.object(forKey: "keepOBSWarm") as? Bool) ?? true
@@ -1930,7 +1943,8 @@ final class CoordinatorController: ObservableObject {
         guard shapePreviewTask != nil else { return }
         _ = try? await GreenroomScene.ensureConfigured(client: client,
                                                        bubble: bubbleLayout,
-                                                       preferredDisplayUUID: screenCaptureDisplayUUID)
+                                                       preferredDisplayUUID: screenCaptureDisplayUUID,
+                                                       share: shareTarget)
     }
 
     var mainAppDisplayName: String {
@@ -3605,11 +3619,19 @@ final class CoordinatorController: ObservableObject {
             client: client,
             bubble: bubbleLayout,
             preferredDisplayUUID: screenCaptureDisplayUUID,
+            share: shareTarget,
             // The first camera only. The rest join once the meeting is live -
             // see bringInExtraCameras.
             cameraUIDs: Array(sessionCameraUIDs(cameraDirectorSettings).prefix(1)))
         if !setup.webcamActive {
             log("No webcam connected \u{2014} running screen-only. Plug a camera in and press Start (or Snap Windows Back) to bring your video back.")
+        }
+        if let reason = setup.shareFellBack {
+            log("\(reason) \u{2014} sharing the whole screen instead. Open it and press Start again, or change what you share in Settings (\u{2318},) \u{2192} Layout.")
+            Notifier.post(title: "Sharing the whole screen",
+                          body: "\(reason), so the class sees your whole screen.")
+        } else if let label = setup.shareLabel {
+            log("Sharing only \u{201C}\(label)\u{201D}.")
         }
         if setup.displayFellBack {
             log("The screen you picked to share isn't plugged in \u{2014} sharing \u{201C}\(setup.displayLabel ?? "the main display")\u{201D} instead. Change it in Settings (\u{2318},) \u{2192} Layout.")
@@ -3798,6 +3820,7 @@ struct SettingsTransfer: Codable {
     var peopleViewOnStart: Bool?
     var peopleViewDisplayUUID: String?
     var screenCaptureDisplayUUID: String?
+    var shareTarget: ShareTarget?
     var hideSelfView: Bool?
     var speakerTileShortcutEnabled: Bool?
     var autoRecordOnStart: Bool?
@@ -3875,6 +3898,7 @@ extension CoordinatorController {
             peopleViewOnStart: peopleViewOnStart,
             peopleViewDisplayUUID: peopleViewDisplayUUID,
             screenCaptureDisplayUUID: screenCaptureDisplayUUID,
+            shareTarget: shareTarget,
             hideSelfView: hideSelfView,
             speakerTileShortcutEnabled: speakerTileShortcutEnabled,
             autoRecordOnStart: autoRecordOnStart,
@@ -3960,6 +3984,7 @@ extension CoordinatorController {
         if let value = transfer.peopleViewOnStart { peopleViewOnStart = value }
         if let value = transfer.peopleViewDisplayUUID { peopleViewDisplayUUID = value }
         if let value = transfer.screenCaptureDisplayUUID { screenCaptureDisplayUUID = value }
+        if let value = transfer.shareTarget { shareTarget = value }
         if let value = transfer.hideSelfView { hideSelfView = value }
         if let value = transfer.speakerTileShortcutEnabled { speakerTileShortcutEnabled = value }
         if let value = transfer.autoRecordOnStart { autoRecordOnStart = value }

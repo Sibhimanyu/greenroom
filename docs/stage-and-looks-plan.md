@@ -52,6 +52,13 @@ The class setup stays a first-class Look and the default for existing users.
 
 ### 1. Sharing one window or one app (small)
 
+**Built 2026-11-05** (`App/OBS/ShareTarget.swift`, Settings → Layout →
+Shared screen). Checked against OBS 32.2.2 over the WebSocket: a window
+source (`type: 1`, `window`) and an app source (`type: 2`, `application`
+plus `display_uuid`) both come up with real frames, and the window sits
+fitted on the `--ink` backdrop. Not yet run through a full Greenroom
+session.
+
 OBS's macOS capture source already takes `type: 1` (a window, by window ID)
 or `type: 2` (an app, by bundle ID). Greenroom always passes `type: 0` (a
 display) at `GreenroomScene.swift:301`.
@@ -191,8 +198,8 @@ Still open:
 
 1. ~~Test background removal (piece 5).~~ Done 2026-11-05: Vision plus
    Syphon works; see the spike result.
-2. One window or app (piece 1), with the fixed canvas. This is the first
-   visible win.
+2. ~~One window or app (piece 1), with the fixed canvas.~~ Built
+   2026-11-05; needs a run through a real session.
 3. Several windows (piece 2).
 4. The Stage and Looks (piece 4), with today's shapes as built-in Looks.
 5. Behind and side-by-side styles (piece 3).

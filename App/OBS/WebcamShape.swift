@@ -6,6 +6,7 @@
 //  existing bounding-box crop) - circle and rounded rectangle need an actual
 //  alpha mask, since OBS's scene-item transform can only do rectangles.
 //
+import AppKit
 import Foundation
 
 enum WebcamShape: String, CaseIterable, Identifiable {
@@ -48,4 +49,11 @@ enum WebcamShape: String, CaseIterable, Identifiable {
     /// rectangular shapes have neither problem and would only lose 43.75% of
     /// the camera's width for nothing.
     var cropsToSquare: Bool { self == .circle }
+}
+
+/// The live composite, for the Webcam tab's picture and nothing else. See
+/// `CoordinatorController.shapePreview` for why it is not on the controller.
+@MainActor
+final class ShapePreviewFeed: ObservableObject {
+    @Published var frame: NSImage?
 }

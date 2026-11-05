@@ -45,7 +45,21 @@ struct SettingsView: View {
     }
 }
 
+/// What the class sees, and how you appear in it.
+///
+/// Laid out in the order someone thinks about it: the picture first, then the
+/// look, then where you sit and what is shared behind you, and the setup
+/// details (cameras, recording) last.
+///
+/// Every control here writes the setting and then asks the coordinator to
+/// apply it (`requestShapeApply`), which coalesces a burst of changes into
+/// one. The live picture is the only view that watches the 150ms frame feed;
+/// see `CoordinatorController.shapePreview` for what happened when the whole
+/// tab watched it.
 private struct WebcamSettingsTab: View {
+    @EnvironmentObject private var coordinator: CoordinatorController
+    @State private var displays: [DisplayInfo] = DisplayResolver.connectedDisplays()
+
     /// Bridges the coordinator's separate published fractions to the one binding
     /// the drag layer wants. Two shapes, two sets of numbers: a cutout keeps the
     /// camera's real aspect and pins its bottom edge, so it stores a height and
@@ -72,12 +86,11 @@ private struct WebcamSettingsTab: View {
     }
 
     private var isCutout: Bool { coordinator.webcamShape == .cutout }
-    private var isLivePreview: Bool { coordinator.shapePreviewFrame != nil }
+    private var isLivePreview: Bool { coordinator.shapePreviewAspect != nil }
     /// The aspect the picture on screen is drawn at, so the drag layer measures
-    /// against the same rect the teacher is looking at. A value, not the image,
-    /// so a new frame with identical dimensions does not invalidate anything.
+    /// against the same rect the teacher is looking at.
     private var previewAspect: CGSize {
-        coordinator.shapePreviewFrame?.size ?? CGSize(width: 16, height: 10)
+        coordinator.shapePreviewAspect ?? CGSize(width: 16, height: 10)
     }
     /// Presenter is the one shape with nothing to drag: layoutPresenter rebuilds
     /// the whole scene rather than placing a source, so there is no single
@@ -85,10 +98,9 @@ private struct WebcamSettingsTab: View {
     private var isAdjustable: Bool { coordinator.webcamShape != .presenterLarge }
 
     /// 16:9, matching the fallback GreenroomScene uses when it cannot read the
-    /// source dimensions. It would be wrong to take this from
-    /// shapePreviewFrame: that is the OBS CANVAS, and what shapes the webcam is
-    /// the CAMERA's aspect. The two agree for most cameras, which is exactly
-    /// why reading the wrong one would go unnoticed.
+    /// source dimensions. It would be wrong to take this from the preview:
+    /// that is the OBS CANVAS, and what shapes the webcam is the CAMERA's
+    /// aspect.
     private static let assumedCameraAspect = 16.0 / 9.0
 
     private var editMode: BubbleDragLayer.Mode {
@@ -99,200 +111,363 @@ private struct WebcamSettingsTab: View {
                        ? 1 : Self.assumedCameraAspect)
     }
 
-    @EnvironmentObject private var coordinator: CoordinatorController
-
     var body: some View {
         Form {
-            // FIRST, above the shape picker, and the reason is one line of
-            // feedback: it was originally at the bottom of this tab, under a
-            // 400pt preview in a 730pt window, and the person who asked for
-            // the feature could not find it. Which camera comes before what
-            // shape the camera is cut into anyway.
             Section {
-                CameraSwitchSection()
-            } header: { Text("Camera switching") }
+                picture
+                pictureStatus
+            } header: { Text("What the class sees") }
 
-            // Grouped like every other tab. It was the one tab on a plain Form
-            // with Dividers and its own padding, so its rows did not line up
-            // with the rest of Settings and the tab did not scroll the same way.
             Section {
-            Picker("Bubble shape", selection: $coordinator.webcamShape) {
-                ForEach(WebcamShape.allCases) { shape in
-                    Text(shape.label).tag(shape)
-                }
-            }
-            .pickerStyle(.segmented)
-
-            // Live preview of the real composite when OBS is warm;
-            // schematic fallback otherwise. Shape changes while idle are
-            // applied to the warm scene immediately, so the live picture
-            // tracks the picker.
-            //
-            // The drag layer is a SIBLING of the picture, not an overlay on it,
-            // and that is load-bearing. shapePreviewFrame is republished every
-            // 150ms (see startShapePreview), so anything nested inside the
-            // `if let frame` branch is rebuilt about seven times a second -
-            // which tore down the layer's @State and any in-flight gesture
-            // before a drag could travel more than a few pixels. Out here its
-            // identity survives a new frame arriving, so a drag survives too.
-            ZStack {
-                Group {
-                    if let frame = coordinator.shapePreviewFrame {
-                        Image(nsImage: frame)
-                            .resizable()
-                            .scaledToFit()
-                            .clipShape(RoundedRectangle(cornerRadius: 8))
-                            .overlay(alignment: .topLeading) {
-                                HStack(spacing: 4) {
-                                    Circle().fill(.green).frame(width: 6, height: 6)
-                                    Text("LIVE").font(.caption2.bold())
-                                }
-                                .padding(.horizontal, 7)
-                                .padding(.vertical, 3)
-                                .background(.black.opacity(0.78), in: Capsule()) // opaque enough over any video frame
-                                .foregroundStyle(.white)
-                                .padding(6)
-                            }
-                    } else {
-                        WebcamShapePreview(shape: coordinator.webcamShape,
-                                           geometry: editedGeometry,
-                                           mode: editMode)
-                    }
-                }
-                .allowsHitTesting(false)   // the layer above owns every gesture
-
-                if isAdjustable {
-                    GeometryReader { box in
-                        BubbleDragLayer(
-                            geometry: editedGeometry,
-                            mode: editMode,
-                            shape: coordinator.webcamShape,
-                            canvas: WebcamShapePreview.fittedCanvas(
-                                in: box.size, aspect: previewAspect),
-                            showsOutline: isLivePreview,
-                            onCommit: {
-                                Task { await coordinator.applyShapeForPreview() }
-                            })
-                    }
-                }
-            }
-            .frame(maxWidth: .infinity)
-            .frame(height: 400)
-            .padding(.vertical, 6)
-            .onAppear { coordinator.startShapePreview() }
-            .onDisappear { coordinator.stopShapePreview() }
-            .onChange(of: coordinator.webcamShape) { _ in
-                Task { await coordinator.applyShapeForPreview() }
-            }
-
-            Text(shapeCaption)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-
-            // Presenter is the one shape with nothing to place: layoutPresenter
-            // rebuilds the whole scene rather than positioning a source.
-            if isAdjustable {
-                placementControls
-            }
+                ShapeCardPicker(selection: Binding(
+                    get: { coordinator.webcamShape },
+                    set: { coordinator.webcamShape = $0; coordinator.requestShapeApply() }))
+                Text(shapeCaption)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             } header: { Text("How you appear") }
 
+            if isAdjustable {
+                Section {
+                    placementControls
+                } header: { Text(isCutout ? "Size and position" : "Bubble size and position") }
+            }
+
             Section {
-            Toggle(isOn: $coordinator.clipBufferEnabled) {
-                SettingLabel(title: "Keep the last 5 minutes clippable",
-                             subtitle: "\u{2325}\u{2318}1 / 2 / 5 save the last minutes as a clip, recording or not. About 300 MB in memory, never on disk until you press.")
+                ShareTargetSettings(displays: displays,
+                                    onChange: { coordinator.requestShapeApply(rebuild: true) })
+            } header: { Text("What you share behind you") }
+            .onReceive(NotificationCenter.default.publisher(for: NSApplication.didChangeScreenParametersNotification)) { _ in
+                displays = DisplayResolver.connectedDisplays()
             }
-            Toggle(isOn: $coordinator.autoRecordOnStart) {
-                SettingLabel(title: "Start recording automatically with the meeting",
-                             subtitle: "Off: press Record or \u{2325}\u{2318}R. Either way the file lands in Documents/Greenroom.")
-            }
-            Toggle(isOn: $coordinator.keepOBSWarm) {
-                SettingLabel(title: "Keep OBS ready in the background",
-                             subtitle: "Start skips OBS\u{2019}s cold launch. OBS still quits with Greenroom.")
-            }
+
+            // Below the look now, not above it. It used to come first because
+            // it was once lost under a 400pt preview; the preview is shorter
+            // and the sections are headed, so it is one scroll away and named.
+            Section {
+                CameraSwitchSection()
+            } header: { Text("Cameras") }
+
+            Section {
+                Toggle(isOn: $coordinator.clipBufferEnabled) {
+                    SettingLabel(title: "Keep the last 5 minutes clippable",
+                                 subtitle: "\u{2325}\u{2318}1 / 2 / 5 save the last minutes as a clip, recording or not. About 300 MB in memory, never on disk until you press.")
+                }
+                Toggle(isOn: $coordinator.autoRecordOnStart) {
+                    SettingLabel(title: "Start recording automatically with the meeting",
+                                 subtitle: "Off: press Record or \u{2325}\u{2318}R. Either way the file lands in Documents/Greenroom.")
+                }
+                Toggle(isOn: $coordinator.keepOBSWarm) {
+                    SettingLabel(title: "Keep OBS ready in the background",
+                                 subtitle: "Start skips OBS\u{2019}s cold launch, and this page can show the real picture. OBS still quits with Greenroom.")
+                }
             } header: { Text("Recording") }
         }
         .formStyle(.grouped)
+        .onAppear {
+            displays = DisplayResolver.connectedDisplays()
+            coordinator.startShapePreview()
+        }
+        .onDisappear { coordinator.stopShapePreview() }
     }
 
-    /// Numbers and a hint, under the preview.
-    ///
-    /// Dragging is quick but never exact, and the values live as canvas
-    /// fractions, so without a readout the teacher is eyeballing a percentage
-    /// they cannot see. Typed fields are also the only way to copy a placement
-    /// between machines, or to undo a drag that overshot by half a percent.
-    @ViewBuilder private var placementControls: some View {
-        let geometry = editedGeometry.wrappedValue
-        VStack(alignment: .leading, spacing: 8) {
-            Text(isCutout
-                 ? "Drag to move it sideways, or a top corner to change its height. The bottom edge stays flush with the screen \u{2014} that is what makes a cutout stand on the edge instead of floating. Arrow keys nudge by 0.1%, \u{21E7} arrow by 1%. Hold \u{2325} while dragging to ignore the guides."
-                 : "Drag the bubble to move it, or any corner to resize. Arrow keys nudge by 0.1%, \u{21E7} arrow by 1%. Hold \u{2325} while dragging to ignore the guides.")
+    // MARK: The picture
+
+    /// The live composite when OBS is running, the sketch otherwise, with the
+    /// drag layer as a SIBLING of both - never inside the picture, which
+    /// refreshes on a timer (DESIGN.md, Affordances).
+    private var picture: some View {
+        ZStack {
+            Group {
+                if isLivePreview {
+                    LiveCompositePicture(feed: coordinator.shapePreview)
+                } else {
+                    WebcamShapePreview(shape: coordinator.webcamShape,
+                                       geometry: editedGeometry,
+                                       mode: editMode)
+                }
+            }
+            .allowsHitTesting(false)   // the layer above owns every gesture
+
+            if isAdjustable {
+                GeometryReader { box in
+                    BubbleDragLayer(
+                        geometry: editedGeometry,
+                        mode: editMode,
+                        shape: coordinator.webcamShape,
+                        canvas: WebcamShapePreview.fittedCanvas(
+                            in: box.size, aspect: previewAspect),
+                        showsOutline: isLivePreview,
+                        onCommit: { coordinator.requestShapeApply() })
+                }
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .frame(height: 300)
+        .padding(.vertical, 4)
+    }
+
+    private var pictureStatus: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Circle()
+                .fill(isLivePreview ? Brand.green : Color.secondary.opacity(0.5))
+                .frame(width: 8, height: 8)
+            Text(isLivePreview
+                 ? "Live from OBS. This is the picture the meeting gets."
+                 : "A sketch. Turn on \u{201C}Keep OBS ready\u{201D} under Recording to see the real picture here.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-
-            HStack(spacing: 14) {
-                percentField(isCutout ? "Height" : "Size",
-                             value: Binding(get: { geometry.size },
-                                            set: { commit(size: $0) }))
-                percentField("From right",
-                             value: Binding(get: { geometry.rightInset },
-                                            set: { commit(rightInset: $0) }))
-                if !isCutout {
-                    percentField("From bottom",
-                                 value: Binding(get: { geometry.bottomInset },
-                                                set: { commit(bottomInset: $0) }))
-                }
-                Spacer()
-                Button("Reset") {
-                    coordinator.resetBubbleLayout()
-                    Task { await coordinator.applyShapeForPreview() }
-                }
-                .controlSize(.small)
-                .disabled(coordinator.bubbleIsAtDefault)
+            Spacer()
+            if isAdjustable {
+                Text("Drag yourself to move, a corner to resize.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
         }
     }
 
-    /// A percentage to one decimal - 0.1% is the arrow-key step, so anything
-    /// coarser would round away a nudge the teacher just made.
-    private func percentField(_ label: String, value: Binding<Double>) -> some View {
-        let percent = Binding(get: { value.wrappedValue * 100 },
-                              set: { value.wrappedValue = $0 / 100 })
-        return HStack(spacing: 4) {
-            Text(label).font(.caption).foregroundStyle(.secondary)
-            TextField("", value: percent, format: .number.precision(.fractionLength(1)))
-                .labelsHidden()
-                .frame(width: 54)
-                .multilineTextAlignment(.trailing)
-                .monospacedDigit()
-            Text("%").font(.caption).foregroundStyle(.secondary)
-            Stepper("", value: percent, step: 0.5)
-                .labelsHidden()
+    // MARK: Placement
+
+    @ViewBuilder private var placementControls: some View {
+        let geometry = editedGeometry.wrappedValue
+        let sizeRange = editMode.sizeRange
+
+        if !isCutout {
+            LabeledContent("Corner") {
+                HStack(spacing: 4) {
+                    ForEach(BubbleCorner.allCases) { corner in
+                        Button { place(at: corner) } label: {
+                            Image(systemName: corner.symbol)
+                                .frame(width: 28, height: 20)
+                        }
+                        .help(corner.label)
+                        .accessibilityLabel(corner.label)
+                    }
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+            }
+        }
+
+        percentSlider(isCutout ? "Height" : "Size",
+                      value: geometry.size, range: sizeRange) { commit(size: $0) }
+        percentSlider("From the right edge",
+                      value: geometry.rightInset,
+                      range: 0...max(0.05, isCutout ? 0.95 : 1 - geometry.size)) { commit(rightInset: $0) }
+        if !isCutout {
+            percentSlider("From the bottom edge",
+                          value: geometry.bottomInset, range: 0...0.8) { commit(bottomInset: $0) }
+        }
+
+        HStack {
+            Text(isCutout
+                 ? "A cutout always stands on the bottom edge, so it rises from the screen instead of floating."
+                 : "Arrow keys nudge the selected bubble by 0.1%, \u{21E7} arrow by 1%.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Spacer()
+            Button("Reset") {
+                coordinator.resetBubbleLayout()
+                coordinator.requestShapeApply()
+            }
+            .disabled(coordinator.bubbleIsAtDefault)
         }
     }
 
-    /// One write path for the typed fields, so clamping and the OBS re-place
-    /// happen in exactly one place regardless of which field was edited.
+    /// A slider with its value beside it. Live while dragging: the coordinator
+    /// coalesces the stream into one re-layout.
+    private func percentSlider(_ title: String, value: Double, range: ClosedRange<Double>,
+                               set: @escaping (Double) -> Void) -> some View {
+        LabeledContent(title) {
+            HStack(spacing: 12) {
+                Slider(value: Binding(get: { min(max(value, range.lowerBound), range.upperBound) },
+                                      set: set),
+                       in: range)
+                    .frame(minWidth: 180)
+                Text("\(Int((value * 100).rounded()))%")
+                    .monospacedDigit()
+                    .foregroundStyle(.secondary)
+                    .frame(width: 40, alignment: .trailing)
+            }
+        }
+    }
+
+    /// One write path for every placement control, so clamping and the OBS
+    /// re-place happen in exactly one place.
     private func commit(size: Double? = nil, rightInset: Double? = nil,
                         bottomInset: Double? = nil) {
         var next = editedGeometry.wrappedValue
         if let size { next.size = size }
         if let rightInset { next.rightInset = rightInset }
         if let bottomInset { next.bottomInset = bottomInset }
-        // The coordinator's didSet clamps every one of these, so a pasted or
-        // typed value cannot put the source off-canvas.
+        // The coordinator's didSet clamps every one of these.
         editedGeometry.wrappedValue = next
-        Task { await coordinator.applyShapeForPreview() }
+        coordinator.requestShapeApply()
+    }
+
+    /// Puts the bubble in a corner with the shipped margins. The bubble's
+    /// height as a fraction of the canvas depends on both aspects, so it is
+    /// worked out from the picture actually showing.
+    private func place(at corner: BubbleCorner) {
+        let shipped = GreenroomScene.BubbleLayout()
+        let size = coordinator.bubbleWidthFraction
+        let canvasAspect = previewAspect.width / max(previewAspect.height, 1)
+        let boxHeight = size * canvasAspect / editMode.aspect
+        let right = corner.isRight ? shipped.rightInset : 1 - size - shipped.rightInset
+        let bottom = corner.isBottom ? shipped.bottomInset : 1 - boxHeight - shipped.bottomInset
+        commit(rightInset: max(0, right), bottomInset: max(0, bottom))
     }
 
     private var shapeCaption: String {
         switch coordinator.webcamShape {
+        case .square, .roundedRectangle:
+            return "Your camera in a box over what you share. Drag it anywhere, or pick a corner below."
+        case .circle:
+            return "Your camera cropped to a circle over what you share. Drag it anywhere, or pick a corner below."
         case .cutout:
-            return "Cutout removes your background with a chroma key, so you appear as a cutout over the shared screen \u{2014} needs a real green screen behind you. Tune the key in OBS \u{2192} the webcam source \u{2192} Filters if the edges look rough."
+            return "You, without your background, standing on the bottom edge of the picture. Needs a real green screen behind you; without one your whole camera shows."
         case .presenterLarge:
-            return "The macOS Presenter Overlay (Large) look, built into the composite: the shared screen becomes a rounded panel and you stand in front of it at full height. Needs a real green screen behind you, like Cutout. Works on any Mac and needs no manual toggle each meeting."
-        case .square, .circle, .roundedRectangle:
-            return "Pick a shape, then start a session to apply it (Stop first if one is running)."
+            return "What you share becomes a rounded panel and you stand beside it at full height, like macOS Presenter Overlay. Needs a real green screen behind you."
+        }
+    }
+}
+
+/// The live composite, observing the frame feed and nothing else, so a new
+/// frame redraws this picture and only this picture.
+private struct LiveCompositePicture: View {
+    @ObservedObject var feed: ShapePreviewFeed
+
+    var body: some View {
+        if let frame = feed.frame {
+            Image(nsImage: frame)
+                .resizable()
+                .scaledToFit()
+                .clipShape(RoundedRectangle(cornerRadius: 10))
+        }
+    }
+}
+
+private enum BubbleCorner: CaseIterable, Identifiable {
+    case topLeft, topRight, bottomLeft, bottomRight
+    var id: Self { self }
+    var isRight: Bool { self == .topRight || self == .bottomRight }
+    var isBottom: Bool { self == .bottomLeft || self == .bottomRight }
+    var symbol: String {
+        switch self {
+        case .topLeft: return "arrow.up.left"
+        case .topRight: return "arrow.up.right"
+        case .bottomLeft: return "arrow.down.left"
+        case .bottomRight: return "arrow.down.right"
+        }
+    }
+    var label: String {
+        switch self {
+        case .topLeft: return "Top left"
+        case .topRight: return "Top right"
+        case .bottomLeft: return "Bottom left"
+        case .bottomRight: return "Bottom right"
+        }
+    }
+}
+
+/// The five looks as cards you can see, instead of five words in a
+/// segmented control. Each card sketches the look; the two that need a green
+/// screen say so on the card, before they are picked rather than after.
+private struct ShapeCardPicker: View {
+    @Binding var selection: WebcamShape
+
+    var body: some View {
+        HStack(spacing: 8) {
+            ForEach(WebcamShape.allCases) { shape in
+                card(shape)
+            }
+        }
+        .padding(.vertical, 4)
+    }
+
+    private func card(_ shape: WebcamShape) -> some View {
+        let selected = shape == selection
+        return Button { selection = shape } label: {
+            VStack(spacing: 8) {
+                ShapeGlyph(shape: shape, highlighted: selected)
+                    .frame(height: 52)
+                Text(shape.label)
+                    .font(.callout.weight(selected ? .semibold : .regular))
+                    .foregroundStyle(.primary)
+                Text(shape.usesChromaKey ? "Green screen" : " ")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+            .padding(8)
+            .frame(maxWidth: .infinity)
+            .background(RoundedRectangle(cornerRadius: 10)
+                .fill(selected ? Brand.green.opacity(0.12) : Color(nsColor: .controlBackgroundColor)))
+            .overlay(RoundedRectangle(cornerRadius: 10)
+                .strokeBorder(selected ? Brand.green : Color.secondary.opacity(0.25),
+                              lineWidth: selected ? 2 : 1))
+            .contentShape(RoundedRectangle(cornerRadius: 10))
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(shape.label)
+        .accessibilityAddTraits(selected ? .isSelected : [])
+    }
+}
+
+/// A thumbnail of a look: the shared screen as a grey panel, the person in
+/// the accent colour.
+private struct ShapeGlyph: View {
+    let shape: WebcamShape
+    let highlighted: Bool
+
+    var body: some View {
+        GeometryReader { geo in
+            let w = geo.size.width, h = geo.size.height
+            let person = highlighted ? Brand.green : Color.secondary
+            ZStack {
+                if shape.isPresenterStyle {
+                    RoundedRectangle(cornerRadius: 3)
+                        .fill(Color.secondary.opacity(0.18))
+                        .frame(width: w * 0.62, height: h * 0.7)
+                        .position(x: w * 0.66, y: h * 0.5)
+                    Image(systemName: "person.fill")
+                        .resizable().scaledToFit()
+                        .foregroundStyle(person)
+                        .frame(height: h * 0.85)
+                        .position(x: w * 0.2, y: h * 0.55)
+                } else {
+                    RoundedRectangle(cornerRadius: 4)
+                        .fill(Color.secondary.opacity(0.18))
+                    bubble(person: person, w: w, h: h)
+                }
+            }
+        }
+        .aspectRatio(16.0 / 10.0, contentMode: .fit)
+        .accessibilityHidden(true)
+    }
+
+    @ViewBuilder
+    private func bubble(person: Color, w: CGFloat, h: CGFloat) -> some View {
+        let side = h * 0.42
+        switch shape {
+        case .square:
+            Rectangle().fill(person)
+                .frame(width: side * 1.3, height: side)
+                .position(x: w - side * 0.65 - 4, y: h - side / 2 - 4)
+        case .roundedRectangle:
+            RoundedRectangle(cornerRadius: side * 0.25).fill(person)
+                .frame(width: side * 1.3, height: side)
+                .position(x: w - side * 0.65 - 4, y: h - side / 2 - 4)
+        case .circle:
+            Circle().fill(person)
+                .frame(width: side, height: side)
+                .position(x: w - side / 2 - 4, y: h - side / 2 - 4)
+        case .cutout, .presenterLarge:
+            Image(systemName: "person.fill")
+                .resizable().scaledToFit()
+                .foregroundStyle(person)
+                .frame(height: h * 0.6)
+                .position(x: w * 0.78, y: h - h * 0.3)
         }
     }
 }
@@ -381,7 +556,6 @@ struct BubbleDragLayer: View {
     @State private var keyCommit: Task<Void, Never>?
     @FocusState private var focused: Bool
 
-    private static let personGreen = Color(red: 0.373, green: 0.659, blue: 0.235)
     /// Roughly six points on screen, expressed in canvas fractions so snapping
     /// feels the same however large the preview is.
     private var snapThresholdX: Double { 6 / canvas.width }
@@ -457,11 +631,11 @@ struct BubbleDragLayer: View {
     /// moving reads as deliberate rather than stuck.
     @ViewBuilder private var guides: some View {
         if snappedTo.contains(.right) {
-            Rectangle().fill(Self.personGreen).frame(width: 1, height: canvas.height)
+            Rectangle().fill(Brand.green).frame(width: 1, height: canvas.height)
                 .position(x: centre.x + box.width / 2, y: canvas.midY)
         }
         if snappedTo.contains(.bottom) {
-            Rectangle().fill(Self.personGreen).frame(width: canvas.width, height: 1)
+            Rectangle().fill(Brand.green).frame(width: canvas.width, height: 1)
                 .position(x: canvas.midX, y: centre.y + box.height / 2)
         }
     }
@@ -469,7 +643,7 @@ struct BubbleDragLayer: View {
     @ViewBuilder private var outline: some View {
         if showsOutline {
             let clip = clipShape(size: min(box.width, box.height))
-            clip.stroke(Self.personGreen, lineWidth: 2)
+            clip.stroke(Brand.green, lineWidth: 2)
                 .background(clip.fill(.white.opacity(0.001)))   // hit area, invisible
         } else {
             Color.clear
@@ -499,7 +673,7 @@ struct BubbleDragLayer: View {
     /// catching it is not a pixel hunt.
     private func handle(_ corner: Corner) -> some View {
         Circle()
-            .fill(Self.personGreen)
+            .fill(Brand.green)
             .overlay(Circle().strokeBorder(.white.opacity(0.9), lineWidth: 1.5))
             .frame(width: 12, height: 12)
             .frame(width: 28, height: 28)
@@ -691,7 +865,9 @@ struct WebcamShapePreview: View {
     var mode: BubbleDragLayer.Mode = .bubble(aspect: 1)
 
 
-    private static let personGreen = Color(red: 0.373, green: 0.659, blue: 0.235)
+    /// A chroma-key green screen, not the brand: DESIGN.md asks for the two
+    /// to be named apart even though they share a value.
+    private static let chromaGreen = Color(red: 0.373, green: 0.659, blue: 0.235)
 
     var body: some View {
         GeometryReader { geo in
@@ -803,7 +979,7 @@ struct WebcamShapePreview: View {
             .resizable()
             .scaledToFit()
             .frame(height: height)
-            .foregroundStyle(Self.personGreen.gradient)
+            .foregroundStyle(Self.chromaGreen.gradient)
     }
 
     /// "You" in a corner bubble - the webcam frame, background included.
@@ -821,17 +997,17 @@ struct WebcamShapePreview: View {
         default: clip = AnyShape(Rectangle())
         }
         return ZStack {
-            clip.fill(Self.personGreen.opacity(0.22))
+            clip.fill(Self.chromaGreen.opacity(0.22))
             Image(systemName: "person.fill")
                 .resizable()
                 .scaledToFit()
                 .frame(height: height * 0.62)
-                .foregroundStyle(Self.personGreen.gradient)
+                .foregroundStyle(Self.chromaGreen.gradient)
                 .offset(y: height * 0.12)
         }
         .frame(width: width, height: height)
         .clipShape(clip)
-        .overlay(clip.stroke(Self.personGreen.opacity(0.7), lineWidth: 1.5))
+        .overlay(clip.stroke(Self.chromaGreen.opacity(0.7), lineWidth: 1.5))
     }
 }
 
@@ -1277,10 +1453,6 @@ private struct LayoutSettingsTab: View {
                 }
             }
 
-            Section("Shared screen") {
-                ShareTargetSettings(displays: displays)
-            }
-
             Section("Privacy") {
                 Toggle(isOn: $coordinator.analyticsEnabled) {
                     SettingLabel(title: "Send anonymous usage analytics",
@@ -1425,6 +1597,8 @@ private struct LayoutSettingsTab: View {
 /// refreshes on its own schedule.
 private struct ShareTargetSettings: View {
     let displays: [DisplayInfo]
+    /// Called after any change, so the live picture can rebuild for it.
+    var onChange: () -> Void = {}
     @EnvironmentObject private var coordinator: CoordinatorController
     @State private var apps: [(bundleID: String, name: String)] = []
     @State private var windows: [ShareTarget.Window] = []
@@ -1450,6 +1624,8 @@ private struct ShareTargetSettings: View {
             .font(.caption)
             .foregroundStyle(.secondary)
             .onAppear(perform: refresh)
+            .onChange(of: coordinator.shareTarget) { _ in onChange() }
+            .onChange(of: coordinator.screenCaptureDisplayUUID) { _ in onChange() }
     }
 
     private var caption: String {
@@ -1457,9 +1633,9 @@ private struct ShareTargetSettings: View {
         case .display:
             return "The screen your class sees. If it is unplugged at Start, the main display is shared instead."
         case .app:
-            return "Only this app\u{2019}s windows are shown; everything else on that screen stays private. Changes apply at the next Start."
+            return "Only this app\u{2019}s windows are shown; everything else on that screen stays private. During a session, changes apply at the next Start."
         case .window:
-            return "Only this window is shown, framed on a dark backdrop. If its title has changed by Start, the app\u{2019}s front window is shared. Changes apply at the next Start."
+            return "Only this window is shown, framed on a dark backdrop. If its title has changed by Start, the app\u{2019}s front window is shared. During a session, changes apply at the next Start."
         }
     }
 

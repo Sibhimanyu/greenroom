@@ -300,11 +300,11 @@ The app is the other half of this system. Keep it aligned.
   for the app tint, `#5FA83C`, referenced only through `Brand.green`
   (`App/GreenroomApp.swift`). Not the logo's lime: as a control tint it lit up
   every button and field (decisions log, 2026-09-24).
-- **Never hardcode brand colour in Swift.** Two constants currently duplicate a
-  raw RGB value: `ContentView.brandGreen` and `SettingsView.personGreen`. The
-  first should use `Brand.green`. The second is a different thing wearing the
-  same number: it represents a chroma-key green screen, so name and keep it
-  separately as `chromaGreen`, not as brand.
+- **Never hardcode brand colour in Swift.** `ContentView.brandGreen` still
+  duplicates a raw RGB value and should use `Brand.green`. (Settings' old
+  `personGreen` is split as of 2026-11-05: the drag layer's guides use
+  `Brand.green`, and the sketch's green screen is `chromaGreen`, a different
+  thing that happens to share the number.)
 - **Semantic colour applies here too:** anything that reaches the network reads
   amber, anything local reads green. This is the risk we deliberately took, so
   honour it in status text and indicators.

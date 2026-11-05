@@ -1853,8 +1853,21 @@ final class CoordinatorController: ObservableObject {
     // composite instead of a schematic: actual screen, actual camera,
     // the chroma key as tuned.
 
-    @Published private(set) var shapePreviewFrame: NSImage?
+    /// The frames, on an object of their own. They arrive every 150ms, and
+    /// as a @Published property of this controller each one invalidated every
+    /// view that observes it - the whole Settings window, rebuilt seven times
+    /// a second. Pickers and toggles on the Webcam tab stopped taking clicks.
+    /// Only the picture observes `shapePreview`; the rest of the tab watches
+    /// `shapePreviewAspect`, which changes only when the picture's shape does.
+    let shapePreview = ShapePreviewFeed()
+    /// The live picture's size, or nil while the schematic is showing.
+    @Published private(set) var shapePreviewAspect: CGSize?
     private var shapePreviewTask: Task<Void, Never>?
+    /// Set once the preview has built the scene. After that a shape change is
+    /// a live re-layout, not a rebuild: rebuilding took seconds, and a few
+    /// clicks queued several rebuilds racing each other in OBS.
+    private var shapePreviewSceneReady = false
+    private var shapePreviewApply: Task<Void, Never>?
 
     /// Starts polling OBS for frames of the composited scene. Outside a
     /// session the scene is first (re)configured for the chosen shape, so
@@ -1864,7 +1877,7 @@ final class CoordinatorController: ObservableObject {
     func startShapePreview() {
         guard shapePreviewTask == nil else { return }
         shapePreviewTask = Task {
-            defer { shapePreviewFrame = nil }
+            defer { publishPreviewFrame(nil) }
             if !virtualCamActive {
                 guard !NSRunningApplication.runningApplications(withBundleIdentifier: OBSProcessManager.bundleIdentifier).isEmpty else { return }
                 if (try? await client.request("GetVersion")) == nil {
@@ -1884,7 +1897,7 @@ final class CoordinatorController: ObservableObject {
                    let comma = dataString.firstIndex(of: ","),
                    let imageData = Data(base64Encoded: String(dataString[dataString.index(after: comma)...])),
                    let frame = NSImage(data: imageData) {
-                    shapePreviewFrame = frame
+                    publishPreviewFrame(frame)
                 }
                 try? await Task.sleep(nanoseconds: 150_000_000)
             }
@@ -1915,7 +1928,29 @@ final class CoordinatorController: ObservableObject {
     func stopShapePreview() {
         shapePreviewTask?.cancel()
         shapePreviewTask = nil
-        shapePreviewFrame = nil
+        shapePreviewSceneReady = false
+        publishPreviewFrame(nil)
+    }
+
+    private func publishPreviewFrame(_ frame: NSImage?) {
+        shapePreview.frame = frame
+        let aspect = frame?.size
+        if aspect != shapePreviewAspect { shapePreviewAspect = aspect }
+    }
+
+    /// Applies the current shape and placement to the preview, latest wins.
+    /// Every control on the Webcam tab calls this; a burst of changes (a
+    /// slider, several clicks) cancels what it supersedes instead of queuing.
+    /// `rebuild` is for what a re-layout cannot change - what is shared - and
+    /// only outside a session, where rebuilding the scene is allowed.
+    func requestShapeApply(rebuild: Bool = false) {
+        if rebuild, !virtualCamActive, !isRunning { shapePreviewSceneReady = false }
+        shapePreviewApply?.cancel()
+        shapePreviewApply = Task {
+            try? await Task.sleep(nanoseconds: 120_000_000)
+            guard !Task.isCancelled else { return }
+            await applyShapeForPreview()
+        }
     }
 
     /// Re-applies the chosen shape to the warm OBS scene so the live
@@ -1932,7 +1967,7 @@ final class CoordinatorController: ObservableObject {
     /// OBS accepts perfectly well with the virtual camera running, so a live
     /// session now takes that path instead of being refused.
     func applyShapeForPreview() async {
-        if virtualCamActive || isRunning {
+        if virtualCamActive || isRunning || shapePreviewSceneReady {
             do {
                 try await GreenroomScene.applyLiveLayout(client: client, bubble: bubbleLayout)
             } catch {
@@ -1941,10 +1976,12 @@ final class CoordinatorController: ObservableObject {
             return
         }
         guard shapePreviewTask != nil else { return }
-        _ = try? await GreenroomScene.ensureConfigured(client: client,
+        if (try? await GreenroomScene.ensureConfigured(client: client,
                                                        bubble: bubbleLayout,
                                                        preferredDisplayUUID: screenCaptureDisplayUUID,
-                                                       share: shareTarget)
+                                                       share: shareTarget)) != nil {
+            shapePreviewSceneReady = true
+        }
     }
 
     var mainAppDisplayName: String {

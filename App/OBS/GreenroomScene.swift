@@ -1012,13 +1012,35 @@ enum GreenroomScene {
     /// The camera's own width/height, or 16:9 when OBS cannot tell us yet -
     /// the same fallback `layoutCutout` uses, for the same reason.
     private static func webcamSourceAspect(client: OBSWebSocketClient, source: String) async throws -> Double {
+        guard let size = try await rawCameraSize(client: client, source: source) else { return 16.0 / 9.0 }
+        return size.width / size.height
+    }
+
+    /// The camera's own size, before the square crop.
+    ///
+    /// OBS reports a source's size AFTER its filters, so once the crop was on,
+    /// the camera read as square. The crop code then concluded there was
+    /// nothing to crop and removed it, and the next setup put it back: the
+    /// crop flipped on and off with every Start and every shape change. The
+    /// crop's own margins are added back here instead.
+    ///
+    /// Nil while the camera has no frames yet, and for a crop written by an
+    /// older build, whose margins cannot be added back (see ensureSquareCrop).
+    private static func rawCameraSize(client: OBSWebSocketClient, source: String) async throws -> (width: Double, height: Double)? {
         let items = try await sceneItems(client: client)
         guard let webcam = items.first(where: { ($0["sourceName"] as? String) == source }),
               let transform = webcam["sceneItemTransform"] as? [String: Any],
-              let width = transform["sourceWidth"] as? Double,
-              let height = transform["sourceHeight"] as? Double,
-              width > 0, height > 0 else { return 16.0 / 9.0 }
-        return width / height
+              var width = transform["sourceWidth"] as? Double,
+              var height = transform["sourceHeight"] as? Double else { return nil }
+        if let crop = try? await client.request("GetSourceFilter", data: ["sourceName": source, "filterName": cropFilterName]),
+           (crop["filterEnabled"] as? Bool) == true,
+           let settings = crop["filterSettings"] as? [String: Any] {
+            guard (settings["relative"] as? Bool) == true else { return nil }
+            width += Double((settings["left"] as? Int) ?? 0) + Double((settings["right"] as? Int) ?? 0)
+            height += Double((settings["top"] as? Int) ?? 0) + Double((settings["bottom"] as? Int) ?? 0)
+        }
+        guard width > 1, height > 1 else { return nil }
+        return (width, height)
     }
 
     /// Centre-crops the camera to a square, ahead of the shape mask.
@@ -1038,16 +1060,33 @@ enum GreenroomScene {
     /// so cropping AFTER the mask would stretch an ellipse rather than produce
     /// a circle.
     private static func ensureSquareCrop(client: OBSWebSocketClient, source: String,
-                                         enabled: Bool, aspect: Double) async throws {
+                                         enabled: Bool) async throws {
         let list = try await client.request("GetSourceFilterList", data: ["sourceName": source])
         let filters = (list["filters"] as? [[String: Any]]) ?? []
-        let exists = filters.contains { ($0["filterName"] as? String) == cropFilterName }
+        var existing = filters.first { ($0["filterName"] as? String) == cropFilterName }
 
-        guard enabled, aspect > 1 else {
-            if exists {
+        // Older builds wrote `relative: false`, which OBS's crop filter reads
+        // as "left/top plus an absolute width and height" - and with no width
+        // or height given, that is 1x1. The circle bubble showed as one flat
+        // grey square. Such a crop is removed and rebuilt, and the camera is
+        // given a moment to report its real size again.
+        if let crop = existing,
+           ((crop["filterSettings"] as? [String: Any])?["relative"] as? Bool) != true {
+            _ = try? await client.request("RemoveSourceFilter", data: [
+                "sourceName": source, "filterName": cropFilterName
+            ])
+            existing = nil
+            try? await Task.sleep(nanoseconds: 150_000_000)
+        }
+
+        guard enabled else {
+            if existing != nil {
                 _ = try? await client.request("RemoveSourceFilter", data: [
                     "sourceName": source, "filterName": cropFilterName
                 ])
+                // The size OBS reports catches up on the next video frame; the
+                // mask that follows is drawn against it.
+                try? await Task.sleep(nanoseconds: 150_000_000)
             }
             return
         }
@@ -1055,16 +1094,13 @@ enum GreenroomScene {
         // Crop is in SOURCE pixels, so it needs the real dimensions, not the
         // aspect: a 1280x720 camera loses 280 from each side, a 1920x1080 one
         // loses 420.
-        let items = try await sceneItems(client: client)
-        guard let webcam = items.first(where: { ($0["sourceName"] as? String) == source }),
-              let transform = webcam["sceneItemTransform"] as? [String: Any],
-              let width = transform["sourceWidth"] as? Double,
-              let height = transform["sourceHeight"] as? Double,
-              width > height else { return }
-        let side = Int(((width - height) / 2).rounded())
+        guard let size = try await rawCameraSize(client: client, source: source),
+              size.width > size.height else { return }
+        let side = Int(((size.width - size.height) / 2).rounded())
         let settings: [String: Any] = [
-            "relative": false, "left": side, "right": side, "top": 0, "bottom": 0
+            "relative": true, "left": side, "right": side, "top": 0, "bottom": 0
         ]
+        let exists = existing != nil
 
         if exists {
             _ = try await client.request("SetSourceFilterSettings", data: [
@@ -1093,9 +1129,8 @@ enum GreenroomScene {
         // Crop FIRST, then mask against whatever aspect survives the crop. The
         // mask is stretched over the source, so the two have to agree or the
         // shape comes out skewed - see MaskImageGenerator.maskImageURL.
-        let camera = try await webcamSourceAspect(client: client, source: source)
-        try await ensureSquareCrop(client: client, source: source, enabled: shape.cropsToSquare, aspect: camera)
-        let maskAspect = shape.cropsToSquare ? 1 : camera
+        try await ensureSquareCrop(client: client, source: source, enabled: shape.cropsToSquare)
+        let maskAspect = shape.cropsToSquare ? 1 : try await webcamSourceAspect(client: client, source: source)
 
         let list = try await client.request("GetSourceFilterList", data: ["sourceName": source])
         let filters = (list["filters"] as? [[String: Any]]) ?? []

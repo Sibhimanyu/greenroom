@@ -245,6 +245,27 @@ enum GreenroomScene {
         /// has already cut out: there is no green left to key, and keying a
         /// cut-out person eats anything green they are wearing.
         var keysGreen: Bool { shape.usesChromaKey && !greenroomCamera }
+
+        /// What the frame holds. Both on is the picture this file was built
+        /// for: shared content with you in it.
+        ///
+        /// Content off ("Behind you: Nothing") is a talking head: the camera
+        /// fills the frame on the backdrop. Camera off ("No camera") is the
+        /// shared content alone, full frame. Never both off - there would be
+        /// nothing to send - and the coordinator turns the camera back on
+        /// rather than build that. See `layoutScene`.
+        var showsContent = true
+        var showsCamera = true
+
+        /// The shape the camera is actually cut to. With nothing shared the
+        /// camera IS the picture, so a bubble's circle or rounded corners
+        /// would only be a smaller picture with dark corners: the bubble
+        /// shapes give way to the full frame. Cutout and Presenter keep
+        /// their background removal, because that is the point of picking
+        /// them - you on the dark backdrop rather than in your room.
+        var cameraShape: WebcamShape {
+            showsContent || shape.usesChromaKey ? shape : .square
+        }
     }
 
     /// Returns true when the webcam made it into the composite, false for
@@ -262,6 +283,14 @@ enum GreenroomScene {
         // settings cannot be changed while an output is active"). Always
         // start from a clean slate instead of guessing whether it's needed.
         _ = try? await client.request("StopVirtualCam")
+
+        // The share target has the last word on content, whatever the layout
+        // was told: a "Nothing" share must never build a screen capture.
+        var bubble = bubble
+        if share.kind == .nothing { bubble.showsContent = false }
+        // And there is always something to show. Nothing shared and no
+        // camera would be a flat backdrop; the camera comes back instead.
+        if !bubble.showsContent { bubble.showsCamera = true }
 
         try await ensureScene(client: client)
 
@@ -303,7 +332,11 @@ enum GreenroomScene {
         // then the session starts on ITS first camera rather than on whichever
         // camera the resolver likes best - the two used to disagree, and the
         // settings window would call one camera live while OBS showed another.
-        let cameras = cameraUIDs.isEmpty
+        //
+        // "No camera" is a choice, not a fallback, so it opens nothing at all
+        // rather than whichever camera the resolver would have liked.
+        let cameras = !bubble.showsCamera ? []
+            : cameraUIDs.isEmpty
             ? LocalDeviceResolver.physicalCameraUID().map { [$0] } ?? []
             : cameraUIDs
         let webcamUID = cameras.first
@@ -326,41 +359,64 @@ enum GreenroomScene {
         // between a display, an app and a window recreates the source.
         let resolvedShare = share.resolve(displayUUID: displayUUID)
         let screenSettings = resolvedShare.settings
-        try await ensureInput(client: client, name: screenSourceName, kind: screenKind,
-                               settings: screenSettings,
-                               isCorrectlyConfigured: resolvedShare.matches)
-        try await ensureBackdrop(client: client)
+        // Nothing to share: the screen source is hidden, not removed and not
+        // left out. Taking a live screen capture apart is where OBS has
+        // deadlocked and crashed before (see parkOBSOnStandbyScene in the
+        // coordinator), and the source is still the right one the next time
+        // something IS shared - showing it again is instant. Nothing is said about it being live,
+        // since there is no picture it owes anyone.
+        var screenLive = true
+        if bubble.showsContent {
+            try await ensureInput(client: client, name: screenSourceName, kind: screenKind,
+                                   settings: screenSettings,
+                                   isCorrectlyConfigured: resolvedShare.matches)
+            try await ensureBackdrop(client: client)
+            // Shown again after a session that shared nothing. Before the
+            // checks below, which read a hidden source as a dead one: off air
+            // it draws nothing, so it would look frozen and be rebuilt.
+            try await setItemEnabled(client: client, source: screenSourceName, enabled: true)
 
-        // Verify, then repair once. ensureInput can only check what OBS
-        // REPORTS about a source; this checks whether the thing actually
-        // produces pixels. A source that exists by name, matches on settings,
-        // and yields nothing is precisely the state that showed a black
-        // capture with the webcam still visible.
-        var screenLive = try await screenCaptureIsLive(client: client)
-        // A source can be alive by every measure OBS reports and still be
-        // dead: macOS can end the capture stream under it (seen as error
-        // -3805, "application connection being interrupted"), OBS logs it,
-        // never restarts it, and goes on drawing the last frame with its old
-        // size. The class then sees a frozen screen, and nothing here could
-        // tell. So a picture that has not changed at all is rebuilt too. A
-        // genuinely still screen gets rebuilt for nothing, which costs a
-        // second at setup and nothing else.
-        // Only on air does a screen source draw at all, so the scene goes on
-        // air first; off air every screenshot is the same black frame. The
-        // virtual camera is stopped by now, so nobody sees the switch.
-        _ = try? await client.request("SetCurrentProgramScene", data: ["sceneName": sceneName])
-        if screenLive, await screenCaptureLooksFrozen(client: client) {
-            screenLive = false
-        }
-        if !screenLive {
-            await removeInputAndWait(client: client, name: screenSourceName)
-            try await createInput(client: client, name: screenSourceName,
-                                  kind: screenKind, settings: screenSettings)
+            // Verify, then repair once. ensureInput can only check what OBS
+            // REPORTS about a source; this checks whether the thing actually
+            // produces pixels. A source that exists by name, matches on settings,
+            // and yields nothing is precisely the state that showed a black
+            // capture with the webcam still visible.
             screenLive = try await screenCaptureIsLive(client: client)
+            // A source can be alive by every measure OBS reports and still be
+            // dead: macOS can end the capture stream under it (seen as error
+            // -3805, "application connection being interrupted"), OBS logs it,
+            // never restarts it, and goes on drawing the last frame with its old
+            // size. The class then sees a frozen screen, and nothing here could
+            // tell. So a picture that has not changed at all is rebuilt too. A
+            // genuinely still screen gets rebuilt for nothing, which costs a
+            // second at setup and nothing else.
+            // Only on air does a screen source draw at all, so the scene goes on
+            // air first; off air every screenshot is the same black frame. The
+            // virtual camera is stopped by now, so nobody sees the switch.
+            _ = try? await client.request("SetCurrentProgramScene", data: ["sceneName": sceneName])
+            if screenLive, await screenCaptureLooksFrozen(client: client) {
+                screenLive = false
+            }
+            if !screenLive {
+                await removeInputAndWait(client: client, name: screenSourceName)
+                try await createInput(client: client, name: screenSourceName,
+                                      kind: screenKind, settings: screenSettings)
+                screenLive = try await screenCaptureIsLive(client: client)
+            }
+        } else {
+            try await ensureBackdrop(client: client)
+            try await setItemEnabled(client: client, source: screenSourceName, enabled: false)
         }
+
         if !cameras.isEmpty {
             try await ensureCameraInputs(client: client, uids: cameras, bubble: bubble,
                                          webcamKind: webcamKind, chromaKind: chromaKind)
+        } else if !bubble.showsCamera {
+            // Chosen, so every camera is let go - slot 0 too. Hidden is not
+            // closed (see ensureCameraInputs): a camera merely hidden would
+            // keep its light on through a session that said no camera.
+            await removeCameraSlots(client: client, from: 1)
+            await removeInputAndWait(client: client, name: webcamSourceName)
         } else {
             // Screen-only: a leftover webcam source (its device now gone)
             // must not sit as a frozen/black box in the frame - disable
@@ -395,7 +451,8 @@ enum GreenroomScene {
         // size, so only its top-left corner was visible within the frame),
         // then position the bubble off that real size rather than a guess.
         // Anything narrower than a display gets a fixed 1080p canvas instead.
-        let canvas = resolvedShare.kind == .display
+        // A camera alone is a camera, so it gets the camera's canvas too.
+        let canvas = resolvedShare.kind == .display && bubble.showsContent
             ? try await fitCanvasToScreenSource(client: client)
             : try await setFixedCanvas(client: client)
         try await layoutScene(client: client, layout: bubble, canvasWidth: canvas.width, canvasHeight: canvas.height)
@@ -443,7 +500,7 @@ enum GreenroomScene {
     private static func ensureCameraInputs(client: OBSWebSocketClient, uids: [String],
                                            bubble: BubbleLayout,
                                            webcamKind: String, chromaKind: String) async throws {
-        let shape = bubble.shape
+        let shape = bubble.cameraShape
         for (slot, uid) in uids.enumerated() {
             let name = cameraSourceName(slot: slot)
             if bubble.greenroomCamera {
@@ -559,9 +616,33 @@ enum GreenroomScene {
         guard !uids.isEmpty else { return }
         let webcamKind = try await bestInputKind(client: client, containing: ["av_capture", "dshow", "v4l2"])
         let chromaKind = try await bestFilterKind(client: client, containing: ["chroma_key_filter_v2", "chroma_key"])
-        try await ensureCameraInputs(client: client, uids: uids, bubble: bubble,
+        // Cameras are being opened, so the picture has a camera from here on,
+        // whatever the session started with.
+        var layout = await asBuilt(bubble, client: client)
+        layout.showsCamera = true
+        try await ensureCameraInputs(client: client, uids: uids, bubble: layout,
                                      webcamKind: webcamKind, chromaKind: chromaKind)
-        try await applyLiveLayout(client: client, bubble: bubble)
+        try await applyLiveLayout(client: client, bubble: layout)
+    }
+
+    /// The layout with what is shown read back from the scene rather than
+    /// from the settings.
+    ///
+    /// What is shared and which camera are applied at Start - the sources
+    /// are rebuilt then and only then - but the settings can change while a
+    /// session runs. A re-layout mid-session has to place what the scene
+    /// HOLDS: laying out a full-frame camera because the setting now says
+    /// "Nothing" would leave the shared screen running behind a camera
+    /// that covers it. A hidden screen item is "nothing shared"; no camera
+    /// source at all is "no camera" (a camera that is merely unplugged
+    /// keeps its source, hidden, and is still laid out for its return).
+    private static func asBuilt(_ bubble: BubbleLayout, client: OBSWebSocketClient) async -> BubbleLayout {
+        var layout = bubble
+        guard let items = try? await sceneItems(client: client) else { return layout }
+        let screen = items.first { ($0["sourceName"] as? String) == screenSourceName }
+        layout.showsContent = (screen?["sceneItemEnabled"] as? Bool) == true
+        layout.showsCamera = !cameraItems(items).isEmpty
+        return layout
     }
 
     /// Hides every camera but one, and puts that one on top.
@@ -701,9 +782,16 @@ enum GreenroomScene {
     /// Shows/hides the webcam's scene item - screen-only sessions (no
     /// camera connected) hide it so a dead device isn't a black box.
     private static func setWebcamItemEnabled(client: OBSWebSocketClient, enabled: Bool) async throws {
+        try await setItemEnabled(client: client, source: webcamSourceName, enabled: enabled)
+    }
+
+    /// Shows or hides one source's scene item. Nothing to do when the scene
+    /// does not hold it.
+    private static func setItemEnabled(client: OBSWebSocketClient, source: String, enabled: Bool) async throws {
         let items = try await sceneItems(client: client)
-        guard let webcam = items.first(where: { ($0["sourceName"] as? String) == webcamSourceName }),
-              let itemId = webcam["sceneItemId"] as? Int else { return }
+        guard let item = items.first(where: { ($0["sourceName"] as? String) == source }),
+              let itemId = item["sceneItemId"] as? Int,
+              (item["sceneItemEnabled"] as? Bool) != enabled else { return }
         _ = try? await client.request("SetSceneItemEnabled", data: [
             "sceneName": sceneName, "sceneItemId": itemId, "sceneItemEnabled": enabled
         ])
@@ -1238,6 +1326,7 @@ enum GreenroomScene {
     /// running. This is that subset and nothing else: no StopVirtualCam, no
     /// SetVideoSettings, no source creation. The canvas is read rather than set.
     static func applyLiveLayout(client: OBSWebSocketClient, bubble: BubbleLayout) async throws {
+        let bubble = await asBuilt(bubble, client: client)
         let video = try await client.request("GetVideoSettings")
         let width = (video["baseWidth"] as? Int) ?? 1920
         let height = (video["baseHeight"] as? Int) ?? 1080
@@ -1247,7 +1336,7 @@ enum GreenroomScene {
         let fadeKind = try await bestFilterKind(client: client, containing: ["color_filter_v2", "color_filter"])
         for camera in try await cameraSourceNames(client: client) {
             try await setChromaKey(client: client, source: camera, enabled: bubble.keysGreen, kind: chromaKind)
-            try await ensureShapeMask(client: client, source: camera, shape: bubble.shape)
+            try await ensureShapeMask(client: client, source: camera, shape: bubble.cameraShape)
             // Again, because a mask created just now went in after it.
             try await ensureFade(client: client, source: camera, kind: fadeKind)
         }
@@ -1257,7 +1346,18 @@ enum GreenroomScene {
 
     private static func layoutScene(client: OBSWebSocketClient, layout: BubbleLayout, canvasWidth: Int, canvasHeight: Int) async throws {
         try await placeBackdrop(client: client, canvasWidth: canvasWidth, canvasHeight: canvasHeight)
-        if layout.shape.isPresenterStyle {
+        if !layout.showsContent {
+            // The panel mask comes off too, so content shown again later is
+            // whole until its own arrangement says otherwise.
+            try await ensureScreenPanelMask(client: client, enabled: false, canvasWidth: canvasWidth, canvasHeight: canvasHeight)
+            try await layoutCameraFullFrame(client: client, canvasWidth: canvasWidth, canvasHeight: canvasHeight)
+        } else if !layout.showsCamera {
+            // The content alone, exactly where it goes under a bubble: the
+            // bubble arrangement is the one that leaves it whole. Presenter's
+            // panel would shrink it to make room for a person who is not there.
+            try await placeContentFullFrame(client: client, canvasWidth: canvasWidth, canvasHeight: canvasHeight)
+            try await ensureScreenPanelMask(client: client, enabled: false, canvasWidth: canvasWidth, canvasHeight: canvasHeight)
+        } else if layout.shape.isPresenterStyle {
             try await layoutPresenter(client: client, canvasWidth: canvasWidth, canvasHeight: canvasHeight)
         } else if layout.shape == .cutout {
             try await placeContentFullFrame(client: client, canvasWidth: canvasWidth, canvasHeight: canvasHeight)
@@ -1406,6 +1506,38 @@ enum GreenroomScene {
                 "boundsHeight": frameHeight
             ]
         ])
+    }
+
+    /// Nothing shared: every camera fills the frame, as large as it goes
+    /// without cropping, centred on the backdrop.
+    ///
+    /// One arrangement for every look. A cutout standing on the bottom edge
+    /// at half height, or Presenter's person off to the left of a panel, are
+    /// both placed relative to content that is not there; with nothing
+    /// beside them they would just be a small person in a big dark frame.
+    /// Full height and centred is where a person filming themselves sits.
+    ///
+    /// SCALE_INNER with the bounds at the canvas, aligned to the centre, is
+    /// aspect-fit: a 16:9 camera on the 16:9 canvas fills it exactly, and
+    /// anything else (a 4:3 camera, a phone on its side) is letterboxed onto
+    /// the backdrop rather than stretched.
+    private static func layoutCameraFullFrame(client: OBSWebSocketClient,
+                                              canvasWidth: Int, canvasHeight: Int) async throws {
+        for camera in cameraItems(try await sceneItems(client: client)) {
+            guard let itemId = camera["sceneItemId"] as? Int else { continue }
+            _ = try await client.request("SetSceneItemTransform", data: [
+                "sceneName": sceneName,
+                "sceneItemId": itemId,
+                "sceneItemTransform": [
+                    "positionX": 0,
+                    "positionY": 0,
+                    "boundsType": "OBS_BOUNDS_SCALE_INNER",
+                    "boundsAlignment": 0,
+                    "boundsWidth": canvasWidth,
+                    "boundsHeight": canvasHeight
+                ]
+            ])
+        }
     }
 
     /// Points OBS's recording output at recordingsDirectory - both the

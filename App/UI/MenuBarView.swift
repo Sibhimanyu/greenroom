@@ -28,6 +28,8 @@ struct MenuBarView: View {
         // second trigger.
         Button(coordinator.isRunning ? "Starting\u{2026}"
                : coordinator.virtualCamActive ? "In Session"
+               : coordinator.recordOnlyActive ? "Recording"
+               : coordinator.meetingMode == .record ? "Start Recording"
                : coordinator.meetingMode == .create ? "Start Meeting" : "Join Meeting") {
             coordinator.start()
         }
@@ -38,7 +40,7 @@ struct MenuBarView: View {
             coordinator.confirmAndStop()
         }
         .keyboardShortcut("x", modifiers: [.option, .command])
-        .disabled(coordinator.isStopping || (!coordinator.isRunning && !coordinator.virtualCamActive))
+        .disabled(coordinator.isStopping || (!coordinator.isRunning && !coordinator.sceneInUse))
 
         Button(coordinator.isRecording ? "Stop Recording" : "Start Recording") {
             coordinator.toggleRecording()

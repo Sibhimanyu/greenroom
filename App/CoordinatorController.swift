@@ -332,7 +332,7 @@ final class CoordinatorController: ObservableObject {
             Analytics.setting("camera_director", on: cameraDirectorSettings.isUsable)
             // Applied live: a teacher who turns it on mid-class should not
             // have to end the session to get it.
-            if virtualCamActive, client.isConnected {
+            if sceneInUse, client.isConnected {
                 applyCameraDirectorLive(from: oldValue)
             }
         }
@@ -373,7 +373,7 @@ final class CoordinatorController: ObservableObject {
             }
             // The cameras still being the ones just opened is what matters. A
             // dwell or transition changed meanwhile is simply taken as it is now.
-            guard virtualCamActive, sessionCameraUIDs(cameraDirectorSettings) == uids,
+            guard sceneInUse, sessionCameraUIDs(cameraDirectorSettings) == uids,
                   !cameraDirector.isRunning else { return }
             cameraDirector.start(client: client, settings: cameraDirectorSettings)
             log("Watching for which camera you're facing \u{2014} \(uids.count) cameras, all open, switching after \(String(format: "%.1f", cameraDirectorSettings.dwellSeconds))s facing another.")
@@ -421,7 +421,7 @@ final class CoordinatorController: ObservableObject {
                 return
             }
             // Only if the cameras did not change again while these were being set up.
-            guard virtualCamActive, sessionCameraUIDs(cameraDirectorSettings) == after else { return }
+            guard sceneInUse, sessionCameraUIDs(cameraDirectorSettings) == after else { return }
             cameraDirector.start(client: client, settings: cameraDirectorSettings)
         }
     }
@@ -721,8 +721,27 @@ final class CoordinatorController: ObservableObject {
               cutoutHeightFraction: cutoutHeightFraction,
               cutoutRightInset: cutoutRightInset,
               shape: webcamShape,
-              greenroomCamera: !cutoutPublishers.isEmpty)
+              greenroomCamera: !cutoutPublishers.isEmpty,
+              showsContent: shareTarget.kind != .nothing,
+              showsCamera: !cameraIsOff)
     }
+
+    /// "No camera" picked on the Webcam page, and honoured.
+    ///
+    /// Not with switching on: that is a choice to have cameras. And not with
+    /// nothing shared either, since the picture would then be an empty
+    /// backdrop - the page refuses that pair, and this is the backstop for a
+    /// pair that arrived anyway (an imported settings file, say).
+    var cameraIsOff: Bool {
+        cameraDirectorSettings.noCamera && !cameraDirectorSettings.enabled
+            && shareTarget.kind != .nothing
+    }
+
+    /// The Webcam page's picture is in use by a session - a meeting's virtual
+    /// camera, or a recording made from Home's Record mode. Everything that
+    /// would rebuild the scene waits while this is true, exactly as it always
+    /// waited for the virtual camera.
+    var sceneInUse: Bool { virtualCamActive || recordOnlyActive }
 
     /// Automatic (no green screen) or a real green screen, for Cutout and
     /// Presenter. Takes effect when the cameras are next opened: at Start, or
@@ -730,7 +749,7 @@ final class CoordinatorController: ObservableObject {
     @Published var backgroundRemoval: BackgroundRemoval {
         didSet {
             defaults.set(backgroundRemoval.rawValue, forKey: "backgroundRemoval")
-            guard backgroundRemoval != oldValue, !virtualCamActive, !isRunning,
+            guard backgroundRemoval != oldValue, !sceneInUse, !isRunning,
                   shapePreviewTask != nil else { return }
             restartPreviewCameras()
         }
@@ -800,6 +819,8 @@ final class CoordinatorController: ObservableObject {
     /// serves both - if it is plugged in; otherwise whatever the resolver
     /// likes best, as before there was a choice.
     func sceneCameraUIDs(limit: Int? = nil) -> [String] {
+        // No camera means none opened, by Greenroom or by OBS.
+        if cameraIsOff { return [] }
         let listed = sessionCameraUIDs(cameraDirectorSettings)
         let available = Set(LocalDeviceResolver.availableCameras().map(\.id))
         let picked = cameraDirectorSettings.cameraUIDs.first { available.contains($0) }
@@ -834,7 +855,7 @@ final class CoordinatorController: ObservableObject {
     /// the preview's scene for it. During a class it waits for the next Start,
     /// like everything else that would rebuild a source.
     func previewCamerasChanged() {
-        guard !virtualCamActive, !isRunning, shapePreviewTask != nil else { return }
+        guard !sceneInUse, !isRunning, shapePreviewTask != nil else { return }
         restartPreviewCameras()
     }
 
@@ -1329,10 +1350,16 @@ final class CoordinatorController: ObservableObject {
         // the button mid-session, but the global hotkey has no disabled
         // state - without the extra checks it could stack a second
         // meeting onto a live session.
-        guard !isRunning, !virtualCamActive, !isStopping else { return }
+        guard !isRunning, !sceneInUse, !isStopping else { return }
+        if meetingMode == .record {
+            startRecordingSession()
+            return
+        }
         loadSecretsIfNeeded()
 
         switch meetingMode {
+        case .record:
+            return
         case .create:
             guard !s2sAccountID.isEmpty, !s2sClientID.isEmpty, !s2sClientSecret.isEmpty else {
                 log("Can't create a meeting yet \u{2014} add the Server-to-Server credentials in Settings (\u{2318},) \u{2192} Zoom.")
@@ -1450,6 +1477,8 @@ final class CoordinatorController: ObservableObject {
                     log("Joining meeting \(meetingNumber) in Zoom\u{2026}")
                     ZoomLauncher.join(meetingNumber: meetingNumber, password: meetingPassword)
                     joinChatOnly() // logs its own reason if skipped (e.g. no SDK credentials)
+                case .record:
+                    break // routed to startRecordingSession before any of this
                 }
 
                 try Task.checkCancellation()
@@ -1522,6 +1551,10 @@ final class CoordinatorController: ObservableObject {
     /// the way it did when OBS auto-resumed a previous session's state.
     func stop() {
         guard !isStopping else { return }
+        if recordOnlyActive || (isRunning && startingRecordOnly) {
+            stopRecordingSession()
+            return
+        }
         isStopping = true
         Analytics.track(.sessionEnd, [
             .durationBand: Analytics.band(seconds: sessionStartedAt.map { Date().timeIntervalSince($0) } ?? 0),
@@ -1910,6 +1943,12 @@ final class CoordinatorController: ObservableObject {
     }
 
     func toggleRecording() {
+        // In Record mode the recording IS the session: stopping the tape ends
+        // it, rather than leaving OBS holding a picture nobody is recording.
+        if recordOnlyActive {
+            stopRecordingSession()
+            return
+        }
         Task {
             do {
                 if isRecording {
@@ -1933,46 +1972,195 @@ final class CoordinatorController: ObservableObject {
                         log("Recording stopped.")
                     }
                 } else {
-                    // Warn about space BEFORE the tape rolls, and warn rather
-                    // than refuse: running out mid-class loses the tail of a
-                    // recording, but blocking the button loses the whole
-                    // thing, and only the teacher knows whether this class is
-                    // worth the risk. Auto-record comes through here too, so
-                    // this covers the case nobody pressed anything.
-                    if let free = GreenroomScene.recordingsFreeBytes {
-                        let readable = ByteCountFormatter.string(fromByteCount: free, countStyle: .file)
-                        switch GreenroomScene.spaceLevel(freeBytes: free) {
-                        case .critical:
-                            log("Only \(readable) free \u{2014} that may not last a full class. Recordings live in Documents/Greenroom.")
-                            Notifier.post(title: "Low disk space for recording",
-                                          body: "Only \(readable) free, which may not fit a full class.")
-                        case .low:
-                            log("\(readable) free \u{2014} room for roughly two more classes.")
-                        case .ok:
-                            break
-                        }
-                    }
-                    // Right before StartRecord, not at session setup: this is
-                    // the first moment we know a recording is actually going to
-                    // happen, so it is the first moment worth creating a folder.
-                    if let folder = sessionFolder {
-                        await GreenroomScene.pointRecordingAt(folder, client: client)
-                    }
-                    _ = try await client.request("StartRecord")
-                    isRecording = true
-                    recordingStartedAt = Date()
-                    Analytics.track(.recordingStart)
-                    log("Recording\u{2026} (screen + webcam composite)")
-                    // Confirmation where it can be seen - mid-session the
-                    // main window is buried behind the main app. The menu
-                    // bar's GR also flips to a REC glyph via isRecording.
-                    Notifier.post(title: "Recording started",
-                                  body: "Greenroom is recording the composite. \u{2325}\u{2318}R stops it.")
+                    try await beginRecording()
                 }
             } catch {
                 log("Recording failed: \(error.localizedDescription) \u{2014} press Start first if the session isn't running.")
                 Analytics.failure("record")
             }
+        }
+    }
+
+    /// Starts the tape. The Record button's half of toggleRecording, and the
+    /// whole of what a Record-mode session does once its scene is built.
+    private func beginRecording() async throws {
+        // Warn about space BEFORE the tape rolls, and warn rather
+        // than refuse: running out mid-class loses the tail of a
+        // recording, but blocking the button loses the whole
+        // thing, and only the teacher knows whether this class is
+        // worth the risk. Auto-record comes through here too, so
+        // this covers the case nobody pressed anything.
+        if let free = GreenroomScene.recordingsFreeBytes {
+            let readable = ByteCountFormatter.string(fromByteCount: free, countStyle: .file)
+            switch GreenroomScene.spaceLevel(freeBytes: free) {
+            case .critical:
+                log("Only \(readable) free \u{2014} that may not last a full class. Recordings live in Documents/Greenroom.")
+                Notifier.post(title: "Low disk space for recording",
+                              body: "Only \(readable) free, which may not fit a full class.")
+            case .low:
+                log("\(readable) free \u{2014} room for roughly two more classes.")
+            case .ok:
+                break
+            }
+        }
+        // Right before StartRecord, not at session setup: this is
+        // the first moment we know a recording is actually going to
+        // happen, so it is the first moment worth creating a folder.
+        if let folder = sessionFolder {
+            await GreenroomScene.pointRecordingAt(folder, client: client)
+        }
+        _ = try await client.request("StartRecord")
+        isRecording = true
+        recordingStartedAt = Date()
+        Analytics.track(.recordingStart)
+        log("Recording\u{2026} (screen + webcam composite)")
+        // Confirmation where it can be seen - mid-session the
+        // main window is buried behind the main app. The menu
+        // bar's GR also flips to a REC glyph via isRecording.
+        Notifier.post(title: "Recording started",
+                      body: "Greenroom is recording the composite. \u{2325}\u{2318}R stops it.")
+    }
+
+    // MARK: Record mode - the picture, recorded, with no meeting
+
+    /// A recording from Home's Record mode is live: the scene is built and
+    /// the tape is rolling. No virtual camera and no meeting, so neither
+    /// `virtualCamActive` nor anything keyed to the meeting is set.
+    @Published private(set) var recordOnlyActive = false
+    /// A Record-mode start is in flight, so Stop knows which teardown the
+    /// half-started session needs.
+    private(set) var startingRecordOnly = false
+
+    /// Start, in Record mode: the OBS half of a meeting's Start, then the
+    /// tape.
+    ///
+    /// The same scene as a meeting - same look, same share, same camera and
+    /// microphone - because the Webcam page is the one description of the
+    /// picture and Record is just another place to send it. Everything else a
+    /// Start does is left out: no meeting, no chat window, no tiling, and no
+    /// virtual camera, which only exists so a meeting app can see the picture.
+    /// Recording reads OBS's program output directly and does not need it.
+    ///
+    /// No clip buffer either. The whole session is on disk, so the clip
+    /// shortcuts mark the recording itself, as they do whenever one is running.
+    func startRecordingSession() {
+        guard !isRunning, !sceneInUse, !isStopping else { return }
+        isRunning = true
+        startingRecordOnly = true
+        statusLines = []
+        let startedAt = Date()
+        sessionStartedAt = startedAt
+        let folder = GreenroomScene.uniqueSessionFolder(
+            named: GreenroomScene.sessionFolderName(className: className, started: startedAt,
+                                                    fallback: "Recording"),
+            in: GreenroomScene.recordingsDirectory)
+        sessionFolder = folder
+        Analytics.track(.sessionStart, [
+            .mode: "record",
+            .displays: String(NSScreen.screens.count)
+        ])
+
+        startTask = Task {
+            do {
+                try await buildScene()
+                try Task.checkCancellation()
+                try await beginRecording()
+                recordOnlyActive = true
+                // Only once the tape is rolling: a start that fails before
+                // this leaves an empty folder, which is then removed.
+                var metadata = SessionMetadata()
+                metadata.kind = SessionMetadata.Kind.recording.rawValue
+                let typed = GreenroomScene.sanitizedClassName(className)
+                metadata.title = typed.isEmpty ? nil : typed
+                metadata.save(in: folder)
+                // A second camera, if switching is on, and the director to cut
+                // to it - the same as a meeting.
+                bringInExtraCameras()
+                log("Recording into \u{201C}\(folder.lastPathComponent)\u{201D} in Documents/Greenroom. Stop ends it.")
+            } catch {
+                if error is CancellationError {
+                    log("Start cancelled.")
+                } else {
+                    log("Couldn\u{2019}t start recording: \(error.localizedDescription)")
+                    Analytics.failure("record_start")
+                }
+                // Left as Stop would leave it, so the next Start begins clean
+                // and no camera stays open behind an abandoned attempt.
+                await tearDownRecordingScene()
+                discardEmptySessionFolder()
+                sessionFolder = nil
+                sessionStartedAt = nil
+            }
+            isRunning = false
+            startingRecordOnly = false
+        }
+    }
+
+    /// Stop, in Record mode: the tape first, then the OBS side exactly as End
+    /// Session leaves it.
+    ///
+    /// A start still in flight is cancelled and then WAITED for, unlike a
+    /// meeting's. Its steps are not cancellation-aware, so without the wait a
+    /// recording could start after this had already decided there was none
+    /// to stop - a tape rolling with no session left to stop it.
+    func stopRecordingSession() {
+        guard !isStopping else { return }
+        isStopping = true
+        let pending = startTask
+        pending?.cancel()
+        Task {
+            await pending?.value
+            log("Stopping\u{2026}")
+            var saved: String?
+            if isRecording {
+                if let path = (try? await client.request("StopRecord"))?["outputPath"] as? String {
+                    let marks = adoptPendingClips(recordedAt: path)
+                    log("Recording saved: \(path)" + (marks > 0 ? " (\(marks) clip\(marks == 1 ? "" : "s") marked)" : ""))
+                    Notifier.post(title: "Recording saved",
+                                  body: "\((path as NSString).lastPathComponent) \u{2014} in Documents/Greenroom.")
+                    saved = path
+                } else {
+                    log("Recording stopped, but OBS didn\u{2019}t say where it saved it \u{2014} look in Documents/Greenroom.")
+                }
+                isRecording = false
+                Analytics.track(.recordingEnd, [
+                    .durationBand: Analytics.band(seconds: recordingStartedAt.map { Date().timeIntervalSince($0) } ?? 0)
+                ])
+                recordingStartedAt = nil
+            }
+            // A start that failed has already torn down; this one has not.
+            if recordOnlyActive { await tearDownRecordingScene() }
+            Analytics.track(.sessionEnd, [
+                .durationBand: Analytics.band(seconds: sessionStartedAt.map { Date().timeIntervalSince($0) } ?? 0)
+            ])
+            discardEmptySessionFolder()
+            sessionFolder = nil
+            sessionStartedAt = nil
+            recordOnlyActive = false
+            isStopping = false
+            // Last, as after a class: the upload question waits for
+            // everything else to have finished.
+            if let saved { recordingFinished(path: saved) }
+        }
+    }
+
+    /// The OBS half of End Session, and only that: cameras let go, OBS parked
+    /// on its standby scene before the socket closes (see
+    /// parkOBSOnStandbyScene for the crash that order prevents), Greenroom's
+    /// own camera feeds stopped once OBS no longer shows them.
+    private func tearDownRecordingScene() async {
+        cameraDirector.stop()
+        await releaseExtraCameras()
+        if client.isConnected {
+            await parkOBSOnStandbyScene()
+        }
+        stopCutoutPublishers()
+        client.disconnect()
+        if keepOBSWarm {
+            log("OBS stays ready for a fast next start (it quits with Greenroom).")
+        } else {
+            await processManager.quitAndWait()
+            log("Stopped OBS.")
         }
     }
 
@@ -2007,7 +2195,7 @@ final class CoordinatorController: ObservableObject {
         guard shapePreviewTask == nil else { return }
         shapePreviewTask = Task {
             defer { publishPreviewFrame(nil) }
-            if !virtualCamActive {
+            if !sceneInUse {
                 guard !NSRunningApplication.runningApplications(withBundleIdentifier: OBSProcessManager.bundleIdentifier).isEmpty else { return }
                 if (try? await client.request("GetVersion")) == nil {
                     client.disconnect()
@@ -2054,7 +2242,7 @@ final class CoordinatorController: ObservableObject {
     /// Idle only. During a class the director owns the cameras and this would
     /// be a second opener of one of them for no reason.
     func aimCamera(uid: String) {
-        guard !virtualCamActive else { return }
+        guard !sceneInUse else { return }
         cameraProbe.start(uid: uid)
     }
 
@@ -2066,7 +2254,7 @@ final class CoordinatorController: ObservableObject {
         shapePreviewSceneReady = false
         // The preview opened the camera; a session that is not running has
         // no use for it, and the camera light should go off.
-        if !virtualCamActive, !isRunning { stopCutoutPublishers() }
+        if !sceneInUse, !isRunning { stopCutoutPublishers() }
         publishPreviewFrame(nil)
     }
 
@@ -2082,7 +2270,7 @@ final class CoordinatorController: ObservableObject {
     /// `rebuild` is for what a re-layout cannot change - what is shared - and
     /// only outside a session, where rebuilding the scene is allowed.
     func requestShapeApply(rebuild: Bool = false) {
-        if rebuild, !virtualCamActive, !isRunning { shapePreviewSceneReady = false }
+        if rebuild, !sceneInUse, !isRunning { shapePreviewSceneReady = false }
         shapePreviewApply?.cancel()
         shapePreviewApply = Task {
             try? await Task.sleep(nanoseconds: 120_000_000)
@@ -2105,7 +2293,7 @@ final class CoordinatorController: ObservableObject {
     /// OBS accepts perfectly well with the virtual camera running, so a live
     /// session now takes that path instead of being refused.
     func applyShapeForPreview() async {
-        if virtualCamActive || isRunning || shapePreviewSceneReady {
+        if sceneInUse || isRunning || shapePreviewSceneReady {
             do {
                 try await GreenroomScene.applyLiveLayout(client: client, bubble: bubbleLayout)
             } catch {
@@ -2937,8 +3125,10 @@ final class CoordinatorController: ObservableObject {
     /// "Start Meeting" was clickable with no credentials and "Join
     /// Meeting" with no meeting ID (Codex design audit #1).
     var startActionDisabled: Bool {
-        if isRunning || virtualCamActive || isStopping { return true }
+        if isRunning || sceneInUse || isStopping { return true }
         switch meetingMode {
+        // Needs nothing but OBS, which Start checks for itself.
+        case .record: return false
         case .create: return s2sAccountID.isEmpty || s2sClientID.isEmpty
         // Zoom meeting IDs are 9-11 digits. Gating only on "not empty" let
         // "12345" arm Start, which then ran the whole pipeline - OBS launch,
@@ -2961,7 +3151,7 @@ final class CoordinatorController: ObservableObject {
     /// second confirmation, and asking again during teardown would be a dialog
     /// nobody can act on usefully.
     var hasLiveSession: Bool {
-        !isStopping && (isRunning || virtualCamActive || isRecording)
+        !isStopping && (isRunning || sceneInUse || isRecording)
     }
 
     /// Asks before quitting out from under a live class.
@@ -3011,6 +3201,12 @@ final class CoordinatorController: ObservableObject {
     }
 
     func confirmAndStop() {
+        // Stopping a recording ends nothing for anybody else, so it is not
+        // asked about: Stop, and the file is saved.
+        if recordOnlyActive || (isRunning && startingRecordOnly) {
+            stopRecordingSession()
+            return
+        }
         guard isRunning || virtualCamActive else { return }
         NSApp.activate(ignoringOtherApps: true) // the hotkey fires while other apps are focused
         let alert = NSAlert()
@@ -3752,6 +3948,26 @@ final class CoordinatorController: ObservableObject {
     }
 
     private func runPipeline() async throws {
+        try await buildScene()
+
+        log("Starting the virtual camera\u{2026}")
+        try await GreenroomScene.startVirtualCam(client: client)
+        virtualCamActive = true
+
+        if cameraDirectorSettings.isUsable {
+            // Nothing else may hold a camera once the director owns them.
+            cameraProbe.stop()
+        }
+
+        log("Ready \u{2014} \u{201C}OBS Virtual Camera\u{201D} is live.")
+        log("First time only: in Zoom, go to Settings \u{2192} Video and pick \u{201C}OBS Virtual Camera\u{201D}. Zoom remembers that choice for every call after this.")
+    }
+
+    /// The OBS half of a Start: OBS up and connected, the cameras opened,
+    /// and the scene built from the Webcam page - everything a meeting and a
+    /// Record-mode recording share, which is the point of there being one
+    /// Webcam page. Says out loud anything that did not come out as set.
+    private func buildScene() async throws {
         guard processManager.isInstalled else {
             throw NSError(domain: "Greenroom", code: 10, userInfo: [
                 NSLocalizedDescriptionKey: "OBS Studio isn't installed. Get it free from obsproject.com, then try again."
@@ -3807,8 +4023,13 @@ final class CoordinatorController: ObservableObject {
             // see bringInExtraCameras.
             cameraUIDs: sceneCameraUIDs(limit: 1),
             micDeviceUID: micDeviceUID)
-        if !setup.webcamActive {
+        if !setup.webcamActive, cameraIsOff {
+            log("No camera, as set in Settings \u{2192} Webcam \u{2014} the picture is what you share.")
+        } else if !setup.webcamActive {
             log("No webcam connected \u{2014} running screen-only. Plug a camera in and press Start (or Snap Windows Back) to bring your video back.")
+        }
+        if shareTarget.kind == .nothing {
+            log("Nothing shared, as set in Settings \u{2192} Webcam \u{2014} your camera fills the picture.")
         }
         if let reason = setup.shareFellBack {
             log("\(reason) \u{2014} sharing the whole screen instead. Open it and press Start again, or change what you share in Settings (\u{2318},) \u{2192} Layout.")
@@ -3838,18 +4059,6 @@ final class CoordinatorController: ObservableObject {
             Notifier.post(title: "Screen sharing is blank",
                           body: "OBS couldn't capture that display. Check Settings \u{2192} Layout.")
         }
-
-        log("Starting the virtual camera\u{2026}")
-        try await GreenroomScene.startVirtualCam(client: client)
-        virtualCamActive = true
-
-        if cameraDirectorSettings.isUsable {
-            // Nothing else may hold a camera once the director owns them.
-            cameraProbe.stop()
-        }
-
-        log("Ready \u{2014} \u{201C}OBS Virtual Camera\u{201D} is live.")
-        log("First time only: in Zoom, go to Settings \u{2192} Video and pick \u{201C}OBS Virtual Camera\u{201D}. Zoom remembers that choice for every call after this.")
     }
 
     /// OBS takes a moment to come up after launch, so the first few connect
@@ -3888,7 +4097,7 @@ final class CoordinatorController: ObservableObject {
     }
 
     func prewarmOBSIfEnabled() {
-        guard keepOBSWarm, processManager.isInstalled, !isRunning, !virtualCamActive else { return }
+        guard keepOBSWarm, processManager.isInstalled, !isRunning, !sceneInUse else { return }
         Task { try? await processManager.launch() }
     }
 
@@ -3954,6 +4163,9 @@ struct MeetingPreset: Codable, Identifiable, Hashable {
 /// a fresh meeting, or join one you already have a link/ID for?
 enum MeetingMode: String, CaseIterable, Identifiable {
     case create, join
+    /// No meeting: the Webcam page's picture recorded to this Mac. See
+    /// `startRecordingSession`.
+    case record
 
     var id: String { rawValue }
 
@@ -3961,6 +4173,7 @@ enum MeetingMode: String, CaseIterable, Identifiable {
         switch self {
         case .create: return "New Meeting"
         case .join: return "Join Existing"
+        case .record: return "Record"
         }
     }
 }

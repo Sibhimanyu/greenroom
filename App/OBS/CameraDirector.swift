@@ -101,6 +101,17 @@ struct CameraDirectorSettings: Codable, Equatable {
     /// What the class sees at the moment the shot moves.
     var transition: CameraTransition = .cut
 
+    /// "No camera" on the Webcam page: the picture is the shared content
+    /// alone and no camera is opened at all.
+    ///
+    /// Kept here, beside the camera list, because the same cards set both:
+    /// picking a camera card clears it. A flag rather than a sentinel in
+    /// `cameraUIDs`, which is a list of real devices that `availableOnly`,
+    /// the director and the transfer file all read as such. Only meaningful
+    /// with switching off - switching is a choice to have cameras - so it is
+    /// read through `CoordinatorController.cameraIsOff`, never directly.
+    var noCamera: Bool = false
+
     static let key = "cameraDirectorSettings"
 
     /// Usable only when there is somewhere to cut TO.
@@ -156,6 +167,7 @@ extension CameraDirectorSettings {
         // An unknown case, from a newer build, is a cut rather than a failure.
         transition = (try? container.decodeIfPresent(CameraTransition.self, forKey: .transition))
             .flatMap { $0 } ?? fallback.transition
+        noCamera = try container.decodeIfPresent(Bool.self, forKey: .noCamera) ?? fallback.noCamera
     }
 }
 

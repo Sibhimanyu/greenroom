@@ -55,6 +55,7 @@ struct WebcamSettingsTab: View {
             shareKind: $coordinator.shareTarget.kind,
             previewAspect: coordinator.shapePreviewAspect,
             cameraSeesYou: coordinator.cameraSeesYou || !coordinator.webcamShape.usesChromaKey,
+            cameraOff: coordinator.cameraIsOff,
             isAtDefault: coordinator.bubbleIsAtDefault,
             apply: { coordinator.requestShapeApply() },
             reset: {
@@ -113,6 +114,9 @@ struct WebcamPageContent<LivePicture: View, ShareDetail: View, Cameras: View, Mi
     let previewAspect: CGSize?
     /// False while background removal finds nobody in the camera.
     var cameraSeesYou = true
+    /// "No camera" is picked under Camera. Nothing behind you is then
+    /// refused, because the picture would be an empty backdrop.
+    var cameraOff = false
     let isAtDefault: Bool
     let apply: () -> Void
     let reset: () -> Void
@@ -144,8 +148,12 @@ struct WebcamPageContent<LivePicture: View, ShareDetail: View, Cameras: View, Mi
     private var isLive: Bool { previewAspect != nil }
     private var isCutout: Bool { shape == .cutout }
     /// Presenter rebuilds the whole scene rather than placing a source, so it
-    /// has no size or position to edit.
-    private var isAdjustable: Bool { shape != .presenterLarge }
+    /// has no size or position to edit. Nor does a picture that is only the
+    /// camera (it fills the frame) or only the shared content (no camera to
+    /// place).
+    private var isAdjustable: Bool {
+        shape != .presenterLarge && shareKind != .nothing && !cameraOff
+    }
     private var canvasAspect: CGSize { previewAspect ?? CGSize(width: 16, height: 10) }
 
     /// 16:9, the fallback GreenroomScene uses when it cannot read the camera.
@@ -177,7 +185,7 @@ struct WebcamPageContent<LivePicture: View, ShareDetail: View, Cameras: View, Mi
             }
 
             Section("Behind you") {
-                ShareKindPicker(selection: $shareKind)
+                ShareKindPicker(selection: $shareKind, nothingAllowed: !cameraOff)
                 shareDetail()
             }
 
@@ -203,6 +211,8 @@ struct WebcamPageContent<LivePicture: View, ShareDetail: View, Cameras: View, Mi
                 Group {
                     if isLive {
                         livePicture()
+                    } else if shareKind == .nothing || cameraOff {
+                        HalfSketch(showsCamera: !cameraOff)
                     } else {
                         WebcamShapePreview(shape: shape, geometry: stageGeometry, mode: mode)
                     }
@@ -378,20 +388,52 @@ private struct LookPicker: View {
     }
 }
 
-/// Whole screen, one app, or one window, as pictures.
+/// The sketch for a picture with one half missing: the camera alone, filling
+/// the frame, or the shared content alone. The full sketch draws a bubble on a
+/// screen, which is exactly what these two are not.
+private struct HalfSketch: View {
+    let showsCamera: Bool
+
+    var body: some View {
+        GeometryReader { geo in
+            ZStack {
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(Color.black.opacity(0.82))
+                if showsCamera {
+                    Image(systemName: "person.fill")
+                        .resizable().scaledToFit()
+                        .foregroundStyle(Color.white.opacity(0.55))
+                        .frame(height: geo.size.height * 0.8)
+                        .offset(y: geo.size.height * 0.1)
+                } else {
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill(Color(white: 0.78))
+                }
+            }
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+        }
+    }
+}
+
+/// Whole screen, one app, one window or nothing, as pictures.
 private struct ShareKindPicker: View {
     @Binding var selection: ShareTarget.Kind
+    /// False while there is no camera: nothing shared would leave nothing.
+    var nothingAllowed = true
 
     var body: some View {
         HStack(spacing: 8) {
             ForEach(ShareTarget.Kind.allCases) { kind in
+                let allowed = kind != .nothing || nothingAllowed
                 ChoiceTile(title: title(kind), selected: kind == selection, badge: nil) {
                     Image(systemName: symbol(kind))
                         .font(.system(size: 22, weight: .regular))
                         .foregroundStyle(kind == selection ? Brand.green : Color.secondary)
                         .frame(height: 32)
                 } action: { selection = kind }
-                .help(help(kind))
+                .disabled(!allowed)
+                .help(allowed ? help(kind)
+                              : "Pick a camera first. With nothing behind you and no camera, there\u{2019}s nothing to show.")
             }
         }
         .padding(.vertical, 4)
@@ -402,6 +444,7 @@ private struct ShareKindPicker: View {
         case .display: return "Screen"
         case .app: return "App"
         case .window: return "Window"
+        case .nothing: return "Nothing"
         }
     }
 
@@ -410,6 +453,7 @@ private struct ShareKindPicker: View {
         case .display: return "display"
         case .app: return "square.grid.2x2"
         case .window: return "macwindow"
+        case .nothing: return "person.crop.rectangle"
         }
     }
 
@@ -418,6 +462,7 @@ private struct ShareKindPicker: View {
         case .display: return "Everything on one screen"
         case .app: return "Only one app\u{2019}s windows"
         case .window: return "Just one window, on a dark backdrop"
+        case .nothing: return "Just you: the camera fills the frame"
         }
     }
 }

@@ -36,19 +36,36 @@ struct ContentView: View {
     private var startLabel: String {
         if coordinator.isRunning { return "Starting\u{2026}" }
         if coordinator.virtualCamActive { return "In Session" }
-        return coordinator.meetingMode == .create ? "Start Meeting" : "Join Meeting"
+        if coordinator.recordOnlyActive { return "Recording" }
+        switch coordinator.meetingMode {
+        case .create: return "Start Meeting"
+        case .join: return "Join Meeting"
+        case .record: return "Start Recording"
+        }
     }
 
     private var startHelp: String {
-        coordinator.meetingMode == .create
-            ? "Turns on the virtual camera, creates a fresh meeting under your Zoom account with you as host, and tiles your windows \u{2014} the whole session in one click."
-            : "Turns on the virtual camera, joins the meeting above (starting it as host if it's yours), and tiles your windows."
+        switch coordinator.meetingMode {
+        case .create:
+            return "Turns on the virtual camera, creates a fresh meeting under your Zoom account with you as host, and tiles your windows \u{2014} the whole session in one click."
+        case .join:
+            return "Turns on the virtual camera, joins the meeting above (starting it as host if it's yours), and tiles your windows."
+        case .record:
+            return "Records the picture set in Settings \u{2192} Webcam into Documents/Greenroom. No meeting, no windows moved."
+        }
+    }
+
+    /// What is running wins over what the picker says, so flipping the picker
+    /// mid-session does not relabel the buttons of the session in progress.
+    private var isRecordMode: Bool {
+        coordinator.recordOnlyActive
+            || (coordinator.meetingMode == .record && !coordinator.virtualCamActive)
     }
 
     /// Stop needs something to stop: a live session, or a start in
     /// flight (which it cancels at the next checkpoint).
     private var stopDisabled: Bool {
-        coordinator.isStopping || (!coordinator.isRunning && !coordinator.virtualCamActive)
+        coordinator.isStopping || (!coordinator.isRunning && !coordinator.sceneInUse)
     }
 
     /// Recording needs a live OBS session - except when already
@@ -77,10 +94,10 @@ struct ContentView: View {
     /// also need a label saying CLASS NAME.
     @ViewBuilder private var classNameField: some View {
         HStack(spacing: 10) {
-            TextField("Name this class", text: $coordinator.className)
+            TextField(isRecordMode ? "Name this recording" : "Name this class", text: $coordinator.className)
                 .textFieldStyle(.roundedBorder)
                 .frame(maxWidth: 260)
-                .disabled(coordinator.isRunning || coordinator.virtualCamActive)
+                .disabled(coordinator.isRunning || coordinator.sceneInUse)
                 .help("Names this session's folder in Documents/Greenroom. Leave it empty and the folder is named by date and time instead.")
             Text(folderPreview)
                 .font(.system(size: 11, design: .monospaced))
@@ -96,7 +113,8 @@ struct ContentView: View {
     /// obvious the moment the field is empty.
     private var folderPreview: String {
         if let live = coordinator.sessionFolder { return live.lastPathComponent }
-        return GreenroomScene.sessionFolderName(className: coordinator.className, started: Date())
+        return GreenroomScene.sessionFolderName(className: coordinator.className, started: Date(),
+                                                fallback: isRecordMode ? "Recording" : "Green")
     }
 
     var body: some View {
@@ -107,11 +125,13 @@ struct ContentView: View {
 
             classNameField
 
+            LookSummaryLine(change: openWebcamSettings)
+
             HStack(spacing: 10) {
                 Button {
                     coordinator.start()
                 } label: {
-                    Label(startLabel, systemImage: "play.fill")
+                    Label(startLabel, systemImage: isRecordMode ? "record.circle" : "play.fill")
                         .frame(minWidth: 130)
                 }
                 .buttonStyle(.borderedProminent)
@@ -119,28 +139,26 @@ struct ContentView: View {
                 .disabled(startDisabled)
                 .help(startHelp)
 
-                Button(coordinator.isStopping ? "Ending\u{2026}" : "End Session") {
+                Button(stopLabel) {
                     coordinator.confirmAndStop()
                 }
                 .controlSize(.large)
                 .tint(Self.secondaryTint)
                 .disabled(stopDisabled)
-                .help("Ends the meeting for everyone when you're hosting (leaves it otherwise), closes the chat window, and stops the camera and OBS. Ending the meeting from the Zoom window does the same \u{2014} both roads end the whole session.")
+                .help(isRecordMode
+                      ? "Stops the recording and saves it to Documents/Greenroom."
+                      : "Ends the meeting for everyone when you're hosting (leaves it otherwise), closes the chat window, and stops the camera and OBS. Ending the meeting from the Zoom window does the same \u{2014} both roads end the whole session.")
 
                 SessionNotesToggle()
 
                 Spacer()
 
-                Button {
-                    coordinator.toggleRecording()
-                } label: {
-                    Label(coordinator.isRecording ? "Stop Recording" : "Record",
-                          systemImage: coordinator.isRecording ? "stop.circle.fill" : "record.circle")
+                // Record mode's Start already records, so a second Record
+                // button beside it would only be a way to stop the tape
+                // without ending the session.
+                if !isRecordMode {
+                    recordButton
                 }
-                .controlSize(.large)
-                .tint(coordinator.isRecording ? .red : Self.secondaryTint)
-                .disabled(recordDisabled)
-                .help("Records exactly what participants see \u{2014} your shared screen with you in it. Saved to Documents/Greenroom when stopped.")
 
                 Button {
                     openWindow(id: "sessions")
@@ -249,7 +267,9 @@ struct ContentView: View {
         // 356, not 372: the class-name row lost its eyebrow and the 4pt above
         // it, which is ~19pt of content. A height measured for a layout that
         // changed is 19pt of dead space at the bottom of the window.
-        var height: CGFloat = 356
+        // +36 for the look summary: an 18pt row and the stack's 16pt gap,
+        // rounded up to the 4px scale.
+        var height: CGFloat = 356 + 36
         if coordinator.meetingMode == .join { height += 64 }
         if statusShown { height += Self.statusLogHeight + 12 }
         return height
@@ -344,6 +364,34 @@ struct ContentView: View {
         }
     }
 
+    private var recordButton: some View {
+        Button {
+            coordinator.toggleRecording()
+        } label: {
+            Label(coordinator.isRecording ? "Stop Recording" : "Record",
+                  systemImage: coordinator.isRecording ? "stop.circle.fill" : "record.circle")
+        }
+        .controlSize(.large)
+        .tint(coordinator.isRecording ? .red : Self.secondaryTint)
+        .disabled(recordDisabled)
+        .help("Records exactly what participants see \u{2014} your shared screen with you in it. Saved to Documents/Greenroom when stopped.")
+    }
+
+    private var stopLabel: String {
+        if coordinator.isStopping { return isRecordMode ? "Stopping\u{2026}" : "Ending\u{2026}" }
+        return isRecordMode ? "Stop" : "End Session"
+    }
+
+    /// Settings, on the Webcam tab whichever tab it was left on.
+    private func openWebcamSettings() {
+        openSettings()
+        // After the window exists: a Settings window opened just now starts
+        // on Webcam anyway, and one already open needs telling.
+        DispatchQueue.main.async {
+            NotificationCenter.default.post(name: .showWebcamSettings, object: nil)
+        }
+    }
+
     private var meetingSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             Picker("", selection: $coordinator.meetingMode) {
@@ -365,6 +413,10 @@ struct ContentView: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
+            case .record:
+                Text("Records the picture set in Settings \u{2192} Webcam to this Mac. No meeting.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             case .join:
                 // Two aligned rows instead of one crammed line: the
                 // fields get room to breathe, the fill-from sources sit

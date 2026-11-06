@@ -2,8 +2,8 @@
 //  ShareTarget.swift
 //  Greenroom
 //
-//  What the meeting sees behind the webcam: a whole display, one app, or one
-//  window. The display choice itself still lives in `screenCaptureDisplayUUID`
+//  What the meeting sees behind the webcam: a whole display, one app, one
+//  window, or nothing at all. The display choice itself still lives in `screenCaptureDisplayUUID`
 //  (a whole display uses it, and so does an app, whose windows are captured on
 //  that display); this adds what to narrow it to.
 //
@@ -20,6 +20,11 @@ import Foundation
 struct ShareTarget: Codable, Equatable {
     enum Kind: String, Codable, CaseIterable, Identifiable {
         case display, app, window
+        /// No shared content: the camera fills the frame on the backdrop.
+        /// For a talking-head recording, or a meeting where the screen is
+        /// shared some other way. GreenroomScene hides the screen source
+        /// rather than removing it - see `BubbleLayout.showsContent`.
+        case nothing
         var id: String { rawValue }
 
         var label: String {
@@ -27,14 +32,17 @@ struct ShareTarget: Codable, Equatable {
             case .display: return "Whole screen"
             case .app: return "One app"
             case .window: return "One window"
+            case .nothing: return "Nothing"
             }
         }
 
         /// The `type` OBS's macOS screen capture source reads: display,
         /// window, application. Read off the mac-capture plugin in OBS 32.
+        /// `.nothing` is never handed to OBS; it reads as a display only so
+        /// the comparison below has a value.
         var obsType: Int {
             switch self {
-            case .display: return 0
+            case .display, .nothing: return 0
             case .window: return 1
             case .app: return 2
             }
@@ -68,7 +76,7 @@ struct ShareTarget: Codable, Equatable {
             guard ((existing["type"] as? Int) ?? 0) == kind.obsType,
                   (existing["capture_audio"] as? Bool) == false else { return false }
             switch kind {
-            case .display:
+            case .display, .nothing:
                 return (existing["display_uuid"] as? String) == settings["display_uuid"] as? String
             case .app:
                 return (existing["application"] as? String) == settings["application"] as? String
@@ -91,7 +99,9 @@ struct ShareTarget: Codable, Equatable {
         }
 
         switch kind {
-        case .display:
+        // Nothing is shared, so nothing is built from this. A display is
+        // returned so a caller that does build from it gets a valid source.
+        case .display, .nothing:
             return Resolved(kind: .display, settings: display, label: nil, fallback: nil)
 
         case .app:

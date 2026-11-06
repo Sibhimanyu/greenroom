@@ -33,6 +33,9 @@ struct ShareTargetSettings: View {
                 displayPicker(title: "On screen")
             case .window:
                 windowPicker
+            case .nothing:
+                // No "which one" to pick.
+                EmptyView()
             }
         }
         .onAppear(perform: refresh)

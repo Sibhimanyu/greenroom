@@ -62,6 +62,9 @@ struct CameraSwitchSection: View {
                     coordinator.aimCamera(uid: uid)
                 },
                 refresh: { cameras = LocalDeviceResolver.availableCameras() },
+                noCamera: coordinator.cameraIsOff,
+                noCameraAllowed: coordinator.shareTarget.kind != .nothing,
+                chooseNoCamera: chooseNoCamera,
                 liveDetail: { liveDetail })
         }
         .onAppear { cameras = LocalDeviceResolver.availableCameras() }
@@ -80,9 +83,19 @@ struct CameraSwitchSection: View {
     /// that camera: it moves to the front of the same list switching uses,
     /// so turning switching on later starts from the camera already chosen.
     private func pick(_ uid: String) {
-        var uids = coordinator.cameraDirectorSettings.cameraUIDs.filter { $0 != uid }
-        uids.insert(uid, at: 0)
-        coordinator.cameraDirectorSettings.cameraUIDs = uids
+        // One write, so the settings change (and save) once.
+        var settings = coordinator.cameraDirectorSettings
+        settings.cameraUIDs = settings.cameraUIDs.filter { $0 != uid }
+        settings.cameraUIDs.insert(uid, at: 0)
+        settings.noCamera = false
+        coordinator.cameraDirectorSettings = settings
+        coordinator.previewCamerasChanged()
+    }
+
+    /// No camera: the picture is what you share, alone. The chosen camera
+    /// stays first in the list, so picking a camera again is one click on it.
+    private func chooseNoCamera() {
+        coordinator.cameraDirectorSettings.noCamera = true
         coordinator.previewCamerasChanged()
     }
 
@@ -185,6 +198,11 @@ struct CameraSwitchContent<LiveDetail: View>: View {
     let pick: (String) -> Void
     let aim: (String) -> Void
     let refresh: () -> Void
+    /// "No camera" is picked. Only offered with switching off.
+    var noCamera = false
+    /// False while nothing is shared: no camera would leave nothing to show.
+    var noCameraAllowed = true
+    var chooseNoCamera: () -> Void = {}
     @ViewBuilder let liveDetail: () -> LiveDetail
 
     var body: some View {
@@ -250,7 +268,7 @@ struct CameraSwitchContent<LiveDetail: View>: View {
                 CameraCard(camera: camera,
                            // Numbered only when there is an order to show.
                            position: enabled ? position : nil,
-                           chosen: enabled ? position != nil : single == camera.id,
+                           chosen: enabled ? position != nil : !noCamera && single == camera.id,
                            isLive: liveCameraName == camera.name,
                            isAiming: aiming == camera.id, canAim: canAim,
                            toggle: { enabled ? toggle(camera.id, position == nil) : pick(camera.id) },
@@ -258,6 +276,9 @@ struct CameraSwitchContent<LiveDetail: View>: View {
             }
             if cameras.count < 2 && enabled {
                 AddCameraHint()
+            }
+            if !enabled {
+                NoCameraCard(chosen: noCamera, allowed: noCameraAllowed, choose: chooseNoCamera)
             }
             Button(action: refresh) { Image(systemName: "arrow.clockwise") }
                 .buttonStyle(.borderless)
@@ -338,6 +359,52 @@ private struct CameraCard: View {
         if camera.isBuiltIn { return "laptopcomputer" }
         if camera.name.localizedCaseInsensitiveContains("iphone") { return "iphone" }
         return "web.camera"
+    }
+}
+
+/// The camera left out: the picture is the shared content alone.
+private struct NoCameraCard: View {
+    let chosen: Bool
+    let allowed: Bool
+    let choose: () -> Void
+
+    var body: some View {
+        Button(action: choose) {
+            VStack(spacing: 6) {
+                Image(systemName: "video.slash")
+                    .font(.system(size: 22))
+                    .foregroundStyle(chosen ? Brand.green : Color.secondary)
+                    .frame(height: 28)
+                Text("No camera")
+                    .font(.callout.weight(chosen ? .semibold : .regular))
+                    .lineLimit(1)
+            }
+            .frame(maxWidth: .infinity)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(!allowed)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 12)
+        .frame(width: 148)
+        .frame(minHeight: 84)
+        .background(RoundedRectangle(cornerRadius: 10)
+            .fill(chosen ? Brand.green.opacity(0.12) : Color(nsColor: .controlBackgroundColor)))
+        .overlay(RoundedRectangle(cornerRadius: 10)
+            .strokeBorder(chosen ? Brand.green : Color.secondary.opacity(0.25), lineWidth: chosen ? 2 : 1))
+        .overlay(alignment: .topLeading) {
+            if chosen {
+                Image(systemName: "checkmark.circle.fill")
+                    .font(.system(size: 16))
+                    .foregroundStyle(Brand.green)
+                    .padding(6)
+            }
+        }
+        .opacity(allowed ? 1 : 0.5)
+        .help(allowed ? "Just what you share, full frame. No camera is opened."
+                      : "Pick something for Behind you first. With nothing behind you and no camera, there\u{2019}s nothing to show.")
+        .accessibilityLabel("No camera")
+        .accessibilityAddTraits(chosen ? .isSelected : [])
     }
 }
 

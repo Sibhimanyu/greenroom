@@ -91,7 +91,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 },
                 .init(keyCode: UInt32(kVK_ANSI_X), modifiers: mods, label: "\u{2325}\u{2318}X") {
                     guard let coordinator = CoordinatorController.shared,
-                          coordinator.isRunning || coordinator.virtualCamActive else { return }
+                          coordinator.isRunning || coordinator.sceneInUse else { return }
                     coordinator.confirmAndStop() // destructive - always confirms
                 },
                 .init(keyCode: UInt32(kVK_ANSI_R), modifiers: mods, label: "\u{2325}\u{2318}R") {

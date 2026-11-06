@@ -2,25 +2,35 @@
 //  RecordingsView.swift
 //  Greenroom
 //
-//  In-app review of session recordings: everything under ~/Documents/Greenroom,
-//  grouped by the session that produced it, with an AVKit player and the clips
-//  marked during that class laid out along the recording they came from.
+//  The Sessions window: everything under ~/Documents/Greenroom, one card per
+//  session, and for the selected one its player, its clips, where it went and
+//  what the analysis made of it.
 //
-//  Three things this view used to get wrong, all fixed here:
+//  This half reads the disk and runs the actions; SessionsContent.swift draws.
+//  The drawing takes values and closures and nothing else, so it can be
+//  rendered off screen with staged sessions - see that file's note.
+//
+//  Three things this view used to get wrong, all still fixed here:
 //   - It scanned only the top level, so once recordings moved into a folder per
 //     session it would have shown nothing new ever again.
 //   - Delete existed but only in a right-click menu, with no button, no key and
 //     nothing on screen to suggest it. Present but undiscoverable is the same as
-//     missing for anyone who does not try right-clicking.
+//     missing for anyone who does not try right-clicking. It is now in the
+//     inspector's menu, on every card's menu, and on the Delete key.
 //   - A recording was an opaque blob. The marks made during the class had
 //     nowhere to appear, so the one thing a teacher wanted to find again was the
 //     one thing they had to scrub for.
+//
+//  And one it got wrong by design: the analysis was a tab, only reached by
+//  opening a session and then finding the tab, and Screenroom's presentations
+//  were a different kind of thing from a class. Any session with a recording
+//  can now be analysed from the inspector, in place, and "Analysed" is a
+//  status the grid can filter on.
 //
 import SwiftUI
 import AVKit
 
 struct RecordingsView: View {
-    @Environment(\.dismiss) private var dismiss
 
     /// One recording file, plus whatever was marked during it.
     struct Recording: Identifiable, Hashable {
@@ -32,12 +42,8 @@ struct RecordingsView: View {
         var upload: SessionMetadata.Upload?
         var id: URL { url }
 
-        /// Without the seconds.
-        ///
-        /// "Fri, 18 Sep at 9:16:17 PM" measures 149pt and was what held the
-        /// sidebar open at 240pt minimum. The seconds disambiguated two
-        /// recordings inside one minute, which the file size already does,
-        /// and they cost fifty points of a column the video wants.
+        /// Without the seconds - two recordings inside one minute are told
+        /// apart by their size.
         var title: String {
             date.formatted(.dateTime.weekday(.abbreviated).day().month(.abbreviated)
                 .hour().minute())
@@ -49,9 +55,10 @@ struct RecordingsView: View {
         func hash(into hasher: inout Hasher) { hasher.combine(url) }
     }
 
-    /// A class. One folder, usually one recording, sometimes more when the tape
-    /// was stopped and restarted. Legacy loose files are gathered into a single
-    /// unfoldered session so nothing recorded before this change disappears.
+    /// A session. One folder, usually one recording, sometimes more when the
+    /// tape was stopped and restarted. Legacy loose files are gathered into a
+    /// single unfoldered session so nothing recorded before folders existed
+    /// disappears.
     struct Session: Identifiable, Hashable {
         let folder: URL?
         /// The folder's own name - the date and class it was created for.
@@ -62,7 +69,7 @@ struct RecordingsView: View {
         var recordings: [Recording]
         var displayTitle: String { customTitle ?? title }
         var uploadCount: Int { recordings.filter { $0.upload != nil }.count }
-        /// Finished clip files in the session's clips/ folder.
+        /// Finished clip files in the session folder.
         ///
         /// These are not always cut from a recording in this folder. A clip
         /// taken from the rolling buffer while nothing was recording has no
@@ -75,14 +82,9 @@ struct RecordingsView: View {
         var links: [SessionMetadata.Link] = []
         /// What the folder says it is (session.json), when it says anything.
         var kind: String?
+        /// The analysis has run here: analysis.json or an exported report.
+        var isAnalysed = false
         var id: String { folder?.path ?? "__loose__" }
-
-        /// Nothing here at all. A folder that says what it is is not empty
-        /// even with no tape in it - its notes and its report are the part a
-        /// student gets sent.
-        var isEmpty: Bool {
-            recordings.isEmpty && clipFiles.isEmpty && links.isEmpty && kind == nil
-        }
 
         /// Which half of the app made this.
         ///
@@ -94,10 +96,11 @@ struct RecordingsView: View {
         /// the files says a Screen stops being a Screen the moment somebody
         /// deletes its 290MB video to get the space back, keeping the notes
         /// and the report. What a session WAS is not something a deleted file
-        /// gets to decide, so Screenroom now writes it down at the start.
+        /// gets to decide, so the makers write it down at the start.
         var source: Source {
             switch kind {
             case SessionMetadata.Kind.screen.rawValue: return .screen
+            case SessionMetadata.Kind.recording.rawValue: return .recording
             case SessionMetadata.Kind.green.rawValue: return .green
             default:
                 return recordings.contains {
@@ -106,40 +109,66 @@ struct RecordingsView: View {
             }
         }
 
-        /// One recording, nothing else. The overwhelmingly common shape.
-        ///
-        /// A Section header naming the class above a single row naming the
-        /// same class at a different time is two headings for one thing, and
-        /// that is what the sidebar looked like: "Test1", then under it "Fri,
-        /// 18 Sep at 9:16 PM". The header exists for the session that really
-        /// does hold several things; for the one that does not, it is
-        /// furniture around a single row.
-        var isSingle: Bool {
-            recordings.count == 1 && clipFiles.isEmpty && links.isEmpty
+        /// The take that plays when the session is opened, and the one the
+        /// analysis describes: Screenroom's own file, else the biggest -
+        /// the same rule as ScreenroomLibrary.recording(in:), so the picture
+        /// and the analysis agree on which take they mean. A clip when there
+        /// is no recording at all.
+        var primaryTake: Recording? {
+            recordings.first { $0.url.lastPathComponent == ScreenroomRecorder.recordingFileName }
+                ?? recordings.filter { $0.url.lastPathComponent != ScreenroomVideoExport.annotatedFileName }
+                    .max { $0.sizeBytes < $1.sizeBytes }
+                ?? recordings.first
+                ?? clipFiles.first
         }
+
+        var takes: [Recording] { recordings + clipFiles }
         var clipCount: Int { recordings.reduce(0) { $0 + $1.clips.count } + clipFiles.count }
-        var sizeBytes: Int64 {
-            recordings.reduce(0) { $0 + $1.sizeBytes } + clipFiles.reduce(0) { $0 + $1.sizeBytes }
-        }
         static func == (a: Session, b: Session) -> Bool { a.id == b.id }
         func hash(into hasher: inout Hasher) { hasher.combine(id) }
+    }
+
+    /// Which part of the app made a session. Shown as Class, Recording and
+    /// Review (SessionKind); named here for the code that made them.
+    enum Source {
+        case green, screen, recording
+
+        var kind: SessionKind {
+            switch self {
+            case .green: return .classSession
+            case .screen: return .review
+            case .recording: return .recording
+            }
+        }
     }
 
     static let playableExtensions = ["mov", "mp4", "mkv", "m4v"]
 
     @State private var sessions: [Session] = []
-    /// Which half is being looked at. Persisted, because a teacher who marks
-    /// presentations all term should not pick the same tab every morning.
-    @AppStorage("sessionsFilter") private var filter: Filter = .all
     @State private var freeBytes: Int64?
     @State private var usedBytes: Int64 = 0
+    /// The card selected in the grid.
+    @State private var selectedID: String?
+    /// The take playing in the inspector - one of the selected session's.
     @State private var selection: Recording?
+    @State private var search = ""
+    /// What the sidebar shows. Persisted, because a teacher who marks
+    /// presentations all term should not pick Reviews every morning.
+    @AppStorage("sessionsShow") private var show: SessionsShow = .everything
+    @AppStorage("sessionsSort") private var sort: SessionsSort = .newest
+    @State private var status: SessionsStatus?
+    @State private var tab = Tab.clips.rawValue
+    /// The folder whose analysis this window started, so the report opens
+    /// when it finishes - and only then, not for a run begun elsewhere.
+    @State private var analysingFolder: URL?
+
     @State private var player: AVPlayer?
     @State private var duration: Double = 0
     /// Set while the recording is playing with its fillers cut out: the
     /// observer that jumps over them, so it can be taken away again.
     @State private var skipObserver: Any?
     @ObservedObject private var review = ScreenroomReviewController.shared
+    @ObservedObject private var thumbnails = SessionThumbnails.shared
     @State private var playhead: Double = 0
     @State private var timeObserver: Any?
     @State private var trashError: String?
@@ -152,132 +181,87 @@ struct RecordingsView: View {
     @State private var renameError: String?
     @State private var deletingVideo: (upload: SessionMetadata.Upload, folder: URL)?
     @State private var deleteVideoError: String?
-    /// Which half of the detail pane is showing. The recording is what the
-    /// window was built for; the transcript is what a teacher wants the day
-    /// after, and it had no home in the app at all.
-    @State private var detailTab: DetailTab = .analysis
 
-    /// Which half of the app made a session.
+    @Environment(\.openWindow) private var openWindow
+    /// Used for the YouTube upload button and state.
+    @EnvironmentObject private var coordinator: CoordinatorController
+
+    /// The work under the inspector's picture.
     ///
-    /// Greenroom makes Greens, Screenroom makes Screens. Named from the two
-    /// halves rather than from what they contain, because "Classes" and
-    /// "Presentations" are words this app does not otherwise use and they
-    /// throw away the vocabulary everything else is built on.
-    enum Source {
-        case green, screen
-
-        /// Singular, for a folder name: "Green - 2026-09-19 08-30".
-        var defaultName: String { self == .green ? "Green" : "Screen" }
-    }
-
-    /// What the sidebar is showing.
-    enum Filter: String, CaseIterable, Identifiable {
-        case all = "All"
-        case greens = "Greens"
-        case screens = "Screens"
-        var id: String { rawValue }
-
-        var source: Source? {
-            switch self {
-            case .all: return nil
-            case .greens: return .green
-            case .screens: return .screen
-            }
-        }
-
-        var symbol: String {
-            switch self {
-            case .all: return "tray.full"
-            case .greens: return "person.3"
-            case .screens: return "person.wave.2"
-            }
-        }
-
-        var emptyLine: String {
-            switch self {
-            case .all: return "Nothing recorded yet."
-            case .greens: return "No Greens yet."
-            case .screens: return "No Screens yet."
-            }
-        }
-
-        var emptyDetail: String {
-            switch self {
-            case .all: return "Run a class, or record someone presenting."
-            case .greens: return "A Green is a class. Press Start on the main window to run one."
-            case .screens: return "A Screen is a presentation. Open Screenroom to record one."
-            }
-        }
-    }
-
-    enum DetailTab: String, CaseIterable, Identifiable {
-        /// What used to be "Recording" minus the player, which now sits above
-        /// the tabs permanently. Clips, the upload line, the YouTube links.
+    /// The analysis is not one of them any more: it is a tile above, with its
+    /// verdict under it and the full report a click away. What is left is the
+    /// work done ON the recording, which wants the room under the player.
+    enum Tab: String, CaseIterable {
         case clips = "Clips"
-        case transcript = "Transcript"
-        /// What Cues offered in the class and the teacher opened or sent. It
-        /// was a disclosure in the sidebar, under the class, where it pushed
-        /// the recordings down and read as part of the list rather than as
-        /// something about the class.
-        case links = "Links"
-        /// Screenroom's three, flat rather than nested.
-        ///
-        /// They were one "Analysis" tab holding a second segmented control of
-        /// Analysis / Notes / Rubric, which put two pickers one under the
-        /// other with the word "Analysis" in both. That reads as a bug, not a
-        /// hierarchy. Five flat tabs is one decision instead of two, and the
-        /// word appears once.
-        case analysis = "Analysis"
         case notes = "Notes"
-        var id: String { rawValue }
+        case transcript = "Transcript"
+        /// What Cues offered in the class and the teacher opened or sent.
+        case links = "Links"
 
         var isAvailable: Bool {
             switch self {
             case .clips: return true
-            // No longer Cues-only: Screenroom's Analyse writes transcript.txt
-            // too, so a build with Screenroom in it can fill this tab even
-            // when Cues is held back.
+            case .notes: return ScreenroomAvailability.isReleased
+            // Screenroom's Analyse writes transcript.txt too, so a build with
+            // Screenroom in it can fill this tab even when Cues is held back.
             case .transcript: return CuesAvailability.isReleased || ScreenroomAvailability.isReleased
             case .links: return CuesAvailability.isReleased
-            case .analysis, .notes: return ScreenroomAvailability.isReleased
             }
         }
     }
-    /// Presented as a sheet from ContentView, so the environment object
-    /// arrives with it; used for the YouTube upload button and state.
-    @EnvironmentObject private var coordinator: CoordinatorController
 
     private var allRecordings: [Recording] {
-        sessions.flatMap { $0.recordings + $0.clipFiles }
+        sessions.flatMap(\.takes)
+    }
+
+    private var selectedSession: Session? {
+        sessions.first { $0.id == selectedID }
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            header
-            if spaceLevel != .ok, let freeBytes { spaceBanner(freeBytes) }
-            Divider()
-            if sessions.isEmpty { emptyState } else { browser }
-        }
-        // The video, its scrubber and the work under it all want height, and
-        // the sidebar gives back 85pt of width.
+        SessionsLayout(
+            cards: cards,
+            search: $search,
+            show: $show,
+            status: $status,
+            sort: $sort,
+            selection: $selectedID,
+            thumbnail: { card in
+                sessions.first { $0.id == card.id }?.primaryTake.flatMap { thumbnails.image(for: $0.url) }
+            },
+            storage: storageSummary,
+            spaceWarning: spaceWarning,
+            revealRoot: {
+                NSWorkspace.shared.activateFileViewerSelecting([GreenroomScene.recordingsDirectory])
+            },
+            onDeleteKey: { if let selection { confirmingDelete = selection } },
+            cardMenu: { card in cardMenu(card) },
+            inspector: { inspector })
+        // The video, the tiles and the work under them all want height.
         .frame(minWidth: 1_180, minHeight: 720)
         .onAppear(perform: reload)
-        .onChange(of: selection) { newSelection in load(newSelection) }
-        // A presentation finished in Screenroom while this window was open
-        // only appeared after closing and reopening it. Coming back to the
-        // app, or to this window, is when a teacher expects to see it.
-        .onReceive(NotificationCenter.default.publisher(for: NSWindow.didBecomeKeyNotification)) { _ in reload() }
-        // Switching to Screens kept showing the class that was open under
-        // Greens, beside a list that did not contain it.
-        .onChange(of: filter) { _ in
-            if let current = selection, !shown.contains(where: { $0.recordings.contains(current) || $0.clipFiles.contains(current) }) {
-                selection = nil
-            }
+        .onChange(of: selectedID) { didSelect() }
+        .onChange(of: selection) { _, newSelection in
+            load(newSelection)
+            review.selectedRecording = newSelection?.url
         }
+        // A session finished while this window was open only appeared after
+        // closing and reopening it. Coming back to the app, or to this
+        // window, is when a teacher expects to see it.
+        .onReceive(NotificationCenter.default.publisher(for: NSWindow.didBecomeKeyNotification)) { _ in reload() }
         // An upload finishing while the window is open should show up here.
-        .onChange(of: coordinator.isUploadingToYouTube) { _ in reload() }
+        .onChange(of: coordinator.isUploadingToYouTube) { reload() }
+        // An analysis finishing: the card gets its sparkles, and when this
+        // window started the run, the report opens - that is what was asked for.
+        .onChange(of: review.analysisRuns) {
+            reload()
+            if let folder = analysingFolder, review.selected?.folder == folder {
+                openWindow(id: "screenroom-report")
+            }
+            analysingFolder = nil
+        }
         .onDisappear(perform: teardownPlayer)
-        .alert("Rename this class",
+        .alert("Rename this session",
                isPresented: Binding(get: { renaming != nil },
                                     set: { if !$0 { renaming = nil } })) {
             TextField("Name", text: $renameDraft)
@@ -290,7 +274,7 @@ struct RecordingsView: View {
             }
             Button("Cancel", role: .cancel) { renaming = nil }
         } message: {
-            Text("Shown in this window. The folder in Documents/Greenroom keeps its date name; clear the field to go back to it. Videos already on YouTube keep their titles \u{2014} rename those under the recording.")
+            Text("Shown in this window. The folder in Documents/Greenroom keeps its date name; clear the field to go back to it. Videos already on YouTube keep their titles \u{2014} rename those under the upload.")
         }
         .alert("Rename on YouTube",
                isPresented: Binding(get: { renamingVideo != nil },
@@ -371,276 +355,321 @@ struct RecordingsView: View {
                 ($0.clips.isEmpty
                     ? "\($0.title) goes to the Trash. You can put it back from there."
                     : "\($0.title) and its \($0.clips.count) marked clip\($0.clips.count == 1 ? "" : "s") go to the Trash. You can put them back from there.")
-                + ($0.upload == nil ? "" : " Its video on YouTube stays up. To take that down too, press Delete next to its YouTube link first.")
+                + ($0.upload == nil ? "" : " Its video on YouTube stays up. To take that down too, press Delete under its YouTube link first.")
             } ?? "")
         }
     }
 
-    // MARK: Chrome
+    // MARK: Cards
 
-    private var header: some View {
-        HStack {
-            Text("Sessions").font(.title3.bold())
-            VStack(alignment: .leading, spacing: 1) {
-                Text(GreenroomScene.recordingsDirectory.path
-                    .replacingOccurrences(of: NSHomeDirectory(), with: "~"))
-                Text(storageSummary)
-                    .foregroundStyle(spaceLevel == .ok ? AnyShapeStyle(.secondary)
-                                                       : AnyShapeStyle(spaceColor))
-            }
-            .font(.caption)
-            Spacer()
-            Button("Show in Finder") {
-                NSWorkspace.shared.activateFileViewerSelecting(
-                    [selection?.url ?? GreenroomScene.recordingsDirectory])
-            }
-            Button("Done") { dismiss() }
-                .keyboardShortcut(.defaultAction)
-        }
-        .padding(12)
-    }
-
-    private func spaceBanner(_ free: Int64) -> some View {
-        HStack(spacing: 8) {
-            Image(systemName: spaceLevel == .critical
-                  ? "exclamationmark.triangle.fill" : "exclamationmark.circle")
-            Text(spaceLevel == .critical
-                 ? "Only \(ByteCountFormatter.string(fromByteCount: free, countStyle: .file)) left \u{2014} that may not fit a full class. Move or delete a few recordings before your next session."
-                 : "\(ByteCountFormatter.string(fromByteCount: free, countStyle: .file)) left \u{2014} room for about two more classes.")
-            Spacer()
-        }
-        .font(.callout)
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-        .background(spaceColor.opacity(0.12))
-        .foregroundStyle(spaceColor)
-    }
-
-    private var emptyState: some View {
-        VStack(spacing: 8) {
-            Image(systemName: "film.stack")
-                .font(.system(size: 40))
-                .foregroundStyle(.tertiary)
-            Text("No sessions yet").font(.headline)
-            Text("Press Record during a class \u{2014} the file lands here the moment you stop, under the class it belongs to. Mark a moment mid-class with \u{2325}\u{2318}5 and it shows up on the recording; upload to YouTube and the link stays here too.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-                .frame(maxWidth: 420)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-
-    // MARK: Browser
-
-    /// The sessions of the kind being looked at.
-    ///
-    /// Loose legacy recordings have no folder and no presentation.mov, so
-    /// they classify as classes, which is what they were.
-    private var shown: [Session] {
-        guard let wanted = filter.source else { return sessions }
-        return sessions.filter { $0.source == wanted }
-    }
-
-    private var browser: some View {
-        HSplitView {
-            VStack(spacing: 0) {
-                // Two halves of one app, told apart rather than mixed.
-                //
-                // No counts on the tabs. They were there to explain an empty
-                // list, but the empty state under this control already says
-                // so in a sentence - and a number beside every tab is read
-                // on every glance, forever, to answer a question asked once.
-                Picker("", selection: $filter) {
-                    ForEach(Filter.allCases) { option in
-                        Text(option.rawValue).tag(option)
-                    }
-                }
-                .pickerStyle(.segmented)
-                .labelsHidden()
-                .padding(.horizontal, 10)
-                .padding(.top, 10)
-                .padding(.bottom, 8)
-
-                if shown.isEmpty {
-                    VStack(spacing: 6) {
-                        Image(systemName: filter.symbol)
-                            .font(.system(size: 26, weight: .light))
-                            .foregroundStyle(.tertiary)
-                        Text(filter.emptyLine).font(.callout).foregroundStyle(.secondary)
-                        Text(filter.emptyDetail)
-                            .font(.caption).foregroundStyle(.tertiary)
-                            .multilineTextAlignment(.center)
-                    }
-                    .padding(.horizontal, 16)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                } else {
-            List(selection: $selection) {
-                ForEach(shown) { session in
-                    if session.isSingle, let only = session.recordings.first {
-                        singleRow(session, only).tag(only)
-                    } else {
-                    Section {
-                        ForEach(session.recordings) { recording in
-                            recordingRow(recording).tag(recording)
-                        }
-                        ForEach(session.clipFiles) { clip in
-                            clipFileRow(clip).tag(clip)
-                        }
-                    } header: {
-                        HStack(spacing: 6) {
-                            Text(session.displayTitle).lineLimit(1).truncationMode(.middle)
-                            if session.clipCount > 0 {
-                                Text("\(session.clipCount)")
-                                    .font(.system(size: 10, weight: .semibold, design: .monospaced))
-                                    .padding(.horizontal, 5).padding(.vertical, 1)
-                                    .background(Color.accentColor.opacity(0.18), in: Capsule())
-                                    .help("\(session.clipCount) clip\(session.clipCount == 1 ? "" : "s")")
-                            }
-                            if session.uploadCount > 0 {
-                                Image(systemName: "play.rectangle.fill")
-                                    .font(.system(size: 10))
-                                    .foregroundStyle(Color.accentColor)
-                                    .help("\(session.uploadCount) on YouTube")
-                            }
-                            Spacer()
-                            if session.folder != nil {
-                                Button {
-                                    renameDraft = session.customTitle ?? ""
-                                    renaming = session
-                                } label: {
-                                    Image(systemName: "pencil")
-                                        .font(.system(size: 10))
-                                }
-                                .buttonStyle(.plain)
-                                .foregroundStyle(.secondary)
-                                .help("Rename this class")
-                            }
-                        }
-                        .contextMenu {
-                            if let folder = session.folder {
-                                Button("Rename\u{2026}") {
-                                    renameDraft = session.customTitle ?? ""
-                                    renaming = session
-                                }
-                                Button("Show in Finder") {
-                                    NSWorkspace.shared.activateFileViewerSelecting([folder])
-                                }
-                            }
-                        }
-                    }
-                    }
-                }
-                }
-            }
-            }
-            // Sized to the row label plus padding, rather than to a number
-            // chosen before the label was. Measured: "Fri, 18 Sep at 9:16 PM"
-            // is 132pt, so 172 is the floor and 180 is the floor with room to
-            // be wrong in. The weekday stays - a teacher looks for Friday's
-            // class - and only the seconds went.
-            .frame(minWidth: 180, idealWidth: 200, maxWidth: 260)
-            // The key everyone reaches for first. The context menu still works,
-            // but nobody should have to discover it.
-            .onDeleteCommand { if let target = selection { confirmingDelete = target } }
-
-            detail
-                .frame(minWidth: 460, maxWidth: .infinity, maxHeight: .infinity)
+    private var cards: [SessionCardModel] {
+        sessions.map { session in
+            SessionCardModel(id: session.id,
+                             title: session.displayTitle,
+                             kind: session.source.kind,
+                             date: session.date,
+                             duration: session.primaryTake.flatMap { take in
+                                 thumbnails.duration(for: take.url).flatMap { $0 > 0 ? $0 : nil }
+                             },
+                             isUploaded: session.uploadCount > 0,
+                             isAnalysed: session.isAnalysed)
         }
     }
 
-    /// One session, one row: its name, and underneath it when and how big.
-    ///
-    /// The name leads because that is what a teacher is looking for. The date
-    /// is the subtitle rather than the title, which is the other way round
-    /// from how this list used to read.
-    private func singleRow(_ session: Session, _ recording: Recording) -> some View {
-        HStack(spacing: 6) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(session.displayTitle)
-                    .lineLimit(1).truncationMode(.middle)
-                HStack(spacing: 6) {
-                    Text(recording.title)
-                    Text("\u{00B7}")
-                    Text(recording.sizeLabel)
-                    if let upload = recording.upload {
-                        Text("\u{00B7} YouTube \u{00B7} \(upload.privacy)")
-                            .foregroundStyle(Color.accentColor)
-                    }
-                }
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-            }
-            Spacer(minLength: 0)
+    @ViewBuilder private func cardMenu(_ card: SessionCardModel) -> some View {
+        if let session = sessions.first(where: { $0.id == card.id }) {
             if session.folder != nil {
-                Button {
-                    renameDraft = session.customTitle ?? ""
-                    renaming = session
-                } label: {
-                    Image(systemName: "pencil").font(.system(size: 10))
-                }
-                .buttonStyle(.plain)
-                .foregroundStyle(.secondary)
-                .help("Rename this session")
-            }
-        }
-        .contextMenu {
-            if let folder = session.folder {
                 Button("Rename\u{2026}") {
                     renameDraft = session.customTitle ?? ""
                     renaming = session
                 }
-                Button("Show in Finder") {
-                    NSWorkspace.shared.activateFileViewerSelecting([folder])
-                }
-                Divider()
             }
-            if let upload = recording.upload, let url = URL(string: upload.url) {
+            Button("Show in Finder") {
+                NSWorkspace.shared.activateFileViewerSelecting(
+                    [session.folder ?? session.primaryTake?.url ?? GreenroomScene.recordingsDirectory])
+            }
+            if let take = session.primaryTake, let upload = take.upload, let url = URL(string: upload.url) {
+                Divider()
                 Button("Open on YouTube") { NSWorkspace.shared.open(url) }
                 Button("Copy YouTube link") { copy(upload.url) }
                 if coordinator.youtubeConnected {
                     Button("Delete from YouTube\u{2026}", role: .destructive) {
-                        deletingVideo = (upload, recording.url.deletingLastPathComponent())
+                        deletingVideo = (upload, take.url.deletingLastPathComponent())
                     }
                 }
-                Divider()
             }
-            Button("Move to Trash", role: .destructive) { confirmingDelete = recording }
+            if let take = session.primaryTake {
+                Divider()
+                Button("Move to Trash\u{2026}", role: .destructive) { confirmingDelete = take }
+            }
         }
     }
 
-    private func recordingRow(_ recording: Recording) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(recording.title).lineLimit(1)
-            HStack(spacing: 6) {
-                Text(recording.sizeLabel)
-                if !recording.clips.isEmpty {
-                    Text("\u{2022} \(recording.clips.count) clip\(recording.clips.count == 1 ? "" : "s")")
-                }
-                if let upload = recording.upload {
-                    Text("\u{2022} YouTube \u{00B7} \(upload.privacy)")
-                        .foregroundStyle(Color.accentColor)
-                }
-            }
-            .font(.caption)
-            .foregroundStyle(.secondary)
+    // MARK: Inspector
+
+    @ViewBuilder private var inspector: some View {
+        if let session = selectedSession {
+            SessionInspector(
+                model: inspectorModel(session),
+                actions: inspectorActions(session),
+                take: Binding(get: { selection?.url },
+                              set: { url in selection = session.takes.first { $0.url == url } }),
+                tabs: Tab.allCases.filter(\.isAvailable).map(\.rawValue),
+                tab: $tab,
+                player: { stage(for: session) },
+                detail: { work(for: session) })
+            // A different session is a different inspector: nothing typed in
+            // one session's notes field should survive into the next.
+            .id(session.id)
+        } else {
+            Text(sessions.isEmpty ? "No sessions yet" : "Select a session")
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .contextMenu {
-            if let upload = recording.upload, let url = URL(string: upload.url) {
-                Button("Open on YouTube") { NSWorkspace.shared.open(url) }
-                Button("Copy YouTube link") { copy(upload.url) }
-                if coordinator.youtubeConnected {
-                    Button("Delete from YouTube\u{2026}", role: .destructive) {
-                        deletingVideo = (upload, recording.url.deletingLastPathComponent())
+    }
+
+    private func inspectorModel(_ session: Session) -> SessionInspectorModel {
+        let take = selection
+        var model = SessionInspectorModel(
+            title: session.displayTitle,
+            kind: session.source.kind,
+            date: session.date,
+            duration: take.flatMap { thumbnails.durations[$0.url] }.flatMap { $0 > 0 ? $0 : nil },
+            clipCount: session.clipCount,
+            youtube: youtubeState(take),
+            analyse: analyseState(session),
+            youtubeConnected: coordinator.youtubeConnected)
+        if let upload = take?.upload {
+            model.upload = .init(title: upload.title, url: upload.url,
+                                 privacy: upload.privacy, uploadedAt: upload.uploadedAt)
+        }
+        if let folder = session.folder, review.selected?.folder == folder, let analysis = review.analysis {
+            model.summary = analysis.headline ?? analysis.summary
+            if review.selectionMismatch {
+                model.summaryCaveat = "About \(review.analysisTarget?.lastPathComponent ?? "the longest take"), not the take playing."
+            }
+        }
+        model.takes = session.takes.map { take in
+            .init(id: take.url,
+                  label: SessionClipExporter.isClip(take.url) || session.clipFiles.contains(take)
+                    ? "Clip \u{00B7} \(take.url.deletingPathExtension().lastPathComponent)"
+                    : "\(take.title) \u{00B7} \(take.sizeLabel)")
+        }
+        model.canRename = session.folder != nil
+        model.canTrash = take != nil
+        return model
+    }
+
+    private func youtubeState(_ take: Recording?) -> SessionInspectorModel.YouTube {
+        guard let take else { return .noVideo }
+        if let upload = take.upload { return .uploaded(privacy: upload.privacy, when: upload.uploadedAt) }
+        if coordinator.isUploadingToYouTube { return .uploading }
+        guard coordinator.youtubeConnected else { return .notConnected }
+        return .ready(privacy: coordinator.youtubePrivacy)
+    }
+
+    /// Who would do the work, said before it is done. Screenroom's agent is
+    /// off until someone turns it on in Settings, and when it is on the
+    /// transcript and notes leave this Mac - so the tile says so, in amber.
+    private func analyseState(_ session: Session) -> SessionInspectorModel.Analyse {
+        guard let folder = session.folder else { return .unavailable("Not in a session folder") }
+        let agent = ScreenroomAgentSettings.load()
+        let leaves = agent.enabled && !agent.command.trimmingCharacters(in: .whitespaces).isEmpty
+        let engine = leaves ? "\(agent.kind.label) \u{00B7} leaves this Mac" : "On this Mac"
+        let isThis = review.selected?.folder == folder
+        if review.isAnalysing {
+            guard isThis else { return .busy }
+            var detail: [String] = []
+            if review.stepCount > 0 { detail.append("Step \(review.stepIndex) of \(review.stepCount)") }
+            detail.append(ScreenroomAnalysisPane.clock(review.elapsed))
+            if let eta = review.eta { detail.append(ScreenroomETA.label(eta)) }
+            return .running(step: review.step.isEmpty ? "Working\u{2026}" : review.step,
+                            detail: detail.joined(separator: " \u{00B7} "),
+                            log: review.log)
+        }
+        if isThis, let analysis = review.analysis {
+            return .analysed(engine: analysis.engine, when: analysis.generatedAt, leavesMac: false)
+        }
+        let hasNotes = FileManager.default.fileExists(atPath: ScreenroomNotesFile.url(in: folder).path)
+        guard session.primaryTake != nil || hasNotes else { return .unavailable("Nothing to analyse") }
+        return .ready(engine: engine, leavesMac: leaves)
+    }
+
+    private func inspectorActions(_ session: Session) -> SessionInspectorActions {
+        let take = selection
+        let upload = take?.upload
+        var actions = SessionInspectorActions()
+        actions.upload = { if let take { coordinator.uploadRecordingToYouTube(take.url) } }
+        actions.copyLink = { if let upload { copy(upload.url) } }
+        actions.openOnYouTube = {
+            if let upload, let url = URL(string: upload.url) { NSWorkspace.shared.open(url) }
+        }
+        actions.renameOnYouTube = {
+            guard let upload, let take else { return }
+            videoTitleDraft = upload.title
+            renamingVideo = (upload, take.url.deletingLastPathComponent())
+        }
+        actions.deleteFromYouTube = {
+            guard let upload, let take else { return }
+            deletingVideo = (upload, take.url.deletingLastPathComponent())
+        }
+        actions.analyse = {
+            guard let folder = session.folder else { return }
+            review.select(folder: folder)
+            review.selectedRecording = selection?.url
+            analysingFolder = folder
+            Task { await review.analyse() }
+        }
+        actions.stopAnalysis = {
+            analysingFolder = nil
+            review.cancel()
+        }
+        actions.openReport = {
+            review.select(folder: session.folder)
+            openWindow(id: "screenroom-report")
+        }
+        actions.rename = {
+            renameDraft = session.customTitle ?? ""
+            renaming = session
+        }
+        actions.showInFinder = {
+            NSWorkspace.shared.activateFileViewerSelecting(
+                [take?.url ?? session.folder ?? GreenroomScene.recordingsDirectory])
+        }
+        actions.trash = { if let take { confirmingDelete = take } }
+        return actions
+    }
+
+    /// The picture and its scrubber, or what is left when the tape is gone.
+    @ViewBuilder private func stage(for session: Session) -> some View {
+        if let selection {
+            VStack(spacing: 8) {
+                Group {
+                    if let player {
+                        PlayerView(player: player)
+                    } else {
+                        ProgressView().controlSize(.small)
                     }
                 }
-                Divider()
+                .frame(maxWidth: .infinity)
+                .aspectRatio(16 / 9, contentMode: .fit)
+                .background(Color.black)
+                .clipShape(RoundedRectangle(cornerRadius: 10))
+                ClipTimeline(duration: duration,
+                             playhead: playhead,
+                             clips: selection.clips,
+                             marks: marks(for: selection),
+                             skipping: skipObserver != nil,
+                             onStopSkipping: stopSkipping,
+                             onSeek: seek)
+                    .frame(height: 46)
             }
-            Button("Show in Finder") {
-                NSWorkspace.shared.activateFileViewerSelecting([recording.url])
+        } else {
+            VStack(alignment: .leading, spacing: 8) {
+                SessionThumbnail(image: nil, kind: session.source.kind)
+                Text("No recording here any more. The notes, transcript and report still are.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
-            Button("Move to Trash", role: .destructive) { confirmingDelete = recording }
+        }
+    }
+
+    /// Everything done on the recording, under it.
+    @ViewBuilder private func work(for session: Session) -> some View {
+        switch Tab(rawValue: tab) ?? .clips {
+        case .notes where Tab.notes.isAvailable:
+            if session.folder != nil {
+                ScreenroomAnalysisPane(
+                    folder: session.folder,
+                    recording: selection?.url,
+                    showing: .notes,
+                    seek: { ms in seek(to: Double(ms) / 1000) },
+                    position: { Int(playhead * 1000) },
+                    rate: { player?.rate = $0 },
+                    skip: { playSkipping($0) })
+            } else {
+                notInFolder("notes")
+            }
+        case .transcript where Tab.transcript.isAvailable:
+            if let folder = session.folder {
+                SessionTranscriptView(folder: folder)
+            } else {
+                notInFolder("transcript")
+            }
+        case .links where Tab.links.isAvailable:
+            linksDetail(for: session)
+        default:
+            clipsDetail()
+        }
+    }
+
+    private func notInFolder(_ what: String) -> some View {
+        Text("These recordings are not in a session folder, so they have no \(what).")
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 20)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+
+    private func clipsDetail() -> some View {
+        let clips = selection?.clips ?? []
+        return SessionClipsList(
+            lines: clips.map { clip in
+                SessionClipLine(
+                    id: clip.id,
+                    start: Self.offsetLabel(clip.startMs),
+                    detail: "\(clip.durationLabel) \u{00B7} marked at \(clip.markedAtLabel.replacingOccurrences(of: "-", with: ":"))",
+                    exported: selection.map { SessionClipExporter.isExported(clip, from: $0.url) } ?? false)
+            },
+            exporting: exporting,
+            play: { id in
+                if let clip = clips.first(where: { $0.id == id }) { seek(to: clip.startSeconds) }
+            },
+            reveal: { id in
+                guard let selection, let clip = clips.first(where: { $0.id == id }) else { return }
+                NSWorkspace.shared.activateFileViewerSelecting(
+                    [SessionClipExporter.exportURL(for: clip, from: selection.url)])
+            },
+            remove: { id in
+                guard let selection, let clip = clips.first(where: { $0.id == id }) else { return }
+                removeClip(clip, from: selection)
+            },
+            exportAll: { if let selection { exportAll(for: selection) } })
+    }
+
+    /// The class's links: what it was, where it goes, whether it went to the
+    /// chat, and Open and Copy on every row.
+    @ViewBuilder private func linksDetail(for session: Session) -> some View {
+        if session.links.isEmpty {
+            Text("With Cues on, the cards you open or send in a class are kept here.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 20)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        } else {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 0) {
+                    ForEach(session.links) { link in
+                        HStack(spacing: 8) {
+                            Image(systemName: link.action == "sent" ? "paperplane" : "arrow.up.forward.square")
+                                .foregroundStyle(.secondary)
+                                .help(link.action == "sent" ? "Sent to chat" : "Opened")
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(link.title).font(.callout).lineLimit(1)
+                                Text("\(link.kind) \u{00B7} \(URL(string: link.url)?.host ?? link.url) \u{00B7} \(link.at.formatted(date: .omitted, time: .shortened))")
+                                    .font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                            }
+                            Spacer(minLength: 8)
+                            if let url = URL(string: link.url) {
+                                Button("Open") { NSWorkspace.shared.open(url) }.controlSize(.small)
+                            }
+                            Button("Copy") { copy(link.url) }.controlSize(.small)
+                        }
+                        .padding(.horizontal, 20)
+                        .padding(.vertical, 6)
+                    }
+                }
+            }
         }
     }
 
@@ -650,343 +679,20 @@ struct RecordingsView: View {
         ToastController.show("Link copied", detail: text)
     }
 
-    /// The upload record under the player: where it went, when, and the link.
-    @ViewBuilder private func uploadLine(for recording: Recording) -> some View {
-        if let upload = recording.upload {
-            HStack(spacing: 10) {
-                Image(systemName: "play.rectangle.fill")
-                    .foregroundStyle(Color.accentColor)
-                VStack(alignment: .leading, spacing: 1) {
-                    Text("\u{201C}\(upload.title)\u{201D} \u{00B7} \(upload.privacy) \u{00B7} uploaded \(upload.uploadedAt.formatted(date: .abbreviated, time: .shortened))")
-                        .font(.caption)
-                        .lineLimit(1)
-                    Text(upload.url)
-                        .font(.system(size: 12, design: .monospaced))
-                        .foregroundStyle(.secondary)
-                        .textSelection(.enabled)
-                }
-                Spacer()
-                if let url = URL(string: upload.url) {
-                    Button("Open") { NSWorkspace.shared.open(url) }
-                        .controlSize(.small)
-                }
-                Button("Copy link") { copy(upload.url) }
-                    .controlSize(.small)
-                Button("Rename\u{2026}") {
-                    videoTitleDraft = upload.title
-                    renamingVideo = (upload, recording.url.deletingLastPathComponent())
-                }
-                .controlSize(.small)
-                .help("Change the title on YouTube.")
-                if coordinator.youtubeConnected {
-                    Button("Delete\u{2026}", role: .destructive) {
-                        deletingVideo = (upload, recording.url.deletingLastPathComponent())
-                    }
-                    .controlSize(.small)
-                    .help("Delete the video from YouTube. The recording on this Mac stays.")
-                }
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
-            Divider()
+    /// A card was picked: play its main take, and point Screenroom's state at
+    /// its folder so the analysis tile, the notes and the scrubber's marks
+    /// all describe this session.
+    private func didSelect() {
+        let session = selectedSession
+        if selection == nil || !(session?.takes.contains(where: { $0.url == selection?.url }) ?? false) {
+            selection = session?.primaryTake
         }
-    }
-
-    /// A finished clip file. Distinct from a recording on purpose: it has no
-    /// marks of its own and is usually a fragment of something longer.
-    private func clipFileRow(_ clip: Recording) -> some View {
-        HStack(spacing: 8) {
-            Image(systemName: "scissors")
-                .font(.caption)
-                .foregroundStyle(Color.accentColor)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(clip.url.deletingPathExtension().lastPathComponent)
-                    .lineLimit(1)
-                Text(clip.sizeLabel)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-        }
-        .contextMenu {
-            Button("Show in Finder") {
-                NSWorkspace.shared.activateFileViewerSelecting([clip.url])
-            }
-            Button("Move to Trash", role: .destructive) { confirmingDelete = clip }
-        }
-    }
-
-    /// Which of Screenroom's panes the current tab wants, or nil when the
-    /// tab belongs to something else.
-    private var screenroomPane: ScreenroomAnalysisPane.Pane? {
-        switch detailTab {
-        case .analysis: return .analysis
-        case .notes: return .notes
-        case .clips, .transcript, .links: return nil
-        }
-    }
-
-    /// The class folder a recording belongs to, for the transcript pane.
-    private func folder(for recording: Recording) -> URL? {
-        sessions.first {
-            $0.recordings.contains(recording) || $0.clipFiles.contains(recording)
-        }?.folder
-    }
-
-    @ViewBuilder private var detail: some View {
-        if let selection {
-            VStack(spacing: 0) {
-                // THE PICTURE IS NOT A TAB.
-                //
-                // It used to be: the player lived inside a "Recording" tab and
-                // the notes inside a "Notes" tab, so writing a note about
-                // something at 3:12 meant leaving the video to do it. Reported
-                // as "I am having to add notes without even being able to
-                // watch the video live" - and it was worse than awkward, since
-                // the playhead kept running while you hunted for the tab, so
-                // the note landed wherever the video got to rather than where
-                // the thing happened.
-                //
-                // The material is always on screen. The tabs below switch only
-                // the WORK done on it.
-                stage(for: selection)
-                Divider()
-                work(for: selection)
-            }
-        } else {
-            Text("Select a recording to play it")
-                .foregroundStyle(.secondary)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-        }
-    }
-
-    /// The recording and its scrubber, permanently.
-    @ViewBuilder private func stage(for selection: Recording) -> some View {
-        VStack(spacing: 0) {
-            if let player {
-                PlayerView(player: player)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else {
-                ProgressView()
-                    .controlSize(.small)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-            }
-            ClipTimeline(duration: duration,
-                         playhead: playhead,
-                         clips: selection.clips,
-                         marks: marks(for: selection),
-                         skipping: skipObserver != nil,
-                         onStopSkipping: stopSkipping,
-                         onSeek: seek)
-                .frame(height: 54)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
-        }
-        // Both halves flex, with a floor each: the video must stay big enough
-        // to read a face, and the work must stay tall enough to type into.
-        .frame(minHeight: 220, maxHeight: .infinity)
-    }
-
-    /// Everything you do to the recording, under it.
-    @ViewBuilder private func work(for selection: Recording) -> some View {
-        VStack(spacing: 0) {
-            let tabs = DetailTab.allCases.filter(\.isAvailable)
-            if tabs.count > 1 {
-                // Leading-aligned, sharing the left edge of everything under
-                // it, and sized to its own labels rather than to a number that
-                // goes stale the moment a tab is renamed.
-                Picker("", selection: $detailTab) {
-                    ForEach(tabs) { tab in Text(tab.rawValue).tag(tab) }
-                }
-                .pickerStyle(.segmented)
-                .labelsHidden()
-                .fixedSize()
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 16)
-                .padding(.top, 10)
-                .padding(.bottom, 8)
-            }
-
-            if let pane = screenroomPane, DetailTab.analysis.isAvailable {
-                ScreenroomAnalysisPane(
-                    folder: folder(for: selection),
-                    recording: selection.url,
-                    showing: pane,
-                    seek: { ms in seek(to: Double(ms) / 1000) },
-                    position: { Int(playhead * 1000) },
-                    rate: { player?.rate = $0 },
-                    skip: { playSkipping($0) })
-            } else if detailTab == .transcript, DetailTab.transcript.isAvailable {
-                if let folder = folder(for: selection) {
-                    SessionTranscriptView(folder: folder)
-                } else {
-                    Text("This recording is not in a class folder, so it has no transcript.")
-                        .font(.system(size: 12))
-                        .foregroundStyle(.secondary)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                }
-            } else if detailTab == .links, DetailTab.links.isAvailable {
-                linksDetail(for: selection)
-            } else {
-                clipsDetail(for: selection)
-            }
-        }
-        .frame(minHeight: 260, maxHeight: .infinity)
-    }
-
-    /// The class's links, full width: what it was, where it goes, whether it
-    /// went to the chat, and Open and Copy on every row.
-    @ViewBuilder private func linksDetail(for selection: Recording) -> some View {
-        let links = sessions.first {
-            $0.recordings.contains(selection) || $0.clipFiles.contains(selection)
-        }?.links ?? []
-        if links.isEmpty {
-            VStack(spacing: 6) {
-                Text("No links from this class")
-                    .font(.system(size: 13, weight: .semibold))
-                Text("With Cues on, the cards you open or send in a class are kept here.")
-                    .font(.system(size: 12))
-                    .foregroundStyle(.secondary)
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-        } else {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 0) {
-                    ForEach(links) { link in
-                        HStack(spacing: 10) {
-                            Text(link.kind.uppercased())
-                                .font(.system(size: 9, weight: .semibold, design: .monospaced))
-                                .foregroundStyle(.tertiary)
-                                .frame(width: 52, alignment: .leading)
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(link.title).font(.system(size: 13)).lineLimit(1)
-                                Text(URL(string: link.url)?.host ?? link.url)
-                                    .font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
-                            }
-                            Spacer(minLength: 8)
-                            Label(link.action == "sent" ? "Sent to chat" : "Opened",
-                                  systemImage: link.action == "sent" ? "paperplane" : "arrow.up.forward.square")
-                                .font(.system(size: 11)).foregroundStyle(.secondary)
-                            Text(link.at.formatted(date: .omitted, time: .shortened))
-                                .font(.system(size: 11).monospacedDigit()).foregroundStyle(.tertiary)
-                            if let url = URL(string: link.url) {
-                                Button("Open") { NSWorkspace.shared.open(url) }.controlSize(.small)
-                            }
-                            Button("Copy") { copy(link.url) }.controlSize(.small)
-                        }
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 8)
-                        Divider().padding(.leading, 16)
-                    }
-                }
-            }
-        }
-    }
-
-    /// The clips, the upload line, the YouTube links. What the old Recording
-    /// tab held once the player moved out of it.
-    @ViewBuilder private func clipsDetail(for selection: Recording) -> some View {
-        VStack(spacing: 0) {
-            uploadLine(for: selection)
-            clipList(for: selection)
-            Spacer(minLength: 0)
-        }
-    }
-
-    @ViewBuilder private func clipList(for recording: Recording) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
-            HStack {
-                Text(recording.clips.isEmpty ? "NO CLIPS MARKED" : "CLIPS")
-                    .font(.system(size: 10, weight: .semibold, design: .monospaced))
-                    .foregroundStyle(.tertiary)
-                Spacer()
-                if let exporting {
-                    ProgressView(value: Double(exporting.done), total: Double(max(1, exporting.total)))
-                        .frame(width: 90)
-                    Text("\(exporting.done)/\(exporting.total)")
-                        .font(.caption.monospacedDigit())
-                        .foregroundStyle(.secondary)
-                } else if !recording.clips.isEmpty {
-                    Button("Export all clips") { exportAll(for: recording) }
-                        .controlSize(.small)
-                }
-                // The retry path for a declined or failed upload - and the
-                // manual one for teachers who keep "After a recording" off.
-                if coordinator.youtubeConnected {
-                    Button {
-                        coordinator.uploadRecordingToYouTube(recording.url)
-                    } label: {
-                        Label(coordinator.isUploadingToYouTube ? "Uploading\u{2026}"
-                              : recording.upload == nil ? "Upload to YouTube" : "Upload again",
-                              systemImage: "play.rectangle")
-                    }
-                    .controlSize(.small)
-                    .disabled(coordinator.isUploadingToYouTube)
-                    .help(recording.upload == nil
-                          ? "Upload this recording to the connected channel (\(coordinator.youtubePrivacy))."
-                          : "Uploads a second copy; the existing video stays on the channel.")
-                }
-                Button(role: .destructive) {
-                    confirmingDelete = recording
-                } label: {
-                    Label("Delete recording", systemImage: "trash")
-                }
-                .controlSize(.small)
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
-
-            if recording.clips.isEmpty {
-                Text("Press \u{2325}\u{2318}1, \u{2325}\u{2318}2 or \u{2325}\u{2318}5 during a class to mark the last 1, 2 or 5 minutes. Marks appear here afterwards.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .padding(.horizontal, 12)
-                    .padding(.bottom, 10)
-            } else {
-                ScrollView {
-                    VStack(spacing: 0) {
-                        ForEach(recording.clips) { clip in
-                            clipRow(clip, in: recording)
-                            Divider()
-                        }
-                    }
-                }
-                .frame(maxHeight: 132)
-            }
-        }
-    }
-
-    private func clipRow(_ clip: SessionClip, in recording: Recording) -> some View {
-        let exported = SessionClipExporter.isExported(clip, from: recording.url)
-        return HStack(spacing: 10) {
-            Image(systemName: exported ? "checkmark.circle.fill" : "scissors")
-                .foregroundStyle(exported ? Color.accentColor : Color.secondary)
-            VStack(alignment: .leading, spacing: 1) {
-                Text("\(Self.offsetLabel(clip.startMs)) \u{2013} \(Self.offsetLabel(clip.endMs))")
-                    .font(.system(size: 12, design: .monospaced))
-                Text("\(clip.durationLabel) \u{2022} marked at \(clip.markedAtLabel.replacingOccurrences(of: "-", with: ":"))")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-            Spacer()
-            Button("Play") { seek(to: clip.startSeconds) }
-                .controlSize(.small)
-            if exported {
-                Button("Reveal") {
-                    NSWorkspace.shared.activateFileViewerSelecting(
-                        [SessionClipExporter.exportURL(for: clip, from: recording.url)])
-                }
-                .controlSize(.small)
-            }
-            Button(role: .destructive) {
-                removeClip(clip, from: recording)
-            } label: {
-                Image(systemName: "trash")
-            }
-            .controlSize(.small)
-            .help("Removes the mark, and the exported clip if there is one. The recording is untouched.")
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 6)
+        review.externalSeek = { ms in seek(to: Double(ms) / 1000) }
+        review.externalRate = { player?.rate = $0 }
+        review.externalSkip = { playSkipping($0) }
+        review.currentPosition = { Int(playhead * 1000) }
+        review.select(folder: session?.folder)
+        review.selectedRecording = selection?.url
     }
 
     // MARK: Player
@@ -1047,7 +753,7 @@ struct RecordingsView: View {
     /// different take points at the wrong moment.
     private func marks(for selection: Recording) -> ClipTimeline.Marks {
         guard ScreenroomAvailability.isReleased,
-              let folder = folder(for: selection),
+              let folder = sessions.first(where: { $0.takes.contains(selection) })?.folder,
               review.selected?.folder == folder else { return .init() }
         let found = review.scrubberMarks
         return .init(fillers: found.fillers.map { Double($0) / 1000 },
@@ -1093,6 +799,8 @@ struct RecordingsView: View {
     /// behind is just litter.
     private func trash(_ recording: Recording) {
         if selection == recording { teardownPlayer(); selection = nil }
+        // reload() below moves the inspector to what is left of the session,
+        // or to the next session when this was its only take.
         let folder = recording.url.deletingLastPathComponent()
         do {
             try FileManager.default.trashItem(at: recording.url, resultingItemURL: nil)
@@ -1164,7 +872,14 @@ struct RecordingsView: View {
             // a student. Dropping it made a folder full of work vanish from
             // the one window built to find it.
             let isMarked = metadata.kind != nil
-            guard !recordings.isEmpty || !clips.isEmpty || !metadata.links.isEmpty || isMarked else { return nil }
+            // The same goes for a class whose only record is the notes typed
+            // during it, or an analysis kept after the video was deleted.
+            let manager = FileManager.default
+            let hasNotes = manager.fileExists(atPath: ScreenroomNotesFile.url(in: folder).path)
+            let isAnalysed = manager.fileExists(atPath: ScreenroomAnalysis.url(in: folder).path)
+                || manager.fileExists(atPath: ScreenroomReport.url(in: folder).path)
+            guard !recordings.isEmpty || !clips.isEmpty || !metadata.links.isEmpty
+                    || isMarked || hasNotes || isAnalysed else { return nil }
             let withUploads = recordings.map { recording in
                 var copy = recording
                 copy.upload = metadata.upload(for: recording.url)
@@ -1183,7 +898,8 @@ struct RecordingsView: View {
                            recordings: withUploads,
                            clipFiles: clips,
                            links: metadata.links.sorted { $0.at < $1.at },
-                           kind: metadata.kind)
+                           kind: metadata.kind,
+                           isAnalysed: isAnalysed)
         }
 
         // Everything recorded before sessions had folders.
@@ -1203,16 +919,12 @@ struct RecordingsView: View {
         }
 
         sessions = found.sorted { $0.date > $1.date }
-        // A selection that belongs to the other half would leave the detail
-        // pane showing a recording the sidebar does not list.
-        if let current = selection,
-           !shown.contains(where: { session in
-               session.recordings.contains(current) || session.clipFiles.contains(current)
-           }) {
-            selection = nil
-            teardownPlayer()
+        // The selected card must still exist; when it went to the Trash,
+        // the newest session takes its place rather than an empty inspector.
+        if selectedID == nil || !sessions.contains(where: { $0.id == selectedID }) {
+            selectedID = sessions.first?.id
         }
-        // A selection whose file just went to the Trash must not linger.
+        // A take whose file just went to the Trash must not linger.
         if let current = selection, !allRecordings.contains(where: { $0.url == current.url }) {
             teardownPlayer()
             selection = nil
@@ -1220,6 +932,7 @@ struct RecordingsView: View {
                   let refreshed = allRecordings.first(where: { $0.url == current.url }) {
             selection = refreshed   // pick up clip changes without reloading the player
         }
+        didSelect()
     }
 
     private func contents(of directory: URL) -> [URL] {
@@ -1257,15 +970,27 @@ struct RecordingsView: View {
     }
 
     /// Amber for "plan ahead", red for "this class may not fit". Semantic system
-    /// colours, not brand tokens - these adapt to light and dark, and DESIGN.md's
-    /// amber/danger values are site CSS, not app colours.
+    /// colours rather than Brand.net: this is about the disk, not about
+    /// anything leaving the Mac, and amber here would claim that it was.
     private var spaceColor: Color { spaceLevel == .critical ? .red : .orange }
 
-    private var storageSummary: String {
-        let used = ByteCountFormatter.string(fromByteCount: usedBytes, countStyle: .file)
-        guard let freeBytes else { return "\(used) in recordings" }
+    private var spaceWarning: (text: String, color: Color)? {
+        guard spaceLevel != .ok, let freeBytes else { return nil }
         let free = ByteCountFormatter.string(fromByteCount: freeBytes, countStyle: .file)
-        return "\(used) in recordings \u{2022} \(free) free"
+        return (spaceLevel == .critical
+                    ? "Only \(free) left \u{2014} that may not fit a full class. Move or delete a few recordings before your next session."
+                    : "\(free) left \u{2014} room for about two more classes.",
+                spaceColor)
+    }
+
+    /// "~/Documents/Greenroom · 12 GB used · 38 GB free".
+    private var storageSummary: String {
+        let path = GreenroomScene.recordingsDirectory.path
+            .replacingOccurrences(of: NSHomeDirectory(), with: "~")
+        let used = ByteCountFormatter.string(fromByteCount: usedBytes, countStyle: .file)
+        guard let freeBytes else { return "\(path) \u{00B7} \(used) used" }
+        let free = ByteCountFormatter.string(fromByteCount: freeBytes, countStyle: .file)
+        return "\(path) \u{00B7} \(used) used \u{00B7} \(free) free"
     }
 
     static func offsetLabel(_ milliseconds: Int) -> String {

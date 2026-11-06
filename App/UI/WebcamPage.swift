@@ -67,6 +67,7 @@ struct WebcamSettingsTab: View {
                                     onChange: { coordinator.requestShapeApply(rebuild: true) })
             },
             cameras: { CameraSwitchSection() },
+            microphone: { MicrophoneSection() },
             recording: {
                 Toggle("Keep the last 5 minutes clippable", isOn: $coordinator.clipBufferEnabled)
                     .help("\u{2325}\u{2318}1, 2 or 5 saves the last minutes as a clip, recording or not. About 300 MB of memory, nothing on disk until you press.")
@@ -103,7 +104,7 @@ struct LiveCompositePicture: View {
 
 // MARK: - The page
 
-struct WebcamPageContent<LivePicture: View, ShareDetail: View, Cameras: View, Recording: View>: View {
+struct WebcamPageContent<LivePicture: View, ShareDetail: View, Cameras: View, Microphone: View, Recording: View>: View {
     @Binding var shape: WebcamShape
     @Binding var removal: BackgroundRemoval
     @Binding var geometry: BubbleDragLayer.Geometry
@@ -118,6 +119,7 @@ struct WebcamPageContent<LivePicture: View, ShareDetail: View, Cameras: View, Re
     @ViewBuilder let livePicture: () -> LivePicture
     @ViewBuilder let shareDetail: () -> ShareDetail
     @ViewBuilder let cameras: () -> Cameras
+    @ViewBuilder let microphone: () -> Microphone
     @ViewBuilder let recording: () -> Recording
 
     /// Where the bubble is while it is being dragged or nudged.
@@ -179,7 +181,8 @@ struct WebcamPageContent<LivePicture: View, ShareDetail: View, Cameras: View, Re
                 shareDetail()
             }
 
-            Section("Cameras") { cameras() }
+            Section("Camera") { cameras() }
+            Section("Microphone") { microphone() }
             Section("Recording") { recording() }
         }
         .formStyle(.grouped)

@@ -254,7 +254,8 @@ enum GreenroomScene {
                                  bubble: BubbleLayout = BubbleLayout(),
                                  preferredDisplayUUID: String = "",
                                  share: ShareTarget = ShareTarget(),
-                                 cameraUIDs: [String] = []) async throws -> SetupResult {
+                                 cameraUIDs: [String] = [],
+                                 micDeviceUID: String = "") async throws -> SetupResult {
         // OBS remembers whether the virtual cam was running when it last
         // quit and auto-resumes it on launch - confirmed by testing, that
         // left an active output blocking SetVideoSettings below ("Video
@@ -336,6 +337,21 @@ enum GreenroomScene {
         // and yields nothing is precisely the state that showed a black
         // capture with the webcam still visible.
         var screenLive = try await screenCaptureIsLive(client: client)
+        // A source can be alive by every measure OBS reports and still be
+        // dead: macOS can end the capture stream under it (seen as error
+        // -3805, "application connection being interrupted"), OBS logs it,
+        // never restarts it, and goes on drawing the last frame with its old
+        // size. The class then sees a frozen screen, and nothing here could
+        // tell. So a picture that has not changed at all is rebuilt too. A
+        // genuinely still screen gets rebuilt for nothing, which costs a
+        // second at setup and nothing else.
+        // Only on air does a screen source draw at all, so the scene goes on
+        // air first; off air every screenshot is the same black frame. The
+        // virtual camera is stopped by now, so nobody sees the switch.
+        _ = try? await client.request("SetCurrentProgramScene", data: ["sceneName": sceneName])
+        if screenLive, await screenCaptureLooksFrozen(client: client) {
+            screenLive = false
+        }
         if !screenLive {
             await removeInputAndWait(client: client, name: screenSourceName)
             try await createInput(client: client, name: screenSourceName,
@@ -362,10 +378,13 @@ enum GreenroomScene {
         // one input, so this sits alongside Zoom and the mic meter without
         // taking the device from either.
         let micKind = try await bestInputKind(client: client, containing: ["coreaudio_input_capture", "wasapi_input_capture", "pulse_input_capture"])
-        let micSettings: [String: Any] = ["device_id": "default"]
+        // "default" follows the system input; a chosen microphone is its
+        // CoreAudio UID, which is what AVFoundation calls uniqueID.
+        let micDevice = micDeviceUID.isEmpty ? "default" : micDeviceUID
+        let micSettings: [String: Any] = ["device_id": micDevice]
         try await ensureInput(client: client, name: micSourceName, kind: micKind,
                                settings: micSettings,
-                               isCorrectlyConfigured: { ($0["device_id"] as? String) == "default" })
+                               isCorrectlyConfigured: { ($0["device_id"] as? String) == micDevice })
         // Unmuted explicitly: a mute left on in the OBS UI would otherwise
         // survive across sessions and bring the silence straight back.
         _ = try? await client.request("SetInputMute", data: ["inputName": micSourceName, "inputMuted": false])
@@ -771,6 +790,21 @@ enum GreenroomScene {
             try? await Task.sleep(nanoseconds: 250_000_000)
         }
         return false
+    }
+
+    /// Two small screenshots of the screen source, a moment apart, byte for
+    /// byte the same. See the note where it is used.
+    private static func screenCaptureLooksFrozen(client: OBSWebSocketClient) async -> Bool {
+        func shot() async -> String? {
+            let response = try? await client.request("GetSourceScreenshot", data: [
+                "sourceName": screenSourceName, "imageFormat": "png", "imageWidth": 320
+            ])
+            return response?["imageData"] as? String
+        }
+        guard let first = await shot() else { return false }
+        try? await Task.sleep(nanoseconds: 400_000_000)
+        guard let second = await shot() else { return false }
+        return first == second
     }
 
     private static func fitCanvasToScreenSource(client: OBSWebSocketClient) async throws -> (width: Int, height: Int) {

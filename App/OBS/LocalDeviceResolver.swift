@@ -15,6 +15,7 @@ import CoreGraphics
 // through AppKit; this file imports neither, so it needs it by name.
 import ColorSync
 import AVFoundation
+import CoreAudio
 
 enum LocalDeviceResolver {
 
@@ -121,6 +122,25 @@ enum LocalDeviceResolver {
             .map { Camera(id: $0.uniqueID,
                           name: $0.localizedName,
                           isBuiltIn: $0.deviceType == .builtInWideAngleCamera) }
+            .sorted { $0.isBuiltIn && !$1.isBuiltIn }
+    }
+
+    struct Microphone: Identifiable, Hashable {
+        /// AVFoundation's uniqueID, which is the CoreAudio device UID - the
+        /// value OBS's audio input takes as `device_id`.
+        let id: String
+        let name: String
+        let isBuiltIn: Bool
+    }
+
+    /// Every microphone attached right now, built-in first.
+    static func availableMicrophones() -> [Microphone] {
+        AVCaptureDevice.DiscoverySession(deviceTypes: [.microphone], mediaType: .audio, position: .unspecified)
+            .devices
+            .map { device in
+                Microphone(id: device.uniqueID, name: device.localizedName,
+                           isBuiltIn: device.transportType == Int32(bitPattern: kAudioDeviceTransportTypeBuiltIn))
+            }
             .sorted { $0.isBuiltIn && !$1.isBuiltIn }
     }
 

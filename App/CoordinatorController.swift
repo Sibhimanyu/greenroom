@@ -794,10 +794,31 @@ final class CoordinatorController: ObservableObject {
     }
 
     /// The camera list a scene build will use, for opening them ahead of it.
-    private func sceneCameraUIDs(limit: Int? = nil) -> [String] {
+    ///
+    /// With switching on, the cameras in cut order. With it off, the camera
+    /// picked on the Webcam page - the first in the same list, so one choice
+    /// serves both - if it is plugged in; otherwise whatever the resolver
+    /// likes best, as before there was a choice.
+    func sceneCameraUIDs(limit: Int? = nil) -> [String] {
         let listed = sessionCameraUIDs(cameraDirectorSettings)
-        let uids = listed.isEmpty ? LocalDeviceResolver.physicalCameraUID().map { [$0] } ?? [] : listed
+        let available = Set(LocalDeviceResolver.availableCameras().map(\.id))
+        let picked = cameraDirectorSettings.cameraUIDs.first { available.contains($0) }
+        let uids = !listed.isEmpty ? listed
+            : picked.map { [$0] } ?? LocalDeviceResolver.physicalCameraUID().map { [$0] } ?? []
         return limit.map { Array(uids.prefix($0)) } ?? uids
+    }
+
+    /// The microphone recordings take. Empty means the system's input.
+    @Published var micDeviceUID: String {
+        didSet { defaults.set(micDeviceUID, forKey: "micDeviceUID") }
+    }
+
+    /// The camera or microphone picked on the Webcam page changed: rebuild
+    /// the preview's scene for it. During a class it waits for the next Start,
+    /// like everything else that would rebuild a source.
+    func previewCamerasChanged() {
+        guard !virtualCamActive, !isRunning, shapePreviewTask != nil else { return }
+        restartPreviewCameras()
     }
 
     private func restartPreviewCameras() {
@@ -1144,6 +1165,7 @@ final class CoordinatorController: ObservableObject {
         defer { Self.shared = self }
         webcamShape = WebcamShape(rawValue: defaults.string(forKey: "webcamShape") ?? "") ?? .circle
         backgroundRemoval = BackgroundRemoval(rawValue: defaults.string(forKey: "backgroundRemoval") ?? "") ?? .automatic
+        micDeviceUID = defaults.string(forKey: "micDeviceUID") ?? ""
         // load(from:) migrates the Chrome-only era's "chromeLayout" key,
         // and the ?? fallbacks below migrate its URL/on-Start keys - an
         // existing setup keeps its layout without re-configuring.
@@ -1981,7 +2003,10 @@ final class CoordinatorController: ObservableObject {
                 if let response = try? await client.request("GetSourceScreenshot", data: [
                     "sourceName": GreenroomScene.sceneName,
                     "imageFormat": "jpg",
-                    "imageWidth": 640
+                    // Sharp at the stage's size on a Retina screen. OBS hands
+                    // one back in about 5 ms, so neither this nor the rate
+                    // below is what limits the picture.
+                    "imageWidth": 1152
                 ]),
                    let dataString = response["imageData"] as? String,
                    let comma = dataString.firstIndex(of: ","),
@@ -1989,7 +2014,9 @@ final class CoordinatorController: ObservableObject {
                    let frame = NSImage(data: imageData) {
                     publishPreviewFrame(frame)
                 }
-                try? await Task.sleep(nanoseconds: 150_000_000)
+                // About 15 a second, up from about 6: at 150ms a moving hand
+                // visibly stepped, which read as a slow camera.
+                try? await Task.sleep(nanoseconds: 60_000_000)
             }
         }
     }
@@ -2072,7 +2099,9 @@ final class CoordinatorController: ObservableObject {
         if (try? await GreenroomScene.ensureConfigured(client: client,
                                                        bubble: bubbleLayout,
                                                        preferredDisplayUUID: screenCaptureDisplayUUID,
-                                                       share: shareTarget)) != nil {
+                                                       share: shareTarget,
+                                                       cameraUIDs: sceneCameraUIDs(limit: 1),
+                                                       micDeviceUID: micDeviceUID)) != nil {
             shapePreviewSceneReady = true
         }
     }
@@ -3755,7 +3784,8 @@ final class CoordinatorController: ObservableObject {
             share: shareTarget,
             // The first camera only. The rest join once the meeting is live -
             // see bringInExtraCameras.
-            cameraUIDs: Array(sessionCameraUIDs(cameraDirectorSettings).prefix(1)))
+            cameraUIDs: sceneCameraUIDs(limit: 1),
+            micDeviceUID: micDeviceUID)
         if !setup.webcamActive {
             log("No webcam connected \u{2014} running screen-only. Plug a camera in and press Start (or Snap Windows Back) to bring your video back.")
         }

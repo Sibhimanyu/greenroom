@@ -48,6 +48,7 @@ struct CameraSwitchSection: View {
                 enabled: settings.enabled,
                 cameras: cameras,
                 order: coordinator.cameraDirectorSettings.cameraUIDs,
+                single: coordinator.sceneCameraUIDs(limit: 1).first,
                 liveCameraName: coordinator.cameraDirector.liveCameraName,
                 aiming: aiming,
                 canAim: !coordinator.virtualCamActive,
@@ -55,6 +56,7 @@ struct CameraSwitchSection: View {
                 transition: settings.transition,
                 reading: reading,
                 toggle: toggle,
+                pick: pick,
                 aim: { uid in
                     aiming = uid
                     coordinator.aimCamera(uid: uid)
@@ -74,6 +76,16 @@ struct CameraSwitchSection: View {
     /// Ticking a camera appends it, so the order follows the order they were
     /// chosen in. That makes "the first one" something the teacher decided
     /// rather than something the device enumeration decided for them.
+    /// With switching off there is one camera, and clicking a card makes it
+    /// that camera: it moves to the front of the same list switching uses,
+    /// so turning switching on later starts from the camera already chosen.
+    private func pick(_ uid: String) {
+        var uids = coordinator.cameraDirectorSettings.cameraUIDs.filter { $0 != uid }
+        uids.insert(uid, at: 0)
+        coordinator.cameraDirectorSettings.cameraUIDs = uids
+        coordinator.previewCamerasChanged()
+    }
+
     private func toggle(_ uid: String, _ on: Bool) {
         var uids = coordinator.cameraDirectorSettings.cameraUIDs
         if on {
@@ -161,6 +173,8 @@ struct CameraSwitchContent<LiveDetail: View>: View {
     let cameras: [LocalDeviceResolver.Camera]
     /// Chosen cameras, in cut order.
     let order: [String]
+    /// The one camera in use while switching is off.
+    let single: String?
     let liveCameraName: String?
     let aiming: String?
     let canAim: Bool
@@ -168,6 +182,7 @@ struct CameraSwitchContent<LiveDetail: View>: View {
     @Binding var transition: CameraTransition
     let reading: CameraReading
     let toggle: (String, Bool) -> Void
+    let pick: (String) -> Void
     let aim: (String) -> Void
     let refresh: () -> Void
     @ViewBuilder let liveDetail: () -> LiveDetail
@@ -232,13 +247,16 @@ struct CameraSwitchContent<LiveDetail: View>: View {
         HStack(alignment: .top, spacing: 8) {
             ForEach(cameras) { camera in
                 let position = order.firstIndex(of: camera.id)
-                CameraCard(camera: camera, position: position,
+                CameraCard(camera: camera,
+                           // Numbered only when there is an order to show.
+                           position: enabled ? position : nil,
+                           chosen: enabled ? position != nil : single == camera.id,
                            isLive: liveCameraName == camera.name,
                            isAiming: aiming == camera.id, canAim: canAim,
-                           toggle: { toggle(camera.id, position == nil) },
+                           toggle: { enabled ? toggle(camera.id, position == nil) : pick(camera.id) },
                            aim: { aim(camera.id) })
             }
-            if cameras.count < 2 {
+            if cameras.count < 2 && enabled {
                 AddCameraHint()
             }
             Button(action: refresh) { Image(systemName: "arrow.clockwise") }
@@ -253,13 +271,12 @@ struct CameraSwitchContent<LiveDetail: View>: View {
 private struct CameraCard: View {
     let camera: LocalDeviceResolver.Camera
     let position: Int?
+    let chosen: Bool
     let isLive: Bool
     let isAiming: Bool
     let canAim: Bool
     let toggle: () -> Void
     let aim: () -> Void
-
-    private var chosen: Bool { position != nil }
 
     var body: some View {
         VStack(spacing: 8) {
@@ -278,7 +295,7 @@ private struct CameraCard: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .help(chosen ? "Click to leave this camera out" : "Click to use this camera")
+            .help(position != nil ? "Click to leave this camera out" : "Click to use this camera")
 
             if canAim {
                 Button(isAiming ? "Looking\u{2026}" : "Aim") { aim() }
@@ -295,7 +312,12 @@ private struct CameraCard: View {
         .overlay(RoundedRectangle(cornerRadius: 10)
             .strokeBorder(chosen ? Brand.green : Color.secondary.opacity(0.25), lineWidth: chosen ? 2 : 1))
         .overlay(alignment: .topLeading) {
-            if let position {
+            if position == nil, chosen {
+                Image(systemName: "checkmark.circle.fill")
+                    .font(.system(size: 16))
+                    .foregroundStyle(Brand.green)
+                    .padding(6)
+            } else if let position {
                 Text("\(position + 1)")
                     .font(.caption.weight(.bold))
                     .foregroundStyle(.white)

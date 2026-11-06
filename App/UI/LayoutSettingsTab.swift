@@ -4,247 +4,69 @@
 //
 //  Settings -> Layout: the main app, the side column and the panes.
 //
+//  Drawn the way the Webcam page is: the screen comes first, as a picture you
+//  can drag, and every choice under it is a picture of itself (which side,
+//  how wide, what fills the column, which display). What each one does lives
+//  in hover help, not in captions.
+//
+//  `LayoutPageContent` takes plain bindings, not the coordinator, so the same
+//  view can be rendered off screen with sample values to check it by eye.
+//  `LayoutSettingsTab` is the thin layer that feeds it from the coordinator.
+//
 import SwiftUI
 
-private enum LayoutSettingsFocus: Hashable {
-    case websiteURL
-}
-
+// MARK: - The tab
 
 struct LayoutSettingsTab: View {
-    /// Half, two thirds, three quarters - what the fixed widths used to be.
-    private static let widthPresets: [Double] = [0.5, 2.0 / 3.0, 0.75]
     @EnvironmentObject private var coordinator: CoordinatorController
-    @FocusState private var focus: LayoutSettingsFocus?
     @State private var apps: [AppInfo] = []
     @State private var displays: [DisplayInfo] = DisplayResolver.connectedDisplays()
     @State private var hasAccessibilityPermission = AppWindowManager.hasAccessibilityPermission
 
     // AXIsProcessTrusted() has no change notification, so poll it while
-    // the tab is visible - the warning below disappears on its own once
-    // the user flips the switch in System Settings.
+    // the tab is visible - the warning disappears on its own once the user
+    // flips the switch in System Settings.
     private let permissionTick = Timer.publish(every: 1.5, on: .main, in: .common).autoconnect()
 
     var body: some View {
-        Form {
-            Picker("Main app", selection: $coordinator.mainAppBundleID) {
-                ForEach(apps) { app in
-                    HStack(spacing: 6) {
-                        if let icon = AppCatalog.icon(forBundleID: app.bundleID) {
-                            Image(nsImage: sized(icon))
-                        }
-                        Text(app.name)
-                    }
-                    .tag(app.bundleID)
-                }
-            }
-
-            if AppCatalog.isBrowser(coordinator.mainAppBundleID) {
-                // .roundedBorder, not the Form default borderless: the
-                // borderless field rendered as an apparently-dead empty
-                // row (macOS hides the prompt until focus), so nothing
-                // signalled "type a URL here" (design-review F2).
-                TextField("Open website", text: $coordinator.mainAppURL, prompt: Text("e.g. docs.google.com"))
-                    .textFieldStyle(.roundedBorder)
-                    .focused($focus, equals: .websiteURL)
-            }
-
-            if AppCatalog.isBuiltInBrowser(coordinator.mainAppBundleID) {
-                Text("Greenroom\u{2019}s own browser: tabs, find in page, local history, no permissions to grant. Pick Chrome above if you need extensions.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-
-                Toggle(isOn: $coordinator.browserRestoresTabs) {
-                    SettingLabel(title: "Reopen last session\u{2019}s tabs on Start",
-                                 subtitle: "Yesterday\u{2019}s tabs come back beside the website above.")
-                }
-                Toggle(isOn: $coordinator.browserSearchSuggestions) {
-                    SettingLabel(title: "Suggest searches as you type",
-                                 subtitle: "Sends what you type to Google for completions. Off: history only, nothing leaves until Return.")
-                }
-                Toggle(isOn: $coordinator.browserClosesOnStop) {
-                    SettingLabel(title: "Close the browser window when the session ends",
-                                 subtitle: "Tabs are kept for the next Start.")
-                }
-            } else if AppCatalog.isBrowser(coordinator.mainAppBundleID) {
-                // The same switch for an outside browser, which Greenroom
-                // can close only because it made that window itself.
-                Toggle(isOn: $coordinator.browserClosesOnStop) {
-                    SettingLabel(title: "Close the window Start opened when the session ends",
-                                 subtitle: "Only that window. Your other \(AppCatalog.displayName(forBundleID: coordinator.mainAppBundleID) ?? "browser") windows and tabs stay open. Works with Chrome and browsers built like it (Ulaa, Edge, Brave).")
-                }
-            }
-
-            if needsAccessibility && !hasAccessibilityPermission {
-                accessibilityWarning
-            }
-
-            Section {
-                Picker("Main pane side", selection: $coordinator.workspaceLayout.mainOnLeft) {
-                    Text("Left").tag(true)
-                    Text("Right").tag(false)
-                }
-                .pickerStyle(.segmented)
-
-                // Presets AND the drag, not one instead of the other. The fixed
-                // widths were replaced by the drag handles in August, which made
-                // any width possible and the three common ones fiddly: getting
-                // exactly half by hand is a hunt for a pixel. A width the handles
-                // left somewhere else simply has no segment lit.
-                Picker("Main pane width", selection: Binding(
-                    get: { Self.widthPresets.first { abs($0 - coordinator.workspaceLayout.clampedMainFraction) < 0.005 } ?? -1 },
-                    set: { fraction in
-                        withAnimation(.snappy(duration: 0.25)) {
-                            coordinator.workspaceLayout.mainFraction = fraction
-                        }
-                    })) {
-                    Text("\u{00BD}").tag(0.5)
-                    Text("\u{2154}").tag(2.0 / 3.0)
-                    Text("\u{00BE}").tag(0.75)
-                }
-                .pickerStyle(.segmented)
-
-                LayoutSchematicView(layout: $coordinator.workspaceLayout,
-                                    appName: coordinator.mainAppDisplayName,
-                                    appIcon: AppCatalog.icon(forBundleID: coordinator.mainAppBundleID))
-                    .frame(height: 140)
-                    .padding(.vertical, 4)
-
-                Text("Pick a width or drag the handles to size the panes. A live session re-tiles as you change it.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-
-            Section("Side column") {
-                Toggle("Zoom meeting tile", isOn: $coordinator.workspaceLayout.sideShowsZoomTile)
-                Toggle("Chat window", isOn: $coordinator.workspaceLayout.sideShowsChat)
-                // Tile-vs-chat balance is set by dragging the handle in the
-                // preview above - the old slider duplicated it.
-            }
-
-            Section("Meeting view") {
-                Toggle(isOn: $coordinator.hideSelfView) {
-                    SettingLabel(title: "Hide my own video tile",
-                                 subtitle: "Only changes what you see; the class still gets your video.")
-                }
-                Toggle(isOn: $coordinator.speakerTileShortcutEnabled) {
-                    SettingLabel(title: "Quick-hide mode",
-                                 subtitle: "Sessions start with the speaker hidden and the chat full height; \u{2325}\u{2318}Z shows it.")
-                }
-            }
-
-            Section("Privacy") {
-                Toggle(isOn: $coordinator.analyticsEnabled) {
-                    SettingLabel(title: "Send anonymous usage analytics",
-                                 subtitle: "Counts and timings only. Never names, meeting IDs, addresses or chat.")
-                }
-            }
-
-            Section("Second display") {
-                Toggle(isOn: $coordinator.peopleViewOnStart) {
-                    SettingLabel(title: "Show the participant view on another display",
-                                 subtitle: coordinator.customUIMode
-                                     ? "Every student and the host controls, full-screen on your reference monitor."
-                                     : "Zoom\u{2019}s participant grid, full-screen on your reference monitor.")
-                }
-
-                // Greyed out rather than hidden while the view is off, like the
-                // rest of Settings. The main-display option stays hidden with
-                // Zoom's own grid, because there it does not exist at all.
-                if coordinator.customUIMode {
-                    Toggle(isOn: $coordinator.participantPanelOnMainDisplay) {
-                        SettingLabel(title: "Allow it on this screen when no second display is connected",
-                                     subtitle: "It is large and covers the workspace; for trying the panel without a second monitor.")
-                    }
-                    .disabled(!coordinator.peopleViewOnStart)
-                }
-
-                Group {
-                    Picker("Participant-view display", selection: $coordinator.peopleViewDisplayUUID) {
-                        Text("Automatic (a non-main display)").tag("")
-                        ForEach(displays) { display in
-                            Text(display.label).tag(display.id)
-                        }
-                        // Keep a saved-but-disconnected choice visible/valid.
-                        if !coordinator.peopleViewDisplayUUID.isEmpty,
-                           !displays.contains(where: { $0.id == coordinator.peopleViewDisplayUUID }) {
-                            Text("Saved display (not connected)").tag(coordinator.peopleViewDisplayUUID)
-                        }
-                    }
-
-                    Text(displayHelp)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                .disabled(!coordinator.peopleViewOnStart)
-            }
-            .onReceive(NotificationCenter.default.publisher(for: NSApplication.didChangeScreenParametersNotification)) { _ in
-                displays = DisplayResolver.connectedDisplays()
-            }
-
-            Toggle(isOn: $coordinator.mainAppOnStart) {
-                SettingLabel(title: "Open the main app automatically on Start",
-                             subtitle: "The Zoom tile and chat take whatever the main pane leaves free.")
-            }
-        }
-        .formStyle(.grouped)
-        // Nothing focused when the tab opens. Without this the website field
-        // claimed focus immediately and could not be escaped, because macOS Tab
-        // cycles text fields and this tab has only one.
-        .defaultFocus($focus, nil)
-        // Escape always releases it, which is the habit people already have and
-        // the only way out when Tab has nowhere to go.
-        .onExitCommand { focus = nil }
+        LayoutPageContent(
+            layout: $coordinator.workspaceLayout,
+            mainAppBundleID: $coordinator.mainAppBundleID,
+            mainAppURL: $coordinator.mainAppURL,
+            mainAppOnStart: $coordinator.mainAppOnStart,
+            browserRestoresTabs: $coordinator.browserRestoresTabs,
+            browserSearchSuggestions: $coordinator.browserSearchSuggestions,
+            browserClosesOnStop: $coordinator.browserClosesOnStop,
+            hideSelfView: $coordinator.hideSelfView,
+            quickHide: $coordinator.speakerTileShortcutEnabled,
+            analyticsEnabled: $coordinator.analyticsEnabled,
+            peopleViewOnStart: $coordinator.peopleViewOnStart,
+            panelOnMainDisplay: $coordinator.participantPanelOnMainDisplay,
+            peopleViewDisplayUUID: $coordinator.peopleViewDisplayUUID,
+            apps: apps,
+            displays: displays,
+            customUIMode: coordinator.customUIMode,
+            mainAppName: coordinator.mainAppDisplayName,
+            // Browsers are driven through the Chromium AppleScript dictionary
+            // (per-app Automation permission, prompted on first use) - only
+            // non-browser apps need the system-wide Accessibility grant to be
+            // moved. (A non-Chromium browser would fall back to Accessibility
+            // too, but that's rare enough to keep this warning simple.)
+            cannotMoveMainApp: !AppCatalog.isBrowser(coordinator.mainAppBundleID) && !hasAccessibilityPermission,
+            openAccessibilitySettings: {
+                AppWindowManager.promptForAccessibilityPermission()
+                AppWindowManager.openAccessibilitySettings()
+            })
         .onAppear {
             apps = pickerApps()
             displays = DisplayResolver.connectedDisplays()
-            focus = nil
         }
         .onReceive(permissionTick) { _ in
             hasAccessibilityPermission = AppWindowManager.hasAccessibilityPermission
         }
-    }
-
-    /// Caption under the participant-view display picker, adapting to how
-    /// many displays are actually connected.
-    private var displayHelp: String {
-        if displays.count <= 1 {
-            return "Only your main display is connected right now \u{2014} plug in your reference display and it will appear here. Mirrored displays show as their main and aren't listed separately, so pick your separate, extended monitor."
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didChangeScreenParametersNotification)) { _ in
+            displays = DisplayResolver.connectedDisplays()
         }
-        return "Pick your reference monitor. Mirrored displays (e.g. a class projector matching your main screen) show as their main and aren't listed separately \u{2014} choose the separate, extended display. \u{201C}Automatic\u{201D} uses the first non-main display."
-    }
-
-    /// Browsers are driven through the Chromium AppleScript dictionary
-    /// (per-app Automation permission, prompted on first use) - only
-    /// non-browser apps need the system-wide Accessibility grant to be
-    /// moved. (A non-Chromium browser would fall back to Accessibility
-    /// too, but that's rare enough to keep this warning simple.)
-    private var needsAccessibility: Bool {
-        !AppCatalog.isBrowser(coordinator.mainAppBundleID)
-    }
-
-    /// Without this, picking an ungranted app just silently fails to move
-    /// its window at Start - say so up front, with a way to fix it.
-    private var accessibilityWarning: some View {
-        HStack(alignment: .top, spacing: 8) {
-            Image(systemName: "exclamationmark.triangle.fill")
-                .foregroundStyle(.yellow)
-            VStack(alignment: .leading, spacing: 3) {
-                Text("Greenroom can't move \(coordinator.mainAppDisplayName)'s window yet.")
-                    .font(.callout.weight(.medium))
-                Text("Non-browser apps are positioned with the Accessibility API. Allow Greenroom under System Settings \u{2192} Privacy & Security \u{2192} Accessibility \u{2014} until then, \(coordinator.mainAppDisplayName) will open but stay wherever it is.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            Spacer()
-            Button("Open Settings\u{2026}") {
-                AppWindowManager.promptForAccessibilityPermission()
-                AppWindowManager.openAccessibilitySettings()
-            }
-        }
-        .padding(10)
-        .background(.yellow.opacity(0.12), in: RoundedRectangle(cornerRadius: 8))
     }
 
     /// Installed + running apps, with the saved choice force-included so
@@ -259,6 +81,208 @@ struct LayoutSettingsTab: View {
         }
         return list
     }
+}
+
+// MARK: - The page
+
+private enum LayoutSettingsFocus: Hashable {
+    case websiteURL
+}
+
+struct LayoutPageContent: View {
+    /// Half, two thirds, three quarters - what the fixed widths used to be.
+    private static let widthPresets: [(fraction: Double, name: String, mark: String)] = [
+        (0.5, "Half", "\u{00BD}"), (2.0 / 3.0, "Two thirds", "\u{2154}"), (0.75, "Three quarters", "\u{00BE}"),
+    ]
+
+    @Binding var layout: WorkspaceLayout
+    @Binding var mainAppBundleID: String
+    @Binding var mainAppURL: String
+    @Binding var mainAppOnStart: Bool
+    @Binding var browserRestoresTabs: Bool
+    @Binding var browserSearchSuggestions: Bool
+    @Binding var browserClosesOnStop: Bool
+    @Binding var hideSelfView: Bool
+    @Binding var quickHide: Bool
+    @Binding var analyticsEnabled: Bool
+    @Binding var peopleViewOnStart: Bool
+    @Binding var panelOnMainDisplay: Bool
+    @Binding var peopleViewDisplayUUID: String
+    let apps: [AppInfo]
+    let displays: [DisplayInfo]
+    /// Greenroom's own participant panel rather than Zoom's grid.
+    let customUIMode: Bool
+    let mainAppName: String
+    /// A non-browser app without the Accessibility grant: it would open at
+    /// Start but stay wherever it is.
+    let cannotMoveMainApp: Bool
+    let openAccessibilitySettings: () -> Void
+
+    @FocusState private var focus: LayoutSettingsFocus?
+
+    private var isBrowser: Bool { AppCatalog.isBrowser(mainAppBundleID) }
+    private var isBuiltInBrowser: Bool { AppCatalog.isBuiltInBrowser(mainAppBundleID) }
+
+    var body: some View {
+        Form {
+            Section {
+                stage
+                stageControls
+            }
+
+            Section("Main app") { mainApp }
+
+            Section("Side column") {
+                SideColumnPicker(layout: $layout)
+                // Tile-vs-chat balance is set by dragging the handle in the
+                // picture above - the old slider duplicated it.
+            }
+
+            Section("Meeting") {
+                Toggle("Hide my own tile", isOn: $hideSelfView)
+                    .help("Only changes what you see. The class still gets your video.")
+                Toggle("Quick-hide mode", isOn: $quickHide)
+                    .help("Sessions start with the speaker hidden and the chat full height. \u{2325}\u{2318}Z shows it.")
+            }
+
+            Section("Second display") { secondDisplay }
+
+            Section("Privacy") {
+                Toggle("Anonymous usage analytics", isOn: $analyticsEnabled)
+                    .help("Counts and timings only. Never names, meeting IDs, addresses or chat.")
+            }
+        }
+        .formStyle(.grouped)
+        // Nothing focused when the tab opens. Without this the website field
+        // claimed focus immediately and could not be escaped, because macOS Tab
+        // cycles text fields and this tab has only one.
+        .defaultFocus($focus, nil)
+        // Escape always releases it, which is the habit people already have and
+        // the only way out when Tab has nowhere to go.
+        .onExitCommand { focus = nil }
+        .onAppear { focus = nil }
+    }
+
+    // MARK: Stage
+
+    /// The main display as a picture: the panes in their real proportions,
+    /// with handles to drag. Drawn at a screen's own shape (16:10) and
+    /// centred, so it reads as "your screen" rather than as a progress bar.
+    private static let stageSize = CGSize(width: 416, height: 260)
+
+    private var stage: some View {
+        LayoutSchematicView(layout: $layout,
+                            appName: mainAppName,
+                            appIcon: AppCatalog.icon(forBundleID: mainAppBundleID))
+            .padding(8)
+            .background(RoundedRectangle(cornerRadius: 14).fill(Color.secondary.opacity(0.08)))
+            .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(Color.secondary.opacity(0.3)))
+            .frame(width: Self.stageSize.width, height: Self.stageSize.height)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 4)
+            .help("Drag the handles to size the panes. A live session re-tiles as you change it.")
+    }
+
+    /// Which side and how wide, as little screens. Presets AND the drag, not
+    /// one instead of the other: the drag makes any width possible and the
+    /// three common ones fiddly - getting exactly half by hand is a hunt for
+    /// a pixel. A width the handles left somewhere else simply lights nothing.
+    private var stageControls: some View {
+        HStack(spacing: 16) {
+            GlyphGroup {
+                ForEach([true, false], id: \.self) { left in
+                    GlyphButton(selected: layout.mainOnLeft == left,
+                                name: left ? "Main app on the left" : "Main app on the right") {
+                        MiniScreen(fraction: layout.clampedMainFraction, mainOnLeft: left,
+                                   highlighted: layout.mainOnLeft == left)
+                    } action: {
+                        withAnimation(.snappy(duration: 0.25)) { layout.mainOnLeft = left }
+                    }
+                }
+            }
+            Spacer(minLength: 0)
+            GlyphGroup {
+                ForEach(Self.widthPresets, id: \.fraction) { preset in
+                    let selected = abs(preset.fraction - layout.clampedMainFraction) < 0.005
+                    GlyphButton(selected: selected, name: "\(preset.name) width") {
+                        HStack(spacing: 4) {
+                            MiniScreen(fraction: preset.fraction, mainOnLeft: layout.mainOnLeft,
+                                       highlighted: selected)
+                            Text(preset.mark)
+                                .font(.callout.weight(selected ? .semibold : .regular))
+                                .foregroundStyle(selected ? .primary : .secondary)
+                        }
+                    } action: {
+                        withAnimation(.snappy(duration: 0.25)) { layout.mainFraction = preset.fraction }
+                    }
+                }
+            }
+        }
+        // The picture's own width, so the controls line up under its edges
+        // instead of drifting out to the form's (DESIGN.md, Panel composition).
+        .frame(width: Self.stageSize.width)
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 2)
+    }
+
+    // MARK: Main app
+
+    @ViewBuilder
+    private var mainApp: some View {
+        Picker("App", selection: $mainAppBundleID) {
+            ForEach(apps) { app in
+                HStack(spacing: 8) {
+                    if let icon = AppCatalog.icon(forBundleID: app.bundleID) {
+                        Image(nsImage: sized(icon))
+                    }
+                    Text(app.name)
+                }
+                .tag(app.bundleID)
+            }
+        }
+        .help(isBuiltInBrowser
+              ? "Greenroom\u{2019}s own browser: tabs, find in page, local history, no permissions to grant. Pick Chrome if you need extensions."
+              : "What fills the main pane")
+
+        if cannotMoveMainApp {
+            // Without this, picking an ungranted app just silently fails to
+            // move its window at Start - say so up front, with a way to fix it.
+            HStack {
+                StatusBadge(text: "Can\u{2019}t move \(mainAppName) yet", tone: .problem)
+                Spacer()
+                Button("Open Settings\u{2026}", action: openAccessibilitySettings)
+            }
+            .help("Non-browser apps are placed with the Accessibility API. Allow Greenroom under System Settings \u{2192} Privacy & Security \u{2192} Accessibility. Until then \(mainAppName) opens but stays wherever it is.")
+        }
+
+        if isBrowser {
+            // .roundedBorder, not the Form default borderless: the
+            // borderless field rendered as an apparently-dead empty
+            // row (macOS hides the prompt until focus), so nothing
+            // signalled "type a URL here" (design-review F2).
+            TextField("Website", text: $mainAppURL, prompt: Text("e.g. docs.google.com"))
+                .textFieldStyle(.roundedBorder)
+                .focused($focus, equals: .websiteURL)
+                .help("Opens at Start")
+        }
+
+        Toggle("Open on Start", isOn: $mainAppOnStart)
+            .help("Opens the main app tiled to its pane. The Zoom tile and chat take whatever it leaves free.")
+
+        if isBuiltInBrowser {
+            Toggle("Reopen last tabs", isOn: $browserRestoresTabs)
+                .help("Yesterday\u{2019}s tabs come back beside the website above.")
+            Toggle("Search suggestions", isOn: $browserSearchSuggestions)
+                .help("Sends what you type to Google for completions. Off: history only, nothing leaves until Return.")
+            Toggle("Close when the session ends", isOn: $browserClosesOnStop)
+                .help("Tabs are kept for the next Start.")
+        } else if isBrowser {
+            // The same switch for an outside browser, which Greenroom
+            // can close only because it made that window itself.
+            Toggle("Close its window when the session ends", isOn: $browserClosesOnStop)
+                .help("Only the window Start opened. Your other \(mainAppName) windows and tabs stay open. Works with Chrome and browsers built like it (Ulaa, Edge, Brave).")
+        }
+    }
 
     /// NSWorkspace icons come at 32pt+; menu rows want 16.
     private func sized(_ icon: NSImage) -> NSImage {
@@ -266,12 +290,204 @@ struct LayoutSettingsTab: View {
         copy.size = NSSize(width: 16, height: 16)
         return copy
     }
+
+    // MARK: Second display
+
+    @ViewBuilder
+    private var secondDisplay: some View {
+        Toggle("Participant view", isOn: $peopleViewOnStart)
+            .help(customUIMode
+                  ? "Every student and the host controls, full-screen on your reference monitor."
+                  : "Zoom\u{2019}s participant grid, full-screen on your reference monitor.")
+
+        // Greyed out rather than hidden while the view is off, like the
+        // rest of Settings. The main-display option stays hidden with
+        // Zoom's own grid, because there it does not exist at all.
+        if customUIMode {
+            Toggle("Allow on this screen if alone", isOn: $panelOnMainDisplay)
+                .help("When no second display is connected. It is large and covers the workspace; for trying the panel without a second monitor.")
+                .disabled(!peopleViewOnStart)
+        }
+
+        DisplayPicker(selection: $peopleViewDisplayUUID, displays: displays)
+            .disabled(!peopleViewOnStart)
+            .opacity(peopleViewOnStart ? 1 : 0.5)
+
+        if displays.count <= 1 {
+            StatusBadge(text: "Only this display is connected", tone: .waiting)
+                .help("Plug in your reference display and it appears here. Mirrored displays show as their main, so use a separate, extended monitor.")
+                .opacity(peopleViewOnStart ? 1 : 0.5)
+        }
+    }
+}
+
+// MARK: - Pieces
+
+/// A bordered strip of small picture buttons, like the Webcam page's sizes.
+private struct GlyphGroup<Content: View>: View {
+    @ViewBuilder let content: () -> Content
+
+    var body: some View {
+        HStack(spacing: 4) { content() }
+            .padding(4)
+            .background(RoundedRectangle(cornerRadius: 10).strokeBorder(Color.secondary.opacity(0.25)))
+    }
+}
+
+private struct GlyphButton<Label: View>: View {
+    let selected: Bool
+    let name: String
+    @ViewBuilder let label: () -> Label
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            label()
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(RoundedRectangle(cornerRadius: 6)
+                    .fill(selected ? Brand.green.opacity(0.12) : .clear))
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help(name)
+        .accessibilityLabel(name)
+        .accessibilityAddTraits(selected ? .isSelected : [])
+    }
+}
+
+/// A thumbnail of the layout: a screen with the main pane filled in.
+private struct MiniScreen: View {
+    let fraction: Double
+    let mainOnLeft: Bool
+    let highlighted: Bool
+
+    var body: some View {
+        let width: CGFloat = 36, height: CGFloat = 24, inset: CGFloat = 3, gap: CGFloat = 2
+        let inner = width - 2 * inset - gap
+        let main = inner * fraction
+        HStack(spacing: gap) {
+            if mainOnLeft {
+                block(main, filled: true)
+                block(inner - main, filled: false)
+            } else {
+                block(inner - main, filled: false)
+                block(main, filled: true)
+            }
+        }
+        .padding(inset)
+        .frame(width: width, height: height)
+        .overlay(RoundedRectangle(cornerRadius: 4)
+            .strokeBorder(Color.secondary.opacity(0.5), lineWidth: 1))
+        .accessibilityHidden(true)
+    }
+
+    private func block(_ width: CGFloat, filled: Bool) -> some View {
+        RoundedRectangle(cornerRadius: 2)
+            .fill(filled ? (highlighted ? Brand.green : Color.secondary.opacity(0.6))
+                         : Color.secondary.opacity(0.2))
+            .frame(width: width)
+    }
+}
+
+/// The Zoom tile and the chat as two tiles you switch on and off. Both,
+/// either or neither: the checkmark says these are toggles, not a choice of one.
+private struct SideColumnPicker: View {
+    @Binding var layout: WorkspaceLayout
+
+    var body: some View {
+        HStack(spacing: 8) {
+            tile("Zoom tile", symbol: "video.fill", isOn: $layout.sideShowsZoomTile,
+                 help: "The meeting\u{2019}s speaker, at the top of the column")
+            tile("Chat", symbol: "bubble.left.and.bubble.right.fill", isOn: $layout.sideShowsChat,
+                 help: "The meeting chat, under the Zoom tile")
+        }
+        .padding(.vertical, 4)
+    }
+
+    private func tile(_ title: String, symbol: String, isOn: Binding<Bool>, help: String) -> some View {
+        ChoiceTile(title: title, selected: isOn.wrappedValue,
+                   badge: isOn.wrappedValue ? "checkmark.circle.fill" : "circle") {
+            Image(systemName: symbol)
+                .font(.system(size: 22, weight: .regular))
+                .foregroundStyle(isOn.wrappedValue ? Brand.green : Color.secondary)
+                .frame(height: 32)
+        } action: {
+            withAnimation(.snappy(duration: 0.25)) { isOn.wrappedValue.toggle() }
+        }
+        .help(help)
+    }
+}
+
+/// Where the participant view goes, as the displays themselves: each one
+/// drawn at its own shape, the main one with a menu bar.
+private struct DisplayPicker: View {
+    @Binding var selection: String
+    let displays: [DisplayInfo]
+
+    var body: some View {
+        HStack(spacing: 8) {
+            ChoiceTile(title: "Automatic", selected: selection.isEmpty, badge: nil) {
+                Image(systemName: "display.2")
+                    .font(.system(size: 22, weight: .regular))
+                    .foregroundStyle(selection.isEmpty ? Brand.green : Color.secondary)
+                    .frame(height: 32)
+            } action: { selection = "" }
+            .help("The first display that isn\u{2019}t your main one. Mirrored displays show as their main, so this finds the separate, extended monitor.")
+
+            ForEach(displays) { display in
+                let selected = selection == display.id
+                ChoiceTile(title: display.name, selected: selected, badge: nil) {
+                    DisplayGlyph(aspect: Double(display.pixelWidth) / Double(max(display.pixelHeight, 1)),
+                                 isMain: display.isMain, highlighted: selected, missing: false)
+                } action: { selection = display.id }
+                .help(display.label)
+            }
+
+            // Keep a saved-but-disconnected choice visible and valid.
+            if !selection.isEmpty, !displays.contains(where: { $0.id == selection }) {
+                ChoiceTile(title: "Saved display", selected: true, badge: nil) {
+                    DisplayGlyph(aspect: 16.0 / 9.0, isMain: false, highlighted: true, missing: true)
+                } action: {}
+                .help("Not connected right now. The view goes there when it is.")
+            }
+        }
+        .padding(.vertical, 4)
+    }
+}
+
+/// A display at its own aspect. Dashed when it is not connected.
+private struct DisplayGlyph: View {
+    let aspect: Double
+    let isMain: Bool
+    let highlighted: Bool
+    let missing: Bool
+
+    var body: some View {
+        let height: CGFloat = 30
+        let width = min(max(height * aspect, 22), 64)
+        let tint = highlighted ? Brand.green : Color.secondary
+        RoundedRectangle(cornerRadius: 3)
+            .fill(tint.opacity(0.15))
+            .overlay(RoundedRectangle(cornerRadius: 3)
+                .strokeBorder(tint, style: StrokeStyle(lineWidth: 1.5, dash: missing ? [3] : [])))
+            .overlay(alignment: .top) {
+                if isMain {
+                    Rectangle().fill(tint.opacity(0.6)).frame(height: 4)
+                        .clipShape(UnevenRoundedRectangle(topLeadingRadius: 3, topTrailingRadius: 3))
+                        .padding(.horizontal, 1.5).padding(.top, 1.5)
+                }
+            }
+            .frame(width: width, height: height)
+            .frame(height: 32)
+            .accessibilityHidden(true)
+    }
 }
 
 /// A miniature live preview of the three panes: the main app's slice, and
 /// the side column with the Zoom tile stacked over the chat - everything
 /// proportioned exactly as the real layout will be, updating as the
-/// controls above change.
+/// controls below change.
 private struct LayoutSchematicView: View {
     @Binding var layout: WorkspaceLayout
     let appName: String
@@ -385,77 +601,77 @@ private struct LayoutSchematicView: View {
         .animation(draggingSplit || draggingSlot ? nil : .snappy(duration: 0.25), value: layout)
     }
 
-    /// Deliberately assertive, not decorative: the handles ARE the width
-    /// controls now (the preset picker and slider are gone), so they must
-    /// read as grabbable at a glance (design-review F5).
+    /// Deliberately assertive, not decorative: the handles are the fine
+    /// width control, so they must read as grabbable at a glance
+    /// (design-review F5).
     private func grabber(width: CGFloat, height: CGFloat, active: Bool) -> some View {
         Capsule()
-            .fill(active ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(Color.secondary.opacity(0.85)))
+            .fill(active ? AnyShapeStyle(Brand.green) : AnyShapeStyle(Color.secondary))
             .frame(width: width, height: height)
             .shadow(color: .black.opacity(0.35), radius: active ? 3 : 1.5)
     }
 
+    /// The app's own icon, large, with its share of the screen under it -
+    /// always shown, so the number and the picture never disagree.
     private var mainPane: some View {
-        pane(tint: .blue) {
+        pane(fill: Color(nsColor: .controlBackgroundColor)) {
             VStack(spacing: 4) {
                 if let appIcon {
                     Image(nsImage: appIcon)
                         .resizable()
-                        .frame(width: 24, height: 24)
+                        .frame(width: 48, height: 48)
                 }
                 Text(appName)
-                    .font(.caption2.weight(.medium))
+                    .font(.callout.weight(.medium))
                     .lineLimit(1)
-                if draggingSplit {
-                    Text("\(Int((layout.clampedMainFraction * 100).rounded()))%")
-                        .font(.caption2.monospacedDigit())
-                        .foregroundStyle(.secondary)
-                }
+                Text("\(Int((layout.clampedMainFraction * 100).rounded()))%")
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(.secondary)
             }
+            .padding(.horizontal, 4)
         }
     }
 
+    /// The Zoom tile dark like a video tile, the chat light like a chat
+    /// window: told apart by what they look like, not by a colour code.
     private func sideColumn(height: CGFloat) -> some View {
         VStack(spacing: spacing) {
             if layout.sideShowsZoomTile {
-                pane(tint: .indigo) {
+                pane(fill: Color.black.opacity(0.78)) {
                     VStack(spacing: 2) {
-                        Label("Zoom", systemImage: "video.fill")
-                            .font(.caption2.weight(.medium))
-                        if draggingSlot {
-                            Text("\(Int((layout.effectiveZoomSlotRatio * 100).rounded()))%")
-                                .font(.caption2.monospacedDigit())
-                                .foregroundStyle(.secondary)
-                        }
+                        Image(systemName: "video.fill").font(.title3)
+                        Text(draggingSlot ? "\(Int((layout.effectiveZoomSlotRatio * 100).rounded()))%" : "Zoom")
+                            .font(.caption.weight(.medium).monospacedDigit())
                     }
+                    .foregroundStyle(.white.opacity(0.85))
                 }
                 .frame(height: layout.sideShowsChat
                        ? (height - spacing) * layout.effectiveZoomSlotRatio
                        : nil)
             }
             if layout.sideShowsChat {
-                pane(tint: .teal) {
-                    Label("Chat", systemImage: "bubble.left.and.bubble.right.fill")
-                        .font(.caption2.weight(.medium))
+                pane(fill: Color(nsColor: .controlBackgroundColor)) {
+                    VStack(spacing: 2) {
+                        Image(systemName: "bubble.left.and.bubble.right.fill").font(.title3)
+                        Text("Chat").font(.caption.weight(.medium))
+                    }
+                    .foregroundStyle(.secondary)
                 }
             }
             if !layout.sideShowsZoomTile && !layout.sideShowsChat {
                 RoundedRectangle(cornerRadius: 6)
-                    .strokeBorder(.quaternary, style: StrokeStyle(lineWidth: 1, dash: [4]))
-                    .overlay(Text("Free").font(.caption2).foregroundStyle(.tertiary))
+                    .strokeBorder(.secondary.opacity(0.5), style: StrokeStyle(lineWidth: 1, dash: [4]))
+                    .overlay(Text("Free").font(.caption).foregroundStyle(.secondary))
             }
         }
     }
 
-    private func pane<Content: View>(tint: Color, @ViewBuilder content: () -> Content) -> some View {
+    private func pane<Content: View>(fill: Color, @ViewBuilder content: () -> Content) -> some View {
         RoundedRectangle(cornerRadius: 6)
-            .fill(tint.opacity(0.18))
-            .overlay(
-                RoundedRectangle(cornerRadius: 6)
-                    .strokeBorder(tint.opacity(0.45), lineWidth: 1)
-            )
-            .overlay(content().foregroundStyle(tint))
+            .fill(fill)
+            .overlay(RoundedRectangle(cornerRadius: 6)
+                .strokeBorder(Color.secondary.opacity(0.3), lineWidth: 1))
+            .overlay(content())
             .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
-

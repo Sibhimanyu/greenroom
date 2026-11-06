@@ -72,10 +72,12 @@ final class SessionNotes: ObservableObject {
         // Every published change that can start or end a session, and the
         // switch itself. Coalesced to the next runloop turn: the coordinator
         // flips several of these together and the bar needs the settled state.
-        Publishers.Merge4(
+        Publishers.Merge5(
             coordinator.$isRunning.map { _ in () },
             coordinator.$virtualCamActive.map { _ in () },
             coordinator.$isRecording.map { _ in () },
+            // Home -> Record: a session with no meeting and no virtual camera.
+            coordinator.$recordOnlyActive.map { _ in () },
             NotificationCenter.default.publisher(for: UserDefaults.didChangeNotification).map { _ in () })
             .receive(on: RunLoop.main)
             .sink { [weak self] in self?.update() }
@@ -91,6 +93,7 @@ final class SessionNotes: ObservableObject {
     private var liveFolder: URL? {
         guard let coordinator,
               coordinator.isRunning || coordinator.virtualCamActive || coordinator.isRecording
+                || coordinator.recordOnlyActive
         else { return nil }
         return coordinator.sessionFolder
     }

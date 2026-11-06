@@ -71,6 +71,10 @@ struct SessionMetadata: Codable {
         /// Nothing writes this yet - see the note on `kind`. It exists so the
         /// reading side is symmetric and a future writer needs no new case.
         case green
+        /// Home -> Record: the Webcam page's picture recorded with no
+        /// meeting. Written when the recording starts, since unlike a class
+        /// this folder exists only because something is being recorded.
+        case recording
     }
 
     static let fileName = "session.json"

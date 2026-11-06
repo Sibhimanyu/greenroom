@@ -808,9 +808,26 @@ final class CoordinatorController: ObservableObject {
         return limit.map { Array(uids.prefix($0)) } ?? uids
     }
 
-    /// The microphone recordings take. Empty means the system's input.
+    /// The microphone the meeting and the recording take. Empty means the
+    /// system's input.
     @Published var micDeviceUID: String {
-        didSet { defaults.set(micDeviceUID, forKey: "micDeviceUID") }
+        didSet {
+            defaults.set(micDeviceUID, forKey: "micDeviceUID")
+            // The meeting can switch microphones mid-class; the recording's
+            // source is rebuilt at the next Start, like the other sources.
+            if isRunning, zoomChatClient.didInit { applyMeetingMicrophone() }
+        }
+    }
+
+    /// Points the built-in meeting client at the picked microphone. Only the
+    /// built-in client: the separate Zoom app keeps its own audio settings.
+    private func applyMeetingMicrophone() {
+        let name = LocalDeviceResolver.availableMicrophones().first { $0.id == micDeviceUID }?.name
+        if zoomChatClient.selectMicrophone(uid: micDeviceUID, name: name) {
+            log("Microphone: \(name ?? "same as the system").")
+        } else if !micDeviceUID.isEmpty {
+            log("Couldn\u{2019}t switch the meeting to \u{201C}\(name ?? "that microphone")\u{201D} \u{2014} pick it from the meeting\u{2019}s audio menu.")
+        }
     }
 
     /// The camera or microphone picked on the Webcam page changed: rebuild
@@ -2171,6 +2188,7 @@ final class CoordinatorController: ObservableObject {
         } else {
             log("Couldn't auto-select the OBS Virtual Camera \u{2014} pick it from the meeting's video menu if the feed looks wrong.")
         }
+        applyMeetingMicrophone()
 
         let name = userDisplayName.isEmpty ? NSFullUserName() : userDisplayName
         try await zoomChatClient.startAsHost(meetingNumber: meeting.number, zak: zak, displayName: name, enableMedia: true)
@@ -2204,6 +2222,7 @@ final class CoordinatorController: ObservableObject {
         if zoomChatClient.selectCamera(named: "OBS Virtual Camera") {
             log("Camera set to OBS Virtual Camera.")
         }
+        applyMeetingMicrophone()
 
         let name = userDisplayName.isEmpty ? NSFullUserName() : userDisplayName
 

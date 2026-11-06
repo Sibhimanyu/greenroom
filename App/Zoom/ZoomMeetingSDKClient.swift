@@ -813,6 +813,23 @@ final class ZoomMeetingSDKClient: NSObject, ObservableObject {
         return false
     }
 
+    /// The meeting's microphone: the one picked on the Webcam page, or the
+    /// system's input when none is. Matched by the CoreAudio UID first (what
+    /// AVFoundation and OBS use) and by name second, since the SDK's own IDs
+    /// are not documented to be that UID. Works before and during a meeting.
+    func selectMicrophone(uid: String, name: String?) -> Bool {
+        guard let audio = ZoomSDK.shared().getSettingService()?.getAudioSetting() else { return false }
+        if uid.isEmpty {
+            return audio.selectSameAudioDevice(asSystem: true) == ZoomSDKError_Success
+        }
+        let devices = (audio.getAudioDeviceList(true) ?? []).compactMap { $0 as? SDKDeviceInfo }
+        let match = devices.first { $0.getDeviceID() == uid }
+            ?? name.flatMap { wanted in devices.first { $0.getDeviceName() == wanted } }
+        guard let device = match else { return false }
+        return audio.selectAudioDevice(true, deviceID: device.getDeviceID(),
+                                       deviceName: device.getDeviceName()) == ZoomSDKError_Success
+    }
+
     /// STARTS a meeting as its host, using the ZAK host key the
     /// create-meeting API returns - the meeting is live the moment this
     /// resolves, so the native Zoom client (and anyone else) can just

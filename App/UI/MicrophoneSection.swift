@@ -2,12 +2,14 @@
 //  MicrophoneSection.swift
 //  Greenroom
 //
-//  Settings -> Webcam -> Microphone: which microphone the recording takes.
+//  Settings -> Webcam -> Microphone: which microphone the class hears and
+//  the recording takes.
 //
 //  Cards, like the cameras above it. "System" follows whatever macOS has as
 //  its input, which is what Greenroom always did; any other card pins one
-//  device. The meeting itself still uses the system input - this is the
-//  recording's microphone (OBS's audio source).
+//  device, for the built-in meeting client (live, mid-class too) and for
+//  OBS's audio source (from the next Start). The separate Zoom app, when
+//  used instead, keeps its own audio settings.
 //
 import SwiftUI
 

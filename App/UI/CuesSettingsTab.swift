@@ -2,15 +2,22 @@
 //  CuesSettingsTab.swift
 //  Greenroom
 //
-//  Settings → Cues, and the rows Onboarding borrows from it.
+//  Settings -> Cues, and the rows Onboarding borrows from it.
 //
-//  Grouped form, the Layout tab's grammar: a title and a one-line subtitle
-//  on the left, the control on the right, and nothing that needs a
-//  paragraph. The paragraphs live on the Guide and Privacy pages; a switch
-//  earns one sentence.
+//  Built to be looked at, like Webcam. The top of the tab is a picture of
+//  what Cues does - a sentence heard, the cards it turns into - with the
+//  privacy line drawn into it: green for what stays on the Mac, amber for
+//  the one thing that leaves (DESIGN.md, Semantic). Every choice below is a
+//  picture of itself (which engine listens, how much it finds), and the
+//  sentences that used to sit under each row are hover help.
 //
-//  Below macOS 26 the tab is that one sentence: the feature does not exist
-//  there and a toggle would be a lie.
+//  `CuesSetupContent` and `CuesTryItContent` take plain bindings and values,
+//  not the coordinator, so the tab can be rendered off screen with sample
+//  values to check it by eye. `CuesSetupRows` and `CuesTryItRows` are the
+//  thin layers that feed them.
+//
+//  Below macOS 26 the tab is one line: the feature does not exist there and
+//  a toggle would be a lie.
 //
 import SwiftUI
 
@@ -37,12 +44,11 @@ struct CuesSettingsTab: View {
     }
 }
 
-/// The one sentence for Macs that cannot run it.
+/// The one line for Macs that cannot run it. The why is in its help.
 struct CuesUnavailableText: View {
     var body: some View {
-        Text("Cues needs macOS 26. It listens to your microphone during a class and suggests links for what you mention, using Apple\u{2019}s on-device models. Everything else in Greenroom works as before.")
-            .font(.callout)
-            .foregroundStyle(.secondary)
+        StatusBadge(text: "Cues needs macOS 26", tone: .waiting)
+            .help("Cues listens to your microphone during a class and suggests links for what you mention, using Apple\u{2019}s on-device models. Everything else in Greenroom works as before.")
     }
 }
 
@@ -58,13 +64,16 @@ struct SettingLabel: View {
     }
 }
 
-/// Switch, model, detector, language, YouTube - shared by Settings and the
-/// onboarding page. `compact` drops the section headers for the wizard.
+// MARK: - Setup
+
+/// Switch, engine, detector, language, YouTube - shared by Settings and the
+/// onboarding page. `compact` drops the picture and the section headers for
+/// the wizard, which has its own paragraph.
 @available(macOS 26.0, *)
 struct CuesSetupRows: View {
     @EnvironmentObject private var coordinator: CoordinatorController
     @ObservedObject private var assets = ModelAssets.shared
-    /// Watched so "Listens with" turns on the moment whisper lands.
+    /// Watched so "Listening" turns on the moment whisper lands.
     @ObservedObject private var whisper = WhisperInstaller.shared
     @State private var locales: [Locale] = []
     var compact: Bool
@@ -72,140 +81,39 @@ struct CuesSetupRows: View {
     private var inClass: Bool { coordinator.isRunning || coordinator.virtualCamActive }
 
     var body: some View {
-        Section {
-            Toggle(isOn: $coordinator.cuesEnabled) {
-                SettingLabel(title: "Listen during classes and suggest links",
-                             subtitle: "Cards for the tools, words, quotes, books, videos, topics and people you name. Off by default.")
-            }
-        } header: { if !compact { Text("Cues") } } footer: {
-            if !compact {
-                Text("Only the short search phrase leaves the Mac \u{2014} to Google Books, Open Library, Wikipedia and, if allowed, YouTube \u{2014} and each one is written to the status log. The audio, the transcript and the names of people in the meeting never leave this Mac; the transcript is saved into the class folder unless you turn that off below.")
-            }
-        }
-
-        // Three rows, not nine.
-        //
-        // The tab had grown a row per decision: Apple's model, the language,
-        // the engine, the whisper model, the model detector, the transcript,
-        // YouTube search. Nine settings between a teacher and "start
-        // listening", when eight of them are set once and never touched.
-        //
-        // What stays visible is what you would change: whether it listens,
-        // what it listens with, and which model. The rest is behind a
-        // disclosure, which is not hiding it - it is saying it is not a
-        // morning decision.
-        Section {
-            Picker(selection: $coordinator.cuesUseWhisper) {
-                Text("Apple").tag(false)
-                Text("Whisper").tag(true)
-            } label: {
-                SettingLabel(title: "Listens with",
-                             subtitle: CuesWhisperTranscriber.isAvailable
-                             ? "Whisper hears names and titles properly. Apple\u{2019}s is about a second quicker and tidies them away."
-                             : "Whisper hears names and titles properly. Set it up below, once.")
-            }
-            .pickerStyle(.segmented)
-            .disabled(inClass || !CuesWhisperTranscriber.isAvailable)
-
-            // The setup itself, here, rather than a pointer to another tab
-            // that only offered Terminal commands.
-            if !CuesWhisperTranscriber.isAvailable, !inClass {
-                WhisperSetupRows()
-            }
-
-            if coordinator.cuesUseWhisper, CuesWhisperTranscriber.isAvailable {
-                WhisperModelPicker(
-                    subtitle: "Bigger hears accents better and takes longer per window. Shared with Screenroom.")
-            } else {
-                LabeledContent {
-                    HStack(spacing: 10) {
-                        switch assets.status {
-                        case .downloading(let fraction):
-                            ProgressView(value: fraction).frame(width: 110)
-                            Text(assets.status.label).font(.caption).foregroundStyle(.secondary)
-                        case .installed:
-                            Label(assets.status.label, systemImage: "checkmark.circle.fill")
-                                .foregroundStyle(Brand.text)
-                        case .notDownloaded, .failed:
-                            Text(assets.status.label).font(.caption).foregroundStyle(.secondary).lineLimit(1)
-                            Button("Download\u{2026}") { download() }
-                                .disabled(inClass)
-                                .help(inClass ? "Not during a class." : "From Apple, once, through the system\u{2019}s asset service.")
-                        case .unsupported, .unknown:
-                            Text(assets.status.label).font(.caption).foregroundStyle(.secondary)
-                        }
-                    }
-                } label: {
-                    SettingLabel(title: "Apple\u{2019}s speech model",
-                                 subtitle: "Downloaded once. Never during a class.")
-                }
-            }
-
-            DisclosureGroup("More") {
-                Picker(selection: $coordinator.cuesLocaleIdentifier) {
-                    Text("System (\(ModelAssets.displayName(Locale.current)))").tag("")
-                    ForEach(locales, id: \.identifier) { locale in
-                        Text(ModelAssets.displayName(locale)).tag(locale.identifier)
-                    }
-                } label: {
-                    SettingLabel(title: "Language", subtitle: "What you teach in.")
-                }
-                .disabled(inClass)
-                .onChange(of: coordinator.cuesLocaleIdentifier) { _ in
-                    Task { await assets.refresh(preferredLocale: coordinator.cuesLocaleIdentifier) }
-                }
-
-                Toggle(isOn: $coordinator.cuesUseModel) {
-                    SettingLabel(title: "Also suggest links for things I mention without naming them",
-                                 subtitle: FoundationModelsDetector.isAvailable
-                                     ? "Apple\u{2019}s language model reads each sentence. Finds much more, and interrupts much more."
-                                     : "Needs Apple Intelligence, which is off \u{2014} \(FoundationModelsDetector.unavailableReason ?? "unavailable").")
-                }
-                .disabled(!FoundationModelsDetector.isAvailable || inClass)
-
-                LabeledContent("Mentions found by") {
-                    Text(coordinator.cuesUseModel && FoundationModelsDetector.isAvailable
-                         ? "Apple Intelligence" : "Word patterns")
-                }
-
-                Toggle(isOn: $coordinator.cuesSaveTranscript) {
-                    SettingLabel(title: "Save the transcript and links with the class",
-                                 subtitle: "transcript.txt for what was said and cues.txt for what was suggested, in the class folder beside the recording. Off keeps both in memory only.")
-                }
-
-                Toggle(isOn: $coordinator.cuesVideoSearch) {
-                    SettingLabel(title: "Video links may use YouTube search",
-                                 subtitle: coordinator.youtubeConnected
-                                     ? "Top result on your connected Google account, up to 20 a class."
-                                     : "No Google account connected \u{2014} video cards are search links until then.")
-                }
-            }
-
-        } header: { if !compact { Text("Listening") } }
-        // Greyed out, not hidden, while Cues itself is off: the choices are
-        // still worth seeing - they say what turning it on gets you - but a
-        // live-looking control that changes nothing reads as broken. Try it
-        // stays usable, because it is how a teacher decides whether to turn
-        // Cues on in the first place.
-        .disabled(!coordinator.cuesEnabled)
-        // On the section, not on a zero-height Color.clear.
-        //
-        // A grouped Form draws its own container around EVERY top-level
-        // child, so an invisible view used only to hang .task off still got a
-        // rounded empty box drawn around it. A modifier belongs on something
-        // already on screen.
-        .task {
-            locales = await ModelAssets.supportedLocales()
-            await assets.refresh(preferredLocale: coordinator.cuesLocaleIdentifier)
-        }
-        .onChange(of: coordinator.cuesEnabled) { enabled in
-            guard enabled, !inClass else { return }
-            Task {
+        CuesSetupContent(
+            enabled: $coordinator.cuesEnabled,
+            useWhisper: $coordinator.cuesUseWhisper,
+            useModel: $coordinator.cuesUseModel,
+            languageID: $coordinator.cuesLocaleIdentifier,
+            saveTranscript: $coordinator.cuesSaveTranscript,
+            videoSearch: $coordinator.cuesVideoSearch,
+            compact: compact,
+            inClass: inClass,
+            whisperReady: CuesWhisperTranscriber.isAvailable,
+            modelReady: FoundationModelsDetector.isAvailable,
+            modelUnavailableReason: FoundationModelsDetector.unavailableReason,
+            youtubeConnected: coordinator.youtubeConnected,
+            speechModel: assets.status,
+            systemLanguage: ModelAssets.displayName(Locale.current),
+            languages: locales.map { CuesLanguage(id: $0.identifier, name: ModelAssets.displayName($0)) },
+            download: download,
+            appear: {
+                locales = await ModelAssets.supportedLocales()
                 await assets.refresh(preferredLocale: coordinator.cuesLocaleIdentifier)
-                if assets.status == .notDownloaded { download() }
-            }
-        }
-
+            },
+            languageChanged: {
+                Task { await assets.refresh(preferredLocale: coordinator.cuesLocaleIdentifier) }
+            },
+            enabledChanged: { enabled in
+                guard enabled, !inClass else { return }
+                Task {
+                    await assets.refresh(preferredLocale: coordinator.cuesLocaleIdentifier)
+                    if assets.status == .notDownloaded { download() }
+                }
+            },
+            whisperSetup: { WhisperSetupRows() },
+            whisperModel: { WhisperModelPicker(subtitle: "Shared with Screenroom.") })
     }
 
     private func download() {
@@ -225,6 +133,208 @@ struct CuesSetupRows: View {
     }
 }
 
+/// A language the transcriber can do, as the picker shows it.
+struct CuesLanguage: Identifiable, Hashable {
+    let id: String
+    let name: String
+}
+
+/// The setup rows themselves, fed plain values.
+@available(macOS 26.0, *)
+struct CuesSetupContent<WhisperSetup: View, WhisperModel: View>: View {
+    @Binding var enabled: Bool
+    @Binding var useWhisper: Bool
+    @Binding var useModel: Bool
+    @Binding var languageID: String
+    @Binding var saveTranscript: Bool
+    @Binding var videoSearch: Bool
+    let compact: Bool
+    let inClass: Bool
+    /// Whisper's program and a model are both on this Mac.
+    let whisperReady: Bool
+    /// Apple Intelligence is on and its model is ready.
+    let modelReady: Bool
+    let modelUnavailableReason: String?
+    let youtubeConnected: Bool
+    let speechModel: ModelAssets.Status
+    let systemLanguage: String
+    let languages: [CuesLanguage]
+    let download: () -> Void
+    let appear: () async -> Void
+    let languageChanged: () -> Void
+    let enabledChanged: (Bool) -> Void
+    @ViewBuilder let whisperSetup: () -> WhisperSetup
+    @ViewBuilder let whisperModel: () -> WhisperModel
+
+    /// What is actually in use, which is what the tiles show: Whisper picked
+    /// on a Mac that has since lost it listens with Apple's.
+    private var listensWithWhisper: Bool { useWhisper && whisperReady }
+    private var findsEverything: Bool { useModel && modelReady }
+
+    var body: some View {
+        Section {
+            if !compact {
+                CuesPicture(on: enabled)
+            }
+            Toggle(isOn: $enabled) {
+                Text("Suggest links while I teach")
+            }
+            .help("Listens during classes and offers cards for the tools, words, quotes, books, videos, topics and people you name. Off by default.")
+        } header: { if !compact { Text("Cues") } }
+        // On the section, not on a zero-height Color.clear.
+        //
+        // A grouped Form draws its own container around EVERY top-level
+        // child, so an invisible view used only to hang .task off still got a
+        // rounded empty box drawn around it. A modifier belongs on something
+        // already on screen.
+        .task { await appear() }
+        .onChange(of: enabled) { enabledChanged($0) }
+        .onChange(of: languageID) { _ in languageChanged() }
+
+        // Three groups, each a picture or a short row.
+        //
+        // The tab had grown a row per decision, each with a sentence under
+        // it. What you would change - what listens and how much it finds -
+        // is drawn; what is set once is a short row under More.
+        //
+        // Greyed out, not hidden, while Cues itself is off: the choices are
+        // still worth seeing - they say what turning it on gets you - but a
+        // live-looking control that changes nothing reads as broken. Try it
+        // stays usable, because it is how a teacher decides whether to turn
+        // Cues on in the first place.
+        Section {
+            HStack(spacing: 8) {
+                ChoiceTile(title: "Apple", selected: !listensWithWhisper, badge: nil) {
+                    EngineGlyph(symbol: "apple.logo", selected: !listensWithWhisper)
+                } action: { useWhisper = false }
+                .help("Apple\u{2019}s speech model. About a second quicker, and tidies names and titles away.")
+                ChoiceTile(title: "Whisper", selected: listensWithWhisper,
+                           badge: whisperReady ? nil : "arrow.down.circle") {
+                    EngineGlyph(symbol: "waveform", selected: listensWithWhisper)
+                } action: { useWhisper = true }
+                .disabled(!whisperReady)
+                .help(whisperReady
+                      ? "Hears names and titles properly."
+                      : "Hears names and titles properly. Set it up below, once.")
+            }
+            .padding(.vertical, 4)
+            .disabled(inClass)
+
+            // The setup itself, here, rather than a pointer to another tab
+            // that only offered Terminal commands.
+            if !whisperReady, !inClass {
+                whisperSetup()
+            }
+
+            if listensWithWhisper {
+                whisperModel()
+                    .help("Bigger hears accents better and takes longer per window. Shared with Screenroom.")
+            } else {
+                LabeledContent {
+                    speechModelState
+                } label: {
+                    Label("Speech model", systemImage: "cpu")
+                }
+                .help("Apple\u{2019}s, downloaded once through the system\u{2019}s asset service. Never during a class.")
+            }
+        } header: { if !compact { Text("Listening") } }
+        .disabled(!enabled)
+
+        Section {
+            HStack(spacing: 8) {
+                ChoiceTile(title: "Named things", selected: !findsEverything, badge: nil) {
+                    SentenceGlyph(everything: false, selected: !findsEverything)
+                } action: { useModel = false }
+                .help("Word patterns catch the books, tools, people, words and quotes you name. Quick and quiet.")
+                ChoiceTile(title: "Everything", selected: findsEverything,
+                           badge: modelReady ? "sparkles" : "exclamationmark.triangle") {
+                    SentenceGlyph(everything: true, selected: findsEverything)
+                } action: { useModel = true }
+                .disabled(!modelReady)
+                .help(modelReady
+                      ? "Also things you mention without naming them. Apple\u{2019}s language model reads each sentence: finds much more, and interrupts much more."
+                      : "Needs Apple Intelligence, which is off \u{2014} \(modelUnavailableReason ?? "unavailable").")
+            }
+            .padding(.vertical, 4)
+            .disabled(inClass)
+
+            if !modelReady {
+                StatusBadge(text: "Everything needs Apple Intelligence", tone: .waiting)
+                    .help(modelUnavailableReason ?? "Apple Intelligence is unavailable on this Mac.")
+            }
+        } header: { if !compact { Text("Finds") } }
+        .disabled(!enabled)
+
+        Section {
+            Picker(selection: $languageID) {
+                Text("System (\(systemLanguage))").tag("")
+                ForEach(languages) { language in
+                    Text(language.name).tag(language.id)
+                }
+            } label: {
+                Label("Language", systemImage: "globe")
+            }
+            .help("What you teach in.")
+            .disabled(inClass)
+
+            Toggle(isOn: $saveTranscript) {
+                Label("Save the transcript", systemImage: "doc.text")
+            }
+            .help("transcript.txt for what was said and cues.txt for what was suggested, in the class folder beside the recording. Off keeps both in memory only.")
+
+            Toggle(isOn: $videoSearch) {
+                HStack(spacing: 6) {
+                    // Amber: this is a search that leaves the Mac.
+                    Label {
+                        Text("Search YouTube for videos")
+                    } icon: {
+                        Image(systemName: "play.rectangle").foregroundStyle(Net.text)
+                    }
+                    if !youtubeConnected {
+                        Text("No account").font(.caption).foregroundStyle(.secondary)
+                    }
+                }
+            }
+            .help(youtubeConnected
+                  ? "Top result on your connected Google account, up to 20 a class."
+                  : "No Google account connected \u{2014} video cards are search links until then.")
+        } header: { if !compact { Text("More") } }
+        .disabled(!enabled)
+    }
+
+    /// Apple's speech model, as a state and at most one button.
+    @ViewBuilder private var speechModelState: some View {
+        HStack(spacing: 8) {
+            switch speechModel {
+            case .downloading(let fraction):
+                ProgressView(value: fraction).frame(width: 110)
+                Text("\(Int((fraction * 100).rounded()))%")
+                    .font(.caption).monospacedDigit().foregroundStyle(.secondary)
+            case .installed:
+                StatusBadge(text: "Installed", tone: .good)
+            case .notDownloaded:
+                StatusBadge(text: "Not downloaded", tone: .waiting)
+                downloadButton
+            case .failed(let why):
+                StatusBadge(text: "Download failed", tone: .problem).help(why)
+                downloadButton
+            case .unsupported:
+                StatusBadge(text: "Language not supported", tone: .problem)
+            case .unknown:
+                StatusBadge(text: "Checking\u{2026}", tone: .waiting)
+            }
+        }
+    }
+
+    private var downloadButton: some View {
+        Button("Download\u{2026}") { download() }
+            .disabled(inClass)
+            .help(inClass ? "Not during a class." : "From Apple, once, through the system\u{2019}s asset service.")
+    }
+}
+
+// MARK: - Try it
+
 /// The real pipeline, outside a class: listen, detect, look up, show cards.
 ///
 /// It used to stop at the mentions and say "nothing is looked up", which
@@ -240,67 +350,292 @@ struct CuesTryItRows: View {
     private var inClass: Bool { coordinator.isRunning || coordinator.virtualCamActive }
 
     var body: some View {
-        Section {
-            LabeledContent {
-                HStack(spacing: 10) {
-                    if tester.isListening {
-                        if tester.isSpeaking {
-                            Label("Hearing you", systemImage: "waveform")
-                                .font(.caption).foregroundStyle(Brand.text)
-                        }
-                        Button("Stop") { tester.finishTest() }
-                    } else {
-                        Button("Start listening") {
-                            Task {
-                                await tester.startTest(seconds: 120,
-                                                       configuration: coordinator.cuesConfiguration(),
-                                                       lookUp: true)
-                            }
-                        }
-                        .disabled(inClass || !ready)
-                    }
+        CuesTryItContent(
+            isListening: tester.isListening,
+            isSpeaking: tester.isSpeaking,
+            status: tester.status,
+            heard: tester.heardSoFar,
+            cards: tester.cards,
+            canStart: !inClass && ready,
+            notReady: ready ? nil
+                : (coordinator.cuesUseWhisper ? "Whisper not set up" : "Speech model not ready"),
+            start: {
+                Task {
+                    await tester.startTest(seconds: 120,
+                                           configuration: coordinator.cuesConfiguration(),
+                                           lookUp: true)
                 }
-            } label: {
-                SettingLabel(title: "Try it",
-                             subtitle: tester.status.isEmpty ? readyLine : tester.status)
-            }
-
-            if tester.isListening || !tester.heardSoFar.isEmpty {
-                CuesHeardText(text: tester.heardSoFar, listening: tester.isListening)
-            }
-
-            // The cards themselves, which is the point of pressing the button.
-            ForEach(tester.cards) { card in
-                HStack(alignment: .firstTextBaseline, spacing: 8) {
-                    Text(card.kind.eyebrow)
-                        .font(.system(size: 10, weight: .semibold, design: .monospaced))
-                        .foregroundStyle(.tertiary)
-                        .frame(width: 48, alignment: .leading)
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text(card.title).lineLimit(2)
-                        Text(card.source.label).font(.caption).foregroundStyle(.secondary)
-                    }
-                    Spacer(minLength: 0)
-                    Button("Open") { NSWorkspace.shared.open(card.url) }
-                        .controlSize(.small)
-                }
-            }
-        }
+            },
+            stop: { tester.finishTest() },
+            open: { NSWorkspace.shared.open($0.url) })
     }
 
     /// Whichever engine is selected has to be ready, not just Apple's.
     private var ready: Bool {
         coordinator.cuesUseWhisper ? CuesWhisperTranscriber.isAvailable : assets.status.isInstalled
     }
+}
 
-    private var readyLine: String {
-        guard ready else {
-            return coordinator.cuesUseWhisper
-                ? "Whisper is not set up on this Mac yet."
-                : "Apple\u{2019}s speech model has not finished downloading."
-        }
-        return "Listens for two minutes and shows the cards it would put up in a class."
+/// Try it, fed plain values.
+@available(macOS 26.0, *)
+struct CuesTryItContent: View {
+    let isListening: Bool
+    let isSpeaking: Bool
+    /// The tester's own line while it runs or after it stops; empty before.
+    let status: String
+    let heard: String
+    let cards: [CueCard]
+    let canStart: Bool
+    /// Why it cannot start yet, in a few words, or nil when it can.
+    let notReady: String?
+    let start: () -> Void
+    let stop: () -> Void
+    let open: (CueCard) -> Void
+
+    var body: some View {
+        Section {
+            LabeledContent {
+                HStack(spacing: 8) {
+                    if isListening {
+                        if isSpeaking {
+                            Label("Hearing you", systemImage: "waveform")
+                                .font(.caption).foregroundStyle(Brand.text)
+                        }
+                        Button("Stop", action: stop)
+                    } else {
+                        Button(action: start) {
+                            Label("Start listening", systemImage: "mic.fill")
+                        }
+                        .disabled(!canStart)
+                    }
+                }
+            } label: {
+                if !status.isEmpty {
+                    Text(status).foregroundStyle(.secondary).lineLimit(2)
+                } else if let notReady {
+                    StatusBadge(text: notReady, tone: .waiting)
+                } else {
+                    Label("Two minutes, real cards", systemImage: "timer")
+                }
+            }
+            .help("Listens for two minutes and shows the cards it would put up in a class. Lookups are real.")
+
+            if isListening || !heard.isEmpty {
+                CuesHeardText(text: heard, listening: isListening)
+            }
+
+            // The cards themselves, which is the point of pressing the button.
+            ForEach(cards) { card in
+                HStack(spacing: 12) {
+                    CardThumb(kind: card.kind)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Eyebrow(text: "\(card.kind.eyebrow) \u{00B7} \(card.source.label.uppercased())")
+                        Text(card.title).lineLimit(2)
+                    }
+                    Spacer(minLength: 0)
+                    Button { open(card) } label: { Image(systemName: "arrow.up.right.square") }
+                        .buttonStyle(.borderless)
+                        .help("Open \(card.url.host ?? "the link")")
+                        .accessibilityLabel("Open")
+                }
+            }
+        } header: { Text("Try it") }
     }
+}
+
+// MARK: - Pictures
+
+/// What Cues does, drawn: a sentence heard on this Mac, the search phrase
+/// that leaves it, and the cards that come back. Greyed while Cues is off.
+private struct CuesPicture: View {
+    let on: Bool
+
+    var body: some View {
+        HStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(spacing: 8) {
+                    Image(systemName: "mic.fill")
+                        .foregroundStyle(on ? Brand.green : Color.secondary)
+                    Waveform(on: on)
+                }
+                Text("\u{201C}\u{2026}as Kahneman puts it in Thinking, Fast and Slow\u{2026}\u{201D}")
+                    .font(.callout).italic()
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                Label("On this Mac", systemImage: "lock.fill")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(Brand.text)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            // The one thing that leaves, in the colour for leaving.
+            VStack(spacing: 4) {
+                Image(systemName: "arrow.right")
+                    .font(.system(size: 16, weight: .semibold))
+                Text("PHRASE")
+                    .font(.system(size: 9, weight: .semibold, design: .monospaced))
+                    .kerning(0.8)
+            }
+            .foregroundStyle(Net.text)
+            .frame(width: 56)
+
+            VStack(spacing: 8) {
+                SampleCard(kind: .book, source: "OPEN LIBRARY", title: "Thinking, Fast and Slow")
+                SampleCard(kind: .person, source: "WIKIPEDIA", title: "Daniel Kahneman")
+            }
+            .frame(maxWidth: .infinity)
+        }
+        .padding(.horizontal, 20)
+        .padding(.top, 40)
+        .padding(.bottom, 20)
+        .saturation(on ? 1 : 0)
+        .opacity(on ? 1 : 0.75)
+        .frame(maxWidth: .infinity)
+        .background(RoundedRectangle(cornerRadius: 14).fill(Color.secondary.opacity(0.08)))
+        .overlay(alignment: .topLeading) {
+            PictureChip(text: on ? "ON" : "OFF", dot: on ? Brand.green : Color.white.opacity(0.6))
+                .padding(10)
+        }
+        .padding(.vertical, 4)
+        .help("Only the short search phrase leaves the Mac \u{2014} to Google Books, Open Library, Wikipedia and, if allowed, YouTube \u{2014} and each one is written to the status log. The audio, the transcript and the names of people in the meeting never leave this Mac; the transcript is saved into the class folder unless you turn that off under More.")
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Cues turns what you say into link cards. Audio stays on this Mac; only the search phrase is sent.")
+    }
+}
+
+/// A row of bars, the shape of someone talking.
+private struct Waveform: View {
+    let on: Bool
+    private static let levels: [CGFloat] = [0.35, 0.7, 1, 0.55, 0.85, 0.4, 0.95, 0.6, 0.3, 0.5, 0.75, 0.35]
+
+    var body: some View {
+        HStack(spacing: 3) {
+            ForEach(Array(Self.levels.enumerated()), id: \.offset) { _, level in
+                Capsule()
+                    .fill(on ? Brand.green : Color.secondary.opacity(0.5))
+                    .frame(width: 3, height: 4 + 16 * level)
+            }
+        }
+        .frame(height: 20)
+    }
+}
+
+/// A cue card as the class display draws it, at rest.
+private struct SampleCard: View {
+    let kind: Mention.Kind
+    let source: String
+    let title: String
+
+    var body: some View {
+        HStack(spacing: 12) {
+            CardThumb(kind: kind)
+            VStack(alignment: .leading, spacing: 2) {
+                Eyebrow(text: "\(kind.eyebrow) \u{00B7} \(source)")
+                Text(title)
+                    .font(.callout.weight(.semibold))
+                    .lineLimit(1)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(8)
+        .background(RoundedRectangle(cornerRadius: 10).fill(Color(nsColor: .controlBackgroundColor)))
+        .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Color.secondary.opacity(0.2)))
+    }
+}
+
+/// The kind's glyph in a small square, where a card's thumbnail goes.
+private struct CardThumb: View {
+    let kind: Mention.Kind
+
+    var body: some View {
+        Image(systemName: symbol)
+            .font(.system(size: 14))
+            .foregroundStyle(.secondary)
+            .frame(width: 32, height: 32)
+            .background(RoundedRectangle(cornerRadius: 6).fill(Color.secondary.opacity(0.12)))
+            .accessibilityHidden(true)
+    }
+
+    /// The class display's placeholders (CueCardView), so the two agree.
+    private var symbol: String {
+        switch kind {
+        case .book: return "book.closed"
+        case .video: return "play.rectangle"
+        case .topic: return "text.book.closed"
+        case .person: return "person"
+        case .place: return "mappin.and.ellipse"
+        case .thing: return "cube"
+        case .word: return "character.book.closed"
+        case .quote: return "quote.opening"
+        }
+    }
+}
+
+/// Mono, upper case, tracked: the card eyebrow (DESIGN.md, Typography).
+private struct Eyebrow: View {
+    let text: String
+
+    var body: some View {
+        Text(text)
+            .font(.system(size: 10, weight: .semibold, design: .monospaced))
+            .kerning(0.8)
+            .foregroundStyle(.tertiary)
+            .lineLimit(1)
+    }
+}
+
+/// An engine's tile picture: its symbol, green when it is the one listening.
+private struct EngineGlyph: View {
+    let symbol: String
+    let selected: Bool
+
+    var body: some View {
+        Image(systemName: symbol)
+            .font(.system(size: 22, weight: .regular))
+            .foregroundStyle(selected ? Brand.green : Color.secondary)
+            .frame(height: 32)
+    }
+}
+
+/// A sentence as grey bars, with what gets a card in green: one named thing,
+/// or several things for the language model.
+private struct SentenceGlyph: View {
+    let everything: Bool
+    let selected: Bool
+
+    /// Widths of the words on two lines, and which ones light up.
+    private static let lines: [[CGFloat]] = [[14, 22, 10, 26], [18, 12, 24, 16]]
+    private var lit: Set<[Int]> {
+        everything ? [[0, 1], [0, 3], [1, 2]] : [[0, 3]]
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            ForEach(0..<Self.lines.count, id: \.self) { line in
+                HStack(spacing: 4) {
+                    ForEach(0..<Self.lines[line].count, id: \.self) { word in
+                        let on = lit.contains([line, word])
+                        Capsule()
+                            .fill(on ? (selected ? Brand.green : Color.secondary.opacity(0.7))
+                                     : Color.secondary.opacity(0.25))
+                            .frame(width: Self.lines[line][word], height: 7)
+                    }
+                }
+            }
+        }
+        .frame(height: 32)
+        .accessibilityHidden(true)
+    }
+}
+
+/// `--net-text`: "leaves your Mac", for small labels and glyphs. Lighter on a
+/// dark window, where the light-mode amber would be too dim to read.
+private enum Net {
+    static let text = Color(nsColor: NSColor(name: nil) { appearance in
+        appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+            ? NSColor(srgbRed: 0xD9 / 255, green: 0x9A / 255, blue: 0x2E / 255, alpha: 1)
+            : NSColor(srgbRed: 0x96 / 255, green: 0x60 / 255, blue: 0x0A / 255, alpha: 1)
+    })
 }
 
 #if DEBUG

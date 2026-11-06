@@ -738,7 +738,12 @@ final class CoordinatorController: ObservableObject {
 
     /// The cameras Greenroom is publishing to OBS, slot order. Empty when OBS
     /// opens the cameras itself (green screen, or no Syphon in this build).
-    private var cutoutPublishers: [CutoutPublisher] = []
+    private var cutoutPublishers: [CutoutPublisher] = [] {
+        didSet { if cutoutPublishers.isEmpty { cameraSeesYou = true } }
+    }
+    /// False while background removal finds nobody in the camera, so the
+    /// Webcam page can say why its picture is empty.
+    @Published private(set) var cameraSeesYou = true
 
     /// Opens `uids` through Greenroom when background removal is automatic.
     /// All or nothing: if one camera cannot be opened this way the scene falls
@@ -773,7 +778,13 @@ final class CoordinatorController: ObservableObject {
             }
             opened.append(publisher)
         }
-        opened.forEach { $0.start() }
+        for publisher in opened {
+            publisher.onPersonInView = { [weak self] seen in
+                guard publisher.slot == 0 else { return }
+                self?.cameraSeesYou = seen
+            }
+            publisher.start()
+        }
         cutoutPublishers += opened
     }
 

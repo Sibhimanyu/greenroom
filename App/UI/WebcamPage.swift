@@ -54,6 +54,7 @@ struct WebcamSettingsTab: View {
             geometry: geometry,
             shareKind: $coordinator.shareTarget.kind,
             previewAspect: coordinator.shapePreviewAspect,
+            cameraSeesYou: coordinator.cameraSeesYou || !coordinator.webcamShape.usesChromaKey,
             isAtDefault: coordinator.bubbleIsAtDefault,
             apply: { coordinator.requestShapeApply() },
             reset: {
@@ -109,6 +110,8 @@ struct WebcamPageContent<LivePicture: View, ShareDetail: View, Cameras: View, Re
     @Binding var shareKind: ShareTarget.Kind
     /// The live picture's size, or nil while the sketch is showing.
     let previewAspect: CGSize?
+    /// False while background removal finds nobody in the camera.
+    var cameraSeesYou = true
     let isAtDefault: Bool
     let apply: () -> Void
     let reset: () -> Void
@@ -212,9 +215,11 @@ struct WebcamPageContent<LivePicture: View, ShareDetail: View, Cameras: View, Re
                         .frame(width: box.size.width, height: box.size.height)
                 }
 
-                StatusChip(isLive: isLive)
-                    .offset(x: canvas.minX + 10, y: canvas.minY + 10)
-                    .allowsHitTesting(false)
+                HStack(spacing: 6) {
+                    StatusChip(isLive: isLive)
+                    if isLive && !cameraSeesYou { NobodyChip() }
+                }
+                .offset(x: canvas.minX + 10, y: canvas.minY + 10)
             }
         }
         .frame(maxWidth: .infinity)
@@ -333,6 +338,20 @@ private struct StatusChip: View {
         .foregroundStyle(.white)
         .help(isLive ? "The picture the meeting gets, from OBS."
                      : "A sketch. Turn on \u{201C}Keep OBS ready\u{201D} under Recording to see the real picture.")
+    }
+}
+
+/// Shown when background removal finds nobody: the picture is empty because
+/// everything was removed, not because the camera is broken.
+private struct NobodyChip: View {
+    var body: some View {
+        Label("Can\u{2019}t see you", systemImage: "eye.slash")
+            .font(.caption2.weight(.bold))
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(.black.opacity(0.72), in: Capsule())
+            .foregroundStyle(.white)
+            .help("Nobody is in view of the camera, so everything was removed. Check the camera is pointing at you.")
     }
 }
 

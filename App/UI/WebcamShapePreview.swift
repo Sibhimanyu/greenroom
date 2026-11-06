@@ -140,6 +140,9 @@ struct BubbleDragLayer: View {
             Color.clear
                 .contentShape(Rectangle())
                 .focusable()
+                // Our own ring, below, sits on the picture; the system one
+                // ringed the whole stage as well, so there were two.
+                .focusEffectDisabled()
                 .focused($focused)
                 .onKeyPress(keys: [.leftArrow, .rightArrow, .upArrow, .downArrow], action: nudge)
 
@@ -165,7 +168,7 @@ struct BubbleDragLayer: View {
         .overlay(alignment: .topLeading) {
             if focused {
                 RoundedRectangle(cornerRadius: 8)
-                    .strokeBorder(Color.accentColor, lineWidth: 2)
+                    .strokeBorder(Brand.green.opacity(0.7), lineWidth: 2)
                     .frame(width: canvas.width, height: canvas.height)
                     .offset(x: canvas.minX, y: canvas.minY)
                     .allowsHitTesting(false)

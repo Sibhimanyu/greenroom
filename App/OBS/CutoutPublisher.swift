@@ -57,6 +57,14 @@ final class CutoutPublisher: NSObject {
     private var _removesBackground = false
     private let lock = NSLock()
 
+    /// Called on the main thread when the camera starts or stops seeing
+    /// anyone, so the page can say why the picture is empty. A laptop camera
+    /// tipped back under a monitor sees the ceiling, removes everything, and
+    /// otherwise looks exactly like a broken camera.
+    var onPersonInView: ((Bool) -> Void)?
+    private var lastPersonSeen = Date()
+    private var reportedInView = true
+
     private let session = AVCaptureSession()
     private let queue = DispatchQueue(label: "com.sibhimanyu.greenroom.cutout", qos: .userInteractive)
     private let device: MTLDevice
@@ -126,8 +134,10 @@ final class CutoutPublisher: NSObject {
         var image = CIImage(cvPixelBuffer: frame)
 
         if removesBackground {
-            if (try? sequence.perform([segmentation], on: frame)) != nil,
-               let mask = segmentation.results?.first?.pixelBuffer {
+            let found = (try? sequence.perform([segmentation], on: frame)) != nil
+                ? segmentation.results?.first?.pixelBuffer : nil
+            notePerson(found.map(Self.hasPerson) ?? false)
+            if let mask = found {
                 var matte = CIImage(cvPixelBuffer: mask)
                 matte = matte.transformed(by: CGAffineTransform(
                     scaleX: CGFloat(width) / matte.extent.width,
@@ -144,6 +154,7 @@ final class CutoutPublisher: NSObject {
             }
         }
 
+        if !removesBackground { notePerson(true) }
         context.render(image, to: target, commandBuffer: buffer, bounds: bounds,
                        colorSpace: CGColorSpaceCreateDeviceRGB())
         // Not waited on. The command queue runs in order, so the next frame's
@@ -151,6 +162,35 @@ final class CutoutPublisher: NSObject {
         // was most of what the spike measured as per-frame cost.
         server.publish(texture: target, on: buffer, region: bounds)
         buffer.commit()
+    }
+
+    /// Whether the mask covers more than a sliver of the frame. Sampled on a
+    /// coarse grid: this is a yes-or-no, not a measurement.
+    private static func hasPerson(_ mask: CVPixelBuffer) -> Bool {
+        CVPixelBufferLockBaseAddress(mask, .readOnly)
+        defer { CVPixelBufferUnlockBaseAddress(mask, .readOnly) }
+        guard let base = CVPixelBufferGetBaseAddress(mask)?.assumingMemoryBound(to: UInt8.self) else { return false }
+        let width = CVPixelBufferGetWidth(mask), height = CVPixelBufferGetHeight(mask)
+        let row = CVPixelBufferGetBytesPerRow(mask)
+        var on = 0, total = 0
+        for y in stride(from: 0, to: height, by: 4) {
+            for x in stride(from: 0, to: width, by: 4) {
+                total += 1
+                if base[y * row + x] > 128 { on += 1 }
+            }
+        }
+        return total > 0 && Double(on) / Double(total) > 0.01
+    }
+
+    /// A second of nobody before saying so, so turning away or a missed
+    /// frame does not flicker the warning.
+    private func notePerson(_ seen: Bool) {
+        let now = Date()
+        if seen { lastPersonSeen = now }
+        let inView = seen || now.timeIntervalSince(lastPersonSeen) < 1
+        guard inView != reportedInView else { return }
+        reportedInView = inView
+        DispatchQueue.main.async { [weak self] in self?.onPersonInView?(inView) }
     }
 
     private func texture(width: Int, height: Int) -> MTLTexture? {

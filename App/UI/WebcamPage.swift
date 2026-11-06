@@ -117,6 +117,25 @@ struct WebcamPageContent<LivePicture: View, ShareDetail: View, Cameras: View, Re
     @ViewBuilder let cameras: () -> Cameras
     @ViewBuilder let recording: () -> Recording
 
+    /// Where the bubble is while it is being dragged or nudged.
+    ///
+    /// A drag used to write every pointer move straight into the coordinator:
+    /// three @Published values and three UserDefaults writes per event, each
+    /// redrawing the whole Settings window. That is most of why dragging felt
+    /// heavy. Now a drag moves only this, which redraws only the stage, and
+    /// the coordinator hears once, when the drag ends.
+    @State private var draft: BubbleDragLayer.Geometry?
+    private var stageGeometry: Binding<BubbleDragLayer.Geometry> {
+        Binding(get: { draft ?? geometry }, set: { draft = $0 })
+    }
+
+    /// The end of a drag or a burst of nudges: hand the result over, once.
+    private func commitDraft() {
+        if let draft { geometry = draft }
+        draft = nil
+        apply()
+    }
+
     private var isLive: Bool { previewAspect != nil }
     private var isCutout: Bool { shape == .cutout }
     /// Presenter rebuilds the whole scene rather than placing a source, so it
@@ -179,7 +198,7 @@ struct WebcamPageContent<LivePicture: View, ShareDetail: View, Cameras: View, Re
                     if isLive {
                         livePicture()
                     } else {
-                        WebcamShapePreview(shape: shape, geometry: $geometry, mode: mode)
+                        WebcamShapePreview(shape: shape, geometry: stageGeometry, mode: mode)
                     }
                 }
                 .frame(width: canvas.width, height: canvas.height)
@@ -188,8 +207,8 @@ struct WebcamPageContent<LivePicture: View, ShareDetail: View, Cameras: View, Re
 
                 if isAdjustable {
                     BubbleDragLayer(
-                        geometry: $geometry, mode: mode, shape: shape,
-                        canvas: canvas, showsOutline: isLive, onCommit: apply)
+                        geometry: stageGeometry, mode: mode, shape: shape,
+                        canvas: canvas, showsOutline: isLive, onCommit: commitDraft)
                         .frame(width: box.size.width, height: box.size.height)
                 }
 
@@ -216,7 +235,7 @@ struct WebcamPageContent<LivePicture: View, ShareDetail: View, Cameras: View, Re
             PlacementPicker(spots: spots, current: currentSpot) { spot in
                 place(spot)
             }
-            Button(action: reset) {
+            Button { draft = nil; reset() } label: {
                 Image(systemName: "arrow.counterclockwise")
             }
             .buttonStyle(.borderless)
@@ -235,6 +254,7 @@ struct WebcamPageContent<LivePicture: View, ShareDetail: View, Cameras: View, Re
     }
 
     private func set(size: Double) {
+        draft = nil
         var next = geometry
         // Keep the side it was hugging: a bigger bubble in the left corner
         // should still be in the left corner, not pushed off the edge.
@@ -287,6 +307,7 @@ struct WebcamPageContent<LivePicture: View, ShareDetail: View, Cameras: View, Re
     }
 
     private func place(_ spot: PlacementSpot) {
+        draft = nil
         geometry = target(for: spot)
         apply()
     }

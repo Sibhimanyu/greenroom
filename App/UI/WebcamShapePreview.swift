@@ -95,6 +95,16 @@ struct BubbleDragLayer: View {
     /// Roughly six points on screen, expressed in canvas fractions so snapping
     /// feels the same however large the preview is.
     private var snapThresholdX: Double { 6 / canvas.width }
+
+    /// Every drag is measured here, in the layer's own fixed space.
+    ///
+    /// A DragGesture's default space is the view it is attached to - the
+    /// bubble, or a corner handle - and that view moves with the drag. Each
+    /// time it moved, the next reading of the pointer shifted back by the same
+    /// amount, so the bubble chased the pointer, overshot, and pulled back:
+    /// the jitter, and the drag that seemed to stick. The layer itself never
+    /// moves, so a translation measured against it is the pointer's own.
+    private static let space = "BubbleDragLayer.canvas"
     private var snapThresholdY: Double { 6 / canvas.height }
 
     // MARK: Geometry
@@ -161,6 +171,7 @@ struct BubbleDragLayer: View {
                     .allowsHitTesting(false)
             }
         }
+        .coordinateSpace(name: Self.space)
     }
 
     /// A hairline along an edge the drag has snapped to, so a value that stopped
@@ -227,7 +238,7 @@ struct BubbleDragLayer: View {
     /// DECREASES rightInset. Working in the scene's own coordinates rather than
     /// converting at the end keeps this and OBS in agreement.
     private var moveGesture: some Gesture {
-        DragGesture(minimumDistance: 1)
+        DragGesture(minimumDistance: 1, coordinateSpace: .named(Self.space))
             .onChanged { value in
                 let start = dragStart ?? geometry
                 if dragStart == nil { dragStart = start; focused = true }
@@ -270,7 +281,7 @@ struct BubbleDragLayer: View {
     /// touching stays where it is. For a cutout the bottom edge is pinned
     /// regardless of which handle is used.
     private func resizeGesture(_ corner: Corner) -> some Gesture {
-        DragGesture(minimumDistance: 1)
+        DragGesture(minimumDistance: 1, coordinateSpace: .named(Self.space))
             .onChanged { value in
                 let start = dragStart ?? geometry
                 if dragStart == nil { dragStart = start; focused = true }

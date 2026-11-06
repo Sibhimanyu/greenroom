@@ -127,6 +127,8 @@ struct ContentView: View {
                 .disabled(stopDisabled)
                 .help("Ends the meeting for everyone when you're hosting (leaves it otherwise), closes the chat window, and stops the camera and OBS. Ending the meeting from the Zoom window does the same \u{2014} both roads end the whole session.")
 
+                SessionNotesToggle()
+
                 Spacer()
 
                 Button {
@@ -148,21 +150,6 @@ struct ContentView: View {
                 .controlSize(.large)
                 .tint(Self.secondaryTint)
                 .help("Every past class: its recordings and clips with a player, its YouTube links, and a name you can change.")
-
-                // Screenroom lives beside Sessions rather than beside Start: it is
-                // not a step in the session cascade, it is a second thing this
-                // app does. Held out of the build entirely until it is ready
-                // (see ScreenroomAvailability).
-                if ScreenroomAvailability.isReleased {
-                    Button {
-                        openWindow(id: "screenroom")
-                    } label: {
-                        Label("Screenroom", systemImage: "text.badge.star")
-                    }
-                    .controlSize(.large)
-                    .tint(Self.secondaryTint)
-                    .help("Evaluate a presentation: record the speaker and take notes timed to the recording.")
-                }
             }
 
             Divider()

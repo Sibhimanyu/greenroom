@@ -56,6 +56,18 @@ struct ScreenroomNote: Codable, Identifiable, Hashable {
     /// recording exists, and the only timestamp left if it is ever deleted.
     var markedAt: Date
 
+    /// What `atMs` is measured from, when it is not the recording.
+    ///
+    /// Absent - the only value any Screenroom note has ever had - means the
+    /// recording, as above. `"session"` is written by the notes bar when a
+    /// note is taken in a class that is not being recorded yet: there is no
+    /// file to point into, so the offset is from when the session started,
+    /// and saying so is the difference between a number a reader can use and
+    /// one that silently points at the wrong moment. Optional, so every line
+    /// already on disk still decodes, and a reader that has never heard of it
+    /// skips it like any unknown key.
+    var timedFrom: String? = nil
+
     /// Still 2, though v2's `author` field is gone again.
     ///
     /// v2 added an author so more than one evaluator could write into one

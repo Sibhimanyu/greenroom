@@ -1717,8 +1717,9 @@ final class CoordinatorController: ObservableObject {
     private(set) var sessionFolder: URL?
 
     @Published private(set) var isRecording = false
-    /// For the recording_end duration band only; never written anywhere.
-    private var recordingStartedAt: Date?
+    /// For the recording_end duration band, and read by the notes bar to time
+    /// a note into the tape (SessionNotes). Never written anywhere.
+    private(set) var recordingStartedAt: Date?
 
     /// Records the composited feed (screen + webcam bubble/cutout) straight
     /// through OBS - the same picture the virtual camera sends, so what's
@@ -2759,7 +2760,8 @@ final class CoordinatorController: ObservableObject {
     /// Custom-UI gallery refresh. Cancelled with the session.
     /// When the current session began, for the coarse duration band reported at
     /// the end. Never sent as a timestamp - see Analytics.band(seconds:).
-    private var sessionStartedAt: Date?
+    /// Readable so the notes bar can time a note taken before the tape rolls.
+    private(set) var sessionStartedAt: Date?
     private var customUIGridTask: Task<Void, Never>?
     /// Custom-UI speaker-content chooser. Cancelled with the session.
     private var customUISpeakerTask: Task<Void, Never>?

@@ -17,7 +17,9 @@
 //  in one file, so shipping is a one-line change and the list of things to
 //  check is not spread across the app.
 //
-//    - ContentView's toolbar row   (the Screenroom button)
+//    - ContentView's toolbar row   (the Screenroom button - gone: Screenroom's
+//                                   notes are the home screen's Notes switch now,
+//                                   and its analysis is Sessions' Analyse tile)
 //    - MenuBarView                 (Open Screenroom)
 //    - the "marks" Window scene    (refuses to build its contents)
 //

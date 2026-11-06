@@ -125,6 +125,15 @@ Follow DESIGN.md for the Stage UI. It is a new visual surface, so check its
 
 ### 5. Background removal without a green screen (the risk)
 
+**Built 2026-11-06** as option 2: `App/OBS/CutoutPublisher.swift` opens each
+camera in Greenroom, removes the background with Vision (`.balanced`) for
+Cutout and Presenter, passes frames through for the bubble shapes, and
+publishes over Syphon; the scene's camera sources become `syphon-input`
+sources found by app and server name. Settings → Webcam → "Remove your
+background": Automatically (default) or With a green screen. Syphon is
+OBS's own build, vendored by `scripts/vendor-syphon.sh` (building it needs
+the Metal toolchain). Not yet run in a real session.
+
 Cutout, Presenter and every front or behind Look need a real green screen
 today (`usesChromaKey`). Most people do not own one. Until this is solved, the
 wider audience gets bubbles only.

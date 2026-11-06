@@ -365,6 +365,7 @@ final class CoordinatorController: ObservableObject {
         guard uids.count > 1 else { return }
         Task { @MainActor in
             do {
+                if !cutoutPublishers.isEmpty { startCutoutPublishers(uids: uids) }
                 try await GreenroomScene.setLiveCameras(client: client, uids: uids, bubble: bubbleLayout)
             } catch {
                 log("Couldn't open the other cameras: \(error.localizedDescription). The class stays on the first one.")
@@ -411,6 +412,7 @@ final class CoordinatorController: ObservableObject {
         let fallback = LocalDeviceResolver.physicalCameraUID().map { [$0] } ?? []
         Task { @MainActor in
             do {
+                if !cutoutPublishers.isEmpty { startCutoutPublishers(uids: after.isEmpty ? fallback : after) }
                 try await GreenroomScene.setLiveCameras(client: client,
                                                         uids: after.isEmpty ? fallback : after,
                                                         bubble: bubbleLayout)
@@ -718,7 +720,79 @@ final class CoordinatorController: ObservableObject {
               bottomInset: bubbleBottomInset,
               cutoutHeightFraction: cutoutHeightFraction,
               cutoutRightInset: cutoutRightInset,
-              shape: webcamShape)
+              shape: webcamShape,
+              greenroomCamera: !cutoutPublishers.isEmpty)
+    }
+
+    /// Automatic (no green screen) or a real green screen, for Cutout and
+    /// Presenter. Takes effect when the cameras are next opened: at Start, or
+    /// straight away in the Settings preview.
+    @Published var backgroundRemoval: BackgroundRemoval {
+        didSet {
+            defaults.set(backgroundRemoval.rawValue, forKey: "backgroundRemoval")
+            guard backgroundRemoval != oldValue, !virtualCamActive, !isRunning,
+                  shapePreviewTask != nil else { return }
+            restartPreviewCameras()
+        }
+    }
+
+    /// The cameras Greenroom is publishing to OBS, slot order. Empty when OBS
+    /// opens the cameras itself (green screen, or no Syphon in this build).
+    private var cutoutPublishers: [CutoutPublisher] = []
+
+    /// Opens `uids` through Greenroom when background removal is automatic.
+    /// All or nothing: if one camera cannot be opened this way the scene falls
+    /// back to OBS opening every camera, so a cut between two cameras never
+    /// crosses from one kind of picture to the other.
+    private func startCutoutPublishers(uids: [String]) {
+        guard backgroundRemoval == .automatic, !uids.isEmpty else {
+            stopCutoutPublishers()
+            return
+        }
+        let running = cutoutPublishers.map(\.uid)
+        if running == uids { return }
+        // Extra cameras joining keep the ones already open: restarting the
+        // first would blink the picture the class is watching.
+        let keep = uids.starts(with: running) && !running.isEmpty ? running.count : 0
+        if keep == 0 { stopCutoutPublishers() } else {
+            cutoutPublishers.dropFirst(uids.count).forEach { $0.stop() }
+            cutoutPublishers = Array(cutoutPublishers.prefix(min(keep, uids.count)))
+        }
+        guard CutoutPublisher.isAvailable else {
+            log("Automatic background removal isn\u{2019}t available in this build \u{2014} using OBS\u{2019}s camera and green-screen key instead.")
+            return
+        }
+        var opened: [CutoutPublisher] = []
+        for (slot, uid) in uids.enumerated() where slot >= cutoutPublishers.count {
+            guard let publisher = CutoutPublisher(uid: uid, slot: slot,
+                                                  removesBackground: webcamShape.usesChromaKey) else {
+                opened.forEach { $0.stop() }
+                stopCutoutPublishers()
+                log("Couldn\u{2019}t open \u{201C}\(LocalDeviceResolver.cameraName(uid: uid) ?? "the camera")\u{201D} for background removal \u{2014} using OBS\u{2019}s camera instead.")
+                return
+            }
+            opened.append(publisher)
+        }
+        opened.forEach { $0.start() }
+        cutoutPublishers += opened
+    }
+
+    private func stopCutoutPublishers() {
+        cutoutPublishers.forEach { $0.stop() }
+        cutoutPublishers = []
+    }
+
+    /// The camera list a scene build will use, for opening them ahead of it.
+    private func sceneCameraUIDs(limit: Int? = nil) -> [String] {
+        let listed = sessionCameraUIDs(cameraDirectorSettings)
+        let uids = listed.isEmpty ? LocalDeviceResolver.physicalCameraUID().map { [$0] } ?? [] : listed
+        return limit.map { Array(uids.prefix($0)) } ?? uids
+    }
+
+    private func restartPreviewCameras() {
+        stopCutoutPublishers()
+        startCutoutPublishers(uids: sceneCameraUIDs(limit: 1))
+        requestShapeApply(rebuild: true)
     }
 
     /// Whether the ACTIVE shape is still where it shipped, so Reset can be
@@ -750,6 +824,7 @@ final class CoordinatorController: ObservableObject {
 
     @Published var webcamShape: WebcamShape {
         didSet {
+            cutoutPublishers.forEach { $0.removesBackground = webcamShape.usesChromaKey }
             defaults.set(webcamShape.rawValue, forKey: "webcamShape")
             Analytics.setting("webcam_shape", webcamShape.rawValue)
         }
@@ -1057,6 +1132,7 @@ final class CoordinatorController: ObservableObject {
     init() {
         defer { Self.shared = self }
         webcamShape = WebcamShape(rawValue: defaults.string(forKey: "webcamShape") ?? "") ?? .circle
+        backgroundRemoval = BackgroundRemoval(rawValue: defaults.string(forKey: "backgroundRemoval") ?? "") ?? .automatic
         // load(from:) migrates the Chrome-only era's "chromeLayout" key,
         // and the ?? fallbacks below migrate its URL/on-Start keys - an
         // existing setup keeps its layout without re-configuring.
@@ -1487,6 +1563,8 @@ final class CoordinatorController: ObservableObject {
             if client.isConnected {
                 await parkOBSOnStandbyScene()
             }
+            // After parking, so OBS is no longer showing the cameras.
+            stopCutoutPublishers()
             client.disconnect()
             if keepOBSWarm {
                 log("Session ended \u{2014} OBS stays ready for a fast next start (it quits with Greenroom).")
@@ -1885,6 +1963,7 @@ final class CoordinatorController: ObservableObject {
                     guard (try? await client.connect(port: OBSProcessManager.websocketPort,
                                                      password: OBSProcessManager.websocketPassword)) != nil else { return }
                 }
+                startCutoutPublishers(uids: sceneCameraUIDs(limit: 1))
                 await applyShapeForPreview()
             }
             while !Task.isCancelled {
@@ -1929,6 +2008,9 @@ final class CoordinatorController: ObservableObject {
         shapePreviewTask?.cancel()
         shapePreviewTask = nil
         shapePreviewSceneReady = false
+        // The preview opened the camera; a session that is not running has
+        // no use for it, and the camera light should go off.
+        if !virtualCamActive, !isRunning { stopCutoutPublishers() }
         publishPreviewFrame(nil)
     }
 
@@ -3651,6 +3733,9 @@ final class CoordinatorController: ObservableObject {
                                     data: ["inputName": "Greenroom Idle Label"],
                                     seconds: 2)
 
+        // Before the scene: OBS's Syphon source should find the camera already
+        // publishing, rather than sitting empty until it appears.
+        startCutoutPublishers(uids: sceneCameraUIDs(limit: 1))
         log("Configuring the Greenroom scene (screen + keyed webcam bubble)\u{2026}")
         let setup = try await GreenroomScene.ensureConfigured(
             client: client,
@@ -3839,6 +3924,7 @@ struct SettingsTransfer: Codable {
     var s2sClientID: String?
     var s2sClientSecret: String?
     var webcamShape: String?
+    var backgroundRemoval: String?
     var mainAppBundleID: String?
     var mainAppURL: String?
     var mainAppOnStart: Bool?
@@ -3923,6 +4009,7 @@ extension CoordinatorController {
             s2sClientID: s2sClientID,
             s2sClientSecret: s2sClientSecret,
             webcamShape: webcamShape.rawValue,
+            backgroundRemoval: backgroundRemoval.rawValue,
             mainAppBundleID: mainAppBundleID,
             mainAppURL: mainAppURL,
             mainAppOnStart: mainAppOnStart,
@@ -4003,6 +4090,7 @@ extension CoordinatorController {
         if let value = transfer.s2sClientID { s2sClientID = value }
         if let value = transfer.s2sClientSecret { s2sClientSecret = value }
         if let value = transfer.webcamShape, let shape = WebcamShape(rawValue: value) { webcamShape = shape }
+        if let value = transfer.backgroundRemoval, let mode = BackgroundRemoval(rawValue: value) { backgroundRemoval = mode }
         if let value = transfer.mainAppBundleID { mainAppBundleID = value }
         // The chrome* fallbacks import Chrome-only-era files (whose main
         // app was implicitly Chrome, so the values carry straight over).

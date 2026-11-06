@@ -57,3 +57,20 @@ enum WebcamShape: String, CaseIterable, Identifiable {
 final class ShapePreviewFeed: ObservableObject {
     @Published var frame: NSImage?
 }
+
+/// How Cutout and Presenter take your background away.
+enum BackgroundRemoval: String, CaseIterable, Identifiable, Codable {
+    /// Greenroom finds you in the picture and removes the rest. No green
+    /// screen. See CutoutPublisher.
+    case automatic
+    /// OBS keys out a real green screen behind you, as it always did.
+    case greenScreen
+
+    var id: String { rawValue }
+    var label: String {
+        switch self {
+        case .automatic: return "Automatically"
+        case .greenScreen: return "With a green screen"
+        }
+    }
+}

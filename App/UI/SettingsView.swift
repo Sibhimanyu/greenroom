@@ -121,11 +121,19 @@ private struct WebcamSettingsTab: View {
             Section {
                 ShapeCardPicker(selection: Binding(
                     get: { coordinator.webcamShape },
-                    set: { coordinator.webcamShape = $0; coordinator.requestShapeApply() }))
+                    set: { coordinator.webcamShape = $0; coordinator.requestShapeApply() }),
+                                needsGreenScreen: coordinator.backgroundRemoval == .greenScreen)
                 Text(shapeCaption)
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
+                // Shown for every look, greyed out where there is no
+                // background to remove, so it is found before it is needed.
+                Picker("Remove your background", selection: $coordinator.backgroundRemoval) {
+                    ForEach(BackgroundRemoval.allCases) { Text($0.label).tag($0) }
+                }
+                .pickerStyle(.segmented)
+                .disabled(!coordinator.webcamShape.usesChromaKey)
             } header: { Text("How you appear") }
 
             if isAdjustable {
@@ -326,9 +334,13 @@ private struct WebcamSettingsTab: View {
         case .circle:
             return "Your camera cropped to a circle over what you share. Drag it anywhere, or pick a corner below."
         case .cutout:
-            return "You, without your background, standing on the bottom edge of the picture. Needs a real green screen behind you; without one your whole camera shows."
+            return coordinator.backgroundRemoval == .automatic
+                ? "You, without your background, standing on the bottom edge of the picture. Greenroom finds you in the camera and removes the rest; no green screen needed."
+                : "You, without your background, standing on the bottom edge of the picture. OBS keys out the green screen behind you."
         case .presenterLarge:
-            return "What you share becomes a rounded panel and you stand beside it at full height, like macOS Presenter Overlay. Needs a real green screen behind you."
+            return coordinator.backgroundRemoval == .automatic
+                ? "What you share becomes a rounded panel and you stand beside it at full height, like macOS Presenter Overlay. No green screen needed."
+                : "What you share becomes a rounded panel and you stand beside it at full height, like macOS Presenter Overlay. OBS keys out the green screen behind you."
         }
     }
 }
@@ -372,10 +384,14 @@ private enum BubbleCorner: CaseIterable, Identifiable {
 }
 
 /// The five looks as cards you can see, instead of five words in a
-/// segmented control. Each card sketches the look; the two that need a green
-/// screen say so on the card, before they are picked rather than after.
+/// segmented control. Each card sketches the look; the two that remove your
+/// background say so on the card, and say "Green screen" when that is how
+/// background removal is set, before they are picked rather than after.
 private struct ShapeCardPicker: View {
     @Binding var selection: WebcamShape
+    /// Background removal is set to a real green screen, so the looks that
+    /// remove the background need one.
+    var needsGreenScreen: Bool
 
     var body: some View {
         HStack(spacing: 8) {
@@ -395,7 +411,7 @@ private struct ShapeCardPicker: View {
                 Text(shape.label)
                     .font(.callout.weight(selected ? .semibold : .regular))
                     .foregroundStyle(.primary)
-                Text(shape.usesChromaKey ? "Green screen" : " ")
+                Text(shape.usesChromaKey ? (needsGreenScreen ? "Green screen" : "No background") : " ")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }

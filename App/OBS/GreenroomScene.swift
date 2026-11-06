@@ -236,6 +236,15 @@ enum GreenroomScene {
         var cutoutHeightFraction: Double = 0.5
         var cutoutRightInset: Double = 0.02
         var shape: WebcamShape = .circle
+        /// The cameras arrive from Greenroom over Syphon (CutoutPublisher),
+        /// with the background already removed where the shape wants it, so
+        /// OBS opens no camera and keys nothing.
+        var greenroomCamera = false
+
+        /// Whether OBS's chroma key should be on. Never for a camera Greenroom
+        /// has already cut out: there is no green left to key, and keying a
+        /// cut-out person eats anything green they are wearing.
+        var keysGreen: Bool { shape.usesChromaKey && !greenroomCamera }
     }
 
     /// Returns true when the webcam made it into the composite, false for
@@ -334,7 +343,7 @@ enum GreenroomScene {
             screenLive = try await screenCaptureIsLive(client: client)
         }
         if !cameras.isEmpty {
-            try await ensureCameraInputs(client: client, uids: cameras, shape: bubble.shape,
+            try await ensureCameraInputs(client: client, uids: cameras, bubble: bubble,
                                          webcamKind: webcamKind, chromaKind: chromaKind)
         } else {
             // Screen-only: a leftover webcam source (its device now gone)
@@ -413,10 +422,28 @@ enum GreenroomScene {
     /// makes the cut instant, and it is what lets the director look through a
     /// camera the class cannot see.
     private static func ensureCameraInputs(client: OBSWebSocketClient, uids: [String],
-                                           shape: WebcamShape,
+                                           bubble: BubbleLayout,
                                            webcamKind: String, chromaKind: String) async throws {
+        let shape = bubble.shape
         for (slot, uid) in uids.enumerated() {
             let name = cameraSourceName(slot: slot)
+            if bubble.greenroomCamera {
+                // Found by app and server name: the server's uuid is new on
+                // every launch, and OBS's Syphon source matches on these two
+                // when it has no uuid (checked against OBS 32.2.2).
+                let server = CutoutPublisher.serverName(slot: slot)
+                let settings: [String: Any] = [
+                    "app_name": CutoutPublisher.appName, "name": server,
+                    "uuid": "", "allow_transparency": true
+                ]
+                try await ensureInput(client: client, name: name, kind: "syphon-input",
+                                       settings: settings,
+                                       isCorrectlyConfigured: {
+                                           ($0["name"] as? String) == server
+                                               && ($0["allow_transparency"] as? Bool) == true
+                                       })
+                continue
+            }
             // `device` is the key av_capture_input_v2 actually reads. `uid` is
             // the OLD v1 name, and writing only that is why the source came up
             // with an empty Device field and a black picture: OBS accepted the
@@ -464,7 +491,7 @@ enum GreenroomScene {
         for slot in uids.indices {
             let name = cameraSourceName(slot: slot)
             try await ensureFilter(client: client, source: name, name: chromaKeyFilterName, kind: chromaKind)
-            try await setChromaKey(client: client, source: name, enabled: shape.usesChromaKey, kind: chromaKind)
+            try await setChromaKey(client: client, source: name, enabled: bubble.keysGreen, kind: chromaKind)
             try await ensureShapeMask(client: client, source: name, shape: shape)
             try await ensureFade(client: client, source: name, kind: fadeKind)
         }
@@ -513,7 +540,7 @@ enum GreenroomScene {
         guard !uids.isEmpty else { return }
         let webcamKind = try await bestInputKind(client: client, containing: ["av_capture", "dshow", "v4l2"])
         let chromaKind = try await bestFilterKind(client: client, containing: ["chroma_key_filter_v2", "chroma_key"])
-        try await ensureCameraInputs(client: client, uids: uids, shape: bubble.shape,
+        try await ensureCameraInputs(client: client, uids: uids, bubble: bubble,
                                      webcamKind: webcamKind, chromaKind: chromaKind)
         try await applyLiveLayout(client: client, bubble: bubble)
     }
@@ -1185,7 +1212,7 @@ enum GreenroomScene {
                                                   containing: ["chroma_key_filter_v2", "chroma_key"])
         let fadeKind = try await bestFilterKind(client: client, containing: ["color_filter_v2", "color_filter"])
         for camera in try await cameraSourceNames(client: client) {
-            try await setChromaKey(client: client, source: camera, enabled: bubble.shape.usesChromaKey, kind: chromaKind)
+            try await setChromaKey(client: client, source: camera, enabled: bubble.keysGreen, kind: chromaKind)
             try await ensureShapeMask(client: client, source: camera, shape: bubble.shape)
             // Again, because a mask created just now went in after it.
             try await ensureFade(client: client, source: camera, kind: fadeKind)

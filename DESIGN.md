@@ -305,6 +305,9 @@ The app is the other half of this system. Keep it aligned.
   `personGreen` is split as of 2026-11-05: the drag layer's guides use
   `Brand.green`, and the sketch's green screen is `chromaGreen`, a different
   thing that happens to share the number.)
+- **Amber tokens (app):** `Brand.net` (`--net`, glyphs and strokes) and
+  `Brand.netText` (`--net-text` on light, `--net` on dark) in `App/GreenroomApp.swift`.
+  Use them, never a raw value; three Settings tabs briefly carried their own copies.
 - **Semantic colour applies here too:** anything that reaches the network reads
   amber, anything local reads green. This is the risk we deliberately took, so
   honour it in status text and indicators.

@@ -66,6 +66,21 @@ enum Brand {
     /// The de-emphasis grey charts draw context in, so the one series that
     /// matters is the only thing carrying colour.
     static let recessive = Color(nsColor: .tertiaryLabelColor)
+
+    /// "Leaves your Mac", DESIGN.md's `--net` #B9770E: glyphs, strokes,
+    /// arrows that cross out of the Mac. Green means local; this is the other
+    /// half of that rule. Not for small text - see `netText`.
+    static let net = Color(nsColor: NSColor(srgbRed: 0xB9 / 255, green: 0x77 / 255,
+                                            blue: 0x0E / 255, alpha: 1))
+
+    /// The same meaning as words. `--net-text` #96600A on light, where `--net`
+    /// fails as small text; `--net` itself on dark, where the darker step
+    /// would sink into the window.
+    static let netText = Color(nsColor: NSColor(name: nil) { appearance in
+        appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+            ? NSColor(srgbRed: 0xB9 / 255, green: 0x77 / 255, blue: 0x0E / 255, alpha: 1)
+            : NSColor(srgbRed: 0x96 / 255, green: 0x60 / 255, blue: 0x0A / 255, alpha: 1)
+    })
 }
 
 @main

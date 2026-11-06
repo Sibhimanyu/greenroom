@@ -130,17 +130,6 @@ struct YouTubePageContent: View {
 
 // MARK: - Pieces
 
-/// DESIGN.md's "leaves your Mac" amber. `fill` is `--net` for glyphs and
-/// strokes; `text` is `--net-text` for small labels on light, and `--net` on
-/// dark, where the darker step would sink into the window.
-private enum NetAmber {
-    static let fill = Color(nsColor: NSColor(srgbRed: 0xB9 / 255, green: 0x77 / 255, blue: 0x0E / 255, alpha: 1))
-    static let text = Color(nsColor: NSColor(name: nil) { appearance in
-        appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-            ? NSColor(srgbRed: 0xB9 / 255, green: 0x77 / 255, blue: 0x0E / 255, alpha: 1)
-            : NSColor(srgbRed: 0x96 / 255, green: 0x60 / 255, blue: 0x0A / 255, alpha: 1)
-    })
-}
 
 /// This Mac -> YouTube, with the arrow saying whether anything crosses it.
 private struct UploadFlowPicture: View {
@@ -155,13 +144,13 @@ private struct UploadFlowPicture: View {
             FlowNode(symbol: "laptopcomputer", title: "This Mac", tint: Brand.green)
             connector
             FlowNode(symbol: "play.rectangle.fill", title: "YouTube",
-                     tint: crosses && connected ? NetAmber.fill : Color.secondary)
+                     tint: crosses && connected ? Brand.net : Color.secondary)
         }
         .padding(.vertical, 16)
         .padding(.horizontal, 24)
         .frame(maxWidth: .infinity)
         .overlay(alignment: .topTrailing) {
-            if uploading { PictureChip(text: "UPLOADING", dot: NetAmber.fill) }
+            if uploading { PictureChip(text: "UPLOADING", dot: Brand.net) }
         }
         .help("The one place class content leaves the Mac: the recording, over HTTPS, to the connected channel. Progress is in the menu bar; the link is copied when it finishes. The file stays in Documents/Greenroom either way.")
         .accessibilityElement(children: .ignore)
@@ -172,15 +161,15 @@ private struct UploadFlowPicture: View {
         VStack(spacing: 8) {
             Text(label)
                 .font(.caption.weight(.semibold))
-                .foregroundStyle(crosses ? NetAmber.text : Brand.text)
+                .foregroundStyle(crosses ? Brand.netText : Brand.text)
             HStack(spacing: 0) {
                 Line()
-                    .stroke(crosses ? NetAmber.fill : Color.secondary.opacity(0.4),
+                    .stroke(crosses ? Brand.net : Color.secondary.opacity(0.4),
                             style: StrokeStyle(lineWidth: 2, lineCap: .round, dash: crosses ? [] : [4, 5]))
                     .frame(height: 2)
                 Image(systemName: crosses ? "arrowtriangle.right.fill" : "xmark")
                     .font(.system(size: crosses ? 10 : 9, weight: .bold))
-                    .foregroundStyle(crosses ? NetAmber.fill : Color.secondary.opacity(0.6))
+                    .foregroundStyle(crosses ? Brand.net : Color.secondary.opacity(0.6))
             }
             // Same height as the label, so the line sits level with the icons.
             Text(" ").font(.caption)
@@ -267,7 +256,7 @@ private struct ModePicker: View {
     }
 
     private func tint(_ mode: YouTubeUploadMode) -> Color {
-        mode == .off ? Brand.green : NetAmber.fill
+        mode == .off ? Brand.green : Brand.net
     }
 
     private func help(_ mode: YouTubeUploadMode) -> String {

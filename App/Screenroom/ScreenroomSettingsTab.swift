@@ -248,7 +248,7 @@ struct ScreenroomPageContent<Setup: View>: View {
             Label {
                 Text("Leaves your Mac \u{00B7} read-only, no video")
             } icon: {
-                Image(systemName: "arrow.up.right.circle.fill").foregroundStyle(ScreenroomNet.color)
+                Image(systemName: "arrow.up.right.circle.fill").foregroundStyle(Brand.net)
             }
             .font(.callout)
             .help("This is the one part of Greenroom that can leave your Mac. It reads a copy of the presentation\u{2019}s folder without the recording, read-only, but what a cloud agent does with a transcript and stills of a named student is between you and it.")
@@ -364,12 +364,6 @@ struct ScreenroomPageContent<Setup: View>: View {
     }
 }
 
-/// "Leaves your Mac": DESIGN.md's `--net` amber, for graphics only. There is
-/// no Brand token for it in the app yet; text that means it stays primary.
-private enum ScreenroomNet {
-    static let color = Color(nsColor: NSColor(srgbRed: 0xB9 / 255, green: 0x77 / 255,
-                                              blue: 0x0E / 255, alpha: 1))
-}
 
 /// Where a presentation goes, in the site's diagram grammar: the dashed box
 /// is this Mac, green arrows stay inside it, amber ones cross out of it. The
@@ -422,12 +416,12 @@ private struct ScreenroomFlowPicture: View {
                         p.addLine(to: CGPoint(x: agentX, y: top))
                         p.addLine(to: CGPoint(x: agentX, y: rowY - half - 10))
                     }
-                    .stroke(ScreenroomNet.color, style: StrokeStyle(lineWidth: 1.5, lineJoin: .round))
+                    .stroke(Brand.net, style: StrokeStyle(lineWidth: 1.5, lineJoin: .round))
                     arrowHead(at: CGPoint(x: agentX, y: rowY - half - 6), pointing: .down,
-                              color: ScreenroomNet.color)
+                              color: Brand.net)
                     // Back: the written feedback, into the report.
                     arrow(from: CGPoint(x: agentX - half - 6, y: rowY),
-                          to: CGPoint(x: xs[2] + half + 6, y: rowY), color: ScreenroomNet.color, width: 1.5)
+                          to: CGPoint(x: xs[2] + half + 6, y: rowY), color: Brand.net, width: 1.5)
                 }
 
                 node("video.fill", "Recording", at: CGPoint(x: xs[0], y: rowY), active: true)
@@ -447,7 +441,7 @@ private struct ScreenroomFlowPicture: View {
                                   : "Off. Pick \u{201C}My agent\u{201D} to hand it each presentation.")
 
                 PictureChip(text: agentOn ? "LEAVES YOUR MAC" : "STAYS ON THIS MAC",
-                            dot: agentOn ? ScreenroomNet.color : Brand.green)
+                            dot: agentOn ? Brand.net : Brand.green)
                     .offset(x: 12, y: 12)
             }
         }

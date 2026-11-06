@@ -288,7 +288,7 @@ struct CuesSetupContent<WhisperSetup: View, WhisperModel: View>: View {
                     Label {
                         Text("Search YouTube for videos")
                     } icon: {
-                        Image(systemName: "play.rectangle").foregroundStyle(Net.text)
+                        Image(systemName: "play.rectangle").foregroundStyle(Brand.netText)
                     }
                     if !youtubeConnected {
                         Text("No account").font(.caption).foregroundStyle(.secondary)
@@ -476,7 +476,7 @@ private struct CuesPicture: View {
                     .font(.system(size: 9, weight: .semibold, design: .monospaced))
                     .kerning(0.8)
             }
-            .foregroundStyle(Net.text)
+            .foregroundStyle(Brand.netText)
             .frame(width: 56)
 
             VStack(spacing: 8) {
@@ -628,15 +628,6 @@ private struct SentenceGlyph: View {
     }
 }
 
-/// `--net-text`: "leaves your Mac", for small labels and glyphs. Lighter on a
-/// dark window, where the light-mode amber would be too dim to read.
-private enum Net {
-    static let text = Color(nsColor: NSColor(name: nil) { appearance in
-        appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-            ? NSColor(srgbRed: 0xD9 / 255, green: 0x9A / 255, blue: 0x2E / 255, alpha: 1)
-            : NSColor(srgbRed: 0x96 / 255, green: 0x60 / 255, blue: 0x0A / 255, alpha: 1)
-    })
-}
 
 #if DEBUG
 /// Try it and the old Debug rows, as one place to find out why a sentence did

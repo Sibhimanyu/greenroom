@@ -325,19 +325,10 @@ private struct StatusChip: View {
     let isLive: Bool
 
     var body: some View {
-        HStack(spacing: 5) {
-            Circle()
-                .fill(isLive ? Brand.green : Color.white.opacity(0.6))
-                .frame(width: 6, height: 6)
-            Text(isLive ? "LIVE" : "PREVIEW")
-                .font(.caption2.weight(.bold))
-        }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 4)
-        .background(.black.opacity(0.72), in: Capsule())
-        .foregroundStyle(.white)
-        .help(isLive ? "The picture the meeting gets, from OBS."
-                     : "A sketch. Turn on \u{201C}Keep OBS ready\u{201D} under Recording to see the real picture.")
+        PictureChip(text: isLive ? "LIVE" : "PREVIEW",
+                    dot: isLive ? Brand.green : Color.white.opacity(0.6))
+            .help(isLive ? "The picture the meeting gets, from OBS."
+                         : "A sketch. Turn on \u{201C}Keep OBS ready\u{201D} under Recording to see the real picture.")
     }
 }
 
@@ -345,12 +336,7 @@ private struct StatusChip: View {
 /// everything was removed, not because the camera is broken.
 private struct NobodyChip: View {
     var body: some View {
-        Label("Can\u{2019}t see you", systemImage: "eye.slash")
-            .font(.caption2.weight(.bold))
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
-            .background(.black.opacity(0.72), in: Capsule())
-            .foregroundStyle(.white)
+        PictureChip(text: "Can\u{2019}t see you", symbol: "eye.slash")
             .help("Nobody is in view of the camera, so everything was removed. Check the camera is pointing at you.")
     }
 }
@@ -430,48 +416,6 @@ private struct ShareKindPicker: View {
         case .app: return "Only one app\u{2019}s windows"
         case .window: return "Just one window, on a dark backdrop"
         }
-    }
-}
-
-/// A selectable card: a picture, a short name, an optional badge.
-private struct ChoiceTile<Picture: View>: View {
-    let title: String
-    let selected: Bool
-    let badge: String?
-    @ViewBuilder let picture: () -> Picture
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            VStack(spacing: 8) {
-                picture()
-                    .frame(maxWidth: .infinity)
-                Text(title)
-                    .font(.callout.weight(selected ? .semibold : .regular))
-                    .foregroundStyle(.primary)
-                    .lineLimit(1)
-            }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 12)
-            .frame(maxWidth: .infinity)
-            .background(RoundedRectangle(cornerRadius: 10)
-                .fill(selected ? Brand.green.opacity(0.12) : Color(nsColor: .controlBackgroundColor)))
-            .overlay(RoundedRectangle(cornerRadius: 10)
-                .strokeBorder(selected ? Brand.green : Color.secondary.opacity(0.25),
-                              lineWidth: selected ? 2 : 1))
-            .overlay(alignment: .topTrailing) {
-                if let badge {
-                    Image(systemName: badge)
-                        .font(.caption2.weight(.semibold))
-                        .foregroundStyle(selected ? Brand.green : Color.secondary)
-                        .padding(6)
-                }
-            }
-            .contentShape(RoundedRectangle(cornerRadius: 10))
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(title)
-        .accessibilityAddTraits(selected ? .isSelected : [])
     }
 }
 

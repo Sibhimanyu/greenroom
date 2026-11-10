@@ -31,8 +31,8 @@ Press **End Session** and it all tears down cleanly.
 Around that, for the class itself: **Cues** suggests links for what you
 mention while you teach, **Clips** keeps the last five minutes ready to
 save, **Sessions** keeps each class's recording, clips, transcript and an
-on-device summary, and **Screenroom** records and marks a student's
-presentation.
+on-device summary, and **Record** keeps a class on your screen with no
+meeting at all, with optional timed notes, ready to analyse afterwards.
 
 ---
 
@@ -68,9 +68,9 @@ the same drag-to-Applications experience.
 
 - macOS 14 or later
 - macOS 26 for three things only: **Cues**, the **class summary** in
-  Sessions (also needs Apple Intelligence on), and **Screenroom's written
+  Sessions (also needs Apple Intelligence on), and **Analyse's written
   feedback on the Mac** when no agent is set up (also needs Apple
-  Intelligence on). Everything else, Screenroom included, runs on macOS 14+.
+  Intelligence on). Everything else, Analyse included, runs on macOS 14+.
 - Nothing else to install. Greenroom captures the screen and camera and
   builds the picture itself.
 
@@ -103,25 +103,25 @@ anytime from the **?** button in the main window. The short version:
    | Automation → Google Chrome | First time the Chrome window is tiled | Chrome is positioned via its own AppleScript dictionary |
    | Accessibility | First time a non-Chrome main app is tiled | Moving windows of apps that have no AppleScript dictionary |
 
-   Screen Recording is Greenroom's own: it captures the display, app or
-   window you chose to share (picture only, never system sound), both for
-   the class and when you point **Screenroom** at a screen or window instead
-   of the camera. Screenroom also asks for the microphone and for Speech
-   Recognition (used on-device only) the first time it records and
-   transcribes a presentation.
+   Screen Recording belongs to the class picture: Greenroom captures the
+   display, app or window you chose to share (picture only, never system
+   sound), for a meeting and for **Record**. Analysing a recording reads a
+   file that is already on your Mac, so it needs no screen permission. It
+   asks for Speech Recognition (used on-device only) the first time it
+   transcribes with Apple's recogniser instead of whisper.
 
-   **One more thing about Screenroom, stated here because the rest of this README
-   is a list of things that stay on your Mac:** Screenroom can hand a presentation
-   to a command-line agent you already have (Claude Code, Codex, or a command
-   you write). That is the only feature in Greenroom whose destination
+   **One more thing about Analyse, stated here because the rest of this README
+   is a list of things that stay on your Mac:** Analyse can hand a recording's
+   transcript to a command-line agent you already have (Claude Code, Codex, or
+   a command you write). That is the only feature in Greenroom whose destination
    Greenroom does not control. It is off by default, the exact command it
-   runs is shown in Settings → Screenroom, the agent gets read-only access to a temporary copy of the
-   presentation's folder with the recording left out, and
-   what a cloud agent then does with a transcript and stills of a named
-   student is between you and it. Greenroom does not send the audio or video. Everything
-   else in Screenroom — recording, notes, transcription, the counts, and
+   runs is shown under *How to analyse* beside Analyse, the agent gets
+   read-only access to a temporary copy of the session's folder with the
+   recording left out, and what a cloud agent then does with a transcript and
+   stills of a named student is between you and it. Greenroom does not send the
+   audio or video. Everything else in Analyse — transcription, the counts, and
    (with no agent) the written feedback — runs on your Mac.
-   See the [how-it-works page](https://sibhimanyu.github.io/greenroom/how-it-works.html#Screenroom).
+   See the [how-it-works page](https://sibhimanyu.github.io/greenroom/how-it-works.html#Analyse).
 
    **Credential storage note:** the Zoom app credentials are kept in
    Greenroom's local preferences (`UserDefaults`) in **plain text** — not
@@ -160,9 +160,10 @@ Also available:
   folder, whether you are recording or not. A clip holds what the class
   saw from you: your composited screen, your webcam and your mic. Not other
   participants, not Zoom audio.
-- **Sessions** (its own window) — two lists behind one toggle, **Classes**
-  and **Presentations**. A class shows its recording, clips, transcript (if
-  Cues wrote one) and YouTube status with Open / Copy link. In the
+- **Sessions** (its own window) — a card grid with a sidebar to show
+  **Classes**, **Recordings** (from Record) or **Presentations** (folders made
+  by an earlier version). A session shows its recording, clips, transcript
+  (if Cues wrote one), **Analyse**, and YouTube status with Open / Copy link. In the
   Transcript tab, **Summarise on this Mac** writes `summary.md` into the
   class folder with Apple's on-device model, never a cloud call. It needs
   macOS 26 with Apple Intelligence on, and a transcript, so Cues must have
@@ -173,9 +174,10 @@ Also available:
   and it listens to your microphone while the class is live, offering link
   cards for the books, videos, topics, people and places you name. Nothing
   opens by itself: you click **Open** or send the card to the chat.
-- **Screenroom** (main window button, or menu bar → *Open Screenroom…*) —
-  for evaluating a student's presentation. See
-  [Screenroom](#screenroom) below.
+- **Record** on the home screen — the same class picture with no meeting:
+  press Record, teach, press Stop. Turn **Notes** on to type timed notes
+  while it records. Nothing is analysed until you ask: open the session in
+  Sessions and press **Analyse** (see [Analyse](#analyse) below).
 - **Manual controls** (pull-down beside the Status toggle) — each piece of the
   session individually: open just the chat window, just the main-app
   window, or just Zoom.
@@ -300,7 +302,7 @@ meeting is live, an `AVAudioEngine` tap on the default input device
 feeding a speech-to-text engine on the Mac: Apple's
 `SpeechAnalyzer`/`SpeechTranscriber` (the model asset is downloaded once
 from Apple through the system asset service — from this tab, never during
-a class), or whisper (`whisper-cpp`, with the model shared with Screenroom
+a class), or whisper (`whisper-cpp`, with the model shared with Analyse
 and selectable from this tab). Finalised sentences go to a mention detector. **Cue-phrase patterns by
 default** ("it's called X", "the word X", a quotation): measured against a
 recorded class at 16 lookups, 90% recall, 56% precision. Apple's on-device
@@ -340,21 +342,15 @@ minutes and runs the real pipeline: live text, real lookups, real cards. Cards y
 recorded in the class folder's `session.json` (`links`) and shown in
 Sessions as "Links from class". Engine: `App/Cues/`.
 
-### Screenroom
-> Released in 0.9.0. Every entry point reads
-> `ScreenroomAvailability.isReleased` in
-> `App/Screenroom/ScreenroomAvailability.swift`.
+### Analyse
+For any session in Sessions: a class, a Record session, a meeting
+recording, or a presentation recorded by an earlier version. Nothing is
+analysed while you record; press **Analyse** afterwards. Runs on macOS 14+;
+only the on-Mac written feedback needs macOS 26.
 
-For evaluating a student's presentation. Open it from the main window's
-**Screenroom** button or the menu bar's *Open Screenroom…*. Runs on
-macOS 14+; only the on-Mac written feedback needs macOS 26.
-
-- **Record their talk** — camera and mic to `presentation.mov`, or a
-  screen/window source (which records the Mac's sound). A presentation
-  doesn't need a name, and one can't overwrite another.
-- **Mark as they speak** — type notes while recording; each note is
-  stamped at the moment you started typing it. Notes can be added
-  afterwards too.
+- **Notes** — the home screen's Notes switch types timed notes into any
+  session; each note is stamped at the moment you started typing it. Notes
+  can be added afterwards too.
 - **Counted on the Mac** (no AI) — pace in words per minute (with a
   gauge), filler words, pauses of 2 s or more, and facing the room (head
   direction via Vision, within 20°).
@@ -367,24 +363,26 @@ macOS 14+; only the on-Mac written feedback needs macOS 26.
   on**); otherwise the counted report and your notes, with no written
   feedback. Each rubric line gets a score and a reason.
 - **The report** opens as a dashboard with a save panel for exporting.
-  Sessions → **Presentations** shows it again with Analysis and Notes tabs,
-  and filler and note marks on the scrubber.
+  Sessions shows it again with Analysis and Notes tabs, and filler and
+  note marks on the scrubber.
 
-Setup, in Settings → Screenroom:
+Setup is asked once, at the first press of Analyse, in a **How to analyse**
+panel, and a small *How to analyse…* link beside Analyse reopens it:
 
-1. **whisper** (for filler counts): `brew install whisper-cpp`, then
-   download a model. The tab shows the commands and picks up what is
-   installed; the model is shared with Cues.
-2. **Your agent** (optional, off by default): *Hand each presentation to my
-   agent* — Claude Code, Codex, or a command of your own, run through your
+1. **whisper** (for filler counts): one button installs the program and a
+   model; the model is shared with Cues.
+2. **Your agent** (optional, off by default): *My agent* instead of *This
+   Mac* — Claude Code, Codex, or a command of your own, run through your
    login shell. It reads the transcript, your notes, a still every 20
    seconds, the counts, the rubric and the student's name, read-only in the
-   presentation's folder. Audio and video are not sent.
+   session's folder. Audio and video are not sent.
 
 **What can leave the Mac:** only what your agent sends, if you turn one on.
-That is the one part of Screenroom (and of Greenroom's class tools) whose
+That is the one part of Analyse (and of Greenroom's class tools) whose
 destination Greenroom does not control. Everything else stays on the Mac.
-Engine: `App/Screenroom/`.
+Folders made by the earlier presentation window (`presentation.mov`,
+`notes.jsonl`) still list, play and analyse, labelled *Presentation*.
+Engine: `App/Screenroom/` (the folder keeps its old name).
 
 ### Transfer
 Export/import every setting above as one JSON file — including the webcam

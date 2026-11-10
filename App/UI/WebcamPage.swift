@@ -353,7 +353,7 @@ private struct NobodyChip: View {
 }
 
 /// The five looks as pictures. What each one does is in its hover help.
-private struct LookPicker: View {
+struct LookPicker: View {
     @Binding var selection: WebcamShape
     let removal: BackgroundRemoval
 
@@ -414,7 +414,7 @@ private struct HalfSketch: View {
 }
 
 /// Whole screen, one app, one window or nothing, as pictures.
-private struct ShareKindPicker: View {
+struct ShareKindPicker: View {
     @Binding var selection: ShareTarget.Kind
     /// False while there is no camera: nothing shared would leave nothing.
     var nothingAllowed = true

@@ -36,11 +36,11 @@ struct ContentView: View {
     private var startLabel: String {
         if coordinator.isRunning { return "Starting\u{2026}" }
         if coordinator.stageLive { return "In Session" }
-        if coordinator.recordOnlyActive { return "Recording" }
+        if coordinator.recordOnlyActive { return coordinator.isRecording ? "Recording" : "Ready" }
         switch coordinator.meetingMode {
         case .create: return "Start Meeting"
         case .join: return "Join Meeting"
-        case .record: return "Start Recording"
+        case .record: return "Get Ready"
         }
     }
 
@@ -51,7 +51,7 @@ struct ContentView: View {
         case .join:
             return "Starts your screen and camera picture, joins the meeting above (starting it as host if it's yours), and tiles your windows."
         case .record:
-            return "Records the picture set in Settings \u{2192} Webcam into Documents/Greenroom. No meeting, no windows moved."
+            return "Starts the picture set in Settings \u{2192} Webcam and opens the Record view, where you can check it and press Record when you are ready. No meeting, no windows moved."
         }
     }
 
@@ -118,6 +118,47 @@ struct ContentView: View {
     }
 
     var body: some View {
+        Group {
+            if coordinator.recordStudioShown {
+                RecordStudioView()
+            } else {
+                homeContent
+            }
+        }
+        // 32pt at the sides so nothing sits at the window's edge (20pt read as
+        // about to be cut off); 20pt top and bottom, which the heights assume.
+        .padding(.horizontal, 32)
+        .padding(.vertical, 20)
+        .frame(minWidth: Self.minimumWindowWidth, minHeight: preferredWindowHeight)
+        // Pinned to the top while the window catches up to a new height.
+        // Without it, the content is taller than the window for the length
+        // of the resize and gets centred - everything jumps up, then back.
+        // The pin only holds if this frame is never taller than the window:
+        // with the content's own minimum (preferredWindowHeight) it was, the
+        // moment the content grew, and the hosting view centred the whole
+        // thing - the header jumped 32pt on Join and lurched on Status. So
+        // its minimum is heldMinHeight, which catches up after the window.
+        .frame(maxWidth: .infinity, minHeight: heldMinHeight, maxHeight: .infinity, alignment: .top)
+        // The window OPENS at the preferred size every time, regardless
+        // of the size it was closed at (explicit request) - SwiftUI
+        // persists scene geometry across launches and defaultSize only
+        // covers the first-ever open, so the size is asserted on appear.
+        .onAppear {
+            DispatchQueue.main.async { resizeWindow(animated: false) }
+        }
+        // The things that change the window's height. All grow it DOWNWARD
+        // from an anchored top edge, so nothing above the divider moves - see
+        // resizeWindow.
+        .onChange(of: statusShown) { _, _ in resizeWindow(animated: true) }
+        .onChange(of: coordinator.meetingMode) { _, _ in resizeWindow(animated: true) }
+        .onChange(of: coordinator.recordStudioShown) { _, _ in resizeWindow(animated: true) }
+        .sheet(isPresented: $coordinator.showOnboarding) {
+            OnboardingView()
+                .environmentObject(coordinator)
+        }
+    }
+
+    private var homeContent: some View {
         VStack(alignment: .leading, spacing: 16) {
             header
 
@@ -131,7 +172,7 @@ struct ContentView: View {
                 Button {
                     coordinator.start()
                 } label: {
-                    Label(startLabel, systemImage: isRecordMode ? "record.circle" : "play.fill")
+                    Label(startLabel, systemImage: "play.fill")
                         .frame(minWidth: 130)
                 }
                 .buttonStyle(.borderedProminent)
@@ -139,23 +180,23 @@ struct ContentView: View {
                 .disabled(startDisabled)
                 .help(startHelp)
 
-                Button(stopLabel) {
-                    coordinator.confirmAndStop()
+                // Record mode ends from its own view (Done), so a Stop here
+                // would only ever be dimmed.
+                if !isRecordMode {
+                    Button(stopLabel) {
+                        coordinator.confirmAndStop()
+                    }
+                    .controlSize(.large)
+                    .tint(Self.secondaryTint)
+                    .disabled(stopDisabled)
+                    .help("Ends the meeting for everyone when you're hosting (leaves it otherwise), closes the chat window, and stops the camera. Ending the meeting from the Zoom window does the same \u{2014} both roads end the whole session.")
                 }
-                .controlSize(.large)
-                .tint(Self.secondaryTint)
-                .disabled(stopDisabled)
-                .help(isRecordMode
-                      ? "Stops the recording and saves it to Documents/Greenroom."
-                      : "Ends the meeting for everyone when you're hosting (leaves it otherwise), closes the chat window, and stops the camera. Ending the meeting from the Zoom window does the same \u{2014} both roads end the whole session.")
 
                 SessionNotesToggle()
 
                 Spacer()
 
-                // Record mode's Start already records, so a second Record
-                // button beside it would only be a way to stop the tape
-                // without ending the session.
+                // Record mode has its own Record button, in its own view.
                 if !isRecordMode {
                     recordButton
                 }
@@ -179,36 +220,6 @@ struct ContentView: View {
             }
 
             Spacer(minLength: 0)
-        }
-        // 32pt at the sides so nothing sits at the window's edge (20pt read as
-        // about to be cut off); 20pt top and bottom, which the heights assume.
-        .padding(.horizontal, 32)
-        .padding(.vertical, 20)
-        .frame(minWidth: Self.minimumWindowWidth, minHeight: preferredWindowHeight)
-        // Pinned to the top while the window catches up to a new height.
-        // Without it, the content is taller than the window for the length
-        // of the resize and gets centred - everything jumps up, then back.
-        // The pin only holds if this frame is never taller than the window:
-        // with the content's own minimum (preferredWindowHeight) it was, the
-        // moment the content grew, and the hosting view centred the whole
-        // thing - the header jumped 32pt on Join and lurched on Status. So
-        // its minimum is heldMinHeight, which catches up after the window.
-        .frame(maxWidth: .infinity, minHeight: heldMinHeight, maxHeight: .infinity, alignment: .top)
-        // The window OPENS at the preferred size every time, regardless
-        // of the size it was closed at (explicit request) - SwiftUI
-        // persists scene geometry across launches and defaultSize only
-        // covers the first-ever open, so the size is asserted on appear.
-        .onAppear {
-            DispatchQueue.main.async { resizeWindow(animated: false) }
-        }
-        // The two things that change the window's height. Both grow it
-        // DOWNWARD from an anchored top edge, so nothing above the divider
-        // moves - see resizeWindow.
-        .onChange(of: statusShown) { _, _ in resizeWindow(animated: true) }
-        .onChange(of: coordinator.meetingMode) { _, _ in resizeWindow(animated: true) }
-        .sheet(isPresented: $coordinator.showOnboarding) {
-            OnboardingView()
-                .environmentObject(coordinator)
         }
     }
 
@@ -269,6 +280,7 @@ struct ContentView: View {
         // changed is 19pt of dead space at the bottom of the window.
         // +36 for the look summary: an 18pt row and the stack's 16pt gap,
         // rounded up to the 4px scale.
+        if coordinator.recordStudioShown { return RecordStudioView.windowHeight }
         var height: CGFloat = 356 + 36
         if coordinator.meetingMode == .join { height += 64 }
         if statusShown { height += Self.statusLogHeight + 12 }
@@ -408,7 +420,7 @@ struct ContentView: View {
                         .foregroundStyle(.secondary)
                 }
             case .record:
-                Text("Records the picture set in Settings \u{2192} Webcam to this Mac. No meeting.")
+                Text("Gets the picture set in Settings \u{2192} Webcam ready, then you press Record. No meeting.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             case .join:

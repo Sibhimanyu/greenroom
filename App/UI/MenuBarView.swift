@@ -28,8 +28,8 @@ struct MenuBarView: View {
         // second trigger.
         Button(coordinator.isRunning ? "Starting\u{2026}"
                : coordinator.stageLive ? "In Session"
-               : coordinator.recordOnlyActive ? "Recording"
-               : coordinator.meetingMode == .record ? "Start Recording"
+               : coordinator.recordOnlyActive ? (coordinator.isRecording ? "Recording" : "Ready to Record")
+               : coordinator.meetingMode == .record ? "Get Ready"
                : coordinator.meetingMode == .create ? "Start Meeting" : "Join Meeting") {
             coordinator.start()
         }
@@ -46,7 +46,7 @@ struct MenuBarView: View {
             coordinator.toggleRecording()
         }
         .keyboardShortcut("r", modifiers: [.option, .command])
-        .disabled(!coordinator.stageLive && !coordinator.isRecording)
+        .disabled(!coordinator.stageLive && !coordinator.isRecording && !coordinator.recordOnlyActive)
 
         // The upload runs in the background; this is where its progress
         // lives, rather than a toast the teacher would have to watch.

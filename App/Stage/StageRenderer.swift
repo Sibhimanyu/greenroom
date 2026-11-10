@@ -7,9 +7,8 @@
 //  live compositor and the debug still render both go through it, so a still
 //  proves what the live path draws.
 //
-//  Geometry is GreenroomScene's, number for number. It works in top-left
-//  coordinates like OBS's scene-item transforms and converts to Core Image's
-//  bottom-left only at the last step (`ci(_:)`).
+//  It works in top-left coordinates and converts to Core Image's bottom-left
+//  only at the last step (`ci(_:)`).
 //
 import CoreImage
 import CoreImage.CIFilterBuiltins
@@ -46,7 +45,7 @@ final class StageRenderer {
         self.canvas = canvas
         let options: [CIContextOption: Any] = [
             .cacheIntermediates: false,
-            // Blend in sRGB as OBS does, not in linear light: edges and
+            // Blend in sRGB, not in linear light: edges and
             // fades then match what the class has always seen, and it
             // skips two colour conversions per layer.
             .workingColorSpace: sRGB,
@@ -65,7 +64,7 @@ final class StageRenderer {
 
     // MARK: Compose
 
-    /// `--ink` #101828, the colour GreenroomScene's backdrop uses (:1427).
+    /// `--ink` #101828, the backdrop colour.
     private var backdrop: CIImage {
         CIImage(color: CIColor(red: 16.0 / 255, green: 24.0 / 255, blue: 40.0 / 255,
                                colorSpace: sRGB)!)
@@ -93,7 +92,7 @@ final class StageRenderer {
             let placed = place(screen, inside: box)
             var contentImage = placed.image
             if presenter {
-                // Panel mask: radius 2.5% of the drawn width (MaskImageGenerator :73).
+                // Panel mask: radius 2.5% of the drawn width (2.5% of the drawn width).
                 let rect = placed.rect
                 let r = rect.width * 0.025
                 contentImage = masked(contentImage, rect: rect, path: { r0 in
@@ -126,7 +125,7 @@ final class StageRenderer {
         return out.cropped(to: CGRect(origin: .zero, size: canvas))
     }
 
-    /// Smoothstep (GreenroomScene.fadeCurve :763).
+    /// Smoothstep.
     static func fadeCurve(_ t: Double) -> Double { let t = min(1, max(0, t)); return t * t * (3 - 2 * t) }
 
     /// The pixels a camera contributes under the current look, or nil when
@@ -184,7 +183,7 @@ final class StageRenderer {
             let placed = stretch(src, to: rect)
             switch shape {
             case .circle:
-                // MaskImageGenerator :89-97 (inset 2px of 512).
+                // the circle mask: inset 2px of 512.
                 return masked(placed, rect: rect) { r in
                     let inset = r.width / 512 * 2
                     return CGPath(ellipseIn: r.insetBy(dx: inset, dy: inset), transform: nil)
@@ -225,8 +224,7 @@ final class StageRenderer {
         return image.transformed(by: CGAffineTransform(scaleX: s, y: s))
     }
 
-    /// Aspect-fit into `box` (top-left coordinates), centred: OBS's
-    /// SCALE_INNER with alignment 0.
+    /// Aspect-fit into `box` (top-left coordinates), centred.
     private func place(_ source: CIImage, inside box: CGRect) -> (image: CIImage, rect: CGRect) {
         let image = normalized(source)
         let w = image.extent.width, h = image.extent.height
@@ -240,8 +238,7 @@ final class StageRenderer {
     }
 
     /// Fills `rect` (top-left coordinates) with the picture, uniformly: every
-    /// caller hands in a rect with the picture's own aspect (OBS_BOUNDS_STRETCH
-    /// with the aspect already matched).
+    /// caller hands in a rect with the picture's own aspect.
     private func stretch(_ source: CIImage, to rect: CGRect) -> CIImage {
         let image = normalized(source)
         let s = rect.width / image.extent.width
@@ -286,10 +283,9 @@ final class StageRenderer {
         return filter.outputImage ?? image
     }
 
-    /// OBS's chroma key v2, with the settings GreenroomScene writes
-    /// (setChromaKey :1119: green, similarity 400, smoothness 80, spill 100),
+    /// A chroma key (green, similarity 400, smoothness 80, spill 100)
     /// as a colour cube: distance in CbCr from key green, smoothed, with the
-    /// spill pulled towards grey. The formulas are the effect file's.
+    /// spill pulled towards grey. The numbers were tuned against a real green screen.
     private static func makeChromaKeyCube() -> CIFilter? {
         let n = 64
         let similarity: Float = 0.4, smoothness: Float = 0.08, spill: Float = 0.1
@@ -323,7 +319,7 @@ final class StageRenderer {
 }
 
 private extension CIImage {
-    /// Opacity of a finished layer, as OBS's fade filter does after the key,
+    /// Opacity of a finished layer, after the key,
     /// crop and mask.
     func withOpacity(_ a: Double) -> CIImage {
         applyingFilter("CIColorMatrix", parameters: ["inputAVector": CIVector(x: 0, y: 0, z: 0, w: a)])

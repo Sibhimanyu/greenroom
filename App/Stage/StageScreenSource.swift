@@ -3,11 +3,10 @@
 //  Greenroom
 //
 //  One ScreenCaptureKit stream: a whole display, one app, or one window, the
-//  three things `ShareTarget` can name. Replaces OBS's screen_capture source.
+//  three things `ShareTarget` can name.
 //
 //  Patterns are ScreenroomScreenEngine's: complete frames only, BGRA, audio
-//  off. Audio off is not tidiness: it is the setting OBS needed to stop its
-//  own ScreenCaptureKit crash, and Greenroom has no use for system audio.
+//  off. Greenroom has no use for system audio.
 //
 import AppKit
 import CoreMedia

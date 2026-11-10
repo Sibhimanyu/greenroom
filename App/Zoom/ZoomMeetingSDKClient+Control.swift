@@ -207,7 +207,7 @@ extension ZoomMeetingSDKClient {
 
     // MARK: - Sharing
 
-    /// Zoom's own screen share, which is separate from the OBS composite this
+    /// Zoom's own screen share, which is separate from the composite this
     /// app sends as its camera. Both can run; they are different things, and the
     /// toolbar label has to say which.
     private var shareController: ZoomSDKASController? {

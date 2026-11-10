@@ -10,7 +10,7 @@
 //  picture is due, and does the downscale on its own queue.
 //
 //  `StageFrameProbe` only answers "has a frame arrived yet?", which Start
-//  waits on in place of the old "virtual camera live".
+//  waits on before the meeting starts.
 //
 import AppKit
 import CoreImage

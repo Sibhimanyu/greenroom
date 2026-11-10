@@ -20,7 +20,7 @@ struct MenuBarView: View {
     var body: some View {
         // Same enable/disable logic as the main window's buttons: Start
         // only when idle, Stop only when starting or live, Record only
-        // with a live OBS session (or to stop an active recording).
+        // with a live session (or to stop an active recording).
         // The ⌥⌘ shortcuts shown here are registered as SYSTEM-WIDE
         // hotkeys (HotkeyManager) - they work while other apps are
         // focused, and macOS swallows the keypress before it could reach

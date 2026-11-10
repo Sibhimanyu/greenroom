@@ -76,7 +76,7 @@ final class SessionNotes: ObservableObject {
             coordinator.$isRunning.map { _ in () },
             coordinator.$stageLive.map { _ in () },
             coordinator.$isRecording.map { _ in () },
-            // Home -> Record: a session with no meeting and no virtual camera.
+            // Home -> Record: a session with no meeting.
             coordinator.$recordOnlyActive.map { _ in () },
             NotificationCenter.default.publisher(for: UserDefaults.didChangeNotification).map { _ in () })
             .receive(on: RunLoop.main)

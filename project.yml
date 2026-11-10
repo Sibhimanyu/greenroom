@@ -15,10 +15,11 @@ settings:
     SWIFT_VERSION: "5.0"
     ENABLE_HARDENED_RUNTIME: YES
     CODE_SIGN_STYLE: Automatic
-    # A free/personal Apple ID team is enough now - this app has no System
-    # Extension entitlement (OBS owns the actual virtual camera), so it
-    # isn't subject to the paid-Developer-Program-only restriction that
-    # blocked the earlier CMIOExtension-based design.
+    # A free/personal Apple ID team is enough: this app has no System
+    # Extension entitlement (it sends its picture into the meeting through the
+    # Zoom SDK, not as a system camera), so it isn't subject to the
+    # paid-Developer-Program-only restriction that blocked the earlier
+    # CMIOExtension-based design.
     #
     # Set to the personal team (from the Apple Development cert's OU) so
     # every rebuild carries the SAME signing identity. With the previous
@@ -88,14 +89,6 @@ targets:
     dependencies:
       - framework: Vendor/ZoomSDK/ZoomSDK.framework
         embed: true
-      # Syphon hands OBS the camera with the background removed (see
-      # App/OBS/CutoutPublisher.swift). Embedded and signed, not linked: it is
-      # loaded with dlopen, so it needs no headers, and a build without it
-      # still runs - automatic background removal just reports itself off.
-      # scripts/vendor-syphon.sh says where this copy came from.
-      - framework: Vendor/Syphon/Syphon.framework
-        embed: true
-        link: false
       # Cues (App/Cues/) uses Apple's on-device speech and language
       # models, both macOS 26 API. FoundationModels.framework does not EXIST
       # on macOS 14/15, so a strong link would make dyld refuse to launch the
@@ -221,7 +214,7 @@ targets:
           # crash reporter pair AppticsCrashKit + KSCrash. (AppticsMXCrashKit is
           # iOS-only and never appears, which is why the plain AppticsAnalytics
           # product would leave macOS with no crash reporting.)
-          XCODE_EMBEDS=" ZoomSDK.framework Syphon.framework Sparkle.framework Apptics.framework JWT.framework AppticsEventTracker.framework AppticsScreenTracker.framework AppticsCrashKit.framework KSCrash.framework "
+          XCODE_EMBEDS=" ZoomSDK.framework Sparkle.framework Apptics.framework JWT.framework AppticsEventTracker.framework AppticsScreenTracker.framework AppticsCrashKit.framework KSCrash.framework "
           # Fail the build rather than repeat that bug silently. Anything in
           # the bundle that neither came from Vendor/ZoomSDK nor is on the
           # list above is about to be deleted, so say so now instead of

@@ -4,7 +4,8 @@
 <dict>
 	<!-- Hardened Runtime denies camera/mic outright without these - the
 	     all-in-one meeting client captures both inside Greenroom's own
-	     process (the OBS Virtual Camera counts as a camera). Discovered
+	     process (the camera and microphone, for the picture and the
+	     recording). Discovered
 	     the hard way: black video, no prompt, no error. -->
 	<key>com.apple.security.device.camera</key>
 	<true/>

@@ -7,7 +7,7 @@
 //  folder, next to the recordings, so the record travels with the files and
 //  a folder copied elsewhere still knows its YouTube links.
 //
-//  The folder is never renamed on disk: OBS and the clip pipeline refer to
+//  The folder is never renamed on disk: the recorder and the clip pipeline refer to
 //  it by path during a session, and a display title is what the teacher
 //  actually wants to change.
 //
@@ -58,7 +58,7 @@ struct SessionMetadata: Codable {
     /// existed has no kind and is classified by the old rule, so nothing
     /// needed migrating and nothing on disk moved.
     ///
-    /// Only Screenroom writes it. A class folder is created empty so OBS has
+    /// Only Screenroom writes it. A class folder is created empty so the recorder has
     /// somewhere to put a clip, and `stop()` deletes it again if the session
     /// left nothing behind - writing a manifest into it at that moment would
     /// make every unrecorded morning leave a folder. A Green is therefore

@@ -108,7 +108,7 @@ enum ScreenroomExport {
 
     /// `Priya Raman - 18 Sep 2026` - a file name a human would have typed.
     ///
-    /// Sanitised here rather than through GreenroomScene, so this file has no
+    /// Sanitised here rather than through SessionFolders, so this file has no
     /// dependency on the rest of the app and can be exercised on its own. The
     /// rules are the same two characters: `/` and `:` are what the filesystem
     /// and Finder disagree about.

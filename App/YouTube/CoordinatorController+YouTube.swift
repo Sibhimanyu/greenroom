@@ -38,7 +38,7 @@ enum YouTubeUploadMode: String, CaseIterable, Identifiable {
 extension CoordinatorController {
 
     /// Every recording ends here - the ⌥⌘R stop and End Session's stop both
-    /// call it with the final path OBS reported. Never blocks the caller:
+    /// call it with the final path the recorder reported. Never blocks the caller:
     /// the ask, and the upload, run on their own.
     func recordingFinished(path: String) {
         guard youtubeUploadMode != .off else { return }

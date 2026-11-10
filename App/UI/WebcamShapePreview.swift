@@ -12,11 +12,10 @@ import SwiftUI
 /// picture is showing.
 ///
 /// This used to live inside `WebcamShapePreview`, which meant it existed only on
-/// the schematic. The moment OBS went warm the live composite replaced that
-/// schematic - the better picture, so it should win - and took the only
+/// the schematic. The moment the live picture replaced that
+/// schematic - the better picture, so it should win - it took the only
 /// draggable bubble with it, while the caption underneath went on telling the
-/// teacher to drag something that was no longer on screen. Since OBS is warm for
-/// anyone who has run a class today, that was very nearly always.
+/// teacher to drag something that was no longer on screen.
 ///
 /// The interaction belongs to the setting, not to one of the two ways of drawing
 /// it. So it is a layer now, and both pictures wear it.
@@ -40,13 +39,12 @@ struct BubbleDragLayer: View {
         /// width over its height: 1 for a circle, whose camera is cropped
         /// square ahead of the mask, and the camera's own aspect for the
         /// rectangular shapes, which keep their full frame. Matching
-        /// GreenroomScene here is the point - a square box drawn over a 16:9
+        /// the compositor's geometry is the point - a square box drawn over a 16:9
         /// bubble is what made the corner look unreachable.
         case bubble(aspect: Double)
         /// The camera's real aspect, bottom edge pinned flush to the canvas.
         /// Horizontal position and height only: lifting a cutout off the bottom
-        /// leaves the keyed person hovering above nothing, which is the bug the
-        /// comment on `GreenroomScene.layoutCutout` records being found in use.
+        /// leaves the keyed person hovering above nothing, which was a bug found in use.
         case cutout(aspect: Double)
 
         var pinsBottom: Bool {
@@ -239,7 +237,7 @@ struct BubbleDragLayer: View {
 
     /// Insets are measured from the right and bottom edges, so a drag right
     /// DECREASES rightInset. Working in the scene's own coordinates rather than
-    /// converting at the end keeps this and OBS in agreement.
+    /// converting at the end keeps this and the compositor in agreement.
     private var moveGesture: some Gesture {
         DragGesture(minimumDistance: 1, coordinateSpace: .named(Self.space))
             .onChanged { value in
@@ -365,8 +363,7 @@ struct BubbleDragLayer: View {
             ? 0 : clamp(next.bottomInset, upper: 1 - sized.height / canvas.height)
         geometry = next
 
-        // Key repeat fires far faster than OBS wants to be asked to re-place a
-        // source, so the commit waits for the keyboard to go quiet.
+        // Key repeat fires far faster than the picture needs to be re-laid out, so the commit waits for the keyboard to go quiet.
         keyCommit?.cancel()
         keyCommit = Task {
             try? await Task.sleep(nanoseconds: 250_000_000)
@@ -396,14 +393,14 @@ struct BubbleDragLayer: View {
     }
 }
 
-/// A miniature of what the virtual camera will actually send for the chosen
-/// shape: the shared screen, with "you" composited the way OBS will do it -
+/// A miniature of what the class will actually see for the chosen
+/// shape: the shared screen, with "you" composited the way the compositor does it -
 /// bubble in the corner, keyed cutout, or the Presenter panel arrangement.
-/// Mirrors the geometry in GreenroomScene. Internal (not private): the
+/// Mirrors the geometry in StageRenderer. Internal (not private): the
 /// onboarding's "Your setup" step reuses it as a read-only schematic.
 ///
-/// The numbers behind it are the same ones GreenroomScene sends to OBS, so what
-/// is dragged here is literally the scene transform rather than a picture of one.
+/// The numbers behind it are the same ones the compositor draws with, so what
+/// is dragged here is literally the placement rather than a picture of one.
 struct WebcamShapePreview: View {
     let shape: WebcamShape
     /// Where to DRAW the webcam. Nil falls back to the shipped defaults, which
@@ -442,7 +439,7 @@ struct WebcamShapePreview: View {
                         // Flush with the bottom edge, like the real scene - the
                         // person rises from the screen edge, no float. Height and
                         // horizontal position now come from the stored geometry
-                        // rather than being guessed, so the schematic and OBS
+                        // rather than being guessed, so the schematic and the picture
                         // agree the way the bubble path already did.
                         let live = geometry?.wrappedValue
                             ?? .init(size: 0.5, rightInset: 0.02, bottomInset: 0)
@@ -456,8 +453,7 @@ struct WebcamShapePreview: View {
                             .position(x: w - w * live.rightInset - frameWidth / 2,
                                       y: h - figure / 2)
                     } else {
-                        // Sized off the WIDTH, matching positionBubble in
-                        // GreenroomScene - the bubble is a square whose side is a
+                        // Sized off the WIDTH, matching the compositor - the bubble is a square whose side is a
                         // fraction of canvas width, not height.
                         let live = geometry?.wrappedValue
                             ?? .init(size: 0.24, rightInset: 0.045, bottomInset: 0.06)
@@ -478,7 +474,7 @@ struct WebcamShapePreview: View {
 
     /// Where a `scaledToFit` picture of `aspect` actually lands inside `box`.
     ///
-    /// The bubble's fractions are relative to the OBS CANVAS, not to the box the
+    /// The bubble's fractions are relative to the picture's CANVAS, not to the box the
     /// canvas was placed in, and a fitted image is usually narrower than its
     /// container. Measuring against the container would put the drag target a
     /// little to the right of the bubble the teacher can see.

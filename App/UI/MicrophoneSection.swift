@@ -8,8 +8,7 @@
 //  Cards, like the cameras above it. "System" follows whatever macOS has as
 //  its input, which is what Greenroom always did; any other card pins one
 //  device, for the built-in meeting client (live, mid-class too) and for
-//  OBS's audio source (from the next Start). The separate Zoom app, when
-//  used instead, keeps its own audio settings.
+//  the recording (from the next Start).
 //
 import SwiftUI
 

@@ -7,7 +7,7 @@
 //  Passthrough, not re-encode: the bytes are copied straight across, so a
 //  five-minute clip of a class costs a few seconds and loses nothing. The price
 //  is that the cut lands on a keyframe rather than an exact frame, so a clip can
-//  begin up to one keyframe interval early - a second or two at OBS's usual
+//  begin up to one keyframe interval early - a second or two at the recorder's
 //  settings. Early is the right direction to be wrong in: the moment the teacher
 //  marked is always inside the clip, with a little run-up.
 //
@@ -141,7 +141,7 @@ enum SessionClipExporter {
 
     /// Cuts the last `minutes` out of `source`, into its own clips/ folder.
     ///
-    /// The replay-buffer path. OBS hands back a file holding the whole ring, so
+    /// The clip-buffer path. The recorder hands back a file holding the whole ring, so
     /// "the last two minutes" means the tail of a five-minute file rather than a
     /// range measured from the start of a class.
     ///
@@ -149,9 +149,9 @@ enum SessionClipExporter {
     /// beside the clip would double the disk cost of every clip taken.
     @discardableResult
     /// - Parameter destination: where the clip belongs, which is NOT always
-    ///   beside the source. A replay save lands wherever OBS's recording path
-    ///   currently points, and that is the recordings root until a recording
-    ///   starts - so a clip taken without recording was ending up in a clips/
+    ///   beside the source. A buffer save lands in the folder the recorder
+    ///   was given, and that used to be the recordings root until a recording
+    ///   started - so a clip taken without recording was ending up in a clips/
     ///   folder at the root instead of in the session it came from, where
     ///   nothing was looking for it.
     static func exportTail(minutes: Int, of source: URL, markedAt: Date,

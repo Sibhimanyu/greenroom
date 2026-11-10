@@ -316,7 +316,7 @@ final class CameraDirector: ObservableObject {
     /// How often to look. A bit over three times a second: often enough that
     /// a one-second dwell is judged on three readings rather than two, and
     /// with a quarter-width screenshot per camera it is still nothing next to
-    /// what the virtual camera itself moves over the socket.
+    /// what the picture itself costs.
     private static let everyMs: UInt64 = 300_000_000
 
     /// Long enough for the cameras to have opened at the start of a session.
@@ -353,8 +353,8 @@ final class CameraDirector: ObservableObject {
     }
 
     /// Takes new timing or a new transition without touching which camera is
-    /// live. Restarting for that would reset the director to slot 0 while OBS
-    /// was still showing another - the settings window would name one camera
+    /// live. Restarting for that would reset the director to slot 0 while the class
+    /// was still seeing another - the settings window would name one camera
     /// and the class would see the other.
     func retune(_ requested: CameraDirectorSettings) {
         guard isRunning else { return }
@@ -527,7 +527,7 @@ final class CameraDirector: ObservableObject {
         /// shows in two readings, a one-frame blip is halved before it counts.
         static let smoothing: Double = 0.5
         /// How long the live camera may send no picture before it is left.
-        /// About three readings, so one screenshot OBS failed to take is not
+        /// About three readings, so one frame that failed to arrive is not
         /// a cut.
         static let deadSeconds: Double = 1
 

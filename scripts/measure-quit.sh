@@ -3,16 +3,13 @@
 #
 #   scripts/measure-quit.sh [settle-seconds]
 #
-# Why this exists: quit waits on OTHER processes (OBS over Apple Events, the
-# Zoom SDK), so quit latency is an integration property that no unit test can
-# see. This is the harness that caught the 5.8s quit - OBS drops a single quit
-# Apple Event when its main thread is busy, and nothing used to re-send it.
+# Why this exists: quit waits on the recording being finished and on the Zoom
+# SDK closing its meeting, so quit latency is an integration property that no
+# unit test can see. This is the harness that caught the 5.8s quit.
 #
-# The interesting variable is how long OBS has been up: a settled OBS answers
-# the quit event in ~200ms, a still-initializing one drops it. Pass a small
-# settle time (5) to exercise the dropped-event path, a large one (30) for the
-# steady state. Run both before and after touching windDownForQuit or
-# quitAndWait.
+# Pass a small settle time (5) to measure a quit right after launch, a large
+# one (30) for the steady state. Run both before and after touching
+# windDownForQuit.
 #
 # Per-phase costs come from the app itself: ~/Library/Logs/Greenroom-quit.log
 set -uo pipefail
@@ -42,7 +39,7 @@ sleep "$SETTLE"
 
 PID=$(pgrep -x Greenroom | head -1)
 if [ -z "$PID" ]; then echo "Greenroom did not stay running." >&2; exit 1; fi
-echo "before quit: $(pgrep -l 'Greenroom|OBS' | tr '\n' ' ')"
+echo "before quit: $(pgrep -l 'Greenroom' | tr '\n' ' ')"
 
 START=$(python3 -c 'import time; print(time.time())')
 osascript -e 'quit app "Greenroom"' 2>/dev/null
@@ -58,12 +55,6 @@ if kill -0 "$PID" 2>/dev/null; then
   echo "RESULT: Greenroom STILL ALIVE after 30s - that is the bug, not a slow quit."
 else
   python3 -c "print(f'RESULT: quit wall time {($END - $START) * 1000:.0f} ms')"
-fi
-
-if pgrep -x OBS >/dev/null; then
-  echo "WARNING: OBS outlived Greenroom - quitAndWait failed to reap it."
-else
-  echo "OBS exited with Greenroom."
 fi
 
 echo "--- per-phase (from the app) ---"

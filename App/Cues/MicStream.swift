@@ -5,7 +5,7 @@
 //  The teacher's microphone as a stream of analyzer buffers.
 //
 //  Its own AVAudioEngine, not the level meter's: CoreAudio lets several
-//  readers tap one input device (Zoom, OBS's "Greenroom Mic", the meter and
+//  readers tap one input device (Zoom, the recorder, the meter and
 //  this all coexist), but one engine allows one tap per bus, and the meter's
 //  engine lives and dies with the participants panel, which may not be open.
 //  This one lives and dies with the Cues.

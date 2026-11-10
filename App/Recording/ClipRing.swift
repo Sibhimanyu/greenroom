@@ -4,7 +4,7 @@
 //
 //  The last few minutes of the class, as encoded segments held in memory.
 //
-//  Memory and not disk on purpose, same as OBS's replay buffer was: a teacher
+//  Memory and not disk on purpose, as the clip buffer always was: a teacher
 //  who chose not to record a class of children should end that class with
 //  nothing written down, and a buffer only becomes a file when a clip
 //  shortcut is pressed. Five minutes at 6 Mbps plus audio is about 230 MB.

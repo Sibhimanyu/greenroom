@@ -2,29 +2,25 @@
 //  CutoutPublisher.swift
 //  Greenroom
 //
-//  The camera, with the background removed in software, handed to OBS.
+//  One camera, opened by StageCompositor, with the background removed in
+//  software when the look wants it.
 //
-//  Cutout and Presenter used to need a real green screen: OBS keyed the green
+//  Cutout and Presenter used to need a real green screen: the green was keyed
 //  out, and without one the whole room came along. Most people do not own a
 //  green screen, so for most people those two looks did not exist. This opens
-//  the camera in Greenroom instead, asks Vision where the person is
-//  (VNGeneratePersonSegmentationRequest, on device), and publishes the
-//  picture with everything else transparent over Syphon. OBS 32 ships a
-//  Syphon source that keeps the transparency, so the scene treats it exactly
-//  like a keyed camera.
+//  the camera, asks Vision where the person is
+//  (VNGeneratePersonSegmentationRequest, on device), and hands the compositor
+//  both the untouched frame and a cutout with everything else transparent.
 //
-//  For the bubble shapes there is nothing to remove, so the frame goes through
-//  untouched. That keeps one source per camera whatever the shape, which is
-//  what lets the shape change mid-class without rebuilding anything.
+//  For the bubble shapes there is nothing to remove, so the cutout is left
+//  out and the frame goes through untouched. That keeps one opener per camera
+//  whatever the shape, which is what lets the shape change mid-class without
+//  reopening anything.
 //
 //  Measured before building (docs/stage-and-looks-plan.md, spike result):
 //  `.balanced` takes about 12 ms a 720p frame on an M5 Pro with clean edges
 //  and hair; `.fast` leaves jagged fringes, `.accurate` costs three times as
 //  much for nothing visible.
-//
-//  Syphon is loaded at runtime (see SyphonServer below), so nothing here
-//  needs its headers, and a build without the framework still runs: the
-//  publisher reports itself unavailable and the scene keeps OBS's own camera.
 //
 import AVFoundation
 import CoreImage
@@ -34,30 +30,18 @@ import Vision
 
 final class CutoutPublisher: NSObject {
 
-    /// What OBS's Syphon source looks for. One per camera, so two cameras can
-    /// be cut between exactly as before.
-    static func serverName(slot: Int) -> String {
-        slot == 0 ? "Greenroom Camera" : "Greenroom Camera \(slot + 1)"
-    }
-
-    /// The process name OBS lists the servers under.
-    static var appName: String { ProcessInfo.processInfo.processName }
-
-    static var isAvailable: Bool { SyphonServer.isAvailable && MTLCreateSystemDefaultDevice() != nil }
-
-    /// One camera frame, handed straight to an in-process consumer
-    /// (StageCompositor) instead of over Syphon.
+    /// One camera frame, handed straight to the compositor.
     struct Frame {
         /// The camera's own picture, untouched.
         let raw: CVPixelBuffer
         /// The same frame with everything but the person transparent. Nil
         /// unless `removesBackground` was on when the frame arrived. Empty
-        /// (fully clear) when nobody was found, as on the Syphon path.
+        /// (fully clear) when nobody was found.
         let cutout: CIImage?
     }
 
-    /// Called on the capture queue for every frame, in addition to Syphon
-    /// when a server exists. Must return quickly; keep the frame, hand it on.
+    /// Called on the capture queue for every frame. Must return quickly; keep
+    /// the frame, hand it on.
     var onFrame: ((Frame) -> Void)?
 
     let uid: String
@@ -82,29 +66,15 @@ final class CutoutPublisher: NSObject {
 
     private let session = AVCaptureSession()
     private let queue = DispatchQueue(label: "com.sibhimanyu.greenroom.cutout", qos: .userInteractive)
-    private let device: MTLDevice
-    private let commandQueue: MTLCommandQueue
-    private let context: CIContext
-    /// Nil when opened with `publishesToSyphon: false`: frames then go only to `onFrame`.
-    private let server: SyphonServer?
     private let segmentation = VNGeneratePersonSegmentationRequest()
     private let sequence = VNSequenceRequestHandler()
-    private var texture: MTLTexture?
 
-    /// Nil when Syphon or Metal is missing, or the camera cannot be opened.
-    init?(uid: String, slot: Int, removesBackground: Bool, publishesToSyphon: Bool = true) {
-        guard let device = MTLCreateSystemDefaultDevice(),
-              let commandQueue = device.makeCommandQueue() else { return nil }
-        let server = publishesToSyphon ? SyphonServer(name: Self.serverName(slot: slot), device: device) : nil
-        if publishesToSyphon, server == nil { return nil }
+    /// Nil when the camera cannot be opened.
+    init?(uid: String, slot: Int, removesBackground: Bool) {
         guard let camera = AVCaptureDevice(uniqueID: uid),
               let input = try? AVCaptureDeviceInput(device: camera) else { return nil }
         self.uid = uid
         self.slot = slot
-        self.device = device
-        self.commandQueue = commandQueue
-        self.server = server
-        self.context = CIContext(mtlDevice: device, options: [.cacheIntermediates: false])
         self._removesBackground = removesBackground
         super.init()
 
@@ -138,12 +108,11 @@ final class CutoutPublisher: NSObject {
 
     func stop() {
         queue.sync { session.stopRunning() }
-        server?.stop()
     }
 
     // MARK: Per frame
 
-    private func publish(_ frame: CVPixelBuffer) {
+    private func process(_ frame: CVPixelBuffer) {
         let width = CVPixelBufferGetWidth(frame), height = CVPixelBufferGetHeight(frame)
         let bounds = CGRect(x: 0, y: 0, width: width, height: height)
         var image = CIImage(cvPixelBuffer: frame)
@@ -172,15 +141,6 @@ final class CutoutPublisher: NSObject {
 
         if !removing { notePerson(true) }
         onFrame?(Frame(raw: frame, cutout: removing ? image : nil))
-        guard let server, let target = texture(width: width, height: height),
-              let buffer = commandQueue.makeCommandBuffer() else { return }
-        context.render(image, to: target, commandBuffer: buffer, bounds: bounds,
-                       colorSpace: CGColorSpaceCreateDeviceRGB())
-        // Not waited on. The command queue runs in order, so the next frame's
-        // render cannot overtake Syphon's copy of this one, and blocking here
-        // was most of what the spike measured as per-frame cost.
-        server.publish(texture: target, on: buffer, region: bounds)
-        buffer.commit()
     }
 
     /// Whether the mask covers more than a sliver of the frame. Sampled on a
@@ -211,67 +171,12 @@ final class CutoutPublisher: NSObject {
         reportedInView = inView
         DispatchQueue.main.async { [weak self] in self?.onPersonInView?(inView) }
     }
-
-    private func texture(width: Int, height: Int) -> MTLTexture? {
-        if let texture, texture.width == width, texture.height == height { return texture }
-        let descriptor = MTLTextureDescriptor.texture2DDescriptor(
-            pixelFormat: .bgra8Unorm, width: width, height: height, mipmapped: false)
-        descriptor.usage = [.shaderRead, .shaderWrite, .renderTarget]
-        texture = device.makeTexture(descriptor: descriptor)
-        return texture
-    }
 }
 
 extension CutoutPublisher: AVCaptureVideoDataOutputSampleBufferDelegate {
     func captureOutput(_ output: AVCaptureOutput, didOutput sampleBuffer: CMSampleBuffer,
                        from connection: AVCaptureConnection) {
         guard let frame = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
-        publish(frame)
-    }
-}
-
-/// `SyphonMetalServer`, reached through the Objective-C runtime.
-///
-/// The framework is embedded but not linked, and has no headers in it, so the
-/// three calls Greenroom needs go through `objc_msgSend` directly - the same
-/// calls the spike proved against OBS.
-private final class SyphonServer {
-    private static let handle: UnsafeMutableRawPointer? = {
-        guard let url = Bundle.main.privateFrameworksURL?
-            .appendingPathComponent("Syphon.framework/Syphon") else { return nil }
-        return dlopen(url.path, RTLD_NOW)
-    }()
-    private static var serverClass: NSObject.Type? {
-        guard handle != nil else { return nil }
-        return NSClassFromString("SyphonMetalServer") as? NSObject.Type
-    }
-    static var isAvailable: Bool { serverClass != nil }
-
-    private typealias InitFn = @convention(c) (AnyObject, Selector, NSString, MTLDevice, NSDictionary?) -> AnyObject?
-    private typealias PublishFn = @convention(c) (AnyObject, Selector, MTLTexture, MTLCommandBuffer, NSRect, Bool) -> Void
-    private typealias StopFn = @convention(c) (AnyObject, Selector) -> Void
-    private static let send = dlsym(UnsafeMutableRawPointer(bitPattern: -2), "objc_msgSend")
-
-    private let object: AnyObject
-
-    init?(name: String, device: MTLDevice) {
-        guard let serverClass = Self.serverClass, let send = Self.send,
-              let allocated = serverClass.perform(NSSelectorFromString("alloc"))?.takeUnretainedValue(),
-              let object = unsafeBitCast(send, to: InitFn.self)(
-                allocated, NSSelectorFromString("initWithName:device:options:"),
-                name as NSString, device, nil) else { return nil }
-        self.object = object
-    }
-
-    func publish(texture: MTLTexture, on buffer: MTLCommandBuffer, region: CGRect) {
-        guard let send = Self.send else { return }
-        unsafeBitCast(send, to: PublishFn.self)(
-            object, NSSelectorFromString("publishFrameTexture:onCommandBuffer:imageRegion:flipped:"),
-            texture, buffer, NSRect(origin: region.origin, size: region.size), false)
-    }
-
-    func stop() {
-        guard let send = Self.send else { return }
-        unsafeBitCast(send, to: StopFn.self)(object, NSSelectorFromString("stop"))
+        process(frame)
     }
 }

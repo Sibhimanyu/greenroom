@@ -152,7 +152,7 @@ struct GreenroomApp: App {
         // recording, so it has to outlive whatever the main window is doing.
         //
         // Deliberately NOT given the coordinator: Screenroom runs without a
-        // class, a meeting or OBS, and handing it the session object would
+        // class, or a meeting, and handing it the session object would
         // quietly make that untrue the first time someone reached for it.
         // Sessions is a WINDOW, not a sheet.
         //

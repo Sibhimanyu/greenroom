@@ -21,12 +21,10 @@
 //  for each. A camera in the room hears the room; a window on screen is heard
 //  through the machine playing it.
 //
-//  **This is the first thing in Greenroom to want Screen Recording
-//  permission.** Until now that permission belonged entirely to OBS - the
-//  README says so, and the transparency page's whole argument is that the
-//  list of what Greenroom touches is complete. Both were updated in the same
-//  commit that added this file, because a claim that stops being true is
-//  worse than one that was never made.
+//  **Screen Recording permission** is Greenroom's own: this engine and the
+//  class picture (StageScreenSource) both use it. The README and the
+//  transparency page say so, because the page's whole argument is that the
+//  list of what Greenroom touches is complete.
 //
 import AppKit
 import AVFoundation

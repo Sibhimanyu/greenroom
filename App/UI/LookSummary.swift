@@ -148,7 +148,7 @@ private struct LookThumbnail: View {
     var body: some View {
         let width: CGFloat = 32, height: CGFloat = 18
         ZStack {
-            // --ink, the colour GreenroomScene draws its backdrop in.
+            // --ink, the colour the compositor draws its backdrop in.
             RoundedRectangle(cornerRadius: 3)
                 .fill(Color(nsColor: NSColor(srgbRed: 0x10 / 255, green: 0x18 / 255, blue: 0x28 / 255, alpha: 1)))
             if showsContent {

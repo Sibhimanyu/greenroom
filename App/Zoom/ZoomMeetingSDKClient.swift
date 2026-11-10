@@ -539,7 +539,7 @@ final class ZoomMeetingSDKClient: NSObject, ObservableObject {
     /// Brings the SDK up and authorizes it. Genuinely idempotent: a repeat
     /// call with the same credentials returns immediately instead of
     /// re-running the ~1-2s SDK auth round trip - which lets the start
-    /// flow prefetch this in parallel with the OBS pipeline and lets the
+    /// flow prefetch this in parallel with the picture coming up and lets the
     /// meeting flows call it again for free.
     func ensureReady(clientID: String, clientSecret: String) async throws {
         if isAuthed && authedClientID == clientID { return }
@@ -811,7 +811,7 @@ final class ZoomMeetingSDKClient: NSObject, ObservableObject {
         // other. Confirmed live in the accessibility tree: two overlapping
         // labels, "Sibhimanyu V" and "Sibhimanyu V (you) - host".
         // Local rendering only; it does not touch what the class sees or what
-        // OBS records.
+        // is recorded.
         if didUseCustomUI {
             _ = ZoomSDK.shared().getSettingService()?.getVideoSetting()?.displayUserName(onVideo: false)
         }
@@ -819,7 +819,7 @@ final class ZoomMeetingSDKClient: NSObject, ObservableObject {
         // never-trust doctrine as DualScreenMode below): when it sticks
         // on, the SDK fullscreens its meeting windows at join - and a
         // fullscreen meeting window on the main display gets filmed by
-        // OBS's screen capture, feeding the meeting back into itself
+        // the screen capture, feeding the meeting back into itself
         // (the "cascading" camera feed seen live). Fullscreen windows
         // also ignore setFrame, so window parking silently failed too.
         ZoomSDK.shared().getSettingService()?.getGeneralSetting()?
@@ -937,7 +937,7 @@ final class ZoomMeetingSDKClient: NSObject, ObservableObject {
 
     /// The meeting's microphone: the one picked on the Webcam page, or the
     /// system's input when none is. Matched by the CoreAudio UID first (what
-    /// AVFoundation and OBS use) and by name second, since the SDK's own IDs
+    /// AVFoundation uses) and by name second, since the SDK's own IDs
     /// are not documented to be that UID. Works before and during a meeting.
     func selectMicrophone(uid: String, name: String?) -> Bool {
         guard let audio = ZoomSDK.shared().getSettingService()?.getAudioSetting() else { return false }

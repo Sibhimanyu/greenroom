@@ -181,8 +181,8 @@ final class CoordinatorController: ObservableObject {
     /// The steps of a start, in the order they finish.
     ///
     /// Camera and meeting overlap in reality - the REST call and the SDK auth
-    /// run concurrently with OBS coming up - but they are reported in sequence,
-    /// because the meeting cannot COMPLETE before the virtual camera is live and
+    /// run concurrently with the picture coming up - but they are reported in
+    /// sequence, because the meeting cannot COMPLETE before the picture is live and
     /// that dependency is the one the teacher is actually waiting on.
     enum StartStep: Int, CaseIterable {
         case workspace, camera, meeting, recording, tiling
@@ -190,7 +190,7 @@ final class CoordinatorController: ObservableObject {
         var label: String {
             switch self {
             case .workspace: return "Workspace"
-            case .camera: return "Virtual camera"
+            case .camera: return "Picture"
             case .meeting: return "Meeting"
             case .recording: return "Recording"
             case .tiling: return "Tiling windows"
@@ -226,7 +226,6 @@ final class CoordinatorController: ObservableObject {
     /// off once starting completes.
     @Published private(set) var isRunning = false
     /// The class picture is up and (in a meeting) is being sent. Was
-    /// `stageLive`, back when the picture left through OBS.
     @Published private(set) var stageLive = false
 
     /// Cuts between a camera on each monitor while a class runs. Owned here
@@ -531,10 +530,7 @@ final class CoordinatorController: ObservableObject {
     /// Where the webcam bubble sits and how big it is, as fractions of the
     /// canvas so it survives a resolution change.
     ///
-    /// GreenroomScene.BubbleLayout has carried these three numbers all along;
-    /// nothing ever set them, so every session used the defaults and the only
-    /// adjustable thing was the shape. Clamped on the way in: OBS will happily
-    /// place a source off-canvas, and a bubble nobody can see is indistinguishable
+    /// Clamped on the way in: a bubble placed off-canvas, or a bubble nobody can see, is indistinguishable
     /// from a camera that stopped working.
     @Published var bubbleWidthFraction: Double {
         didSet {
@@ -964,9 +960,9 @@ final class CoordinatorController: ObservableObject {
         didSet { defaults.set(screenCaptureDisplayUUID, forKey: "screenCaptureDisplayUUID") }
     }
 
-    /// The whole display, one app or one window. Applied at Start: the screen
-    /// source is only ever rebuilt while the virtual camera is off (see the
-    /// crash note in GreenroomScene.ensureConfigured).
+    /// The whole display, one app or one window. Changes apply live: the
+    /// compositor starts the new share beside the old one and swaps when its
+    /// first frame arrives.
     @Published var shareTarget: ShareTarget {
         didSet {
             if let data = try? JSONEncoder().encode(shareTarget) {
@@ -987,12 +983,6 @@ final class CoordinatorController: ObservableObject {
             Analytics.setting("auto_record", on: autoRecordOnStart)
         }
     }
-    /// Inert since OBS was dropped. Kept only so saved settings and the
-    /// settings file still load; the cleanup step removes it and its toggle.
-    @Published var keepOBSWarm: Bool {
-        didSet { defaults.set(keepOBSWarm, forKey: "keepOBSWarm") }
-    }
-
     private let defaults = UserDefaults.standard
 
     init() {
@@ -1057,7 +1047,6 @@ final class CoordinatorController: ObservableObject {
             .flatMap { try? JSONDecoder().decode(ShareTarget.self, from: $0) } ?? ShareTarget()
         customUIMode = defaults.bool(forKey: "customUIMode")
         autoRecordOnStart = defaults.bool(forKey: "autoRecordOnStart")
-        keepOBSWarm = (defaults.object(forKey: "keepOBSWarm") as? Bool) ?? true
         meetingMode = MeetingMode(rawValue: defaults.string(forKey: "meetingMode") ?? "") ?? .create
         meetingPresets = Self.loadPresets(from: defaults)
         showOnboarding = !defaults.bool(forKey: "hasCompletedOnboarding")
@@ -1909,8 +1898,8 @@ final class CoordinatorController: ObservableObject {
         }
     }
 
-    /// Stop, in Record mode: the tape first, then the OBS side exactly as End
-    /// Session leaves it.
+    /// Stop, in Record mode: the tape first, then the picture torn down
+    /// exactly as End Session leaves it.
     ///
     /// A start still in flight is cancelled and then WAITED for, unlike a
     /// meeting's. Its steps are not cancellation-aware, so without the wait a
@@ -2343,7 +2332,7 @@ final class CoordinatorController: ObservableObject {
                 let session = ParticipantGridWindowController.SessionInfo(
                     meetingNumber: digits,
                     startedAt: startedAt,
-                    obsRecording: self.isRecording,
+                    isRecording: self.isRecording,
                     presetName: self.meetingPresets.first { $0.number == digits }?.name ?? "",
                     speakerHidden: self.speakerTileQuickHidden,
                     readiness: self.startReadiness)
@@ -3011,7 +3000,7 @@ final class CoordinatorController: ObservableObject {
         NSApp.windows.first { $0.title == "Greenroom" }?.makeKeyAndOrderFront(nil)
     }
 
-    /// The create-mode meeting, made WHILE OBS spins up (see the async
+    /// The create-mode meeting, made WHILE the picture comes up (see the async
     /// lets in start()). nil in join mode - the guard at the use site is
     /// unreachable by construction.
     private func prepareMeetingIfNeeded() async throws -> ZoomServerToServerClient.CreatedMeeting? {
@@ -3795,7 +3784,6 @@ struct SettingsTransfer: Codable {
     var hideSelfView: Bool?
     var speakerTileShortcutEnabled: Bool?
     var autoRecordOnStart: Bool?
-    var keepOBSWarm: Bool?
     var meetingPresets: [MeetingPreset]?
     var workspaceLayout: WorkspaceLayout?
 
@@ -3873,7 +3861,6 @@ extension CoordinatorController {
             hideSelfView: hideSelfView,
             speakerTileShortcutEnabled: speakerTileShortcutEnabled,
             autoRecordOnStart: autoRecordOnStart,
-            keepOBSWarm: keepOBSWarm,
             meetingPresets: meetingPresets,
             workspaceLayout: workspaceLayout,
             userDisplayName: userDisplayName,
@@ -3993,7 +3980,6 @@ extension CoordinatorController {
             settings.language = value
             settings.save()
         }
-        if let value = transfer.keepOBSWarm { keepOBSWarm = value }
         if let value = transfer.meetingPresets { meetingPresets = value }
         if let value = transfer.workspaceLayout {
             workspaceLayout = value

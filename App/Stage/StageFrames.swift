@@ -4,9 +4,8 @@
 //
 //  The one seam between the picture and everything that uses it.
 //
-//  Greenroom used to hand the class picture to OBS and read it back as a
-//  system camera (docs/drop-obs-plan.md). Now `StageCompositor` makes the
-//  picture itself, and three things consume it: the meeting
+//  `StageCompositor` makes the class picture in-process, and three things
+//  consume it: the meeting
 //  (`ZoomVideoSender`), the recorder (`SessionRecorder`) and the Settings
 //  preview. They meet here, and only here, so each side can be built and
 //  tested against `StageTestPattern` without the others existing.

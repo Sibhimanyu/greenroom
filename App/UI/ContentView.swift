@@ -3,7 +3,7 @@
 //  Greenroom
 //
 //  One decision, one button: pick "New Meeting" or "Join Existing", hit
-//  Start, and the whole session cascades - OBS virtual camera, Zoom into
+//  Start, and the whole session cascades - the picture, Zoom into
 //  the meeting, Chrome tiled to its side of the screen, chat window tiled
 //  to the other. Individual pieces remain available under "Manual
 //  controls" for debugging; configuration lives in Settings (⌘,).
@@ -47,9 +47,9 @@ struct ContentView: View {
     private var startHelp: String {
         switch coordinator.meetingMode {
         case .create:
-            return "Turns on the virtual camera, creates a fresh meeting under your Zoom account with you as host, and tiles your windows \u{2014} the whole session in one click."
+            return "Starts your screen and camera picture, creates a fresh meeting under your Zoom account with you as host, and tiles your windows \u{2014} the whole session in one click."
         case .join:
-            return "Turns on the virtual camera, joins the meeting above (starting it as host if it's yours), and tiles your windows."
+            return "Starts your screen and camera picture, joins the meeting above (starting it as host if it's yours), and tiles your windows."
         case .record:
             return "Records the picture set in Settings \u{2192} Webcam into Documents/Greenroom. No meeting, no windows moved."
         }
@@ -68,7 +68,7 @@ struct ContentView: View {
         coordinator.isStopping || (!coordinator.isRunning && !coordinator.sceneInUse)
     }
 
-    /// Recording needs a live OBS session - except when already
+    /// Recording needs a live session - except when already
     /// recording, where the button must stay pressable to stop it.
     private var recordDisabled: Bool {
         !coordinator.stageLive && !coordinator.isRecording

@@ -7,7 +7,7 @@
 //  This surface goes on a display only the teacher can see, which is what makes
 //  the controls appropriate here at all. Nobody is being shown chrome; this is
 //  the podium, not the projector. So it is dense on purpose, where the speaker
-//  window and the OBS composite stay clean.
+//  window and the class picture stay clean.
 //
 //  In default Zoom-UI mode the gallery is one of the SDK's own windows, which
 //  Greenroom had to identify among several, send to the right display, and keep
@@ -26,11 +26,11 @@ enum ParticipantGridWindowController {
 
     /// Session facts the roster cannot answer for itself. Passed in rather than
     /// read from the SDK because Greenroom, not Zoom, owns the meeting number
-    /// the teacher typed and the OBS recording state.
+    /// the teacher typed and the recording state.
     struct SessionInfo: Equatable {
         var meetingNumber: String = ""
         var startedAt: Date?
-        var obsRecording: Bool = false
+        var isRecording: Bool = false
         var presetName: String = ""
         /// Whether the live-speaker tile is currently quick-hidden, so the rail
         /// can offer the opposite action rather than a stale one.
@@ -43,7 +43,7 @@ enum ParticipantGridWindowController {
     ///
     /// The panel used to open only once the meeting was connected, which left
     /// the reference display blank for the whole start - several seconds of
-    /// OBS, virtual camera, meeting creation and SDK auth during which the
+    /// the picture coming up, meeting creation and SDK auth during which the
     /// teacher could see the workspace appear and then nothing at all. The work
     /// was never invisible to the app; every step already wrote a line into the
     /// status log. It was invisible to the person waiting, because that log is
@@ -1365,8 +1365,8 @@ private final class RootView: NSView {
         // --brand-green #2F6118, would be far LESS legible on a dark surface.
         // Painting the indicator and leaving the label in the system label
         // colour satisfies the rule as written and reads better either way.
-        recordingLabel.isHidden = !session.obsRecording
-        recordingDot.isHidden = !session.obsRecording
+        recordingLabel.isHidden = !session.isRecording
+        recordingDot.isHidden = !session.isRecording
         recordingDot.fill = Self.accent
         recordingLabel.stringValue = "Recording locally"
         recordingLabel.textColor = .labelColor
@@ -1524,7 +1524,7 @@ private final class RootView: NSView {
         var state = ParticipantConsoleState()
         state.isLive = session.readiness.isLive
         state.meetingNumber = session.meetingNumber
-        state.isRecording = session.obsRecording
+        state.isRecording = session.isRecording
         state.students = roster.count
         state.waiting = waiting.map { .init(id: $0.id, name: $0.name) }
         state.hands = handQueue.map { .init(id: $0.id, name: $0.name) }
@@ -1569,7 +1569,7 @@ private final class RootView: NSView {
             String(page),
             String(roster.count),
             String(waiting.count),
-            session.obsRecording ? "rec" : "-",
+            session.isRecording ? "rec" : "-",
             (sdk?.iAmMuted ?? false) ? "me-muted" : "-",
             (sdk?.myVideoIsOn ?? false) ? "me-video" : "-",
             (sdk?.myHandIsRaised ?? false) ? "me-hand" : "-",
@@ -1614,7 +1614,7 @@ private final class RootView: NSView {
     /// behind menus, and leaves the rest of the display to the class.
     ///
     /// Grouped rather than mixed on purpose. "Record" here is Greenroom's own
-    /// capture of the OBS composite, and "Mute" is Zoom's; a teacher who cannot
+    /// capture of the class picture, and "Mute" is Zoom's; a teacher who cannot
     /// tell which product a button belongs to cannot predict what it will do.
     private func rebuildRail() {
         railControls.forEach { $0.removeFromSuperview() }
@@ -1628,7 +1628,7 @@ private final class RootView: NSView {
         // grid was half caption.
         railControls.append(Self.railHeader("Greenroom"))
 
-        let recording = session.obsRecording
+        let recording = session.isRecording
         railControls.append(Self.railRow(recording ? "Stop Recording" : "Record",
                                          symbol: recording ? "stop.circle.fill" : "record.circle",
                                          alert: recording, hint: "\u{2325}\u{2318}R") {
@@ -3114,7 +3114,7 @@ private final class IconCellButton: NSButton {
 /// The start sequence, drawn as named steps rather than a spinner.
 ///
 /// A spinner would have been less work and it would have been a lie: it says
-/// "wait" and nothing else, so a start stuck on OBS looks exactly like a start
+/// "wait" and nothing else, so a start stuck on one step looks exactly like a start
 /// that is about to finish. Named steps cost the same wait and spend it telling
 /// the teacher what is happening and roughly how much is left.
 ///
@@ -3534,7 +3534,7 @@ private final class DotView: NSView {
 /// shown rather than guessed at.
 ///
 /// Drawn by Greenroom over the Zoom self view and nowhere else. It is not in
-/// the OBS scene, so the class never sees a countdown in the teacher's picture.
+/// the class picture, so the class never sees a countdown in the teacher's picture.
 ///
 /// Readings come three times a second. Each one is animated linearly over the
 /// time until the next, so the bar moves continuously instead of in three

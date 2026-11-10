@@ -74,8 +74,6 @@ struct WebcamSettingsTab: View {
                     .help("\u{2325}\u{2318}1, 2 or 5 saves the last minutes as a clip, recording or not. About 300 MB of memory, nothing on disk until you press.")
                 Toggle("Record automatically with the meeting", isOn: $coordinator.autoRecordOnStart)
                     .help("Off: press Record or \u{2325}\u{2318}R. Files land in Documents/Greenroom.")
-                Toggle("Keep OBS ready in the background", isOn: $coordinator.keepOBSWarm)
-                    .help("Start skips OBS\u{2019}s launch, and this page shows the real picture. OBS still quits with Greenroom.")
             })
         .onAppear {
             displays = DisplayResolver.connectedDisplays()

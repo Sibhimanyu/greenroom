@@ -4,8 +4,7 @@
 //
 //  The class picture, made in-process: the shared screen, then the live
 //  camera shaped and placed over it, at a fixed clock, handed to whoever
-//  subscribed (docs/drop-obs-plan.md, piece 1). It does what GreenroomScene
-//  asks OBS to do, with the same geometry (StageRenderer.swift).
+//  subscribed. The geometry is in StageRenderer.swift.
 //
 //  Threads. Drawing happens on `renderQueue` (userInteractive, serial) and
 //  nowhere else; never the main thread. Inputs arrive on their own capture
@@ -274,8 +273,7 @@ final class StageCompositor: StageFrameSource {
                 continue
             default: break
             }
-            guard let publisher = CutoutPublisher(uid: uid, slot: slot, removesBackground: removal,
-                                                  publishesToSyphon: false) else {
+            guard let publisher = CutoutPublisher(uid: uid, slot: slot, removesBackground: removal) else {
                 let name = LocalDeviceResolver.cameraName(uid: uid) ?? "the camera"
                 failure = "Couldn\u{2019}t open \u{201C}\(name)\u{201D}. It may be unplugged or in use by another app."
                 continue
@@ -296,8 +294,8 @@ final class StageCompositor: StageFrameSource {
         func current() -> Bool { isCurrent(generation) }
 
         guard cfg.share.kind != .nothing else {
-            // Nothing shared: let the screen go entirely, not hidden. (OBS
-            // kept the source for the sake of its own teardown crash;
+            // Nothing shared: let the screen go entirely, not hidden. (An earlier design
+            // kept the source for the sake of a teardown crash;
             // ScreenCaptureKit has no such problem.)
             retireScreens(except: nil)
             board.clearScreen()
@@ -321,7 +319,7 @@ final class StageCompositor: StageFrameSource {
         let target: StageScreenSource.Target
         switch resolved.kind {
         case .app: target = .app(bundleID: cfg.share.appBundleID)
-        case .window: target = .window(id: CGWindowID((resolved.settings["window"] as? Int) ?? 0))
+        case .window: target = .window(id: CGWindowID(resolved.windowID ?? 0))
         default: target = .display
         }
         let source = StageScreenSource(target: target, displayUUID: displayUUID, maxSize: outputSize)

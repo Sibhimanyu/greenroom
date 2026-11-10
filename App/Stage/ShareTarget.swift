@@ -22,8 +22,8 @@ struct ShareTarget: Codable, Equatable {
         case display, app, window
         /// No shared content: the camera fills the frame on the backdrop.
         /// For a talking-head recording, or a meeting where the screen is
-        /// shared some other way. GreenroomScene hides the screen source
-        /// rather than removing it - see `BubbleLayout.showsContent`.
+        /// shared some other way. The compositor lets the screen go and
+        /// draws the camera alone - see `StageLayout.showsContent`.
         case nothing
         var id: String { rawValue }
 
@@ -36,17 +36,6 @@ struct ShareTarget: Codable, Equatable {
             }
         }
 
-        /// The `type` OBS's macOS screen capture source reads: display,
-        /// window, application. Read off the mac-capture plugin in OBS 32.
-        /// `.nothing` is never handed to OBS; it reads as a display only so
-        /// the comparison below has a value.
-        var obsType: Int {
-            switch self {
-            case .display, .nothing: return 0
-            case .window: return 1
-            case .app: return 2
-            }
-        }
     }
 
     var kind: Kind = .display
@@ -57,62 +46,40 @@ struct ShareTarget: Codable, Equatable {
     /// `.window` only. Empty means the app's front window.
     var windowTitle: String = ""
 
-    // MARK: Turning it into an OBS source
+    // MARK: Resolving it
 
-    /// What `ensureConfigured` hands OBS, and what it tells the teacher.
+    /// What the compositor captures, and what it tells the teacher.
     struct Resolved {
         let kind: Kind
-        let settings: [String: Any]
+        /// The window to capture, for `.window`.
+        let windowID: Int?
         /// "Keynote", "Chrome - Lesson plan", or nil for a display.
         let label: String?
         /// Set when the choice could not be honoured and the display is shared
         /// instead. Said out loud, because the alternative is the class seeing
         /// the whole screen when the teacher thought they had narrowed it.
         let fallback: String?
-
-        /// Whether an existing OBS source already captures exactly this.
-        func matches(_ existing: [String: Any]) -> Bool {
-            // A missing type is OBS's default, a display.
-            guard ((existing["type"] as? Int) ?? 0) == kind.obsType,
-                  (existing["capture_audio"] as? Bool) == false else { return false }
-            switch kind {
-            case .display, .nothing:
-                return (existing["display_uuid"] as? String) == settings["display_uuid"] as? String
-            case .app:
-                return (existing["application"] as? String) == settings["application"] as? String
-                    && (existing["display_uuid"] as? String) == settings["display_uuid"] as? String
-            case .window:
-                return (existing["window"] as? Int) == settings["window"] as? Int
-            }
-        }
     }
 
-    /// The source settings for this target, falling back to the display when
+    /// The thing to capture for this target, falling back to the display when
     /// the app is not running or has no window to show.
-    ///
-    /// `capture_audio: false` on every kind, for the crash recorded in
-    /// `ensureConfigured`.
     func resolve(displayUUID: String) -> Resolved {
-        let display: [String: Any] = ["type": 0, "display_uuid": displayUUID, "capture_audio": false]
         func fallBack(_ reason: String) -> Resolved {
-            Resolved(kind: .display, settings: display, label: nil, fallback: reason)
+            Resolved(kind: .display, windowID: nil, label: nil, fallback: reason)
         }
 
         switch kind {
-        // Nothing is shared, so nothing is built from this. A display is
-        // returned so a caller that does build from it gets a valid source.
+        // Nothing is shared, so nothing is captured from this. A display is
+        // returned so a caller that does capture from it gets a valid source.
         case .display, .nothing:
-            return Resolved(kind: .display, settings: display, label: nil, fallback: nil)
+            return Resolved(kind: .display, windowID: nil, label: nil, fallback: nil)
 
         case .app:
             guard !appBundleID.isEmpty else { return fallBack("No app is picked to share") }
             guard Self.isRunning(bundleID: appBundleID) else {
                 return fallBack("\(displayName) isn\u{2019}t open")
             }
-            return Resolved(kind: .app,
-                            settings: ["type": 2, "application": appBundleID,
-                                       "display_uuid": displayUUID, "capture_audio": false],
-                            label: displayName, fallback: nil)
+            return Resolved(kind: .app, windowID: nil, label: displayName, fallback: nil)
 
         case .window:
             guard !appBundleID.isEmpty else { return fallBack("No window is picked to share") }
@@ -120,10 +87,7 @@ struct ShareTarget: Codable, Equatable {
                 return fallBack("\(displayName) has no window open on this screen")
             }
             let label = window.title.isEmpty ? window.appName : "\(window.appName) \u{2013} \(window.title)"
-            return Resolved(kind: .window,
-                            settings: ["type": 1, "window": Int(window.id), "show_shadow": false,
-                                       "capture_audio": false],
-                            label: label, fallback: nil)
+            return Resolved(kind: .window, windowID: Int(window.id), label: label, fallback: nil)
         }
     }
 

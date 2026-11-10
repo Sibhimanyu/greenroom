@@ -7,7 +7,7 @@
 //  The teacher's mental model is a precorder - hold the last few minutes in a
 //  buffer, dump it on a hotkey. Greenroom does not need one, because the whole
 //  class is already being written to disk. So the hotkey is a BOOKMARK, not a
-//  video operation: read where OBS currently is in the file, write down a
+//  video operation: read where the recorder currently is in the file, write down a
 //  range, and get out of the way. That costs no CPU, no memory, and cannot
 //  disturb the one activity that must not stutter.
 //
@@ -59,8 +59,8 @@ struct SessionClip: Codable, Identifiable, Hashable {
 /// Reads and writes the sidecar that records a recording's marks.
 ///
 /// Two files, on purpose. Marks are appended to `pending-clips.json` in the
-/// session folder the instant the key is pressed, because OBS does not report
-/// the recording's filename until it stops - and a mark that only existed in
+/// session folder the instant the key is pressed, because the recording's filename is not
+/// known to the coordinator until it stops - and a mark that only existed in
 /// memory would be lost by the crash it is most needed after. When the tape
 /// stops and the real path is finally known, the pending file is adopted as
 /// `<recording>.clips.json` and the two are married for good.

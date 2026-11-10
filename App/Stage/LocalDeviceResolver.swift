@@ -2,11 +2,9 @@
 //  LocalDeviceResolver.swift
 //  Greenroom
 //
-//  Resolves the exact identifiers OBS's own source kinds expect - a display
-//  UUID for `screen_capture`, a device UID for `av_capture_input_v2` -
-//  directly from macOS, the same way OBS resolves them internally. Asking
-//  OBS's own dynamic properties UI for these (GetInputPropertiesListPropertyItems)
-//  turned out slow/unreliable in testing, so this sidesteps it entirely.
+//  Which displays, cameras and microphones are attached right now, straight
+//  from macOS, as the identifiers the rest of Greenroom stores and compares:
+//  a display UUID, a camera or microphone uniqueID.
 //
 import Foundation
 import CoreGraphics
@@ -39,8 +37,7 @@ enum LocalDeviceResolver {
     }
 
     /// Every display attached RIGHT NOW, main first. Read through CoreGraphics
-    /// rather than NSScreen because this is what OBS's screen_capture source
-    /// speaks, and because it must stay honest about what is physically
+    /// rather than NSScreen because it must stay honest about what is physically
     /// present: "the display we captured last time" being absent is exactly
     /// the case that produced a black capture.
     static func activeDisplays() -> [Display] {
@@ -75,11 +72,6 @@ enum LocalDeviceResolver {
         return (mainDisplayUUID, false)
     }
 
-    /// The real physical webcam - explicitly never "OBS Virtual Camera"
-    /// itself. That device shows up in this same AVFoundation enumeration
-    /// once OBS's virtual cam is active, and testing showed
-    /// `AVCaptureDevice.default(for: .video)` can hand it back as the
-    /// "default" device - which would wire OBS's own webcam source to itself.
     /// The camera the composite uses: the built-in one when there is one,
     /// otherwise whatever is attached, otherwise nil.
     ///
@@ -87,15 +79,14 @@ enum LocalDeviceResolver {
     /// removed: at the level a teacher works, "which camera" is not a decision
     /// they were making, and the real complaint behind asking for it turned out
     /// to be the black picture - which was the `device` key never being written
-    /// to the OBS source, nothing to do with which camera was selected.
+    /// to the capture source, nothing to do with which camera was selected.
     static func physicalCameraUID() -> String? {
         let cameras = availableCameras()
         return (cameras.first { $0.isBuiltIn } ?? cameras.first)?.id
     }
 
     struct Camera: Identifiable, Hashable {
-        /// AVFoundation's uniqueID, which is what OBS's av_capture source
-        /// speaks and what survives an unplug and replug.
+        /// AVFoundation's uniqueID, which survives an unplug and replug.
         let id: String
         let name: String
         let isBuiltIn: Bool
@@ -103,10 +94,6 @@ enum LocalDeviceResolver {
 
     /// Every real camera attached RIGHT NOW, built-in first.
     ///
-    /// Never the OBS Virtual Camera. That device appears in this same
-    /// enumeration once OBS's virtual cam is running, and pointing the webcam
-    /// source at it would make OBS capture its own output - a feedback loop
-    /// that produces the infinite-mirror picture rather than a face.
     static func availableCameras() -> [Camera] {
         var deviceTypes: [AVCaptureDevice.DeviceType] = [.builtInWideAngleCamera]
         if #available(macOS 14.0, *) {
@@ -118,7 +105,6 @@ enum LocalDeviceResolver {
                                                 mediaType: .video,
                                                 position: .unspecified)
             .devices
-            .filter { $0.localizedName != "OBS Virtual Camera" }
             .map { Camera(id: $0.uniqueID,
                           name: $0.localizedName,
                           isBuiltIn: $0.deviceType == .builtInWideAngleCamera) }
@@ -126,8 +112,7 @@ enum LocalDeviceResolver {
     }
 
     struct Microphone: Identifiable, Hashable {
-        /// AVFoundation's uniqueID, which is the CoreAudio device UID - the
-        /// value OBS's audio input takes as `device_id`.
+        /// AVFoundation's uniqueID, which is the CoreAudio device UID.
         let id: String
         let name: String
         let isBuiltIn: Bool

@@ -4,8 +4,7 @@
 //
 //  Where recordings live, what a session folder is called, and how much room
 //  is left for them. Used by the coordinator, the recordings list and
-//  Screenroom. These started life inside GreenroomScene, the OBS scene
-//  builder, which is why the older comments below still say OBS.
+//  Screenroom.
 //
 import Foundation
 
@@ -16,9 +15,7 @@ enum SessionFolders {
     static let clipBufferSeconds = 300
 
     /// Where recordings land on every Mac: ~/Documents/Greenroom, created
-    /// on demand. Written into OBS's profile on each session start (see
-    /// configureRecordingPath) so it holds regardless of what OBS's own
-    /// settings said before.
+    /// on demand.
     static var recordingsDirectory: URL {
         FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("Greenroom", isDirectory: true)
@@ -26,7 +23,7 @@ enum SessionFolders {
 
     /// One folder per session, holding that class's recording and its clips.
     ///
-    /// Recordings used to land flat in `recordingsDirectory`, named by OBS's own
+    /// Recordings used to land flat in `recordingsDirectory`, named by the recorder's
     /// timestamp, so a term's worth of classes was a wall of identical-looking
     /// files. A folder per session gives the clips somewhere to live and gives
     /// the class a name a human chose.

@@ -9,7 +9,7 @@
 //
 //   - Offsets come from `recordedDuration`, the movie output's own position
 //     in the file it is writing, never from wall-clock arithmetic. Same
-//     choice SessionClips makes against OBS's outputDuration, and for the
+//     choice SessionClips makes against the recorder's position, and for the
 //     same reason: it is the only number still true after a dropped frame or
 //     a device stall, and it is what a player will seek to later.
 //   - The capture objects are confined to `sessionQueue`, which is
@@ -176,7 +176,7 @@ final class ScreenroomCameraEngine: NSObject, ScreenroomCaptureEngine {
 
     // MARK: Devices and permission
 
-    /// Screenroom has a camera picker where the OBS composite deliberately does
+    /// Screenroom has a camera picker where the class picture deliberately does
     /// not (LocalDeviceResolver.physicalCameraUID). The difference is what the
     /// camera is pointed at: the composite always wants the one looking at
     /// you, so there was nothing to decide, while Screenroom is as likely to want

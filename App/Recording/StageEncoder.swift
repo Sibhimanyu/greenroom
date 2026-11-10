@@ -8,21 +8,19 @@
 //   - `.file`: a fragmented MP4 on disk. `movieFragmentInterval` makes the
 //     writer lay down a header first and then a self-contained fragment every
 //     couple of seconds, so a crash or a power cut loses only the last
-//     fragment, not the file. That is what OBS's RecFormat2=fragmented_mp4
-//     bought, and the file plays everywhere a normal .mp4 does.
+//     fragment, not the file. The file plays everywhere a normal .mp4 does.
 //   - `.segments`: no file at all. The writer hands out an initialisation
 //     segment and then media segments as Data, which `ClipRing` keeps in
 //     memory (the clip buffer).
 //
 //  Not thread safe: the recorder calls it from one serial queue.
 //
-//  Settings against what OBS is given today (Simple mode, apple_h264,
-//  VBitrate=6000, ABitrate=160, 30 fps): hardware H.264 at 6 Mbps for a 1080p
-//  picture, scaled up with the pixel count to at most 12 Mbps, because OBS's
-//  fixed 6 Mbps on a 3024x1964 canvas was the soft spot, not a feature. High
+//  Settings: hardware H.264 at 6 Mbps for a 1080p
+//  picture, scaled up with the pixel count to at most 12 Mbps, so a larger
+//  canvas does not go soft. High
 //  profile, no B-frames (so every timestamp is a presentation timestamp and a
 //  passthrough cut never needs a frame from after the cut), a keyframe every
-//  two seconds (OBS Simple mode's default), AAC at 160 kbps, 48 kHz stereo.
+//  two seconds, AAC at 160 kbps, 48 kHz stereo.
 //
 
 import AVFoundation

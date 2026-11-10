@@ -4,7 +4,7 @@
 //
 //  The webcam bubble's outline. Square needs no extra work (just the
 //  existing bounding-box crop) - circle and rounded rectangle need an actual
-//  alpha mask, since OBS's scene-item transform can only do rectangles.
+//  alpha mask, since a plain crop can only do rectangles.
 //
 import AppKit
 import Foundation
@@ -15,9 +15,9 @@ enum WebcamShape: String, CaseIterable, Identifiable {
     /// as a background-free cutout standing over the shared screen.
     /// Requires an actual green screen behind them.
     case cutout
-    /// The macOS "Presenter Overlay (Large)" look, rebuilt inside the OBS
-    /// composite (Apple's own can't be triggered programmatically, is
-    /// Apple-silicon-only, and wouldn't ride our virtual-camera pipeline):
+    /// The macOS "Presenter Overlay (Large)" look, rebuilt in
+    /// Greenroom's own picture (Apple's own can't be triggered programmatically, is
+    /// Apple-silicon-only, and wouldn't be what the meeting receives):
     /// the shared screen shrinks into a rounded inset panel and the person
     /// stands keyed at full height in front of it. Same green-screen
     /// requirement as Cutout.
@@ -63,7 +63,7 @@ enum BackgroundRemoval: String, CaseIterable, Identifiable, Codable {
     /// Greenroom finds you in the picture and removes the rest. No green
     /// screen. See CutoutPublisher.
     case automatic
-    /// OBS keys out a real green screen behind you, as it always did.
+    /// Greenroom keys out a real green screen behind you.
     case greenScreen
 
     var id: String { rawValue }

@@ -5,9 +5,8 @@
 //  The microphone, read for the recorder.
 //
 //  The meeting opens the same microphone through the Zoom SDK. CoreAudio lets
-//  several readers share one input, so this takes nothing from it; OBS did the
-//  same thing from its own process. An empty uid means the system's input
-//  ("default" in OBS), and a chosen microphone is its CoreAudio uid, which is
+//  several readers share one input, so this takes nothing from it. An empty uid
+//  means the system's input, and a chosen microphone is its CoreAudio uid, which is
 //  what AVFoundation calls `uniqueID`.
 //
 //  Buffers come out as 48 kHz stereo float PCM whatever the device is, so a

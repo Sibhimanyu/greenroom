@@ -2,11 +2,7 @@
 //  StageLayout.swift
 //  Greenroom
 //
-//  What the compositor is told to draw. The numbers and their defaults are
-//  the ones `GreenroomScene.BubbleLayout` carries (App/OBS/GreenroomScene.swift
-//  :222), copied rather than shared so that Stage has no dependency on the OBS
-//  code it is replacing. `StageLayout+OBS.swift` converts from the old type
-//  until the OBS code is deleted.
+//  What the compositor is told to draw, with the shipped defaults.
 //
 import CoreGraphics
 import Foundation
@@ -18,7 +14,7 @@ struct StageLayout: Equatable {
     var cutoutHeightFraction: Double = 0.5
     var cutoutRightInset: Double = 0.02
     var shape: WebcamShape = .circle
-    /// Shared content on, camera on. Same meaning as in GreenroomScene.
+    /// Shared content on, camera on. Both on is shared content with you in it. Content off is a talking head; camera off is the shared content alone.
     var showsContent = true
     var showsCamera = true
 
@@ -40,7 +36,7 @@ struct StageConfiguration: Equatable {
     var cameraUIDs: [String] = []
 
     /// The share target has the last word on content, and there is always
-    /// something to show (GreenroomScene.ensureConfigured, :289-293).
+    /// something to show .
     var normalizedLayout: StageLayout {
         var l = layout
         if share.kind == .nothing { l.showsContent = false }

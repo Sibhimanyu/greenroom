@@ -2,12 +2,10 @@
 //  SessionRecorder.swift
 //  Greenroom
 //
-//  Records the stage and keeps the clip buffer, without OBS.
+//  Records the stage and keeps the clip buffer, with no outside program.
 //
 //  A `StageFrameSink` (see StageFrames.swift): BGRA frames in, a fragmented
-//  H.264/AAC .mp4 out, with the chosen microphone. Replaces OBS's
-//  StartRecord/StopRecord/GetRecordStatus and its replay buffer
-//  (docs/drop-obs-plan.md, piece 3). Not wired into the coordinator yet.
+//  H.264/AAC .mp4 out, with the chosen microphone.
 //
 //  Two writers, because the two jobs differ: the recording is one file on
 //  disk that must survive a crash, and the clip buffer is segments in memory
@@ -36,8 +34,7 @@ final class SessionRecorder: StageFrameSink {
 
     /// The microphone, as a CoreAudio uid (`AVCaptureDevice.uniqueID`); empty
     /// is the system's input, nil is no audio at all. Read when a recording
-    /// or the buffer starts, like the other sources (OBS rebuilt its mic
-    /// input at the next Start too).
+    /// or the buffer starts,, like the other sources.
     var microphoneUID: String?
     /// Where a clip-buffer save lands. Defaults to the recording's folder,
     /// then the temporary folder. Set it to the session folder.
@@ -93,16 +90,16 @@ final class SessionRecorder: StageFrameSink {
         }
     }
 
-    // MARK: Observable state (what the coordinator reads from OBS today)
+    // MARK: Observable state
 
-    /// `isRecording` in the coordinator; OBS's GetRecordStatus.outputActive.
+    /// A recording is being written.
     var isRecording: Bool { lock.lock(); defer { lock.unlock() }; return recordingActive }
     var isClipBufferArmed: Bool { lock.lock(); defer { lock.unlock() }; return bufferActive }
     /// The file being written (or just finished).
     var recordingURL: URL? { lock.lock(); defer { lock.unlock() }; return recordingURL_ }
 
     /// Where the recording is, in seconds from the start of the file: what
-    /// OBS reported as `outputDuration` for a clip mark. Measured against the
+    /// a clip mark is taken against. Measured against the
     /// host clock from the first frame written, so it keeps counting if the
     /// picture stalls, the same as the file's own timeline does.
     var elapsed: TimeInterval {
@@ -124,8 +121,8 @@ final class SessionRecorder: StageFrameSink {
         return droppedBusy
     }
 
-    /// The name OBS gave a recording (`%CCYY-%MM-%DD %hh-%mm-%ss`), so the
-    /// folder looks the same as before.
+    /// The name of a recording (`yyyy-MM-dd HH-mm-ss`), the same shape the
+    /// folders have always held.
     static func fileName(for date: Date, prefix: String = "") -> String {
         let f = DateFormatter()
         f.locale = Locale(identifier: "en_US_POSIX")
@@ -135,7 +132,7 @@ final class SessionRecorder: StageFrameSink {
 
     // MARK: Recording
 
-    /// OBS: StartRecord (after pointRecordingAt). Throws if a recording is
+    /// Starts the recording. Throws if a recording is
     /// already running, the folder cannot be made, or the writer refuses.
     func start(in folder: URL) throws {
         lock.lock()
@@ -173,7 +170,7 @@ final class SessionRecorder: StageFrameSink {
         syncPlumbing()
     }
 
-    /// OBS: StopRecord, whose `outputPath` this returns. Nil when nothing was
+    /// Stops the recording and returns the finished file. Nil when nothing was
     /// recording or no frame ever arrived (the empty file is removed).
     @discardableResult
     func stop() async -> URL? {
@@ -223,7 +220,7 @@ final class SessionRecorder: StageFrameSink {
 
     // MARK: Clip buffer
 
-    /// OBS: configureReplayBuffer(enabled: true) + StartReplayBuffer.
+    /// Starts keeping the last few minutes in memory.
     func armClipBuffer(seconds: Int = 300) {
         lock.lock()
         if bufferActive { lock.unlock(); return }
@@ -237,7 +234,7 @@ final class SessionRecorder: StageFrameSink {
         syncPlumbing()
     }
 
-    /// OBS: StopReplayBuffer. Forgets everything buffered.
+    /// Stops the clip buffer. Forgets everything buffered.
     func disarmClipBuffer() {
         lock.lock()
         let was = bufferActive
@@ -253,11 +250,11 @@ final class SessionRecorder: StageFrameSink {
         }
     }
 
-    /// OBS: SaveReplayBuffer + GetLastReplayBufferReplay. Writes the newest
+    /// Writes the newest
     /// `lastSeconds` (default: all of it) as `Replay <stamp>.mp4` and returns
     /// it. The file is whole segments, so it can be a few seconds longer than
     /// asked, never shorter (unless less is buffered); `SessionClipExporter
-    /// .exportTail` then trims it, as it does OBS's replay file today.
+    /// .exportTail` then trims it.
     func saveClipBuffer(lastSeconds: Int? = nil) async throws -> URL {
         guard isClipBufferArmed else { throw RecorderError.clipBufferNotArmed }
         let ring: ClipRing? = await withCheckedContinuation { cont in

@@ -115,20 +115,22 @@ enum StageVideoSizing {
 
     static func isSixteenNine(_ c: Choice) -> Bool { c.width * 9 == c.height * 16 }
 
-    /// The suggestion, unless it is not 16:9 and a 16:9 size exists at or below
-    /// its pixel count: then the largest such size, so nothing needs bars.
-    /// `reason` is plain words for the log.
+    /// The suggestion, letterboxed if it is not 16:9. A 16:9 size is chosen
+    /// instead only when its picture is at least as large as the letterboxed
+    /// picture inside the suggestion (the smallest such size, to keep the cost
+    /// down). `reason` is plain words for the log.
     static func choose(supported: [Choice], suggested: Choice?) -> (choice: Choice, reason: String) {
         let evened: (Choice) -> Choice = { Choice(width: max(2, $0.width & ~1), height: max(2, $0.height & ~1), fps: max(1, $0.fps)) }
         guard let suggested else { return (Choice(width: 640, height: 360, fps: 30), "the SDK gave no suggestion, so 640x360 at 30") }
         let sug = evened(suggested)
         if isSixteenNine(sug) { return (sug, "the SDK's suggested size is 16:9") }
-        let limit = sug.width * sug.height
-        let better = supported.map(evened).filter { isSixteenNine($0) && $0.width * $0.height <= limit }
-            .max { $0.width * $0.height < $1.width * $1.height }
+        let box = I420Converter.fit(sourceWidth: 16, sourceHeight: 9, width: sug.width, height: sug.height)
+        let boxArea = box.0 * box.1
+        let better = supported.map(evened).filter { isSixteenNine($0) && $0.width * $0.height >= boxArea }
+            .min { $0.width * $0.height < $1.width * $1.height }
         if let better {
-            return (better, "the suggested \(sug.width)x\(sug.height) is not 16:9, so this is the largest 16:9 size at or below its pixel count and the picture needs no black bars")
+            return (better, "the suggested \(sug.width)x\(sug.height) is not 16:9 and would carry a \(box.0)x\(box.1) picture; this 16:9 size carries a picture at least as large, with no black bars")
         }
-        return (sug, "the suggested \(sug.width)x\(sug.height) is not 16:9 and no 16:9 size is offered at or below it, so the picture is letterboxed with black bars")
+        return (sug, "the suggested \(sug.width)x\(sug.height) is not 16:9; no 16:9 size carries a picture as large as the \(box.0)x\(box.1) one inside it, so it is letterboxed with black bars")
     }
 }

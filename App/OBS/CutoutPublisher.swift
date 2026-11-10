@@ -45,6 +45,21 @@ final class CutoutPublisher: NSObject {
 
     static var isAvailable: Bool { SyphonServer.isAvailable && MTLCreateSystemDefaultDevice() != nil }
 
+    /// One camera frame, handed straight to an in-process consumer
+    /// (StageCompositor) instead of over Syphon.
+    struct Frame {
+        /// The camera's own picture, untouched.
+        let raw: CVPixelBuffer
+        /// The same frame with everything but the person transparent. Nil
+        /// unless `removesBackground` was on when the frame arrived. Empty
+        /// (fully clear) when nobody was found, as on the Syphon path.
+        let cutout: CIImage?
+    }
+
+    /// Called on the capture queue for every frame, in addition to Syphon
+    /// when a server exists. Must return quickly; keep the frame, hand it on.
+    var onFrame: ((Frame) -> Void)?
+
     let uid: String
     let slot: Int
 
@@ -70,17 +85,19 @@ final class CutoutPublisher: NSObject {
     private let device: MTLDevice
     private let commandQueue: MTLCommandQueue
     private let context: CIContext
-    private let server: SyphonServer
+    /// Nil when opened with `publishesToSyphon: false`: frames then go only to `onFrame`.
+    private let server: SyphonServer?
     private let segmentation = VNGeneratePersonSegmentationRequest()
     private let sequence = VNSequenceRequestHandler()
     private var texture: MTLTexture?
 
     /// Nil when Syphon or Metal is missing, or the camera cannot be opened.
-    init?(uid: String, slot: Int, removesBackground: Bool) {
+    init?(uid: String, slot: Int, removesBackground: Bool, publishesToSyphon: Bool = true) {
         guard let device = MTLCreateSystemDefaultDevice(),
-              let commandQueue = device.makeCommandQueue(),
-              let server = SyphonServer(name: Self.serverName(slot: slot), device: device),
-              let camera = AVCaptureDevice(uniqueID: uid),
+              let commandQueue = device.makeCommandQueue() else { return nil }
+        let server = publishesToSyphon ? SyphonServer(name: Self.serverName(slot: slot), device: device) : nil
+        if publishesToSyphon, server == nil { return nil }
+        guard let camera = AVCaptureDevice(uniqueID: uid),
               let input = try? AVCaptureDeviceInput(device: camera) else { return nil }
         self.uid = uid
         self.slot = slot
@@ -121,19 +138,18 @@ final class CutoutPublisher: NSObject {
 
     func stop() {
         queue.sync { session.stopRunning() }
-        server.stop()
+        server?.stop()
     }
 
     // MARK: Per frame
 
     private func publish(_ frame: CVPixelBuffer) {
         let width = CVPixelBufferGetWidth(frame), height = CVPixelBufferGetHeight(frame)
-        guard let target = texture(width: width, height: height),
-              let buffer = commandQueue.makeCommandBuffer() else { return }
         let bounds = CGRect(x: 0, y: 0, width: width, height: height)
         var image = CIImage(cvPixelBuffer: frame)
 
-        if removesBackground {
+        let removing = removesBackground
+        if removing {
             let found = (try? sequence.perform([segmentation], on: frame)) != nil
                 ? segmentation.results?.first?.pixelBuffer : nil
             notePerson(found.map(Self.hasPerson) ?? false)
@@ -154,7 +170,10 @@ final class CutoutPublisher: NSObject {
             }
         }
 
-        if !removesBackground { notePerson(true) }
+        if !removing { notePerson(true) }
+        onFrame?(Frame(raw: frame, cutout: removing ? image : nil))
+        guard let server, let target = texture(width: width, height: height),
+              let buffer = commandQueue.makeCommandBuffer() else { return }
         context.render(image, to: target, commandBuffer: buffer, bounds: bounds,
                        colorSpace: CGColorSpaceCreateDeviceRGB())
         // Not waited on. The command queue runs in order, so the next frame's

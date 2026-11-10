@@ -58,6 +58,20 @@ final class ZoomVideoSender: NSObject, StageFrameSink, ZoomSDKVirtualVideoSource
 
     private weak var source: StageFrameSource?
 
+    /// Called on the main queue when the SDK lets go of this source (the
+    /// meeting ended, or it was cleared). The client then knows the source is
+    /// no longer installed and installs it again at the next start.
+    var onReleased: (@MainActor () -> Void)?
+
+    /// Forget the newest frame: the next meeting starts on black, not on the
+    /// last picture of the previous class.
+    func resetPicture() {
+        frameLock.lock()
+        latest = nil
+        latestArrival = 0
+        frameLock.unlock()
+    }
+
     /// Point the sender at a picture source, or at nothing (it then keeps
     /// sending the last frame). Safe to call at any time.
     func attach(_ newSource: StageFrameSource?) {
@@ -130,6 +144,7 @@ final class ZoomVideoSender: NSObject, StageFrameSink, ZoomSDKVirtualVideoSource
             sender = nil
             converter = nil
         }
+        DispatchQueue.main.async { [weak self] in MainActor.assumeIsolated { self?.onReleased?() } }
     }
 
     // MARK: Size (on `queue`)

@@ -520,11 +520,17 @@ final class ZoomMeetingSDKClient: NSObject, ObservableObject {
             guard let self, self.callbackGeneration == generation,
                   let completion = self.authCompletion else { return }
             self.authCompletion = nil
-            completion(.failure(ZoomMeetingSDKError.timedOut("Zoom SDK authorization")))
+            Self.logLicenceLine("Zoom sign-in: no answer from the SDK after \(Int(seconds)) s.")
+            completion(.failure(ZoomMeetingSDKError.timedOut(
+                what: "Signing Greenroom\u{2019}s meeting client in to Zoom", seconds: Int(seconds),
+                advice: "Check your internet connection, then press Try again. If it keeps happening, quit and reopen Greenroom.")))
         }
     }
 
-    private func armJoinWatchdog(seconds: TimeInterval = 120) {
+    /// 45 s, not the 120 it was: a join that has not reached the meeting in
+    /// 45 s is not coming (a live run sat in Connecting for two minutes and
+    /// then gave up), and every second of it is a teacher watching a card.
+    private func armJoinWatchdog(seconds: TimeInterval = 45) {
         callbackGeneration += 1
         let generation = callbackGeneration
         Task { @MainActor [weak self] in
@@ -532,7 +538,36 @@ final class ZoomMeetingSDKClient: NSObject, ObservableObject {
             guard let self, self.callbackGeneration == generation,
                   let completion = self.joinCompletion else { return }
             self.joinCompletion = nil
-            completion(.failure(ZoomMeetingSDKError.timedOut("Connecting to the meeting")))
+            let status = ZoomSDK.shared().getMeetingService().map { Self.statusName($0.getMeetingStatus()) } ?? "unknown"
+            Self.logLicenceLine("Meeting: no answer from the SDK after \(Int(seconds)) s; it is still \(status).")
+            completion(.failure(ZoomMeetingSDKError.timedOut(
+                what: "Getting into the meeting (Zoom\u{2019}s client was still \(status.lowercased()))", seconds: Int(seconds),
+                advice: "Nothing was left running. If you plugged or unplugged a display while it was starting, wait a few seconds after doing that, then press Try again.")))
+        }
+    }
+
+    /// End Session or a cancelled start: whoever is awaiting the SDK is let
+    /// go NOW, with a cancellation, rather than when a watchdog fires.
+    func abandonPendingCallbacks() {
+        callbackGeneration += 1
+        if let completion = authCompletion { authCompletion = nil; completion(.failure(CancellationError())) }
+        if let completion = joinCompletion { joinCompletion = nil; completion(.failure(CancellationError())) }
+    }
+
+    nonisolated static func statusName(_ s: ZoomSDKMeetingStatus) -> String {
+        switch s {
+        case ZoomSDKMeetingStatus_Idle: return "Idle"
+        case ZoomSDKMeetingStatus_Connecting: return "Connecting"
+        case ZoomSDKMeetingStatus_WaitingForHost: return "WaitingForHost"
+        case ZoomSDKMeetingStatus_InMeeting: return "InMeeting"
+        case ZoomSDKMeetingStatus_Disconnecting: return "Disconnecting"
+        case ZoomSDKMeetingStatus_Reconnecting: return "Reconnecting"
+        case ZoomSDKMeetingStatus_Failed: return "Failed"
+        case ZoomSDKMeetingStatus_Ended: return "Ended"
+        case ZoomSDKMeetingStatus_AudioReady: return "AudioReady"
+        case ZoomSDKMeetingStatus_OtherMeetingInProgress: return "OtherMeetingInProgress"
+        case ZoomSDKMeetingStatus_InWaitingRoom: return "InWaitingRoom"
+        default: return "status #\(s.rawValue)"
         }
     }
 
@@ -614,15 +649,42 @@ final class ZoomMeetingSDKClient: NSObject, ObservableObject {
         Self.logLicenceLine(line)
     }
 
-    private static func errorName(_ e: ZoomSDKError) -> String {
+    /// Every name in ZoomSDKErrors.h, in the header\u{2019}s own order (Success is 0, so
+    /// Malloc_Failed is 22 and NoLicense 21). The log says the name, not only
+    /// a number someone has to count to.
+    nonisolated static func errorName(_ e: ZoomSDKError) -> String {
         switch e {
         case ZoomSDKError_Success: return "ZoomSDKError_Success"
         case ZoomSDKError_Failed: return "ZoomSDKError_Failed"
         case ZoomSDKError_Uninit: return "ZoomSDKError_Uninit"
+        case ZoomSDKError_ServiceFailed: return "ZoomSDKError_ServiceFailed"
         case ZoomSDKError_WrongUsage: return "ZoomSDKError_WrongUsage"
         case ZoomSDKError_InvalidParameter: return "ZoomSDKError_InvalidParameter"
         case ZoomSDKError_NoPermission: return "ZoomSDKError_NoPermission"
+        case ZoomSDKError_NoRecordingInProgress: return "ZoomSDKError_NoRecordingInProgress"
+        case ZoomSDKError_TooFrequentCall: return "ZoomSDKError_TooFrequentCall"
+        case ZoomSDKError_UnSupportedFeature: return "ZoomSDKError_UnSupportedFeature"
+        case ZoomSDKError_EmailLoginIsDisabled: return "ZoomSDKError_EmailLoginIsDisabled"
+        case ZoomSDKError_ModuleLoadFail: return "ZoomSDKError_ModuleLoadFail"
+        case ZoomSDKError_NoVideoData: return "ZoomSDKError_NoVideoData"
+        case ZoomSDKError_NoAudioData: return "ZoomSDKError_NoAudioData"
+        case ZoomSDKError_NoShareData: return "ZoomSDKError_NoShareData"
+        case ZoomSDKError_NoVideoDeviceFound: return "ZoomSDKError_NoVideoDeviceFound"
+        case ZoomSDKError_DeviceError: return "ZoomSDKError_DeviceError"
+        case ZoomSDKError_NotInMeeting: return "ZoomSDKError_NotInMeeting"
+        case ZoomSDKError_initDevice: return "ZoomSDKError_initDevice"
+        case ZoomSDKError_CanNotChangeVirtualDevice: return "ZoomSDKError_CanNotChangeVirtualDevice"
+        case ZoomSDKError_PreprocessRawdataError: return "ZoomSDKError_PreprocessRawdataError"
         case ZoomSDKError_NoLicense: return "ZoomSDKError_NoLicense"
+        case ZoomSDKError_Malloc_Failed: return "ZoomSDKError_Malloc_Failed"
+        case ZoomSDKError_ShareCannotSubscribeMyself: return "ZoomSDKError_ShareCannotSubscribeMyself"
+        case ZoomSDKError_NeedUserConfirmRecordDisclaimer: return "ZoomSDKError_NeedUserConfirmRecordDisclaimer"
+        case ZoomSDKError_UnKnown: return "ZoomSDKError_UnKnown"
+        case ZoomSDKError_NotJoinAudio: return "ZoomSDKError_NotJoinAudio"
+        case ZoomSDKError_HardwareDontSupport: return "ZoomSDKError_HardwareDontSupport"
+        case ZoomSDKError_DomainDontSupport: return "ZoomSDKError_DomainDontSupport"
+        case ZoomSDKError_FileTransferError: return "ZoomSDKError_FileTransferError"
+        case ZoomSDKError_Breakout_Room_Not_Created: return "ZoomSDKError_Breakout_Room_Not_Created"
         default: return "ZoomSDKError_#\(e.rawValue)"
         }
     }
@@ -637,17 +699,32 @@ final class ZoomMeetingSDKClient: NSObject, ObservableObject {
     // MARK: Stage video (docs/drop-obs-plan.md, piece 2)
 
     /// The picture the meeting should show as our camera, or nil for none.
-    /// The header (ZoomSDKRawDataVideoSourceController.h) says nothing about
-    /// when the source may be set or changed, and Zoom's other platforms want
-    /// it set before joining, so the request is stored and applied after
-    /// sign-in, before the join (`applyStageVideo`). Called later, it applies
-    /// at once; swapping the picture on a source that is already installed
-    /// never touches the SDK.
+    ///
+    /// ONE `ZoomVideoSender` is installed in the SDK and kept for as long as
+    /// the SDK stays signed in. A session only points it at a picture
+    /// (`attach`) and, when it ends, away from it (`detach`, then black). The
+    /// SDK is never asked to swap or clear its source between meetings.
+    ///
+    /// Why this and not "clear it with nil, wait for onUninitialize, install a
+    /// new one" every time: the SDK's raw-data source slot is process-wide and
+    /// its header says nothing about when it may be changed. A live run got
+    /// `ZoomSDKError_Malloc_Failed` (22) from `setExternalVideoSource` on its
+    /// install, seconds after sign-in and while a display was being unplugged.
+    /// Installing is the risky call, so it is done once, at the quietest moment
+    /// available (after sign-in, with no display event in flight), and never
+    /// again unless the SDK itself lets go of the source (`onReleased`, which
+    /// the SDK may do when a meeting ends). Clear-and-reinstall is kept only as
+    /// the retry for a failed install, where the slot may be half-set.
     private var requestedStageSource: StageFrameSource?
     /// Kept alive here; the SDK holds its source delegate weakly.
     private var stageVideoSender: ZoomVideoSender?
+    /// The SDK currently holds `stageVideoSender` as its external source.
+    private var stageVideoInstalled = false
+    private var stageInstallTask: Task<Bool, Never>?
+    /// Zoom's own words for the last install that failed, nil otherwise.
+    private(set) var stageVideoFailure: String?
     /// True when our own video source is installed in the SDK.
-    var stageVideoActive: Bool { stageVideoSender != nil }
+    var stageVideoActive: Bool { stageVideoInstalled }
     #if DEBUG
     private var debugTestPattern: StageTestPattern?
     #endif
@@ -658,40 +735,86 @@ final class ZoomMeetingSDKClient: NSObject, ObservableObject {
     }
 
     private func applyStageVideo() {
-        guard let controller = ZoomSDK.shared().getRawDataController() else {
-            if requestedStageSource != nil { ZoomVideoSender.log("failed: the SDK gave no raw data controller; the meeting will have no video from Greenroom.") }
+        guard let source = requestedStageSource else {
+            // Session over: the picture goes, the source stays installed.
+            stageVideoSender?.detach()
+            stageVideoSender?.resetPicture()
             return
         }
-        if let source = requestedStageSource {
-            if let sender = stageVideoSender {   // already installed: just change the picture
-                sender.attach(source)
-                return
+        if stageVideoInstalled, let sender = stageVideoSender {
+            sender.attach(source)   // already installed: just change the picture
+            return
+        }
+        guard stageInstallTask == nil else { return }   // running; attaches what is requested when done
+        stageInstallTask = Task { @MainActor [weak self] in
+            guard let self else { return false }
+            let ok = await self.installStageVideoWithRetry()
+            self.stageInstallTask = nil
+            return ok
+        }
+    }
+
+    /// Waits for the picture to be installed in the SDK (starting the install
+    /// if it has not been), and says whether it is. The start flows await this
+    /// before joining, so a picture that cannot be installed stops the start
+    /// with a plain message instead of becoming a meeting with a blank camera.
+    func awaitStageVideo() async -> Bool {
+        if stageVideoInstalled { return true }
+        if stageInstallTask == nil { applyStageVideo() }
+        if let task = stageInstallTask { return await task.value }
+        return stageVideoInstalled
+    }
+
+    /// Three tries, each at a moment with no display event in flight. After
+    /// the first, the slot is cleared first (the install may have half-taken)
+    /// and the SDK given up to a second to say it let go.
+    private func installStageVideoWithRetry() async -> Bool {
+        let pauses: [TimeInterval] = [0, 1.0, 2.5]
+        var lastDetail = "no answer"
+        for (index, pause) in pauses.enumerated() {
+            if pause > 0 { try? await Task.sleep(nanoseconds: UInt64(pause * 1_000_000_000)) }
+            if Task.isCancelled { return false }
+            if !(await DisplayMonitor.shared.awaitQuiet(quietFor: 1.0, timeout: 4)) {
+                ZoomVideoSender.log("a display is still being plugged or unplugged; trying to install the picture anyway.")
+            }
+            guard isAuthed, requestedStageSource != nil else { return false }   // signed out, or the session ended meanwhile
+            guard let controller = ZoomSDK.shared().getRawDataController() else {
+                lastDetail = "the SDK gave no raw data controller"
+                ZoomVideoSender.log("attempt \(index + 1) of \(pauses.count): \(lastDetail).")
+                continue
             }
             var helper: ZoomSDKRawDataVideoSourceController?
             let got = controller.getRawDataVideoSourceHelper(&helper)
             guard got == ZoomSDKError_Success, let helper else {
-                ZoomVideoSender.log("failed: getRawDataVideoSourceHelper returned \(got.rawValue); the meeting will have no video from Greenroom.")
-                return
+                lastDetail = "getRawDataVideoSourceHelper returned \(Self.errorName(got))"
+                ZoomVideoSender.log("attempt \(index + 1) of \(pauses.count): \(lastDetail).")
+                continue
             }
-            let sender = ZoomVideoSender()
+            let sender = stageVideoSender ?? ZoomVideoSender()
+            sender.onReleased = { [weak self] in
+                self?.stageVideoInstalled = false
+                ZoomVideoSender.log("the SDK let go of our video source; it will be installed again at the next start.")
+            }
+            if index > 0 {
+                let cleared = helper.setExternalVideoSource(nil, videoDataFormat: ZoomSDKFrameDataFormat_I420_Limited)
+                ZoomVideoSender.log("attempt \(index + 1) of \(pauses.count): cleared the video source first (\(Self.errorName(cleared))).")
+                try? await Task.sleep(nanoseconds: 700_000_000)
+            }
             let set = helper.setExternalVideoSource(sender, videoDataFormat: ZoomSDKFrameDataFormat_I420_Limited)
             if set == ZoomSDKError_Success {
-                sender.attach(source)
                 stageVideoSender = sender
-                ZoomVideoSender.log("installed as the external video source (I420 limited); there is no camera to pick.")
-            } else {
-                ZoomVideoSender.log("failed: setExternalVideoSource returned \(set.rawValue); the meeting will have no video from Greenroom.")
+                stageVideoInstalled = true
+                stageVideoFailure = nil
+                sender.attach(requestedStageSource)
+                ZoomVideoSender.log("installed as the external video source (I420 limited)" + (index > 0 ? ", on attempt \(index + 1)" : "") + "; there is no camera to pick.")
+                return true
             }
-        } else if let sender = stageVideoSender {
-            var helper: ZoomSDKRawDataVideoSourceController?
-            let got = controller.getRawDataVideoSourceHelper(&helper)
-            sender.detach()
-            if got == ZoomSDKError_Success, let helper {
-                let r = helper.setExternalVideoSource(nil, videoDataFormat: ZoomSDKFrameDataFormat_I420_Limited)
-                ZoomVideoSender.log(r == ZoomSDKError_Success ? "removed the external video source." : "removing the external video source returned \(r.rawValue).")
-            }
-            stageVideoSender = nil
+            lastDetail = "setExternalVideoSource returned \(Self.errorName(set)) (\(set.rawValue))"
+            ZoomVideoSender.log("attempt \(index + 1) of \(pauses.count): \(lastDetail).")
         }
+        stageVideoFailure = lastDetail
+        ZoomVideoSender.log("failed after \(pauses.count) attempts: \(lastDetail). The meeting would have no video from Greenroom.")
+        return false
     }
 
     #if DEBUG
@@ -719,7 +842,11 @@ final class ZoomMeetingSDKClient: NSObject, ObservableObject {
         didInit = false
         isAuthed = false
         stageVideoSender?.detach()
+        stageVideoSender?.onReleased = nil
         stageVideoSender = nil   // the SDK let go of the source; the next sign-in installs it again
+        stageVideoInstalled = false
+        stageInstallTask?.cancel()
+        stageInstallTask = nil
         authedClientID = nil
     }
 
@@ -1128,7 +1255,11 @@ enum ZoomMeetingSDKError: LocalizedError {
     case meetingServiceUnavailable
     case invalidMeetingNumber
     case joinFailed(ZoomSDKError)
-    case timedOut(String)
+    /// A callback the SDK never made. `what` is the step, `advice` the way out.
+    case timedOut(what: String, seconds: Int, advice: String)
+    /// Greenroom's picture could not be installed as the meeting's camera,
+    /// after retrying. `detail` carries Zoom's own error name.
+    case videoInstallFailed(detail: String)
     /// The real, specific reason from ZoomSDKMeetingServiceDelegate's
     /// `meetingError` - this is the one that actually matters (e.g.
     /// `ZoomSDKMeetingError_UnableToJoinExternalMeeting = 63` or
@@ -1195,17 +1326,20 @@ enum ZoomMeetingSDKError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .initFailed(let error): return "Meeting SDK init failed (\(error))."
+        case .initFailed(let error): return "Meeting SDK init failed (\(ZoomMeetingSDKClient.errorName(error)))."
         case .jwtGenerationFailed: return "Couldn't build the Meeting SDK auth token."
         case .authServiceUnavailable: return "Zoom Meeting SDK's auth service isn't available."
-        case .authCallFailed(let error): return "Meeting SDK auth call failed immediately (\(error))."
+        case .authCallFailed(let error): return "Meeting SDK auth call failed immediately (\(ZoomMeetingSDKClient.errorName(error)))."
         case .authRejected(let error): return "Meeting SDK auth was rejected (\(error))."
         case .meetingServiceUnavailable: return "Zoom Meeting SDK's meeting service isn't available."
         case .invalidMeetingNumber: return "Meeting number must be numeric."
-        case .joinFailed(let error): return "Zoom Meeting SDK join call failed immediately (\(error))."
+        case .joinFailed(let error): return "Zoom Meeting SDK join call failed immediately (\(ZoomMeetingSDKClient.errorName(error)))."
         case .joinRejected(let error, let status):
             return Self.joinFailureText(error, status: status)
-        case .timedOut(let what): return "\(what) timed out \u{2014} the Zoom SDK never called back. Press End Session and try again."
+        case .timedOut(let what, let seconds, let advice):
+            return "\(what) didn\u{2019}t finish in \(seconds) seconds. \(advice)"
+        case .videoInstallFailed(let detail):
+            return "Greenroom couldn\u{2019}t put your picture into the meeting, so the class would see nothing from you (Zoom said: \(detail)). Nothing was left running. Press Try again; if it keeps happening, quit and reopen Greenroom."
         }
     }
 }
@@ -1234,6 +1368,9 @@ extension ZoomMeetingSDKClient: ZoomSDKMeetingServiceDelegate {
     // the real bridged signature) - the third label is `end`, not
     // `endReason` as guessed in an earlier draft.
     func onMeetingStatusChange(_ state: ZoomSDKMeetingStatus, meetingError error: ZoomSDKMeetingError, end reason: EndMeetingReason) {
+        // Every status the SDK reports, in plain words. A start that stalls in
+        // Connecting is only diagnosable if the log shows where it stopped.
+        Self.logLicenceLine("Meeting status: \(Self.statusName(state))" + (error.rawValue != 0 || reason.rawValue != 0 ? " (error \(error.rawValue), end reason \(reason.rawValue))" : ""))
         // The raw-data licence is often only known once we are in a meeting,
         // so a "no" after sign-in may be wrong. Log it again here, once.
         if state == ZoomSDKMeetingStatus_InMeeting {

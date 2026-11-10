@@ -345,6 +345,9 @@ final class StageCompositor: StageFrameSource {
                 self.post { $0.screenLive = true; $0.lastError = nil }
             }
         }
+        source.onNoPicture = { [weak self] message in
+            self?.post { $0.screenLive = false; $0.lastError = message }
+        }
         source.onStop = { [weak self, weak source] error in
             guard let self, let source else { return }
             // macOS ended the stream. The last picture stays up while a

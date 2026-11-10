@@ -35,6 +35,9 @@ final class StageScreenSource: NSObject, SCStreamOutput, SCStreamDelegate {
     var onFrame: ((CVPixelBuffer) -> Void)?
     /// Called when macOS ends the stream under us (-3805 and friends).
     var onStop: ((Error) -> Void)?
+    /// Called once, on a background queue, when a window capture has shown no
+    /// complete frame 3 s after starting. Plain words for the person.
+    var onNoPicture: ((String) -> Void)?
 
     private var stream: SCStream?   // under stateLock
     private let queue = DispatchQueue(label: "greenroom.stage.screen", qos: .userInteractive)
@@ -128,11 +131,17 @@ final class StageScreenSource: NSObject, SCStreamOutput, SCStreamDelegate {
     private let stateLock = NSLock()
     private var stopReason: String?
     private var sawFirstFrame = false
+    /// Set when the capture is of one window (a window share, or an app that
+    /// is on another desktop), for the no-picture check.
+    private var windowLabel: String?
 
     func start() async throws {
         let content: SCShareableContent
         do {
-            content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
+            // Every window, not only those on this Space: a full-screen or
+            // other-Space window is "off screen" but the per-window filter
+            // below follows it. Unusable ones are filtered by ScreenWindowRules.
+            content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: false)
         } catch {
             throw Self.failure(for: error, doing: "Listing the screens")
         }
@@ -160,8 +169,16 @@ final class StageScreenSource: NSObject, SCStreamOutput, SCStreamDelegate {
                                    info: displayInfo, all: displays)
         case .window(let windowID):
             guard let window = content.windows.first(where: { $0.windowID == windowID }) else {
-                Self.log("Window \(windowID) is not in the list of \(content.windows.count) on-screen windows.")
+                Self.log("Window \(windowID) is not in the list of \(content.windows.count) windows.")
                 throw Failure(errorDescription: "That window has gone. Pick another one.")
+            }
+            guard ScreenWindowRules.isCapturable(layer: window.windowLayer, size: window.frame.size) else {
+                Self.log("Window \(windowID) can\u{2019}t give a picture (layer \(window.windowLayer), \(Int(window.frame.width))\u{00D7}\(Int(window.frame.height))).")
+                throw Failure(errorDescription: "That window can\u{2019}t be shared. Pick another one.")
+            }
+            windowLabel = Self.windowName(window)
+            if !window.isOnScreen {
+                Self.log("\(windowLabel ?? "The window") is on another desktop or full screen; following it there.")
             }
             filter = SCContentFilter(desktopIndependentWindow: window)
         }
@@ -202,6 +219,28 @@ final class StageScreenSource: NSObject, SCStreamOutput, SCStreamDelegate {
             return
         }
         Self.log("Capture started: \(targetText).")
+        if let label = windowLabel { watchForPicture(of: label) }
+    }
+
+    /// A window capture that delivers nothing is not retried; it is said.
+    /// Whether ScreenCaptureKit keeps drawing a window on another desktop is
+    /// the thing this tells us on a real Mac.
+    private func watchForPicture(of label: String) {
+        queue.asyncAfter(deadline: .now() + 3) { [weak self] in
+            guard let self else { return }
+            self.stateLock.lock()
+            let seen = self.sawFirstFrame, stopped = self.stopReason != nil
+            self.stateLock.unlock()
+            guard !seen, !stopped else { return }
+            Self.log("no picture from \(label) \u{2014} macOS isn\u{2019}t drawing it (minimised or on a desktop it won\u{2019}t capture)")
+            self.onNoPicture?("\(label) isn\u{2019}t giving a picture. It may be minimised, or on a desktop macOS won\u{2019}t capture. Bring it forward, or pick another window.")
+        }
+    }
+
+    private static func windowName(_ w: SCWindow) -> String {
+        let app = w.owningApplication?.applicationName ?? "A window"
+        guard let title = w.title, !title.isEmpty else { return app }
+        return "\(app) \u{2013} \(title)"
     }
 
     private func appFilter(bundleID: String, content: SCShareableContent, display: SCDisplay,
@@ -214,27 +253,37 @@ final class StageScreenSource: NSObject, SCStreamOutput, SCStreamDelegate {
                              layer: $0.windowLayer, onScreen: $0.isOnScreen)
         }
         let verdict = ScreenAppMatch.match(bundleID: bundleID, pids: pids, windows: infos,
-                                           display: info, allDisplays: all)
+                                           display: info, allDisplays: all,
+                                           ownPID: ProcessInfo.processInfo.processIdentifier)
         let name = running.first?.localizedName ?? bundleID
         let listed = content.applications.first { $0.bundleIdentifier == bundleID }
             ?? content.applications.first { pids.contains($0.processID) }
         Self.log("App \(bundleID): \(running.isEmpty ? "not running" : "running as pid \(pids.sorted())"); "
                  + "ScreenCaptureKit \(listed == nil ? "does not list it" : "lists it"); windows: \(verdict).")
 
-        if case .otherDisplay(let where_) = verdict {
-            throw Failure(errorDescription: "\(name) is open on \(where_), not the screen picked. Pick that screen under \u{201C}On screen\u{201D}, or move \(name) here.")
-        }
-        if let listed {
-            return SCContentFilter(display: display, including: [listed], exceptingWindows: [])
-        }
-        if case .windows(let ids) = verdict {
+        switch verdict {
+        case .elsewhere(let windowID, let onScreen):
+            // Full screen on its own desktop, or only on another desktop or
+            // display: a display filter would show nothing, so follow its
+            // main window instead.
+            if let window = content.windows.first(where: { $0.windowID == windowID }) {
+                windowLabel = Self.windowName(window)
+                Self.log("\(name) is on \(onScreen ? "another display" : "another desktop"); showing its main window.")
+                return SCContentFilter(desktopIndependentWindow: window)
+            }
+        case .windows(let ids):
+            if let listed {
+                return SCContentFilter(display: display, including: [listed], exceptingWindows: [])
+            }
             let chosen = content.windows.filter { ids.contains($0.windowID) }
             return SCContentFilter(display: display, including: chosen)
+        case .noWindows:
+            break
         }
         if running.isEmpty {
             throw Failure(errorDescription: "\(name) isn\u{2019}t open.")
         }
-        throw Failure(errorDescription: "\(name) is open but has no window showing on any screen. Bring a window forward, then try again.")
+        throw Failure(errorDescription: "\(name) is open but has no window that can be shared. Bring a window forward, then try again.")
     }
 
     /// Stops the stream. `reason` goes in the log: who did it, and why.
@@ -260,8 +309,11 @@ final class StageScreenSource: NSObject, SCStreamOutput, SCStreamDelegate {
               let raw = attachments.first?[.status] as? Int,
               SCFrameStatus(rawValue: raw) == .complete,
               let pixels = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
-        if !sawFirstFrame {
-            sawFirstFrame = true
+        stateLock.lock()
+        let first = !sawFirstFrame
+        sawFirstFrame = true
+        stateLock.unlock()
+        if first {
             Self.log("First frame: \(targetText), \(CVPixelBufferGetWidth(pixels))\u{00D7}\(CVPixelBufferGetHeight(pixels)).")
         }
         onFrame?(pixels)

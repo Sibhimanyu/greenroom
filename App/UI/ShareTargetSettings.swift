@@ -96,7 +96,8 @@ struct ShareTargetSettings: View {
                 })) {
                 Text("Choose a window").tag("")
                 ForEach(windows) { window in
-                    Text(window.title.isEmpty ? window.appName : "\(window.appName) \u{2013} \(window.title)")
+                    Text((window.title.isEmpty ? window.appName : "\(window.appName) \u{2013} \(window.title)")
+                         + window.placement.menuSuffix)
                         .tag(window.key)
                 }
                 if !selected.isEmpty, !windows.contains(where: { $0.key == selected }) {

@@ -33,33 +33,45 @@ struct ScreenDisplayInfo: Equatable {
 }
 
 enum ScreenAppMatch: Equatable {
-    /// Capture these windows (SCWindow ids) on the chosen display.
+    /// Capture the app on the chosen display (SCWindow ids, all on its
+    /// current Space).
     case windows([CGWindowID])
-    /// The app has windows, but all on other displays.
-    case otherDisplay(String)
-    /// The app is not running, or has nothing on any screen.
+    /// The app has no normal window on that display's current Space: it is
+    /// full screen on its own desktop, or on another desktop or display.
+    /// Capture this one window, which macOS follows wherever it is.
+    /// `onScreen` is true when it is visible on another display, false when
+    /// it is on another desktop.
+    case elsewhere(window: CGWindowID, onScreen: Bool)
+    /// The app is not running, or has no window that can give a picture.
     case noWindows
 
     /// `pids` are the process ids macOS reports for `bundleID`
-    /// (NSRunningApplication); may be empty.
+    /// (NSRunningApplication); may be empty. `ownPID` is Greenroom itself,
+    /// whose windows are never shared.
     static func match(bundleID: String, pids: Set<pid_t>,
                       windows: [ScreenWindowInfo],
                       display: ScreenDisplayInfo,
-                      allDisplays: [ScreenDisplayInfo]) -> ScreenAppMatch {
+                      allDisplays: [ScreenDisplayInfo],
+                      ownPID: pid_t = -1) -> ScreenAppMatch {
         let id = bundleID.lowercased()
         let mine = windows.filter { w in
-            guard w.layer == 0, w.onScreen, w.frame.width >= 50, w.frame.height >= 50 else { return false }
+            guard w.pid != ownPID,
+                  ScreenWindowRules.isCapturable(layer: w.layer, size: w.frame.size) else { return false }
             if pids.contains(w.pid) { return true }
             guard let b = w.bundleID?.lowercased() else { return false }
             return b == id || b.hasPrefix(id + ".helper")
         }
-        let here = mine.filter { display.frame.contains(CGPoint(x: $0.frame.midX, y: $0.frame.midY)) }
-        if !here.isEmpty { return .windows(here.map(\.id)) }
-        for other in allDisplays where other != display {
-            if mine.contains(where: { other.frame.contains(CGPoint(x: $0.frame.midX, y: $0.frame.midY)) }) {
-                return .otherDisplay("Display \(other.index)" + (other.isMain ? " (the main one)" : ""))
-            }
+        let here = mine.filter {
+            $0.onScreen && display.frame.contains(CGPoint(x: $0.frame.midX, y: $0.frame.midY))
         }
+        if !here.isEmpty { return .windows(here.map(\.id)) }
+        // Prefer one that is visible somewhere (another display), then the
+        // largest. A full-screen window on its own Space is the common case.
+        let best = mine.max { a, b in
+            if a.onScreen != b.onScreen { return !a.onScreen }
+            return a.frame.width * a.frame.height < b.frame.width * b.frame.height
+        }
+        if let best { return .elsewhere(window: best.id, onScreen: best.onScreen) }
         return .noWindows
     }
 }

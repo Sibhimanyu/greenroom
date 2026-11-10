@@ -84,7 +84,7 @@ struct ShareTarget: Codable, Equatable {
         case .window:
             guard !appBundleID.isEmpty else { return fallBack("No window is picked to share") }
             guard let window = Self.bestWindow(for: self, among: Self.windows()) else {
-                return fallBack("\(displayName) has no window open on this screen")
+                return fallBack("\(displayName) has no window open")
             }
             let label = window.title.isEmpty ? window.appName : "\(window.appName) \u{2013} \(window.title)"
             return Resolved(kind: .window, windowID: Int(window.id), label: label, fallback: nil)
@@ -105,6 +105,9 @@ struct ShareTarget: Codable, Equatable {
         /// Empty without Screen Recording permission: macOS hides other apps'
         /// window titles until it is granted.
         let title: String
+        /// Here, full screen elsewhere, or on another desktop. A window that
+        /// is not here is still shareable: macOS follows it.
+        var placement: ScreenWindowRules.Placement = .here
 
         /// The picker's tag. Title, not ID, for the reason at the top.
         var key: String { ShareTarget.windowKey(bundleID: bundleID, title: title) }
@@ -114,37 +117,48 @@ struct ShareTarget: Codable, Equatable {
         bundleID + "\u{1F}" + title
     }
 
-    /// Ordinary app windows on the current Space, front to back.
+    /// Ordinary app windows, on this desktop first, then on others, each
+    /// group front to back.
     ///
-    /// On screen only. A window on another Space, or minimised, gives
-    /// ScreenCaptureKit nothing to capture: picked at Start, it was a source
-    /// that existed, reported 0x0 and showed the class an empty backdrop.
-    /// The off-screen list is also where every app's hidden helper windows
-    /// live, so leaving it out keeps the picker to windows a person can see.
+    /// Windows on other Spaces (and full-screen ones) are included, marked by
+    /// `placement`: a window capture follows them there. What is still left
+    /// out is what cannot give a picture, per `ScreenWindowRules.isCandidate`:
+    /// hidden helper windows, tiny ones, transparent ones. fcf0a12 dropped all
+    /// off-screen windows because a capture of one came out blank; the capture
+    /// now says so itself if that happens (a window that is minimised looks
+    /// like one on another desktop from here).
     ///
     /// CGWindowList rather than ScreenCaptureKit: it needs no permission to
     /// list windows (only their titles), so the picker and the lookup at Start
     /// both work before the teacher has said yes to anything. Layer 0 drops
-    /// menus, the Dock and status items; the size floor drops toolbars,
-    /// palettes and the invisible helper windows every app keeps. Greenroom's
-    /// own windows are left out, because sharing the window you are presenting
-    /// from shows the class itself, endlessly.
+    /// menus, the Dock and status items. Greenroom's own windows are left
+    /// out, because sharing the window you are presenting from shows the
+    /// class itself, endlessly.
     static func windows() -> [Window] {
         let ownPID = ProcessInfo.processInfo.processIdentifier
-        return windowList(.optionOnScreenOnly).compactMap { info -> Window? in
-            guard (info[kCGWindowLayer as String] as? Int) == 0,
-                  let id = info[kCGWindowNumber as String] as? CGWindowID,
+        let displaySizes = NSScreen.screens.map(\.frame.size)
+        let listed = windowList(.optionAll).compactMap { info -> Window? in
+            guard let id = info[kCGWindowNumber as String] as? CGWindowID,
                   let pid = info[kCGWindowOwnerPID as String] as? pid_t, pid != ownPID,
+                  let boundsInfo = info[kCGWindowBounds as String] as? NSDictionary,
+                  let bounds = CGRect(dictionaryRepresentation: boundsInfo) else { return nil }
+            let onScreen = (info[kCGWindowIsOnscreen as String] as? Bool) ?? false
+            let title = info[kCGWindowName as String] as? String ?? ""
+            guard ScreenWindowRules.isCandidate(layer: info[kCGWindowLayer as String] as? Int ?? -1,
+                                                size: bounds.size,
+                                                alpha: info[kCGWindowAlpha as String] as? Double ?? 1,
+                                                onScreen: onScreen, title: title),
                   let app = NSRunningApplication(processIdentifier: pid),
                   app.activationPolicy == .regular,
-                  let bundleID = app.bundleIdentifier,
-                  let boundsInfo = info[kCGWindowBounds as String] as? NSDictionary,
-                  let bounds = CGRect(dictionaryRepresentation: boundsInfo),
-                  bounds.width >= 200, bounds.height >= 150 else { return nil }
+                  let bundleID = app.bundleIdentifier else { return nil }
             return Window(id: id, bundleID: bundleID,
-                          appName: app.localizedName ?? bundleID,
-                          title: info[kCGWindowName as String] as? String ?? "")
+                          appName: app.localizedName ?? bundleID, title: title,
+                          placement: ScreenWindowRules.placement(onScreen: onScreen, size: bounds.size,
+                                                                 displaySizes: displaySizes))
         }
+        // Stable: on this desktop first, so a lookup by title or "front
+        // window" prefers a window that is certainly drawn.
+        return listed.filter { $0.placement == .here } + listed.filter { $0.placement != .here }
     }
 
     private static func windowList(_ option: CGWindowListOption) -> [[String: Any]] {

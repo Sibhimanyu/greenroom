@@ -1992,6 +1992,7 @@ final class CoordinatorController: ObservableObject {
     func startShapePreview() {
         guard !shapePreviewOn else { return }
         shapePreviewOn = true
+        StageScreenSource.log("Settings preview opened.")
         attachPreview()
     }
 
@@ -2027,6 +2028,7 @@ final class CoordinatorController: ObservableObject {
     func stopAiming() { cameraProbe.stop() }
 
     func stopShapePreview() {
+        StageScreenSource.log("Settings preview closed\(!sceneInUse && !isRunning ? "; the picture stops with it" : "").")
         shapePreviewOn = false
         shapePreviewApply?.cancel()
         if let stage, previewAttached { stage.removeSink(previewSink) }
@@ -2050,6 +2052,11 @@ final class CoordinatorController: ObservableObject {
     /// `rebuild` is kept for the callers that changed what is shared; the
     /// compositor swaps the share without blanking the picture either way.
     func requestShapeApply(rebuild: Bool = false) {
+        // Choosing a screen-based tile is asking for the screen: if macOS has
+        // not allowed it, say where, once.
+        if rebuild, shareTarget.kind != .nothing, !StageCompositor.screenRecordingGranted {
+            StageScreenSource.openPermissionPaneOnce()
+        }
         shapePreviewApply?.cancel()
         shapePreviewApply = Task {
             try? await Task.sleep(nanoseconds: 120_000_000)
@@ -3553,7 +3560,7 @@ final class CoordinatorController: ObservableObject {
         let wantsScreen = configuration.share.kind != .nothing
 
         if wantsScreen, !StageCompositor.screenRecordingGranted {
-            log("Greenroom needs Screen Recording permission to share your screen, and it isn\u{2019}t on yet. macOS is asking now (or open System Settings \u{2192} Privacy & Security \u{2192} Screen Recording and turn Greenroom on). Until then the class sees your camera only.")
+            log("Greenroom needs Screen Recording permission to share your screen, and it isn\u{2019}t on yet. macOS is asking now (or open System Settings \u{2192} Privacy & Security \u{2192} Screen Recording and turn Greenroom on, then quit and reopen Greenroom). Until then the class sees your camera only.")
             StageCompositor.requestScreenRecordingAccess()
             watchForScreenPermission()
         }

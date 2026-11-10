@@ -152,8 +152,12 @@ final class StageCompositor: StageFrameSource {
     static var screenRecordingGranted: Bool { CGPreflightScreenCaptureAccess() }
 
     /// Shows macOS's prompt the first time; after a refusal it opens the
-    /// System Settings pane instead, the only place the answer can change.
-    @MainActor static func requestScreenRecordingAccess() { StageScreenSource.askForPermission() }
+    /// System Settings pane instead (once per launch), the only place the
+    /// answer can change.
+    @MainActor static func requestScreenRecordingAccess() {
+        if CGRequestScreenCaptureAccess() { return }
+        StageScreenSource.openPermissionPaneOnce()
+    }
 
     // MARK: Control
 
@@ -189,7 +193,7 @@ final class StageCompositor: StageFrameSource {
         publishers = [:]; screenSources = [:]; shareKey = nil
         lock.unlock()
         cams.forEach { $0.stop() }
-        screens.forEach { $0.stop() }
+        screens.forEach { $0.stop(because: "the picture was stopped") }
         board.setSlots([]); board.clearScreen()
         renderQueue.async { [self] in timer?.cancel(); timer = nil }
         post {
@@ -240,10 +244,20 @@ final class StageCompositor: StageFrameSource {
 
         lock.lock()
         let key = "\(cfg.share.kind.rawValue)|\(cfg.share.appBundleID)|\(cfg.share.windowTitle)|\(cfg.displayUUID)"
-        let restartScreen = key != shareKey || (waitingForPermission && Self.screenRecordingGranted)
+        let permissionArrived = waitingForPermission && Self.screenRecordingGranted
+        let restartScreen = key != shareKey || permissionArrived
+        // Cleared here, in the same locked step that bumps the round. It used
+        // to be cleared later inside syncScreen, so two applies in quick
+        // succession (the permission watcher, then a tile click) each saw
+        // "waiting" and each bumped the round: the first capture was started
+        // and then stopped as superseded a few dozen milliseconds later.
+        if permissionArrived { waitingForPermission = false }
         if restartScreen { shareKey = key; screenGeneration += 1 }
         let generation = screenGeneration
         lock.unlock()
+        if restartScreen {
+            StageScreenSource.log("Screen wanted: \(cfg.share.kind.rawValue)\(cfg.share.appBundleID.isEmpty ? "" : " " + cfg.share.appBundleID)\(cfg.share.windowTitle.isEmpty ? "" : " \u{201C}" + cfg.share.windowTitle + "\u{201D}"), display \(cfg.displayUUID.isEmpty ? "automatic" : cfg.displayUUID) (round \(generation)).")
+        }
 
         controlQueue.async { [self] in syncCameras(uids: uids, removal: wantsRemoval) }
         if restartScreen { Task.detached { [self] in await syncScreen(cfg, generation: generation) } }
@@ -297,13 +311,14 @@ final class StageCompositor: StageFrameSource {
             // Nothing shared: let the screen go entirely, not hidden. (An earlier design
             // kept the source for the sake of a teardown crash;
             // ScreenCaptureKit has no such problem.)
-            retireScreens(except: nil)
+            retireScreens(except: nil, because: "Nothing was chosen for Behind you")
             board.clearScreen()
             post { $0.screenLive = false; $0.shareLabel = nil; $0.shareFallback = nil; $0.displayFellBack = false }
             return
         }
         guard Self.screenRecordingGranted else {
             lock.lock(); waitingForPermission = true; lock.unlock()
+            StageScreenSource.log("Not started: Screen Recording is off for Greenroom.")
             post { $0.screenLive = false; $0.lastError = StageScreenSource.permissionMessage }
             return
         }
@@ -326,7 +341,7 @@ final class StageCompositor: StageFrameSource {
         source.onFrame = { [weak self, weak source] buffer in
             guard let self, let source else { return }
             if self.board.offerScreen(buffer, wholeDisplay: source.wholeDisplay, from: source.id) {
-                self.retireScreens(except: source.id)
+                self.retireScreens(except: source.id, because: "replaced by a newer capture that has a picture")
                 self.post { $0.screenLive = true; $0.lastError = nil }
             }
         }
@@ -340,7 +355,7 @@ final class StageCompositor: StageFrameSource {
             }
             self.setScreenSource(source.id, nil)
             let again = self.isCurrent(generation)
-            source.stop()
+            source.stop(because: "macOS ended it, \(StageScreenSource.describe(error))")
             guard again else { return }
             Task.detached {
                 try? await Task.sleep(nanoseconds: 2_000_000_000)
@@ -348,7 +363,10 @@ final class StageCompositor: StageFrameSource {
             }
         }
 
-        guard current() else { return }
+        guard current() else {
+            StageScreenSource.log("Not started: a newer choice (round \(generation) is out of date) arrived first.")
+            return
+        }
         setScreenSource(source.id, source)
         board.expectScreen(source.id)
         do { try await source.start() } catch {
@@ -365,7 +383,7 @@ final class StageCompositor: StageFrameSource {
         if !current() { // Superseded while starting.
             setScreenSource(source.id, nil)
             board.dropPending(source.id)
-            source.stop()
+            source.stop(because: "superseded: the choice changed, or the picture stopped, while it was starting (round \(generation))")
         }
     }
 
@@ -378,12 +396,12 @@ final class StageCompositor: StageFrameSource {
         lock.lock(); screenSources[id] = source; lock.unlock()
     }
 
-    private func retireScreens(except keep: UUID?) {
+    private func retireScreens(except keep: UUID?, because reason: String) {
         lock.lock()
         let old = screenSources.filter { $0.key != keep }
         for key in old.keys { screenSources[key] = nil }
         lock.unlock()
-        old.values.forEach { $0.stop() }
+        old.values.forEach { $0.stop(because: reason) }
     }
 
     // MARK: The clock

@@ -71,7 +71,7 @@ struct ContentView: View {
     /// Recording needs a live session - except when already
     /// recording, where the button must stay pressable to stop it.
     private var recordDisabled: Bool {
-        !coordinator.stageLive && !coordinator.isRecording
+        coordinator.isSavingRecording || (!coordinator.stageLive && !coordinator.isRecording)
     }
 
     /// Names the session's folder, so a term of classes is not a wall of
@@ -374,11 +374,13 @@ struct ContentView: View {
         Button {
             coordinator.toggleRecording()
         } label: {
-            Label(coordinator.isRecording ? "Stop Recording" : "Record",
-                  systemImage: coordinator.isRecording ? "stop.circle.fill" : "record.circle")
+            Label(coordinator.isSavingRecording ? "Saving\u{2026}"
+                    : coordinator.isRecording ? "Stop Recording" : "Record",
+                  systemImage: coordinator.isSavingRecording ? "hourglass"
+                    : coordinator.isRecording ? "stop.circle.fill" : "record.circle")
         }
         .controlSize(.large)
-        .tint(coordinator.isRecording ? .red : Self.secondaryTint)
+        .tint(coordinator.isRecording && !coordinator.isSavingRecording ? .red : Self.secondaryTint)
         .disabled(recordDisabled)
         .help("Records exactly what participants see \u{2014} your shared screen with you in it. Saved to Documents/Greenroom when stopped.")
     }

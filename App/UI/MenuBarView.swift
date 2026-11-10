@@ -42,11 +42,13 @@ struct MenuBarView: View {
         .keyboardShortcut("x", modifiers: [.option, .command])
         .disabled(coordinator.isStopping || (!coordinator.isRunning && !coordinator.sceneInUse))
 
-        Button(coordinator.isRecording ? "Stop Recording" : "Start Recording") {
+        Button(coordinator.isSavingRecording ? "Saving\u{2026}"
+                : coordinator.isRecording ? "Stop Recording" : "Start Recording") {
             coordinator.toggleRecording()
         }
         .keyboardShortcut("r", modifiers: [.option, .command])
-        .disabled(!coordinator.stageLive && !coordinator.isRecording && !coordinator.recordOnlyActive)
+        .disabled(coordinator.isSavingRecording
+                  || (!coordinator.stageLive && !coordinator.isRecording && !coordinator.recordOnlyActive))
 
         // The upload runs in the background; this is where its progress
         // lives, rather than a toast the teacher would have to watch.

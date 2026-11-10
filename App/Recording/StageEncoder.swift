@@ -166,22 +166,81 @@ final class StageEncoder {
         audioWritten += 1
     }
 
-    func finish() async {
-        guard !finished else { return }
+    /// How long `finish` waits for the writer to close the file before it lets go.
+    static let finishTimeout: TimeInterval = 20
+    /// How long a retired writer may take before the log says so.
+    static let retireWatchdog: TimeInterval = 10
+
+    /// Test seam: stands in for a slow AVFoundation teardown (the harness sets
+    /// it; the app never does).
+    nonisolated(unsafe) static var testTeardownDelay: TimeInterval = 0
+
+    /// Ends the file. Returns false when the writer had not finished within
+    /// `timeout` (the caller carries on: the fragmented MP4 still plays).
+    ///
+    /// Nothing here can block the caller: `cancelWriting` (which joins a
+    /// thread inside MediaToolbox and has been seen to take a minute) runs on
+    /// a throwaway queue, and `finishWriting` is raced against a timer.
+    @discardableResult
+    func finish(timeout: TimeInterval = StageEncoder.finishTimeout) async -> Bool {
+        guard !finished else { return true }
         finished = true
-        guard writer.status == .writing else { return }
+        guard writer.status == .writing else { return true }
         if startTime == nil {
-            writer.cancelWriting()
-            return
+            Self.tearDownOffQueue(writer, label: "empty recording", log: nil)
+            return true
         }
         video.markAsFinished()
         audio?.markAsFinished()
-        await writer.finishWriting()
+        let writer = self.writer
+        return await withCheckedContinuation { (cont: CheckedContinuation<Bool, Never>) in
+            let once = Latch()
+            writer.finishWriting { if once.trip() { cont.resume(returning: true) } }
+            DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + timeout) {
+                if once.trip() { cont.resume(returning: false) }
+            }
+        }
     }
 
-    func cancel() {
+    /// Drops the writer without waiting for it. The caller must already have
+    /// stopped appending (it owns the encoder on the recorder's queue and is
+    /// about to forget it). Safe to call from the recorder's serial queue: the
+    /// blocking part happens elsewhere. `keepAlive` is held until the writer is
+    /// gone (the clip buffer's ring, which is the writer's delegate).
+    func cancel(label: String = "writer", keepAlive: AnyObject? = nil, log: ((String) -> Void)? = nil) {
         finished = true
-        writer.cancelWriting()
+        Self.tearDownOffQueue(writer, label: label, keepAlive: keepAlive, log: log)
+    }
+
+    private static func tearDownOffQueue(_ writer: AVAssetWriter, label: String,
+                                         keepAlive: AnyObject? = nil, log: ((String) -> Void)?) {
+        let started = Date()
+        let latch = Latch()
+        DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + retireWatchdog) {
+            if latch.trip() {
+                log?("The old \(label) is still shutting down after \(Int(retireWatchdog)) s; nothing is waiting on it.")
+            }
+        }
+        DispatchQueue(label: "greenroom.recorder.retire", qos: .utility).async {
+            if testTeardownDelay > 0 { Thread.sleep(forTimeInterval: testTeardownDelay) }
+            if writer.status == .writing { writer.cancelWriting() }
+            latch.trip()
+            let took = Date().timeIntervalSince(started)
+            if took > 2 { log?("The old \(label) took \(Int(took.rounded())) s to shut down in the background.") }
+            withExtendedLifetime(keepAlive) {}
+        }
+    }
+}
+
+/// Trips once; the first caller learns it was first.
+private final class Latch: @unchecked Sendable {
+    private let lock = NSLock()
+    private var tripped = false
+    @discardableResult func trip() -> Bool {
+        lock.lock(); defer { lock.unlock() }
+        if tripped { return false }
+        tripped = true
+        return true
     }
 }
 
@@ -191,6 +250,8 @@ enum RecorderError: LocalizedError {
     case clipBufferNotArmed
     case nothingBuffered
     case lowDisk
+    case stillSaving
+    case noFolder
 
     var errorDescription: String? {
         switch self {
@@ -199,6 +260,8 @@ enum RecorderError: LocalizedError {
         case .clipBufferNotArmed: return "The clip buffer is not running."
         case .nothingBuffered: return "Nothing has been buffered yet."
         case .lowDisk: return "The disk is almost full."
+        case .stillSaving: return "The last recording is still being saved."
+        case .noFolder: return "There is no session folder to record into."
         }
     }
 }

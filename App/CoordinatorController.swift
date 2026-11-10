@@ -84,6 +84,10 @@ final class CoordinatorController: ObservableObject {
                               body: "\(url.lastPathComponent) \u{2014} in Documents/Greenroom.")
             }
             isRecording = false
+        } else if let saving = savingTask {
+            // End Session stopped the tape in the background; Quit still
+            // gives the file the same bounded wait.
+            _ = await Self.boundedWait(seconds: 8) { await saving.value }
         }
         mark("record", from: recordStart)
 
@@ -136,6 +140,20 @@ final class CoordinatorController: ObservableObject {
             Task.detached {
                 try? await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
                 if once.take() { cont.resume(returning: recorder.recordingURL) }
+            }
+        }
+    }
+
+    private static func boundedWait<T: Sendable>(seconds: Double, _ op: @escaping @Sendable () async -> T) async -> T? {
+        await withCheckedContinuation { (cont: CheckedContinuation<T?, Never>) in
+            let once = OnceFlag()
+            Task.detached {
+                let value = await op()
+                if once.take() { cont.resume(returning: value) }
+            }
+            Task.detached {
+                try? await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
+                if once.take() { cont.resume(returning: nil) }
             }
         }
     }
@@ -1462,7 +1480,6 @@ final class CoordinatorController: ObservableObject {
         cuesSurfaceReported = false
         Task {
             log("Stopping\u{2026}")
-            var savedRecording: String?
             // Chat teardown first: close the window before leave() flips
             // isJoined, so the meeting-ended observer sees it already
             // closed and doesn't double-log.
@@ -1504,23 +1521,32 @@ final class CoordinatorController: ObservableObject {
             try? await Task.sleep(nanoseconds: 300_000_000)
             endMeetingForEveryone(askedSDKToEnd: zoomChatClient.leave())
 
-            // Finish any in-progress recording first: the file has to be
-            // whole before the cameras that feed it go away.
-            if isRecording {
-                if let url = await recorder?.stop() {
-                    // End Session stops the tape too, so marks have to be
-                    // adopted here as well or a class ended the ordinary way
-                    // would strand them in pending-clips.json.
-                    let marks = adoptPendingClips(recordedAt: url.path)
-                    log("Recording saved: \(url.path)" + (marks > 0 ? " (\(marks) clip\(marks == 1 ? "" : "s") marked)" : ""))
-                    Notifier.post(title: "Recording saved",
-                                  body: "\(url.lastPathComponent) \u{2014} in Documents/Greenroom.")
-                    // Not yet: the YouTube question waits until the session
-                    // has finished ending, below. Asked here, it arrived in the
-                    // middle of the teardown and read as End waiting on it.
-                    savedRecording = url.path
-                }
+            // Stop the tape now, finish the file in the background. The
+            // recorder stops taking frames the moment stop() is called, so
+            // the cameras can go away at once; waiting for the writer here
+            // once held "Ending\u{2026}" up for a minute. Quit still waits for it.
+            if isRecording, let rec = recorder {
                 isRecording = false
+                isSavingRecording = true
+                savingTask = Task { [weak self] in
+                    let url = await rec.stop()
+                    guard let self else { return url?.path }
+                    var saved: String?
+                    if let url {
+                        // End Session stops the tape too, so marks have to be
+                        // adopted here as well or a class ended the ordinary way
+                        // would strand them in pending-clips.json.
+                        let marks = self.adoptPendingClips(recordedAt: url.path)
+                        self.log("Recording saved: \(url.path)" + (marks > 0 ? " (\(marks) clip\(marks == 1 ? "" : "s") marked)" : ""))
+                        Notifier.post(title: "Recording saved",
+                                      body: "\(url.lastPathComponent) \u{2014} in Documents/Greenroom.")
+                        saved = url.path
+                    } else {
+                        self.log("Recording stopped, but no picture was written \u{2014} nothing was saved.")
+                    }
+                    self.isSavingRecording = false
+                    return saved
+                }
             }
             await tearDownStage()
             log("Session ended \u{2014} the camera and screen capture are off.")
@@ -1534,7 +1560,10 @@ final class CoordinatorController: ObservableObject {
             showMainWindow()
             // Everything is over now - the meeting, the recording, the picture - so
             // the upload question is the last thing, and nothing waits on it.
-            if let savedRecording { recordingFinished(path: savedRecording) }
+            if let saving = savingTask {
+                savingTask = nil
+                Task { if let path = await saving.value { recordingFinished(path: path) } }
+            }
         }
     }
 
@@ -1616,6 +1645,13 @@ final class CoordinatorController: ObservableObject {
     private(set) var sessionFolder: URL?
 
     @Published private(set) var isRecording = false
+    /// A recording has been stopped and its file is still being closed. The
+    /// Record control reads "Saving\u{2026}" and is disabled, and nothing may
+    /// start a new recording until it is done.
+    @Published private(set) var isSavingRecording = false
+    /// The file being closed after End Session, so Quit can wait for it
+    /// (bounded) and the upload question can follow it.
+    private var savingTask: Task<String?, Never>?
     /// For the recording_end duration band, and read by the notes bar to time
     /// a note into the tape (SessionNotes). Never written anywhere.
     private(set) var recordingStartedAt: Date?
@@ -1797,6 +1833,12 @@ final class CoordinatorController: ObservableObject {
     }
 
     func toggleRecording() {
+        // A press while the last file is still closing must never start a
+        // second recording (it once did, and wrote one outside any session).
+        guard !isSavingRecording, !isStopping else {
+            log("Recording is still saving \u{2014} wait a moment.")
+            return
+        }
         // In the Record view the picture outlives each take: the shortcut
         // starts or stops a take and leaves the picture up for the next.
         if recordOnlyActive {
@@ -1806,8 +1848,10 @@ final class CoordinatorController: ObservableObject {
         Task {
             do {
                 if isRecording {
-                    let url = await recorder?.stop()
+                    isSavingRecording = true
                     isRecording = false
+                    let url = await recorder?.stop()
+                    isSavingRecording = false
                     Analytics.track(.recordingEnd, [
                         .durationBand: Analytics.band(seconds: recordingStartedAt.map { Date().timeIntervalSince($0) } ?? 0)
                     ])
@@ -1828,6 +1872,7 @@ final class CoordinatorController: ObservableObject {
                     try await beginRecording()
                 }
             } catch {
+                isSavingRecording = false
                 log("Recording failed: \(error.localizedDescription) \u{2014} press Start first if the session isn't running.")
                 Analytics.failure("record")
             }
@@ -1864,8 +1909,16 @@ final class CoordinatorController: ObservableObject {
                 NSLocalizedDescriptionKey: "The picture isn't running, so there is nothing to record."
             ])
         }
+        // A recording belongs in a session folder, always. With none (the
+        // session has ended) there is nothing to record into: refuse rather
+        // than drop a loose file in the root of Documents/Greenroom.
+        guard let folder = sessionFolder else {
+            log("Not recording: there is no session folder (the session has ended).")
+            throw RecorderError.noFolder
+        }
+        guard !isSavingRecording else { throw RecorderError.stillSaving }
         recorder.microphoneUID = micDeviceUID
-        try recorder.start(in: sessionFolder ?? SessionFolders.recordingsDirectory)
+        try recorder.start(in: folder)
         isRecording = true
         recordingStartedAt = Date()
         Analytics.track(.recordingStart)
@@ -1952,7 +2005,7 @@ final class CoordinatorController: ObservableObject {
     /// take is on disk, so the clip shortcuts mark the recording itself, as
     /// they do whenever one is running.
     func startTake() {
-        guard recordOnlyActive, !isRecording, !takeBusy, !isStopping else { return }
+        guard recordOnlyActive, !isRecording, !isSavingRecording, !takeBusy, !isStopping else { return }
         takeBusy = true
         let startedAt = Date()
         let folder = SessionFolders.uniqueSessionFolder(
@@ -2002,7 +2055,11 @@ final class CoordinatorController: ObservableObject {
     private func finishTake() async -> String? {
         var saved: String?
         if isRecording {
-            if let url = await recorder?.stop() {
+            isSavingRecording = true
+            isRecording = false
+            let stopped = await recorder?.stop()
+            isSavingRecording = false
+            if let url = stopped {
                 let path = url.path
                 let marks = adoptPendingClips(recordedAt: path)
                 log("Recording saved: \(path)" + (marks > 0 ? " (\(marks) clip\(marks == 1 ? "" : "s") marked)" : ""))
@@ -2012,7 +2069,6 @@ final class CoordinatorController: ObservableObject {
             } else {
                 log("Recording stopped, but no picture was written \u{2014} nothing was saved.")
             }
-            isRecording = false
             Analytics.track(.recordingEnd, [
                 .durationBand: Analytics.band(seconds: recordingStartedAt.map { Date().timeIntervalSince($0) } ?? 0)
             ])
@@ -2477,6 +2533,7 @@ final class CoordinatorController: ObservableObject {
                     meetingNumber: digits,
                     startedAt: startedAt,
                     isRecording: self.isRecording,
+                    isSavingRecording: self.isSavingRecording,
                     presetName: self.meetingPresets.first { $0.number == digits }?.name ?? "",
                     speakerHidden: self.speakerTileQuickHidden,
                     readiness: self.startReadiness)

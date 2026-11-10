@@ -31,6 +31,8 @@ enum ParticipantGridWindowController {
         var meetingNumber: String = ""
         var startedAt: Date?
         var isRecording: Bool = false
+        /// The last recording is still being closed; Record waits.
+        var isSavingRecording: Bool = false
         var presetName: String = ""
         /// Whether the live-speaker tile is currently quick-hidden, so the rail
         /// can offer the opposite action rather than a stale one.
@@ -1643,11 +1645,14 @@ private final class RootView: NSView {
         railControls.append(Self.railHeader("Greenroom"))
 
         let recording = session.isRecording
-        railControls.append(Self.railRow(recording ? "Stop Recording" : "Record",
-                                         symbol: recording ? "stop.circle.fill" : "record.circle",
-                                         alert: recording, hint: "\u{2325}\u{2318}R") {
+        let saving = session.isSavingRecording
+        let recordRow = Self.railRow(saving ? "Saving\u{2026}" : recording ? "Stop Recording" : "Record",
+                                     symbol: saving ? "hourglass" : recording ? "stop.circle.fill" : "record.circle",
+                                     alert: recording && !saving, hint: "\u{2325}\u{2318}R") {
             ParticipantGridWindowController.requestToggleRecording()
-        })
+        }
+        recordRow.isEnabled = !saving
+        railControls.append(recordRow)
         railControls.append(Self.railRow("Snap Back", symbol: "rectangle.3.group",
                                          hint: "Snap windows back  \u{2325}\u{2318}S") {
             ParticipantGridWindowController.requestSnapBack()

@@ -43,6 +43,7 @@ struct RecordStudioView: View {
             isRecording: coordinator.isRecording,
             recordingStartedAt: coordinator.recordingStartedAt,
             busy: coordinator.takeBusy || coordinator.isStopping,
+            saving: coordinator.isSavingRecording,
             notice: screenNotice,
             previewAspect: coordinator.shapePreviewAspect,
             cameraSeesYou: coordinator.cameraSeesYou || !coordinator.webcamShape.usesChromaKey,
@@ -111,6 +112,9 @@ struct RecordStudioContent<LivePicture: View, ShareDetail: View, Cameras: View, 
     let recordingStartedAt: Date?
     /// A take is starting or finishing, or the view is closing.
     let busy: Bool
+    /// The take has stopped and its file is still closing: the button reads
+    /// "Saving\u{2026}" and cannot be pressed.
+    var saving = false
     /// One line above the picture, or nil.
     let notice: String?
     /// The live picture's size, or nil before the first frame.
@@ -298,15 +302,15 @@ struct RecordStudioContent<LivePicture: View, ShareDetail: View, Cameras: View, 
                 }
             }
             Button(action: record) {
-                Label(isRecording ? "Stop" : "Record",
-                      systemImage: isRecording ? "stop.circle.fill" : "record.circle")
+                Label(saving ? "Saving\u{2026}" : isRecording ? "Stop" : "Record",
+                      systemImage: saving ? "hourglass" : isRecording ? "stop.circle.fill" : "record.circle")
                     .font(.title3.weight(.semibold))
                     .frame(minWidth: 120, minHeight: 28)
             }
             .buttonStyle(.borderedProminent)
             .controlSize(.extraLarge)
-            .tint(isRecording ? Color.red : Brand.green)
-            .disabled(busy || opening)
+            .tint(isRecording && !saving ? Color.red : Brand.green)
+            .disabled(busy || opening || saving)
             .help(isRecording ? "Stops and saves the recording. The picture stays on for another."
                               : "Starts recording the picture above.")
         }

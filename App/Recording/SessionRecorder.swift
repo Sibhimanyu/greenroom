@@ -60,6 +60,8 @@ final class SessionRecorder: StageFrameSink {
 
     private let lock = NSLock()
     private var recordingActive = false
+    /// stop() has taken the recording and is still closing the file.
+    private var stopping = false
     private var bufferActive = false
     private var pendingFrames = 0
     private var droppedBusy = 0
@@ -137,6 +139,7 @@ final class SessionRecorder: StageFrameSink {
     func start(in folder: URL) throws {
         lock.lock()
         if recordingActive { lock.unlock(); throw RecorderError.alreadyRecording }
+        if stopping { lock.unlock(); throw RecorderError.stillSaving }
         lock.unlock()
 
         let manager = FileManager.default
@@ -155,7 +158,10 @@ final class SessionRecorder: StageFrameSink {
             log("Recording without sound \u{2014} Greenroom does not have microphone permission.")
         }
 
-        queue.sync {
+        // Async, never sync: this is called from the main thread, and the
+        // queue may be busy. Frames only start once `recordingActive` is set
+        // below, and their handlers queue behind this block.
+        queue.async { [self] in
             recording = encoder
             recordingHadAudio = withAudio
             lastDiskCheck = .distantPast
@@ -177,9 +183,12 @@ final class SessionRecorder: StageFrameSink {
         let (was, url): (Bool, URL?) = lock.withLock {
             let was = recordingActive
             recordingActive = false
+            if was { stopping = true }
             return (was, recordingURL_)
         }
-        guard was, let url else { return nil }
+        guard was else { return nil }
+        defer { lock.withLock { stopping = false } }
+        guard let url else { return nil }
         syncPlumbing()
 
         let encoder: StageEncoder? = await withCheckedContinuation { cont in
@@ -188,7 +197,10 @@ final class SessionRecorder: StageFrameSink {
             }
         }
         guard let encoder else { return nil }
-        await encoder.finish()
+        let closed = await encoder.finish()
+        if !closed {
+            log("The recording file did not finish closing within \(Int(StageEncoder.finishTimeout)) s; carrying on. The file is written in fragments, so it still plays.")
+        }
 
         let written = encoder.framesWritten
         let busy = lock.withLock { droppedBusy }
@@ -226,7 +238,7 @@ final class SessionRecorder: StageFrameSink {
         if bufferActive { lock.unlock(); return }
         bufferActive = true
         lock.unlock()
-        queue.sync {
+        queue.async { [self] in
             bufferSeconds = seconds
             ring = ClipRing(window: TimeInterval(seconds), segmentInterval: Self.segmentInterval)
             bufferEncoder = nil // made at the first frame, which sets its clock
@@ -242,11 +254,15 @@ final class SessionRecorder: StageFrameSink {
         lock.unlock()
         guard was else { return }
         syncPlumbing()
+        // Detach at once, then let the writer die elsewhere: cancelling the
+        // segmented writer joins a MediaToolbox thread and has taken a minute,
+        // and everything else (the next start, stop) queues behind this block.
         queue.async { [self] in
-            bufferEncoder?.cancel()
+            let old = bufferEncoder, oldRing = ring
             bufferEncoder = nil
-            ring?.reset()
             ring = nil
+            old?.cancel(label: "clip buffer", keepAlive: oldRing, log: log)
+            oldRing?.reset()
         }
     }
 
@@ -282,18 +298,21 @@ final class SessionRecorder: StageFrameSink {
     /// Attach to the stage and start the microphone while either job needs
     /// them; let both go when neither does.
     private func syncPlumbing() {
+        // The flags are decided under the lock and the (possibly slow) calls
+        // made outside it, so a start on the main thread never waits on a
+        // stop that is closing the microphone on another thread.
         lock.lock()
         let needed = recordingActive || bufferActive
+        var attach = false, detach = false, micOn = false, micOff = false
+        if needed, !attached { attached = true; attach = true }
+        else if !needed, attached { attached = false; detach = true }
+        if needed, !micRunning, microphoneUID != nil { micRunning = true; micOn = true }
+        else if !needed, micRunning { micRunning = false; micOff = true }
+        let uid = microphoneUID
         lock.unlock()
-        if needed, !attached {
-            attached = true
-            source.addSink(self)
-        } else if !needed, attached {
-            attached = false
-            source.removeSink(self)
-        }
-        if needed, !micRunning, let uid = microphoneUID {
-            micRunning = true
+        if attach { source.addSink(self) }
+        if detach { source.removeSink(self) }
+        if micOn, let uid {
             mic.start(uid: uid) { [weak self] result in
                 switch result {
                 case .running: break
@@ -302,10 +321,8 @@ final class SessionRecorder: StageFrameSink {
                 case .failed(let why): self?.log("The microphone would not start (\(why)).")
                 }
             }
-        } else if !needed, micRunning {
-            micRunning = false
-            mic.stop()
         }
+        if micOff { mic.stop() }
     }
 
     // MARK: StageFrameSink
@@ -366,7 +383,7 @@ final class SessionRecorder: StageFrameSink {
             bufferEncoder?.appendVideo(frame, at: time)
             if let failure = bufferEncoder?.failure {
                 log("The clip buffer hit a problem (\(failure)); it is starting over.")
-                bufferEncoder?.cancel()
+                bufferEncoder?.cancel(label: "clip buffer", keepAlive: ring, log: log)
                 bufferEncoder = nil
                 bufferFailedAt = Date()
             }

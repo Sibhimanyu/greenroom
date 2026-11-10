@@ -95,6 +95,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 },
                 .init(keyCode: UInt32(kVK_ANSI_R), modifiers: mods, label: "\u{2325}\u{2318}R") {
                     guard let coordinator = CoordinatorController.shared,
+                          !coordinator.isSavingRecording,
                           coordinator.stageLive || coordinator.isRecording else { return }
                     coordinator.toggleRecording()
                 },

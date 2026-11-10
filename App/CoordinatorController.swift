@@ -166,11 +166,14 @@ final class CoordinatorController: ObservableObject {
         // during a start. In default Zoom-UI mode the teacher already has Zoom's
         // interface coming up in front of them and did not ask for another
         // floating surface on top of it.
-        guard customUIMode else {
+        // A failed start is the exception to both guards below: it always needs
+        // a card with a way out, wherever the panel is or is not.
+        let failed = startReadiness.failure != nil
+        guard customUIMode || failed else {
             ReadinessHUDController.close()
             return
         }
-        guard peopleViewTargetScreen() == nil else {
+        guard peopleViewTargetScreen() == nil || (failed && !ParticipantGridWindowController.isOpen) else {
             ReadinessHUDController.close()
             return
         }
@@ -986,7 +989,10 @@ final class CoordinatorController: ObservableObject {
     private let defaults = UserDefaults.standard
 
     init() {
-        defer { Self.shared = self }
+        defer {
+            Self.shared = self
+            observeDisplays()
+        }
         webcamShape = WebcamShape(rawValue: defaults.string(forKey: "webcamShape") ?? "") ?? .circle
         backgroundRemoval = BackgroundRemoval(rawValue: defaults.string(forKey: "backgroundRemoval") ?? "") ?? .automatic
         micDeviceUID = defaults.string(forKey: "micDeviceUID") ?? ""
@@ -1368,6 +1374,14 @@ final class CoordinatorController: ObservableObject {
                 // hands the panel back to its ordinary behaviour: the class side
                 // returns to "waiting for students" and the controls come up.
                 finishStartReadiness()
+                // A display was plugged or pulled while this was starting:
+                // anything placed before that settled is placed against a screen
+                // arrangement that no longer exists. Everything placed after it
+                // read the live arrangement, so this is a no-op for those.
+                if displayChangedDuringStart {
+                    displayChangedDuringStart = false
+                    snapWindowsBack(userInitiated: false)
+                }
             } catch is CancellationError {
                 // Stop abandoned the start on purpose. It closes the panel
                 // itself, so there is nothing to report on a surface that is
@@ -1375,24 +1389,46 @@ final class CoordinatorController: ObservableObject {
                 log("Start cancelled.")
                 finishStartReadiness()
             } catch {
-                log("Failed: \(error.localizedDescription)")
+                guard !isStopping else {
+                    // End Session was pressed and the step surfaced it as some
+                    // other error (a cancelled request). Not a failure.
+                    log("Start cancelled.")
+                    finishStartReadiness()
+                    isRunning = false
+                    return
+                }
+                let message = error.localizedDescription
+                log("Failed: \(message)")
                 Analytics.failure("start")
                 // Left on screen rather than cleared. The panel is the surface
                 // the teacher has been watching for the last several seconds,
                 // so it is where the failure belongs, named against the step it
-                // happened on.
-                failStartReadiness(error.localizedDescription)
+                // happened on - with Try again and Close on it.
+                failStartReadiness(message)
+                Notifier.post(title: "Greenroom couldn\u{2019}t start", body: message)
+                // And the unwind: a failed start used to leave the cameras, the
+                // recorder and the half-started meeting running behind the card
+                // (the CPU in Vision and AAC after a hung Start). Same teardown as
+                // End Session, minus closing the failure card.
+                stop(failure: message)
             }
             isRunning = false
         }
     }
 
+    /// A display event that settled while a Start was still running.
+    private var displayChangedDuringStart = false
+
     /// Fully tears down: finishes the recording, lets go of the meeting's
     /// video, and stops the cameras and the screen capture, so nothing carries
     /// over into the next Start.
-    func stop() {
+    ///
+    /// `failure` is set only when a Start failed and is being unwound: the
+    /// teardown is the same, but the failure card (and the loop that draws it)
+    /// is left on screen for the person to read, with Try again and Close.
+    func stop(failure: String? = nil) {
         guard !isStopping else { return }
-        if recordOnlyActive || (isRunning && startingRecordOnly) {
+        if failure == nil, recordOnlyActive || (isRunning && startingRecordOnly) {
             stopRecordingSession()
             return
         }
@@ -1407,6 +1443,10 @@ final class CoordinatorController: ObservableObject {
         // A start still in flight gets abandoned at its next checkpoint -
         // without this, its meeting setup raced the teardown below.
         startTask?.cancel()
+        // Whoever is waiting on the Zoom SDK is let go now, not when a
+        // watchdog fires: End during a stuck Start used to leave the Start
+        // button dead for the rest of the join timeout.
+        zoomChatClient.abandonPendingCallbacks()
         // The microphone tap goes first: the class is over, so is listening.
         stopCues()
         cuesSurfaceReported = false
@@ -1435,15 +1475,17 @@ final class CoordinatorController: ObservableObject {
             }
             // Custom UI: stop the SDK rendering into views that are about to
             // go away, then drop our window.
-            customUIGridTask?.cancel()
-            customUIGridTask = nil
-            finishStartReadiness()
-            ReadinessHUDController.close()
+            if failure == nil {
+                customUIGridTask?.cancel()
+                customUIGridTask = nil
+                finishStartReadiness()
+                ReadinessHUDController.close()
+            }
             recorder?.disarmClipBuffer()
             customUISpeakerTask?.cancel()
             tearDownActiveSpeakerWindow()
             SpeakerWindowController.close()
-            ParticipantGridWindowController.close()
+            if failure == nil { ParticipantGridWindowController.close() }
             zoomChatClient.releaseCustomUIVideo()
             // A beat between cancelling the window-follow loops and the
             // SDK tearing its meeting windows down: the crash logs' seven
@@ -2114,6 +2156,7 @@ final class CoordinatorController: ObservableObject {
         await settleBeforeJoining()
         zoomChatClient.setDualScreenMode(galleryWindowExists)
 
+        try await ensurePictureInstalled()
         reportMeetingVideo()
         applyMeetingMicrophone()
 
@@ -2150,6 +2193,7 @@ final class CoordinatorController: ObservableObject {
         await settleBeforeJoining()
         zoomChatClient.setDualScreenMode(galleryWindowExists)
 
+        try await ensurePictureInstalled()
         reportMeetingVideo()
         applyMeetingMicrophone()
 
@@ -2172,8 +2216,11 @@ final class CoordinatorController: ObservableObject {
                     // Scheduled menu - saves the fetch's network time.
                     zak = prefetched.zak
                 } else {
-                    zak = try await ZoomServerToServerClient.fetchZAK(
-                        accountID: s2sAccountID, clientID: s2sClientID, clientSecret: s2sClientSecret)
+                    let (account, client, secret) = (s2sAccountID, s2sClientID, s2sClientSecret)
+                    zak = try await withStartTimeout(20, step: "Getting your host key from Zoom",
+                                                     advice: "Joining as a participant instead.") {
+                        try await ZoomServerToServerClient.fetchZAK(accountID: account, clientID: client, clientSecret: secret)
+                    }
                 }
                 try await zoomChatClient.startAsHost(meetingNumber: meetingNumber, zak: zak, displayName: name, enableMedia: true)
                 startedAsHost = true
@@ -2957,12 +3004,17 @@ final class CoordinatorController: ObservableObject {
     /// session layout after the user has dragged windows around. Handles
     /// the built-in client's meeting window (ours, a plain NSWindow), and
     /// the follow loops those restart re-align the chat automatically.
-    func snapWindowsBack() {
-        Analytics.feature("snap_back")
-        // Restore the quick-hide mode's DEFAULT state (hidden when the
-        // mode is on, normal tile layout when off) - the parking loop
-        // restarted below asserts it.
-        speakerTileQuickHidden = speakerTileShortcutEnabled
+    ///
+    /// `userInitiated: false` is the same re-tiling after a display change: it
+    /// leaves the person's quick-hide choice and the usage count alone.
+    func snapWindowsBack(userInitiated: Bool = true) {
+        if userInitiated {
+            Analytics.feature("snap_back")
+            // Restore the quick-hide mode's DEFAULT state (hidden when the
+            // mode is on, normal tile layout when off) - the parking loop
+            // restarted below asserts it.
+            speakerTileQuickHidden = speakerTileShortcutEnabled
+        }
         builtInMeetingWindow?.level = .normal
         Task {
             if let error = await MainPaneManager.repositionFrontWindow(bundleID: mainAppBundleID, layout: workspaceLayout) {
@@ -3001,6 +3053,69 @@ final class CoordinatorController: ObservableObject {
         }
     }
 
+    // MARK: Displays coming and going
+
+    /// One registration, at launch. Everything that reacts to a display being
+    /// plugged in or pulled out hangs off the monitor\u{2019}s settled event, so
+    /// there is exactly one place to read to learn what happens.
+    private func observeDisplays() {
+        ParticipantGridWindowController.readinessDismiss = { [weak self] in self?.dismissStartFailure() }
+        ParticipantGridWindowController.readinessTryAgain = { [weak self] in self?.retryAfterFailure() }
+        DisplayMonitor.shared.onChange { [weak self] change in self?.displaysChanged(change) }
+    }
+
+    /// The failure card\u{2019}s Close: clears the card and what drew it.
+    private func dismissStartFailure() {
+        guard !isRunning else { return }
+        customUIGridTask?.cancel()
+        customUIGridTask = nil
+        ParticipantGridWindowController.close()
+        ReadinessHUDController.close()
+        finishStartReadiness()
+    }
+
+    /// The failure card\u{2019}s Try again: wait for the unwind of the failed start
+    /// to finish (the Start guard refuses anything while it runs), then Start.
+    private func retryAfterFailure() {
+        dismissStartFailure()
+        Task {
+            for _ in 0..<50 where isRunning || isStopping {
+                try? await Task.sleep(nanoseconds: 200_000_000)
+            }
+            start()
+        }
+    }
+
+    /// The displays have settled after a plug or unplug. In order: say what
+    /// happened; keep the class picture on a display that exists (it never goes
+    /// black meanwhile); bring in any window of ours stranded on a screen that
+    /// is gone; and re-tile the workspace against the arrangement that is there
+    /// now. The meeting itself is not touched - the picture keeps flowing to
+    /// Zoom through the same sender.
+    private func displaysChanged(_ change: DisplayMonitor.Change) {
+        let now = DisplayMonitor.describe(change.after)
+        if change.displaySetChanged {
+            var parts: [String] = []
+            if !change.removed.isEmpty { parts.append("\(change.removed.count) unplugged") }
+            if !change.added.isEmpty { parts.append("\(change.added.count) connected") }
+            log("Displays changed (\(parts.joined(separator: ", "))). Now: \(now).")
+        } else {
+            log("Display settings changed (resolution or arrangement). Now: \(now).")
+        }
+
+        stage?.displaysDidChange(connected: DisplayMonitor.connectedForCapture(),
+                                 main: LocalDeviceResolver.mainDisplayUUID,
+                                 displaySetChanged: change.displaySetChanged)
+        DisplayMonitor.rescueStrandedWindows { [weak self] line in self?.log(line) }
+        syncReadinessHUD()
+
+        if isRunning {
+            displayChangedDuringStart = true
+        } else if stageLive, zoomChatClient.isJoined {
+            snapWindowsBack(userInitiated: false)
+        }
+    }
+
     /// Menu bar's "Show Greenroom" - surfaces the main window.
     func showMainWindow() {
         NSApp.activate(ignoringOtherApps: true)
@@ -3012,8 +3127,19 @@ final class CoordinatorController: ObservableObject {
     /// unreachable by construction.
     private func prepareMeetingIfNeeded() async throws -> ZoomServerToServerClient.CreatedMeeting? {
         guard meetingMode == .create else { return nil }
-        await endStaleLiveMeetings()
-        return try await createMeetingViaAPI()
+        // Both are network calls to Zoom with no limit of their own that a
+        // person would call short. The clean-up is a courtesy and is dropped if
+        // slow; the creation is the step the whole start needs.
+        do {
+            try await withStartTimeout(15, step: "Checking for meetings left running",
+                                       advice: "Carrying on without it.") { await self.endStaleLiveMeetings() }
+        } catch let error as StartTimeoutError {
+            Self.sessionLog("Pre-flight: \(error.localizedDescription)")
+        }
+        return try await withStartTimeout(30, step: "Creating the meeting",
+            advice: "Check your internet connection and the Server-to-Server credentials in Settings (\u{2318},) \u{2192} Zoom, then press Try again.") {
+            try await self.createMeetingViaAPI()
+        }
     }
 
     /// Ends any meeting still live on the account before starting a new one.
@@ -3057,6 +3183,15 @@ final class CoordinatorController: ObservableObject {
     /// to fail. Says so only if the wait is long enough to notice, so the
     /// readiness card explains the pause rather than just sitting there.
     private func settleBeforeJoining() async {
+        // Not in the middle of a cable being plugged or pulled. A live run
+        // that lost its display during this exact step got Zoom error 22 on
+        // installing the picture and then a meeting that never connected.
+        let quietStarted = Date()
+        if !(await DisplayMonitor.shared.awaitQuiet()) {
+            log("A display is still changing \u{2014} starting anyway. If this start fails, wait a few seconds after plugging or unplugging a screen, then press Try again.")
+        } else if Date().timeIntervalSince(quietStarted) > 1 {
+            log("Waited for the screens to settle before joining.")
+        }
         let started = Date()
         let idle = await zoomChatClient.awaitMeetingIdle()
         let waited = Date().timeIntervalSince(started)
@@ -3530,6 +3665,19 @@ final class CoordinatorController: ObservableObject {
             cameraProbe.stop()
         }
         log("Ready \u{2014} Greenroom is sending its own picture to the meeting.")
+    }
+
+    /// The picture must be IN the meeting before the meeting opens. If Zoom
+    /// refuses it (after the client\u{2019}s own retries) the start stops here, with
+    /// the reason in plain words, instead of becoming a class that sees nothing.
+    private func ensurePictureInstalled() async throws {
+        let installed = try await withStartTimeout(25, step: "Putting your picture into the meeting",
+            advice: "Press Try again. If it keeps happening, quit and reopen Greenroom.") {
+            await self.zoomChatClient.awaitStageVideo()
+        }
+        guard installed else {
+            throw ZoomMeetingSDKError.videoInstallFailed(detail: zoomChatClient.stageVideoFailure ?? "no answer from Zoom")
+        }
     }
 
     /// Said once the meeting client is ready and before it joins, so a picture

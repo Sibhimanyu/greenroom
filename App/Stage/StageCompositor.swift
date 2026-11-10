@@ -134,6 +134,12 @@ final class StageCompositor: StageFrameSource {
     /// The screen was wanted but Screen Recording was off. `update` tries again
     /// once it is on, without the caller having to change anything.
     private var waitingForPermission = false
+    /// The configuration most recently applied, so a display change can
+    /// rebuild the capture without being handed it again.
+    private var lastConfiguration: StageConfiguration?
+    /// What the running screen capture was built against (see DisplayPlan).
+    private var activeCapture = DisplayPlan.Capture(activeUUID: nil, preferredUUID: "", fellBack: false,
+                                                    activePixelSize: nil, isWholeDisplay: true)
 
     init?(size: CGSize = CGSize(width: 1920, height: 1080), frameRate: Int = 30) {
         guard let pool = StageBufferPool(size: size) else { return nil }
@@ -191,6 +197,7 @@ final class StageCompositor: StageFrameSource {
         screenGeneration += 1
         let cams = Array(publishers.values), screens = Array(screenSources.values)
         publishers = [:]; screenSources = [:]; shareKey = nil
+        activeCapture.activeUUID = nil
         lock.unlock()
         cams.forEach { $0.stop() }
         screens.forEach { $0.stop(because: "the picture was stopped") }
@@ -243,6 +250,7 @@ final class StageCompositor: StageFrameSource {
         }
 
         lock.lock()
+        lastConfiguration = cfg
         let key = "\(cfg.share.kind.rawValue)|\(cfg.share.appBundleID)|\(cfg.share.windowTitle)|\(cfg.displayUUID)"
         let permissionArrived = waitingForPermission && Self.screenRecordingGranted
         let restartScreen = key != shareKey || permissionArrived
@@ -261,6 +269,43 @@ final class StageCompositor: StageFrameSource {
 
         controlQueue.async { [self] in syncCameras(uids: uids, removal: wantsRemoval) }
         if restartScreen { Task.detached { [self] in await syncScreen(cfg, generation: generation) } }
+    }
+
+    // MARK: Displays coming and going
+
+    /// Called once the displays have settled after a plug or unplug.
+    ///
+    /// The picture never goes black: a replacement capture is started BESIDE
+    /// the old one and only takes over when it has delivered its first frame
+    /// (see `retireScreens` in `syncScreen`), so until then the class keeps
+    /// seeing the last frame. A capture that is working is left alone, except
+    /// to go back to the chosen display when it had fallen back to the main
+    /// one and the chosen one has returned.
+    func displaysDidChange(connected: [DisplayPlan.Display], main: String?, displaySetChanged: Bool) {
+        lock.lock()
+        let cfg = lastConfiguration, isRunning = running
+        let capture = activeCapture
+        lock.unlock()
+        guard isRunning, let cfg, cfg.share.kind != .nothing, Self.screenRecordingGranted else { return }
+
+        let decision: DisplayPlan.Decision
+        if capture.activeUUID == nil {
+            decision = .rebuild("the screen capture isn\u{2019}t running; trying again now the displays have settled")
+        } else {
+            decision = DisplayPlan.decide(capture: capture, connected: connected,
+                                          displaySetChanged: displaySetChanged, main: main)
+        }
+        switch decision {
+        case .keep:
+            StageScreenSource.log("Displays changed; the screen capture is on a display that is still there, so it stays as it is.")
+        case .rebuild(let reason):
+            lock.lock()
+            screenGeneration += 1
+            let generation = screenGeneration
+            lock.unlock()
+            StageScreenSource.log("Displays changed: \(reason). The class keeps seeing the last picture until the new capture has one (round \(generation)).")
+            Task.detached { [self] in await syncScreen(cfg, generation: generation, retries: 3) }
+        }
     }
 
     // MARK: Cameras
@@ -304,7 +349,7 @@ final class StageCompositor: StageFrameSource {
 
     // MARK: Screen
 
-    private func syncScreen(_ cfg: StageConfiguration, generation: Int) async {
+    private func syncScreen(_ cfg: StageConfiguration, generation: Int, retries: Int = 0) async {
         func current() -> Bool { isCurrent(generation) }
 
         guard cfg.share.kind != .nothing else {
@@ -375,9 +420,24 @@ final class StageCompositor: StageFrameSource {
         do { try await source.start() } catch {
             board.dropPending(source.id)
             setScreenSource(source.id, nil)
+            // The old picture, if there is one, is still on screen: nothing
+            // was retired. After a display change ScreenCaptureKit can take a
+            // moment to list the new arrangement, so a rebuild tries again.
+            if retries > 0, current() {
+                StageScreenSource.log("The new capture didn\u{2019}t start (\(error.localizedDescription)); trying again in 1.5 s (\(retries) left).")
+                Task.detached { [self] in
+                    try? await Task.sleep(nanoseconds: 1_500_000_000)
+                    await syncScreen(cfg, generation: generation, retries: retries - 1)
+                }
+                return
+            }
             post { $0.screenLive = false; $0.lastError = error.localizedDescription }
             return
         }
+        let pixel = await MainActor.run { DisplayMonitor.connectedForCapture().first { $0.uuid == displayUUID }?.pixelSize }
+        record(DisplayPlan.Capture(activeUUID: displayUUID, preferredUUID: cfg.displayUUID,
+                                   fellBack: display.fellBack, activePixelSize: pixel,
+                                   isWholeDisplay: source.wholeDisplay))
         post {
             $0.shareLabel = resolved.label
             $0.shareFallback = resolved.fallback
@@ -388,6 +448,10 @@ final class StageCompositor: StageFrameSource {
             board.dropPending(source.id)
             source.stop(because: "superseded: the choice changed, or the picture stopped, while it was starting (round \(generation))")
         }
+    }
+
+    private func record(_ capture: DisplayPlan.Capture) {
+        lock.lock(); activeCapture = capture; lock.unlock()
     }
 
     private func isCurrent(_ generation: Int) -> Bool {

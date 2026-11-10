@@ -80,6 +80,12 @@ enum ParticipantGridWindowController {
     private static let micMonitor = MicLevelMonitor()
     private static var micTimer: Timer?
 
+    /// What the two buttons on a failed start do. Set once by the coordinator
+    /// and deliberately NOT cleared by `close()`: the failure card has to
+    /// outlive the session teardown that put it there.
+    static var readinessTryAgain: (@MainActor () -> Void)?
+    static var readinessDismiss: (@MainActor () -> Void)?
+
     private static weak var client: ZoomMeetingSDKClient?
     private static var log: (@MainActor (String) -> Void)?
     private static var endSession: (@MainActor () -> Void)?
@@ -224,7 +230,7 @@ enum ParticipantGridWindowController {
         let hosting: ControlPanel
         let isNewWindow: Bool
         if let existing = panel, isWindowed == windowed,
-           windowed || existing.screen === screen {
+           windowed || existing.screen.flatMap(DisplayResolver.displayID(of:)) == DisplayResolver.displayID(of: screen) {
             hosting = existing
             isNewWindow = false
         } else {
@@ -302,7 +308,15 @@ enum ParticipantGridWindowController {
     /// acknowledged the press either, which is the whole of what "unresponsive"
     /// meant here.
     static func refreshNow() {
-        guard let screen = lastScreen else { return }
+        guard let remembered = lastScreen else { return }
+        // The remembered NSScreen can be one that has since been unplugged (or
+        // rebuilt by AppKit after a display change). Re-find it by its display
+        // ID, and fall back to the main display, so a control pressed in that
+        // moment never re-frames the panel onto a dead screen.
+        let screen = DisplayResolver.displayID(of: remembered)
+            .flatMap { id in NSScreen.screens.first { DisplayResolver.displayID(of: $0) == id } }
+            ?? DisplayResolver.mainDisplayScreen()
+        guard let screen else { return }
         refresh(on: screen, session: lastSession, windowed: isWindowed)
     }
 
@@ -3249,10 +3263,24 @@ private final class ReadinessView: NSView {
     private var rows: [(glyph: NSImageView, spinner: NSProgressIndicator, label: NSTextField)] = []
     private let failure = NSTextField(labelWithString: "")
     private let detail = NSTextField(labelWithString: "")
+    /// A failed start always has a way out: try the whole start again, or
+    /// close the card. Without them the card was a dead end the teacher could
+    /// only leave by ending a session that was not running.
+    private let tryAgain = ClosureButton { Task { @MainActor in ParticipantGridWindowController.readinessTryAgain?() } }
+    private let dismiss = ClosureButton { Task { @MainActor in ParticipantGridWindowController.readinessDismiss?() } }
     private var readiness = ParticipantGridWindowController.Readiness()
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
+        tryAgain.title = "Try again"
+        tryAgain.bezelStyle = .rounded
+        tryAgain.keyEquivalent = "\r"
+        tryAgain.isHidden = true
+        addSubview(tryAgain)
+        dismiss.title = "Close"
+        dismiss.bezelStyle = .rounded
+        dismiss.isHidden = true
+        addSubview(dismiss)
         title.font = .monospacedSystemFont(ofSize: 10, weight: .semibold)
         title.textColor = .tertiaryLabelColor
         addSubview(title)
@@ -3270,7 +3298,7 @@ private final class ReadinessView: NSView {
 
         failure.font = .systemFont(ofSize: 12)
         failure.textColor = .systemRed
-        failure.maximumNumberOfLines = 3
+        failure.maximumNumberOfLines = 6
         failure.usesSingleLineMode = false
         failure.lineBreakMode = .byWordWrapping
         failure.isHidden = true
@@ -3321,6 +3349,8 @@ private final class ReadinessView: NSView {
         title.stringValue = next.failure == nil ? "GETTING READY" : "COULD NOT START"
         failure.stringValue = next.failure ?? ""
         failure.isHidden = next.failure == nil
+        tryAgain.isHidden = next.failure == nil
+        dismiss.isHidden = next.failure == nil
         // Suppressed once a failure is on screen: the red line IS the detail
         // then, and repeating the last progress note under it only competes.
         detail.stringValue = next.detail ?? ""
@@ -3365,10 +3395,12 @@ private final class ReadinessView: NSView {
     /// Height this needs at its current step count, so the caller can centre it.
     var fittingHeight: CGFloat {
         16 + 12 + 3 + 16 + CGFloat(rows.count) * Self.rowHeight
-            + (readiness.failure == nil ? 0 : 12 + 48)
+            + (readiness.failure == nil ? 0 : 12 + Self.failureHeight + 10 + 28)
             + (detail.isHidden ? 0 : 10 + 30)
     }
     private static let rowHeight: CGFloat = 26
+    /// Room for the plain-language failure (up to six short lines at 12pt).
+    private static let failureHeight: CGFloat = 96
 
     override func layout() {
         super.layout()
@@ -3410,7 +3442,11 @@ private final class ReadinessView: NSView {
 
         if !failure.isHidden {
             y += 12
-            failure.frame = NSRect(x: 0, y: y, width: width, height: 48)
+            failure.frame = NSRect(x: 0, y: y, width: width, height: Self.failureHeight)
+            y += Self.failureHeight + 10
+            let buttonWidth: CGFloat = 96
+            tryAgain.frame = NSRect(x: width - buttonWidth * 2 - 8, y: y, width: buttonWidth, height: 28)
+            dismiss.frame = NSRect(x: width - buttonWidth, y: y, width: buttonWidth, height: 28)
         }
     }
 }

@@ -64,6 +64,6 @@ struct AnalysisSetupPanel: View {
             }
             .padding(12)
         }
-        .frame(width: 560, height: 640)
+        .frame(width: 560, height: 700)
     }
 }

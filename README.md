@@ -481,12 +481,10 @@ Non-obvious build/runtime notes, learned the hard way:
 
 ## Cutting a release
 
-The setup and compact Settings improvements on `rethink-presence` are queued
-for the next release. Its draft notes are in [docs/release/next.md](docs/release/next.md).
-Before releasing from `main`, merge that branch and verify the Release build;
-committing the work on the feature branch alone does not include it in `main`.
-Pass the completed notes file to `scripts/release.sh <version> <notes-file>` when
-cutting the release.
+The setup and compact Settings improvements are included on `main` for the
+next release. Its draft notes are in [docs/release/next.md](docs/release/next.md).
+Verify the Release build and pass the completed notes file to
+`scripts/release.sh <version> <notes-file>` when cutting the release.
 
 ```sh
 xcodebuild -project Greenroom.xcodeproj -scheme Greenroom -configuration Release build

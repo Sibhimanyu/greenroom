@@ -36,7 +36,12 @@ enum ZoomServerToServerClient {
         let zak: String?
     }
 
-    private static func fetchAccessToken(accountID: String, clientID: String, clientSecret: String) async throws -> String {
+    private struct AccessTokenResponse: Decodable {
+        let access_token: String
+        let scope: String
+    }
+
+    private static func fetchAuthorization(accountID: String, clientID: String, clientSecret: String) async throws -> AccessTokenResponse {
         var request = URLRequest(url: URL(string: "https://zoom.us/oauth/token")!)
         request.httpMethod = "POST"
         let credentials = Data("\(clientID):\(clientSecret)".utf8).base64EncodedString()
@@ -48,8 +53,17 @@ enum ZoomServerToServerClient {
         guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
             throw ZoomServerToServerError.tokenRequestFailed(String(data: data, encoding: .utf8) ?? "unknown error")
         }
-        struct TokenResponse: Decodable { let access_token: String }
-        return try JSONDecoder().decode(TokenResponse.self, from: data).access_token
+        return try JSONDecoder().decode(AccessTokenResponse.self, from: data)
+    }
+
+    private static func fetchAccessToken(accountID: String, clientID: String, clientSecret: String) async throws -> String {
+        try await fetchAuthorization(accountID: accountID, clientID: clientID, clientSecret: clientSecret).access_token
+    }
+
+    /// Read the app's granted scopes without creating or ending a meeting.
+    static func grantedScopes(accountID: String, clientID: String, clientSecret: String) async throws -> Set<String> {
+        let authorization = try await fetchAuthorization(accountID: accountID, clientID: clientID, clientSecret: clientSecret)
+        return Set(authorization.scope.split(whereSeparator: \.isWhitespace).map(String.init))
     }
 
     /// Creates an instant meeting (`type: 1`) under the authorized

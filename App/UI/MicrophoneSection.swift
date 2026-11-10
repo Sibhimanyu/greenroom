@@ -5,8 +5,8 @@
 //  Settings -> Webcam -> Microphone: which microphone the class hears and
 //  the recording takes.
 //
-//  Cards, like the cameras above it. "System" follows whatever macOS has as
-//  its input, which is what Greenroom always did; any other card pins one
+//  A device menu. "System default" follows whatever macOS has as its
+//  input, which is what Greenroom always did; any other selection pins one
 //  device, for the built-in meeting client (live, mid-class too) and for
 //  the recording (from the next Start).
 //
@@ -36,45 +36,29 @@ struct MicrophoneContent: View {
     let choose: (String) -> Void
     let refresh: () -> Void
 
-    private let columns = [GridItem(.adaptive(minimum: 132), spacing: 8)]
-
     var body: some View {
-        HStack(alignment: .top, spacing: 8) {
-            LazyVGrid(columns: columns, alignment: .leading, spacing: 8) {
-                ChoiceTile(title: "System", selected: selection.isEmpty, badge: nil) {
-                    symbol("gearshape", selected: selection.isEmpty)
-                } action: { choose("") }
-                .help("Whatever macOS uses as its input (System Settings \u{2192} Sound)")
-
+        HStack(spacing: 8) {
+            Picker("Input", selection: Binding(get: { selection }, set: choose)) {
+                Label("System default", systemImage: "gearshape").tag("")
                 ForEach(microphones) { mic in
-                    ChoiceTile(title: mic.name, selected: selection == mic.id, badge: nil) {
-                        symbol(Self.symbol(for: mic), selected: selection == mic.id)
-                    } action: { choose(mic.id) }
-                    .help(mic.name)
+                    Label(mic.name, systemImage: Self.symbol(for: mic)).tag(mic.id)
                 }
-
-                // A pinned microphone that is not plugged in stays visible,
-                // so unplugging it does not silently change the choice.
+                // A disconnected saved device remains selected. The recording
+                // continues to use the system input until it is reconnected.
                 if !selection.isEmpty, !microphones.contains(where: { $0.id == selection }) {
-                    ChoiceTile(title: "Not connected", selected: true, badge: nil) {
-                        symbol("mic.slash", selected: true)
-                    } action: {}
-                    .help("The microphone you picked isn\u{2019}t plugged in. Recording uses the system input until it is.")
+                    Label("Saved microphone (not connected)", systemImage: "mic.slash").tag(selection)
                 }
             }
+            .pickerStyle(.menu)
+            .frame(maxWidth: .infinity)
+            .help(selection.isEmpty
+                  ? "Follows the input in System Settings → Sound."
+                  : "Used by the meeting and by recordings, from the next Start. If disconnected, recording uses the system input until it returns.")
             Button(action: refresh) { Image(systemName: "arrow.clockwise") }
                 .buttonStyle(.borderless)
                 .help("Look for microphones again")
                 .accessibilityLabel("Refresh the microphone list")
         }
-        .padding(.vertical, 4)
-    }
-
-    private func symbol(_ name: String, selected: Bool) -> some View {
-        Image(systemName: name)
-            .font(.system(size: 22))
-            .foregroundStyle(selected ? Brand.green : Color.secondary)
-            .frame(height: 28)
     }
 
     static func symbol(for mic: LocalDeviceResolver.Microphone) -> String {

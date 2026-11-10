@@ -56,16 +56,18 @@ struct YouTubePageContent: View {
 
     var body: some View {
         Form {
-            Section {
+            Section("Recordings") {
                 UploadFlowPicture(mode: uploadMode, connected: connected, uploading: uploading)
-            }
-
-            Section("After recording") {
-                ModePicker(selection: $uploadMode)
-            }
-
-            Section("Visibility") {
-                VisibilityPicker(selection: $privacy)
+                ViewThatFits(in: .horizontal) {
+                    HStack(alignment: .top, spacing: 24) {
+                        uploadChoices.frame(minWidth: 340, maxWidth: .infinity)
+                        visibilityChoices.frame(minWidth: 240, maxWidth: .infinity)
+                    }
+                    VStack(alignment: .leading, spacing: 16) {
+                        uploadChoices
+                        visibilityChoices
+                    }
+                }
             }
 
             Section("Account") {
@@ -83,6 +85,22 @@ struct YouTubePageContent: View {
             }
         }
         .formStyle(.grouped)
+    }
+
+    private var uploadChoices: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text("After recording").font(.callout)
+            ModePicker(selection: $uploadMode)
+        }
+        .accessibilityElement(children: .contain)
+    }
+
+    private var visibilityChoices: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text("Visibility").font(.callout)
+            VisibilityPicker(selection: $privacy)
+        }
+        .accessibilityElement(children: .contain)
     }
 
     private static let clientHelp = "From a Google Cloud OAuth client of type \u{201C}Desktop app\u{201D} with the YouTube Data API v3 enabled. The setup guide (? on the main window) has the clicks. While the Google project is in Testing, the sign-in lasts seven days."
@@ -146,7 +164,7 @@ private struct UploadFlowPicture: View {
             FlowNode(symbol: "play.rectangle.fill", title: "YouTube",
                      tint: crosses && connected ? Brand.net : Color.secondary)
         }
-        .padding(.vertical, 16)
+        .padding(.vertical, 8)
         .padding(.horizontal, 24)
         .frame(maxWidth: .infinity)
         .overlay(alignment: .topTrailing) {
@@ -204,9 +222,9 @@ private struct FlowNode: View {
     var body: some View {
         VStack(spacing: 8) {
             Image(systemName: symbol)
-                .font(.system(size: 26, weight: .regular))
+                .font(.system(size: 20, weight: .regular))
                 .foregroundStyle(tint)
-                .frame(width: 64, height: 56)
+                .frame(width: 48, height: 36)
                 .background(RoundedRectangle(cornerRadius: 14)
                     .fill(Color(nsColor: .controlBackgroundColor)))
                 .overlay(RoundedRectangle(cornerRadius: 14)
@@ -233,6 +251,7 @@ private struct ModePicker: View {
                         .foregroundStyle(selected ? tint(mode) : Color.secondary)
                         .frame(height: 32)
                 } action: { selection = mode }
+                .frame(minWidth: mode == .off ? 120 : 80)
                 .help(help(mode))
             }
         }

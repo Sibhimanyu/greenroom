@@ -211,10 +211,24 @@ struct CameraSwitchContent<LiveDetail: View>: View {
 
         cameraRow
 
+        ViewThatFits(in: .horizontal) {
+            HStack(alignment: .center, spacing: 24) {
+                angleReading.frame(width: 300, alignment: .leading)
+                switchSettings.frame(width: 320, alignment: .leading)
+            }
+            VStack(alignment: .leading, spacing: 16) {
+                angleReading
+                switchSettings
+            }
+        }
+        .padding(.vertical, 4)
+    }
+
+    private var angleReading: some View {
         HStack(alignment: .center, spacing: 16) {
             AngleGauge(reading: reading)
             VStack(alignment: .leading, spacing: 4) {
-                Text(reading.degrees.map { "\(Int($0.rounded()))\u{00B0}" } ?? "\u{2014}")
+                Text(reading.degrees.map { "\(Int($0.rounded()))°" } ?? "—")
                     .font(.system(size: 22, weight: .semibold, design: .monospaced))
                     .monospacedDigit()
                     .foregroundStyle(reading.isFacing ? AnyShapeStyle(Brand.text) : AnyShapeStyle(.primary))
@@ -226,32 +240,33 @@ struct CameraSwitchContent<LiveDetail: View>: View {
             }
             Spacer(minLength: 0)
         }
-        .padding(.vertical, 4)
         .help("The angle this camera reads you at. Inside the green you are facing it. Move the camera and watch the needle.")
+    }
 
-        Group {
-            LabeledContent {
-                HStack(spacing: 12) {
-                    Slider(value: $dwell, in: 0.5...6, step: 0.5)
-                        .frame(minWidth: 160)
+    private var switchSettings: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: 4) {
+                HStack {
+                    Text("Switch after").font(.callout)
+                    Spacer()
                     Text(String(format: "%.1f s", dwell))
-                        .monospacedDigit()
-                        .foregroundStyle(.secondary)
-                        .frame(width: 44, alignment: .trailing)
+                        .monospacedDigit().foregroundStyle(.secondary)
                 }
-            } label: {
-                Text("Switch after")
+                Slider(value: $dwell, in: 0.5...6, step: 0.5)
+                    .accessibilityLabel("Switch after")
+                    .accessibilityValue(String(format: "%.1f seconds", dwell))
             }
             .help("How long you must face another camera before the class is cut to it. Glances shorter than this cost nothing.")
 
-            HStack(spacing: 8) {
-                Text("Switch with").frame(maxWidth: .infinity, alignment: .leading)
-                ForEach(CameraTransition.allCases) { style in
-                    ChoiceTile(title: style.label, selected: style == transition, badge: nil) {
-                        TransitionGlyph(style: style, highlighted: style == transition)
-                    } action: { transition = style }
-                    .help(style == .cut ? "Instant" : "Dissolves over half a second")
-                    .frame(width: 150)
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Switch with").font(.callout)
+                HStack(spacing: 8) {
+                    ForEach(CameraTransition.allCases) { style in
+                        ChoiceTile(title: style.label, selected: style == transition, badge: nil) {
+                            TransitionGlyph(style: style, highlighted: style == transition)
+                        } action: { transition = style }
+                        .help(style == .cut ? "Instant" : "Dissolves over half a second")
+                    }
                 }
             }
         }
@@ -302,54 +317,40 @@ private struct CameraCard: View {
     var body: some View {
         VStack(spacing: 8) {
             Button(action: toggle) {
-                VStack(spacing: 6) {
+                HStack(spacing: 8) {
                     Image(systemName: symbol)
-                        .font(.system(size: 22))
+                        .font(.system(size: 18))
                         .foregroundStyle(chosen ? Brand.green : Color.secondary)
-                        .frame(height: 28)
                     Text(camera.name)
                         .font(.callout.weight(chosen ? .semibold : .regular))
-                        .lineLimit(1)
-                        .truncationMode(.middle)
+                        .lineLimit(2)
+                    if let position {
+                        Text("\(position + 1)")
+                            .font(.caption.weight(.bold))
+                            .foregroundStyle(Brand.text)
+                    }
                 }
-                .frame(maxWidth: .infinity)
+                .frame(maxWidth: .infinity, minHeight: 28)
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .help(position != nil ? "Click to leave this camera out" : "Click to use this camera")
-
-            if canAim {
-                Button(isAiming ? "Looking\u{2026}" : "Aim") { aim() }
-                    .controlSize(.small)
-                    .disabled(isAiming)
-                    .help("Measure the angle this camera reads you at")
+            .help(camera.name + (position != nil ? " · Click to leave this camera out" : " · Click to use this camera"))
+            HStack(spacing: 8) {
+                if canAim {
+                    Button(isAiming ? "Looking…" : "Aim") { aim() }
+                        .controlSize(.small)
+                        .disabled(isAiming)
+                        .help("Measure the angle this camera reads you at")
+                }
+                if isLive { PictureChip(text: "LIVE", dot: Brand.green) }
             }
         }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 12)
-        .frame(width: 148)
+        .padding(8)
+        .frame(maxWidth: .infinity)
         .background(RoundedRectangle(cornerRadius: 10)
             .fill(chosen ? Brand.green.opacity(0.12) : Color(nsColor: .controlBackgroundColor)))
         .overlay(RoundedRectangle(cornerRadius: 10)
             .strokeBorder(chosen ? Brand.green : Color.secondary.opacity(0.25), lineWidth: chosen ? 2 : 1))
-        .overlay(alignment: .topLeading) {
-            if position == nil, chosen {
-                Image(systemName: "checkmark.circle.fill")
-                    .font(.system(size: 16))
-                    .foregroundStyle(Brand.green)
-                    .padding(6)
-            } else if let position {
-                Text("\(position + 1)")
-                    .font(.caption.weight(.bold))
-                    .foregroundStyle(.white)
-                    .frame(width: 18, height: 18)
-                    .background(Brand.green, in: Circle())
-                    .padding(6)
-            }
-        }
-        .overlay(alignment: .topTrailing) {
-            if isLive { PictureChip(text: "LIVE", dot: Brand.green).padding(6) }
-        }
         .accessibilityElement(children: .contain)
         .accessibilityLabel(camera.name)
         .accessibilityAddTraits(chosen ? .isSelected : [])
@@ -370,9 +371,9 @@ private struct NoCameraCard: View {
 
     var body: some View {
         Button(action: choose) {
-            VStack(spacing: 6) {
+            HStack(spacing: 8) {
                 Image(systemName: "video.slash")
-                    .font(.system(size: 22))
+                    .font(.system(size: 18))
                     .foregroundStyle(chosen ? Brand.green : Color.secondary)
                     .frame(height: 28)
                 Text("No camera")
@@ -385,21 +386,13 @@ private struct NoCameraCard: View {
         .buttonStyle(.plain)
         .disabled(!allowed)
         .padding(.horizontal, 8)
-        .padding(.vertical, 12)
-        .frame(width: 148)
-        .frame(minHeight: 84)
+        .padding(.vertical, 8)
+        .frame(maxWidth: .infinity)
+        .frame(minHeight: 56)
         .background(RoundedRectangle(cornerRadius: 10)
             .fill(chosen ? Brand.green.opacity(0.12) : Color(nsColor: .controlBackgroundColor)))
         .overlay(RoundedRectangle(cornerRadius: 10)
             .strokeBorder(chosen ? Brand.green : Color.secondary.opacity(0.25), lineWidth: chosen ? 2 : 1))
-        .overlay(alignment: .topLeading) {
-            if chosen {
-                Image(systemName: "checkmark.circle.fill")
-                    .font(.system(size: 16))
-                    .foregroundStyle(Brand.green)
-                    .padding(6)
-            }
-        }
         .opacity(allowed ? 1 : 0.5)
         .help(allowed ? "Just what you share, full frame. No camera is opened."
                       : "Pick something for Behind you first. With nothing behind you and no camera, there\u{2019}s nothing to show.")
@@ -411,7 +404,7 @@ private struct NoCameraCard: View {
 /// The empty second slot: says what would go there.
 private struct AddCameraHint: View {
     var body: some View {
-        VStack(spacing: 6) {
+        HStack(spacing: 8) {
             Image(systemName: "plus")
                 .font(.system(size: 18))
                 .frame(height: 28)
@@ -419,9 +412,9 @@ private struct AddCameraHint: View {
                 .font(.callout)
         }
         .foregroundStyle(.secondary)
-        .padding(.vertical, 12)
-        .frame(width: 148)
-        .frame(minHeight: 84)
+        .padding(.vertical, 8)
+        .frame(maxWidth: .infinity)
+        .frame(minHeight: 56)
         .overlay(RoundedRectangle(cornerRadius: 10)
             .strokeBorder(Color.secondary.opacity(0.35), style: StrokeStyle(lineWidth: 1, dash: [4, 3])))
         .help("Plug in another camera, or put your iPhone on the other monitor: Continuity Camera shows up here.")
@@ -463,7 +456,7 @@ struct AngleGauge: View {
     private static let span = 90.0
 
     var body: some View {
-        let size = CGSize(width: 120, height: 70)
+        let size = CGSize(width: 96, height: 56)
         Canvas { context, canvasSize in
                 let centre = CGPoint(x: canvasSize.width / 2, y: canvasSize.height - 4)
                 let radius = min(canvasSize.width / 2, canvasSize.height) - 6

@@ -132,17 +132,17 @@ struct LayoutPageContent: View {
 
             Section("Main app") { mainApp }
 
-            Section("Side column") {
+            Section("Meeting column") {
                 SideColumnPicker(layout: $layout)
-                // Tile-vs-chat balance is set by dragging the handle in the
-                // picture above - the old slider duplicated it.
-            }
-
-            Section("Meeting") {
-                Toggle("Hide my own tile", isOn: $hideSelfView)
-                    .help("Only changes what you see. The class still gets your video.")
-                Toggle("Quick-hide mode", isOn: $quickHide)
-                    .help("Sessions start with the speaker hidden and the chat full height. \u{2325}\u{2318}Z shows it.")
+                HStack(spacing: 24) {
+                    Toggle("Hide my own tile", isOn: $hideSelfView)
+                        .help("Only changes what you see. The class still gets your video.")
+                        .frame(maxWidth: .infinity)
+                    Toggle("Quick-hide mode", isOn: $quickHide)
+                        .help("Sessions start with the speaker hidden and the chat full height. \u{2325}\u{2318}Z shows it.")
+                        .frame(maxWidth: .infinity)
+                }
+                .accessibilityElement(children: .contain)
             }
 
             Section("Second display") { secondDisplay }
@@ -168,7 +168,7 @@ struct LayoutPageContent: View {
     /// The main display as a picture: the panes in their real proportions,
     /// with handles to drag. Drawn at a screen's own shape (16:10) and
     /// centred, so it reads as "your screen" rather than as a progress bar.
-    private static let stageSize = CGSize(width: 416, height: 260)
+    private static let stageSize = CGSize(width: 320, height: 200)
 
     private var stage: some View {
         LayoutSchematicView(layout: $layout,
@@ -343,7 +343,7 @@ private struct GlyphButton<Label: View>: View {
     var body: some View {
         Button(action: action) {
             label()
-                .padding(.horizontal, 8)
+                .padding(.horizontal, 4)
                 .padding(.vertical, 4)
                 .background(RoundedRectangle(cornerRadius: 6)
                     .fill(selected ? Brand.green.opacity(0.12) : .clear))
@@ -363,7 +363,7 @@ private struct MiniScreen: View {
     let highlighted: Bool
 
     var body: some View {
-        let width: CGFloat = 36, height: CGFloat = 24, inset: CGFloat = 3, gap: CGFloat = 2
+        let width: CGFloat = 28, height: CGFloat = 20, inset: CGFloat = 3, gap: CGFloat = 2
         let inner = width - 2 * inset - gap
         let main = inner * fraction
         HStack(spacing: gap) {

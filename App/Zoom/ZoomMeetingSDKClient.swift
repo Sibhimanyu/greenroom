@@ -501,6 +501,9 @@ final class ZoomMeetingSDKClient: NSObject, ObservableObject {
     }
     private var isAuthed = false
     private var authedClientID: String?
+    private var authedClientSecret: String?
+    private var authenticationTask: Task<Void, Error>?
+    private var authenticationCredentials: [String] = []
     private var authCompletion: ((Result<Void, Error>) -> Void)?
     private var joinCompletion: ((Result<Void, Error>) -> Void)?
     /// Bumped every time a completion slot is armed, so a watchdog from
@@ -576,8 +579,32 @@ final class ZoomMeetingSDKClient: NSObject, ObservableObject {
     /// re-running the ~1-2s SDK auth round trip - which lets the start
     /// flow prefetch this in parallel with the picture coming up and lets the
     /// meeting flows call it again for free.
-    func ensureReady(clientID: String, clientSecret: String) async throws {
-        if isAuthed && authedClientID == clientID { return }
+    func ensureReady(clientID: String, clientSecret: String, forceAuthentication: Bool = false) async throws {
+        let credentials = [clientID, clientSecret]
+        if let pending = authenticationTask {
+            if authenticationCredentials == credentials {
+                return try await pending.value
+            }
+            _ = try? await pending.value
+            return try await ensureReady(clientID: clientID, clientSecret: clientSecret,
+                                         forceAuthentication: forceAuthentication)
+        }
+        if !forceAuthentication && isAuthed && authedClientID == clientID && authedClientSecret == clientSecret { return }
+        authenticationCredentials = credentials
+        let task = Task { @MainActor in
+            defer {
+                authenticationTask = nil
+                authenticationCredentials = []
+            }
+            try await authenticate(clientID: clientID, clientSecret: clientSecret)
+        }
+        authenticationTask = task
+        try await task.value
+    }
+
+    private func authenticate(clientID: String, clientSecret: String) async throws {
+        // A failed recheck must not leave the previous credentials marked valid.
+        isAuthed = false
         if !didInit {
             let params = ZoomSDKInitParams()
             params.enableLog = true
@@ -621,6 +648,7 @@ final class ZoomMeetingSDKClient: NSObject, ObservableObject {
         }
         isAuthed = true
         authedClientID = clientID
+        authedClientSecret = clientSecret
         checkRawVideoLicence(when: "after sign-in")
         #if DEBUG
         startDebugTestPatternIfEnabled()
@@ -848,6 +876,7 @@ final class ZoomMeetingSDKClient: NSObject, ObservableObject {
         stageInstallTask?.cancel()
         stageInstallTask = nil
         authedClientID = nil
+        authedClientSecret = nil
     }
 
     /// Waits (bounded) for the meeting to actually reach a closed state

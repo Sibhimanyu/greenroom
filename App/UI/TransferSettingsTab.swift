@@ -131,7 +131,7 @@ private struct HandoverPicture: View {
             arrow
             node(symbol: "laptopcomputer", title: "Their Mac", tint: Color.secondary)
         }
-        .padding(.vertical, 16)
+        .padding(.vertical, 8)
         .frame(maxWidth: .infinity)
         .help("Set up a colleague\u{2019}s Mac without the Zoom Marketplace: send them the app and this file, they import it, done.")
         .accessibilityElement(children: .ignore)
@@ -148,9 +148,9 @@ private struct HandoverPicture: View {
     private func node(symbol: String, title: String, tint: Color) -> some View {
         VStack(spacing: 8) {
             Image(systemName: symbol)
-                .font(.system(size: 26, weight: .regular))
+                .font(.system(size: 20, weight: .regular))
                 .foregroundStyle(tint)
-                .frame(width: 64, height: 56)
+                .frame(width: 48, height: 36)
                 .background(RoundedRectangle(cornerRadius: 14)
                     .fill(Color(nsColor: .controlBackgroundColor)))
                 .overlay(RoundedRectangle(cornerRadius: 14)

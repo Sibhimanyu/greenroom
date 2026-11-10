@@ -34,6 +34,13 @@ import SwiftUI
 // MARK: - The tab
 
 struct ScreenroomSettingsTab: View {
+    /// Setup focuses on the two choices that matter before a first presentation.
+    private let compact: Bool
+
+    init(compact: Bool = false) {
+        self.compact = compact
+    }
+
     @State private var agent = ScreenroomAgentSettings.load()
     @State private var transcriber = ScreenroomTranscriberSettings.load()
     @State private var whisperReady = ScreenroomTranscriberSettings.whisperIsReady
@@ -72,7 +79,8 @@ struct ScreenroomSettingsTab: View {
             chooseModel: chooseModel,
             downloadModel: { installer.download($0) },
             cancelDownload: { installer.cancel() },
-            setup: { WhisperSetupRows(onChange: refresh) })
+            setup: { WhisperSetupRows(onChange: refresh) },
+            compact: compact)
         // No width of its own. SettingsView sizes the window (760pt) and
         // every other tab fills it; pinning this one to 520 made it the only
         // tab sitting in half the pane.
@@ -198,12 +206,19 @@ struct ScreenroomPageContent<Setup: View>: View {
     let downloadModel: (String) -> Void
     let cancelDownload: () -> Void
     @ViewBuilder let setup: () -> Setup
+    var compact = false
+    @State private var modelDetailsExpanded = false
+    @State private var commandExpanded = false
 
     var body: some View {
         Form {
             Section {
-                ScreenroomFlowPicture(whisper: whisperReady, agentOn: agentOn,
-                                      agentName: agentTitle(agentKind), localWriter: localWriter)
+                if !compact {
+                    ScreenroomFlowPicture(whisper: whisperReady, agentOn: agentOn,
+                                          agentName: agentTitle(agentKind), localWriter: localWriter)
+                } else {
+                    Text("Who writes the feedback?").font(.headline)
+                }
                 writerPicker
                 writerStatus
             }
@@ -211,14 +226,28 @@ struct ScreenroomPageContent<Setup: View>: View {
             Section("Speech") {
                 setup()
                 if whisperReady {
-                    modelPicker
+                    if compact {
+                        Label("Whisper is ready. Audio is transcribed on this Mac.", systemImage: "checkmark.circle")
+                            .foregroundStyle(Brand.text)
+                        DisclosureGroup("Choose another speech model", isExpanded: $modelDetailsExpanded) {
+                            modelPicker
+                        }
+                    } else {
+                        modelPicker
+                    }
                     if let download { downloadRow(download) }
                 }
             }
 
             Section("Agent") {
                 agentPicker
-                commandField
+                if compact && agentKind != .custom {
+                    DisclosureGroup("Advanced: agent command", isExpanded: $commandExpanded) {
+                        commandField
+                    }
+                } else {
+                    commandField
+                }
             }
             // Greyed out rather than hidden while the agent is off, like the
             // rest of Settings: which agent and what it would run are worth
@@ -380,12 +409,12 @@ private struct ScreenroomFlowPicture: View {
     var body: some View {
         GeometryReader { geo in
             let w = geo.size.width, h = geo.size.height
-            let boxRect = CGRect(x: 16, y: 44, width: w * 0.66 - 16, height: h - 60)
-            let rowY = boxRect.midY + 2
+            let boxRect = CGRect(x: 12, y: 36, width: w * 0.66 - 12, height: h - 44)
+            let rowY = boxRect.midY + 8
             let step = boxRect.width / 3
             let xs = (0..<3).map { boxRect.minX + step * (CGFloat($0) + 0.5) }
             let agentX = boxRect.maxX + (w - boxRect.maxX) / 2
-            let half: CGFloat = 22
+            let half: CGFloat = 16
 
             ZStack(alignment: .topLeading) {
                 RoundedRectangle(cornerRadius: 10)
@@ -447,7 +476,7 @@ private struct ScreenroomFlowPicture: View {
                     .offset(x: 12, y: 12)
             }
         }
-        .frame(height: 176)
+        .frame(height: 140)
         .accessibilityElement(children: .contain)
         .accessibilityLabel(agentOn ? "The presentation is read by your agent, off this Mac"
                                     : "The presentation stays on this Mac")
@@ -461,7 +490,7 @@ private struct ScreenroomFlowPicture: View {
             Image(systemName: symbol)
                 .font(.system(size: 18, weight: .regular))
                 .foregroundStyle(active ? Brand.green : Color.secondary)
-                .frame(width: 44, height: 44)
+                .frame(width: 32, height: 32)
                 .background(RoundedRectangle(cornerRadius: 10)
                     .fill(Color(nsColor: .controlBackgroundColor)))
                 .overlay(RoundedRectangle(cornerRadius: 10)
@@ -481,7 +510,7 @@ private struct ScreenroomFlowPicture: View {
                 .lineLimit(1)
                 .fixedSize()
         }
-        .position(x: point.x, y: point.y + 10)
+        .position(x: point.x, y: point.y + 8)
     }
 
     private func arrow(from: CGPoint, to: CGPoint, color: Color, width: CGFloat) -> some View {
@@ -524,11 +553,11 @@ private struct ModelGlyph: View {
     let model: ScreenroomModelTile
 
     var body: some View {
-        VStack(spacing: 4) {
+        HStack(spacing: 4) {
             Image(systemName: model.englishOnly ? "character.bubble" : "globe")
                 .font(.system(size: CGFloat(16 + model.tier * 4), weight: .regular))
                 .foregroundStyle(model.chosen ? Brand.green : Color.secondary)
-                .frame(height: 28)
+                .frame(height: 24)
             Text(model.size)
                 .font(.caption2.monospacedDigit())
                 .foregroundStyle(.secondary)

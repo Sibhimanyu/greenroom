@@ -160,28 +160,20 @@ private struct AppCard: View {
     let state: CredentialState
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 8) {
-                Image(systemName: symbol)
-                    .font(.system(size: 15, weight: .medium))
-                    .foregroundStyle(state.missing.isEmpty ? Brand.green : Color.secondary)
-                    .frame(width: 32, height: 32)
-                    .background(RoundedRectangle(cornerRadius: 6)
-                        .fill(Color.secondary.opacity(0.1)))
-                Text(title).font(.headline)
-            }
-            HStack(spacing: 4) {
-                ForEach(powers, id: \.name) { power in
-                    Label(power.name, systemImage: power.symbol)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(Capsule().fill(Color.secondary.opacity(0.1)))
+        HStack(spacing: 12) {
+            Image(systemName: symbol)
+                .font(.system(size: 20))
+                .foregroundStyle(state.missing.isEmpty ? Brand.text : Color.secondary)
+                .frame(width: 28)
+            VStack(alignment: .leading, spacing: 4) {
+                HStack {
+                    Text(title).font(.headline)
+                    Spacer(minLength: 4)
+                    state.badge
                 }
+                Text(powers.map(\.name).joined(separator: " · "))
+                    .font(.caption).foregroundStyle(.secondary)
             }
-            state.badge
-                .lineLimit(1)
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)

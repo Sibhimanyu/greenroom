@@ -7,7 +7,7 @@ ships, not by inventing a new look.
 ## Product Context
 
 - **What this is:** A macOS app that sets up a whole screen-shared class in one
-  click: virtual camera, Zoom meeting, and tiled windows.
+  click: the screen-and-camera picture, Zoom meeting, and tiled windows.
 - **Who it's for:** Teachers running a daily class over Zoom. Built for the
   morning reading class at Zoho Schools.
 - **Space:** macOS utilities / teaching tools. Free and open source.
@@ -234,13 +234,13 @@ Reference: `App/UI/ParticipantGridWindow.swift`, `railColumn(available:)` and
 ### Waiting states
 
 - **Name the step, never just spin.** A bare spinner says "wait" and nothing
-  more, so a start stuck on OBS looks exactly like one about to finish. The
+  more, so a start stuck on one step looks exactly like one about to finish. The
   wait costs the same either way; spend it saying what is happening and roughly
   how much is left. A determinate list of named steps plus a progress bar is
   the pattern; the platform spinner marks the single active step.
 - **Fill in progressively.** Where the pieces come up at different times, show
   each one the moment it is real rather than holding everything back for a
-  single reveal. Greenroom's virtual camera is live seconds before the meeting
+  single reveal. Greenroom's picture is live seconds before the meeting
   connects, so the self view appears seconds before the roster does.
 - **A control that is not ready says so.** Dim and disable it rather than
   hiding it: the teacher can see what is coming, and nothing looks live while

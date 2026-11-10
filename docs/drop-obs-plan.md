@@ -1,7 +1,16 @@
 # Dropping OBS
 
-Written 2026-11-10. Status: plan only, nothing built. Step 0 decides whether
-the rest happens.
+Written 2026-11-10. Status (2026-11-10, branch `drop-obs-stage`): **built and
+merged on the branch, not yet run for real.** Pieces 1 to 7 are in the code, the
+Release and Debug builds succeed, and OBS, Syphon and the virtual camera are
+gone from the code, the project, the docs and the shipped binary. What is
+**untested**: everything that needs real hardware. No class has run on the new
+path, so the picture in a real meeting (size, rate, the resolution change the SDK
+makes after joining), real cameras and the screen capture, Screen Recording
+being granted mid-Start, recordings and clips, camera switching, the Settings
+preview, and End and Quit with a recording running are all unproven. The
+step-0 gate (does this SDK app have the raw-data licence) is still the thing
+to check first in a real meeting. Do not release until a class has been run on it.
 
 ## What it is
 

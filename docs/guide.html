@@ -278,14 +278,6 @@
       <div class="run">
         <div class="n">02</div>
         <div>
-          <h3>Install OBS Studio</h3>
-          <p>Free, from <a href="https://obsproject.com">obsproject.com</a>. There is nothing to configure in it:
-          Greenroom creates and manages its own scene and launches OBS hidden. If OBS is missing, the setup guide says so.</p>
-        </div>
-      </div>
-      <div class="run">
-        <div class="n">03</div>
-        <div>
           <h3>Import the settings file</h3>
           <p>Whoever set Greenroom up for your school exports one file (Settings → Transfer → <strong>Export Settings…</strong>)
           and hands it to you. Import it in the same tab and every Zoom credential and preference is in place. The file
@@ -293,7 +285,7 @@
         </div>
       </div>
       <div class="run">
-        <div class="n">04</div>
+        <div class="n">03</div>
         <div>
           <h3>Say yes to the permission prompts, each once</h3>
           <p>macOS asks for each one the first time it's needed. Approve them all and every later Start is silent.</p>
@@ -306,9 +298,9 @@
         <thead><tr><th>Permission</th><th>When macOS asks</th><th>What it's for</th></tr></thead>
         <tbody>
           <tr><td data-label="Permission"><strong>Camera &amp; Microphone</strong></td><td data-label="When macOS asks">The first meeting connection, or the first Screenroom recording</td><td data-label="What it&#x27;s for">The built-in meeting client runs inside Greenroom, so your video and mic are opened in its process. Screenroom uses the same two to record a talk.</td></tr>
-          <tr><td data-label="Permission"><strong>Screen Recording</strong></td><td data-label="When macOS asks">The first Start, asked by <strong>OBS</strong>; again for Greenroom only if Screenroom records a screen or window</td><td data-label="What it&#x27;s for">OBS captures your screen for the class. Greenroom itself asks only when you point Screenroom at a screen or a window instead of a camera.</td></tr>
+          <tr><td data-label="Permission"><strong>Screen Recording</strong></td><td data-label="When macOS asks">The first Start that shares something, and when Screenroom records a screen or window</td><td data-label="What it&#x27;s for">Greenroom captures your screen itself and draws it into the picture the class sees. Without it the class sees your camera only. Screenroom needs it when you point it at a screen or a window instead of a camera.</td></tr>
           <tr><td data-label="Permission"><strong>Speech Recognition</strong></td><td data-label="When macOS asks">The first time Screenroom transcribes with Apple's recogniser</td><td data-label="What it&#x27;s for">Only when this Mac has no whisper. Either way the audio stays on this Mac: whisper runs locally, and Apple's path is pinned to on-device and refuses to transcribe rather than fall back to Apple's servers.</td></tr>
-          <tr><td data-label="Permission"><strong>Accessibility</strong></td><td data-label="When macOS asks">The first time a Zoom or other native window is tiled</td><td data-label="What it&#x27;s for">Moving windows of apps that have no scripting dictionary. Not needed for the main pane when <strong>Greenroom Browser</strong> is your main app.</td></tr>
+          <tr><td data-label="Permission"><strong>Accessibility</strong></td><td data-label="When macOS asks">The first time another app's window is tiled</td><td data-label="What it&#x27;s for">Moving windows of apps that have no scripting dictionary. Not needed for the main pane when <strong>Greenroom Browser</strong> is your main app.</td></tr>
           <tr><td data-label="Permission"><strong>Automation</strong></td><td data-label="When macOS asks">The first time an external browser (Chrome, Ulaa…) is tiled</td><td data-label="What it&#x27;s for">Opening and sizing that browser's window through its own dictionary. Greenroom Browser needs none.</td></tr>
         </tbody>
       </table>
@@ -353,7 +345,7 @@
       <div class="card">
         <span class="tag">Help</span>
         <h3>The ? button</h3>
-        <p>Reopens the setup guide: OBS detection, credential check with a <strong>Test Zoom Connection</strong> button that names
+        <p>Reopens the setup guide: credential check with a <strong>Test Zoom Connection</strong> button that names
         any missing scope, and the permission checklist. The same guide first-run showed.</p>
       </div>
     </div>
@@ -368,7 +360,7 @@
       <h2>Five things, in order, in about the time Zoom takes to connect</h2>
     </div>
     <div class="runlog">
-      <div class="run"><div class="n">01</div><div><h3>OBS launches hidden and the virtual camera goes live</h3><p>Your screen with you keyed into it, published as a camera device. If OBS was kept warm, this is instant.</p></div></div>
+      <div class="run"><div class="n">01</div><div><h3>The picture comes up</h3><p>Greenroom opens your screen and camera and builds the picture the class will see: your screen with you in it. The meeting receives it directly, with no camera to pick in Zoom.</p></div></div>
       <div class="run"><div class="n">02</div><div><h3>The meeting starts or joins</h3><p>Inside Greenroom's built-in client. A meeting a crash left live on the account is ended first, so the new one can start.</p></div></div>
       <div class="run"><div class="n">03</div><div><h3>Your main app opens, tiled to its slice</h3><p>The reading doc in the pane you sized in Settings. With Greenroom Browser, yesterday's tabs come back too.</p></div></div>
       <div class="run"><div class="n">04</div><div><h3>The Zoom tile and chat fill the side column</h3><p>The live speaker above, the class chat below. Both are real windows you can drag; Snap Windows Back returns them.</p></div></div>
@@ -392,9 +384,9 @@
         <thead><tr><th>Keys</th><th>Does</th><th>Notes</th></tr></thead>
         <tbody>
           <tr><td class="keys" data-label="Keys"><kbd>⌥⌘G</kbd></td><td data-label="Does"><strong>Start</strong> the session</td><td data-label="Notes">Same as the Start button; same gating (credentials and a meeting must be set).</td></tr>
-          <tr><td class="keys" data-label="Keys"><kbd>⌥⌘X</kbd></td><td data-label="Does"><strong>End</strong> the session</td><td data-label="Notes">Asks first. Leaves or ends the meeting, closes the chat, stops the camera, quits OBS.</td></tr>
+          <tr><td class="keys" data-label="Keys"><kbd>⌥⌘X</kbd></td><td data-label="Does"><strong>End</strong> the session</td><td data-label="Notes">Asks first. Leaves or ends the meeting, closes the chat, finishes any recording, stops the camera and screen capture.</td></tr>
           <tr><td class="keys" data-label="Keys"><kbd>⌥⌘R</kbd></td><td data-label="Does"><strong>Record</strong> / stop recording</td><td data-label="Notes">Records exactly what the class sees: the composited screen with you in it. The menu bar shows <strong>REC</strong> while it runs.</td></tr>
-          <tr><td class="keys" data-label="Keys"><kbd>⌥⌘S</kbd></td><td data-label="Does"><strong>Snap Windows Back</strong></td><td data-label="Notes">Re-tiles everything to the saved layout after you've dragged windows around. Also re-asserts the webcam layer in OBS.</td></tr>
+          <tr><td class="keys" data-label="Keys"><kbd>⌥⌘S</kbd></td><td data-label="Does"><strong>Snap Windows Back</strong></td><td data-label="Notes">Re-tiles everything to the saved layout after you've dragged windows around. Also hands the picture its settings again.</td></tr>
           <tr><td class="keys" data-label="Keys"><kbd>⌥⌘Z</kbd></td><td data-label="Does"><strong>Hide / show the speaker tile</strong></td><td data-label="Notes">The chat takes the whole column while the tile is hidden. Needs <em>Quick-hide mode</em> on in Settings → Layout → Meeting view.</td></tr>
           <tr><td class="keys" data-label="Keys"><kbd>⌥⌘1</kbd> <kbd>⌥⌘2</kbd> <kbd>⌥⌘5</kbd></td><td data-label="Does"><strong>Clip</strong> the last 1, 2 or 5 minutes</td><td data-label="Notes">Works during a session, whether or not you were recording: Greenroom keeps the last 5 minutes in memory. Saved into the class folder, named for the time it happened. A clip holds your screen, your webcam and your mic, not the other participants or Zoom's audio.</td></tr>
         </tbody>
@@ -444,12 +436,11 @@
           <tr><td><strong>Hide / Show Speaker Tile</strong></td><td>Same as <kbd>⌥⌘Z</kbd>; enabled by Quick-hide mode.</td></tr>
           <tr><td><strong>Cues is listening · N links</strong></td><td>Only while Cues is on and a class is live. Reads “paused” while you are muted in Zoom.</td></tr>
           <tr><td><strong>Stop Cues for This Session</strong></td><td>Stops listening for the rest of this class; the setting stays on for the next one.</td></tr>
-          <tr><td><strong>Open Chat Window</strong></td><td>Just the chat, for a meeting you're in some other way.</td></tr>
           <tr><td><strong>Open Screenroom…</strong></td><td>The presentation window. Works with no class running.</td></tr>
           <tr><td><strong>Show Greenroom</strong></td><td>Brings the main window forward.</td></tr>
           <tr><td><strong>Check for Updates…</strong></td><td>Updates are checked on their own too, four times a day and never during a live class. This is the manual version. It is also in the app menu.</td></tr>
           <tr><td><strong>How It Works &amp; Privacy…</strong></td><td>Opens the <a href="how-it-works.html">Privacy &amp; safety</a> page.</td></tr>
-          <tr><td><strong>Quit Greenroom</strong></td><td>Asks first if a class is running; finishes any recording and winds OBS down on the way out.</td></tr>
+          <tr><td><strong>Quit Greenroom</strong></td><td>Asks first if a class is running; finishes any recording and stops the camera and screen capture on the way out.</td></tr>
         </tbody>
       </table>
     </div>
@@ -471,11 +462,10 @@
         <div>
           <ul>
             <li><strong>Bubble shape</strong>: square, circle, rounded rectangle, cutout, or presenter. Cutout and presenter key your background away and need a real green screen behind you; presenter shrinks the shared screen into a panel with you standing at full height in front of it.</li>
-            <li><strong>Position and size</strong>: drag the bubble in the live preview. The preview shows the actual composite once OBS is warm.</li>
+            <li><strong>Position and size</strong>: drag the bubble in the live preview. The preview shows the actual picture whenever Greenroom can open your camera; if Screen Recording is off it shows the camera alone.</li>
             <li><strong>Keep the last 5 minutes clippable</strong> (on) powers <kbd>⌥⌘1/2/5</kbd>. <strong>Start recording automatically with the meeting</strong> (off) if every class should be kept.</li>
             <li><strong>Cut between cameras as you turn</strong> (off) is for two monitors with a camera on each. Pick two or more cameras; an iPhone can be one of them. During a class every chosen camera is open, and the Mac compares them: the class gets whichever camera sees your face most head-on, once it is clearly better than the live one for the delay you set, 1 second by default. It reads which way your head points, not your eyes, so a camera on top of a monitor works while you look at that screen. Looking down at the floor, or away from every camera, switches nothing. During a class, this section shows each camera's angle side by side. <strong>When it switches</strong> picks a hard cut or a short crossfade. While it waits, a bar fills along the bottom of your self view; the class never sees it. The first camera opens at Start and the others once the meeting is live, so an iPhone is not woken until the class needs it. All of it happens on this Mac. Aiming a camera here does not need OBS running.</li>
           </ul>
-          <p class="later">Later: <em>Keep OBS ready in the background</em> makes Start near-instant at the cost of OBS staying open between sessions.</p>
         </div>
       </div>
       <div class="setting">
@@ -540,7 +530,7 @@
             <li><strong>Meeting SDK app</strong>: Client ID and Secret. Powers the built-in meeting client and the chat window.</li>
             <li><strong>Server-to-Server OAuth app</strong>: Account ID, Client ID and Secret. Powers New Meeting and the scheduled list. A second Marketplace app on the same Zoom account &mdash; Zoom does not let one app do both jobs.</li>
             <li>All five arrive in the settings file; you only type them when setting a school up from scratch.</li>
-            <li><strong>Your display name</strong>: what the class sees you as. <strong>Use built-in meeting client</strong> stays on unless you have a reason to run the Zoom app alongside.</li>
+            <li><strong>Your display name</strong>: what the class sees you as.</li>
           </ul>
           <p class="later">Later: <em>Custom meeting UI (experimental)</em> turns on Greenroom's own participants panel and speaker window.</p>
         </div>
@@ -596,7 +586,7 @@
       <p class="kicker">08 · Screenroom</p>
       <h2>Record a student's talk, mark it, get a report</h2>
       <p>Screenroom is for evaluating a presentation. Open it with the <strong>Screenroom</strong> button in the main window,
-      or menu bar → <strong>Open Screenroom…</strong>. It needs no meeting, no OBS and no Zoom credentials. It runs on macOS 14
+      or menu bar → <strong>Open Screenroom…</strong>. It needs no meeting and no Zoom credentials. It runs on macOS 14
       or later; only one way of writing the feedback needs macOS 26.</p>
     </div>
     <div class="runlog">
@@ -655,7 +645,7 @@
       </div>
       <div class="card">
         <h3>A window is in the wrong place</h3>
-        <p><kbd>⌥⌘S</kbd> Snap Windows Back. It re-tiles the main app, the Zoom tile and the chat to the saved layout and puts the webcam back on top in OBS.</p>
+        <p><kbd>⌥⌘S</kbd> Snap Windows Back. It re-tiles the main app, the Zoom tile and the chat to the saved layout and hands the picture its settings again.</p>
       </div>
       <div class="card">
         <h3>The main app opens but doesn't move</h3>
@@ -663,11 +653,11 @@
       </div>
       <div class="card">
         <h3>Start fails to join a meeting</h3>
-        <p>The built-in client can only join meetings hosted under the same Zoom account as your credentials (Zoom's rule, error 63). Greenroom detects this and opens the native Zoom app instead; the chat window is skipped in that case.</p>
+        <p>The built-in client can only join meetings hosted under the same Zoom account as your credentials (Zoom's rule, error 63). Greenroom says so and stops; there is no fallback to the Zoom app, because only Greenroom's own client can send your picture. Ask the host to run the meeting from your account, or use New Meeting.</p>
       </div>
       <div class="card">
         <h3>The webcam edges look rough</h3>
-        <p>Cutout and presenter modes are a chroma key. Tune it once in OBS → the webcam source → Filters. Better light on the green screen beats every slider.</p>
+        <p>Cutout and presenter modes with <em>With a green screen</em> are a chroma key, and its strength is fixed. Even, bright light on the green screen matters more than anything else. Without a green screen, leave background removal on <em>Automatically</em>.</p>
       </div>
       <div class="card">
         <h3>Something else</h3>

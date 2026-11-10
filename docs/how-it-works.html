@@ -273,12 +273,12 @@
   <div class="wrap">
     <div class="sec-head">
       <p class="kicker">01 · The whole system</p>
-      <h2>Greenroom and OBS, and an agent only if you bring one. Three links of its own to the outside. Four more only if you choose them.</h2>
+      <h2>Greenroom, and an agent only if you bring one. Three links of its own to the outside. Four more only if you choose them.</h2>
     </div>
 
     <figure class="viz">
       <div class="frame">
-        <svg class="svg-wide" viewBox="0 0 960 612" role="img" aria-label="System map. Inside a 'Your Mac' boundary is Greenroom, which does what your settings say, and is drawn as its seven parts, each beside the one link it makes. On the left: OBS, which captures the screen and webcam into a virtual camera and talks to Greenroom over a WebSocket on 127.0.0.1 port 4455, and writes recordings to Documents/Greenroom; your windows, which Greenroom places without reading their contents; your microphone, a thick stream that becomes text on this Mac; and the speech model, Apple's or whisper, downloaded once. On the right, grouped by when anything leaves. Whenever you use it: the Zoom Meeting SDK to Zoom's servers, for meeting video, audio and chat; the updater to GitHub, for signed update checks. On, with a switch in Settings: analytics to Zoho Apptics, for anonymous usage counts and crash reports. Off until you turn it on: Greenroom Browser to the pages you open, plus search suggestions if that switch is on; YouTube upload to YouTube, for your recording; Cues to lookup services, for a short phrase; and Screenroom to your agent, which reads one presentation on this Mac and sends whatever it sends to its own service, which Greenroom cannot describe.">
+        <svg class="svg-wide" viewBox="0 0 960 612" role="img" aria-label="System map. Inside a 'Your Mac' boundary is Greenroom, which does what your settings say, and is drawn as its seven parts, each beside the one link it makes. On the left: your screen and webcam, which Greenroom captures itself and composites into the class picture, and the recordings it writes to Documents/Greenroom; your windows, which Greenroom places without reading their contents; your microphone, a thick stream that becomes text on this Mac; and the speech model, Apple's or whisper, downloaded once. On the right, grouped by when anything leaves. Whenever you use it: the Zoom Meeting SDK to Zoom's servers, for meeting video, audio and chat; the updater to GitHub, for signed update checks. On, with a switch in Settings: analytics to Zoho Apptics, for anonymous usage counts and crash reports. Off until you turn it on: Greenroom Browser to the pages you open, plus search suggestions if that switch is on; YouTube upload to YouTube, for your recording; Cues to lookup services, for a short phrase; and Screenroom to your agent, which reads one presentation on this Mac and sends whatever it sends to its own service, which Greenroom cannot describe.">
           <defs>
             <marker id="ag" markerWidth="9" markerHeight="9" refX="7" refY="4" orient="auto-start-reverse" markerUnits="userSpaceOnUse"><path d="M0,0 L8,4 L0,8 z" fill="#2f6118"/></marker>
             <marker id="aa" markerWidth="9" markerHeight="9" refX="7" refY="4" orient="auto-start-reverse" markerUnits="userSpaceOnUse"><path d="M0,0 L8,4 L0,8 z" fill="#b9770e"/></marker>
@@ -296,7 +296,7 @@
           <text x="276" y="116" font-size="10" fill="#2f6118">does what your settings say</text>
           <rect x="276" y="132" width="188" height="44" rx="10" fill="#fff" stroke="#b8d4a6"/>
           <text x="370" y="151" font-size="12" font-weight="700" text-anchor="middle" fill="#101828">Zoom Meeting SDK</text>
-          <text x="370" y="166" font-size="10" text-anchor="middle" fill="#475467">your meeting runs in here</text>
+          <text x="370" y="166" font-size="10" text-anchor="middle" fill="#475467">meeting + the class picture</text>
           <rect x="276" y="184" width="188" height="44" rx="10" fill="#fff" stroke="#b8d4a6"/>
           <text x="370" y="203" font-size="12" font-weight="700" text-anchor="middle" fill="#101828">Updater</text>
           <text x="370" y="218" font-size="10" text-anchor="middle" fill="#475467">Sparkle</text>
@@ -318,11 +318,11 @@
 
           <!-- What Greenroom works with on this Mac. -->
           <rect x="32" y="132" width="164" height="44" rx="10" fill="#fff" stroke="#d0d5dd"/>
-          <text x="114" y="151" font-size="12.5" font-weight="700" text-anchor="middle" fill="#101828">OBS</text>
-          <text x="114" y="166" font-size="10" text-anchor="middle" fill="#475467">screen + webcam → camera</text>
+          <text x="114" y="151" font-size="12.5" font-weight="700" text-anchor="middle" fill="#101828">Screen + webcam</text>
+          <text x="114" y="166" font-size="10" text-anchor="middle" fill="#475467">captured by Greenroom</text>
           <rect x="32" y="184" width="164" height="44" rx="10" fill="#fff" stroke="#d0d5dd" stroke-dasharray="4 3"/>
           <text x="114" y="203" font-size="12.5" font-weight="700" text-anchor="middle" fill="#101828">Recordings</text>
-          <text x="114" y="218" font-size="9.5" text-anchor="middle" fill="#475467">saved by OBS, on disk</text>
+          <text x="114" y="218" font-size="9.5" text-anchor="middle" fill="#475467">written by Greenroom, on disk</text>
           <rect x="32" y="328" width="164" height="44" rx="10" fill="#fff" stroke="#d0d5dd"/>
           <text x="114" y="347" font-size="12.5" font-weight="700" text-anchor="middle" fill="#101828">Your windows</text>
           <text x="114" y="362" font-size="10" text-anchor="middle" fill="#475467">placed, never read</text>
@@ -332,8 +332,8 @@
           <rect x="32" y="484" width="164" height="44" rx="10" fill="#fff" stroke="#2f6118" stroke-dasharray="4 3"/>
           <text x="114" y="503" font-size="12.5" font-weight="700" text-anchor="middle" fill="#101828">Speech model</text>
           <text x="114" y="518" font-size="10" text-anchor="middle" fill="#475467">Apple's or whisper</text>
-          <line x1="198" y1="154" x2="258" y2="154" stroke="#2f6118" stroke-width="1.6" marker-start="url(#ag)" marker-end="url(#ag)"/>
-          <text x="228" y="147" font-size="10" text-anchor="middle" fill="#667085">ws:4455</text>
+          <line x1="198" y1="154" x2="258" y2="154" stroke="#2f6118" stroke-width="3" marker-end="url(#ag)"/>
+          <text x="228" y="147" font-size="10" text-anchor="middle" fill="#667085">frames</text>
           <line x1="260" y1="350" x2="198" y2="350" stroke="#2f6118" stroke-width="1.6" marker-end="url(#ag)"/>
           <text x="228" y="343" font-size="10" text-anchor="middle" fill="#667085">places</text>
           <!-- Thick: the mic is a stream, and all of it stays here. -->
@@ -391,7 +391,7 @@
           <text x="584" y="592" font-size="11" fill="#475467">dashed: stored, not running</text>
         </svg>
       </div>
-      <figcaption>Everything Greenroom does is determined by your <strong>settings</strong>: which app to open, the layout, the webcam shape, your Zoom credentials. Change the settings and you change the script. It makes judgements in four places, all on this Mac: Cues, Screenroom, camera switching and class summaries. In <strong>Cues</strong>, your microphone becomes text on this Mac (Apple's speech model or whisper, the thick green stream — it never leaves), word patterns pick out the books, videos, topics, people and places you named, and the short search phrase is what crosses (the thin amber line). In <strong>Screenroom</strong>, a presentation is recorded, transcribed and counted on this Mac; the one part that can leave is the agent you bring, which reads that presentation's folder and sends whatever it sends to its own service. That line is drawn without “HTTPS” because it is the agent's connection, not Greenroom's. Greenroom holds <strong>two entitlements: camera and microphone</strong> — and no others. Screen capture for the class belongs to OBS, a separate app you can see running; the only screen capture Greenroom does itself is a Screenroom recording you start from a screen or window. Greenroom connects to OBS's <code>ws:4455</code> socket only at 127.0.0.1, the address that means this Mac. <strong>Pages you open</strong> exists only when <em>Greenroom Browser</em> is your main app: that window is Apple's WebKit (the engine inside Safari) running in Greenroom's process, so the sites you visit load from Greenroom rather than from Chrome. Its history is one local file, its cookies live in WebKit's standard store, and nothing about your browsing is reported anywhere.</figcaption>
+      <figcaption>Everything Greenroom does is determined by your <strong>settings</strong>: which app to open, the layout, the webcam shape, your Zoom credentials. Change the settings and you change the script. It makes judgements in four places, all on this Mac: Cues, Screenroom, camera switching and class summaries. In <strong>Cues</strong>, your microphone becomes text on this Mac (Apple's speech model or whisper, the thick green stream — it never leaves), word patterns pick out the books, videos, topics, people and places you named, and the short search phrase is what crosses (the thin amber line). In <strong>Screenroom</strong>, a presentation is recorded, transcribed and counted on this Mac; the one part that can leave is the agent you bring, which reads that presentation's folder and sends whatever it sends to its own service. That line is drawn without “HTTPS” because it is the agent's connection, not Greenroom's. Greenroom holds <strong>two entitlements: camera and microphone</strong> — and no others. Screen Recording is a separate permission macOS asks for: Greenroom uses it to put your shared screen into the class picture, and for a Screenroom recording you start from a screen or window. The screen, the camera and the picture they make never leave this Mac except as the video the meeting receives, through Zoom's SDK, which runs inside Greenroom. <strong>Pages you open</strong> exists only when <em>Greenroom Browser</em> is your main app: that window is Apple's WebKit (the engine inside Safari) running in Greenroom's process, so the sites you visit load from Greenroom rather than from Chrome. Its history is one local file, its cookies live in WebKit's standard store, and nothing about your browsing is reported anywhere.</figcaption>
     </figure>
   </div>
 </section>
@@ -406,7 +406,7 @@
 
     <figure class="viz">
       <div class="frame">
-        <svg class="svg-wide" viewBox="0 0 960 500" role="img" aria-label="Sequence diagram of the Start flow across five lanes: You, Greenroom, OBS, Your windows, and Zoom on the internet. Setup phase: you press Start; Greenroom launches OBS hidden; Greenroom configures the OBS scene over an authenticated localhost WebSocket on port 4455; when creating a new meeting, Greenroom first ends any meeting still live on the account, then creates or joins your meeting over HTTPS using the Zoom Meeting SDK and REST API; Greenroom places your windows, with Apple Events for Chrome-type browsers and Accessibility for other apps, reading title, size and position only. In practice your main app opens first, and OBS starts while the meeting is prepared at the same time. Then, for the rest of the meeting: OBS publishes the composited picture as the OBS Virtual Camera system device, Greenroom's embedded Zoom SDK reads those frames, and Greenroom streams your video and microphone audio to Zoom over an encrypted connection until you end the session.">
+        <svg class="svg-wide" viewBox="0 0 960 500" role="img" aria-label="Sequence diagram of the Start flow across five lanes: You, Greenroom, Screen and camera, Your windows, and Zoom on the internet. Setup phase: you press Start; Greenroom opens your screen capture and camera itself; the first composited frame comes back to Greenroom; when creating a new meeting, Greenroom first ends any meeting still live on the account, then creates or joins your meeting over HTTPS using the Zoom Meeting SDK and REST API; Greenroom places your windows, with Apple Events for Chrome-type browsers and Accessibility for other apps, reading title, size and position only. In practice your main app opens first, and the picture starts while the meeting is prepared at the same time. Then, for the rest of the meeting: screen and camera frames flow into Greenroom, which composites them and hands them to its embedded Zoom SDK as the meeting video, and Greenroom streams your video and microphone audio to Zoom over an encrypted connection until you end the session.">
           <defs>
             <marker id="sg" markerWidth="9" markerHeight="9" refX="7" refY="4" orient="auto" markerUnits="userSpaceOnUse"><path d="M0,0 L8,4 L0,8 z" fill="#2f6118"/></marker>
             <marker id="sa" markerWidth="9" markerHeight="9" refX="7" refY="4" orient="auto" markerUnits="userSpaceOnUse"><path d="M0,0 L8,4 L0,8 z" fill="#b9770e"/></marker>
@@ -424,8 +424,9 @@
           <rect x="202" y="16" width="112" height="34" rx="8" fill="#e8f3df" stroke="#2f6118" stroke-width="1.6"/>
           <text x="258" y="38" font-size="12.5" font-weight="700" text-anchor="middle" fill="#101828">Greenroom</text>
           <rect x="400" y="16" width="112" height="34" rx="8" fill="#fff" stroke="#d0d5dd"/>
-          <text x="456" y="38" font-size="12.5" font-weight="700" text-anchor="middle" fill="#101828">OBS</text>
-          <text x="456" y="66" font-size="9.5" text-anchor="middle" fill="#667085">captures screen + webcam</text>
+          <text x="456" y="33" font-size="11.5" font-weight="700" text-anchor="middle" fill="#101828">Screen +</text>
+          <text x="456" y="45" font-size="11.5" font-weight="700" text-anchor="middle" fill="#101828">camera</text>
+          <text x="456" y="66" font-size="9.5" text-anchor="middle" fill="#667085">read by Greenroom</text>
           <rect x="598" y="16" width="112" height="34" rx="8" fill="#fff" stroke="#d0d5dd"/>
           <text x="654" y="33" font-size="11.5" font-weight="700" text-anchor="middle" fill="#101828">Your</text>
           <text x="654" y="45" font-size="11.5" font-weight="700" text-anchor="middle" fill="#101828">windows</text>
@@ -442,12 +443,12 @@
           <text x="164" y="111" font-size="9.5" text-anchor="middle" fill="#667085">or ⌥⌘G</text>
           <line x1="70" y1="120" x2="258" y2="120" stroke="#667085" stroke-width="1.5" marker-end="url(#sgr)"/>
 
-          <text x="357" y="152" font-size="11.5" font-weight="600" text-anchor="middle" fill="#101828">launch hidden</text>
+          <text x="357" y="152" font-size="11.5" font-weight="600" text-anchor="middle" fill="#101828">open screen + camera</text>
           <line x1="258" y1="161" x2="456" y2="161" stroke="#2f6118" stroke-width="1.5" marker-end="url(#sg)"/>
 
-          <text x="357" y="192" font-size="11.5" font-weight="600" text-anchor="middle" fill="#101828">configure scene</text>
-          <text x="357" y="205" font-size="9.5" text-anchor="middle" fill="#667085">ws://127.0.0.1:4455 · authenticated</text>
-          <line x1="258" y1="214" x2="456" y2="214" stroke="#2f6118" stroke-width="1.5" marker-end="url(#sg)"/>
+          <text x="357" y="192" font-size="11.5" font-weight="600" text-anchor="middle" fill="#101828">first frame</text>
+          <text x="357" y="205" font-size="9.5" text-anchor="middle" fill="#667085">composited in Greenroom · on this Mac</text>
+          <line x1="456" y1="214" x2="258" y2="214" stroke="#2f6118" stroke-width="1.5" marker-end="url(#sg)"/>
 
           <text x="564" y="247" font-size="11.5" font-weight="600" text-anchor="middle" fill="#96600a">tidy, then create / join your meeting</text>
           <text x="564" y="260" font-size="9.5" text-anchor="middle" fill="#96600a">HTTPS · ends any meeting still live on your account, then creates</text>
@@ -461,8 +462,8 @@
           <rect x="372" y="345" width="216" height="22" rx="11" fill="#fff" stroke="#d0d5dd"/>
           <text x="480" y="360" font-size="10" font-weight="700" letter-spacing=".08em" text-anchor="middle" fill="#667085">WHILE THE MEETING RUNS</text>
 
-          <text x="357" y="396" font-size="11.5" font-weight="600" text-anchor="middle" fill="#101828">composited picture</text>
-          <text x="357" y="409" font-size="9.5" text-anchor="middle" fill="#667085">read from the OBS Virtual Camera device</text>
+          <text x="357" y="396" font-size="11.5" font-weight="600" text-anchor="middle" fill="#101828">screen + camera frames</text>
+          <text x="357" y="409" font-size="9.5" text-anchor="middle" fill="#667085">composited here, sent to Zoom's SDK</text>
           <line x1="456" y1="418" x2="258" y2="418" stroke="#2f6118" stroke-width="3" marker-end="url(#sgb)"/>
 
           <text x="564" y="444" font-size="11.5" font-weight="600" text-anchor="middle" fill="#96600a">your video + mic audio</text>
@@ -470,7 +471,7 @@
           <line x1="258" y1="466" x2="870" y2="466" stroke="#b9770e" stroke-width="3" marker-end="url(#sab)"/>
         </svg>
       </div>
-      <figcaption>The setup steps are drawn one after another so they are easy to read. In practice your main app opens first, and OBS starts while the Zoom meeting is prepared at the same time. Start also sends one anonymous usage event. After setup, only the media stream continues. Note the path your picture takes: OBS publishes it as a <em>system camera device</em>, and Zoom's SDK — which runs inside Greenroom — reads that device like any camera. <strong>That is why Greenroom holds the camera entitlement:</strong> your composited video does pass through its process on the way to Zoom. <strong>End Session</strong> leaves the meeting, saves the recording and stops the virtual camera. OBS stays open and hidden, ready for the next class, until you quit Greenroom. A switch in Settings quits it at End Session instead. With <em>Greenroom Browser</em> as the main app, the “set position &amp; size” step is a plain move of Greenroom's own window — no Accessibility call, no Apple Event.</figcaption>
+      <figcaption>The setup steps are drawn one after another so they are easy to read. In practice your main app opens first, and the picture starts while the Zoom meeting is prepared at the same time. Start also sends one anonymous usage event. After setup, only the media stream continues. Note the path your picture takes: Greenroom captures your screen and camera itself, draws them together, and hands the result to Zoom's SDK — which runs inside Greenroom — as the meeting's video source. There is no system camera device and no other app in the path. <strong>That is why Greenroom holds the camera entitlement, and asks for Screen Recording:</strong> your composited video is made in its process on the way to Zoom. <strong>End Session</strong> leaves the meeting, saves the recording and stops the screen and camera capture, so the camera light goes off. With <em>Greenroom Browser</em> as the main app, the “set position &amp; size” step is a plain move of Greenroom's own window — no Accessibility call, no Apple Event.</figcaption>
     </figure>
   </div>
 </section>
@@ -542,7 +543,7 @@
       <span class="chip"><span class="x">✕</span> No cloud AI built in — the one exception is an agent you bring to Screenroom, off by default</span>
       <span class="chip"><span class="t">✓</span> Every model Greenroom runs is on this Mac: speech, Cues, camera switching, summaries, Screenroom</span>
       <span class="chip"><span class="x">✕</span> Cues never sends audio or transcript — only the search phrase it builds</span>
-      <span class="chip"><span class="x">✕</span> Greenroom does not capture your screen itself (OBS does), except a Screenroom recording you start</span>
+      <span class="chip"><span class="x">✕</span> Greenroom captures your screen only for the class picture and for a Screenroom recording you start, and never sends it anywhere but the meeting</span>
       <span class="chip"><span class="x">✕</span> No keylogging</span>
       <span class="chip"><span class="x">✕</span> No student names, meeting IDs or chat in analytics</span>
       <span class="chip"><span class="x">✕</span> No Greenroom server</span>
@@ -567,7 +568,7 @@
           <div class="bar-labels"><span class="u">live meeting video · Screenroom</span><span class="r">unused</span></div>
           <div class="bar"><div class="used" style="width:72%"></div></div>
         </div>
-        <p class="note">Zoom's Meeting SDK runs inside Greenroom, so the camera <em>is</em> opened in its process — that's exactly why it holds this. In a class it is used for the meeting: your composited picture, read from the OBS Virtual Camera, on its way to Zoom. <em>Screenroom</em> opens a camera too, only while the Screenroom window is open, and a recording goes to <span class="mono">presentation.mov</span> in that presentation's folder. During a class, <em>camera switching</em> does not open a camera itself: it reads frames of your cameras from OBS over the localhost socket and hands them to Apple's Vision framework on this Mac (see <a href="#ondevice">camera switching</a>). When you aim a camera in Settings, Greenroom opens that camera itself for the preview. Either way the picture stays on this Mac.</p>
+        <p class="note">Zoom's Meeting SDK runs inside Greenroom, so the camera <em>is</em> opened in its process — that's exactly why it holds this. In a class it is used for the meeting: your composited picture, drawn in Greenroom and handed to Zoom's SDK. <em>Screenroom</em> opens a camera too, only while the Screenroom window is open, and a recording goes to <span class="mono">presentation.mov</span> in that presentation's folder. During a class, <em>camera switching</em> opens no camera of its own: it reads frames from the cameras Greenroom already has open for the picture and hands them to Apple's Vision framework on this Mac (see <a href="#ondevice">camera switching</a>). When you aim a camera in Settings, Greenroom opens that camera itself for the preview. Either way the picture stays on this Mac.</p>
       </div>
 
       <div class="scope">
@@ -607,12 +608,12 @@
       </div>
 
       <div class="scope">
-        <div class="who">Screen Recording <span>OBS, and Screenroom's screen source</span></div>
+        <div class="who">Screen Recording <span>the class picture, and Screenroom's screen source</span></div>
         <div>
-          <div class="bar-labels"><span class="u">a screen or window you pick in Screenroom</span><span class="r">OBS does the class capture</span></div>
-          <div class="bar"><div class="used" style="width:14%"></div></div>
+          <div class="bar-labels"><span class="u">your shared screen · a screen or window you pick in Screenroom</span><span class="r">no sound captured in a class</span></div>
+          <div class="bar"><div class="used" style="width:40%"></div></div>
         </div>
-        <p class="note">For the class itself, OBS holds this permission and does the capture; Greenroom only hands it the identifier of the display to show. Greenroom has screen-capture code of its own for one thing: <em>Screenroom</em> can record a presenter from a screen or a window, for example a remote student in a meeting window, with the Mac's sound. macOS asks Greenroom for Screen Recording the first time you pick that source, and never if you only record with a camera.</p>
+        <p class="note">For the class itself, Greenroom captures the display, app or window you chose to share, with ScreenCaptureKit, and draws it into the picture the meeting receives. It takes the picture only, never system sound. macOS asks for Screen Recording the first time you press Start with something to share; until you allow it the class sees your camera only. Greenroom's other screen capture is in <em>Screenroom</em>, which can record a presenter from a screen or a window, for example a remote student in a meeting window, with the Mac's sound. That source asks for the same permission; recording with a camera alone never does.</p>
       </div>
 
       <div class="scope">
@@ -717,9 +718,9 @@
       </div>
       <div class="ep">
         <span class="tag local">Stays local</span>
-        <h3>ws://127.0.0.1:4455</h3>
-        <p>Greenroom talks to OBS only at 127.0.0.1, the address that means this Mac. The password is fixed and published in the source, so it stops accidents rather than a program already running on your Mac. Recordings are written to a folder per session under <span class="mono">~/Documents/Greenroom</span>, with any clips you mark beside them.</p>
-        <p style="margin-top:10px">This socket is also how a clip is saved after the fact — see <a href="#clips">the clip buffer</a> below for the full machinery.</p>
+        <h3>~/Documents/Greenroom</h3>
+        <p>Recordings are written by Greenroom itself, to a folder per session under <span class="mono">~/Documents/Greenroom</span>, with any clips you mark beside them. No network, and no other program, is involved in writing them.</p>
+        <p style="margin-top:10px">A clip taken without a recording is cut from the rolling buffer in Greenroom's memory &mdash; see <a href="#clips">the clip buffer</a> below for the full machinery.</p>
       </div>
     </div>
   </div>
@@ -736,7 +737,7 @@
 
     <figure class="viz">
       <div class="frame">
-        <svg class="svg-wide" viewBox="0 0 960 300" role="img" aria-label="Timeline diagram of the clip buffer. While a session runs, OBS holds the most recent five minutes of the composited picture in memory as a rolling window; everything older is already overwritten and gone. When the teacher presses option-command-2, the buffer is written to disk once, Greenroom trims that file to the last two minutes with a byte-for-byte copy at a keyframe boundary, and the trimmed clip is filed in the session's folder. The buffer itself continues rolling and is discarded when the session ends. While a recording is running, the key marks the recording instead, and the clip is cut from the finished file.">
+        <svg class="svg-wide" viewBox="0 0 960 300" role="img" aria-label="Timeline diagram of the clip buffer. While a session runs, Greenroom holds the most recent five minutes of the composited picture in memory as a rolling window; everything older is already overwritten and gone. When the teacher presses option-command-2, the buffer is written to disk once, Greenroom trims that file to the last two minutes with a byte-for-byte copy at a keyframe boundary, and the trimmed clip is filed in the session's folder. The buffer itself continues rolling and is discarded when the session ends. While a recording is running, the key marks the recording instead, and the clip is cut from the finished file.">
           <defs>
             <marker id="cg" markerWidth="9" markerHeight="9" refX="7" refY="4" orient="auto" markerUnits="userSpaceOnUse"><path d="M0,0 L8,4 L0,8 z" fill="#2f6118"/></marker>
           </defs>
@@ -765,7 +766,7 @@
           <!-- step boxes -->
           <rect x="120" y="176" width="220" height="56" rx="10" fill="#fff" stroke="#d0d5dd"/>
           <text x="230" y="199" font-size="11.5" font-weight="700" text-anchor="middle" fill="#101828">1 &middot; buffer written once</text>
-          <text x="230" y="215" font-size="9.5" text-anchor="middle" fill="#667085">OBS saves the 5-minute window to disk</text>
+          <text x="230" y="215" font-size="9.5" text-anchor="middle" fill="#667085">Greenroom saves the 5-minute window to disk</text>
 
           <rect x="380" y="176" width="220" height="56" rx="10" fill="#fff" stroke="#d0d5dd"/>
           <text x="490" y="199" font-size="11.5" font-weight="700" text-anchor="middle" fill="#101828">2 &middot; trimmed to what you asked</text>
@@ -781,7 +782,7 @@
           <text x="480" y="268" font-size="11" text-anchor="middle" fill="#667085">the buffer keeps rolling after the save, and is discarded entirely when the session ends</text>
         </svg>
       </div>
-      <figcaption>The buffer is OBS&rsquo;s replay buffer: Greenroom writes <code>RecRB=true</code> and <code>RecRBTime=300</code> into OBS&rsquo;s own config before launch and arms it at session start. It holds the <em>composited picture</em> &mdash; the same screen the class sees &mdash; encoded in memory, oldest seconds continuously discarded. A hotkey triggers one <code>SaveReplayBuffer</code> over the loopback socket; Greenroom then trims the saved file to the requested minutes with a passthrough export (a byte-for-byte copy that cuts at a keyframe, so nothing is re-encoded or degraded) and files it in the session&rsquo;s folder. Nothing persists unless you press the key, and the buffer never leaves the machine. The buffer is a setting, <em>Keep the last 5 minutes clippable</em> in Settings &rarr; Webcam, on by default. While a recording is running, the key marks the recording instead, and the clip is cut from the finished file after the class.</figcaption>
+      <figcaption>The buffer is Greenroom&rsquo;s own, armed at session start. It holds the <em>composited picture</em> &mdash; the same screen the class sees &mdash; encoded in memory, oldest seconds continuously discarded. A hotkey writes the buffer out once; Greenroom then trims the saved file to the requested minutes with a passthrough export (a byte-for-byte copy that cuts at a keyframe, so nothing is re-encoded or degraded) and files it in the session&rsquo;s folder. Nothing persists unless you press the key, and the buffer never leaves the machine. The buffer is a setting, <em>Keep the last 5 minutes clippable</em> in Settings &rarr; Webcam, on by default. While a recording is running, the key marks the recording instead, and the clip is cut from the finished file after the class.</figcaption>
     </figure>
   </div>
 </section>
@@ -1030,7 +1031,7 @@
     <div class="scopes">
       <div class="scope">
         <div class="who">Camera switching <span>Apple's Vision · on this Mac</span></div>
-        <p class="note">Settings &rarr; Webcam: pick two or more cameras and turn it on. An iPhone through Continuity Camera can be one of them. During a class every chosen camera is open in OBS, and only one is shown. Greenroom reads frames of each of them over the localhost socket, and Apple's Vision framework works out which way your head is turned, on this Mac. It compares the cameras: the class gets whichever one sees your face most head-on, once it is clearly better than the live one for the delay you set, 1 second by default, as a cut or a short crossfade. It reads head direction, not your eyes. Looking at the floor, or away from every camera, switches nothing. The first camera opens at Start and the others once the meeting is live. Nothing is sent anywhere; the only thing that changes is which camera the class sees.</p>
+        <p class="note">Settings &rarr; Webcam: pick two or more cameras and turn it on. An iPhone through Continuity Camera can be one of them. During a class every chosen camera is open in Greenroom, and only one is drawn into the picture. Greenroom reads frames of each of them, and Apple's Vision framework works out which way your head is turned, on this Mac. It compares the cameras: the class gets whichever one sees your face most head-on, once it is clearly better than the live one for the delay you set, 1 second by default, as a cut or a short crossfade. It reads head direction, not your eyes. Looking at the floor, or away from every camera, switches nothing. The first camera opens at Start and the others once the meeting is live. Nothing is sent anywhere; the only thing that changes is which camera the class sees.</p>
       </div>
       <div class="scope">
         <div class="who">Class summary <span>Apple's on-device model · macOS 26</span></div>
@@ -1056,15 +1057,15 @@
             <tr><td data-label="Capability"><strong>Move windows</strong></td><td data-label="How"><span class="mono">AXUIElement</span></td><td data-label="Scope / limit">Reads title/size/position; sets position/size/minimized. Named apps only. No contents, no pixels.</td></tr>
             <tr><td data-label="Capability"><strong>Open browser window</strong></td><td data-label="How">Apple Events via <span class="mono">osascript</span></td><td data-label="Scope / limit">Tried first for any browser you pick; Chrome-type browsers (Chrome, Edge, Brave, Ulaa) accept it, others are placed with Accessibility. <span class="mono">activate</span>, new window, set bounds &amp; configured address, and, only if you turn it on, close that one window at End Session. No history/tab access.</td></tr>
             <tr><td data-label="Capability"><strong>Built-in browser</strong></td><td data-label="How"><span class="mono">WKWebView</span> (Apple WebKit)</td><td data-label="Scope / limit">Renders the pages you open in Greenroom's own window when <em>Greenroom Browser</em> is the main app. Persistent cookies in WebKit's data store; history in one local JSON file under Application Support; downloads to ~/Downloads; no extensions. Optional Google completions behind one switch.</td></tr>
-            <tr><td data-label="Capability"><strong>Screen &amp; camera capture</strong> (class)</td><td data-label="How">Performed by <strong>OBS</strong></td><td data-label="Scope / limit">For a class, Greenroom does no capture of its own; it resolves display/camera identifiers only.</td></tr>
+            <tr><td data-label="Capability"><strong>Screen &amp; camera capture</strong> (class)</td><td data-label="How"><span class="mono">ScreenCaptureKit</span>; <span class="mono">AVFoundation</span></td><td data-label="Scope / limit">Greenroom captures the display, app or window you chose to share, and your cameras, and draws them into the class picture. Screen Recording and camera permission. Picture only, no system sound. The result goes to the meeting through Zoom's SDK and to a recording if you start one; nowhere else.</td></tr>
             <tr><td data-label="Capability"><strong>Recording</strong> (Screenroom)</td><td data-label="How"><span class="mono">AVFoundation</span>; <span class="mono">ScreenCaptureKit</span> for the screen source</td><td data-label="Scope / limit">Only while you record a presentation. A camera and microphone, or a screen or window with the Mac's sound, to <span class="mono">presentation.mov</span> in its own folder under <span class="mono">~/Documents/Greenroom</span>. Screen Recording permission is asked for only when you pick a screen or window.</td></tr>
             <tr><td data-label="Capability"><strong>Transcription</strong> (Screenroom)</td><td data-label="How"><span class="mono">whisper.cpp</span>, or Apple <span class="mono">SFSpeechRecognizer</span></td><td data-label="Scope / limit">whisper is a binary from Homebrew (<span class="mono">brew install whisper-cpp</span>, which Settings can run for you) plus a model downloaded from huggingface.co with a button; it reads a file on this Mac. Apple's recogniser is pinned to on-device and refuses to run rather than send audio to Apple; it needs the speech-recognition permission.</td></tr>
             <tr><td data-label="Capability"><strong>Counts</strong> (Screenroom)</td><td data-label="How">Arithmetic over timestamps; Apple <span class="mono">Vision</span></td><td data-label="Scope / limit">Pace, filler words (whisper only), pauses of 2 s or more, and facing the room (head direction within 20&deg;). No model writes these numbers.</td></tr>
             <tr><td data-label="Capability"><strong>Written feedback</strong> (Screenroom)</td><td data-label="How">Your agent, or Apple <span class="mono">FoundationModels</span></td><td data-label="Scope / limit">The first that is set up: your agent (off by default), run through zsh as a login shell, reading the transcript, notes, stills every 20 s, counts, rubric and the student's name; it works in a temporary copy of the folder without <span class="mono">presentation.mov</span> (or in the folder itself if the copy fails), and the default Claude Code and Codex commands are read-only there. Otherwise Apple's on-device model, on <strong>macOS 26 with Apple Intelligence on</strong>. Otherwise the counted report only.</td></tr>
-            <tr><td data-label="Capability"><strong>Camera switching</strong></td><td data-label="How">OBS <span class="mono">GetSourceScreenshot</span> + Apple <span class="mono">Vision</span></td><td data-label="Scope / limit">Off by default; needs two or more cameras. Every chosen camera is open in OBS and one is shown. Reads frames of each over the localhost socket and checks head direction on this Mac; switches to whichever camera has your head most head-on, once it is clearly better for 1 s by default. Extra cameras open only once the meeting is live. Nothing sent.</td></tr>
+            <tr><td data-label="Capability"><strong>Camera switching</strong></td><td data-label="How">Frames from the cameras Greenroom has open + Apple <span class="mono">Vision</span></td><td data-label="Scope / limit">Off by default; needs two or more cameras. Every chosen camera is open in Greenroom and one is drawn. Reads frames of each and checks head direction on this Mac; switches to whichever camera has your head most head-on, once it is clearly better for 1 s by default. Extra cameras open only once the meeting is live. Nothing sent.</td></tr>
             <tr><td data-label="Capability"><strong>Class summary</strong></td><td data-label="How">Apple <span class="mono">FoundationModels</span> (on-device)</td><td data-label="Scope / limit">Only when you press <em>Summarise on this Mac</em> in Sessions. Reads the class transcript, writes <span class="mono">summary.md</span> into the class folder. Never a cloud call. <strong>macOS 26 with Apple Intelligence on</strong>, and a transcript from Cues.</td></tr>
             <tr><td data-label="Capability"><strong>Global shortcuts</strong></td><td data-label="How">Carbon <span class="mono">RegisterEventHotKey</span></td><td data-label="Scope / limit">Eight fixed combos (⌥⌘ G/X/R/S/Z and 1/2/5). Receives an opaque ID only — no event taps.</td></tr>
-            <tr><td data-label="Capability"><strong>Launch/quit apps</strong></td><td data-label="How"><span class="mono">NSWorkspace</span></td><td data-label="Scope / limit">OBS, Zoom, and your chosen main app.</td></tr>
+            <tr><td data-label="Capability"><strong>Launch/quit apps</strong></td><td data-label="How"><span class="mono">NSWorkspace</span></td><td data-label="Scope / limit">Your chosen main app.</td></tr>
             <tr><td data-label="Capability"><strong>Meetings</strong></td><td data-label="How">Zoom Meeting SDK + REST</td><td data-label="Scope / limit">Creates/joins meetings under your own Zoom account with your Marketplace credentials; before creating one, ends any meeting still live on the account (for example one a crash left open); lists scheduled meetings only for Join Existing.</td></tr>
             <tr><td data-label="Capability"><strong>Usage analytics</strong></td><td data-label="How">Zoho Apptics SDK</td><td data-label="Scope / limit">On by default; Settings &rarr; Layout &rarr; Privacy turns it off, which stops every call. Anonymous feature counts, coarse durations and error codes, and a crash report if Greenroom crashes. Never names, meeting IDs, file paths, web addresses or chat.</td></tr>
             <tr><td data-label="Capability"><strong>Updates</strong></td><td data-label="How">Sparkle, EdDSA-signed</td><td data-label="Scope / limit">Appcast on GitHub Pages; installs only releases signed with the developer's key. System profiling disabled.</td></tr>
@@ -1092,9 +1093,10 @@
         <li><a href="https://github.com/Sibhimanyu/greenroom/blob/main/App/Cues/RollingTranscript.swift">RollingTranscript.swift</a> <span>— the text Cues matches against</span></li>
         <li><a href="https://github.com/Sibhimanyu/greenroom/blob/main/App/Screenroom/ScreenroomAgent.swift">ScreenroomAgent.swift</a> <span>— the agent hand-off, its brief and default commands</span></li>
         <li><a href="https://github.com/Sibhimanyu/greenroom/blob/main/App/Screenroom/ScreenroomTranscriber.swift">ScreenroomTranscriber.swift</a> <span>— on-device transcription, and the refusal</span></li>
-        <li><a href="https://github.com/Sibhimanyu/greenroom/blob/main/App/OBS/CameraDirector.swift">CameraDirector.swift</a> <span>— camera switching</span></li>
+        <li><a href="https://github.com/Sibhimanyu/greenroom/blob/main/App/Stage/CameraDirector.swift">CameraDirector.swift</a> <span>— camera switching</span></li>
         <li><a href="https://github.com/Sibhimanyu/greenroom/blob/main/App/Recording/SessionSummary.swift">SessionSummary.swift</a> <span>— the class summary</span></li>
-        <li><a href="https://github.com/Sibhimanyu/greenroom/blob/main/App/OBS/OBSWebSocketClient.swift">OBSWebSocketClient.swift</a> <span>— localhost OBS control</span></li>
+        <li><a href="https://github.com/Sibhimanyu/greenroom/blob/main/App/Stage/StageCompositor.swift">StageCompositor.swift</a> <span>— the class picture</span></li>
+        <li><a href="https://github.com/Sibhimanyu/greenroom/blob/main/App/Recording/SessionRecorder.swift">SessionRecorder.swift</a> <span>— recording and the clip buffer</span></li>
         <li><a href="https://github.com/Sibhimanyu/greenroom/blob/main/App/Zoom/ZoomServerToServerClient.swift">ZoomServerToServerClient.swift</a> <span>— Zoom API calls</span></li>
         <li><a href="https://github.com/Sibhimanyu/greenroom/blob/main/App/Zoom/SecretStore.swift">SecretStore.swift</a> <span>— credential storage</span></li>
       </ul>

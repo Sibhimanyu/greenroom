@@ -2,6 +2,10 @@
 
 Status: **proposed 2026-11-05, nothing built.** Branch `rethink-presence`.
 
+> Written when OBS was still the compositor. OBS has since been dropped
+> (`docs/drop-obs-plan.md`): the OBS-era file names below (`GreenroomScene`,
+> `App/OBS/`, the Syphon hand-off) describe the history, not the code.
+
 ## What it is
 
 Greenroom today makes one picture: the whole display, with the teacher in a

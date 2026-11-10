@@ -15,12 +15,12 @@
 
 One click sets up your whole morning-meeting workspace:
 
-- **OBS virtual camera** publishing your screen with your webcam keyed into
-  a bubble (or green-screen cutout) in the corner — pick "OBS Virtual
-  Camera" in Zoom and whoever you're talking to sees your screen with you
-  in it.
+- **Your screen with your webcam in it**, built by Greenroom itself and
+  sent straight into the meeting as your video (a bubble, a green-screen
+  or automatic cutout, or the presenter layout) — there is no camera to
+  pick in Zoom, and whoever you're talking to sees your screen with you in it.
 - **The Zoom meeting**, either created fresh under your account (you host)
-  or joined by ID/link — by default through Greenroom's own built-in
+  or joined by ID/link — always through Greenroom's own built-in
   Meeting SDK client, no separate Zoom app window.
 - **A tiled layout**: your main working app (Chrome by default — any app
   works) on one side of the screen, with the Zoom meeting tile stacked
@@ -71,10 +71,8 @@ the same drag-to-Applications experience.
   Sessions (also needs Apple Intelligence on), and **Screenroom's written
   feedback on the Mac** when no agent is set up (also needs Apple
   Intelligence on). Everything else, Screenroom included, runs on macOS 14+.
-- [OBS Studio](https://obsproject.com) (free) — Greenroom launches and
-  drives it in the background; you never touch the OBS UI
-- The Zoom desktop app — only for the classic/hybrid flow; the default
-  built-in meeting client doesn't need it
+- Nothing else to install. Greenroom captures the screen and camera and
+  builds the picture itself.
 
 ---
 
@@ -84,9 +82,7 @@ First launch opens a built-in **setup guide** that walks through all of
 this interactively, with live detection of what's already done. Reopen it
 anytime from the **?** button in the main window. The short version:
 
-1. **Install OBS** (link above). Nothing to configure in it — Greenroom
-   creates and manages its own scene.
-2. **Get the Zoom credentials in.** Two paths:
+1. **Get the Zoom credentials in.** Two paths:
    - **Someone already set this up** (a teammate sent you the app): have
      them export their settings — Settings (⌘,) → **Transfer** →
      *Export Settings…* — and send you the file. Import it in the same
@@ -98,19 +94,19 @@ anytime from the **?** button in the main window. The short version:
      Marketplace apps (one for the chat/meeting client, one for creating
      meetings). Step-by-step instructions live in
      [`Vendor/README.md`](Vendor/README.md).
-3. **Grant permissions as macOS asks for them** (the guide tracks each):
+2. **Grant permissions as macOS asks for them** (the guide tracks each):
 
    | Permission | When it's asked | What it's for |
    |---|---|---|
-   | Camera | First Start | The webcam feed OBS composites |
+   | Camera | First Start | The webcam feed Greenroom composites |
+   | Screen Recording | First Start that shares something | Greenroom captures the screen you share and draws it into the class picture (camera only until it is on) |
    | Automation → Google Chrome | First time the Chrome window is tiled | Chrome is positioned via its own AppleScript dictionary |
-   | Accessibility | First time a Zoom/native window is tiled | Moving windows of apps that have no AppleScript dictionary — the native Zoom meeting window, and any non-Chrome main app |
+   | Accessibility | First time a non-Chrome main app is tiled | Moving windows of apps that have no AppleScript dictionary |
 
-   Screen Recording permission belongs to **OBS**, not Greenroom — OBS
-   asks for it itself the first time it captures your display. The one
-   exception is **Screenroom**: Greenroom asks for Screen Recording itself
-   the first time you point Screenroom at a screen or window instead of the
-   camera. Screenroom also asks for the microphone and for Speech
+   Screen Recording is Greenroom's own: it captures the display, app or
+   window you chose to share (picture only, never system sound), both for
+   the class and when you point **Screenroom** at a screen or window instead
+   of the camera. Screenroom also asks for the microphone and for Speech
    Recognition (used on-device only) the first time it records and
    transcribes a presentation.
 
@@ -142,19 +138,20 @@ anytime from the **?** button in the main window. The short version:
 1. Pick **New Meeting** (creates a fresh meeting under your Zoom account,
    you host) or **Join Existing** (paste a link with the **Paste Link**
    button, or type the meeting ID/passcode).
-2. Press **Start** (or ⌥⌘G). In order: OBS launches hidden and the virtual camera
-   goes live → the meeting starts/joins → your main app opens tiled to
+2. Press **Start** (or ⌥⌘G). In order: the picture comes up (screen and camera)
+   → the meeting starts/joins → your main app opens tiled to
    its slice → the Zoom tile and chat window fill the side column →
    Greenroom's own window drops to the back and your main app is focused.
 3. Work. The chat window is a real chat client for the meeting — no need
    to open Zoom's chat panel over your shared screen.
 4. Press **End Session** (main window or menu bar): leaves/ends the
-   meeting, closes the chat, stops the virtual camera, quits OBS.
+   meeting, closes the chat, finishes any recording, stops the camera and
+   screen capture.
 
 Also available:
 
-- **Record** (main window or menu bar) — records exactly what the virtual
-  camera is sending (screen + webcam composite, not other participants)
+- **Record** (main window or menu bar) — records exactly what the
+  class sees (screen + webcam composite, not other participants)
   into the class folder in `Documents/Greenroom`. Auto-record on Start is
   off by default.
 - **Clips** — while a session runs, Greenroom keeps the last 5 minutes in
@@ -196,8 +193,8 @@ shared screen shrinks into a rounded panel and you stand keyed at full
 height in front of it. (Apple's own Presenter Overlay can't be triggered
 programmatically and is Apple-silicon-only; this one works on any Mac and
 needs no per-meeting toggle.) Both keyed modes need a real green screen
-behind you; tune the key in OBS → webcam source → Filters if edges look
-rough. Shape changes apply on the next Start.
+behind you; its strength is fixed, so even, bright light on the green screen
+matters most (or leave removal on Automatically). Shape changes apply live.
 
 **Camera switching** (off by default): pick two or more cameras here and
 turn it on. An iPhone through Continuity Camera can be the second one.
@@ -209,8 +206,8 @@ monitor works while you look at that screen. Looking down at the floor, or
 away from every camera, switches nothing. Pick a hard cut or a short crossfade; a bar over your self view
 fills during the wait, and the class never sees it. The first camera opens
 at Start and the others once the meeting is live, so an iPhone is not woken
-until the class needs it. It all runs on the Mac, and aiming a camera does
-not need OBS running.
+until the class needs it. It all runs on the Mac, and aiming a camera
+needs no session running.
 
 ### Layout
 The tiled-workspace arrangement, with a live schematic that previews
@@ -267,10 +264,6 @@ account as these credentials** — see limitations below.
 Account ID / Client ID / Secret of the Server-to-Server OAuth Marketplace
 app — powers "New Meeting". Also here:
 
-- **Use built-in meeting client** (default ON): the whole meeting runs
-  inside Greenroom — you appear once, camera/mic live, hosting directly.
-  OFF falls back to the hybrid flow: the native Zoom app plus a hidden
-  "Greenroom Chat" participant carrying the chat.
 - **Your display name** — what you appear as in the built-in client.
 
 ### YouTube
@@ -410,14 +403,13 @@ over directly and have them delete it after importing.
 - **Cross-account joins fail in the built-in client** (Zoom error 63,
   `UnableToJoinExternalMeeting`, confirmed by live test): the Meeting SDK
   can only join meetings hosted under the Zoom account that owns the
-  Marketplace app. Greenroom detects this and falls back to the native
-  Zoom app automatically (chat window skipped). Details and why the
+  Marketplace app. Greenroom says so and stops; it does not hand the meeting
+  to the Zoom app, which cannot receive Greenroom's picture. Ask the host to
+  run it from your account, or use New Meeting. Details and why the
   documented fixes were abandoned: [`Vendor/README.md`](Vendor/README.md).
 - **"Start New Meeting" hosts under the credential owner's account.**
   Free Zoom accounts can host one meeting at a time, so two people
   sharing one settings file can't both start separate meetings at once.
-- **Zoom's meeting window is found by its title** ("Zoom Meeting") — a
-  Zoom client in another language may not be auto-tiled.
 - Single-display layout: everything tiles on the main screen.
 
 ---
@@ -463,11 +455,6 @@ Non-obvious build/runtime notes, learned the hard way:
   Gatekeeper treats each rebuild as a different app. (Credentials are kept
   in plain `UserDefaults` via `App/Zoom/SecretStore.swift` — the app uses
   no Keychain, so there's no keychain prompt to worry about either way.)
-- **OBS Safe Mode kills the automation socket.** If OBS crashed last time,
-  it shows a "Run in Safe Mode?" dialog on the next launch; Safe Mode
-  disables the websocket server Greenroom drives it with. Always choose
-  "Run in Normal Mode". Greenroom quits OBS cleanly on End Session precisely so
-  this prompt (and stale-state carryover) doesn't happen.
 - **The Zoom SDK's real API names differ from its docs** in several places
   (`ZoomSDK.shared()` not `.sharedSDK()`, chat on
   `ZoomSDKMeetingChatController`, mute flags `isNoVideo`/`isNoAudio`, …)

@@ -4,11 +4,11 @@
 <meta charset="utf-8">
 <title>How Greenroom works — and why it's safe</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="description" content="A visual, technical walkthrough of the Greenroom macOS app: every process, every permission, every byte that leaves your Mac — diagrammed, so you can see for yourself what it does and does not do. No cloud AI built in: every model it runs is on your Mac, and the one feature that can hand class material to a model elsewhere is Screenroom's agent, which you bring yourself and which is off by default.">
+<meta name="description" content="A visual, technical walkthrough of the Greenroom macOS app: every process, every permission, every byte that leaves your Mac — diagrammed, so you can see for yourself what it does and does not do. No cloud AI built in: every model it runs is on your Mac, and the one feature that can hand class material to a model elsewhere is Analyse's agent, which you bring yourself and which is off by default.">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Greenroom">
 <meta property="og:title" content="How Greenroom works — and why it's safe">
-<meta property="og:description" content="A visual, technical walkthrough of the Greenroom macOS app: every process, every permission, every byte that leaves your Mac — diagrammed, so you can see for yourself what it does and does not do. No cloud AI built in: every model it runs is on your Mac, and the one feature that can hand class material to a model elsewhere is Screenroom's agent, which you bring yourself and which is off by default.">
+<meta property="og:description" content="A visual, technical walkthrough of the Greenroom macOS app: every process, every permission, every byte that leaves your Mac — diagrammed, so you can see for yourself what it does and does not do. No cloud AI built in: every model it runs is on your Mac, and the one feature that can hand class material to a model elsewhere is Analyse's agent, which you bring yourself and which is off by default.">
 <meta property="og:url" content="https://sibhimanyu.github.io/greenroom/how-it-works.html">
 <meta property="og:image" content="https://sibhimanyu.github.io/greenroom/social-preview.png">
 <meta property="og:image:width" content="1280">
@@ -261,7 +261,7 @@
     <a href="#data"><b>05</b>Every network call</a>
     <a href="#clips"><b>06</b>The clip buffer</a>
     <a href="#Cues"><b>07</b>Cues</a>
-    <a href="#Screenroom"><b>08</b>Screenroom</a>
+    <a href="#Analyse"><b>08</b>Record &amp; Analyse</a>
     <a href="#ondevice"><b>09</b>Camera switching &amp; summaries</a>
     <a href="#it"><b>10</b>For your IT team</a>
     <a href="#caveats"><b>11</b>The weak spots</a>
@@ -278,7 +278,7 @@
 
     <figure class="viz">
       <div class="frame">
-        <svg class="svg-wide" viewBox="0 0 960 612" role="img" aria-label="System map. Inside a 'Your Mac' boundary is Greenroom, which does what your settings say, and is drawn as its seven parts, each beside the one link it makes. On the left: your screen and webcam, which Greenroom captures itself and composites into the class picture, and the recordings it writes to Documents/Greenroom; your windows, which Greenroom places without reading their contents; your microphone, a thick stream that becomes text on this Mac; and the speech model, Apple's or whisper, downloaded once. On the right, grouped by when anything leaves. Whenever you use it: the Zoom Meeting SDK to Zoom's servers, for meeting video, audio and chat; the updater to GitHub, for signed update checks. On, with a switch in Settings: analytics to Zoho Apptics, for anonymous usage counts and crash reports. Off until you turn it on: Greenroom Browser to the pages you open, plus search suggestions if that switch is on; YouTube upload to YouTube, for your recording; Cues to lookup services, for a short phrase; and Screenroom to your agent, which reads one presentation on this Mac and sends whatever it sends to its own service, which Greenroom cannot describe.">
+        <svg class="svg-wide" viewBox="0 0 960 612" role="img" aria-label="System map. Inside a 'Your Mac' boundary is Greenroom, which does what your settings say, and is drawn as its seven parts, each beside the one link it makes. On the left: your screen and webcam, which Greenroom captures itself and composites into the class picture, and the recordings it writes to Documents/Greenroom; your windows, which Greenroom places without reading their contents; your microphone, a thick stream that becomes text on this Mac; and the speech model, Apple's or whisper, downloaded once. On the right, grouped by when anything leaves. Whenever you use it: the Zoom Meeting SDK to Zoom's servers, for meeting video, audio and chat; the updater to GitHub, for signed update checks. On, with a switch in Settings: analytics to Zoho Apptics, for anonymous usage counts and crash reports. Off until you turn it on: Greenroom Browser to the pages you open, plus search suggestions if that switch is on; YouTube upload to YouTube, for your recording; Cues to lookup services, for a short phrase; and Analyse to your agent, which reads one session on this Mac and sends whatever it sends to its own service, which Greenroom cannot describe.">
           <defs>
             <marker id="ag" markerWidth="9" markerHeight="9" refX="7" refY="4" orient="auto-start-reverse" markerUnits="userSpaceOnUse"><path d="M0,0 L8,4 L0,8 z" fill="#2f6118"/></marker>
             <marker id="aa" markerWidth="9" markerHeight="9" refX="7" refY="4" orient="auto-start-reverse" markerUnits="userSpaceOnUse"><path d="M0,0 L8,4 L0,8 z" fill="#b9770e"/></marker>
@@ -313,8 +313,8 @@
           <text x="370" y="451" font-size="12" font-weight="700" text-anchor="middle" fill="#101828">Cues</text>
           <text x="370" y="466" font-size="10" text-anchor="middle" fill="#475467">listens, suggests links</text>
           <rect x="276" y="484" width="188" height="44" rx="10" fill="#fff" stroke="#b8d4a6"/>
-          <text x="370" y="503" font-size="12" font-weight="700" text-anchor="middle" fill="#101828">Screenroom</text>
-          <text x="370" y="518" font-size="10" text-anchor="middle" fill="#475467">records, counts, reports</text>
+          <text x="370" y="503" font-size="12" font-weight="700" text-anchor="middle" fill="#101828">Record &amp; Analyse</text>
+          <text x="370" y="518" font-size="10" text-anchor="middle" fill="#475467">counts and reports, on request</text>
 
           <!-- What Greenroom works with on this Mac. -->
           <rect x="32" y="132" width="164" height="44" rx="10" fill="#fff" stroke="#d0d5dd"/>
@@ -328,7 +328,7 @@
           <text x="114" y="362" font-size="10" text-anchor="middle" fill="#475467">placed, never read</text>
           <rect x="32" y="432" width="164" height="44" rx="10" fill="#fff" stroke="#d0d5dd"/>
           <text x="114" y="451" font-size="12.5" font-weight="700" text-anchor="middle" fill="#101828">Your mic</text>
-          <text x="114" y="466" font-size="10" text-anchor="middle" fill="#475467">Cues and Screenroom</text>
+          <text x="114" y="466" font-size="10" text-anchor="middle" fill="#475467">meeting, Cues, Record</text>
           <rect x="32" y="484" width="164" height="44" rx="10" fill="#fff" stroke="#2f6118" stroke-dasharray="4 3"/>
           <text x="114" y="503" font-size="12.5" font-weight="700" text-anchor="middle" fill="#101828">Speech model</text>
           <text x="114" y="518" font-size="10" text-anchor="middle" fill="#475467">Apple's or whisper</text>
@@ -374,10 +374,10 @@
           <text x="830" y="503" font-size="13" font-weight="700" text-anchor="middle" fill="#101828">Your agent's service</text>
           <text x="830" y="518" font-size="10" text-anchor="middle" fill="#475467">not Greenroom's to describe</text>
 
-          <!-- Screenroom's agent: a program you bring, run on this Mac. -->
+          <!-- Analyse's agent: a program you bring, run on this Mac. -->
           <rect x="508" y="484" width="132" height="44" rx="10" fill="#fff" stroke="#d0d5dd"/>
           <text x="574" y="503" font-size="12" font-weight="700" text-anchor="middle" fill="#101828">Your agent</text>
-          <text x="574" y="518" font-size="10" text-anchor="middle" fill="#475467">reads one presentation</text>
+          <text x="574" y="518" font-size="10" text-anchor="middle" fill="#475467">reads one session</text>
           <line x1="464" y1="506" x2="506" y2="506" stroke="#2f6118" stroke-width="1.4" marker-end="url(#ag)"/>
           <line x1="640" y1="506" x2="714" y2="506" stroke="#b9770e" stroke-width="1.4" marker-end="url(#aa)"/>
 
@@ -391,7 +391,7 @@
           <text x="584" y="592" font-size="11" fill="#475467">dashed: stored, not running</text>
         </svg>
       </div>
-      <figcaption>Everything Greenroom does is determined by your <strong>settings</strong>: which app to open, the layout, the webcam shape, your Zoom credentials. Change the settings and you change the script. It makes judgements in four places, all on this Mac: Cues, Screenroom, camera switching and class summaries. In <strong>Cues</strong>, your microphone becomes text on this Mac (Apple's speech model or whisper, the thick green stream — it never leaves), word patterns pick out the books, videos, topics, people and places you named, and the short search phrase is what crosses (the thin amber line). In <strong>Screenroom</strong>, a presentation is recorded, transcribed and counted on this Mac; the one part that can leave is the agent you bring, which reads that presentation's folder and sends whatever it sends to its own service. That line is drawn without “HTTPS” because it is the agent's connection, not Greenroom's. Greenroom holds <strong>two entitlements: camera and microphone</strong> — and no others. Screen Recording is a separate permission macOS asks for: Greenroom uses it to put your shared screen into the class picture, and for a Screenroom recording you start from a screen or window. The screen, the camera and the picture they make never leave this Mac except as the video the meeting receives, through Zoom's SDK, which runs inside Greenroom. <strong>Pages you open</strong> exists only when <em>Greenroom Browser</em> is your main app: that window is Apple's WebKit (the engine inside Safari) running in Greenroom's process, so the sites you visit load from Greenroom rather than from Chrome. Its history is one local file, its cookies live in WebKit's standard store, and nothing about your browsing is reported anywhere.</figcaption>
+      <figcaption>Everything Greenroom does is determined by your <strong>settings</strong>: which app to open, the layout, the webcam shape, your Zoom credentials. Change the settings and you change the script. It makes judgements in four places, all on this Mac: Cues, Analyse, camera switching and class summaries. In <strong>Cues</strong>, your microphone becomes text on this Mac (Apple's speech model or whisper, the thick green stream — it never leaves), word patterns pick out the books, videos, topics, people and places you named, and the short search phrase is what crosses (the thin amber line). In <strong>Analyse</strong>, a recording you made earlier is transcribed and counted on this Mac, only when you press Analyse; the one part that can leave is the agent you bring, which reads that session's folder and sends whatever it sends to its own service. That line is drawn without “HTTPS” because it is the agent's connection, not Greenroom's. Greenroom holds <strong>two entitlements: camera and microphone</strong> — and no others. Screen Recording is a separate permission macOS asks for: Greenroom uses it to put your shared screen into the class picture, in a meeting and in Record. Analysing a recording reads a file already on this Mac. The screen, the camera and the picture they make never leave this Mac except as the video the meeting receives, through Zoom's SDK, which runs inside Greenroom. <strong>Pages you open</strong> exists only when <em>Greenroom Browser</em> is your main app: that window is Apple's WebKit (the engine inside Safari) running in Greenroom's process, so the sites you visit load from Greenroom rather than from Chrome. Its history is one local file, its cookies live in WebKit's standard store, and nothing about your browsing is reported anywhere.</figcaption>
     </figure>
   </div>
 </section>
@@ -540,10 +540,10 @@
     </figure>
 
     <div class="chips">
-      <span class="chip"><span class="x">✕</span> No cloud AI built in — the one exception is an agent you bring to Screenroom, off by default</span>
-      <span class="chip"><span class="t">✓</span> Every model Greenroom runs is on this Mac: speech, Cues, camera switching, summaries, Screenroom</span>
+      <span class="chip"><span class="x">✕</span> No cloud AI built in — the one exception is an agent you bring to Analyse, off by default</span>
+      <span class="chip"><span class="t">✓</span> Every model Greenroom runs is on this Mac: speech, Cues, camera switching, summaries, Analyse</span>
       <span class="chip"><span class="x">✕</span> Cues never sends audio or transcript — only the search phrase it builds</span>
-      <span class="chip"><span class="x">✕</span> Greenroom captures your screen only for the class picture and for a Screenroom recording you start, and never sends it anywhere but the meeting</span>
+      <span class="chip"><span class="x">✕</span> Greenroom captures your screen only for the class picture (a meeting, or Record, which you start) and never sends it anywhere but the meeting</span>
       <span class="chip"><span class="x">✕</span> No keylogging</span>
       <span class="chip"><span class="x">✕</span> No student names, meeting IDs or chat in analytics</span>
       <span class="chip"><span class="x">✕</span> No Greenroom server</span>
@@ -565,19 +565,19 @@
       <div class="scope">
         <div class="who">Camera <span>one of the two entitlements</span></div>
         <div>
-          <div class="bar-labels"><span class="u">live meeting video · Screenroom</span><span class="r">unused</span></div>
+          <div class="bar-labels"><span class="u">live meeting video · Record</span><span class="r">unused</span></div>
           <div class="bar"><div class="used" style="width:72%"></div></div>
         </div>
-        <p class="note">Zoom's Meeting SDK runs inside Greenroom, so the camera <em>is</em> opened in its process — that's exactly why it holds this. In a class it is used for the meeting: your composited picture, drawn in Greenroom and handed to Zoom's SDK. <em>Screenroom</em> opens a camera too, only while the Screenroom window is open, and a recording goes to <span class="mono">presentation.mov</span> in that presentation's folder. During a class, <em>camera switching</em> opens no camera of its own: it reads frames from the cameras Greenroom already has open for the picture and hands them to Apple's Vision framework on this Mac (see <a href="#ondevice">camera switching</a>). When you aim a camera in Settings, Greenroom opens that camera itself for the preview. Either way the picture stays on this Mac.</p>
+        <p class="note">Zoom's Meeting SDK runs inside Greenroom, so the camera <em>is</em> opened in its process — that's exactly why it holds this. In a class it is used for the meeting: your composited picture, drawn in Greenroom and handed to Zoom's SDK. <em>Record</em> uses the same picture, with no meeting: it is written to a file in that session's folder under Documents/Greenroom, and opens no other camera. During a class, <em>camera switching</em> opens no camera of its own: it reads frames from the cameras Greenroom already has open for the picture and hands them to Apple's Vision framework on this Mac (see <a href="#ondevice">camera switching</a>). When you aim a camera in Settings, Greenroom opens that camera itself for the preview. Either way the picture stays on this Mac.</p>
       </div>
 
       <div class="scope">
         <div class="who">Microphone <span>the other entitlement</span></div>
         <div>
-          <div class="bar-labels"><span class="u">meeting audio · level meter · Cues (opt-in) · Screenroom</span><span class="r">unused</span></div>
+          <div class="bar-labels"><span class="u">meeting audio · level meter · Record · Cues (opt-in)</span><span class="r">unused</span></div>
           <div class="bar"><div class="used" style="width:78%"></div></div>
         </div>
-        <p class="note">Three readers of the same device inside a class: Zoom's SDK sends your voice to the meeting; the participants panel's level meter shows whether it hears you; and, only with <em>Cues</em> turned on, Apple's speech model or whisper turns it into text on this Mac. Cues reads the default input device — never Zoom's incoming audio — and pauses while you are muted in Zoom. The text is saved as <span class="mono">transcript.txt</span> in that class's folder, beside its recording, with the suggested cards in <span class="mono">cues.txt</span>, so you have the record of what was said; a switch in Settings &rarr; Cues turns that off and keeps both in memory only. Either way the audio and the transcript stay on this Mac. macOS asks no additional permission for Cues: it is the same microphone grant, and no speech-recognition service is involved. The one reader outside a class is <em>Screenroom</em>, only while its window is open; a recording's audio goes into <span class="mono">presentation.mov</span> on this Mac.</p>
+        <p class="note">Three readers of the same device inside a class: Zoom's SDK sends your voice to the meeting; the participants panel's level meter shows whether it hears you; and, only with <em>Cues</em> turned on, Apple's speech model or whisper turns it into text on this Mac. Cues reads the default input device — never Zoom's incoming audio — and pauses while you are muted in Zoom. The text is saved as <span class="mono">transcript.txt</span> in that class's folder, beside its recording, with the suggested cards in <span class="mono">cues.txt</span>, so you have the record of what was said; a switch in Settings &rarr; Cues turns that off and keeps both in memory only. Either way the audio and the transcript stay on this Mac. macOS asks no additional permission for Cues: it is the same microphone grant, and no speech-recognition service is involved. The one reader outside a meeting is <em>Record</em>, only while you are recording; its audio goes into the session's recording file on this Mac.</p>
       </div>
 
       <div class="scope">
@@ -599,21 +599,21 @@
       </div>
 
       <div class="scope">
-        <div class="who">Speech recognition <span>Screenroom only · on this Mac</span></div>
+        <div class="who">Speech recognition <span>Analyse only · on this Mac</span></div>
         <div>
-          <div class="bar-labels"><span class="u">on-device transcription of a presentation</span><span class="r">Apple's servers: refused</span></div>
+          <div class="bar-labels"><span class="u">on-device transcription of a recording</span><span class="r">Apple's servers: refused</span></div>
           <div class="bar"><div class="used" style="width:20%"></div></div>
         </div>
-        <p class="note">Asked for when <em>Screenroom</em> transcribes with Apple's recogniser instead of whisper. That recogniser can quietly send audio to Apple when its local model is missing, so Screenroom pins it to on&#8209;device and <strong>refuses to transcribe</strong> rather than let that happen. With whisper this permission is not used at all.</p>
+        <p class="note">Asked for when <em>Analyse</em> transcribes with Apple's recogniser instead of whisper. That recogniser can quietly send audio to Apple when its local model is missing, so Greenroom pins it to on&#8209;device and <strong>refuses to transcribe</strong> rather than let that happen. With whisper this permission is not used at all.</p>
       </div>
 
       <div class="scope">
-        <div class="who">Screen Recording <span>the class picture, and Screenroom's screen source</span></div>
+        <div class="who">Screen Recording <span>the class picture, in a meeting and in Record</span></div>
         <div>
-          <div class="bar-labels"><span class="u">your shared screen · a screen or window you pick in Screenroom</span><span class="r">no sound captured in a class</span></div>
+          <div class="bar-labels"><span class="u">your shared screen · the same picture when you press Record</span><span class="r">no sound captured in a class</span></div>
           <div class="bar"><div class="used" style="width:40%"></div></div>
         </div>
-        <p class="note">For the class itself, Greenroom captures the display, app or window you chose to share, with ScreenCaptureKit, and draws it into the picture the meeting receives. It takes the picture only, never system sound. macOS asks for Screen Recording the first time you press Start with something to share; until you allow it the class sees your camera only. Greenroom's other screen capture is in <em>Screenroom</em>, which can record a presenter from a screen or a window, for example a remote student in a meeting window, with the Mac's sound. That source asks for the same permission; recording with a camera alone never does.</p>
+        <p class="note">For the class itself, Greenroom captures the display, app or window you chose to share, with ScreenCaptureKit, and draws it into the picture the meeting receives. It takes the picture only, never system sound. macOS asks for Screen Recording the first time you press Start with something to share; until you allow it the class sees your camera only. <em>Record</em> captures the same picture with no meeting, and asks for the same permission. Analysing a recording afterwards reads a file that is already on this Mac, so it never needs it.</p>
       </div>
 
       <div class="scope">
@@ -634,7 +634,7 @@
     <div class="sec-head center">
       <p class="kicker">05 · Every network call</p>
       <h2>Ten channels. That's the whole list.</h2>
-      <p>Four are Greenroom's own. Two exist only when you choose <em>Greenroom Browser</em> as the main app, and one of those has its own switch. The seventh carries class content — your recording — and the eighth carries the search phrases <em>Cues</em> builds from what you say. The ninth is not Greenroom's at all: it is whatever the agent you give <em>Screenroom</em> does with a presentation. All three are off until you turn them on. The tenth happens only when you set up a speech model, and carries nothing of yours.</p>
+      <p>Four are Greenroom's own. Two exist only when you choose <em>Greenroom Browser</em> as the main app, and one of those has its own switch. The seventh carries class content — your recording — and the eighth carries the search phrases <em>Cues</em> builds from what you say. The ninth is not Greenroom's at all: it is whatever the agent you give <em>Analyse</em> does with a session. All three are off until you turn them on. The tenth happens only when you set up a speech model, and carries nothing of yours.</p>
     </div>
     <div class="eps">
       <div class="ep">
@@ -700,17 +700,17 @@
       <div class="ep">
         <span class="tag out">Can leave your Mac · off by default</span>
         <h3>wherever your agent sends it</h3>
-        <p>Only with Settings &rarr; Screenroom &rarr; <em>Hand each presentation to my agent</em> on. Greenroom runs the agent you
-        chose &mdash; Claude Code, Codex, or a command of your own &mdash; through zsh as a login shell, with your own profile, and it reads the presentation's
+        <p>Only with <em>My agent</em> chosen under <em>How to analyse</em>, next to Analyse in Sessions. Greenroom runs the agent you
+        chose &mdash; Claude Code, Codex, or a command of your own &mdash; through zsh as a login shell, with your own profile, and it reads the session's
         transcript, your notes, a still every 20 seconds, the counts, the rubric and the student's name. Greenroom makes no
         network call for this; the agent does, to wherever it runs its model. For Claude Code and Codex that is their own
-        service. For your own command, only you know. See <a href="#Screenroom">Screenroom</a> for exactly what it can reach.</p>
+        service. For your own command, only you know. See <a href="#Analyse">Analyse</a> for exactly what it can reach.</p>
       </div>
       <div class="ep">
         <span class="tag out">Leaves your Mac · only when you press it</span>
         <h3>Apple · huggingface.co · Homebrew</h3>
         <p>Setting up a speech model. Choosing Apple's model for <em>Cues</em> downloads it once from Apple, through macOS's own
-        asset service. For whisper, in <em>Cues</em> or <em>Screenroom</em>, <strong>Download</strong> fetches a model file over HTTPS
+        asset service. For whisper, in <em>Cues</em> or <em>How to analyse</em>, <strong>Download</strong> fetches a model file over HTTPS
         from <span class="mono">huggingface.co/ggerganov/whisper.cpp</span> into <span class="mono">~/Library/Application Support/Greenroom/whisper</span>,
         with progress and Cancel. <strong>Install</strong> runs your own Homebrew (<span class="mono">brew install whisper-cpp</span>), which
         fetches the program the way Homebrew always does; its output is shown as it runs. Both are one-off downloads: nothing
@@ -859,23 +859,23 @@
           <text x="266" y="252" font-size="11" fill="#475467">crosses to the internet (encrypted HTTPS)</text>
         </svg>
       </div>
-      <figcaption>Speech becomes text with Apple's <code>SpeechAnalyzer</code> or, if you pick it in Settings &rarr; Cues, whisper.cpp &mdash; a binary and a model file on this Mac, the same model Screenroom uses. The transcript is written to <span class="mono">transcript.txt</span> in the class's folder as each sentence is finalised, so a class that crashes keeps what was said; Settings &rarr; Cues turns that off. It is written to your disk, never sent anywhere. Only finalised sentences are used; the in-progress guesses go nowhere. Detection runs on the new sentences plus twenty words of lead-in, as each sentence finishes (every eight seconds or so with the opt-in model). A card exists only after a lookup answered with a title and a page, with two exceptions that send nothing: a &ldquo;search link&rdquo; card, which points at a search page, and a word's meaning from the Mac's own dictionary. Five cards show at once, twelve are kept, a class gets eighty lookups, and a dismissed card stays dismissed for the class. Every card shown is listed in <span class="mono">cues.txt</span> in the class folder, unless saving is off. The Links tab in Sessions keeps the ones you opened or sent. The whole engine is <a class="underline" href="https://github.com/Sibhimanyu/greenroom/tree/main/App/Cues">App/Cues/</a>, and every line the status log writes for it begins with <span class="mono">Cues:</span>.</figcaption>
+      <figcaption>Speech becomes text with Apple's <code>SpeechAnalyzer</code> or, if you pick it in Settings &rarr; Cues, whisper.cpp &mdash; a binary and a model file on this Mac, the same model Analyse uses. The transcript is written to <span class="mono">transcript.txt</span> in the class's folder as each sentence is finalised, so a class that crashes keeps what was said; Settings &rarr; Cues turns that off. It is written to your disk, never sent anywhere. Only finalised sentences are used; the in-progress guesses go nowhere. Detection runs on the new sentences plus twenty words of lead-in, as each sentence finishes (every eight seconds or so with the opt-in model). A card exists only after a lookup answered with a title and a page, with two exceptions that send nothing: a &ldquo;search link&rdquo; card, which points at a search page, and a word's meaning from the Mac's own dictionary. Five cards show at once, twelve are kept, a class gets eighty lookups, and a dismissed card stays dismissed for the class. Every card shown is listed in <span class="mono">cues.txt</span> in the class folder, unless saving is off. The Links tab in Sessions keeps the ones you opened or sent. The whole engine is <a class="underline" href="https://github.com/Sibhimanyu/greenroom/tree/main/App/Cues">App/Cues/</a>, and every line the status log writes for it begins with <span class="mono">Cues:</span>.</figcaption>
     </figure>
   </div>
 </section>
 
-<!-- ============ 8. SCREENROOM ============ -->
-<section id="Screenroom">
+<!-- ============ 8. RECORD AND ANALYSE ============ -->
+<section id="Analyse">
   <div class="wrap">
     <div class="sec-head">
-      <p class="kicker">08 &middot; Screenroom</p>
-      <h2>Evaluated presentations, and the one switch that can send one away</h2>
-      <p>Screenroom records a student presenting, lets you type notes timed into the recording, counts how the talk went, and writes feedback against your rubric. Open it from the main window's Screenroom button or <em>Open Screenroom&hellip;</em> in the menu bar. It runs on macOS 14 or later; only one of its three ways of writing feedback needs macOS 26. Almost all of it happens on your Mac. Here is the pipeline, with the one part that can leave.</p>
+      <p class="kicker">08 &middot; Record &amp; Analyse</p>
+      <h2>Recorded sessions, analysed on request, and the one switch that can send one away</h2>
+      <p><em>Record</em> on the home screen saves the class picture with no meeting, and the Notes switch lets you type notes timed into the recording. Nothing is analysed while it records. Later, <em>Analyse</em> on any session (a Record session, a class, a meeting recording, or a presentation recorded by an earlier version) transcribes it, counts how the talk went, and writes feedback against your rubric. Analyse runs on macOS 14 or later; only one of its three ways of writing feedback needs macOS 26. Almost all of it happens on your Mac. Here is the pipeline, with the one part that can leave.</p>
     </div>
 
     <figure class="viz">
       <div class="frame">
-        <svg class="svg-wide" viewBox="0 0 960 372" role="img" aria-label="Pipeline diagram, inside a 'Your Mac' boundary. A camera and microphone, or a screen or window with the Mac's sound, feed Record, which writes presentation.mov and stamps each note at its first keystroke. Transcribe runs whisper.cpp, or Apple's recogniser pinned to on-device. Count works out pace, filler words, pauses and facing the room with Apple's Vision framework, with no AI. All of it is written to the presentation's folder: presentation.mov, the transcript, notes, a still every twenty seconds, the counts and the rubric. Written feedback comes from the first of three that is set up: first, your own agent, off by default, which reads the folder read-only and is the one part that can send anything off the Mac, to its own service, which Greenroom cannot describe; second, Apple's on-device model, on macOS 26 with Apple Intelligence; third, the counted report and your notes with no written feedback. The agent is not given audio or video: it works in a temporary copy of the folder with the recording left out.">
+        <svg class="svg-wide" viewBox="0 0 960 372" role="img" aria-label="Pipeline diagram, inside a 'Your Mac' boundary. The class picture, your screen with you in it, and your microphone, feed Record, which writes the recording and stamps each note at its first keystroke. Later, when you press Analyse, Transcribe runs whisper.cpp, or Apple's recogniser pinned to on-device. Count works out pace, filler words, pauses and facing the room with Apple's Vision framework, with no AI. All of it is written to the session's folder: the recording, the transcript, notes, a still every twenty seconds, the counts and the rubric. Written feedback comes from the first of three that is set up: first, your own agent, off by default, which reads the folder read-only and is the one part that can send anything off the Mac, to its own service, which Greenroom cannot describe; second, Apple's on-device model, on macOS 26 with Apple Intelligence; third, the counted report and your notes with no written feedback. The agent is not given audio or video: it works in a temporary copy of the folder with the recording left out.">
           <defs>
             <marker id="rg" markerWidth="9" markerHeight="9" refX="7" refY="4" orient="auto" markerUnits="userSpaceOnUse"><path d="M0,0 L8,4 L0,8 z" fill="#2f6118"/></marker>
             <marker id="ra" markerWidth="9" markerHeight="9" refX="7" refY="4" orient="auto" markerUnits="userSpaceOnUse"><path d="M0,0 L8,4 L0,8 z" fill="#b9770e"/></marker>
@@ -887,15 +887,17 @@
 
           <!-- row 1: the capture and the two local passes over it -->
           <rect x="30" y="70" width="96" height="72" rx="10" fill="#f2f4f7" stroke="#d0d5dd"/>
-          <text x="78" y="96" font-size="12" font-weight="700" text-anchor="middle" fill="#101828">Camera + mic</text>
-          <text x="78" y="112" font-size="9.5" text-anchor="middle" fill="#475467">or a screen or</text>
-          <text x="78" y="125" font-size="9.5" text-anchor="middle" fill="#475467">window + sound</text>
+          <text x="78" y="96" font-size="12" font-weight="700" text-anchor="middle" fill="#101828">Class picture</text>
+          <text x="78" y="112" font-size="9.5" text-anchor="middle" fill="#475467">screen + you</text>
+          <text x="78" y="125" font-size="9.5" text-anchor="middle" fill="#475467">+ your mic</text>
+          <text x="30" y="65" font-size="9" font-weight="700" letter-spacing="1" fill="#667085">WHILE YOU RECORD</text>
+          <text x="326" y="65" font-size="9" font-weight="700" letter-spacing="1" fill="#667085">WHEN YOU PRESS ANALYSE</text>
 
           <line x1="126" y1="106" x2="158" y2="106" stroke="#2f6118" stroke-width="3" marker-end="url(#rg)"/>
 
           <rect x="160" y="70" width="132" height="72" rx="10" fill="#e8f3df" stroke="#2f6118" stroke-width="1.6"/>
           <text x="226" y="92" font-size="12" font-weight="700" text-anchor="middle" fill="#101828">Record</text>
-          <text x="226" y="108" font-size="9.5" text-anchor="middle" fill="#475467">presentation.mov</text>
+          <text x="226" y="108" font-size="9.5" text-anchor="middle" fill="#475467">the recording file</text>
           <text x="226" y="122" font-size="9" text-anchor="middle" fill="#2f6118">notes stamped as you type</text>
 
           <line x1="292" y1="106" x2="324" y2="106" stroke="#2f6118" stroke-width="1.6" marker-end="url(#rg)"/>
@@ -917,8 +919,8 @@
           <line x1="392" y1="142" x2="392" y2="166" stroke="#2f6118" stroke-width="1.2" marker-end="url(#rg)"/>
           <line x1="558" y1="142" x2="558" y2="166" stroke="#2f6118" stroke-width="1.2" marker-end="url(#rg)"/>
           <rect x="160" y="168" width="464" height="42" rx="10" fill="#fff" stroke="#2f6118" stroke-dasharray="4 3"/>
-          <text x="392" y="186" font-size="11.5" font-weight="700" text-anchor="middle" fill="#101828">The presentation's folder &middot; Documents/Greenroom</text>
-          <text x="392" y="201" font-size="9.5" text-anchor="middle" fill="#475467">presentation.mov &middot; transcript &middot; notes &middot; a still every 20 s &middot; counts &middot; rubric</text>
+          <text x="392" y="186" font-size="11.5" font-weight="700" text-anchor="middle" fill="#101828">The session's folder &middot; Documents/Greenroom</text>
+          <text x="392" y="201" font-size="9.5" text-anchor="middle" fill="#475467">recording &middot; transcript &middot; notes &middot; a still every 20 s &middot; counts &middot; rubric</text>
 
           <!-- row 3: the feedback ladder, the first one set up wins -->
           <text x="30" y="254" font-size="10" font-weight="600" fill="#101828">Written feedback:</text>
@@ -966,17 +968,17 @@
           <text x="266" y="356" font-size="11" fill="#475467">can leave your Mac</text>
         </svg>
       </div>
-      <figcaption>Everything above the feedback row runs whether or not an agent is set up. The counts are arithmetic over timestamps, not a model: pace in words a minute, filler words, pauses of two seconds or more, and how much of the time the speaker faced the room (head direction within 20&deg;, read by Apple's Vision framework on this Mac). Filler words need whisper (<code>brew install whisper-cpp</code> and a downloaded model; the commands are in Settings &rarr; Screenroom), because Apple's recogniser tidies &ldquo;um&rdquo; and &ldquo;you know&rdquo; away before Screenroom sees them; with it, fillers show &ldquo;Not counted&rdquo; rather than a confident zero. Each rubric line gets a score and a reason. The report is a window on your Mac; exporting it asks where the file goes.</figcaption>
+      <figcaption>Everything above the feedback row runs whether or not an agent is set up. The counts are arithmetic over timestamps, not a model: pace in words a minute, filler words, pauses of two seconds or more, and how much of the time the speaker faced the room (head direction within 20&deg;, read by Apple's Vision framework on this Mac). Filler words need whisper (<code>brew install whisper-cpp</code> and a downloaded model; one button under How to analyse installs the program and a model), because Apple's recogniser tidies &ldquo;um&rdquo; and &ldquo;you know&rdquo; away before Analyse sees them; with it, fillers show &ldquo;Not counted&rdquo; rather than a confident zero. Each rubric line gets a score and a reason. The report is a window on your Mac; exporting it asks where the file goes.</figcaption>
     </figure>
 
     <div class="scopes" style="margin-top:28px">
       <div class="scope">
         <div class="who">Recording <span>stays here</span></div>
-        <p class="note">A camera and microphone, or a screen or window with the Mac's sound, written straight to <span class="mono">presentation.mov</span> in a folder of its own under <span class="mono">~/Documents/Greenroom</span>. A presentation needs no name, and one can never overwrite another. The screen or window source is the one thing in Greenroom that asks for <strong>Screen Recording</strong> of its own; with a camera it is never asked.</p>
+        <p class="note">The same class picture a meeting would receive, with your microphone, written straight to a file in a folder of its own under <span class="mono">~/Documents/Greenroom</span>. A session needs no name, and one can never overwrite another. Record uses the <strong>Screen Recording</strong> permission the class picture already has; analysing it afterwards reads that file and asks for nothing. Folders made by the earlier presentation window (<span class="mono">presentation.mov</span>) still open and analyse the same way.</p>
       </div>
       <div class="scope">
         <div class="who">Transcription <span>stays here, whichever engine</span></div>
-        <p class="note">Two engines, both local. <strong>whisper.cpp</strong> is a binary on your Mac reading a file on your Mac, and it returns what was actually said. Apple's recogniser is the other, and Screenroom pins it to on&#8209;device: it <em>refuses to transcribe</em> rather than fall back to Apple's servers, which that recogniser would otherwise do silently when a local model is missing.</p>
+        <p class="note">Two engines, both local. <strong>whisper.cpp</strong> is a binary on your Mac reading a file on your Mac, and it returns what was actually said. Apple's recogniser is the other, and Greenroom pins it to on&#8209;device: it <em>refuses to transcribe</em> rather than fall back to Apple's servers, which that recogniser would otherwise do silently when a local model is missing.</p>
       </div>
       <div class="scope">
         <div class="who">Written feedback <span>three ways, in order</span></div>
@@ -986,14 +988,14 @@
 
     <div class="sec-head" style="margin-top:36px">
       <h3>The exception: your own agent</h3>
-      <p>Screenroom can hand a presentation to a command&#8209;line agent you already have &mdash; Claude Code, Codex, or any command you write yourself. <strong>This is the one part of Greenroom that can send your material to a third party, and the only feature whose destination Greenroom does not control.</strong> It is off by default: Settings &rarr; Screenroom &rarr; <em>Hand each presentation to my agent</em>.</p>
+      <p>Analyse can hand a session to a command&#8209;line agent you already have &mdash; Claude Code, Codex, or any command you write yourself. <strong>This is the one part of Greenroom that can send your material to a third party, and the only feature whose destination Greenroom does not control.</strong> It is off by default: the <em>How to analyse</em> panel, asked at the first press of Analyse, starts on <em>This Mac</em>; <em>My agent</em> is a choice you make.</p>
       <p>What that means concretely, when and only when you have turned it on:</p>
     </div>
 
     <div class="scopes">
       <div class="scope">
         <div class="who">The brief <span>written where you can read it</span></div>
-        <p class="note">Greenroom writes <span class="mono">BRIEF.md</span> into the presentation's folder, so you can read exactly what is being asked in your student's name.</p>
+        <p class="note">Greenroom writes <span class="mono">BRIEF.md</span> into the session's folder, so you can read exactly what is being asked in your student's name.</p>
       </div>
       <div class="scope">
         <div class="who">The command <span>yours, run as you</span></div>
@@ -1005,7 +1007,7 @@
       </div>
       <div class="scope">
         <div class="who">Read&#8209;only <span>and no recording to read</span></div>
-        <p class="note">Before the agent starts, Greenroom copies the brief, the transcript, your notes, the counts, the rubric and the stills into a temporary folder, and the agent works there. <strong><span class="mono">presentation.mov</span> is not copied</strong>, and the temporary folder is deleted when the agent finishes. The default commands for Claude Code and Codex start it read-only in that copy (<span class="mono">--allowedTools "Read,Glob,Grep"</span> and <span class="mono">-s read-only</span>), and Greenroom saves what it prints rather than letting it write files. Those limits are the agent's own: Codex's read-only mode can still read other files on your Mac if asked, and a command you write yourself gets whatever limits you give it. If the copy cannot be made, for example on a full disk, the agent runs in the presentation's own folder instead, where <span class="mono">presentation.mov</span> is.</p>
+        <p class="note">Before the agent starts, Greenroom copies the brief, the transcript, your notes, the counts, the rubric and the stills into a temporary folder, and the agent works there. <strong>The recording is not copied</strong>, and the temporary folder is deleted when the agent finishes. The default commands for Claude Code and Codex start it read-only in that copy (<span class="mono">--allowedTools "Read,Glob,Grep"</span> and <span class="mono">-s read-only</span>), and Greenroom saves what it prints rather than letting it write files. Those limits are the agent's own: Codex's read-only mode can still read other files on your Mac if asked, and a command you write yourself gets whatever limits you give it. If the copy cannot be made, for example on a full disk, the agent runs in the session's own folder instead, where the recording is.</p>
       </div>
       <div class="scope">
         <div class="who">Where it goes <span>we cannot tell you</span></div>
@@ -1014,7 +1016,7 @@
     </div>
 
     <div class="sec-head" style="margin-top:28px">
-      <p>The switch is off, the default is that no agent runs, and every other part of Screenroom works without it.</p>
+      <p>The switch is off, the default is that no agent runs, and every other part of Analyse works without it.</p>
     </div>
   </div>
 </section>
@@ -1058,10 +1060,10 @@
             <tr><td data-label="Capability"><strong>Open browser window</strong></td><td data-label="How">Apple Events via <span class="mono">osascript</span></td><td data-label="Scope / limit">Tried first for any browser you pick; Chrome-type browsers (Chrome, Edge, Brave, Ulaa) accept it, others are placed with Accessibility. <span class="mono">activate</span>, new window, set bounds &amp; configured address, and, only if you turn it on, close that one window at End Session. No history/tab access.</td></tr>
             <tr><td data-label="Capability"><strong>Built-in browser</strong></td><td data-label="How"><span class="mono">WKWebView</span> (Apple WebKit)</td><td data-label="Scope / limit">Renders the pages you open in Greenroom's own window when <em>Greenroom Browser</em> is the main app. Persistent cookies in WebKit's data store; history in one local JSON file under Application Support; downloads to ~/Downloads; no extensions. Optional Google completions behind one switch.</td></tr>
             <tr><td data-label="Capability"><strong>Screen &amp; camera capture</strong> (class)</td><td data-label="How"><span class="mono">ScreenCaptureKit</span>; <span class="mono">AVFoundation</span></td><td data-label="Scope / limit">Greenroom captures the display, app or window you chose to share, and your cameras, and draws them into the class picture. Screen Recording and camera permission. Picture only, no system sound. The result goes to the meeting through Zoom's SDK and to a recording if you start one; nowhere else.</td></tr>
-            <tr><td data-label="Capability"><strong>Recording</strong> (Screenroom)</td><td data-label="How"><span class="mono">AVFoundation</span>; <span class="mono">ScreenCaptureKit</span> for the screen source</td><td data-label="Scope / limit">Only while you record a presentation. A camera and microphone, or a screen or window with the Mac's sound, to <span class="mono">presentation.mov</span> in its own folder under <span class="mono">~/Documents/Greenroom</span>. Screen Recording permission is asked for only when you pick a screen or window.</td></tr>
-            <tr><td data-label="Capability"><strong>Transcription</strong> (Screenroom)</td><td data-label="How"><span class="mono">whisper.cpp</span>, or Apple <span class="mono">SFSpeechRecognizer</span></td><td data-label="Scope / limit">whisper is a binary from Homebrew (<span class="mono">brew install whisper-cpp</span>, which Settings can run for you) plus a model downloaded from huggingface.co with a button; it reads a file on this Mac. Apple's recogniser is pinned to on-device and refuses to run rather than send audio to Apple; it needs the speech-recognition permission.</td></tr>
-            <tr><td data-label="Capability"><strong>Counts</strong> (Screenroom)</td><td data-label="How">Arithmetic over timestamps; Apple <span class="mono">Vision</span></td><td data-label="Scope / limit">Pace, filler words (whisper only), pauses of 2 s or more, and facing the room (head direction within 20&deg;). No model writes these numbers.</td></tr>
-            <tr><td data-label="Capability"><strong>Written feedback</strong> (Screenroom)</td><td data-label="How">Your agent, or Apple <span class="mono">FoundationModels</span></td><td data-label="Scope / limit">The first that is set up: your agent (off by default), run through zsh as a login shell, reading the transcript, notes, stills every 20 s, counts, rubric and the student's name; it works in a temporary copy of the folder without <span class="mono">presentation.mov</span> (or in the folder itself if the copy fails), and the default Claude Code and Codex commands are read-only there. Otherwise Apple's on-device model, on <strong>macOS 26 with Apple Intelligence on</strong>. Otherwise the counted report only.</td></tr>
+            <tr><td data-label="Capability"><strong>Recording</strong> (Record)</td><td data-label="How"><span class="mono">AVFoundation</span>; <span class="mono">ScreenCaptureKit</span> for the class picture</td><td data-label="Scope / limit">Only while you press Record, or while a meeting runs and you record it. The same class picture a meeting receives, plus your microphone, to a file in its own folder under <span class="mono">~/Documents/Greenroom</span>. It uses the Screen Recording permission the class picture already has.</td></tr>
+            <tr><td data-label="Capability"><strong>Transcription</strong> (Analyse)</td><td data-label="How"><span class="mono">whisper.cpp</span>, or Apple <span class="mono">SFSpeechRecognizer</span></td><td data-label="Scope / limit">whisper is a binary from Homebrew (<span class="mono">brew install whisper-cpp</span>, which How to analyse can run for you) plus a model downloaded from huggingface.co with a button; it reads a file on this Mac. Apple's recogniser is pinned to on-device and refuses to run rather than send audio to Apple; it needs the speech-recognition permission.</td></tr>
+            <tr><td data-label="Capability"><strong>Counts</strong> (Analyse)</td><td data-label="How">Arithmetic over timestamps; Apple <span class="mono">Vision</span></td><td data-label="Scope / limit">Pace, filler words (whisper only), pauses of 2 s or more, and facing the room (head direction within 20&deg;). No model writes these numbers.</td></tr>
+            <tr><td data-label="Capability"><strong>Written feedback</strong> (Analyse)</td><td data-label="How">Your agent, or Apple <span class="mono">FoundationModels</span></td><td data-label="Scope / limit">The first that is set up: your agent (off by default), run through zsh as a login shell, reading the transcript, notes, stills every 20 s, counts, rubric and the student's name; it works in a temporary copy of the folder without the recording (or in the folder itself if the copy fails), and the default Claude Code and Codex commands are read-only there. Otherwise Apple's on-device model, on <strong>macOS 26 with Apple Intelligence on</strong>. Otherwise the counted report only.</td></tr>
             <tr><td data-label="Capability"><strong>Camera switching</strong></td><td data-label="How">Frames from the cameras Greenroom has open + Apple <span class="mono">Vision</span></td><td data-label="Scope / limit">Off by default; needs two or more cameras. Every chosen camera is open in Greenroom and one is drawn. Reads frames of each and checks head direction on this Mac; switches to whichever camera has your head most head-on, once it is clearly better for 1 s by default. Extra cameras open only once the meeting is live. Nothing sent.</td></tr>
             <tr><td data-label="Capability"><strong>Class summary</strong></td><td data-label="How">Apple <span class="mono">FoundationModels</span> (on-device)</td><td data-label="Scope / limit">Only when you press <em>Summarise on this Mac</em> in Sessions. Reads the class transcript, writes <span class="mono">summary.md</span> into the class folder. Never a cloud call. <strong>macOS 26 with Apple Intelligence on</strong>, and a transcript from Cues.</td></tr>
             <tr><td data-label="Capability"><strong>Global shortcuts</strong></td><td data-label="How">Carbon <span class="mono">RegisterEventHotKey</span></td><td data-label="Scope / limit">Eight fixed combos (⌥⌘ G/X/R/S/Z and 1/2/5). Receives an opaque ID only — no event taps.</td></tr>
@@ -1070,12 +1072,12 @@
             <tr><td data-label="Capability"><strong>Usage analytics</strong></td><td data-label="How">Zoho Apptics SDK</td><td data-label="Scope / limit">On by default; Settings &rarr; Layout &rarr; Privacy turns it off, which stops every call. Anonymous feature counts, coarse durations and error codes, and a crash report if Greenroom crashes. Never names, meeting IDs, file paths, web addresses or chat.</td></tr>
             <tr><td data-label="Capability"><strong>Updates</strong></td><td data-label="How">Sparkle, EdDSA-signed</td><td data-label="Scope / limit">Appcast on GitHub Pages; installs only releases signed with the developer's key. System profiling disabled.</td></tr>
             <tr><td data-label="Capability"><strong>YouTube upload</strong></td><td data-label="How">YouTube Data API v3, OAuth 2.0 (PKCE, loopback)</td><td data-label="Scope / limit">Off by default. Resumable upload of a finished recording to the connected account's channel, and title changes and deletes from the Sessions window; scope <span class="mono">youtube.force-ssl</span> (manage the account's videos), also used for Cues video search when that is on. Refresh token stored like the Zoom credentials (plain preferences); revoked at Google on Disconnect.</td></tr>
-            <tr><td data-label="Capability"><strong>Speech to text</strong> (Cues)</td><td data-label="How">Apple <span class="mono">SpeechAnalyzer</span> / <span class="mono">SpeechTranscriber</span>, or <span class="mono">whisper.cpp</span></td><td data-label="Scope / limit"><strong>macOS 26</strong>, off by default. whisper is selectable in Settings &rarr; Cues and uses the same local model as Screenroom. Own <span class="mono">AVAudioEngine</span> tap on the default input device only; runs between the meeting going live and End Session, or for two minutes when you press Try it in Settings. Text held in memory (&le; 90 s) for matching, and written to <span class="mono">transcript.txt</span> in the class folder unless that is switched off. Never in analytics, never sent anywhere. Model asset from Apple via the system asset service, downloaded once from Settings. No speech-recognition permission involved.</td></tr>
+            <tr><td data-label="Capability"><strong>Speech to text</strong> (Cues)</td><td data-label="How">Apple <span class="mono">SpeechAnalyzer</span> / <span class="mono">SpeechTranscriber</span>, or <span class="mono">whisper.cpp</span></td><td data-label="Scope / limit"><strong>macOS 26</strong>, off by default. whisper is selectable in Settings &rarr; Cues and uses the same local model as Analyse. Own <span class="mono">AVAudioEngine</span> tap on the default input device only; runs between the meeting going live and End Session, or for two minutes when you press Try it in Settings. Text held in memory (&le; 90 s) for matching, and written to <span class="mono">transcript.txt</span> in the class folder unless that is switched off. Never in analytics, never sent anywhere. Model asset from Apple via the system asset service, downloaded once from Settings. No speech-recognition permission involved.</td></tr>
             <tr><td data-label="Capability"><strong>Mention detection</strong> (Cues)</td><td data-label="How">Apple <span class="mono">FoundationModels</span> (on-device) or regex + <span class="mono">NLTagger</span></td><td data-label="Scope / limit">Reads the new sentences and returns up to five short phrases with a kind, plus a fuller search query built from the surrounding words. Off by default: measured against a recorded class it found everything but suggested about twenty-five wrong cards for every right one, so a teacher turns it on knowingly. Roster names (meeting participants, waiting room, you) are excluded, except inside a quotation; an exact match is also written to the log. <span class="mono">FoundationModels.framework</span> is weak-linked so the app launches on macOS 14/15, where the tab says the feature needs 26.</td></tr>
             <tr><td data-label="Capability"><strong>Link lookups</strong> (Cues)</td><td data-label="How"><span class="mono">URLSession</span>, HTTPS, fixed <span class="mono">User-Agent</span></td><td data-label="Scope / limit">Wikipedia REST title search (the richer phrase and the bare name at once); Google Books (keyless) and Open Library at once; Wikiquote for quotations; YouTube Data API <span class="mono">search.list</span> only with a connected account and the switch on, otherwise a search-page link. Before anything is sent: the phrase must have been spoken, a lone word that is in the Mac&rsquo;s dictionary is dropped unless it was said as a name, and roster names are dropped (quotations excepted). Per class: 80 lookups, 12 a minute, 20 YouTube; two in flight; five-minute back-off after three failures per host. Every lookup logged with its phrase and host; card pictures are fetched separately and not logged.</td></tr>
-            <tr><td data-label="Capability"><strong>Entitlements</strong></td><td data-label="How">Hardened Runtime</td><td data-label="Scope / limit"><span class="mono">device.camera</span>, <span class="mono">device.audio-input</span>. Nothing else. Screen Recording and speech recognition are macOS privacy permissions rather than entitlements, and macOS asks for them only when Screenroom uses them.</td></tr>
-            <tr><td data-label="Capability"><strong>Frameworks</strong></td><td data-label="How">Apple's own + Zoom SDK + Sparkle + Zoho Apptics</td><td data-label="Scope / limit">AppKit, SwiftUI, WebKit, AVFoundation, ScreenCaptureKit, Vision, ApplicationServices, Carbon, CryptoKit, NaturalLanguage; <span class="mono">Speech</span> and <span class="mono">FoundationModels</span> weak-linked. <strong>No cloud AI SDK. Every model Greenroom runs is Apple's or whisper, on the Mac.</strong> The one route to a model elsewhere is Screenroom's agent, which is your program, not Greenroom's.</td></tr>
-            <tr><td data-label="Capability"><strong>macOS versions</strong></td><td data-label="How">&mdash;</td><td data-label="Scope / limit">macOS 14 or later. Needs <strong>macOS 26</strong>: Cues; the class summary (with Apple Intelligence on); Screenroom's written feedback when no agent is set up (with Apple Intelligence on). Screenroom's recording, notes, transcription, counts and agent feedback run on macOS 14.</td></tr>
+            <tr><td data-label="Capability"><strong>Entitlements</strong></td><td data-label="How">Hardened Runtime</td><td data-label="Scope / limit"><span class="mono">device.camera</span>, <span class="mono">device.audio-input</span>. Nothing else. Screen Recording and speech recognition are macOS privacy permissions rather than entitlements, and macOS asks for them only when Greenroom uses them: Screen Recording for the class picture, speech recognition for Analyse.</td></tr>
+            <tr><td data-label="Capability"><strong>Frameworks</strong></td><td data-label="How">Apple's own + Zoom SDK + Sparkle + Zoho Apptics</td><td data-label="Scope / limit">AppKit, SwiftUI, WebKit, AVFoundation, ScreenCaptureKit, Vision, ApplicationServices, Carbon, CryptoKit, NaturalLanguage; <span class="mono">Speech</span> and <span class="mono">FoundationModels</span> weak-linked. <strong>No cloud AI SDK. Every model Greenroom runs is Apple's or whisper, on the Mac.</strong> The one route to a model elsewhere is Analyse's agent, which is your program, not Greenroom's.</td></tr>
+            <tr><td data-label="Capability"><strong>macOS versions</strong></td><td data-label="How">&mdash;</td><td data-label="Scope / limit">macOS 14 or later. Needs <strong>macOS 26</strong>: Cues; the class summary (with Apple Intelligence on); Analyse's written feedback when no agent is set up (with Apple Intelligence on). Record, notes, and Analyse's transcription, counts and agent feedback run on macOS 14.</td></tr>
           </tbody>
         </table>
       </div>
@@ -1122,9 +1124,9 @@
       <p>Two more limits, plainly: it hears your <em>microphone</em>, so a student's voice coming out of your speakers can reach it as room sound (a headset removes that); and the word patterns it uses by default miss some things the opt-in on-device model finds, while that model interrupts far more often with wrong cards.</p>
     </div>
     <div class="caveat" style="margin-top:18px">
-      <h3>With Screenroom's agent on, a student's material can leave, and the video sits in the same folder</h3>
+      <h3>With Analyse's agent on, a student's material can leave, and the video sits in the same folder</h3>
       <p>The agent reads a named student's transcript, your notes, stills of them every 20 seconds, the counts and the rubric. If its model runs in the cloud, all of that leaves your Mac, and Greenroom cannot tell you where it goes or how long it is kept. That is between you and the agent's provider.</p>
-      <p>The agent works in a temporary copy of the presentation's folder that leaves <span class="mono">presentation.mov</span> out, so there is no recording beside it to open. If that copy cannot be made, for example on a full disk, it works in the real folder, recording included. The default Claude Code and Codex commands are read-only, but those limits are the agent's own: an agent whose sandbox lets it read your whole disk could still go looking. A command you write yourself is limited only by what you put in it. It is off by default, and without it Screenroom still records, transcribes, counts and reports on this Mac.</p>
+      <p>The agent works in a temporary copy of the session's folder that leaves the recording out, so there is no recording beside it to open. If that copy cannot be made, for example on a full disk, it works in the real folder, recording included. The default Claude Code and Codex commands are read-only, but those limits are the agent's own: an agent whose sandbox lets it read your whole disk could still go looking. A command you write yourself is limited only by what you put in it. It is off by default, and without it Analyse still transcribes, counts and reports on this Mac.</p>
     </div>
   </div>
 </section>

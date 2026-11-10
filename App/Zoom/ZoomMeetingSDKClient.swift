@@ -586,7 +586,7 @@ final class ZoomMeetingSDKClient: NSObject, ObservableObject {
         }
         isAuthed = true
         authedClientID = clientID
-        checkRawVideoLicence()
+        checkRawVideoLicence(when: "after sign-in")
         #if DEBUG
         installRawVideoSpikeIfEnabled()
         #endif
@@ -596,15 +596,15 @@ final class ZoomMeetingSDKClient: NSObject, ObservableObject {
     /// licence? Logged in every build, in plain words, because it is the
     /// evidence the go / no-go decision needs. Reads with
     /// `log show --predicate 'subsystem == "com.sibhimanyu.greenroom"'`.
-    private func checkRawVideoLicence() {
+    private func checkRawVideoLicence(when: String) {
         guard let controller = ZoomSDK.shared().getRawDataController() else {
-            Self.logLicenceLine("Raw video licence: unknown (the SDK gave no raw data controller)")
+            Self.logLicenceLine("Raw video licence (\(when)): unknown (the SDK gave no raw data controller)")
             return
         }
         let result = controller.hasRawDataLicense()
         Self.logLicenceLine(result == ZoomSDKError_Success
-            ? "Raw video licence: yes"
-            : "Raw video licence: no (\(Self.errorName(result)) = \(result.rawValue))")
+            ? "Raw video licence (\(when)): yes"
+            : "Raw video licence (\(when)): no (\(Self.errorName(result)) = \(result.rawValue))")
     }
 
     private static func errorName(_ e: ZoomSDKError) -> String {
@@ -1205,6 +1205,11 @@ extension ZoomMeetingSDKClient: ZoomSDKMeetingServiceDelegate {
     // the real bridged signature) - the third label is `end`, not
     // `endReason` as guessed in an earlier draft.
     func onMeetingStatusChange(_ state: ZoomSDKMeetingStatus, meetingError error: ZoomSDKMeetingError, end reason: EndMeetingReason) {
+        // The raw-data licence is often only known once we are in a meeting,
+        // so a "no" after sign-in may be wrong. Log it again here, once.
+        if state == ZoomSDKMeetingStatus_InMeeting {
+            checkRawVideoLicence(when: "in meeting")
+        }
         // Claim the video container as early as the SDK will give it to us.
         //
         // Zoom's own custom-UI guidance is explicit: build the custom UI on

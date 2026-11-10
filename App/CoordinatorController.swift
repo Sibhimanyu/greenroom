@@ -21,13 +21,12 @@ final class CoordinatorController: ObservableObject {
 
     /// Called on quit, BEFORE AppKit's termination machinery runs: leaves
     /// any live meeting and cancels the window tasks. Without this, the
-    /// Zoom SDK could throw a leave-confirmation modal during quit - one
-    /// the ghost police may have hidden - deadlocking the app into
+    /// Zoom SDK could throw a leave-confirmation modal during quit,
+    /// deadlocking the app into
     /// force-quit territory.
     func prepareForTermination() {
         stopCues()
         layoutFollowTask?.cancel()
-        ghostWindowPolice?.cancel()
         peopleViewTask?.cancel()
         stopShapePreview()
         ChatWindowController.close()
@@ -429,17 +428,6 @@ final class CoordinatorController: ObservableObject {
         }
     }
 
-    /// All-in-one client mode (default ON): New Meeting runs entirely in
-    /// the SDK's built-in Zoom client - one participant (you), camera and
-    /// mic live, hosting directly. No separate Zoom app, no ghost
-    /// participant. OFF falls back to the hybrid flow (native Zoom app +
-    /// hidden chat participant).
-    @Published var useBuiltInClient: Bool {
-        didSet {
-            defaults.set(useBuiltInClient, forKey: "useBuiltInClient")
-            Analytics.setting("built_in_client", on: useBuiltInClient)
-        }
-    }
     @Published var userDisplayName: String {
         didSet { defaults.set(userDisplayName, forKey: "userDisplayName") }
     }
@@ -1078,7 +1066,6 @@ final class CoordinatorController: ObservableObject {
         s2sAccountID = defaults.string(forKey: "zoomS2SAccountID") ?? ""
         s2sClientID = defaults.string(forKey: "zoomS2SClientID") ?? ""
         s2sClientSecret = "" // loaded lazily via loadSecretsIfNeeded() - never at launch
-        useBuiltInClient = defaults.object(forKey: "useBuiltInClient") == nil ? true : defaults.bool(forKey: "useBuiltInClient")
         userDisplayName = defaults.string(forKey: "userDisplayName") ?? NSFullUserName()
         // Default OFF (show self): the teacher's own tile belongs in the
         // extended display's participant grid alongside the students
@@ -1120,7 +1107,6 @@ final class CoordinatorController: ObservableObject {
 
     private func chatSessionDidEnd() {
         layoutFollowTask?.cancel()
-        ghostWindowPolice?.cancel()
         peopleViewTask?.cancel()
         if ChatWindowController.isOpen {
             ChatWindowController.close()
@@ -1258,6 +1244,12 @@ final class CoordinatorController: ObservableObject {
         }
         loadSecretsIfNeeded()
 
+        // Greenroom's own Zoom client sends the picture, so it is needed for
+        // every meeting, created or joined.
+        if meetingMode != .record, sdkClientID.isEmpty || sdkClientSecret.isEmpty {
+            log("Can't start yet \u{2014} add the Meeting SDK Client ID and Secret in Settings (\u{2318},) \u{2192} Zoom. Greenroom sends your screen and camera through its own Zoom client, so it needs them.")
+            return
+        }
         switch meetingMode {
         case .record:
             return
@@ -1345,41 +1337,18 @@ final class CoordinatorController: ObservableObject {
 
                 mark(.meeting, .active)
                 switch meetingMode {
-                case .create where useBuiltInClient:
-                    // All-in-one: the SDK IS the meeting client. One
-                    // participant (you), hosting directly, camera/mic
-                    // live, chat sent as you. No native Zoom app at all.
+                case .create:
+                    // The SDK IS the meeting client: one participant (you),
+                    // hosting directly, sending Greenroom's own picture, chat
+                    // sent as you.
                     guard let meeting = try await preparedMeeting else {
                         throw NSError(domain: "Greenroom", code: 30, userInfo: [
                             NSLocalizedDescriptionKey: "Internal: the meeting wasn't prepared."
                         ])
                     }
                     try await hostAllInOne(meeting: meeting)
-                case .create:
-                    // Hybrid fallback: the SDK connection hosts the
-                    // meeting invisibly, then the native Zoom app JOINS,
-                    // and host gets handed over once you're in.
-                    guard let meeting = try await preparedMeeting else {
-                        throw NSError(domain: "Greenroom", code: 30, userInfo: [
-                            NSLocalizedDescriptionKey: "Internal: the meeting wasn't prepared."
-                        ])
-                    }
-                    try await hostChatSession(meeting: meeting)
-                    log("Joining the meeting in Zoom\u{2026}")
-                    ZoomLauncher.join(meetingNumber: meeting.number, password: meeting.password)
-                    logNativeZoomHasNoPicture()
-                    Task {
-                        if await zoomChatClient.promoteFirstOtherParticipantToHost(timeout: 90) {
-                            log("Host role handed to your Zoom \u{2014} full host controls live in your client now. (End session still ends the meeting for everyone.)")
-                        }
-                    }
-                case .join where useBuiltInClient && !sdkClientID.isEmpty && !sdkClientSecret.isEmpty:
-                    try await joinAllInOne()
                 case .join:
-                    log("Joining meeting \(meetingNumber) in Zoom\u{2026}")
-                    ZoomLauncher.join(meetingNumber: meetingNumber, password: meetingPassword)
-                    logNativeZoomHasNoPicture()
-                    joinChatOnly() // logs its own reason if skipped (e.g. no SDK credentials)
+                    try await joinAllInOne()
                 case .record:
                     break // routed to startRecordingSession before any of this
                 }
@@ -1404,25 +1373,6 @@ final class CoordinatorController: ObservableObject {
                     mark(.recording, .done)
                 }
                 mark(.tiling, .active)
-
-                // The built-in client's window is parked in-process (see
-                // hostAllInOne/joinAllInOne) - the AX-based native-window
-                // parking would only find nothing and nag for
-                // Accessibility permission. sdkMeetingWindows() being
-                // non-empty means the built-in client took the session, so
-                // it also covers joinAllInOne's cross-account fallback,
-                // which DOES need the native parking.
-                // "No SDK windows" used to mean the built-in client did not
-                // take the session, so the native Zoom app must be handling it
-                // and needs its window tiled. Under custom UI that inference is
-                // backwards: the built-in client IS handling the meeting, it
-                // simply has no windows. Without this guard, every custom-UI
-                // session ended up hunting for a native Zoom window that does
-                // not exist and logging "Couldn't find Zoom's meeting window to
-                // tile" - observed live.
-                if sdkMeetingWindows().isEmpty, !zoomChatClient.didUseCustomUI {
-                    parkZoomWindow()
-                }
 
                 mark(.tiling, .done)
                 // Clearing the steps is what makes Readiness.isLive true, which
@@ -1478,8 +1428,7 @@ final class CoordinatorController: ObservableObject {
             // isJoined, so the meeting-ended observer sees it already
             // closed and doesn't double-log.
             layoutFollowTask?.cancel()
-            ghostWindowPolice?.cancel()
-            peopleViewTask?.cancel()
+                peopleViewTask?.cancel()
             if ChatWindowController.isOpen {
                 ChatWindowController.close()
                 zoomChatBridge.reset()
@@ -1546,10 +1495,6 @@ final class CoordinatorController: ObservableObject {
             // the upload question is the last thing, and nothing waits on it.
             if let savedRecording { recordingFinished(path: savedRecording) }
         }
-    }
-
-    func launchZoom() {
-        ZoomLauncher.launchZoom()
     }
 
     /// The meeting this session created, if it created one. Only a meeting
@@ -2148,23 +2093,6 @@ final class CoordinatorController: ObservableObject {
         }
     }
 
-    func joinMeeting() {
-        guard !meetingNumberDigits.isEmpty else { return }
-        ZoomLauncher.join(meetingNumber: meetingNumber, password: meetingPassword)
-    }
-
-    /// Creates a brand-new instant meeting via Zoom's REST API and opens
-    /// its `start_url`, which launches the native Zoom app and begins
-    /// hosting immediately - the same effect as clicking Zoom's own
-    /// "New Meeting" button, just triggered from here. Also fills
-    /// Meeting ID/Passcode from the result, so "Open Chat Window" is a
-    /// second click away with no copy-pasting.
-    ///
-    /// Bonus: a meeting started this way is automatically hosted under
-    /// the same Zoom account as whichever one owns these Server-to-Server
-    /// credentials - if that's the same account as the Meeting SDK app's,
-    /// this sidesteps the cross-account join restriction entirely (see
-    /// `joinChatOnly()`'s doc comment) without you having to think about it.
     /// The all-in-one path: Greenroom's built-in SDK client IS the meeting
     /// client - starts the meeting as the user (their name, host role),
     /// camera sending Greenroom's own picture, mic live, chat sent as
@@ -2177,9 +2105,9 @@ final class CoordinatorController: ObservableObject {
             ])
         }
         guard !sdkClientID.isEmpty, !sdkClientSecret.isEmpty else {
-            log("No Meeting SDK credentials \u{2014} starting the meeting via the native Zoom app instead.")
-            ZoomLauncher.startAsHost(meetingNumber: meeting.number, zak: zak)
-            return
+            throw NSError(domain: "Greenroom", code: 21, userInfo: [
+                NSLocalizedDescriptionKey: "Add the Meeting SDK Client ID and Secret in Settings (\u{2318},) \u{2192} Zoom. Greenroom sends your screen and camera through its own Zoom client, so it needs them."
+            ])
         }
 
         isConnectingChat = true
@@ -2200,20 +2128,24 @@ final class CoordinatorController: ObservableObject {
             zoomChatBridge.attach(to: controller)
         }
         ChatWindowController.show(chat: zoomChatBridge, layout: workspaceLayout)
-        log("Meeting is live \u{2014} you're hosting from Greenroom. No second Zoom app, no ghost participant.")
+        log("Meeting is live \u{2014} you're hosting from Greenroom.")
 
         presentMeetingSurfaces(resetQuickHideToDefault: true) // session start = the mode's default state
         finalizeLayout()
     }
 
     /// Join Existing via the built-in client - you as one participant,
-    /// camera/mic live, chat as yourself, window parked top-right. Falls
-    /// back to the native Zoom app when Zoom rejects the join as
-    /// cross-account (error 63): the SDK can only join meetings hosted
-    /// under the account that owns the Marketplace app, confirmed by live
-    /// testing. That fallback is the same hybrid flow as before, so
-    /// someone else's meeting still works - just with the ghost.
+    /// camera/mic live, chat as yourself, window parked top-right. The SDK can
+    /// only join meetings hosted under the account that owns the Marketplace
+    /// app (Zoom rejects others as error 63, confirmed by live testing); that
+    /// fails with a plain message saying what to do, rather than handing the
+    /// meeting to the Zoom app, which cannot receive Greenroom's picture.
     private func joinAllInOne() async throws {
+        guard !sdkClientID.isEmpty, !sdkClientSecret.isEmpty else {
+            throw NSError(domain: "Greenroom", code: 21, userInfo: [
+                NSLocalizedDescriptionKey: "Add the Meeting SDK Client ID and Secret in Settings (\u{2318},) \u{2192} Zoom. Greenroom sends your screen and camera through its own Zoom client, so it needs them."
+            ])
+        }
         isConnectingChat = true
         defer { isConnectingChat = false }
 
@@ -2259,11 +2191,9 @@ final class CoordinatorController: ObservableObject {
                 try await zoomChatClient.join(meetingNumber: meetingNumber, password: meetingPassword, displayName: name, enableMedia: true)
             } catch {
                 if (error as? ZoomMeetingSDKError)?.isCrossAccountRejection == true {
-                    log("That meeting is hosted on another Zoom account, which Greenroom's built-in client can't join \u{2014} using the Zoom app instead.")
-                    ZoomLauncher.join(meetingNumber: meetingNumber, password: meetingPassword)
-                    logNativeZoomHasNoPicture()
-                    joinChatOnly()
-                    return
+                    throw NSError(domain: "Greenroom", code: 22, userInfo: [
+                        NSLocalizedDescriptionKey: "That meeting is hosted on another Zoom account, and Greenroom's Zoom client can only join meetings hosted under the account that owns your Meeting SDK app. Ask the host to run it from your account, or use New Meeting."
+                    ])
                 }
                 throw error
             }
@@ -2275,7 +2205,7 @@ final class CoordinatorController: ObservableObject {
         ChatWindowController.show(chat: zoomChatBridge, layout: workspaceLayout)
         log(startedAsHost
             ? "Meeting is live \u{2014} you're hosting from Greenroom."
-            : "In the meeting \u{2014} no second Zoom app, no ghost participant.")
+            : "In the meeting.")
 
         presentMeetingSurfaces(resetQuickHideToDefault: true) // session start = the mode's default state
         finalizeLayout()
@@ -2724,7 +2654,7 @@ final class CoordinatorController: ObservableObject {
     /// Keeps the no-second-display gallery behind the workspace.
     ///
     /// The SDK raises its own windows on state changes - waiting room, share
-    /// start - which is the same behaviour the ghost police exists for, so one
+    /// start - so one
     /// orderBack at placement time does not hold. Pushed back only when it has
     /// floated to the FRONT without being focused: a teacher who deliberately
     /// clicks into the grid keeps it, and it settles back on its own once they
@@ -3029,8 +2959,7 @@ final class CoordinatorController: ObservableObject {
 
     /// The menu bar's "Snap Windows Back": re-tiles everything to the
     /// session layout after the user has dragged windows around. Handles
-    /// whichever meeting window exists - the built-in client's (ours,
-    /// plain NSWindow) or the native Zoom app's (Accessibility API) - and
+    /// the built-in client's meeting window (ours, a plain NSWindow), and
     /// the follow loops those restart re-align the chat automatically.
     func snapWindowsBack() {
         Analytics.feature("snap_back")
@@ -3073,8 +3002,6 @@ final class CoordinatorController: ObservableObject {
         } else if !sdkMeetingWindows().isEmpty {
             parkBuiltInMeetingWindow()
             placePeopleViewWindow()
-        } else if ZoomWindowManager.hasAccessibilityPermission, ZoomWindowManager.currentMeetingWindowFrame() != nil {
-            parkZoomWindow()
         }
     }
 
@@ -3168,40 +3095,6 @@ final class CoordinatorController: ObservableObject {
         return meeting
     }
 
-    /// New Meeting mode's chat connection doesn't JOIN the meeting - it
-    /// STARTS it, as host, using the ZAK from the create call. The meeting
-    /// is live the moment this returns. Without Meeting SDK credentials it
-    /// falls back to the old native zoommtg:// host-start so the meeting
-    /// can still begin (chat-less, and subject to that path's known
-    /// flakiness).
-    private func hostChatSession(meeting: ZoomServerToServerClient.CreatedMeeting) async throws {
-        guard let zak = meeting.zak else {
-            throw NSError(domain: "Greenroom", code: 20, userInfo: [
-                NSLocalizedDescriptionKey: "Zoom's create-meeting response had no host key (zak) - can't start the meeting."
-            ])
-        }
-        guard !sdkClientID.isEmpty, !sdkClientSecret.isEmpty else {
-            log("No Meeting SDK credentials \u{2014} starting the meeting via the native Zoom app instead (no chat window).")
-            ZoomLauncher.startAsHost(meetingNumber: meeting.number, zak: zak)
-            return
-        }
-
-        isConnectingChat = true
-        defer { isConnectingChat = false }
-
-        log("Starting the meeting (Greenroom hosts it, carrying the chat)\u{2026}")
-        try await zoomChatClient.ensureReady(clientID: sdkClientID, clientSecret: sdkClientSecret)
-        try await zoomChatClient.startAsHost(meetingNumber: meeting.number, zak: zak)
-        // Police only after the start completes - see joinChatOnly's note.
-        startGhostWindowPolice()
-        if let controller = zoomChatClient.chatController() {
-            zoomChatBridge.attach(to: controller)
-        }
-        ChatWindowController.show(chat: zoomChatBridge, layout: workspaceLayout)
-        log("Meeting is live \u{2014} chat window ready.")
-        finalizeLayout()
-    }
-
     // MARK: Scheduled meetings - pulled from the Zoom account with the
     // same S2S credentials that create meetings, so "Join Existing" can
     // offer the account's recurring class meeting instead of making the
@@ -3287,89 +3180,7 @@ final class CoordinatorController: ObservableObject {
         log("Filled meeting ID\(parsed.password.isEmpty ? "" : " + passcode") from clipboard.")
     }
 
-    /// Joins the same meeting as a second, camera/mic-off participant via
-    /// the Meeting SDK, purely to drive the standalone chat window -
-    /// doesn't touch the native Zoom app or its window at all.
-    ///
-    /// CONFIRMED LIMITATION (by testing, not speculation): this only works
-    /// for meetings hosted under the SAME Zoom account as this app's
-    /// Marketplace credentials. Joining a meeting hosted elsewhere fails
-    /// with ZoomSDKMeetingError_UnableToJoinExternalMeeting (63). Zoom's
-    /// documented fix (OAuth-fetched OBF tokens) was built and abandoned
-    /// along with the rest of the OAuth consolidation (see
-    /// Vendor/README.md) - the join method still accepts an
-    /// `onBehalfToken` should that ever be revisited, but nothing feeds
-    /// it. Use this only for meetings hosted under your own account.
-    ///
-    /// Guarded by `isConnectingChat` - a double-click used to fire two
-    /// overlapping join attempts against the same shared
-    /// `zoomChatClient`, corrupting its single-slot completion closures
-    /// and producing confusing, inconsistent SDK error codes that had
-    /// nothing to do with the real failure.
-    func joinChatOnly() {
-        loadSecretsIfNeeded()
-        guard !isConnectingChat, !meetingNumberDigits.isEmpty else { return }
-        Analytics.feature("chat_only")
-        guard !sdkClientID.isEmpty, !sdkClientSecret.isEmpty else {
-            // Reached silently-skippable from the one-button session flow -
-            // say why the chat window didn't appear instead of nothing.
-            log("Chat window skipped \u{2014} add the Meeting SDK credentials in Settings (\u{2318},) \u{2192} Zoom to enable it.")
-            return
-        }
-        isConnectingChat = true
-        Task {
-            do {
-                log("Connecting Meeting SDK chat\u{2026}")
-                try await zoomChatClient.ensureReady(clientID: sdkClientID, clientSecret: sdkClientSecret)
-                try await zoomChatClient.join(meetingNumber: meetingNumber, password: meetingPassword)
-                // Only start hiding SDK windows AFTER the join completes -
-                // policing during the connect once hid a dialog the SDK was
-                // waiting on, deadlocking the whole start.
-                startGhostWindowPolice()
-                if let controller = zoomChatClient.chatController() {
-                    zoomChatBridge.attach(to: controller)
-                }
-                ChatWindowController.show(chat: zoomChatBridge, layout: workspaceLayout)
-                log("Chat window ready \u{2014} joined as a second, muted participant.")
-                finalizeLayout()
-            } catch {
-                ghostWindowPolice?.cancel() // failed join - stop policing a window that's going away
-                log("Meeting SDK chat failed: \(error.localizedDescription)")
-            }
-            isConnectingChat = false
-        }
-    }
-
-    /// Shrinks Zoom's meeting window into the top of the side column,
-    /// above the chat window - the final piece of the end-of-Start layout.
-    /// Needs the one-time Accessibility grant; without it this logs how to
-    /// enable it and the rest of the session is unaffected. Polls for up
-    /// to 45s because the meeting window only exists once the meeting has
-    /// actually started.
-    private func parkZoomWindow() {
-        guard workspaceLayout.sideShowsZoomTile else { return }
-        guard ZoomWindowManager.hasAccessibilityPermission else {
-            ZoomWindowManager.promptForAccessibilityPermission()
-            log("To auto-tile the Zoom window into the side column, allow Greenroom under System Settings \u{2192} Privacy & Security \u{2192} Accessibility, then Start again.")
-            return
-        }
-        guard let frame = ChatWindowController.zoomWindowAXFrame(for: workspaceLayout) else { return }
-        Task {
-            if let actual = await ZoomWindowManager.positionMeetingWindow(frame: frame, timeout: 45) {
-                // Snap the chat to sit exactly below wherever Zoom REALLY
-                // ended up (it clamps to its own minimum window size).
-                ChatWindowController.adjustBelowZoom(actualZoomFrameAX: actual, layout: workspaceLayout)
-                log("Zoom window parked top-right, above the chat.")
-                startFollowingZoomWindow()
-            } else {
-                log("Couldn't find Zoom's meeting window to tile (did the meeting actually start?).")
-            }
-            finalizeLayout()
-        }
-    }
-
     private var layoutFollowTask: Task<Void, Never>?
-    private var ghostWindowPolice: Task<Void, Never>?
     private var peopleViewTask: Task<Void, Never>?
     /// The built-in client's PRIMARY meeting window - the one parked as
     /// the side-column tile. Weak: the SDK owns its windows.
@@ -3534,30 +3345,11 @@ final class CoordinatorController: ObservableObject {
         }
     }
 
-    /// The Meeting SDK renders a full meeting window of its own inside
-    /// Greenroom's process for the chat participant - a second "Zoom
-    /// window" that made sessions confusing next to the real (native) one.
-    /// There's no official way to suppress it in default-UI mode (checked
-    /// ZoomSDKMeetingUIController + ZoomSDKMeetingConfiguration headers),
-    /// but it lives in OUR window list, so it can simply be ordered out -
-    /// and re-ordered out every half second, since the SDK re-shows it on
-    /// state changes (waiting room, share start, etc.).
-    private func startGhostWindowPolice() {
-        ghostWindowPolice?.cancel()
-        ghostWindowPolice = Task {
-            while !Task.isCancelled {
-                hideSDKMeetingWindows()
-                try? await Task.sleep(nanoseconds: 500_000_000)
-            }
-        }
-    }
-
     /// The SDK's in-process windows - identified by title ("Zoom Meeting",
     /// waiting-room text) or by their class living in Zoom's frameworks
     /// (ZM/ZP prefixes) when title-less. Everything known-ours is
     /// excluded first (the chat window's own title contains "Meeting").
-    /// The hybrid flow HIDES these (ghost police); the all-in-one flow
-    /// PARKS the first one top-right as the actual meeting window.
+    /// The first one is parked top-right as the actual meeting window.
     private func sdkMeetingWindows() -> [NSWindow] {
         NSApp.windows.filter { window in
             guard window.isVisible, !window.isSheet else { return false }
@@ -3711,34 +3503,12 @@ final class CoordinatorController: ObservableObject {
         }
     }
 
-    /// Zoom reshapes its own window mid-meeting (screen share starting or
-    /// stopping, the user dragging it) - a one-shot alignment left visible
-    /// gaps between it and the chat below (seen in a real session). So for
-    /// the life of the chat window, keep re-snapping the chat under
-    /// wherever Zoom's window currently is.
-    private func startFollowingZoomWindow() {
-        layoutFollowTask?.cancel()
-        layoutFollowTask = Task {
-            var lastFrame = CGRect.null
-            while !Task.isCancelled, ChatWindowController.isOpen {
-                if let frame = ZoomWindowManager.currentMeetingWindowFrame(), frame != lastFrame {
-                    lastFrame = frame
-                    ChatWindowController.adjustBelowZoom(actualZoomFrameAX: frame, layout: workspaceLayout)
-                }
-                try? await Task.sleep(nanoseconds: 2_000_000_000)
-            }
-        }
-    }
-
     /// The z-order finale: Zoom reduced to just the parked meeting tile,
     /// Greenroom's own window out of the way at the back, and the main
     /// pane's app active as the thing the user actually works in.
     /// Idempotent - runs after the chat window appears AND after the Zoom
     /// window parks, whichever finishes last wins.
     private func finalizeLayout() {
-        if ZoomWindowManager.hasAccessibilityPermission {
-            ZoomWindowManager.minimizeNonMeetingWindows()
-        }
         // Title match, minus the browser: its title is the page's, and the
         // default home page is our own site.
         for window in NSApp.windows
@@ -3774,12 +3544,6 @@ final class CoordinatorController: ObservableObject {
         } else {
             log("Meeting video: Greenroom couldn\u{2019}t install its picture in the meeting (details in the session log), so your video may be blank. Ending and starting again usually clears it.")
         }
-    }
-
-    /// The separate Zoom app is a different program and cannot be handed
-    /// Greenroom's picture; only the built-in client can.
-    private func logNativeZoomHasNoPicture() {
-        log("The separate Zoom app can\u{2019}t receive Greenroom\u{2019}s picture \u{2014} only the built-in Zoom client can. Use the built-in client (it needs Meeting SDK credentials in Settings \u{2192} Zoom) so the class sees your screen and camera.")
     }
 
     /// The picture half of a Start: the compositor up, the first camera open,
@@ -4039,7 +3803,6 @@ struct SettingsTransfer: Codable {
     // teacher had set and an export did not carry. A colleague importing the
     // file got a Mac configured most of the way and no sign of which part was
     // missing, which is the worst shape a transfer can take.
-    var useBuiltInClient: Bool?
     var userDisplayName: String?
     var customUIMode: Bool?
     var clipBufferEnabled: Bool?
@@ -4113,7 +3876,6 @@ extension CoordinatorController {
             keepOBSWarm: keepOBSWarm,
             meetingPresets: meetingPresets,
             workspaceLayout: workspaceLayout,
-            useBuiltInClient: useBuiltInClient,
             userDisplayName: userDisplayName,
             customUIMode: customUIMode,
             clipBufferEnabled: clipBufferEnabled,
@@ -4197,7 +3959,6 @@ extension CoordinatorController {
         if let value = transfer.hideSelfView { hideSelfView = value }
         if let value = transfer.speakerTileShortcutEnabled { speakerTileShortcutEnabled = value }
         if let value = transfer.autoRecordOnStart { autoRecordOnStart = value }
-        if let value = transfer.useBuiltInClient { useBuiltInClient = value }
         if let value = transfer.userDisplayName { userDisplayName = value }
         if let value = transfer.customUIMode { customUIMode = value }
         if let value = transfer.clipBufferEnabled { clipBufferEnabled = value }

@@ -78,11 +78,6 @@ struct MenuBarView: View {
         .keyboardShortcut("z", modifiers: [.option, .command])
         .disabled(!coordinator.speakerTileShortcutEnabled || !coordinator.stageLive)
 
-        Button("Open Chat Window") {
-            coordinator.joinChatOnly()
-        }
-        .disabled(coordinator.isConnectingChat || coordinator.meetingNumber.isEmpty)
-
         // Screenroom needs no session, so unlike everything above it there is
         // nothing to disable it on.
         if ScreenroomAvailability.isReleased {

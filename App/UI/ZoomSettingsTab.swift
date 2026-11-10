@@ -43,7 +43,6 @@ struct ZoomSettingsTab: View {
             s2sAccountID: $coordinator.s2sAccountID,
             s2sClientID: $coordinator.s2sClientID,
             s2sClientSecret: $coordinator.s2sClientSecret,
-            useBuiltInClient: $coordinator.useBuiltInClient,
             displayName: $coordinator.userDisplayName,
             customUI: $coordinator.customUIMode,
             customUINeedsRelaunch: coordinator.customUIModeNeedsRelaunch)
@@ -58,7 +57,6 @@ struct ZoomPageContent: View {
     @Binding var s2sAccountID: String
     @Binding var s2sClientID: String
     @Binding var s2sClientSecret: String
-    @Binding var useBuiltInClient: Bool
     @Binding var displayName: String
     @Binding var customUI: Bool
     let customUINeedsRelaunch: Bool
@@ -111,7 +109,6 @@ struct ZoomPageContent: View {
             }
 
             Section("Meeting") {
-                ClientPicker(builtIn: $useBuiltInClient)
                 TextField("Display name", text: $displayName)
                     .help("The name the class sees for you in the meeting.")
                 Toggle(isOn: $customUI) {
@@ -238,31 +235,5 @@ private struct ScopeList: View {
             }
         }
         .help(scopes.joined(separator: "\n"))
-    }
-}
-
-/// Built-in client or the Zoom app, as two pictures.
-private struct ClientPicker: View {
-    @Binding var builtIn: Bool
-
-    var body: some View {
-        HStack(spacing: 8) {
-            tile(title: "In Greenroom", symbol: "macwindow", isBuiltIn: true,
-                 help: "The whole meeting runs inside Greenroom.")
-            tile(title: "Zoom app", symbol: "video.bubble", isBuiltIn: false,
-                 help: "The meeting runs in the Zoom app, with a hidden chat participant for Greenroom.")
-        }
-        .padding(.vertical, 4)
-    }
-
-    private func tile(title: String, symbol: String, isBuiltIn: Bool, help: String) -> some View {
-        let selected = builtIn == isBuiltIn
-        return ChoiceTile(title: title, selected: selected, badge: nil) {
-            Image(systemName: symbol)
-                .font(.system(size: 22, weight: .regular))
-                .foregroundStyle(selected ? Brand.green : Color.secondary)
-                .frame(height: 32)
-        } action: { builtIn = isBuiltIn }
-        .help(help)
     }
 }

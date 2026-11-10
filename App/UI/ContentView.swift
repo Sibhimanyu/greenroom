@@ -551,10 +551,7 @@ struct ContentView: View {
     /// content instead of pushing it around.
     private var manualControlsMenu: some View {
         Menu {
-            Button("Open Chat Window") { coordinator.joinChatOnly() }
-                .disabled(coordinator.isConnectingChat || coordinator.meetingNumber.isEmpty)
             Button("Open \(coordinator.mainAppDisplayName) Window") { coordinator.openMainAppWindow() }
-            Button("Just open Zoom") { coordinator.launchZoom() }
         } label: {
             Text("Manual controls")
         }

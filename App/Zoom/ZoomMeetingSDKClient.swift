@@ -1000,36 +1000,6 @@ final class ZoomMeetingSDKClient: NSObject, ObservableObject {
         ZoomSDK.shared().getMeetingService()?.getMeetingChatController()
     }
 
-    /// Hands the host role to the first human who joins - in the session
-    /// flow that's the user's own native Zoom client, which Greenroom
-    /// launches into the meeting seconds after starting it. Gives the
-    /// user the REAL host experience (participants panel, security menu,
-    /// mute controls) in their own client instead of the role sitting
-    /// with this invisible connection. Polls because the native client
-    /// takes a few seconds to arrive.
-    ///
-    /// On success, `isHosting` flips false: leave()/Stop then merely
-    /// leaves (a non-host can't end the meeting) - ending it becomes the
-    /// user's call from their own Zoom.
-    func promoteFirstOtherParticipantToHost(timeout: TimeInterval) async -> Bool {
-        guard isHosting else { return false }
-        let deadline = Date().addingTimeInterval(timeout)
-        while Date() < deadline {
-            if let action = ZoomSDK.shared().getMeetingService()?.getMeetingActionController(),
-               let list = action.getParticipantsList() {
-                for case let id as NSNumber in list {
-                    guard let info = action.getUserByUserID(id.uint32Value), !info.isMySelf() else { continue }
-                    if action.makeHost(id.uint32Value) == ZoomSDKError_Success {
-                        isHosting = false
-                        return true
-                    }
-                }
-            }
-            try? await Task.sleep(nanoseconds: 1_000_000_000)
-        }
-        return false
-    }
-
     /// Leaves the meeting. When this connection is the HOST (New Meeting
     /// mode), leaving ends the meeting for everyone - Stop means the
     /// session is over, not "the host vanished and the meeting lingers".

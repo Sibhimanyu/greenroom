@@ -3,11 +3,10 @@
 //  Greenroom
 //
 //  First-launch setup wizard - walks a fresh user through everything the
-//  READMEs know the hard way: the two external installs, credentials (via
-//  the settings-file import fast path), and the permission prompts macOS
-//  will throw at them. Detects live state wherever possible (OBS/Zoom
-//  installed, credentials present, Accessibility granted) instead of just
-//  instructing. Reopenable anytime from the main window's ? button.
+//  READMEs know the hard way: credentials (via the settings-file import fast
+//  path), and the permission prompts macOS will throw at them. Detects live
+//  state wherever possible (credentials present, Accessibility granted)
+//  instead of just instructing. Reopenable anytime from the main window's ? button.
 //
 import SwiftUI
 import AppKit
@@ -75,7 +74,7 @@ struct OnboardingView: View {
                 .foregroundStyle(.secondary)
 
             VStack(alignment: .leading, spacing: 12) {
-                Label("A virtual camera showing your screen with you keyed into a bubble", systemImage: "web.camera")
+                Label("Your screen with you in a bubble, sent straight into the meeting", systemImage: "web.camera")
                 Label("Starts a fresh Zoom meeting as host, or joins one from a link", systemImage: "video.badge.plus")
                 Label("Your main app and the meeting chat tiled neatly side by side", systemImage: "rectangle.split.2x1")
                 Label("Stop tears the whole thing down again", systemImage: "stop.circle")
@@ -87,32 +86,10 @@ struct OnboardingView: View {
 
     private var essentialsStep: some View {
         VStack(alignment: .leading, spacing: 16) {
-            stepHeader("The essentials", "Two free apps do the heavy lifting. Both are one-time installs.")
+            stepHeader("The essentials", "There is nothing to install.")
 
-            StatusRow(
-                ok: OBSProcessManager.obsAppURL != nil,
-                title: "OBS Studio",
-                detail: OBSProcessManager.obsAppURL != nil
-                    ? "Installed \u{2014} Greenroom configures it automatically, nothing to set up."
-                    : "Not found. Install it, then come back \u{2014} this row updates by itself.",
-                actionTitle: OBSProcessManager.obsAppURL == nil ? "Download OBS" : nil
-            ) {
-                NSWorkspace.shared.open(URL(string: "https://obsproject.com")!)
-            }
-
-            StatusRow(
-                ok: ZoomLauncher.isInstalled,
-                title: "Zoom",
-                detail: ZoomLauncher.isInstalled
-                    ? "Installed."
-                    : "Not found. Install the Zoom desktop app.",
-                actionTitle: ZoomLauncher.isInstalled ? nil : "Download Zoom"
-            ) {
-                NSWorkspace.shared.open(URL(string: "https://zoom.us/download")!)
-            }
-
-            Text("A fresh OBS install may show its own setup wizard on first launch \u{2014} it can simply be cancelled.")
-                .font(.caption)
+            Text("Greenroom builds the picture and sends it into the meeting itself, with its own Zoom client.")
+                .font(.callout)
                 .foregroundStyle(.secondary)
         }
     }
@@ -390,13 +367,8 @@ struct OnboardingView: View {
 
             VStack(alignment: .leading, spacing: 12) {
                 // Greenroom's own meeting client sends the picture itself, so
-                // there is no camera to pick in Zoom. The separate Zoom app
-                // cannot receive it.
-                if coordinator.useBuiltInClient {
-                    Text("Greenroom's own meeting client sends your screen and camera straight into the meeting, so there is nothing to set in Zoom.")
-                } else {
-                    Text("Greenroom can only send your screen and camera through its own meeting client. Turn on the built-in client in Settings \u{2192} Zoom before your first class.")
-                }
+                // there is no camera to pick in Zoom.
+                Text("Greenroom's own meeting client sends your screen and camera straight into the meeting, so there is nothing to set in Zoom.")
                 Text("Then it's: pick **New Meeting** or **Join Existing**, hit **Start**, and everything falls into place.")
                 Text("Reopen this guide anytime with the **?** button on the main window.")
                     .foregroundStyle(.secondary)

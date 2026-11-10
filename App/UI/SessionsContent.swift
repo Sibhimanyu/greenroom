@@ -597,6 +597,7 @@ struct SessionInspectorActions {
     var renameOnYouTube: () -> Void = {}
     var deleteFromYouTube: () -> Void = {}
     var analyse: () -> Void = {}
+    var openAnalysisSetup: () -> Void = {}
     var stopAnalysis: () -> Void = {}
     var openReport: () -> Void = {}
     var rename: () -> Void = {}
@@ -636,6 +637,8 @@ struct SessionInspector<Player: View, Detail: View>: View {
                     analyseTile
                 }
                 .fixedSize(horizontal: false, vertical: true)
+
+                howToAnalyse
 
                 if let upload = model.upload { uploadLine(upload) }
 
@@ -742,6 +745,23 @@ struct SessionInspector<Player: View, Detail: View>: View {
         }
     }
 
+    /// Small, under the Analyse tile and only where Analyse can be pressed:
+    /// the way back to the two choices asked at the first press.
+    @ViewBuilder private var howToAnalyse: some View {
+        switch model.analyse {
+        case .ready, .analysed:
+            HStack {
+                Spacer(minLength: 0)
+                Button("How to analyse\u{2026}", action: actions.openAnalysisSetup)
+                    .buttonStyle(.link)
+                    .font(.caption)
+                    .help("Whisper, and whether this Mac or an agent you run writes the feedback.")
+            }
+        default:
+            EmptyView()
+        }
+    }
+
     @ViewBuilder private var analyseTile: some View {
         switch model.analyse {
         case .unavailable(let why):
@@ -758,7 +778,7 @@ struct SessionInspector<Player: View, Detail: View>: View {
                        subtitleColor: leavesMac ? Brand.netText : .secondary,
                        action: actions.analyse)
                 .help(leavesMac
-                      ? "Transcribes on this Mac, then sends the transcript and notes to the agent set in Settings \u{2192} Screenroom. That part leaves this Mac; the video does not."
+                      ? "Transcribes on this Mac, then sends the transcript and notes to the agent chosen under How to analyse. That part leaves this Mac; the video does not."
                       : "Transcribes on this Mac, counts pace and filler words, and writes the report. Nothing leaves this Mac.")
         case .running(let step, let detail, _):
             StatusTile(symbol: "sparkles", tint: Brand.text,

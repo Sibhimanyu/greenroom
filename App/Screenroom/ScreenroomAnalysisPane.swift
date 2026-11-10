@@ -122,7 +122,7 @@ struct ScreenroomAnalysisPane: View {
                     .frame(maxWidth: 380)
             }
             Button {
-                Task { await review.analyse() }
+                review.requestAnalyse()
             } label: {
                 Label("Analyse", systemImage: "sparkles").frame(minWidth: 96)
             }
@@ -268,7 +268,7 @@ struct ScreenroomAnalysisPane: View {
                         Label("Open the full report", systemImage: "chart.bar.doc.horizontal")
                     }
                     .buttonStyle(.borderedProminent)
-                    Button("Analyse again") { Task { await review.analyse() } }
+                    Button("Analyse again") { review.requestAnalyse() }
                         .controlSize(.regular)
                     Spacer(minLength: 0)
                 }

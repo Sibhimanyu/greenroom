@@ -261,6 +261,20 @@ struct RecordingsView: View {
             analysingFolder = nil
         }
         .onDisappear(perform: teardownPlayer)
+        .sheet(isPresented: $review.showingSetup) {
+            AnalysisSetupPanel(
+                runsOnConfirm: review.setupRunsAnalysis,
+                confirm: {
+                    if review.setupRunsAnalysis { review.confirmSetupAndAnalyse() }
+                    else { review.showingSetup = false }
+                },
+                cancel: {
+                    // A first press that was backed out of runs nothing, so
+                    // the report does not open for a run that never was.
+                    analysingFolder = nil
+                    review.showingSetup = false
+                })
+        }
         .alert("Rename this session",
                isPresented: Binding(get: { renaming != nil },
                                     set: { if !$0 { renaming = nil } })) {
@@ -518,8 +532,9 @@ struct RecordingsView: View {
             review.select(folder: folder)
             review.selectedRecording = selection?.url
             analysingFolder = folder
-            Task { await review.analyse() }
+            review.requestAnalyse()
         }
+        actions.openAnalysisSetup = { review.openSetup() }
         actions.stopAnalysis = {
             analysingFolder = nil
             review.cancel()

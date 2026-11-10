@@ -27,6 +27,10 @@ final class ScreenroomReviewController: ObservableObject {
     @Published private(set) var cohortFindings: [ScreenroomCohort.Finding] = []
 
     @Published private(set) var isAnalysing = false
+    /// The "How to analyse" panel is open (first press, or reopened).
+    @Published var showingSetup = false
+    /// Opened by the first press, so its button runs the analysis.
+    @Published var setupRunsAnalysis = false
 
     /// Bumped each time a pass finishes, so the window can open the report
     /// on a NEW analysis without also opening it every time a presentation
@@ -432,6 +436,33 @@ final class ScreenroomReviewController: ObservableObject {
         runTask = task
         await task.value
         runTask = nil
+    }
+
+    /// What the Analyse buttons call. The first time on this Mac it opens the
+    /// "How to analyse" panel instead; the panel's own button then runs it.
+    /// After that it runs straight away.
+    func requestAnalyse() {
+        guard !isAnalysing else { return }
+        if AnalysisSetup.seen {
+            Task { await analyse() }
+        } else {
+            setupRunsAnalysis = true
+            showingSetup = true
+        }
+    }
+
+    /// The small "How to analyse…" control: change a choice, run nothing.
+    func openSetup() {
+        setupRunsAnalysis = false
+        showingSetup = true
+    }
+
+    /// The panel's "Analyse" on a first run: remember it was answered, close
+    /// the panel, run.
+    func confirmSetupAndAnalyse() {
+        AnalysisSetup.markSeen()
+        showingSetup = false
+        Task { await analyse() }
     }
 
     /// Stops the run and kills whatever it started.

@@ -172,7 +172,7 @@ final class ZoomVideoSender: NSObject, StageFrameSink, ZoomSDKVirtualVideoSource
         frameLock.unlock()
 
         // Say so once when the picture stops and once when it comes back.
-        let isStalled = frame != nil && t0 - arrival > 1_000_000_000
+        let isStalled = frame != nil && (arrival > t0 ? 0 : t0 - arrival) > 1_000_000_000
         if isStalled != stalled {
             stalled = isStalled
             Self.log(isStalled ? "the picture stopped for over 1 s; repeating the last frame." : "the picture is moving again.")
@@ -207,11 +207,12 @@ final class ZoomVideoSender: NSObject, StageFrameSink, ZoomSDKVirtualVideoSource
         sender.sendRawData(data.assumingMemoryBound(to: CChar.self), width: UInt32(w), height: UInt32(h),
                            dataLength: UInt32(length), rotation: ZoomSDKLOCAL_DEVICE_ROTATION_ACTION_0)
 
-        let spent = DispatchTime.now().uptimeNanoseconds - t0
+        let t1 = DispatchTime.now().uptimeNanoseconds
+        let spent = t1 > t0 ? t1 - t0 : 0
         statFrames += 1; statTotalNs += spent; statWorstNs = max(statWorstNs, spent)
         if !sentAny { sentAny = true; Self.log("first frame handed to the SDK (\(frame == nil ? "black, no picture yet" : "from the stage"))") }
 
-        let elapsed = DispatchTime.now().uptimeNanoseconds - statStart
+        let elapsed = t1 > statStart ? t1 - statStart : 0
         if elapsed >= 30_000_000_000 {
             let secs = Double(elapsed) / 1e9
             Self.log(String(format: "%dx%d: %.1f fps achieved (asked for %d), %.1f ms per frame on average, %.1f ms worst.",

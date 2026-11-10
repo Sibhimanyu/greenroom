@@ -106,7 +106,7 @@ struct SessionMetadata: Codable {
     /// at the root have no folder of their own and are not recorded.
     static func recordUpload(of recording: URL, videoID: String, url: String, privacy: String, title: String) {
         let folder = recording.deletingLastPathComponent()
-        guard folder != GreenroomScene.recordingsDirectory else { return }
+        guard folder != SessionFolders.recordingsDirectory else { return }
         var metadata = load(in: folder)
         metadata.uploads.removeAll { $0.file == recording.lastPathComponent }
         metadata.uploads.append(Upload(file: recording.lastPathComponent, videoID: videoID, url: url,
@@ -133,7 +133,7 @@ struct SessionMetadata: Codable {
     /// Remembers a link the teacher opened or sent during the class. The
     /// folder is created if the session has not written anything else yet.
     static func recordLink(in folder: URL, kind: String, title: String, url: String, action: String) {
-        guard folder != GreenroomScene.recordingsDirectory else { return }
+        guard folder != SessionFolders.recordingsDirectory else { return }
         try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         var metadata = load(in: folder)
         // The same link opened and then sent is one entry with the later action.

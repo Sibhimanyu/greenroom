@@ -232,7 +232,7 @@ struct RecordingsView: View {
             storage: storageSummary,
             spaceWarning: spaceWarning,
             revealRoot: {
-                NSWorkspace.shared.activateFileViewerSelecting([GreenroomScene.recordingsDirectory])
+                NSWorkspace.shared.activateFileViewerSelecting([SessionFolders.recordingsDirectory])
             },
             onDeleteKey: { if let selection { confirmingDelete = selection } },
             cardMenu: { card in cardMenu(card) },
@@ -386,7 +386,7 @@ struct RecordingsView: View {
             }
             Button("Show in Finder") {
                 NSWorkspace.shared.activateFileViewerSelecting(
-                    [session.folder ?? session.primaryTake?.url ?? GreenroomScene.recordingsDirectory])
+                    [session.folder ?? session.primaryTake?.url ?? SessionFolders.recordingsDirectory])
             }
             if let take = session.primaryTake, let upload = take.upload, let url = URL(string: upload.url) {
                 Divider()
@@ -534,7 +534,7 @@ struct RecordingsView: View {
         }
         actions.showInFinder = {
             NSWorkspace.shared.activateFileViewerSelecting(
-                [take?.url ?? session.folder ?? GreenroomScene.recordingsDirectory])
+                [take?.url ?? session.folder ?? SessionFolders.recordingsDirectory])
         }
         actions.trash = { if let take { confirmingDelete = take } }
         return actions
@@ -823,7 +823,7 @@ struct RecordingsView: View {
     }
 
     private func trashEmptySessionFolder(_ folder: URL) {
-        guard folder != GreenroomScene.recordingsDirectory else { return }
+        guard folder != SessionFolders.recordingsDirectory else { return }
         let remaining = (try? FileManager.default.contentsOfDirectory(
             at: folder, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles])) ?? []
         // An empty legacy clips/ subfolder does not count as content. Clips
@@ -845,9 +845,9 @@ struct RecordingsView: View {
     // MARK: Scanning
 
     private func reload() {
-        freeBytes = GreenroomScene.recordingsFreeBytes
-        usedBytes = GreenroomScene.recordingsUsedBytes
-        let root = GreenroomScene.recordingsDirectory
+        freeBytes = SessionFolders.recordingsFreeBytes
+        usedBytes = SessionFolders.recordingsUsedBytes
+        let root = SessionFolders.recordingsDirectory
         try? FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
 
         let entries = contents(of: root)
@@ -965,8 +965,8 @@ struct RecordingsView: View {
 
     // MARK: Bits
 
-    private var spaceLevel: GreenroomScene.SpaceLevel {
-        freeBytes.map(GreenroomScene.spaceLevel(freeBytes:)) ?? .ok
+    private var spaceLevel: SessionFolders.SpaceLevel {
+        freeBytes.map(SessionFolders.spaceLevel(freeBytes:)) ?? .ok
     }
 
     /// Amber for "plan ahead", red for "this class may not fit". Semantic system
@@ -985,7 +985,7 @@ struct RecordingsView: View {
 
     /// "~/Documents/Greenroom · 12 GB used · 38 GB free".
     private var storageSummary: String {
-        let path = GreenroomScene.recordingsDirectory.path
+        let path = SessionFolders.recordingsDirectory.path
             .replacingOccurrences(of: NSHomeDirectory(), with: "~")
         let used = ByteCountFormatter.string(fromByteCount: usedBytes, countStyle: .file)
         guard let freeBytes else { return "\(path) \u{00B7} \(used) used" }

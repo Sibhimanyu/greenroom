@@ -1380,9 +1380,9 @@ final class CoordinatorController: ObservableObject {
         // Named now, created later - see sessionFolder. Unique, so two
         // starts inside one minute cannot land in each other's folder; the
         // stamp only goes to the minute.
-        sessionFolder = GreenroomScene.uniqueSessionFolder(
-            named: GreenroomScene.sessionFolderName(className: className, started: startedAt),
-            in: GreenroomScene.recordingsDirectory)
+        sessionFolder = SessionFolders.uniqueSessionFolder(
+            named: SessionFolders.sessionFolderName(className: className, started: startedAt),
+            in: SessionFolders.recordingsDirectory)
         // Shape only. No meeting number, no preset name - see Analytics.swift.
         Analytics.track(.sessionStart, [
             .mode: meetingMode == .join ? "join" : "start",
@@ -1802,7 +1802,7 @@ final class CoordinatorController: ObservableObject {
                           body: "Quit OBS and start again. Clip shortcuts still work while recording.")
             return
         }
-        let minutes = GreenroomScene.replayBufferSeconds / 60
+        let minutes = SessionFolders.clipBufferSeconds / 60
         log("Clip buffer armed \u{2014} the last \(minutes) minutes stay clippable with \u{2325}\u{2318}1, \u{2325}\u{2318}2 or \u{2325}\u{2318}5, recording or not.")
     }
 
@@ -1990,9 +1990,9 @@ final class CoordinatorController: ObservableObject {
         // thing, and only the teacher knows whether this class is
         // worth the risk. Auto-record comes through here too, so
         // this covers the case nobody pressed anything.
-        if let free = GreenroomScene.recordingsFreeBytes {
+        if let free = SessionFolders.recordingsFreeBytes {
             let readable = ByteCountFormatter.string(fromByteCount: free, countStyle: .file)
-            switch GreenroomScene.spaceLevel(freeBytes: free) {
+            switch SessionFolders.spaceLevel(freeBytes: free) {
             case .critical:
                 log("Only \(readable) free \u{2014} that may not last a full class. Recordings live in Documents/Greenroom.")
                 Notifier.post(title: "Low disk space for recording",
@@ -2050,10 +2050,10 @@ final class CoordinatorController: ObservableObject {
         statusLines = []
         let startedAt = Date()
         sessionStartedAt = startedAt
-        let folder = GreenroomScene.uniqueSessionFolder(
-            named: GreenroomScene.sessionFolderName(className: className, started: startedAt,
+        let folder = SessionFolders.uniqueSessionFolder(
+            named: SessionFolders.sessionFolderName(className: className, started: startedAt,
                                                     fallback: "Recording"),
-            in: GreenroomScene.recordingsDirectory)
+            in: SessionFolders.recordingsDirectory)
         sessionFolder = folder
         Analytics.track(.sessionStart, [
             .mode: "record",
@@ -2070,7 +2070,7 @@ final class CoordinatorController: ObservableObject {
                 // this leaves an empty folder, which is then removed.
                 var metadata = SessionMetadata()
                 metadata.kind = SessionMetadata.Kind.recording.rawValue
-                let typed = GreenroomScene.sanitizedClassName(className)
+                let typed = SessionFolders.sanitizedClassName(className)
                 metadata.title = typed.isEmpty ? nil : typed
                 metadata.save(in: folder)
                 // A second camera, if switching is on, and the director to cut

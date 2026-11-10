@@ -57,7 +57,7 @@ enum ScreenroomLibrary {
     /// would also find clips folders and anything a teacher dragged in, and
     /// would get slower every term for no gain.
     static func presentations() -> [ScreenroomPresentation] {
-        let root = GreenroomScene.recordingsDirectory
+        let root = SessionFolders.recordingsDirectory
         guard let folders = try? FileManager.default.contentsOfDirectory(
             at: root, includingPropertiesForKeys: [.isDirectoryKey, .creationDateKey],
             options: [.skipsHiddenFiles]) else { return [] }
@@ -136,7 +136,7 @@ enum ScreenroomLibrary {
 
     /// `Priya Raman - 2026-09-18 10-44` -> `Priya Raman`.
     ///
-    /// The stamp's shape is fixed by GreenroomScene.sessionFolderName, so this
+    /// The stamp's shape is fixed by SessionFolders.sessionFolderName, so this
     /// looks for that shape rather than splitting on the last dash - a
     /// presenter called "Jean-Luc" would lose half a name to a naive split.
     static func trimStamp(from folderName: String) -> String {

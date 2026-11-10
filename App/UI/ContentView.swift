@@ -113,7 +113,7 @@ struct ContentView: View {
     /// obvious the moment the field is empty.
     private var folderPreview: String {
         if let live = coordinator.sessionFolder { return live.lastPathComponent }
-        return GreenroomScene.sessionFolderName(className: coordinator.className, started: Date(),
+        return SessionFolders.sessionFolderName(className: coordinator.className, started: Date(),
                                                 fallback: isRecordMode ? "Recording" : "Green")
     }
 

@@ -188,7 +188,7 @@ final class ScreenroomController: ObservableObject {
     /// the default is something you can see rather than something you find
     /// out about afterwards.
     var folderPreview: String {
-        GreenroomScene.sessionFolderName(className: presenter, started: Date(),
+        SessionFolders.sessionFolderName(className: presenter, started: Date(),
                                          fallback: Self.defaultName)
     }
 
@@ -200,13 +200,13 @@ final class ScreenroomController: ObservableObject {
     func start() {
         guard canStart else { return }
         let started = Date()
-        let name = GreenroomScene.sessionFolderName(
+        let name = SessionFolders.sessionFolderName(
             className: presenter, started: started, fallback: Self.defaultName)
         // Never onto an existing one: two presentations inside the same
         // minute share a stamp, and recording into the first one's folder
         // deletes the first one's video.
-        let target = GreenroomScene.uniqueSessionFolder(
-            named: name, in: GreenroomScene.recordingsDirectory)
+        let target = SessionFolders.uniqueSessionFolder(
+            named: name, in: SessionFolders.recordingsDirectory)
 
         folder = target
         notes = []
@@ -220,7 +220,7 @@ final class ScreenroomController: ObservableObject {
         metadata.kind = SessionMetadata.Kind.screen.rawValue
         // Only a name somebody chose. An empty title leaves the folder name
         // to speak for itself, which is what Sessions falls back to.
-        let typed = GreenroomScene.sanitizedClassName(presenter)
+        let typed = SessionFolders.sanitizedClassName(presenter)
         metadata.title = typed.isEmpty ? nil : typed
         try? FileManager.default.createDirectory(at: target, withIntermediateDirectories: true)
         metadata.save(in: target)

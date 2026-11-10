@@ -22,6 +22,10 @@
 import SwiftUI
 
 struct CuesSettingsTab: View {
+    #if DEBUG
+    @State private var workbenchOpen = false
+    #endif
+
     var body: some View {
         Form {
             if !CuesAvailability.isReleased {
@@ -32,7 +36,10 @@ struct CuesSettingsTab: View {
                 // listening, plus typed sentences, audio files and every step
                 // of the pipeline written out. Release builds never compile it.
                 #if DEBUG
-                CuesWorkbench()
+                Section {
+                    Toggle("Show debug workbench", isOn: $workbenchOpen)
+                }
+                if workbenchOpen { CuesWorkbench() }
                 #else
                 CuesTryItRows()
                 #endif
@@ -237,10 +244,6 @@ struct CuesSetupContent<WhisperSetup: View, WhisperModel: View>: View {
                 }
                 .help("Apple\u{2019}s, downloaded once through the system\u{2019}s asset service. Never during a class.")
             }
-        } header: { if !compact { Text("Listening") } }
-        .disabled(!enabled)
-
-        Section {
             HStack(spacing: 8) {
                 ChoiceTile(title: "Named things", selected: !findsEverything, badge: nil) {
                     SentenceGlyph(everything: false, selected: !findsEverything)
@@ -262,7 +265,7 @@ struct CuesSetupContent<WhisperSetup: View, WhisperModel: View>: View {
                 StatusBadge(text: "Everything needs Apple Intelligence", tone: .waiting)
                     .help(modelUnavailableReason ?? "Apple Intelligence is unavailable on this Mac.")
             }
-        } header: { if !compact { Text("Finds") } }
+        } header: { if !compact { Text("Listening and suggestions") } }
         .disabled(!enabled)
 
         Section {
@@ -452,7 +455,7 @@ private struct CuesPicture: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: 8) {
                 HStack(spacing: 8) {
                     Image(systemName: "mic.fill")
                         .foregroundStyle(on ? Brand.green : Color.secondary)
@@ -481,13 +484,12 @@ private struct CuesPicture: View {
 
             VStack(spacing: 8) {
                 SampleCard(kind: .book, source: "OPEN LIBRARY", title: "Thinking, Fast and Slow")
-                SampleCard(kind: .person, source: "WIKIPEDIA", title: "Daniel Kahneman")
             }
             .frame(maxWidth: .infinity)
         }
         .padding(.horizontal, 20)
-        .padding(.top, 40)
-        .padding(.bottom, 20)
+        .padding(.top, 32)
+        .padding(.bottom, 8)
         .saturation(on ? 1 : 0)
         .opacity(on ? 1 : 0.75)
         .frame(maxWidth: .infinity)

@@ -316,6 +316,20 @@ The app is the other half of this system. Keep it aligned.
 - **Type:** system font throughout. Mono (`.system(.body, design: .monospaced)`)
   for the same machine-fact content as the site.
 
+### Settings density
+
+Keep Settings visual without making each choice another two-row card. Put a
+small illustration or glyph beside its name, with a minimum 40pt click target.
+Keep labels at the normal system size. Group related controls in one section;
+use hover help for explanations and disclosures for advanced tools. Summary
+flows should be compact enough to leave the controls visible. The Webcam
+preview starts at 224pt high and can expand to 360pt for fine adjustments;
+its size and placement controls stay below it and share the canvas width.
+Pair compact, related settings side by side when their labels and controls fit
+comfortably: angle readout beside switching controls, upload behavior beside
+visibility. Device selection belongs in a native dropdown rather than a grid of
+cards. Keep device names, disconnected selections and refresh actions available.
+
 ## Open drift to fix
 
 Ranked by user-visible impact. None of these block anything today.

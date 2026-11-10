@@ -134,6 +134,11 @@ struct WebcamPageContent<LivePicture: View, ShareDetail: View, Cameras: View, Mi
     /// heavy. Now a drag moves only this, which redraws only the stage, and
     /// the coordinator hears once, when the drag ends.
     @State private var draft: BubbleDragLayer.Geometry?
+    @State private var largePreview = false
+    private var previewHeight: CGFloat { largePreview ? 360 : 224 }
+    private var previewWidth: CGFloat {
+        previewHeight * canvasAspect.width / max(canvasAspect.height, 1)
+    }
     private var stageGeometry: Binding<BubbleDragLayer.Geometry> {
         Binding(get: { draft ?? geometry }, set: { draft = $0 })
     }
@@ -167,12 +172,9 @@ struct WebcamPageContent<LivePicture: View, ShareDetail: View, Cameras: View, Mi
 
     var body: some View {
         Form {
-            Section {
+            Section("Picture") {
                 stage
-                if isAdjustable { stageControls }
-            }
-
-            Section("Look") {
+                stageControls
                 LookPicker(selection: $shape, removal: removal)
                 if shape.usesChromaKey {
                     Picker("Background", selection: $removal) {
@@ -236,7 +238,7 @@ struct WebcamPageContent<LivePicture: View, ShareDetail: View, Cameras: View, Mi
             }
         }
         .frame(maxWidth: .infinity)
-        .frame(height: 360)
+        .frame(height: previewHeight)
         .help(isAdjustable ? "Drag yourself to move. Drag a corner to resize." : "")
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Preview of what the class sees")
@@ -246,22 +248,34 @@ struct WebcamPageContent<LivePicture: View, ShareDetail: View, Cameras: View, Mi
     /// corner of. Dragging in the stage above is the fine control.
     private var stageControls: some View {
         HStack(spacing: 16) {
-            SizePresetPicker(presets: sizePresets, value: geometry.size) { size in
-                set(size: size)
+            if isAdjustable {
+                SizePresetPicker(presets: sizePresets, value: geometry.size) { size in
+                    set(size: size)
+                }
+                Spacer(minLength: 0)
+                PlacementPicker(spots: spots, current: currentSpot) { spot in
+                    place(spot)
+                }
+                Button { draft = nil; reset() } label: {
+                    Image(systemName: "arrow.counterclockwise")
+                }
+                .buttonStyle(.borderless)
+                .disabled(isAtDefault)
+                .help("Back to where it started")
+                .accessibilityLabel("Reset size and position")
             }
-            Spacer(minLength: 0)
-            PlacementPicker(spots: spots, current: currentSpot) { spot in
-                place(spot)
-            }
-            Button { draft = nil; reset() } label: {
-                Image(systemName: "arrow.counterclockwise")
+            Button {
+                largePreview.toggle()
+            } label: {
+                Image(systemName: largePreview ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right")
             }
             .buttonStyle(.borderless)
-            .disabled(isAtDefault)
-            .help("Back to where it started")
-            .accessibilityLabel("Reset size and position")
+            .help(largePreview ? "Use a compact preview" : "Enlarge the preview for fine adjustments")
+            .accessibilityLabel(largePreview ? "Compact preview" : "Enlarge preview")
         }
-        .padding(.vertical, 2)
+        .frame(maxWidth: previewWidth)
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 4)
     }
 
     // MARK: Size
@@ -364,7 +378,7 @@ private struct LookPicker: View {
             ForEach(WebcamShape.allCases) { shape in
                 ChoiceTile(title: shape.label, selected: shape == selection,
                            badge: badge(for: shape)) {
-                    ShapeGlyph(shape: shape, highlighted: shape == selection)
+                    ShapeGlyph(shape: shape, highlighted: shape == selection, height: 24)
                 } action: { selection = shape }
                 .help(help(for: shape))
             }
@@ -562,6 +576,7 @@ private struct PlacementPicker: View {
 struct ShapeGlyph: View {
     let shape: WebcamShape
     let highlighted: Bool
+    var height: CGFloat = 44
 
     var body: some View {
         GeometryReader { geo in
@@ -586,7 +601,7 @@ struct ShapeGlyph: View {
             }
         }
         .aspectRatio(16.0 / 10.0, contentMode: .fit)
-        .frame(height: 44)
+        .frame(height: height)
         .accessibilityHidden(true)
     }
 

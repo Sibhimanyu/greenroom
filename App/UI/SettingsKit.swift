@@ -16,7 +16,8 @@
 //
 import SwiftUI
 
-/// A selectable card: a picture, a short name, an optional badge.
+/// A compact picture-and-label choice. Keep the visual beside the name so
+/// repeated choices do not each add another row to the Settings page.
 struct ChoiceTile<Picture: View>: View {
     let title: String
     let selected: Bool
@@ -26,16 +27,20 @@ struct ChoiceTile<Picture: View>: View {
 
     var body: some View {
         Button(action: action) {
-            VStack(spacing: 8) {
+            HStack(spacing: 8) {
                 picture()
-                    .frame(maxWidth: .infinity)
+                    .fixedSize()
+                    .accessibilityHidden(true)
                 Text(title)
                     .font(.callout.weight(selected ? .semibold : .regular))
                     .foregroundStyle(.primary)
                     .lineLimit(1)
+                    .layoutPriority(1)
+                    .padding(.trailing, badge == nil ? 0 : 8)
             }
             .padding(.horizontal, 8)
-            .padding(.vertical, 12)
+            .padding(.vertical, 8)
+            .frame(minHeight: 40)
             .frame(maxWidth: .infinity)
             .background(RoundedRectangle(cornerRadius: 10)
                 .fill(selected ? Brand.green.opacity(0.12) : Color(nsColor: .controlBackgroundColor)))

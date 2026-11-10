@@ -2372,7 +2372,7 @@ final class CoordinatorController: ObservableObject {
         await settleBeforeJoining()
         zoomChatClient.setDualScreenMode(galleryWindowExists)
 
-        if zoomChatClient.rawVideoSpikeActive {
+        if zoomChatClient.stageVideoActive {
             log("Raw video spike: skipping the OBS Virtual Camera pick.")
         } else if zoomChatClient.selectCamera(named: "OBS Virtual Camera") {
             log("Camera set to OBS Virtual Camera.")
@@ -2410,7 +2410,7 @@ final class CoordinatorController: ObservableObject {
         await settleBeforeJoining()
         zoomChatClient.setDualScreenMode(galleryWindowExists)
 
-        if zoomChatClient.rawVideoSpikeActive {
+        if zoomChatClient.stageVideoActive {
             log("Raw video spike: skipping the OBS Virtual Camera pick.")
         } else if zoomChatClient.selectCamera(named: "OBS Virtual Camera") {
             log("Camera set to OBS Virtual Camera.")

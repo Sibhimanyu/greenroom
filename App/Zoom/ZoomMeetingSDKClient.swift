@@ -602,13 +602,30 @@ final class ZoomMeetingSDKClient: NSObject, ObservableObject {
             return
         }
         let result = controller.hasRawDataLicense()
-        Self.logLicenceLine(result == ZoomSDKError_Success
-            ? "Raw video licence (\(when)): yes"
-            : "Raw video licence (\(when)): no (\(Self.errorName(result)) = \(result.rawValue))")
+        guard result != ZoomSDKError_Success else {
+            Self.logLicenceLine("Raw video licence (\(when)): yes")
+            return
+        }
+        var line = "Raw video licence (\(when)): no (\(Self.errorName(result)) = \(result.rawValue))"
+        #if DEBUG
+        if when == "in meeting", rawVideoSpike?.isSending == true {
+            line += " (sending our own video works without it; this licence is likely only for receiving raw data)"
+        }
+        #endif
+        Self.logLicenceLine(line)
     }
 
     private static func errorName(_ e: ZoomSDKError) -> String {
-        e == ZoomSDKError_NoPermission ? "ZoomSDKError_NoPermission" : "ZoomSDKError_#\(e.rawValue)"
+        switch e {
+        case ZoomSDKError_Success: return "ZoomSDKError_Success"
+        case ZoomSDKError_Failed: return "ZoomSDKError_Failed"
+        case ZoomSDKError_Uninit: return "ZoomSDKError_Uninit"
+        case ZoomSDKError_WrongUsage: return "ZoomSDKError_WrongUsage"
+        case ZoomSDKError_InvalidParameter: return "ZoomSDKError_InvalidParameter"
+        case ZoomSDKError_NoPermission: return "ZoomSDKError_NoPermission"
+        case ZoomSDKError_NoLicense: return "ZoomSDKError_NoLicense"
+        default: return "ZoomSDKError_#\(e.rawValue)"
+        }
     }
 
     /// One line to the session log file (what the in-app log shows) and to

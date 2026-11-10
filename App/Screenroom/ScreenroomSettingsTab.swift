@@ -32,6 +32,13 @@ import SwiftUI
 // MARK: - The tab
 
 struct ScreenroomSettingsTab: View {
+    /// Setup focuses on the two choices that matter before a first presentation.
+    private let compact: Bool
+
+    init(compact: Bool = false) {
+        self.compact = compact
+    }
+
     @State private var agent = ScreenroomAgentSettings.load()
     @State private var transcriber = ScreenroomTranscriberSettings.load()
     @State private var whisperReady = ScreenroomTranscriberSettings.whisperIsReady
@@ -70,7 +77,8 @@ struct ScreenroomSettingsTab: View {
             chooseModel: chooseModel,
             downloadModel: { installer.download($0) },
             cancelDownload: { installer.cancel() },
-            setup: { WhisperSetupRows(onChange: refresh) })
+            setup: { WhisperSetupRows(onChange: refresh) },
+            compact: compact)
         // No width of its own. SettingsView sizes the window (760pt) and
         // every other tab fills it; pinning this one to 520 made it the only
         // tab sitting in half the pane.
@@ -196,12 +204,19 @@ struct ScreenroomPageContent<Setup: View>: View {
     let downloadModel: (String) -> Void
     let cancelDownload: () -> Void
     @ViewBuilder let setup: () -> Setup
+    var compact = false
+    @State private var modelDetailsExpanded = false
+    @State private var commandExpanded = false
 
     var body: some View {
         Form {
             Section {
-                ScreenroomFlowPicture(whisper: whisperReady, agentOn: agentOn,
-                                      agentName: agentTitle(agentKind), localWriter: localWriter)
+                if !compact {
+                    ScreenroomFlowPicture(whisper: whisperReady, agentOn: agentOn,
+                                          agentName: agentTitle(agentKind), localWriter: localWriter)
+                } else {
+                    Text("Who writes the feedback?").font(.headline)
+                }
                 writerPicker
                 writerStatus
             }
@@ -209,14 +224,28 @@ struct ScreenroomPageContent<Setup: View>: View {
             Section("Speech") {
                 setup()
                 if whisperReady {
-                    modelPicker
+                    if compact {
+                        Label("Whisper is ready. Audio is transcribed on this Mac.", systemImage: "checkmark.circle")
+                            .foregroundStyle(Brand.text)
+                        DisclosureGroup("Choose another speech model", isExpanded: $modelDetailsExpanded) {
+                            modelPicker
+                        }
+                    } else {
+                        modelPicker
+                    }
                     if let download { downloadRow(download) }
                 }
             }
 
             Section("Agent") {
                 agentPicker
-                commandField
+                if compact && agentKind != .custom {
+                    DisclosureGroup("Advanced: agent command", isExpanded: $commandExpanded) {
+                        commandField
+                    }
+                } else {
+                    commandField
+                }
             }
             // Greyed out rather than hidden while the agent is off, like the
             // rest of Settings: which agent and what it would run are worth

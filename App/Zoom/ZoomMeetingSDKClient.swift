@@ -24,6 +24,7 @@
 //  dot-syntax on the type.
 //
 import Foundation
+import os
 import ZoomSDK
 
 @MainActor
@@ -585,7 +586,69 @@ final class ZoomMeetingSDKClient: NSObject, ObservableObject {
         }
         isAuthed = true
         authedClientID = clientID
+        checkRawVideoLicence()
+        #if DEBUG
+        installRawVideoSpikeIfEnabled()
+        #endif
     }
+
+    /// Piece 0 of docs/drop-obs-plan.md: does this SDK app have the raw-data
+    /// licence? Logged in every build, in plain words, because it is the
+    /// evidence the go / no-go decision needs. Reads with
+    /// `log show --predicate 'subsystem == "com.sibhimanyu.greenroom"'`.
+    private func checkRawVideoLicence() {
+        guard let controller = ZoomSDK.shared().getRawDataController() else {
+            Self.logLicenceLine("Raw video licence: unknown (the SDK gave no raw data controller)")
+            return
+        }
+        let result = controller.hasRawDataLicense()
+        Self.logLicenceLine(result == ZoomSDKError_Success
+            ? "Raw video licence: yes"
+            : "Raw video licence: no (\(Self.errorName(result)) = \(result.rawValue))")
+    }
+
+    private static func errorName(_ e: ZoomSDKError) -> String {
+        e == ZoomSDKError_NoPermission ? "ZoomSDKError_NoPermission" : "ZoomSDKError_#\(e.rawValue)"
+    }
+
+    /// One line to the session log file (what the in-app log shows) and to
+    /// os_log under the app's bundle id.
+    nonisolated static func logLicenceLine(_ message: String) {
+        Task { @MainActor in CoordinatorController.sessionLog(message) }
+        Logger(subsystem: "com.sibhimanyu.greenroom", category: "zoom").notice("\(message, privacy: .public)")
+    }
+
+    #if DEBUG
+    /// Kept alive here; the SDK holds its source delegate weakly.
+    private var rawVideoSpike: RawVideoSpike?
+    /// True when the debug spike owns the video source, so the OBS camera
+    /// pick must be skipped.
+    var rawVideoSpikeActive: Bool { rawVideoSpike != nil }
+
+    private func installRawVideoSpikeIfEnabled() {
+        guard RawVideoSpike.isEnabled else { return }
+        guard let controller = ZoomSDK.shared().getRawDataController() else {
+            RawVideoSpike.log("no raw data controller; not installing.")
+            return
+        }
+        var helper: ZoomSDKRawDataVideoSourceController?
+        let got = controller.getRawDataVideoSourceHelper(&helper)
+        guard got == ZoomSDKError_Success, let helper else {
+            RawVideoSpike.log("getRawDataVideoSourceHelper failed (\(got.rawValue)); not installing.")
+            return
+        }
+        let spike = rawVideoSpike ?? RawVideoSpike()
+        let set = helper.setExternalVideoSource(spike, videoDataFormat: ZoomSDKFrameDataFormat_I420_Limited)
+        if set == ZoomSDKError_Success {
+            rawVideoSpike = spike
+            RawVideoSpike.log("installed as the external video source (I420 limited); the OBS Virtual Camera pick is skipped.")
+        } else {
+            RawVideoSpike.log("setExternalVideoSource failed (\(set.rawValue)); the OBS camera will be used as usual.")
+        }
+    }
+    #else
+    var rawVideoSpikeActive: Bool { false }
+    #endif
 
     /// Orderly SDK teardown for process exit. The SDK's in-process video
     /// and audio engines (zVideoUIBridge, viper) SEGV in their own

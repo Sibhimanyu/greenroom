@@ -2372,7 +2372,9 @@ final class CoordinatorController: ObservableObject {
         await settleBeforeJoining()
         zoomChatClient.setDualScreenMode(galleryWindowExists)
 
-        if zoomChatClient.selectCamera(named: "OBS Virtual Camera") {
+        if zoomChatClient.rawVideoSpikeActive {
+            log("Raw video spike: skipping the OBS Virtual Camera pick.")
+        } else if zoomChatClient.selectCamera(named: "OBS Virtual Camera") {
             log("Camera set to OBS Virtual Camera.")
         } else {
             log("Couldn't auto-select the OBS Virtual Camera \u{2014} pick it from the meeting's video menu if the feed looks wrong.")
@@ -2408,7 +2410,9 @@ final class CoordinatorController: ObservableObject {
         await settleBeforeJoining()
         zoomChatClient.setDualScreenMode(galleryWindowExists)
 
-        if zoomChatClient.selectCamera(named: "OBS Virtual Camera") {
+        if zoomChatClient.rawVideoSpikeActive {
+            log("Raw video spike: skipping the OBS Virtual Camera pick.")
+        } else if zoomChatClient.selectCamera(named: "OBS Virtual Camera") {
             log("Camera set to OBS Virtual Camera.")
         }
         applyMeetingMicrophone()

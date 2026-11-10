@@ -8,9 +8,9 @@
 //      leave-confirmation modal mid-quit (possibly one the ghost-window
 //      hiding had made invisible), and the app would hang until force
 //      quit.
-//   2. applicationWillTerminate: never leave OBS (and its virtual camera)
-//      running headless after Greenroom exits - confirmed by testing:
-//      without this, a manual `killall OBS` was the only way out.
+//   2. applicationWillTerminate: shut the Zoom SDK down in order, then exit
+//      without running its destructors. By then the recording is finished and
+//      the cameras and screen capture are stopped (windDownForQuit).
 //
 import AppKit
 import Apptics
@@ -27,8 +27,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// every start.
     ///
     /// Crash reporting IS active here, via AppticsCrashKit + KSCrash. It only
-    /// covers Greenroom's own process - OBS crashing in its own binary is
-    /// invisible to this, since it is a separate application.
+    /// covers Greenroom's own process.
     private func startAnalytics() {
         guard Bundle.main.object(forInfoDictionaryKey: "AP_INFOPLIST_FILE") != nil else { return }
         #if DEBUG
@@ -96,7 +95,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 },
                 .init(keyCode: UInt32(kVK_ANSI_R), modifiers: mods, label: "\u{2325}\u{2318}R") {
                     guard let coordinator = CoordinatorController.shared,
-                          coordinator.virtualCamActive || coordinator.isRecording else { return }
+                          coordinator.stageLive || coordinator.isRecording else { return }
                     coordinator.toggleRecording()
                 },
                 .init(keyCode: UInt32(kVK_ANSI_S), modifiers: mods, label: "\u{2325}\u{2318}S") {
@@ -131,10 +130,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             if !unavailable.isEmpty {
                 CoordinatorController.shared?.reportUnavailableShortcuts(unavailable)
             }
-
-            // OBS's cold launch is most of Start's wait - warm it now so
-            // Start begins at "connect" (keep-warm setting gates this).
-            CoordinatorController.shared?.prewarmOBSIfEnabled()
         }
     }
 
@@ -146,11 +141,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // already half-ended.
             guard coordinator.confirmQuitWhileLive() else { return .terminateCancel }
             coordinator.prepareForTermination()
-            // OBS gets a graceful, WAITED-FOR shutdown before this process
-            // exits: stop the virtual camera, ask OBS to quit, wait for
-            // its real exit. Terminating it and _exit()ing from under it
-            // crashed OBS in its own teardown - the "OBS quit
-            // unexpectedly" dialog after every Greenroom quit.
+            // A recording gets a graceful, WAITED-FOR finish before this
+            // process exits, and the cameras and screen capture are stopped,
+            // so no file is cut short and no camera light is left on.
             Task { @MainActor in
                 await coordinator.windDownForQuit()
                 sender.reply(toApplicationShouldTerminate: true)
@@ -163,16 +156,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         MainActor.assumeIsolated {
             CoordinatorController.shared?.zoomChatClient.shutdown()
         }
-        OBSProcessManager.terminateAnyRunningInstance()
         // Belt and braces on top of the SDK shutdown above: whatever
         // teardown the Zoom SDK's ~80 dylibs still run at process exit
         // SEGV'd reliably (zVideoUIBridge/viper destructors - see the
         // crash reports), putting a "Greenroom quit unexpectedly" dialog
         // on EVERY quit of an SDK-touched session. By this point the
-        // meeting is left, the SDK is uninited, and OBS has been told to
-        // quit - there is nothing left worth crashing over. _exit skips
-        // the remaining static destructors outright.
-        usleep(300_000) // let the OBS terminate Apple Event leave the process
+        // meeting is left, the SDK is uninited and the recording is finished -
+        // there is nothing left worth crashing over. _exit skips the
+        // remaining static destructors outright.
         _exit(0)
     }
 }

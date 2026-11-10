@@ -74,7 +74,7 @@ final class SessionNotes: ObservableObject {
         // flips several of these together and the bar needs the settled state.
         Publishers.Merge5(
             coordinator.$isRunning.map { _ in () },
-            coordinator.$virtualCamActive.map { _ in () },
+            coordinator.$stageLive.map { _ in () },
             coordinator.$isRecording.map { _ in () },
             // Home -> Record: a session with no meeting and no virtual camera.
             coordinator.$recordOnlyActive.map { _ in () },
@@ -92,7 +92,7 @@ final class SessionNotes: ObservableObject {
     /// flags are what say a session is actually under way.
     private var liveFolder: URL? {
         guard let coordinator,
-              coordinator.isRunning || coordinator.virtualCamActive || coordinator.isRecording
+              coordinator.isRunning || coordinator.stageLive || coordinator.isRecording
                 || coordinator.recordOnlyActive
         else { return nil }
         return coordinator.sessionFolder

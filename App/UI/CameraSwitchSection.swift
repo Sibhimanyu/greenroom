@@ -51,7 +51,7 @@ struct CameraSwitchSection: View {
                 single: coordinator.sceneCameraUIDs(limit: 1).first,
                 liveCameraName: coordinator.cameraDirector.liveCameraName,
                 aiming: aiming,
-                canAim: !coordinator.virtualCamActive,
+                canAim: !coordinator.stageLive,
                 dwell: settings.dwellSeconds,
                 transition: settings.transition,
                 reading: reading,
@@ -113,12 +113,12 @@ struct CameraSwitchSection: View {
     /// The live reading. During a class it is the director's, because the
     /// director owns the cameras then; otherwise it is the probe's.
     private var reading: CameraReading {
-        let sight = coordinator.virtualCamActive ? coordinator.cameraDirector.sight : coordinator.cameraProbe.sight
+        let sight = coordinator.stageLive ? coordinator.cameraDirector.sight : coordinator.cameraProbe.sight
         let threshold = coordinator.cameraDirectorSettings.awayDegrees
         let name = aiming.flatMap { uid in cameras.first { $0.id == uid }?.name }
         return CameraReading(degrees: sight.degrees, threshold: threshold,
                              status: Self.status(sight, threshold: threshold, aiming: aiming != nil),
-                             source: coordinator.virtualCamActive ? "Through OBS" : name)
+                             source: coordinator.stageLive ? "In the class" : name)
     }
 
     /// One line per state, and never the wrong one. The first version said
@@ -139,7 +139,7 @@ struct CameraSwitchSection: View {
     /// which cannot say why the shot moved; the comparison can.
     @ViewBuilder private var liveDetail: some View {
         let director = coordinator.cameraDirector
-        if coordinator.virtualCamActive, director.isRunning {
+        if coordinator.stageLive, director.isRunning {
             let best = director.angles.enumerated()
                 .compactMap { index, angle in angle.map { (index, $0) } }
                 .min { $0.1 < $1.1 }?.0

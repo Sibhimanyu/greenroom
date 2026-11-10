@@ -48,7 +48,7 @@ final class UpdateGate: NSObject, SPUUpdaterDelegate {
         guard updateCheck != .updates else { return }   // the teacher pressed it
         let live = MainActor.assumeIsolated {
             guard let coordinator = CoordinatorController.shared else { return false }
-            return coordinator.isRunning || coordinator.virtualCamActive || coordinator.isRecording
+            return coordinator.isRunning || coordinator.stageLive || coordinator.isRecording
         }
         guard live else { return }
         throw NSError(domain: "Greenroom", code: 30, userInfo: [

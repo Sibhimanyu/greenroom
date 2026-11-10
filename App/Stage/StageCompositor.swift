@@ -132,6 +132,9 @@ final class StageCompositor: StageFrameSource {
     private var shareKey: String?
     private var screenGeneration = 0
     private var running = false
+    /// The screen was wanted but Screen Recording was off. `update` tries again
+    /// once it is on, without the caller having to change anything.
+    private var waitingForPermission = false
 
     init?(size: CGSize = CGSize(width: 1920, height: 1080), frameRate: Int = 30) {
         guard let pool = StageBufferPool(size: size) else { return nil }
@@ -238,7 +241,7 @@ final class StageCompositor: StageFrameSource {
 
         lock.lock()
         let key = "\(cfg.share.kind.rawValue)|\(cfg.share.appBundleID)|\(cfg.share.windowTitle)|\(cfg.displayUUID)"
-        let restartScreen = key != shareKey
+        let restartScreen = key != shareKey || (waitingForPermission && Self.screenRecordingGranted)
         if restartScreen { shareKey = key; screenGeneration += 1 }
         let generation = screenGeneration
         lock.unlock()
@@ -302,10 +305,12 @@ final class StageCompositor: StageFrameSource {
             return
         }
         guard Self.screenRecordingGranted else {
+            lock.lock(); waitingForPermission = true; lock.unlock()
             post { $0.screenLive = false; $0.lastError = StageScreenSource.permissionMessage }
             return
         }
 
+        lock.lock(); waitingForPermission = false; lock.unlock()
         let display = LocalDeviceResolver.resolveCaptureDisplay(preferred: cfg.displayUUID)
         guard let displayUUID = display.uuid else {
             post { $0.lastError = "Couldn\u{2019}t find a screen to share." }

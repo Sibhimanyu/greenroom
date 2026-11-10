@@ -355,7 +355,7 @@ struct OnboardingView: View {
             }
 
             VStack(alignment: .leading, spacing: 10) {
-                Label("Screen Recording \u{2014} OBS asks on the first Start (it captures your screen, not Greenroom)", systemImage: "rectangle.dashed.badge.record")
+                Label("Screen Recording \u{2014} asked on the first Start, so Greenroom can show your screen to the class (without it the class sees your camera only)", systemImage: "rectangle.dashed.badge.record")
                 Label("Camera & Microphone \u{2014} asked on the first meeting connection (joins muted, camera off)", systemImage: "camera")
                 Label("Browser automation \u{2014} asked when your browser window is first tiled; other main apps use Accessibility above", systemImage: "globe")
             }
@@ -389,14 +389,13 @@ struct OnboardingView: View {
             Text("One last thing").font(.largeTitle.bold())
 
             VStack(alignment: .leading, spacing: 12) {
-                // Only true of the Zoom app. The built-in client picks the
-                // OBS Virtual Camera itself on every connection, so telling a
-                // teacher on the default setup to do it by hand sent them to
-                // a Zoom window they never open.
+                // Greenroom's own meeting client sends the picture itself, so
+                // there is no camera to pick in Zoom. The separate Zoom app
+                // cannot receive it.
                 if coordinator.useBuiltInClient {
-                    Text("Greenroom's own meeting client picks the **OBS Virtual Camera** for you, so there is nothing to set in Zoom.")
+                    Text("Greenroom's own meeting client sends your screen and camera straight into the meeting, so there is nothing to set in Zoom.")
                 } else {
-                    Text("The first time you're in a Zoom meeting, open Zoom's **Settings \u{2192} Video** and pick **\u{201C}OBS Virtual Camera\u{201D}**. Zoom remembers it for every call after that \u{2014} it's the only manual step this app can't do for you.")
+                    Text("Greenroom can only send your screen and camera through its own meeting client. Turn on the built-in client in Settings \u{2192} Zoom before your first class.")
                 }
                 Text("Then it's: pick **New Meeting** or **Join Existing**, hit **Start**, and everything falls into place.")
                 Text("Reopen this guide anytime with the **?** button on the main window.")

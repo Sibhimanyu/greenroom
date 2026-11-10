@@ -27,7 +27,7 @@ struct MenuBarView: View {
         // these menu items, so the hints below are documentation, not a
         // second trigger.
         Button(coordinator.isRunning ? "Starting\u{2026}"
-               : coordinator.virtualCamActive ? "In Session"
+               : coordinator.stageLive ? "In Session"
                : coordinator.recordOnlyActive ? "Recording"
                : coordinator.meetingMode == .record ? "Start Recording"
                : coordinator.meetingMode == .create ? "Start Meeting" : "Join Meeting") {
@@ -46,7 +46,7 @@ struct MenuBarView: View {
             coordinator.toggleRecording()
         }
         .keyboardShortcut("r", modifiers: [.option, .command])
-        .disabled(!coordinator.virtualCamActive && !coordinator.isRecording)
+        .disabled(!coordinator.stageLive && !coordinator.isRecording)
 
         // The upload runs in the background; this is where its progress
         // lives, rather than a toast the teacher would have to watch.
@@ -76,7 +76,7 @@ struct MenuBarView: View {
             coordinator.toggleSpeakerTile()
         }
         .keyboardShortcut("z", modifiers: [.option, .command])
-        .disabled(!coordinator.speakerTileShortcutEnabled || !coordinator.virtualCamActive)
+        .disabled(!coordinator.speakerTileShortcutEnabled || !coordinator.stageLive)
 
         Button("Open Chat Window") {
             coordinator.joinChatOnly()

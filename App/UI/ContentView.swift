@@ -35,7 +35,7 @@ struct ContentView: View {
     /// the mode picker right above it.
     private var startLabel: String {
         if coordinator.isRunning { return "Starting\u{2026}" }
-        if coordinator.virtualCamActive { return "In Session" }
+        if coordinator.stageLive { return "In Session" }
         if coordinator.recordOnlyActive { return "Recording" }
         switch coordinator.meetingMode {
         case .create: return "Start Meeting"
@@ -59,7 +59,7 @@ struct ContentView: View {
     /// mid-session does not relabel the buttons of the session in progress.
     private var isRecordMode: Bool {
         coordinator.recordOnlyActive
-            || (coordinator.meetingMode == .record && !coordinator.virtualCamActive)
+            || (coordinator.meetingMode == .record && !coordinator.stageLive)
     }
 
     /// Stop needs something to stop: a live session, or a start in
@@ -71,7 +71,7 @@ struct ContentView: View {
     /// Recording needs a live OBS session - except when already
     /// recording, where the button must stay pressable to stop it.
     private var recordDisabled: Bool {
-        !coordinator.virtualCamActive && !coordinator.isRecording
+        !coordinator.stageLive && !coordinator.isRecording
     }
 
     /// Names the session's folder, so a term of classes is not a wall of
@@ -147,7 +147,7 @@ struct ContentView: View {
                 .disabled(stopDisabled)
                 .help(isRecordMode
                       ? "Stops the recording and saves it to Documents/Greenroom."
-                      : "Ends the meeting for everyone when you're hosting (leaves it otherwise), closes the chat window, and stops the camera and OBS. Ending the meeting from the Zoom window does the same \u{2014} both roads end the whole session.")
+                      : "Ends the meeting for everyone when you're hosting (leaves it otherwise), closes the chat window, and stops the camera. Ending the meeting from the Zoom window does the same \u{2014} both roads end the whole session.")
 
                 SessionNotesToggle()
 

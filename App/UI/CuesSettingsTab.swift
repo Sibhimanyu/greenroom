@@ -78,7 +78,7 @@ struct CuesSetupRows: View {
     @State private var locales: [Locale] = []
     var compact: Bool
 
-    private var inClass: Bool { coordinator.isRunning || coordinator.virtualCamActive }
+    private var inClass: Bool { coordinator.isRunning || coordinator.stageLive }
 
     var body: some View {
         CuesSetupContent(
@@ -347,7 +347,7 @@ struct CuesTryItRows: View {
     @ObservedObject private var assets = ModelAssets.shared
     @StateObject private var tester = CuesController()
 
-    private var inClass: Bool { coordinator.isRunning || coordinator.virtualCamActive }
+    private var inClass: Bool { coordinator.isRunning || coordinator.stageLive }
 
     var body: some View {
         CuesTryItContent(
@@ -657,7 +657,7 @@ struct CuesWorkbench: View {
     @State private var wordsPerSecond = 2.5
     @State private var seeded = false
 
-    private var inClass: Bool { coordinator.isRunning || coordinator.virtualCamActive }
+    private var inClass: Bool { coordinator.isRunning || coordinator.stageLive }
 
     private var ready: Bool {
         useWhisper ? CuesWhisperTranscriber.isAvailable : assets.status.isInstalled

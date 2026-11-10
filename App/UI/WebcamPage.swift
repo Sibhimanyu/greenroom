@@ -156,8 +156,8 @@ struct WebcamPageContent<LivePicture: View, ShareDetail: View, Cameras: View, Mi
     }
     private var canvasAspect: CGSize { previewAspect ?? CGSize(width: 16, height: 10) }
 
-    /// 16:9, the fallback GreenroomScene uses when it cannot read the camera.
-    /// Not the preview's aspect: that is the OBS canvas, not the camera.
+    /// 16:9, the shape of most cameras.
+    /// Not the preview's aspect: that is the picture's canvas, not the camera.
     private static var cameraAspect: Double { 16.0 / 9.0 }
 
     private var mode: BubbleDragLayer.Mode {
@@ -292,7 +292,7 @@ struct WebcamPageContent<LivePicture: View, ShareDetail: View, Cameras: View, Mi
     /// Margins the shipped layout uses, so a corner picked here lands where a
     /// fresh install would put it.
     private static var margin: (side: Double, bottom: Double, cutoutSide: Double) {
-        let shipped = GreenroomScene.BubbleLayout()
+        let shipped = StageLayout()
         return (shipped.rightInset, shipped.bottomInset, shipped.cutoutRightInset)
     }
 
@@ -340,8 +340,8 @@ private struct StatusChip: View {
     var body: some View {
         PictureChip(text: isLive ? "LIVE" : "PREVIEW",
                     dot: isLive ? Brand.green : Color.white.opacity(0.6))
-            .help(isLive ? "The picture the meeting gets, from OBS."
-                         : "A sketch. Turn on \u{201C}Keep OBS ready\u{201D} under Recording to see the real picture.")
+            .help(isLive ? "The picture the meeting gets."
+                         : "A sketch, until Greenroom can open your camera for the real picture.")
     }
 }
 

@@ -646,7 +646,7 @@ final class ZoomMeetingSDKClient: NSObject, ObservableObject {
     private var requestedStageSource: StageFrameSource?
     /// Kept alive here; the SDK holds its source delegate weakly.
     private var stageVideoSender: ZoomVideoSender?
-    /// True when our own video source is installed, so the OBS camera pick must be skipped.
+    /// True when our own video source is installed in the SDK.
     var stageVideoActive: Bool { stageVideoSender != nil }
     #if DEBUG
     private var debugTestPattern: StageTestPattern?
@@ -659,7 +659,7 @@ final class ZoomMeetingSDKClient: NSObject, ObservableObject {
 
     private func applyStageVideo() {
         guard let controller = ZoomSDK.shared().getRawDataController() else {
-            if requestedStageSource != nil { ZoomVideoSender.log("failed: the SDK gave no raw data controller; the OBS camera will be used as usual.") }
+            if requestedStageSource != nil { ZoomVideoSender.log("failed: the SDK gave no raw data controller; the meeting will have no video from Greenroom.") }
             return
         }
         if let source = requestedStageSource {
@@ -670,7 +670,7 @@ final class ZoomMeetingSDKClient: NSObject, ObservableObject {
             var helper: ZoomSDKRawDataVideoSourceController?
             let got = controller.getRawDataVideoSourceHelper(&helper)
             guard got == ZoomSDKError_Success, let helper else {
-                ZoomVideoSender.log("failed: getRawDataVideoSourceHelper returned \(got.rawValue); the OBS camera will be used as usual.")
+                ZoomVideoSender.log("failed: getRawDataVideoSourceHelper returned \(got.rawValue); the meeting will have no video from Greenroom.")
                 return
             }
             let sender = ZoomVideoSender()
@@ -678,9 +678,9 @@ final class ZoomMeetingSDKClient: NSObject, ObservableObject {
             if set == ZoomSDKError_Success {
                 sender.attach(source)
                 stageVideoSender = sender
-                ZoomVideoSender.log("installed as the external video source (I420 limited); the OBS Virtual Camera pick is skipped.")
+                ZoomVideoSender.log("installed as the external video source (I420 limited); there is no camera to pick.")
             } else {
-                ZoomVideoSender.log("failed: setExternalVideoSource returned \(set.rawValue); the OBS camera will be used as usual.")
+                ZoomVideoSender.log("failed: setExternalVideoSource returned \(set.rawValue); the meeting will have no video from Greenroom.")
             }
         } else if let sender = stageVideoSender {
             var helper: ZoomSDKRawDataVideoSourceController?
@@ -792,7 +792,7 @@ final class ZoomMeetingSDKClient: NSObject, ObservableObject {
         ZoomSDK.shared().getSettingService()?.getVideoSetting()?.enableHideSelfView(hideSelfViewPreference)
         // "Mirror my video" OFF (persisted setting, asserted every
         // connect): mirroring only affects the LOCAL self-view - others
-        // always see the feed un-mirrored - and this feed is the OBS
+        // always see the feed un-mirrored - and this feed is the Greenroom
         // composite with the shared screen's TEXT in it, which mirroring
         // renders backwards to the presenter mid-lesson. Off, the
         // self-view shows exactly what the class sees.
@@ -922,7 +922,7 @@ final class ZoomMeetingSDKClient: NSObject, ObservableObject {
         }
     }
 
-    /// All-in-one mode: force a specific camera (the OBS Virtual Camera)
+    /// Forces a specific camera
     /// as the SDK client's video source, matched by name fragment.
     /// Requires the SDK to be initialized+authed (call after ensureReady).
     func selectCamera(named nameFragment: String) -> Bool {

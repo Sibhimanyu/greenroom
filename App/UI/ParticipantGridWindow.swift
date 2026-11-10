@@ -1482,7 +1482,7 @@ private final class RootView: NSView {
         menu.addItem(.separator())
         add("End session\u{2026}") {
             Self.confirm(title: "End the session?",
-                         message: "Ends the meeting for everyone, finishes any recording, and shuts OBS down.",
+                         message: "Ends the meeting for everyone, finishes any recording, and turns the camera off.",
                          confirm: "End session") {
                 ParticipantGridWindowController.requestEndSession()
             }
@@ -1691,7 +1691,7 @@ private final class RootView: NSView {
         railControls.append(Self.railRow("End", symbol: "xmark", destructive: true,
                                          hint: "End session  \u{2325}\u{2318}X") {
             Self.confirm(title: "End the session?",
-                         message: "Ends the meeting for everyone, finishes any recording, and shuts OBS down.",
+                         message: "Ends the meeting for everyone, finishes any recording, and turns the camera off.",
                          confirm: "End session") {
                 ParticipantGridWindowController.requestEndSession()
             }

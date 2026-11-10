@@ -588,8 +588,9 @@ final class ZoomMeetingSDKClient: NSObject, ObservableObject {
         authedClientID = clientID
         checkRawVideoLicence(when: "after sign-in")
         #if DEBUG
-        installRawVideoSpikeIfEnabled()
+        startDebugTestPatternIfEnabled()
         #endif
+        applyStageVideo()
     }
 
     /// Piece 0 of docs/drop-obs-plan.md: does this SDK app have the raw-data
@@ -607,11 +608,9 @@ final class ZoomMeetingSDKClient: NSObject, ObservableObject {
             return
         }
         var line = "Raw video licence (\(when)): no (\(Self.errorName(result)) = \(result.rawValue))"
-        #if DEBUG
-        if when == "in meeting", rawVideoSpike?.isSending == true {
+        if when == "in meeting", stageVideoSender?.isSending == true {
             line += " (sending our own video works without it; this licence is likely only for receiving raw data)"
         }
-        #endif
         Self.logLicenceLine(line)
     }
 
@@ -635,36 +634,77 @@ final class ZoomMeetingSDKClient: NSObject, ObservableObject {
         Logger(subsystem: "com.sibhimanyu.greenroom", category: "zoom").notice("\(message, privacy: .public)")
     }
 
-    #if DEBUG
-    /// Kept alive here; the SDK holds its source delegate weakly.
-    private var rawVideoSpike: RawVideoSpike?
-    /// True when the debug spike owns the video source, so the OBS camera
-    /// pick must be skipped.
-    var rawVideoSpikeActive: Bool { rawVideoSpike != nil }
+    // MARK: Stage video (docs/drop-obs-plan.md, piece 2)
 
-    private func installRawVideoSpikeIfEnabled() {
-        guard RawVideoSpike.isEnabled else { return }
+    /// The picture the meeting should show as our camera, or nil for none.
+    /// The header (ZoomSDKRawDataVideoSourceController.h) says nothing about
+    /// when the source may be set or changed, and Zoom's other platforms want
+    /// it set before joining, so the request is stored and applied after
+    /// sign-in, before the join (`applyStageVideo`). Called later, it applies
+    /// at once; swapping the picture on a source that is already installed
+    /// never touches the SDK.
+    private var requestedStageSource: StageFrameSource?
+    /// Kept alive here; the SDK holds its source delegate weakly.
+    private var stageVideoSender: ZoomVideoSender?
+    /// True when our own video source is installed, so the OBS camera pick must be skipped.
+    var stageVideoActive: Bool { stageVideoSender != nil }
+    #if DEBUG
+    private var debugTestPattern: StageTestPattern?
+    #endif
+
+    func useStageVideo(_ source: StageFrameSource?) {
+        requestedStageSource = source
+        if isAuthed { applyStageVideo() }
+    }
+
+    private func applyStageVideo() {
         guard let controller = ZoomSDK.shared().getRawDataController() else {
-            RawVideoSpike.log("no raw data controller; not installing.")
+            if requestedStageSource != nil { ZoomVideoSender.log("failed: the SDK gave no raw data controller; the OBS camera will be used as usual.") }
             return
         }
-        var helper: ZoomSDKRawDataVideoSourceController?
-        let got = controller.getRawDataVideoSourceHelper(&helper)
-        guard got == ZoomSDKError_Success, let helper else {
-            RawVideoSpike.log("getRawDataVideoSourceHelper failed (\(got.rawValue)); not installing.")
-            return
-        }
-        let spike = rawVideoSpike ?? RawVideoSpike()
-        let set = helper.setExternalVideoSource(spike, videoDataFormat: ZoomSDKFrameDataFormat_I420_Limited)
-        if set == ZoomSDKError_Success {
-            rawVideoSpike = spike
-            RawVideoSpike.log("installed as the external video source (I420 limited); the OBS Virtual Camera pick is skipped.")
-        } else {
-            RawVideoSpike.log("setExternalVideoSource failed (\(set.rawValue)); the OBS camera will be used as usual.")
+        if let source = requestedStageSource {
+            if let sender = stageVideoSender {   // already installed: just change the picture
+                sender.attach(source)
+                return
+            }
+            var helper: ZoomSDKRawDataVideoSourceController?
+            let got = controller.getRawDataVideoSourceHelper(&helper)
+            guard got == ZoomSDKError_Success, let helper else {
+                ZoomVideoSender.log("failed: getRawDataVideoSourceHelper returned \(got.rawValue); the OBS camera will be used as usual.")
+                return
+            }
+            let sender = ZoomVideoSender()
+            let set = helper.setExternalVideoSource(sender, videoDataFormat: ZoomSDKFrameDataFormat_I420_Limited)
+            if set == ZoomSDKError_Success {
+                sender.attach(source)
+                stageVideoSender = sender
+                ZoomVideoSender.log("installed as the external video source (I420 limited); the OBS Virtual Camera pick is skipped.")
+            } else {
+                ZoomVideoSender.log("failed: setExternalVideoSource returned \(set.rawValue); the OBS camera will be used as usual.")
+            }
+        } else if let sender = stageVideoSender {
+            var helper: ZoomSDKRawDataVideoSourceController?
+            let got = controller.getRawDataVideoSourceHelper(&helper)
+            sender.detach()
+            if got == ZoomSDKError_Success, let helper {
+                let r = helper.setExternalVideoSource(nil, videoDataFormat: ZoomSDKFrameDataFormat_I420_Limited)
+                ZoomVideoSender.log(r == ZoomSDKError_Success ? "removed the external video source." : "removing the external video source returned \(r.rawValue).")
+            }
+            stageVideoSender = nil
         }
     }
-    #else
-    var rawVideoSpikeActive: Bool { false }
+
+    #if DEBUG
+    /// UserDefaults bool `GreenroomRawVideoSpike`: feed a moving test pattern
+    /// through the real sender, so the meeting path can be tested end to end.
+    private func startDebugTestPatternIfEnabled() {
+        guard ZoomVideoSender.debugTestPatternEnabled, requestedStageSource == nil else { return }
+        let pattern = debugTestPattern ?? StageTestPattern()
+        debugTestPattern = pattern
+        pattern.start()
+        requestedStageSource = pattern
+        ZoomVideoSender.log("debug test pattern switched on (GreenroomRawVideoSpike).")
+    }
     #endif
 
     /// Orderly SDK teardown for process exit. The SDK's in-process video
@@ -678,6 +718,8 @@ final class ZoomMeetingSDKClient: NSObject, ObservableObject {
         ZoomSDK.shared().unInitSDK()
         didInit = false
         isAuthed = false
+        stageVideoSender?.detach()
+        stageVideoSender = nil   // the SDK let go of the source; the next sign-in installs it again
         authedClientID = nil
     }
 

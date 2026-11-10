@@ -277,25 +277,19 @@ struct ContentView: View {
 
     /// The width the button row needs, and therefore the window's.
     ///
-    /// Worked out from the row rather than chosen. Five bordered `.large`
-    /// buttons at their LONGEST labels - "Stop Recording", not "Record", and
-    /// Start's 130pt floor - plus four 10pt gaps, 32pt padding each side, and
-    /// enough left for the Spacer to still read as a gap. That comes to
-    /// 744pt; the row was clipping "Screenroom" at 620.
+    /// Worked out from the row rather than chosen: the buttons at their
+    /// LONGEST labels - "Stop Recording", not "Record", and Start's 130pt
+    /// floor - plus the gaps, 32pt padding each side, and enough left for
+    /// the Spacer to still read as a gap.
     ///
     /// Longest labels on purpose: a window sized for the idle state reflows
     /// the moment a recording starts, which is the one moment nothing on
     /// screen should move.
-    ///
-    /// Two values because the last button is not always there. Screenroom is
-    /// held out of releases, and a shipping window should not carry 100pt of
-    /// margin for a button nobody can see - so the released width is the one
-    /// that has always been there.
-    static var minimumWindowWidth: CGFloat { ScreenroomAvailability.isReleased ? 744 : 604 }
+    static var minimumWindowWidth: CGFloat { 744 }
 
     /// What the window opens at: the minimum plus the 40pt of breathing room
     /// the original pair (580/620) already used.
-    static var defaultWindowWidth: CGFloat { ScreenroomAvailability.isReleased ? 784 : 644 }
+    static var defaultWindowWidth: CGFloat { 784 }
 
     /// The button row's secondary buttons are neutral, so Start is the one
     /// green button. Under the app-wide green tint a bordered button draws a

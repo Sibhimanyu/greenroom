@@ -45,9 +45,6 @@ struct SettingsView: View {
             CuesSettingsTab()
                 .tabItem { Label("Cues", systemImage: "waveform.and.magnifyingglass") }
                 .tag("cues")
-            ScreenroomSettingsTab()
-                .tabItem { Label("Screenroom", systemImage: "chart.bar.doc.horizontal") }
-                .tag("screenroom")
 
             TransferSettingsTab()
                 .tabItem { Label("Transfer", systemImage: "square.and.arrow.up.on.square") }

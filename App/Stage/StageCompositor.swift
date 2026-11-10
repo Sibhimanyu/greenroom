@@ -153,7 +153,7 @@ final class StageCompositor: StageFrameSource {
 
     /// Shows macOS's prompt the first time; after a refusal it opens the
     /// System Settings pane instead, the only place the answer can change.
-    @MainActor static func requestScreenRecordingAccess() { ScreenroomScreenEngine.askForPermission() }
+    @MainActor static func requestScreenRecordingAccess() { StageScreenSource.askForPermission() }
 
     // MARK: Control
 

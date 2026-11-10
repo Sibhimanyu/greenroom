@@ -113,7 +113,7 @@ struct CuesSetupRows: View {
                 }
             },
             whisperSetup: { WhisperSetupRows() },
-            whisperModel: { WhisperModelPicker(subtitle: "Shared with Screenroom.") })
+            whisperModel: { WhisperModelPicker(subtitle: "Also used when you analyse a session.") })
     }
 
     private func download() {
@@ -228,7 +228,7 @@ struct CuesSetupContent<WhisperSetup: View, WhisperModel: View>: View {
 
             if listensWithWhisper {
                 whisperModel()
-                    .help("Bigger hears accents better and takes longer per window. Shared with Screenroom.")
+                    .help("Bigger hears accents better and takes longer per window. Also used when you analyse a session.")
             } else {
                 LabeledContent {
                     speechModelState
@@ -718,7 +718,7 @@ struct CuesWorkbench: View {
             }
             .disabled(!CuesWhisperTranscriber.isAvailable)
             if useWhisper {
-                WhisperModelPicker(subtitle: "Shared with Cues and Screenroom.")
+                WhisperModelPicker(subtitle: "Shared with Cues and Analyse.")
             }
             Toggle(isOn: $asSpeech) {
                 SettingLabel(title: "Typed text arrives as speech",

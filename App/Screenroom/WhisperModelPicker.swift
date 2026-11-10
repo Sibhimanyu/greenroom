@@ -48,7 +48,7 @@ struct WhisperModelPicker: View {
                         .foregroundStyle(.secondary)
                 } label: {
                     SettingLabel(title: "Whisper model",
-                                 subtitle: "The only one on this Mac. Other models, on the Screenroom tab, adds more.")
+                                 subtitle: "The only one on this Mac. Other models can be added under How to analyse, next to Analyse in Sessions.")
                 }
             } else {
                 LabeledContent {
@@ -57,7 +57,7 @@ struct WhisperModelPicker: View {
                         .foregroundStyle(.secondary)
                 } label: {
                     SettingLabel(title: "Whisper model",
-                                 subtitle: "No model on this Mac yet \u{2014} Settings \u{2192} Screenroom has the two commands that add one.")
+                                 subtitle: "No model on this Mac yet \u{2014} How to analyse, next to Analyse in Sessions, adds one.")
                 }
             }
         }

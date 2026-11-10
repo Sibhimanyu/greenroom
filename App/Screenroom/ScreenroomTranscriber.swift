@@ -136,7 +136,7 @@ enum ScreenroomTranscriber {
             case .denied:
                 return "Speech recognition is not allowed. Turn it on in System Settings \u{2192} Privacy & Security \u{2192} Speech Recognition."
             case .noLocalModel(let locale):
-                return "This Mac cannot transcribe \(locale) without sending audio to Apple, so Screenroom will not transcribe at all. Add the language in System Settings \u{2192} General \u{2192} Language & Region and try again."
+                return "This Mac cannot transcribe \(locale) without sending audio to Apple, so Greenroom will not transcribe at all. Add the language in System Settings \u{2192} General \u{2192} Language & Region and try again."
             case .noSpeech:
                 return "No speech was found in that recording."
             case .failed(let reason):
@@ -159,7 +159,7 @@ enum ScreenroomTranscriber {
         }
         guard recognizer.isAvailable else { return (false, "the recogniser is not available right now") }
         guard recognizer.supportsOnDeviceRecognition else {
-            return (false, "this Mac has no on-device model for \(identifier), and Screenroom will not send audio to Apple")
+            return (false, "this Mac has no on-device model for \(identifier), and Greenroom will not send audio to Apple")
         }
         return (true, nil)
     }

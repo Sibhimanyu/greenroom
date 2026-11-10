@@ -78,14 +78,6 @@ struct MenuBarView: View {
         .keyboardShortcut("z", modifiers: [.option, .command])
         .disabled(!coordinator.speakerTileShortcutEnabled || !coordinator.stageLive)
 
-        // Screenroom needs no session, so unlike everything above it there is
-        // nothing to disable it on.
-        if ScreenroomAvailability.isReleased {
-            Button("Open Screenroom\u{2026}") {
-                openWindow(id: "screenroom")
-            }
-        }
-
         Divider()
 
         Button("Show Greenroom") {

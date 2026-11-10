@@ -23,8 +23,6 @@ enum ScreenroomDefaults {
         ("marksAgentSettings", ScreenroomAgentSettings.key),
         ("marksTranscriberSettings", ScreenroomTranscriberSettings.key),
         ("marksDefaultRubric", "screenroomDefaultRubric"),
-        ("marksCameraUID", "screenroomCameraUID"),
-        ("marksSource", "screenroomSource"),
     ]
 
     /// `static let` rather than a function with a flag: Swift runs a static

@@ -11,18 +11,18 @@
 	<key>NSAppleEventsUsageDescription</key>
 	<string>Greenroom arranges Google Chrome windows for you (e.g. tiling a new window to half the screen).</string>
 	<key>NSCameraUsageDescription</key>
-	<string>Greenroom sends the composited video (your screen with you in it) to the Zoom meeting from inside the app, so it needs the camera the meeting uses. Screenroom records the person presenting straight to a file in Documents/Greenroom, and Greenroom checks which camera you are facing so it can cut between them. Both stay on this Mac.</string>
+	<string>Greenroom puts you in the class picture (your screen with you in it), sends that picture to the Zoom meeting from inside the app, and records it when you press Record, so it needs your camera. It also checks which camera you are facing so it can cut between them. The picture and any recording stay on this Mac, apart from what the meeting itself receives.</string>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>Your microphone goes to the Zoom meeting, drives the level meter on the participants panel, and is recorded alongside the picture when Screenroom records a presentation (the file stays on this Mac). With Cues turned on (off by default, macOS 26 only), Greenroom also turns your speech into text on this Mac to suggest links; the audio and the text never leave the Mac and are not saved.</string>
+	<string>Your microphone goes to the Zoom meeting, drives the level meter on the participants panel, and is recorded with the class picture when you record (the file stays on this Mac). With Cues turned on (off by default, macOS 26 only), Greenroom also turns your speech into text on this Mac to suggest links; the audio and the text never leave the Mac and are not saved.</string>
 	<!-- Cues does NOT need this key: it uses SpeechAnalyzer with audio the
 	     app already holds, which runs on this Mac and asks for no
-	     speech-recognition permission. Screenroom does, because transcribing a
+	     speech-recognition permission. Analyse does, because transcribing a
 	     finished file on macOS 14 means SFSpeechRecognizer, which is gated
 	     by this permission. It is pinned to on-device recognition and
 	     refuses rather than falling back to Apple's servers - see
 	     App/Screenroom/ScreenroomTranscriber.swift. -->
 	<key>NSSpeechRecognitionUsageDescription</key>
-	<string>With Screenroom, Greenroom turns a recorded presentation into text on this Mac so it can count filler words and pace. It refuses to transcribe at all rather than send the audio to Apple.</string>
+	<string>When you press Analyse on a recording, Greenroom turns it into text on this Mac so it can count filler words and pace. It refuses to transcribe at all rather than send the audio to Apple.</string>
 	<key>SUEnableAutomaticChecks</key>
 	<true/>
 	<key>SUScheduledCheckInterval</key>

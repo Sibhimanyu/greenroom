@@ -2,7 +2,9 @@
 //  ScreenroomSettingsTab.swift
 //  Greenroom
 //
-//  One-time setup, kept out of the working flow.
+//  One-time setup, kept out of the working flow. It is no longer a Settings
+//  tab: AnalysisSetupPanel shows it at the first press of Analyse, and the
+//  "How to analyse" link beside Analyse reopens it.
 //
 //  Everything here used to sit beside the report, which made a six-decision
 //  form out of a one-button job: which transcriber, whether to prepare, agent
@@ -84,7 +86,7 @@ struct ScreenroomSettingsTab: View {
     /// on-device model to write with, and the report is the counted one.
     private func localWriterHelp(_ model: (available: Bool, reason: String?)) -> String {
         if model.available {
-            return "Screenroom writes the report on this Mac, using Apple\u{2019}s on-device model."
+            return "Greenroom writes the report on this Mac, using Apple\u{2019}s on-device model."
         }
         let why: String
         if #available(macOS 26.0, *) {
@@ -315,7 +317,7 @@ struct ScreenroomPageContent<Setup: View>: View {
                 .textFieldStyle(.roundedBorder)
                 .font(.system(size: 11, design: .monospaced))
                 .lineLimit(1...4)
-                .help("Runs in your own shell, with your own credentials. $SCREENROOM_FOLDER is the read-only copy it works in.")
+                .help("Runs in your own shell, with your own credentials. $GREENROOM_FOLDER is the read-only copy it works in.")
             if agentKind != .custom {
                 Button(action: revertCommand) {
                     Image(systemName: "arrow.counterclockwise")

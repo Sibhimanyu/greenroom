@@ -127,8 +127,7 @@ struct GreenroomApp: App {
                 }
         }
         // Derived from the button row, not chosen - see
-        // ContentView.minimumWindowWidth. It grows when Screenroom is in the
-        // build, because that is when there is a fifth button in the row.
+        // ContentView.minimumWindowWidth.
         .defaultSize(width: ContentView.defaultWindowWidth, height: 400)
         .commands {
             CommandGroup(after: .appInfo) {
@@ -145,15 +144,6 @@ struct GreenroomApp: App {
                 .tint(Brand.green)
         }
 
-        // Screenroom: evaluated presentations (App/Screenroom/, and
-        // docs/marks-evaluation-plan.md). A Window, not a WindowGroup, for
-        // the reason recorded above - and a separate scene rather than a
-        // sheet on the main window because it holds a live camera and a
-        // recording, so it has to outlive whatever the main window is doing.
-        //
-        // Deliberately NOT given the coordinator: Screenroom runs without a
-        // class, or a meeting, and handing it the session object would
-        // quietly make that untrue the first time someone reached for it.
         // Sessions is a WINDOW, not a sheet.
         //
         // As a sheet it was attached to the main window, and AppKit moves a
@@ -171,36 +161,11 @@ struct GreenroomApp: App {
         }
         .defaultSize(width: 1_180, height: 760)
 
-        // Two gates, because one is not enough and the scene cannot be the
-        // one that moves.
-        //
-        // A Window scene contributes its own item to the Window menu, so a
-        // gated-off Screenroom would still be listed there and open an empty
-        // window. The obvious fix - wrapping the scene in `if` - does not
-        // compile: SceneBuilder has no empty scene to infer for the other
-        // branch. `.commandsRemoved()` is the documented way to drop a
-        // scene's menu contribution, and it is applied unconditionally
-        // because Screenroom has its own two entry points and does not want a
-        // third that bypasses them.
-        //
-        // The body is gated as well, so even a stray openWindow(id: "screenroom")
-        // opens an empty window rather than an unreleased feature.
-        Window("Screenroom", id: "screenroom") {
-            if ScreenroomAvailability.isReleased {
-                ScreenroomWindow()
-                    .tint(Brand.green)
-            }
-        }
-        .defaultSize(width: 1000, height: 620)
-        .commandsRemoved()
-
         // The report, full width. It used to live in the 320pt column beside
         // the player, which is the right width for a queue of notes and the
         // wrong one for a document somebody is about to send a student.
-        Window("Screenroom \u{2014} Report", id: "screenroom-report") {
-            if ScreenroomAvailability.isReleased {
-                ScreenroomReportView()
-            }
+        Window("Report", id: "report") {
+            ScreenroomReportView()
         }
         .defaultSize(width: 960, height: 760)
         .commandsRemoved()

@@ -5,8 +5,8 @@
 //  One ScreenCaptureKit stream: a whole display, one app, or one window, the
 //  three things `ShareTarget` can name.
 //
-//  Patterns are ScreenroomScreenEngine's: complete frames only, BGRA, audio
-//  off. Greenroom has no use for system audio.
+//  Complete frames only, BGRA, audio off. Greenroom has no use for system
+//  audio.
 //
 import AppKit
 import CoreMedia
@@ -46,6 +46,16 @@ final class StageScreenSource: NSObject, SCStreamOutput, SCStreamDelegate {
         self.maxSize = maxSize
     }
 
+    /// Shows macOS's own prompt the first time. After a refusal macOS never
+    /// prompts again, so the Screen Recording pane is opened instead - the
+    /// only place the answer can be changed.
+    @MainActor static func askForPermission() {
+        if CGRequestScreenCaptureAccess() { return }
+        if let pane = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture") {
+            NSWorkspace.shared.open(pane)
+        }
+    }
+
     static let permissionMessage = "Greenroom can\u{2019}t record the screen yet. Allow it in System Settings \u{2192} Privacy & Security \u{2192} Screen & System Audio Recording, then press Start again."
 
     func start() async throws {
@@ -64,8 +74,7 @@ final class StageScreenSource: NSObject, SCStreamOutput, SCStreamDelegate {
         let filter: SCContentFilter
         switch target {
         case .display:
-            // Greenroom's own windows stay out of the class picture, as in
-            // Screenroom: the rail and notes bar are on this screen.
+            // Greenroom's own windows stay out of the class picture, the rail and notes bar are on this screen.
             let own = content.applications.filter { $0.bundleIdentifier == Bundle.main.bundleIdentifier }
             filter = SCContentFilter(display: display, excludingApplications: own, exceptingWindows: [])
         case .app(let bundleID):

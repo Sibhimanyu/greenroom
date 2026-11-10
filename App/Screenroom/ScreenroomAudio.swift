@@ -85,7 +85,7 @@ enum ScreenroomAudio {
             throw Failure.failed(reader.error?.localizedDescription ?? "The recording could not be read.")
         }
 
-        let queue = DispatchQueue(label: "com.sibhimanyu.greenroom.screenroom.audio")
+        let queue = DispatchQueue(label: "com.sibhimanyu.greenroom.analyse.audio")
         await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
             writerInput.requestMediaDataWhenReady(on: queue) {
                 while writerInput.isReadyForMoreMediaData {

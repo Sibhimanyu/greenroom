@@ -90,7 +90,7 @@ enum ScreenroomLibrary {
     /// and restarted leaves several files, and the long one is the class.
     static func recording(in folder: URL) -> URL? {
         let manager = FileManager.default
-        let own = folder.appendingPathComponent(ScreenroomRecorder.recordingFileName)
+        let own = folder.appendingPathComponent(presentationFileName)
         if manager.fileExists(atPath: own.path) { return own }
 
         guard let files = try? manager.contentsOfDirectory(
@@ -109,6 +109,11 @@ enum ScreenroomLibrary {
             return a < b
         }
     }
+
+    /// The file a presentation folder made by the old Screenroom window holds.
+    /// Nothing writes it any more; folders already on disk still have it, and
+    /// it is the take the analysis prefers there.
+    static let presentationFileName = "presentation.mov"
 
     static let playableExtensions = ["mov", "mp4", "mkv", "m4v"]
 

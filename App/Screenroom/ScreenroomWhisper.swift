@@ -44,7 +44,7 @@ enum ScreenroomWhisper {
         var errorDescription: String? {
             switch self {
             case .noBinary:
-                return "whisper-cli was not found. Install it with `brew install whisper-cpp`, or point Screenroom at your own transcriber."
+                return "whisper-cli was not found. Install it with `brew install whisper-cpp`, or point Greenroom at your own transcriber."
             case .noModel:
                 return "No whisper model was found. Download one into ~/Library/Application Support/Greenroom/whisper/ \u{2014} see the Deep tab for the exact command."
             case .noWords:

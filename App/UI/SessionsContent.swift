@@ -24,6 +24,9 @@ import SwiftUI
 // MARK: - Values
 
 /// What made a session. Read from session.json's `kind` by RecordingsView.
+/// `.review` is the case name for folders the old presentation window made
+/// (kind "screen" on disk): they still list, play and analyse, and are
+/// labelled Presentation. Nothing writes that kind any more.
 enum SessionKind: String, CaseIterable, Hashable {
     case classSession, recording, review
 
@@ -31,7 +34,7 @@ enum SessionKind: String, CaseIterable, Hashable {
         switch self {
         case .classSession: return "Class"
         case .recording: return "Recording"
-        case .review: return "Review"
+        case .review: return "Presentation"
         }
     }
 
@@ -62,7 +65,7 @@ enum SessionsShow: String, CaseIterable, Identifiable {
     case everything = "Everything"
     case classes = "Classes"
     case recordings = "Recordings"
-    case reviews = "Reviews"
+    case reviews = "Presentations"
     var id: String { rawValue }
 
     var kind: SessionKind? {
@@ -88,7 +91,7 @@ enum SessionsShow: String, CaseIterable, Identifiable {
         case .everything: return "Nothing recorded yet"
         case .classes: return "No classes yet"
         case .recordings: return "No recordings yet"
-        case .reviews: return "No reviews yet"
+        case .reviews: return "No presentations yet"
         }
     }
 }

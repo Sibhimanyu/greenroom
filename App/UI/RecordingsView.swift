@@ -104,7 +104,7 @@ struct RecordingsView: View {
             case SessionMetadata.Kind.green.rawValue: return .green
             default:
                 return recordings.contains {
-                    $0.url.lastPathComponent == ScreenroomRecorder.recordingFileName
+                    $0.url.lastPathComponent == ScreenroomLibrary.presentationFileName
                 } ? .screen : .green
             }
         }
@@ -115,7 +115,7 @@ struct RecordingsView: View {
         /// and the analysis agree on which take they mean. A clip when there
         /// is no recording at all.
         var primaryTake: Recording? {
-            recordings.first { $0.url.lastPathComponent == ScreenroomRecorder.recordingFileName }
+            recordings.first { $0.url.lastPathComponent == ScreenroomLibrary.presentationFileName }
                 ?? recordings.filter { $0.url.lastPathComponent != ScreenroomVideoExport.annotatedFileName }
                     .max { $0.sizeBytes < $1.sizeBytes }
                 ?? recordings.first
@@ -201,10 +201,10 @@ struct RecordingsView: View {
         var isAvailable: Bool {
             switch self {
             case .clips: return true
-            case .notes: return ScreenroomAvailability.isReleased
-            // Screenroom's Analyse writes transcript.txt too, so a build with
-            // Screenroom in it can fill this tab even when Cues is held back.
-            case .transcript: return CuesAvailability.isReleased || ScreenroomAvailability.isReleased
+            case .notes: return true
+            // Analyse writes transcript.txt too, so this tab can be filled
+            // even when Cues is held back.
+            case .transcript: return true
             case .links: return CuesAvailability.isReleased
             }
         }
@@ -256,7 +256,7 @@ struct RecordingsView: View {
         .onChange(of: review.analysisRuns) {
             reload()
             if let folder = analysingFolder, review.selected?.folder == folder {
-                openWindow(id: "screenroom-report")
+                openWindow(id: "report")
             }
             analysingFolder = nil
         }
@@ -541,7 +541,7 @@ struct RecordingsView: View {
         }
         actions.openReport = {
             review.select(folder: session.folder)
-            openWindow(id: "screenroom-report")
+            openWindow(id: "report")
         }
         actions.rename = {
             renameDraft = session.customTitle ?? ""
@@ -767,8 +767,7 @@ struct RecordingsView: View {
     /// analysed THIS take. Nothing otherwise - a mark measured against a
     /// different take points at the wrong moment.
     private func marks(for selection: Recording) -> ClipTimeline.Marks {
-        guard ScreenroomAvailability.isReleased,
-              let folder = sessions.first(where: { $0.takes.contains(selection) })?.folder,
+        guard let folder = sessions.first(where: { $0.takes.contains(selection) })?.folder,
               review.selected?.folder == folder else { return .init() }
         let found = review.scrubberMarks
         return .init(fillers: found.fillers.map { Double($0) / 1000 },

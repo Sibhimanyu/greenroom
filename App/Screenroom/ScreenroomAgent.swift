@@ -73,9 +73,9 @@ struct ScreenroomAgentSettings: Codable, Equatable {
         var defaultCommand: String {
             switch self {
             case .claudeCode:
-                return #"claude -p --output-format stream-json --verbose --allowedTools "Read,Glob,Grep" --add-dir "$SCREENROOM_FOLDER""#
+                return #"claude -p --output-format stream-json --verbose --allowedTools "Read,Glob,Grep" --add-dir "$GREENROOM_FOLDER""#
             case .codex:
-                return #"codex exec -s read-only --skip-git-repo-check --json -C "$SCREENROOM_FOLDER" -"#
+                return #"codex exec -s read-only --skip-git-repo-check --json -C "$GREENROOM_FOLDER" -"#
             case .custom:
                 return ""
             }
@@ -103,6 +103,11 @@ struct ScreenroomAgentSettings: Codable, Equatable {
     /// display was dead for anyone who had used the feature once before.
     /// Defaults do not update themselves.
     private static let supersededCommands: Set<String> = [
+        // Before the folder variable lost the old product's name. Both names
+        // are still set when an agent runs, so an edited command that uses
+        // $SCREENROOM_FOLDER keeps working; only an unedited default moves.
+        #"claude -p --output-format stream-json --verbose --allowedTools "Read,Glob,Grep" --add-dir "$SCREENROOM_FOLDER""#,
+        #"codex exec -s read-only --skip-git-repo-check --json -C "$SCREENROOM_FOLDER" -"#,
         #"claude -p --allowedTools "Read,Glob,Grep" --add-dir "$MARKS_FOLDER""#,
         #"claude -p --allowedTools "Read,Glob,Grep" --add-dir "$SCREENROOM_FOLDER""#,
         #"codex exec -s read-only --skip-git-repo-check -C "$MARKS_FOLDER" -"#,
@@ -141,10 +146,10 @@ enum ScreenroomAgent {
         var errorDescription: String? {
             switch self {
             case .noCommand:
-                return "No agent command is set. Settings \u{2192} Screenroom."
+                return "No agent command is set. Open How to analyse next to Analyse."
             case .notFound(let name):
                 let product = name == "claude" ? "Claude Code" : name == "codex" ? "Codex" : name
-                return "Couldn\u{2019}t find \(product) on this Mac, so the feedback was written without it. Install \(product) and sign in, or pick another agent in Settings \u{2192} Screenroom."
+                return "Couldn\u{2019}t find \(product) on this Mac, so the feedback was written without it. Install \(product) and sign in, or pick another agent under How to analyse."
             case .failed(let code, let output):
                 let tail = output.split(separator: "\n").suffix(6).joined(separator: "\n")
                 return "The agent exited with code \(code).\n\(tail)"
@@ -325,6 +330,8 @@ enum ScreenroomAgent {
         // The command templates refer to it, and a custom command can too.
         var environment = ProcessInfo.processInfo.environment
         // Referred to by the default commands, and available to a custom one.
+        environment["GREENROOM_FOLDER"] = workspace.path
+        // The earlier names, for a command written before the rename.
         environment["SCREENROOM_FOLDER"] = workspace.path
         // The old name, for a command written before the rename.
         environment["MARKS_FOLDER"] = workspace.path

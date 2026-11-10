@@ -263,7 +263,7 @@ struct ScreenroomAnalysisPane: View {
 
                 HStack(spacing: 10) {
                     Button {
-                        openWindow(id: "screenroom-report")
+                        openWindow(id: "report")
                     } label: {
                         Label("Open the full report", systemImage: "chart.bar.doc.horizontal")
                     }
@@ -321,7 +321,7 @@ struct ScreenroomAnalysisPane: View {
         VStack(spacing: 0) {
             if review.notes.isEmpty {
                 placeholder("text.badge.plus", "No notes yet",
-                            "Type while the person is still speaking in Screenroom, or add them here while you watch it back \u{2014} each one lands wherever the player is.")
+                            "Turn on Notes on the home screen to type while the person is still speaking, or add them here while you watch it back \u{2014} each one lands wherever the player is.")
             } else {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 0) {

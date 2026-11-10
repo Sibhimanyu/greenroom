@@ -122,7 +122,7 @@ struct ShareTargetSettings: View {
                     .foregroundStyle(.secondary)
                 Spacer()
                 Button("Allow\u{2026}") {
-                    ScreenroomScreenEngine.askForPermission()
+                    StageScreenSource.askForPermission()
                     canSeeTitles = CGPreflightScreenCaptureAccess()
                     refresh()
                 }

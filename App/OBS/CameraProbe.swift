@@ -5,28 +5,25 @@
 //  Looking through one camera to see what angle it reads you at.
 //
 //  This exists because of a bug worth keeping the shape of. The angle
-//  readout in Settings originally came through OBS, the same route
-//  CameraDirector uses during a class. OBS was not running, so no picture
-//  arrived, so the angle stayed empty - and the window told somebody sitting
-//  directly in front of their camera that there was no face in it.
+//  readout in Settings once depended on machinery that was not running while
+//  somebody sat at their desk aiming a camera, so no picture arrived, the
+//  angle stayed empty, and the window told somebody sitting directly in front
+//  of their camera that there was no face in it.
 //
-//  The deeper mistake was not the message. It was making the SETUP task
-//  depend on the machinery of the LIVE task. Aiming a camera is what somebody
-//  does before a class, at a desk, with nothing running. Requiring them to
-//  start a screen-capture tool first to find out where their camera is
-//  pointing is the wrong shape for the job.
+//  The lesson was about shape, not message: aiming a camera is what somebody
+//  does before a class, with nothing running, so it must not depend on the
+//  machinery of the live task. That is still true, and it is cheap to keep
+//  now. Setup and class use the same kind of opener - a plain AVCaptureSession
+//  on the camera - and differ only in who holds it:
 //
-//  So the two paths are deliberately different, and the difference is the
-//  point:
+//   - **Setting up, idle:** this. Greenroom opens the camera itself, so any
+//     camera can be checked instantly, with no session started.
+//   - **In a class:** CameraDirector, reading the frames of the cameras
+//     StageCompositor already holds open. Nothing opens a camera a second time.
 //
-//   - **Setting up, idle:** this. Greenroom opens the camera itself. No OBS,
-//     no scene, no virtual camera. Any camera can be checked instantly,
-//     including one OBS has never heard of.
-//   - **In a class:** CameraDirector, through OBS. There is exactly one
-//     opener of the camera then, which is the whole reason that path exists.
-//
-//  Nothing here is ever running while a session is - see the guards in
-//  CoordinatorController - so the two never contend for a device.
+//  This only runs when no session is live (see the guards in
+//  CoordinatorController, and `cameraProbe.stop()` when a session starts), so
+//  the two never contend for a device.
 //
 import AVFoundation
 import CoreImage

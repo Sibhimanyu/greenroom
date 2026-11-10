@@ -24,8 +24,8 @@
 //
 //  HOW THE DECISION IS MADE.
 //
-//  Every camera is open at once, one OBS source each, and only the live one
-//  is shown - see GreenroomScene.ensureCameraInputs. So this can look through
+//  Every camera is open at once inside StageCompositor, and only the live one
+//  is drawn. So this can look through
 //  all of them, and it compares them: the shot goes to whichever camera has
 //  the teacher's face most head-on, once it has been clearly better than the
 //  live one for the dwell. With three cameras it goes straight to the right
@@ -34,7 +34,7 @@
 //  It used to be the other way round. One source had its device swapped
 //  underneath it, so only one camera could be seen, and the director could
 //  only say "this camera has lost you" and move to the next in the ring.
-//  Every cut then waited for OBS to close one camera and open the other -
+//  Every cut then waited for one camera to close and the other to open -
 //  a freeze or a flash of black - and a further second and a half before
 //  the new camera's picture could be trusted. That was most of why a cut
 //  felt slow, and none of it is left.
@@ -47,15 +47,16 @@
 //  It still falls back to the old ring when no other camera can be seen at
 //  all - see `Chooser`.
 //
-//  IT WATCHES THROUGH OBS, not through its own capture session. The frames
-//  come from GetSourceScreenshot on each camera source, which is how the shape
-//  preview already works. That avoids resting the whole feature on whether
-//  macOS will hand the same camera to two processes at once - which it may
-//  well do, but an architecture should not rest on a guess, and the unsigned
-//  probe that would have settled it cannot get camera permission to run.
+//  IT WATCHES THE COMPOSITOR'S OWN CAMERAS. The frames come from
+//  `StageCompositor.latestCameraFrame(slot:)`, the same capture sessions that
+//  feed the picture, so there is exactly one opener of each camera and no
+//  question of macOS handing one device to two processes. A hidden camera
+//  keeps delivering, which is what lets this look through it. Cuts go back the
+//  same way, through `StageCompositor.cut(toSlot:fade:)`.
 //
 import AppKit
 import AVFoundation
+import CoreImage
 import Foundation
 import Vision
 
@@ -68,8 +69,7 @@ struct CameraDirectorSettings: Codable, Equatable {
     /// The cameras to cut between, in order. The first is where a session
     /// starts and where it returns when nothing is working.
     ///
-    /// AVFoundation uniqueIDs, which is what OBS's av_capture source speaks
-    /// and what survives an unplug and replug - the same identifier
+    /// AVFoundation uniqueIDs, which is what survives an unplug and replug - the same identifier
     /// LocalDeviceResolver hands out.
     var cameraUIDs: [String] = []
 
@@ -201,7 +201,7 @@ enum CameraTransition: String, Codable, CaseIterable, Identifiable {
 /// What a look at a camera actually found.
 ///
 /// This replaced an `Optional<Double>`, and the reason is a bug that went
-/// straight to the person who asked for the feature: with OBS not running
+/// straight to the person who asked for the feature: with no capture running
 /// there was no frame to look at, the angle stayed nil, and the settings
 /// window said "No face in this camera right now" to somebody sitting in
 /// front of their camera with their face in it. One nil was carrying three
@@ -285,6 +285,7 @@ final class CameraDirector: ObservableObject {
     static let readingSeconds = Double(everyMs) / 1_000_000_000
 
     private var task: Task<Void, Never>?
+    private weak var stage: StageCompositor?
     private var settings = CameraDirectorSettings()
     /// The slot showing, which is also the index into `settings.cameraUIDs`.
     private var live = 0
@@ -295,7 +296,7 @@ final class CameraDirector: ObservableObject {
 
     /// Each camera's last screenshot, hashed. A live camera never produces
     /// the same JPEG twice - sensor noise alone sees to that - so a repeat
-    /// means OBS is handing back a frozen frame. For a hidden camera that
+    /// means the camera is handing back a frozen frame. For a hidden camera that
     /// would be the worst possible reading: the face-on picture from the
     /// last time it was live, still "seeing" the teacher long after they
     /// turned away, pulling the shot back to it. A repeat counts as no
@@ -305,7 +306,7 @@ final class CameraDirector: ObservableObject {
 
     /// Slots whose camera macOS says was unplugged, until it comes back.
     ///
-    /// The screenshots alone do not always show it: OBS may hand back black
+    /// The frames alone do not always show it: a camera may hand back black
     /// rather than a frozen frame, and black reads as "nobody there", which
     /// the chooser rightly will not leave a camera for. macOS knows for
     /// certain, so its word turns the slot into no picture at once.
@@ -329,10 +330,9 @@ final class CameraDirector: ObservableObject {
     /// Starts watching. Safe to call when already running, and does nothing
     /// at all when the feature is off or there is only one camera.
     ///
-    /// The camera sources must already match `requested` - Start builds them
-    /// through ensureConfigured, and a change mid-class goes through
-    /// GreenroomScene.setLiveCameras first. Either way slot 0 is showing.
-    func start(client: OBSWebSocketClient, settings requested: CameraDirectorSettings) {
+    /// The stage's cameras must already match `requested` - the coordinator
+    /// updates the compositor first. Either way slot 0 is showing.
+    func start(stage: StageCompositor, settings requested: CameraDirectorSettings) {
         stop()
         let settings = requested.availableOnly()
         guard settings.isUsable else { return }
@@ -348,7 +348,8 @@ final class CameraDirector: ObservableObject {
         cuts = 0
         awaySeconds = 0
         liveCameraName = cameraNames[0]
-        task = Task { [weak self] in await self?.watch(client: client) }
+        self.stage = stage
+        task = Task { [weak self] in await self?.watch(stage: stage) }
     }
 
     /// Takes new timing or a new transition without touching which camera is
@@ -366,6 +367,7 @@ final class CameraDirector: ObservableObject {
     func stop() {
         task?.cancel()
         task = nil
+        stage = nil
         deviceObservers.forEach(NotificationCenter.default.removeObserver)
         deviceObservers = []
         unplugged = []
@@ -410,19 +412,19 @@ final class CameraDirector: ObservableObject {
         ]
     }
 
-    private func watch(client: OBSWebSocketClient) async {
+    private func watch(stage: StageCompositor) async {
         // Let the session get its first frames up before judging them.
         try? await Task.sleep(nanoseconds: UInt64(Self.settleSeconds * 1_000_000_000))
         while !Task.isCancelled {
-            await tick(client: client)
+            await tick(stage: stage)
             try? await Task.sleep(nanoseconds: Self.everyMs)
         }
     }
 
-    private func tick(client: OBSWebSocketClient) async {
+    private func tick(stage: StageCompositor) async {
         var frames: [CGImage?] = []
         for slot in settings.cameraUIDs.indices {
-            let grabbed = unplugged.contains(slot) ? nil : await Self.grab(client: client, slot: slot)
+            let grabbed = unplugged.contains(slot) ? nil : Self.grab(stage: stage, slot: slot)
             let frozen = grabbed != nil && lastFrames[slot] == grabbed?.hash
             lastFrames[slot] = grabbed?.hash
             frames.append(frozen ? nil : grabbed?.image)
@@ -435,7 +437,7 @@ final class CameraDirector: ObservableObject {
         }.value
 
         if case .noPicture = sights[live] {
-            sight = .noPicture("OBS isn't sending a webcam picture.")
+            sight = .noPicture("The camera isn't sending a picture.")
         } else {
             sight = sights[live]
         }
@@ -458,10 +460,10 @@ final class CameraDirector: ObservableObject {
             PendingSwitch(cameraName: cameraName(slot: candidate), progress: progress)
         }
         guard let target, !Task.isCancelled else { return }
-        await cut(client: client, to: target)
+        cut(stage: stage, to: target)
     }
 
-    /// When to cut and where to, with no OBS and no camera anywhere in it.
+    /// When to cut and where to, with no compositor and no camera anywhere in it.
     ///
     /// Pulled out of `tick` so the rules that matter can be checked against
     /// a script of readings rather than against a teacher sitting in front of
@@ -651,7 +653,7 @@ final class CameraDirector: ObservableObject {
         }
     }
 
-    private func cut(client: OBSWebSocketClient, to target: Int) async {
+    private func cut(stage: StageCompositor, to target: Int) {
         let fellBack = chooser.fellBack
         let blind = !fellBack && chooser.candidate != target
         if fellBack {
@@ -661,8 +663,8 @@ final class CameraDirector: ObservableObject {
         }
         let previous = live
         live = target
-        await GreenroomScene.switchCamera(client: client, to: target, from: previous,
-                                          fadeSeconds: settings.transition.fadeSeconds)
+        _ = previous
+        stage.cut(toSlot: target, fade: settings.transition.fadeSeconds)
         liveCameraName = cameraName(slot: target)
         pendingSwitch = nil
         cuts += 1
@@ -679,25 +681,28 @@ final class CameraDirector: ObservableObject {
 
     // MARK: Looking
 
-    /// One frame of one camera source, small. Same route the shape preview
-    /// takes, at a quarter the width - this is measuring the angle of a head,
-    /// not showing anybody a picture. Works on a hidden camera: OBS renders a
-    /// source for a screenshot whether or not the scene is showing it.
-    static func grab(client: OBSWebSocketClient, slot: Int) async -> (image: CGImage, hash: Int)? {
-        guard let response = try? await client.request("GetSourceScreenshot", data: [
-            "sourceName": GreenroomScene.cameraSourceName(slot: slot),
-            "imageFormat": "jpg",
-            "imageWidth": 320
-        ]),
-              let dataString = response["imageData"] as? String,
-              let comma = dataString.firstIndex(of: ","),
-              let data = Data(base64Encoded: String(dataString[dataString.index(after: comma)...])),
-              let image = NSImage(data: data),
-              let frame = image.cgImage(forProposedRect: nil, context: nil, hints: nil) else { return nil }
-        // The string, not `data`: Foundation hashes at most the first 80 bytes
-        // of a Data, which in a JPEG is the header - identical on every frame,
-        // so every frame would have looked frozen. A String hashes it all.
-        return (frame, dataString.hashValue)
+    private static let grabContext = CIContext(options: [.cacheIntermediates: false])
+
+    /// The newest frame of one camera, small. This is measuring the angle of a
+    /// head, not showing anybody a picture, so it is a third of a 1080p
+    /// frame's width. The hash is of the pixels: a live camera never produces
+    /// the same picture twice (sensor noise alone sees to that), so a repeat
+    /// means the camera has stopped delivering.
+    static func grab(stage: StageCompositor, slot: Int) -> (image: CGImage, hash: Int)? {
+        guard let buffer = stage.latestCameraFrame(slot: slot) else { return nil }
+        let source = CIImage(cvPixelBuffer: buffer)
+        let scale = 320 / max(source.extent.width, 1)
+        let small = source.transformed(by: CGAffineTransform(scaleX: scale, y: scale))
+        guard let frame = grabContext.createCGImage(small, from: small.extent),
+              let data = frame.dataProvider?.data as Data? else { return nil }
+        // Every 7th byte. Foundation hashes at most the first 80 bytes of a
+        // Data, so the whole thing is walked here instead.
+        var hash: UInt64 = 1469598103934665603
+        data.withUnsafeBytes { raw in
+            var i = 0
+            while i < raw.count { hash = (hash ^ UInt64(raw[i])) &* 1099511628211; i += 7 }
+        }
+        return (frame, Int(truncatingIfNeeded: hash))
     }
 
     /// How far off the lens the biggest face in the frame is pointed, in

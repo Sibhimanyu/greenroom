@@ -101,7 +101,21 @@ extension CoordinatorController {
     private var trimmedClientID: String { youtubeClientID.trimmingCharacters(in: .whitespacesAndNewlines) }
     private var trimmedClientSecret: String { youtubeClientSecret.trimmingCharacters(in: .whitespacesAndNewlines) }
 
+    /// After a failed call: if Google ended the sign-in, the stored token is
+    /// already cleared, so make Settings show Connect instead of "Connected".
+    /// Returns true when that happened.
+    @discardableResult
+    private func noteSignInLostIfNeeded() -> Bool {
+        guard youtubeConnected, !YouTubeAuth.isConnected else { return false }
+        youtubeConnected = false
+        youtubeStatus = "Not connected: sign-in expired \u{2014} Connect again."
+        return true
+    }
+
     func uploadToYouTube(_ file: URL, title: String) async {
+        // The secret is only read from storage when Settings opens; a recording
+        // can finish before that on a fresh launch.
+        loadSecretsIfNeeded()
         guard !isUploadingToYouTube else {
             log("Another upload is still running \u{2014} this recording stays in Documents/Greenroom; upload it from Recordings afterwards.")
             ToastController.show("An upload is already running", detail: "Try this one from Recordings when it finishes.", kind: .failure)
@@ -156,8 +170,11 @@ extension CoordinatorController {
             // Google's error prose is long; the log has all of it, the toast
             // says where to look and how to retry.
             log("YouTube upload failed: \(error.localizedDescription) \u{2014} the recording is still in Documents/Greenroom; retry from Recordings.")
+            let signInLost = noteSignInLostIfNeeded()
             ToastController.show("YouTube upload failed",
-                                 detail: "Details in the status log. The recording is saved; retry from Recordings.",
+                                 detail: signInLost
+                                     ? "Your Google sign-in expired. Reconnect in Settings \u{2192} YouTube, then retry from Recordings."
+                                     : "Details in the status log. The recording is saved; retry from Recordings.",
                                  kind: .failure, dismissAfter: 8)
             Notifier.post(title: "YouTube upload failed", body: "\(title) is still in Documents/Greenroom. Details in Greenroom\u{2019}s status log.")
         }
@@ -171,6 +188,7 @@ extension CoordinatorController {
         let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return "The title cannot be empty." }
         guard youtubeConnected else { return YouTubeAuth.AuthError.notConnected.localizedDescription }
+        loadSecretsIfNeeded()
         let clientID = trimmedClientID
         let clientSecret = trimmedClientSecret
         do {
@@ -182,6 +200,7 @@ extension CoordinatorController {
             log("Renamed on YouTube: \u{201C}\(trimmed)\u{201D} (\(upload.url)).")
             return nil
         } catch {
+            noteSignInLostIfNeeded()
             log("Couldn't rename on YouTube: \(error.localizedDescription)")
             return error.localizedDescription
         }
@@ -194,6 +213,7 @@ extension CoordinatorController {
     /// the message to show.
     func deleteYouTubeVideo(_ upload: SessionMetadata.Upload, in folder: URL) async -> String? {
         guard youtubeConnected else { return YouTubeAuth.AuthError.notConnected.localizedDescription }
+        loadSecretsIfNeeded()
         let clientID = trimmedClientID
         let clientSecret = trimmedClientSecret
         do {
@@ -205,6 +225,7 @@ extension CoordinatorController {
             log("Deleted from YouTube: \u{201C}\(upload.title)\u{201D} (\(upload.url)). The recording is still in Documents/Greenroom.")
             return nil
         } catch {
+            noteSignInLostIfNeeded()
             log("Couldn't delete from YouTube: \(error.localizedDescription)")
             return error.localizedDescription
         }
@@ -213,6 +234,7 @@ extension CoordinatorController {
     // MARK: Connect / disconnect (Settings → YouTube)
 
     func connectYouTube() async {
+        loadSecretsIfNeeded()
         youtubeStatus = "Waiting for Google in your browser\u{2026}"
         do {
             try await YouTubeAuth.connect(clientID: trimmedClientID, clientSecret: trimmedClientSecret)

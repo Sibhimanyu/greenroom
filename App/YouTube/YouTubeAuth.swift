@@ -21,7 +21,7 @@ import Darwin
 enum YouTubeAuth {
 
     enum AuthError: LocalizedError {
-        case noPort(String), timedOut, badRedirect(String), tokenExchange(String), notConnected, refreshFailed(String)
+        case noPort(String), timedOut, badRedirect(String), tokenExchange(String), notConnected, refreshFailed(String), signInExpired
 
         var errorDescription: String? {
             switch self {
@@ -31,6 +31,7 @@ enum YouTubeAuth {
             case .tokenExchange(let why): return "Google refused the sign-in code: \(why). Check that the Client Secret belongs to this Client ID (Google Cloud \u{2192} Credentials \u{2192} the Desktop app client) and re-copy both."
             case .notConnected: return "No Google account is connected. Settings \u{2192} YouTube \u{2192} Connect."
             case .refreshFailed(let why): return "Google would not renew the sign-in: \(why). Connect again in Settings \u{2192} YouTube."
+            case .signInExpired: return "Your Google sign-in has expired. Connect again in Settings \u{2192} YouTube. (Google ends sign-ins after 7 days while the Google Cloud project is in Testing; publish it to stop this.)"
             }
         }
     }
@@ -139,7 +140,18 @@ enum YouTubeAuth {
             "client_secret": clientSecret,
             "grant_type": "refresh_token",
         ]
-        let json = try await postForm("https://oauth2.googleapis.com/token", form, failure: AuthError.refreshFailed)
+        let json: [String: Any]
+        do {
+            json = try await postForm("https://oauth2.googleapis.com/token", form,
+                                      failure: AuthError.refreshFailed, invalidGrant: .signInExpired)
+        } catch AuthError.signInExpired {
+            // invalid_grant means this refresh token is dead (expired or
+            // revoked). Forget it so the app stops believing it is connected;
+            // no revoke call, Google has already ended it.
+            SecretStore.set("", forKey: refreshTokenKey)
+            cachedAccess = nil
+            throw AuthError.signInExpired
+        }
         guard let token = cacheAccess(from: json) else {
             throw AuthError.refreshFailed("no access token in the response")
         }
@@ -158,7 +170,8 @@ enum YouTubeAuth {
 
     private static func postForm(_ urlString: String,
                                  _ fields: [String: String],
-                                 failure: (String) -> AuthError) async throws -> [String: Any] {
+                                 failure: (String) -> AuthError,
+                                 invalidGrant: AuthError? = nil) async throws -> [String: Any] {
         var request = URLRequest(url: URL(string: urlString)!)
         request.httpMethod = "POST"
         request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
@@ -170,6 +183,7 @@ enum YouTubeAuth {
         let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] ?? [:]
         let status = (response as? HTTPURLResponse)?.statusCode ?? 0
         guard (200..<300).contains(status) else {
+            if let invalidGrant, (json["error"] as? String) == "invalid_grant" { throw invalidGrant }
             let why = (json["error_description"] as? String) ?? (json["error"] as? String) ?? "HTTP \(status)"
             throw failure(why)
         }

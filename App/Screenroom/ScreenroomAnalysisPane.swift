@@ -49,7 +49,8 @@ struct ScreenroomAnalysisPane: View {
     var skip: ([ClosedRange<Double>]) -> Void = { _ in }
 
     @ObservedObject private var review = ScreenroomReviewController.shared
-    @Environment(\.openWindow) private var openWindow
+    /// Opens the full report; the host decides where that is.
+    var openReport: () -> Void = {}
     @State private var draft = ""
     /// Where the player was when this note's FIRST character was typed.
     ///
@@ -263,7 +264,7 @@ struct ScreenroomAnalysisPane: View {
 
                 HStack(spacing: 10) {
                     Button {
-                        openWindow(id: "report")
+                        openReport()
                     } label: {
                         Label("Open the full report", systemImage: "chart.bar.doc.horizontal")
                     }

@@ -185,7 +185,7 @@ enum SessionsFormat {
 
 // MARK: - The window
 
-struct SessionsLayout<Inspector: View, CardMenu: View>: View {
+struct SessionsLayout<CardMenu: View>: View {
     let cards: [SessionCardModel]
     @Binding var search: String
     @Binding var show: SessionsShow
@@ -202,7 +202,11 @@ struct SessionsLayout<Inspector: View, CardMenu: View>: View {
     var revealRoot: () -> Void = {}
     var onDeleteKey: () -> Void = {}
     @ViewBuilder let cardMenu: (SessionCardModel) -> CardMenu
-    @ViewBuilder let inspector: () -> Inspector
+    /// A card was clicked, or Return pressed on the selected one: open its
+    /// page. The grid itself never shows a session's detail.
+    var onOpen: (String) -> Void = { _ in }
+    /// The way back to Home; nil where the grid is drawn on its own.
+    var onBack: (() -> Void)?
 
     var body: some View {
         HStack(spacing: 0) {
@@ -212,11 +216,6 @@ struct SessionsLayout<Inspector: View, CardMenu: View>: View {
             Divider()
             centre
                 .frame(minWidth: 480, maxWidth: .infinity, maxHeight: .infinity)
-                .background(Color(nsColor: .controlBackgroundColor))
-            Divider()
-            inspector()
-                .frame(width: 400)
-                .frame(maxHeight: .infinity)
                 .background(Color(nsColor: .controlBackgroundColor))
         }
     }
@@ -260,6 +259,10 @@ struct SessionsLayout<Inspector: View, CardMenu: View>: View {
 
     private var sidebar: some View {
         VStack(alignment: .leading, spacing: 0) {
+            if let onBack {
+                BackButton(action: onBack)
+                    .padding(.bottom, 12)
+            }
             Text("Sessions")
                 .font(.title3.bold())
                 .padding(.bottom, 12)
@@ -397,7 +400,10 @@ struct SessionsLayout<Inspector: View, CardMenu: View>: View {
                                                     image: thumbnail(card),
                                                     selected: selection == card.id,
                                                     now: now)
-                                            .onTapGesture { selection = card.id }
+                                            .onTapGesture {
+                                                selection = card.id
+                                                onOpen(card.id)
+                                            }
                                             .contextMenu { cardMenu(card) }
                                     }
                                 }
@@ -412,6 +418,12 @@ struct SessionsLayout<Inspector: View, CardMenu: View>: View {
                 .focusable()
                 .focusEffectDisabled()
                 .onDeleteCommand(perform: onDeleteKey)
+                // Return opens the card that is selected, as it does in Finder.
+                .onKeyPress(.return) {
+                    guard let selection else { return .ignored }
+                    onOpen(selection)
+                    return .handled
+                }
             }
         }
     }
@@ -608,8 +620,30 @@ struct SessionInspectorActions {
     var trash: () -> Void = {}
 }
 
+/// "Back", top left of a page: the way out of a page of the main window.
+/// ⌘[ (as in Safari and Finder) and Esc are bound once, by ContentView, not
+/// here: the grid stays alive under a session's page, and two buttons holding
+/// one shortcut would let the hidden one answer.
+struct BackButton: View {
+    var label = "Back"
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Label(label, systemImage: "chevron.left")
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(.secondary)
+        .help("Back (\u{2318}[)")
+    }
+}
+
 struct SessionInspector<Player: View, Detail: View>: View {
     let model: SessionInspectorModel
+    /// The width the page is held to. As a 400pt column it filled its
+    /// space; as a page it would run the player to the window's width, so
+    /// the column is capped and centred and the scroller stays at the edge.
+    var columnWidth: CGFloat?
     var actions = SessionInspectorActions()
     @Binding var take: URL?
     let tabs: [String]
@@ -625,6 +659,8 @@ struct SessionInspector<Player: View, Detail: View>: View {
     var body: some View {
         ScrollView {
             column
+                .frame(maxWidth: columnWidth)
+                .frame(maxWidth: .infinity)
         }
     }
 

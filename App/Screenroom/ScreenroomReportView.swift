@@ -70,8 +70,13 @@ struct ScreenroomReportView: View {
     /// the Export button, which means nothing on paper, is left off.
     private let paged: Bool
 
-    init(paged: Bool = false) {
+    /// Set when the report is a page of the main window: a Back bar above
+    /// it, and no size of its own, because the window governs that.
+    private let onBack: (() -> Void)?
+
+    init(paged: Bool = false, onBack: (() -> Void)? = nil) {
         self.paged = paged
+        self.onBack = onBack
     }
 
     var body: some View {
@@ -79,6 +84,24 @@ struct ScreenroomReportView: View {
             page
                 .background(Color(nsColor: .textBackgroundColor))
                 .tint(Brand.green)
+        } else if let onBack {
+            VStack(spacing: 0) {
+                HStack {
+                    Button(action: onBack) {
+                        Label("Back", systemImage: "chevron.left")
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.secondary)
+                    .help("Back (\u{2318}[)")
+                    Spacer(minLength: 0)
+                }
+                .padding(.horizontal, 32)
+                .padding(.vertical, 12)
+                Divider()
+                ScrollView { page }
+            }
+            .background(Color(nsColor: .textBackgroundColor))
+            .tint(Brand.green)
         } else {
             ScrollView { page }
                 .background(Color(nsColor: .textBackgroundColor))

@@ -65,7 +65,7 @@ struct RecordStudioView: View {
             },
             cameras: { CameraSwitchSection() },
             microphone: { MicrophoneSection() },
-            notes: { SessionNotesToggle() })
+            notes: { SessionNotesButton() })
         .onAppear {
             displays = DisplayResolver.connectedDisplays()
             screenAllowed = StageCompositor.screenRecordingGranted

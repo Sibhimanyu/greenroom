@@ -182,7 +182,6 @@ struct RecordingsView: View {
     @State private var deletingVideo: (upload: SessionMetadata.Upload, folder: URL)?
     @State private var deleteVideoError: String?
 
-    @Environment(\.openWindow) private var openWindow
     /// Used for the YouTube upload button and state.
     @EnvironmentObject private var coordinator: CoordinatorController
 
@@ -218,7 +217,87 @@ struct RecordingsView: View {
         sessions.first { $0.id == selectedID }
     }
 
-    var body: some View {
+    /// Two levels in the main window: the grid, and a session's page over it.
+    /// The grid stays in the tree under the page, hidden, so Back lands on
+    /// the same filter, search, sort and scroll position; the report is a
+    /// third layer over the page for the same reason. Which layer is up lives
+    /// on the coordinator (mainPage), the one place the window's page is kept.
+    private var detailSession: Session? {
+        switch coordinator.mainPage {
+        case .detail(let id), .report(let id): return sessions.first { $0.id == id }
+        default: return nil
+        }
+    }
+
+    private var layers: some View {
+        ZStack {
+            grid
+                .opacity(detailSession == nil ? 1 : 0)
+                .allowsHitTesting(detailSession == nil)
+                .accessibilityHidden(detailSession != nil)
+            if let session = detailSession {
+                detailPage(session)
+                    .background(Color(nsColor: .windowBackgroundColor))
+                    .opacity(isReport ? 0 : 1)
+                    .allowsHitTesting(!isReport)
+                    .accessibilityHidden(isReport)
+            }
+            if isReport {
+                ScreenroomReportView(onBack: { coordinator.goBack() })
+            }
+        }
+        .onAppear(perform: reload)
+        .onChange(of: selectedID) { didSelect() }
+        .onChange(of: selection) { _, newSelection in
+            load(newSelection)
+            review.selectedRecording = newSelection?.url
+        }
+        .onChange(of: coordinator.mainPage) { _, page in
+            switch page {
+            // Back on the grid: nothing is playing there.
+            case .sessions: teardownPlayer()
+            // Nobody listens to a recording under a report.
+            case .report: player?.pause()
+            default: break
+            }
+        }
+        // A session finished while this page was open only appeared after
+        // closing and reopening it. Coming back to the app is when a teacher
+        // expects to see it.
+        .onReceive(NotificationCenter.default.publisher(for: NSWindow.didBecomeKeyNotification)) { _ in reload() }
+        // An upload finishing while the page is open should show up here.
+        .onChange(of: coordinator.isUploadingToYouTube) { reload() }
+        // An analysis finishing: the card gets its sparkles, and when this
+        // page started the run, the report opens - that is what was asked for.
+        .onChange(of: review.analysisRuns) {
+            reload()
+            if let folder = analysingFolder, review.selected?.folder == folder,
+               coordinator.mainPage == .detail(folder.path) {
+                coordinator.mainPage = .report(folder.path)
+            }
+            analysingFolder = nil
+        }
+        .onDisappear(perform: teardownPlayer)
+    }
+
+    private var isReport: Bool {
+        if case .report = coordinator.mainPage { return true }
+        return false
+    }
+
+    /// A card was clicked: a session's page replaces the grid. The player is
+    /// loaded here, because picking the card that is already selected changes
+    /// neither selectedID nor selection, which is what load hangs off.
+    private func open(_ id: String) {
+        let unchanged = selectedID == id
+        selectedID = id
+        coordinator.mainPage = .detail(id)
+        if unchanged {
+            DispatchQueue.main.async { if player == nil { load(selection) } }
+        }
+    }
+
+    private var grid: some View {
         SessionsLayout(
             cards: cards,
             search: $search,
@@ -236,31 +315,28 @@ struct RecordingsView: View {
             },
             onDeleteKey: { if let selection { confirmingDelete = selection } },
             cardMenu: { card in cardMenu(card) },
-            inspector: { inspector })
-        // The video, the tiles and the work under them all want height.
-        .frame(minWidth: 1_180, minHeight: 720)
-        .onAppear(perform: reload)
-        .onChange(of: selectedID) { didSelect() }
-        .onChange(of: selection) { _, newSelection in
-            load(newSelection)
-            review.selectedRecording = newSelection?.url
-        }
-        // A session finished while this window was open only appeared after
-        // closing and reopening it. Coming back to the app, or to this
-        // window, is when a teacher expects to see it.
-        .onReceive(NotificationCenter.default.publisher(for: NSWindow.didBecomeKeyNotification)) { _ in reload() }
-        // An upload finishing while the window is open should show up here.
-        .onChange(of: coordinator.isUploadingToYouTube) { reload() }
-        // An analysis finishing: the card gets its sparkles, and when this
-        // window started the run, the report opens - that is what was asked for.
-        .onChange(of: review.analysisRuns) {
-            reload()
-            if let folder = analysingFolder, review.selected?.folder == folder {
-                openWindow(id: "report")
+            onOpen: open,
+            onBack: { coordinator.goBack() })
+    }
+
+    /// A session as one page: what the side inspector used to hold, with the
+    /// room a page has. Same views, moved - the picture, the title and its
+    /// menu, the two action cards and the work tabs.
+    private func detailPage(_: Session) -> some View {
+        VStack(spacing: 0) {
+            HStack {
+                BackButton(action: { coordinator.goBack() })
+                Spacer(minLength: 0)
             }
-            analysingFolder = nil
+            .padding(.horizontal, 20)
+            .padding(.vertical, 12)
+            Divider()
+            inspector
         }
-        .onDisappear(perform: teardownPlayer)
+    }
+
+    var body: some View {
+        layers
         .sheet(isPresented: $review.showingSetup) {
             AnalysisSetupPanel(
                 runsOnConfirm: review.setupRunsAnalysis,
@@ -425,6 +501,7 @@ struct RecordingsView: View {
         if let session = selectedSession {
             SessionInspector(
                 model: inspectorModel(session),
+                columnWidth: 800,
                 actions: inspectorActions(session),
                 take: Binding(get: { selection?.url },
                               set: { url in selection = session.takes.first { $0.url == url } }),
@@ -541,7 +618,7 @@ struct RecordingsView: View {
         }
         actions.openReport = {
             review.select(folder: session.folder)
-            openWindow(id: "report")
+            coordinator.mainPage = .report(session.id)
         }
         actions.rename = {
             renameDraft = session.customTitle ?? ""
@@ -601,7 +678,8 @@ struct RecordingsView: View {
                     seek: { ms in seek(to: Double(ms) / 1000) },
                     position: { Int(playhead * 1000) },
                     rate: { player?.rate = $0 },
-                    skip: { playSkipping($0) })
+                    skip: { playSkipping($0) },
+                    openReport: { coordinator.openReport() })
             } else {
                 notInFolder("notes")
             }

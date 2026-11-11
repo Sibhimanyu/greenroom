@@ -119,6 +119,7 @@ struct LayoutPageContent: View {
     let openAccessibilitySettings: () -> Void
 
     @FocusState private var focus: LayoutSettingsFocus?
+    @AppStorage(SessionNotes.enabledKey) private var notesOnStart = false
 
     private var isBrowser: Bool { AppCatalog.isBrowser(mainAppBundleID) }
     private var isBuiltInBrowser: Bool { AppCatalog.isBuiltInBrowser(mainAppBundleID) }
@@ -126,11 +127,25 @@ struct LayoutPageContent: View {
     var body: some View {
         Form {
             Section {
+                Toggle("Arrange windows when a class starts", isOn: $layout.arrangeWindowsOnStart)
+                    .help("Opens your main app, tiles it with the meeting and the chat, and puts the participant view on your second display.")
+                Text(layout.arrangeWindowsOnStart
+                     ? "Greenroom opens and places your windows when you press Start."
+                     : "Zoom opens its own window; Greenroom shows a small control bar.")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+            }
+
+            // Everything below only matters when a start arranges windows, so it
+            // is greyed out rather than hidden: the teacher can see what is off.
+            Section {
                 stage
                 stageControls
             }
+            .disabled(!layout.arrangeWindowsOnStart)
 
             Section("Main app") { mainApp }
+                .disabled(!layout.arrangeWindowsOnStart)
 
             Section("Meeting column") {
                 SideColumnPicker(layout: $layout)
@@ -144,8 +159,17 @@ struct LayoutPageContent: View {
                 }
                 .accessibilityElement(children: .contain)
             }
+            .disabled(!layout.arrangeWindowsOnStart)
 
             Section("Second display") { secondDisplay }
+                .disabled(!layout.arrangeWindowsOnStart)
+
+            Section("Notes") {
+                Toggle("Open notes when a session starts", isOn: $notesOnStart)
+                Text("Notes are timed to the recording and saved with the session. You can still open or close them during a session.")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+            }
 
             Section("Privacy") {
                 Toggle("Anonymous usage analytics", isOn: $analyticsEnabled)

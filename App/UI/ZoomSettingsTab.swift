@@ -123,7 +123,10 @@ struct ZoomPageContent: View {
                                 .strokeBorder(Color.secondary.opacity(0.4)))
                     }
                 }
-                .help("Greenroom draws the speaker and the participant panel itself. Takes effect after a relaunch.")
+                .help("On: Zoom opens no windows; Greenroom shows the meeting in its own windows \u{2014} the participants panel and the speaker window (from the control bar when windows aren\u{2019}t arranged). Takes effect after a relaunch.")
+                Text("On: Zoom opens no windows. Greenroom shows the meeting in its own windows: the participants panel and the speaker window, opened from the control bar when windows aren\u{2019}t arranged.")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
                 if customUINeedsRelaunch {
                     StatusBadge(text: "Quit and reopen Greenroom to apply", tone: .problem)
                 }

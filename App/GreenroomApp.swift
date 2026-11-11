@@ -144,31 +144,10 @@ struct GreenroomApp: App {
                 .tint(Brand.green)
         }
 
-        // Sessions is a WINDOW, not a sheet.
-        //
-        // As a sheet it was attached to the main window, and AppKit moves a
-        // parent to make room for a sheet that does not fit - so opening
-        // Sessions shoved Greenroom up the screen. Reported as "the greenroom
-        // window moves up in a weird way... it seems like the modal is somehow
-        // mounted to the greenroom window", which is exactly what a sheet is.
-        //
-        // It is also not modal in any real sense: you read it while the main
-        // window is doing nothing, and a teacher may well want both open.
-        Window("Sessions", id: "sessions") {
-            RecordingsView()
-                .environmentObject(coordinator)
-                .tint(Brand.green)
-        }
-        .defaultSize(width: 1_180, height: 760)
-
-        // The report, full width. It used to live in the 320pt column beside
-        // the player, which is the right width for a queue of notes and the
-        // wrong one for a document somebody is about to send a student.
-        Window("Report", id: "report") {
-            ScreenroomReportView()
-        }
-        .defaultSize(width: 960, height: 760)
-        .commandsRemoved()
+        // Sessions and the report are not scenes. They were windows, and
+        // before that a sheet; Greenroom keeps a low profile, so they are
+        // pages of the main window (CoordinatorController.MainPage), which
+        // grows to hold them and gives its size back on Back.
 
         // The mark, as a one-colour template image (MenuBarMark, a vector
         // PDF 16pt tall), in place of the old "GR". The old mark was tried

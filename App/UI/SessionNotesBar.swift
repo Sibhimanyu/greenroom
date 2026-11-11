@@ -41,9 +41,31 @@ final class SessionNotes: ObservableObject {
 
     static let shared = SessionNotes()
 
-    /// The home screen's Notes switch. Read here as well as bound there, so
-    /// the bar follows it even when the main window is closed.
+    /// Settings -> Layout -> "Open notes when a session starts". Read here as
+    /// well as bound there, so the bar follows it even when the main window is
+    /// closed. It is the default; `manualOverride` is this session's say.
     static let enabledKey = "sessionNotesEnabled"
+
+    /// This session's own choice, from the Notes buttons (control bar, Record
+    /// view, menu bar). nil means "follow the setting". Set before a session
+    /// goes live it carries into that session; reset to nil when the session
+    /// ends, so the setting is the default again for the next one.
+    @Published var manualOverride: Bool? {
+        didSet { if oldValue != manualOverride { update() } }
+    }
+
+    /// Whether the bar is (or, before the session is live, will be) open.
+    var effectiveEnabled: Bool { manualOverride ?? enabled }
+
+    /// Flips the effective state into the override.
+    func toggle() { manualOverride = !effectiveEnabled }
+
+    /// A session is under way: a Zoom class, a live stage, a recording, or a
+    /// Record-mode session (live from "Ready to record", before Record).
+    static func sessionIsLive(_ c: CoordinatorController) -> Bool {
+        c.isRunning || c.stageLive || c.isRecording || c.recordOnlyActive
+    }
+    private var wasLive = false
 
     @Published var draft: String = "" {
         didSet { draftChanged(from: oldValue) }
@@ -99,7 +121,14 @@ final class SessionNotes: ObservableObject {
     }
 
     func update() {
-        guard enabled, let live = liveFolder else { close(); return }
+        let live = liveFolder
+        if live == nil {
+            // The session ended: the setting is the default again.
+            if wasLive { wasLive = false; manualOverride = nil }
+        } else {
+            wasLive = true
+        }
+        guard effectiveEnabled, let live else { close(); return }
         if live != folder {
             // A new session. Pick up anything already written, so turning
             // the switch off and on mid-class does not lose the count.
@@ -216,9 +245,10 @@ final class SessionNotes: ObservableObject {
         let area = screen?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
         // Low and centred, under where a toast appears (Toast.swift sits at
         // 14% up). Not a corner: the layout tiles a side column flush to the
-        // bottom and right, and a corner lands on it.
+        // bottom and right, and a corner lands on it. Above the control bar's
+        // row (MeetingControlBar.swift: 16 up, 44 tall) so the two never touch.
         let frame = NSRect(x: (area.midX - Self.barSize.width / 2).rounded(),
-                           y: area.minY + 24,
+                           y: area.minY + MeetingControlBarController.notesBarRestingY,
                            width: Self.barSize.width, height: Self.barSize.height)
         let created = NotesPanel(contentRect: frame,
                                  styleMask: [.borderless, .nonactivatingPanel],
@@ -234,8 +264,9 @@ final class SessionNotes: ObservableObject {
         created.isOpaque = false
         created.hasShadow = true
         // Moved once, stays moved: the teacher knows where their slides are
-        // and the bar does not.
-        created.setFrameAutosaveName("SessionNotesBar")
+        // and the bar does not. (.v2: a frame saved at the old height would
+        // sit on the control bar.)
+        created.setFrameAutosaveName("SessionNotesBar.v2")
         let host = NSHostingView(rootView: SessionNotesBar(notes: self))
         host.frame = NSRect(origin: .zero, size: Self.barSize)
         created.contentView = host
@@ -307,21 +338,23 @@ struct SessionNotesBarContent: View {
     }
 }
 
-/// The home screen's Notes switch.
-///
-/// Its own view so the home screen carries one line for it, and so the
-/// switch, its stored value and the wiring to the bar live in one place.
-struct SessionNotesToggle: View {
+/// The Notes button for the Record view: one tap opens or closes this
+/// session's notes bar, and it reads "on" whenever the bar is open or will
+/// open (before Record is pressed it sets what the session starts with).
+struct SessionNotesButton: View {
     @EnvironmentObject private var coordinator: CoordinatorController
-    @AppStorage(SessionNotes.enabledKey) private var enabled = false
+    @ObservedObject private var notes = SessionNotes.shared
 
     var body: some View {
-        Toggle(isOn: $enabled) {
+        let on = notes.effectiveEnabled
+        Toggle(isOn: Binding(get: { on }, set: { _ in notes.toggle() })) {
             Label("Notes", systemImage: "note.text")
         }
         .toggleStyle(.button)
         .controlSize(.large)
-        .help("Shows a small notes bar during the session. Each note is timed to the recording from your first keystroke and saved with the session, where Sessions can analyse it.")
-        .onAppear { SessionNotes.shared.attach(coordinator) }
+        .help(on
+              ? "Close the notes bar. Notes already written stay with the session."
+              : "Open a small notes bar. Each note is timed to the recording from your first keystroke and saved with the session, where Sessions can analyse it.")
+        .onAppear { notes.attach(coordinator) }
     }
 }

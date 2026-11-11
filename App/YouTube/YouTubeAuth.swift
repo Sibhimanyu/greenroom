@@ -234,10 +234,8 @@ private final class LoopbackListener: @unchecked Sendable {
     /// Answers the waiting browser tab and closes it.
     func reply(success: Bool, detail: String) {
         guard pendingClient >= 0 else { return }
-        let body = success
-            ? "<h2>Greenroom is connected to YouTube.</h2><p>You can close this tab and go back to Greenroom.</p>"
-            : "<h2>Sign-in did not complete.</h2><p>\(detail)</p><p>Close this tab and try again from Greenroom.</p>"
-        Self.respond(pendingClient, status: "200 OK", body: body)
+        let body = YouTubeCallbackPage.html(success: success, detail: detail)
+        Self.respond(pendingClient, status: "200 OK", html: body)
         pendingClient = -1
     }
 
@@ -331,21 +329,100 @@ private final class LoopbackListener: @unchecked Sendable {
                     }
                     if let error {
                         Self.respond(client, status: "200 OK",
-                                     body: "<h2>Sign-in did not complete.</h2><p>\(error). Close this tab and try again from Greenroom.</p>")
+                                     html: YouTubeCallbackPage.html(success: false, detail: error))
                         continuation.resume(throwing: YouTubeAuth.AuthError.badRedirect(error))
                         return
                     }
                     // Not the redirect (favicon, a probe): answer and keep waiting.
-                    Self.respond(client, status: "404 Not Found", body: "")
+                    Self.respond(client, status: "404 Not Found", html: "")
                 }
             }
         }
     }
 
-    private static func respond(_ client: Int32, status: String, body: String) {
-        let html = "<!doctype html><meta charset=utf-8><title>Greenroom</title><body style=\"font-family:-apple-system,sans-serif;text-align:center;padding:60px\">\(body)</body>"
+    /// `html` is the finished document; Content-Length is its UTF-8 byte count.
+    private static func respond(_ client: Int32, status: String, html: String) {
         let response = "HTTP/1.1 \(status)\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: \(html.utf8.count)\r\nConnection: close\r\n\r\n\(html)"
         _ = response.withCString { write(client, $0, strlen($0)) }
         close(client)
     }
 }
+
+// MARK: - Callback page
+
+// CALLBACK-PAGE-BEGIN (scripts and previews extract this block; keep it self-contained)
+/// The page the browser tab shows after Google redirects back. Everything is
+/// inline (no network is assumed): CSS, the mark as SVG, the system font
+/// stack. Colours are the site's tokens (DESIGN.md): green text is
+/// --brand-green, lime is a fill only. There is no custom URL scheme, so no
+/// "Back to Greenroom" button, and no script: window.close() does not work on
+/// a tab the page did not open.
+enum YouTubeCallbackPage {
+    /// Escapes text for HTML body and attribute use. `detail` can carry the
+    /// redirect's query string, which anyone can write.
+    static func escape(_ text: String) -> String {
+        var out = ""
+        for ch in text {
+            switch ch {
+            case "&": out += "&amp;"
+            case "<": out += "&lt;"
+            case ">": out += "&gt;"
+            case "\"": out += "&quot;"
+            case "'": out += "&#39;"
+            default: out.append(ch)
+            }
+        }
+        return out
+    }
+
+    static func html(success: Bool, detail: String) -> String {
+        let heading = success ? "Connected to YouTube" : "Sign-in didn\u{2019}t finish"
+        let icon = success
+            ? #"<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M6 12.5l4 4 8-9" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>"#
+            : #"<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M12 6.5v7M12 17.4v.1" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/></svg>"#
+        let lines: String
+        if success {
+            lines = "<p>Recordings can now go to your channel. You can close this tab.</p>"
+        } else {
+            let why = detail.trimmingCharacters(in: .whitespacesAndNewlines)
+            lines = (why.isEmpty ? "" : "<p>\(escape(why))</p>")
+                + "<p>Close this tab and try again from Greenroom \u{2192} Settings \u{2192} YouTube.</p>"
+        }
+        return #"""
+        <!doctype html>
+        <html lang="en">
+        <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="color-scheme" content="light dark">
+        <title>Greenroom \#u{00B7} YouTube</title>
+        <style>
+        :root{--ink:#101828;--body:#475467;--line:#EAECF0;--bg:#F9FAFB;--card:#FFFFFF;--brand-deep:#00401C;--brand-green:#2F6118;--accent-lime:#78C000;--mark:#00401C;--badge-bg:#2F6118;--badge-fg:#FFFFFF;--shadow:0 1px 2px rgba(16,24,40,.06),0 12px 32px rgba(16,24,40,.06)}
+        @media (prefers-color-scheme:dark){:root{--ink:#F2F4F7;--body:#B6BDC9;--line:#2A3342;--bg:#0C111B;--card:#141B27;--mark:#FFFFFF;--badge-bg:#78C000;--badge-fg:#00401C;--shadow:none}}
+        *{box-sizing:border-box}
+        html,body{margin:0;min-height:100%}
+        body{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;background:var(--bg);color:var(--body);font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",Roboto,Helvetica,Arial,sans-serif;-webkit-font-smoothing:antialiased}
+        main{width:100%;max-width:420px;text-align:center;background:var(--card);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);padding:40px 32px 36px}
+        .mark{display:block;width:34px;height:auto;margin:0 auto 22px}
+        .mark .body{fill:var(--mark)}
+        .mark .head{fill:var(--accent-lime)}
+        .badge{display:inline-flex;align-items:center;justify-content:center;width:40px;height:40px;border-radius:999px;background:var(--badge-bg);color:var(--badge-fg);margin-bottom:16px}
+        .badge.fail{background:var(--line);color:var(--ink)}
+        h1{margin:0 0 10px;font-size:22px;line-height:1.25;font-weight:700;letter-spacing:-.01em;color:var(--ink)}
+        p{margin:0 0 8px;font-size:15px;line-height:1.5}
+        p:last-child{margin-bottom:0}
+        </style>
+        </head>
+        <body>
+        <main>
+        <svg class="mark" viewBox="0 0 965 1000" role="img" aria-label="Greenroom"><path class="body" d="M0,240C0,107.452 107.452,0 240,0L585,0C623.66,0 655,31.34 655,70L655,165C655,203.66 623.66,235 585,235L275,235C252.909,235 235,252.909 235,275L235,725C235,747.091 252.909,765 275,765L690,765C712.091,765 730,747.091 730,725L730,598.419C730,585.614 718.134,576.107 705.637,578.901L552.27,613.182C514.541,621.616 477.119,597.867 468.686,560.138C460.252,522.409 484.001,484.987 521.73,476.554L726.768,430.722C728.916,430.242 731.111,430 733.312,430L910,430C940.376,430 965,454.624 965,485L965,860C965,937.32 902.32,1000 825,1000L240,1000C107.452,1000 0,892.548 0,760Z"/><path class="head" d="M730,230C730,188.579 763.579,155 805,155L890,155C931.421,155 965,188.579 965,230L965,315C965,356.421 931.421,390 890,390L805,390C763.579,390 730,356.421 730,315Z"/></svg>
+        <div class="badge\#(success ? "" : " fail")">\#(icon)</div>
+        <h1>\#(heading)</h1>
+        \#(lines)
+        </main>
+        </body>
+        </html>
+        """#
+    }
+}
+// CALLBACK-PAGE-END

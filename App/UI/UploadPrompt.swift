@@ -31,17 +31,29 @@ enum UploadPromptCard {
     /// Shows the card. `onUpload` runs on Upload; `onDismiss` on Not now or
     /// after `timeout` seconds with no answer. Showing again replaces the
     /// previous card (its dismiss handler is called first).
-    static func show(title: String, detail: String, timeout: TimeInterval = 120,
+    static func show(title: String, detail: String, uploadTitle: String = "Upload", timeout: TimeInterval = 120,
                      onUpload upload: @escaping () -> Void,
                      onDismiss dismiss: @escaping () -> Void) {
         hide(answered: false)
-        guard let screen = NSScreen.main ?? NSScreen.screens.first else { dismiss(); return }
         onUpload = upload
         onDismiss = dismiss
 
-        let created = make(on: screen, title: title, detail: detail)
-        panel = created
-        created.orderFrontRegardless()
+        // In the main window when it is open and in view, the floating card
+        // when it is not. Either way the same two answers and the same
+        // two-minute "Not now" below.
+        if MainWindowPresence.isVisible {
+            BannerCenter.shared.showPrompt(.init(title: title, detail: detail, uploadTitle: uploadTitle))
+        } else {
+            guard let screen = NSScreen.main ?? NSScreen.screens.first else {
+                onUpload = nil
+                onDismiss = nil
+                dismiss()
+                return
+            }
+            let created = make(on: screen, title: title, detail: detail, uploadTitle: uploadTitle)
+            panel = created
+            created.orderFrontRegardless()
+        }
 
         timeoutTask = Task { @MainActor in
             try? await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))
@@ -58,24 +70,31 @@ enum UploadPromptCard {
         let dismiss = onDismiss
         onUpload = nil
         onDismiss = nil
+        BannerCenter.shared.hidePrompt()
         panel?.close()
         panel = nil
         if !answered { dismiss?() }
     }
 
-    @MainActor private final class Actions: NSObject {
-        static let shared = Actions()
-        @objc func upload(_ sender: Any?) {
-            let handler = UploadPromptCard.onUpload
-            UploadPromptCard.hide(answered: true)
-            handler?()
-        }
-        @objc func notNow(_ sender: Any?) {
-            UploadPromptCard.hide(answered: false)
-        }
+    /// The two answers, shared by the floating card's buttons and the
+    /// in-window one's.
+    static func upload() {
+        let handler = onUpload
+        hide(answered: true)
+        handler?()
     }
 
-    private static func make(on screen: NSScreen, title: String, detail: String) -> PromptPanel {
+    static func notNow() {
+        hide(answered: false)
+    }
+
+    @MainActor private final class Actions: NSObject {
+        static let shared = Actions()
+        @objc func upload(_ sender: Any?) { UploadPromptCard.upload() }
+        @objc func notNow(_ sender: Any?) { UploadPromptCard.notNow() }
+    }
+
+    private static func make(on screen: NSScreen, title: String, detail: String, uploadTitle: String) -> PromptPanel {
         let created = PromptPanel(contentRect: NSRect(x: 0, y: 0, width: width, height: 120),
                                   styleMask: [.borderless, .nonactivatingPanel],
                                   backing: .buffered, defer: false, screen: screen)
@@ -112,7 +131,7 @@ enum UploadPromptCard {
         detailLabel.lineBreakMode = .byWordWrapping
         detailLabel.maximumNumberOfLines = 4
 
-        let uploadButton = NSButton(title: "Upload", target: Actions.shared, action: #selector(Actions.upload(_:)))
+        let uploadButton = NSButton(title: uploadTitle, target: Actions.shared, action: #selector(Actions.upload(_:)))
         uploadButton.bezelStyle = .rounded
         uploadButton.controlSize = .regular
         uploadButton.keyEquivalent = "\r"

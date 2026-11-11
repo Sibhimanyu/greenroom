@@ -32,17 +32,23 @@ struct WorkspaceLayout: Codable, Equatable {
     /// 0.4 default came from real use (a 16:9-of-column-width first cut
     /// was cramped - see the old ZoomWindowManager.meetingSlotRatio).
     var zoomSlotRatio: Double
+    /// Whether a class start opens, moves and resizes windows at all. Off
+    /// (the default): Greenroom touches nothing, Zoom shows its own window,
+    /// and a small control bar floats instead. Read once per session.
+    var arrangeWindowsOnStart: Bool
 
     init(mainFraction: Double = 0.5,
          mainOnLeft: Bool = true,
          sideShowsZoomTile: Bool = true,
          sideShowsChat: Bool = true,
-         zoomSlotRatio: Double = 0.4) {
+         zoomSlotRatio: Double = 0.4,
+         arrangeWindowsOnStart: Bool = false) {
         self.mainFraction = mainFraction
         self.mainOnLeft = mainOnLeft
         self.sideShowsZoomTile = sideShowsZoomTile
         self.sideShowsChat = sideShowsChat
         self.zoomSlotRatio = zoomSlotRatio
+        self.arrangeWindowsOnStart = arrangeWindowsOnStart
     }
 
     var clampedMainFraction: Double {
@@ -117,6 +123,7 @@ struct WorkspaceLayout: Codable, Equatable {
 
     private enum CodingKeys: String, CodingKey {
         case mainFraction, mainOnLeft, sideShowsZoomTile, sideShowsChat, zoomSlotRatio
+        case arrangeWindowsOnStart
     }
 
     /// The pre-continuous era stored a three-case enum under "split" -
@@ -142,7 +149,8 @@ struct WorkspaceLayout: Codable, Equatable {
             mainOnLeft: (try? container.decodeIfPresent(Bool.self, forKey: .mainOnLeft)) ?? true,
             sideShowsZoomTile: (try? container.decodeIfPresent(Bool.self, forKey: .sideShowsZoomTile)) ?? true,
             sideShowsChat: (try? container.decodeIfPresent(Bool.self, forKey: .sideShowsChat)) ?? true,
-            zoomSlotRatio: (try? container.decodeIfPresent(Double.self, forKey: .zoomSlotRatio)) ?? 0.4
+            zoomSlotRatio: (try? container.decodeIfPresent(Double.self, forKey: .zoomSlotRatio)) ?? 0.4,
+            arrangeWindowsOnStart: (try? container.decodeIfPresent(Bool.self, forKey: .arrangeWindowsOnStart)) ?? false
         )
     }
 

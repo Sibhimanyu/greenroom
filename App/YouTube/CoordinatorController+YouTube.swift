@@ -44,6 +44,9 @@ extension CoordinatorController {
         guard youtubeUploadMode != .off else { return }
         guard youtubeConnected else {
             log("YouTube upload is on, but no Google account is connected \u{2014} Settings \u{2192} YouTube \u{2192} Connect.")
+            // Still ask: a log line nobody reads is a recording that silently
+            // never goes up. The card's button connects first, then uploads.
+            askToConnectAndUpload(URL(fileURLWithPath: path))
             return
         }
         let file = URL(fileURLWithPath: path)
@@ -81,6 +84,29 @@ extension CoordinatorController {
             onUpload: { [weak self] in
                 guard let self else { return }
                 Task { await self.uploadToYouTube(file, title: title) }
+            },
+            onDismiss: { [weak self] in
+                self?.log("Not uploaded to YouTube \u{2014} the recording is in Documents/Greenroom, and Recordings has an Upload button.")
+            })
+    }
+
+    /// The ask when no account is connected (sign-in expired, or never made).
+    private func askToConnectAndUpload(_ file: URL) {
+        let title = youtubeTitle(for: file)
+        UploadPromptCard.show(
+            title: "Upload this recording to YouTube?",
+            detail: "YouTube isn\u{2019}t connected. Connect your Google account and Greenroom will upload it (\(youtubePrivacy)).",
+            uploadTitle: "Connect & Upload",
+            onUpload: { [weak self] in
+                guard let self else { return }
+                Task { @MainActor in
+                    await self.connectYouTube()
+                    guard self.youtubeConnected else {
+                        ToastController.show("Couldn\u{2019}t connect to YouTube", detail: "The recording is saved. Settings \u{2192} YouTube \u{2192} Connect Google account, then upload from Recordings.", kind: .failure)
+                        return
+                    }
+                    await self.uploadToYouTube(file, title: title)
+                }
             },
             onDismiss: { [weak self] in
                 self?.log("Not uploaded to YouTube \u{2014} the recording is in Documents/Greenroom, and Recordings has an Upload button.")

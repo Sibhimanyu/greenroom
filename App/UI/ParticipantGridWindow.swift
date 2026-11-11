@@ -156,6 +156,23 @@ enum ParticipantGridWindowController {
     }
 
     private static var panel: ControlPanel?
+
+    /// A session that arranges nothing opens the panel from the control bar.
+    /// Then the windowed form is a window the teacher owns: it has a close
+    /// button and comes back where it was left (frame autosave), and closing it
+    /// tells the coordinator so the bar and the follow loop stop with it.
+    static var onDemand = false
+    /// Called when the teacher closes the panel with its own close button. Not
+    /// called for the closes the controller does itself.
+    static var onUserClosed: (@MainActor () -> Void)?
+    private static var closingByCode = false
+    private static var closeObserver: NSObjectProtocol?
+
+    private static func closePanelByCode() {
+        closingByCode = true
+        panel?.close()
+        closingByCode = false
+    }
     /// Where the panel currently lives, for alerts that must appear on the
     /// same display the teacher is looking at.
     fileprivate static var panelScreen: NSScreen? { panel?.screen }
@@ -184,7 +201,9 @@ enum ParticipantGridWindowController {
             : screen.frame
         let created = ControlPanel(contentRect: frame,
                                    styleMask: windowed
-                                       ? [.titled, .resizable, .miniaturizable, .nonactivatingPanel]
+                                       ? (onDemand
+                                          ? [.titled, .closable, .resizable, .miniaturizable, .nonactivatingPanel]
+                                          : [.titled, .resizable, .miniaturizable, .nonactivatingPanel])
                                        : [.borderless, .nonactivatingPanel],
                                    backing: .buffered,
                                    defer: false,
@@ -210,6 +229,26 @@ enum ParticipantGridWindowController {
         created.level = .normal
         created.collectionBehavior = [.managed, .fullScreenAuxiliary]
         created.isMovable = windowed
+        if let closeObserver { NotificationCenter.default.removeObserver(closeObserver) }
+        closeObserver = nil
+        if onDemand {
+            if windowed {
+                // First time at the sized frame above; after that wherever the
+                // teacher left it. A saved spot on a display that is gone is
+                // dropped so the panel cannot open off screen.
+                created.setFrameAutosaveName("ParticipantsPanel")
+                if !NSScreen.screens.contains(where: { $0.visibleFrame.intersects(created.frame) }) {
+                    created.setFrame(frame, display: false)
+                }
+            }
+            closeObserver = NotificationCenter.default.addObserver(
+                forName: NSWindow.willCloseNotification, object: created, queue: .main
+            ) { _ in
+                MainActor.assumeIsolated {
+                    if !closingByCode { onUserClosed?() }
+                }
+            }
+        }
         return created
     }
 
@@ -243,7 +282,7 @@ enum ParticipantGridWindowController {
             // switch - invisible, but still walked by the 500ms SDK-window
             // sweep and never freed.
             root?.detachAllVideo()
-            panel?.close()
+            closePanelByCode()
             hosting = makePanel(on: screen, windowed: windowed)
             let view = RootView(frame: hosting.contentLayoutRect)
             view.autoresizingMask = [.width, .height]
@@ -333,7 +372,11 @@ enum ParticipantGridWindowController {
     static func close() {
         root?.detachAllVideo()
         panel?.contentView = NSView()
-        panel?.close()
+        closePanelByCode()
+        if let closeObserver { NotificationCenter.default.removeObserver(closeObserver) }
+        closeObserver = nil
+        onDemand = false
+        onUserClosed = nil
         panel = nil
         root = nil
         client = nil
@@ -3169,6 +3212,19 @@ enum ReadinessHUDController {
         // Nothing left to report. A failure is the exception: it stays up,
         // because the alternative is a card that vanishes at the exact moment
         // it finally had something worth reading.
+        // Inside the main window when it is open and in view: the card is then
+        // part of the one window rather than a second thing over the screen.
+        // The floating card below is for when it is not.
+        if MainWindowPresence.isVisible {
+            dismissTask?.cancel()
+            dismissTask = nil
+            panel?.close()
+            panel = nil
+            view = nil
+            MainActor.assumeIsolated { BannerCenter.shared.showReadiness(readiness) }
+            return
+        }
+        MainActor.assumeIsolated { BannerCenter.shared.hideReadiness() }
         guard !readiness.steps.isEmpty || readiness.failure != nil else {
             scheduleDismiss()
             return
@@ -3205,6 +3261,7 @@ enum ReadinessHUDController {
     }
 
     static func close() {
+        MainActor.assumeIsolated { BannerCenter.shared.hideReadiness() }
         dismissTask?.cancel()
         dismissTask = nil
         panel?.close()

@@ -14,7 +14,6 @@ import AppKit
 struct ContentView: View {
     @EnvironmentObject private var coordinator: CoordinatorController
     @Environment(\.openSettings) private var openSettings
-    @Environment(\.openWindow) private var openWindow
     @State private var showSavePreset = false
     @State private var presetNameDraft = ""
     /// Hidden by default: the log is diagnostic detail, opened when something
@@ -23,6 +22,12 @@ struct ContentView: View {
     /// The window's minimum height, which TRAILS a resize instead of leading
     /// it - see resizeWindow. Starts at 0 and is set on appear.
     @State private var heldMinHeight: CGFloat = 0
+    /// The same, for width: Home is narrower than the pages, so the minimum
+    /// follows the window out and back instead of forcing it open first.
+    @State private var heldMinWidth: CGFloat = ContentView.minimumWindowWidth
+    /// The width Home had before a page widened the window, so Back returns
+    /// to it rather than to wherever the page left things.
+    @State private var homeWidth: CGFloat?
 
     /// Start is for starting: disabled while a start is in flight AND
     /// while the session is live (Stop first, then Start - pressing Start
@@ -117,19 +122,31 @@ struct ContentView: View {
                                                 fallback: isRecordMode ? "Recording" : "Green")
     }
 
+    private var onPage: Bool { !coordinator.mainPage.isHome }
+
     var body: some View {
         Group {
-            if coordinator.recordStudioShown {
-                RecordStudioView()
+            if onPage {
+                // Sessions, a session, its report: pages of this window, not
+                // windows of their own. Full-bleed - they draw their own
+                // margins - and sized by the window, never the other way.
+                RecordingsView()
+                    .frame(minWidth: heldMinWidth, minHeight: heldMinHeight)
             } else {
-                homeContent
+                Group {
+                    if coordinator.recordStudioShown {
+                        RecordStudioView()
+                    } else {
+                        homeContent
+                    }
+                }
+                // 32pt at the sides so nothing sits at the window's edge (20pt read as
+                // about to be cut off); 20pt top and bottom, which the heights assume.
+                .padding(.horizontal, 32)
+                .padding(.vertical, 20)
+                .frame(minWidth: Self.minimumWindowWidth, minHeight: preferredWindowHeight)
             }
         }
-        // 32pt at the sides so nothing sits at the window's edge (20pt read as
-        // about to be cut off); 20pt top and bottom, which the heights assume.
-        .padding(.horizontal, 32)
-        .padding(.vertical, 20)
-        .frame(minWidth: Self.minimumWindowWidth, minHeight: preferredWindowHeight)
         // Pinned to the top while the window catches up to a new height.
         // Without it, the content is taller than the window for the length
         // of the resize and gets centred - everything jumps up, then back.
@@ -144,6 +161,7 @@ struct ContentView: View {
         // persists scene geometry across launches and defaultSize only
         // covers the first-ever open, so the size is asserted on appear.
         .onAppear {
+            SessionNotes.shared.attach(coordinator)
             DispatchQueue.main.async { resizeWindow(animated: false) }
         }
         // The things that change the window's height. All grow it DOWNWARD
@@ -151,7 +169,48 @@ struct ContentView: View {
         // resizeWindow.
         .onChange(of: statusShown) { _, _ in resizeWindow(animated: true) }
         .onChange(of: coordinator.meetingMode) { _, _ in resizeWindow(animated: true) }
-        .onChange(of: coordinator.recordStudioShown) { _, _ in resizeWindow(animated: true) }
+        .onChange(of: coordinator.recordStudioShown) { _, shown in
+            // A recording started from the menu bar or a hotkey opens in this
+            // window, on Home, wherever the window was.
+            if shown { coordinator.mainPage = .home }
+            resizeWindow(animated: true)
+        }
+        // Leaving full screen puts the window back at the frame it had going
+        // in, which may be Home's size under a page: size it for the page.
+        .onReceive(NotificationCenter.default.publisher(for: NSWindow.didExitFullScreenNotification)) { note in
+            guard (note.object as? NSWindow) === Self.window else { return }
+            resizeWindow(animated: true)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSWindow.didEnterFullScreenNotification)) { note in
+            guard (note.object as? NSWindow) === Self.window else { return }
+            heldMinHeight = floorHeight
+            heldMinWidth = floorWidth
+        }
+        .onChange(of: coordinator.mainPage.isHome) { _, isHome in
+            if !isHome, let window = Self.window, !window.styleMask.contains(.fullScreen), !window.isZoomed {
+                homeWidth = window.contentRect(forFrameRect: window.frame).width
+            }
+            resizeWindow(animated: true, returningHome: isHome)
+        }
+        // Back: the button, \u{2318}[ and Esc. Bound here, once, for whichever
+        // page is up. Esc is left to a text field that is being edited.
+        .background {
+            if onPage {
+                Button("") { coordinator.goBack() }
+                    .keyboardShortcut("[", modifiers: .command)
+                    .opacity(0)
+                    .frame(width: 0, height: 0)
+                    .allowsHitTesting(false)
+                    .accessibilityHidden(true)
+            }
+        }
+        .onExitCommand {
+            guard onPage, !(Self.window?.firstResponder is NSText) else { return }
+            coordinator.goBack()
+        }
+        // The toast, the upload question and the start's progress card, while
+        // this window is the one in view (WindowBanner.swift).
+        .overlay { WindowBannerOverlay() }
         .sheet(isPresented: $coordinator.showOnboarding) {
             OnboardingView()
                 .environmentObject(coordinator)
@@ -192,8 +251,6 @@ struct ContentView: View {
                     .help("Ends the meeting for everyone when you're hosting (leaves it otherwise), closes the chat window, and stops the camera. Ending the meeting from the Zoom window does the same \u{2014} both roads end the whole session.")
                 }
 
-                SessionNotesToggle()
-
                 Spacer()
 
                 // Record mode has its own Record button, in its own view.
@@ -202,7 +259,7 @@ struct ContentView: View {
                 }
 
                 Button {
-                    openWindow(id: "sessions")
+                    coordinator.mainPage = .sessions
                 } label: {
                     Label("Sessions", systemImage: "film.stack")
                 }
@@ -280,6 +337,7 @@ struct ContentView: View {
         // changed is 19pt of dead space at the bottom of the window.
         // +36 for the look summary: an 18pt row and the stack's 16pt gap,
         // rounded up to the 4px scale.
+        if onPage { return Self.pageHeight }
         if coordinator.recordStudioShown { return RecordStudioView.windowHeight }
         var height: CGFloat = 356 + 36
         if coordinator.meetingMode == .join { height += 64 }
@@ -298,6 +356,24 @@ struct ContentView: View {
     /// the moment a recording starts, which is the one moment nothing on
     /// screen should move.
     static var minimumWindowWidth: CGFloat { 744 }
+
+    /// The pages' size: room for a grid of cards, or a 16:9 picture with its
+    /// title and actions above the fold. Home's size is theirs to give back.
+    private static let pageWidth: CGFloat = 1_180
+    private static let pageHeight: CGFloat = 760
+    /// The smallest a page is allowed to be dragged to.
+    private static let pageMinWidth: CGFloat = 900
+    private static let pageMinHeight: CGFloat = 600
+
+    private static var window: NSWindow? {
+        NSApp.windows.first { $0.title == "Greenroom" }
+    }
+
+    /// The least the window may be, for the page it is on. On Home that is
+    /// its height for the state; on a page, the drag floor - not the page's
+    /// opening size, which the user may shrink below.
+    private var floorHeight: CGFloat { onPage ? Self.pageMinHeight : preferredWindowHeight }
+    private var floorWidth: CGFloat { onPage ? Self.pageMinWidth : Self.minimumWindowWidth }
 
     /// What the window opens at: the minimum plus the 40pt of breathing room
     /// the original pair (580/620) already used.
@@ -331,10 +407,29 @@ struct ContentView: View {
     /// the controls stay exactly where the cursor left them and only the
     /// bottom edge travels - down when the log opens, up when it closes.
     /// Width is the user's.
-    private func resizeWindow(animated: Bool) {
-        guard let window = NSApp.windows.first(where: { $0.title == "Greenroom" }) else { return }
+    private func resizeWindow(animated: Bool, returningHome: Bool = false) {
+        guard let window = Self.window else { return }
+        // Full screen (or zoomed to fill the screen) is the user's size, not
+        // ours. Resizing here shrank the window to a page's 1180x760 and left
+        // the rest of the display black. The content fills what it is given;
+        // only the drag floors follow the page.
+        if window.styleMask.contains(.fullScreen) || window.isZoomed {
+            heldMinHeight = floorHeight
+            heldMinWidth = floorWidth
+            return
+        }
         let content = window.contentRect(forFrameRect: window.frame)
-        let width = animated ? content.width : Self.defaultWindowWidth
+        // Home keeps the width the user gave it; a page widens it, within the
+        // screen, and Back returns Home to the width it left.
+        let visible = (window.screen ?? NSScreen.main)?.visibleFrame
+        var width: CGFloat
+        if onPage {
+            width = animated ? max(content.width, Self.pageWidth) : Self.pageWidth
+        } else {
+            width = returningHome ? (homeWidth ?? content.width)
+                : animated ? content.width : Self.defaultWindowWidth
+        }
+        if let visible { width = min(width, visible.width) }
         // The content view is full-size: it runs under the title bar, so
         // contentRect is the whole window. preferredWindowHeight is the
         // content BELOW the title bar, so the bar's height goes on top.
@@ -343,21 +438,31 @@ struct ContentView: View {
         // once the animation ended - the jitter on Status and on the
         // New/Join switch.
         let titleBar = window.frame.height - window.contentLayoutRect.height
-        let height = preferredWindowHeight + titleBar
+        var height = preferredWindowHeight + titleBar
+        if let visible { height = min(height, visible.height) }
         let target = NSRect(x: content.minX, y: content.maxY - height,
                             width: width, height: height)
-        let frame = window.frameRect(forContentRect: target)
+        var frame = window.frameRect(forContentRect: target)
+        // The top edge is anchored (DESIGN.md) - except where holding it
+        // would put the window off the screen, which is only a page's size.
+        if let visible {
+            if frame.minY < visible.minY { frame.origin.y = visible.minY }
+            if frame.maxX > visible.maxX { frame.origin.x = max(visible.minX, visible.maxX - frame.width) }
+        }
         guard animated else {
             window.setFrame(frame, display: true)
-            heldMinHeight = preferredWindowHeight
+            heldMinHeight = floorHeight
+            heldMinWidth = floorWidth
             return
         }
         // The window's minimum never outruns the window: lowered before a
         // shrink so the window can get smaller, raised only once a grow has
         // finished. Raised early, the content outgrows its frame mid-resize
         // and gets centred (see body).
-        let settled = preferredWindowHeight
+        let settled = floorHeight
+        let settledWidth = floorWidth
         if settled < heldMinHeight { heldMinHeight = settled }
+        if settledWidth < heldMinWidth { heldMinWidth = settledWidth }
         // The animator proxy, not setFrame(_:display:animate:). That one runs
         // its own blocking loop, so the click that asked for the resize sat
         // unanswered until the window finished moving.
@@ -367,6 +472,7 @@ struct ContentView: View {
             window.animator().setFrame(frame, display: true)
         } completionHandler: {
             heldMinHeight = settled
+            heldMinWidth = settledWidth
         }
     }
 

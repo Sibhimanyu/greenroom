@@ -64,6 +64,17 @@ enum ToastController {
                      detail: String? = nil,
                      kind: Kind = .success,
                      dismissAfter: TimeInterval? = 2.6) {
+        // In the main window when it is open and in view; the floating panel
+        // below is for when it is not (see WindowBanner.swift).
+        if MainWindowPresence.isVisible {
+            closePanel()
+            MainActor.assumeIsolated {
+                BannerCenter.shared.showToast(.init(title: title, detail: detail, kind: kind),
+                                              dismissAfter: dismissAfter)
+            }
+            return
+        }
+        MainActor.assumeIsolated { BannerCenter.shared.hideToast() }
         guard let screen = NSScreen.main ?? NSScreen.screens.first else { return }
         dismissTask?.cancel()
         dismissTask = nil
@@ -81,9 +92,12 @@ enum ToastController {
         let area = screen.visibleFrame
         // Low and centred: out of the way of the shared content, which sits in
         // the upper two thirds, but nowhere near the corner where a system
-        // notification would have gone unnoticed.
+        // notification would have gone unnoticed. Above the notes bar and the
+        // control bar (MeetingControlBar.swift) when those are up.
+        let floor: CGFloat = MainActor.assumeIsolated { MeetingControlBarController.isVisible }
+            ? MeetingControlBarController.toastFloorY : 120
         hosting.setFrame(NSRect(x: (area.midX - width / 2).rounded(),
-                                y: (area.minY + max(120, area.height * 0.14)).rounded(),
+                                y: (area.minY + max(floor, area.height * 0.14)).rounded(),
                                 width: width, height: height),
                          display: true)
         hosting.orderFrontRegardless()
@@ -103,6 +117,11 @@ enum ToastController {
     }
 
     static func hide() {
+        MainActor.assumeIsolated { BannerCenter.shared.hideToast() }
+        closePanel()
+    }
+
+    private static func closePanel() {
         dismissTask?.cancel()
         dismissTask = nil
         panel?.close()

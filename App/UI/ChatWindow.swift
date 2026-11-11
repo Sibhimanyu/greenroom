@@ -600,6 +600,7 @@ enum ChatWindowController {
             let newWindow = NSWindow(contentViewController: hosting)
             newWindow.title = "Meeting Chat"
             newWindow.setContentSize(NSSize(width: 340, height: 460))
+            newWindow.center() // opened on demand with no layout, it must not land in a corner
             newWindow.styleMask = [.titled, .closable, .miniaturizable, .resizable]
             newWindow.isReleasedWhenClosed = false // ARC + close() below manage its lifetime
             window = newWindow

@@ -55,7 +55,7 @@ struct OnboardingView: View {
         var nextTitle: String {
             switch self {
             case .welcome: "Connect Zoom"
-            case .zoom: "Choose your layout"
+            case .zoom: "Set up your class"
             case .layout: "Check permissions"
             case .permissions: "Explore optional features"
             case .youtube, .cues: "Continue"
@@ -475,17 +475,24 @@ struct OnboardingView: View {
     private var setupStep: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
-                stepHeader("Make room for your class", "Choose what sits beside the meeting and how you appear on camera. You can change these later in Settings.")
+                stepHeader("Set up your class", "Choose how a class starts and how you appear on camera. You can change these later in Settings.")
 
                 Text("Your workspace").font(.headline)
-                Picker("Working app", selection: $coordinator.mainAppBundleID) {
-                    ForEach(setupApps) { app in
-                        Text(app.name).tag(app.bundleID)
+                Toggle("Arrange windows when a class starts", isOn: $coordinator.workspaceLayout.arrangeWindowsOnStart)
+                if coordinator.workspaceLayout.arrangeWindowsOnStart {
+                    Picker("Working app", selection: $coordinator.mainAppBundleID) {
+                        ForEach(setupApps) { app in
+                            Text(app.name).tag(app.bundleID)
+                        }
                     }
+                    Text("Your reading, slides or notes open beside the meeting. Adjust the split in Settings → Layout.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                } else {
+                    Text("Greenroom opens and moves nothing. Zoom opens its own window, and a small control bar floats at the bottom of the screen.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
-                Text("Your reading, slides or notes open beside the meeting. Adjust the split in Settings → Layout.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
 
                 Divider()
                 Text("Your camera").font(.headline)
@@ -503,7 +510,9 @@ struct OnboardingView: View {
                 Divider()
                 Text("When class starts").font(.headline)
                 Toggle("Record automatically", isOn: $coordinator.autoRecordOnStart)
-                Toggle("Show participants on a second display", isOn: $coordinator.peopleViewOnStart)
+                if coordinator.workspaceLayout.arrangeWindowsOnStart {
+                    Toggle("Show participants on a second display", isOn: $coordinator.peopleViewOnStart)
+                }
             }
             .padding(.horizontal, 8)
         }
@@ -565,7 +574,7 @@ struct OnboardingView: View {
                     Label(failure.detail, systemImage: "exclamationmark.triangle")
                         .font(.callout).foregroundStyle(.red)
                 }
-                summaryRow("Workspace", detail: "\(AppCatalog.displayName(forBundleID: coordinator.mainAppBundleID) ?? coordinator.mainAppBundleID) · \(coordinator.webcamShape.label)", page: .layout)
+                summaryRow("Workspace", detail: "\(coordinator.workspaceLayout.arrangeWindowsOnStart ? (AppCatalog.displayName(forBundleID: coordinator.mainAppBundleID) ?? coordinator.mainAppBundleID) : "No layout") · \(coordinator.webcamShape.label)", page: .layout)
                 summaryRow("Accessibility", detail: ZoomWindowManager.hasAccessibilityPermission ? "Window arrangement allowed" : "Allow window arrangement in System Settings", page: .permissions)
                 Divider()
                 Text("Your first class").font(.headline)

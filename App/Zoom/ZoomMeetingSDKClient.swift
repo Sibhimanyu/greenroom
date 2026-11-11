@@ -938,8 +938,14 @@ final class ZoomMeetingSDKClient: NSObject, ObservableObject {
         guard let meetingService = ZoomSDK.shared().getMeetingService() else { return }
         meetingService.getMeetingUIController().isShowVideoPreview(whenJoinMeeting: false)
         let configuration = meetingService.getMeetingConfiguration()
-        configuration.hideThumbnailVideoWindow = true
-        configuration.hideMeetingInfoButtonOnVideo = true
+        // Both were meant for the parked tile of an ARRANGED session. When
+        // nothing is arranged and Zoom draws its own UI, its window is the main
+        // one, so it keeps its thumbnail and info button. In custom UI there is
+        // no Zoom window at all, so the setting is moot either way.
+        // Assigned both ways: the configuration outlives a session.
+        let hidesForTile = WorkspaceLayout.load(from: .standard).arrangeWindowsOnStart
+        configuration.hideThumbnailVideoWindow = hidesForTile
+        configuration.hideMeetingInfoButtonOnVideo = hidesForTile
         // Zoom's "Hide Self View" - a USER PREFERENCE, not hardcoded:
         // hidden (the default) keeps the speaker tile and gallery to just
         // the others; shown puts your tile among them like anyone else's.

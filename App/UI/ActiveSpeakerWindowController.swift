@@ -36,6 +36,16 @@ final class ActiveSpeakerWindowController: NSWindowController, NSWindowDelegate 
     private let nameScrim = NSView()
     private let nameLabel = NSTextField(labelWithString: "")
     private var speakerObserver: NSObjectProtocol?
+    /// Shown instead of video while Zoom has nothing to draw: its active
+    /// speaker element only renders with three or more people in the meeting.
+    private let placeholder = NSTextField(wrappingLabelWithString: "")
+    /// Set by the coordinator when the teacher opens the window from the
+    /// control bar and closes it with its own close button.
+    var onUserClosed: (() -> Void)?
+    private var remembersFrame = false
+
+    static let placeholderText = "The speaker appears once 3 or more people are in the meeting."
+    private static let frameKey = "ActiveSpeakerWindowFrame"
 
     private static let baseTitle = "Active Speaker"
 
@@ -56,6 +66,7 @@ final class ActiveSpeakerWindowController: NSWindowController, NSWindowDelegate 
         self.init(window: window)
         window.delegate = self
         setupVideoHost()
+        setupPlaceholder()
         setupNameBar()
         speakerObserver = NotificationCenter.default.addObserver(
             forName: ActiveVideoUserSignal.didChange, object: nil, queue: .main
@@ -79,6 +90,48 @@ final class ActiveSpeakerWindowController: NSWindowController, NSWindowDelegate 
             videoHostView.topAnchor.constraint(equalTo: contentView.topAnchor),
             videoHostView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor)
         ])
+    }
+
+    private func setupPlaceholder() {
+        guard let contentView = window?.contentView else { return }
+        placeholder.stringValue = Self.placeholderText
+        placeholder.font = .systemFont(ofSize: 14)
+        placeholder.textColor = NSColor.white.withAlphaComponent(0.7)
+        placeholder.alignment = .center
+        placeholder.translatesAutoresizingMaskIntoConstraints = false
+        contentView.addSubview(placeholder, positioned: .below, relativeTo: videoHostView)
+        NSLayoutConstraint.activate([
+            placeholder.centerXAnchor.constraint(equalTo: contentView.centerXAnchor),
+            placeholder.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
+            placeholder.leadingAnchor.constraint(greaterThanOrEqualTo: contentView.leadingAnchor, constant: 24),
+            placeholder.trailingAnchor.constraint(lessThanOrEqualTo: contentView.trailingAnchor, constant: -24)
+        ])
+    }
+
+    /// An ordinary window the teacher owns: centred on the main display the
+    /// first time, then wherever they left it. Not part of any layout.
+    func rememberFrame() {
+        guard let window else { return }
+        remembersFrame = true
+        if let saved = UserDefaults.standard.string(forKey: Self.frameKey) {
+            let frame = NSRectFromString(saved)
+            if frame.width >= 240, frame.height >= 135,
+               NSScreen.screens.contains(where: { $0.visibleFrame.intersects(frame) }) {
+                window.setFrame(frame, display: false)
+                return
+            }
+        }
+        if let screen = DisplayResolver.mainDisplayScreen() ?? NSScreen.main {
+            let area = screen.visibleFrame
+            let size = window.frame.size
+            window.setFrameOrigin(NSPoint(x: (area.midX - size.width / 2).rounded(),
+                                          y: (area.midY - size.height / 2).rounded()))
+        }
+    }
+
+    private func saveFrame() {
+        guard remembersFrame, let window else { return }
+        UserDefaults.standard.set(NSStringFromRect(window.frame), forKey: Self.frameKey)
     }
 
     /// TileView's caption, restated: 26pt bar, black at 0.55, 13pt medium
@@ -131,6 +184,7 @@ final class ActiveSpeakerWindowController: NSWindowController, NSWindowDelegate 
         // Hidden, not blank: an empty dark strip over the video would read as
         // a caption that failed to load.
         nameScrim.isHidden = name == nil
+        placeholder.isHidden = activeVideoElement != nil
         window?.title = name.map { "\(Self.baseTitle) \u{2014} \($0)" } ?? Self.baseTitle
     }
 
@@ -226,6 +280,8 @@ final class ActiveSpeakerWindowController: NSWindowController, NSWindowDelegate 
             ActiveVideoUserSignal.reset()
         }
         videoContainer = nil
+        // Closed by code: the coordinator already knows.
+        onUserClosed = nil
         close()
     }
 
@@ -233,7 +289,15 @@ final class ActiveSpeakerWindowController: NSWindowController, NSWindowDelegate 
 
     // MARK: NSWindowDelegate
 
+    func windowDidMove(_ notification: Notification) { saveFrame() }
+
+    func windowWillClose(_ notification: Notification) {
+        saveFrame()
+        onUserClosed?()
+    }
+
     func windowDidResize(_ notification: Notification) {
+        saveFrame()
         guard let element = activeVideoElement else { return }
         _ = element.resize(videoHostView.bounds)
         element.getVideoView().frame = videoHostView.bounds

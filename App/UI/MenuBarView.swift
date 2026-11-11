@@ -12,6 +12,7 @@ import AppKit
 struct MenuBarView: View {
     @EnvironmentObject private var coordinator: CoordinatorController
     @Environment(\.openWindow) private var openWindow
+    @ObservedObject private var notes = SessionNotes.shared
     /// Injected from GreenroomApp's Sparkle updater controller - the
     /// menu bar is where users live mid-class, so updates are reachable
     /// here too, not just the app menu.
@@ -50,6 +51,13 @@ struct MenuBarView: View {
         .disabled(coordinator.isSavingRecording
                   || (!coordinator.stageLive && !coordinator.isRecording && !coordinator.recordOnlyActive))
 
+        // For the arranged layout, which has no control bar. This session
+        // only: the Settings switch stays the default for the next one.
+        Button(notes.effectiveEnabled ? "Hide Notes" : "Show Notes") {
+            notes.toggle()
+        }
+        .disabled(!SessionNotes.sessionIsLive(coordinator))
+
         // The upload runs in the background; this is where its progress
         // lives, rather than a toast the teacher would have to watch.
         if let progress = coordinator.youtubeUploadProgress {
@@ -69,18 +77,22 @@ struct MenuBarView: View {
 
         Divider()
 
-        Button("Snap Windows Back") {
-            coordinator.snapWindowsBack()
-        }
-        .keyboardShortcut("s", modifiers: [.option, .command])
+        // Hidden, not greyed, in a session that arranges nothing: there is no
+        // layout to snap back to and no tile to hide.
+        if coordinator.layoutToolsAvailable {
+            Button("Snap Windows Back") {
+                coordinator.snapWindowsBack()
+            }
+            .keyboardShortcut("s", modifiers: [.option, .command])
 
-        Button(coordinator.speakerTileQuickHidden ? "Show Speaker Tile" : "Hide Speaker Tile") {
-            coordinator.toggleSpeakerTile()
-        }
-        .keyboardShortcut("z", modifiers: [.option, .command])
-        .disabled(!coordinator.speakerTileShortcutEnabled || !coordinator.stageLive)
+            Button(coordinator.speakerTileQuickHidden ? "Show Speaker Tile" : "Hide Speaker Tile") {
+                coordinator.toggleSpeakerTile()
+            }
+            .keyboardShortcut("z", modifiers: [.option, .command])
+            .disabled(!coordinator.speakerTileShortcutEnabled || !coordinator.stageLive)
 
-        Divider()
+            Divider()
+        }
 
         Button("Show Greenroom") {
             // openWindow RECREATES the window when it was closed -

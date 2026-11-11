@@ -179,19 +179,26 @@ final class CoordinatorController: ObservableObject {
     /// tiling step is about to bury. Either way, nothing on that screen is
     /// telling the teacher what is happening, which is what the HUD is for.
     private func syncReadinessHUD() {
-        // Custom UI only. Readiness exists because that mode replaces Zoom's
-        // windows with Greenroom's own, so there is genuinely nothing on screen
-        // during a start. In default Zoom-UI mode the teacher already has Zoom's
+        // Custom UI only (and a start that arranges nothing, which leaves
+        // Greenroom's window frontmost for the card to ride in). Readiness exists
+        // because custom UI replaces Zoom's windows with Greenroom's own, so there
+        // is genuinely nothing on screen during a start. In default Zoom-UI mode the teacher already has Zoom's
         // interface coming up in front of them and did not ask for another
         // floating surface on top of it.
         // A failed start is the exception to both guards below: it always needs
         // a card with a way out, wherever the panel is or is not.
         let failed = startReadiness.failure != nil
-        guard customUIMode || failed else {
+        guard customUIMode || !sessionArranges || failed else {
             ReadinessHUDController.close()
             return
         }
-        guard peopleViewTargetScreen() == nil || (failed && !ParticipantGridWindowController.isOpen) else {
+        // Arranged: a panel on the reference display carries the card, so the
+        // HUD is only for a start with none. Nothing arranged: the panel opens
+        // on demand, so the HUD carries the card until the teacher opens it.
+        let panelCarriesCard = sessionArranges
+            ? peopleViewTargetScreen() != nil
+            : ParticipantGridWindowController.isOpen
+        guard !panelCarriesCard || (failed && !ParticipantGridWindowController.isOpen) else {
             ReadinessHUDController.close()
             return
         }
@@ -472,7 +479,7 @@ final class CoordinatorController: ObservableObject {
         didSet {
             defaults.set(speakerTileShortcutEnabled, forKey: "speakerTileShortcutEnabled")
             Analytics.setting("quick_hide_mode", on: speakerTileShortcutEnabled)
-            guard ChatWindowController.isOpen else { return }
+            guard sessionArranges, ChatWindowController.isOpen else { return }
             speakerTileQuickHidden = speakerTileShortcutEnabled
             parkBuiltInMeetingWindow() // restart the loop to assert the new default
         }
@@ -490,6 +497,10 @@ final class CoordinatorController: ObservableObject {
     /// takes the full column back). Only active when the quick-hide mode
     /// is enabled in Settings.
     func toggleSpeakerTile() {
+        guard layoutToolsAvailable else {
+            log("Speaker tile skipped \u{2014} this session arranges no windows.")
+            return
+        }
         guard speakerTileShortcutEnabled else { return }
         Analytics.track(.quickHide)
         // Custom UI: the speaker is our own window, so hiding it is just
@@ -759,6 +770,9 @@ final class CoordinatorController: ObservableObject {
     /// re-tiling real windows (AppleScript/AX calls) at that rate would
     /// thrash; 400ms after the last change, everything re-tiles once.
     private func scheduleLiveLayoutApply() {
+        // A session that arranges nothing must never reposition anything - the
+        // chat can be open on demand, and stageLive alone would pass.
+        guard sessionArranges || !(isRunning || stageLive) else { return }
         guard ChatWindowController.isOpen || stageLive else { return }
         layoutApplyTask?.cancel()
         layoutApplyTask = Task {
@@ -984,7 +998,8 @@ final class CoordinatorController: ObservableObject {
     /// nothing happens until relaunch - which looked exactly like a broken
     /// switch until Settings started saying so.
     var customUIModeNeedsRelaunch: Bool {
-        zoomChatClient.didInit && zoomChatClient.didUseCustomUI != customUIMode
+        zoomChatClient.didInit
+            && zoomChatClient.didUseCustomUI != customUIMode
     }
 
     @Published var screenCaptureDisplayUUID: String {
@@ -1131,10 +1146,17 @@ final class CoordinatorController: ObservableObject {
     private func chatSessionDidEnd() {
         layoutFollowTask?.cancel()
         peopleViewTask?.cancel()
+        MeetingControlBarController.close()
+        if !sessionArranges {
+            closeOnDemandPeople()
+            closeOnDemandSpeaker()
+        }
         if ChatWindowController.isOpen {
             ChatWindowController.close()
-            zoomChatBridge.reset()
         }
+        // Unconditional: an on-demand chat the teacher closed by hand still
+        // holds the meeting's messages.
+        zoomChatBridge.reset()
         // The meeting is over no matter WHERE it was ended - Zoom's own
         // End button inside the meeting tile included - so wind the whole
         // session down. Without this, ending from the tile closed the
@@ -1291,6 +1313,7 @@ final class CoordinatorController: ObservableObject {
         isRunning = true
         stageLive = false
         statusLines = []
+        sessionArranges = workspaceLayout.arrangeWindowsOnStart
         let startedAt = Date()
         sessionStartedAt = startedAt
         // Named now, created later - see sessionFolder. Unique, so two
@@ -1314,15 +1337,16 @@ final class CoordinatorController: ObservableObject {
         // known until the SDK has initialised - by which point the blank this
         // exists to fill is already over. presentMeetingSurfaces closes the
         // panel again if custom UI turns out not to have happened.
-        if customUIMode { startCustomUIGridFollow() }
+        if customUIMode && sessionArranges { startCustomUIGridFollow() }
 
         startTask = Task {
             do {
                 // Perceived speed: the main app doesn't depend on
                 // anything else - open it first so something visibly
                 // happens the instant Start is pressed.
-                mark(.workspace, mainAppOnStart ? .active : .skipped)
-                if mainAppOnStart {
+                let opensMainApp = mainAppOnStart && sessionArranges
+                mark(.workspace, opensMainApp ? .active : .skipped)
+                if opensMainApp {
                     log("Opening the \(mainAppDisplayName) window (\(workspaceLayout.label))\u{2026}")
                     openMainAppWindow()
                     mark(.workspace, .done)
@@ -1378,6 +1402,8 @@ final class CoordinatorController: ObservableObject {
 
                 try Task.checkCancellation()
                 mark(.meeting, .done)
+                // Nothing arranged: the control bar is Greenroom's whole footprint.
+                if !sessionArranges { MeetingControlBarController.show(coordinator: self) }
                 bringInExtraCameras()
 
                 // Only now, with the meeting live: Cues never listens
@@ -1395,9 +1421,9 @@ final class CoordinatorController: ObservableObject {
                     toggleRecording()
                     mark(.recording, .done)
                 }
-                mark(.tiling, .active)
+                mark(.tiling, sessionArranges ? .active : .skipped)
 
-                mark(.tiling, .done)
+                if sessionArranges { mark(.tiling, .done) }
                 // Clearing the steps is what makes Readiness.isLive true, which
                 // hands the panel back to its ordinary behaviour: the class side
                 // returns to "waiting for students" and the controls come up.
@@ -1408,7 +1434,7 @@ final class CoordinatorController: ObservableObject {
                 // read the live arrangement, so this is a no-op for those.
                 if displayChangedDuringStart {
                     displayChangedDuringStart = false
-                    snapWindowsBack(userInitiated: false)
+                    if sessionArranges { snapWindowsBack(userInitiated: false) }
                 }
             } catch is CancellationError {
                 // Stop abandoned the start on purpose. It closes the panel
@@ -1485,15 +1511,18 @@ final class CoordinatorController: ObservableObject {
             // closed and doesn't double-log.
             layoutFollowTask?.cancel()
                 peopleViewTask?.cancel()
+            MeetingControlBarController.close()
             if ChatWindowController.isOpen {
                 ChatWindowController.close()
-                zoomChatBridge.reset()
                 log("Left the meeting chat.")
             }
+            zoomChatBridge.reset()
             // The browser is the teacher's, not the meeting's, so by default
             // it stays open like Chrome would. Closing it with the session is
             // a choice (Settings → Layout); its tabs survive for the next Start.
-            if browserClosesOnStop, AppCatalog.isBuiltInBrowser(mainAppBundleID), BrowserWindowController.isOpen {
+            if !sessionArranges {
+                // Nothing was opened, so nothing is closed.
+            } else if browserClosesOnStop, AppCatalog.isBuiltInBrowser(mainAppBundleID), BrowserWindowController.isOpen {
                 BrowserWindowController.close()
                 log("Closed the Greenroom Browser window.")
             } else if browserClosesOnStop, AppCatalog.isBrowser(mainAppBundleID),
@@ -1947,6 +1976,38 @@ final class CoordinatorController: ObservableObject {
     /// blank the Record view, and the other way round.
     private var studioPreviewOn = false
 
+    /// Which page the main window is on.
+    ///
+    /// Greenroom keeps a low profile: Sessions, a session's detail and its
+    /// report are pages of the one window, not windows of their own. The page
+    /// is only a view - leaving Home never touches Start, Record or the class.
+    /// Detail and report carry the session's id (its folder path).
+    enum MainPage: Equatable {
+        case home
+        case sessions
+        case detail(String)
+        case report(String)
+
+        var isHome: Bool { self == .home }
+    }
+
+    @Published var mainPage: MainPage = .home
+
+    /// One step back: report to its session, session to the grid, grid to Home.
+    func goBack() {
+        switch mainPage {
+        case .report(let id): mainPage = .detail(id)
+        case .detail: mainPage = .sessions
+        case .sessions: mainPage = .home
+        case .home: break
+        }
+    }
+
+    /// The full report for the session being looked at.
+    func openReport() {
+        if case .detail(let id) = mainPage { mainPage = .report(id) }
+    }
+
     /// The Record view is showing, or is about to.
     var recordStudioShown: Bool { recordOnlyActive || startingRecordOnly }
     /// The Record view is up and nothing is being recorded.
@@ -2300,7 +2361,7 @@ final class CoordinatorController: ObservableObject {
         log("Starting the meeting in Greenroom's built-in Zoom client\u{2026}")
         try await zoomChatClient.ensureReady(clientID: sdkClientID, clientSecret: sdkClientSecret)
         await settleBeforeJoining()
-        zoomChatClient.setDualScreenMode(galleryWindowExists)
+        zoomChatClient.setDualScreenMode(sessionArranges && galleryWindowExists)
 
         try await ensurePictureInstalled()
         reportMeetingVideo()
@@ -2312,11 +2373,13 @@ final class CoordinatorController: ObservableObject {
         if let controller = zoomChatClient.chatController() {
             zoomChatBridge.attach(to: controller)
         }
-        ChatWindowController.show(chat: zoomChatBridge, layout: workspaceLayout)
+        if sessionArranges { ChatWindowController.show(chat: zoomChatBridge, layout: workspaceLayout) }
         log("Meeting is live \u{2014} you're hosting from Greenroom.")
 
-        presentMeetingSurfaces(resetQuickHideToDefault: true) // session start = the mode's default state
-        finalizeLayout()
+        if sessionArranges {
+            presentMeetingSurfaces(resetQuickHideToDefault: true) // session start = the mode's default state
+            finalizeLayout()
+        }
     }
 
     /// Join Existing via the built-in client - you as one participant,
@@ -2337,7 +2400,7 @@ final class CoordinatorController: ObservableObject {
         log("Joining meeting \(meetingNumber) in Greenroom's built-in Zoom client\u{2026}")
         try await zoomChatClient.ensureReady(clientID: sdkClientID, clientSecret: sdkClientSecret)
         await settleBeforeJoining()
-        zoomChatClient.setDualScreenMode(galleryWindowExists)
+        zoomChatClient.setDualScreenMode(sessionArranges && galleryWindowExists)
 
         try await ensurePictureInstalled()
         reportMeetingVideo()
@@ -2391,13 +2454,15 @@ final class CoordinatorController: ObservableObject {
         if let controller = zoomChatClient.chatController() {
             zoomChatBridge.attach(to: controller)
         }
-        ChatWindowController.show(chat: zoomChatBridge, layout: workspaceLayout)
+        if sessionArranges { ChatWindowController.show(chat: zoomChatBridge, layout: workspaceLayout) }
         log(startedAsHost
             ? "Meeting is live \u{2014} you're hosting from Greenroom."
             : "In the meeting.")
 
-        presentMeetingSurfaces(resetQuickHideToDefault: true) // session start = the mode's default state
-        finalizeLayout()
+        if sessionArranges {
+            presentMeetingSurfaces(resetQuickHideToDefault: true) // session start = the mode's default state
+            finalizeLayout()
+        }
     }
 
     /// Whether the Join Existing target is one of the account's own
@@ -2478,7 +2543,7 @@ final class CoordinatorController: ObservableObject {
     /// instant the join callback fires, and a poll is idempotent - it converges
     /// whether or not any single event was missed. Two seconds matches the
     /// default-UI follow loop, so the two modes feel the same.
-    private func startCustomUIGridFollow() {
+    private func startCustomUIGridFollow(onDemand: Bool = false) {
         // Idempotent. It is called twice now: once on the first frame of a start
         // so the panel can show progress, and again from presentMeetingSurfaces
         // on the ordinary path. Restarting would re-stamp `startedAt`, jumping
@@ -2493,10 +2558,14 @@ final class CoordinatorController: ObservableObject {
         // Tried live, that is wrong: the panel is big, it is a private control
         // surface, and on one screen it lands on top of the tiled workspace this
         // app exists to build. Now the main display is opt-in, off by default.
-        guard peopleViewOnStart else { return }
-        guard peopleViewWanted || participantPanelOnMainDisplay else {
-            log("Participants panel skipped \u{2014} no second display to put it on. Connect your reference display, or allow it on this screen in Settings (\u{2318},) \u{2192} Second display.")
-            return
+        // Opened from the control bar, the teacher has asked for it: neither the
+        // start-time toggle nor the main-display opt-in applies.
+        if !onDemand {
+            guard peopleViewOnStart else { return }
+            guard peopleViewWanted || participantPanelOnMainDisplay else {
+                log("Participants panel skipped \u{2014} no second display to put it on. Connect your reference display, or allow it on this screen in Settings (\u{2318},) \u{2192} Second display.")
+                return
+            }
         }
         // Surface subscription refusals. A black tile with no explanation was
         // exactly how this went unnoticed until a second person joined.
@@ -2509,13 +2578,17 @@ final class CoordinatorController: ObservableObject {
             endSession: { [weak self] in self?.stop() },
             showChat: { [weak self] in
                 guard let self else { return }
-                ChatWindowController.reveal(layout: self.workspaceLayout)
+                if self.sessionArranges {
+                    ChatWindowController.reveal(layout: self.workspaceLayout)
+                } else {
+                    ChatWindowController.show(chat: self.zoomChatBridge, layout: nil)
+                }
             },
             toggleRecording: { [weak self] in self?.toggleRecording() },
             snapBack: { [weak self] in self?.snapWindowsBack() },
             toggleSpeaker: { [weak self] in self?.toggleSpeakerTile() },
             showMainWindow: { [weak self] in self?.showMainWindow() })
-        let startedAt = Date()
+        let startedAt = onDemand ? (sessionStartedAt ?? Date()) : Date()
         Analytics.track(.surfaceShown, [
             .surface: "participants",
             .placement: peopleViewTargetScreen() == nil ? "main_window" : "reference_display"
@@ -2550,6 +2623,9 @@ final class CoordinatorController: ObservableObject {
     }
 
     private func parkBuiltInMeetingWindow(resetQuickHideToDefault: Bool = false) {
+        // The follow loop is what arranges the chat and the tile; a session
+        // that arranges nothing never starts it, even for an on-demand chat.
+        guard sessionArranges else { return }
         layoutFollowTask?.cancel()
         layoutFollowTask = Task {
             var parked = false
@@ -2876,7 +2952,19 @@ final class CoordinatorController: ObservableObject {
     /// When the current session began, for the coarse duration band reported at
     /// the end. Never sent as a timestamp - see Analytics.band(seconds:).
     /// Readable so the notes bar can time a note taken before the tape rolls.
-    private(set) var sessionStartedAt: Date?
+    /// Published for the control bar's clock.
+    @Published private(set) var sessionStartedAt: Date?
+    /// Whether THIS session arranges windows, captured once at Start. Every gate
+    /// reads this, never the live setting, so flipping the switch mid-class
+    /// cannot start (or half-stop) a layout. True until a session says
+    /// otherwise, so nothing outside a session behaves differently.
+    @Published private(set) var sessionArranges = true
+
+    /// Whether the layout tools (Snap Windows Back, the speaker tile toggle)
+    /// mean anything right now. Off only inside a session that arranged nothing.
+    var layoutToolsAvailable: Bool {
+        sessionArranges || !(isRunning || stageLive)
+    }
     private var customUIGridTask: Task<Void, Never>?
     /// Custom-UI speaker-content chooser. Cancelled with the session.
     private var customUISpeakerTask: Task<Void, Never>?
@@ -2890,7 +2978,9 @@ final class CoordinatorController: ObservableObject {
     /// drops below -> element stopped and window closed. Called from
     /// InMeeting and from every join/leave.
     private func refreshActiveSpeakerState() {
-        guard zoomChatClient.didUseCustomUI, zoomChatClient.isJoined else { return }
+        // The column is an arranged-layout surface. A session that arranges
+        // nothing never opens, moves or hides the speaker window by itself.
+        guard sessionArranges, zoomChatClient.didUseCustomUI, zoomChatClient.isJoined else { return }
         let count = zoomChatClient.meetingRoster().count
         if count >= 3 {
             if activeSpeakerWindowController == nil {
@@ -2929,7 +3019,7 @@ final class CoordinatorController: ObservableObject {
     /// it. Used when the window opens, when \u{2325}\u{2318}Z reveals it, and
     /// by Snap Windows Back.
     private func placeActiveSpeakerWindow() {
-        guard let window = activeSpeakerWindowController?.window else { return }
+        guard sessionArranges, let window = activeSpeakerWindowController?.window else { return }
         guard let slot = ChatWindowController.zoomSlotNSFrame(for: workspaceLayout) else { return }
         window.setFrame(slot, display: true)
         window.orderFront(nil)
@@ -2964,12 +3054,94 @@ final class CoordinatorController: ObservableObject {
     /// custom-UI column has none, and placing the speaker already overrides
     /// wherever the chat was.
     private func showActiveSpeakerInColumn() {
+        guard sessionArranges else { return }
         speakerTileQuickHidden = false
         placeActiveSpeakerWindow()
         Task { [weak self] in
             guard let self, self.activeSpeakerWindowVisible, !self.speakerTileQuickHidden else { return }
             self.placeActiveSpeakerWindow()
         }
+    }
+
+    // MARK: On-demand video windows (custom UI, nothing arranged)
+
+    /// The control bar's Speaker and People buttons exist only when the SDK
+    /// actually started in custom UI, in a session that arranges nothing.
+    var onDemandVideoAvailable: Bool {
+        !sessionArranges && zoomChatClient.didUseCustomUI
+    }
+    var onDemandSpeakerOpen: Bool {
+        !sessionArranges && activeSpeakerWindowController?.window?.isVisible == true
+    }
+    /// The follow loop is what keeps the panel alive, so it is the open state
+    /// (a minimised panel still counts as open).
+    var onDemandPeopleOpen: Bool {
+        !sessionArranges && customUIGridTask != nil
+    }
+
+    /// Speaker button: an ordinary window, centred on the main display the first
+    /// time and then where the teacher left it. Never placed in a column.
+    func toggleOnDemandSpeaker() {
+        guard onDemandVideoAvailable else { return }
+        if activeSpeakerWindowController != nil {
+            closeOnDemandSpeaker()
+            return
+        }
+        let controller = ActiveSpeakerWindowController()
+        controller.rememberFrame()
+        controller.onUserClosed = { [weak self] in
+            Task { @MainActor in self?.closeOnDemandSpeaker() }
+        }
+        activeSpeakerWindowController = controller
+        controller.showWindow(nil)
+        // The bar polls too, but a join or leave should show at once.
+        zoomChatClient.onParticipantCountChanged = { [weak self] in
+            self?.syncOnDemandSpeaker()
+        }
+        syncOnDemandSpeaker()
+    }
+
+    /// Zoom draws the active speaker only with three or more people, me
+    /// included: start the element on the way up, stop it on the way down, and
+    /// leave the window (and its placeholder) where it is.
+    func syncOnDemandSpeaker() {
+        guard !sessionArranges, let controller = activeSpeakerWindowController,
+              zoomChatClient.isJoined else { return }
+        let count = zoomChatClient.meetingRoster().count
+        if count >= 3 {
+            if !controller.isShowingVideo { controller.startActiveSpeaker() }
+        } else if controller.isShowingVideo {
+            controller.stopActiveSpeaker()
+        }
+    }
+
+    func closeOnDemandSpeaker() {
+        guard activeSpeakerWindowController != nil else { return }
+        tearDownActiveSpeakerWindow()
+    }
+
+    /// People button: the participants panel, on the reference display when
+    /// there is one (full-screen there), otherwise a movable window on the main
+    /// display. Whatever it needs runs only while it is open.
+    func toggleOnDemandPeople() {
+        guard onDemandVideoAvailable else { return }
+        if customUIGridTask != nil {
+            closeOnDemandPeople()
+            return
+        }
+        ParticipantGridWindowController.onDemand = true
+        ParticipantGridWindowController.onUserClosed = { [weak self] in
+            // After the close that triggered this has finished.
+            Task { @MainActor in self?.closeOnDemandPeople() }
+        }
+        startCustomUIGridFollow(onDemand: true)
+    }
+
+    func closeOnDemandPeople() {
+        guard customUIGridTask != nil || ParticipantGridWindowController.isOpen else { return }
+        customUIGridTask?.cancel()
+        customUIGridTask = nil
+        ParticipantGridWindowController.close()
     }
 
     private func tearDownActiveSpeakerWindow() {
@@ -3159,6 +3331,10 @@ final class CoordinatorController: ObservableObject {
     /// `userInitiated: false` is the same re-tiling after a display change: it
     /// leaves the person's quick-hide choice and the usage count alone.
     func snapWindowsBack(userInitiated: Bool = true) {
+        guard layoutToolsAvailable else {
+            log("Snap Windows Back skipped \u{2014} this session arranges no windows.")
+            return
+        }
         if userInitiated {
             Analytics.feature("snap_back")
             // Restore the quick-hide mode's DEFAULT state (hidden when the
@@ -3262,7 +3438,7 @@ final class CoordinatorController: ObservableObject {
 
         if isRunning {
             displayChangedDuringStart = true
-        } else if stageLive, zoomChatClient.isJoined {
+        } else if stageLive, zoomChatClient.isJoined, sessionArranges {
             snapWindowsBack(userInitiated: false)
         }
     }

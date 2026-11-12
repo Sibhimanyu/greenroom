@@ -170,7 +170,7 @@ final class ShortcutModelTests: XCTestCase {
         let groups = ShortcutCatalog.grouped(layouts: [])
         XCTAssertEqual(groups.map(\.group.title), ["Class", "Meeting", "Layout", "Greenroom"])
         XCTAssertEqual(groups[0].slots.count, 6)
-        XCTAssertEqual(groups[1].slots.count, 8)
+        XCTAssertEqual(groups[1].slots.count, 9)
     }
 
     // MARK: Glyphs

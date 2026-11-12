@@ -291,8 +291,10 @@ targets:
       - path: App/Layout/LayoutTemplate.swift
       - path: App/Layout/LayoutGeometry.swift
       - path: App/UI/WindowFrameRules.swift
+      - path: App/UI/LayoutAppOrdering.swift
       - path: App/ShortcutModel.swift
       - path: App/MeetingBarPlacement.swift
+      - path: App/MeetingMorph.swift
       - path: App/UI/MeetingToolbarLayout.swift
       - path: App/UI/MeetingMenuSpec.swift
       - path: App/Zoom/MeetingShareRules.swift

@@ -246,6 +246,8 @@ enum MeetingMenus {
     struct MoreMenuActions {
         var copy: (String, String) -> Void = { _, _ in }   // (text, what it was)
         var openInZoom: () -> Void = {}
+        /// Shrink the meeting window to the floating bar. Nil where there is no such window.
+        var shrink: (() -> Void)?
     }
 
     /// The controls that did not fit, then Meeting info and the Zoom app. Meeting
@@ -265,6 +267,7 @@ enum MeetingMenus {
             info.append(.separator)
             info.append(.item("Copy invite link") { a.copy(facts.joinURL, "Invite link") })
         }
+        if let shrink = a.shrink { out.append(.item("Shrink to the control bar", shrink)) }
         out.append(.submenu("Meeting info", enabled: facts.hasInvite, info))
         out.append(.item("Open this meeting in the Zoom app\u{2026}",
                          enabled: facts.hasInvite,

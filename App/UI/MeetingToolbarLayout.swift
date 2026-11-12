@@ -33,13 +33,13 @@ struct ToolbarItemSpec: Equatable {
 
 enum MeetingToolbarLayout {
     /// One control: icon over caption.
-    static let cell: CGFloat = 64
+    static let cell: CGFloat = 68
     /// The little chevron beside Mute, Stop Video and Share.
     static let caret: CGFloat = 18
     static let divider: CGFloat = 13
     static let gap: CGFloat = 2
     static let side: CGFloat = 12
-    static let more: CGFloat = 64
+    static let more: CGFloat = 68
     static let clock: CGFloat = 56
     static let end: CGFloat = 60
     /// Air kept between the last control and the clock, so they never touch.

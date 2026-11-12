@@ -18,10 +18,22 @@ import SwiftUI
 import AppKit
 import UniformTypeIdentifiers
 
+/// True where the chat sits inside the meeting window: Zoom's dark style
+/// (MeetingTheme records why) instead of the standalone window's.
+private struct MeetingZoomChatKey: EnvironmentKey { static let defaultValue = false }
+extension EnvironmentValues {
+    var meetingZoomChat: Bool {
+        get { self[MeetingZoomChatKey.self] }
+        set { self[MeetingZoomChatKey.self] = newValue }
+    }
+}
+
 struct ChatWindowView: View {
     @ObservedObject var chat: ZoomChatBridge
+    @Environment(\.meetingZoomChat) private var zoom
     @Environment(\.controlActiveState) private var activeState
 
+    @Environment(\.colorScheme) private var colorScheme
     @State private var draft = ""
     @State private var replyingTo: ChatMessage?
     @State private var dropTargeted = false
@@ -35,10 +47,12 @@ struct ChatWindowView: View {
             transcript
             if let error = chat.lastError { errorBar(error) }
             if let replyingTo { replyBar(replyingTo) }
-            Divider()
+            if zoom { Rectangle().fill(MeetingTheme.hairline).frame(height: 1) } else { Divider() }
             composer
         }
         .frame(minWidth: 300, minHeight: 380)
+        .background(zoom ? MeetingTheme.window : Color.clear)
+        .environment(\.colorScheme, zoom ? .dark : (colorScheme))
         .overlay {
             if dropTargeted {
                 RoundedRectangle(cornerRadius: 10)
@@ -148,7 +162,43 @@ struct ChatWindowView: View {
 
     // MARK: Composer
 
-    private var composer: some View {
+    @ViewBuilder private var composer: some View {
+        if zoom { zoomComposer } else { standardComposer }
+    }
+
+    /// Zoom's: "To: Everyone" above a rounded input that says "Type message
+    /// here...". Messages go to everyone only (the SDK builder here sends to
+    /// receiver 0), so To is a statement, not a selector.
+    private var zoomComposer: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 6) {
+                Text("To:").font(.system(size: 12)).foregroundStyle(MeetingTheme.secondaryText)
+                Text("Everyone")
+                    .font(.system(size: 12, weight: .medium))
+                    .padding(.horizontal, 8).frame(height: 22)
+                    .background(MeetingTheme.raised, in: RoundedRectangle(cornerRadius: MeetingTheme.controlRadius))
+                Spacer()
+                Button(action: pickFile) {
+                    Image(systemName: "paperclip").font(.system(size: 13))
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(chat.fileTransferEnabled ? MeetingTheme.text : MeetingTheme.secondaryText.opacity(0.5))
+                .disabled(!chat.fileTransferEnabled)
+                .help(chat.fileTransferEnabled ? "Share a file with everyone\u{2026}" : "File sharing is switched off for this meeting")
+                .accessibilityLabel("Share a file")
+            }
+            MessageField(text: $draft,
+                         placeholder: replyingTo == nil ? "Type message here\u{2026}" : "Write your reply",
+                         onSend: send,
+                         onPasteFiles: share)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 8)
+                .background(MeetingTheme.raised, in: RoundedRectangle(cornerRadius: 8))
+        }
+        .padding(12)
+    }
+
+    private var standardComposer: some View {
         HStack(spacing: 8) {
             Button(action: pickFile) {
                 Image(systemName: "paperclip").font(.system(size: 15))
@@ -398,8 +448,51 @@ private struct MessageRow: View {
     let onDecline: () -> Void
 
     @State private var hovering = false
+    @Environment(\.meetingZoomChat) private var zoom
 
     var body: some View {
+        if zoom { zoomBody } else { standardBody }
+    }
+
+    /// Zoom's transcript: the sender and the time, then the words, no bubbles;
+    /// your own messages are from "Me".
+    private var zoomBody: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            if showsHeader {
+                HStack(spacing: 6) {
+                    Text(message.isOutgoing ? "Me" : message.senderName).font(.system(size: 12, weight: .semibold))
+                    Text(message.timestamp, style: .time).font(.system(size: 11)).foregroundStyle(MeetingTheme.secondaryText)
+                    if let privateTo = message.privateTo {
+                        Label("to \(privateTo) (direct)", systemImage: "lock.fill")
+                            .font(.system(size: 10, weight: .semibold)).foregroundStyle(MeetingTheme.hand)
+                    }
+                    if hovering {
+                        Button(action: onReply) { Image(systemName: "arrowshape.turn.up.left").font(.system(size: 10)) }
+                            .buttonStyle(.plain).foregroundStyle(MeetingTheme.secondaryText).help("Reply to this message")
+                    }
+                }
+                .padding(.top, 8)
+            }
+            VStack(alignment: .leading, spacing: 6) {
+                if let quote = message.quote { quoteBlock(quote) }
+                if let attachment = message.attachment {
+                    AttachmentView(attachment: attachment, onAccept: onAccept, onDecline: onDecline)
+                }
+                if !message.content.isEmpty {
+                    Text(.init(message.content)).font(.system(size: 13)).textSelection(.enabled)
+                }
+            }
+            .padding(.horizontal, 10).padding(.vertical, 6)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(message.isOutgoing ? MeetingTheme.raised : Color.clear,
+                        in: RoundedRectangle(cornerRadius: 8))
+        }
+        .foregroundStyle(MeetingTheme.text)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .onHover { hovering = $0 }
+    }
+
+    private var standardBody: some View {
         HStack(alignment: .top, spacing: 8) {
             if message.isOutgoing { Spacer(minLength: 32) }
             if !message.isOutgoing {

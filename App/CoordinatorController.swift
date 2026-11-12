@@ -3014,6 +3014,39 @@ final class CoordinatorController: ObservableObject {
         MeetingControlBarController.reconcile(immediately: false)
     }
 
+    // MARK: Shrink and expand
+
+    /// The window morphs into the floating bar. The window is hidden, not
+    /// closed, so its video elements stay attached and the way back is instant.
+    func shrinkMeetingToBar() {
+        guard zoomChatClient.didUseCustomUI, meetingWindowOpen else { return }
+        MeetingControlBarController.morph(toward: 0)
+    }
+
+    /// The bar morphs back into the window. With no window at all (closed with its
+    /// own button) it simply opens one.
+    func expandMeetingFromBar() {
+        guard zoomChatClient.didUseCustomUI else { return }
+        if meetingWindowOpen {
+            MeetingControlBarController.morph(toward: 1)
+        } else {
+            openMeetingWindow()
+        }
+    }
+
+    /// The shortcut and the one click: whichever way it is not. A click during a
+    /// morph turns it round.
+    func toggleMeetingShrunk() {
+        guard zoomChatClient.didUseCustomUI else { return }
+        if let heading = MeetingControlBarController.morphTarget {
+            heading == 0 ? expandMeetingFromBar() : shrinkMeetingToBar()
+        } else if ParticipantGridWindowController.meetingWindowIsShowing {
+            shrinkMeetingToBar()
+        } else {
+            expandMeetingFromBar()
+        }
+    }
+
     func closeMeetingWindow() {
         guard customUIGridTask != nil || ParticipantGridWindowController.isOpen else { return }
         customUIGridTask?.cancel()

@@ -208,6 +208,8 @@ enum ParticipantGridWindowController {
     /// The panel window itself, for the alert runner to step around.
     fileprivate static var panelWindowForAlerts: NSWindow? { panel }
     private static var root: RootView?
+    /// You, as the SDK lists you: the Participants panel shows your own row.
+    fileprivate static var myEntry: ZoomMeetingSDKClient.RosterEntry?
 
     /// The meeting window's frame when nothing has been saved: the whole
     /// reference display if there is one, otherwise centred on the main display
@@ -239,7 +241,15 @@ enum ParticipantGridWindowController {
             + " size=\(Int(frame.width))x\(Int(frame.height))")
         created.isReleasedWhenClosed = false
         created.hidesOnDeactivate = false
-        created.backgroundColor = .black
+        created.backgroundColor = form.isMeeting ? MeetingTheme.windowNS : .black
+        if form.isMeeting {
+            // Zoom's meeting window is dark whatever the system is, and its bar
+            // sits where the title bar is (MeetingTheme).
+            created.appearance = NSAppearance(named: .darkAqua)
+            created.titlebarAppearsTransparent = true
+            created.titleVisibility = .hidden
+            created.styleMask.insert(.fullSizeContentView)
+        }
         // Ordinary window level, deliberately - every form.
         //
         // The full-screen form sat at .statusBar for a while so it would cover
@@ -294,6 +304,7 @@ enum ParticipantGridWindowController {
         // view) carries it, and an NSView has one superview - having both would
         // mean two hosts fighting over one SDK render element.
         var roster = client.meetingRoster()
+        myEntry = roster.first { $0.isMyself }
         roster.removeAll { $0.isMyself }
 
         let hosting: ControlPanel
@@ -413,6 +424,20 @@ enum ParticipantGridWindowController {
     /// So SDK window hunting recognises this as ours, the same as the chat
     /// window.
     static func owns(_ candidate: NSWindow) -> Bool { candidate == panel }
+
+    /// A picture of the meeting window as it is, and where it is, for the morph
+    /// into the control bar. Nil with no full meeting window. It is the view
+    /// hierarchy drawn into a bitmap, so the SDK's own video surfaces may come
+    /// out as the tile colour: the picture is only on screen for a third of a second.
+    static func morphSnapshot() -> (image: NSImage, frame: NSRect)? {
+        guard let panel, let form = currentForm, form.isMeeting, !form.isPlaced,
+              let view = panel.contentView, view.bounds.width > 0, view.bounds.height > 0,
+              let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { return nil }
+        view.cacheDisplay(in: view.bounds, to: rep)
+        let image = NSImage(size: view.bounds.size)
+        image.addRepresentation(rep)
+        return (image, panel.frame)
+    }
 
     /// Hides and shows the window (the speaker shortcut) without closing it, so
     /// nothing is torn down and it returns where it was.
@@ -579,12 +604,21 @@ private final class RootView: NSView {
 
     // MARK: Meeting form state
 
-    private enum ViewMode: Int { case gallery, speaker }
+    private typealias ViewMode = MeetingViewMode
     private var viewMode: ViewMode = .gallery
     private var isSpeakerMode: Bool { meetingForm && viewMode == .speaker }
+    /// The View menu's two choices, held as a control so the rest of the window
+    /// keeps one way to read and write the mode. It is not on screen: the top bar's
+    /// View button is the visible control.
     private lazy var modeControl = FirstClickSegmented(labels: ["Gallery", "Speaker"],
                                                        trackingMode: .selectOne,
                                                        target: self, action: #selector(modeChanged(_:)))
+    /// Zoom-style slim top bar, in the title-bar area (MeetingTopBar.swift).
+    private let meetingTopBar = MeetingTopBarView(frame: .zero)
+    private let stageChrome = MeetingTileChrome(frame: .zero)
+    /// The frame to go back to when Fullscreen is turned off.
+    private var frameBeforeFullscreen: NSRect?
+    private var isFilling: Bool { frameBeforeFullscreen != nil }
     /// Speaker view's big picture. It is NOT a tile: a view has one superview,
     /// and the speaker's filmstrip tile is a different element. See
     /// ZoomMeetingSDKClient.stageView.
@@ -623,6 +657,8 @@ private final class RootView: NSView {
     private var lastReleaseStage: (() -> Void)?
     private let sidePanelHost = BarView()
     private let sidePanelDivider = NSView()
+    /// Solid #1A1A1A under the panel: the system material would show the window through it.
+    private let sidePanelBacking = NSView()
     private let sidePanelTitle = NSTextField(labelWithString: "")
     /// "12 \u{00B7} 2 hands up" beside the People title.
     private let sidePanelCount = NSTextField(labelWithString: "")
@@ -650,7 +686,7 @@ private final class RootView: NSView {
     /// DESIGN.md's drawer range is 280-320pt; the side panel takes the top.
     private static let sidePanelWidth: CGFloat = 320
     private static let selfPreviewSize = NSSize(width: 192, height: 108)
-    private static let stripHeight: CGFloat = 112
+    private static let stripHeight: CGFloat = MeetingTheme.stripHeight
 
     private var roster: [ZoomMeetingSDKClient.RosterEntry] = []
     /// Who gets the large tile above the gallery. See speakerToShow().
@@ -974,8 +1010,7 @@ private final class RootView: NSView {
     /// How many 16:9 filmstrip tiles fit along the strip, capped so the strip
     /// stays a strip. Quantised by whole tiles, so it moves only when a tile does.
     private var stripCapacity: Int {
-        let tileWidth = ((Self.stripHeight - 16) * 16 / 9).rounded() + Self.gutter
-        return min(8, max(1, Int(gridHost.bounds.width / tileWidth)))
+        MeetingVideoLayout.stripCapacity(width: max(0, gridHost.bounds.width), tileHeight: Self.stripHeight - 8)
     }
     /// Who the gallery or the filmstrip lists: everyone, or everyone but the
     /// person already on the stage.
@@ -1001,11 +1036,11 @@ private final class RootView: NSView {
         // when self left the grid, because alone in a room there was then
         // nothing on the right at all. A real surface colour reads as a panel
         // that is ready, which is what it is.
-        layer?.backgroundColor = NSColor.windowBackgroundColor.cgColor
+        layer?.backgroundColor = (form.isMeeting ? MeetingTheme.windowNS : NSColor.windowBackgroundColor).cgColor
 
         for bar in [topBar, rail, contextBar, bottomBar] { addSubview(bar) }
         gridHost.wantsLayer = true
-        gridHost.layer?.backgroundColor = NSColor.underPageBackgroundColor.cgColor
+        gridHost.layer?.backgroundColor = (form.isMeeting ? NSColor.clear : NSColor.underPageBackgroundColor).cgColor
         addSubview(gridHost)
 
         // The rail and the class share two dark greys that differ by almost
@@ -1224,7 +1259,7 @@ private final class RootView: NSView {
         }
         for entry in visible {
             let tile = tiles[entry.id] ?? {
-                let made = TileView(userID: entry.id)
+                let made = TileView(userID: entry.id, zoomStyle: meetingForm)
                 made.onSelect = { [weak self] id in
                     guard let self else { return }
                     // Clicking the selected tile clears it, so there is always a
@@ -1528,6 +1563,26 @@ private final class RootView: NSView {
         let visible = pageRoster
         guard !visible.isEmpty else { return }
         let full = gridHost.bounds
+        if meetingForm {
+            // Zoom's gallery: an even grid of 16:9 tiles, 4pt apart, centred.
+            let frames = MeetingVideoLayout.gallery(count: visible.count, in: full.size)
+            let shape = (0, 0, visible.count)
+            let animate = lastGridShape.count >= 0 && shape != lastGridShape
+            lastGridShape = shape
+            for (entry, target) in zip(visible, frames) {
+                guard let tile = tiles[entry.id], tile.frame != target else { continue }
+                if animate, !tile.frame.isEmpty {
+                    NSAnimationContext.runAnimationGroup { context in
+                        context.duration = 0.25
+                        context.timingFunction = CAMediaTimingFunction(name: .easeOut)
+                        tile.animator().frame = target
+                    }
+                } else {
+                    tile.frame = target
+                }
+            }
+            return
+        }
 
         // Featured speaker on top, gallery beneath - the split Zoom's own
         // custom-UI reference example uses, and the only layout the SDK
@@ -1632,20 +1687,28 @@ private final class RootView: NSView {
         viewMode = form.isSlot ? .speaker : (saved == "speaker" ? .speaker : .gallery)
         modeControl.selectedSegment = viewMode.rawValue
         modeControl.setAccessibilityLabel("Video layout")
-        topBar.addSubview(modeControl)
-        rebuildHeaderActions()   // the meeting-info button, beside the number it expands on
+        // The old bar stays as an unused container (the shared code still
+        // addresses it); the Zoom-style bar replaces it on screen.
+        topBar.isHidden = true
+        meetingTopBar.actions = MeetingTopBarView.Actions(
+            showInfo: { [weak self] anchor in self?.showMeetingInfoPopover(from: anchor) },
+            viewMenu: { [weak self] in self?.viewMenuEntries() ?? [] },
+            shrink: { [weak self] in self?.controls?.shrinkToBar() })
+        addSubview(meetingTopBar)
 
         // A black stage: letterboxing against window-background grey reads as a
         // rendering fault.
         stageHost.wantsLayer = true
-        stageHost.layer?.backgroundColor = NSColor.black.cgColor
-        stageHost.layer?.cornerRadius = 10        // DESIGN.md radius-md
+        stageHost.layer?.backgroundColor = MeetingTheme.tileNS.cgColor
+        stageHost.layer?.cornerRadius = MeetingTheme.tileRadius
         stageHost.layer?.masksToBounds = true
         addSubview(stageHost, positioned: .below, relativeTo: emptyState)
         // Layer-backed so the caption composites ABOVE the SDK's render surface.
         stageScrim.wantsLayer = true
         stageScrim.layer?.backgroundColor = NSColor.black.withAlphaComponent(0.55).cgColor
         stageHost.addSubview(stageScrim)
+        stageScrim.isHidden = true      // the chrome below draws the name instead
+        stageHost.addSubview(stageChrome)
         selfShareCard.isHidden = true
         stageHost.addSubview(selfShareCard)
         stageName.font = .systemFont(ofSize: 13, weight: .medium)
@@ -1654,22 +1717,26 @@ private final class RootView: NSView {
         stageScrim.addSubview(stageName)
 
         sidePanelHost.isHidden = true
-        sidePanelTitle.font = .systemFont(ofSize: 13, weight: .semibold)
-        sidePanelTitle.textColor = .labelColor
+        sidePanelBacking.wantsLayer = true
+        sidePanelBacking.layer?.backgroundColor = MeetingTheme.windowNS.cgColor
+        sidePanelHost.addSubview(sidePanelBacking)
+        sidePanelTitle.font = .systemFont(ofSize: 14, weight: .semibold)
+        sidePanelTitle.textColor = .white
         sidePanelDivider.wantsLayer = true
-        sidePanelDivider.layer?.backgroundColor = NSColor.separatorColor.cgColor
+        sidePanelDivider.layer?.backgroundColor = MeetingTheme.hairlineNS.cgColor
         sidePanelClose.isBordered = false
         sidePanelClose.imagePosition = .imageOnly
         sidePanelClose.image = NSImage(systemSymbolName: "xmark", accessibilityDescription: "Close panel")?
             .withSymbolConfiguration(.init(pointSize: 11, weight: .medium))
-        sidePanelClose.contentTintColor = .secondaryLabelColor
+        sidePanelClose.contentTintColor = MeetingTheme.secondaryTextNS
         sidePanelClose.toolTip = "Close panel"
         sidePanelCount.font = .systemFont(ofSize: 12)
-        sidePanelCount.textColor = .secondaryLabelColor
+        sidePanelCount.textColor = MeetingTheme.secondaryTextNS
         for view in [sidePanelDivider, sidePanelTitle, sidePanelCount, inviteButton, sidePanelClose, queueScroll, peopleView] as [NSView] {
             sidePanelHost.addSubview(view)   // the queue moves here from the rail
         }
         peopleView.onSelect = { [weak self] id in
+            if id == ParticipantGridWindowController.myEntry?.id { return }
             self?.selected = id
             self?.selectionChanged()
         }
@@ -1683,6 +1750,7 @@ private final class RootView: NSView {
             let name = self?.waiting.first { $0.id == id }?.name ?? "them"
             Self.perform("Denied \(name)") { $0.denyWaiting(userID: id) }
         }
+        peopleView.onInvite = { [weak self] in self?.controls?.copyInviteLink() }
         peopleView.onAdmitAll = { Self.perform("Admitted everyone waiting") { $0.admitEveryoneWaiting() } }
         peopleView.onMuteAll = { Self.perform("Muted everyone") { $0.muteEveryone() } }
         peopleView.onAskAllToUnmute = { Self.perform("Asked everyone to unmute") { $0.askEveryoneToUnmute() } }
@@ -1709,6 +1777,71 @@ private final class RootView: NSView {
         modeControl.selectedSegment = viewMode == .gallery ? ViewMode.speaker.rawValue : ViewMode.gallery.rawValue
         modeChanged(modeControl)
         return true
+    }
+
+    /// The View button's menu: Speaker, Gallery, then Fullscreen. Side-by-side
+    /// (a share beside the speakers) is not built, so it is not offered.
+    private func viewMenuEntries() -> [MenuEntry] {
+        var entries: [MenuEntry] = []
+        if !form.isSlot {
+            entries.append(.item("Speaker", checked: viewMode == .speaker) { [weak self] in self?.chooseMode(.speaker) })
+            entries.append(.item("Gallery", checked: viewMode == .gallery) { [weak self] in self?.chooseMode(.gallery) })
+            entries.append(.separator)
+        }
+        entries.append(.item(isFilling ? "Exit Fullscreen" : "Fullscreen") { [weak self] in self?.toggleFill() })
+        return entries
+    }
+
+    private func chooseMode(_ mode: ViewMode) {
+        guard viewMode != mode else { return }
+        modeControl.selectedSegment = mode.rawValue
+        modeChanged(modeControl)
+    }
+
+    /// Fullscreen fills the display the window is on, over the menu bar and Dock
+    /// notwithstanding, and goes back to where it was. It is not a macOS
+    /// fullscreen Space: a window in a Space cannot be re-framed (2026-08-24).
+    private func toggleFill() {
+        guard let window, let screen = window.screen ?? NSScreen.main else { return }
+        if let before = frameBeforeFullscreen {
+            frameBeforeFullscreen = nil
+            window.setFrame(before, display: true, animate: true)
+        } else {
+            frameBeforeFullscreen = window.frame
+            window.setFrame(screen.frame, display: true, animate: true)
+        }
+        updateMeetingTopBar()
+    }
+
+    private var infoPopover: NSPopover?
+
+    private func showMeetingInfoPopover(from anchor: NSView) {
+        if let infoPopover, infoPopover.isShown { infoPopover.close(); return }
+        let invite = ParticipantGridWindowController.sdk?.meetingInvite()
+        let facts = MeetingMenus.MeetingFacts(number: invite?.number ?? "", passcode: invite?.passcode ?? "",
+                                              joinURL: invite?.joinURL ?? "")
+        let view = MeetingInfoView(title: invite?.topic ?? "", facts: facts) { text, what in
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(text, forType: .string)
+            ParticipantGridWindowController.report("\(what) copied.")
+        }
+        let popover = NSPopover()
+        popover.behavior = .transient
+        popover.appearance = NSAppearance(named: .darkAqua)
+        popover.contentViewController = NSHostingController(rootView: view)
+        popover.show(relativeTo: anchor.bounds, of: anchor, preferredEdge: .maxY)
+        infoPopover = popover
+    }
+
+    private func updateMeetingTopBar() {
+        guard meetingForm else { return }
+        var state = MeetingTopBarState()
+        state.title = session.presetName.isEmpty ? "Meeting" : session.presetName
+        state.recording = session.isRecording
+        state.mode = viewMode
+        state.isFullscreen = isFilling
+        state.canShrink = form.isMeeting && !form.isPlaced
+        meetingTopBar.apply(state)
     }
 
     @objc private func modeChanged(_ sender: NSSegmentedControl) {
@@ -1875,30 +2008,46 @@ private final class RootView: NSView {
         }
         if shareOnStage, let now = sharedNow {
             stageName.stringValue = "\(now.name)\u{2019}s screen"
+            stageChrome.apply(MeetingTileModel(name: stageName.stringValue))
         } else if let id = stageSpeakerID, let entry = roster.first(where: { $0.id == id }) {
             var name = entry.name
             if entry.isHost { name += " \u{00B7} host" } else if entry.isCoHost { name += " \u{00B7} co-host" }
             stageName.stringValue = name
+            stageChrome.apply(MeetingTileModel(name: entry.name, muted: entry.isMuted && entry.hasJoinedAudio,
+                                               videoOn: entry.videoOn, speaking: entry.isTalking, handUp: entry.isRaisingHand))
         }
+        updateMeetingTopBar()
     }
 
     private func updatePeopleRows() {
         let queue = handQueue
         let handIDs = Set(queue.map(\.id))
         func row(_ entry: ZoomMeetingSDKClient.RosterEntry) -> MeetingPeopleView.Row {
+            var tags: [String] = []
+            if entry.isHost { tags.append("Host") } else if entry.isCoHost { tags.append("Co-host") }
+            if entry.isMyself { tags.append("me") }
             var detail: [String] = []
-            if entry.isHost { detail.append("host") } else if entry.isCoHost { detail.append("co-host") }
             if entry.isSpotlighted { detail.append("spotlit") }
-            if !entry.hasJoinedAudio { detail.append("no audio") }
-            return .init(id: entry.id, name: entry.name, detail: detail.joined(separator: " \u{00B7} "),
-                         handUp: entry.isRaisingHand, muted: entry.isMuted && entry.hasJoinedAudio,
+            return .init(id: entry.id, name: entry.name, tags: tags, detail: detail.joined(separator: " \u{00B7} "),
+                         handUp: entry.isRaisingHand, muted: entry.isMuted, hasAudio: entry.hasJoinedAudio,
                          cameraOff: !entry.videoOn, selected: selected == entry.id)
+        }
+        // You first, as Zoom lists you. Your own row opens nothing: there is no
+        // inspector for yourself, and the toolbar is where your controls are.
+        var mine: [MeetingPeopleView.Row] = []
+        if let me = ParticipantGridWindowController.myEntry {
+            var entry = row(me)
+            if let sdk = ParticipantGridWindowController.sdk {
+                entry.muted = sdk.iAmMuted
+                entry.cameraOff = !sdk.myVideoIsOn
+            }
+            mine = [entry]
         }
         peopleView.apply(waiting: waiting.map { .init(id: $0.id, name: $0.name) },
                          canDeny: ParticipantGridWindowController.sdk?.canExpelFromWaitingRoom() ?? false,
                          isHost: flags.iAmHostOrCoHost,
                          hands: queue.map(row),
-                         everyone: roster.filter { !handIDs.contains($0.id) }.map(row),
+                         everyone: mine + roster.filter { !handIDs.contains($0.id) }.map(row),
                          total: roster.count + 1)
     }
 
@@ -1935,16 +2084,17 @@ private final class RootView: NSView {
 
     private func layoutMeeting() {
         let width = bounds.width, height = bounds.height
-        let barHeight = Self.barHeight, toolbarHeight = MeetingToolbarView.height
+        let barHeight = MeetingTheme.topBarHeight, toolbarHeight = MeetingToolbarView.height
         let panel = controls?.sidePanel
         let chrome = !hoverChrome || chromeHover || panel != nil
 
         rail.isHidden = true
         railDivider.isHidden = true
         contextBar.isHidden = true
-        topBar.isHidden = !chrome
+        topBar.isHidden = true
+        meetingTopBar.isHidden = !chrome
         bottomBar.isHidden = !chrome
-        topBar.frame = NSRect(x: 0, y: height - barHeight, width: width, height: barHeight)
+        meetingTopBar.frame = NSRect(x: 0, y: height - barHeight, width: width, height: barHeight)
         bottomBar.frame = NSRect(x: 0, y: 0, width: width, height: toolbarHeight)
 
         // The slot form has no room for permanent chrome, so it lies over the
@@ -1969,28 +2119,38 @@ private final class RootView: NSView {
 
         let others = !listed.isEmpty
         let pages = max(1, Int(ceil(Double(listed.count) / Double(perPage))))
-        let pagerHeight: CGFloat = (!isSpeakerMode && pages > 1) ? 24 : 0
+        // Paging is two arrows at the sides (layoutPager), not a band.
+        let pagerHeight: CGFloat = 0
 
         // You, in the corner, over the grid: laid out after it and never part of
         // its arithmetic.
-        let preview = Self.selfPreviewSize
+        let stripTile = Self.stripHeight - 8
+        // In Speaker view you are one of the strip's small tiles, at its right
+        // end; in Gallery you are the corner picture.
+        let inStrip = isSpeakerMode && others
+        let preview = inStrip ? NSSize(width: (stripTile * 16 / 9).rounded(), height: stripTile) : Self.selfPreviewSize
         selfPreview.isHidden = false
-        selfPreview.frame = NSRect(x: min(stage.maxX, clearRight) - preview.width - 12,
-                                   y: stage.minY + 12 + pagerHeight, width: preview.width, height: preview.height)
+        selfPreview.frame = inStrip
+            ? NSRect(x: min(stage.maxX, clearRight) - preview.width - 4, y: stage.maxY - 4 - preview.height,
+                     width: preview.width, height: preview.height)
+            : NSRect(x: min(stage.maxX, clearRight) - preview.width - 12,
+                     y: stage.minY + 12 + pagerHeight, width: preview.width, height: preview.height)
         // Its video host is sized in its own layout pass; the self element is
         // attached later in this same update and needs real bounds.
         selfPreview.layoutSubtreeIfNeeded()
 
         if isSpeakerMode {
+            // Zoom puts the strip of small tiles along the TOP in Speaker view.
             let strip: CGFloat = others ? Self.stripHeight : 0
             gridHost.layer?.backgroundColor = NSColor.clear.cgColor
             // The preview owns the strip's right-hand end.
-            gridHost.frame = NSRect(x: stage.minX, y: stage.minY,
-                                    width: max(0, min(stage.maxX, clearRight) - stage.minX - preview.width - 24),
+            gridHost.frame = NSRect(x: stage.minX, y: stage.maxY - strip,
+                                    width: max(0, min(stage.maxX, clearRight) - stage.minX - (inStrip ? preview.width + 8 : 0)),
                                     height: strip)
             stageHost.isHidden = roster.isEmpty && !shareOnStage && !selfCardShown
-            stageHost.frame = NSRect(x: stage.minX + 8, y: stage.minY + strip + 8,
-                                     width: max(0, stage.width - 16), height: max(0, stage.height - strip - 16))
+            stageHost.frame = NSRect(x: stage.minX + 4, y: stage.minY + 4,
+                                     width: max(0, stage.width - 8), height: max(0, stage.height - strip - 8))
+            stageChrome.frame = stageHost.bounds
             selfShareCard.isHidden = !selfCardShown
             if selfCardShown {
                 let card = SelfShareCardView.size
@@ -1998,19 +2158,12 @@ private final class RootView: NSView {
                                              y: (stageHost.bounds.height - card.height) / 2,
                                              width: card.width, height: card.height)
             }
-            let scrimHeight: CGFloat = 26
-            stageScrim.frame = NSRect(x: 0, y: 0, width: stageHost.bounds.width, height: scrimHeight)
-            stageScrim.isHidden = stageName.stringValue.isEmpty
-            stageName.sizeToFit()
-            stageName.frame = NSRect(x: 8, y: (scrimHeight - stageName.frame.height) / 2,
-                                     width: min(stageName.frame.width, max(0, stageHost.bounds.width - 16)),
-                                     height: stageName.frame.height)
             layoutPager(pages: 1, y: stage.minY, width: stage.width)
         } else {
-            gridHost.layer?.backgroundColor = NSColor.underPageBackgroundColor.cgColor
+            gridHost.layer?.backgroundColor = NSColor.clear.cgColor
             stageHost.isHidden = true
-            gridHost.frame = NSRect(x: stage.minX, y: stage.minY + pagerHeight,
-                                    width: stage.width, height: max(0, stage.height - pagerHeight))
+            // 4pt all round, so the gaps between tiles and the window's edge agree.
+            gridHost.frame = stage.insetBy(dx: MeetingTheme.tileGap, dy: MeetingTheme.tileGap)
             layoutPager(pages: pages, y: stage.minY, width: stage.width)
         }
 
@@ -2036,58 +2189,33 @@ private final class RootView: NSView {
         layoutTiles()
     }
 
-    /// Title and facts on the left, the Gallery/Speaker control in the middle,
-    /// recording and the info button on the right. Whatever would collide with
-    /// the control is dropped, not overlapped.
+    /// The Zoom-style bar lays itself out; this only keeps its state current.
     private func layoutMeetingTopBar() {
-        shortcutsLabel.isHidden = true
-        modeControl.sizeToFit()
-        let size = modeControl.frame.size
-        modeControl.frame = NSRect(x: ((bounds.width - size.width) / 2).rounded(),
-                                   y: (Self.barHeight - size.height) / 2,
-                                   width: size.width, height: size.height)
-        titleLabel.frame.size.width = min(titleLabel.frame.width, 200)
-        factsLabel.frame.origin.x = titleLabel.frame.maxX + 16
-        factsLabel.isHidden = factsLabel.frame.maxX > modeControl.frame.minX - 16
-        let recordingLeft = recordingDot.isHidden ? CGFloat.greatestFiniteMagnitude : recordingDot.frame.minX
-        if recordingLeft < modeControl.frame.maxX + 16 {
-            recordingLabel.isHidden = true
-            recordingDot.isHidden = true
-        }
+        updateMeetingTopBar()
     }
 
     private func layoutSidePanel(_ panel: MeetingSidePanel) {
         let width = sidePanelHost.bounds.width, height = sidePanelHost.bounds.height
-        let head: CGFloat = 40
+        let head: CGFloat = 44
+        sidePanelBacking.frame = sidePanelHost.bounds
         sidePanelDivider.frame = NSRect(x: 0, y: 0, width: 1, height: height)
-        sidePanelTitle.stringValue = panel == .chat ? "Chat" : "People"
+        // Zoom's panel headers: "Participants (N)" and "Chat".
+        sidePanelTitle.stringValue = panel == .chat ? "Chat" : "Participants (\(roster.count + 1))"
         sidePanelTitle.sizeToFit()
         sidePanelTitle.frame = NSRect(x: 16, y: height - head + (head - sidePanelTitle.frame.height) / 2,
-                                      width: sidePanelTitle.frame.width, height: sidePanelTitle.frame.height)
-        sidePanelClose.frame = NSRect(x: width - 36, y: height - head + 8, width: 24, height: 24)
-        // People carries a count (and the raised hands) and the invite link.
-        let people = panel == .people
-        sidePanelCount.isHidden = !people
-        inviteButton.isHidden = !people
-        if people {
-            let hands = roster.filter(\.isRaisingHand).count
-            var count = "\(roster.count + 1)"
-            if hands > 0 { count += " \u{00B7} " + (hands == 1 ? "1 hand up" : "\(hands) hands up") }
-            sidePanelCount.stringValue = count
-            sidePanelCount.sizeToFit()
-            sidePanelCount.frame.origin = NSPoint(x: sidePanelTitle.frame.maxX + 8,
-                                                  y: height - head + (head - sidePanelCount.frame.height) / 2)
-            inviteButton.sizeToFit()
-            inviteButton.frame = NSRect(x: width - 36 - inviteButton.frame.width - 12,
-                                        y: height - head + 8, width: inviteButton.frame.width + 4, height: 24)
-            sidePanelCount.frame.size.width = max(0, min(sidePanelCount.frame.width, inviteButton.frame.minX - sidePanelCount.frame.minX - 8))
-        }
+                                      width: min(sidePanelTitle.frame.width, max(0, width - 64)),
+                                      height: sidePanelTitle.frame.height)
+        sidePanelClose.frame = NSRect(x: width - 36, y: height - head + 10, width: 24, height: 24)
+        // The count and Invite moved into the Participants panel itself (its
+        // footer), as Zoom has them.
+        sidePanelCount.isHidden = true
+        inviteButton.isHidden = true
         let body = NSRect(x: 0, y: 0, width: width, height: max(0, height - head))
 
         switch panel {
         case .chat:
             if chatHost == nil, let bridge = ParticipantGridWindowController.chatBridge {
-                let host = FirstMouseHostingView(rootView: ChatWindowView(chat: bridge).tint(Brand.green))
+                let host = FirstMouseHostingView(rootView: ChatWindowView(chat: bridge).environment(\.meetingZoomChat, true).tint(Brand.green))
                 sidePanelHost.addSubview(host)
                 chatHost = host
             }
@@ -2115,15 +2243,14 @@ private final class RootView: NSView {
     private func layoutFilmstrip() {
         let visible = pageRoster
         guard !visible.isEmpty else { return }
-        let tileHeight = Self.stripHeight - 16
-        let tileWidth = (tileHeight * 16 / 9).rounded()
-        let total = CGFloat(visible.count) * tileWidth + CGFloat(visible.count - 1) * Self.gutter
-        var x = max(0, ((gridHost.bounds.width - total) / 2).rounded())
-        for entry in visible {
-            guard let tile = tiles[entry.id] else { continue }
-            let target = NSRect(x: x, y: 8, width: tileWidth, height: tileHeight)
-            if tile.frame != target { tile.frame = target }
-            x += tileWidth + Self.gutter
+        // Zoom's strip, along the top of Speaker view. The corner preview owns
+        // the strip's right end (the grid host stops short of it).
+        let tileHeight = Self.stripHeight - 8
+        let size = NSSize(width: gridHost.bounds.width, height: gridHost.bounds.height - 4)
+        let frames = MeetingVideoLayout.strip(count: visible.count, in: size, tileHeight: tileHeight)
+        for (entry, target) in zip(visible, frames) {
+            guard let tile = tiles[entry.id], tile.frame != target else { continue }
+            tile.frame = target
         }
     }
 
@@ -2909,6 +3036,27 @@ private final class RootView: NSView {
             addSubview(previous)
             addSubview(next)
         }
+        if meetingForm {
+            // Zoom pages with a pair of arrows at the sides of the gallery.
+            let area = gridHost.frame
+            let size = NSSize(width: 30, height: 56)
+            for button in [pagePrev, pageNext] {
+                button?.isBordered = false
+                button?.wantsLayer = true
+                button?.layer?.backgroundColor = MeetingTheme.capsuleNS.cgColor
+                button?.layer?.cornerRadius = 8
+                button?.contentTintColor = .white
+            }
+            pageLabel.isHidden = true
+            pagePrev?.isEnabled = page > 0
+            pageNext?.isEnabled = page < pages - 1
+            pagePrev?.frame = NSRect(x: area.minX + 6, y: area.midY - size.height / 2, width: size.width, height: size.height)
+            pageNext?.frame = NSRect(x: area.maxX - 6 - size.width, y: area.midY - size.height / 2,
+                                     width: size.width, height: size.height)
+            pagePrev?.toolTip = "Previous page"
+            pageNext?.toolTip = "Next page"
+            return
+        }
         pageLabel.stringValue = "Page \(page + 1) of \(pages)"
         pageLabel.sizeToFit()
         let centreX = railWidth + width / 2
@@ -3577,26 +3725,37 @@ private final class TileView: NSView {
     private let feedbackLabel = NSTextField(labelWithString: "")
     private var isSelected = false
     private var isTalking = false
+    /// The meeting window's tile: Zoom's look (MeetingTileChrome). The
+    /// reference display keeps its own.
+    private let zoomStyle: Bool
+    private let chrome = MeetingTileChrome(frame: .zero)
 
-    init(userID: UInt32) {
+    init(userID: UInt32, zoomStyle: Bool = false) {
         self.userID = userID
+        self.zoomStyle = zoomStyle
         super.init(frame: .zero)
         wantsLayer = true
-        layer?.backgroundColor = NSColor.black.cgColor
-        layer?.cornerRadius = 10          // DESIGN.md radius-md
+        layer?.backgroundColor = zoomStyle ? MeetingTheme.tileNS.cgColor : NSColor.black.cgColor
+        layer?.cornerRadius = zoomStyle ? MeetingTheme.tileRadius : 10          // DESIGN.md radius-md
         layer?.masksToBounds = true
         layer?.borderWidth = 0
 
         scrim.wantsLayer = true
         scrim.layer?.backgroundColor = NSColor.black.withAlphaComponent(0.55).cgColor
         addSubview(scrim)
+        // Above the video (which goes below the scrim), below the reaction badges.
+        addSubview(chrome)
+        chrome.isHidden = !zoomStyle
+        scrim.isHidden = zoomStyle
 
         nameLabel.font = .systemFont(ofSize: 13, weight: .medium)
         nameLabel.textColor = .white
+        nameLabel.isHidden = zoomStyle
         addSubview(nameLabel)
 
         statusLabel.font = .systemFont(ofSize: 13, weight: .medium)
         statusLabel.alignment = .right
+        statusLabel.isHidden = zoomStyle
         addSubview(statusLabel)
 
         handDot.isHidden = true
@@ -3695,6 +3854,16 @@ private final class TileView: NSView {
         reactionLabel.setAccessibilityLabel(reaction.map { "Reaction \($0)" })
         feedbackLabel.setAccessibilityLabel(feedback.map { "Feedback: \($0)" })
 
+        if zoomStyle {
+            chrome.apply(MeetingTileModel(name: entry.name, isMe: entry.isMyself,
+                                          muted: entry.isMuted && entry.hasJoinedAudio, videoOn: entry.videoOn,
+                                          speaking: entry.isTalking, handUp: entry.isRaisingHand,
+                                          selected: isSelected))
+            needsLayout = true
+            layoutStates()
+            return
+        }
+
         var name = entry.name
         if entry.isMyself { name += " (you)" }
         if entry.isHost { name += " · host" }
@@ -3734,6 +3903,14 @@ private final class TileView: NSView {
 
     private func layoutStates() {
         let inset: CGFloat = 8
+        if zoomStyle {
+            // The chrome draws the name, the badges and the ring; only the
+            // reaction emoji and the feedback pill are laid out here.
+            chrome.frame = bounds
+            layoutReactions(inset: inset)
+            layer?.borderWidth = 0
+            return
+        }
         let barHeight: CGFloat = 26
         scrim.frame = NSRect(x: 0, y: 0, width: bounds.width, height: barHeight)
         nameLabel.sizeToFit()
@@ -3751,7 +3928,12 @@ private final class TileView: NSView {
         // without reading anything.
         speaking.frame = NSRect(x: inset, y: bounds.height - inset - 14, width: 18, height: 14)
 
-        // Top-right: the feedback badge, with a fresh emoji to its left.
+        layoutReactions(inset: inset)
+        applyRing()
+    }
+
+    /// Top-right: the feedback badge, with a fresh emoji to its left.
+    private func layoutReactions(inset: CGFloat) {
         var badgeRight = bounds.width - inset
         if !feedbackLabel.isHidden {
             feedbackLabel.sizeToFit()
@@ -3765,7 +3947,9 @@ private final class TileView: NSView {
                                          y: bounds.height - inset - reactionLabel.frame.height + 2,
                                          width: reactionLabel.frame.width, height: reactionLabel.frame.height)
         }
+    }
 
+    private func applyRing() {
         // Speaking is the one thing worth a colour on the tile itself, and
         // accent-lime is a fill token, so a stroke is a legitimate use of it.
         // Selection outranks it: the teacher needs to see what their next click

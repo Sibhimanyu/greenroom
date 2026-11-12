@@ -346,7 +346,19 @@ final class MeetingControlsModel: ObservableObject {
     }
 
     func toggleMeetingWindow() {
-        coordinator.toggleMeetingWindow()
+        // The pill is up only while the window is away, so this brings it back,
+        // by the morph.
+        if ParticipantGridWindowController.meetingWindowIsShowing {
+            coordinator.toggleMeetingWindow()
+        } else {
+            coordinator.expandMeetingFromBar()
+        }
+        refresh()
+    }
+
+    /// The meeting window's Minimize to controls.
+    func shrinkToBar() {
+        coordinator.shrinkMeetingToBar()
         refresh()
     }
 
@@ -471,6 +483,7 @@ struct MeetingToolbarView: View {
             var a = MeetingMenus.MoreMenuActions()
             a.copy = model.copy
             a.openInZoom = model.openInZoomApp
+            a.shrink = model.videoButtons ? { model.shrinkToBar() } : nil
             return MeetingMenus.more(overflow: overflow, facts: model.meetingFacts, a)
         }
         return m
@@ -1009,9 +1022,12 @@ enum MeetingControlBarController {
     /// meeting window does. Debounced by half a second except the first time.
     static func reconcile(immediately: Bool) {
         pending?.cancel()
+        // The morph owns the bar and the window while it runs; deciding now
+        // would fight it (the window is hidden on purpose, the bar mid-fade).
+        guard morphTimeline == nil else { return }
         let work = DispatchWorkItem {
             MainActor.assumeIsolated {
-                guard let panel else { return }
+                guard let panel, morphTimeline == nil else { return }
                 if ParticipantGridWindowController.meetingWindowIsShowing {
                     panel.orderOut(nil)
                 } else if !panel.isVisible {
@@ -1026,6 +1042,112 @@ enum MeetingControlBarController {
         } else {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5, execute: work)
         }
+    }
+
+    // MARK: Shrink to the bar, and back
+
+    private static var morphTimeline: MeetingMorph.Timeline?
+    private static var morphTimer: Timer?
+    private static var morphSnapshot: NSPanel?
+    private static var morphWindowFrame = CGRect.zero
+
+    /// Where a morph in progress is heading: 0 the bar, 1 the window. Nil at rest.
+    static var morphTarget: CGFloat? { morphTimeline?.to }
+
+    /// Morphs between the meeting window and the bar (0 the bar, 1 the window).
+    /// A snapshot of the window travels and fades while the real bar fades the
+    /// other way; the window is hidden, not closed, so its video elements stay
+    /// attached and coming back is instant. A call during a morph turns it
+    /// round from wherever it has got to.
+    static func morph(toward target: CGFloat) {
+        guard let panel else {
+            // No bar built (not a custom-UI session): nothing to morph into.
+            if target == 1 { ParticipantGridWindowController.show() }
+            return
+        }
+        let now = CACurrentMediaTime()
+        if let current = morphTimeline {
+            if let next = MeetingMorph.retarget(current, toward: target, at: now) { morphTimeline = next }
+            return
+        }
+        guard let shot = ParticipantGridWindowController.morphSnapshot() else {
+            // Nothing to draw: do it plainly.
+            if target == 1 { ParticipantGridWindowController.show(); panel.orderOut(nil) }
+            else { ParticipantGridWindowController.hide(); reconcile(immediately: true) }
+            return
+        }
+        pending?.cancel()
+        cancelSettling()
+        morphWindowFrame = shot.frame
+
+        let ghost = NSPanel(contentRect: shot.frame, styleMask: [.borderless, .nonactivatingPanel],
+                            backing: .buffered, defer: false)
+        ghost.isReleasedWhenClosed = false
+        ghost.level = .floating
+        ghost.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+        ghost.backgroundColor = .clear
+        ghost.isOpaque = false
+        ghost.hasShadow = false
+        ghost.ignoresMouseEvents = true      // click-through: it is only a picture
+        let picture = NSImageView(frame: NSRect(origin: .zero, size: shot.frame.size))
+        picture.image = shot.image
+        picture.imageScaling = .scaleAxesIndependently
+        picture.wantsLayer = true
+        picture.layer?.cornerRadius = 10
+        picture.layer?.masksToBounds = true
+        picture.autoresizingMask = [.width, .height]
+        ghost.contentView = picture
+        morphSnapshot = ghost
+
+        let from: CGFloat = target == 0 ? 1 : 0
+        morphTimeline = .start(from: from, to: target, at: now)
+        if target == 0 {
+            // The window goes away behind its own picture; the bar starts invisible.
+            ParticipantGridWindowController.hide()
+            panel.alphaValue = 0
+        }
+        panel.orderFrontRegardless()
+        applyMorph(at: now)
+        ghost.orderFrontRegardless()
+
+        let timer = Timer(timeInterval: 1.0 / 120, repeats: true) { _ in
+            MainActor.assumeIsolated { tickMorph() }
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        morphTimer = timer
+    }
+
+    private static func applyMorph(at now: TimeInterval) {
+        guard let panel, let ghost = morphSnapshot, let timeline = morphTimeline else { return }
+        let key = MeetingMorph.keyframe(window: morphWindowFrame, bar: panel.frame,
+                                        windowness: timeline.windowness(at: now),
+                                        reduceMotion: NSWorkspace.shared.accessibilityDisplayShouldReduceMotion)
+        ghost.setFrame(key.frame, display: true)
+        ghost.alphaValue = key.snapshotAlpha
+        panel.alphaValue = key.barAlpha
+    }
+
+    private static func tickMorph() {
+        let now = CACurrentMediaTime()
+        guard let timeline = morphTimeline else { return }
+        applyMorph(at: now)
+        guard timeline.isDone(at: now) else { return }
+        morphTimer?.invalidate()
+        morphTimer = nil
+        morphSnapshot?.orderOut(nil)
+        morphSnapshot = nil
+        morphTimeline = nil
+        panel?.alphaValue = 1
+        if timeline.to == 1 {
+            // The real window takes over from its picture, in front, without
+            // activating the app; the bar steps aside.
+            ParticipantGridWindowController.show()
+            panel?.orderOut(nil)
+        } else {
+            panel?.orderFrontRegardless()
+        }
+        // Back to the usual rule, after its usual beat.
+        reconcile(immediately: false)
     }
 
     // MARK: Collapse and expand
@@ -1159,6 +1281,9 @@ enum MeetingControlBarController {
         menu.autoenablesItems = false
         let model = self.model, coordinator = self.coordinator
         menu.addItem(MenuItem("Expand") { setCollapsed(false) })
+        if model?.videoButtons ?? false {
+            menu.addItem(MenuItem("Expand to meeting window") { model?.toggleMeetingWindow() })
+        }
         let inMeeting = model?.inMeeting ?? false
         menu.addItem(MenuItem((model?.muted ?? false) ? "Unmute" : "Mute", enabled: inMeeting) {
             model?.toggleMute()
@@ -1180,6 +1305,11 @@ enum MeetingControlBarController {
     }
 
     static func close() {
+        morphTimer?.invalidate()
+        morphTimer = nil
+        morphSnapshot?.orderOut(nil)
+        morphSnapshot = nil
+        morphTimeline = nil
         pending?.cancel()
         pending = nil
         cancelSettling()

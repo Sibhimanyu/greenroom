@@ -70,6 +70,8 @@ enum MeetingMenuBuilder {
     static func popUp(_ entries: [MenuEntry], above view: NSView, below: Bool = false) {
         guard !entries.isEmpty else { return }
         let built = menu(entries)
+        // The meeting window is dark whatever the system is (MeetingTheme).
+        built.appearance = NSAppearance(named: .darkAqua)
         let height = built.size.height
         // `below` opens it downward instead, for a control at the top of the window.
         let y: CGFloat = below ? (view.isFlipped ? view.bounds.maxY + 4 : -4)

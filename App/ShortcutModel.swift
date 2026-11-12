@@ -239,6 +239,7 @@ enum ShortcutAction: String, CaseIterable {
     case toggleNotes = "notes"
     case showMeetingWindow = "meetingWindow"
     case toggleMeetingBar = "meetingBar"
+    case shrinkMeeting = "meetingShrink"
     case switchGalleryOrSpeaker = "galleryOrSpeaker"
     case toggleMeeting = "hideMeeting"
     case snapBack = "snap"
@@ -249,7 +250,7 @@ enum ShortcutAction: String, CaseIterable {
         switch self {
         case .startClass, .endSession, .toggleRecording, .clip1, .clip2, .clip5: return .classGroup
         case .toggleMic, .toggleCamera, .toggleChat, .toggleNotes, .showMeetingWindow,
-             .toggleMeetingBar, .switchGalleryOrSpeaker, .toggleMeeting: return .meeting
+             .toggleMeetingBar, .shrinkMeeting, .switchGalleryOrSpeaker, .toggleMeeting: return .meeting
         case .snapBack: return .layout
         case .openGreenroom, .openSessions: return .greenroom
         }
@@ -269,6 +270,7 @@ enum ShortcutAction: String, CaseIterable {
         case .toggleNotes: return "Show or hide notes"
         case .showMeetingWindow: return "Show the meeting window"
         case .toggleMeetingBar: return "Collapse or expand the meeting bar"
+        case .shrinkMeeting: return "Shrink or expand the meeting"
         case .switchGalleryOrSpeaker: return "Switch Gallery and Speaker"
         case .toggleMeeting: return "Hide or show the meeting"
         case .snapBack: return "Snap windows back to the layout"
@@ -291,6 +293,7 @@ enum ShortcutAction: String, CaseIterable {
         case .toggleNotes: return "The notes bar, for this session only."
         case .showMeetingWindow: return "Brings the meeting back without moving your slides."
         case .toggleMeetingBar: return "The floating controls: the full bar, or a small round button."
+        case .shrinkMeeting: return "Morphs the meeting window into the floating control bar, and back."
         case .switchGalleryOrSpeaker: return "In the meeting window."
         case .toggleMeeting: return "The layout's meeting piece; its neighbour takes the room."
         case .snapBack: return "After you have dragged windows around."
@@ -311,6 +314,7 @@ enum ShortcutAction: String, CaseIterable {
         case .toggleNotes: return "note.text"
         case .showMeetingWindow: return "macwindow"
         case .toggleMeetingBar: return "arrow.down.right.and.arrow.up.left"
+        case .shrinkMeeting: return "rectangle.bottomhalf.inset.filled"
         case .switchGalleryOrSpeaker: return "square.grid.2x2"
         case .toggleMeeting: return "eye.slash"
         case .snapBack: return "arrow.uturn.backward"
@@ -351,7 +355,7 @@ enum ShortcutAction: String, CaseIterable {
         case .clip2: return .optionCommand(kVK_ANSI_2)
         case .clip5: return .optionCommand(kVK_ANSI_5)
         case .toggleMic, .toggleCamera, .toggleChat, .toggleNotes, .showMeetingWindow,
-             .toggleMeetingBar, .switchGalleryOrSpeaker, .openGreenroom, .openSessions: return nil
+             .toggleMeetingBar, .shrinkMeeting, .switchGalleryOrSpeaker, .openGreenroom, .openSessions: return nil
         }
     }
 }

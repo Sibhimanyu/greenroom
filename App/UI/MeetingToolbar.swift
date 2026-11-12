@@ -8,8 +8,11 @@
 //  MeetingControls.swift fills those in; the off-screen render fills them with
 //  sample values.
 //
-//  One style for every control, per DESIGN.md: a glyph over a short caption,
-//  the same size. Menus are popped NSMenus behind a transparent overlay (see
+//  Drawn in Zoom's style (MeetingTheme records why): #1A1A1A with a hairline on
+//  top, Mute and Start Video with their carets on the left, the meeting tools
+//  in the middle (Share's glyph in green), a red End on the right, and a
+//  lighter rounded wash behind whatever the pointer is over. One style for
+//  every control: a glyph over a short caption, the same size. Menus are popped NSMenus behind a transparent overlay (see
 //  MeetingMenuAppKit.swift), because SwiftUI's Menu turns a custom label into a
 //  small inline button.
 //
@@ -79,20 +82,32 @@ struct MeetingToolbarBar: View {
                 specs: MeetingToolbarLayout.specs(showsSecurity: state.isHost),
                 // "End for everyone" is wider than End; make room while it shows.
                 width: geo.size.width - (confirmingEnd ? 112 : 0))
+            let groups = MeetingToolbarLayout.specs(showsSecurity: true).reduce(into: [ToolbarItemID: Int]()) { $0[$1.id] = $1.group }
+            let left = fit.visible.filter { groups[$0] == 0 }
+            let centre = fit.visible.filter { groups[$0] != 0 }
+            // Zoom centres the middle group on the window: the shorter of the
+            // two outer groups is padded to the width of the longer.
+            let leftWidth = CGFloat(left.count) * (MeetingToolbarLayout.cell + MeetingToolbarLayout.caret + MeetingToolbarLayout.gap)
+            let rightWidth = (fit.showsClock ? MeetingToolbarLayout.clock + MeetingToolbarLayout.gap : 0)
+                + (confirmingEnd ? 190 : MeetingToolbarLayout.end)
             HStack(spacing: MeetingToolbarLayout.gap) {
-                ForEach(Array(pieces(fit.visible).enumerated()), id: \.offset) { _, piece in
+                ForEach(Array(left.enumerated()), id: \.offset) { _, id in control(id) }
+                Color.clear.frame(width: max(0, rightWidth - leftWidth), height: 1)
+                Spacer(minLength: MeetingToolbarLayout.spacer)
+                ForEach(Array(pieces(centre).enumerated()), id: \.offset) { _, piece in
                     switch piece {
-                    case .divider: divider
+                    case .divider: Color.clear.frame(width: MeetingToolbarLayout.divider, height: 1)
                     case .control(let id): control(id)
                     }
                 }
-                if !fit.visible.isEmpty { divider }
+                if !centre.isEmpty { Color.clear.frame(width: MeetingToolbarLayout.divider, height: 1) }
                 moreCell(overflow: fit.overflow)
                 Spacer(minLength: MeetingToolbarLayout.spacer)
+                Color.clear.frame(width: max(0, leftWidth - rightWidth), height: 1)
                 if fit.showsClock {
                     Text(state.clock)
                         .font(.system(size: 12, design: .monospaced))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(MeetingTheme.secondaryText)
                         .frame(width: MeetingToolbarLayout.clock)
                         .help("How long the meeting has run")
                 }
@@ -102,6 +117,9 @@ struct MeetingToolbarBar: View {
             .frame(width: geo.size.width, height: geo.size.height)
         }
         .frame(height: Self.height)
+        .background(MeetingTheme.window)
+        .overlay(alignment: .top) { Rectangle().fill(MeetingTheme.hairline).frame(height: 1) }
+        .environment(\.colorScheme, .dark)
     }
 
     // MARK: Order
@@ -123,11 +141,6 @@ struct MeetingToolbarBar: View {
         return out
     }
 
-    private var divider: some View {
-        Rectangle().fill(Color.primary.opacity(0.12)).frame(width: 1, height: 28)
-            .padding(.horizontal, (MeetingToolbarLayout.divider - 1) / 2)
-    }
-
     // MARK: Controls
 
     @ViewBuilder private func control(_ id: ToolbarItemID) -> some View {
@@ -135,49 +148,49 @@ struct MeetingToolbarBar: View {
         case .mute:
             withCaret(menus.audio, label: "Choose microphone and speaker") {
                 if state.inMeeting && !state.hasAudio {
-                    cell(symbol: "headphones", caption: "Join audio", tint: .red, action: actions.joinAudio)
+                    cell(symbol: "headphones", caption: "Join audio", tint: MeetingTheme.red, action: actions.joinAudio)
                 } else {
-                    cell(symbol: state.muted ? "mic.slash.fill" : "mic.fill",
+                    cell(symbol: state.muted ? "mic.slash" : "mic",
                          caption: state.muted ? "Unmute" : "Mute",
-                         tint: state.muted ? .red : .primary, action: actions.toggleMute)
+                         tint: state.muted ? MeetingTheme.red : .white, action: actions.toggleMute)
                         .disabled(!state.inMeeting)
                 }
             }
         case .video:
             withCaret(menus.video, label: "Choose camera") {
-                cell(symbol: state.cameraOn ? "video.fill" : "video.slash.fill",
+                cell(symbol: state.cameraOn ? "video" : "video.slash",
                      caption: state.cameraOn ? "Stop Video" : "Start Video",
-                     tint: state.cameraOn ? .primary : .red, action: actions.toggleVideo)
+                     tint: state.cameraOn ? .white : MeetingTheme.red, action: actions.toggleVideo)
                     .disabled(!state.inMeeting)
             }
         case .security:
-            menuCell(symbol: "shield.lefthalf.filled", caption: "Security", enabled: state.inMeeting,
+            menuCell(symbol: "checkmark.shield", caption: "Security", enabled: state.inMeeting,
                      entries: menus.security)
         case .people:
-            cell(symbol: "person.2.fill", caption: state.waiting > 0 ? "\(state.waiting) waiting" : "People",
+            cell(symbol: "person.2", caption: state.waiting > 0 ? "\(state.waiting) waiting" : "Participants",
                  on: state.peopleOpen, badge: state.participants > 0 ? "\(state.participants)" : nil,
                  captionPill: state.waiting > 0, help: peopleHelp, action: actions.togglePeople)
         case .chat:
-            cell(symbol: "bubble.left.fill", caption: "Chat", on: state.chatOpen,
+            cell(symbol: "bubble.left", caption: "Chat", on: state.chatOpen,
                  badge: state.unread > 0 ? (state.unread > 9 ? "9+" : "\(state.unread)") : nil,
                  badgeFilled: true, action: actions.toggleChat)
         case .react:
-            menuCell(symbol: "hand.thumbsup", caption: "React", on: state.handRaised,
+            menuCell(symbol: "face.smiling", caption: "React", on: state.handRaised,
                      enabled: state.inMeeting, entries: menus.react)
         case .share:
             withCaret(menus.share, label: "Sharing options") {
                 if state.sharing {
-                    cell(symbol: "rectangle.on.rectangle.slash", caption: "Stop Share", tint: .red,
+                    cell(symbol: "rectangle.on.rectangle.slash", caption: "Stop Share", tint: MeetingTheme.red,
                          action: actions.stopSharing)
                 } else {
-                    menuCell(symbol: "arrow.up.forward.app", caption: "Share", enabled: state.inMeeting,
-                             entries: menus.share)
+                    menuCell(symbol: "arrow.up.square.fill", caption: "Share", tint: MeetingTheme.zoomGreen,
+                             enabled: state.inMeeting, entries: menus.share)
                 }
             }
         case .record:
             cell(symbol: state.recording ? "stop.circle.fill" : "record.circle",
                  caption: state.saving ? "Saving\u{2026}" : state.recordCaption,
-                 tint: state.recording ? .red : .primary,
+                 tint: state.recording ? MeetingTheme.red : .white,
                  help: state.recording ? "Stop recording" : "Record this class",
                  action: actions.toggleRecording)
                 .disabled(state.saving)
@@ -187,7 +200,7 @@ struct MeetingToolbarBar: View {
     }
 
     private var peopleHelp: String {
-        var parts = ["People"]
+        var parts = ["Participants"]
         if state.waiting > 0 { parts.append("\(state.waiting) waiting to be admitted") }
         return parts.joined(separator: ", ")
     }
@@ -201,7 +214,7 @@ struct MeetingToolbarBar: View {
             content()
             Image(systemName: "chevron.up")
                 .font(.system(size: 9, weight: .semibold))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(MeetingTheme.secondaryText)
                 .frame(width: MeetingToolbarLayout.caret, height: Self.cellHeight)
                 .contentShape(Rectangle())
                 .overlay { MenuPopUpOverlay(label: label, entries: entries) }
@@ -210,7 +223,7 @@ struct MeetingToolbarBar: View {
     }
 
     private func moreCell(overflow: [ToolbarItemID]) -> some View {
-        menuCell(symbol: "ellipsis.circle", caption: "More", badge: overflow.isEmpty ? nil : "\(overflow.count)") {
+        menuCell(symbol: "ellipsis", caption: "More", badge: overflow.isEmpty ? nil : "\(overflow.count)") {
             menus.more(overflow.compactMap(overflowEntry))
         }
     }
@@ -224,7 +237,7 @@ struct MeetingToolbarBar: View {
             return .item(state.cameraOn ? "Stop Video" : "Start Video", enabled: state.inMeeting, actions.toggleVideo)
         case .security: return .submenu("Security", enabled: state.inMeeting, menus.security())
         case .people:
-            return .item(state.waiting > 0 ? "People (\(state.waiting) waiting)" : "People",
+            return .item(state.waiting > 0 ? "Participants (\(state.waiting) waiting)" : "Participants",
                          checked: state.peopleOpen, actions.togglePeople)
         case .chat:
             return .item(state.unread > 0 ? "Chat (\(state.unread) unread)" : "Chat",
@@ -243,42 +256,14 @@ struct MeetingToolbarBar: View {
     // MARK: Cells
 
     /// The one control shape. Every cell on the bar is this: the glyph above its
-    /// caption, 64 wide.
-    private func glyph(symbol: String, caption: String, tint: Color = .primary, on: Bool = false,
+    /// caption, with Zoom's hover wash behind it.
+    private func glyph(symbol: String, caption: String, tint: Color = .white, on: Bool = false,
                        badge: String? = nil, badgeFilled: Bool = false, captionPill: Bool = false) -> some View {
-        VStack(spacing: 3) {
-            Image(systemName: symbol)
-                .font(.system(size: 16))
-                .foregroundStyle(tint)
-                .frame(height: 20)
-                .overlay(alignment: .topTrailing) { badgeView(badge, filled: badgeFilled).offset(x: 16, y: -6) }
-            Text(caption)
-                .font(.system(size: 11, weight: captionPill ? .semibold : .regular))
-                .foregroundStyle(captionPill ? Color.black : Color.secondary)
-                .lineLimit(1)
-                .padding(.horizontal, captionPill ? 4 : 0)
-                .background(captionPill ? Brand.fill : Color.clear, in: Capsule())
-        }
-        .frame(width: MeetingToolbarLayout.cell, height: Self.cellHeight)
-        .background(on ? Brand.green.opacity(0.28) : Color.clear, in: RoundedRectangle(cornerRadius: 10))
-        .contentShape(Rectangle())
+        ToolbarGlyph(symbol: symbol, caption: caption, tint: tint, on: on, badge: badge,
+                     badgeFilled: badgeFilled, captionPill: captionPill, height: Self.cellHeight)
     }
 
-    /// The lime is a fill, never text (DESIGN.md), so the count on it is dark.
-    /// Counts that are only information stay a neutral fill.
-    @ViewBuilder private func badgeView(_ text: String?, filled: Bool) -> some View {
-        if let text {
-            Text(text)
-                .font(.system(size: 9, weight: .bold))
-                .foregroundStyle(filled ? Color.black : Color.primary)
-                .padding(.horizontal, 4)
-                .frame(minWidth: 14, minHeight: 14)
-                .background(filled ? Brand.fill : Color.primary.opacity(0.14), in: Capsule())
-                .accessibilityLabel(text)
-        }
-    }
-
-    private func cell(symbol: String, caption: String, tint: Color = .primary, on: Bool = false,
+    private func cell(symbol: String, caption: String, tint: Color = .white, on: Bool = false,
                       badge: String? = nil, badgeFilled: Bool = false, captionPill: Bool = false,
                       help: String? = nil, action: @escaping () -> Void) -> some View {
         Button(action: action) {
@@ -291,9 +276,9 @@ struct MeetingToolbarBar: View {
         .accessibilityAddTraits(on ? .isSelected : [])
     }
 
-    private func menuCell(symbol: String, caption: String, on: Bool = false, badge: String? = nil,
-                          enabled: Bool = true, entries: @escaping () -> [MenuEntry]) -> some View {
-        glyph(symbol: symbol, caption: caption, on: on, badge: badge)
+    private func menuCell(symbol: String, caption: String, tint: Color = .white, on: Bool = false,
+                          badge: String? = nil, enabled: Bool = true, entries: @escaping () -> [MenuEntry]) -> some View {
+        glyph(symbol: symbol, caption: caption, tint: tint, on: on, badge: badge)
             .opacity(enabled ? 1 : 0.4)
             // An AppKit overlay ignores SwiftUI's .disabled, so it is switched off here.
             .overlay { if enabled { MenuPopUpOverlay(label: caption, entries: entries) } }
@@ -308,7 +293,7 @@ struct MeetingToolbarBar: View {
                 Button("Cancel") { confirmingEnd = false }
                     .buttonStyle(.plain)
                     .font(.system(size: 12))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(MeetingTheme.secondaryText)
                 Button {
                     confirmingEnd = false
                     actions.end()
@@ -317,8 +302,8 @@ struct MeetingToolbarBar: View {
                         .font(.system(size: 12, weight: .semibold))
                         .foregroundStyle(.white)
                         .padding(.horizontal, 12)
-                        .frame(height: 28)
-                        .background(Color.red, in: RoundedRectangle(cornerRadius: 10))
+                        .frame(height: 32)
+                        .background(MeetingTheme.end, in: RoundedRectangle(cornerRadius: MeetingTheme.controlRadius + 2))
                 }
                 .buttonStyle(.plain)
                 .help("Ends the meeting for everyone, saves any recording and turns the camera off")
@@ -326,14 +311,65 @@ struct MeetingToolbarBar: View {
         } else {
             Button { confirmingEnd = true } label: {
                 Text("End")
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(.white)
-                    .frame(width: 52, height: 28)
-                    .background(Color.red, in: RoundedRectangle(cornerRadius: 10))
+                    .frame(width: 56, height: 32)
+                    .background(MeetingTheme.end, in: RoundedRectangle(cornerRadius: MeetingTheme.controlRadius + 2))
             }
             .buttonStyle(.plain)
             .help("End the session")
             .accessibilityLabel("End session")
+        }
+    }
+}
+
+
+/// One cell's drawing: glyph 22pt over an 11pt caption, a lighter rounded wash
+/// while the pointer is over it or its panel is open.
+private struct ToolbarGlyph: View {
+    let symbol: String
+    let caption: String
+    let tint: Color
+    let on: Bool
+    let badge: String?
+    let badgeFilled: Bool
+    let captionPill: Bool
+    let height: CGFloat
+    @State private var hovering = false
+
+    var body: some View {
+        VStack(spacing: 3) {
+            Image(systemName: symbol)
+                .font(.system(size: 20, weight: .regular))
+                .foregroundStyle(tint)
+                .frame(height: 24)
+                .overlay(alignment: .topTrailing) { badgeView.offset(x: 14, y: -5) }
+            Text(caption)
+                .font(.system(size: 11, weight: captionPill ? .semibold : .regular))
+                .foregroundStyle(captionPill ? Color.black : MeetingTheme.text)
+                .lineLimit(1)
+                .minimumScaleFactor(0.9)
+                .padding(.horizontal, captionPill ? 4 : 0)
+                .background(captionPill ? Brand.fill : Color.clear, in: Capsule())
+        }
+        .frame(width: MeetingToolbarLayout.cell, height: height)
+        .background(on || hovering ? MeetingTheme.hover : Color.clear,
+                    in: RoundedRectangle(cornerRadius: MeetingTheme.controlRadius))
+        .contentShape(Rectangle())
+        .onHover { hovering = $0 }
+    }
+
+    /// Chat's unread is Zoom's red badge; a participant count is information, so
+    /// it stays a neutral grey pill.
+    @ViewBuilder private var badgeView: some View {
+        if let badge {
+            Text(badge)
+                .font(.system(size: 9, weight: .bold))
+                .foregroundStyle(.white)
+                .padding(.horizontal, 4)
+                .frame(minWidth: 14, minHeight: 14)
+                .background(badgeFilled ? MeetingTheme.red : Color.white.opacity(0.22), in: Capsule())
+                .accessibilityLabel(badge)
         }
     }
 }

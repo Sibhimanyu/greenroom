@@ -446,3 +446,96 @@ final class MeetingMenuSpecTests: XCTestCase {
         XCTAssertEqual(on.entry(titled: "Built-in Mic")?.checked, true)
     }
 }
+
+// MARK: - The meeting window and the bar morphing into each other
+
+final class MeetingMorphTests: XCTestCase {
+    private typealias M = MeetingMorph
+    private let window = CGRect(x: 100, y: 100, width: 1200, height: 800)
+    private let bar = CGRect(x: 600, y: 16, width: 532, height: 44)
+
+    func testTheEndsAreTheWindowAndTheBar() {
+        let atWindow = M.keyframe(window: window, bar: bar, windowness: 1, reduceMotion: false)
+        XCTAssertEqual(atWindow.frame, window)
+        XCTAssertEqual(atWindow.snapshotAlpha, 1)
+        XCTAssertEqual(atWindow.barAlpha, 0)
+        let atBar = M.keyframe(window: window, bar: bar, windowness: 0, reduceMotion: false)
+        XCTAssertEqual(atBar.frame, bar)
+        XCTAssertEqual(atBar.snapshotAlpha, 0)
+        XCTAssertEqual(atBar.barAlpha, 1)
+    }
+
+    func testTheMiddleIsHalfwayAndTheFadesCross() {
+        let mid = M.keyframe(window: window, bar: bar, windowness: 0.5, reduceMotion: false)
+        XCTAssertEqual(mid.frame.midX, (window.midX + bar.midX) / 2, accuracy: 0.001)
+        XCTAssertEqual(mid.frame.width, (window.width + bar.width) / 2, accuracy: 0.001)
+        XCTAssertEqual(mid.snapshotAlpha + mid.barAlpha, 1, accuracy: 0.001)
+    }
+
+    func testOutOfRangeIsClamped() {
+        XCTAssertEqual(M.keyframe(window: window, bar: bar, windowness: 7, reduceMotion: false).frame, window)
+        XCTAssertEqual(M.keyframe(window: window, bar: bar, windowness: -3, reduceMotion: false).frame, bar)
+    }
+
+    func testReduceMotionNeverMovesTheSnapshotButStillCrossfades() {
+        for t in stride(from: CGFloat(0), through: 1, by: 0.25) {
+            let k = M.keyframe(window: window, bar: bar, windowness: t, reduceMotion: true)
+            XCTAssertEqual(k.frame, window)
+            XCTAssertEqual(k.snapshotAlpha, t, accuracy: 0.001)
+            XCTAssertEqual(k.barAlpha, 1 - t, accuracy: 0.001)
+        }
+    }
+
+    func testEaseIsMonotoneAndPinnedAtTheEnds() {
+        XCTAssertEqual(M.ease(0), 0)
+        XCTAssertEqual(M.ease(1), 1)
+        XCTAssertEqual(M.ease(0.5), 0.5, accuracy: 0.0001)
+        var last: CGFloat = -1
+        for t in stride(from: CGFloat(0), through: 1, by: 0.05) {
+            XCTAssertGreaterThanOrEqual(M.ease(t), last)
+            last = M.ease(t)
+        }
+        XCTAssertLessThan(M.ease(0.1), 0.1, "slow start")
+        XCTAssertGreaterThan(M.ease(0.9), 0.9, "slow finish")
+    }
+
+    func testAShrinkRunsFromWindowToBar() {
+        let leg = M.Timeline.start(from: 1, to: 0, at: 10)
+        XCTAssertEqual(leg.windowness(at: 10), 1, accuracy: 0.0001)
+        XCTAssertEqual(leg.windowness(at: 10 + M.duration / 2), 0.5, accuracy: 0.0001)
+        XCTAssertEqual(leg.windowness(at: 10 + M.duration), 0, accuracy: 0.0001)
+        XCTAssertFalse(leg.isDone(at: 10.1))
+        XCTAssertTrue(leg.isDone(at: 10 + M.duration + 0.001))
+    }
+
+    func testClickingAgainMidwayReversesFromWhereItIs() {
+        let shrink = M.Timeline.start(from: 1, to: 0, at: 0)
+        let now = M.duration * 0.25
+        let here = shrink.windowness(at: now)
+        let back = M.retarget(shrink, toward: 1, at: now)
+        XCTAssertNotNil(back)
+        XCTAssertEqual(back?.windowness(at: now) ?? -1, here, accuracy: 0.0001, "no jump on reversal")
+        XCTAssertEqual(back?.windowness(at: now + M.duration) ?? -1, 1, accuracy: 0.0001)
+        XCTAssertLessThan(back?.length ?? 9, M.duration, "a short way back is quick")
+    }
+
+    func testAskingForTheTargetAlreadyHeadedToIsIgnored() {
+        let shrink = M.Timeline.start(from: 1, to: 0, at: 0)
+        XCTAssertNil(M.retarget(shrink, toward: 0, at: 0.1))
+    }
+
+    func testReversalIsContinuousAtEveryPoint() {
+        for fraction in stride(from: 0.05, through: 0.95, by: 0.1) {
+            let leg = M.Timeline.start(from: 0, to: 1, at: 0)
+            let now = M.duration * fraction
+            let back = M.retarget(leg, toward: 0, at: now)
+            XCTAssertEqual(back?.windowness(at: now) ?? -1, leg.windowness(at: now), accuracy: 0.0001)
+        }
+    }
+
+    func testAZeroLengthLegDoesNotDivideByZero() {
+        let leg = M.Timeline.start(from: 1, to: 1, at: 0)
+        XCTAssertTrue(leg.isDone(at: 0.01))
+        XCTAssertEqual(leg.windowness(at: 0.01), 1, accuracy: 0.0001)
+    }
+}

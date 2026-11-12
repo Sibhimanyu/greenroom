@@ -468,65 +468,66 @@ final class CoordinatorController: ObservableObject {
             zoomChatClient.setHideSelfView(hideSelfView)
         }
     }
-    /// The \u{2325}\u{2318}Z quick-hide MODE. Off: the normal
-    /// tile-above-chat layout persists and the shortcut is inert. On:
-    /// sessions START with the speaker tile hidden and the chat owning
-    /// the full side column; the shortcut shows the tile (chat resizes
-    /// below it) and hides it again (chat refills the column). Flipping
-    /// the setting mid-session applies immediately.
+    /// Settings' "Quick-hide mode". Since the layout creator it is the Meeting
+    /// piece's "Starts hidden" in the ACTIVE layout, shown and changed from the
+    /// Settings row (LayoutSettingsTab maps one to the other) and kept in step
+    /// with it here, so the value an export carries and an older Greenroom reads
+    /// still agrees. It no longer gates \u{2325}\u{2318}Z, which works whenever
+    /// the layout has a placed Meeting piece. Changing it mid-class changes what
+    /// the NEXT start does; a layout edit applies live but never undoes a
+    /// \u{2325}\u{2318}Z the teacher just pressed.
     @Published var speakerTileShortcutEnabled: Bool {
         didSet {
             defaults.set(speakerTileShortcutEnabled, forKey: "speakerTileShortcutEnabled")
             Analytics.setting("quick_hide_mode", on: speakerTileShortcutEnabled)
-            // Zoom's own tile only: the custom-UI meeting window is shown by default
-            // and hidden by the shortcut, whatever the mode says.
-            guard sessionArranges, ChatWindowController.isOpen, !zoomChatClient.didUseCustomUI else { return }
-            speakerTileQuickHidden = speakerTileShortcutEnabled
-            parkBuiltInMeetingWindow() // restart the loop to assert the new default
         }
     }
 
-    /// Quick-hide state: the tile is off-screen and the chat owns the
-    /// FULL side column. Defaults to the setting at each session start
-    /// and after Snap Windows Back; \u{2325}\u{2318}Z flips it.
-    /// Published (read-only) so the menu bar can label its toggle with
-    /// the ACTUAL next action ("Show/Hide Speaker Tile").
+    /// The placed Meeting piece is hidden and the neighbour that joins it has
+    /// grown into its gap. Starts as the piece's "Starts hidden" at each session
+    /// start and after Snap Windows Back; \u{2325}\u{2318}Z flips it. Published
+    /// (read-only) so the menu bar can label its toggle with the ACTUAL next
+    /// action ("Show/Hide Speaker Tile").
     @Published private(set) var speakerTileQuickHidden = false
 
-    /// \u{2325}\u{2318}Z: shows the speaker tile in its slot
-    /// (the chat resizes to sit below it) or hides it again (the chat
-    /// takes the full column back). Only active when the quick-hide mode
-    /// is enabled in Settings.
+    /// A Meeting piece in a rectangle is in the layout right now, so
+    /// \u{2325}\u{2318}Z has something to hide. The menu item reads this.
+    var canToggleMeeting: Bool {
+        guard stageLive, let template = sessionTemplate else { return false }
+        return layoutEngine.placedMeeting(template) != nil
+    }
+
+    /// \u{2325}\u{2318}Z: hides the placed Meeting piece (the neighbour that
+    /// joins it grows into the gap) or shows it again (the neighbour shrinks
+    /// back). Only a Meeting in a rectangle toggles; one that fills a display or
+    /// a layout with none has nothing to hide.
     func toggleSpeakerTile() {
         guard layoutToolsAvailable else {
             log("Speaker tile skipped \u{2014} this session arranges no windows.")
             return
         }
-        guard speakerTileShortcutEnabled else { return }
-        Analytics.track(.quickHide)
-        // Custom UI: the meeting window is ours, so hiding it is just ordering
-        // it out - no SDK window to find, and no risk of the toggle pointing at
-        // a panel that got mistaken for the tile. Only the window in Zoom's old
-        // slot is a "tile"; a full window on the reference display or a free one
-        // is the teacher's to close.
-        if zoomChatClient.didUseCustomUI {
-            guard ParticipantGridWindowController.isSlot else {
-                log("No meeting window in the speaker slot to hide \u{2014} this layout uses a full window.")
-                return
-            }
-            if speakerTileQuickHidden {
-                speakerTileQuickHidden = false
-                openMeetingWindow()
-                log("Meeting window shown \u{2014} \u{2325}\u{2318}Z hides it again.")
-            } else {
-                speakerTileQuickHidden = true
-                ParticipantGridWindowController.hide()
-                ChatWindowController.fillSideColumn(layout: workspaceLayout)
-                log("Meeting window hidden \u{2014} chat has the full column. \u{2325}\u{2318}Z shows it.")
-            }
+        guard let template = sessionTemplate, let meeting = layoutEngine.placedMeeting(template) else {
+            log("No meeting window in the layout to hide \u{2014} it has none, or it fills a display.")
             return
         }
-        guard let window = builtInMeetingWindow, ChatWindowController.isOpen else {
+        Analytics.track(.quickHide)
+        let hide = !speakerTileQuickHidden
+        // Custom UI: the meeting window is ours, so hiding it is just ordering
+        // it out - no SDK window to find, and no risk of the toggle pointing at
+        // a panel that got mistaken for the tile.
+        if zoomChatClient.didUseCustomUI {
+            speakerTileQuickHidden = hide
+            if hide {
+                ParticipantGridWindowController.hide()
+            } else {
+                openMeetingWindow()
+            }
+            layoutEngine.moveNeighbour(template, meetingHidden: hide)
+            log(hide ? "Meeting window hidden \u{2014} \u{2325}\u{2318}Z shows it."
+                     : "Meeting window shown \u{2014} \u{2325}\u{2318}Z hides it again.")
+            return
+        }
+        guard let window = builtInMeetingWindow else {
             // Surfaced, not just logged: the status log is collapsed by
             // default, so pressing the shortcut before the tile exists looked
             // like the shortcut was simply broken.
@@ -535,27 +536,20 @@ final class CoordinatorController: ObservableObject {
                           body: "Zoom's meeting window is still coming up. Try \u{2325}\u{2318}Z again in a moment.")
             return
         }
-        if speakerTileQuickHidden {
-            speakerTileQuickHidden = false
+        speakerTileQuickHidden = hide
+        if hide {
+            window.orderOut(nil)
+            log("Speaker tile hidden \u{2014} \u{2325}\u{2318}Z shows it.")
+        } else {
             window.level = .normal
-            if let slot = ChatWindowController.zoomSlotNSFrame(for: workspaceLayout) {
-                window.setFrame(slot, display: true)
-                // Chat shrinks below the tile immediately (the follow
-                // loop would also do this, but a beat later).
-                if let screen = DisplayResolver.mainDisplayScreen() {
-                    let ax = CGRect(x: slot.origin.x, y: screen.frame.height - slot.maxY,
-                                    width: slot.width, height: slot.height)
-                    ChatWindowController.adjustBelowZoom(actualZoomFrameAX: ax, layout: workspaceLayout)
-                }
-            }
+            window.setFrame(meeting.frames.ns, display: true)
             window.orderFrontRegardless()
             log("Speaker tile shown \u{2014} \u{2325}\u{2318}Z hides it again.")
-        } else {
-            speakerTileQuickHidden = true
-            window.orderOut(nil)
-            ChatWindowController.fillSideColumn(layout: workspaceLayout)
-            log("Speaker tile hidden \u{2014} chat has the full column. \u{2325}\u{2318}Z shows it.")
         }
+        layoutEngine.moveNeighbour(template, meetingHidden: hide)
+        // Zoom may have kept a bigger window than the rect: the neighbour fits
+        // around what it actually got.
+        if !hide { layoutEngine.fitNeighbour(template, aroundActual: window.frame) }
     }
 
     // MARK: Defaults - persisted so Start reproduces the whole setup every time
@@ -759,16 +753,16 @@ final class CoordinatorController: ObservableObject {
             if oldValue.mainOnLeft != workspaceLayout.mainOnLeft {
                 Analytics.setting("main_pane_side", workspaceLayout.mainOnLeft ? "left" : "right")
             }
-            scheduleLiveLayoutApply()
         }
     }
 
     /// The layout library (Settings -> Layout): named templates, and which one a
     /// class start uses (nil = None). Saved as one JSON blob under `layoutLibrary`.
     ///
-    /// Until the runtime reads templates (phase B), the choice is bridged to the
-    /// old switch: None turns `arrangeWindowsOnStart` off, any template turns it
-    /// on, so today's arranging keeps working.
+    /// The runtime reads the library, not the old switch: Start captures
+    /// `layoutLibrary.active` as `sessionTemplate`. `arrangeWindowsOnStart` is
+    /// still written from the choice (None off, any template on) so the settings
+    /// transfer and an older Greenroom keep agreeing - nothing here reads it.
     @Published var layoutLibrary: LayoutLibrary {
         didSet {
             guard layoutLibrary != oldValue else { return }
@@ -777,39 +771,61 @@ final class CoordinatorController: ObservableObject {
             if workspaceLayout.arrangeWindowsOnStart != arranges {
                 workspaceLayout.arrangeWindowsOnStart = arranges
             }
+            // Quick-hide row: the stored value follows the active layout's Meeting.
+            if let hidden = layoutLibrary.active?.meetingStartsHidden, hidden != speakerTileShortcutEnabled {
+                speakerTileShortcutEnabled = hidden
+            }
+            // Only an edit to the layout THIS class is running re-tiles it. Picking
+            // another card does not rearrange a class in progress (Settings offers
+            // "Apply now" for that), and editing a layout the class is not using
+            // touches nothing.
+            if let running = sessionTemplate, let edited = layoutLibrary.template(id: running.id), edited != running {
+                sessionTemplate = edited
+                scheduleLiveLayoutApply()
+            }
         }
     }
 
+    /// The layout this class runs, captured at Start. nil when the class
+    /// arranges nothing (None) and outside a class. Read by every gate, never the
+    /// live choice, so the card picked in Settings mid-class changes nothing.
+    @Published private(set) var sessionTemplate: LayoutTemplate?
+
+    /// The class is live and arranged, so another layout can be applied now.
+    var liveSessionLayoutID: UUID? { (isRunning || stageLive) ? sessionTemplate?.id : nil }
+
+    private lazy var layoutEngine = LayoutEngine(chat: zoomChatBridge, log: { [weak self] in self?.log($0) })
+
     private var layoutApplyTask: Task<Void, Never>?
 
-    /// Layout edits made mid-session (dragging the divider in Settings)
-    /// apply to the LIVE windows automatically - no Snap Windows Back
-    /// needed. Debounced: a drag emits dozens of changes a second, and
-    /// re-tiling real windows (AppleScript/AX calls) at that rate would
-    /// thrash; 400ms after the last change, everything re-tiles once.
+    /// A layout edit made mid-class (dragging a piece in Settings) applies to
+    /// the LIVE windows by itself - no Snap Windows Back needed. Debounced: a drag
+    /// emits dozens of changes a second, and re-tiling real windows
+    /// (AppleScript/AX calls) at that rate would thrash; 400ms after the last
+    /// change, everything re-tiles once. Fires only for the session's own layout.
     private func scheduleLiveLayoutApply() {
-        // A session that arranges nothing must never reposition anything - the
-        // chat can be open on demand, and stageLive alone would pass.
-        guard sessionArranges || !(isRunning || stageLive) else { return }
-        guard ChatWindowController.isOpen || stageLive else { return }
+        guard sessionArranges, sessionTemplate != nil, isRunning || stageLive else { return }
         layoutApplyTask?.cancel()
         layoutApplyTask = Task {
             try? await Task.sleep(nanoseconds: 400_000_000)
             if Task.isCancelled { return }
-            _ = await MainPaneManager.repositionFrontWindow(bundleID: mainAppBundleID, layout: workspaceLayout)
-            if ChatWindowController.isOpen {
-                if speakerTileQuickHidden {
-                    ChatWindowController.fillSideColumn(layout: workspaceLayout)
-                } else {
-                    ChatWindowController.show(chat: zoomChatBridge, layout: workspaceLayout)
-                }
-            }
-            // Re-parks the tile into the resized slot; preserves the
-            // current quick-hide state (a mid-class toggle must not be
-            // undone by resizing a pane).
-            parkBuiltInMeetingWindow()
+            reapplyLayout(userInitiated: false, openApps: false)
         }
     }
+
+    /// Settings' "Apply now": make this layout the one the live class runs and
+    /// place it. Only an arranged class can switch (a class that arranges nothing
+    /// has no follow loops, pill or Zoom mode set up for one); the apps the new
+    /// layout opens at start are opened.
+    func applyLayoutNow(_ id: UUID) {
+        guard sessionArranges, sessionTemplate != nil, isRunning || stageLive,
+              let template = layoutLibrary.template(id: id) else { return }
+        sessionTemplate = template
+        speakerTileQuickHidden = layoutEngine.startsHidden(template)
+        log("Applying \u{201C}\(template.name)\u{201D} now\u{2026}")
+        reapplyLayout(userInitiated: false, openApps: true)
+    }
+
     /// Which app occupies the main pane. Chrome (the default, and what
     /// this used to hardcode) goes through its AppleScript special case;
     /// anything else is tiled via the Accessibility API.
@@ -1336,7 +1352,12 @@ final class CoordinatorController: ObservableObject {
         isRunning = true
         stageLive = false
         statusLines = []
-        sessionArranges = workspaceLayout.arrangeWindowsOnStart
+        // The layout this class runs: the card chosen in Settings right now, held for
+        // the whole class. None (nil) arranges nothing.
+        sessionTemplate = layoutLibrary.active
+        sessionArranges = sessionTemplate != nil
+        zoomChatClient.arrangesWindows = sessionArranges
+        speakerTileQuickHidden = sessionTemplate.map { layoutEngine.startsHidden($0) } ?? false
         let startedAt = Date()
         sessionStartedAt = startedAt
         // Named now, created later - see sessionFolder. Unique, so two
@@ -1350,7 +1371,9 @@ final class CoordinatorController: ObservableObject {
             .mode: meetingMode == .join ? "join" : "start",
             .customUI: customUIMode ? "yes" : "no",
             .displays: String(NSScreen.screens.count),
-            .mainApp: Analytics.mainAppKind(bundleID: mainAppBundleID)
+            .mainApp: sessionTemplate.flatMap { template in
+                layoutEngine.resolve(template).apps.first?.piece.kind.app.map { Analytics.mainAppKind(bundleID: $0.bundleID) }
+            } ?? "none"
         ])
 
         resetStartReadiness()
@@ -1369,11 +1392,12 @@ final class CoordinatorController: ObservableObject {
                 // Perceived speed: the main app doesn't depend on
                 // anything else - open it first so something visibly
                 // happens the instant Start is pressed.
-                let opensMainApp = mainAppOnStart && sessionArranges
-                mark(.workspace, opensMainApp ? .active : .skipped)
-                if opensMainApp {
-                    log("Opening the \(mainAppDisplayName) window (\(workspaceLayout.label))\u{2026}")
-                    openMainAppWindow()
+                let opensApps = sessionTemplate.map { template in
+                    layoutEngine.resolve(template).apps.contains { $0.piece.kind.app?.opensAtStart == true }
+                } ?? false
+                mark(.workspace, opensApps ? .active : .skipped)
+                if opensApps, let template = sessionTemplate {
+                    layoutEngine.openApps(template, hidden: speakerTileQuickHidden)
                     mark(.workspace, .done)
                 }
 
@@ -1553,17 +1577,12 @@ final class CoordinatorController: ObservableObject {
                 log("Left the meeting chat.")
             }
             zoomChatBridge.reset()
-            // The browser is the teacher's, not the meeting's, so by default
-            // it stays open like Chrome would. Closing it with the session is
-            // a choice (Settings → Layout); its tabs survive for the next Start.
-            if !sessionArranges {
-                // Nothing was opened, so nothing is closed.
-            } else if browserClosesOnStop, AppCatalog.isBuiltInBrowser(mainAppBundleID), BrowserWindowController.isOpen {
-                BrowserWindowController.close()
-                log("Closed the Greenroom Browser window.")
-            } else if browserClosesOnStop, AppCatalog.isBrowser(mainAppBundleID),
-                      let line = await ChromeWindowManager.closeSessionWindow(bundleID: mainAppBundleID) {
-                log(line)
+            // The apps are the teacher's, not the meeting's, so by default they
+            // stay open like Chrome would. An App piece can ask to close with the
+            // class (Close when class ends); its tabs survive for the next Start.
+            // Nothing arranged means nothing was opened, so nothing is closed.
+            if sessionArranges, let template = sessionTemplate {
+                await layoutEngine.closeApps(template)
             }
             // Custom UI: stop the SDK rendering into views that are about to
             // go away, then drop our window.
@@ -1617,6 +1636,8 @@ final class CoordinatorController: ObservableObject {
             stageLive = false
             isRunning = false
             isStopping = false
+            sessionTemplate = nil
+            speakerTileQuickHidden = false
             resumePreviewIfWanted()
             // The session pushed Greenroom to the back (finalizeLayout) so
             // the main app could take the stage - with the meeting over,
@@ -2359,18 +2380,40 @@ final class CoordinatorController: ObservableObject {
         AppCatalog.displayName(forBundleID: mainAppBundleID) ?? "Main App"
     }
 
-    /// Opens the main-pane app tiled to its slice, using the saved layout
-    /// (+ default website when it's a browser). Chrome goes through its
-    /// AppleScript path; everything else launches and AX-tiles, which can
-    /// take a few seconds for a cold-started app - hence the Task.
+    /// The Manual controls item: opens the apps of the layout this class runs, or
+    /// of the layout chosen in Settings when there is no class, each in its frame.
+    /// Chrome-family browsers go through AppleScript; everything else launches
+    /// and AX-tiles, which can take a few seconds for a cold-started app.
     func openMainAppWindow() {
-        Task {
-            if let error = await MainPaneManager.openWindow(bundleID: mainAppBundleID,
-                                                            urlString: mainAppURL,
-                                                            layout: workspaceLayout) {
-                log(error)
-            }
+        guard let template = sessionTemplate ?? layoutLibrary.active else {
+            log("No layout is chosen, so there are no apps to open. Pick one in Settings (\u{2318},) \u{2192} Layout.")
+            return
         }
+        layoutEngine.openApps(template, hidden: speakerTileQuickHidden, all: true)
+    }
+
+    /// The meeting window's Chat button when no panel carries the chat: the
+    /// window opens at the layout's Chat piece in an arranged class, and where it
+    /// lands otherwise.
+    func revealChatWindow() {
+        ChatWindowController.show(chat: zoomChatBridge,
+                                  frame: sessionArranges
+                                      ? sessionTemplate.flatMap { layoutEngine.chatFrame($0, meetingHidden: speakerTileQuickHidden) }
+                                      : nil)
+    }
+
+    /// Where a closed Greenroom Browser reopens (Cues opening a card): its piece
+    /// in an arranged class; nil, so it is left to open centred, when nothing is
+    /// arranged.
+    var builtInBrowserLayoutFrame: NSRect? {
+        guard sessionArranges, let template = sessionTemplate else { return nil }
+        return layoutEngine.builtInBrowserFrame(template)
+    }
+
+    /// There is a layout with at least one App piece to open.
+    var layoutHasApps: Bool {
+        guard let template = sessionTemplate ?? layoutLibrary.active else { return false }
+        return !layoutEngine.resolve(template).apps.isEmpty
     }
 
     /// The all-in-one path: Greenroom's built-in SDK client IS the meeting
@@ -2408,7 +2451,7 @@ final class CoordinatorController: ObservableObject {
         if let controller = zoomChatClient.chatController() {
             zoomChatBridge.attach(to: controller)
         }
-        if sessionArranges { ChatWindowController.show(chat: zoomChatBridge, layout: workspaceLayout) }
+        if let template = sessionTemplate { layoutEngine.openChat(template, meetingHidden: speakerTileQuickHidden) }
         log("Meeting is live \u{2014} you're hosting from Greenroom.")
 
         if sessionArranges {
@@ -2489,7 +2532,7 @@ final class CoordinatorController: ObservableObject {
         if let controller = zoomChatClient.chatController() {
             zoomChatBridge.attach(to: controller)
         }
-        if sessionArranges { ChatWindowController.show(chat: zoomChatBridge, layout: workspaceLayout) }
+        if let template = sessionTemplate { layoutEngine.openChat(template, meetingHidden: speakerTileQuickHidden) }
         log(startedAsHost
             ? "Meeting is live \u{2014} you're hosting from Greenroom."
             : "In the meeting.")
@@ -2546,45 +2589,34 @@ final class CoordinatorController: ObservableObject {
         placeCustomSurfaces()
     }
 
-    /// Puts Greenroom's meeting window and the chat where an arranged custom-UI
-    /// session wants them. On a single display the window takes Zoom's old slot
-    /// with the chat tucked underneath; on a reference display the full panel
-    /// is there and the chat takes the whole column.
+    /// Puts Greenroom's meeting window and the chat where the layout wants them
+    /// (LayoutEngine.placeMeetingAndChat). A Meeting piece in a rectangle takes
+    /// that rectangle; one that fills a display is the full panel there; a layout
+    /// without a Meeting piece leaves the window free. Hidden (\u{2325}\u{2318}Z or
+    /// "Starts hidden"), the neighbour that joins it has grown into the gap.
     private func placeCustomSurfaces() {
-        guard sessionArranges else { return }
-        if ParticipantGridWindowController.isSlot, let slot = ChatWindowController.zoomSlotNSFrame(for: workspaceLayout) {
-            speakerTileQuickHidden = false
-            ParticipantGridWindowController.show()   // Snap Back never leaves it hidden
-            ParticipantGridWindowController.place(slot: slot)
-            if let screen = DisplayResolver.mainDisplayScreen() {
-                let ax = CGRect(x: slot.origin.x, y: screen.frame.height - slot.maxY,
-                                width: slot.width, height: slot.height)
-                ChatWindowController.adjustBelowZoom(actualZoomFrameAX: ax, layout: workspaceLayout)
-            }
-        } else {
-            speakerTileQuickHidden = true
-            ChatWindowController.fillSideColumn(layout: workspaceLayout)
-        }
+        guard sessionArranges, let template = sessionTemplate else { return }
+        if layoutEngine.placedMeeting(template) == nil { speakerTileQuickHidden = false }
+        layoutEngine.placeMeetingAndChat(template, hidden: speakerTileQuickHidden)
     }
 
     /// Where Greenroom's meeting window goes right now, and in which form.
     ///
     /// No layout: a window the teacher owns, filling the reference display the
-    /// first time if there is one, else centred on the main display. Arranged
-    /// with a reference display: the full panel there. Arranged on one display:
-    /// the window takes Zoom's old slot. Never borderless but for the full panel.
-    /// Worked out every tick, so a display plugged in mid-class moves it.
+    /// first time if there is one, else centred on the main display. Arranged: the
+    /// layout's Meeting piece - a Meeting that fills a display is the full panel
+    /// there (`.reference`), one in a rectangle is `.placed(rect)` (Speaker view
+    /// with the toolbar on hover when under 760x520, else the full meeting form),
+    /// and a layout without one is the free window. Never borderless but for the
+    /// full panel. Worked out every tick, so a display plugged in mid-class moves it.
     private func meetingSurfaceTarget() -> (screen: NSScreen, form: ParticipantGridWindowController.Form)? {
-        let reference = peopleViewTargetScreen()
         if !sessionArranges {
+            let reference = peopleViewTargetScreen()
             guard let screen = reference ?? DisplayResolver.mainDisplayScreen() else { return nil }
             return (screen, .meeting(fillsScreen: reference != nil))
         }
-        if peopleViewWanted, let reference { return (reference, .reference) }
+        if let template = sessionTemplate, let target = layoutEngine.meetingTarget(template) { return target }
         guard let screen = DisplayResolver.mainDisplayScreen() else { return nil }
-        if let slot = ChatWindowController.zoomSlotNSFrame(for: workspaceLayout) {
-            return (screen, .slot(slot))
-        }
         return (screen, .meeting(fillsScreen: false))
     }
 
@@ -2614,11 +2646,8 @@ final class CoordinatorController: ObservableObject {
             endSession: { [weak self] in self?.stop() },
             showChat: { [weak self] in
                 guard let self else { return }
-                if self.sessionArranges {
-                    ChatWindowController.reveal(layout: self.workspaceLayout)
-                } else {
-                    ChatWindowController.show(chat: self.zoomChatBridge, layout: nil)
-                }
+                self.layoutEngine.revealChat(self.sessionArranges ? self.sessionTemplate : nil,
+                                             hidden: self.speakerTileQuickHidden)
             },
             toggleRecording: { [weak self] in self?.toggleRecording() },
             snapBack: { [weak self] in self?.snapWindowsBack() },
@@ -2689,7 +2718,7 @@ final class CoordinatorController: ObservableObject {
             // Only SESSION STARTS reset to the default - a live layout
             // re-apply or snap-back must not undo a mid-class toggle.
             if resetQuickHideToDefault {
-                speakerTileQuickHidden = speakerTileShortcutEnabled
+                speakerTileQuickHidden = sessionTemplate.map { layoutEngine.startsHidden($0) } ?? false
             }
             // SDK-level first: both meeting views out of fullscreen. A
             // window in a fullscreen Space ignores setFrame, so nothing
@@ -2698,7 +2727,13 @@ final class CoordinatorController: ObservableObject {
             var waitedTicks = 0
             gridCorrectionStreak = 0
             gridCorrectionHoldUntilTick = 0
-            while !Task.isCancelled, ChatWindowController.isOpen {
+            // Runs for as long as the arranged class does. (It used to ride on the
+            // chat window being open; a layout need not have a Chat piece.)
+            while !Task.isCancelled, sessionArranges, isRunning || stageLive {
+                // The layout is read again every tick: an edit or a display change
+                // moves the Meeting piece, and the loop follows it.
+                let planned = sessionTemplate.flatMap { layoutEngine.placedMeeting($0) }
+                let tileWanted = planned != nil
                 // Ref death (the SDK recreates its windows on activation -
                 // a CLICK does it) leaves `parked` stale-true, so the
                 // recreated tile would never re-park and camps wherever
@@ -2708,7 +2743,7 @@ final class CoordinatorController: ObservableObject {
                 // short-circuits on builtInMeetingWindow, so without this a
                 // stand-in adopted at the 4s mark would stay the tile for the
                 // whole session.
-                if tileIsFallback, workspaceLayout.sideShowsZoomTile,
+                if tileIsFallback, tileWanted,
                    let preferred = preferredTileWindow(), preferred !== builtInMeetingWindow {
                     let wasStandingIn = builtInMeetingWindow != nil
                     builtInMeetingWindow = preferred
@@ -2723,7 +2758,7 @@ final class CoordinatorController: ObservableObject {
                 // The stray guard below must run even with the Zoom tile
                 // toggled off - that's when the primary window has no slot
                 // and is most likely to sit fullscreen over the capture.
-                var tile: NSWindow? = workspaceLayout.sideShowsZoomTile
+                var tile: NSWindow? = tileWanted
                     ? builtInMeetingWindow ?? tileWindowCandidate(waitedTicks: waitedTicks)
                     : nil
                 // Geometry sanity: a "tile" living on the people-view
@@ -2763,14 +2798,14 @@ final class CoordinatorController: ObservableObject {
                         }
                         if window.isVisible {
                             window.orderOut(nil)
-                            ChatWindowController.fillSideColumn(layout: workspaceLayout)
+                            if let template = sessionTemplate { layoutEngine.moveNeighbour(template, meetingHidden: true) }
                             if !quickHideAnnounced {
                                 quickHideAnnounced = true
-                                log("Speaker tile starts hidden (quick-hide mode) \u{2014} chat has the full column; \u{2325}\u{2318}Z shows the speaker.")
+                                log("Speaker tile starts hidden \u{2014} what sat beside it has its room; \u{2325}\u{2318}Z shows the speaker.")
                             }
                         }
                         parked = false
-                    } else if !parked, let slot = ChatWindowController.zoomSlotNSFrame(for: workspaceLayout) {
+                    } else if !parked, let slot = planned?.frames.ns {
                         window.level = .normal // clear any stale floating level
                         if !window.isVisible { window.orderFront(nil) } // e.g. mode just turned off
                         window.setFrame(slot, display: true)
@@ -2803,13 +2838,9 @@ final class CoordinatorController: ObservableObject {
                         || abs(frame.origin.y - lastFrame.origin.y) > 2
                         || abs(frame.width - lastFrame.width) > 2
                         || abs(frame.height - lastFrame.height) > 2
-                    if !speakerTileQuickHidden, tileMoved, let screen = DisplayResolver.mainDisplayScreen() {
+                    if !speakerTileQuickHidden, tileMoved, let template = sessionTemplate {
                         lastFrame = frame
-                        let axFrame = CGRect(x: frame.origin.x,
-                                             y: screen.frame.height - frame.maxY,
-                                             width: frame.width,
-                                             height: frame.height)
-                        ChatWindowController.adjustBelowZoom(actualZoomFrameAX: axFrame, layout: workspaceLayout)
+                        layoutEngine.fitNeighbour(template, aroundActual: frame)
                     }
                 }
                 demoteStrayMeetingWindows()
@@ -3051,12 +3082,14 @@ final class CoordinatorController: ObservableObject {
         MeetingControlBarController.reconcile(immediately: false)
     }
 
-    /// The close button. An arranged column gives the chat the room back.
+    /// The close button. A placed Meeting counts as hidden: the neighbour that
+    /// joins it grows into the room (\u{2325}\u{2318}Z, or the pill, brings it back).
     private func meetingWindowClosedByUser() {
         closeMeetingWindow()
-        if sessionArranges, isRunning || stageLive {
+        if sessionArranges, isRunning || stageLive, let template = sessionTemplate,
+           layoutEngine.placedMeeting(template) != nil {
             speakerTileQuickHidden = true
-            ChatWindowController.fillSideColumn(layout: workspaceLayout)
+            layoutEngine.moveNeighbour(template, meetingHidden: true)
         }
     }
 
@@ -3246,44 +3279,49 @@ final class CoordinatorController: ObservableObject {
     }
 
     /// The menu bar's "Snap Windows Back": re-tiles everything to the
-    /// session layout after the user has dragged windows around. Handles
-    /// the built-in client's meeting window (ours, a plain NSWindow), and
-    /// the follow loops those restart re-align the chat automatically.
+    /// session layout after the user has dragged windows around - the apps, the
+    /// chat and the meeting window - through the same engine that placed them.
     ///
-    /// `userInitiated: false` is the same re-tiling after a display change: it
-    /// leaves the person's quick-hide choice and the usage count alone.
+    /// `userInitiated: false` is the same re-tiling after a display change or a
+    /// layout edit: it leaves the person's \u{2325}\u{2318}Z choice and the usage
+    /// count alone.
     func snapWindowsBack(userInitiated: Bool = true) {
         guard layoutToolsAvailable else {
             log("Snap Windows Back skipped \u{2014} this session arranges no windows.")
             return
         }
+        guard sessionTemplate != nil || layoutLibrary.active != nil else {
+            log("Snap Windows Back skipped \u{2014} no layout is chosen.")
+            return
+        }
+        reapplyLayout(userInitiated: userInitiated, openApps: false)
+    }
+
+    /// Re-places everything from the session's layout (or, outside a class, the
+    /// one chosen in Settings), re-resolved against the displays as they are NOW.
+    /// `openApps` also opens the apps that open at start (Apply now).
+    private func reapplyLayout(userInitiated: Bool, openApps: Bool) {
+        guard let template = sessionTemplate ?? layoutLibrary.active else { return }
         if userInitiated {
             Analytics.feature("snap_back")
-            // Restore the quick-hide mode's DEFAULT state (hidden when the
-            // mode is on, normal tile layout when off) - the parking loop
-            // restarted below asserts it.
-            speakerTileQuickHidden = speakerTileShortcutEnabled
+            // Back to the layout's own starting state: hidden if the Meeting
+            // starts hidden, shown otherwise.
+            speakerTileQuickHidden = layoutEngine.startsHidden(template)
+        } else if layoutEngine.placedMeeting(template) == nil {
+            // A display change can turn a placed Meeting into a whole-display one
+            // (or take it away): nothing is hidden then.
+            speakerTileQuickHidden = false
         }
         builtInMeetingWindow?.level = .normal
+        let hidden = speakerTileQuickHidden
         Task {
-            if let error = await MainPaneManager.repositionFrontWindow(bundleID: mainAppBundleID, layout: workspaceLayout) {
-                log(error)
-            }
-        }
-        if ChatWindowController.isOpen {
-            ChatWindowController.show(chat: zoomChatBridge, layout: workspaceLayout)
-            // Custom UI places its own surfaces below (presentMeetingSurfaces);
-            // Zoom's own tile is parked by the loop that restarts here, and
-            // show() lays the chat out with the tile's slot reserved - wrong when
-            // the quick-hide default just hid it, which left a ~350pt hole where
-            // no tile was coming.
-            if !zoomChatClient.didUseCustomUI, speakerTileQuickHidden {
-                ChatWindowController.fillSideColumn(layout: workspaceLayout)
-            }
+            await layoutEngine.apply(template, open: openApps, meetingHidden: hidden)
         }
         // Snap Back is also the manual "fix the composite" action: hand the
         // picture its settings again alongside the window re-tiling.
         applyShapeForPreview()
+        // The meeting's own windows exist only while a class does.
+        guard isRunning || stageLive else { return }
         if zoomChatClient.didUseCustomUI {
             // Our own windows: re-place them rather than hunting for the SDK's.
             presentMeetingSurfaces(resetQuickHideToDefault: false)
@@ -3567,17 +3605,31 @@ final class CoordinatorController: ObservableObject {
     /// there's nowhere but the main screen to put it (the main screen -
     /// and any class mirror of it - is already showing the tiled
     /// workspace, so the gallery must not land there).
+    ///
+    /// Arranged, that is the display the layout's Meeting piece fills (the
+    /// layout's own second-display rule, resolved now); nil when the layout has no
+    /// such piece or the display is not connected. A class that arranges nothing
+    /// still reads the old People-view setting.
     private func peopleViewTargetScreen() -> NSScreen? {
+        if sessionArranges, let template = sessionTemplate {
+            return layoutEngine.referenceScreen(template)
+        }
         if !peopleViewDisplayUUID.isEmpty, let chosen = DisplayResolver.screen(forUUID: peopleViewDisplayUUID) {
             return chosen
         }
         return DisplayResolver.firstSecondaryScreen()
     }
 
+    /// The saved display UUID the gallery was asked to go to ("" = automatic).
+    private var peopleViewChosenUUID: String {
+        sessionArranges && sessionTemplate != nil ? (sessionTemplate?.twoDisplays?.secondUUID ?? "") : peopleViewDisplayUUID
+    }
+
     /// Whether this session should put the gallery on another display:
     /// the toggle is on AND a valid target display exists right now.
     private var peopleViewWanted: Bool {
-        peopleViewOnStart && peopleViewTargetScreen() != nil
+        if sessionArranges, sessionTemplate != nil { return peopleViewTargetScreen() != nil }
+        return peopleViewOnStart && peopleViewTargetScreen() != nil
     }
 
     /// Whether the SDK runs with TWO meeting windows this session.
@@ -3593,7 +3645,10 @@ final class CoordinatorController: ObservableObject {
     /// Every window-ROLE decision keys off this (which window is the tile,
     /// whether to simplify the tile's view, what the stray sweep may demote).
     /// Only the placement decisions still key off `peopleViewWanted`.
-    private var galleryWindowExists: Bool { peopleViewOnStart }
+    private var galleryWindowExists: Bool {
+        if sessionArranges, let template = sessionTemplate { return template.hasFillsDisplayMeeting }
+        return peopleViewOnStart
+    }
 
     /// Sends the built-in client's dual-screen gallery window full-screen
     /// onto the chosen (or default secondary) display. Polls for it
@@ -3601,7 +3656,7 @@ final class CoordinatorController: ObservableObject {
     /// The primary is identified by `builtInMeetingWindow` (set when the
     /// tile parks); the gallery is any other SDK meeting window.
     private func placePeopleViewWindow() {
-        guard peopleViewOnStart else { return }
+        guard galleryWindowExists else { return }
         guard let target = peopleViewTargetScreen() else {
             // Used to give up here. The window is worth having even with
             // nowhere special to put it - it just goes behind the workspace
@@ -3609,7 +3664,7 @@ final class CoordinatorController: ObservableObject {
             placePeopleViewBehindWorkspace()
             return
         }
-        let onChosen = !peopleViewDisplayUUID.isEmpty && DisplayResolver.screen(forUUID: peopleViewDisplayUUID) != nil
+        let onChosen = !peopleViewChosenUUID.isEmpty && DisplayResolver.screen(forUUID: peopleViewChosenUUID) != nil
         peopleViewTask?.cancel()
         peopleViewTask = Task {
             for _ in 0..<30 {
@@ -3886,11 +3941,8 @@ final class CoordinatorController: ObservableObject {
         where window.isVisible && window.title == "Greenroom" && !BrowserWindowController.owns(window) {
             window.orderBack(nil)
         }
-        if AppCatalog.isBuiltInBrowser(mainAppBundleID) {
-            BrowserWindowController.activate()
-        } else {
-            NSRunningApplication.runningApplications(withBundleIdentifier: mainAppBundleID).first?.activate()
-        }
+        // The largest App piece on the main display is what the teacher works in.
+        if let template = sessionTemplate { layoutEngine.activateLargestApp(template) }
     }
 
     private func runPipeline() async throws {
@@ -4181,6 +4233,11 @@ struct SettingsTransfer: Codable {
     var autoRecordOnStart: Bool?
     var meetingPresets: [MeetingPreset]?
     var workspaceLayout: WorkspaceLayout?
+    /// The layout library (templates and the Start choice). Added with the layout
+    /// creator. Import REPLACES this Mac's library with it. A file without one
+    /// carries only workspaceLayout / chromeLayout, which import migrates into a
+    /// template appended to the library.
+    var layoutLibrary: LayoutLibrary?
 
     // Added 2026-09-19, after an audit found fourteen real settings that a
     // teacher had set and an export did not carry. A colleague importing the
@@ -4258,6 +4315,7 @@ extension CoordinatorController {
             autoRecordOnStart: autoRecordOnStart,
             meetingPresets: meetingPresets,
             workspaceLayout: workspaceLayout,
+            layoutLibrary: layoutLibrary,
             userDisplayName: userDisplayName,
             customUIMode: customUIMode,
             clipBufferEnabled: clipBufferEnabled,
@@ -4297,6 +4355,19 @@ extension CoordinatorController {
         guard let data = value.data(using: .utf8),
               (try? JSONSerialization.jsonObject(with: data)) != nil else { return }
         UserDefaults.standard.set(data, forKey: key)
+    }
+
+    /// A template with its saved second display cleared when that display is not
+    /// connected to this Mac: an exported UUID from another Mac matches nothing
+    /// here, and "automatic" finds the right one.
+    private static func withLocalDisplays(_ template: LayoutTemplate) -> LayoutTemplate {
+        guard var two = template.twoDisplays, !two.secondUUID.isEmpty else { return template }
+        let connected = Set(DisplayResolver.connectedDisplays().map(\.id))
+        guard !connected.contains(two.secondUUID) else { return template }
+        var copy = template
+        two.secondUUID = ""
+        copy.twoDisplays = two
+        return copy
     }
 
     func importSettings(from data: Data) throws {
@@ -4376,11 +4447,36 @@ extension CoordinatorController {
             settings.save()
         }
         if let value = transfer.meetingPresets { meetingPresets = value }
+        let carriedOldLayout: Bool
         if let value = transfer.workspaceLayout {
             workspaceLayout = value
+            carriedOldLayout = true
         } else if let raw = transfer.chromeLayout, let migrated = WorkspaceLayout(legacyChromeLayout: raw) {
             workspaceLayout = migrated
+            carriedOldLayout = true
+        } else {
+            carriedOldLayout = false
         }
+        if var library = transfer.layoutLibrary {
+            // A second display saved on another Mac means nothing here: automatic.
+            library.templates = library.templates.map(Self.withLocalDisplays)
+            layoutLibrary = library
+        } else if carriedOldLayout {
+            // An older file: everything the old keys said, as one more template.
+            // (Those keys were assigned above, so they are read back from there.)
+            let legacy = LegacyLayoutSettings.read(from: defaults, defaultSiteURL: AppLinks.site)
+            if var imported = legacy.asTemplate().map(Self.withLocalDisplays) {
+                var library = layoutLibrary
+                if library.templates.contains(where: { $0.name == imported.name }) { imported.name = "Imported layout" }
+                library.templates.append(imported)
+                if legacy.arrangeWindowsOnStart { library.select(imported.id) }
+                layoutLibrary = library
+            }
+        }
+        // The old switch follows the choice (it carries the file's own value after
+        // the lines above, which the library no longer reads).
+        let arranges = layoutLibrary.active != nil
+        if workspaceLayout.arrangeWindowsOnStart != arranges { workspaceLayout.arrangeWindowsOnStart = arranges }
         log("Imported settings.")
     }
 }

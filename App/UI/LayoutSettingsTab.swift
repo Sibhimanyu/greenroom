@@ -32,7 +32,17 @@ struct LayoutSettingsTab: View {
         LayoutPageContent(
             library: $coordinator.layoutLibrary,
             hideSelfView: $coordinator.hideSelfView,
-            quickHide: $coordinator.speakerTileShortcutEnabled,
+            // The Meeting piece's "Starts hidden" in the active layout; the stored
+            // setting is the fallback when the layout has no Meeting piece.
+            quickHide: Binding(
+                get: { coordinator.layoutLibrary.active?.meetingStartsHidden ?? coordinator.speakerTileShortcutEnabled },
+                set: { hidden in
+                    coordinator.speakerTileShortcutEnabled = hidden
+                    if var active = coordinator.layoutLibrary.active {
+                        active.setMeetingStartsHidden(hidden)
+                        coordinator.layoutLibrary.update(active)
+                    }
+                }),
             analyticsEnabled: $coordinator.analyticsEnabled,
             browserRestoresTabs: $coordinator.browserRestoresTabs,
             browserSearchSuggestions: $coordinator.browserSearchSuggestions,
@@ -52,7 +62,9 @@ struct LayoutSettingsTab: View {
             },
             showOnScreen: { template, look in
                 LayoutScreenPreview.show(LayoutScreenPreview.items(for: template, look: look))
-            })
+            },
+            liveLayoutID: coordinator.liveSessionLayoutID,
+            applyNow: { coordinator.applyLayoutNow($0) })
         .onAppear {
             apps = AppCatalog.installedAndRunning()
             displays = DisplayResolver.connectedDisplays()
@@ -127,6 +139,11 @@ struct LayoutPageContent: View {
     let canMoveApps: Bool
     let openAccessibilitySettings: () -> Void
     let showOnScreen: (LayoutTemplate, (LayoutPiece) -> LayoutPieceLook) -> Void
+    /// The layout the class in progress is running; nil when there is no arranged
+    /// class. An edit to that layout applies by itself; picking another card does
+    /// not, so the editor offers "Apply now" for it.
+    var liveLayoutID: UUID?
+    var applyNow: (UUID) -> Void = { _ in }
     /// Where the editor opens, for the off-screen render (.context/lr). Nil in the app.
     var opensOn: (selection: UUID?, showsTwo: Bool, slot: LayoutSlot)?
 
@@ -180,7 +197,7 @@ struct LayoutPageContent: View {
                 }
                 VStack(alignment: .leading, spacing: 2) {
                     Toggle("Quick-hide mode", isOn: $quickHide)
-                    Text("Class starts with the speaker window hidden and the chat taking the full side. \u{2325}\u{2318}Z brings it back.")
+                    Text("Class starts with the meeting window hidden and whatever sits beside it taking its room. \u{2325}\u{2318}Z brings it back.")
                         .font(.callout)
                         .foregroundStyle(.secondary)
                 }
@@ -610,6 +627,10 @@ struct LayoutPageContent: View {
                 }
                 .disabled(template.pieceCount == 0)
                 .help("Outlines where each piece would go, on your real displays, for a moment.")
+                if let live = liveLayoutID, live != template.id {
+                    Button("Apply now") { applyNow(template.id) }
+                        .help("A class is running another layout. This moves it to this one now; otherwise this layout starts with the next class.")
+                }
             }
             if let notice {
                 StatusBadge(text: notice, tone: .waiting)

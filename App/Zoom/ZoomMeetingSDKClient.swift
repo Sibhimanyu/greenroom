@@ -47,6 +47,11 @@ final class ZoomMeetingSDKClient: NSObject, ObservableObject {
     /// matters downstream is the mode the SDK is actually RUNNING in.
     private(set) var didUseCustomUI = false
 
+    /// Whether this class runs a layout (a template is active), set by the
+    /// coordinator at Start. Read when a meeting is joined: an arranged class
+    /// parks Zoom's window as a tile, so it drops the thumbnail and info button.
+    var arrangesWindows = false
+
     /// On unless the teacher turned it off (2026-11-11: Greenroom's own meeting
     /// window runs every meeting). App-restart-scoped: `needCustomizedUI` is an
     /// initSDK parameter, so it cannot change while the process lives.
@@ -1030,7 +1035,7 @@ final class ZoomMeetingSDKClient: NSObject, ObservableObject {
         // one, so it keeps its thumbnail and info button. In custom UI there is
         // no Zoom window at all, so the setting is moot either way.
         // Assigned both ways: the configuration outlives a session.
-        let hidesForTile = WorkspaceLayout.load(from: .standard).arrangeWindowsOnStart
+        let hidesForTile = arrangesWindows
         configuration.hideThumbnailVideoWindow = hidesForTile
         configuration.hideMeetingInfoButtonOnVideo = hidesForTile
         // Zoom's "Hide Self View" - a USER PREFERENCE, not hardcoded:

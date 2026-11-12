@@ -2,8 +2,7 @@
 //  MainPaneManager.swift
 //  Greenroom
 //
-//  Opens whatever app the user picked for the main pane and tiles it to
-//  its slice of the screen. Three paths:
+//  Opens an App piece of the layout and tiles it to its frame. Three paths:
 //   - Greenroom's own browser (BrowserWindowController) is our window:
 //    a plain setFrame, no permission of any kind.
 //   - Chrome keeps its dedicated AppleScript route (ChromeWindowManager):
@@ -23,17 +22,24 @@ enum MainPaneManager {
     /// A cold-launched app can take a while to show its first window.
     private static let windowTimeout: TimeInterval = 20
 
-    /// Opens/positions the main pane. Returns `nil` on success, or a
-    /// human-readable error otherwise (matching ChromeWindowManager's
-    /// convention).
-    static func openWindow(bundleID: String, urlString: String, layout: WorkspaceLayout) async -> String? {
+    /// Opens an App piece and puts it in `frame`. Returns `nil` on success, or a
+    /// line for the status log otherwise (an app that is not installed, a
+    /// missing Accessibility grant, a full-screen window, an app that kept its
+    /// own size - none of them stops the rest of the layout).
+    static func openWindow(bundleID: String, url urlString: String, frame: LayoutFrames) async -> String? {
         if AppCatalog.isBuiltInBrowser(bundleID) {
-            BrowserWindowController.show(urlString: urlString, layout: layout)
+            let framed = BrowserWindowController.show(urlString: urlString, frame: frame.ns)
             let typed = urlString.trimmingCharacters(in: .whitespacesAndNewlines)
             if !typed.isEmpty, AppCatalog.normalizedWebURL(from: urlString) == nil {
                 return "Opened \(AppCatalog.builtInBrowser.name) without a page \u{2014} \u{201C}\(urlString)\u{201D} is not a usable address. Retype it in Settings (\u{2318},)."
             }
+            if !framed { return "\(AppCatalog.builtInBrowser.name) is full screen, so Greenroom left its window where it is." }
             return nil
+        }
+
+        let name = AppCatalog.displayName(forBundleID: bundleID) ?? bundleID
+        guard let appURL = AppCatalog.appURL(forBundleID: bundleID) else {
+            return "\(name) isn\u{2019}t on this Mac, so it was skipped."
         }
 
         // Browsers: scripted route first, for EVERY browser. Handing a URL
@@ -44,21 +50,13 @@ enum MainPaneManager {
         // ships Chrome's dictionary verbatim; non-Chromium browsers fall
         // through to the generic path below.
         if AppCatalog.isBrowser(bundleID) {
-            let scriptError = await ChromeWindowManager.openWindow(bundleID: bundleID, occupying: layout, urlString: urlString)
+            let scriptError = await ChromeWindowManager.openWindow(bundleID: bundleID, occupying: frame.ax, urlString: urlString)
             guard let scriptError else { return nil }
             if scriptError.contains("isn't authorized") {
                 return scriptError // fixable permission problem - surface, don't fall back
             }
             // Dictionary not understood (non-Chromium browser) - generic
             // path below still works, just as a tab in an existing window.
-        }
-
-        let name = AppCatalog.displayName(forBundleID: bundleID) ?? bundleID
-        guard let frame = layout.mainPaneTopLeftFrame() else {
-            return "Couldn't read the main screen's size."
-        }
-        guard let appURL = AppCatalog.appURL(forBundleID: bundleID) else {
-            return "Couldn't find \(name) on this Mac \u{2014} pick a different main app in Settings (\u{2318},)."
         }
 
         let configuration = NSWorkspace.OpenConfiguration()
@@ -85,42 +83,56 @@ enum MainPaneManager {
             AppWindowManager.promptForAccessibilityPermission()
             return "\(name) is open, but Greenroom can't move its window without Accessibility permission \u{2014} allow Greenroom under System Settings \u{2192} Privacy & Security \u{2192} Accessibility, then try again."
         }
-        guard await AppWindowManager.positionFrontWindow(bundleID: bundleID, frame: frame, timeout: windowTimeout) != nil else {
+        switch await AppWindowManager.placeFrontWindow(bundleID: bundleID, frame: frame.ax, timeout: windowTimeout) {
+        case .noWindow:
             return "\(name) launched but never showed a window to tile."
+        case .fullScreen:
+            return "\(name) is full screen, so Greenroom left its window where it is."
+        case .placed(let actual):
+            return refusedSizeLine(name: name, asked: frame.ax, actual: actual)
         }
-        return nil
     }
 
     /// Re-tiles the app's existing front window WITHOUT launching
     /// anything or touching URLs - the "snap back" case after the user
     /// has dragged things around. No-op when the app isn't running.
     @discardableResult
-    static func repositionFrontWindow(bundleID: String, layout: WorkspaceLayout) async -> String? {
+    static func repositionFrontWindow(bundleID: String, frame: LayoutFrames) async -> String? {
         if AppCatalog.isBuiltInBrowser(bundleID) {
-            BrowserWindowController.reposition(layout: layout)
-            return nil
+            return BrowserWindowController.reposition(frame: frame.ns)
+                ? nil : "\(AppCatalog.builtInBrowser.name) is full screen, so Greenroom left its window where it is."
         }
 
+        guard !NSRunningApplication.runningApplications(withBundleIdentifier: bundleID).isEmpty else { return nil }
+        let name = AppCatalog.displayName(forBundleID: bundleID) ?? bundleID
+
         if AppCatalog.isBrowser(bundleID) {
-            let scriptError = await ChromeWindowManager.repositionFrontWindow(bundleID: bundleID, occupying: layout)
+            let scriptError = await ChromeWindowManager.repositionFrontWindow(bundleID: bundleID, occupying: frame.ax)
             guard let scriptError else { return nil }
             if scriptError.contains("isn't authorized") { return scriptError }
             // Non-Chromium browser - fall through to AX repositioning.
         }
 
-        guard !NSRunningApplication.runningApplications(withBundleIdentifier: bundleID).isEmpty else { return nil }
-        guard let frame = layout.mainPaneTopLeftFrame() else {
-            return "Couldn't read the main screen's size."
-        }
-        let name = AppCatalog.displayName(forBundleID: bundleID) ?? bundleID
         guard AppWindowManager.hasAccessibilityPermission else {
             AppWindowManager.promptForAccessibilityPermission()
             return "Greenroom can't move \(name)'s window without Accessibility permission \u{2014} allow it under System Settings \u{2192} Privacy & Security \u{2192} Accessibility."
         }
-        guard let window = AppWindowManager.frontWindow(ofAppWithBundleID: bundleID),
-              AppWindowManager.setFrame(frame, of: window) != nil else {
+        guard let window = AppWindowManager.frontWindow(ofAppWithBundleID: bundleID) else {
             return "Couldn't find a \(name) window to reposition."
         }
-        return nil
+        if AppWindowManager.isFullScreen(window) {
+            return "\(name) is full screen, so Greenroom left its window where it is."
+        }
+        guard let actual = AppWindowManager.setFrame(frame.ax, of: window) else {
+            return "Couldn't find a \(name) window to reposition."
+        }
+        return refusedSizeLine(name: name, asked: frame.ax, actual: actual)
+    }
+
+    /// An app that clamps a size keeps what it returns; nothing else moves to
+    /// make room. Said once, so a layout that does not quite fit is explained.
+    private static func refusedSizeLine(name: String, asked: CGRect, actual: CGRect) -> String? {
+        guard LayoutResolver.differs(actual, from: asked) else { return nil }
+        return "\(name) kept its own size: \(Int(actual.width))\u{00D7}\(Int(actual.height)) instead of \(Int(asked.width))\u{00D7}\(Int(asked.height)). Left as it is."
     }
 }

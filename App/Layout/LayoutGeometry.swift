@@ -388,3 +388,223 @@ enum LayoutGeometry {
         return CGRect(x: ns.minX, y: primaryHeight - ns.maxY, width: ns.width, height: ns.height)
     }
 }
+
+// MARK: - Resolving a template against the displays (phase B)
+
+/// One connected display as the resolver sees it: plain values, so the choice
+/// of variant can be tested without a screen.
+struct LayoutScreen: Equatable {
+    var id: String            // DisplayResolver's stable UUID string
+    var name: String
+    var visibleFrame: CGRect  // NSScreen.visibleFrame (bottom-left origin)
+    var isMain: Bool
+}
+
+/// A piece's frame in both coordinate spaces: AppKit's (NSWindow.setFrame) and
+/// the Accessibility / AppleScript one (top-left origin of the primary display).
+struct LayoutFrames: Equatable {
+    var ns: CGRect
+    var ax: CGRect
+}
+
+enum LayoutResolver {
+
+    enum Variant: Equatable { case oneDisplay, twoDisplays }
+
+    struct Placed: Equatable {
+        var piece: LayoutPiece
+        var slot: LayoutSlot
+        var screen: LayoutScreen
+        var frames: LayoutFrames
+        var fillsDisplay: Bool {
+            if case .meeting(let fills, _) = piece.kind { return fills }
+            return false
+        }
+    }
+
+    struct Result: Equatable {
+        var variant: Variant
+        var placed: [Placed]
+        /// Things worth a line in the status log: a fallback that was taken.
+        var notes: [String]
+        var primaryHeight: CGFloat
+
+        var meeting: Placed? { placed.first { $0.piece.kind.isMeeting } }
+        var chat: Placed? { placed.first { $0.piece.kind.isChat } }
+        var apps: [Placed] { placed.filter { $0.piece.kind.app != nil } }
+    }
+
+    /// Re-resolved on every call, never cached: displays come and go and a
+    /// screen's usable area changes with the Dock and the menu bar.
+    ///
+    /// The two-display version is used when the template has one AND a second
+    /// display is connected - `secondUUID` if it is, else the first display that
+    /// is not the main one. Otherwise the one-display version, on the main one.
+    static func resolve(_ template: LayoutTemplate, screens: [LayoutScreen], primaryHeight: CGFloat) -> Result {
+        guard let main = screens.first(where: \.isMain) ?? screens.first else {
+            return Result(variant: .oneDisplay, placed: [], notes: ["No display is available to place windows on."],
+                          primaryHeight: primaryHeight)
+        }
+        func place(_ pieces: [LayoutPiece], _ slot: LayoutSlot, on screen: LayoutScreen) -> [Placed] {
+            pieces.map { piece in
+                Placed(piece: piece, slot: slot, screen: screen,
+                       frames: LayoutFrames(
+                           ns: LayoutGeometry.nsFrame(for: piece.rect, visibleFrame: screen.visibleFrame),
+                           ax: LayoutGeometry.axFrame(for: piece.rect, visibleFrame: screen.visibleFrame,
+                                                      primaryHeight: primaryHeight)))
+            }
+        }
+        var notes: [String] = []
+        if let two = template.twoDisplays {
+            let others = screens.filter { $0.id != main.id }
+            let chosen = (!two.secondUUID.isEmpty ? others.first { $0.id == two.secondUUID } : nil) ?? others.first
+            if let second = chosen {
+                if !two.secondUUID.isEmpty, second.id != two.secondUUID {
+                    notes.append("The saved second display isn\u{2019}t connected; using \u{201C}\(second.name)\u{201D}.")
+                }
+                return Result(variant: .twoDisplays,
+                              placed: place(two.main, .main, on: main) + place(two.second, .second, on: second),
+                              notes: notes, primaryHeight: primaryHeight)
+            }
+            notes.append("Only one display is connected, so the one-display version of \u{201C}\(template.name)\u{201D} is used.")
+        }
+        return Result(variant: .oneDisplay, placed: place(template.oneDisplay, .one, on: main),
+                      notes: notes, primaryHeight: primaryHeight)
+    }
+
+    // MARK: Hiding the meeting
+
+    /// The neighbour that, joined to `rect`, makes a rectangle: the same extent
+    /// along one axis and touching along the other. The largest such neighbour.
+    static func absorbingNeighbour(of rect: UnitRect, among neighbours: [(id: UUID, rect: UnitRect)])
+        -> (id: UUID, joined: UnitRect)? {
+        let e = LayoutGeometry.epsilon * 100
+        func near(_ a: Double, _ b: Double) -> Bool { abs(a - b) < e }
+        var best: (id: UUID, joined: UnitRect, area: Double)?
+        for n in neighbours {
+            var joined: UnitRect?
+            if near(n.rect.x, rect.x), near(n.rect.w, rect.w), near(n.rect.maxY, rect.y) || near(n.rect.y, rect.maxY) {
+                joined = UnitRect(x: rect.x, y: Swift.min(n.rect.y, rect.y), w: rect.w, h: n.rect.h + rect.h)
+            } else if near(n.rect.y, rect.y), near(n.rect.h, rect.h), near(n.rect.maxX, rect.x) || near(n.rect.x, rect.maxX) {
+                joined = UnitRect(x: Swift.min(n.rect.x, rect.x), y: rect.y, w: n.rect.w + rect.w, h: rect.h)
+            }
+            guard let joined else { continue }
+            let area = n.rect.w * n.rect.h
+            if best == nil || area > best!.area { best = (n.id, joined, area) }
+        }
+        return best.map { ($0.id, $0.joined) }
+    }
+
+    /// Every piece's frames with the Meeting hidden or not. Hidden, the one
+    /// neighbour that joins the Meeting's rect into a rectangle grows into the
+    /// gap; shown, it is back at its own rect.
+    static func frames(of result: Result, meetingHidden: Bool) -> [UUID: LayoutFrames] {
+        var out: [UUID: LayoutFrames] = [:]
+        for p in result.placed { out[p.piece.id] = p.frames }
+        guard meetingHidden, let meeting = result.meeting, !meeting.fillsDisplay else { return out }
+        let neighbours = result.placed
+            .filter { $0.piece.id != meeting.piece.id && $0.screen.id == meeting.screen.id && !$0.fillsDisplay }
+            .map { (id: $0.piece.id, rect: $0.piece.rect) }
+        guard let absorber = absorbingNeighbour(of: meeting.piece.rect, among: neighbours) else { return out }
+        out[absorber.id] = LayoutFrames(
+            ns: LayoutGeometry.nsFrame(for: absorber.joined, visibleFrame: meeting.screen.visibleFrame),
+            ax: LayoutGeometry.axFrame(for: absorber.joined, visibleFrame: meeting.screen.visibleFrame,
+                                       primaryHeight: result.primaryHeight))
+        return out
+    }
+
+    // MARK: Zoom's own window
+
+    /// `neighbour` (AppKit frame) fitted around the frame the meeting window was
+    /// ACTUALLY given. Zoom clamps a resize to its minimum window size, so the
+    /// planned rect and reality can differ; the neighbour yields along the edge
+    /// it shares with the planned rect and keeps its far edge. Only ever
+    /// smaller. Used for the Meeting only: no other app's size is ever
+    /// compensated for.
+    static func fit(_ neighbour: CGRect, aroundActual actual: CGRect, planned: CGRect,
+                    minimum: CGFloat = 200) -> CGRect {
+        let tolerance: CGFloat = 2
+        var r = neighbour
+        if neighbour.maxY <= planned.minY + tolerance {            // below the meeting
+            let top = Swift.min(neighbour.maxY, actual.minY)
+            r.size.height = Swift.max(top - neighbour.minY, Swift.min(minimum, neighbour.height))
+        } else if neighbour.minY >= planned.maxY - tolerance {     // above it
+            let bottom = Swift.max(neighbour.minY, actual.maxY)
+            let height = Swift.max(neighbour.maxY - bottom, Swift.min(minimum, neighbour.height))
+            r.origin.y = neighbour.maxY - height
+            r.size.height = height
+        } else if neighbour.maxX <= planned.minX + tolerance {     // left of it
+            let right = Swift.min(neighbour.maxX, actual.minX)
+            r.size.width = Swift.max(right - neighbour.minX, Swift.min(minimum, neighbour.width))
+        } else if neighbour.minX >= planned.maxX - tolerance {     // right of it
+            let left = Swift.max(neighbour.minX, actual.maxX)
+            let width = Swift.max(neighbour.maxX - left, Swift.min(minimum, neighbour.width))
+            r.origin.x = neighbour.maxX - width
+            r.size.width = width
+        }
+        return r
+    }
+
+    // MARK: Small decisions
+
+    /// Smaller than this, the placed meeting window is the Speaker view with its
+    /// toolbar on hover; at or above it, the full meeting form.
+    static let fullMeetingSize = CGSize(width: 760, height: 520)
+
+    static func isCompactMeeting(_ size: CGSize) -> Bool {
+        size.width < fullMeetingSize.width || size.height < fullMeetingSize.height
+    }
+
+    /// The app piece that gets focus at the end of a start: the largest one on
+    /// the main display.
+    static func largestAppOnMain(_ result: Result) -> Placed? {
+        result.apps.filter { $0.screen.isMain }
+            .max { $0.frames.ns.width * $0.frames.ns.height < $1.frames.ns.width * $1.frames.ns.height }
+    }
+
+    /// An AX-measured frame that differs from the one asked for by more than a
+    /// couple of points: the app kept its own size.
+    static func differs(_ actual: CGRect, from requested: CGRect, tolerance: CGFloat = 3) -> Bool {
+        abs(actual.width - requested.width) > tolerance || abs(actual.height - requested.height) > tolerance
+            || abs(actual.minX - requested.minX) > tolerance || abs(actual.minY - requested.minY) > tolerance
+    }
+}
+
+// MARK: - The Meeting piece's flags, read and written on a template
+
+extension LayoutTemplate {
+    /// Whether any Meeting piece starts hidden. The Settings "Quick-hide mode"
+    /// row reads and writes this on the active template.
+    var meetingStartsHidden: Bool? {
+        let flags = (oneDisplay + (twoDisplays.map { $0.main + $0.second } ?? [])).compactMap { piece -> Bool? in
+            if case .meeting(_, let hidden) = piece.kind { return hidden }
+            return nil
+        }
+        return flags.isEmpty ? nil : flags.contains(true)
+    }
+
+    mutating func setMeetingStartsHidden(_ hidden: Bool) {
+        func apply(_ pieces: [LayoutPiece]) -> [LayoutPiece] {
+            pieces.map { p in
+                var p = p
+                if case .meeting(let fills, _) = p.kind { p.kind = .meeting(fillsDisplay: fills, startsHidden: hidden) }
+                return p
+            }
+        }
+        oneDisplay = apply(oneDisplay)
+        if var two = twoDisplays {
+            two.main = apply(two.main)
+            two.second = apply(two.second)
+            twoDisplays = two
+        }
+    }
+
+    /// A Meeting piece that fills a whole display: the participants form.
+    var hasFillsDisplayMeeting: Bool {
+        (twoDisplays.map { $0.main + $0.second } ?? []).contains {
+            if case .meeting(true, _) = $0.kind { return true } else { return false }
+        } || oneDisplay.contains {
+            if case .meeting(true, _) = $0.kind { return true } else { return false }
+        }
+    }
+}

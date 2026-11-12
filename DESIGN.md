@@ -229,6 +229,11 @@ Reference: `App/UI/ParticipantGridWindow.swift`, `railColumn(available:)` and
   hover, chat scroll-to-latest, shape-preview crossfade, the readiness bar
   easing to a new width (250ms, ease-out) and the platform spinner on the one
   active step.
+- **Page change (Home <-> Sessions):** the one choreographed motion, owner-approved
+  2026-11-12. Old page fades out 120ms ease-in, the window resizes 250ms
+  ease-in-out over both pages held at their final sizes, the new page fades in
+  200ms ease-out and rises 6pt. Reduce Motion or full screen: instant resize,
+  150ms crossfade.
 - **Not allowed:** scroll-driven animation, parallax, entrance choreography.
 
 ### Waiting states

@@ -1611,12 +1611,19 @@ enum BrowserWindowController {
     /// keeps the tabs the teacher has and is only re-tiled and brought
     /// forward - a second press of Start must not throw away where they
     /// were reading.
-    static func show(urlString: String, layout: WorkspaceLayout) {
+    /// `frame` (AppKit coordinates) is where the layout puts it; nil leaves the
+    /// window wherever it is. Returns false when the window is in a full-screen
+    /// Space, which ignores a frame, so it was left alone.
+    @discardableResult
+    static func show(urlString: String, frame: NSRect?) -> Bool {
         let model = self.model ?? BrowserModel()
         self.model = model
 
         let wasVisible = isOpen
+        let isNewWindow = window == nil
         let targetWindow = window ?? makeWindow(model: model)
+        // No layout to place it: a new window opens centred, not in a corner.
+        if isNewWindow, frame == nil { targetWindow.center() }
 
         if !wasVisible {
             let configured = AppCatalog.normalizedWebURL(from: urlString)
@@ -1655,11 +1662,16 @@ enum BrowserWindowController {
             }
         }
 
-        // Frame BEFORE ordering front, unconditionally: reposition(layout:)
+        // Frame BEFORE ordering front, unconditionally: reposition(frame:)
         // below skips a hidden window, which is exactly what a brand-new one
         // is at this point - the first cut tiled nothing because of that.
-        if let frame = layout.mainPaneNSFrame() {
-            targetWindow.setFrame(frame, display: true)
+        var framed = true
+        if let frame {
+            if targetWindow.styleMask.contains(.fullScreen) {
+                framed = false
+            } else {
+                targetWindow.setFrame(frame, display: true)
+            }
         }
         // Unlike the chat, this IS the window the teacher works in - so it
         // takes focus.
@@ -1671,6 +1683,7 @@ enum BrowserWindowController {
         if let tab = model.selected, !tab.isBlank {
             targetWindow.makeFirstResponder(tab.webView)
         }
+        return framed
     }
 
     private static func makeWindow(model: BrowserModel) -> NSWindow {
@@ -1728,9 +1741,9 @@ enum BrowserWindowController {
     /// stays in front - Cues's Open uses this: a card should land in the
     /// reading window, not drag them to it. A closed window opens tiled, as
     /// on Start.
-    static func open(_ url: URL, focus: Bool, layout: WorkspaceLayout) {
+    static func open(_ url: URL, focus: Bool, frame: NSRect?) {
         guard isOpen, let model, let window else {
-            show(urlString: url.absoluteString, layout: layout)
+            show(urlString: url.absoluteString, frame: frame)
             return
         }
         model.newTab(url: url, after: model.selected, select: true)
@@ -1744,9 +1757,13 @@ enum BrowserWindowController {
 
     /// Re-tiles without touching the page. No-op when not open, matching
     /// the external-app path's "not running" case.
-    static func reposition(layout: WorkspaceLayout) {
-        guard let window, window.isVisible, let frame = layout.mainPaneNSFrame() else { return }
+    /// Returns false only when the window is full screen and was left alone.
+    @discardableResult
+    static func reposition(frame: NSRect) -> Bool {
+        guard let window, window.isVisible else { return true }
+        if window.styleMask.contains(.fullScreen) { return false }
         window.setFrame(frame, display: true)
+        return true
     }
 
     /// The end-of-Start focus hand-off: where an external main app gets

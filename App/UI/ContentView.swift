@@ -29,6 +29,26 @@ struct ContentView: View {
     /// to it rather than to wherever the page left things.
     @State private var homeWidth: CGFloat?
 
+    // Page changes (Home <-> Sessions) are one motion - see changePage. Both
+    // pages are mounted for its length, each laid out at its FINAL size and
+    // pinned top-leading, so the window is a curtain over fixed content and
+    // nothing reflows while it moves.
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var homeMounted = true
+    @State private var pageMounted = false
+    @State private var homeOpacity = 1.0
+    /// Rest values of the page layer are the HIDDEN ones, so it is invisible
+    /// on the very frame it mounts.
+    @State private var pageOpacity = 0.0
+    @State private var pageRise: CGFloat = Self.pageRiseDistance
+    /// Non-nil only while a page change runs: the size that layer is held to.
+    @State private var homePin: CGSize?
+    @State private var pagePin: CGSize?
+    /// Bumped by every page change and every window resize, so the steps and
+    /// completion handlers of a superseded one do nothing.
+    @State private var transitionToken = 0
+    @State private var resizeGeneration = 0
+
     /// Start is for starting: disabled while a start is in flight AND
     /// while the session is live (Stop first, then Start - pressing Start
     /// mid-session used to happily build a second meeting on top).
@@ -125,37 +145,16 @@ struct ContentView: View {
     private var onPage: Bool { !coordinator.mainPage.isHome }
 
     var body: some View {
-        Group {
-            if onPage {
-                // Sessions, a session, its report: pages of this window, not
-                // windows of their own. Full-bleed - they draw their own
-                // margins - and sized by the window, never the other way.
-                RecordingsView()
-                    .frame(minWidth: heldMinWidth, minHeight: heldMinHeight)
-            } else {
-                Group {
-                    if coordinator.recordStudioShown {
-                        RecordStudioView()
-                    } else {
-                        homeContent
-                    }
-                }
-                // 32pt at the sides so nothing sits at the window's edge (20pt read as
-                // about to be cut off); 20pt top and bottom, which the heights assume.
-                .padding(.horizontal, 32)
-                .padding(.vertical, 20)
-                .frame(minWidth: Self.minimumWindowWidth, minHeight: preferredWindowHeight)
-            }
-        }
-        // Pinned to the top while the window catches up to a new height.
-        // Without it, the content is taller than the window for the length
-        // of the resize and gets centred - everything jumps up, then back.
-        // The pin only holds if this frame is never taller than the window:
-        // with the content's own minimum (preferredWindowHeight) it was, the
-        // moment the content grew, and the hosting view centred the whole
-        // thing - the header jumped 32pt on Join and lurched on Status. So
-        // its minimum is heldMinHeight, which catches up after the window.
-        .frame(maxWidth: .infinity, minHeight: heldMinHeight, maxHeight: .infinity, alignment: .top)
+        // The sizing carrier: it alone gives the window its minimum (the held
+        // one, which trails a resize). The pages sit in an overlay so their
+        // pinned, final sizes never push the window's minimum up mid-shrink.
+        // GeometryReader rather than Color.clear: it keeps the title-bar
+        // safe area the pages were always laid out inside.
+        GeometryReader { _ in Color.clear }
+            .frame(minWidth: heldMinWidth, maxWidth: .infinity,
+                   minHeight: heldMinHeight, maxHeight: .infinity)
+            .overlay(alignment: .topLeading) { pageLayers }
+            .clipped()
         // The window OPENS at the preferred size every time, regardless
         // of the size it was closed at (explicit request) - SwiftUI
         // persists scene geometry across launches and defaultSize only
@@ -187,10 +186,12 @@ struct ContentView: View {
             heldMinWidth = floorWidth
         }
         .onChange(of: coordinator.mainPage.isHome) { _, isHome in
-            if !isHome, let window = Self.window, !window.styleMask.contains(.fullScreen), !window.isZoomed {
+            // Not mid-change: the window is then part-way, not Home's width.
+            let settled = homePin == nil && pagePin == nil
+            if !isHome, settled, let window = Self.window, !window.styleMask.contains(.fullScreen), !window.isZoomed {
                 homeWidth = window.contentRect(forFrameRect: window.frame).width
             }
-            resizeWindow(animated: true, returningHome: isHome)
+            changePage(toHome: isHome)
         }
         // Back: the button, \u{2318}[ and Esc. Bound here, once, for whichever
         // page is up. Esc is left to a text field that is being edited.
@@ -215,6 +216,143 @@ struct ContentView: View {
             OnboardingView()
                 .environmentObject(coordinator)
         }
+    }
+
+    /// Home and the pages, one over the other. Mounted by state (not by
+    /// `onPage`) so the outgoing one stays up for the whole change, and so a
+    /// new page is mounted already at opacity 0.
+    private var pageLayers: some View {
+        ZStack(alignment: .topLeading) {
+            if homeMounted {
+                Group {
+                    if coordinator.recordStudioShown {
+                        RecordStudioView()
+                    } else {
+                        homeContent
+                    }
+                }
+                // 32pt at the sides so nothing sits at the window's edge (20pt read as
+                // about to be cut off); 20pt top and bottom, which the heights assume.
+                .padding(.horizontal, 32)
+                .padding(.vertical, 20)
+                .frame(minWidth: Self.minimumWindowWidth, minHeight: homeWindowHeight)
+                .frame(width: homePin?.width, height: homePin?.height)
+                // Pinned to the top while the window catches up to a new
+                // height; otherwise the content is centred and everything
+                // jumps up, then back (see resizeWindow).
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                .opacity(homeOpacity)
+                .allowsHitTesting(!onPage)
+                .accessibilityHidden(onPage)
+            }
+            if pageMounted {
+                // Sessions, a session, its report: pages of this window, not
+                // windows of their own. Full-bleed - they draw their own
+                // margins - and sized by the window, never the other way.
+                RecordingsView()
+                    .frame(width: pagePin?.width, height: pagePin?.height)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                    .opacity(pageOpacity)
+                    .offset(y: pageRise)
+                    .allowsHitTesting(onPage)
+                    .accessibilityHidden(!onPage)
+            }
+        }
+    }
+
+    // Page change timings (seconds). DESIGN.md: 150-250ms for state changes,
+    // 250ms for layout moves, ease-out in, ease-in out, ease-in-out moving.
+    private static let fadeOutDuration = 0.12
+    private static let growDelay = 0.08      // the window starts as Home thins out
+    private static let growDuration = 0.25   // resizeWindow, ease-in-out
+    private static let fadeInDelay = 0.20    // the last part of the grow
+    private static let fadeInDuration = 0.2
+    private static let pageRiseDistance: CGFloat = 6
+    private static let changeLength = 0.40   // fadeInDelay + fadeInDuration
+    private static let crossfade = 0.15      // Reduce Motion, full screen
+
+    /// Home <-> Sessions as one motion: the outgoing page fades out, the
+    /// window grows (or shrinks) over both pages held at their final sizes,
+    /// then the incoming page fades in and settles 6pt up.
+    ///
+    /// A click mid-way simply starts the next one: every step checks the
+    /// token, the opacities retarget from where they are, and the window
+    /// animator retargets from its current frame.
+    private func changePage(toHome isHome: Bool) {
+        transitionToken += 1
+        let token = transitionToken
+        let window = Self.window
+        let resizes = window.map { !$0.styleMask.contains(.fullScreen) && !$0.isZoomed } ?? false
+        let moving = resizes && !reduceMotion
+        let inFlight = homePin != nil || pagePin != nil || homeMounted == pageMounted
+
+        homeMounted = true
+        pageMounted = true
+        if !inFlight {
+            homeOpacity = isHome ? 0 : 1
+            pageOpacity = isHome ? 1 : 0
+            pageRise = (isHome || !moving) ? 0 : Self.pageRiseDistance
+        }
+
+        func after(_ delay: Double, _ step: @escaping () -> Void) {
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+                if token == transitionToken { step() }
+            }
+        }
+        func finish() {
+            homePin = nil
+            pagePin = nil
+            if isHome {
+                pageMounted = false
+                pageOpacity = 0
+                pageRise = Self.pageRiseDistance
+            } else {
+                homeMounted = false
+                homeOpacity = 1
+            }
+        }
+
+        // Instant resize, plain crossfade: Reduce Motion, and full screen or
+        // zoomed (where the size is the user's and nothing resizes).
+        guard moving, let window else {
+            homePin = nil
+            pagePin = nil
+            resizeWindow(animated: false, returningHome: isHome)
+            pageRise = 0
+            withAnimation(.easeInOut(duration: Self.crossfade)) {
+                homeOpacity = isHome ? 1 : 0
+                pageOpacity = isHome ? 0 : 1
+            }
+            after(Self.crossfade) { finish() }
+            return
+        }
+
+        // Pin both layers. The incoming one to the size the window will
+        // settle at; the outgoing one to the size it has now (kept as is when
+        // interrupted, since the window is then part-way).
+        let titleBar = window.frame.height - window.contentLayoutRect.height
+        let now = window.contentRect(forFrameRect: window.frame).size
+        let settled = window.contentRect(forFrameRect: settledFrame(for: window, animated: true, returningHome: isHome)).size
+        let target = CGSize(width: settled.width, height: settled.height - titleBar)
+        let current = CGSize(width: now.width, height: now.height - titleBar)
+        if isHome {
+            homePin = target
+            if !inFlight { pagePin = current }
+        } else {
+            pagePin = target
+            if !inFlight { homePin = CGSize(width: homeWidth ?? now.width, height: homeWindowHeight) }
+        }
+
+        withAnimation(.easeIn(duration: Self.fadeOutDuration)) {
+            if isHome { pageOpacity = 0; pageRise = Self.pageRiseDistance } else { homeOpacity = 0 }
+        }
+        after(Self.growDelay) { resizeWindow(animated: true, returningHome: isHome) }
+        after(Self.fadeInDelay) {
+            withAnimation(.easeOut(duration: Self.fadeInDuration)) {
+                if isHome { homeOpacity = 1 } else { pageOpacity = 1; pageRise = 0 }
+            }
+        }
+        after(Self.changeLength) { finish() }
     }
 
     private var homeContent: some View {
@@ -331,13 +469,16 @@ struct ContentView: View {
     /// The window's height for the current state: the controls, plus Join's
     /// two extra rows, plus the log when it is shown. Measured from the
     /// accessibility tree rather than guessed, on the 4px scale.
-    private var preferredWindowHeight: CGFloat {
+    private var preferredWindowHeight: CGFloat { onPage ? Self.pageHeight : homeWindowHeight }
+
+    /// Home's own height, whichever page is up: Home is laid out at this while
+    /// it fades, so it must not follow `onPage`.
+    private var homeWindowHeight: CGFloat {
         // 356, not 372: the class-name row lost its eyebrow and the 4pt above
         // it, which is ~19pt of content. A height measured for a layout that
         // changed is 19pt of dead space at the bottom of the window.
         // +36 for the look summary: an 18pt row and the stack's 16pt gap,
         // rounded up to the 4px scale.
-        if onPage { return Self.pageHeight }
         if coordinator.recordStudioShown { return RecordStudioView.windowHeight }
         var height: CGFloat = 356 + 36
         if coordinator.meetingMode == .join { height += 64 }
@@ -400,24 +541,9 @@ struct ContentView: View {
     /// Height of the open log. Eight lines.
     private static let statusLogHeight: CGFloat = 180
 
-    /// Resizes from an anchored TOP edge. AppKit's `setContentSize` keeps the
-    /// bottom-left corner, so every expansion used to send the whole window
-    /// climbing the screen while the rows above reflowed (reported live:
-    /// "that animation where everything moves up"). Holding the top edge means
-    /// the controls stay exactly where the cursor left them and only the
-    /// bottom edge travels - down when the log opens, up when it closes.
-    /// Width is the user's.
-    private func resizeWindow(animated: Bool, returningHome: Bool = false) {
-        guard let window = Self.window else { return }
-        // Full screen (or zoomed to fill the screen) is the user's size, not
-        // ours. Resizing here shrank the window to a page's 1180x760 and left
-        // the rest of the display black. The content fills what it is given;
-        // only the drag floors follow the page.
-        if window.styleMask.contains(.fullScreen) || window.isZoomed {
-            heldMinHeight = floorHeight
-            heldMinWidth = floorWidth
-            return
-        }
+    /// Where the window ends up for the current page and state, top edge
+    /// anchored and inside the visible frame.
+    private func settledFrame(for window: NSWindow, animated: Bool, returningHome: Bool) -> NSRect {
         let content = window.contentRect(forFrameRect: window.frame)
         // Home keeps the width the user gave it; a page widens it, within the
         // screen, and Back returns Home to the width it left.
@@ -449,7 +575,30 @@ struct ContentView: View {
             if frame.minY < visible.minY { frame.origin.y = visible.minY }
             if frame.maxX > visible.maxX { frame.origin.x = max(visible.minX, visible.maxX - frame.width) }
         }
+        return frame
+    }
+
+    /// Resizes from an anchored TOP edge. AppKit's `setContentSize` keeps the
+    /// bottom-left corner, so every expansion used to send the whole window
+    /// climbing the screen while the rows above reflowed (reported live:
+    /// "that animation where everything moves up"). Holding the top edge means
+    /// the controls stay exactly where the cursor left them and only the
+    /// bottom edge travels - down when the log opens, up when it closes.
+    /// Width is the user's.
+    private func resizeWindow(animated: Bool, returningHome: Bool = false) {
+        guard let window = Self.window else { return }
+        // Full screen (or zoomed to fill the screen) is the user's size, not
+        // ours. Resizing here shrank the window to a page's 1180x760 and left
+        // the rest of the display black. The content fills what it is given;
+        // only the drag floors follow the page.
+        if window.styleMask.contains(.fullScreen) || window.isZoomed {
+            heldMinHeight = floorHeight
+            heldMinWidth = floorWidth
+            return
+        }
+        let frame = settledFrame(for: window, animated: animated, returningHome: returningHome)
         guard animated else {
+            resizeGeneration += 1
             window.setFrame(frame, display: true)
             heldMinHeight = floorHeight
             heldMinWidth = floorWidth
@@ -466,11 +615,16 @@ struct ContentView: View {
         // The animator proxy, not setFrame(_:display:animate:). That one runs
         // its own blocking loop, so the click that asked for the resize sat
         // unanswered until the window finished moving.
+        resizeGeneration += 1
+        let generation = resizeGeneration
         NSAnimationContext.runAnimationGroup { context in
-            context.duration = 0.25 // DESIGN.md: layout moves, ease-in-out
+            context.duration = Self.growDuration // DESIGN.md: layout moves, ease-in-out
             context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
             window.animator().setFrame(frame, display: true)
         } completionHandler: {
+            // A resize that was superseded must not raise the minimum the
+            // newer one lowered.
+            guard generation == resizeGeneration else { return }
             heldMinHeight = settled
             heldMinWidth = settledWidth
         }
@@ -665,7 +819,8 @@ struct ContentView: View {
     /// content instead of pushing it around.
     private var manualControlsMenu: some View {
         Menu {
-            Button("Open \(coordinator.mainAppDisplayName) Window") { coordinator.openMainAppWindow() }
+            Button("Open Layout Apps") { coordinator.openMainAppWindow() }
+                .disabled(!coordinator.layoutHasApps)
         } label: {
             Text("Manual controls")
         }

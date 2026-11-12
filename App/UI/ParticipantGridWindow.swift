@@ -153,16 +153,25 @@ enum ParticipantGridWindowController {
         /// No layout: a window the teacher owns. `fillsScreen` is the first-run
         /// size only; after that the frame is wherever it was left.
         case meeting(fillsScreen: Bool)
-        /// Arranged on a single display: the window takes Zoom's old slot in the
-        /// side column, in Speaker view, with the toolbar on hover.
-        case slot(NSRect)
+        /// Arranged: the layout's Meeting piece, at the frame it was given. Under
+        /// 760x520 it is the Speaker view with the toolbar on hover; at or above,
+        /// the full meeting form.
+        case placed(NSRect)
 
         var isMeeting: Bool { if case .reference = self { return false } else { return true } }
-        var isSlot: Bool { if case .slot = self { return true } else { return false } }
-        /// Same kind of window, whatever its current frame.
+        /// A placed window too small for the full form: Speaker view, chrome on hover.
+        var isSlot: Bool {
+            if case .placed(let frame) = self { return LayoutResolver.isCompactMeeting(frame.size) }
+            return false
+        }
+        var isPlaced: Bool { if case .placed = self { return true } else { return false } }
+        /// Same kind of window, whatever its current frame. A placed window that
+        /// crosses the compact/full line is a different window: its chrome and
+        /// minimum size are fixed when it is made.
         func matches(_ other: Form) -> Bool {
             switch (self, other) {
-            case (.reference, .reference), (.meeting, .meeting), (.slot, .slot): return true
+            case (.reference, .reference), (.meeting, .meeting): return true
+            case (.placed, .placed): return isSlot == other.isSlot
             default: return false
             }
         }
@@ -216,7 +225,7 @@ enum ParticipantGridWindowController {
         switch form {
         case .reference: frame = screen.frame
         case .meeting(let fills): frame = meetingFrame(on: screen, fillsScreen: fills)
-        case .slot(let slot): frame = slot
+        case .placed(let placed): frame = placed
         }
         let created = ControlPanel(contentRect: frame,
                                    styleMask: form.isMeeting
@@ -413,13 +422,20 @@ enum ParticipantGridWindowController {
         panel.orderFrontRegardless()
     }
 
-    /// Puts a slot-form window back in its slot (Snap Windows Back, a display
-    /// change). Other forms are the teacher's to place.
-    static func place(slot: NSRect) {
-        guard let panel, case .slot = currentForm else { return }
-        currentForm = .slot(slot)
-        panel.setFrame(slot, display: true)
+    /// Puts a placed window back at its frame (Snap Windows Back, a display
+    /// change, a layout edit). Other forms are the teacher's to place. Returns
+    /// false when the window is a different size class than the frame wants
+    /// (compact vs full): the next refresh makes a new one.
+    @discardableResult
+    static func place(frame: NSRect) -> Bool {
+        guard let panel, case .placed = currentForm else { return false }
+        let sameClass = Form.placed(frame).matches(currentForm ?? .reference)
+        // A different class keeps the old form on record, so the next refresh
+        // sees the mismatch and builds the window the new size needs.
+        if sameClass { currentForm = .placed(frame) }
+        panel.setFrame(frame, display: true)
         if !userHidden { panel.orderFrontRegardless() }
+        return sameClass
     }
 
     /// The window's frame in screen coordinates, for the chat window to tuck

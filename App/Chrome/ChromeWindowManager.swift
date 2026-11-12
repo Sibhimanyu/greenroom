@@ -2,7 +2,7 @@
 //  ChromeWindowManager.swift
 //  Greenroom
 //
-//  Opens a BROWSER window tiled to a slice of the main screen, optionally
+//  Opens a BROWSER window tiled to a frame, optionally
 //  loading a chosen URL - for any browser speaking Chrome's AppleScript
 //  dictionary (windows with settable `bounds`, tabs with URL). That's
 //  Chrome and the whole Chromium family: Ulaa ships Chrome's
@@ -32,11 +32,8 @@ enum ChromeWindowManager {
     /// when Chrome was already running; on a cold start, wait for Chrome's
     /// own startup window to appear and take that one over instead.
     @discardableResult
-    static func openWindow(bundleID: String = chromeBundleID, occupying layout: WorkspaceLayout, urlString: String = "") async -> String? {
-        guard let rect = layout.mainPaneTopLeftFrame() else {
-            return "Couldn't read the main screen's size."
-        }
-
+    /// `rect` is in top-left (AX / AppleScript) coordinates.
+    static func openWindow(bundleID: String = chromeBundleID, occupying rect: CGRect, urlString: String = "") async -> String? {
         let appName = AppCatalog.displayName(forBundleID: bundleID) ?? bundleID
         let wasRunning = !NSRunningApplication.runningApplications(withBundleIdentifier: bundleID).isEmpty
         let boundsList = "{\(Int(rect.minX)), \(Int(rect.minY)), \(Int(rect.maxX)), \(Int(rect.maxY))}"
@@ -127,11 +124,8 @@ enum ChromeWindowManager {
     /// after the user has dragged things around. No-op when Chrome isn't
     /// running.
     @discardableResult
-    static func repositionFrontWindow(bundleID: String = chromeBundleID, occupying layout: WorkspaceLayout) async -> String? {
+    static func repositionFrontWindow(bundleID: String = chromeBundleID, occupying rect: CGRect) async -> String? {
         guard !NSRunningApplication.runningApplications(withBundleIdentifier: bundleID).isEmpty else { return nil }
-        guard let rect = layout.mainPaneTopLeftFrame() else {
-            return "Couldn't read the main screen's size."
-        }
         let appName = AppCatalog.displayName(forBundleID: bundleID) ?? bundleID
         let source = """
         tell application id "\(bundleID)"

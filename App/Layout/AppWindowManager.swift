@@ -125,6 +125,35 @@ enum AppWindowManager {
         return nil
     }
 
+    /// Whether the window is in a full-screen Space (AXFullScreen). Such a window
+    /// ignores a frame, so a layout leaves it alone.
+    static func isFullScreen(_ window: AXUIElement) -> Bool {
+        var ref: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(window, "AXFullScreen" as CFString, &ref) == .success,
+              let value = ref as? Bool else { return false }
+        return value
+    }
+
+    enum PlaceOutcome {
+        case placed(CGRect)   // the frame the window actually ended up with
+        case fullScreen       // left alone
+        case noWindow         // none appeared before the timeout
+    }
+
+    /// `positionFrontWindow`, but a window in a full-screen Space is skipped
+    /// rather than fought, and the result says which happened.
+    static func placeFrontWindow(bundleID: String, frame: CGRect, timeout: TimeInterval) async -> PlaceOutcome {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if let window = frontWindow(ofAppWithBundleID: bundleID) {
+                if isFullScreen(window) { return .fullScreen }
+                if let actual = setFrame(frame, of: window) { return .placed(actual) }
+            }
+            try? await Task.sleep(nanoseconds: 500_000_000)
+        }
+        return .noWindow
+    }
+
     private static func readSize(of window: AXUIElement) -> CGSize? {
         var sizeRef: CFTypeRef?
         guard AXUIElementCopyAttributeValue(window, kAXSizeAttribute as CFString, &sizeRef) == .success,

@@ -246,6 +246,9 @@ struct RecordingsView: View {
                 ScreenroomReportView(onBack: { coordinator.goBack() })
             }
         }
+        // Grid, session, report: a short crossfade, not a hard swap. These
+        // layers share the window's size, so nothing resizes.
+        .animation(.easeInOut(duration: 0.15), value: coordinator.mainPage)
         .onAppear(perform: reload)
         .onChange(of: selectedID) { didSelect() }
         .onChange(of: selection) { _, newSelection in

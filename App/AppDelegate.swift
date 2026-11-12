@@ -102,9 +102,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 .init(keyCode: UInt32(kVK_ANSI_S), modifiers: mods, label: "\u{2325}\u{2318}S") {
                     CoordinatorController.shared?.snapWindowsBack()
                 },
-                // Speaker-tile quick-hide/float. Pref-gated in the action
-                // (toggleSpeakerTile checks speakerTileShortcutEnabled),
-                // so flipping the setting needs no re-registration.
+                // Hide / show the layout's Meeting piece. Gated in the action
+                // (toggleSpeakerTile needs a placed Meeting piece in the layout).
                 .init(keyCode: UInt32(kVK_ANSI_Z), modifiers: mods, label: "\u{2325}\u{2318}Z") {
                     CoordinatorController.shared?.toggleSpeakerTile()
                 },

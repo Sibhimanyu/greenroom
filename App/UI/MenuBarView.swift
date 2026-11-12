@@ -89,7 +89,7 @@ struct MenuBarView: View {
                 coordinator.toggleSpeakerTile()
             }
             .keyboardShortcut("z", modifiers: [.option, .command])
-            .disabled(!coordinator.speakerTileShortcutEnabled || !coordinator.stageLive)
+            .disabled(!coordinator.canToggleMeeting)
 
             Divider()
         }

@@ -202,8 +202,7 @@ final class MeetingControlsModel: ObservableObject {
         } else if ChatWindowController.isOpen {
             ChatWindowController.close()
         } else {
-            ChatWindowController.show(chat: coordinator.zoomChatBridge,
-                                      layout: coordinator.sessionArranges ? coordinator.workspaceLayout : nil)
+            coordinator.revealChatWindow()
         }
         refresh()
     }

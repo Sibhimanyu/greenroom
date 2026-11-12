@@ -584,14 +584,11 @@ private struct AttachmentView: View {
 enum ChatWindowController {
     private static var window: NSWindow?
 
-    /// `layout`, if given, slots the chat window into whatever slice of
-    /// the screen the main pane *isn't* using (e.g. Left ¾ leaves the
-    /// chat window the right quarter) - repositioned on every call, not
-    /// just window creation, so it stays in sync if the layout settings
-    /// change later. `nil` (or the chat toggled out of the side column)
-    /// leaves size/position as-is (just the default centered window on
-    /// first creation).
-    static func show(chat: ZoomChatBridge, layout: WorkspaceLayout? = nil) {
+    /// `frame` (AppKit coordinates), if given, is where the layout's Chat piece
+    /// goes - applied on every call, not just window creation, so it stays in
+    /// step if the layout changes later. `nil` leaves size/position as-is (just
+    /// the default centred window on first creation).
+    static func show(chat: ZoomChatBridge, frame: NSRect? = nil) {
         let targetWindow: NSWindow
         if let window {
             targetWindow = window
@@ -607,19 +604,7 @@ enum ChatWindowController {
             targetWindow = newWindow
         }
 
-        if let layout, layout.sideShowsChat, var rect = layout.sideColumnNSFrame() {
-            // Leave the top of the column free for Zoom's meeting window -
-            // but only when the tile is enabled AND the Accessibility
-            // grant exists to actually put it there; otherwise the chat
-            // takes the full column rather than leaving a hole nothing
-            // will fill. This is the planned slot; adjustBelowZoom()
-            // refines it once Zoom's window is actually parked (Zoom may
-            // clamp to a larger minimum size).
-            if layout.sideShowsZoomTile, ZoomWindowManager.hasAccessibilityPermission {
-                rect.size.height -= rect.height * layout.effectiveZoomSlotRatio
-            }
-            targetWindow.setFrame(rect, display: true)
-        }
+        if let frame { targetWindow.setFrame(frame, display: true) }
 
         // Visible without stealing focus - in the session flow the user
         // should end up working in Chrome, with the chat alongside, not
@@ -638,12 +623,13 @@ enum ChatWindowController {
     /// participant panel's toolbar. Zoom's toolbar has one; Greenroom's chat
     /// lives in its own window, so the button raises that rather than opening a
     /// panel inside the meeting view.
-    static func reveal(layout: WorkspaceLayout) {
-        guard let window else { return }
-        if let slot = zoomSlotNSFrame(for: layout), window.frame == .zero {
-            window.setFrame(slot, display: true)
-        }
-        window.orderFrontRegardless()
+    static func reveal() {
+        window?.orderFrontRegardless()
+    }
+
+    /// Moves the open chat window; no-op when it is closed.
+    static func setFrame(_ frame: NSRect) {
+        window?.setFrame(frame, display: true)
     }
 
     static func close() {

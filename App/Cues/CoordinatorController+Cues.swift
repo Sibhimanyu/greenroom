@@ -213,7 +213,7 @@ extension CoordinatorController {
             return
         }
         if AppCatalog.isBuiltInBrowser(mainAppBundleID) {
-            BrowserWindowController.open(card.url, focus: false, layout: workspaceLayout)
+            BrowserWindowController.open(card.url, focus: false, frame: builtInBrowserLayoutFrame)
             log("Cues: opened \u{201C}\(card.title)\u{201D} in Greenroom Browser.")
         } else {
             let name = mainAppDisplayName

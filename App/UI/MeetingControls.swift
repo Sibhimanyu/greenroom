@@ -48,6 +48,14 @@ final class MeetingControlsModel: ObservableObject {
     @Published private(set) var micSelectedID: String?
     @Published private(set) var speakerDevices: [(id: String, name: String)] = []
     @Published private(set) var speakerSelectedID: String?
+    @Published private(set) var cameraDevices: [MeetingMenus.Device] = []
+    @Published private(set) var cameraSelectedID: String?
+    /// The Security menu's live state (host and co-host only).
+    @Published private(set) var security = SecurityMenuState()
+    /// Why sharing is off for this Mac right now, if it is.
+    @Published private(set) var cannotShare: String?
+    /// People at the door, longest waiting first.
+    @Published private(set) var waitingPeople: [WaitingPerson] = []
     /// The meeting window's right column. Lives here so the toolbar button and
     /// the window it opens a panel in cannot disagree about which is showing.
     @Published var sidePanel: MeetingSidePanel?
@@ -71,6 +79,20 @@ final class MeetingControlsModel: ObservableObject {
             // Published fires before the value lands; read it next turn.
             Task { @MainActor in self?.refresh() }
         }
+        // Events from the room redraw at once rather than at the next tick: a hand
+        // going up, a share starting, someone at the door, a rule changing.
+        let client = coordinator.zoomChatClient
+        let redraw: () -> Void = { [weak self] in
+            self?.refresh()
+            ParticipantGridWindowController.refreshNow()
+        }
+        client.roomEvents.onChange = redraw
+        client.shareViewer.onChange = redraw
+        client.roomEvents.onWaitingJoin = { person, total in
+            let words = WaitingRoomWords.joined(person.name, total: total)
+            ToastController.show(words.title, detail: words.detail, kind: .working, dismissAfter: 6)
+            coordinator.log(words.title + ".")
+        }
         refresh()
         timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.refresh() }
@@ -83,6 +105,10 @@ final class MeetingControlsModel: ObservableObject {
         timer?.invalidate()
         timer = nil
         chatSub = nil
+        let client = coordinator.zoomChatClient
+        client.roomEvents.onChange = nil
+        client.roomEvents.onWaitingJoin = nil
+        client.shareViewer.onChange = nil
     }
 
     func refresh() {
@@ -99,10 +125,19 @@ final class MeetingControlsModel: ObservableObject {
             locked = client.meetingIsLocked
             // Others, plus you: the number Zoom's own Participants button shows.
             participantCount = client.participantUserIDs(excludingSelf: false).count
-            waitingCount = client.waitingRoomNames().count
+            let waitingList = client.waitingRoomNames()
+            waitingCount = waitingList.count
+            waitingPeople = waitingList.map { WaitingPerson(id: $0.id, name: $0.name) }
+            sharing = client.shareViewer.selfSharing
+            if isHost {
+                security = client.securityState()
+                cannotShare = client.cannotShareReason()
+            }
             raisedHands = client.meetingRoster().filter { $0.isRaisingHand && !$0.isMyself }.count
             // Device lists are not worth asking for every second.
             if ticks % 5 == 1 { refreshDevices() }
+            // Stale reactions clear themselves from the ledger.
+            client.roomEvents.pruneReactions(present: Set(client.participantUserIDs(excludingSelf: false)))
         }
         meetingWindowOpen = coordinator.meetingWindowOpen
         if !meetingWindowOpen, sidePanel != nil { sidePanel = nil }
@@ -120,6 +155,9 @@ final class MeetingControlsModel: ObservableObject {
         let speakers = client.speakerDevices()
         speakerDevices = speakers.devices
         speakerSelectedID = speakers.selectedID
+        let cameras = client.cameraDevices()
+        cameraDevices = cameras.devices
+        cameraSelectedID = cameras.selectedID
     }
 
     // MARK: Actions
@@ -162,15 +200,109 @@ final class MeetingControlsModel: ObservableObject {
     }
 
     /// Zoom's own share of a whole display, which is separate from the picture
-    /// Greenroom sends as the camera.
+    /// Greenroom sends as the camera. Whether it is running is the SDK's word
+    /// (`ShareViewer.selfSharing`), read at the next refresh.
     func startShare(displayID: CGDirectDisplayID) {
         act("Sharing a display through Zoom", code: "share_start") { $0.startShare(displayID: displayID) }
-        sharing = true
     }
 
     func stopShare() {
         act("Stopped sharing", code: "share_stop") { $0.stopShare() }
-        sharing = false
+    }
+
+    func setShareRule(_ rule: ShareRule) {
+        act("Sharing: " + (rule.who == .hostOnly ? "only the host"
+                           : rule.concurrent == .multiple ? "everyone, several at once" : "everyone, one at a time"),
+            code: "share_rule") { $0.setShareRule(rule) }
+    }
+
+    // MARK: Security (host and co-host)
+
+    func setLocked(_ lock: Bool) {
+        act(lock ? "Meeting locked" : "Meeting unlocked", code: "other") { $0.setMeetingLocked(lock) }
+        locked = lock
+    }
+
+    func setWaitingRoom(_ on: Bool) {
+        act(on ? "Waiting room on" : "Waiting room off", code: "waiting_room") { $0.setWaitingRoomOn(on) }
+    }
+
+    func setChat(_ who: ChatWho) {
+        act("Participants can chat with: \(who.title.lowercased())", code: "chat_rule") { $0.setChatWho(who) }
+    }
+
+    func setRename(_ on: Bool) {
+        act(on ? "Participants may rename themselves" : "Participants may not rename themselves",
+            code: "other") { $0.setAllowRename(on) }
+    }
+
+    func setUnmuteSelf(_ on: Bool) {
+        act(on ? "Participants may unmute themselves" : "Participants may not unmute themselves",
+            code: "other") { $0.setAllowUnmuteSelf(on) }
+    }
+
+    func setStartVideo(_ on: Bool) {
+        act(on ? "Participants may start video" : "Participants may not start video",
+            code: "other") { $0.setAllowStartVideo(on) }
+    }
+
+    func suspendActivities() {
+        act("Suspended all participant activities", code: "other") { $0.suspendAllActivities() }
+    }
+
+    // MARK: Waiting room
+
+    func admit(_ person: WaitingPerson) {
+        act("Admitted \(person.name)", code: "admit") { $0.admitFromWaitingRoom(userID: person.id) }
+    }
+
+    func deny(_ person: WaitingPerson) {
+        act("Denied \(person.name)", code: "deny") { $0.denyWaiting(userID: person.id) }
+    }
+
+    func sendBack(userID: UInt32, name: String) {
+        act("Sent \(name) back to the waiting room", code: "waiting_room") { $0.putInWaitingRoom(userID: userID) }
+    }
+
+    func selectCamera(_ device: MeetingMenus.Device) {
+        act("Camera: \(device.name)", code: "select_camera") { $0.selectCamera(id: device.id) }
+        refreshDevices()
+    }
+
+    // MARK: Invite and the Zoom app
+
+    var meetingFacts: MeetingMenus.MeetingFacts {
+        guard let invite = coordinator.zoomChatClient.meetingInvite() else { return .init() }
+        return .init(number: invite.number, passcode: invite.passcode, joinURL: invite.joinURL)
+    }
+
+    /// Puts text on the pasteboard and says so. No window, so focus stays where it is.
+    func copy(_ text: String, what: String) {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(text, forType: .string)
+        ToastController.show("\(what) copied", detail: nil, kind: .success)
+    }
+
+    /// Copies the link a guest would click (`meetingInvite().joinURL`).
+    func copyInviteLink() {
+        let link = meetingFacts.joinURL
+        guard !link.isEmpty else {
+            coordinator.log("The invite link is not available yet.")
+            return
+        }
+        copy(link, what: "Invite link")
+    }
+
+    /// Opens the same meeting in the Zoom app, which has what this window does
+    /// not: breakout rooms, polls and captions. A second connection under the
+    /// same account may push this one out, so the log says what to expect.
+    func openInZoomApp() {
+        guard let url = coordinator.zoomChatClient.zoomAppLink() else {
+            coordinator.log("The meeting link is not available yet.")
+            return
+        }
+        coordinator.log("Opening this meeting in the Zoom app. Make that copy a co-host to use breakout rooms and polls.")
+        NSWorkspace.shared.open(url)
     }
 
     func react(_ reaction: ZoomMeetingSDKClient.Reaction) {
@@ -185,12 +317,6 @@ final class MeetingControlsModel: ObservableObject {
     func muteAll() { act("Muted everyone", code: "mute_all") { $0.muteEveryone() } }
     func askAllToUnmute() { act("Asked everyone to unmute", code: "ask_unmute_all") { $0.askEveryoneToUnmute() } }
     func admitAll() { act("Admitted everyone waiting", code: "admit_all") { $0.admitEveryoneWaiting() } }
-
-    func toggleLock() {
-        let lock = !locked
-        act(lock ? "Meeting locked" : "Meeting unlocked", code: "other") { $0.setMeetingLocked(lock) }
-        locked = lock
-    }
 
     /// With the meeting window open the chat is a panel in it (or the column
     /// window, in an arranged session); closed, it is a window of its own,
@@ -234,283 +360,120 @@ final class MeetingControlsModel: ObservableObject {
 
 // MARK: - Toolbar (the meeting window's foot)
 
-/// Glyph over a short caption, in Zoom's own words where Zoom has one, per
-/// DESIGN.md. Below `compactWidth` the captions go and it is icons only, which
-/// is what the small arranged slot gets.
+/// The toolbar, wired to the model. The drawing, and how much of it fits, are in
+/// MeetingToolbar.swift and MeetingToolbarLayout.swift; this fills in the live
+/// state, builds each menu when it is opened (so it shows the state of that
+/// moment) and says what a press does.
 struct MeetingToolbarView: View {
     @ObservedObject var model: MeetingControlsModel
     @ObservedObject var coordinator: CoordinatorController
     @ObservedObject private var notes = SessionNotes.shared
-    /// End asks again in place. A modal alert would activate the app, which
-    /// brings the main window forward over whatever is being taught from.
-    @State private var confirmingEnd = false
 
-    static let height: CGFloat = 64
-    private static let compactWidth: CGFloat = 780
+    static let height: CGFloat = MeetingToolbarBar.height
 
     var body: some View {
-        GeometryReader { geo in
-            let compact = geo.size.width < Self.compactWidth
-            HStack(spacing: 2) {
-                audioControl(compact: compact)
-                cell("Video", compact: compact,
-                     symbol: model.cameraOn ? "video.fill" : "video.slash.fill",
-                     caption: model.cameraOn ? "Stop Video" : "Start Video",
-                     tint: model.cameraOn ? .primary : .red,
-                     action: model.toggleCamera)
-                    .disabled(!model.inMeeting)
-                shareControl(compact: compact)
-                divider
-                cell("People", compact: compact, symbol: "person.2.fill", caption: "People",
-                     on: model.sidePanel == .people, badge: peopleBadge, action: model.togglePeople)
-                cell("Chat", compact: compact, symbol: "bubble.left.fill", caption: "Chat",
-                     on: model.sidePanel == .chat || (model.chatOpen && model.sidePanel == nil),
-                     badge: model.unread > 0 ? (model.unread > 9 ? "9+" : "\(model.unread)") : nil,
-                     action: model.toggleChat)
-                reactControl(compact: compact)
-                divider
-                recordControl(compact: compact)
-                cell("Notes", compact: compact, symbol: "note.text", caption: "Notes",
-                     on: notes.effectiveEnabled, action: notes.toggle)
-                if model.isHost { hostControl(compact: compact) }
-                Spacer(minLength: 8)
-                Text(MeetingControlsModel.elapsed(since: { _ = model.now; return coordinator.sessionStartedAt }()))
-                    .font(.system(size: 12, design: .monospaced))
-                    .foregroundStyle(.secondary)
-                    .frame(width: 52)
-                    .help("How long the meeting has run")
-                endControl
-            }
-            .padding(.horizontal, 12)
-            .frame(width: geo.size.width, height: geo.size.height)
-        }
-        .frame(height: Self.height)
+        MeetingToolbarBar(state: state, menus: menus, actions: actions)
     }
 
-    // MARK: Pieces
-
-    private var peopleBadge: String? {
-        let count = model.participantCount
-        if model.waitingCount > 0 { return "\(model.waitingCount) waiting" }
-        return count > 0 ? "\(count)" : nil
-    }
-
-    private var divider: some View {
-        Rectangle().fill(Color.primary.opacity(0.12)).frame(width: 1, height: 28).padding(.horizontal, 6)
-    }
-
-    private func glyph(_ symbol: String, caption: String, compact: Bool, tint: Color = .primary,
-                       on: Bool = false, badge: String? = nil) -> some View {
-        VStack(spacing: 3) {
-            Image(systemName: symbol)
-                .font(.system(size: 16))
-                .foregroundStyle(tint)
-                .frame(height: 20)
-                .overlay(alignment: .topTrailing) { badgeView(badge).offset(x: 14, y: -6) }
-            if !compact {
-                Text(caption)
-                    .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-            }
-        }
-        .frame(minWidth: compact ? 36 : 60, minHeight: 44)
-        .padding(.horizontal, compact ? 2 : 8)
-        .background(on ? Brand.green.opacity(0.28) : Color.clear, in: RoundedRectangle(cornerRadius: 10))
-        .contentShape(Rectangle())
-    }
-
-    /// The lime is a fill, never text (DESIGN.md), so the count is dark on it.
-    @ViewBuilder private func badgeView(_ text: String?) -> some View {
-        if let text {
-            Text(text)
-                .font(.system(size: 9, weight: .bold))
-                .foregroundStyle(Color.black)
-                .padding(.horizontal, 4)
-                .frame(minWidth: 14, minHeight: 14)
-                .background(Brand.fill, in: Capsule())
-                .accessibilityLabel(text)
-        }
-    }
-
-    private func cell(_ label: String, compact: Bool, symbol: String, caption: String,
-                      tint: Color = .primary, on: Bool = false, badge: String? = nil,
-                      action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            glyph(symbol, caption: caption, compact: compact, tint: tint, on: on, badge: badge)
-        }
-        .buttonStyle(.plain)
-        .help(caption)
-        .accessibilityLabel(caption)
-        .accessibilityAddTraits(on ? .isSelected : [])
-    }
-
-    private func menuCell<Items: View>(compact: Bool, symbol: String, caption: String,
-                                       tint: Color = .primary, on: Bool = false,
-                                       @ViewBuilder items: () -> Items) -> some View {
-        Menu {
-            items()
-        } label: {
-            glyph(symbol, caption: caption, compact: compact, tint: tint, on: on)
-        }
-        .menuStyle(.borderlessButton)
-        .menuIndicator(.hidden)
-        .fixedSize()
-        .help(caption)
-        .accessibilityLabel(caption)
-    }
-
-    // MARK: Audio
-
-    @ViewBuilder private func audioControl(compact: Bool) -> some View {
-        if model.inMeeting && !model.hasAudio {
-            cell("Join audio", compact: compact, symbol: "headphones", caption: "Join audio",
-                 tint: .red, action: model.joinAudio)
-        } else {
-            HStack(spacing: 0) {
-                cell("Mic", compact: compact,
-                     symbol: model.muted ? "mic.slash.fill" : "mic.fill",
-                     caption: model.muted ? "Unmute" : "Mute",
-                     tint: model.muted ? .red : .primary,
-                     action: model.toggleMute)
-                    .disabled(!model.inMeeting)
-                Menu {
-                    Section("Microphone") {
-                        ForEach(model.micDevices, id: \.id) { device in
-                            Button {
-                                model.selectMicrophone(id: device.id, name: device.name)
-                            } label: {
-                                deviceLabel(device.name, selected: device.id == model.micSelectedID)
-                            }
-                        }
-                    }
-                    Section("Speaker") {
-                        ForEach(model.speakerDevices, id: \.id) { device in
-                            Button {
-                                model.selectSpeaker(id: device.id, name: device.name)
-                            } label: {
-                                deviceLabel(device.name, selected: device.id == model.speakerSelectedID)
-                            }
-                        }
-                    }
-                } label: {
-                    Image(systemName: "chevron.up")
-                        .font(.system(size: 9, weight: .semibold))
-                        .foregroundStyle(.secondary)
-                        .frame(width: 16, height: 44)
-                        .contentShape(Rectangle())
-                }
-                .menuStyle(.borderlessButton)
-                .menuIndicator(.hidden)
-                .fixedSize()
-                .help("Microphone and speaker")
-                .accessibilityLabel("Choose microphone and speaker")
-            }
-        }
-    }
-
-    @ViewBuilder private func deviceLabel(_ name: String, selected: Bool) -> some View {
-        if selected { Label(name, systemImage: "checkmark") } else { Text(name) }
-    }
-
-    // MARK: Share
-
-    @ViewBuilder private func shareControl(compact: Bool) -> some View {
-        if model.sharing {
-            cell("Stop share", compact: compact, symbol: "rectangle.on.rectangle.slash",
-                 caption: "Stop Share", tint: .red, action: model.stopShare)
-        } else {
-            menuCell(compact: compact, symbol: "arrow.up.forward.app", caption: "Share") {
-                // Zoom's own share of a whole display: a different thing from
-                // the picture Greenroom sends as the camera.
-                ForEach(coordinator.zoomChatClient.shareableDisplays(), id: \.id) { display in
-                    Button(display.label) { model.startShare(displayID: display.id) }
-                }
-            }
-            .disabled(!model.inMeeting)
-        }
-    }
-
-    // MARK: React
-
-    private func reactControl(compact: Bool) -> some View {
-        menuCell(compact: compact, symbol: "hand.thumbsup", caption: "React", on: model.handRaised) {
-            Button(model.handRaised ? "Lower my hand" : "Raise my hand", action: model.toggleHand)
-            Divider()
-            ForEach(ZoomMeetingSDKClient.Reaction.allCases, id: \.self) { reaction in
-                Button(reaction.rawValue) { model.react(reaction) }
-            }
-        }
-        .disabled(!model.inMeeting)
-    }
-
-    // MARK: Record
-
-    private func recordControl(compact: Bool) -> some View {
-        let recording = coordinator.isRecording
-        let saving = coordinator.isSavingRecording
-        let caption = saving ? "Saving\u{2026}"
-            : recording ? MeetingControlsModel.elapsed(since: { _ = model.now; return coordinator.recordingStartedAt }())
+    private var state: MeetingToolbarState {
+        var s = MeetingToolbarState()
+        s.inMeeting = model.inMeeting
+        s.muted = model.muted
+        s.hasAudio = model.hasAudio
+        s.cameraOn = model.cameraOn
+        s.isHost = model.isHost
+        s.participants = model.participantCount
+        s.waiting = model.waitingCount
+        s.peopleOpen = model.sidePanel == .people
+        s.chatOpen = model.sidePanel == .chat || (model.chatOpen && model.sidePanel == nil)
+        s.unread = model.unread
+        s.handRaised = model.handRaised
+        s.sharing = model.sharing
+        s.recording = coordinator.isRecording
+        s.saving = coordinator.isSavingRecording
+        s.recordCaption = coordinator.isRecording
+            ? MeetingControlsModel.elapsed(since: { _ = model.now; return coordinator.recordingStartedAt }())
             : "Record"
-        return Button { coordinator.toggleRecording() } label: {
-            glyph(recording ? "stop.circle.fill" : "record.circle", caption: caption, compact: compact,
-                  tint: recording ? .red : .primary)
-        }
-        .buttonStyle(.plain)
-        .disabled(saving)
-        .help(recording ? "Stop recording" : "Record this class")
-        .accessibilityLabel(recording ? "Stop recording" : "Record")
+        s.notesOn = notes.effectiveEnabled
+        s.clock = MeetingControlsModel.elapsed(since: { _ = model.now; return coordinator.sessionStartedAt }())
+        return s
     }
 
-    // MARK: Host tools
-
-    private func hostControl(compact: Bool) -> some View {
-        menuCell(compact: compact, symbol: "shield.lefthalf.filled", caption: "Host tools") {
-            Button("Mute all", action: model.muteAll)
-            Button("Ask all to unmute", action: model.askAllToUnmute)
-            if model.waitingCount > 0 {
-                Button("Admit all waiting (\(model.waitingCount))", action: model.admitAll)
-            }
-            Divider()
-            Button(model.locked ? "Unlock meeting" : "Lock meeting", action: model.toggleLock)
-        }
+    private var actions: MeetingToolbarActions {
+        var a = MeetingToolbarActions()
+        a.toggleMute = model.toggleMute
+        a.joinAudio = model.joinAudio
+        a.toggleVideo = model.toggleCamera
+        a.togglePeople = model.togglePeople
+        a.toggleChat = model.toggleChat
+        a.toggleRecording = { coordinator.toggleRecording() }
+        a.toggleNotes = notes.toggle
+        a.stopSharing = model.stopShare
+        a.end = { coordinator.stop() }
+        return a
     }
 
-    // MARK: End
-
-    @ViewBuilder private var endControl: some View {
-        if confirmingEnd {
-            HStack(spacing: 6) {
-                Button("Cancel") { confirmingEnd = false }
-                    .buttonStyle(.plain)
-                    .font(.system(size: 12))
-                    .foregroundStyle(.secondary)
-                Button {
-                    confirmingEnd = false
-                    coordinator.stop()
-                } label: {
-                    Text("End for everyone")
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(.white)
-                        .padding(.horizontal, 12)
-                        .frame(height: 28)
-                        .background(Color.red, in: RoundedRectangle(cornerRadius: 10))
-                }
-                .buttonStyle(.plain)
-                .help("Ends the meeting for everyone, saves any recording and turns the camera off")
-            }
-        } else {
-            Button { confirmingEnd = true } label: {
-                Text("End")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(.white)
-                    .frame(width: 52, height: 28)
-                    .background(Color.red, in: RoundedRectangle(cornerRadius: 10))
-            }
-            .buttonStyle(.plain)
-            .help("End the session")
-            .accessibilityLabel("End session")
+    private var menus: MeetingToolbarMenus {
+        let model = self.model
+        var m = MeetingToolbarMenus()
+        m.audio = {
+            MeetingMenus.audio(hasAudio: model.hasAudio || !model.inMeeting,
+                               mics: model.micDevices.map { .init(id: $0.id, name: $0.name) },
+                               micSelected: model.micSelectedID,
+                               speakers: model.speakerDevices.map { .init(id: $0.id, name: $0.name) },
+                               speakerSelected: model.speakerSelectedID,
+                               joinAudio: model.joinAudio,
+                               pickMic: { model.selectMicrophone(id: $0.id, name: $0.name) },
+                               pickSpeaker: { model.selectSpeaker(id: $0.id, name: $0.name) })
         }
+        m.video = {
+            MeetingMenus.video(cameras: model.cameraDevices, selected: model.cameraSelectedID,
+                               pick: model.selectCamera)
+        }
+        m.security = {
+            var a = SecurityMenuActions()
+            a.setLocked = model.setLocked
+            a.setWaitingRoom = model.setWaitingRoom
+            a.setShareRule = model.setShareRule
+            a.setChat = model.setChat
+            a.setRename = model.setRename
+            a.setUnmuteSelf = model.setUnmuteSelf
+            a.setStartVideo = model.setStartVideo
+            a.suspend = { [weak coordinator] in
+                ParticipantGridWindowController.confirmSuspend { model.suspendActivities(); _ = coordinator }
+            }
+            return MeetingMenus.security(model.security, a,
+                                         lastConcurrent: model.coordinator.zoomChatClient.roomEvents.lastConcurrent)
+        }
+        m.react = {
+            MeetingMenus.react(handRaised: model.handRaised,
+                               reactions: ZoomMeetingSDKClient.Reaction.allCases.map(\.rawValue),
+                               toggleHand: model.toggleHand,
+                               send: { name in
+                                   if let r = ZoomMeetingSDKClient.Reaction(rawValue: name) { model.react(r) }
+                               })
+        }
+        m.share = {
+            var s = MeetingMenus.ShareMenuState()
+            s.inMeeting = model.inMeeting
+            s.sharing = model.sharing
+            s.displays = model.coordinator.zoomChatClient.shareableDisplays().map { ($0.id, $0.label) }
+            s.cannotShare = model.cannotShare
+            s.isHost = model.isHost
+            s.rule = model.security.shareRule
+            var a = MeetingMenus.ShareMenuActions()
+            a.shareDisplay = { model.startShare(displayID: CGDirectDisplayID($0)) }
+            a.stop = model.stopShare
+            a.setRule = model.setShareRule
+            return MeetingMenus.share(s, a, lastConcurrent: model.coordinator.zoomChatClient.roomEvents.lastConcurrent)
+        }
+        m.more = { overflow in
+            var a = MeetingMenus.MoreMenuActions()
+            a.copy = model.copy
+            a.openInZoom = model.openInZoomApp
+            return MeetingMenus.more(overflow: overflow, facts: model.meetingFacts, a)
+        }
+        return m
     }
 }
 
@@ -1200,6 +1163,11 @@ enum MeetingControlBarController {
         menu.addItem(MenuItem((model?.muted ?? false) ? "Unmute" : "Mute", enabled: inMeeting) {
             model?.toggleMute()
         })
+        // The pill has no room for Share or Security (it is already 532pt wide), so
+        // the one share control that matters when the window is away is here.
+        if model?.sharing ?? false {
+            menu.addItem(MenuItem("Stop sharing") { model?.stopShare() })
+        }
         let recording = coordinator?.isRecording ?? false
         menu.addItem(MenuItem("Stop recording",
                               enabled: recording && !(coordinator?.isSavingRecording ?? false)) {

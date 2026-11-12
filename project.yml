@@ -293,6 +293,10 @@ targets:
       - path: App/UI/WindowFrameRules.swift
       - path: App/ShortcutModel.swift
       - path: App/MeetingBarPlacement.swift
+      - path: App/UI/MeetingToolbarLayout.swift
+      - path: App/UI/MeetingMenuSpec.swift
+      - path: App/Zoom/MeetingShareRules.swift
+      - path: App/Zoom/MeetingRoomLedgers.swift
     settings:
       base:
         PRODUCT_NAME: GreenroomTests

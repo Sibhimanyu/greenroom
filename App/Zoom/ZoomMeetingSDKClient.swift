@@ -73,6 +73,12 @@ final class ZoomMeetingSDKClient: NSObject, ObservableObject {
     /// these objects, so dropping them would drop the video.
     private var videoContainer: ZoomSDKVideoContainer?
 
+    /// Other people's shared screens (ZoomMeetingSDKClient+Share.swift) and what
+    /// happens in the room: waiting room, reactions (+Room.swift). Both are
+    /// SDK delegates, so they are objects the client owns rather than extensions.
+    let shareViewer = ShareViewer()
+    let roomEvents = RoomEvents()
+
     /// Appends one line to ~/Library/Logs/Greenroom-video.log.
     ///
     /// A file, not the status log, for the same reason the quit path uses one:
@@ -618,6 +624,8 @@ final class ZoomMeetingSDKClient: NSObject, ObservableObject {
         spikeReleaseElement()
         #endif
         releaseStage()
+        shareViewer.reset()
+        roomEvents.reset()
         if let element = railSelfElement {
             _ = videoContainer?.clean(element)
             railSelfElement = nil
@@ -1618,6 +1626,14 @@ extension ZoomMeetingSDKClient: ZoomSDKMeetingServiceDelegate {
             // guidance. Nothing else in the app claims this delegate.
             ZoomSDK.shared().getMeetingService()?.getMeetingActionController().delegate = self
             Self.videoLog("action controller delegate wired")
+            if let service = ZoomSDK.shared().getMeetingService() {
+                shareViewer.nameFor = { [weak self] id in self?.participantName(userID: id) }
+                roomEvents.nameForWaiting = { id in
+                    service.getWaitingRoomController().getWaitingRoomUserInfo(id)?.getUserName()
+                }
+                shareViewer.install(on: service)
+                roomEvents.install(on: service)
+            }
         }
         switch state {
         case ZoomSDKMeetingStatus_InMeeting:

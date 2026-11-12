@@ -61,13 +61,15 @@ extension ZoomMeetingSDKClient: ZoomSDKMeetingActionControllerDelegate {
         onParticipantCountChanged?()
     }
     public func onUserInfoUpdate(_ userID: UInt32) {}
-    public func onHostChange(_ userID: UInt32) {}
+    public func onHostChange(_ userID: UInt32) { roomEvents.changed() }
     public func onVirtualNameTagStatusChanged(_ bOn: Bool, userID: UInt32) {}
     public func onVirtualNameTagRosterInfoUpdated(_ userID: UInt32) {}
-    public func onMeetingCoHostChanged(_ userID: UInt32, isCoHost: Bool) {}
+    public func onMeetingCoHostChanged(_ userID: UInt32, isCoHost: Bool) { roomEvents.changed() }
     public func onSpotlightVideoUserChange(_ spotlightedUserList: [Any]?) {}
     public func onVideoStatusChange(_ videoStatus: ZoomSDKVideoStatus, userID: UInt32) {}
-    public func onLowOrRaiseHandStatusChange(_ raise: Bool, userID: UInt32) {}
+    /// A hand goes up or down: the People panel and the toolbar's count redraw
+    /// now, not at the next one-second poll.
+    public func onLowOrRaiseHandStatusChange(_ raise: Bool, userID: UInt32) { roomEvents.changed() }
     public func onJoinMeetingResponse(_ joinMeetingHelper: ZoomSDKJoinMeetingHelper?) {}
     public func onMulti(toSingleShareNeedConfirm confirmHandle: ZoomSDKMultiToSingleShareConfirmHandler?) {}
     public func onHostAskUnmute() {}
@@ -77,17 +79,17 @@ extension ZoomMeetingSDKClient: ZoomSDKMeetingActionControllerDelegate {
     public func onHostVideoOrderUpdated(_ orderList: [Any]) {}
     public func onLocalVideoOrderUpdated(_ localOrderList: [Any]) {}
     public func onFollowHostVideoOrderChanged(_ follow: Bool) {}
-    public func onAllHandsLowered() {}
+    public func onAllHandsLowered() { roomEvents.changed() }
     public func onUserVideoQualityChanged(_ quality: ZoomSDKVideoQuality, userID: UInt32) {}
     public func onChatMsgDeleteNotification(_ msgID: String, messageDeleteType: ZoomSDKChatMessageDeleteType) {}
-    public func onChatStatusChangedNotification(_ status: ZoomSDKChatStatus) {}
+    public func onChatStatusChangedNotification(_ status: ZoomSDKChatStatus) { roomEvents.changed() }
     public func onShareMeetingChatStatusChanged(_ start: Bool) {}
-    public func onSuspendParticipantsActivities() {}
-    public func onAllowParticipantsStartVideoNotification(_ allow: Bool) {}
-    public func onAllowParticipantsRenameNotification(_ allow: Bool) {}
-    public func onAllowParticipantsUnmuteSelfNotification(_ allow: Bool) {}
+    public func onSuspendParticipantsActivities() { roomEvents.changed() }
+    public func onAllowParticipantsStartVideoNotification(_ allow: Bool) { roomEvents.changed() }
+    public func onAllowParticipantsRenameNotification(_ allow: Bool) { roomEvents.changed() }
+    public func onAllowParticipantsUnmuteSelfNotification(_ allow: Bool) { roomEvents.changed() }
     public func onAllowParticipantsShareWhiteBoardNotification(_ allow: Bool) {}
-    public func onMeetingLockStatus(_ isLock: Bool) { meetingIsLocked = isLock }
+    public func onMeetingLockStatus(_ isLock: Bool) { meetingIsLocked = isLock; roomEvents.changed() }
     public func onRequestLocalRecordingPrivilegeChanged(_ status: ZoomSDKLocalRecordingRequestPrivilegeStatus) {}
     public func onAllowParticipantsRequestCloudRecording(_ allow: Bool) {}
     public func on(inMeetingUserAvatarPathUpdated userID: UInt32) {}
@@ -103,7 +105,7 @@ extension ZoomMeetingSDKClient: ZoomSDKMeetingActionControllerDelegate {
                                                actionApprove: (() -> ZoomSDKError)?,
                                                actionDecline: (() -> ZoomSDKError)?) {}
     public func onCameraControlRequestResult(_ userID: UInt32, resultType: ZoomSDKCameraControlRequestResult) {}
-    public func onMute(onEntryStatusChange bEnabled: Bool) {}
+    public func onMute(onEntryStatusChange bEnabled: Bool) { roomEvents.changed() }
     public func onMeetingTopicChanged(_ topic: String) {}
     public func onBotAuthorizerRelationChanged(_ authorizerUserID: UInt32) {}
     public func onCreateCompanionRelation(_ parentUserID: UInt32, childUserID: UInt32) {}

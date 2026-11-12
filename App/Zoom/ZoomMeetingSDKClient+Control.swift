@@ -351,10 +351,13 @@ extension ZoomMeetingSDKClient {
         guard let room = ZoomSDK.shared().getMeetingService()?.getWaitingRoomController(),
               room.isSupportWaitingRoom(),
               let ids = room.getWaitRoomUserList() as? [NSNumber] else { return [] }
-        return ids.map { number in
+        let people = ids.map { number -> WaitingPerson in
             let id = number.uint32Value
-            return (id, room.getWaitingRoomUserInfo(id)?.getUserName() ?? "Guest")
+            return WaitingPerson(id: id, name: room.getWaitingRoomUserInfo(id)?.getUserName() ?? "Guest")
         }
+        // Longest waiting first (WaitingRoomLedger), so the list never shuffles.
+        roomEvents.syncWaiting(present: Set(people.map(\.id)))
+        return roomEvents.waiting.ordered(people).map { ($0.id, $0.name) }
     }
 
     func admitFromWaitingRoom(userID: UInt32) -> Bool {

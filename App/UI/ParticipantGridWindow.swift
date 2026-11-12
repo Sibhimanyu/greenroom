@@ -488,6 +488,15 @@ enum ParticipantGridWindowController {
         root?.applyCameraSwitch(pending)
     }
 
+    /// The one confirmation the toolbar's Security menu needs. A destructive,
+    /// rare action, so the alert's focus pull is the right behaviour (see
+    /// RootView.confirm).
+    static func confirmSuspend(_ action: @escaping () -> Void) {
+        RootView.confirm(title: "Suspend all participant activities?",
+                         message: "This stops every camera, microphone, share and chat in the meeting at once. Use it only if something has gone wrong.",
+                         confirm: "Suspend", action: action)
+    }
+
     fileprivate static func report(_ message: String) { log?(message) }
     fileprivate static func requestEndSession() { endSession?() }
     fileprivate static func requestShowChat() { showChat?() }
@@ -585,11 +594,52 @@ private final class RootView: NSView {
     private var stageVideo: NSView?
     /// Who the stage shows: spotlight, then a local pin, then whoever speaks.
     private var stageSpeakerID: UInt32?
+    // Shared screens (phase 2). A share takes the stage and forces Speaker; Gallery
+    // gets a chip that says whose screen it is and brings it back.
+    private var shareVideo: NSView?
+    private lazy var shareChip: ClosureButton = {
+        let button = ClosureButton { [weak self] in self?.shareChipPressed() }
+        button.isBordered = false
+        button.wantsLayer = true
+        button.layer?.backgroundColor = NSColor.black.withAlphaComponent(0.72).cgColor
+        button.layer?.cornerRadius = 13
+        button.isHidden = true
+        return button
+    }()
+    private lazy var selfShareCard = SelfShareCardView { [weak self] in self?.stopOwnShare() }
+    /// Speaker was forced by a share; the view to go back to when it ends.
+    private var shareForcedSpeaker = false
+    private var viewBeforeShare: ViewMode?
+    private var userChoseDuringShare = false
+    private var sharedNow: (sourceID: UInt32, userID: UInt32, name: String)? {
+        ParticipantGridWindowController.sdk?.shareViewer.current
+    }
+    private var selfSharingNow: Bool { ParticipantGridWindowController.sdk?.shareViewer.selfSharing ?? false }
+    /// Someone else's share is the stage's picture.
+    private var shareOnStage: Bool { meetingForm && viewMode == .speaker && sharedNow != nil }
+    /// Your own share, as a card where the picture would be.
+    private var selfCardShown: Bool { meetingForm && viewMode == .speaker && selfSharingNow && sharedNow == nil }
     private var lastStageProvider: ((UInt32, NSRect) -> NSView?)?
     private var lastReleaseStage: (() -> Void)?
     private let sidePanelHost = BarView()
     private let sidePanelDivider = NSView()
     private let sidePanelTitle = NSTextField(labelWithString: "")
+    /// "12 \u{00B7} 2 hands up" beside the People title.
+    private let sidePanelCount = NSTextField(labelWithString: "")
+    /// Copies the invite link, the one `meetingInvite().joinURL` gives.
+    private lazy var inviteButton: ClosureButton = {
+        let button = ClosureButton { [weak self] in self?.controls?.copyInviteLink() }
+        button.title = "Invite"
+        button.image = NSImage(systemSymbolName: "link", accessibilityDescription: nil)?
+            .withSymbolConfiguration(.init(pointSize: 10, weight: .medium))
+        button.imagePosition = .imageLeading
+        button.bezelStyle = .rounded
+        button.controlSize = .small
+        button.font = .systemFont(ofSize: 11)
+        button.toolTip = "Copy the invite link"
+        button.setAccessibilityLabel("Copy invite link")
+        return button
+    }()
     private lazy var sidePanelClose = ClosureButton { [weak self] in self?.controls?.sidePanel = nil }
     private var chatHost: NSView?
     private let peopleView = MeetingPeopleView(frame: .zero)
@@ -930,7 +980,8 @@ private final class RootView: NSView {
     /// Who the gallery or the filmstrip lists: everyone, or everyone but the
     /// person already on the stage.
     private var listed: [ZoomMeetingSDKClient.RosterEntry] {
-        isSpeakerMode ? roster.filter { $0.id != stageSpeakerID } : roster
+        // A share on the stage moves the speaker down to the filmstrip with the rest.
+        isSpeakerMode && !shareOnStage ? roster.filter { $0.id != stageSpeakerID } : roster
     }
     private static let barHeight: CGFloat = 44
     /// Zero: the rail carries every control now, so there is no bottom toolbar
@@ -1104,6 +1155,7 @@ private final class RootView: NSView {
         self.roster = roster
         self.featuredID = ParticipantGridWindowController.featuredViewEnabled && !meetingForm ? featured : nil
         if meetingForm {
+            syncShareMode()
             stageSpeakerID = roster.first(where: \.isSpotlighted)?.id
                 ?? roster.first(where: \.isPinned)?.id ?? featured
             lastStageProvider = stageProvider
@@ -1184,8 +1236,17 @@ private final class RootView: NSView {
                 gridHost.addSubview(made)
                 return made
             }()
-            tile.apply(entry: entry, isSelected: selected == entry.id)
+            let badges = tileBadges(entry.id)
+            tile.apply(entry: entry, isSelected: selected == entry.id,
+                       reaction: badges.reaction, feedback: badges.feedback)
         }
+    }
+
+    /// What a tile shows from the room's events: a three-second reaction and the
+    /// persistent feedback badge.
+    private func tileBadges(_ id: UInt32) -> (reaction: String?, feedback: String?) {
+        guard let ledger = ParticipantGridWindowController.sdk?.roomEvents.reactions else { return (nil, nil) }
+        return (ledger.reaction(for: id, now: Date()), ledger.feedbackLabel(for: id))
     }
 
     /// The SDK renders into a view it owns; the tile only parents it, and only
@@ -1206,7 +1267,9 @@ private final class RootView: NSView {
     /// waiting for the next poll. A click has to feel immediate.
     private func selectionChanged() {
         for entry in pageRoster {
-            tiles[entry.id]?.apply(entry: entry, isSelected: selected == entry.id)
+            let badges = tileBadges(entry.id)
+            tiles[entry.id]?.apply(entry: entry, isSelected: selected == entry.id,
+                                   reaction: badges.reaction, feedback: badges.feedback)
         }
         lastBarSignature = barSignature()
         rebuildBars()
@@ -1269,6 +1332,9 @@ private final class RootView: NSView {
         stageVideo?.removeFromSuperview()
         stageVideo = nil
         lastReleaseStage?()
+        shareVideo?.removeFromSuperview()
+        shareVideo = nil
+        ParticipantGridWindowController.sdk?.shareViewer.releaseElement()
     }
 
     // MARK: Layout
@@ -1580,6 +1646,8 @@ private final class RootView: NSView {
         stageScrim.wantsLayer = true
         stageScrim.layer?.backgroundColor = NSColor.black.withAlphaComponent(0.55).cgColor
         stageHost.addSubview(stageScrim)
+        selfShareCard.isHidden = true
+        stageHost.addSubview(selfShareCard)
         stageName.font = .systemFont(ofSize: 13, weight: .medium)
         stageName.textColor = .white
         stageName.lineBreakMode = .byTruncatingTail
@@ -1596,13 +1664,28 @@ private final class RootView: NSView {
             .withSymbolConfiguration(.init(pointSize: 11, weight: .medium))
         sidePanelClose.contentTintColor = .secondaryLabelColor
         sidePanelClose.toolTip = "Close panel"
-        for view in [sidePanelDivider, sidePanelTitle, sidePanelClose, queueScroll, peopleView] as [NSView] {
+        sidePanelCount.font = .systemFont(ofSize: 12)
+        sidePanelCount.textColor = .secondaryLabelColor
+        for view in [sidePanelDivider, sidePanelTitle, sidePanelCount, inviteButton, sidePanelClose, queueScroll, peopleView] as [NSView] {
             sidePanelHost.addSubview(view)   // the queue moves here from the rail
         }
         peopleView.onSelect = { [weak self] id in
             self?.selected = id
             self?.selectionChanged()
         }
+        // The waiting room's three answers, and the footer's two room-wide ones.
+        // Each is `perform`: one definition, one log line, one redraw.
+        peopleView.onAdmit = { [weak self] id in
+            let name = self?.waiting.first { $0.id == id }?.name ?? "them"
+            Self.perform("Admitted \(name)") { $0.admitFromWaitingRoom(userID: id) }
+        }
+        peopleView.onDeny = { [weak self] id in
+            let name = self?.waiting.first { $0.id == id }?.name ?? "them"
+            Self.perform("Denied \(name)") { $0.denyWaiting(userID: id) }
+        }
+        peopleView.onAdmitAll = { Self.perform("Admitted everyone waiting") { $0.admitEveryoneWaiting() } }
+        peopleView.onMuteAll = { Self.perform("Muted everyone") { $0.muteEveryone() } }
+        peopleView.onAskAllToUnmute = { Self.perform("Asked everyone to unmute") { $0.askEveryoneToUnmute() } }
 
         if let controls {
             let host = FirstMouseHostingView(rootView: MeetingToolbarView(model: controls, coordinator: controls.coordinator)
@@ -1616,7 +1699,7 @@ private final class RootView: NSView {
             }
         }
         // Chrome last, so in the hover form it sits over the video.
-        for view in [selfPreview, sidePanelHost, inspector, readiness, topBar, bottomBar] as [NSView] {
+        for view in [shareChip, selfPreview, sidePanelHost, inspector, readiness, topBar, bottomBar] as [NSView] {
             addSubview(view)
         }
     }
@@ -1630,6 +1713,8 @@ private final class RootView: NSView {
 
     @objc private func modeChanged(_ sender: NSSegmentedControl) {
         viewMode = ViewMode(rawValue: sender.selectedSegment) ?? .gallery
+        // A choice made while a share is up stays: it is not undone when the share ends.
+        if shareForcedSpeaker { userChoseDuringShare = true }
         if !form.isSlot {
             UserDefaults.standard.set(viewMode == .speaker ? "speaker" : "gallery", forKey: "meetingWindow.view")
         }
@@ -1648,8 +1733,35 @@ private final class RootView: NSView {
         layoutEverything()
     }
 
-    /// Speaker view's picture: one element, handed whoever is on the stage.
+    /// Speaker view's picture: one element, handed whoever is on the stage, or a
+    /// shared screen when somebody else is sharing.
     private func attachStage() {
+        let viewer = ParticipantGridWindowController.sdk?.shareViewer
+        if shareOnStage, let viewer {
+            // The speaker's 720p stream is given back while a screen is shown.
+            if stageVideo != nil {
+                stageVideo?.removeFromSuperview()
+                stageVideo = nil
+                lastReleaseStage?()
+            }
+            guard !stageHost.bounds.isEmpty, let view = viewer.stageView(frame: stageHost.bounds) else { return }
+            if shareVideo !== view {
+                shareVideo?.removeFromSuperview()
+                view.autoresizingMask = [.width, .height]
+                stageHost.addSubview(view, positioned: .below, relativeTo: stageScrim)
+                shareVideo = view
+            }
+            view.frame = stageHost.bounds
+            // Only now, with the view in a visible window: a share asked to draw
+            // before that never does (the video stage's lesson).
+            viewer.renderIfReady()
+            return
+        }
+        if shareVideo != nil {
+            shareVideo?.removeFromSuperview()
+            shareVideo = nil
+        }
+        viewer?.releaseElement()
         guard isSpeakerMode, let id = stageSpeakerID, let provider = lastStageProvider else {
             stageVideo?.removeFromSuperview()
             stageVideo = nil
@@ -1667,12 +1779,103 @@ private final class RootView: NSView {
         view.frame = stageHost.bounds
     }
 
+    // MARK: Shared screens
+
+    /// A share starting forces Speaker; its ending puts the view back, unless the
+    /// teacher picked one in between.
+    private func syncShareMode() {
+        let sharing = sharedNow != nil
+        if sharing, !shareForcedSpeaker {
+            shareForcedSpeaker = true
+            userChoseDuringShare = false
+            viewBeforeShare = viewMode
+            if viewMode != .speaker, !form.isSlot { setViewMode(.speaker) }
+            ZoomMeetingSDKClient.videoLog("Share view: forced Speaker (was \(viewBeforeShare == .gallery ? "Gallery" : "Speaker"))")
+        } else if !sharing, shareForcedSpeaker {
+            shareForcedSpeaker = false
+            if !userChoseDuringShare, let before = viewBeforeShare, before != viewMode, !form.isSlot {
+                setViewMode(before)
+            }
+            viewBeforeShare = nil
+            ZoomMeetingSDKClient.videoLog("Share view: share ended, view restored")
+        }
+    }
+
+    private func setViewMode(_ mode: ViewMode) {
+        viewMode = mode
+        modeControl.selectedSegment = mode.rawValue
+        page = 0
+    }
+
+    private func shareChipPressed() {
+        guard let viewer = ParticipantGridWindowController.sdk?.shareViewer else { return }
+        if sharedNow == nil {
+            // Your own share, in Gallery: the chip is its Stop.
+            stopOwnShare()
+            return
+        }
+        let choices = viewer.choices
+        if choices.count > 1 {
+            let entries: [MenuEntry] = choices.map { choice in
+                .item("\(choice.name)\u{2019}s screen", checked: choice.sourceID == viewer.current?.sourceID) { [weak self] in
+                    viewer.pick(choice.sourceID)
+                    self?.showShareOnStage()
+                }
+            }
+            MeetingMenuBuilder.popUp(entries, above: shareChip, below: true)
+        } else {
+            showShareOnStage()
+        }
+    }
+
+    /// Back to Speaker, where the share is drawn.
+    private func showShareOnStage() {
+        guard viewMode != .speaker else { return }
+        modeControl.selectedSegment = ViewMode.speaker.rawValue
+        modeChanged(modeControl)
+    }
+
+    private func stopOwnShare() {
+        Self.perform("Stopped sharing") { $0.stopShare() }
+    }
+
+    /// The chip over the stage or gallery, and your own share's card.
+    private func layoutShareChip(in stage: NSRect) {
+        let viewer = ParticipantGridWindowController.sdk?.shareViewer
+        var text: String?
+        var help = ""
+        if let now = sharedNow, let viewer {
+            // On the stage the caption already says whose screen it is; the chip
+            // is there to choose between several, and in Gallery to bring it back.
+            if !shareOnStage {
+                text = "Viewing \(now.name)\u{2019}s screen \u{00B7} Show"
+            } else if viewer.selection.hasChoice {
+                text = "\(now.name)\u{2019}s screen \u{25BE}"
+            }
+            help = "Several people are sharing. Choose whose screen to see."
+        } else if selfSharingNow, !selfCardShown {
+            text = "You are sharing your screen \u{00B7} Stop"
+            help = "Stop sharing your screen"
+        }
+        guard let text else { shareChip.isHidden = true; return }
+        shareChip.isHidden = false
+        shareChip.attributedTitle = NSAttributedString(string: text, attributes: [
+            .font: NSFont.systemFont(ofSize: 12, weight: .medium), .foregroundColor: NSColor.white])
+        shareChip.toolTip = help
+        shareChip.setAccessibilityLabel(text)
+        shareChip.sizeToFit()
+        let width = min(stage.width - 24, shareChip.frame.width + 24)
+        shareChip.frame = NSRect(x: stage.midX - width / 2, y: stage.maxY - 12 - 26, width: width, height: 26)
+    }
+
     /// Your corner preview and the roster, rewritten once a second.
     private func updateMeetingChrome() {
         if let sdk = ParticipantGridWindowController.sdk {
             selfPreview.apply(muted: sdk.iAmMuted, videoOn: sdk.myVideoIsOn, level: lastMicLevel)
         }
-        if let id = stageSpeakerID, let entry = roster.first(where: { $0.id == id }) {
+        if shareOnStage, let now = sharedNow {
+            stageName.stringValue = "\(now.name)\u{2019}s screen"
+        } else if let id = stageSpeakerID, let entry = roster.first(where: { $0.id == id }) {
             var name = entry.name
             if entry.isHost { name += " \u{00B7} host" } else if entry.isCoHost { name += " \u{00B7} co-host" }
             stageName.stringValue = name
@@ -1691,7 +1894,10 @@ private final class RootView: NSView {
                          handUp: entry.isRaisingHand, muted: entry.isMuted && entry.hasJoinedAudio,
                          cameraOff: !entry.videoOn, selected: selected == entry.id)
         }
-        peopleView.apply(hands: queue.map(row),
+        peopleView.apply(waiting: waiting.map { .init(id: $0.id, name: $0.name) },
+                         canDeny: ParticipantGridWindowController.sdk?.canExpelFromWaitingRoom() ?? false,
+                         isHost: flags.iAmHostOrCoHost,
+                         hands: queue.map(row),
                          everyone: roster.filter { !handIDs.contains($0.id) }.map(row),
                          total: roster.count + 1)
     }
@@ -1782,9 +1988,16 @@ private final class RootView: NSView {
             gridHost.frame = NSRect(x: stage.minX, y: stage.minY,
                                     width: max(0, min(stage.maxX, clearRight) - stage.minX - preview.width - 24),
                                     height: strip)
-            stageHost.isHidden = roster.isEmpty
+            stageHost.isHidden = roster.isEmpty && !shareOnStage && !selfCardShown
             stageHost.frame = NSRect(x: stage.minX + 8, y: stage.minY + strip + 8,
                                      width: max(0, stage.width - 16), height: max(0, stage.height - strip - 16))
+            selfShareCard.isHidden = !selfCardShown
+            if selfCardShown {
+                let card = SelfShareCardView.size
+                selfShareCard.frame = NSRect(x: (stageHost.bounds.width - card.width) / 2,
+                                             y: (stageHost.bounds.height - card.height) / 2,
+                                             width: card.width, height: card.height)
+            }
             let scrimHeight: CGFloat = 26
             stageScrim.frame = NSRect(x: 0, y: 0, width: stageHost.bounds.width, height: scrimHeight)
             stageScrim.isHidden = stageName.stringValue.isEmpty
@@ -1801,8 +2014,11 @@ private final class RootView: NSView {
             layoutPager(pages: pages, y: stage.minY, width: stage.width)
         }
 
+        if !isSpeakerMode { selfShareCard.isHidden = true }
+        layoutShareChip(in: NSRect(x: stage.minX, y: stage.minY, width: min(stage.maxX, clearRight) - stage.minX,
+                                   height: stage.height))
         readiness.isHidden = true
-        emptyState.isHidden = !roster.isEmpty
+        emptyState.isHidden = !roster.isEmpty || shareOnStage || selfCardShown
         emptyState.frame = NSRect(x: stage.minX + 40, y: stage.midY - 40,
                                   width: max(80, stage.width - 80), height: 80)
 
@@ -1849,6 +2065,23 @@ private final class RootView: NSView {
         sidePanelTitle.frame = NSRect(x: 16, y: height - head + (head - sidePanelTitle.frame.height) / 2,
                                       width: sidePanelTitle.frame.width, height: sidePanelTitle.frame.height)
         sidePanelClose.frame = NSRect(x: width - 36, y: height - head + 8, width: 24, height: 24)
+        // People carries a count (and the raised hands) and the invite link.
+        let people = panel == .people
+        sidePanelCount.isHidden = !people
+        inviteButton.isHidden = !people
+        if people {
+            let hands = roster.filter(\.isRaisingHand).count
+            var count = "\(roster.count + 1)"
+            if hands > 0 { count += " \u{00B7} " + (hands == 1 ? "1 hand up" : "\(hands) hands up") }
+            sidePanelCount.stringValue = count
+            sidePanelCount.sizeToFit()
+            sidePanelCount.frame.origin = NSPoint(x: sidePanelTitle.frame.maxX + 8,
+                                                  y: height - head + (head - sidePanelCount.frame.height) / 2)
+            inviteButton.sizeToFit()
+            inviteButton.frame = NSRect(x: width - 36 - inviteButton.frame.width - 12,
+                                        y: height - head + 8, width: inviteButton.frame.width + 4, height: 24)
+            sidePanelCount.frame.size.width = max(0, min(sidePanelCount.frame.width, inviteButton.frame.minX - sidePanelCount.frame.minX - 8))
+        }
         let body = NSRect(x: 0, y: 0, width: width, height: max(0, height - head))
 
         switch panel {
@@ -2874,6 +3107,14 @@ private final class RootView: NSView {
                     $0.setCoHost(on, userID: id)
                 }
             })
+            if flags.iAmHostOrCoHost, ParticipantGridWindowController.sdk?.waitingRoomAvailable == true {
+                // The way back is Admit in the waiting list, so no confirmation.
+                controls.append(Self.button("Put in waiting room", symbol: "door.left.hand.closed") {
+                    Self.perform("Sent \(entry.name) back to the waiting room") {
+                        $0.putInWaitingRoom(userID: id)
+                    }
+                })
+            }
             controls.append(Self.button("Make host", symbol: "person.badge.key") {
                 Self.confirm(title: "Make \(entry.name) the host?",
                              message: "You become a co-host. You cannot take the host role back without the host key.",
@@ -3201,7 +3442,7 @@ private final class RootView: NSView {
         return response
     }
 
-    private static func confirm(title: String, message: String, confirm: String, action: @escaping () -> Void) {
+    fileprivate static func confirm(title: String, message: String, confirm: String, action: @escaping () -> Void) {
         let alert = NSAlert()
         alert.messageText = title
         alert.informativeText = message
@@ -3227,6 +3468,59 @@ private final class RootView: NSView {
         let trimmed = field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
         if response == .alertFirstButtonReturn, !trimmed.isEmpty { action(trimmed) }
     }
+}
+
+// MARK: - Your own share
+
+/// Where the picture would be while you are sharing a screen through Zoom: it
+/// says so, and says the camera picture carries on. Zoom shows the sharer no
+/// view of their own share in custom UI, so without it the stage looks idle.
+@MainActor
+private final class SelfShareCardView: NSView {
+    static let size = NSSize(width: 360, height: 132)
+    private let title = NSTextField(labelWithString: "You are sharing your screen")
+    private let detail = NSTextField(wrappingLabelWithString: "Everyone sees your shared display. Your camera picture keeps going underneath.")
+    private lazy var stop: ClosureButton = {
+        let button = ClosureButton { [weak self] in self?.onStop() }
+        button.title = "Stop sharing"
+        button.bezelStyle = .rounded
+        button.contentTintColor = .systemRed
+        return button
+    }()
+    private let onStop: () -> Void
+
+    init(onStop: @escaping () -> Void) {
+        self.onStop = onStop
+        super.init(frame: NSRect(origin: .zero, size: Self.size))
+        wantsLayer = true
+        layer?.backgroundColor = NSColor.windowBackgroundColor.withAlphaComponent(0.96).cgColor
+        layer?.cornerRadius = 14          // DESIGN.md radius-lg: a card
+        layer?.borderWidth = 1
+        layer?.borderColor = NSColor.separatorColor.cgColor
+        title.font = .systemFont(ofSize: 17, weight: .semibold)
+        title.textColor = .labelColor
+        title.alignment = .center
+        detail.font = .systemFont(ofSize: 12)
+        detail.textColor = .secondaryLabelColor
+        detail.alignment = .center
+        for view in [title, detail, stop] as [NSView] { addSubview(view) }
+        setAccessibilityElement(true)
+        setAccessibilityLabel("You are sharing your screen")
+    }
+
+    required init?(coder: NSCoder) { nil }
+
+    override func layout() {
+        super.layout()
+        let pad: CGFloat = 20
+        title.frame = NSRect(x: pad, y: bounds.height - 44, width: bounds.width - pad * 2, height: 24)
+        detail.frame = NSRect(x: pad, y: 52, width: bounds.width - pad * 2, height: 40)
+        stop.sizeToFit()
+        stop.frame = NSRect(x: (bounds.width - stop.frame.width - 16) / 2, y: 14,
+                            width: stop.frame.width + 16, height: 28)
+    }
+
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 }
 
 // MARK: - First-click controls
@@ -3277,6 +3571,10 @@ private final class TileView: NSView {
     private let statusLabel = NSTextField(labelWithString: "")
     private let handDot = DotView()
     private let speaking = SpeakingIndicatorView()
+    /// An emoji someone just sent, for three seconds (the SDK's reaction event),
+    /// and the yes / no / slow down badge that stays until it is cancelled.
+    private let reactionLabel = NSTextField(labelWithString: "")
+    private let feedbackLabel = NSTextField(labelWithString: "")
     private var isSelected = false
     private var isTalking = false
 
@@ -3306,6 +3604,18 @@ private final class TileView: NSView {
 
         speaking.isHidden = true
         addSubview(speaking)
+
+        reactionLabel.font = .systemFont(ofSize: 28)
+        reactionLabel.isHidden = true
+        addSubview(reactionLabel)
+        feedbackLabel.font = .systemFont(ofSize: 11, weight: .semibold)
+        feedbackLabel.textColor = .white
+        feedbackLabel.alignment = .center
+        feedbackLabel.wantsLayer = true
+        feedbackLabel.layer?.backgroundColor = NSColor.black.withAlphaComponent(0.65).cgColor
+        feedbackLabel.layer?.cornerRadius = 9          // a pill: DESIGN.md `pill`, status badges
+        feedbackLabel.isHidden = true
+        addSubview(feedbackLabel)
     }
 
     required init?(coder: NSCoder) { nil }
@@ -3374,9 +3684,16 @@ private final class TileView: NSView {
         video = nil
     }
 
-    func apply(entry: ZoomMeetingSDKClient.RosterEntry, isSelected: Bool) {
+    func apply(entry: ZoomMeetingSDKClient.RosterEntry, isSelected: Bool,
+               reaction: String? = nil, feedback: String? = nil) {
         self.isSelected = isSelected
         isTalking = entry.isTalking
+        reactionLabel.stringValue = reaction ?? ""
+        reactionLabel.isHidden = reaction == nil
+        feedbackLabel.stringValue = feedback ?? ""
+        feedbackLabel.isHidden = feedback == nil
+        reactionLabel.setAccessibilityLabel(reaction.map { "Reaction \($0)" })
+        feedbackLabel.setAccessibilityLabel(feedback.map { "Feedback: \($0)" })
 
         var name = entry.name
         if entry.isMyself { name += " (you)" }
@@ -3433,6 +3750,21 @@ private final class TileView: NSView {
         // Top-left, away from the name bar, so a talking student is obvious
         // without reading anything.
         speaking.frame = NSRect(x: inset, y: bounds.height - inset - 14, width: 18, height: 14)
+
+        // Top-right: the feedback badge, with a fresh emoji to its left.
+        var badgeRight = bounds.width - inset
+        if !feedbackLabel.isHidden {
+            feedbackLabel.sizeToFit()
+            let w = feedbackLabel.frame.width + 14
+            feedbackLabel.frame = NSRect(x: badgeRight - w, y: bounds.height - inset - 18, width: w, height: 18)
+            badgeRight -= w + 6
+        }
+        if !reactionLabel.isHidden {
+            reactionLabel.sizeToFit()
+            reactionLabel.frame = NSRect(x: badgeRight - reactionLabel.frame.width,
+                                         y: bounds.height - inset - reactionLabel.frame.height + 2,
+                                         width: reactionLabel.frame.width, height: reactionLabel.frame.height)
+        }
 
         // Speaking is the one thing worth a colour on the tile itself, and
         // accent-lime is a fill token, so a stroke is a legitimate use of it.

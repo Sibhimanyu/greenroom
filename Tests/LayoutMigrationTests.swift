@@ -18,7 +18,7 @@ final class LayoutMigrationTests: XCTestCase {
     func testDefaultSettingsMakeOnlyStartersAndNoneIsActive() {
         let d = defaults()
         let lib = LayoutLibrary.loadOrMigrate(from: d, defaultSiteURL: site)
-        XCTAssertEqual(lib.templates.map(\.name), ["Teach from a browser", "Meeting and chat"])
+        XCTAssertEqual(lib.templates.map(\.name), ["Raj Mode", "Teach from a browser", "Meeting and chat"])
         XCTAssertNil(lib.activeID)
         XCTAssertNotNil(d.data(forKey: "layoutLibrary"), "written back so it runs once")
     }
@@ -40,7 +40,7 @@ final class LayoutMigrationTests: XCTestCase {
         d.set(workspaceJSON(#"{"zoomSlotRatio":0.29933763586956524,"sideShowsZoomTile":true,"mainOnLeft":true,"mainFraction":0.75,"sideShowsChat":true}"#),
               forKey: "workspaceLayout")
         let lib = LayoutLibrary.loadOrMigrate(from: d, defaultSiteURL: site)
-        XCTAssertEqual(lib.templates.map(\.name), ["Teach from a browser", "Meeting and chat", "Your previous layout"])
+        XCTAssertEqual(lib.templates.map(\.name), ["Raj Mode", "Teach from a browser", "Meeting and chat", "Your previous layout"])
         XCTAssertNil(lib.activeID, "arrange was off, so None")
         let t = try XCTUnwrap(lib.templates.last)
 
@@ -122,23 +122,100 @@ final class LayoutMigrationTests: XCTestCase {
 
     // MARK: Editing
 
-    func testStartersAreTheDocumentedShapes() {
-        let s = LayoutLibrary.starters()
-        let teach = s[0]
-        XCTAssertEqual(teach.oneDisplay.map(\.rect.w).map { ($0 * 12).rounded() }, [8, 4, 4])
-        XCTAssertEqual(teach.oneDisplay[1].rect.h * 12, 5, accuracy: 1e-9)
-        XCTAssertEqual(s[1].oneDisplay.map(\.rect.w).map { ($0 * 12).rounded() }, [9, 3])
+    private func starter(_ key: String) -> LayoutTemplate {
+        LayoutLibrary.starters().first { $0.starter == key }!
     }
 
-    func testRestoreStartersBringsBackDeletedAndResetsEdited() {
+    func testStartersAreTheDocumentedShapes() {
+        let s = LayoutLibrary.starters()
+        XCTAssertEqual(s.compactMap(\.starter), [LayoutLibrary.rajMode, LayoutLibrary.teachFromBrowser, LayoutLibrary.meetingAndChat])
+        let teach = starter(LayoutLibrary.teachFromBrowser)
+        XCTAssertEqual(teach.oneDisplay.map(\.rect.w).map { ($0 * 12).rounded() }, [8, 4, 4])
+        XCTAssertEqual(teach.oneDisplay[1].rect.h * 12, 5, accuracy: 1e-9)
+        XCTAssertEqual(starter(LayoutLibrary.meetingAndChat).oneDisplay.map(\.rect.w).map { ($0 * 12).rounded() }, [9, 3])
+    }
+
+    func testRajModeGeometryIsValid() throws {
+        let raj = starter(LayoutLibrary.rajMode)
+        func cells(_ r: UnitRect) -> [Int] { [r.x, r.y, r.w, r.h].map { Int(($0 * 12).rounded()) } }
+        XCTAssertEqual(raj.oneDisplay.map { cells($0.rect) }, [[0, 0, 9, 12], [9, 0, 3, 5], [9, 5, 3, 7]])
+        XCTAssertEqual(raj.oneDisplay.first?.kind.app?.bundleID, LayoutLibrary.builtInBrowserBundleID)
+        XCTAssertEqual(raj.oneDisplay.first?.kind.app?.opensAtStart, true)
+        XCTAssertEqual(raj.oneDisplay[1].kind, .meeting(fillsDisplay: false, startsHidden: false))
+        XCTAssertTrue(raj.oneDisplay[2].kind.isChat)
+        let two = try XCTUnwrap(raj.twoDisplays)
+        XCTAssertEqual(two.main.map { cells($0.rect) }, [[0, 0, 9, 12], [9, 0, 3, 12]])
+        XCTAssertEqual(two.second.first?.kind, .meeting(fillsDisplay: true, startsHidden: false))
+        XCTAssertEqual(two.second.first?.rect, .full)
+
+        // No overlap and the minimums hold, on a laptop and a large display.
+        let versions = [raj.oneDisplay, two.main, two.second]
+        for display in [CGSize(width: 1280, height: 720), CGSize(width: 1440, height: 900), CGSize(width: 2560, height: 1440)] {
+            for pieces in versions {
+                for (i, p) in pieces.enumerated() {
+                    let min = LayoutGeometry.minimumUnitSize(for: p.kind, display: display)
+                    XCTAssertGreaterThanOrEqual(p.rect.w + 1e-9, min.w, "\(p.kind) too narrow on \(display)")
+                    XCTAssertGreaterThanOrEqual(p.rect.h + 1e-9, min.h, "\(p.kind) too short on \(display)")
+                    XCTAssertLessThanOrEqual(p.rect.maxX, 1 + 1e-9)
+                    XCTAssertLessThanOrEqual(p.rect.maxY, 1 + 1e-9)
+                    for q in pieces[(i + 1)...] {
+                        XCTAssertFalse(LayoutGeometry.overlaps(p.rect, q.rect))
+                    }
+                }
+            }
+        }
+    }
+
+    func testResetToDefaultsReplacesEverythingAndMeansNone() {
         var lib = LayoutLibrary(templates: LayoutLibrary.starters())
         let mine = lib.addBlank()
-        lib.delete(lib.templates[0].id)
+        var previous = LayoutTemplate(name: "Your previous layout")
+        previous.starter = nil
+        lib.templates.append(previous)
         lib.templates[0].oneDisplay = []
-        lib.restoreStarters()
-        XCTAssertEqual(lib.templates.filter { $0.starter != nil }.count, 2)
-        XCTAssertFalse(lib.templates.first { $0.starter == LayoutLibrary.meetingAndChat }!.oneDisplay.isEmpty)
-        XCTAssertNotNil(lib.template(id: mine), "your own layouts are untouched")
+        lib.delete(lib.templates[1].id)
+        lib.select(mine)
+        XCTAssertEqual(lib.userLayoutCount, 2)
+        lib.resetToDefaults()
+        XCTAssertEqual(lib.userLayoutCount, 0)
+        XCTAssertNil(lib.activeID)
+        XCTAssertNil(lib.template(id: mine))
+        XCTAssertEqual(lib.templates.map(\.starter), LayoutLibrary.starters().map(\.starter))
+        XCTAssertEqual(lib.templates.map(\.oneDisplay.count), LayoutLibrary.starters().map(\.oneDisplay.count))
+        XCTAssertNotNil(lib.templates.first { $0.starter == LayoutLibrary.rajMode }, "Raj Mode is back")
+    }
+
+    func testRajModeIsAppendedOnceToAnExistingLibrary() throws {
+        // A library saved before Raj Mode: the two original starters, one deleted, one of yours.
+        var old = LayoutLibrary(templates: LayoutLibrary.starters().filter { $0.starter != LayoutLibrary.rajMode })
+        old.delete(old.templates.first { $0.starter == LayoutLibrary.meetingAndChat }!.id)
+        let mine = old.addBlank()
+        old.select(mine)
+        let d = defaults()
+        old.save(to: d)
+
+        let first = LayoutLibrary.loadOrMigrate(from: d, defaultSiteURL: site)
+        XCTAssertEqual(first.templates.first?.starter, LayoutLibrary.rajMode, "right after None")
+        XCTAssertEqual(first.templates.compactMap(\.starter), [LayoutLibrary.rajMode, LayoutLibrary.teachFromBrowser])
+        XCTAssertEqual(first.activeID, mine, "the Start layout is not changed")
+        XCTAssertNil(first.templates.first { $0.starter == LayoutLibrary.meetingAndChat }, "a deleted starter stays deleted")
+
+        // Deleting Raj Mode sticks across launches.
+        var again = first
+        again.delete(again.templates.first { $0.starter == LayoutLibrary.rajMode }!.id)
+        again.save(to: d)
+        let second = LayoutLibrary.loadOrMigrate(from: d, defaultSiteURL: site)
+        XCTAssertNil(second.templates.first { $0.starter == LayoutLibrary.rajMode })
+        XCTAssertEqual(second, again)
+    }
+
+    func testFreshInstallRecordsKnownStartersSoDeletedOnesStayGone() {
+        let d = defaults()
+        var lib = LayoutLibrary.loadOrMigrate(from: d, defaultSiteURL: site)
+        XCTAssertEqual(lib.templates.compactMap(\.starter).count, 3)
+        lib.delete(lib.templates.first { $0.starter == LayoutLibrary.rajMode }!.id)
+        lib.save(to: d)
+        XCTAssertNil(LayoutLibrary.loadOrMigrate(from: d, defaultSiteURL: site).templates.first { $0.starter == LayoutLibrary.rajMode })
     }
 
     func testDeletingTheActiveTemplateMeansNone() {
@@ -152,18 +229,18 @@ final class LayoutMigrationTests: XCTestCase {
         var lib = LayoutLibrary(templates: LayoutLibrary.starters())
         let copyID = try XCTUnwrap(lib.duplicate(lib.templates[0].id))
         let copy = try XCTUnwrap(lib.template(id: copyID))
-        XCTAssertEqual(copy.name, "Teach from a browser copy")
+        XCTAssertEqual(copy.name, "Raj Mode copy")
         XCTAssertNil(copy.starter)
         XCTAssertTrue(Set(copy.oneDisplay.map(\.id)).isDisjoint(with: lib.templates[0].oneDisplay.map(\.id)))
     }
 
     func testRenameIgnoresEmptyNames() {
         var lib = LayoutLibrary(templates: LayoutLibrary.starters())
-        let id = lib.templates[0].id
+        let id = lib.templates[1].id   // Raj Mode is locked; rename an ordinary one
         lib.rename(id, to: "   ")
-        XCTAssertEqual(lib.templates[0].name, "Teach from a browser")
+        XCTAssertEqual(lib.templates[1].name, "Teach from a browser")
         lib.rename(id, to: "  Mine ")
-        XCTAssertEqual(lib.templates[0].name, "Mine")
+        XCTAssertEqual(lib.templates[1].name, "Mine")
     }
 
     func testPieceLimits() {
@@ -178,7 +255,7 @@ final class LayoutMigrationTests: XCTestCase {
     }
 
     func testTwoDisplayVersionMovesMeetingToTheSecond() throws {
-        var t = LayoutLibrary.starters()[0]
+        var t = LayoutLibrary.starters().first { $0.starter == LayoutLibrary.teachFromBrowser }!
         t.addTwoDisplayVersion()
         let two = try XCTUnwrap(t.twoDisplays)
         XCTAssertFalse(two.main.contains { $0.kind.isMeeting })
@@ -188,7 +265,7 @@ final class LayoutMigrationTests: XCTestCase {
     }
 
     func testReplaceAppSwapsOnlyThatAppInEveryVersion() {
-        var t = LayoutLibrary.starters()[0]
+        var t = LayoutLibrary.starters().first { $0.starter == LayoutLibrary.teachFromBrowser }!
         t.addTwoDisplayVersion()
         XCTAssertEqual(t.firstAppBundleID, LayoutLibrary.builtInBrowserBundleID)
         t.replaceApp(LayoutLibrary.builtInBrowserBundleID, with: "com.apple.Safari")
@@ -203,5 +280,89 @@ final class LayoutMigrationTests: XCTestCase {
         let previous = lib.templates.first { $0.name == "Your previous layout" }
         let app = previous?.oneDisplay.first { $0.kind.app != nil }
         XCTAssertEqual(app?.rect.x ?? 0, 0.5, accuracy: 1e-9, "main pane on the right half")
+    }
+
+    // MARK: Raj Mode is locked
+
+    func testRajModeIsLockedAndOthersAreNot() {
+        XCTAssertTrue(starter(LayoutLibrary.rajMode).isLocked)
+        XCTAssertFalse(starter(LayoutLibrary.teachFromBrowser).isLocked)
+        XCTAssertFalse(starter(LayoutLibrary.meetingAndChat).isLocked)
+        XCTAssertFalse(LayoutTemplate(name: "Mine").isLocked)
+    }
+
+    func testLockedTemplateRefusesRenameMoveRemoveAndTheRest() {
+        var lib = LayoutLibrary(templates: LayoutLibrary.starters())
+        let id = lib.templates.first { $0.starter == LayoutLibrary.rajMode }!.id
+        let before = lib.template(id: id)!
+
+        lib.rename(id, to: "Mine")
+        XCTAssertEqual(lib.template(id: id), before, "rename refused")
+
+        var t = before
+        var moved = t.oneDisplay
+        moved[0].rect = UnitRect(x: 0.1, y: 0.1, w: 0.2, h: 0.2)
+        t.setPieces(moved, for: .one)
+        XCTAssertEqual(t, before, "move and resize refused")
+        t.setPieces(Array(t.oneDisplay.dropFirst()), for: .one)
+        XCTAssertEqual(t, before, "remove refused")
+        t.setPieces(t.oneDisplay + [LayoutPiece(kind: .app(AppPiece(bundleID: "x")), rect: .full)], for: .one)
+        XCTAssertEqual(t, before, "add refused")
+        t.replaceApp(LayoutLibrary.builtInBrowserBundleID, with: "com.google.Chrome")
+        XCTAssertEqual(t, before, "app swap refused")
+        t.setMeetingStartsHidden(true)
+        XCTAssertEqual(t, before, "starts hidden refused")
+        t.removeTwoDisplayVersion()
+        XCTAssertEqual(t, before, "removing the two-display version refused")
+
+        var edited = before
+        edited.name = "Edited"
+        lib.update(edited)
+        XCTAssertEqual(lib.template(id: id), before, "a whole-template write is refused too")
+
+        var noTwo = before
+        noTwo.twoDisplays = nil
+        noTwo.starter = LayoutLibrary.rajMode
+        noTwo.addTwoDisplayVersion()
+        XCTAssertNil(noTwo.twoDisplays, "adding a two-display version refused")
+    }
+
+    func testDuplicateOfRajModeIsAnEditableCopy() throws {
+        var lib = LayoutLibrary(templates: LayoutLibrary.starters())
+        let raj = lib.templates.first { $0.starter == LayoutLibrary.rajMode }!
+        let copyID = try XCTUnwrap(lib.duplicate(raj.id))
+        var copy = try XCTUnwrap(lib.template(id: copyID))
+        XCTAssertFalse(copy.isLocked)
+        XCTAssertEqual(copy.name, "Raj Mode copy")
+        lib.rename(copyID, to: "Mine")
+        XCTAssertEqual(lib.template(id: copyID)?.name, "Mine")
+        copy.setPieces(Array(copy.oneDisplay.dropFirst()), for: .one)
+        XCTAssertEqual(copy.oneDisplay.count, raj.oneDisplay.count - 1)
+        XCTAssertEqual(lib.template(id: raj.id), raj, "the original is untouched")
+    }
+
+    func testResetAndAppendKeepRajModeLocked() throws {
+        var lib = LayoutLibrary(templates: LayoutLibrary.starters())
+        lib.resetToDefaults()
+        XCTAssertTrue(try XCTUnwrap(lib.templates.first { $0.starter == LayoutLibrary.rajMode }).isLocked)
+
+        var old = LayoutLibrary(templates: LayoutLibrary.starters().filter { $0.starter != LayoutLibrary.rajMode })
+        XCTAssertTrue(old.addStarters(notIn: Set(LayoutLibrary.originalStarterKeys)))
+        XCTAssertTrue(try XCTUnwrap(old.templates.first { $0.starter == LayoutLibrary.rajMode }).isLocked)
+
+        var restored = LayoutLibrary(templates: [])
+        let id = try XCTUnwrap(restored.starterID(LayoutLibrary.rajMode))
+        XCTAssertTrue(try XCTUnwrap(restored.template(id: id)).isLocked)
+    }
+
+    func testLockSurvivesEncodeAndOldFilesDecode() throws {
+        let raj = starter(LayoutLibrary.rajMode)
+        let round = try JSONDecoder().decode(LayoutTemplate.self, from: JSONEncoder().encode(raj))
+        XCTAssertEqual(round, raj)
+        XCTAssertTrue(round.isLocked)
+        // A file written before locking existed has no lock key at all.
+        let json = #"{"name":"Raj Mode","starter":"raj","oneDisplay":[]}"#
+        XCTAssertTrue(try JSONDecoder().decode(LayoutTemplate.self, from: Data(json.utf8)).isLocked)
+        XCTAssertFalse(try JSONDecoder().decode(LayoutTemplate.self, from: Data(#"{"name":"Mine"}"#.utf8)).isLocked)
     }
 }

@@ -25,9 +25,13 @@ struct ContentView: View {
     /// The same, for width: Home is narrower than the pages, so the minimum
     /// follows the window out and back instead of forcing it open first.
     @State private var heldMinWidth: CGFloat = ContentView.minimumWindowWidth
-    /// The width Home had before a page widened the window, so Back returns
+    /// The frame Home had before a page widened the window, so Back returns
     /// to it rather than to wherever the page left things.
-    @State private var homeWidth: CGFloat?
+    @State private var homeFrame: NSRect?
+    /// The frame the page last settled at, to tell whether the user moved the
+    /// window while on it.
+    @State private var pageSettledFrame: NSRect?
+    private var homeWidth: CGFloat? { homeFrame?.width }
 
     // Page changes (Home <-> Sessions) are one motion - see changePage. Both
     // pages are mounted for its length, each laid out at its FINAL size and
@@ -189,7 +193,8 @@ struct ContentView: View {
             // Not mid-change: the window is then part-way, not Home's width.
             let settled = homePin == nil && pagePin == nil
             if !isHome, settled, let window = Self.window, !window.styleMask.contains(.fullScreen), !window.isZoomed {
-                homeWidth = window.contentRect(forFrameRect: window.frame).width
+                homeFrame = window.frame
+                pageSettledFrame = nil
             }
             changePage(toHome: isHome)
         }
@@ -570,16 +575,18 @@ struct ContentView: View {
         let titleBar = window.frame.height - window.contentLayoutRect.height
         var height = preferredWindowHeight + titleBar
         if let visible { height = min(height, visible.height) }
-        let target = NSRect(x: content.minX, y: content.maxY - height,
-                            width: width, height: height)
-        var frame = window.frameRect(forContentRect: target)
-        // The top edge is anchored (DESIGN.md) - except where holding it
-        // would put the window off the screen, which is only a page's size.
-        if let visible {
-            if frame.minY < visible.minY { frame.origin.y = visible.minY }
-            if frame.maxX > visible.maxX { frame.origin.x = max(visible.minX, visible.maxX - frame.width) }
+        let size = window.frameRect(forContentRect: NSRect(x: 0, y: 0, width: width, height: height)).size
+        // The top edge is anchored (DESIGN.md) and width changes grow around
+        // the window's middle, so a page opens centred where Home was. Back
+        // returns to Home's own frame unless the window was moved on the page.
+        // The top edge only gives way where the bottom would leave the screen.
+        if returningHome && !onPage {
+            return WindowFrameRules.returningHome(
+                remembered: homeFrame, size: size, current: window.frame,
+                movedOnPage: WindowFrameRules.moved(from: pageSettledFrame, to: window.frame),
+                visibleFrames: NSScreen.screens.map(\.visibleFrame), currentVisible: visible)
         }
-        return frame
+        return WindowFrameRules.centred(on: window.frame, size: size, in: visible)
     }
 
     /// Resizes from an anchored TOP edge. AppKit's `setContentSize` keeps the
@@ -601,6 +608,7 @@ struct ContentView: View {
             return
         }
         let frame = settledFrame(for: window, animated: animated, returningHome: returningHome)
+        pageSettledFrame = onPage ? frame : nil
         guard animated else {
             resizeGeneration += 1
             window.setFrame(frame, display: true)

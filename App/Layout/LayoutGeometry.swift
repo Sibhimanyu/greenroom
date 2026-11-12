@@ -590,6 +590,7 @@ extension LayoutTemplate {
     }
 
     mutating func setMeetingStartsHidden(_ hidden: Bool) {
+        guard !isLocked else { return }
         func apply(_ pieces: [LayoutPiece]) -> [LayoutPiece] {
             pieces.map { p in
                 var p = p

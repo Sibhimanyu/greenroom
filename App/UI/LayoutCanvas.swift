@@ -50,6 +50,8 @@ struct LayoutPieceLook {
     var meetingView: MeetingView?
     /// A view piece while custom UI is off: drawn dashed, skipped at Start.
     var needsCustomUI = false
+    /// A view piece while the views are switched off: drawn dashed, skipped at Start.
+    var comingLater = false
 }
 
 extension LayoutPieceLook {
@@ -110,6 +112,9 @@ struct LayoutCanvas: View {
     let onNotice: (String) -> Void
     /// Draws the title row above the canvas. Off when the page supplies its own.
     var showsHeader = true
+    /// A built-in layout: the pieces are drawn but cannot be selected, moved,
+    /// resized, removed or dropped onto.
+    var locked = false
 
     @State private var drag: DragState?
     @State private var dropTargeted = false
@@ -174,18 +179,25 @@ struct LayoutCanvas: View {
             let canvas = geo.size
             ZStack(alignment: .topLeading) {
                 // Focus layer: under the controls (see the file note).
-                Color.clear
-                    .contentShape(Rectangle())
-                    .focusable()
-                    .focusEffectDisabled()
-                    .focused($focused)
-                    .onKeyPress(keys: [.leftArrow, .rightArrow, .upArrow, .downArrow,
-                                       .delete, .deleteForward, .tab, .escape], action: handleKey)
-                    .onTapGesture {
-                        selection = nil
-                        focused = true
-                        onActivate()
-                    }
+                if locked {
+                    // No keyboard layer: nothing here can be armed or moved.
+                    Color.clear
+                        .contentShape(Rectangle())
+                        .onTapGesture { onActivate() }
+                } else {
+                    Color.clear
+                        .contentShape(Rectangle())
+                        .focusable()
+                        .focusEffectDisabled()
+                        .focused($focused)
+                        .onKeyPress(keys: [.leftArrow, .rightArrow, .upArrow, .downArrow,
+                                           .delete, .deleteForward, .tab, .escape], action: handleKey)
+                        .onTapGesture {
+                            selection = nil
+                            focused = true
+                            onActivate()
+                        }
+                }
 
                 RoundedRectangle(cornerRadius: 6)
                     .fill(Color(nsColor: .windowBackgroundColor).opacity(0.5))
@@ -198,7 +210,7 @@ struct LayoutCanvas: View {
 
                 guides(canvas)
 
-                if let selected = pieces.first(where: { $0.id == selection }), !selected.isFixed {
+                if !locked, let selected = pieces.first(where: { $0.id == selection }), !selected.isFixed {
                     ForEach(LayoutGeometry.Handle.allCases, id: \.self) { handle in
                         handleView(handle, piece: selected, canvas: canvas)
                     }
@@ -216,8 +228,8 @@ struct LayoutCanvas: View {
             }
             .coordinateSpace(name: Self.space)
             .dropDestination(for: String.self) { items, location in
-                drop(items, at: location, canvas: canvas)
-            } isTargeted: { dropTargeted = $0 }
+                locked ? false : drop(items, at: location, canvas: canvas)
+            } isTargeted: { dropTargeted = !locked && $0 }
         }
     }
 
@@ -236,31 +248,43 @@ struct LayoutCanvas: View {
     private func tile(_ piece: LayoutPiece, canvas: CGSize) -> some View {
         let rect = liveRect(piece)
         let box = frame(of: rect, canvas: canvas).insetBy(dx: Self.tileInset, dy: Self.tileInset)
-        let isSelected = selection == piece.id
+        let isSelected = !locked && selection == piece.id
         let isDragging = drag?.id == piece.id
         let readout = LayoutGeometry.pointSize(of: rect, display: display.size)
         let span = LayoutGeometry.cellSpan(of: rect)
         let appearance = look(piece)
-        return LayoutPieceTile(piece: piece, look: appearance, size: box.size,
+        let drawn = LayoutPieceTile(piece: piece, look: appearance, size: box.size,
                                pointSize: readout, columns: span.cols.count,
                                selected: isSelected, invalid: isDragging && (drag?.invalid ?? false))
             .frame(width: box.width, height: box.height)
-            // Before .position: that modifier fills its parent, so a gesture
-            // added after it would answer across the whole canvas.
-            .contentShape(Rectangle())
-            .gesture(moveGesture(piece, canvas: canvas))
-            .onHover { inside in
-                (inside ? (piece.isFixed ? NSCursor.arrow : NSCursor.openHand) : NSCursor.arrow).set()
+        // Locked: a picture, with no gesture and no cursor. Before .position:
+        // that modifier fills its parent, so a gesture added after it would
+        // answer across the whole canvas.
+        return Group {
+            if locked {
+                drawn
+                    .position(x: box.midX, y: box.midY)
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel(appearance.name)
+                    .accessibilityValue("\(spokenSpan(span)). Built-in layout, not adjustable")
+            } else {
+                drawn
+                    .contentShape(Rectangle())
+                    .gesture(moveGesture(piece, canvas: canvas))
+                    .onHover { inside in
+                        (inside ? (piece.isFixed ? NSCursor.arrow : NSCursor.openHand) : NSCursor.arrow).set()
+                    }
+                    .zIndex(isDragging ? 2 : (isSelected ? 1 : 0))
+                    .transition(.opacity.combined(with: .scale(scale: 0.96)))
+                    .position(x: box.midX, y: box.midY)
+                    .modifier(TileAccessibility(
+                        name: appearance.name, value: spokenSpan(span), selected: isSelected,
+                        select: { select(piece.id) },
+                        nudge: { nudge(piece.id, cols: $0, rows: $1) },
+                        grow: { grow(piece.id, cols: $0, rows: $1) },
+                        remove: { remove(piece.id) }))
             }
-            .zIndex(isDragging ? 2 : (isSelected ? 1 : 0))
-            .transition(.opacity.combined(with: .scale(scale: 0.96)))
-            .position(x: box.midX, y: box.midY)
-            .modifier(TileAccessibility(
-                name: appearance.name, value: spokenSpan(span), selected: isSelected,
-                select: { select(piece.id) },
-                nudge: { nudge(piece.id, cols: $0, rows: $1) },
-                grow: { grow(piece.id, cols: $0, rows: $1) },
-                remove: { remove(piece.id) }))
+        }
     }
 
     private func spokenSpan(_ span: (cols: ClosedRange<Int>, rows: ClosedRange<Int>)) -> String {
@@ -460,7 +484,7 @@ struct LayoutCanvas: View {
     private func animation(_ a: Animation) -> Animation? { reduceMotion ? nil : a }
 
     private func commit(_ rect: UnitRect, for id: UUID) {
-        guard let i = pieces.firstIndex(where: { $0.id == id }) else { return }
+        guard !locked, let i = pieces.firstIndex(where: { $0.id == id }) else { return }
         pieces[i].rect = rect
     }
 
@@ -522,6 +546,7 @@ struct LayoutCanvas: View {
     }
 
     private func remove(_ id: UUID) {
+        guard !locked else { return }
         withAnimation(animation(.snappy(duration: 0.25))) {
             pieces.removeAll { $0.id == id }
             if selection == id { selection = nil }
@@ -733,6 +758,7 @@ struct LayoutPieceTile: View {
 
     private var caption: String {
         if look.missing { return "Not on this Mac" }
+        if look.comingLater { return "Coming in a later update" }
         if look.needsCustomUI { return "Needs custom UI" }
         if piece.isFixed { return "Fills this display" }
         return "\(columns) of 12 \u{00B7} \(pointSize.w)\u{00D7}\(pointSize.h)"
@@ -765,7 +791,7 @@ struct LayoutPieceTile: View {
                 .padding(Self.inset)
             RoundedRectangle(cornerRadius: 6)
                 .strokeBorder(border, style: StrokeStyle(lineWidth: selected ? 2 : 1,
-                                                         dash: (look.missing || look.needsCustomUI || invalid) ? [4, 3] : []))
+                                                         dash: (look.missing || look.needsCustomUI || look.comingLater || invalid) ? [4, 3] : []))
         }
         .overlay(alignment: .topTrailing) {
             if look.warning != nil {

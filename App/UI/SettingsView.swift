@@ -19,6 +19,20 @@ extension Notification.Name {
 }
 
 struct SettingsView: View {
+    private static let tabOrder = ["webcam", "layout", "zoom", "youtube", "cues", "transfer"]
+
+    private var tabShortcuts: some View {
+        ZStack {
+            ForEach(Array(Self.tabOrder.enumerated()), id: \.offset) { index, tag in
+                Button("") { tab = tag }
+                    .keyboardShortcut(KeyEquivalent(Character(String(index + 1))), modifiers: .command)
+            }
+        }
+        .opacity(0)
+        .frame(width: 0, height: 0)
+        .accessibilityHidden(true)
+    }
+
     @EnvironmentObject private var coordinator: CoordinatorController
     /// Only Webcam is ever chosen from outside; the other tags are there so
     /// the TabView can track which tab is showing.
@@ -51,6 +65,9 @@ struct SettingsView: View {
                 .tag("transfer")
         }
         .frame(width: 760, height: 730)
+        // ⌘1...⌘6 pick a tab, as in every macOS Settings window. The buttons
+        // live in this view, so the shortcuts exist only while Settings is key.
+        .background(tabShortcuts)
         // Secrets are loaded lazily (see loadSecretsIfNeeded) - opening
         // Settings is the first moment the fields actually need them.
         .onAppear { coordinator.loadSecretsIfNeeded() }

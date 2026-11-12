@@ -25,6 +25,8 @@ struct LayoutAddPanel: View {
     let close: () -> Void
     /// A tile to show as already pointed at, for the off-screen render.
     var initialNote: String?
+    /// Whether the six meeting views are offered; injectable for tests and renders.
+    var viewsEnabled = MeetingViewPieces.enabled
 
     @State private var hovered: String?
     @State private var noted: String?
@@ -60,12 +62,10 @@ struct LayoutAddPanel: View {
     }
 
     private var meetingItems: [Item] {
-        let meeting = LayoutPiece.Kind.meeting(fillsDisplay: false, startsHidden: false)
-        return [item("meeting", customUIMode ? "Meeting window" : "Zoom window", meeting, symbol: "video.fill")]
-            + MeetingView.allCases.map { view in
-                item("view:\(view.rawValue)", view.title, .view(view, startsHidden: false),
-                     symbol: view.symbol, view: view)
-            }
+        MeetingViewPieces.addEntries(customUIMode: customUIMode, viewsEnabled: viewsEnabled).map { entry in
+            let view = entry.kind.view
+            return item(entry.id, entry.title, entry.kind, symbol: view?.symbol ?? "video.fill", view: view)
+        }
     }
 
     private var chatItems: [Item] {

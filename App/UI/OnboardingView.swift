@@ -504,7 +504,8 @@ struct OnboardingView: View {
                 }
 
                 if let template = chosenTemplate {
-                    if let appID = template.firstAppBundleID {
+                    // A built-in layout is not edited here, so it gets no picker.
+                    if !template.isLocked, let appID = template.firstAppBundleID {
                         Picker("Working app", selection: Binding(
                             get: { appID },
                             set: { newID in

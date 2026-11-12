@@ -86,12 +86,7 @@ struct ScreenroomReportView: View {
         } else if let onBack {
             VStack(spacing: 0) {
                 HStack {
-                    Button(action: onBack) {
-                        Label("Back", systemImage: "chevron.left")
-                    }
-                    .buttonStyle(.plain)
-                    .foregroundStyle(.secondary)
-                    .help("Back (\u{2318}[)")
+                    BackButton(action: onBack)
                     Spacer(minLength: 0)
                 }
                 .padding(.horizontal, 32)

@@ -211,7 +211,7 @@ struct SessionsLayout<CardMenu: View>: View {
     var body: some View {
         HStack(spacing: 0) {
             sidebar
-                .frame(width: 220)
+                .frame(width: 244)
             Divider()
             centre
                 .frame(minWidth: 480, maxWidth: .infinity, maxHeight: .infinity)
@@ -258,8 +258,8 @@ struct SessionsLayout<CardMenu: View>: View {
     private var sidebar: some View {
         VStack(alignment: .leading, spacing: 0) {
             if let onBack {
-                BackButton(action: onBack)
-                    .padding(.bottom, 12)
+                BackButton(label: "Home", action: onBack)
+                    .padding(.bottom, 16)
             }
             Text("Sessions")
                 .font(.title3.bold())
@@ -282,36 +282,40 @@ struct SessionsLayout<CardMenu: View>: View {
             .background(RoundedRectangle(cornerRadius: 10).fill(Color.secondary.opacity(0.1)))
             .padding(.bottom, 20)
 
-            eyebrow("SHOW").padding(.bottom, 4)
-            ForEach(SessionsShow.allCases) { option in
-                filterRow(symbol: option.symbol,
-                          tint: show == option ? Brand.text : .secondary,
-                          title: option.rawValue,
-                          count: cards.filter { option.kind == nil || $0.kind == option.kind }.count,
-                          selected: show == option) {
-                    show = option
+            ScrollView {
+                VStack(alignment: .leading, spacing: 2) {
+                    eyebrow("Show").padding(.bottom, 4)
+                    ForEach(SessionsShow.allCases) { option in
+                        SessionsFilterRow(
+                            symbol: option.symbol, title: option.rawValue,
+                            count: cards.filter { option.kind == nil || $0.kind == option.kind }.count,
+                            selected: show == option) {
+                            show = option
+                        }
+                    }
+
+                    eyebrow("Status").padding(.top, 18).padding(.bottom, 4)
+                    ForEach(SessionsStatus.allCases) { option in
+                        SessionsFilterRow(
+                            symbol: option.symbol, title: option.rawValue,
+                            count: ofKind.filter(option.matches).count,
+                            selected: status == option) {
+                            status = status == option ? nil : option
+                        }
+                    }
                 }
             }
+            .scrollIndicators(.never)
 
-            eyebrow("STATUS").padding(.top, 20).padding(.bottom, 4)
-            ForEach(SessionsStatus.allCases) { option in
-                filterRow(symbol: option.symbol,
-                          tint: option.tint,
-                          title: option.rawValue,
-                          count: ofKind.filter(option.matches).count,
-                          selected: status == option) {
-                    status = status == option ? nil : option
-                }
-            }
-
-            Spacer(minLength: 16)
+            Spacer(minLength: 12)
 
             Button(action: revealRoot) {
                 Text(storage)
-                    .font(.caption)
+                    .font(.system(size: 12))
                     .foregroundStyle(spaceWarning?.color ?? .secondary)
                     .lineLimit(2)
                     .multilineTextAlignment(.leading)
+                    .padding(.horizontal, 10)
             }
             .buttonStyle(.plain)
             .help("Show the folder in Finder.")
@@ -319,34 +323,13 @@ struct SessionsLayout<CardMenu: View>: View {
         .padding(16)
     }
 
-    private func filterRow(symbol: String, tint: Color, title: String, count: Int,
-                           selected: Bool, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            HStack(spacing: 8) {
-                Image(systemName: symbol)
-                    .foregroundStyle(tint)
-                    .frame(width: 20)
-                Text(title)
-                    .foregroundStyle(.primary)
-                Spacer(minLength: 4)
-                Text("\(count)")
-                    .font(.callout.monospacedDigit())
-                    .foregroundStyle(.secondary)
-            }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 6)
-            .background(RoundedRectangle(cornerRadius: 6)
-                .fill(selected ? Brand.green.opacity(0.16) : .clear))
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-    }
-
     private func eyebrow(_ text: String) -> some View {
+        // RasanAI's section label: 12pt, regular, secondary (AppShell.swift:320).
         Text(text)
-            .font(.system(size: 10, weight: .semibold))
-            .tracking(0.8)
+            .font(.system(size: 12))
             .foregroundStyle(.secondary)
+            .padding(.horizontal, 10)
+            .accessibilityAddTraits(.isHeader)
     }
 
     // MARK: Grid
@@ -625,14 +608,81 @@ struct SessionInspectorActions {
 struct BackButton: View {
     var label = "Back"
     let action: () -> Void
+    @State private var hovering = false
 
     var body: some View {
         Button(action: action) {
-            Label(label, systemImage: "chevron.left")
+            HStack(spacing: 6) {
+                Image(systemName: "chevron.left")
+                    .font(.system(size: 13, weight: .semibold))
+                Text(label)
+                    .font(.system(size: 14, weight: .medium))
+            }
+            .foregroundStyle(.primary)
+            .padding(.horizontal, 14)
+            .frame(height: 34)
+            .background(Capsule().fill(Color.primary.opacity(hovering ? 0.12 : 0.07)))
+            .overlay(Capsule().strokeBorder(Color.primary.opacity(0.18), lineWidth: 1))
+            .contentShape(Capsule())
         }
         .buttonStyle(.plain)
-        .foregroundStyle(.secondary)
-        .help("Back (\u{2318}[)")
+        .onHover { hovering = $0 }
+        .help("\(label == "Back" ? "Back" : "Back to \(label)") (\u{2318}[)")
+        .accessibilityLabel(label == "Back" ? "Back" : "Back to \(label)")
+    }
+}
+
+/// One row of the Sessions sidebar, in RasanAI's metrics (AppShell.swift
+/// SidebarNavLabel/SidebarRowButton): 44pt tall, 10pt radius, a 22pt icon in
+/// a 26pt column, a 15pt medium label. The chosen row is a neutral raised
+/// fill with the icon in the accent; the rest are secondary, with a faint
+/// fill on hover. A count shows as a pill only when it is above zero, but
+/// VoiceOver always hears it.
+struct SessionsFilterRow: View {
+    let symbol: String
+    let title: String
+    let count: Int
+    let selected: Bool
+    let action: () -> Void
+    @State private var hovering = false
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 10) {
+                // Fitted into a 24pt box so a wide symbol (person.3) cannot
+                // push its label out of line with the others.
+                Image(systemName: symbol)
+                    .resizable().scaledToFit()
+                    .symbolRenderingMode(.monochrome)
+                    .foregroundStyle(selected ? Brand.green : Color.secondary)
+                    .frame(width: 24, height: 22)
+                    .frame(width: 26)
+                Text(title)
+                    .font(.system(size: 15, weight: .medium))
+                    .foregroundStyle(selected ? Color.primary : Color.secondary)
+                    .lineLimit(1)
+                Spacer(minLength: 4)
+                if count > 0 {
+                    Text("\(count)")
+                        .font(.system(size: 11, weight: .semibold)).monospacedDigit()
+                        .foregroundStyle(selected ? Color.primary : Color.secondary)
+                        .padding(.horizontal, 6)
+                        .frame(minWidth: 20, minHeight: 20)
+                        .background(Capsule().fill(Color.primary.opacity(selected ? 0.16 : 0.10)))
+                }
+            }
+            .padding(.horizontal, 10)
+            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+            .background(RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(selected ? Color.primary.opacity(0.10)
+                      : hovering ? Color.primary.opacity(0.05) : Color.clear))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { hovering = $0 }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(title), \(count)")
+        .accessibilityAddTraits(selected ? .isSelected : [])
     }
 }
 

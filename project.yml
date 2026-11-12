@@ -290,6 +290,7 @@ targets:
       - path: Tests
       - path: App/Layout/LayoutTemplate.swift
       - path: App/Layout/LayoutGeometry.swift
+      - path: App/UI/WindowFrameRules.swift
     settings:
       base:
         PRODUCT_NAME: GreenroomTests

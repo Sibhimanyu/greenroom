@@ -75,6 +75,30 @@ struct AppPiece: Codable, Equatable, Hashable {
     }
 }
 
+/// Whether the six meeting-view pieces are offered. The runtime does not draw
+/// them yet, so they stay out of the Add panel until
+/// `defaults write com.sibhimanyu.greenroom meetingViews.enabled -bool true`.
+/// Layouts that already hold view pieces still load, draw and can be edited.
+enum MeetingViewPieces {
+    static let defaultsKey = "meetingViews.enabled"
+    /// Tests set this; nil reads the default.
+    static var override: Bool?
+    static var enabled: Bool { override ?? UserDefaults.standard.bool(forKey: defaultsKey) }
+
+    /// The Meeting group's tiles, as (id, title, kind): the window, then the
+    /// six views only when they are enabled.
+    static func addEntries(customUIMode: Bool, viewsEnabled: Bool)
+        -> [(id: String, title: String, kind: LayoutPiece.Kind)] {
+        var entries: [(id: String, title: String, kind: LayoutPiece.Kind)] = [
+            ("meeting", customUIMode ? "Meeting window" : "Zoom window",
+             .meeting(fillsDisplay: false, startsHidden: false))]
+        if viewsEnabled {
+            entries += MeetingView.allCases.map { ("view:\($0.rawValue)", $0.title, .view($0, startsHidden: false)) }
+        }
+        return entries
+    }
+}
+
 /// One part of the meeting as a window of its own (.context/meeting-views-plan.md).
 /// Raw values are stored in saved layouts: never rename one.
 enum MeetingView: String, Codable, CaseIterable, Hashable {
@@ -257,7 +281,7 @@ struct LayoutTemplate: Codable, Identifiable, Equatable {
     var id: UUID
     var name: String
     /// Which starter this began as ("teach-browser", "meeting-chat"), so
-    /// "Restore starters" can find it again after a rename. nil for your own.
+    /// a reset can find it again after a rename. nil for your own.
     var starter: String?
     var oneDisplay: [LayoutPiece]
     var twoDisplays: TwoDisplay?
@@ -283,6 +307,13 @@ struct LayoutTemplate: Codable, Identifiable, Equatable {
                   twoDisplays: try? c.decodeIfPresent(TwoDisplay.self, forKey: .twoDisplays))
     }
 
+    /// Raj Mode is built in and cannot be edited, renamed or re-arranged:
+    /// duplicate it for a version of your own. Derived from `starter`, which is
+    /// already saved, kept by a reset and written by the one-time append, so it
+    /// needs no field of its own and an old file decodes the same way. A copy
+    /// loses `starter` (LayoutLibrary.duplicate), which is what unlocks it.
+    var isLocked: Bool { starter == LayoutLibrary.rajMode }
+
     // MARK: Pieces by slot
 
     func pieces(for slot: LayoutSlot) -> [LayoutPiece] {
@@ -294,6 +325,7 @@ struct LayoutTemplate: Codable, Identifiable, Equatable {
     }
 
     mutating func setPieces(_ pieces: [LayoutPiece], for slot: LayoutSlot) {
+        guard !isLocked else { return }
         switch slot {
         case .one: oneDisplay = pieces
         case .main: twoDisplays?.main = pieces
@@ -349,6 +381,7 @@ struct LayoutTemplate: Codable, Identifiable, Equatable {
     /// Puts another app in the place of one (onboarding's single picker), in every
     /// version of the layout. Its website and Start / Stop choices stay.
     mutating func replaceApp(_ old: String, with new: String) {
+        guard !isLocked else { return }
         func swap(_ pieces: [LayoutPiece]) -> [LayoutPiece] {
             pieces.map { piece in
                 guard var app = piece.kind.app, app.bundleID == old else { return piece }
@@ -372,7 +405,7 @@ struct LayoutTemplate: Codable, Identifiable, Equatable {
     /// there stays on the main display (without the Meeting), and the Meeting
     /// fills the second.
     mutating func addTwoDisplayVersion() {
-        guard twoDisplays == nil else { return }
+        guard !isLocked, twoDisplays == nil else { return }
         var main = oneDisplay.filter { !$0.kind.isMeeting }
         // The old column the Meeting sat in goes to the Chat, if there is one.
         if let meeting = oneDisplay.first(where: { $0.kind.isMeeting }),
@@ -386,7 +419,10 @@ struct LayoutTemplate: Codable, Identifiable, Equatable {
             secondUUID: "")
     }
 
-    mutating func removeTwoDisplayVersion() { twoDisplays = nil }
+    mutating func removeTwoDisplayVersion() {
+        guard !isLocked else { return }
+        twoDisplays = nil
+    }
 }
 
 // MARK: - The library
@@ -426,7 +462,8 @@ struct LayoutLibrary: Codable, Equatable {
     }
 
     mutating func update(_ template: LayoutTemplate) {
-        guard let i = templates.firstIndex(where: { $0.id == template.id }) else { return }
+        guard let i = templates.firstIndex(where: { $0.id == template.id }),
+              !templates[i].isLocked else { return }
         templates[i] = template
     }
 
@@ -469,7 +506,8 @@ struct LayoutLibrary: Codable, Equatable {
     /// An empty name is ignored: a layout with no name cannot be found again.
     mutating func rename(_ id: UUID, to name: String) {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty, let i = templates.firstIndex(where: { $0.id == id }) else { return }
+        guard !trimmed.isEmpty, let i = templates.firstIndex(where: { $0.id == id }),
+              !templates[i].isLocked else { return }
         templates[i].name = trimmed
     }
 
@@ -477,13 +515,38 @@ struct LayoutLibrary: Codable, Equatable {
 
     static let teachFromBrowser = "teach-browser"
     static let meetingAndChat = "meeting-chat"
+    static let rajMode = "raj"
+    /// The starters every install had before the list could grow. A library
+    /// saved without a `knownStarters` record is taken to have known these.
+    static let originalStarterKeys = [teachFromBrowser, meetingAndChat]
     /// AppCatalog.builtInBrowserID, repeated because this file must not need AppKit.
     static let builtInBrowserBundleID = "com.sibhimanyu.greenroom.browser"
 
-    /// The two ordinary, editable templates every library begins with.
+    /// The ordinary, editable templates every library begins with, in the order
+    /// the strip shows them (right after None).
     static func starters() -> [LayoutTemplate] {
         let third = 1.0 / 12
         return [
+            // The old fixed arrangement: the browser, the speaker, the chat.
+            // The Meeting window at 3x5 cells is small enough that the runtime
+            // shows the compact Speaker view, which is the active speaker.
+            LayoutTemplate(
+                name: "Raj Mode", starter: rajMode,
+                oneDisplay: [
+                    LayoutPiece(kind: .app(AppPiece(bundleID: builtInBrowserBundleID)),
+                                rect: UnitRect(x: 0, y: 0, w: 9 * third, h: 1)),
+                    LayoutPiece(kind: .meeting(fillsDisplay: false, startsHidden: false),
+                                rect: UnitRect(x: 9 * third, y: 0, w: 3 * third, h: 5 * third)),
+                    LayoutPiece(kind: .chat,
+                                rect: UnitRect(x: 9 * third, y: 5 * third, w: 3 * third, h: 7 * third)),
+                ],
+                twoDisplays: TwoDisplay(
+                    main: [
+                        LayoutPiece(kind: .app(AppPiece(bundleID: builtInBrowserBundleID)),
+                                    rect: UnitRect(x: 0, y: 0, w: 9 * third, h: 1)),
+                        LayoutPiece(kind: .chat, rect: UnitRect(x: 9 * third, y: 0, w: 3 * third, h: 1)),
+                    ],
+                    second: [LayoutPiece(kind: .meeting(fillsDisplay: true, startsHidden: false), rect: .full)])),
             LayoutTemplate(
                 name: "Teach from a browser", starter: teachFromBrowser,
                 oneDisplay: [
@@ -504,19 +567,30 @@ struct LayoutLibrary: Codable, Equatable {
         ]
     }
 
-    /// Brings back any starter that was deleted and resets any that were
-    /// edited, leaving everything else alone.
-    mutating func restoreStarters() {
-        let all = Self.starters()
-        for (order, fresh) in all.enumerated() {
-            if let i = templates.firstIndex(where: { $0.starter == fresh.starter }) {
-                var reset = fresh
-                reset.id = templates[i].id
-                templates[i] = reset
-            } else {
-                templates.insert(fresh, at: min(templates.count, order))
-            }
+    /// How many layouts are yours: everything that did not begin as a starter.
+    /// A migrated "Your previous layout" counts.
+    var userLayoutCount: Int { templates.filter { $0.starter == nil }.count }
+
+    /// Replaces the whole library with the default starters and sets the Start
+    /// layout to None. Your own layouts are removed.
+    mutating func resetToDefaults() {
+        templates = Self.starters()
+        activeID = nil
+    }
+
+    /// Appends any starter whose key is not in `known` (a starter added by a
+    /// newer version), next to None in the order the starters list gives, and
+    /// leaves the Start layout alone. Returns whether anything was added.
+    @discardableResult
+    mutating func addStarters(notIn known: Set<String>) -> Bool {
+        var added = false
+        for (order, fresh) in Self.starters().enumerated() {
+            guard let key = fresh.starter, !known.contains(key),
+                  !templates.contains(where: { $0.starter == key }) else { continue }
+            templates.insert(fresh, at: min(templates.count, order))
+            added = true
         }
+        return added
     }
 
     /// The starter with this key, restoring it first if it was deleted.
@@ -546,10 +620,26 @@ extension LayoutLibrary {
     /// "Your previous layout" built from today's settings (written back, so it
     /// happens once). The old keys are left exactly as they were.
     static func loadOrMigrate(from defaults: UserDefaults, defaultSiteURL: String) -> LayoutLibrary {
-        if let saved = load(from: defaults) { return saved }
+        if var saved = load(from: defaults) {
+            // A starter this library has never had is added once; one the person
+            // deleted is in `known` already and stays gone.
+            let known = defaults.stringArray(forKey: knownStartersKey).map(Set.init)
+                ?? Set(originalStarterKeys)
+            if saved.addStarters(notIn: known) { saved.save(to: defaults) }
+            recordKnownStarters(in: defaults)
+            return saved
+        }
         let library = firstRun(legacy: LegacyLayoutSettings.read(from: defaults, defaultSiteURL: defaultSiteURL))
         library.save(to: defaults)
+        recordKnownStarters(in: defaults)
         return library
+    }
+
+    /// Every starter key this build knows, so a later build can tell which are new.
+    static let knownStartersKey = "layoutLibrary.knownStarters"
+
+    private static func recordKnownStarters(in defaults: UserDefaults) {
+        defaults.set(starters().compactMap(\.starter), forKey: knownStartersKey)
     }
 
     static func firstRun(legacy: LegacyLayoutSettings) -> LayoutLibrary {

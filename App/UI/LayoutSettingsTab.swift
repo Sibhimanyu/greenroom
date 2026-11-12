@@ -157,7 +157,7 @@ struct LayoutPageContent: View {
     @State private var notice: String?
     @State private var noticeTask: Task<Void, Never>?
     @State private var deleteCandidate: UUID?
-    @State private var confirmRestore = false
+    @State private var confirmReset = false
     @State private var showsAddPanel = false
     @FocusState private var focus: LayoutFocus?
     @AppStorage(SessionNotes.enabledKey) private var notesOnStart = false
@@ -167,7 +167,7 @@ struct LayoutPageContent: View {
 
     var body: some View {
         Form {
-            Section("At start") {
+            Section {
                 VStack(alignment: .leading, spacing: 10) {
                     cardStrip
                     Text(caption)
@@ -176,6 +176,16 @@ struct LayoutPageContent: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 .padding(.vertical, 4)
+            } header: {
+                HStack {
+                    Text("At start")
+                    Spacer()
+                    Button("Reset to defaults\u{2026}") { confirmReset = true }
+                        .buttonStyle(.plain)
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .help("Removes your layouts and brings back the built-in ones.")
+                }
             }
 
             Section {
@@ -200,6 +210,8 @@ struct LayoutPageContent: View {
                 }
                 VStack(alignment: .leading, spacing: 2) {
                     Toggle("Quick-hide mode", isOn: $quickHide)
+                        .disabled(library.active?.isLocked == true)
+                        .help(library.active?.isLocked == true ? "Built-in layouts keep their settings. Duplicate the layout to change this." : "")
                     Text("Class starts with the meeting window hidden and whatever sits beside it taking its room. \u{2325}\u{2318}Z brings it back.")
                         .font(.callout)
                         .foregroundStyle(.secondary)
@@ -234,11 +246,21 @@ struct LayoutPageContent: View {
         } message: {
             Text("This layout is removed. The windows it describes are not touched.")
         }
-        .confirmationDialog("Restore the starter layouts?", isPresented: $confirmRestore, titleVisibility: .visible) {
-            Button("Restore") { withAnimation(anim) { library.restoreStarters() } }
+        .alert("Reset layouts to the defaults?", isPresented: $confirmReset) {
+            Button("Reset", role: .destructive) { withAnimation(anim) { library.resetToDefaults(); resetEditorState() } }
+            Button("Cancel", role: .cancel) {}
         } message: {
-            Text("Brings back any starter you deleted and sets the others back to how they began. Your own layouts are not touched.")
+            Text(resetMessage)
         }
+    }
+
+    /// What a reset costs, in the person's terms.
+    private var resetMessage: String {
+        let n = library.userLayoutCount
+        let lost = n == 0
+            ? "Your edits to the built-in layouts are undone."
+            : "This removes your \(n == 1 ? "1 layout" : "\(n) layouts") and brings back the built-in ones."
+        return lost + " The layout used at Start goes back to None."
     }
 
     private var anim: Animation? { reduceMotion ? nil : .snappy(duration: 0.25) }
@@ -272,13 +294,14 @@ struct LayoutPageContent: View {
                     LayoutCard(title: template.name, selected: library.activeID == template.id,
                                isRenaming: renamingID == template.id, draft: $renameDraft,
                                select: { choose(template.id) },
-                               beginRename: { beginRename(template) },
+                               beginRename: template.isLocked ? nil : { beginRename(template) },
                                commitRename: { commitRename() },
                                cancelRename: { renamingID = nil }) {
                         LayoutThumbnail(pieces: template.oneDisplay, aspect: layoutCardWidth / thumbHeight, look: look)
                     }
                     .contextMenu {
                         Button("Rename") { beginRename(template) }
+                            .disabled(template.isLocked)
                         Button("Duplicate") { duplicate(template.id) }
                         Divider()
                         Button("Delete\u{2026}", role: .destructive) { deleteCandidate = template.id }
@@ -299,7 +322,7 @@ struct LayoutPageContent: View {
                 }
                 .help("Start a new, empty layout.")
                 .contextMenu {
-                    Button("Restore starters\u{2026}") { confirmRestore = true }
+                    Button("Reset to defaults\u{2026}") { confirmReset = true }
                 }
             }
             .padding(3)
@@ -316,6 +339,7 @@ struct LayoutPageContent: View {
     }
 
     private func beginRename(_ template: LayoutTemplate) {
+        guard !template.isLocked else { return }
         renameDraft = template.name
         renamingID = template.id
     }
@@ -356,8 +380,14 @@ struct LayoutPageContent: View {
         let places = [
             pieces.contains { $0.kind.isMeeting } ? meetingWord : nil,
             pieces.contains { $0.kind.isChat } ? "chat" : nil,
-        ].compactMap { $0 } + (customUIMode ? pieces.compactMap { $0.kind.view?.title.lowercased() } : [])
+        ].compactMap { $0 } + (customUIMode && MeetingViewPieces.enabled ? pieces.compactMap { $0.kind.view?.title.lowercased() } : [])
         var sentence: String
+        // Raj Mode as shipped: the compact Meeting window is the active speaker.
+        if isRajAsShipped(template), let browser = opens.first {
+            sentence = "Greenroom opens \(browser) and places the meeting as active speaker, with chat below."
+            sentence += " With a second display connected it uses the two-display version."
+            return sentence
+        }
         switch (opens.isEmpty, places.isEmpty) {
         case (true, true):
             return "This layout is empty, so nothing moves yet. Add pieces below."
@@ -372,6 +402,17 @@ struct LayoutPageContent: View {
             sentence += " With a second display connected it uses the two-display version."
         }
         return sentence
+    }
+
+    private func isRajAsShipped(_ template: LayoutTemplate) -> Bool {
+        guard template.starter == LayoutLibrary.rajMode,
+              let shipped = LayoutLibrary.starters().first(where: { $0.starter == LayoutLibrary.rajMode }) else { return false }
+        let now = template.oneDisplay
+        let was = shipped.oneDisplay
+        guard now.count == was.count else { return false }
+        for (a, b) in zip(now, was) where a.rect != b.rect || a.kind.isChat != b.kind.isChat
+            || a.kind.isMeeting != b.kind.isMeeting { return false }
+        return true
     }
 
     private var meetingWord: String { customUIMode ? "meeting window" : "Zoom window" }
@@ -404,17 +445,17 @@ struct LayoutPageContent: View {
                 ForEach(LayoutLibrary.starters(), id: \.starter) { starter in
                     Button { pickStarter(starter.starter ?? "") } label: {
                         Label(starter.name, systemImage: starter.starter == LayoutLibrary.teachFromBrowser
-                              ? "safari" : "rectangle.split.2x1")
+                              ? "safari" : starter.starter == LayoutLibrary.rajMode
+                              ? "sidebar.right" : "rectangle.split.2x1")
                     }
                 }
                 Button(action: addLayout) { Label("Start from scratch", systemImage: "plus") }
             }
-            Button("Restore starters\u{2026}") { confirmRestore = true }
+            Button("Reset to defaults\u{2026}") { confirmReset = true }
                 .buttonStyle(.plain)
                 .font(.callout)
                 .foregroundStyle(.secondary)
-                .help("Brings back the starter layouts if you deleted them, and sets the others back to how they began.")
-            .controlSize(.large)
+                .help("Removes your layouts and brings back the built-in ones.")
         }
         .frame(maxWidth: .infinity, minHeight: 220)
         .padding(.vertical, 8)
@@ -431,10 +472,19 @@ struct LayoutPageContent: View {
 
     private func editor(_ template: LayoutTemplate) -> some View {
         VStack(alignment: .leading, spacing: 14) {
-            titleRow(template)
+            if template.isLocked {
+                VStack(alignment: .leading, spacing: 6) {
+                    titleRow(template)
+                    lockLine(template)
+                }
+            } else {
+                titleRow(template)
+            }
             canvases(template)
             paletteRow(template)
-            inspector(template)
+            // Nothing to change on a built-in layout, so no inspector: its
+            // "select a piece" hint would promise something that cannot happen.
+            if !template.isLocked { inspector(template) }
         }
     }
 
@@ -449,8 +499,30 @@ struct LayoutPageContent: View {
                 })
     }
 
+    /// What a built-in layout says about itself, quietly, with the way out.
+    private func lockLine(_ template: LayoutTemplate) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: "lock.fill")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .accessibilityHidden(true)
+            Text("Built-in layout. Duplicate it to make your own version.")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+            Button("Duplicate") { duplicate(template.id) }
+                .controlSize(.small)
+                .help("Makes an editable copy named \u{201C}\(template.name) copy\u{201D} and selects it.")
+        }
+    }
+
     private func titleRow(_ template: LayoutTemplate) -> some View {
         HStack(spacing: 12) {
+            if template.isLocked {
+                Text(template.name)
+                    .font(.title3.weight(.semibold))
+                    .lineLimit(1)
+                    .accessibilityAddTraits(.isHeader)
+            } else {
             HStack(spacing: 2) {
                 // The hidden Text sizes the field to its name, so the pencil sits
                 // right after the last letter instead of at the field's far end.
@@ -481,6 +553,7 @@ struct LayoutPageContent: View {
                     library.templates[i].name = "Untitled layout"
                 }
             }
+            }
             Spacer(minLength: 8)
             if template.twoDisplays != nil {
                 Picker("Layout for", selection: Binding(get: { showsTwo },
@@ -493,7 +566,7 @@ struct LayoutPageContent: View {
                 .pickerStyle(.segmented)
                 .labelsHidden()
                 .fixedSize()
-            } else {
+            } else if !template.isLocked {
                 Button {
                     withAnimation(anim) {
                         if let i = activeIndex { library.templates[i].addTwoDisplayVersion() }
@@ -512,7 +585,7 @@ struct LayoutPageContent: View {
 
     private var nameBinding: Binding<String> {
         Binding(get: { library.active?.name ?? "" },
-                set: { if let i = activeIndex { library.templates[i].name = $0 } })
+                set: { if let i = activeIndex, !library.templates[i].isLocked { library.templates[i].name = $0 } })
     }
 
     // MARK: Canvases
@@ -540,7 +613,7 @@ struct LayoutPageContent: View {
                     canvas(.main, space: mainSpace)
                     canvas(.second, space: secondSpace(two))
                 }
-                secondDisplayRow(two)
+                if !template.isLocked { secondDisplayRow(two) }
             }
         } else {
             canvas(.one, space: mainSpace)
@@ -553,11 +626,12 @@ struct LayoutPageContent: View {
         LayoutCanvas(pieces: binding(for: slot), selection: $selection, display: space,
                      look: look,
                      accepts: { kind in
-                        if case .view = kind, !customUIMode { return false }
+                        if case .view = kind, !customUIMode || !MeetingViewPieces.enabled { return false }
                         return library.active?.canAdd(kind, to: slot) ?? false
                      },
                      onActivate: { activeSlot = slot; showsAddPanel = false },
-                     onNotice: { say($0) })
+                     onNotice: { say($0) },
+                     locked: library.active?.isLocked == true)
     }
 
     private func secondDisplayRow(_ two: TwoDisplay) -> some View {
@@ -596,13 +670,15 @@ struct LayoutPageContent: View {
         let slot = showsTwo ? activeSlot : .one
         return VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 8) {
-                Button { showsAddPanel.toggle() } label: {
-                    Label("Add", systemImage: "plus")
-                }
-                .help("Add the meeting, a view of it, chat or an app")
-                .accessibilityLabel("Add to layout")
-                .popover(isPresented: $showsAddPanel, arrowEdge: .bottom) {
-                    addPanel(slot: slot, template: template)
+                if !template.isLocked {
+                    Button { showsAddPanel.toggle() } label: {
+                        Label("Add", systemImage: "plus")
+                    }
+                    .help(MeetingViewPieces.enabled ? "Add the meeting, a view of it, chat or an app" : "Add the meeting, chat or an app")
+                    .accessibilityLabel("Add to layout")
+                    .popover(isPresented: $showsAddPanel, arrowEdge: .bottom) {
+                        addPanel(slot: slot, template: template)
+                    }
                 }
                 Spacer()
                 Button {
@@ -620,7 +696,7 @@ struct LayoutPageContent: View {
                         .help("A class is running another layout. This moves it to this one now; otherwise this layout starts with the next class.")
                 }
             }
-            if previewsAddPanel {
+            if previewsAddPanel, !template.isLocked {
                 // The off-screen render cannot show a popover window, so it draws
                 // the same panel in place.
                 HStack {
@@ -657,12 +733,14 @@ struct LayoutPageContent: View {
     /// Add panel's tooltips and caption, and the notice a click would give.
     private func blockReason(_ kind: LayoutPiece.Kind, template: LayoutTemplate, slot: LayoutSlot) -> String? {
         let version = template.piecesInVersion(of: slot)
+        if case .view = kind, !MeetingViewPieces.enabled { return "Coming in a later update" }
         if case .view = kind, !customUIMode { return "Needs Greenroom\u{2019}s meeting UI (Settings \u{2192} Zoom)" }
         if template.canAdd(kind, to: slot) { return nil }
         let views = Set(version.compactMap { $0.kind.view })
         switch kind {
         case .meeting:
             if version.contains(where: { $0.kind.isMeeting }) { return "Already in this layout" }
+            if !MeetingViewPieces.enabled { return "This layout already shows the meeting another way. Remove that first." }
             return "The Meeting window already has a gallery and a speaker with strip. Remove the \(views.contains(.gallery) ? "Gallery" : "Speaker + strip") view first."
         case let .view(view, _):
             if views.contains(view) { return "Already in this layout" }
@@ -729,7 +807,9 @@ struct LayoutPageContent: View {
             return LayoutPieceLook(name: customUIMode ? "Meeting window" : "Zoom window", icon: nil, symbol: "video.fill")
         case let .view(view, _):
             return LayoutPieceLook(name: view.title, icon: nil, symbol: view.symbol,
-                                   meetingView: view, needsCustomUI: !customUIMode)
+                                   meetingView: view,
+                                   needsCustomUI: MeetingViewPieces.enabled && !customUIMode,
+                                   comingLater: !MeetingViewPieces.enabled)
         case .chat:
             return LayoutPieceLook(name: "Chat", icon: nil, symbol: "bubble.left.and.bubble.right.fill")
         case let .app(app):
@@ -925,7 +1005,13 @@ struct LayoutPageContent: View {
                 .help("This view starts out of the way. \u{2325}\u{2318}Z shows it.")
             Spacer()
         }
-        if !customUIMode {
+        if !MeetingViewPieces.enabled {
+            HStack {
+                StatusBadge(text: "Coming later", tone: .problem)
+                Text("It is skipped at Start. Showing views arrives in a later update.")
+                    .font(.callout).foregroundStyle(.secondary)
+            }
+        } else if !customUIMode {
             HStack {
                 StatusBadge(text: "Needs custom UI", tone: .problem)
                 Text("It is skipped at Start. Turn on Greenroom\u{2019}s meeting UI in Settings \u{2192} Zoom.")

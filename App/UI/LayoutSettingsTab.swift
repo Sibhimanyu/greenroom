@@ -32,17 +32,6 @@ struct LayoutSettingsTab: View {
         LayoutPageContent(
             library: $coordinator.layoutLibrary,
             hideSelfView: $coordinator.hideSelfView,
-            // The Meeting piece's "Starts hidden" in the active layout; the stored
-            // setting is the fallback when the layout has no Meeting piece.
-            quickHide: Binding(
-                get: { coordinator.layoutLibrary.active?.meetingStartsHidden ?? coordinator.speakerTileShortcutEnabled },
-                set: { hidden in
-                    coordinator.speakerTileShortcutEnabled = hidden
-                    if var active = coordinator.layoutLibrary.active {
-                        active.setMeetingStartsHidden(hidden)
-                        coordinator.layoutLibrary.update(active)
-                    }
-                }),
             analyticsEnabled: $coordinator.analyticsEnabled,
             browserRestoresTabs: $coordinator.browserRestoresTabs,
             browserSearchSuggestions: $coordinator.browserSearchSuggestions,
@@ -122,7 +111,6 @@ private enum LayoutFocus: Hashable {
 struct LayoutPageContent: View {
     @Binding var library: LayoutLibrary
     @Binding var hideSelfView: Bool
-    @Binding var quickHide: Bool
     @Binding var analyticsEnabled: Bool
     @Binding var browserRestoresTabs: Bool
     @Binding var browserSearchSuggestions: Bool
@@ -205,14 +193,6 @@ struct LayoutPageContent: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Toggle("Hide my own tile", isOn: $hideSelfView)
                     Text("Your own video is left out of the meeting you see. The class still sees you.")
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                }
-                VStack(alignment: .leading, spacing: 2) {
-                    Toggle("Quick-hide mode", isOn: $quickHide)
-                        .disabled(library.active?.isLocked == true)
-                        .help(library.active?.isLocked == true ? "Built-in layouts keep their settings. Duplicate the layout to change this." : "")
-                    Text("Class starts with the meeting window hidden and whatever sits beside it taking its room. \u{2325}\u{2318}Z brings it back.")
                         .font(.callout)
                         .foregroundStyle(.secondary)
                 }
@@ -1002,7 +982,7 @@ struct LayoutPageContent: View {
             Toggle("Starts hidden", isOn: Binding(
                 get: { hidden },
                 set: { v in update(piece.id) { $0.kind = .view(view, startsHidden: v) } }))
-                .help("This view starts out of the way. \u{2325}\u{2318}Z shows it.")
+                .help("This view starts out of the way. \(ShortcutStore.phrase(.toggleMeeting)) shows it.")
             Spacer()
         }
         if !MeetingViewPieces.enabled {
@@ -1042,7 +1022,7 @@ struct LayoutPageContent: View {
             Toggle("Start hidden", isOn: Binding(
                 get: { hidden },
                 set: { v in update(piece.id) { $0.kind = .meeting(fillsDisplay: fills, startsHidden: v) } }))
-                .help("The meeting starts out of the way. \u{2325}\u{2318}Z shows it.")
+                .help("The meeting starts out of the way. \(ShortcutStore.phrase(.toggleMeeting)) shows it.")
             Spacer()
         }
         if !customUIMode {

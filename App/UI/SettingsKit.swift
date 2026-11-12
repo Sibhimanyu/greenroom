@@ -13,8 +13,108 @@
 //  - StatusBadge: a one-line state with a coloured symbol (Connected, Not set
 //    up). Green is local and fine; amber (`--net`) is reserved by DESIGN.md
 //    for things that leave the Mac.
+//  - Collapsible / Binding.animatedCollapse: the house rule for a switch and
+//    what hangs off it. When a toggle (or a mode) is off, the settings that
+//    depend on it HIDE, they are not greyed out. See the notes on Collapsible.
 //
 import SwiftUI
+import AppKit
+
+// MARK: - Collapsing dependent settings
+
+/// How a collapse moves: DESIGN.md's 250ms `snappy` layout move, or nothing
+/// at all under Reduce Motion.
+enum Collapse {
+    static var animation: Animation? {
+        NSWorkspace.shared.accessibilityDisplayShouldReduceMotion ? nil : .snappy(duration: 0.25)
+    }
+    static var seconds: Double { animation == nil ? 0 : 0.3 }
+
+    static func animate(_ change: () -> Void) { withAnimation(animation, change) }
+}
+
+extension Binding {
+    /// The same binding, but a write animates, so whatever is wrapped in a
+    /// `Collapsible` (or an `if` inside a Form) opens and closes smoothly
+    /// when the toggle that drives it is flipped.
+    func animatedCollapse() -> Binding<Value> {
+        Binding(get: { wrappedValue }, set: { value in Collapse.animate { wrappedValue = value } })
+    }
+}
+
+/// Height scales with `progress`, the content is laid out at full size and
+/// clipped by the caller. `progress` is animatable, so the container grows
+/// and shrinks with the transaction.
+private struct CollapseLayout: Layout {
+    var progress: CGFloat
+    var animatableData: CGFloat {
+        get { progress }
+        set { progress = newValue }
+    }
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        guard let first = subviews.first else { return .zero }
+        let size = first.sizeThatFits(proposal)
+        return CGSize(width: size.width, height: size.height * progress)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        guard let first = subviews.first else { return }
+        first.place(at: bounds.origin, anchor: .topLeading,
+                    proposal: ProposedViewSize(width: bounds.width, height: nil))
+    }
+}
+
+/// Settings that only mean something while a switch is on.
+///
+/// - Height and opacity move together over 250ms; Reduce Motion is instant.
+/// - Once closed the content is REMOVED (no row, no divider, no spacing left
+///   behind in a grouped Form), and it is out of the accessibility tree and
+///   the key-view loop while it closes.
+/// - Only the view is removed. The values live with the caller, so turning
+///   the switch back on finds them as they were.
+/// - Flip the switch through `Binding.animatedCollapse()` so the rest of the
+///   form moves with it.
+///
+/// Put the whole dependent block in ONE `Collapsible` so a Form sees one row.
+struct Collapsible<Content: View>: View {
+    let hidden: Bool
+    @ViewBuilder let content: () -> Content
+    @State private var present: Bool
+    @State private var progress: CGFloat
+
+    init(hidden: Bool, @ViewBuilder content: @escaping () -> Content) {
+        self.hidden = hidden
+        self.content = content
+        _present = State(initialValue: !hidden)
+        _progress = State(initialValue: hidden ? 0 : 1)
+    }
+
+    var body: some View {
+        Group {
+            if present {
+                CollapseLayout(progress: progress) {
+                    content().opacity(Double(progress))
+                }
+                .clipped()
+                .accessibilityHidden(hidden)
+                .disabled(hidden)
+            }
+        }
+        .onChange(of: hidden) { _, nowHidden in
+            if nowHidden {
+                Collapse.animate { progress = 0 }
+                DispatchQueue.main.asyncAfter(deadline: .now() + Collapse.seconds) {
+                    guard hidden else { return }
+                    Collapse.animate { present = false }
+                }
+            } else {
+                present = true
+                DispatchQueue.main.async { Collapse.animate { progress = 1 } }
+            }
+        }
+    }
+}
 
 /// A compact picture-and-label choice. Keep the visual beside the name so
 /// repeated choices do not each add another row to the Settings page.

@@ -19,7 +19,7 @@ extension Notification.Name {
 }
 
 struct SettingsView: View {
-    private static let tabOrder = ["webcam", "layout", "zoom", "youtube", "cues", "transfer"]
+    private static let tabOrder = ["webcam", "layout", "shortcuts", "zoom", "youtube", "cues", "transfer"]
 
     private var tabShortcuts: some View {
         ZStack {
@@ -48,6 +48,10 @@ struct SettingsView: View {
                 .tabItem { Label("Layout", systemImage: "rectangle.split.2x1") }
                 .tag("layout")
 
+            ShortcutsSettingsTab()
+                .tabItem { Label("Shortcuts", systemImage: "command") }
+                .tag("shortcuts")
+
             ZoomSettingsTab()
                 .tabItem { Label("Zoom", systemImage: "video.fill") }
                 .tag("zoom")
@@ -65,7 +69,7 @@ struct SettingsView: View {
                 .tag("transfer")
         }
         .frame(width: 760, height: 730)
-        // ⌘1...⌘6 pick a tab, as in every macOS Settings window. The buttons
+        // ⌘1...⌘7 pick a tab, as in every macOS Settings window. The buttons
         // live in this view, so the shortcuts exist only while Settings is key.
         .background(tabShortcuts)
         // Secrets are loaded lazily (see loadSecretsIfNeeded) - opening

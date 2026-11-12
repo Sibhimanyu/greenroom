@@ -239,6 +239,9 @@ struct ScreenroomPageContent<Setup: View>: View {
                 }
             }
 
+            // Hidden, not greyed, while the agent is off: "This Mac" has no
+            // agent to pick or command to run.
+            if agentOn {
             Section("Agent") {
                 agentPicker
                 if compact && agentKind != .custom {
@@ -249,10 +252,7 @@ struct ScreenroomPageContent<Setup: View>: View {
                     commandField
                 }
             }
-            // Greyed out rather than hidden while the agent is off, like the
-            // rest of Settings: which agent and what it would run are worth
-            // seeing before deciding to hand it anything.
-            .disabled(!agentOn)
+            }
         }
         .formStyle(.grouped)
         .scrollContentBackground(.hidden)
@@ -264,12 +264,12 @@ struct ScreenroomPageContent<Setup: View>: View {
         HStack(spacing: 8) {
             ChoiceTile(title: "This Mac", selected: !agentOn, badge: nil) {
                 tileSymbol("laptopcomputer", selected: !agentOn)
-            } action: { agentOn = false }
+            } action: { Collapse.animate { agentOn = false } }
             .help(localWriterHelp)
 
             ChoiceTile(title: "My agent", selected: agentOn, badge: "arrow.up.right") {
                 tileSymbol("terminal", selected: agentOn)
-            } action: { agentOn = true }
+            } action: { Collapse.animate { agentOn = true } }
             .help("Hand each presentation to an agent you already run: a bigger model than the one on this Mac, reading the transcript, the stills and your notes.")
         }
         .padding(.vertical, 4)

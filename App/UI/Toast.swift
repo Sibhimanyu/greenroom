@@ -95,7 +95,8 @@ enum ToastController {
         // notification would have gone unnoticed. Above the notes bar and the
         // control bar (MeetingControlBar.swift) when those are up.
         let floor: CGFloat = MainActor.assumeIsolated { MeetingControlBarController.isVisible }
-            ? MeetingControlBarController.toastFloorY : 120
+            ? MainActor.assumeIsolated { MeetingControlBarController.toastFloorY(in: area) }
+            : MeetingBarPlacement.toastDefaultFloor
         hosting.setFrame(NSRect(x: (area.midX - width / 2).rounded(),
                                 y: (area.minY + max(floor, area.height * 0.14)).rounded(),
                                 width: width, height: height),

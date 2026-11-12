@@ -514,7 +514,220 @@ struct MeetingToolbarView: View {
     }
 }
 
-// MARK: - Pill
+// MARK: - Pill and puck
+
+/// Whether the bar is the full pill or the small round puck. One value, read by
+/// the view and written by the controller, which also moves the window.
+@MainActor
+final class MeetingBarState: ObservableObject {
+    @Published var collapsed: Bool
+    init(collapsed: Bool) { self.collapsed = collapsed }
+}
+
+/// The window's whole content: a capsule that fills the panel, holding the pill
+/// or the puck. The controller animates the panel's frame between the two sizes
+/// and this crossfades what is inside, so the capsule is always exactly the
+/// window and the shadow follows it.
+struct MeetingControlBarRoot: View {
+    @ObservedObject var model: MeetingControlsModel
+    @ObservedObject var coordinator: CoordinatorController
+    @ObservedObject var state: MeetingBarState
+
+    var body: some View {
+        let collapsed = state.collapsed
+        // The content is overlaid, never measured: the capsule is exactly the
+        // window however wide the pill inside is, so a half-collapsed window
+        // clips the pill instead of stretching the capsule.
+        Color.clear.overlay {
+          ZStack {
+            MeetingControlBarView(model: model, coordinator: coordinator)
+                .frame(width: MeetingControlBarController.width(videoButtons: model.videoButtons),
+                       height: MeetingControlBarController.height)
+                .opacity(collapsed ? 0 : 1)
+                .allowsHitTesting(!collapsed)
+                .accessibilityHidden(collapsed)
+            MeetingPuckView(model: model, coordinator: coordinator)
+                .opacity(collapsed ? 1 : 0)
+                .allowsHitTesting(collapsed)
+                .accessibilityHidden(!collapsed)
+        }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .clipShape(Capsule())
+        .background(.regularMaterial, in: Capsule())
+        .overlay(Capsule().strokeBorder(Color.primary.opacity(0.12), lineWidth: 1))
+        .animation(Collapse.animation, value: collapsed)
+    }
+}
+
+/// Six dots, two by three: the handle. The pill's buttons cover nearly all of
+/// it, so this is the part that is plainly meant to be grabbed.
+private struct MeetingBarGrip: View {
+    var body: some View {
+        VStack(spacing: 3) {
+            ForEach(0..<3, id: \.self) { _ in
+                HStack(spacing: 3) {
+                    Circle().frame(width: 3, height: 3)
+                    Circle().frame(width: 3, height: 3)
+                }
+            }
+        }
+        .foregroundStyle(Color.secondary.opacity(0.7))
+        .frame(width: 18, height: MeetingControlBarController.height)
+        .overlay {
+            MeetingBarPointerSurface(kind: .grip, label: "Move meeting controls",
+                                     value: nil, onClick: nil, menu: nil)
+        }
+        .help("Drag to move the meeting controls")
+    }
+}
+
+/// The compact form: 44pt round, the Greenroom mark, a red dot while recording
+/// and a muted badge while muted. Clicking expands it; a right-click offers the
+/// few things worth doing without expanding.
+private struct MeetingPuckView: View {
+    @ObservedObject var model: MeetingControlsModel
+    @ObservedObject var coordinator: CoordinatorController
+
+    private var recording: Bool { coordinator.isRecording }
+    private var muted: Bool { model.inMeeting && model.muted }
+
+    /// What VoiceOver says after the label.
+    private var stateText: String {
+        var parts: [String] = []
+        if recording { parts.append("Recording") }
+        if muted { parts.append("Muted") }
+        return parts.joined(separator: ", ")
+    }
+
+    var body: some View {
+        ZStack {
+            Image("MenuBarMark")
+                .renderingMode(.template)
+                .resizable()
+                .scaledToFit()
+                .frame(height: 18)
+                .foregroundStyle(Color.primary)
+            if recording {
+                // Red is the recording signal everywhere else in the bar.
+                Circle().fill(Color.red)
+                    .frame(width: 10, height: 10)
+                    .overlay(Circle().strokeBorder(Color(nsColor: .windowBackgroundColor), lineWidth: 2))
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+                    .padding(.top, 3).padding(.trailing, 3)
+            }
+            if muted {
+                Image(systemName: "mic.slash.fill")
+                    .font(.system(size: 8, weight: .bold))
+                    .foregroundStyle(Color.white)
+                    .frame(width: 15, height: 15)
+                    .background(Color.red, in: Circle())
+                    .overlay(Circle().strokeBorder(Color(nsColor: .windowBackgroundColor), lineWidth: 2))
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
+                    .padding(.bottom, 1).padding(.trailing, 1)
+            }
+        }
+        .frame(width: MeetingControlBarController.puckSize, height: MeetingControlBarController.puckSize)
+        .overlay {
+            MeetingBarPointerSurface(kind: .puck, label: "Meeting controls, collapsed",
+                                     value: stateText,
+                                     onClick: { MeetingControlBarController.setCollapsed(false) },
+                                     menu: { MeetingControlBarController.puckMenu() })
+        }
+        .help("Meeting controls. Click to expand, drag to move.")
+    }
+}
+
+// MARK: Pointer surface
+
+/// One AppKit view that tells a click from a drag. The panel is non-activating,
+/// so a press here works the bar without bringing Greenroom forward, and the
+/// drag moves the panel itself (not `isMovableByWindowBackground`, which the
+/// buttons defeat and which cannot tell a click from the start of a drag).
+private struct MeetingBarPointerSurface: NSViewRepresentable {
+    enum Kind { case grip, puck }
+    let kind: Kind
+    let label: String
+    let value: String?
+    let onClick: (() -> Void)?
+    let menu: (() -> NSMenu)?
+
+    func makeNSView(context: Context) -> SurfaceView { SurfaceView() }
+
+    func updateNSView(_ view: SurfaceView, context: Context) {
+        view.kind = kind
+        view.onClick = onClick
+        view.menuProvider = menu
+        view.setAccessibilityLabel(label)
+        view.setAccessibilityValue(value)
+        view.setAccessibilityRole(kind == .puck ? .button : .handle)
+        view.setAccessibilityHelp(kind == .puck ? "Press to expand. Drag to move." : "Drag to move.")
+    }
+
+    final class SurfaceView: NSView {
+        var kind: Kind = .grip
+        var onClick: (() -> Void)?
+        var menuProvider: (() -> NSMenu)?
+        private var startMouse = NSPoint.zero
+        private var startOrigin = NSPoint.zero
+        private var dragging = false
+
+        override var mouseDownCanMoveWindow: Bool { false }
+        override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+        override func isAccessibilityElement() -> Bool { true }
+
+        override func resetCursorRects() {
+            addCursorRect(bounds, cursor: kind == .grip ? .openHand : .arrow)
+        }
+
+        override func mouseDown(with event: NSEvent) {
+            guard let window else { return }
+            MeetingControlBarController.cancelSettling()
+            startMouse = NSEvent.mouseLocation
+            startOrigin = window.frame.origin
+            dragging = false
+        }
+
+        override func mouseDragged(with event: NSEvent) {
+            guard let window else { return }
+            let now = NSEvent.mouseLocation
+            let dx = now.x - startMouse.x, dy = now.y - startMouse.y
+            if !dragging {
+                guard hypot(dx, dy) > MeetingBarPlacement.dragThreshold else { return }
+                dragging = true
+            }
+            window.setFrameOrigin(NSPoint(x: startOrigin.x + dx, y: startOrigin.y + dy))
+        }
+
+        override func mouseUp(with event: NSEvent) {
+            if dragging {
+                dragging = false
+                MeetingControlBarController.dropped()
+            } else {
+                onClick?()
+            }
+        }
+
+        override func menu(for event: NSEvent) -> NSMenu? { menuProvider?() }
+
+        // VoiceOver: press expands; the menu's items are offered as actions.
+        override func accessibilityPerformPress() -> Bool {
+            guard let onClick else { return false }
+            onClick()
+            return true
+        }
+
+        override func accessibilityCustomActions() -> [NSAccessibilityCustomAction]? {
+            guard kind == .puck, let items = menuProvider?().items else { return nil }
+            return items.compactMap { item -> NSAccessibilityCustomAction? in
+                guard let item = item as? MeetingControlBarController.MenuItem, item.isEnabled else { return nil }
+                return NSAccessibilityCustomAction(name: item.title) { item.perform(); return true }
+            }
+        }
+    }
+}
+
+// MARK: Pill
 
 private struct MeetingControlBarView: View {
     @ObservedObject var model: MeetingControlsModel
@@ -523,6 +736,20 @@ private struct MeetingControlBarView: View {
 
     var body: some View {
         HStack(spacing: 4) {
+            // The window's own controls sit together at the leading end, apart
+            // from End, so collapsing is never a slip next to it.
+            MeetingBarGrip()
+            Button { MeetingControlBarController.setCollapsed(true) } label: {
+                Image(systemName: "arrow.down.right.and.arrow.up.left")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 22, height: 32)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help("Collapse to a small button")
+            .accessibilityLabel("Collapse meeting controls")
+
             iconButton(model.muted ? "mic.slash.fill" : "mic.fill",
                        tint: model.muted ? .red : .primary,
                        help: model.muted ? "Unmute" : "Mute",
@@ -579,10 +806,8 @@ private struct MeetingControlBarView: View {
             .help("End the session")
             .accessibilityLabel("End session")
         }
-        .padding(.horizontal, 8)
-        .frame(width: MeetingControlBarController.width(videoButtons: model.videoButtons), height: MeetingControlBarController.height)
-        .background(.regularMaterial, in: Capsule())
-        .overlay(Capsule().strokeBorder(Color.primary.opacity(0.12), lineWidth: 1))
+        .padding(.leading, 4)
+        .padding(.trailing, 8)
     }
 
     private var divider: some View {
@@ -677,23 +902,50 @@ private struct MeetingControlBarView: View {
 /// while there is no meeting window to carry the controls: closed, minimised or
 /// fully covered. With Zoom's own window as the picture (custom UI off) there
 /// is never a meeting window, so it simply stays up.
+///
+/// It is either the full pill or a 44pt puck, remembered across launches, and
+/// it can be dragged by its grip (or anywhere on the puck). Where it sits, for
+/// each form, is remembered too. The arithmetic is in MeetingBarPlacement.swift.
 @MainActor
 enum MeetingControlBarController {
-    static let width: CGFloat = 448
+    /// The pill without its meeting-window button: the 32pt buttons, the record
+    /// and clock cells, End, and the grip and collapse button at the leading end.
+    static let width: CGFloat = 496
     /// One more 32pt button (and its gap) when the meeting window is offered.
     static func width(videoButtons: Bool) -> CGFloat { videoButtons ? width + 36 : width }
     static let height: CGFloat = 44
+    static let puckSize: CGFloat = 44
     /// Gap under the pill, and between it and what stacks above it.
-    static let bottomInset: CGFloat = 16
-    private static let gap: CGFloat = 12
+    static let bottomInset: CGFloat = MeetingBarPlacement.edgeMargin
 
-    /// Where the notes bar rests (its height is SessionNotesBar.barSize) and the
-    /// lowest a toast may sit: each clear of the bar below it.
-    static let notesBarRestingY: CGFloat = bottomInset + height + gap
-    static let toastFloorY: CGFloat = notesBarRestingY + SessionNotes.barSize.height + gap
+    private static let collapsedKey = "meetingControlBar.collapsed"
+    private static let pillFrameKey = "meetingControlBar.pillFrame"
+    private static let puckFrameKey = "meetingControlBar.puckFrame"
+    /// What the single remembered frame was called before there were two forms.
+    private static let legacyFrameKey = "NSWindow Frame MeetingControlBar"
+
+    /// Where the notes bar rests, and the lowest a toast may sit: each clear of
+    /// the bar, wherever the bar is. The bar elsewhere (or off this screen)
+    /// leaves them at their own defaults.
+    static func notesBarRestingY(in area: CGRect) -> CGFloat {
+        MeetingBarPlacement.notesRestingY(bar: barFrame(in: area), area: area, notesSize: SessionNotes.barSize)
+    }
+
+    static func toastFloorY(in area: CGRect) -> CGFloat {
+        MeetingBarPlacement.toastFloorY(bar: barFrame(in: area), area: area,
+                                        notesHeight: SessionNotes.barSize.height)
+    }
+
+    /// The bar as the stack sees it: where it is now, or where it would sit by
+    /// default before it has been built.
+    private static func barFrame(in area: CGRect) -> CGRect {
+        panel?.frame ?? MeetingBarPlacement.defaultFrame(size: CGSize(width: width, height: height), in: area)
+    }
 
     /// Never key, never main: a click works the meeting and leaves focus where
-    /// the teacher had it.
+    /// the teacher had it. (So there is no keyboard focus on the bar either: the
+    /// "Collapse or expand the meeting bar" shortcut is the keyboard route, and
+    /// VoiceOver reaches the puck, the grip and the menu through accessibility.)
     private final class BarPanel: NSPanel {
         override var canBecomeKey: Bool { false }
         override var canBecomeMain: Bool { false }
@@ -705,56 +957,59 @@ enum MeetingControlBarController {
     }
 
     private static var panel: BarPanel?
+    private static var state: MeetingBarState?
+    private static var model: MeetingControlsModel?
+    private static var coordinator: CoordinatorController?
     private static var observers: [NSObjectProtocol] = []
     private static var pending: DispatchWorkItem?
+    private static var settleTimer: Timer?
 
     /// Whether the pill is on screen right now.
     static var isVisible: Bool { panel?.isVisible ?? false }
+    static var isCollapsed: Bool { state?.collapsed ?? false }
+
+    private static var screenAreas: [CGRect] { NSScreen.screens.map(\.visibleFrame) }
+    private static var mainArea: CGRect {
+        (NSScreen.main ?? NSScreen.screens.first)?.visibleFrame ?? CGRect(x: 0, y: 0, width: 1440, height: 900)
+    }
+
+    private static func size(collapsed: Bool) -> CGSize {
+        collapsed ? CGSize(width: puckSize, height: puckSize)
+                  : CGSize(width: width(videoButtons: model?.videoButtons ?? false), height: height)
+    }
 
     /// Builds the pill for this session and starts watching the meeting window.
     /// It is shown or hidden by `reconcile`, which runs at once the first time.
     static func install(coordinator: CoordinatorController, model: MeetingControlsModel) {
         guard panel == nil else { reconcile(immediately: false); return }
-        guard let screen = NSScreen.main ?? NSScreen.screens.first else { return }
-        let barWidth = width(videoButtons: model.videoButtons)
-        let size = NSSize(width: barWidth, height: height)
-        let area = screen.visibleFrame
-        let created = BarPanel(
-            contentRect: NSRect(x: (area.midX - size.width / 2).rounded(),
-                                y: area.minY + bottomInset,
-                                width: size.width, height: size.height),
-            styleMask: [.borderless, .nonactivatingPanel],
-            backing: .buffered, defer: false)
+        guard NSScreen.main ?? NSScreen.screens.first != nil else { return }
+        self.model = model
+        self.coordinator = coordinator
+        let collapsed = UserDefaults.standard.bool(forKey: collapsedKey)
+        let barState = MeetingBarState(collapsed: collapsed)
+        state = barState
+
+        // Moved once, stays moved. A saved spot on a display that is gone
+        // would strand the bar, so it is kept only if some screen still holds it.
+        let frame = MeetingBarPlacement.restore(saved: savedFrame(collapsed: collapsed),
+                                                size: size(collapsed: collapsed),
+                                                areas: screenAreas, defaultArea: mainArea)
+        let created = BarPanel(contentRect: frame, styleMask: [.borderless, .nonactivatingPanel],
+                               backing: .buffered, defer: false)
         created.isReleasedWhenClosed = false
         created.hidesOnDeactivate = false
         created.level = .floating
         created.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
-        created.isMovableByWindowBackground = true
+        // The grip and the puck move the panel themselves.
+        created.isMovableByWindowBackground = false
         created.backgroundColor = .clear
         created.isOpaque = false
         created.hasShadow = true
 
-        let host = FirstMouseHost(rootView: MeetingControlBarView(model: model, coordinator: coordinator)
-            .tint(Brand.green))
-        host.frame = NSRect(origin: .zero, size: size)
+        let host = FirstMouseHost(rootView: MeetingControlBarRoot(model: model, coordinator: coordinator,
+                                                                  state: barState).tint(Brand.green))
+        host.frame = NSRect(origin: .zero, size: frame.size)
         created.contentView = host
-
-        // Moved once, stays moved. A saved spot on a display that is gone
-        // would strand the bar, so only keep it if some screen still holds it.
-        created.setFrameAutosaveName("MeetingControlBar")
-        if !NSScreen.screens.contains(where: { $0.visibleFrame.intersects(created.frame) }) {
-            created.setFrame(NSRect(x: (area.midX - size.width / 2).rounded(),
-                                    y: area.minY + bottomInset,
-                                    width: size.width, height: size.height), display: false)
-        }
-
-        // A remembered frame may carry the other width: keep where it was
-        // centred, resize around that.
-        if abs(created.frame.width - barWidth) > 0.5 {
-            let f = created.frame
-            created.setFrame(NSRect(x: (f.midX - barWidth / 2).rounded(), y: f.minY,
-                                    width: barWidth, height: height), display: false)
-        }
         panel = created
 
         // The meeting window's own state, whichever way it changes: covered,
@@ -775,6 +1030,13 @@ enum MeetingControlBarController {
                 }
             })
         }
+        // A display unplugged, or the Dock or menu bar moved: a spot that is now
+        // off screen goes back to the default, one that is merely close to an
+        // edge is pulled in.
+        observers.append(center.addObserver(forName: NSApplication.didChangeScreenParametersNotification,
+                                            object: nil, queue: .main) { _ in
+            MainActor.assumeIsolated { revalidatePosition() }
+        })
         // A window opened a moment ago has not reported its occlusion yet, which
         // would flash the pill; let the debounce settle it. With none, show now.
         reconcile(immediately: !ParticipantGridWindowController.meetingWindowIsOpen)
@@ -803,12 +1065,162 @@ enum MeetingControlBarController {
         }
     }
 
+    // MARK: Collapse and expand
+
+    /// The shortcut: flips the form, but only while the bar is on screen.
+    static func toggleCollapsed() {
+        guard isVisible else { return }
+        setCollapsed(!isCollapsed)
+    }
+
+    /// Shrinks the pill to the puck, or grows the puck back, keeping the edge or
+    /// corner nearest the screen edge in place so it grows away from the edge.
+    /// The panel's frame follows a spring (nothing under Reduce Motion) while
+    /// the content crossfades inside it.
+    static func setCollapsed(_ collapsed: Bool) {
+        guard let panel, let state, state.collapsed != collapsed else { return }
+        cancelSettling()
+        let old = panel.frame
+        saveFrame(old, collapsed: state.collapsed)
+        UserDefaults.standard.set(collapsed, forKey: collapsedKey)
+        let area = MeetingBarPlacement.area(for: old, in: screenAreas) ?? mainArea
+        let target = MeetingBarPlacement.resized(from: old, to: size(collapsed: collapsed), in: area)
+        state.collapsed = collapsed
+        move(to: target)
+        avoidBar(target)
+    }
+
+    // MARK: Moving
+
+    /// The pointer let go after a drag: dock to a near edge and keep inside the
+    /// screen it landed on.
+    static func dropped() {
+        guard let panel else { return }
+        let target = MeetingBarPlacement.drop(panel.frame, areas: screenAreas)
+        move(to: target)
+        avoidBar(target)
+    }
+
+    /// A press began while the frame was still settling: stop where it is.
+    static func cancelSettling() {
+        settleTimer?.invalidate()
+        settleTimer = nil
+    }
+
+    /// Settles the panel at `target` on a spring, or at once under Reduce
+    /// Motion, and remembers it for the form it is now in.
+    private static func move(to target: CGRect) {
+        guard let panel else { return }
+        cancelSettling()
+        let collapsed = isCollapsed
+        let start = panel.frame
+        guard Collapse.animation != nil, start != target else {
+            panel.setFrame(target, display: true)
+            saveFrame(target, collapsed: collapsed)
+            return
+        }
+        let began = CACurrentMediaTime()
+        let timer = Timer(timeInterval: 1.0 / 120, repeats: true) { timer in
+            MainActor.assumeIsolated {
+                let t = CACurrentMediaTime() - began
+                let done = t >= MeetingBarPlacement.settleSeconds
+                panel.setFrame(done ? target : MeetingBarPlacement.lerp(start, target, MeetingBarPlacement.spring(t)),
+                               display: true)
+                // A borderless clear panel keeps the shadow of the shape it had.
+                panel.invalidateShadow()
+                if done {
+                    timer.invalidate()
+                    settleTimer = nil
+                    saveFrame(target, collapsed: collapsed)
+                }
+            }
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        settleTimer = timer
+    }
+
+    /// The notes bar rests above the bar; if the bar has just landed on it,
+    /// it moves up out of the way.
+    private static func avoidBar(_ frame: CGRect) {
+        SessionNotes.shared.keepClear(of: frame)
+    }
+
+    private static func revalidatePosition() {
+        guard let panel else { return }
+        cancelSettling()
+        let frame = MeetingBarPlacement.restore(saved: panel.frame, size: panel.frame.size,
+                                                areas: screenAreas, defaultArea: mainArea)
+        if frame != panel.frame { panel.setFrame(frame, display: true) }
+        saveFrame(frame, collapsed: isCollapsed)
+        avoidBar(frame)
+    }
+
+    // MARK: Remembering
+
+    private static func saveFrame(_ frame: CGRect, collapsed: Bool) {
+        UserDefaults.standard.set(NSStringFromRect(frame), forKey: collapsed ? puckFrameKey : pillFrameKey)
+    }
+
+    private static func savedFrame(collapsed: Bool) -> CGRect? {
+        let defaults = UserDefaults.standard
+        if let s = defaults.string(forKey: collapsed ? puckFrameKey : pillFrameKey) {
+            let r = NSRectFromString(s)
+            return r.isEmpty ? nil : r
+        }
+        guard !collapsed, let legacy = defaults.string(forKey: legacyFrameKey) else { return nil }
+        // "x y w h screenX screenY screenW screenH": the window's own frame is the first four.
+        let n = legacy.split(separator: " ").compactMap { Double($0) }
+        guard n.count >= 4, n[2] > 0, n[3] > 0 else { return nil }
+        return CGRect(x: n[0], y: n[1], width: n[2], height: n[3])
+    }
+
+    // MARK: The puck's menu
+
+    /// A menu item that runs a closure, and can be offered to VoiceOver as one.
+    final class MenuItem: NSMenuItem {
+        private let handler: () -> Void
+        init(_ title: String, enabled: Bool = true, _ handler: @escaping () -> Void) {
+            self.handler = handler
+            super.init(title: title, action: #selector(fire), keyEquivalent: "")
+            target = self
+            isEnabled = enabled
+        }
+        required init(coder: NSCoder) { fatalError("not used") }
+        @objc private func fire() { handler() }
+        func perform() { handler() }
+    }
+
+    /// Right-click on the puck: expand, mute, stop recording, end.
+    static func puckMenu() -> NSMenu {
+        let menu = NSMenu()
+        menu.autoenablesItems = false
+        let model = self.model, coordinator = self.coordinator
+        menu.addItem(MenuItem("Expand") { setCollapsed(false) })
+        let inMeeting = model?.inMeeting ?? false
+        menu.addItem(MenuItem((model?.muted ?? false) ? "Unmute" : "Mute", enabled: inMeeting) {
+            model?.toggleMute()
+        })
+        let recording = coordinator?.isRecording ?? false
+        menu.addItem(MenuItem("Stop recording",
+                              enabled: recording && !(coordinator?.isSavingRecording ?? false)) {
+            coordinator?.toggleRecording()
+        })
+        menu.addItem(.separator())
+        // Asks first, exactly as the pill's End does.
+        menu.addItem(MenuItem("End\u{2026}") { coordinator?.confirmAndStop() })
+        return menu
+    }
+
     static func close() {
         pending?.cancel()
         pending = nil
+        cancelSettling()
         for observer in observers { NotificationCenter.default.removeObserver(observer) }
         observers = []
         panel?.close()
         panel = nil
+        state = nil
+        model = nil
+        coordinator = nil
     }
 }

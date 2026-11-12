@@ -291,6 +291,8 @@ targets:
       - path: App/Layout/LayoutTemplate.swift
       - path: App/Layout/LayoutGeometry.swift
       - path: App/UI/WindowFrameRules.swift
+      - path: App/ShortcutModel.swift
+      - path: App/MeetingBarPlacement.swift
     settings:
       base:
         PRODUCT_NAME: GreenroomTests

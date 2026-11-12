@@ -71,9 +71,9 @@ struct WebcamSettingsTab: View {
             microphone: { MicrophoneSection() },
             recording: {
                 Toggle("Keep the last 5 minutes clippable", isOn: $coordinator.clipBufferEnabled)
-                    .help("\u{2325}\u{2318}1, 2 or 5 saves the last minutes as a clip, recording or not. About 300 MB of memory, nothing on disk until you press.")
+                    .help("The clip shortcuts (Settings \u{2192} Shortcuts) save the last minutes as a clip, recording or not. About 300 MB of memory, nothing on disk until you press.")
                 Toggle("Record automatically with the meeting", isOn: $coordinator.autoRecordOnStart)
-                    .help("Off: press Record or \u{2325}\u{2318}R. Files land in Documents/Greenroom.")
+                    .help("Off: press Record or \(ShortcutStore.phrase(.toggleRecording)). Files land in Documents/Greenroom.")
             })
         .onAppear {
             displays = DisplayResolver.connectedDisplays()

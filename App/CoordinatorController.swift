@@ -470,19 +470,15 @@ final class CoordinatorController: ObservableObject {
             zoomChatClient.setHideSelfView(hideSelfView)
         }
     }
-    /// Settings' "Quick-hide mode". Since the layout creator it is the Meeting
-    /// piece's "Starts hidden" in the ACTIVE layout, shown and changed from the
-    /// Settings row (LayoutSettingsTab maps one to the other) and kept in step
-    /// with it here, so the value an export carries and an older Greenroom reads
-    /// still agrees. It no longer gates \u{2325}\u{2318}Z, which works whenever
-    /// the layout has a placed Meeting piece. Changing it mid-class changes what
-    /// the NEXT start does; a layout edit applies live but never undoes a
-    /// \u{2325}\u{2318}Z the teacher just pressed.
-    @Published var speakerTileShortcutEnabled: Bool {
-        didSet {
-            defaults.set(speakerTileShortcutEnabled, forKey: "speakerTileShortcutEnabled")
-            Analytics.setting("quick_hide_mode", on: speakerTileShortcutEnabled)
-        }
+    /// The old "Quick-hide mode" setting. The Settings row is gone (a layout's
+    /// Meeting piece has its own "Starts hidden", and \u{2325}\u{2318}Z is now one
+    /// of the rebindable shortcuts), and nothing writes this any more: it is
+    /// IMPORT-ONLY. A settings file from before layouts still carries it, and
+    /// importing it stores the value where "Your previous layout" reads it
+    /// (LegacyLayoutSettings), so that migration keeps its old behaviour. Exports
+    /// no longer include it.
+    var speakerTileShortcutEnabled: Bool {
+        didSet { defaults.set(speakerTileShortcutEnabled, forKey: "speakerTileShortcutEnabled") }
     }
 
     /// The placed Meeting piece is hidden and the neighbour that joins it has
@@ -525,8 +521,8 @@ final class CoordinatorController: ObservableObject {
                 openMeetingWindow()
             }
             layoutEngine.moveNeighbour(template, meetingHidden: hide)
-            log(hide ? "Meeting window hidden \u{2014} \u{2325}\u{2318}Z shows it."
-                     : "Meeting window shown \u{2014} \u{2325}\u{2318}Z hides it again.")
+            log(hide ? "Meeting window hidden \u{2014} \(ShortcutStore.phrase(.toggleMeeting)) shows it."
+                     : "Meeting window shown \u{2014} \(ShortcutStore.phrase(.toggleMeeting)) hides it again.")
             return
         }
         guard let window = builtInMeetingWindow else {
@@ -535,18 +531,18 @@ final class CoordinatorController: ObservableObject {
             // like the shortcut was simply broken.
             log("No speaker tile to toggle yet \u{2014} waiting for Zoom's meeting window.")
             Notifier.post(title: "Speaker tile isn't ready yet",
-                          body: "Zoom's meeting window is still coming up. Try \u{2325}\u{2318}Z again in a moment.")
+                          body: "Zoom's meeting window is still coming up. Try \(ShortcutStore.phrase(.toggleMeeting)) again in a moment.")
             return
         }
         speakerTileQuickHidden = hide
         if hide {
             window.orderOut(nil)
-            log("Speaker tile hidden \u{2014} \u{2325}\u{2318}Z shows it.")
+            log("Speaker tile hidden \u{2014} \(ShortcutStore.phrase(.toggleMeeting)) shows it.")
         } else {
             window.level = .normal
             window.setFrame(meeting.frames.ns, display: true)
             window.orderFrontRegardless()
-            log("Speaker tile shown \u{2014} \u{2325}\u{2318}Z hides it again.")
+            log("Speaker tile shown \u{2014} \(ShortcutStore.phrase(.toggleMeeting)) hides it again.")
         }
         layoutEngine.moveNeighbour(template, meetingHidden: hide)
         // Zoom may have kept a bigger window than the rect: the neighbour fits
@@ -751,10 +747,6 @@ final class CoordinatorController: ObservableObject {
             if layoutLibrary.activeID != oldValue.activeID || layoutLibrary.templates.count != oldValue.templates.count {
                 Analytics.layoutChanged(layoutLibrary)
             }
-            // Quick-hide row: the stored value follows the active layout's Meeting.
-            if let hidden = layoutLibrary.active?.meetingStartsHidden, hidden != speakerTileShortcutEnabled {
-                speakerTileShortcutEnabled = hidden
-            }
             // Only an edit to the layout THIS class is running re-tiles it. Picking
             // another card does not rearrange a class in progress (Settings offers
             // "Apply now" for that), and editing a layout the class is not using
@@ -814,6 +806,30 @@ final class CoordinatorController: ObservableObject {
         speakerTileQuickHidden = layoutEngine.startsHidden(template)
         log("Applying \u{201C}\(template.name)\u{201D} now\u{2026}")
         reapplyLayout(userInitiated: false, openApps: true)
+    }
+
+    /// A "Use layout" shortcut (Settings -> Shortcuts). While an arranged class is
+    /// live it is Settings' "Apply now": the live class re-tiles to that layout.
+    /// Otherwise it sets the Start layout, like the Layout menu. nil is None, which
+    /// a live class cannot switch to (it only sets what the next Start does).
+    func useLayout(_ id: UUID?) {
+        if isRunning || stageLive {
+            guard let id, layoutLibrary.template(id: id) != nil else {
+                layoutLibrary.select(nil)
+                log("A live class keeps its layout. The next Start will arrange nothing.")
+                return
+            }
+            guard sessionArranges, sessionTemplate != nil else {
+                layoutLibrary.select(id)
+                log("This class arranges no windows, so the layout is set for the next Start.")
+                return
+            }
+            applyLayoutNow(id)
+        } else {
+            layoutLibrary.select(id)
+            let name = id.flatMap { layoutLibrary.template(id: $0)?.name }
+            ToastController.show(name.map { "Layout: \($0)" } ?? "Layout: None", kind: .success)
+        }
     }
 
     /// Built-in browser only: whether Start brings back the tabs that were
@@ -1686,7 +1702,7 @@ final class CoordinatorController: ObservableObject {
         guard clipBufferEnabled, let recorder else { return }
         recorder.armClipBuffer(seconds: SessionFolders.clipBufferSeconds)
         let minutes = SessionFolders.clipBufferSeconds / 60
-        log("Clip buffer armed \u{2014} the last \(minutes) minutes stay clippable with \u{2325}\u{2318}1, \u{2325}\u{2318}2 or \u{2325}\u{2318}5, recording or not.")
+        log("Clip buffer armed \u{2014} the last \(minutes) minutes stay clippable with the clip shortcuts, recording or not.")
     }
 
     /// Marks the last `minutes` of the recording, ending now.
@@ -1752,7 +1768,7 @@ final class CoordinatorController: ObservableObject {
             return
         }
         guard let recorder, recorder.isClipBufferArmed else {
-            log("Nothing to clip \u{2014} the clip buffer is not running. Press Record (\u{2325}\u{2318}R) to capture from here.")
+            log("Nothing to clip \u{2014} the clip buffer is not running. Press Record (\(ShortcutStore.phrase(.toggleRecording))) to capture from here.")
             ToastController.show("Clip buffer not running",
                                  detail: "Press Record to capture from here instead.", kind: .failure)
             return
@@ -1928,7 +1944,7 @@ final class CoordinatorController: ObservableObject {
         // main window is buried behind the main app. The menu
         // bar's GR also flips to a REC glyph via isRecording.
         Notifier.post(title: "Recording started",
-                      body: "Greenroom is recording the composite. \u{2325}\u{2318}R stops it.")
+                      body: "Greenroom is recording the composite. \(ShortcutStore.phrase(.toggleRecording)) stops it.")
     }
 
     // MARK: Record mode - get ready, then record, as often as you like
@@ -2726,7 +2742,7 @@ final class CoordinatorController: ObservableObject {
                             if let template = sessionTemplate { layoutEngine.moveNeighbour(template, meetingHidden: true) }
                             if !quickHideAnnounced {
                                 quickHideAnnounced = true
-                                log("Speaker tile starts hidden \u{2014} what sat beside it has its room; \u{2325}\u{2318}Z shows the speaker.")
+                                log("Speaker tile starts hidden \u{2014} what sat beside it has its room; \(ShortcutStore.phrase(.toggleMeeting)) shows the speaker.")
                             }
                         }
                         parked = false
@@ -2830,7 +2846,7 @@ final class CoordinatorController: ObservableObject {
                     // Snap Windows Back restarts the loop and re-arms.
                     gridCorrectionHoldUntilTick = tick + 60
                     gridCorrectionStreak = 0
-                    log("Something keeps re-placing the participant grid within seconds \u{2014} pausing the tug-of-war for 2 minutes. Snap Windows Back (\u{2325}\u{2318}S) re-places it now.")
+                    log("Something keeps re-placing the participant grid within seconds \u{2014} pausing the tug-of-war for 2 minutes. Snap Windows Back (\(ShortcutStore.phrase(.snapBack))) re-places it now.")
                 } else if gridCorrectionStreak == 3 {
                     // Raw re-framing isn't sticking: the SDK likely lost or
                     // changed its dual-screen state when it recreated the
@@ -3316,6 +3332,19 @@ final class CoordinatorController: ObservableObject {
             displayChangedDuringStart = true
         } else if stageLive, zoomChatClient.isJoined, sessionArranges {
             snapWindowsBack(userInitiated: false)
+        }
+    }
+
+    /// The Open Greenroom / Open Sessions shortcuts. From the menu bar, SwiftUI's
+    /// openWindow recreates a closed window; here there is no view to ask, so a
+    /// closed window is brought back by reopening the app (the same event as a
+    /// Dock click, which the Window scene answers by recreating it).
+    func bringMainWindowForward() {
+        if NSApp.windows.contains(where: { $0.title == "Greenroom" }) {
+            showMainWindow()
+        } else {
+            NSWorkspace.shared.openApplication(at: Bundle.main.bundleURL,
+                                               configuration: NSWorkspace.OpenConfiguration())
         }
     }
 
@@ -4152,6 +4181,7 @@ struct SettingsTransfer: Codable {
     var screenCaptureDisplayUUID: String?
     var shareTarget: ShareTarget?
     var hideSelfView: Bool?
+    /// Import-only (older files); see CoordinatorController.speakerTileShortcutEnabled.
     var speakerTileShortcutEnabled: Bool?
     var autoRecordOnStart: Bool?
     var meetingPresets: [MeetingPreset]?
@@ -4162,6 +4192,9 @@ struct SettingsTransfer: Codable {
     /// carries only workspaceLayout / chromeLayout, which import migrates into a
     /// template appended to the library.
     var layoutLibrary: LayoutLibrary?
+    /// Settings -> Shortcuts: only what differs from the defaults. A file without
+    /// it leaves this Mac's shortcuts alone.
+    var shortcutBindings: ShortcutBindings?
 
     // Added 2026-09-19, after an audit found fourteen real settings that a
     // teacher had set and an export did not carry. A colleague importing the
@@ -4229,10 +4262,10 @@ extension CoordinatorController {
             screenCaptureDisplayUUID: screenCaptureDisplayUUID,
             shareTarget: shareTarget,
             hideSelfView: hideSelfView,
-            speakerTileShortcutEnabled: speakerTileShortcutEnabled,
             autoRecordOnStart: autoRecordOnStart,
             meetingPresets: meetingPresets,
             layoutLibrary: layoutLibrary,
+            shortcutBindings: ShortcutStore.shared.bindings,
             userDisplayName: userDisplayName,
             customUIMode: customUIMode,
             clipBufferEnabled: clipBufferEnabled,
@@ -4354,6 +4387,7 @@ extension CoordinatorController {
             settings.save()
         }
         if let value = transfer.meetingPresets { meetingPresets = value }
+        if let value = transfer.shortcutBindings { ShortcutStore.shared.replace(with: value) }
         if var library = transfer.layoutLibrary {
             // A second display saved on another Mac means nothing here: automatic.
             library.templates = library.templates.map(Self.withLocalDisplays)

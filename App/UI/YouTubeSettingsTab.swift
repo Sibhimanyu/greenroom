@@ -58,16 +58,9 @@ struct YouTubePageContent: View {
         Form {
             Section("Recordings") {
                 UploadFlowPicture(mode: uploadMode, connected: connected, uploading: uploading)
-                ViewThatFits(in: .horizontal) {
-                    HStack(alignment: .top, spacing: 24) {
-                        uploadChoices.frame(minWidth: 340, maxWidth: .infinity)
-                        visibilityChoices.frame(minWidth: 240, maxWidth: .infinity)
-                    }
-                    VStack(alignment: .leading, spacing: 16) {
-                        uploadChoices
-                        visibilityChoices
-                    }
-                }
+                uploadChoices
+                // Do nothing: no upload, so no visibility to choose.
+                Collapsible(hidden: uploadMode == .off) { visibilityChoices }
             }
 
             Section("Account") {
@@ -91,7 +84,7 @@ struct YouTubePageContent: View {
     private var uploadChoices: some View {
         VStack(alignment: .leading, spacing: 4) {
             Text("After recording").font(.callout)
-            ModePicker(selection: $uploadMode)
+            ModePicker(selection: $uploadMode.animatedCollapse())
         }
         .accessibilityElement(children: .contain)
     }

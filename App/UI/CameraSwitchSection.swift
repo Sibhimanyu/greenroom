@@ -68,6 +68,14 @@ struct CameraSwitchSection: View {
                 liveDetail: { liveDetail })
         }
         .onAppear { cameras = LocalDeviceResolver.availableCameras() }
+        .onChange(of: coordinator.cameraDirectorSettings.enabled) { _, on in
+            // Switching off hides Aim and the gauge, so nothing may keep a
+            // camera open (and its light on) for a reading nobody can see.
+            if !on {
+                coordinator.stopAiming()
+                aiming = nil
+            }
+        }
         .onDisappear {
             // A settings window left open would otherwise hold a camera - and
             // its light on - for as long as the app ran.
@@ -206,22 +214,26 @@ struct CameraSwitchContent<LiveDetail: View>: View {
     @ViewBuilder let liveDetail: () -> LiveDetail
 
     var body: some View {
-        Toggle("Switch to the camera you\u{2019}re facing", isOn: $enabled)
+        Toggle("Switch to the camera you\u{2019}re facing", isOn: $enabled.animatedCollapse())
             .help("For two monitors: put a camera on each, and the class sees whichever one you face instead of the side of your head.")
 
         cameraRow
 
-        ViewThatFits(in: .horizontal) {
-            HStack(alignment: .center, spacing: 24) {
-                angleReading.frame(width: 300, alignment: .leading)
-                switchSettings.frame(width: 320, alignment: .leading)
+        // Off: one camera, picked above, and nothing to aim or tune. The
+        // gauge, the delay and the transition only exist for the cut.
+        Collapsible(hidden: !enabled) {
+            ViewThatFits(in: .horizontal) {
+                HStack(alignment: .center, spacing: 24) {
+                    angleReading.frame(width: 300, alignment: .leading)
+                    switchSettings.frame(width: 320, alignment: .leading)
+                }
+                VStack(alignment: .leading, spacing: 16) {
+                    angleReading
+                    switchSettings
+                }
             }
-            VStack(alignment: .leading, spacing: 16) {
-                angleReading
-                switchSettings
-            }
+            .padding(.vertical, 4)
         }
-        .padding(.vertical, 4)
     }
 
     private var angleReading: some View {
@@ -270,7 +282,6 @@ struct CameraSwitchContent<LiveDetail: View>: View {
                 }
             }
         }
-        .disabled(!enabled)
     }
 
     /// The cameras as cards. The number is the order - "which one do I start
@@ -285,7 +296,7 @@ struct CameraSwitchContent<LiveDetail: View>: View {
                            position: enabled ? position : nil,
                            chosen: enabled ? position != nil : !noCamera && single == camera.id,
                            isLive: liveCameraName == camera.name,
-                           isAiming: aiming == camera.id, canAim: canAim,
+                           isAiming: aiming == camera.id, canAim: canAim && enabled,
                            toggle: { enabled ? toggle(camera.id, position == nil) : pick(camera.id) },
                            aim: { aim(camera.id) })
             }
@@ -315,7 +326,7 @@ private struct CameraCard: View {
     let aim: () -> Void
 
     var body: some View {
-        VStack(spacing: 8) {
+        VStack(spacing: 0) {
             Button(action: toggle) {
                 HStack(spacing: 8) {
                     Image(systemName: symbol)
@@ -335,14 +346,19 @@ private struct CameraCard: View {
             }
             .buttonStyle(.plain)
             .help(camera.name + (position != nil ? " · Click to leave this camera out" : " · Click to use this camera"))
-            HStack(spacing: 8) {
-                if canAim {
-                    Button(isAiming ? "Looking…" : "Aim") { aim() }
-                        .controlSize(.small)
-                        .disabled(isAiming)
-                        .help("Measure the angle this camera reads you at")
+            // Aim belongs to switching: with it off there is one camera and
+            // nothing to measure, so the row collapses (LIVE stays while on air).
+            Collapsible(hidden: !canAim && !isLive) {
+                HStack(spacing: 8) {
+                    Collapsible(hidden: !canAim) {
+                        Button(isAiming ? "Looking…" : "Aim") { aim() }
+                            .controlSize(.small)
+                            .disabled(isAiming)
+                            .help("Measure the angle this camera reads you at")
+                    }
+                    if isLive { PictureChip(text: "LIVE", dot: Brand.green) }
                 }
-                if isLive { PictureChip(text: "LIVE", dot: Brand.green) }
+                .padding(.top, 8)
             }
         }
         .padding(8)

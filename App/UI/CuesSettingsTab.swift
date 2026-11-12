@@ -184,7 +184,7 @@ struct CuesSetupContent<WhisperSetup: View, WhisperModel: View>: View {
             if !compact {
                 CuesPicture(on: enabled)
             }
-            Toggle(isOn: $enabled) {
+            Toggle(isOn: $enabled.animatedCollapse()) {
                 Text("Suggest links while I teach")
             }
             .help("Listens during classes and offers cards for the tools, words, quotes, books, videos, topics and people you name. Off by default.")
@@ -205,11 +205,11 @@ struct CuesSetupContent<WhisperSetup: View, WhisperModel: View>: View {
         // it. What you would change - what listens and how much it finds -
         // is drawn; what is set once is a short row under More.
         //
-        // Greyed out, not hidden, while Cues itself is off: the choices are
-        // still worth seeing - they say what turning it on gets you - but a
-        // live-looking control that changes nothing reads as broken. Try it
-        // stays usable, because it is how a teacher decides whether to turn
-        // Cues on in the first place.
+        // Hidden while Cues itself is off (owner rule: a switch that is off
+        // takes what depends on it away, it does not grey it). The values are
+        // kept, so turning Cues on finds them as they were. Try it stays,
+        // because it is how a teacher decides whether to turn Cues on.
+        if enabled {
         Section {
             HStack(spacing: 8) {
                 ChoiceTile(title: "Apple", selected: !listensWithWhisper, badge: nil) {
@@ -267,7 +267,6 @@ struct CuesSetupContent<WhisperSetup: View, WhisperModel: View>: View {
                     .help(modelUnavailableReason ?? "Apple Intelligence is unavailable on this Mac.")
             }
         } header: { if !compact { Text("Listening and suggestions") } }
-        .disabled(!enabled)
 
         Section {
             Picker(selection: $languageID) {
@@ -303,7 +302,7 @@ struct CuesSetupContent<WhisperSetup: View, WhisperModel: View>: View {
                   ? "Top result on your connected Google account, up to 20 a class."
                   : "No Google account connected \u{2014} video cards are search links until then.")
         } header: { if !compact { Text("More") } }
-        .disabled(!enabled)
+        }
     }
 
     /// Apple's speech model, as a state and at most one button.

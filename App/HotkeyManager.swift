@@ -23,11 +23,11 @@ final class HotkeyManager {
     static let shared = HotkeyManager()
 
     struct Hotkey {
+        /// Whatever the caller uses to tell its shortcuts apart (the slot id).
+        let id: String
         let keyCode: UInt32
         /// Carbon modifier mask (cmdKey | optionKey | controlKey | shiftKey).
         let modifiers: UInt32
-        /// How to name this shortcut if it cannot be claimed, e.g. "\u{2325}\u{2318}Z".
-        let label: String
         let action: () -> Void
     }
 
@@ -36,16 +36,17 @@ final class HotkeyManager {
     private var eventHandler: EventHandlerRef?
     private var nextID: UInt32 = 1
 
-    /// Registers all hotkeys at once. Call once at launch.
+    /// Registers all hotkeys at once, and again whenever the set changes (see
+    /// `replaceAll`).
     ///
-    /// Returns the labels of any that could not be claimed. RegisterEventHotKey
+    /// Returns the ids of any that could not be claimed. RegisterEventHotKey
     /// fails when another running application already owns the combination, and
     /// its status used to be discarded - so a shortcut that had been taken simply
     /// did nothing, forever, with nothing anywhere explaining why. That was
     /// tolerable while these used three modifiers and collisions were unlikely;
     /// it is not tolerable now they use two.
     @discardableResult
-    func register(_ hotkeys: [Hotkey]) -> [String] {
+    private func register(_ hotkeys: [Hotkey]) -> [String] {
         installHandlerIfNeeded()
         var unavailable: [String] = []
         for hotkey in hotkeys {
@@ -57,7 +58,7 @@ final class HotkeyManager {
             let status = RegisterEventHotKey(hotkey.keyCode, hotkey.modifiers, hotKeyID,
                                              GetApplicationEventTarget(), 0, &ref)
             guard status == noErr, ref != nil else {
-                unavailable.append(hotkey.label)
+                unavailable.append(hotkey.id)
                 continue
             }
             // Only recorded once the registration actually succeeded, so a
@@ -66,6 +67,23 @@ final class HotkeyManager {
             hotKeyRefs.append(ref)
         }
         return unavailable
+    }
+
+    /// Releases everything registered, then registers `hotkeys`. This is how a
+    /// change in Settings takes effect without a relaunch. Returns the ids that
+    /// could not be claimed.
+    @discardableResult
+    func replaceAll(_ hotkeys: [Hotkey]) -> [String] {
+        unregisterAll()
+        return register(hotkeys)
+    }
+
+    /// Releases every hotkey. While a shortcut recorder is listening, so the
+    /// combination being recorded reaches it instead of running its action.
+    func unregisterAll() {
+        for ref in hotKeyRefs { if let ref { UnregisterEventHotKey(ref) } }
+        hotKeyRefs.removeAll()
+        actions.removeAll()
     }
 
     private func installHandlerIfNeeded() {

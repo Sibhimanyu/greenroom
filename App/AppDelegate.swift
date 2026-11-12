@@ -59,77 +59,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         startAnalytics()
     }
 
-    /// System-wide shortcuts (see HotkeyManager - they work while OTHER
-    /// apps are focused, which is the whole point mid-class). Actions
-    /// resolve the coordinator at press time and guard on session state,
-    /// mirroring the buttons' enabled states.
+    /// System-wide shortcuts (see HotkeyManager and ShortcutRuntime - they work
+    /// while OTHER apps are focused, which is the whole point mid-class).
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Find whisper once, off the main thread, before any view asks.
         // See ScreenroomWhisper.resolvedBinary for why a view must never be
         // the first to ask.
         DispatchQueue.global(qos: .utility).async { _ = ScreenroomWhisper.resolvedBinary }
         MainActor.assumeIsolated {
-            // Option+Command, not Control+Option+Command.
-            //
-            // Three modifiers was chosen for collision safety and is genuinely
-            // hard to hit one-handed - reported as such. Option and Command are
-            // ADJACENT at the bottom left, so one thumb covers both and the
-            // other fingers are free for the letter; Control+Option needs the
-            // pinky as well.
-            //
-            // Control is the one dropped rather than Command, deliberately:
-            // Control+Option is VoiceOver's own modifier, so those combinations
-            // are swallowed whenever VoiceOver is running. Option+Command has no
-            // such owner, and none of the letters used here (G X R S Z) collide
-            // with the system's Option+Command shortcuts - those are H (Hide
-            // Others), D (Dock), Space (Finder search) and Escape (Force Quit).
-            let mods = UInt32(cmdKey | optionKey)
-            let unavailable = HotkeyManager.shared.register([
-                .init(keyCode: UInt32(kVK_ANSI_G), modifiers: mods, label: "\u{2325}\u{2318}G") {
-                    CoordinatorController.shared?.start() // guards itself when busy/live
-                },
-                .init(keyCode: UInt32(kVK_ANSI_X), modifiers: mods, label: "\u{2325}\u{2318}X") {
-                    guard let coordinator = CoordinatorController.shared,
-                          coordinator.isRunning || coordinator.sceneInUse else { return }
-                    coordinator.confirmAndStop() // destructive - always confirms
-                },
-                .init(keyCode: UInt32(kVK_ANSI_R), modifiers: mods, label: "\u{2325}\u{2318}R") {
-                    guard let coordinator = CoordinatorController.shared,
-                          !coordinator.isSavingRecording,
-                          coordinator.stageLive || coordinator.isRecording else { return }
-                    coordinator.toggleRecording()
-                },
-                .init(keyCode: UInt32(kVK_ANSI_S), modifiers: mods, label: "\u{2325}\u{2318}S") {
-                    CoordinatorController.shared?.snapWindowsBack()
-                },
-                // Hide / show the layout's Meeting piece. Gated in the action
-                // (toggleSpeakerTile needs a placed Meeting piece in the layout).
-                .init(keyCode: UInt32(kVK_ANSI_Z), modifiers: mods, label: "\u{2325}\u{2318}Z") {
-                    CoordinatorController.shared?.toggleSpeakerTile()
-                },
-                // Clip marks. The digit IS the number of minutes, so there is
-                // nothing to remember: something good just happened, press the
-                // number of minutes it took. Digits rather than more letters
-                // because the mapping is the mnemonic, and because Option-Command
-                // digits are unclaimed by the system (unlike ⌘1-9, which is
-                // window and tab switching in nearly every app).
-                .init(keyCode: UInt32(kVK_ANSI_1), modifiers: mods, label: "\u{2325}\u{2318}1") {
-                    CoordinatorController.shared?.markClip(minutes: 1)
-                },
-                .init(keyCode: UInt32(kVK_ANSI_2), modifiers: mods, label: "\u{2325}\u{2318}2") {
-                    CoordinatorController.shared?.markClip(minutes: 2)
-                },
-                .init(keyCode: UInt32(kVK_ANSI_5), modifiers: mods, label: "\u{2325}\u{2318}5") {
-                    CoordinatorController.shared?.markClip(minutes: 5)
-                },
-            ])
-
-            // Another running app already owning a combination is the one way
-            // these silently do nothing, so say it out loud rather than leaving
-            // the user pressing a dead key.
-            if !unavailable.isEmpty {
-                CoordinatorController.shared?.reportUnavailableShortcuts(unavailable)
-            }
+            // What each key does, and its default, is in ShortcutModel; the
+            // bindings are Settings -> Shortcuts. ShortcutRuntime registers them
+            // and keeps them registered as they change.
+            ShortcutRuntime.shared.start()
         }
     }
 

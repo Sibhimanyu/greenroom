@@ -402,6 +402,14 @@ enum ParticipantGridWindowController {
         return panel.isVisible && !panel.isMiniaturized && panel.occlusionState.contains(.visible)
     }
 
+    /// The Gallery / Speaker shortcut: flips the meeting window's video layout, as
+    /// the segmented control does. False when there is nothing to switch (no
+    /// meeting window, or the small slot form, which is always Speaker).
+    @discardableResult
+    static func toggleGalleryOrSpeaker() -> Bool {
+        root?.toggleViewMode() ?? false
+    }
+
     /// So SDK window hunting recognises this as ours, the same as the chat
     /// window.
     static func owns(_ candidate: NSWindow) -> Bool { candidate == panel }
@@ -1062,7 +1070,8 @@ private final class RootView: NSView {
         recordingLabel.font = .systemFont(ofSize: 12, weight: .semibold)
         shortcutsLabel.font = .monospacedSystemFont(ofSize: 11, weight: .regular)
         shortcutsLabel.textColor = .tertiaryLabelColor
-        shortcutsLabel.stringValue = "\u{2325}\u{2318}R record   \u{2325}\u{2318}S snap back   \u{2325}\u{2318}X end"
+        shortcutsLabel.stringValue = [("record", ShortcutStore.glyphs(.toggleRecording)), ("snap back", ShortcutStore.glyphs(.snapBack)), ("end", ShortcutStore.glyphs(.endSession))]
+            .filter { !$0.1.isEmpty }.map { "\($0.1) \($0.0)" }.joined(separator: "   ")
         for label in [titleLabel, factsLabel, shortcutsLabel, recordingLabel] { topBar.addSubview(label) }
         topBar.addSubview(recordingDot)
 
@@ -1610,6 +1619,13 @@ private final class RootView: NSView {
         for view in [selfPreview, sidePanelHost, inspector, readiness, topBar, bottomBar] as [NSView] {
             addSubview(view)
         }
+    }
+
+    func toggleViewMode() -> Bool {
+        guard meetingForm, !form.isSlot else { return false }
+        modeControl.selectedSegment = viewMode == .gallery ? ViewMode.speaker.rawValue : ViewMode.gallery.rawValue
+        modeChanged(modeControl)
+        return true
     }
 
     @objc private func modeChanged(_ sender: NSSegmentedControl) {
@@ -2183,13 +2199,13 @@ private final class RootView: NSView {
         let saving = session.isSavingRecording
         let recordRow = Self.railRow(saving ? "Saving\u{2026}" : recording ? "Stop Recording" : "Record",
                                      symbol: saving ? "hourglass" : recording ? "stop.circle.fill" : "record.circle",
-                                     alert: recording && !saving, hint: "\u{2325}\u{2318}R") {
+                                     alert: recording && !saving, hint: ShortcutStore.glyphs(.toggleRecording)) {
             ParticipantGridWindowController.requestToggleRecording()
         }
         recordRow.isEnabled = !saving
         railControls.append(recordRow)
         railControls.append(Self.railRow("Snap Back", symbol: "rectangle.3.group",
-                                         hint: "Snap windows back  \u{2325}\u{2318}S") {
+                                         hint: "Snap windows back  \(ShortcutStore.glyphs(.snapBack))") {
             ParticipantGridWindowController.requestSnapBack()
         })
         railControls.append(Self.railRow("Chat", symbol: "bubble.left.and.bubble.right") {
@@ -2238,7 +2254,7 @@ private final class RootView: NSView {
         // row did: a solid red block is a different kind of object from a
         // borderless icon, to anyone, and it still asks before it acts.
         railControls.append(Self.railRow("End", symbol: "xmark", destructive: true,
-                                         hint: "End session  \u{2325}\u{2318}X") {
+                                         hint: "End session  \(ShortcutStore.glyphs(.endSession))") {
             Self.confirm(title: "End the session?",
                          message: "Ends the meeting for everyone, finishes any recording, and turns the camera off.",
                          confirm: "End session") {
@@ -2992,7 +3008,7 @@ private final class RootView: NSView {
                                   tint: destructive || alert ? .systemRed : .labelColor,
                                   filled: destructive,
                                   action: action)
-        if let hint { cell.toolTip = hint.hasPrefix("\u{2325}") ? "\(title)  \(hint)" : hint }
+        if let hint, !hint.isEmpty { cell.toolTip = hint.contains(" ") ? hint : "\(title)  \(hint)" }
         return cell
     }
 

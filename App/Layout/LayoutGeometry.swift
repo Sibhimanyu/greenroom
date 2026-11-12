@@ -577,8 +577,9 @@ enum LayoutResolver {
 // MARK: - The Meeting piece's flags, read and written on a template
 
 extension LayoutTemplate {
-    /// Whether any Meeting window or view piece starts hidden. The Settings
-    /// "Quick-hide mode" row reads and writes this on the active template.
+    /// Whether any Meeting window or view piece starts hidden. (The Settings
+    /// "Quick-hide mode" row that used to read and write this is gone; the Meeting
+    /// piece's own "Starts hidden" in the layout editor is the control.)
     var meetingStartsHidden: Bool? {
         let flags = (oneDisplay + (twoDisplays.map { $0.main + $0.second } ?? [])).compactMap { piece -> Bool? in
             switch piece.kind {

@@ -13,6 +13,9 @@ struct MenuBarView: View {
     @EnvironmentObject private var coordinator: CoordinatorController
     @Environment(\.openWindow) private var openWindow
     @ObservedObject private var notes = SessionNotes.shared
+    /// Where the shortcut hints come from: the same bindings Settings edits and
+    /// the hotkeys are registered from, so they never disagree.
+    @ObservedObject private var shortcuts = ShortcutStore.shared
     /// Injected from GreenroomApp's Sparkle updater controller - the
     /// menu bar is where users live mid-class, so updates are reachable
     /// here too, not just the app menu.
@@ -22,8 +25,8 @@ struct MenuBarView: View {
         // Same enable/disable logic as the main window's buttons: Start
         // only when idle, Stop only when starting or live, Record only
         // with a live session (or to stop an active recording).
-        // The ⌥⌘ shortcuts shown here are registered as SYSTEM-WIDE
-        // hotkeys (HotkeyManager) - they work while other apps are
+        // The shortcuts shown here are registered as SYSTEM-WIDE
+        // hotkeys (ShortcutRuntime) - they work while other apps are
         // focused, and macOS swallows the keypress before it could reach
         // these menu items, so the hints below are documentation, not a
         // second trigger.
@@ -34,20 +37,20 @@ struct MenuBarView: View {
                : coordinator.meetingMode == .create ? "Start Meeting" : "Join Meeting") {
             coordinator.start()
         }
-        .keyboardShortcut("g", modifiers: [.option, .command])
+        .shortcutHint(shortcuts.combo(for: .startClass))
         .disabled(coordinator.startActionDisabled) // same gating as the main window's Start
 
         Button(coordinator.isStopping ? "Ending\u{2026}" : "End Session") {
             coordinator.confirmAndStop()
         }
-        .keyboardShortcut("x", modifiers: [.option, .command])
+        .shortcutHint(shortcuts.combo(for: .endSession))
         .disabled(coordinator.isStopping || (!coordinator.isRunning && !coordinator.sceneInUse))
 
         Button(coordinator.isSavingRecording ? "Saving\u{2026}"
                 : coordinator.isRecording ? "Stop Recording" : "Start Recording") {
             coordinator.toggleRecording()
         }
-        .keyboardShortcut("r", modifiers: [.option, .command])
+        .shortcutHint(shortcuts.combo(for: .toggleRecording))
         .disabled(coordinator.isSavingRecording
                   || (!coordinator.stageLive && !coordinator.isRecording && !coordinator.recordOnlyActive))
 
@@ -56,6 +59,7 @@ struct MenuBarView: View {
         Button(notes.effectiveEnabled ? "Hide Notes" : "Show Notes") {
             notes.toggle()
         }
+        .shortcutHint(shortcuts.combo(for: .toggleNotes))
         .disabled(!SessionNotes.sessionIsLive(coordinator))
 
         // Which layout Start uses. Greyed while a class is live: that class keeps
@@ -90,12 +94,12 @@ struct MenuBarView: View {
             Button("Snap Windows Back") {
                 coordinator.snapWindowsBack()
             }
-            .keyboardShortcut("s", modifiers: [.option, .command])
+            .shortcutHint(shortcuts.combo(for: .snapBack))
 
             Button(coordinator.speakerTileQuickHidden ? "Show Speaker Tile" : "Hide Speaker Tile") {
                 coordinator.toggleSpeakerTile()
             }
-            .keyboardShortcut("z", modifiers: [.option, .command])
+            .shortcutHint(shortcuts.combo(for: .toggleMeeting))
             .disabled(!coordinator.canToggleMeeting)
 
             Divider()
@@ -108,6 +112,7 @@ struct MenuBarView: View {
             openWindow(id: "main")
             coordinator.showMainWindow()
         }
+        .shortcutHint(shortcuts.combo(for: .openGreenroom))
 
         Button("Check for Updates\u{2026}", action: checkForUpdates)
 
@@ -117,6 +122,48 @@ struct MenuBarView: View {
 
         Button("Quit Greenroom") {
             NSApp.terminate(nil)
+        }
+    }
+}
+
+// MARK: - Shortcut hints
+
+private extension View {
+    /// Draws a menu item's shortcut from a binding. Nil, or a key a menu cannot
+    /// draw (function keys, the keypad), draws nothing; the hotkey still works.
+    @ViewBuilder
+    func shortcutHint(_ combo: KeyCombo?) -> some View {
+        if let combo, let key = combo.menuKey?.keyEquivalent {
+            keyboardShortcut(key, modifiers: combo.eventModifiers)
+        } else {
+            self
+        }
+    }
+}
+
+private extension KeyCombo {
+    var eventModifiers: EventModifiers {
+        var m: EventModifiers = []
+        if modifiers & KeyCombo.command != 0 { m.insert(.command) }
+        if modifiers & KeyCombo.option != 0 { m.insert(.option) }
+        if modifiers & KeyCombo.control != 0 { m.insert(.control) }
+        if modifiers & KeyCombo.shift != 0 { m.insert(.shift) }
+        return m
+    }
+}
+
+private extension String {
+    var keyEquivalent: KeyEquivalent? {
+        switch self {
+        case "space": return .space
+        case "return": return .return
+        case "tab": return .tab
+        case "escape": return .escape
+        case "left": return .leftArrow
+        case "right": return .rightArrow
+        case "up": return .upArrow
+        case "down": return .downArrow
+        default: return count == 1 ? KeyEquivalent(Character(self)) : nil
         }
     }
 }

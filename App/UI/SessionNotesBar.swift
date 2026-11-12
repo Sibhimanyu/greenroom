@@ -229,6 +229,21 @@ final class SessionNotes: ObservableObject {
         }
     }
 
+    /// The control bar has just been moved, collapsed or expanded. If it has
+    /// landed on this bar, this one steps clear (above it, or below when there
+    /// is no room above); a bar that is not in the way stays where the teacher
+    /// put it.
+    func keepClear(of other: NSRect) {
+        guard let panel, panel.isVisible else { return }
+        let gap = MeetingBarPlacement.stackGap
+        guard panel.frame.insetBy(dx: -gap, dy: -gap).intersects(other) else { return }
+        let area = (panel.screen ?? NSScreen.main)?.visibleFrame ?? panel.frame
+        var frame = panel.frame
+        frame.origin.y = other.maxY + gap
+        if frame.maxY > area.maxY { frame.origin.y = other.minY - gap - frame.height }
+        panel.setFrame(MeetingBarPlacement.clamp(frame, to: area), display: true, animate: false)
+    }
+
     private func close() {
         // Called on every defaults change while no session runs; nothing to do.
         guard folder != nil || panel?.isVisible == true else { return }
@@ -246,9 +261,10 @@ final class SessionNotes: ObservableObject {
         // Low and centred, under where a toast appears (Toast.swift sits at
         // 14% up). Not a corner: the layout tiles a side column flush to the
         // bottom and right, and a corner lands on it. Above the control bar's
-        // row (MeetingControlBar.swift: 16 up, 44 tall) so the two never touch.
+        // row (MeetingControls.swift: 16 up, 44 tall) so the two never touch,
+        // or back at its own default when the control bar has been moved away.
         let frame = NSRect(x: (area.midX - Self.barSize.width / 2).rounded(),
-                           y: area.minY + MeetingControlBarController.notesBarRestingY,
+                           y: area.minY + MeetingControlBarController.notesBarRestingY(in: area),
                            width: Self.barSize.width, height: Self.barSize.height)
         let created = NotesPanel(contentRect: frame,
                                  styleMask: [.borderless, .nonactivatingPanel],

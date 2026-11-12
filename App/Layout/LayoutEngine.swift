@@ -219,14 +219,14 @@ final class LayoutEngine {
         let shown = LayoutResolver.frames(of: r, meetingHidden: false)
         let chosen = LayoutResolver.frames(of: r, meetingHidden: meetingHidden)
         // Only the joining neighbour differs between the two; nothing else is touched.
-        for placed in r.placed where !placed.piece.kind.isMeeting && chosen[placed.piece.id] != shown[placed.piece.id] {
+        for placed in r.placed where !placed.piece.kind.isMeetingSurface && chosen[placed.piece.id] != shown[placed.piece.id] {
             guard let frame = chosen[placed.piece.id] else { continue }
             move(placed, to: frame)
         }
         // Shown again: the neighbour that had grown goes back to its own rect.
         if !meetingHidden {
             let hiddenFrames = LayoutResolver.frames(of: r, meetingHidden: true)
-            for placed in r.placed where !placed.piece.kind.isMeeting && hiddenFrames[placed.piece.id] != shown[placed.piece.id] {
+            for placed in r.placed where !placed.piece.kind.isMeetingSurface && hiddenFrames[placed.piece.id] != shown[placed.piece.id] {
                 if let frame = shown[placed.piece.id] { move(placed, to: frame) }
             }
         }
@@ -243,7 +243,8 @@ final class LayoutEngine {
         guard let meeting = r.meeting, !meeting.fillsDisplay,
               LayoutResolver.differs(actual, from: meeting.frames.ns) else { return }
         let neighbours = r.placed
-            .filter { $0.piece.id != meeting.piece.id && $0.screen.id == meeting.screen.id && !$0.fillsDisplay }
+            .filter { $0.piece.id != meeting.piece.id && $0.screen.id == meeting.screen.id && !$0.fillsDisplay
+                      && !$0.piece.kind.isView }
         guard let absorber = LayoutResolver.absorbingNeighbour(
             of: meeting.piece.rect, among: neighbours.map { (id: $0.piece.id, rect: $0.piece.rect) }),
               let placed = neighbours.first(where: { $0.piece.id == absorber.id }) else { return }
@@ -264,7 +265,7 @@ final class LayoutEngine {
                     log(line)
                 }
             }
-        case .meeting:
+        case .meeting, .view:
             break
         }
     }

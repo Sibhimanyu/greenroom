@@ -146,6 +146,8 @@ struct LayoutPageContent: View {
     var applyNow: (UUID) -> Void = { _ in }
     /// Where the editor opens, for the off-screen render (.context/lr). Nil in the app.
     var opensOn: (selection: UUID?, showsTwo: Bool, slot: LayoutSlot)?
+    /// Draws the Add panel in place under the row, for the off-screen render.
+    var previewsAddPanel = false
 
     @State private var selection: UUID?
     @State private var showsTwo = false
@@ -156,6 +158,7 @@ struct LayoutPageContent: View {
     @State private var noticeTask: Task<Void, Never>?
     @State private var deleteCandidate: UUID?
     @State private var confirmRestore = false
+    @State private var showsAddPanel = false
     @FocusState private var focus: LayoutFocus?
     @AppStorage(SessionNotes.enabledKey) private var notesOnStart = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -211,7 +214,6 @@ struct LayoutPageContent: View {
         }
         .formStyle(.grouped)
         .scrollContentBackground(.hidden)
-        .background(Brand.windowBackground)
         // Nothing focused when the tab opens: macOS Tab cycles text fields, and
         // a field that claims focus on open cannot be escaped.
         .defaultFocus($focus, nil)
@@ -354,7 +356,7 @@ struct LayoutPageContent: View {
         let places = [
             pieces.contains { $0.kind.isMeeting } ? meetingWord : nil,
             pieces.contains { $0.kind.isChat } ? "chat" : nil,
-        ].compactMap { $0 }
+        ].compactMap { $0 } + (customUIMode ? pieces.compactMap { $0.kind.view?.title.lowercased() } : [])
         var sentence: String
         switch (opens.isEmpty, places.isEmpty) {
         case (true, true):
@@ -372,7 +374,7 @@ struct LayoutPageContent: View {
         return sentence
     }
 
-    private var meetingWord: String { customUIMode ? "meeting" : "Zoom window" }
+    private var meetingWord: String { customUIMode ? "meeting window" : "Zoom window" }
 
     private func list(_ items: [String]) -> String {
         switch items.count {
@@ -550,8 +552,11 @@ struct LayoutPageContent: View {
     private func canvas(_ slot: LayoutSlot, space: LayoutDisplaySpace) -> some View {
         LayoutCanvas(pieces: binding(for: slot), selection: $selection, display: space,
                      look: look,
-                     accepts: { kind in library.active?.canAdd(kind, to: slot) ?? false },
-                     onActivate: { activeSlot = slot },
+                     accepts: { kind in
+                        if case .view = kind, !customUIMode { return false }
+                        return library.active?.canAdd(kind, to: slot) ?? false
+                     },
+                     onActivate: { activeSlot = slot; showsAddPanel = false },
                      onNotice: { say($0) })
     }
 
@@ -589,26 +594,16 @@ struct LayoutPageContent: View {
 
     private func paletteRow(_ template: LayoutTemplate) -> some View {
         let slot = showsTwo ? activeSlot : .one
-        let version = template.piecesInVersion(of: slot)
-        let meeting = LayoutPiece.Kind.meeting(fillsDisplay: false, startsHidden: false)
         return VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 8) {
-                Text("Add")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                LayoutPaletteChip(title: customUIMode ? "Meeting" : "Zoom\u{2019}s window", symbol: "video.fill",
-                                  icon: nil, placed: version.contains { $0.kind.isMeeting },
-                                  payload: LayoutPalettePayload.string(for: meeting),
-                                  help: customUIMode ? "Greenroom\u{2019}s meeting window" : "Zoom\u{2019}s own meeting window") {
-                    add(meeting, slot: slot, template: template)
+                Button { showsAddPanel.toggle() } label: {
+                    Label("Add", systemImage: "plus")
                 }
-                LayoutPaletteChip(title: "Chat", symbol: "bubble.left.and.bubble.right.fill", icon: nil,
-                                  placed: version.contains { $0.kind.isChat },
-                                  payload: LayoutPalettePayload.string(for: .chat),
-                                  help: "The meeting chat window") {
-                    add(.chat, slot: slot, template: template)
+                .help("Add the meeting, a view of it, chat or an app")
+                .accessibilityLabel("Add to layout")
+                .popover(isPresented: $showsAddPanel, arrowEdge: .bottom) {
+                    addPanel(slot: slot, template: template)
                 }
-                appMenu(slot: slot, template: template, version: version)
                 Spacer()
                 Button {
                     showOnScreen(template, look)
@@ -625,6 +620,18 @@ struct LayoutPageContent: View {
                         .help("A class is running another layout. This moves it to this one now; otherwise this layout starts with the next class.")
                 }
             }
+            if previewsAddPanel {
+                // The off-screen render cannot show a popover window, so it draws
+                // the same panel in place.
+                HStack {
+                    addPanel(slot: slot, template: template, note: "meeting")
+                        .background(RoundedRectangle(cornerRadius: 14).fill(Color(nsColor: .windowBackgroundColor)))
+                        .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(Color.secondary.opacity(0.3)))
+                        .shadow(color: .black.opacity(0.18), radius: 10, y: 4)
+                    Spacer()
+                }
+                .padding(.bottom, 6)
+            }
             if let notice {
                 StatusBadge(text: notice, tone: .waiting)
                     .transition(.opacity)
@@ -632,40 +639,52 @@ struct LayoutPageContent: View {
         }
     }
 
-    private func appMenu(slot: LayoutSlot, template: LayoutTemplate, version: [LayoutPiece]) -> some View {
-        let used = Set(version.compactMap { $0.kind.app?.bundleID })
-        let full = version.compactMap { $0.kind.app }.count >= LayoutTemplate.maxApps
-        return Menu {
-            ForEach(apps) { app in
-                Button {
-                    add(.app(AppPiece(bundleID: app.bundleID)), slot: slot, template: template)
-                } label: {
-                    if let icon = LayoutIcons.menuIcon(app.bundleID) {
-                        Label { Text(app.name) } icon: { Image(nsImage: icon) }
-                    } else {
-                        Text(app.name)
-                    }
-                }
-                .disabled(used.contains(app.bundleID))
-            }
-        } label: {
-            LayoutPaletteChip.label(title: "App\u{2026}", symbol: "plus", icon: nil, placed: false)
+    private func addPanel(slot: LayoutSlot, template: LayoutTemplate, note: String? = nil) -> LayoutAddPanel {
+        let version = template.piecesInVersion(of: slot)
+        return LayoutAddPanel(
+            customUIMode: customUIMode, apps: apps,
+            reason: { blockReason($0, template: template, slot: slot) },
+            isPlaced: { kind in version.contains { sameKind($0.kind, kind) } },
+            add: { kind in
+                showsAddPanel = false
+                add(kind, slot: slot, template: template)
+            },
+            close: { showsAddPanel = false },
+            initialNote: note)
+    }
+
+    /// Why a piece cannot be added right now, or nil when it can. Spoken in the
+    /// Add panel's tooltips and caption, and the notice a click would give.
+    private func blockReason(_ kind: LayoutPiece.Kind, template: LayoutTemplate, slot: LayoutSlot) -> String? {
+        let version = template.piecesInVersion(of: slot)
+        if case .view = kind, !customUIMode { return "Needs Greenroom\u{2019}s meeting UI (Settings \u{2192} Zoom)" }
+        if template.canAdd(kind, to: slot) { return nil }
+        let views = Set(version.compactMap { $0.kind.view })
+        switch kind {
+        case .meeting:
+            if version.contains(where: { $0.kind.isMeeting }) { return "Already in this layout" }
+            return "The Meeting window already has a gallery and a speaker with strip. Remove the \(views.contains(.gallery) ? "Gallery" : "Speaker + strip") view first."
+        case let .view(view, _):
+            if views.contains(view) { return "Already in this layout" }
+            let hasMeeting = version.contains { $0.kind.isMeeting }
+            if hasMeeting, view == .gallery || view == .speakerStrip { return "The Meeting window already has a \(view == .gallery ? "gallery" : "speaker with strip"). Remove it first." }
+            if view == .speakerStrip { return "Speaker + strip already shows the active speaker. Remove the Active speaker view first." }
+            return "Speaker + strip already shows the active speaker. Remove it first."
+        case .chat: return "Already in this layout"
+        case let .app(app):
+            if version.contains(where: { $0.kind.app?.bundleID == app.bundleID }) { return "Already in this layout" }
+            return "A layout holds at most \(LayoutTemplate.maxApps) apps."
         }
-        .menuStyle(.borderlessButton)
-        .menuIndicator(.hidden)
-        .fixedSize()
-        .disabled(full)
-        .help(full ? "Four apps is the most a layout can hold." : "Add any app on this Mac")
     }
 
     /// Click-to-add: into the largest free rectangle. A piece already in the
     /// layout is selected instead of added twice.
     private func add(_ kind: LayoutPiece.Kind, slot: LayoutSlot, template: LayoutTemplate) {
-        guard template.canAdd(kind, to: slot) else {
+        guard template.canAdd(kind, to: slot), blockReason(kind, template: template, slot: slot) == nil else {
             if let existing = template.piecesInVersion(of: slot).first(where: { sameKind($0.kind, kind) }) {
                 withAnimation(anim) { selection = existing.id }
             } else {
-                say("A layout holds at most \(LayoutTemplate.maxApps) apps.")
+                say(blockReason(kind, template: template, slot: slot) ?? "That cannot be added here.")
             }
             return
         }
@@ -686,6 +705,7 @@ struct LayoutPageContent: View {
         switch (a, b) {
         case (.meeting, .meeting), (.chat, .chat): return true
         case let (.app(x), .app(y)): return x.bundleID == y.bundleID
+        case let (.view(x, _), .view(y, _)): return x == y
         default: return false
         }
     }
@@ -706,7 +726,10 @@ struct LayoutPageContent: View {
     func look(_ piece: LayoutPiece) -> LayoutPieceLook {
         switch piece.kind {
         case .meeting:
-            return LayoutPieceLook(name: customUIMode ? "Meeting" : "Zoom\u{2019}s window", icon: nil, symbol: "video.fill")
+            return LayoutPieceLook(name: customUIMode ? "Meeting window" : "Zoom window", icon: nil, symbol: "video.fill")
+        case let .view(view, _):
+            return LayoutPieceLook(name: view.title, icon: nil, symbol: view.symbol,
+                                   meetingView: view, needsCustomUI: !customUIMode)
         case .chat:
             return LayoutPieceLook(name: "Chat", icon: nil, symbol: "bubble.left.and.bubble.right.fill")
         case let .app(app):
@@ -766,6 +789,7 @@ struct LayoutPageContent: View {
                 switch piece.kind {
                 case let .app(app): appControls(piece, app: app, slot: slot, template: template)
                 case let .meeting(fills, hidden): meetingControls(piece, fills: fills, hidden: hidden, slot: slot, template: template)
+                case let .view(_, hidden): viewControls(piece, view: piece.kind.view ?? .gallery, hidden: hidden)
                 case .chat:
                     Text("The meeting chat window. It opens in this space when the class starts.")
                         .font(.callout)
@@ -888,6 +912,24 @@ struct LayoutPageContent: View {
                 Toggle("Search suggestions", isOn: $browserSearchSuggestions)
                     .help("Sends what you type to Google for completions. Off: history only, nothing leaves until Return.")
                 Spacer()
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func viewControls(_ piece: LayoutPiece, view: MeetingView, hidden: Bool) -> some View {
+        HStack(spacing: 24) {
+            Toggle("Starts hidden", isOn: Binding(
+                get: { hidden },
+                set: { v in update(piece.id) { $0.kind = .view(view, startsHidden: v) } }))
+                .help("This view starts out of the way. \u{2325}\u{2318}Z shows it.")
+            Spacer()
+        }
+        if !customUIMode {
+            HStack {
+                StatusBadge(text: "Needs custom UI", tone: .problem)
+                Text("It is skipped at Start. Turn on Greenroom\u{2019}s meeting UI in Settings \u{2192} Zoom.")
+                    .font(.callout).foregroundStyle(.secondary)
             }
         }
     }
@@ -1017,54 +1059,5 @@ struct LayoutCard<Thumbnail: View>: View {
         .accessibilityValue(selected ? "Start layout" : "")
         .accessibilityAddTraits(selected ? [.isButton, .isSelected] : .isButton)
         .accessibilityAction(.default, select)
-    }
-}
-
-/// A piece you can click to add or drag onto a canvas. Pill, per DESIGN.md's
-/// chip token; a tick says it is already in the layout.
-private struct LayoutPaletteChip: View {
-    let title: String
-    let symbol: String
-    let icon: NSImage?
-    let placed: Bool
-    let payload: String
-    let help: String
-    let action: () -> Void
-
-    static func label(title: String, symbol: String, icon: NSImage?, placed: Bool) -> some View {
-        HStack(spacing: 6) {
-            if let icon {
-                Image(nsImage: icon).resizable().frame(width: 16, height: 16)
-            } else {
-                Image(systemName: symbol)
-                    .font(.system(size: 12))
-                    .foregroundStyle(.secondary)
-            }
-            Text(title)
-            if placed {
-                Image(systemName: "checkmark")
-                    .font(.system(size: 9, weight: .bold))
-                    .foregroundStyle(Brand.text)
-            }
-        }
-        .font(.callout)
-        .padding(.horizontal, 12)
-        .frame(height: 32)
-        .background(Capsule().fill(placed ? Brand.green.opacity(0.12) : Color(nsColor: .controlBackgroundColor)))
-        .overlay(Capsule().strokeBorder(placed ? Brand.green.opacity(0.6) : Color.secondary.opacity(0.25)))
-        .contentShape(Capsule())
-    }
-
-    var body: some View {
-        Self.label(title: title, symbol: symbol, icon: icon, placed: placed)
-            .onTapGesture(perform: action)
-            .draggable(payload)
-            .help(help)
-            .accessibilityElement(children: .ignore)
-            .accessibilityLabel(title)
-            .accessibilityValue(placed ? "In this layout" : "")
-            .accessibilityAddTraits(.isButton)
-            .accessibilityAction(named: "Add to layout", action)
-            .accessibilityAction(.default, action)
     }
 }

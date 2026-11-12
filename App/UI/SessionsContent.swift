@@ -212,11 +212,9 @@ struct SessionsLayout<CardMenu: View>: View {
         HStack(spacing: 0) {
             sidebar
                 .frame(width: 220)
-                .background(Brand.windowBackground)
             Divider()
             centre
                 .frame(minWidth: 480, maxWidth: .infinity, maxHeight: .infinity)
-                .background(Brand.windowBackground)
         }
     }
 

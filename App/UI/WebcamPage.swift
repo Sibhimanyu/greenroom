@@ -195,7 +195,6 @@ struct WebcamPageContent<LivePicture: View, ShareDetail: View, Cameras: View, Mi
         }
         .formStyle(.grouped)
         .scrollContentBackground(.hidden)
-        .background(Brand.windowBackground)
     }
 
     // MARK: Stage

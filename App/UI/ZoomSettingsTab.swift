@@ -134,7 +134,6 @@ struct ZoomPageContent: View {
         }
         .formStyle(.grouped)
         .scrollContentBackground(.hidden)
-        .background(Brand.windowBackground)
     }
 }
 

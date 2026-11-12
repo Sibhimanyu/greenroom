@@ -34,6 +34,7 @@ final class CoordinatorController: ObservableObject {
         customUIGridTask = nil
         MeetingControlBarController.close()
         ParticipantGridWindowController.close()
+        ViewSpike.shared.close()
         zoomChatClient.releaseCustomUIVideo()
         zoomChatClient.leave() // ends the meeting if we're hosting it
     }
@@ -1262,6 +1263,11 @@ final class CoordinatorController: ObservableObject {
         sessionArranges = sessionTemplate != nil
         zoomChatClient.arrangesWindows = sessionArranges
         speakerTileQuickHidden = sessionTemplate.map { layoutEngine.startsHidden($0) } ?? false
+        // View pieces are editable but not drawn yet (.context/meeting-views-plan.md, phase 1).
+        if let template = sessionTemplate,
+           (template.oneDisplay + (template.twoDisplays.map { $0.main + $0.second } ?? [])).contains(where: { $0.kind.isView }) {
+            log("Layout has view pieces; showing them arrives in a later update")
+        }
         let startedAt = Date()
         sessionStartedAt = startedAt
         // Named now, created later - see sessionFolder. Unique, so two
@@ -1501,6 +1507,7 @@ final class CoordinatorController: ObservableObject {
             recorder?.disarmClipBuffer()
             zoomChatClient.onParticipantCountChanged = nil
                 if failure == nil { ParticipantGridWindowController.close() }
+            ViewSpike.shared.close()
             zoomChatClient.releaseCustomUIVideo()
             // A beat between cancelling the window-follow loops and the
             // SDK tearing its meeting windows down: the crash logs' seven
@@ -2589,6 +2596,9 @@ final class CoordinatorController: ObservableObject {
                 presetName: self.meetingPresets.first { $0.number == digits }?.name ?? "",
                 readiness: self.startReadiness)
             ParticipantGridWindowController.refresh(on: target.screen, session: session, form: target.form)
+            // Phase 0 spike, behind a hidden default (ViewSpike.swift): nothing here when it is off.
+            ViewSpike.shared.sync(client: self.zoomChatClient,
+                                  meetingWindowOpen: ParticipantGridWindowController.meetingWindowIsOpen)
             return true
         }
         if let target = meetingSurfaceTarget() {

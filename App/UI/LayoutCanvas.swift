@@ -46,6 +46,10 @@ struct LayoutPieceLook {
     var missing = false
     /// A reason this piece will not be moved at Start (Accessibility).
     var warning: String?
+    /// A meeting view, which gets a small diagram of itself on the canvas.
+    var meetingView: MeetingView?
+    /// A view piece while custom UI is off: drawn dashed, skipped at Start.
+    var needsCustomUI = false
 }
 
 extension LayoutPieceLook {
@@ -65,6 +69,7 @@ enum LayoutPalettePayload {
         case .meeting: return prefix + "meeting"
         case .chat: return prefix + "chat"
         case let .app(app): return prefix + "app:" + app.bundleID
+        case let .view(view, _): return prefix + "view:" + view.rawValue
         }
     }
 
@@ -73,6 +78,9 @@ enum LayoutPalettePayload {
         let rest = String(string.dropFirst(prefix.count))
         if rest == "meeting" { return .meeting(fillsDisplay: false, startsHidden: false) }
         if rest == "chat" { return .chat }
+        if rest.hasPrefix("view:") {
+            return MeetingView(rawValue: String(rest.dropFirst(5))).map { .view($0, startsHidden: false) }
+        }
         if rest.hasPrefix("app:") { return .app(AppPiece(bundleID: String(rest.dropFirst(4)))) }
         return nil
     }
@@ -263,7 +271,7 @@ struct LayoutCanvas: View {
         VStack(spacing: 6) {
             Image(systemName: "rectangle.dashed")
                 .font(.system(size: 22, weight: .light))
-            Text("Drag a piece here, or click one below")
+            Text("Drag a piece here, or use Add below")
                 .font(.callout)
         }
         .foregroundStyle(.secondary)
@@ -612,7 +620,7 @@ private struct TileSizeActions: ViewModifier {
 
 // MARK: - A piece, drawn
 
-/// A piece's schematic: Meeting a dark tile like a video tile, Chat a light
+/// A piece's schematic: Meeting window and views dark tiles like a video tile, Chat a light
 /// pane like a chat window, an app showing its own icon. What it says adapts
 /// to the room it has.
 struct LayoutPieceTile: View {
@@ -624,22 +632,140 @@ struct LayoutPieceTile: View {
     let selected: Bool
     var invalid = false
 
-    private var isMeeting: Bool { piece.kind.isMeeting }
+    /// The Meeting window and the views are dark tiles, like a video tile.
+    private var isMeeting: Bool { piece.kind.isMeetingSurface }
     private var primary: Color { isMeeting ? .white.opacity(0.92) : .primary }
     private var secondary: Color { isMeeting ? .white.opacity(0.62) : .secondary }
 
-    private var roomy: Bool { size.height >= 64 && size.width >= 96 }
-    private var tiny: Bool { size.height < 40 || size.width < 56 }
+    /// How much a piece says, by the room it has. Each step gives up one thing and
+    /// never cuts a word: the size line goes first, then the icon shrinks and the
+    /// name takes two lines, then only the icon is left (the name moves to the
+    /// tooltip and stays in the VoiceOver label).
+    enum Detail: Int { case full, noSize, twoLines, iconOnly }
+
+    private static let inset: CGFloat = 4
+    private static let nameFont = NSFont.systemFont(ofSize: 12, weight: .medium)
+    private static let smallNameFont = NSFont.systemFont(ofSize: 11, weight: .medium)
+    private static let captionFont = NSFont.monospacedSystemFont(ofSize: 10, weight: .regular)
+
+    private var room: CGSize { CGSize(width: max(size.width - 2 * Self.inset, 0), height: max(size.height - 2 * Self.inset, 0)) }
+
+    /// The icon's side at full detail: grows with the tile, 24 to 44.
+    private var fullGlyph: CGFloat { min(max(min(size.width, size.height) * 0.34, 24), 44) }
+
+    var detail: Detail {
+        let w = room.width - 2, h = room.height   // a little slack on the width
+        let name = look.name
+        if Self.lines(name, font: Self.nameFont, width: w) == 1 {
+            // Icon, name (15) and size (12) with the 3pt gaps between.
+            if Self.textWidth(caption, font: Self.captionFont) <= w, fullGlyph + 3 + 15 + 3 + 12 <= h { return .full }
+            if 24 + 3 + 15 <= h { return .noSize }
+        }
+        if let n = Self.lines(name, font: Self.smallNameFont, width: w), n <= 2,
+           18 + 2 + CGFloat(n) * 14 <= h { return .twoLines }
+        return .iconOnly
+    }
+
+    /// Lines the name takes when wrapped at spaces and hyphens, or nil if one word
+    /// is wider than the room (it would have to be cut).
+    static func lines(_ text: String, font: NSFont, width: CGFloat) -> Int? {
+        var tokens: [String] = []
+        for word in text.split(separator: " ", omittingEmptySubsequences: true) {
+            var piece = ""
+            for ch in word {
+                piece.append(ch)
+                if ch == "-" { tokens.append(piece); piece = "" }
+            }
+            if !piece.isEmpty { tokens.append(piece) }
+        }
+        guard !tokens.isEmpty else { return 1 }
+        var lineCount = 1
+        var current = ""
+        for token in tokens {
+            guard textWidth(token, font: font) <= width else { return nil }
+            let joiner = (current.isEmpty || current.hasSuffix("-")) ? "" : " "
+            let trial = current + joiner + token
+            if textWidth(trial, font: font) <= width { current = trial } else { lineCount += 1; current = token }
+        }
+        return lineCount
+    }
+
+    static func textWidth(_ text: String, font: NSFont) -> CGFloat {
+        ceil((text as NSString).size(withAttributes: [.font: font]).width)
+    }
+
+    @ViewBuilder
+    private var content: some View {
+        switch detail {
+        case .full:
+            VStack(spacing: 3) {
+                glyph(fullGlyph)
+                nameText(12)
+                Text(caption)
+                    .font(.system(size: 10, design: .monospaced))
+                    .foregroundStyle(secondary)
+                    .fixedSize()
+            }
+        case .noSize:
+            VStack(spacing: 3) {
+                glyph(min(max(min(size.width, size.height) * 0.34, 24), 44, room.height - 18))
+                nameText(12)
+            }
+        case .twoLines:
+            VStack(spacing: 2) {
+                glyph(18)
+                nameText(11)
+                    .multilineTextAlignment(.center)
+                    .frame(width: room.width - 2)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        case .iconOnly:
+            glyph(max(min(18, room.width, room.height), 8))
+        }
+    }
+
+    private func nameText(_ points: CGFloat) -> some View {
+        Text(look.name)
+            .font(.system(size: points, weight: .medium))
+            .foregroundStyle(primary)
+            .fixedSize()
+    }
+
+    private var caption: String {
+        if look.missing { return "Not on this Mac" }
+        if look.needsCustomUI { return "Needs custom UI" }
+        if piece.isFixed { return "Fills this display" }
+        return "\(columns) of 12 \u{00B7} \(pointSize.w)\u{00D7}\(pointSize.h)"
+    }
+
+    @ViewBuilder
+    private func glyph(_ side: CGFloat) -> some View {
+        if let view = look.meetingView, side >= 24 {
+            MeetingViewDiagram(view: view)
+                .stroke(secondary, style: StrokeStyle(lineWidth: 1.2, lineJoin: .round))
+                .frame(width: side * 1.5, height: side)
+        } else if let icon = look.icon, !look.missing {
+            Image(nsImage: icon)
+                .resizable()
+                .interpolation(.high)
+                .frame(width: side, height: side)
+        } else {
+            Image(systemName: look.symbol)
+                .font(.system(size: side * 0.8, weight: .regular))
+                .foregroundStyle(secondary)
+                .frame(width: side, height: side)
+        }
+    }
 
     var body: some View {
         ZStack {
             RoundedRectangle(cornerRadius: 6)
                 .fill(isMeeting ? Color.black.opacity(0.78) : Color(nsColor: .controlBackgroundColor))
             content
-                .padding(4)
+                .padding(Self.inset)
             RoundedRectangle(cornerRadius: 6)
                 .strokeBorder(border, style: StrokeStyle(lineWidth: selected ? 2 : 1,
-                                                         dash: (look.missing || invalid) ? [4, 3] : []))
+                                                         dash: (look.missing || look.needsCustomUI || invalid) ? [4, 3] : []))
         }
         .overlay(alignment: .topTrailing) {
             if look.warning != nil {
@@ -652,54 +778,12 @@ struct LayoutPieceTile: View {
         }
         .opacity(invalid ? 0.55 : 1)
         .clipShape(RoundedRectangle(cornerRadius: 6))
+        .help(detail == .full || detail == .noSize ? "" : look.name)
     }
 
     private var border: Color {
         if selected { return Brand.green }
         return isMeeting ? .white.opacity(0.15) : Color.secondary.opacity(0.35)
-    }
-
-    @ViewBuilder
-    private var content: some View {
-        if tiny {
-            glyph(18)
-        } else {
-            VStack(spacing: 3) {
-                glyph(roomy ? min(max(min(size.width, size.height) * 0.34, 24), 44) : 18)
-                Text(look.name)
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(primary)
-                    .lineLimit(1)
-                if roomy {
-                    Text(caption)
-                        .font(.system(size: 10, design: .monospaced))
-                        .foregroundStyle(secondary)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.8)
-                }
-            }
-        }
-    }
-
-    private var caption: String {
-        if look.missing { return "Not on this Mac" }
-        if piece.isFixed { return "Fills this display" }
-        return "\(columns) of 12 \u{00B7} \(pointSize.w)\u{00D7}\(pointSize.h)"
-    }
-
-    @ViewBuilder
-    private func glyph(_ side: CGFloat) -> some View {
-        if let icon = look.icon, !look.missing {
-            Image(nsImage: icon)
-                .resizable()
-                .interpolation(.high)
-                .frame(width: side, height: side)
-        } else {
-            Image(systemName: look.symbol)
-                .font(.system(size: side * 0.8, weight: .regular))
-                .foregroundStyle(secondary)
-                .frame(width: side, height: side)
-        }
     }
 }
 
@@ -723,10 +807,12 @@ struct LayoutThumbnail: View {
                         .insetBy(dx: 1, dy: 1)
                     ZStack {
                         RoundedRectangle(cornerRadius: 2)
-                            .fill(piece.kind.isMeeting ? Color.black.opacity(0.78)
+                            .fill(piece.kind.isMeetingSurface ? Color.black.opacity(0.78)
                                                        : Color(nsColor: .controlBackgroundColor))
                         RoundedRectangle(cornerRadius: 2)
-                            .strokeBorder(Color.secondary.opacity(0.35), lineWidth: 0.5)
+                            .strokeBorder(Color.secondary.opacity(0.35),
+                                          style: StrokeStyle(lineWidth: 0.5,
+                                                             dash: look(piece).needsCustomUI ? [2, 1.5] : []))
                         if let icon = look(piece).icon, piece.kind.app != nil,
                            min(box.width, box.height) > 16 {
                             Image(nsImage: icon).resizable()
@@ -740,5 +826,55 @@ struct LayoutThumbnail: View {
         }
         .aspectRatio(aspect, contentMode: .fit)
         .accessibilityHidden(true)
+    }
+}
+
+// MARK: - Diagrams of the views
+
+/// A few lines of each view, drawn in the tile's own colour: one big picture, a
+/// grid, three in a row, a stage over a strip, a self picture, a list.
+struct MeetingViewDiagram: Shape {
+    let view: MeetingView
+
+    func path(in r: CGRect) -> Path {
+        var p = Path()
+        func box(_ x: CGFloat, _ y: CGFloat, _ w: CGFloat, _ h: CGFloat) {
+            p.addRoundedRect(in: CGRect(x: r.minX + x * r.width, y: r.minY + y * r.height,
+                                        width: w * r.width, height: h * r.height),
+                             cornerSize: CGSize(width: 2, height: 2))
+        }
+        switch view {
+        case .activeSpeaker:
+            box(0, 0, 1, 1)
+            p.addEllipse(in: CGRect(x: r.midX - r.height * 0.16, y: r.minY + r.height * 0.2,
+                                    width: r.height * 0.32, height: r.height * 0.32))
+            p.move(to: CGPoint(x: r.midX - r.height * 0.3, y: r.maxY - r.height * 0.14))
+            p.addQuadCurve(to: CGPoint(x: r.midX + r.height * 0.3, y: r.maxY - r.height * 0.14),
+                           control: CGPoint(x: r.midX, y: r.midY - r.height * 0.02))
+        case .gallery:
+            for row in 0..<2 { for col in 0..<3 {
+                box(CGFloat(col) * 0.35, CGFloat(row) * 0.55, 0.3, 0.45)
+            } }
+        case .multiSpeaker:
+            for col in 0..<3 { box(CGFloat(col) * 0.35, 0.15, 0.3, 0.7) }
+        case .speakerStrip:
+            box(0, 0, 1, 0.64)
+            for col in 0..<4 { box(CGFloat(col) * 0.26, 0.76, 0.22, 0.24) }
+        case .selfView:
+            box(0.1, 0, 0.8, 1)
+            p.addEllipse(in: CGRect(x: r.midX - r.height * 0.14, y: r.minY + r.height * 0.22,
+                                    width: r.height * 0.28, height: r.height * 0.28))
+            p.move(to: CGPoint(x: r.midX - r.height * 0.26, y: r.maxY - r.height * 0.16))
+            p.addQuadCurve(to: CGPoint(x: r.midX + r.height * 0.26, y: r.maxY - r.height * 0.16),
+                           control: CGPoint(x: r.midX, y: r.midY + r.height * 0.02))
+        case .people:
+            for row in 0..<3 {
+                let y = r.minY + (CGFloat(row) * 0.36 + 0.1) * r.height
+                p.addEllipse(in: CGRect(x: r.minX + r.width * 0.2, y: y, width: r.height * 0.2, height: r.height * 0.2))
+                p.move(to: CGPoint(x: r.minX + r.width * 0.2 + r.height * 0.3, y: y + r.height * 0.1))
+                p.addLine(to: CGPoint(x: r.minX + r.width * 0.85, y: y + r.height * 0.1))
+            }
+        }
+        return p
     }
 }

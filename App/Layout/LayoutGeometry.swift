@@ -50,6 +50,7 @@ enum LayoutGeometry {
         case .meeting: return CGSize(width: 320, height: 200)
         case .chat: return CGSize(width: 280, height: 200)
         case .app: return CGSize(width: 400, height: 300)
+        case let .view(view, _): return view.minimumPoints
         }
     }
 
@@ -73,6 +74,7 @@ enum LayoutGeometry {
         case .meeting: return (4, 5)
         case .chat: return (3, 7)
         case .app: return (8, 12)
+        case let .view(view, _): return view.defaultCells
         }
     }
 
@@ -432,6 +434,7 @@ enum LayoutResolver {
         var meeting: Placed? { placed.first { $0.piece.kind.isMeeting } }
         var chat: Placed? { placed.first { $0.piece.kind.isChat } }
         var apps: [Placed] { placed.filter { $0.piece.kind.app != nil } }
+        var views: [Placed] { placed.filter { $0.piece.kind.isView } }
     }
 
     /// Re-resolved on every call, never cached: displays come and go and a
@@ -503,7 +506,8 @@ enum LayoutResolver {
         for p in result.placed { out[p.piece.id] = p.frames }
         guard meetingHidden, let meeting = result.meeting, !meeting.fillsDisplay else { return out }
         let neighbours = result.placed
-            .filter { $0.piece.id != meeting.piece.id && $0.screen.id == meeting.screen.id && !$0.fillsDisplay }
+            .filter { $0.piece.id != meeting.piece.id && $0.screen.id == meeting.screen.id && !$0.fillsDisplay
+                      && !$0.piece.kind.isView }   // view pieces are ignored by the runtime for now
             .map { (id: $0.piece.id, rect: $0.piece.rect) }
         guard let absorber = absorbingNeighbour(of: meeting.piece.rect, among: neighbours) else { return out }
         out[absorber.id] = LayoutFrames(
@@ -573,12 +577,14 @@ enum LayoutResolver {
 // MARK: - The Meeting piece's flags, read and written on a template
 
 extension LayoutTemplate {
-    /// Whether any Meeting piece starts hidden. The Settings "Quick-hide mode"
-    /// row reads and writes this on the active template.
+    /// Whether any Meeting window or view piece starts hidden. The Settings
+    /// "Quick-hide mode" row reads and writes this on the active template.
     var meetingStartsHidden: Bool? {
         let flags = (oneDisplay + (twoDisplays.map { $0.main + $0.second } ?? [])).compactMap { piece -> Bool? in
-            if case .meeting(_, let hidden) = piece.kind { return hidden }
-            return nil
+            switch piece.kind {
+            case .meeting(_, let hidden), .view(_, let hidden): return hidden
+            default: return nil
+            }
         }
         return flags.isEmpty ? nil : flags.contains(true)
     }
@@ -587,7 +593,11 @@ extension LayoutTemplate {
         func apply(_ pieces: [LayoutPiece]) -> [LayoutPiece] {
             pieces.map { p in
                 var p = p
-                if case .meeting(let fills, _) = p.kind { p.kind = .meeting(fillsDisplay: fills, startsHidden: hidden) }
+                switch p.kind {
+                case .meeting(let fills, _): p.kind = .meeting(fillsDisplay: fills, startsHidden: hidden)
+                case .view(let view, _): p.kind = .view(view, startsHidden: hidden)
+                default: break
+                }
                 return p
             }
         }

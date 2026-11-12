@@ -39,7 +39,6 @@ struct ChatWindowView: View {
             composer
         }
         .frame(minWidth: 300, minHeight: 380)
-        .background(Brand.windowBackground)
         .overlay {
             if dropTargeted {
                 RoundedRectangle(cornerRadius: 10)

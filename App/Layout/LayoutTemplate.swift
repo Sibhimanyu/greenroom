@@ -75,13 +75,68 @@ struct AppPiece: Codable, Equatable, Hashable {
     }
 }
 
+/// One part of the meeting as a window of its own (.context/meeting-views-plan.md).
+/// Raw values are stored in saved layouts: never rename one.
+enum MeetingView: String, Codable, CaseIterable, Hashable {
+    case activeSpeaker, gallery, multiSpeaker, speakerStrip, selfView, people
+
+    var title: String {
+        switch self {
+        case .activeSpeaker: return "Active speaker"
+        case .gallery: return "Gallery"
+        case .multiSpeaker: return "Multi-speaker"
+        case .speakerStrip: return "Speaker + strip"
+        case .selfView: return "Self view"
+        case .people: return "People list"
+        }
+    }
+
+    var symbol: String {
+        switch self {
+        case .activeSpeaker: return "person.crop.rectangle.fill"
+        case .gallery: return "square.grid.3x2.fill"
+        case .multiSpeaker: return "rectangle.split.3x1.fill"
+        case .speakerStrip: return "rectangle.bottomthird.inset.filled"
+        case .selfView: return "person.crop.circle.fill"
+        case .people: return "person.2.fill"
+        }
+    }
+
+    /// Smallest size in points the view is usable at.
+    var minimumPoints: CGSize {
+        switch self {
+        case .activeSpeaker: return CGSize(width: 240, height: 135)
+        case .gallery: return CGSize(width: 320, height: 200)
+        case .multiSpeaker: return CGSize(width: 360, height: 120)
+        case .speakerStrip: return CGSize(width: 320, height: 240)
+        case .selfView: return CGSize(width: 160, height: 90)
+        case .people: return CGSize(width: 220, height: 240)
+        }
+    }
+
+    /// A first size when added from the palette, in grid cells.
+    var defaultCells: (cols: Int, rows: Int) {
+        switch self {
+        case .activeSpeaker: return (4, 3)
+        case .gallery: return (6, 5)
+        case .multiSpeaker: return (6, 2)
+        case .speakerStrip: return (5, 5)
+        case .selfView: return (3, 2)
+        case .people: return (3, 6)
+        }
+    }
+}
+
 struct LayoutPiece: Codable, Identifiable, Equatable, Hashable {
     enum Kind: Equatable, Hashable {
-        /// Greenroom's meeting window (Zoom's own with custom UI off).
+        /// Greenroom's meeting window (Zoom's own with custom UI off): the full
+        /// window with toolbar and side panels, shown as "Meeting window".
         /// `fillsDisplay` is the Participants form: the whole display.
         case meeting(fillsDisplay: Bool, startsHidden: Bool)
         case chat
         case app(AppPiece)
+        /// One part of the meeting in its own window. Needs custom UI.
+        case view(MeetingView, startsHidden: Bool)
     }
 
     var id: UUID
@@ -107,7 +162,7 @@ struct LayoutPiece: Codable, Identifiable, Equatable, Hashable {
 }
 
 extension LayoutPiece.Kind: Codable {
-    private enum CodingKeys: String, CodingKey { case type, fillsDisplay, startsHidden, app }
+    private enum CodingKeys: String, CodingKey { case type, fillsDisplay, startsHidden, app, view }
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -119,6 +174,11 @@ extension LayoutPiece.Kind: Codable {
             self = .chat
         case "app":
             self = .app((try? c.decodeIfPresent(AppPiece.self, forKey: .app)) ?? AppPiece(bundleID: ""))
+        case "view":
+            // An unknown view throws: the lossy array drops the piece, the way
+            // an older build drops view pieces it has never heard of.
+            self = .view(try c.decode(MeetingView.self, forKey: .view),
+                         startsHidden: (try? c.decodeIfPresent(Bool.self, forKey: .startsHidden)) ?? false)
         default:
             throw DecodingError.dataCorruptedError(forKey: .type, in: c, debugDescription: "unknown piece kind")
         }
@@ -136,6 +196,10 @@ extension LayoutPiece.Kind: Codable {
         case let .app(app):
             try c.encode("app", forKey: .type)
             try c.encode(app, forKey: .app)
+        case let .view(view, hidden):
+            try c.encode("view", forKey: .type)
+            try c.encode(view, forKey: .view)
+            try c.encode(hidden, forKey: .startsHidden)
         }
     }
 }
@@ -144,6 +208,10 @@ extension LayoutPiece.Kind {
     var isMeeting: Bool { if case .meeting = self { return true } else { return false } }
     var isChat: Bool { if case .chat = self { return true } else { return false } }
     var app: AppPiece? { if case let .app(a) = self { return a } else { return nil } }
+    var view: MeetingView? { if case let .view(v, _) = self { return v } else { return nil } }
+    var isView: Bool { view != nil }
+    /// The Meeting window or one of the views: what "hide the meeting" acts on.
+    var isMeetingSurface: Bool { isMeeting || isView }
 }
 
 /// Decodes an array, dropping any element that will not decode.
@@ -244,12 +312,25 @@ struct LayoutTemplate: Codable, Identifiable, Equatable {
 
     static let maxApps = 4
 
-    /// What a version may hold: one Meeting, one Chat, up to four apps, one
-    /// piece per app (two windows of the same app cannot be told apart).
+    /// What a version may hold: one Meeting window, one Chat, up to four apps,
+    /// one piece per app (two windows of the same app cannot be told apart) and
+    /// at most one of each view. The Meeting window already has a gallery and a
+    /// speaker with strip, so it excludes those two views; Active speaker
+    /// excludes Speaker + strip, which contains it.
     func canAdd(_ kind: LayoutPiece.Kind, to slot: LayoutSlot) -> Bool {
         let existing = piecesInVersion(of: slot)
+        let views = Set(existing.compactMap { $0.kind.view })
+        let hasMeeting = existing.contains { $0.kind.isMeeting }
         switch kind {
-        case .meeting: return !existing.contains { $0.kind.isMeeting }
+        case .meeting: return !hasMeeting && !views.contains(.gallery) && !views.contains(.speakerStrip)
+        case let .view(view, _):
+            guard !views.contains(view) else { return false }
+            switch view {
+            case .gallery: return !hasMeeting
+            case .speakerStrip: return !hasMeeting && !views.contains(.activeSpeaker)
+            case .activeSpeaker: return !views.contains(.speakerStrip)
+            case .multiSpeaker, .selfView, .people: return true
+            }
         case .chat: return !existing.contains { $0.kind.isChat }
         case let .app(app):
             let apps = existing.compactMap { $0.kind.app }

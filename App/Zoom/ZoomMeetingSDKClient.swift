@@ -446,6 +446,49 @@ final class ZoomMeetingSDKClient: NSObject, ObservableObject {
         lastStageFrame = .zero
     }
 
+    // MARK: - View spike (phase 0 of .context/meeting-views-plan.md)
+    //
+    // One extra render element for ONE extra window, behind the hidden default
+    // `meetingViews.spike`. Kept apart on purpose: it is never in
+    // participantElements, stageElement or railSelfElement, so nothing that
+    // reconciles those can touch it. Drawn by ViewSpike.swift.
+
+    private(set) var spikeElement: ZoomSDKNormalVideoElement?
+    /// The render data type the SDK reported for the spike element.
+    var onSpikeDataType: ((VideoRenderDataType) -> Void)?
+    /// A subscription the SDK refused for the spike element (code, user).
+    var onSpikeSubscribeFail: ((Int, UInt32) -> Void)?
+
+    /// A fresh normal element (NOT the deprecated createVideoElement: / active
+    /// element) from the same process-wide container. Not subscribed yet.
+    func spikeCreateElement(frame: NSRect, userID: UInt32) -> (element: ZoomSDKNormalVideoElement?, code: Int) {
+        guard didUseCustomUI,
+              let container = ZoomSDK.shared().getMeetingService()?.getVideoContainer() else { return (nil, -1) }
+        adopt(container: container)
+        var element = ZoomSDKNormalVideoElement(frame: frame)
+        let made = container.createNormalVideoElement(&element)
+        guard made == ZoomSDKError_Success else { return (nil, Int(made.rawValue)) }
+        element.userid = userID
+        spikeElement = element
+        return (element, 0)
+    }
+
+    func spikeReleaseElement() {
+        guard let element = spikeElement else { return }
+        _ = element.subscribeVideo(false)
+        _ = videoContainer?.clean(element)
+        element.getVideoView().removeFromSuperview()
+        spikeElement = nil
+    }
+
+    /// Who the stage shows, the way the meeting window picks: spotlight, then a
+    /// local pin, then whoever speaks.
+    func spikeStagePerson() -> RosterEntry? {
+        let roster = meetingRoster()
+        let id = roster.first(where: \.isSpotlighted)?.id ?? roster.first(where: \.isPinned)?.id ?? speakerToShow()
+        return roster.first { $0.id == id }
+    }
+
     // MARK: - Featured speaker
     //
     // speakerToShow() below picks who the stage shows; the old per-window
@@ -569,6 +612,7 @@ final class ZoomMeetingSDKClient: NSObject, ObservableObject {
     /// Releases the render elements. Called on leave so the SDK is not left
     /// drawing into views that are about to disappear.
     func releaseCustomUIVideo() {
+        spikeReleaseElement()
         releaseStage()
         if let element = railSelfElement {
             _ = videoContainer?.clean(element)
@@ -1338,6 +1382,12 @@ extension ZoomMeetingSDKClient: ZoomSDKVideoContainerDelegate {
             reason = "reason code \(error.rawValue)"
         }
         let userID = element.userid
+        // The spike's element has no bookkeeping here: no cooldown, no retry.
+        if let spike = spikeElement, spike === element {
+            Self.videoLog("View spike: SUBSCRIBE FAIL code=\(error.rawValue) user=\(userID) \(reason)")
+            onSpikeSubscribeFail?(Int(error.rawValue), userID)
+            return
+        }
         let now = Date()
         // The active element FIRST, and return: it shares no user bookkeeping
         // with the tiles, and falling through armed a cooldown nothing ever
@@ -1388,6 +1438,12 @@ extension ZoomMeetingSDKClient: ZoomSDKVideoContainerDelegate {
     /// and it is NOT a failure - it is what the SDK draws when someone's camera
     /// is off. Logged so the two are never confused again.
     func onRenderDataTypeChanged(_ element: ZoomSDKVideoElement?, dataType type: VideoRenderDataType) {
+        if let spike = spikeElement, let element, spike === element {
+            Self.videoLog("View spike: render data type user=\(element.userid) type=\(type.rawValue)"
+                + " (\(type == VideoRenderDataType_Video ? "video" : type == VideoRenderDataType_Avatar ? "avatar" : "none"))")
+            onSpikeDataType?(type)
+            return
+        }
         Self.videoLog("dataTypeChanged user=\(element?.userid ?? 0) type=\(type.rawValue)")
         // Someone's camera coming back on is the moment a previously refused
         // subscription is most worth retrying: the rate limiter has long since

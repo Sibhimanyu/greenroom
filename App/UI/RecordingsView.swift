@@ -237,7 +237,6 @@ struct RecordingsView: View {
                 .accessibilityHidden(detailSession != nil)
             if let session = detailSession {
                 detailPage(session)
-                    .background(Brand.windowBackground)
                     .opacity(isReport ? 0 : 1)
                     .allowsHitTesting(!isReport)
                     .accessibilityHidden(isReport)

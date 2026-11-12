@@ -179,6 +179,7 @@ enum Analytics {
             case .meeting: return "meeting"
             case .chat: return "chat"
             case .app: return "app"
+            case let .view(view, _): return "view_" + view.rawValue
             }
         })
         return kinds.isEmpty ? "empty" : kinds.sorted().joined(separator: "+")

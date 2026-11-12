@@ -49,7 +49,6 @@ struct CuesSettingsTab: View {
         }
         .formStyle(.grouped)
         .scrollContentBackground(.hidden)
-        .background(Brand.windowBackground)
     }
 }
 
@@ -758,7 +757,7 @@ struct CuesWorkbench: View {
                             .foregroundStyle(.secondary)
                         CuesRailPreview(state: surfaceState)
                             .frame(width: 300, height: 380)
-                            .background(Brand.windowBackground)
+                            .background(Color(nsColor: .windowBackgroundColor))
                             .clipShape(RoundedRectangle(cornerRadius: 8))
                     }
                     latencyView

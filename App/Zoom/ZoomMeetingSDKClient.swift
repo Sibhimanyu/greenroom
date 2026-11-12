@@ -47,10 +47,21 @@ final class ZoomMeetingSDKClient: NSObject, ObservableObject {
     /// matters downstream is the mode the SDK is actually RUNNING in.
     private(set) var didUseCustomUI = false
 
-    /// Opt-in, and app-restart-scoped: `needCustomizedUI` is an initSDK
-    /// parameter, so it cannot change while the process lives.
+    /// On unless the teacher turned it off (2026-11-11: Greenroom's own meeting
+    /// window runs every meeting). App-restart-scoped: `needCustomizedUI` is an
+    /// initSDK parameter, so it cannot change while the process lives.
     static var customUIModeEnabled: Bool {
-        UserDefaults.standard.bool(forKey: "customUIMode")
+        (UserDefaults.standard.object(forKey: "customUIMode") as? Bool) ?? true
+    }
+
+    /// One-time flip for Macs that already stored `customUIMode = false` from
+    /// the days it defaulted off: they get the new default once, after which
+    /// the setting is theirs again. Runs at launch, before anything reads it.
+    static func migrateCustomUIDefault() {
+        let defaults = UserDefaults.standard
+        guard !defaults.bool(forKey: "customUIMode.migratedV2") else { return }
+        defaults.set(true, forKey: "customUIMode")
+        defaults.set(true, forKey: "customUIMode.migratedV2")
     }
 
     /// Held for the meeting's lifetime. The SDK renders into views owned by
@@ -81,9 +92,11 @@ final class ZoomMeetingSDKClient: NSObject, ObservableObject {
     var onVideoSubscribeFailure: ((String) -> Void)?
 
     /// Fired whenever the participant count may have changed - InMeeting,
-    /// joins, leaves - so the active-speaker window can check its
-    /// three-participant threshold. See ActiveSpeakerWindowController.
+    /// joins, leaves - so the meeting window can redraw at once rather than at
+    /// its next one-second poll.
     var onParticipantCountChanged: (() -> Void)?
+    /// The lock state Zoom last reported; there is no getter, only the event.
+    var meetingIsLocked = false
 
     /// The resolution to ask for, chosen from how large the view actually is.
     ///
@@ -357,13 +370,81 @@ final class ZoomMeetingSDKClient: NSObject, ObservableObject {
         return element.getVideoView()
     }
 
-    // MARK: - Speaker window
-    //
-    // Removed pending redesign. Every rendering approach for a dedicated
-    // speaker window was tried and demolished on request; speakerToShow()
-    // below survives because the panel's featured tile uses it.
+    // MARK: - Stage (the meeting window's Speaker view)
+
+    /// ONE element for the stage, whoever is on it. A view has one superview, so
+    /// the filmstrip tile for a person cannot be reused for the big picture; the
+    /// stage gets its own element and `userid` is reassigned when the speaker
+    /// changes, which keeps it to one subscription however often people talk.
+    /// A normal element, not ZoomSDKActiveVideoElement: the active-video element
+    /// only draws with three or more people, and this one works in a 1:1.
+    private var stageElement: ZoomSDKNormalVideoElement?
+    private var stageUserID: UInt32?
+    /// The subscription is made once the view is in a visible window, the same
+    /// lesson as `subscribedOnScreen`: one made before it never draws.
+    private var stageSubscribed = false
+    private var lastStageFrame: NSRect = .zero
+    /// A speaker change is a subscription change, and Zoom refuses bursts of
+    /// them (code 7). Two people trading a sentence should not flip the stage.
+    private var nextStageSwitchAt = Date.distantPast
+
+    func stageView(userID: UInt32, frame: NSRect) -> NSView? {
+        guard didUseCustomUI else { return nil }
+        if let element = stageElement {
+            if lastStageFrame != frame {
+                lastStageFrame = frame
+                _ = element.resize(frame)
+            }
+            if stageUserID != userID, Date() >= nextStageSwitchAt {
+                _ = element.subscribeVideo(false)
+                element.userid = userID
+                stageUserID = userID
+                nextStageSwitchAt = Date().addingTimeInterval(2)
+                stageSubscribed = false
+                Self.videoLog("stage -> user=\(userID)")
+            }
+            if !stageSubscribed, element.getVideoView().window?.isVisible == true {
+                let subscribed = element.subscribeVideo(true)
+                _ = element.showVideo(true)
+                stageSubscribed = subscribed == ZoomSDKError_Success
+                Self.videoLog("stage subscribe user=\(stageUserID ?? 0) result=\(subscribed.rawValue)")
+            }
+            return element.getVideoView()
+        }
+        guard let container = ZoomSDK.shared().getMeetingService()?.getVideoContainer() else { return nil }
+        adopt(container: container)
+        var element = ZoomSDKNormalVideoElement(frame: frame)
+        guard container.createNormalVideoElement(&element) == ZoomSDKError_Success else { return nil }
+        element.userid = userID
+        // One 720p slot of Zoom's published budget (1x1080p, 2x720p, 4x360p); the
+        // filmstrip tiles are thumbnails.
+        var result = element.setResolution(ZoomSDKVideoRenderResolution_720p)
+        if result != ZoomSDKError_Success { result = element.setResolution(ZoomSDKVideoRenderResolution_720p) }
+        stageElement = element
+        stageUserID = userID
+        stageSubscribed = false
+        lastStageFrame = frame
+        nextStageSwitchAt = Date().addingTimeInterval(2)
+        Self.videoLog("stage created user=\(userID) setResolution=\(result.rawValue)")
+        return element.getVideoView()
+    }
+
+    /// Gallery view, or the window closing: give the stream back.
+    func releaseStage() {
+        guard let element = stageElement else { return }
+        _ = element.subscribeVideo(false)
+        _ = videoContainer?.clean(element)
+        element.getVideoView().removeFromSuperview()
+        stageElement = nil
+        stageUserID = nil
+        stageSubscribed = false
+        lastStageFrame = .zero
+    }
 
     // MARK: - Featured speaker
+    //
+    // speakerToShow() below picks who the stage shows; the old per-window
+    // speaker code is gone (see the meeting window, ParticipantGridWindow.swift).
 
     /// The last person known to be talking, so a quiet room does not blank out.
     private var lastKnownSpeaker: UInt32?
@@ -483,6 +564,7 @@ final class ZoomMeetingSDKClient: NSObject, ObservableObject {
     /// Releases the render elements. Called on leave so the SDK is not left
     /// drawing into views that are about to disappear.
     func releaseCustomUIVideo() {
+        releaseStage()
         if let element = railSelfElement {
             _ = videoContainer?.clean(element)
             railSelfElement = nil
@@ -937,6 +1019,11 @@ final class ZoomMeetingSDKClient: NSObject, ObservableObject {
     private func suppressInteractiveJoinUI() {
         guard let meetingService = ZoomSDK.shared().getMeetingService() else { return }
         meetingService.getMeetingUIController().isShowVideoPreview(whenJoinMeeting: false)
+        // Join the computer's audio without asking. In custom UI there is no Zoom
+        // dialog to answer, so without this a meeting can start with no audio at
+        // all and nothing on screen saying why; the toolbar's "Join audio" is
+        // the way back if it still does not.
+        _ = ZoomSDK.shared().getSettingService()?.getAudioSetting()?.enableAutoJoinVoip(true)
         let configuration = meetingService.getMeetingConfiguration()
         // Both were meant for the parked tile of an ARRANGED session. When
         // nothing is arranged and Zoom draws its own UI, its window is the main
@@ -1112,6 +1199,35 @@ final class ZoomMeetingSDKClient: NSObject, ObservableObject {
         guard let device = match else { return false }
         return audio.selectAudioDevice(true, deviceID: device.getDeviceID(),
                                        deviceName: device.getDeviceName()) == ZoomSDKError_Success
+    }
+
+    /// The Mac's output devices as the SDK lists them, with the one in use.
+    func speakerDevices() -> (devices: [(id: String, name: String)], selectedID: String?) {
+        guard let audio = ZoomSDK.shared().getSettingService()?.getAudioSetting() else { return ([], nil) }
+        let list = (audio.getAudioDeviceList(false) ?? []).compactMap { $0 as? SDKDeviceInfo }
+        let devices = list.map { (id: $0.getDeviceID() ?? "", name: $0.getDeviceName() ?? "Speaker") }
+        let selected = list.first { $0.isSelectedDevice() }?.getDeviceID()
+        return (devices, selected)
+    }
+
+    /// Picks where the meeting's sound plays, matched by the id the list gave.
+    func selectSpeaker(id: String, name: String) -> Bool {
+        guard let audio = ZoomSDK.shared().getSettingService()?.getAudioSetting() else { return false }
+        return audio.selectAudioDevice(false, deviceID: id, deviceName: name) == ZoomSDKError_Success
+    }
+
+    /// The microphones, same shape, for the toolbar's mic menu.
+    func microphoneDevices() -> (devices: [(id: String, name: String)], selectedID: String?) {
+        guard let audio = ZoomSDK.shared().getSettingService()?.getAudioSetting() else { return ([], nil) }
+        let list = (audio.getAudioDeviceList(true) ?? []).compactMap { $0 as? SDKDeviceInfo }
+        let devices = list.map { (id: $0.getDeviceID() ?? "", name: $0.getDeviceName() ?? "Microphone") }
+        let selected = list.first { $0.isSelectedDevice() }?.getDeviceID()
+        return (devices, selected)
+    }
+
+    func selectMicrophone(id: String, name: String) -> Bool {
+        guard let audio = ZoomSDK.shared().getSettingService()?.getAudioSetting() else { return false }
+        return audio.selectAudioDevice(true, deviceID: id, deviceName: name) == ZoomSDKError_Success
     }
 
     /// STARTS a meeting as its host, using the ZAK host key the

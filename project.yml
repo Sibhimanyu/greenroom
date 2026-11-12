@@ -279,6 +279,27 @@ targets:
         CODE_SIGN_IDENTITY: "-"
         ENABLE_HARDENED_RUNTIME: NO
 
+  # Unit tests for the layout creator's model and geometry
+  # (.context/layout-creator-plan.md). Like CuesBench, it compiles the real
+  # sources it tests and nothing else, so it needs no Zoom SDK and no host
+  # app: `xcodebuild test -scheme GreenroomTests`.
+  GreenroomTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - path: Tests
+      - path: App/Layout/LayoutTemplate.swift
+      - path: App/Layout/LayoutGeometry.swift
+    settings:
+      base:
+        PRODUCT_NAME: GreenroomTests
+        PRODUCT_BUNDLE_IDENTIFIER: com.sibhimanyu.greenroom.tests
+        GENERATE_INFOPLIST_FILE: YES
+        SWIFT_VERSION: "5.0"
+        CODE_SIGN_STYLE: Automatic
+        CODE_SIGN_IDENTITY: "-"
+        ENABLE_HARDENED_RUNTIME: NO
+
 schemes:
   Greenroom:
     build:
@@ -292,3 +313,10 @@ schemes:
         CuesBench: all
     run:
       config: Debug
+  GreenroomTests:
+    build:
+      targets:
+        GreenroomTests: all
+    test:
+      targets:
+        - GreenroomTests

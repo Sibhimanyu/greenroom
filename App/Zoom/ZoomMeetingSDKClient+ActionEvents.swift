@@ -38,15 +38,10 @@ extension ZoomMeetingSDKClient: ZoomSDKMeetingActionControllerDelegate {
     /// judgement makes the panel agree with what students see in their Zoom.
     public func onActiveSpeakerVideoUserChanged(_ userID: UInt32) {
         noteActiveSpeaker(userID)
-        ActiveVideoUserSignal.noteActiveSpeakerVideoUser(userID)
     }
 
-    /// Also forwarded as-is for the Active Speaker window's name bar: this is
-    /// the person its active-video element is drawing. See
-    /// ActiveVideoUserSignal for why the panel's sticky pick is not used.
     public func onActiveVideoUserChanged(_ userID: UInt32) {
         noteActiveSpeaker(userID)
-        ActiveVideoUserSignal.noteActiveVideoUser(userID)
     }
 
     // MARK: Deliberate no-ops (protocol has no @optional)
@@ -63,7 +58,6 @@ extension ZoomMeetingSDKClient: ZoomSDKMeetingActionControllerDelegate {
         let ids = (array as? [NSNumber])?.map { $0.uint32Value } ?? []
         guard !ids.isEmpty else { return }
         noteUsersLeft(ids)
-        ActiveVideoUserSignal.noteUsersLeft(ids)
         onParticipantCountChanged?()
     }
     public func onUserInfoUpdate(_ userID: UInt32) {}
@@ -78,9 +72,7 @@ extension ZoomMeetingSDKClient: ZoomSDKMeetingActionControllerDelegate {
     public func onMulti(toSingleShareNeedConfirm confirmHandle: ZoomSDKMultiToSingleShareConfirmHandler?) {}
     public func onHostAskUnmute() {}
     public func onHostAskStartVideo() {}
-    public func onUserNamesChanged(_ userList: [NSNumber]) {
-        ActiveVideoUserSignal.noteNamesChanged()
-    }
+    public func onUserNamesChanged(_ userList: [NSNumber]) {}
     public func onInvalidReclaimHostKey() {}
     public func onHostVideoOrderUpdated(_ orderList: [Any]) {}
     public func onLocalVideoOrderUpdated(_ localOrderList: [Any]) {}
@@ -95,7 +87,7 @@ extension ZoomMeetingSDKClient: ZoomSDKMeetingActionControllerDelegate {
     public func onAllowParticipantsRenameNotification(_ allow: Bool) {}
     public func onAllowParticipantsUnmuteSelfNotification(_ allow: Bool) {}
     public func onAllowParticipantsShareWhiteBoardNotification(_ allow: Bool) {}
-    public func onMeetingLockStatus(_ isLock: Bool) {}
+    public func onMeetingLockStatus(_ isLock: Bool) { meetingIsLocked = isLock }
     public func onRequestLocalRecordingPrivilegeChanged(_ status: ZoomSDKLocalRecordingRequestPrivilegeStatus) {}
     public func onAllowParticipantsRequestCloudRecording(_ allow: Bool) {}
     public func on(inMeetingUserAvatarPathUpdated userID: UInt32) {}

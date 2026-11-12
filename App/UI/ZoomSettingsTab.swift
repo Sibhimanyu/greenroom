@@ -123,8 +123,8 @@ struct ZoomPageContent: View {
                                 .strokeBorder(Color.secondary.opacity(0.4)))
                     }
                 }
-                .help("On: Zoom opens no windows; Greenroom shows the meeting in its own windows \u{2014} the participants panel and the speaker window (from the control bar when windows aren\u{2019}t arranged). Takes effect after a relaunch.")
-                Text("On: Zoom opens no windows. Greenroom shows the meeting in its own windows: the participants panel and the speaker window, opened from the control bar when windows aren\u{2019}t arranged.")
+                .help("On: Zoom opens no windows; Greenroom shows the meeting in its own meeting window \u{2014} video, people, chat and controls. Takes effect after a relaunch.")
+                Text("On: Zoom opens no windows. Greenroom shows the meeting in its own meeting window, with Gallery and Speaker views, people, chat and the meeting controls.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
                 if customUINeedsRelaunch {

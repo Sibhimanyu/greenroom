@@ -98,6 +98,10 @@ final class SelfPreviewView: NSView {
         videoButton.isHidden = !(hovering || !videoOn)
     }
 
+    /// The meter alone, fed at the mic monitor's rate between the one-second
+    /// `apply` calls.
+    func setLevel(_ level: Double) { meter.level = level }
+
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
         trackingAreas.forEach(removeTrackingArea)

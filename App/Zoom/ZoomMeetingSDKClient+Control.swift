@@ -160,6 +160,17 @@ extension ZoomMeetingSDKClient {
         return setVideoMuted(!on, userID: me)
     }
 
+    /// Your computer audio. `None` is "not on audio at all", which is different
+    /// from muted and is what the toolbar's Join audio answers.
+    var iHaveJoinedAudio: Bool {
+        guard let me = actionController?.getMyself() else { return true }
+        return me.getAudioStatus() != ZoomSDKAudioStatus_None
+    }
+
+    func joinAudio() -> Bool {
+        run { $0.actionMeeting(with: ActionMeetingCmd_JoinVoip, userID: 0, on: ScreenType_First) }
+    }
+
     func setMyHand(raised: Bool) -> Bool {
         guard let me = myUserID else { return false }
         return run { $0.raiseHand(raised, userID: me) }

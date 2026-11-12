@@ -3,6 +3,8 @@
 //  Greenroom
 //
 //  The reference display: every student, and every control the SDK exposes.
+//  Also Greenroom's own meeting window: the same views in a second form, with a
+//  Gallery/Speaker control, a stage, one side panel and a toolbar (see `Form`).
 //
 //  This surface goes on a display only the teacher can see, which is what makes
 //  the controls appropriate here at all. Nobody is being shown chrome; this is
@@ -18,6 +20,8 @@
 //  because in custom-UI mode the SDK owns no windows at all.
 //
 import AppKit
+import SwiftUI
+import Combine
 
 @MainActor
 enum ParticipantGridWindowController {
@@ -34,9 +38,6 @@ enum ParticipantGridWindowController {
         /// The last recording is still being closed; Record waits.
         var isSavingRecording: Bool = false
         var presetName: String = ""
-        /// Whether the live-speaker tile is currently quick-hidden, so the rail
-        /// can offer the opposite action rather than a stale one.
-        var speakerHidden: Bool = false
         /// How far the start has got. See `Readiness`.
         var readiness = Readiness()
     }
@@ -94,44 +95,36 @@ enum ParticipantGridWindowController {
     private static var showChat: (@MainActor () -> Void)?
     private static var toggleRecording: (@MainActor () -> Void)?
     private static var snapBack: (@MainActor () -> Void)?
-    private static var toggleSpeaker: (@MainActor () -> Void)?
-    /// Whether the featured speaker gets the large tile above the gallery,
-    /// or everyone shares the grid equally. What \u{2325}\u{2318}Z toggles now.
-    ///
-    /// A pop-out window was tried and is not possible: Zoom's own capability
-    /// matrix for custom UI says "Multiple windows: No (regions in 1
-    /// container)" - SDK-rendered video cannot leave the container's window,
-    /// and a pop-out needs the raw-data pipeline instead. The experiment
-    /// agreed: the re-parented view landed in a visible window at the right
-    /// size and still drew black.
-    ///
-    /// Off. Everyone shares the grid equally, however many are in it. The
-    /// live speaker window already draws whoever is talking, large, so a
-    /// featured tile here drew them a second time and took 58% of the grid to
-    /// do it - reported with two students, one tile twice the height of the
-    /// other, and at 80 it would leave 79 slivers under one face. Nothing
-    /// toggles this any more; ⌥⌘Z moved to the speaker window.
-    static var featuredViewEnabled = false
     private static var showMainWindow: (@MainActor () -> Void)?
+    /// The meeting window's chat panel reads this; the toolbar and the People
+    /// panel's side column read `controls`.
+    fileprivate static var chatBridge: ZoomChatBridge?
+    static var controls: MeetingControlsModel?
+    /// Whether the featured speaker gets the large tile above the gallery in
+    /// the reference-display form. Off: everyone shares the grid equally. The
+    /// meeting window's Speaker view does not use this; it has its own stage.
+    static var featuredViewEnabled = false
 
     /// Wired once at session start. The window talks to the SDK directly rather
     /// than routing every button through the coordinator: the coordinator owns
     /// placement and session lifecycle, not what a host does to a roster.
     static func configure(client: ZoomMeetingSDKClient,
+                          chat: ZoomChatBridge,
+                          controls: MeetingControlsModel?,
                           log: @escaping @MainActor (String) -> Void,
                           endSession: @escaping @MainActor () -> Void,
                           showChat: @escaping @MainActor () -> Void,
                           toggleRecording: @escaping @MainActor () -> Void,
                           snapBack: @escaping @MainActor () -> Void,
-                          toggleSpeaker: @escaping @MainActor () -> Void,
                           showMainWindow: @escaping @MainActor () -> Void) {
         self.client = client
+        self.chatBridge = chat
+        self.controls = controls
         self.log = log
         self.endSession = endSession
         self.showChat = showChat
         self.toggleRecording = toggleRecording
         self.snapBack = snapBack
-        self.toggleSpeaker = toggleSpeaker
         self.showMainWindow = showMainWindow
 
         // Driven on its own timer, not the one-second roster poll: a meter that
@@ -147,6 +140,34 @@ enum ParticipantGridWindowController {
 
     // MARK: - Window
 
+    /// Which of the window's two forms this is.
+    ///
+    /// `reference` is the full-display panel with the rail, on a display only the
+    /// teacher can see (an arranged session with a reference display). `meeting`
+    /// is Greenroom's own meeting window: video in the middle, a toolbar along
+    /// the foot, Gallery or Speaker above, and one side panel on the right. It
+    /// is a real titled window in every case, never borderless, so there is
+    /// always a close button and a title bar to move it by.
+    enum Form: Equatable {
+        case reference
+        /// No layout: a window the teacher owns. `fillsScreen` is the first-run
+        /// size only; after that the frame is wherever it was left.
+        case meeting(fillsScreen: Bool)
+        /// Arranged on a single display: the window takes Zoom's old slot in the
+        /// side column, in Speaker view, with the toolbar on hover.
+        case slot(NSRect)
+
+        var isMeeting: Bool { if case .reference = self { return false } else { return true } }
+        var isSlot: Bool { if case .slot = self { return true } else { return false } }
+        /// Same kind of window, whatever its current frame.
+        func matches(_ other: Form) -> Bool {
+            switch (self, other) {
+            case (.reference, .reference), (.meeting, .meeting), (.slot, .slot): return true
+            default: return false
+            }
+        }
+    }
+
     /// A non-activating panel, not a plain window. Clicking a control must not
     /// pull Greenroom in front of whatever the teacher has on their main screen
     /// - the reference display is glanced at and poked, never "switched to".
@@ -157,16 +178,15 @@ enum ParticipantGridWindowController {
 
     private static var panel: ControlPanel?
 
-    /// A session that arranges nothing opens the panel from the control bar.
-    /// Then the windowed form is a window the teacher owns: it has a close
-    /// button and comes back where it was left (frame autosave), and closing it
-    /// tells the coordinator so the bar and the follow loop stop with it.
-    static var onDemand = false
-    /// Called when the teacher closes the panel with its own close button. Not
-    /// called for the closes the controller does itself.
+    /// Called when the teacher closes the meeting window with its own close
+    /// button, so the coordinator can stop feeding it and the pill can take
+    /// over. Not called for the closes the controller does itself.
     static var onUserClosed: (@MainActor () -> Void)?
     private static var closingByCode = false
     private static var closeObserver: NSObjectProtocol?
+    /// Set when the window was hidden on purpose (the speaker shortcut), so the
+    /// one-second refresh does not bring it straight back.
+    private static var userHidden = false
 
     private static func closePanelByCode() {
         closingByCode = true
@@ -180,41 +200,38 @@ enum ParticipantGridWindowController {
     fileprivate static var panelWindowForAlerts: NSWindow? { panel }
     private static var root: RootView?
 
-    /// Full-screen and borderless when it has a display to itself. On a single
-    /// display it becomes an ordinary movable, resizable window instead - a
-    /// teacher on a laptop still needs the roster and the controls, and a
-    /// borderless panel covering their only screen would be unusable.
-    private static func makePanel(on screen: NSScreen, windowed: Bool) -> ControlPanel {
-        let frame = windowed
-            // Use the display. This was 1100x760 inset by 60, which on a 16in
-            // laptop left 180pt of width and 185pt of height unused and made
-            // the rail the tightest thing on screen: at 760 the whole stack -
-            // picture, mic, eleven controls, session facts, links - had 716pt
-            // to live in, and the picture was what got squeezed. The inset
-            // drops to 40 and the ceilings rise, so the same laptop opens the
-            // panel 1432x905 instead. It is a resizable window either way; the
-            // ceilings only stop it becoming absurd on a very large display.
-            ? NSRect(x: screen.visibleFrame.minX + 40,
-                     y: screen.visibleFrame.minY + 40,
-                     width: min(1600, screen.visibleFrame.width - 80),
-                     height: min(1100, screen.visibleFrame.height - 80))
-            : screen.frame
+    /// The meeting window's frame when nothing has been saved: the whole
+    /// reference display if there is one, otherwise centred on the main display
+    /// at 1280x800 or the screen less 80pt, whichever is smaller.
+    private static func meetingFrame(on screen: NSScreen, fillsScreen: Bool) -> NSRect {
+        let area = screen.visibleFrame
+        if fillsScreen { return area }
+        let size = NSSize(width: min(1280, area.width - 80), height: min(800, area.height - 80))
+        return NSRect(x: (area.midX - size.width / 2).rounded(), y: (area.midY - size.height / 2).rounded(),
+                      width: size.width, height: size.height)
+    }
+
+    private static func makePanel(on screen: NSScreen, form: Form) -> ControlPanel {
+        let frame: NSRect
+        switch form {
+        case .reference: frame = screen.frame
+        case .meeting(let fills): frame = meetingFrame(on: screen, fillsScreen: fills)
+        case .slot(let slot): frame = slot
+        }
         let created = ControlPanel(contentRect: frame,
-                                   styleMask: windowed
-                                       ? (onDemand
-                                          ? [.titled, .closable, .resizable, .miniaturizable, .nonactivatingPanel]
-                                          : [.titled, .resizable, .miniaturizable, .nonactivatingPanel])
+                                   styleMask: form.isMeeting
+                                       ? [.titled, .closable, .resizable, .miniaturizable, .nonactivatingPanel]
                                        : [.borderless, .nonactivatingPanel],
                                    backing: .buffered,
                                    defer: false,
                                    screen: screen)
-        created.title = "Participants"
-        ZoomMeetingSDKClient.videoLog("panel form=\(windowed ? "windowed" : "fullscreen")"
-            + " screen=\(screen.localizedName) size=\(Int(frame.width))x\(Int(frame.height))")
+        created.title = "Meeting"
+        ZoomMeetingSDKClient.videoLog("panel form=\(form) screen=\(screen.localizedName)"
+            + " size=\(Int(frame.width))x\(Int(frame.height))")
         created.isReleasedWhenClosed = false
         created.hidesOnDeactivate = false
         created.backgroundColor = .black
-        // Ordinary window level, deliberately - both forms.
+        // Ordinary window level, deliberately - every form.
         //
         // The full-screen form sat at .statusBar for a while so it would cover
         // the menu bar and Dock, and that was the wrong trade: at that level
@@ -224,23 +241,26 @@ enum ParticipantGridWindowController {
         // that monitor". A panel that fills the display at .normal keeps the
         // display usable: other windows can come in front, and the menu bar
         // drawing over the top sliver is a fair price. Never a fullscreen
-        // Space either - a window in a Space cannot be re-framed, which is why
-        // the Zoom-UI placer has to eject its gallery from fullscreen.
+        // Space either - a window in a Space cannot be re-framed.
         created.level = .normal
         created.collectionBehavior = [.managed, .fullScreenAuxiliary]
-        created.isMovable = windowed
+        created.isMovable = form.isMeeting
+        if form.isMeeting {
+            // The toolbar and the three-button strip need this much to read.
+            created.minSize = form.isSlot ? NSSize(width: 320, height: 200) : NSSize(width: 760, height: 520)
+        }
         if let closeObserver { NotificationCenter.default.removeObserver(closeObserver) }
         closeObserver = nil
-        if onDemand {
-            if windowed {
-                // First time at the sized frame above; after that wherever the
-                // teacher left it. A saved spot on a display that is gone is
-                // dropped so the panel cannot open off screen.
-                created.setFrameAutosaveName("ParticipantsPanel")
-                if !NSScreen.screens.contains(where: { $0.visibleFrame.intersects(created.frame) }) {
-                    created.setFrame(frame, display: false)
-                }
+        if case .meeting = form {
+            // First time at the sized frame above; after that wherever the
+            // teacher left it. A saved spot on a display that is gone is
+            // dropped so the window cannot open off screen.
+            created.setFrameAutosaveName("MeetingWindow")
+            if !NSScreen.screens.contains(where: { $0.visibleFrame.intersects(created.frame) }) {
+                created.setFrame(frame, display: false)
             }
+        }
+        if form.isMeeting {
             closeObserver = NotificationCenter.default.addObserver(
                 forName: NSWindow.willCloseNotification, object: created, queue: .main
             ) { _ in
@@ -258,52 +278,49 @@ enum ParticipantGridWindowController {
     /// by join/leave callbacks because a brand-new participant's video element
     /// is not renderable the instant the callback fires, and a poll converges
     /// whether or not any single event was missed.
-    static func refresh(on screen: NSScreen, session: SessionInfo, windowed: Bool) {
+    static func refresh(on screen: NSScreen, session: SessionInfo, form: Form) {
         guard let client else { return }
 
-        // Self is never in the grid. The rail carries a dedicated self view, and
-        // an NSView has one superview - having both would mean two hosts
-        // fighting over one SDK render element. It also matches how the surface
-        // reads: left is you, right is the class.
+        // Self is never in the grid. The corner preview (or the rail's self
+        // view) carries it, and an NSView has one superview - having both would
+        // mean two hosts fighting over one SDK render element.
         var roster = client.meetingRoster()
         roster.removeAll { $0.isMyself }
 
         let hosting: ControlPanel
         let isNewWindow: Bool
-        if let existing = panel, isWindowed == windowed,
-           windowed || existing.screen.flatMap(DisplayResolver.displayID(of:)) == DisplayResolver.displayID(of: screen) {
+        if let existing = panel, let current = currentForm, current.matches(form),
+           form.isMeeting || existing.screen.flatMap(DisplayResolver.displayID(of:)) == DisplayResolver.displayID(of: screen) {
             hosting = existing
             isNewWindow = false
         } else {
             isNewWindow = true
             // Closed, not merely ordered out. orderOut leaves the window in
-            // NSApp.windows for the life of the process, so swapping between the
-            // windowed and full-screen forms would strand one there on every
-            // switch - invisible, but still walked by the 500ms SDK-window
-            // sweep and never freed.
+            // NSApp.windows for the life of the process, so swapping forms
+            // would strand one there on every switch - invisible, but still
+            // walked by the 500ms SDK-window sweep and never freed.
             root?.detachAllVideo()
             closePanelByCode()
-            hosting = makePanel(on: screen, windowed: windowed)
-            let view = RootView(frame: hosting.contentLayoutRect)
+            hosting = makePanel(on: screen, form: form)
+            let view = RootView(frame: hosting.contentLayoutRect, form: form)
             view.autoresizingMask = [.width, .height]
             hosting.contentView = view
             panel = hosting
             root = view
-            isWindowed = windowed
+            userHidden = false
         }
+        currentForm = form
         lastScreen = screen
         lastSession = session
         // Who draws the checklist. Full-screen on its own display, the panel
-        // owns it. Windowed, it is just another window on a single screen about
-        // to be buried by the tiling, so the floating HUD carries it and the
-        // panel behaves as if the session were already up. The readiness itself
-        // still reaches the panel either way - it is what dims the controls.
-        root?.showsReadiness = !windowed
+        // owns it. The meeting window opens only once there is a meeting, and a
+        // start that arranges nothing has the floating card for it.
+        root?.showsReadiness = !form.isMeeting
 
         // Only the full-screen form is re-framed, and only when it has actually
-        // drifted. Once the teacher has moved or resized the windowed form,
-        // pinning it back every second would make it impossible to place.
-        if !windowed, hosting.frame != screen.frame {
+        // drifted. The meeting window is the teacher's: pinning it back every
+        // second would make it impossible to place.
+        if case .reference = form, hosting.frame != screen.frame {
             hosting.setFrame(screen.frame, display: true)
         }
 
@@ -315,27 +332,29 @@ enum ParticipantGridWindowController {
                      videoProvider: { id, frame, hero in
                          client.participantView(userID: id, frame: frame, hero: hero)
                      },
-                     selfProvider: { frame in client.makeRailSelfView(frame: frame) })
+                     selfProvider: { frame in client.makeRailSelfView(frame: frame) },
+                     stageProvider: { id, frame in client.stageView(userID: id, frame: frame) },
+                     releaseStage: { client.releaseStage() })
         // Pruned to the VISIBLE page, not the whole roster, so students on other
-        // pages release their streams. The rail's self view is a separate element
-        // and is unaffected.
+        // pages release their streams. The self view is a separate element and
+        // is unaffected.
         client.pruneParticipantViews(keeping: root?.visibleIDs ?? [])
 
         // Raise it only when it is new, or when it has gone away and was not
-        // deliberately minimised. Placement here is CONVERGENT, not assertive.
+        // deliberately minimised or hidden. Placement here is CONVERGENT, not
+        // assertive.
         //
         // The first version ordered the panel front on every tick of a
         // one-second poll, which meant clicking any other window sent it behind
         // and then had it jump back on top a second later - a tug-of-war with
-        // the person using the Mac, and indistinguishable from the SDK-window
-        // fighting that custom UI exists to end. A window that is merely BEHIND
-        // another is still `isVisible`, so this leaves it where the user put it.
-        if isNewWindow || (!hosting.isVisible && !hosting.isMiniaturized) {
+        // the person using the Mac. A window that is merely BEHIND another is
+        // still `isVisible`, so this leaves it where the user put it.
+        if isNewWindow || (!hosting.isVisible && !hosting.isMiniaturized && !userHidden) {
             hosting.orderFrontRegardless()
         }
     }
 
-    private static var isWindowed = false
+    private static var currentForm: Form?
     /// The last inputs to `refresh`, so a control can redraw the panel the
     /// instant it acts instead of waiting for the next poll tick.
     private static var lastScreen: NSScreen?
@@ -349,7 +368,7 @@ enum ParticipantGridWindowController {
     /// acknowledged the press either, which is the whole of what "unresponsive"
     /// meant here.
     static func refreshNow() {
-        guard let remembered = lastScreen else { return }
+        guard let remembered = lastScreen, let form = currentForm else { return }
         // The remembered NSScreen can be one that has since been unplugged (or
         // rebuilt by AppKit after a display change). Re-find it by its display
         // ID, and fall back to the main display, so a control pressed in that
@@ -358,16 +377,55 @@ enum ParticipantGridWindowController {
             .flatMap { id in NSScreen.screens.first { DisplayResolver.displayID(of: $0) == id } }
             ?? DisplayResolver.mainDisplayScreen()
         guard let screen else { return }
-        refresh(on: screen, session: lastSession, windowed: isWindowed)
+        refresh(on: screen, session: lastSession, form: form)
     }
 
-    static var isOpen: Bool { panel?.isVisible ?? false }
+    static var isOpen: Bool { panel != nil }
+    /// The meeting window specifically, on screen or not.
+    static var meetingWindowIsOpen: Bool { panel != nil && currentForm?.isMeeting == true }
 
-    /// So SDK window hunting recognises this as ours, the same as the chat and
-    /// speaker windows.
+    /// On screen in the sense that matters to the pill: open, not minimised and
+    /// not hidden on purpose, with some part of it actually visible. A window
+    /// entirely under other windows does not count; the controls would be
+    /// unreachable.
+    static var meetingWindowIsShowing: Bool {
+        guard let panel, currentForm?.isMeeting == true else { return false }
+        return panel.isVisible && !panel.isMiniaturized && panel.occlusionState.contains(.visible)
+    }
+
+    /// So SDK window hunting recognises this as ours, the same as the chat
+    /// window.
     static func owns(_ candidate: NSWindow) -> Bool { candidate == panel }
 
-    static func hide() { panel?.orderOut(nil) }
+    /// Hides and shows the window (the speaker shortcut) without closing it, so
+    /// nothing is torn down and it returns where it was.
+    static func hide() {
+        userHidden = true
+        panel?.orderOut(nil)
+    }
+
+    /// Brings the window back from hidden, closed-to-the-Dock or covered,
+    /// without activating the app.
+    static func show() {
+        userHidden = false
+        guard let panel else { return }
+        if panel.isMiniaturized { panel.deminiaturize(nil) }
+        panel.orderFrontRegardless()
+    }
+
+    /// Puts a slot-form window back in its slot (Snap Windows Back, a display
+    /// change). Other forms are the teacher's to place.
+    static func place(slot: NSRect) {
+        guard let panel, case .slot = currentForm else { return }
+        currentForm = .slot(slot)
+        panel.setFrame(slot, display: true)
+        if !userHidden { panel.orderFrontRegardless() }
+    }
+
+    /// The window's frame in screen coordinates, for the chat window to tuck
+    /// under it.
+    static var frameInScreen: NSRect? { panel?.frame }
+    static var isSlot: Bool { currentForm?.isSlot ?? false }
 
     static func close() {
         root?.detachAllVideo()
@@ -375,17 +433,19 @@ enum ParticipantGridWindowController {
         closePanelByCode()
         if let closeObserver { NotificationCenter.default.removeObserver(closeObserver) }
         closeObserver = nil
-        onDemand = false
         onUserClosed = nil
+        userHidden = false
         panel = nil
         root = nil
+        currentForm = nil
         client = nil
+        chatBridge = nil
+        controls = nil
         log = nil
         endSession = nil
         showChat = nil
         toggleRecording = nil
         snapBack = nil
-        toggleSpeaker = nil
         showMainWindow = nil
         micTimer?.invalidate()
         micTimer = nil
@@ -409,7 +469,6 @@ enum ParticipantGridWindowController {
     fileprivate static func requestShowChat() { showChat?() }
     fileprivate static func requestToggleRecording() { toggleRecording?() }
     fileprivate static func requestSnapBack() { snapBack?() }
-    fileprivate static func requestToggleSpeaker() { toggleSpeaker?() }
     fileprivate static func requestShowMainWindow() { showMainWindow?() }
     fileprivate static var sdk: ZoomMeetingSDKClient? { client }
     fileprivate static var hostWindow: NSWindow? { panel }
@@ -425,6 +484,15 @@ enum ParticipantGridWindowController {
 /// constraints for a grid whose shape changes as students join.
 @MainActor
 private final class RootView: NSView {
+
+    /// Which form this window is. Fixed for the life of the view: a change of
+    /// form is a new window (see `refresh`).
+    private let form: ParticipantGridWindowController.Form
+    /// The meeting window, as opposed to the reference display's rail panel.
+    private var meetingForm: Bool { form.isMeeting }
+    /// The small slot form shows its top bar and toolbar only while the pointer
+    /// is over it; there is no room to give them a permanent band.
+    private var hoverChrome: Bool { form.isSlot }
 
     private let topBar = BarView()
     private let bottomBar = BarView()
@@ -475,6 +543,40 @@ private final class RootView: NSView {
     /// Held so a page change can re-attach video without waiting for the poll.
     private var lastVideoProvider: ((UInt32, NSRect, Bool) -> NSView?)?
     private var lastSelfProvider: ((NSRect) -> NSView?)?
+
+    // MARK: Meeting form state
+
+    private enum ViewMode: Int { case gallery, speaker }
+    private var viewMode: ViewMode = .gallery
+    private var isSpeakerMode: Bool { meetingForm && viewMode == .speaker }
+    private lazy var modeControl = FirstClickSegmented(labels: ["Gallery", "Speaker"],
+                                                       trackingMode: .selectOne,
+                                                       target: self, action: #selector(modeChanged(_:)))
+    /// Speaker view's big picture. It is NOT a tile: a view has one superview,
+    /// and the speaker's filmstrip tile is a different element. See
+    /// ZoomMeetingSDKClient.stageView.
+    private let stageHost = NSView()
+    private let stageScrim = NSView()
+    private let stageName = NSTextField(labelWithString: "")
+    private var stageVideo: NSView?
+    /// Who the stage shows: spotlight, then a local pin, then whoever speaks.
+    private var stageSpeakerID: UInt32?
+    private var lastStageProvider: ((UInt32, NSRect) -> NSView?)?
+    private var lastReleaseStage: (() -> Void)?
+    private let sidePanelHost = BarView()
+    private let sidePanelDivider = NSView()
+    private let sidePanelTitle = NSTextField(labelWithString: "")
+    private lazy var sidePanelClose = ClosureButton { [weak self] in self?.controls?.sidePanel = nil }
+    private var chatHost: NSView?
+    private let peopleView = MeetingPeopleView(frame: .zero)
+    private var controlsSub: AnyCancellable?
+    private var chromeHover = false
+    private var chromeHideWork: DispatchWorkItem?
+    private var controls: MeetingControlsModel? { ParticipantGridWindowController.controls }
+    /// DESIGN.md's drawer range is 280-320pt; the side panel takes the top.
+    private static let sidePanelWidth: CGFloat = 320
+    private static let selfPreviewSize = NSSize(width: 192, height: 108)
+    private static let stripHeight: CGFloat = 112
 
     private var roster: [ZoomMeetingSDKClient.RosterEntry] = []
     /// Who gets the large tile above the gallery. See speakerToShow().
@@ -589,6 +691,8 @@ private final class RootView: NSView {
     /// joined and left, which is movement nobody asked for. The floor and
     /// ceiling only bind on a window too narrow or too wide for 40% to be sane.
     private var railWidth: CGFloat {
+        // The meeting form has no rail: the stage starts at the left edge.
+        if meetingForm { return 0 }
         let share = bounds.width * 0.40
         // Below the floor the picture stops being able to show framing; above
         // the ceiling the class starts losing more than the picture gains.
@@ -778,6 +882,8 @@ private final class RootView: NSView {
     /// exactly, because a page size that changed by one on every few pixels of
     /// resize would reshuffle faces while a teacher was looking at them.
     private var perPage: Int {
+        // Speaker view's filmstrip is one row, as many as fit.
+        if isSpeakerMode { return stripCapacity }
         let area = gridHost.bounds
         guard area.width > 0, area.height > 0 else { return 9 }
         // ~260x150 is the smallest tile a face and a name label stay legible in.
@@ -791,6 +897,17 @@ private final class RootView: NSView {
         default: return 12
         }
     }
+    /// How many 16:9 filmstrip tiles fit along the strip, capped so the strip
+    /// stays a strip. Quantised by whole tiles, so it moves only when a tile does.
+    private var stripCapacity: Int {
+        let tileWidth = ((Self.stripHeight - 16) * 16 / 9).rounded() + Self.gutter
+        return min(8, max(1, Int(gridHost.bounds.width / tileWidth)))
+    }
+    /// Who the gallery or the filmstrip lists: everyone, or everyone but the
+    /// person already on the stage.
+    private var listed: [ZoomMeetingSDKClient.RosterEntry] {
+        isSpeakerMode ? roster.filter { $0.id != stageSpeakerID } : roster
+    }
     private static let barHeight: CGFloat = 44
     /// Zero: the rail carries every control now, so there is no bottom toolbar
     /// to reserve space for. Kept as a constant because the body layout reads it.
@@ -798,7 +915,8 @@ private final class RootView: NSView {
     private static let contextHeight: CGFloat = 48
     private static let gutter: CGFloat = 4
 
-    override init(frame frameRect: NSRect) {
+    init(frame frameRect: NSRect, form: ParticipantGridWindowController.Form) {
+        self.form = form
         super.init(frame: frameRect)
         wantsLayer = true
         // NOT pure black. Reported live as "the external display goes dark when
@@ -928,7 +1046,7 @@ private final class RootView: NSView {
         recordingLabel.font = .systemFont(ofSize: 12, weight: .semibold)
         shortcutsLabel.font = .monospacedSystemFont(ofSize: 11, weight: .regular)
         shortcutsLabel.textColor = .tertiaryLabelColor
-        shortcutsLabel.stringValue = "\u{2325}\u{2318}R record   \u{2325}\u{2318}S snap back   \u{2325}\u{2318}Z speaker   \u{2325}\u{2318}X end"
+        shortcutsLabel.stringValue = "\u{2325}\u{2318}R record   \u{2325}\u{2318}S snap back   \u{2325}\u{2318}X end"
         for label in [titleLabel, factsLabel, shortcutsLabel, recordingLabel] { topBar.addSubview(label) }
         topBar.addSubview(recordingDot)
 
@@ -941,6 +1059,7 @@ private final class RootView: NSView {
         addSubview(emptyState)
 
         addSubview(readiness)
+        if meetingForm { setupMeetingForm() }
     }
 
     required init?(coder: NSCoder) { nil }
@@ -954,9 +1073,17 @@ private final class RootView: NSView {
                 session: ParticipantGridWindowController.SessionInfo,
                 featured: UInt32?,
                 videoProvider: @escaping (UInt32, NSRect, Bool) -> NSView?,
-                selfProvider: @escaping (NSRect) -> NSView?) {
+                selfProvider: @escaping (NSRect) -> NSView?,
+                stageProvider: @escaping (UInt32, NSRect) -> NSView?,
+                releaseStage: @escaping () -> Void) {
         self.roster = roster
-        self.featuredID = ParticipantGridWindowController.featuredViewEnabled ? featured : nil
+        self.featuredID = ParticipantGridWindowController.featuredViewEnabled && !meetingForm ? featured : nil
+        if meetingForm {
+            stageSpeakerID = roster.first(where: \.isSpotlighted)?.id
+                ?? roster.first(where: \.isPinned)?.id ?? featured
+            lastStageProvider = stageProvider
+            lastReleaseStage = releaseStage
+        }
         self.flags = flags
         self.waiting = waiting
         self.session = session
@@ -979,7 +1106,7 @@ private final class RootView: NSView {
         // Clamp rather than reset. If someone leaves while the teacher is on the
         // last page, dropping them to page one would lose their place; this only
         // moves them when the page they are on no longer exists.
-        let pages = max(1, Int(ceil(Double(roster.count) / Double(perPage))))
+        let pages = max(1, Int(ceil(Double(listed.count) / Double(perPage))))
         page = min(page, pages - 1)
 
         syncTiles()
@@ -1004,6 +1131,7 @@ private final class RootView: NSView {
         // that never draws.
         attachVideo(videoProvider)
         attachSelfVideo(selfProvider)
+        if meetingForm { attachStage(); updateMeetingChrome() }
     }
 
     private func syncTiles() {
@@ -1062,6 +1190,7 @@ private final class RootView: NSView {
 
     /// Fed at 20Hz from the mic monitor, independent of the roster poll.
     func applyMicLevel(_ level: Double, running: Bool) {
+        if meetingForm { selfPreview.setLevel(running ? level : 0) }
         micMeter.isHidden = !running
         micLabel.isHidden = !running
         micHint.isHidden = !running
@@ -1087,14 +1216,18 @@ private final class RootView: NSView {
     /// speaker window for one NSView.
     private func attachSelfVideo(_ provider: @escaping (NSRect) -> NSView?) {
         lastSelfProvider = provider
-        let host = selfViewHost
+        let host = meetingForm ? selfPreview.videoHost : selfViewHost
         guard !host.bounds.isEmpty else { return }
         guard let view = provider(host.bounds) else { return }
         if selfVideo !== view {
             selfVideo?.removeFromSuperview()
             view.autoresizingMask = [.width, .height]
-            // Under the switch countdown, which is drawn over the picture.
-            host.addSubview(view, positioned: .below, relativeTo: switchCountdown)
+            if meetingForm {
+                host.addSubview(view)
+            } else {
+                // Under the switch countdown, which is drawn over the picture.
+                host.addSubview(view, positioned: .below, relativeTo: switchCountdown)
+            }
             selfVideo = view
         }
         view.frame = host.bounds
@@ -1108,6 +1241,9 @@ private final class RootView: NSView {
         tiles.values.forEach { $0.detachVideo() }
         selfVideo?.removeFromSuperview()
         selfVideo = nil
+        stageVideo?.removeFromSuperview()
+        stageVideo = nil
+        lastReleaseStage?()
     }
 
     // MARK: Layout
@@ -1119,6 +1255,7 @@ private final class RootView: NSView {
     private var lastRailDocumentHeight: CGFloat = 0
 
     private func layoutEverything() {
+        if meetingForm { layoutMeeting(); return }
         let width = bounds.width
         let showContext = selected != nil
         // A join or a leave moves the divider, and DESIGN.md budgets 250ms for a
@@ -1289,12 +1426,14 @@ private final class RootView: NSView {
     /// subscription, ring state - works from this rather than the whole roster,
     /// so a class of forty does not mean forty live video streams.
     private var pageRoster: [ZoomMeetingSDKClient.RosterEntry] {
+        let list = listed
         let start = page * perPage
-        guard start < roster.count else { return [] }
-        return Array(roster[start..<min(start + perPage, roster.count)])
+        guard start < list.count else { return [] }
+        return Array(list[start..<min(start + perPage, list.count)])
     }
 
     private func layoutTiles() {
+        if isSpeakerMode { layoutFilmstrip(); return }
         let visible = pageRoster
         guard !visible.isEmpty else { return }
         let full = gridHost.bounds
@@ -1390,6 +1529,339 @@ private final class RootView: NSView {
         return best
     }
 
+    // MARK: Meeting form
+
+    /// What the meeting window adds to the shared views: a Gallery/Speaker
+    /// control in the top bar, the stage, one side panel on the right and the
+    /// toolbar along the foot. The rail does not exist in this form; the self
+    /// view is the corner preview, and Cues and the needs block sit at the top
+    /// of the People panel.
+    private func setupMeetingForm() {
+        let saved = UserDefaults.standard.string(forKey: "meetingWindow.view")
+        viewMode = form.isSlot ? .speaker : (saved == "speaker" ? .speaker : .gallery)
+        modeControl.selectedSegment = viewMode.rawValue
+        modeControl.setAccessibilityLabel("Video layout")
+        topBar.addSubview(modeControl)
+        rebuildHeaderActions()   // the meeting-info button, beside the number it expands on
+
+        // A black stage: letterboxing against window-background grey reads as a
+        // rendering fault.
+        stageHost.wantsLayer = true
+        stageHost.layer?.backgroundColor = NSColor.black.cgColor
+        stageHost.layer?.cornerRadius = 10        // DESIGN.md radius-md
+        stageHost.layer?.masksToBounds = true
+        addSubview(stageHost, positioned: .below, relativeTo: emptyState)
+        // Layer-backed so the caption composites ABOVE the SDK's render surface.
+        stageScrim.wantsLayer = true
+        stageScrim.layer?.backgroundColor = NSColor.black.withAlphaComponent(0.55).cgColor
+        stageHost.addSubview(stageScrim)
+        stageName.font = .systemFont(ofSize: 13, weight: .medium)
+        stageName.textColor = .white
+        stageName.lineBreakMode = .byTruncatingTail
+        stageScrim.addSubview(stageName)
+
+        sidePanelHost.isHidden = true
+        sidePanelTitle.font = .systemFont(ofSize: 13, weight: .semibold)
+        sidePanelTitle.textColor = .labelColor
+        sidePanelDivider.wantsLayer = true
+        sidePanelDivider.layer?.backgroundColor = NSColor.separatorColor.cgColor
+        sidePanelClose.isBordered = false
+        sidePanelClose.imagePosition = .imageOnly
+        sidePanelClose.image = NSImage(systemSymbolName: "xmark", accessibilityDescription: "Close panel")?
+            .withSymbolConfiguration(.init(pointSize: 11, weight: .medium))
+        sidePanelClose.contentTintColor = .secondaryLabelColor
+        sidePanelClose.toolTip = "Close panel"
+        for view in [sidePanelDivider, sidePanelTitle, sidePanelClose, queueScroll, peopleView] as [NSView] {
+            sidePanelHost.addSubview(view)   // the queue moves here from the rail
+        }
+        peopleView.onSelect = { [weak self] id in
+            self?.selected = id
+            self?.selectionChanged()
+        }
+
+        if let controls {
+            let host = FirstMouseHostingView(rootView: MeetingToolbarView(model: controls, coordinator: controls.coordinator)
+                .tint(Brand.green))
+            host.frame = bottomBar.bounds
+            host.autoresizingMask = [.width, .height]
+            bottomBar.addSubview(host)
+            // Published fires before the value lands; lay out on the next turn.
+            controlsSub = controls.$sidePanel.sink { [weak self] _ in
+                DispatchQueue.main.async { self?.sidePanelChanged() }
+            }
+        }
+        // Chrome last, so in the hover form it sits over the video.
+        for view in [selfPreview, sidePanelHost, inspector, readiness, topBar, bottomBar] as [NSView] {
+            addSubview(view)
+        }
+    }
+
+    @objc private func modeChanged(_ sender: NSSegmentedControl) {
+        viewMode = ViewMode(rawValue: sender.selectedSegment) ?? .gallery
+        if !form.isSlot {
+            UserDefaults.standard.set(viewMode == .speaker ? "speaker" : "gallery", forKey: "meetingWindow.view")
+        }
+        page = 0
+        // A different list of people is on screen, so tiles, then layout, then
+        // video, in that order and without waiting for the poll.
+        syncTiles()
+        updateChromeText()
+        layoutEverything()
+        if let provider = lastVideoProvider { attachVideo(provider) }
+        attachStage()
+    }
+
+    private func sidePanelChanged() {
+        controls?.refresh()
+        layoutEverything()
+    }
+
+    /// Speaker view's picture: one element, handed whoever is on the stage.
+    private func attachStage() {
+        guard isSpeakerMode, let id = stageSpeakerID, let provider = lastStageProvider else {
+            stageVideo?.removeFromSuperview()
+            stageVideo = nil
+            lastReleaseStage?()
+            return
+        }
+        guard !stageHost.bounds.isEmpty else { return }
+        guard let view = provider(id, stageHost.bounds) else { return }
+        if stageVideo !== view {
+            stageVideo?.removeFromSuperview()
+            view.autoresizingMask = [.width, .height]
+            stageHost.addSubview(view, positioned: .below, relativeTo: stageScrim)
+            stageVideo = view
+        }
+        view.frame = stageHost.bounds
+    }
+
+    /// Your corner preview and the roster, rewritten once a second.
+    private func updateMeetingChrome() {
+        if let sdk = ParticipantGridWindowController.sdk {
+            selfPreview.apply(muted: sdk.iAmMuted, videoOn: sdk.myVideoIsOn, level: lastMicLevel)
+        }
+        if let id = stageSpeakerID, let entry = roster.first(where: { $0.id == id }) {
+            var name = entry.name
+            if entry.isHost { name += " \u{00B7} host" } else if entry.isCoHost { name += " \u{00B7} co-host" }
+            stageName.stringValue = name
+        }
+    }
+
+    private func updatePeopleRows() {
+        let queue = handQueue
+        let handIDs = Set(queue.map(\.id))
+        func row(_ entry: ZoomMeetingSDKClient.RosterEntry) -> MeetingPeopleView.Row {
+            var detail: [String] = []
+            if entry.isHost { detail.append("host") } else if entry.isCoHost { detail.append("co-host") }
+            if entry.isSpotlighted { detail.append("spotlit") }
+            if !entry.hasJoinedAudio { detail.append("no audio") }
+            return .init(id: entry.id, name: entry.name, detail: detail.joined(separator: " \u{00B7} "),
+                         handUp: entry.isRaisingHand, muted: entry.isMuted && entry.hasJoinedAudio,
+                         cameraOff: !entry.videoOn, selected: selected == entry.id)
+        }
+        peopleView.apply(hands: queue.map(row),
+                         everyone: roster.filter { !handIDs.contains($0.id) }.map(row),
+                         total: roster.count + 1)
+    }
+
+    /// The pointer over the small slot form brings its chrome in; leaving takes
+    /// it out after a beat, so a menu opened from the toolbar is not pulled out
+    /// from under the pointer.
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        trackingAreas.forEach(removeTrackingArea)
+        guard hoverChrome else { return }
+        addTrackingArea(NSTrackingArea(rect: bounds,
+                                       options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect],
+                                       owner: self))
+    }
+
+    override func mouseEntered(with event: NSEvent) {
+        guard hoverChrome else { return }
+        chromeHideWork?.cancel()
+        guard !chromeHover else { return }
+        chromeHover = true
+        layoutEverything()
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        guard hoverChrome else { return }
+        chromeHideWork?.cancel()
+        let work = DispatchWorkItem { [weak self] in
+            self?.chromeHover = false
+            self?.layoutEverything()
+        }
+        chromeHideWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5, execute: work)
+    }
+
+    private func layoutMeeting() {
+        let width = bounds.width, height = bounds.height
+        let barHeight = Self.barHeight, toolbarHeight = MeetingToolbarView.height
+        let panel = controls?.sidePanel
+        let chrome = !hoverChrome || chromeHover || panel != nil
+
+        rail.isHidden = true
+        railDivider.isHidden = true
+        contextBar.isHidden = true
+        topBar.isHidden = !chrome
+        bottomBar.isHidden = !chrome
+        topBar.frame = NSRect(x: 0, y: height - barHeight, width: width, height: barHeight)
+        bottomBar.frame = NSRect(x: 0, y: 0, width: width, height: toolbarHeight)
+
+        // The slot form has no room for permanent chrome, so it lies over the
+        // video; the full form gives the stage what is left between the bars.
+        let reserveTop = hoverChrome ? 0 : barHeight
+        let reserveBottom = hoverChrome ? 0 : toolbarHeight
+        let panelWidth = panel == nil ? 0 : min(Self.sidePanelWidth, width)
+        // Below narrowWidth the panel covers the stage's right edge instead of
+        // taking a column off it, and the stage keeps its full width.
+        let overlay = isNarrow
+        let stageRight = (panel != nil && !overlay) ? width - panelWidth : width
+        let clearRight = panel != nil ? width - panelWidth : width      // left of the panel
+        let stage = NSRect(x: 0, y: reserveBottom, width: stageRight,
+                           height: max(0, height - reserveTop - reserveBottom))
+
+        sidePanelHost.isHidden = panel == nil
+        if let panel {
+            sidePanelHost.frame = NSRect(x: width - panelWidth, y: reserveBottom,
+                                         width: panelWidth, height: stage.height)
+            layoutSidePanel(panel)
+        }
+
+        let others = !listed.isEmpty
+        let pages = max(1, Int(ceil(Double(listed.count) / Double(perPage))))
+        let pagerHeight: CGFloat = (!isSpeakerMode && pages > 1) ? 24 : 0
+
+        // You, in the corner, over the grid: laid out after it and never part of
+        // its arithmetic.
+        let preview = Self.selfPreviewSize
+        selfPreview.isHidden = false
+        selfPreview.frame = NSRect(x: min(stage.maxX, clearRight) - preview.width - 12,
+                                   y: stage.minY + 12 + pagerHeight, width: preview.width, height: preview.height)
+        // Its video host is sized in its own layout pass; the self element is
+        // attached later in this same update and needs real bounds.
+        selfPreview.layoutSubtreeIfNeeded()
+
+        if isSpeakerMode {
+            let strip: CGFloat = others ? Self.stripHeight : 0
+            gridHost.layer?.backgroundColor = NSColor.clear.cgColor
+            // The preview owns the strip's right-hand end.
+            gridHost.frame = NSRect(x: stage.minX, y: stage.minY,
+                                    width: max(0, min(stage.maxX, clearRight) - stage.minX - preview.width - 24),
+                                    height: strip)
+            stageHost.isHidden = roster.isEmpty
+            stageHost.frame = NSRect(x: stage.minX + 8, y: stage.minY + strip + 8,
+                                     width: max(0, stage.width - 16), height: max(0, stage.height - strip - 16))
+            let scrimHeight: CGFloat = 26
+            stageScrim.frame = NSRect(x: 0, y: 0, width: stageHost.bounds.width, height: scrimHeight)
+            stageScrim.isHidden = stageName.stringValue.isEmpty
+            stageName.sizeToFit()
+            stageName.frame = NSRect(x: 8, y: (scrimHeight - stageName.frame.height) / 2,
+                                     width: min(stageName.frame.width, max(0, stageHost.bounds.width - 16)),
+                                     height: stageName.frame.height)
+            layoutPager(pages: 1, y: stage.minY, width: stage.width)
+        } else {
+            gridHost.layer?.backgroundColor = NSColor.underPageBackgroundColor.cgColor
+            stageHost.isHidden = true
+            gridHost.frame = NSRect(x: stage.minX, y: stage.minY + pagerHeight,
+                                    width: stage.width, height: max(0, stage.height - pagerHeight))
+            layoutPager(pages: pages, y: stage.minY, width: stage.width)
+        }
+
+        readiness.isHidden = true
+        emptyState.isHidden = !roster.isEmpty
+        emptyState.frame = NSRect(x: stage.minX + 40, y: stage.midY - 40,
+                                  width: max(80, stage.width - 80), height: 80)
+
+        inspector.isHidden = selected == nil
+        updateEscapeMonitor(active: selected != nil)
+        if selected != nil {
+            let drawer = min(inspector.height(), stage.height - 32)
+            inspector.frame = NSRect(x: clearRight - ParticipantInspectorView.width - 16,
+                                     y: stage.maxY - drawer - 16,
+                                     width: ParticipantInspectorView.width, height: drawer)
+        }
+
+        layoutHeaderLabels()
+        layoutMeetingTopBar()
+        layoutTiles()
+    }
+
+    /// Title and facts on the left, the Gallery/Speaker control in the middle,
+    /// recording and the info button on the right. Whatever would collide with
+    /// the control is dropped, not overlapped.
+    private func layoutMeetingTopBar() {
+        shortcutsLabel.isHidden = true
+        modeControl.sizeToFit()
+        let size = modeControl.frame.size
+        modeControl.frame = NSRect(x: ((bounds.width - size.width) / 2).rounded(),
+                                   y: (Self.barHeight - size.height) / 2,
+                                   width: size.width, height: size.height)
+        titleLabel.frame.size.width = min(titleLabel.frame.width, 200)
+        factsLabel.frame.origin.x = titleLabel.frame.maxX + 16
+        factsLabel.isHidden = factsLabel.frame.maxX > modeControl.frame.minX - 16
+        let recordingLeft = recordingDot.isHidden ? CGFloat.greatestFiniteMagnitude : recordingDot.frame.minX
+        if recordingLeft < modeControl.frame.maxX + 16 {
+            recordingLabel.isHidden = true
+            recordingDot.isHidden = true
+        }
+    }
+
+    private func layoutSidePanel(_ panel: MeetingSidePanel) {
+        let width = sidePanelHost.bounds.width, height = sidePanelHost.bounds.height
+        let head: CGFloat = 40
+        sidePanelDivider.frame = NSRect(x: 0, y: 0, width: 1, height: height)
+        sidePanelTitle.stringValue = panel == .chat ? "Chat" : "People"
+        sidePanelTitle.sizeToFit()
+        sidePanelTitle.frame = NSRect(x: 16, y: height - head + (head - sidePanelTitle.frame.height) / 2,
+                                      width: sidePanelTitle.frame.width, height: sidePanelTitle.frame.height)
+        sidePanelClose.frame = NSRect(x: width - 36, y: height - head + 8, width: 24, height: 24)
+        let body = NSRect(x: 0, y: 0, width: width, height: max(0, height - head))
+
+        switch panel {
+        case .chat:
+            if chatHost == nil, let bridge = ParticipantGridWindowController.chatBridge {
+                let host = FirstMouseHostingView(rootView: ChatWindowView(chat: bridge).tint(Brand.green))
+                sidePanelHost.addSubview(host)
+                chatHost = host
+            }
+            chatHost?.isHidden = false
+            chatHost?.frame = body
+            queueScroll.isHidden = true
+            peopleView.isHidden = true
+        case .people:
+            chatHost?.isHidden = true
+            peopleView.isHidden = false
+            // The needs block and Cues sit at the top, taking what they want up
+            // to under half the panel and scrolling inside that; the roster has
+            // the rest.
+            let wanted = liveQueue.height(for: consoleState, width: width)
+            let queueHeight = wanted == 0 ? 0 : min(wanted, (body.height * 0.45).rounded())
+            queueScroll.isHidden = queueHeight <= 0
+            queueScroll.frame = NSRect(x: 0, y: body.height - queueHeight, width: width, height: queueHeight)
+            if queueHeight > 0 { placeQueue(height: queueHeight, width: width) }
+            peopleView.frame = NSRect(x: 0, y: 0, width: width, height: max(0, body.height - queueHeight))
+            updatePeopleRows()
+        }
+    }
+
+    /// Speaker view's filmstrip: one centred row under the stage.
+    private func layoutFilmstrip() {
+        let visible = pageRoster
+        guard !visible.isEmpty else { return }
+        let tileHeight = Self.stripHeight - 16
+        let tileWidth = (tileHeight * 16 / 9).rounded()
+        let total = CGFloat(visible.count) * tileWidth + CGFloat(visible.count - 1) * Self.gutter
+        var x = max(0, ((gridHost.bounds.width - total) / 2).rounded())
+        for entry in visible {
+            guard let tile = tiles[entry.id] else { continue }
+            let target = NSRect(x: x, y: 8, width: tileWidth, height: tileHeight)
+            if tile.frame != target { tile.frame = target }
+            x += tileWidth + Self.gutter
+        }
+    }
+
     // MARK: Chrome
 
     override func layout() {
@@ -1400,7 +1872,7 @@ private final class RootView: NSView {
     private func updateChromeText() {
         let heads = roster.count
         let people = heads == 1 ? "1 person" : "\(heads) people"
-        titleLabel.stringValue = session.presetName.isEmpty ? "Class" : session.presetName
+        titleLabel.stringValue = session.presetName.isEmpty ? (meetingForm ? "Meeting" : "Class") : session.presetName
 
         var facts = [people]
         if !session.meetingNumber.isEmpty { facts.append(session.meetingNumber) }
@@ -1430,9 +1902,15 @@ private final class RootView: NSView {
         recordingLabel.stringValue = "Recording locally"
         recordingLabel.textColor = .labelColor
 
-        emptyState.stringValue = waiting.isEmpty
-            ? "Waiting for students.\nThey will appear here as they join."
-            : "\(waiting.count) waiting to be let in.\nUse Participants \u{2192} Admit all waiting."
+        if meetingForm {
+            emptyState.stringValue = waiting.isEmpty
+                ? "Waiting for others.\nThey appear here as they join."
+                : "\(waiting.count) waiting to be let in.\nOpen People to admit them."
+        } else {
+            emptyState.stringValue = waiting.isEmpty
+                ? "Waiting for students.\nThey will appear here as they join."
+                : "\(waiting.count) waiting to be let in.\nUse Participants \u{2192} Admit all waiting."
+        }
 
         // Only exceptions earn a line. A head count here duplicated the top
         // bar's "N people" word for word, so in an empty room the block was one
@@ -1501,8 +1979,6 @@ private final class RootView: NSView {
     private func moreItems() -> [(String, () -> Void)] {
         var out: [(String, () -> Void)] = []
         out.append(("Snap windows back", { ParticipantGridWindowController.requestSnapBack() }))
-        out.append((session.speakerHidden ? "Show live speaker" : "Hide live speaker",
-                    { ParticipantGridWindowController.requestToggleSpeaker() }))
         out.append(("Greenroom window", { ParticipantGridWindowController.requestShowMainWindow() }))
         out.append(("Meeting info", { Self.showMeetingInfo() }))
         return out
@@ -1655,7 +2131,7 @@ private final class RootView: NSView {
     }
 
     private func rebuildBars() {
-        rebuildRail()
+        if !meetingForm { rebuildRail() }
         rebuildContextBar()
     }
 
@@ -1699,11 +2175,6 @@ private final class RootView: NSView {
         railControls.append(Self.railRow("Snap Back", symbol: "rectangle.3.group",
                                          hint: "Snap windows back  \u{2325}\u{2318}S") {
             ParticipantGridWindowController.requestSnapBack()
-        })
-        railControls.append(Self.railRow(session.speakerHidden ? "Show Speaker" : "Hide Speaker",
-                                         symbol: session.speakerHidden ? "eye" : "eye.slash",
-                                         hint: "Live speaker  \u{2325}\u{2318}Z") {
-            ParticipantGridWindowController.requestToggleSpeaker()
         })
         railControls.append(Self.railRow("Chat", symbol: "bubble.left.and.bubble.right") {
             ParticipantGridWindowController.requestShowChat()
@@ -1840,32 +2311,35 @@ private final class RootView: NSView {
         railContent.scroll(NSPoint(x: 0, y: max(0, documentHeight - scrolledFromTop - visibleHeight)))
         lastRailDocumentHeight = documentHeight
 
-        if queueHeight > 0 {
-            // Where the teacher had scrolled the queue to, from its top, read
-            // BEFORE the view is resized and rewritten below. This runs on
-            // every one-second poll, and it used to end by scrolling the
-            // queue back to the top unconditionally - so a scroll lasted until
-            // the next tick and then snapped, which is what "laggy" was.
-            let queueViewport = queueScroll.contentView.bounds
-            let queueFromTop = liveQueue.bounds.height > 0
-                ? max(0, liveQueue.bounds.height - queueViewport.maxY) : 0
-            // Frame first, THEN write it: the view lays out from its own
-            // height, so it has to know that height before it draws.
-            // The VIEWPORT height, not what the queue wanted. Sized to the
-            // want, the block fitted five cards into a 400pt document that an
-            // 80pt scroller showed the top of - measured live, every card sat
-            // below the window edge. Sized to what it has, the block fits whole
-            // cards and counts the rest, which is what it was built to do.
-            liveQueue.frame = NSRect(x: 0, y: 0, width: rail.bounds.width,
-                                     height: queueHeight)
-            liveQueue.apply(consoleState, width: rail.bounds.width)
-            // Non-flipped document views scroll to the bottom by default, which
-            // would open the queue showing its last row - so the position is
-            // put back counted from the top, clamped to what now exists.
-            let maxFromTop = max(0, liveQueue.bounds.height - queueViewport.height)
-            liveQueue.scroll(NSPoint(x: 0, y: liveQueue.bounds.height - queueViewport.height
-                                             - min(queueFromTop, maxFromTop)))
-        }
+        if queueHeight > 0 { placeQueue(height: queueHeight, width: rail.bounds.width) }
+    }
+
+    /// Sizes and rewrites the queue inside its scroller, keeping the teacher's
+    /// place. One copy for the rail and the People panel, which both hold it.
+    private func placeQueue(height queueHeight: CGFloat, width: CGFloat) {
+        // Where the teacher had scrolled the queue to, from its top, read
+        // BEFORE the view is resized and rewritten below. This runs on
+        // every one-second poll, and it used to end by scrolling the
+        // queue back to the top unconditionally - so a scroll lasted until
+        // the next tick and then snapped, which is what "laggy" was.
+        let queueViewport = queueScroll.contentView.bounds
+        let queueFromTop = liveQueue.bounds.height > 0
+            ? max(0, liveQueue.bounds.height - queueViewport.maxY) : 0
+        // Frame first, THEN write it: the view lays out from its own
+        // height, so it has to know that height before it draws.
+        // The VIEWPORT height, not what the queue wanted. Sized to the
+        // want, the block fitted five cards into a 400pt document that an
+        // 80pt scroller showed the top of - measured live, every card sat
+        // below the window edge. Sized to what it has, the block fits whole
+        // cards and counts the rest, which is what it was built to do.
+        liveQueue.frame = NSRect(x: 0, y: 0, width: width, height: queueHeight)
+        liveQueue.apply(consoleState, width: width)
+        // Non-flipped document views scroll to the bottom by default, which
+        // would open the queue showing its last row - so the position is
+        // put back counted from the top, clamped to what now exists.
+        let maxFromTop = max(0, liveQueue.bounds.height - queueViewport.height)
+        liveQueue.scroll(NSPoint(x: 0, y: liveQueue.bounds.height - queueViewport.height
+                                         - min(queueFromTop, maxFromTop)))
     }
 
     /// The single content column the whole rail aligns to: picture, caption,
@@ -2180,7 +2654,7 @@ private final class RootView: NSView {
     }
 
     private var pageCount: Int? {
-        roster.isEmpty ? nil : max(1, Int(ceil(Double(roster.count) / Double(perPage))))
+        listed.isEmpty ? nil : max(1, Int(ceil(Double(listed.count) / Double(perPage))))
     }
 
     /// A page change swaps which students are on screen, so tiles, video
@@ -2189,8 +2663,7 @@ private final class RootView: NSView {
     private func pageChanged() {
         selected = nil
         lastBarSignature = barSignature()
-        rebuildRail()
-        rebuildContextBar()
+        rebuildBars()
         layoutEverything()
         if let provider = lastVideoProvider { attachVideo(provider) }
         if let provider = lastSelfProvider { attachSelfVideo(provider) }
@@ -2722,6 +3195,19 @@ private final class RootView: NSView {
         let trimmed = field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
         if response == .alertFirstButtonReturn, !trimmed.isEmpty { action(trimmed) }
     }
+}
+
+// MARK: - First-click controls
+
+/// Both of these live in a window that is almost never key. A stock control in a
+/// non-key window discards its first press as "make me key", so every click
+/// would need doing twice. See ClosureButton for the same lesson.
+private final class FirstClickSegmented: NSSegmentedControl {
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+}
+
+private final class FirstMouseHostingView<Content: View>: NSHostingView<Content> {
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 }
 
 // MARK: - Chrome background

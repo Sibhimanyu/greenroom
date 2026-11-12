@@ -34,7 +34,9 @@ final class CoordinatorController: ObservableObject {
         customUIGridTask = nil
         MeetingControlBarController.close()
         ParticipantGridWindowController.close()
+        #if DEBUG
         ViewSpike.shared.close()
+        #endif
         zoomChatClient.releaseCustomUIVideo()
         zoomChatClient.leave() // ends the meeting if we're hosting it
     }
@@ -1507,7 +1509,9 @@ final class CoordinatorController: ObservableObject {
             recorder?.disarmClipBuffer()
             zoomChatClient.onParticipantCountChanged = nil
                 if failure == nil { ParticipantGridWindowController.close() }
+            #if DEBUG
             ViewSpike.shared.close()
+            #endif
             zoomChatClient.releaseCustomUIVideo()
             // A beat between cancelling the window-follow loops and the
             // SDK tearing its meeting windows down: the crash logs' seven
@@ -2596,9 +2600,11 @@ final class CoordinatorController: ObservableObject {
                 presetName: self.meetingPresets.first { $0.number == digits }?.name ?? "",
                 readiness: self.startReadiness)
             ParticipantGridWindowController.refresh(on: target.screen, session: session, form: target.form)
+            #if DEBUG
             // Phase 0 spike, behind a hidden default (ViewSpike.swift): nothing here when it is off.
             ViewSpike.shared.sync(client: self.zoomChatClient,
                                   meetingWindowOpen: ParticipantGridWindowController.meetingWindowIsOpen)
+            #endif
             return true
         }
         if let target = meetingSurfaceTarget() {

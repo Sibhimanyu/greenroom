@@ -1,3 +1,4 @@
+#if DEBUG
 //
 //  ViewSpike.swift
 //  Greenroom
@@ -243,3 +244,4 @@ private final class SpikePanel: NSPanel {
     override var canBecomeKey: Bool { false }
     override var canBecomeMain: Bool { false }
 }
+#endif

@@ -446,6 +446,7 @@ final class ZoomMeetingSDKClient: NSObject, ObservableObject {
         lastStageFrame = .zero
     }
 
+    #if DEBUG
     // MARK: - View spike (phase 0 of .context/meeting-views-plan.md)
     //
     // One extra render element for ONE extra window, behind the hidden default
@@ -488,6 +489,7 @@ final class ZoomMeetingSDKClient: NSObject, ObservableObject {
         let id = roster.first(where: \.isSpotlighted)?.id ?? roster.first(where: \.isPinned)?.id ?? speakerToShow()
         return roster.first { $0.id == id }
     }
+    #endif
 
     // MARK: - Featured speaker
     //
@@ -612,7 +614,9 @@ final class ZoomMeetingSDKClient: NSObject, ObservableObject {
     /// Releases the render elements. Called on leave so the SDK is not left
     /// drawing into views that are about to disappear.
     func releaseCustomUIVideo() {
+        #if DEBUG
         spikeReleaseElement()
+        #endif
         releaseStage()
         if let element = railSelfElement {
             _ = videoContainer?.clean(element)
@@ -1383,11 +1387,13 @@ extension ZoomMeetingSDKClient: ZoomSDKVideoContainerDelegate {
         }
         let userID = element.userid
         // The spike's element has no bookkeeping here: no cooldown, no retry.
+        #if DEBUG
         if let spike = spikeElement, spike === element {
             Self.videoLog("View spike: SUBSCRIBE FAIL code=\(error.rawValue) user=\(userID) \(reason)")
             onSpikeSubscribeFail?(Int(error.rawValue), userID)
             return
         }
+        #endif
         let now = Date()
         // The active element FIRST, and return: it shares no user bookkeeping
         // with the tiles, and falling through armed a cooldown nothing ever
@@ -1438,12 +1444,14 @@ extension ZoomMeetingSDKClient: ZoomSDKVideoContainerDelegate {
     /// and it is NOT a failure - it is what the SDK draws when someone's camera
     /// is off. Logged so the two are never confused again.
     func onRenderDataTypeChanged(_ element: ZoomSDKVideoElement?, dataType type: VideoRenderDataType) {
+        #if DEBUG
         if let spike = spikeElement, let element, spike === element {
             Self.videoLog("View spike: render data type user=\(element.userid) type=\(type.rawValue)"
                 + " (\(type == VideoRenderDataType_Video ? "video" : type == VideoRenderDataType_Avatar ? "avatar" : "none"))")
             onSpikeDataType?(type)
             return
         }
+        #endif
         Self.videoLog("dataTypeChanged user=\(element?.userid ?? 0) type=\(type.rawValue)")
         // Someone's camera coming back on is the moment a previously refused
         // subscription is most worth retrying: the rate limiter has long since

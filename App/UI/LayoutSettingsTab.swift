@@ -210,6 +210,8 @@ struct LayoutPageContent: View {
 
         }
         .formStyle(.grouped)
+        .scrollContentBackground(.hidden)
+        .background(Brand.windowBackground)
         // Nothing focused when the tab opens: macOS Tab cycles text fields, and
         // a field that claims focus on open cannot be escaped.
         .defaultFocus($focus, nil)
@@ -252,9 +254,7 @@ struct LayoutPageContent: View {
 
     // MARK: Card strip
 
-    private var thumbHeight: CGFloat {
-        min(max(layoutCardWidth / max(mainSize.width / max(mainSize.height, 1), 1.2), 44), 84)
-    }
+    private var thumbHeight: CGFloat { layoutThumbHeight(for: mainSize) }
 
     private var cardStrip: some View {
         ScrollView(.horizontal, showsIndicators: false) {
@@ -262,14 +262,7 @@ struct LayoutPageContent: View {
                 LayoutCard(title: "None", selected: library.activeID == nil, isRenaming: false,
                            draft: .constant(""), select: { choose(nil) }, beginRename: nil,
                            commitRename: {}, cancelRename: {}) {
-                    ZStack {
-                        RoundedRectangle(cornerRadius: 4)
-                            .strokeBorder(Color.secondary.opacity(0.5), style: StrokeStyle(lineWidth: 1, dash: [4, 3]))
-                        Image(systemName: "nosign")
-                            .font(.system(size: 18, weight: .light))
-                            .foregroundStyle(.secondary)
-                    }
-                    .frame(height: thumbHeight)
+                    LayoutNoneThumbnail(height: thumbHeight)
                 }
                 .help("Greenroom opens and moves nothing.")
 
@@ -937,9 +930,29 @@ struct LayoutPageContent: View {
 /// One layout in the strip: a thumbnail at the display's shape over its name.
 /// Clicking selects it AND makes it the Start layout; double-clicking the name
 /// renames it.
-private let layoutCardWidth: CGFloat = 112
+let layoutCardWidth: CGFloat = 112
 
-private struct LayoutCard<Thumbnail: View>: View {
+/// The card thumbnails' height at a display's shape. Shared with onboarding.
+func layoutThumbHeight(for mainSize: CGSize) -> CGFloat {
+    min(max(layoutCardWidth / max(mainSize.width / max(mainSize.height, 1), 1.2), 44), 84)
+}
+
+/// The None card's picture: a dashed outline and a no-entry sign.
+struct LayoutNoneThumbnail: View {
+    let height: CGFloat
+    var body: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 4)
+                .strokeBorder(Color.secondary.opacity(0.5), style: StrokeStyle(lineWidth: 1, dash: [4, 3]))
+            Image(systemName: "nosign")
+                .font(.system(size: 18, weight: .light))
+                .foregroundStyle(.secondary)
+        }
+        .frame(height: height)
+    }
+}
+
+struct LayoutCard<Thumbnail: View>: View {
     let title: String
     let selected: Bool
     let isRenaming: Bool
@@ -1053,366 +1066,5 @@ private struct LayoutPaletteChip: View {
             .accessibilityAddTraits(.isButton)
             .accessibilityAction(named: "Add to layout", action)
             .accessibilityAction(.default, action)
-    }
-}
-
-// MARK: - Retired in phase C
-//
-// The fixed main-pane + side-column controls. Nothing on the page uses them any
-// more; WorkspaceLayout, ChatWindowController and the runtime still read the
-// values they edited until phase B replaces that path, and these go with it.
-
-// MARK: - Pieces
-
-/// A bordered strip of small picture buttons, like the Webcam page's sizes.
-private struct GlyphGroup<Content: View>: View {
-    @ViewBuilder let content: () -> Content
-
-    var body: some View {
-        HStack(spacing: 4) { content() }
-            .padding(4)
-            .background(RoundedRectangle(cornerRadius: 10).strokeBorder(Color.secondary.opacity(0.25)))
-    }
-}
-
-private struct GlyphButton<Label: View>: View {
-    let selected: Bool
-    let name: String
-    @ViewBuilder let label: () -> Label
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            label()
-                .padding(.horizontal, 4)
-                .padding(.vertical, 4)
-                .background(RoundedRectangle(cornerRadius: 6)
-                    .fill(selected ? Brand.green.opacity(0.12) : .clear))
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .help(name)
-        .accessibilityLabel(name)
-        .accessibilityAddTraits(selected ? .isSelected : [])
-    }
-}
-
-/// A thumbnail of the layout: a screen with the main pane filled in.
-private struct MiniScreen: View {
-    let fraction: Double
-    let mainOnLeft: Bool
-    let highlighted: Bool
-
-    var body: some View {
-        let width: CGFloat = 28, height: CGFloat = 20, inset: CGFloat = 3, gap: CGFloat = 2
-        let inner = width - 2 * inset - gap
-        let main = inner * fraction
-        HStack(spacing: gap) {
-            if mainOnLeft {
-                block(main, filled: true)
-                block(inner - main, filled: false)
-            } else {
-                block(inner - main, filled: false)
-                block(main, filled: true)
-            }
-        }
-        .padding(inset)
-        .frame(width: width, height: height)
-        .overlay(RoundedRectangle(cornerRadius: 4)
-            .strokeBorder(Color.secondary.opacity(0.5), lineWidth: 1))
-        .accessibilityHidden(true)
-    }
-
-    private func block(_ width: CGFloat, filled: Bool) -> some View {
-        RoundedRectangle(cornerRadius: 2)
-            .fill(filled ? (highlighted ? Brand.green : Color.secondary.opacity(0.6))
-                         : Color.secondary.opacity(0.2))
-            .frame(width: width)
-    }
-}
-
-/// The Zoom tile and the chat as two tiles you switch on and off. Both,
-/// either or neither: the checkmark says these are toggles, not a choice of one.
-private struct SideColumnPicker: View {
-    @Binding var layout: WorkspaceLayout
-
-    var body: some View {
-        HStack(spacing: 8) {
-            tile("Zoom tile", symbol: "video.fill", isOn: $layout.sideShowsZoomTile,
-                 help: "The meeting\u{2019}s speaker, at the top of the column")
-            tile("Chat", symbol: "bubble.left.and.bubble.right.fill", isOn: $layout.sideShowsChat,
-                 help: "The meeting chat, under the Zoom tile")
-        }
-        .padding(.vertical, 4)
-    }
-
-    private func tile(_ title: String, symbol: String, isOn: Binding<Bool>, help: String) -> some View {
-        ChoiceTile(title: title, selected: isOn.wrappedValue,
-                   badge: isOn.wrappedValue ? "checkmark.circle.fill" : "circle") {
-            Image(systemName: symbol)
-                .font(.system(size: 22, weight: .regular))
-                .foregroundStyle(isOn.wrappedValue ? Brand.green : Color.secondary)
-                .frame(height: 32)
-        } action: {
-            withAnimation(.snappy(duration: 0.25)) { isOn.wrappedValue.toggle() }
-        }
-        .help(help)
-    }
-}
-
-/// Where the participant view goes, as the displays themselves: each one
-/// drawn at its own shape, the main one with a menu bar.
-private struct DisplayPicker: View {
-    @Binding var selection: String
-    let displays: [DisplayInfo]
-
-    var body: some View {
-        HStack(spacing: 8) {
-            ChoiceTile(title: "Automatic", selected: selection.isEmpty, badge: nil) {
-                Image(systemName: "display.2")
-                    .font(.system(size: 22, weight: .regular))
-                    .foregroundStyle(selection.isEmpty ? Brand.green : Color.secondary)
-                    .frame(height: 32)
-            } action: { selection = "" }
-            .help("The first display that isn\u{2019}t your main one. Mirrored displays show as their main, so this finds the separate, extended monitor.")
-
-            ForEach(displays) { display in
-                let selected = selection == display.id
-                ChoiceTile(title: display.name, selected: selected, badge: nil) {
-                    DisplayGlyph(aspect: Double(display.pixelWidth) / Double(max(display.pixelHeight, 1)),
-                                 isMain: display.isMain, highlighted: selected, missing: false)
-                } action: { selection = display.id }
-                .help(display.label)
-            }
-
-            // Keep a saved-but-disconnected choice visible and valid.
-            if !selection.isEmpty, !displays.contains(where: { $0.id == selection }) {
-                ChoiceTile(title: "Saved display", selected: true, badge: nil) {
-                    DisplayGlyph(aspect: 16.0 / 9.0, isMain: false, highlighted: true, missing: true)
-                } action: {}
-                .help("Not connected right now. The view goes there when it is.")
-            }
-        }
-        .padding(.vertical, 4)
-    }
-}
-
-/// A display at its own aspect. Dashed when it is not connected.
-private struct DisplayGlyph: View {
-    let aspect: Double
-    let isMain: Bool
-    let highlighted: Bool
-    let missing: Bool
-
-    var body: some View {
-        let height: CGFloat = 30
-        let width = min(max(height * aspect, 22), 64)
-        let tint = highlighted ? Brand.green : Color.secondary
-        RoundedRectangle(cornerRadius: 3)
-            .fill(tint.opacity(0.15))
-            .overlay(RoundedRectangle(cornerRadius: 3)
-                .strokeBorder(tint, style: StrokeStyle(lineWidth: 1.5, dash: missing ? [3] : [])))
-            .overlay(alignment: .top) {
-                if isMain {
-                    Rectangle().fill(tint.opacity(0.6)).frame(height: 4)
-                        .clipShape(UnevenRoundedRectangle(topLeadingRadius: 3, topTrailingRadius: 3))
-                        .padding(.horizontal, 1.5).padding(.top, 1.5)
-                }
-            }
-            .frame(width: width, height: height)
-            .frame(height: 32)
-            .accessibilityHidden(true)
-    }
-}
-
-/// A miniature live preview of the three panes: the main app's slice, and
-/// the side column with the Zoom tile stacked over the chat - everything
-/// proportioned exactly as the real layout will be, updating as the
-/// controls below change.
-private struct LayoutSchematicView: View {
-    @Binding var layout: WorkspaceLayout
-    let appName: String
-    let appIcon: NSImage?
-
-    private let spacing: CGFloat = 4
-    @State private var draggingSplit = false
-    @State private var draggingSlot = false
-
-    var body: some View {
-        GeometryReader { geo in
-            let fraction = layout.clampedMainFraction
-            let mainWidth = (geo.size.width - spacing) * fraction
-            let sideWidth = geo.size.width - spacing - mainWidth
-            let dividerX = layout.mainOnLeft ? mainWidth + spacing / 2 : sideWidth + spacing / 2
-            let sideCenterX = layout.mainOnLeft ? mainWidth + spacing + sideWidth / 2 : sideWidth / 2
-
-            ZStack(alignment: .topLeading) {
-                HStack(spacing: spacing) {
-                    if layout.mainOnLeft {
-                        mainPane.frame(width: mainWidth)
-                        sideColumn(height: geo.size.height).frame(width: sideWidth)
-                    } else {
-                        sideColumn(height: geo.size.height).frame(width: sideWidth)
-                        mainPane.frame(width: mainWidth)
-                    }
-                }
-
-                // Vertical divider: drag to resize main pane vs side column.
-                grabber(width: 6, height: 44, active: draggingSplit)
-                    .frame(width: 18, height: geo.size.height)
-                    .contentShape(Rectangle())
-                    .position(x: dividerX, y: geo.size.height / 2)
-                    // NSCursor.set() rather than push/pop: the push/pop
-                    // stack desynced across enter/exit events and left the
-                    // wrong cursor orientation showing (reported live).
-                    // Re-set every drag tick too - AppKit resets the cursor
-                    // once the pointer leaves the hover area mid-drag.
-                    .onHover { inside in
-                        (inside ? NSCursor.resizeLeftRight : NSCursor.arrow).set()
-                    }
-                    .gesture(
-                        DragGesture(minimumDistance: 0, coordinateSpace: .named("schematic"))
-                            .onChanged { value in
-                                draggingSplit = true
-                                NSCursor.resizeLeftRight.set()
-                                let raw = Double(value.location.x / geo.size.width)
-                                let fraction = layout.mainOnLeft ? raw : 1 - raw
-                                layout.mainFraction = min(max(fraction, WorkspaceLayout.minMainFraction),
-                                                          WorkspaceLayout.maxMainFraction)
-                            }
-                            .onEnded { _ in
-                                draggingSplit = false
-                                NSCursor.arrow.set()
-                            }
-                    )
-                    // Keyboard/VoiceOver path for the mouse-only drag
-                    // (Codex design audit #4).
-                    .accessibilityElement()
-                    .accessibilityLabel("Main pane width")
-                    .accessibilityValue("\(Int((layout.clampedMainFraction * 100).rounded())) percent")
-                    .accessibilityAdjustableAction { direction in
-                        switch direction {
-                        case .increment:
-                            layout.mainFraction = min(layout.clampedMainFraction + 0.05, WorkspaceLayout.maxMainFraction)
-                        case .decrement:
-                            layout.mainFraction = max(layout.clampedMainFraction - 0.05, WorkspaceLayout.minMainFraction)
-                        @unknown default: break
-                        }
-                    }
-
-                // Horizontal divider: drag to balance Zoom tile vs chat.
-                if layout.sideShowsZoomTile && layout.sideShowsChat {
-                    let slotY = (geo.size.height - spacing) * layout.effectiveZoomSlotRatio + spacing / 2
-                    grabber(width: 44, height: 6, active: draggingSlot)
-                        .frame(width: max(sideWidth - 16, 24), height: 18)
-                        .contentShape(Rectangle())
-                        .position(x: sideCenterX, y: slotY)
-                        .onHover { inside in
-                            (inside ? NSCursor.resizeUpDown : NSCursor.arrow).set()
-                        }
-                        .gesture(
-                            DragGesture(minimumDistance: 0, coordinateSpace: .named("schematic"))
-                                .onChanged { value in
-                                    draggingSlot = true
-                                    NSCursor.resizeUpDown.set()
-                                    let ratio = Double(value.location.y / geo.size.height)
-                                    layout.zoomSlotRatio = min(max(ratio, 0.15), 0.85)
-                                }
-                                .onEnded { _ in
-                                    draggingSlot = false
-                                    NSCursor.arrow.set()
-                                }
-                        )
-                        .accessibilityElement()
-                        .accessibilityLabel("Zoom tile height")
-                        .accessibilityValue("\(Int((layout.effectiveZoomSlotRatio * 100).rounded())) percent")
-                        .accessibilityAdjustableAction { direction in
-                            switch direction {
-                            case .increment: layout.zoomSlotRatio = min(layout.zoomSlotRatio + 0.05, 0.85)
-                            case .decrement: layout.zoomSlotRatio = max(layout.zoomSlotRatio - 0.05, 0.15)
-                            @unknown default: break
-                            }
-                        }
-                }
-            }
-            .coordinateSpace(name: "schematic")
-        }
-        // Snappy preset-style animation for external changes only - never
-        // mid-drag, where it would lag the pointer.
-        .animation(draggingSplit || draggingSlot ? nil : .snappy(duration: 0.25), value: layout)
-    }
-
-    /// Deliberately assertive, not decorative: the handles are the fine
-    /// width control, so they must read as grabbable at a glance
-    /// (design-review F5).
-    private func grabber(width: CGFloat, height: CGFloat, active: Bool) -> some View {
-        Capsule()
-            .fill(active ? AnyShapeStyle(Brand.green) : AnyShapeStyle(Color.secondary))
-            .frame(width: width, height: height)
-            .shadow(color: .black.opacity(0.35), radius: active ? 3 : 1.5)
-    }
-
-    /// The app's own icon, large, with its share of the screen under it -
-    /// always shown, so the number and the picture never disagree.
-    private var mainPane: some View {
-        pane(fill: Color(nsColor: .controlBackgroundColor)) {
-            VStack(spacing: 4) {
-                if let appIcon {
-                    Image(nsImage: appIcon)
-                        .resizable()
-                        .frame(width: 48, height: 48)
-                }
-                Text(appName)
-                    .font(.callout.weight(.medium))
-                    .lineLimit(1)
-                Text("\(Int((layout.clampedMainFraction * 100).rounded()))%")
-                    .font(.caption.monospacedDigit())
-                    .foregroundStyle(.secondary)
-            }
-            .padding(.horizontal, 4)
-        }
-    }
-
-    /// The Zoom tile dark like a video tile, the chat light like a chat
-    /// window: told apart by what they look like, not by a colour code.
-    private func sideColumn(height: CGFloat) -> some View {
-        VStack(spacing: spacing) {
-            if layout.sideShowsZoomTile {
-                pane(fill: Color.black.opacity(0.78)) {
-                    VStack(spacing: 2) {
-                        Image(systemName: "video.fill").font(.title3)
-                        Text(draggingSlot ? "\(Int((layout.effectiveZoomSlotRatio * 100).rounded()))%" : "Zoom")
-                            .font(.caption.weight(.medium).monospacedDigit())
-                    }
-                    .foregroundStyle(.white.opacity(0.85))
-                }
-                .frame(height: layout.sideShowsChat
-                       ? (height - spacing) * layout.effectiveZoomSlotRatio
-                       : nil)
-            }
-            if layout.sideShowsChat {
-                pane(fill: Color(nsColor: .controlBackgroundColor)) {
-                    VStack(spacing: 2) {
-                        Image(systemName: "bubble.left.and.bubble.right.fill").font(.title3)
-                        Text("Chat").font(.caption.weight(.medium))
-                    }
-                    .foregroundStyle(.secondary)
-                }
-            }
-            if !layout.sideShowsZoomTile && !layout.sideShowsChat {
-                RoundedRectangle(cornerRadius: 6)
-                    .strokeBorder(.secondary.opacity(0.5), style: StrokeStyle(lineWidth: 1, dash: [4]))
-                    .overlay(Text("Free").font(.caption).foregroundStyle(.secondary))
-            }
-        }
-    }
-
-    private func pane<Content: View>(fill: Color, @ViewBuilder content: () -> Content) -> some View {
-        RoundedRectangle(cornerRadius: 6)
-            .fill(fill)
-            .overlay(RoundedRectangle(cornerRadius: 6)
-                .strokeBorder(Color.secondary.opacity(0.3), lineWidth: 1))
-            .overlay(content())
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }

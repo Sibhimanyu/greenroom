@@ -279,6 +279,8 @@ struct RecordStudioContent<LivePicture: View, ShareDetail: View, Cameras: View, 
             }
         }
         .formStyle(.grouped)
+        .scrollContentBackground(.hidden)
+        .background(Brand.windowBackground)
         .frame(minHeight: 160, maxHeight: .infinity)
     }
 

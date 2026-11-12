@@ -95,6 +95,8 @@ enum Analytics {
         case setting                       // which setting changed (fixed codes)
         case source                        // clip source: "recording" | "buffer"
         case mainApp      = "main_app"     // "builtin_browser" | "chrome" | "other_browser" | "other_app"
+        case layoutTemplates = "layout_templates" // how many layout templates exist (a number)
+        case layoutPieces = "layout_pieces"       // piece KINDS in the layout, e.g. "app+chat+meeting"; "none"
     }
 
     /// True while `importSettings` assigns every field at once.
@@ -165,6 +167,29 @@ enum Analytics {
         if bundleID == ChromeWindowManager.chromeBundleID { return "chrome" }
         if AppCatalog.isBrowser(bundleID) { return "other_browser" }
         return "other_app"
+    }
+
+    /// A layout as the kinds of piece it holds, sorted and joined ("app+chat+meeting"),
+    /// or "none". Never the template's name, an app's bundle ID or a website.
+    static func layoutPieceKinds(_ template: LayoutTemplate?) -> String {
+        guard let template else { return "none" }
+        let pieces = template.oneDisplay + (template.twoDisplays.map { $0.main + $0.second } ?? [])
+        let kinds = Set(pieces.map { piece -> String in
+            switch piece.kind {
+            case .meeting: return "meeting"
+            case .chat: return "chat"
+            case .app: return "app"
+            }
+        })
+        return kinds.isEmpty ? "empty" : kinds.sorted().joined(separator: "+")
+    }
+
+    /// The Start layout or the number of templates changed. Counts and kinds only.
+    static func layoutChanged(_ library: LayoutLibrary) {
+        guard !suppressSettingEvents else { return }
+        track(.settingChanged, [.setting: "layout",
+                                .layoutTemplates: String(library.templates.count),
+                                .layoutPieces: layoutPieceKinds(library.active)])
     }
 
     /// A genuine failure, billed against the free plan's 5,000 errors a month.

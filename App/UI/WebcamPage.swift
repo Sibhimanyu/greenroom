@@ -194,6 +194,8 @@ struct WebcamPageContent<LivePicture: View, ShareDetail: View, Cameras: View, Mi
             Section("Recording") { recording() }
         }
         .formStyle(.grouped)
+        .scrollContentBackground(.hidden)
+        .background(Brand.windowBackground)
     }
 
     // MARK: Stage

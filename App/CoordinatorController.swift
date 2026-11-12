@@ -33,7 +33,6 @@ final class CoordinatorController: ObservableObject {
         customUIGridTask?.cancel()
         customUIGridTask = nil
         MeetingControlBarController.close()
-        SpeakerWindowController.close()
         ParticipantGridWindowController.close()
         zoomChatClient.releaseCustomUIVideo()
         zoomChatClient.leave() // ends the meeting if we're hosting it
@@ -736,40 +735,18 @@ final class CoordinatorController: ObservableObject {
             Analytics.setting("webcam_shape", webcamShape.rawValue)
         }
     }
-    /// The main pane + side column arrangement - see WorkspaceLayout.
-    /// Stored as one JSON blob (it's several coupled fields, not a flat
-    /// value like the keys around it).
-    @Published var workspaceLayout: WorkspaceLayout {
-        didSet {
-            workspaceLayout.save(to: defaults)
-            // The toggles and the side, not the fractions: a drag emits dozens
-            // of values a second and the number itself says nothing useful.
-            if oldValue.sideShowsZoomTile != workspaceLayout.sideShowsZoomTile {
-                Analytics.setting("zoom_tile", on: workspaceLayout.sideShowsZoomTile)
-            }
-            if oldValue.sideShowsChat != workspaceLayout.sideShowsChat {
-                Analytics.setting("chat_window", on: workspaceLayout.sideShowsChat)
-            }
-            if oldValue.mainOnLeft != workspaceLayout.mainOnLeft {
-                Analytics.setting("main_pane_side", workspaceLayout.mainOnLeft ? "left" : "right")
-            }
-        }
-    }
-
     /// The layout library (Settings -> Layout): named templates, and which one a
     /// class start uses (nil = None). Saved as one JSON blob under `layoutLibrary`.
     ///
-    /// The runtime reads the library, not the old switch: Start captures
-    /// `layoutLibrary.active` as `sessionTemplate`. `arrangeWindowsOnStart` is
-    /// still written from the choice (None off, any template on) so the settings
-    /// transfer and an older Greenroom keep agreeing - nothing here reads it.
+    /// Start captures `layoutLibrary.active` as `sessionTemplate`. The old
+    /// workspaceLayout / mainApp* / peopleView* keys are no longer written; they are
+    /// read once, to build "Your previous layout", and by a settings import.
     @Published var layoutLibrary: LayoutLibrary {
         didSet {
             guard layoutLibrary != oldValue else { return }
             layoutLibrary.save(to: defaults)
-            let arranges = layoutLibrary.active != nil
-            if workspaceLayout.arrangeWindowsOnStart != arranges {
-                workspaceLayout.arrangeWindowsOnStart = arranges
+            if layoutLibrary.activeID != oldValue.activeID || layoutLibrary.templates.count != oldValue.templates.count {
+                Analytics.layoutChanged(layoutLibrary)
             }
             // Quick-hide row: the stored value follows the active layout's Meeting.
             if let hidden = layoutLibrary.active?.meetingStartsHidden, hidden != speakerTileShortcutEnabled {
@@ -790,6 +767,16 @@ final class CoordinatorController: ObservableObject {
     /// arranges nothing (None) and outside a class. Read by every gate, never the
     /// live choice, so the card picked in Settings mid-class changes nothing.
     @Published private(set) var sessionTemplate: LayoutTemplate?
+
+    /// The Start layout cannot be changed from Home or the menu bar while a class
+    /// is live: the class keeps the layout it started with (see sessionTemplate).
+    var layoutChoiceLocked: Bool { isRunning || stageLive }
+
+    /// The name the layout lines show: the class's own layout while it is live,
+    /// otherwise the Start choice. "None" when nothing is arranged.
+    var layoutChoiceName: String {
+        (layoutChoiceLocked ? sessionTemplate : layoutLibrary.active)?.name ?? "None"
+    }
 
     /// The class is live and arranged, so another layout can be applied now.
     var liveSessionLayoutID: UUID? { (isRunning || stageLive) ? sessionTemplate?.id : nil }
@@ -826,26 +813,6 @@ final class CoordinatorController: ObservableObject {
         reapplyLayout(userInitiated: false, openApps: true)
     }
 
-    /// Which app occupies the main pane. Chrome (the default, and what
-    /// this used to hardcode) goes through its AppleScript special case;
-    /// anything else is tiled via the Accessibility API.
-    @Published var mainAppBundleID: String {
-        didSet {
-            defaults.set(mainAppBundleID, forKey: "mainAppBundleID")
-            Analytics.setting("main_app", Analytics.mainAppKind(bundleID: mainAppBundleID))
-        }
-    }
-    @Published var mainAppURL: String {
-        // Stored sanitised. A control character typed in here once made the
-        // preferences plist unparseable as XML, and the address unopenable.
-        didSet { defaults.set(AppCatalog.sanitizedURLText(mainAppURL), forKey: "mainAppURL") }
-    }
-    @Published var mainAppOnStart: Bool {
-        didSet {
-            defaults.set(mainAppOnStart, forKey: "mainAppOnStart")
-            Analytics.setting("main_app_on_start", on: mainAppOnStart)
-        }
-    }
     /// Built-in browser only: whether Start brings back the tabs that were
     /// open when Greenroom last quit, alongside the configured page.
     @Published var browserRestoresTabs: Bool {
@@ -865,17 +832,6 @@ final class CoordinatorController: ObservableObject {
             Analytics.setting("browser_search_suggestions", on: browserSearchSuggestions)
         }
     }
-    /// Whether End Session also closes the browser window Start opened.
-    /// Greenroom Browser's window, or the one window a Chromium browser
-    /// (Chrome, Ulaa, Edge...) was asked to make for this session - never the
-    /// teacher's other windows. Off by default.
-    @Published var browserClosesOnStop: Bool {
-        didSet {
-            defaults.set(browserClosesOnStop, forKey: "browserClosesOnStop")
-            Analytics.setting("browser_close_on_stop", on: browserClosesOnStop)
-        }
-    }
-
     // MARK: Cues - see App/Cues/. Off by default. Listens to the
     // teacher's microphone during a class, on this Mac, and offers link cards;
     // the only thing that leaves is the search phrase, and each one is logged.
@@ -976,30 +932,6 @@ final class CoordinatorController: ObservableObject {
     @Published var youtubeUploadProgress: Double?
     /// The last connect / disconnect outcome, shown under the button.
     @Published var youtubeStatus = ""
-    /// People view: on Start, the built-in client's dual-screen gallery
-    /// window (every participant) goes full-screen onto a chosen display
-    /// - your reference monitor, not the class mirror. No-op with a
-    /// single display.
-    @Published var peopleViewOnStart: Bool {
-        didSet {
-            defaults.set(peopleViewOnStart, forKey: "peopleViewOnStart")
-            Analytics.setting("people_view_on_start", on: peopleViewOnStart)
-        }
-    }
-    /// Whether the custom-UI participants panel may open on the MAIN display
-    /// when no second display is attached.
-    ///
-    /// Off by default, and it should stay off for normal use. The panel is a
-    /// private control surface for a display the teacher alone can see; on a
-    /// single screen it covers the tiled workspace the whole app exists to
-    /// arrange. It is here so the panel can be exercised without a reference
-    /// monitor plugged in, not as a way to work.
-    @Published var participantPanelOnMainDisplay: Bool {
-        didSet {
-            defaults.set(participantPanelOnMainDisplay, forKey: "participantPanelOnMainDisplay")
-            Analytics.setting("panel_on_main_display", on: participantPanelOnMainDisplay)
-        }
-    }
     /// Whether anonymous usage analytics are sent. On by default, and the switch
     /// is honoured immediately as well as on the next launch.
     @Published var analyticsEnabled: Bool {
@@ -1008,14 +940,9 @@ final class CoordinatorController: ObservableObject {
             Analytics.setEnabled(analyticsEnabled)
         }
     }
-    /// Which display the participant gallery opens on, by stable CGDisplay
-    /// UUID. Empty = Automatic (the first non-main display). Persisted and
-    /// carried in the transfer file so a saved setup targets the same
-    /// physical monitor.
     /// Which display the screen capture shares. Empty means "the main one",
     /// which is what almost everyone wants and what this always did. Stored by
-    /// display UUID so the choice survives unplugging and reconnecting, the
-    /// same way peopleViewDisplayUUID does.
+    /// display UUID so the choice survives unplugging and reconnecting.
     /// Custom-UI mode. Read by the SDK client at initSDK, which happens once
     /// per process - so changing this only takes effect after a restart, and
     /// the Settings copy says so.
@@ -1051,9 +978,6 @@ final class CoordinatorController: ObservableObject {
         }
     }
 
-    @Published var peopleViewDisplayUUID: String {
-        didSet { defaults.set(peopleViewDisplayUUID, forKey: "peopleViewDisplayUUID") }
-    }
     /// Recording starts by itself once the meeting is up (the Record
     /// button and \u{2325}\u{2318}R stay available as the manual
     /// trigger either way).
@@ -1073,16 +997,9 @@ final class CoordinatorController: ObservableObject {
         webcamShape = WebcamShape(rawValue: defaults.string(forKey: "webcamShape") ?? "") ?? .circle
         backgroundRemoval = BackgroundRemoval(rawValue: defaults.string(forKey: "backgroundRemoval") ?? "") ?? .automatic
         micDeviceUID = defaults.string(forKey: "micDeviceUID") ?? ""
-        // load(from:) migrates the Chrome-only era's "chromeLayout" key,
-        // and the ?? fallbacks below migrate its URL/on-Start keys - an
-        // existing setup keeps its layout without re-configuring.
-        workspaceLayout = WorkspaceLayout.load(from: defaults)
         // First launch with this key migrates today's settings into "Your previous
         // layout" (see LayoutLibrary.loadOrMigrate); the old keys stay as they were.
         layoutLibrary = LayoutLibrary.loadOrMigrate(from: defaults, defaultSiteURL: AppLinks.site)
-        mainAppBundleID = defaults.string(forKey: "mainAppBundleID") ?? ChromeWindowManager.chromeBundleID
-        // Fresh installs open the Greenroom site until the teacher sets
-        // their own page - a friendly first Start instead of a blank tab.
         let bubbleDefaults = StageLayout()
         bubbleWidthFraction = (defaults.object(forKey: "bubbleWidthFraction") as? Double) ?? bubbleDefaults.widthFraction
         bubbleRightInset = (defaults.object(forKey: "bubbleRightInset") as? Double) ?? bubbleDefaults.rightInset
@@ -1093,15 +1010,6 @@ final class CoordinatorController: ObservableObject {
         clipBufferEnabled = (defaults.object(forKey: "clipBufferEnabled") as? Bool) ?? true
         cutoutHeightFraction = (defaults.object(forKey: "cutoutHeightFraction") as? Double) ?? bubbleDefaults.cutoutHeightFraction
         cutoutRightInset = (defaults.object(forKey: "cutoutRightInset") as? Double) ?? bubbleDefaults.cutoutRightInset
-        mainAppURL = AppCatalog.sanitizedURLText(
-            defaults.string(forKey: "mainAppURL") ?? defaults.string(forKey: "chromeURL") ?? AppLinks.site)
-        // Defaults to ON for fresh installs (bool(forKey:) alone can't
-        // distinguish "never set" from "explicitly off") - the one-button
-        // session flow treats the main app window as part of the setup,
-        // and the Settings toggle is the opt-out.
-        mainAppOnStart = (defaults.object(forKey: "mainAppOnStart") as? Bool)
-            ?? (defaults.object(forKey: "chromeOnStart") as? Bool)
-            ?? true
         // ON by default: the point of the built-in browser is that the
         // morning's tabs are where they were left. didSet does not run in
         // init, so the controller's flag is set by hand here.
@@ -1111,7 +1019,6 @@ final class CoordinatorController: ObservableObject {
         let searchSuggestions = (defaults.object(forKey: "browserSearchSuggestions") as? Bool) ?? true
         browserSearchSuggestions = searchSuggestions
         BrowserWindowController.searchSuggestions = searchSuggestions
-        browserClosesOnStop = defaults.bool(forKey: "browserClosesOnStop")
         cuesEnabled = defaults.bool(forKey: "prompterEnabled")
         cuesVideoSearch = (defaults.object(forKey: "prompterVideoSearch") as? Bool) ?? true
         cuesUseModel = defaults.bool(forKey: "prompterUseModel")
@@ -1122,12 +1029,9 @@ final class CoordinatorController: ObservableObject {
         youtubePrivacy = defaults.string(forKey: "youtubePrivacy") ?? "unlisted"
         youtubeClientID = defaults.string(forKey: "youtubeClientID") ?? ""
         youtubeClientSecret = "" // loaded lazily via loadSecretsIfNeeded()
-        peopleViewOnStart = defaults.bool(forKey: "peopleViewOnStart")
-        participantPanelOnMainDisplay = defaults.bool(forKey: "participantPanelOnMainDisplay")
         // Absent means never answered, which is opted IN - matching the consent
         // the Apptics setup already carries. An explicit false stays false.
         analyticsEnabled = (defaults.object(forKey: "analyticsEnabled") as? Bool) ?? true
-        peopleViewDisplayUUID = defaults.string(forKey: "peopleViewDisplayUUID") ?? ""
         screenCaptureDisplayUUID = defaults.string(forKey: "screenCaptureDisplayUUID") ?? ""
         shareTarget = defaults.data(forKey: "shareTarget")
             .flatMap { try? JSONDecoder().decode(ShareTarget.self, from: $0) } ?? ShareTarget()
@@ -1373,7 +1277,9 @@ final class CoordinatorController: ObservableObject {
             .displays: String(NSScreen.screens.count),
             .mainApp: sessionTemplate.flatMap { template in
                 layoutEngine.resolve(template).apps.first?.piece.kind.app.map { Analytics.mainAppKind(bundleID: $0.bundleID) }
-            } ?? "none"
+            } ?? "none",
+            .layoutTemplates: String(layoutLibrary.templates.count),
+            .layoutPieces: Analytics.layoutPieceKinds(sessionTemplate)
         ])
 
         resetStartReadiness()
@@ -1594,8 +1500,7 @@ final class CoordinatorController: ObservableObject {
             }
             recorder?.disarmClipBuffer()
             zoomChatClient.onParticipantCountChanged = nil
-            SpeakerWindowController.close()
-            if failure == nil { ParticipantGridWindowController.close() }
+                if failure == nil { ParticipantGridWindowController.close() }
             zoomChatClient.releaseCustomUIVideo()
             // A beat between cancelling the window-follow loops and the
             // SDK tearing its meeting windows down: the crash logs' seven
@@ -2376,8 +2281,12 @@ final class CoordinatorController: ObservableObject {
         stage.update(makeStageConfiguration())
     }
 
-    var mainAppDisplayName: String {
-        AppCatalog.displayName(forBundleID: mainAppBundleID) ?? "Main App"
+    /// The app a Cues card opens in: the first App piece of the layout this class
+    /// runs (or of the one chosen in Settings, before a class). nil when there is
+    /// none, which means the system's default browser.
+    var cueCardAppBundleID: String? {
+        (sessionTemplate ?? layoutLibrary.active)?.oneDisplay.compactMap { $0.kind.app?.bundleID }.first
+            ?? (sessionTemplate ?? layoutLibrary.active)?.twoDisplays?.main.compactMap { $0.kind.app?.bundleID }.first
     }
 
     /// The Manual controls item: opens the apps of the layout this class runs, or
@@ -3609,34 +3518,31 @@ final class CoordinatorController: ObservableObject {
     /// Arranged, that is the display the layout's Meeting piece fills (the
     /// layout's own second-display rule, resolved now); nil when the layout has no
     /// such piece or the display is not connected. A class that arranges nothing
-    /// still reads the old People-view setting.
+    /// uses the first other display, if there is one.
     private func peopleViewTargetScreen() -> NSScreen? {
         if sessionArranges, let template = sessionTemplate {
             return layoutEngine.referenceScreen(template)
-        }
-        if !peopleViewDisplayUUID.isEmpty, let chosen = DisplayResolver.screen(forUUID: peopleViewDisplayUUID) {
-            return chosen
         }
         return DisplayResolver.firstSecondaryScreen()
     }
 
     /// The saved display UUID the gallery was asked to go to ("" = automatic).
     private var peopleViewChosenUUID: String {
-        sessionArranges && sessionTemplate != nil ? (sessionTemplate?.twoDisplays?.secondUUID ?? "") : peopleViewDisplayUUID
+        sessionArranges ? (sessionTemplate?.twoDisplays?.secondUUID ?? "") : ""
     }
 
-    /// Whether this session should put the gallery on another display:
-    /// the toggle is on AND a valid target display exists right now.
+    /// Whether this session should put the gallery on another display: the layout
+    /// has a Meeting that fills one AND that display exists right now. A class that
+    /// arranges nothing never does.
     private var peopleViewWanted: Bool {
-        if sessionArranges, sessionTemplate != nil { return peopleViewTargetScreen() != nil }
-        return peopleViewOnStart && peopleViewTargetScreen() != nil
+        sessionArranges && sessionTemplate != nil && peopleViewTargetScreen() != nil
     }
 
     /// Whether the SDK runs with TWO meeting windows this session.
     ///
     /// Deliberately separate from `peopleViewWanted`, which asks the narrower
     /// question of whether one of them goes to another DISPLAY. With the
-    /// toggle on and no reference monitor connected the gallery still opens -
+    /// a filling Meeting and no reference monitor connected the gallery still opens -
     /// it just lives behind the workspace instead of on a second screen. The
     /// two were conflated, which is why a single-display session used to get
     /// no participant view at all: dual-screen mode was never enabled, so the
@@ -3646,8 +3552,8 @@ final class CoordinatorController: ObservableObject {
     /// whether to simplify the tile's view, what the stray sweep may demote).
     /// Only the placement decisions still key off `peopleViewWanted`.
     private var galleryWindowExists: Bool {
-        if sessionArranges, let template = sessionTemplate { return template.hasFillsDisplayMeeting }
-        return peopleViewOnStart
+        guard sessionArranges, let template = sessionTemplate else { return false }
+        return template.hasFillsDisplayMeeting
     }
 
     /// Sends the built-in client's dual-screen gallery window full-screen
@@ -3780,7 +3686,6 @@ final class CoordinatorController: ObservableObject {
         NSApp.windows.filter { window in
             guard window.isVisible, !window.isSheet else { return false }
             if ChatWindowController.owns(window) { return false } // "Meeting Chat" - ours
-            if SpeakerWindowController.owns(window) { return false } // custom-UI speaker - also ours
             if ParticipantGridWindowController.owns(window) { return false } // custom-UI gallery - ours
             if BrowserWindowController.owns(window) { return false } // built-in browser - title is the page's
             if window.title == "Greenroom" { return false } // main window
@@ -4203,6 +4108,8 @@ struct SettingsTransfer: Codable {
     var s2sClientSecret: String?
     var webcamShape: String?
     var backgroundRemoval: String?
+    // Import-only: files exported before the layout creator carry these. They are
+    // decoded and folded into "Your previous layout"; nothing writes them now.
     var mainAppBundleID: String?
     var mainAppURL: String?
     var mainAppOnStart: Bool?
@@ -4232,6 +4139,7 @@ struct SettingsTransfer: Codable {
     var speakerTileShortcutEnabled: Bool?
     var autoRecordOnStart: Bool?
     var meetingPresets: [MeetingPreset]?
+    /// Import-only (older files): decoded and folded into "Your previous layout".
     var workspaceLayout: WorkspaceLayout?
     /// The layout library (templates and the Start choice). Added with the layout
     /// creator. Import REPLACES this Mac's library with it. A file without one
@@ -4273,7 +4181,7 @@ struct SettingsTransfer: Codable {
     /// do not have. The receiving Mac picks its own best model.
     var screenroomLanguage: String?
     // Legacy fields from Chrome-only-era exports - still imported, never
-    // written anymore.
+    // written anymore (same as the layout keys above: import-only).
     var chromeLayout: String?
     var chromeURL: String?
     var chromeOnStart: Bool?
@@ -4291,12 +4199,8 @@ extension CoordinatorController {
             s2sClientSecret: s2sClientSecret,
             webcamShape: webcamShape.rawValue,
             backgroundRemoval: backgroundRemoval.rawValue,
-            mainAppBundleID: mainAppBundleID,
-            mainAppURL: mainAppURL,
-            mainAppOnStart: mainAppOnStart,
             browserRestoresTabs: browserRestoresTabs,
             browserSearchSuggestions: browserSearchSuggestions,
-            browserClosesOnStop: browserClosesOnStop,
             prompterEnabled: cuesEnabled,
             prompterVideoSearch: cuesVideoSearch,
             prompterUseModel: cuesUseModel,
@@ -4306,20 +4210,16 @@ extension CoordinatorController {
             youtubePrivacy: youtubePrivacy,
             youtubeClientID: youtubeClientID,
             youtubeClientSecret: youtubeClientSecret,
-            peopleViewOnStart: peopleViewOnStart,
-            peopleViewDisplayUUID: peopleViewDisplayUUID,
             screenCaptureDisplayUUID: screenCaptureDisplayUUID,
             shareTarget: shareTarget,
             hideSelfView: hideSelfView,
             speakerTileShortcutEnabled: speakerTileShortcutEnabled,
             autoRecordOnStart: autoRecordOnStart,
             meetingPresets: meetingPresets,
-            workspaceLayout: workspaceLayout,
             layoutLibrary: layoutLibrary,
             userDisplayName: userDisplayName,
             customUIMode: customUIMode,
             clipBufferEnabled: clipBufferEnabled,
-            participantPanelOnMainDisplay: participantPanelOnMainDisplay,
             cameraDirector: cameraDirectorSettings,
             bubbleWidthFraction: bubbleWidthFraction,
             bubbleRightInset: bubbleRightInset,
@@ -4384,14 +4284,8 @@ extension CoordinatorController {
         if let value = transfer.s2sClientSecret { s2sClientSecret = value }
         if let value = transfer.webcamShape, let shape = WebcamShape(rawValue: value) { webcamShape = shape }
         if let value = transfer.backgroundRemoval, let mode = BackgroundRemoval(rawValue: value) { backgroundRemoval = mode }
-        if let value = transfer.mainAppBundleID { mainAppBundleID = value }
-        // The chrome* fallbacks import Chrome-only-era files (whose main
-        // app was implicitly Chrome, so the values carry straight over).
-        if let value = transfer.mainAppURL ?? transfer.chromeURL { mainAppURL = value }
-        if let value = transfer.mainAppOnStart ?? transfer.chromeOnStart { mainAppOnStart = value }
         if let value = transfer.browserRestoresTabs { browserRestoresTabs = value }
         if let value = transfer.browserSearchSuggestions { browserSearchSuggestions = value }
-        if let value = transfer.browserClosesOnStop { browserClosesOnStop = value }
         // A colleague's export can carry prompterEnabled=true. It must not
         // switch on a feature this build is holding back.
         if let value = transfer.prompterEnabled, CuesAvailability.isReleased { cuesEnabled = value }
@@ -4405,8 +4299,6 @@ extension CoordinatorController {
         if let value = transfer.youtubePrivacy { youtubePrivacy = value }
         if let value = transfer.youtubeClientID { youtubeClientID = value }
         if let value = transfer.youtubeClientSecret { youtubeClientSecret = value }
-        if let value = transfer.peopleViewOnStart { peopleViewOnStart = value }
-        if let value = transfer.peopleViewDisplayUUID { peopleViewDisplayUUID = value }
         if let value = transfer.screenCaptureDisplayUUID { screenCaptureDisplayUUID = value }
         if let value = transfer.shareTarget { shareTarget = value }
         if let value = transfer.hideSelfView { hideSelfView = value }
@@ -4415,7 +4307,6 @@ extension CoordinatorController {
         if let value = transfer.userDisplayName { userDisplayName = value }
         if let value = transfer.customUIMode { customUIMode = value }
         if let value = transfer.clipBufferEnabled { clipBufferEnabled = value }
-        if let value = transfer.participantPanelOnMainDisplay { participantPanelOnMainDisplay = value }
         if let value = transfer.cameraDirector { cameraDirectorSettings = value }
         if let value = transfer.bubbleWidthFraction { bubbleWidthFraction = value }
         if let value = transfer.bubbleRightInset { bubbleRightInset = value }
@@ -4447,24 +4338,31 @@ extension CoordinatorController {
             settings.save()
         }
         if let value = transfer.meetingPresets { meetingPresets = value }
-        let carriedOldLayout: Bool
-        if let value = transfer.workspaceLayout {
-            workspaceLayout = value
-            carriedOldLayout = true
-        } else if let raw = transfer.chromeLayout, let migrated = WorkspaceLayout(legacyChromeLayout: raw) {
-            workspaceLayout = migrated
-            carriedOldLayout = true
-        } else {
-            carriedOldLayout = false
-        }
         if var library = transfer.layoutLibrary {
             // A second display saved on another Mac means nothing here: automatic.
             library.templates = library.templates.map(Self.withLocalDisplays)
             layoutLibrary = library
-        } else if carriedOldLayout {
-            // An older file: everything the old keys said, as one more template.
-            // (Those keys were assigned above, so they are read back from there.)
-            let legacy = LegacyLayoutSettings.read(from: defaults, defaultSiteURL: AppLinks.site)
+        } else if transfer.workspaceLayout != nil || transfer.chromeLayout != nil {
+            // An older file: the old keys it carries (import-only now) laid over
+            // this Mac's own, then built into one more template. Keys the file
+            // omits keep what this Mac has, as before.
+            var legacy = LegacyLayoutSettings.read(from: defaults, defaultSiteURL: AppLinks.site)
+            if let old = transfer.workspaceLayout ?? transfer.chromeLayout.flatMap({ WorkspaceLayout(legacyChromeLayout: $0) }) {
+                legacy.mainFraction = old.mainFraction
+                legacy.mainOnLeft = old.mainOnLeft
+                legacy.sideShowsZoomTile = old.sideShowsZoomTile
+                legacy.sideShowsChat = old.sideShowsChat
+                legacy.zoomSlotRatio = old.zoomSlotRatio
+                legacy.arrangeWindowsOnStart = old.arrangeWindowsOnStart
+            }
+            // The chrome* fallbacks import Chrome-only-era files (whose main
+            // app was implicitly Chrome, so the values carry straight over).
+            if let value = transfer.mainAppBundleID { legacy.mainAppBundleID = value }
+            if let value = transfer.mainAppURL ?? transfer.chromeURL { legacy.mainAppURL = value }
+            if let value = transfer.mainAppOnStart ?? transfer.chromeOnStart { legacy.mainAppOnStart = value }
+            if let value = transfer.browserClosesOnStop { legacy.browserClosesOnStop = value }
+            if let value = transfer.peopleViewOnStart { legacy.peopleViewOnStart = value }
+            if let value = transfer.peopleViewDisplayUUID { legacy.peopleViewDisplayUUID = value }
             if var imported = legacy.asTemplate().map(Self.withLocalDisplays) {
                 var library = layoutLibrary
                 if library.templates.contains(where: { $0.name == imported.name }) { imported.name = "Imported layout" }
@@ -4473,10 +4371,6 @@ extension CoordinatorController {
                 layoutLibrary = library
             }
         }
-        // The old switch follows the choice (it carries the file's own value after
-        // the lines above, which the library no longer reads).
-        let arranges = layoutLibrary.active != nil
-        if workspaceLayout.arrangeWindowsOnStart != arranges { workspaceLayout.arrangeWindowsOnStart = arranges }
         log("Imported settings.")
     }
 }

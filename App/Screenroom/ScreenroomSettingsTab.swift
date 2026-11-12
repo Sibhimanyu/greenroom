@@ -255,6 +255,8 @@ struct ScreenroomPageContent<Setup: View>: View {
             .disabled(!agentOn)
         }
         .formStyle(.grouped)
+        .scrollContentBackground(.hidden)
+        .background(Brand.windowBackground)
     }
 
     // MARK: Who writes the feedback

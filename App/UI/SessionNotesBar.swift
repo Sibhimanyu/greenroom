@@ -332,7 +332,7 @@ struct SessionNotesBarContent: View {
         .padding(.vertical, 12)
         .frame(width: SessionNotes.barSize.width, height: SessionNotes.barSize.height)
         .background(RoundedRectangle(cornerRadius: 14)
-            .fill(Color(nsColor: .windowBackgroundColor)))
+            .fill(Brand.windowBackground))
         .overlay(RoundedRectangle(cornerRadius: 14)
             .strokeBorder(Color(nsColor: .separatorColor)))
     }

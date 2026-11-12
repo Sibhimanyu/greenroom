@@ -39,6 +39,7 @@ struct ChatWindowView: View {
             composer
         }
         .frame(minWidth: 300, minHeight: 380)
+        .background(Brand.windowBackground)
         .overlay {
             if dropTargeted {
                 RoundedRectangle(cornerRadius: 10)
@@ -635,46 +636,5 @@ enum ChatWindowController {
     static func close() {
         window?.close()
         window = nil
-    }
-
-    /// The slot above the chat window where Zoom's meeting window gets
-    /// parked - in TOP-LEFT-origin (AX) coordinates, since that's what
-    /// the Accessibility calls speak. Full column width, top
-    /// `effectiveZoomSlotRatio` of the column's height (the whole column
-    /// when the chat is toggled off; nil when the tile itself is off).
-    static func zoomWindowAXFrame(for layout: WorkspaceLayout) -> CGRect? {
-        guard layout.sideShowsZoomTile, let screen = DisplayResolver.mainDisplayScreen(),
-              let column = layout.sideColumnNSFrame() else { return nil }
-        let topY = screen.frame.height - (column.origin.y + column.height)
-        let height = column.height * layout.effectiveZoomSlotRatio
-        return CGRect(x: column.origin.x, y: topY, width: column.width, height: height)
-    }
-
-    /// Same slot in NSWindow (bottom-left-origin) coordinates - for the
-    /// all-in-one mode, whose meeting window is our own and parks via
-    /// plain setFrame instead of the Accessibility API.
-    static func zoomSlotNSFrame(for layout: WorkspaceLayout) -> CGRect? {
-        guard layout.sideShowsZoomTile, let column = layout.sideColumnNSFrame() else { return nil }
-        let height = column.height * layout.effectiveZoomSlotRatio
-        return CGRect(x: column.origin.x, y: column.maxY - height, width: column.width, height: height)
-    }
-
-    /// Re-tucks the chat window to start exactly below Zoom's ACTUAL
-    /// parked frame (AX coordinates) - Zoom clamps resizes to its minimum
-    /// window size, so the planned slot and reality can differ.
-    /// The chat expanded to the FULL side column - the speaker-tile
-    /// quick-hide (\u{2325}\u{2318}Z) gives the chat the tile's
-    /// vertical space while the tile is hidden.
-    static func fillSideColumn(layout: WorkspaceLayout) {
-        guard layout.sideShowsChat, let window, let column = layout.sideColumnNSFrame() else { return }
-        window.setFrame(column, display: true)
-    }
-
-    static func adjustBelowZoom(actualZoomFrameAX zoomFrame: CGRect, layout: WorkspaceLayout) {
-        guard layout.sideShowsChat, let window, let screen = DisplayResolver.mainDisplayScreen(),
-              let column = layout.sideColumnNSFrame() else { return }
-        let zoomBottomNS = screen.frame.height - (zoomFrame.origin.y + zoomFrame.height)
-        let height = max(zoomBottomNS - column.origin.y, 200) // never collapse the chat entirely
-        window.setFrame(CGRect(x: column.origin.x, y: column.origin.y, width: column.width, height: height), display: true)
     }
 }

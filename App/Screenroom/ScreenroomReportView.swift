@@ -82,7 +82,7 @@ struct ScreenroomReportView: View {
     var body: some View {
         if paged {
             page
-                .background(Color(nsColor: .textBackgroundColor))
+                .background(Brand.windowBackground)
                 .tint(Brand.green)
         } else if let onBack {
             VStack(spacing: 0) {
@@ -100,11 +100,11 @@ struct ScreenroomReportView: View {
                 Divider()
                 ScrollView { page }
             }
-            .background(Color(nsColor: .textBackgroundColor))
+            .background(Brand.windowBackground)
             .tint(Brand.green)
         } else {
             ScrollView { page }
-                .background(Color(nsColor: .textBackgroundColor))
+                .background(Brand.windowBackground)
                 .frame(minWidth: 720, minHeight: 600)
                 .tint(Brand.green)
         }

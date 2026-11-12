@@ -406,6 +406,10 @@ struct ContentView: View {
                 .help("Every past class: its recordings and clips with a player, its YouTube links, and a name you can change.")
             }
 
+            // Quiet, under Start: which layout the next class uses.
+            LayoutChoiceLine()
+                .padding(.top, -8)
+
             Divider()
 
             bottomBar

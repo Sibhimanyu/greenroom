@@ -2,39 +2,21 @@
 //  WorkspaceLayout.swift
 //  Greenroom
 //
-//  The whole session's window arrangement, as one value: a main app pane
-//  occupying a horizontal slice of the screen, and a side column (the
-//  remainder) holding the Zoom meeting tile stacked over the chat window.
-//  Generalizes what used to be ChromeWindowManager.Layout (a fixed
-//  three-case enum) - the span/remainderSpan math is moved here verbatim.
+//  The fixed main-pane + side-column arrangement the layout creator replaced.
+//  Kept as a decode-only legacy shape: a settings file exported before the
+//  creator carries one under "workspaceLayout", and an import reads it into
+//  "Your previous layout". Nothing lays windows out from it any more, and
+//  nothing saves it (LegacyLayoutSettings reads the old stored JSON itself).
 //
-import AppKit
+import Foundation
 
 struct WorkspaceLayout: Codable, Equatable {
 
-    /// Clamp bounds for the main pane's width fraction - neither pane can
-    /// be dragged into uselessness.
-    static let minMainFraction = 0.35
-    static let maxMainFraction = 0.85
-
-    /// How much of the screen's width the main pane takes - CONTINUOUS,
-    /// set by dragging the divider in Settings' layout preview (replaced
-    /// the old fixed \u{00BD}/\u{2154}/\u{00BE} presets).
     var mainFraction: Double
     var mainOnLeft: Bool
-    /// What occupies the side column. Both on: Zoom tile stacked over the
-    /// chat. One off: the other takes the full column. Both off: the
-    /// column is left free.
     var sideShowsZoomTile: Bool
     var sideShowsChat: Bool
-    /// Fraction of the side column's height for the Zoom tile, chat below
-    /// taking the rest - only meaningful when both occupants are on. The
-    /// 0.4 default came from real use (a 16:9-of-column-width first cut
-    /// was cramped - see the old ZoomWindowManager.meetingSlotRatio).
     var zoomSlotRatio: Double
-    /// Whether a class start opens, moves and resizes windows at all. Off
-    /// (the default): Greenroom touches nothing, Zoom shows its own window,
-    /// and a small control bar floats instead. Read once per session.
     var arrangeWindowsOnStart: Bool
 
     init(mainFraction: Double = 0.5,
@@ -49,73 +31,6 @@ struct WorkspaceLayout: Codable, Equatable {
         self.sideShowsChat = sideShowsChat
         self.zoomSlotRatio = zoomSlotRatio
         self.arrangeWindowsOnStart = arrangeWindowsOnStart
-    }
-
-    var clampedMainFraction: Double {
-        min(max(mainFraction, Self.minMainFraction), Self.maxMainFraction)
-    }
-
-    var label: String {
-        "\(mainOnLeft ? "Left" : "Right") \(Int((clampedMainFraction * 100).rounded()))%"
-    }
-
-    /// The main pane as fractions of the visible width (0 = left edge,
-    /// 1 = right edge). Full height always.
-    var span: (start: Double, end: Double) {
-        mainOnLeft ? (0, clampedMainFraction) : (1 - clampedMainFraction, 1)
-    }
-
-    /// Whatever's left once the main pane's slice is taken - e.g. Left ¾
-    /// (0...0.75) leaves (0.75...1), the right quarter. The main pane
-    /// always touches one screen edge, so the leftover is a single
-    /// contiguous slice on the other side.
-    var remainderSpan: (start: Double, end: Double) {
-        span.start > 0 ? (0, span.start) : (span.end, 1.0)
-    }
-
-    /// The Zoom tile's share of the side column once the toggles are
-    /// applied: its slider value with the chat below, the whole column
-    /// with the chat off, nothing when the tile itself is off.
-    var effectiveZoomSlotRatio: CGFloat {
-        guard sideShowsZoomTile else { return 0 }
-        return sideShowsChat ? min(max(zoomSlotRatio, 0.1), 1.0) : 1.0
-    }
-
-    // MARK: Screen frames
-
-    /// The main pane's slice in TOP-LEFT-origin coordinates - the space
-    /// both AppleScript window `bounds` and the Accessibility API speak,
-    /// unlike AppKit's NSScreen (bottom-left-origin).
-    func mainPaneTopLeftFrame() -> CGRect? {
-        guard let screen = DisplayResolver.mainDisplayScreen() else { return nil }
-        let visible = screen.visibleFrame
-        let top = screen.frame.height - visible.origin.y - visible.height
-        let x = visible.origin.x + visible.width * span.start
-        let width = visible.width * (span.end - span.start)
-        return CGRect(x: x, y: top, width: width, height: visible.height)
-    }
-
-    /// The main pane in NSWindow (bottom-left-origin) coordinates - for
-    /// the built-in browser, whose window is our own and tiles via plain
-    /// setFrame rather than AppleScript or the Accessibility API.
-    func mainPaneNSFrame() -> CGRect? {
-        guard let screen = DisplayResolver.mainDisplayScreen() else { return nil }
-        let visible = screen.visibleFrame
-        let x = visible.origin.x + visible.width * span.start
-        let width = visible.width * (span.end - span.start)
-        return CGRect(x: x, y: visible.origin.y, width: width, height: visible.height)
-    }
-
-    /// The side column in NSWindow (bottom-left-origin) coordinates -
-    /// NSWindow.setFrame and NSScreen.visibleFrame already share that
-    /// space, so no conversion needed there.
-    func sideColumnNSFrame() -> CGRect? {
-        guard let screen = DisplayResolver.mainDisplayScreen() else { return nil }
-        let visible = screen.visibleFrame
-        let remainder = remainderSpan
-        let x = visible.origin.x + visible.width * remainder.start
-        let width = visible.width * (remainder.end - remainder.start)
-        return CGRect(x: x, y: visible.origin.y, width: width, height: visible.height)
     }
 
     // MARK: Codable - every field optional on decode, so a partial or
@@ -154,37 +69,15 @@ struct WorkspaceLayout: Codable, Equatable {
         )
     }
 
-    // MARK: Persistence + migration
-
-    private static let defaultsKey = "workspaceLayout"
-
     /// The pre-generalization era stored ChromeWindowManager.Layout's
-    /// rawValue under "chromeLayout" - map those three cases so existing
-    /// setups keep their layout.
+    /// rawValue under "chromeLayout" - map those three cases so an old
+    /// export still imports.
     init?(legacyChromeLayout raw: String) {
         switch raw {
         case "leftHalf": self.init()
         case "rightHalf": self.init(mainOnLeft: false)
         case "leftThreeQuarters": self.init(mainFraction: 0.75)
         default: return nil
-        }
-    }
-
-    static func load(from defaults: UserDefaults) -> WorkspaceLayout {
-        if let data = defaults.data(forKey: defaultsKey),
-           let layout = try? JSONDecoder().decode(WorkspaceLayout.self, from: data) {
-            return layout
-        }
-        if let raw = defaults.string(forKey: "chromeLayout"),
-           let migrated = WorkspaceLayout(legacyChromeLayout: raw) {
-            return migrated
-        }
-        return WorkspaceLayout()
-    }
-
-    func save(to defaults: UserDefaults) {
-        if let data = try? JSONEncoder().encode(self) {
-            defaults.set(data, forKey: Self.defaultsKey)
         }
     }
 }

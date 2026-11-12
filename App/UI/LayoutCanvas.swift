@@ -48,6 +48,14 @@ struct LayoutPieceLook {
     var warning: String?
 }
 
+extension LayoutPieceLook {
+    /// Thumbnails draw only the app icon; this is the look for a card that has no
+    /// page state (onboarding).
+    static func thumbnail(_ piece: LayoutPiece) -> LayoutPieceLook {
+        LayoutPieceLook(name: "", icon: piece.kind.app.flatMap { LayoutIcons.icon($0.bundleID) }, symbol: "")
+    }
+}
+
 /// What travels from a palette chip to a canvas when dragged.
 enum LayoutPalettePayload {
     private static let prefix = "greenroom-layout-piece:"

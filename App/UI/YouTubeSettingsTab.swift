@@ -85,6 +85,8 @@ struct YouTubePageContent: View {
             }
         }
         .formStyle(.grouped)
+        .scrollContentBackground(.hidden)
+        .background(Brand.windowBackground)
     }
 
     private var uploadChoices: some View {

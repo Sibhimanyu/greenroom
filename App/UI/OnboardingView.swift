@@ -472,24 +472,59 @@ struct OnboardingView: View {
 
     @State private var setupApps: [AppInfo] = []
 
+    private var setupMainSize: CGSize {
+        DisplayResolver.mainDisplayScreen()?.visibleFrame.size ?? CGSize(width: 1440, height: 875)
+    }
+
+    private var chosenTemplate: LayoutTemplate? { coordinator.layoutLibrary.active }
+
     private var setupStep: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
-                stepHeader("Set up your class", "Choose how a class starts and how you appear on camera. You can change these later in Settings.")
+                stepHeader("How should a class start?", "Choose a layout, how you appear on camera and whether to record. You can change these later in Settings.")
 
-                Text("Your workspace").font(.headline)
-                Toggle("Arrange windows when a class starts", isOn: $coordinator.workspaceLayout.arrangeWindowsOnStart)
-                if coordinator.workspaceLayout.arrangeWindowsOnStart {
-                    Picker("Working app", selection: $coordinator.mainAppBundleID) {
-                        ForEach(setupApps) { app in
-                            Text(app.name).tag(app.bundleID)
+                // The same cards and thumbnails as Settings \u{2192} Layout. Picking one
+                // is choosing it for Start: it writes the library's active layout.
+                let thumbHeight = layoutThumbHeight(for: setupMainSize)
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: layoutCardWidth + 12), spacing: 8, alignment: .top)],
+                          alignment: .leading, spacing: 8) {
+                    LayoutCard(title: "None", selected: coordinator.layoutLibrary.activeID == nil, isRenaming: false,
+                               draft: .constant(""), select: { chooseLayout(nil) }, beginRename: nil,
+                               commitRename: {}, cancelRename: {}) {
+                        LayoutNoneThumbnail(height: thumbHeight)
+                    }
+                    ForEach(coordinator.layoutLibrary.templates) { template in
+                        LayoutCard(title: template.name, selected: coordinator.layoutLibrary.activeID == template.id,
+                                   isRenaming: false, draft: .constant(""), select: { chooseLayout(template.id) },
+                                   beginRename: nil, commitRename: {}, cancelRename: {}) {
+                            LayoutThumbnail(pieces: template.oneDisplay, aspect: layoutCardWidth / thumbHeight,
+                                            look: LayoutPieceLook.thumbnail)
                         }
                     }
-                    Text("Your reading, slides or notes open beside the meeting. Adjust the split in Settings → Layout.")
+                }
+
+                if let template = chosenTemplate {
+                    if let appID = template.firstAppBundleID {
+                        Picker("Working app", selection: Binding(
+                            get: { appID },
+                            set: { newID in
+                                var edited = template
+                                edited.replaceApp(appID, with: newID)
+                                coordinator.layoutLibrary.update(edited)
+                            })) {
+                            ForEach(setupAppChoices(including: appID)) { app in
+                                Text(app.name).tag(app.bundleID)
+                            }
+                        }
+                        Text("Your reading, slides or notes open beside the meeting.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    Text("Fine-tune it in Settings \u{2192} Layout")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 } else {
-                    Text("Greenroom opens and moves nothing. Zoom opens its own window, and a small control bar floats at the bottom of the screen.")
+                    Text("Greenroom opens and moves nothing. The meeting opens in its own window, and a small control bar floats at the bottom of the screen when that window is out of view.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -510,22 +545,28 @@ struct OnboardingView: View {
                 Divider()
                 Text("When class starts").font(.headline)
                 Toggle("Record automatically", isOn: $coordinator.autoRecordOnStart)
-                if coordinator.workspaceLayout.arrangeWindowsOnStart {
-                    Toggle("Show participants on a second display", isOn: $coordinator.peopleViewOnStart)
-                }
             }
             .padding(.horizontal, 8)
         }
         .id(SetupPage.layout)
         .onAppear {
-            var apps = AppCatalog.installedAndRunning()
-            if !apps.contains(where: { $0.bundleID == coordinator.mainAppBundleID }) {
-                apps.insert(AppInfo(bundleID: coordinator.mainAppBundleID,
-                                    name: AppCatalog.displayName(forBundleID: coordinator.mainAppBundleID) ?? coordinator.mainAppBundleID,
-                                    url: nil), at: 0)
-            }
-            setupApps = apps
+            LayoutIcons.reset()
+            setupApps = AppCatalog.installedAndRunning()
         }
+    }
+
+    /// The installed apps, plus the layout's own app when it is not among them
+    /// (an import from another Mac), so the picker never shows a blank.
+    private func setupAppChoices(including bundleID: String) -> [AppInfo] {
+        guard !setupApps.contains(where: { $0.bundleID == bundleID }) else { return setupApps }
+        let missing = AppInfo(bundleID: bundleID,
+                              name: AppCatalog.displayName(forBundleID: bundleID) ?? bundleID, url: nil)
+        return [missing] + setupApps
+    }
+
+    private func chooseLayout(_ id: UUID?) {
+        guard coordinator.layoutLibrary.activeID != id else { return }
+        coordinator.layoutLibrary.select(id)
     }
 
     private var permissionsStep: some View {
@@ -574,7 +615,7 @@ struct OnboardingView: View {
                     Label(failure.detail, systemImage: "exclamationmark.triangle")
                         .font(.callout).foregroundStyle(.red)
                 }
-                summaryRow("Workspace", detail: "\(coordinator.workspaceLayout.arrangeWindowsOnStart ? (AppCatalog.displayName(forBundleID: coordinator.mainAppBundleID) ?? coordinator.mainAppBundleID) : "No layout") · \(coordinator.webcamShape.label)", page: .layout)
+                summaryRow("Class layout", detail: "\(chosenTemplate?.name ?? "None") \u{00B7} \(coordinator.webcamShape.label)", page: .layout)
                 summaryRow("Accessibility", detail: ZoomWindowManager.hasAccessibilityPermission ? "Window arrangement allowed" : "Allow window arrangement in System Settings", page: .permissions)
                 Divider()
                 Text("Your first class").font(.headline)

@@ -212,14 +212,17 @@ extension CoordinatorController {
             log("Cues: opened \u{201C}\(card.title)\u{201D} in Dictionary.")
             return
         }
-        if AppCatalog.isBuiltInBrowser(mainAppBundleID) {
+        let appID = cueCardAppBundleID
+        let usesBuiltInBrowser = appID.map(AppCatalog.isBuiltInBrowser) ?? false
+        let name = usesBuiltInBrowser ? "Greenroom Browser"
+            : (appID.flatMap { AppCatalog.displayName(forBundleID: $0) } ?? "your browser")
+        if usesBuiltInBrowser {
             BrowserWindowController.open(card.url, focus: false, frame: builtInBrowserLayoutFrame)
             log("Cues: opened \u{201C}\(card.title)\u{201D} in Greenroom Browser.")
         } else {
-            let name = mainAppDisplayName
             let configuration = NSWorkspace.OpenConfiguration()
             configuration.activates = false
-            if AppCatalog.isBrowser(mainAppBundleID), let appURL = AppCatalog.appURL(forBundleID: mainAppBundleID) {
+            if let appID, AppCatalog.isBrowser(appID), let appURL = AppCatalog.appURL(forBundleID: appID) {
                 NSWorkspace.shared.open([card.url], withApplicationAt: appURL, configuration: configuration) { _, _ in }
             } else {
                 NSWorkspace.shared.open(card.url, configuration: configuration) { _, _ in }
@@ -230,7 +233,7 @@ extension CoordinatorController {
             SessionMetadata.recordLink(in: folder, kind: card.kind.rawValue, title: card.title,
                                        url: card.url.absoluteString, action: "opened")
         }
-        ToastController.show("Opened in \(AppCatalog.isBuiltInBrowser(mainAppBundleID) ? "Greenroom Browser" : mainAppDisplayName)",
+        ToastController.show("Opened in \(name)",
                              detail: card.title, dismissAfter: 2)
     }
 

@@ -257,6 +257,34 @@ struct LayoutTemplate: Codable, Identifiable, Equatable {
         }
     }
 
+    // MARK: Apps
+
+    /// The first App piece's bundle ID, in the order a person reads the layout:
+    /// one display, then the main display of a pair.
+    var firstAppBundleID: String? {
+        (oneDisplay + (twoDisplays?.main ?? []) + (twoDisplays?.second ?? [])).lazy.compactMap { $0.kind.app?.bundleID }.first
+    }
+
+    /// Puts another app in the place of one (onboarding's single picker), in every
+    /// version of the layout. Its website and Start / Stop choices stay.
+    mutating func replaceApp(_ old: String, with new: String) {
+        func swap(_ pieces: [LayoutPiece]) -> [LayoutPiece] {
+            pieces.map { piece in
+                guard var app = piece.kind.app, app.bundleID == old else { return piece }
+                app.bundleID = new
+                var copy = piece
+                copy.kind = .app(app)
+                return copy
+            }
+        }
+        oneDisplay = swap(oneDisplay)
+        if var two = twoDisplays {
+            two.main = swap(two.main)
+            two.second = swap(two.second)
+            twoDisplays = two
+        }
+    }
+
     // MARK: Display variants
 
     /// Starts a two-display version from the one-display one: whatever was
@@ -503,6 +531,14 @@ struct LegacyLayoutSettings: Equatable {
             s.sideShowsChat = stored.sideShowsChat ?? true
             s.zoomSlotRatio = stored.zoomSlotRatio ?? 0.4
             s.arrangeWindowsOnStart = stored.arrangeWindowsOnStart ?? false
+        } else if let raw = defaults.string(forKey: "chromeLayout") {
+            // The Chrome-only era's three fixed splits, which WorkspaceLayout used
+            // to map on load (nothing loads it any more).
+            switch raw {
+            case "rightHalf": s.mainOnLeft = false
+            case "leftThreeQuarters": s.mainFraction = 0.75
+            default: break
+            }
         }
         s.mainAppBundleID = defaults.string(forKey: "mainAppBundleID") ?? chromeBundleID
         s.mainAppURL = defaults.string(forKey: "mainAppURL") ?? defaults.string(forKey: "chromeURL") ?? defaultSiteURL

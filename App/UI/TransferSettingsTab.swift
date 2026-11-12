@@ -109,6 +109,8 @@ struct TransferPageContent: View {
             }
         }
         .formStyle(.grouped)
+        .scrollContentBackground(.hidden)
+        .background(Brand.windowBackground)
     }
 
     private func glyph(_ symbol: String) -> some View {

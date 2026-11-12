@@ -186,4 +186,22 @@ final class LayoutMigrationTests: XCTestCase {
         XCTAssertEqual(two.second.first?.kind, .meeting(fillsDisplay: true, startsHidden: false))
         XCTAssertFalse(t.canAdd(.meeting(fillsDisplay: false, startsHidden: false), to: .main), "one Meeting across the pair")
     }
+
+    func testReplaceAppSwapsOnlyThatAppInEveryVersion() {
+        var t = LayoutLibrary.starters()[0]
+        t.addTwoDisplayVersion()
+        XCTAssertEqual(t.firstAppBundleID, LayoutLibrary.builtInBrowserBundleID)
+        t.replaceApp(LayoutLibrary.builtInBrowserBundleID, with: "com.apple.Safari")
+        let all = t.oneDisplay + (t.twoDisplays?.main ?? []) + (t.twoDisplays?.second ?? [])
+        XCTAssertEqual(all.compactMap { $0.kind.app?.bundleID }, ["com.apple.Safari", "com.apple.Safari"])
+        XCTAssertEqual(all.filter { $0.kind.isChat }.count, 2, "other pieces untouched")
+    }
+
+    func testChromeOnlyEraLayoutKeyStillMigrates() {
+        let d = defaults(["chromeLayout": "rightHalf", "mainAppBundleID": "com.apple.Safari"])
+        let lib = LayoutLibrary.loadOrMigrate(from: d, defaultSiteURL: site)
+        let previous = lib.templates.first { $0.name == "Your previous layout" }
+        let app = previous?.oneDisplay.first { $0.kind.app != nil }
+        XCTAssertEqual(app?.rect.x ?? 0, 0.5, accuracy: 1e-9, "main pane on the right half")
+    }
 }

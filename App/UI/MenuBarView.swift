@@ -58,6 +58,13 @@ struct MenuBarView: View {
         }
         .disabled(!SessionNotes.sessionIsLive(coordinator))
 
+        // Which layout Start uses. Greyed while a class is live: that class keeps
+        // the layout it started with.
+        Menu("Layout: \(coordinator.layoutChoiceName)") {
+            LayoutChoiceItems()
+        }
+        .disabled(coordinator.layoutChoiceLocked)
+
         // The upload runs in the background; this is where its progress
         // lives, rather than a toast the teacher would have to watch.
         if let progress = coordinator.youtubeUploadProgress {

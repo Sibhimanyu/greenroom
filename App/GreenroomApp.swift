@@ -30,6 +30,14 @@ enum AppLinks {
 enum Brand {
     static let green = Color("AccentColor")
 
+    /// The background of every Greenroom content window: the main window's
+    /// pages (Home, Sessions, a session, the report), Settings, Chat and the
+    /// Record view. It is Home's own, which has never set one: the system
+    /// window background, so it tracks light and dark. Cards and tiles sit
+    /// on it in `controlBackgroundColor`. Not for the meeting stage (black
+    /// behind video) or the floating pills, which use materials on purpose.
+    static let windowBackground = Color(nsColor: .windowBackgroundColor)
+
     /// Green that is allowed to be TEXT.
     ///
     /// `Brand.green` is the asset-catalog accent, which controls tint and is a

@@ -71,12 +71,14 @@ final class ZoomMeetingSDKClient: NSObject, ObservableObject {
 
     /// Held for the meeting's lifetime. The SDK renders into views owned by
     /// these objects, so dropping them would drop the video.
-    private var videoContainer: ZoomSDKVideoContainer?
+    private(set) var videoContainer: ZoomSDKVideoContainer?
 
     /// Other people's shared screens (ZoomMeetingSDKClient+Share.swift) and what
     /// happens in the room: waiting room, reactions (+Room.swift). Both are
     /// SDK delegates, so they are objects the client owns rather than extensions.
     let shareViewer = ShareViewer()
+    /// Render elements for the view windows, keyed by window and slot.
+    let viewVideo = ViewVideoStore()
     let roomEvents = RoomEvents()
 
     /// Appends one line to ~/Library/Logs/Greenroom-video.log.
@@ -155,7 +157,7 @@ final class ZoomMeetingSDKClient: NSObject, ObservableObject {
     }
 
     /// Wires the container delegate once, so failures are never silent again.
-    private func adopt(container: ZoomSDKVideoContainer) {
+    func adopt(container: ZoomSDKVideoContainer) {
         videoContainer = container
         if container.delegate !== self { container.delegate = self }
     }
@@ -429,8 +431,13 @@ final class ZoomMeetingSDKClient: NSObject, ObservableObject {
         element.userid = userID
         // One 720p slot of Zoom's published budget (1x1080p, 2x720p, 4x360p); the
         // filmstrip tiles are thumbnails.
-        var result = element.setResolution(ZoomSDKVideoRenderResolution_720p)
-        if result != ZoomSDKError_Success { result = element.setResolution(ZoomSDKVideoRenderResolution_720p) }
+        // 720p unless the view windows already hold both 720p slots (VideoBudget).
+        let tier = VideoBudget.allocate([VideoRequest(key: "stage", priority: 4, wanted: .p720, floor: .p360, current: nil)],
+                                        external: viewVideo.usage)["stage"] ?? .p360
+        stageResolutionHeld = tier ?? .p360
+        let asked = stageResolutionHeld == .p720 ? ZoomSDKVideoRenderResolution_720p : ZoomSDKVideoRenderResolution_360p
+        var result = element.setResolution(asked)
+        if result != ZoomSDKError_Success { result = element.setResolution(asked) }
         stageElement = element
         stageUserID = userID
         stageSubscribed = false
@@ -452,50 +459,23 @@ final class ZoomMeetingSDKClient: NSObject, ObservableObject {
         lastStageFrame = .zero
     }
 
-    #if DEBUG
-    // MARK: - View spike (phase 0 of .context/meeting-views-plan.md)
-    //
-    // One extra render element for ONE extra window, behind the hidden default
-    // `meetingViews.spike`. Kept apart on purpose: it is never in
-    // participantElements, stageElement or railSelfElement, so nothing that
-    // reconciles those can touch it. Drawn by ViewSpike.swift.
+    // MARK: - What the Meeting window holds (for VideoBudget)
 
-    private(set) var spikeElement: ZoomSDKNormalVideoElement?
-    /// The render data type the SDK reported for the spike element.
-    var onSpikeDataType: ((VideoRenderDataType) -> Void)?
-    /// A subscription the SDK refused for the spike element (code, user).
-    var onSpikeSubscribeFail: ((Int, UInt32) -> Void)?
-
-    /// A fresh normal element (NOT the deprecated createVideoElement: / active
-    /// element) from the same process-wide container. Not subscribed yet.
-    func spikeCreateElement(frame: NSRect, userID: UInt32) -> (element: ZoomSDKNormalVideoElement?, code: Int) {
-        guard didUseCustomUI,
-              let container = ZoomSDK.shared().getMeetingService()?.getVideoContainer() else { return (nil, -1) }
-        adopt(container: container)
-        var element = ZoomSDKNormalVideoElement(frame: frame)
-        let made = container.createNormalVideoElement(&element)
-        guard made == ZoomSDKError_Success else { return (nil, Int(made.rawValue)) }
-        element.userid = userID
-        spikeElement = element
-        return (element, 0)
+    /// The streams the Meeting window's own elements hold: its stage at 720p and
+    /// each filmstrip or gallery tile at a thumbnail. The view windows ask the
+    /// budget with this as `external`, so what is already drawing is never taken.
+    func meetingWindowVideoUsage() -> VideoUsage {
+        var usage = VideoUsage()
+        if stageElement != nil, stageResolutionHeld != .p360 { usage.take(.p720) }
+        else if stageElement != nil { usage.take(.p360) }
+        for (id, _) in participantElements {
+            usage.take((lastRequestedFrame[id]?.height ?? 0) < 200 ? .p90 : .p180)
+        }
+        return usage
     }
 
-    func spikeReleaseElement() {
-        guard let element = spikeElement else { return }
-        _ = element.subscribeVideo(false)
-        _ = videoContainer?.clean(element)
-        element.getVideoView().removeFromSuperview()
-        spikeElement = nil
-    }
-
-    /// Who the stage shows, the way the meeting window picks: spotlight, then a
-    /// local pin, then whoever speaks.
-    func spikeStagePerson() -> RosterEntry? {
-        let roster = meetingRoster()
-        let id = roster.first(where: \.isSpotlighted)?.id ?? roster.first(where: \.isPinned)?.id ?? speakerToShow()
-        return roster.first { $0.id == id }
-    }
-    #endif
+    /// The tier the Meeting window's stage was given when it was made.
+    private var stageResolutionHeld: VideoTier = .p720
 
     // MARK: - Featured speaker
     //
@@ -512,7 +492,23 @@ final class ZoomMeetingSDKClient: NSObject, ObservableObject {
     private var eventActiveSpeaker: UInt32?
     private var sawSpeakerEvents = false
 
+    /// The last few people to speak, kept steady for the Multi-speaker view
+    /// (RecentSpeakers.swift: 1.5 s to join, 8 s minimum stay, one change per 2 s).
+    private var recentSpeakers = RecentSpeakers(limit: 3)
+
+    /// Who is in each Multi-speaker place now, by place. Read once a second by the
+    /// window; the poll feeds it only until the SDK's own audio events have fired.
+    func multiSpeakerPlaces(roster: [RosterEntry]) -> [(place: Int, userID: UInt32)] {
+        let now = Date()
+        if !sawSpeakerEvents {
+            recentSpeakers.heard(roster.filter { $0.isTalking && !$0.isMyself }.map(\.id), selfID: myUserID, now: now)
+        }
+        recentSpeakers.update(present: Set(roster.filter { !$0.isMyself }.map(\.id)), now: now)
+        return recentSpeakers.occupied.map { (place: $0.slot, userID: $0.userID) }
+    }
+
     func noteActiveAudio(_ ids: [UInt32]) {
+        recentSpeakers.heard(ids, selfID: myUserID, now: Date())
         sawSpeakerEvents = true
         // Silence keeps the last speaker; several at once keeps the first.
         guard let id = ids.first else { return }
@@ -620,9 +616,7 @@ final class ZoomMeetingSDKClient: NSObject, ObservableObject {
     /// Releases the render elements. Called on leave so the SDK is not left
     /// drawing into views that are about to disappear.
     func releaseCustomUIVideo() {
-        #if DEBUG
-        spikeReleaseElement()
-        #endif
+        releaseAllViewVideo()
         releaseStage()
         shareViewer.reset()
         roomEvents.reset()
@@ -633,6 +627,7 @@ final class ZoomMeetingSDKClient: NSObject, ObservableObject {
         lastKnownSpeaker = nil
         eventActiveSpeaker = nil
         sawSpeakerEvents = false
+        recentSpeakers.reset()
         for (_, element) in participantElements {
             _ = element.subscribeVideo(false)
             _ = videoContainer?.clean(element)
@@ -1394,14 +1389,8 @@ extension ZoomMeetingSDKClient: ZoomSDKVideoContainerDelegate {
             reason = "reason code \(error.rawValue)"
         }
         let userID = element.userid
-        // The spike's element has no bookkeeping here: no cooldown, no retry.
-        #if DEBUG
-        if let spike = spikeElement, spike === element {
-            Self.videoLog("View spike: SUBSCRIBE FAIL code=\(error.rawValue) user=\(userID) \(reason)")
-            onSpikeSubscribeFail?(Int(error.rawValue), userID)
-            return
-        }
-        #endif
+        // A view window's element keeps its own bookkeeping (ViewVideoStore).
+        if noteViewVideoFailure(element, code: Int(error.rawValue), reason: reason) { return }
         let now = Date()
         // The active element FIRST, and return: it shares no user bookkeeping
         // with the tiles, and falling through armed a cooldown nothing ever
@@ -1452,14 +1441,7 @@ extension ZoomMeetingSDKClient: ZoomSDKVideoContainerDelegate {
     /// and it is NOT a failure - it is what the SDK draws when someone's camera
     /// is off. Logged so the two are never confused again.
     func onRenderDataTypeChanged(_ element: ZoomSDKVideoElement?, dataType type: VideoRenderDataType) {
-        #if DEBUG
-        if let spike = spikeElement, let element, spike === element {
-            Self.videoLog("View spike: render data type user=\(element.userid) type=\(type.rawValue)"
-                + " (\(type == VideoRenderDataType_Video ? "video" : type == VideoRenderDataType_Avatar ? "avatar" : "none"))")
-            onSpikeDataType?(type)
-            return
-        }
-        #endif
+        if let element, noteViewVideoDataType(element, type: type) { return }
         Self.videoLog("dataTypeChanged user=\(element?.userid ?? 0) type=\(type.rawValue)")
         // Someone's camera coming back on is the moment a previously refused
         // subscription is most worth retrying: the rate limiter has long since

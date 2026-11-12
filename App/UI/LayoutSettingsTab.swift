@@ -713,7 +713,7 @@ struct LayoutPageContent: View {
     /// Add panel's tooltips and caption, and the notice a click would give.
     private func blockReason(_ kind: LayoutPiece.Kind, template: LayoutTemplate, slot: LayoutSlot) -> String? {
         let version = template.piecesInVersion(of: slot)
-        if case .view = kind, !MeetingViewPieces.enabled { return "Coming in a later update" }
+        if case .view = kind, !MeetingViewPieces.enabled { return "Views are turned off on this Mac" }
         if case .view = kind, !customUIMode { return "Needs Greenroom\u{2019}s meeting UI (Settings \u{2192} Zoom)" }
         if template.canAdd(kind, to: slot) { return nil }
         let views = Set(version.compactMap { $0.kind.view })
@@ -987,8 +987,8 @@ struct LayoutPageContent: View {
         }
         if !MeetingViewPieces.enabled {
             HStack {
-                StatusBadge(text: "Coming later", tone: .problem)
-                Text("It is skipped at Start. Showing views arrives in a later update.")
+                StatusBadge(text: "Turned off", tone: .problem)
+                Text("It is skipped at Start. Views are switched off by the meetingViews.enabled default.")
                     .font(.callout).foregroundStyle(.secondary)
             }
         } else if !customUIMode {

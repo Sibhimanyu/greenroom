@@ -252,9 +252,12 @@ enum MeetingMenus {
 
     /// The controls that did not fit, then Meeting info and the Zoom app. Meeting
     /// info is a submenu of copyable lines, so no dialog has to take focus.
-    static func more(overflow: [MenuEntry], facts: MeetingFacts, _ a: MoreMenuActions) -> [MenuEntry] {
+    static func more(overflow: [MenuEntry], facts: MeetingFacts, views: [MenuEntry] = [],
+                     _ a: MoreMenuActions) -> [MenuEntry] {
         var out = overflow
         if !out.isEmpty { out.append(.separator) }
+        // Which windows are open: the Meeting window and every view (MeetingViewsMenu.swift).
+        if !views.isEmpty { out.append(.submenu("Views", views)) }
         var info: [MenuEntry] = []
         if !facts.number.isEmpty {
             info.append(.item("Meeting ID: \(spaced(facts.number))") { a.copy(facts.number, "Meeting ID") })

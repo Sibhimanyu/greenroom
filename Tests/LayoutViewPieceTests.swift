@@ -79,7 +79,7 @@ final class LayoutViewPieceTests: XCTestCase {
         let withMeeting = template([meeting])
         XCTAssertFalse(withMeeting.canAdd(view(.gallery), to: .one))
         XCTAssertFalse(withMeeting.canAdd(view(.speakerStrip), to: .one))
-        for v in [MeetingView.activeSpeaker, .multiSpeaker, .selfView, .people] {
+        for v in [MeetingView.activeSpeaker, .multiSpeaker, .selfView, .people, .sharedScreen, .spotlight, .handsUp] {
             XCTAssertTrue(withMeeting.canAdd(view(v), to: .one), "\(v)")
         }
         XCTAssertFalse(template([view(.gallery)]).canAdd(meeting, to: .one))
@@ -91,6 +91,44 @@ final class LayoutViewPieceTests: XCTestCase {
         XCTAssertFalse(template([view(.activeSpeaker)]).canAdd(view(.speakerStrip), to: .one))
         XCTAssertFalse(template([view(.speakerStrip)]).canAdd(view(.activeSpeaker), to: .one))
         XCTAssertTrue(template([view(.gallery)]).canAdd(view(.activeSpeaker), to: .one))
+    }
+
+    /// Every pair of the nine, and the Meeting window: only these are refused.
+    func testExclusionsForAllNine() {
+        let refused: Set<Set<String>> = [["meeting", "gallery"], ["meeting", "speakerStrip"], ["activeSpeaker", "speakerStrip"]]
+        func name(_ k: LayoutPiece.Kind) -> String { k.isMeeting ? "meeting" : (k.view?.rawValue ?? "?") }
+        var kinds: [LayoutPiece.Kind] = [meeting] + MeetingView.allCases.map { view($0) }
+        XCTAssertEqual(kinds.count, 10)
+        for a in kinds {
+            for b in kinds where name(a) != name(b) {
+                let allowed = template([a]).canAdd(b, to: .one)
+                XCTAssertEqual(allowed, !refused.contains([name(a), name(b)]), "\(name(a)) then \(name(b))")
+            }
+        }
+        kinds.removeAll()
+    }
+
+    func testHandsUpAndPeopleListCoexist() {
+        XCTAssertTrue(template([view(.people)]).canAdd(view(.handsUp), to: .one))
+        XCTAssertTrue(template([view(.handsUp)]).canAdd(view(.people), to: .one))
+        XCTAssertTrue(template([view(.spotlight), view(.activeSpeaker)]).canAdd(view(.sharedScreen), to: .one))
+    }
+
+    func testNewKindsRoundTrip() throws {
+        for v in [MeetingView.sharedScreen, .spotlight, .handsUp] {
+            let p = piece(view(v, hidden: true), UnitRect(x: 0.1, y: 0.2, w: 0.3, h: 0.4))
+            let data = try JSONEncoder().encode(p)
+            XCTAssertEqual(try JSONDecoder().decode(LayoutPiece.self, from: data), p)
+            let json = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+            XCTAssertEqual((json["kind"] as? [String: Any])?["view"] as? String, v.rawValue)
+        }
+        XCTAssertEqual(MeetingView.sharedScreen.rawValue, "sharedScreen")
+        XCTAssertEqual(MeetingView.spotlight.rawValue, "spotlight")
+        XCTAssertEqual(MeetingView.handsUp.rawValue, "handsUp")
+    }
+
+    func testOnlyListsAndNoVideoViewsAreMarked() {
+        XCTAssertEqual(Set(MeetingView.allCases.filter { !$0.drawsVideo }), [.people, .handsUp])
     }
 
     func testChatAndAppsUnaffectedByViews() {
@@ -105,7 +143,10 @@ final class LayoutViewPieceTests: XCTestCase {
         let expected: [MeetingView: CGSize] = [
             .activeSpeaker: CGSize(width: 240, height: 135), .gallery: CGSize(width: 320, height: 200),
             .multiSpeaker: CGSize(width: 360, height: 120), .speakerStrip: CGSize(width: 320, height: 240),
-            .selfView: CGSize(width: 160, height: 90), .people: CGSize(width: 220, height: 240)]
+            .selfView: CGSize(width: 160, height: 90), .people: CGSize(width: 220, height: 240),
+            .sharedScreen: CGSize(width: 320, height: 200), .spotlight: CGSize(width: 240, height: 135),
+            .handsUp: CGSize(width: 240, height: 200)]
+        XCTAssertEqual(Set(expected.keys), Set(MeetingView.allCases))
         for (v, size) in expected {
             XCTAssertEqual(LayoutGeometry.minimumPoints(for: view(v)), size, "\(v)")
         }

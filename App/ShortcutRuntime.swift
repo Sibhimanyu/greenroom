@@ -143,6 +143,11 @@ final class ShortcutRuntime {
             case .openSessions:
                 c.mainPage = .sessions
                 c.bringMainWindowForward()
+            default:
+                // The nine view windows: open it, or close it if it is open.
+                guard let view = action.meetingView, c.zoomChatClient.didUseCustomUI,
+                      c.stageLive || c.isRunning else { return }
+                MeetingViewWindows.toggle(view)
             }
         }
     }

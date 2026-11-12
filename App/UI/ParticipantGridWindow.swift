@@ -655,6 +655,15 @@ private final class RootView: NSView {
     private var selfCardShown: Bool { meetingForm && viewMode == .speaker && selfSharingNow && sharedNow == nil }
     private var lastStageProvider: ((UInt32, NSRect) -> NSView?)?
     private var lastReleaseStage: (() -> Void)?
+    /// While the Shared screen window draws the share, the stage says so.
+    private let shareElsewhere: NSTextField = {
+        let label = NSTextField(labelWithString: "Showing in Shared screen window")
+        label.font = .systemFont(ofSize: 15, weight: .medium)
+        label.textColor = MeetingTheme.secondaryTextNS
+        label.alignment = .center
+        label.isHidden = true
+        return label
+    }()
     private let sidePanelHost = BarView()
     private let sidePanelDivider = NSView()
     /// Solid #1A1A1A under the panel: the system material would show the window through it.
@@ -1267,6 +1276,10 @@ private final class RootView: NSView {
                     self.selected = (self.selected == id) ? nil : id
                     self.selectionChanged()
                 }
+                made.onSpotlightInWindow = { [weak self] id in
+                    guard let name = self?.roster.first(where: { $0.id == id })?.name else { return }
+                    MeetingViewWindows.spotlight(userID: id, name: name)
+                }
                 tiles[entry.id] = made
                 gridHost.addSubview(made)
                 return made
@@ -1877,6 +1890,16 @@ private final class RootView: NSView {
                 stageVideo = nil
                 lastReleaseStage?()
             }
+            if viewer.windowOwnsShare {
+                shareVideo?.removeFromSuperview()
+                shareVideo = nil
+                if shareElsewhere.superview == nil { stageHost.addSubview(shareElsewhere, positioned: .below, relativeTo: stageScrim) }
+                shareElsewhere.isHidden = false
+                shareElsewhere.frame = NSRect(x: 12, y: stageHost.bounds.midY - 12,
+                                              width: max(0, stageHost.bounds.width - 24), height: 24)
+                return
+            }
+            shareElsewhere.isHidden = true
             guard !stageHost.bounds.isEmpty, let view = viewer.stageView(frame: stageHost.bounds) else { return }
             if shareVideo !== view {
                 shareVideo?.removeFromSuperview()
@@ -1890,11 +1913,12 @@ private final class RootView: NSView {
             viewer.renderIfReady()
             return
         }
+        shareElsewhere.isHidden = true
         if shareVideo != nil {
             shareVideo?.removeFromSuperview()
             shareVideo = nil
         }
-        viewer?.releaseElement()
+        if viewer?.windowOwnsShare != true { viewer?.releaseElement() }
         guard isSpeakerMode, let id = stageSpeakerID, let provider = lastStageProvider else {
             stageVideo?.removeFromSuperview()
             stageVideo = nil
@@ -3712,6 +3736,8 @@ private final class TileView: NSView {
 
     let userID: UInt32
     var onSelect: ((UInt32) -> Void)?
+    /// Right-click: this person, large, in a window of their own.
+    var onSpotlightInWindow: ((UInt32) -> Void)?
 
     private var video: NSView?
     private let scrim = NSView()
@@ -3990,6 +4016,16 @@ private final class TileView: NSView {
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
     override func mouseDown(with event: NSEvent) { onSelect?(userID) }
+
+    override func menu(for event: NSEvent) -> NSMenu? {
+        guard let onSpotlightInWindow, MeetingViewPieces.enabled else { return nil }
+        let menu = NSMenu()
+        menu.autoenablesItems = false
+        menu.appearance = NSAppearance(named: .darkAqua)
+        let id = userID
+        menu.addItem(MeetingMenuBuilder.Item("Spotlight in window") { onSpotlightInWindow(id) })
+        return menu
+    }
 }
 
 // MARK: - An icon control

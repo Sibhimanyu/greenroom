@@ -67,9 +67,39 @@ final class LayoutEngine {
         resolve(template).meeting.flatMap { $0.fillsDisplay ? nil : $0 }
     }
 
+    /// Whether the placed meeting surfaces (the Meeting window in a rectangle, or
+    /// any view) start hidden: any one flagged "Starts hidden" hides them all.
     func startsHidden(_ template: LayoutTemplate) -> Bool {
-        guard let meeting = placedMeeting(template), case .meeting(_, let hidden) = meeting.piece.kind else { return false }
-        return hidden
+        resolve(template).placed.contains { placed in
+            if case .meeting(let fills, let hidden) = placed.piece.kind { return !fills && hidden }
+            if case .view(_, let hidden) = placed.piece.kind { return hidden }
+            return false
+        }
+    }
+
+    /// Something \u{2325}\u{2318}Z can hide: a Meeting window in a rectangle, or a view.
+    func hasPlacedSurface(_ template: LayoutTemplate) -> Bool {
+        let r = resolve(template)
+        return placedMeeting(template) != nil || !r.views.isEmpty
+    }
+
+    /// View pieces are placed and drawn: the layout has some, and they are switched on.
+    func viewPieces(_ template: LayoutTemplate) -> [Placed] {
+        MeetingViewPieces.enabled ? resolve(template).views : []
+    }
+
+    /// The layout has view pieces but no Meeting window of its own: Start does not
+    /// open the Meeting window then, and the control bar shows.
+    func hasViewsButNoMeeting(_ template: LayoutTemplate) -> Bool {
+        let r = resolve(template)
+        return r.meeting == nil && !viewPieces(template).isEmpty
+    }
+
+    /// Where the layout puts one view right now (grown into a gap while the
+    /// others are hidden is not a thing: views go away together), or nil.
+    func viewFrame(_ template: LayoutTemplate, _ view: MeetingView) -> (frame: NSRect, screen: NSScreen?)? {
+        guard let placed = viewPieces(template).first(where: { $0.piece.kind.view == view }) else { return nil }
+        return (placed.frames.ns, screen(of: placed))
     }
 
     /// Where Greenroom's meeting window goes, and in which form. nil when the
@@ -184,12 +214,24 @@ final class LayoutEngine {
         if let piece = r.chat, let frame = frames[piece.piece.id]?.ns {
             if ChatWindowController.isOpen { ChatWindowController.setFrame(frame) }
         }
+        placeViews(r, frames: frames, hidden: hidden)
         guard let meeting = r.meeting, !meeting.fillsDisplay else { return }
         if hidden {
             ParticipantGridWindowController.hide()
         } else {
             ParticipantGridWindowController.show()   // Snap Back never leaves it hidden
             ParticipantGridWindowController.place(frame: meeting.frames.ns)
+        }
+    }
+
+    /// The view pieces: each opens at its rectangle, or is re-placed there. Hidden
+    /// (\u{2325}\u{2318}Z, "Starts hidden"), they stay away, together with the Meeting window.
+    private func placeViews(_ r: Resolution, frames: [UUID: LayoutFrames], hidden: Bool) {
+        guard MeetingViewPieces.enabled else { return }
+        MeetingViewWindows.setHiddenTogether(hidden)
+        for placed in r.views {
+            guard let view = placed.piece.kind.view, let frame = frames[placed.piece.id]?.ns else { continue }
+            MeetingViewWindows.place(view, frame: frame, hidden: hidden)
         }
     }
 

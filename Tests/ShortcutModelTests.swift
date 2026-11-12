@@ -170,7 +170,20 @@ final class ShortcutModelTests: XCTestCase {
         let groups = ShortcutCatalog.grouped(layouts: [])
         XCTAssertEqual(groups.map(\.group.title), ["Class", "Meeting", "Layout", "Greenroom"])
         XCTAssertEqual(groups[0].slots.count, 6)
-        XCTAssertEqual(groups[1].slots.count, 9)
+        XCTAssertEqual(groups[1].slots.count, 9 + MeetingView.allCases.count, "the nine meeting actions and one per view")
+    }
+
+    // MARK: View actions
+
+    func testEveryViewHasAnUnboundOpenOrCloseAction() {
+        let actions = ShortcutAction.allCases.compactMap { action in action.meetingView.map { (action, $0) } }
+        XCTAssertEqual(Set(actions.map(\.1)), Set(MeetingView.allCases))
+        for (action, view) in actions {
+            XCTAssertEqual(action.title, "Open or close \(view.title)")
+            XCTAssertNil(action.defaultCombo, "\(view) ships unbound")
+            XCTAssertEqual(action.group, .meeting)
+            XCTAssertEqual(action.rawValue, "view.\(view.rawValue)")
+        }
     }
 
     // MARK: Glyphs

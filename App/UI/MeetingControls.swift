@@ -345,6 +345,15 @@ final class MeetingControlsModel: ObservableObject {
         refresh()
     }
 
+    /// The Views menu: the Meeting window and every view, a checkmark on each that
+    /// is open. Empty without Greenroom's own meeting UI.
+    func viewsMenu() -> [MenuEntry] {
+        guard coordinator.zoomChatClient.didUseCustomUI else { return [] }
+        return MeetingMenus.views(MeetingViewWindows.menuState,
+                                  toggleMeetingWindow: { [weak self] in self?.coordinator.toggleMeetingWindow() },
+                                  toggleView: { MeetingViewWindows.toggle($0) })
+    }
+
     func toggleMeetingWindow() {
         // The pill is up only while the window is away, so this brings it back,
         // by the morph.
@@ -484,7 +493,7 @@ struct MeetingToolbarView: View {
             a.copy = model.copy
             a.openInZoom = model.openInZoomApp
             a.shrink = model.videoButtons ? { model.shrinkToBar() } : nil
-            return MeetingMenus.more(overflow: overflow, facts: model.meetingFacts, a)
+            return MeetingMenus.more(overflow: overflow, facts: model.meetingFacts, views: model.viewsMenu(), a)
         }
         return m
     }
@@ -750,10 +759,14 @@ private struct MeetingControlBarView: View {
                 // One button for the meeting window. The pill is up only while
                 // that window is closed, minimised or covered, so this brings it
                 // back; it also closes it if the pill is still showing.
+                // With the views on, it is the Views menu: the Meeting window and
+                // every part of it as a window of its own.
                 iconButton("rectangle.inset.filled.on.rectangle", tint: .primary,
-                           help: "Meeting window: video, people, chat and controls",
-                           action: model.toggleMeetingWindow)
-                    .accessibilityLabel("Meeting window")
+                           help: MeetingViewPieces.enabled ? "Views: the meeting window and its parts"
+                                                           : "Meeting window: video, people, chat and controls",
+                           action: MeetingViewPieces.enabled ? {} : model.toggleMeetingWindow)
+                    .overlay { if MeetingViewPieces.enabled { MenuPopUpOverlay(label: "Views", entries: { model.viewsMenu() }) } }
+                    .accessibilityLabel(MeetingViewPieces.enabled ? "Views" : "Meeting window")
             }
             HStack(spacing: 4) {
                 Image(systemName: "person.2.fill").font(.system(size: 13))
@@ -1283,6 +1296,11 @@ enum MeetingControlBarController {
         menu.addItem(MenuItem("Expand") { setCollapsed(false) })
         if model?.videoButtons ?? false {
             menu.addItem(MenuItem("Expand to meeting window") { model?.toggleMeetingWindow() })
+        }
+        if let views = model?.viewsMenu(), !views.isEmpty {
+            let item = NSMenuItem(title: "Views", action: nil, keyEquivalent: "")
+            item.submenu = MeetingMenuBuilder.menu(views)
+            menu.addItem(item)
         }
         let inMeeting = model?.inMeeting ?? false
         menu.addItem(MenuItem((model?.muted ?? false) ? "Unmute" : "Mute", enabled: inMeeting) {

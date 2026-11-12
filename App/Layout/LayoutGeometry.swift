@@ -498,22 +498,47 @@ enum LayoutResolver {
         return best.map { ($0.id, $0.joined) }
     }
 
-    /// Every piece's frames with the Meeting hidden or not. Hidden, the one
-    /// neighbour that joins the Meeting's rect into a rectangle grows into the
-    /// gap; shown, it is back at its own rect.
+    /// Every piece's frames with the meeting surfaces hidden or not. Hidden, the
+    /// one neighbour that joins each hidden piece's rect into a rectangle grows
+    /// into the gap; shown, it is back at its own rect. `meetingHidden` hides the
+    /// Meeting window and every view together (\u{2325}\u{2318}Z).
     static func frames(of result: Result, meetingHidden: Bool) -> [UUID: LayoutFrames] {
+        let ids = meetingHidden ? Set(result.placed.filter { $0.piece.kind.isMeetingSurface }.map(\.piece.id)) : []
+        return frames(of: result, hidden: ids)
+    }
+
+    /// The same for an explicit set of hidden pieces. Several hidden pieces can
+    /// each be absorbed by a neighbour that is not hidden itself; a neighbour
+    /// that has already grown can grow again when its new rectangle touches the
+    /// next gap.
+    static func frames(of result: Result, hidden: Set<UUID>) -> [UUID: LayoutFrames] {
         var out: [UUID: LayoutFrames] = [:]
         for p in result.placed { out[p.piece.id] = p.frames }
-        guard meetingHidden, let meeting = result.meeting, !meeting.fillsDisplay else { return out }
-        let neighbours = result.placed
-            .filter { $0.piece.id != meeting.piece.id && $0.screen.id == meeting.screen.id && !$0.fillsDisplay
-                      && !$0.piece.kind.isView }   // view pieces are ignored by the runtime for now
-            .map { (id: $0.piece.id, rect: $0.piece.rect) }
-        guard let absorber = absorbingNeighbour(of: meeting.piece.rect, among: neighbours) else { return out }
-        out[absorber.id] = LayoutFrames(
-            ns: LayoutGeometry.nsFrame(for: absorber.joined, visibleFrame: meeting.screen.visibleFrame),
-            ax: LayoutGeometry.axFrame(for: absorber.joined, visibleFrame: meeting.screen.visibleFrame,
-                                       primaryHeight: result.primaryHeight))
+        guard !hidden.isEmpty else { return out }
+        var rects: [UUID: UnitRect] = [:]
+        for p in result.placed { rects[p.piece.id] = p.piece.rect }
+        // A gap that no neighbour can join yet may become joinable once another
+        // gap beside it has been taken, so go round until nothing more happens.
+        var pending = result.placed.filter { hidden.contains($0.piece.id) && !$0.fillsDisplay }
+        var progressed = true
+        while progressed, !pending.isEmpty {
+            progressed = false
+            for gone in pending {
+                let neighbours = result.placed
+                    .filter { $0.piece.id != gone.piece.id && !hidden.contains($0.piece.id)
+                              && $0.screen.id == gone.screen.id && !$0.fillsDisplay }
+                    .map { (id: $0.piece.id, rect: rects[$0.piece.id] ?? $0.piece.rect) }
+                guard let absorber = absorbingNeighbour(of: gone.piece.rect, among: neighbours) else { continue }
+                rects[absorber.id] = absorber.joined
+                out[absorber.id] = LayoutFrames(
+                    ns: LayoutGeometry.nsFrame(for: absorber.joined, visibleFrame: gone.screen.visibleFrame),
+                    ax: LayoutGeometry.axFrame(for: absorber.joined, visibleFrame: gone.screen.visibleFrame,
+                                               primaryHeight: result.primaryHeight))
+                pending.removeAll { $0.piece.id == gone.piece.id }
+                progressed = true
+                break
+            }
+        }
         return out
     }
 

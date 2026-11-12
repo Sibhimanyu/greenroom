@@ -245,18 +245,37 @@ enum ShortcutAction: String, CaseIterable {
     case snapBack = "snap"
     case openGreenroom = "openGreenroom"
     case openSessions = "openSessions"
+    // One per meeting view window: open it, or close it if it is open. Unbound.
+    case viewActiveSpeaker = "view.activeSpeaker"
+    case viewGallery = "view.gallery"
+    case viewMultiSpeaker = "view.multiSpeaker"
+    case viewSpeakerStrip = "view.speakerStrip"
+    case viewSelfView = "view.selfView"
+    case viewPeople = "view.people"
+    case viewSharedScreen = "view.sharedScreen"
+    case viewSpotlight = "view.spotlight"
+    case viewHandsUp = "view.handsUp"
+
+    /// The view this action opens or closes, for the nine view actions.
+    var meetingView: MeetingView? {
+        guard rawValue.hasPrefix("view.") else { return nil }
+        return MeetingView(rawValue: String(rawValue.dropFirst("view.".count)))
+    }
 
     var group: ShortcutGroup {
+        if meetingView != nil { return .meeting }
         switch self {
         case .startClass, .endSession, .toggleRecording, .clip1, .clip2, .clip5: return .classGroup
         case .toggleMic, .toggleCamera, .toggleChat, .toggleNotes, .showMeetingWindow,
              .toggleMeetingBar, .shrinkMeeting, .switchGalleryOrSpeaker, .toggleMeeting: return .meeting
         case .snapBack: return .layout
         case .openGreenroom, .openSessions: return .greenroom
+        default: return .meeting
         }
     }
 
     var title: String {
+        if let view = meetingView { return "Open or close \(view.title)" }
         switch self {
         case .startClass: return "Start class"
         case .endSession: return "End session"
@@ -276,10 +295,12 @@ enum ShortcutAction: String, CaseIterable {
         case .snapBack: return "Snap windows back to the layout"
         case .openGreenroom: return "Open Greenroom"
         case .openSessions: return "Open Sessions"
+        default: return ""
         }
     }
 
     var detail: String {
+        if let view = meetingView { return "\(view.blurb): a window of its own. Needs Greenroom\u{2019}s meeting UI." }
         switch self {
         case .startClass: return "Same as the Start button."
         case .endSession: return "Asks before it ends the class."
@@ -299,10 +320,12 @@ enum ShortcutAction: String, CaseIterable {
         case .snapBack: return "After you have dragged windows around."
         case .openGreenroom: return "Brings the main window forward."
         case .openSessions: return "Past classes and recordings."
+        default: return ""
         }
     }
 
     var symbol: String {
+        if let view = meetingView { return view.symbol }
         switch self {
         case .startClass: return "play.fill"
         case .endSession: return "stop.fill"
@@ -320,6 +343,7 @@ enum ShortcutAction: String, CaseIterable {
         case .snapBack: return "arrow.uturn.backward"
         case .openGreenroom: return "house.fill"
         case .openSessions: return "rectangle.stack.fill"
+        default: return "macwindow"
         }
     }
 
@@ -345,6 +369,7 @@ enum ShortcutAction: String, CaseIterable {
     /// The new actions ship unbound: a default is only worth taking when it is
     /// clearly safe, and none of them is clearly safe to guess.
     var defaultCombo: KeyCombo? {
+        if meetingView != nil { return nil }
         switch self {
         case .startClass: return .optionCommand(kVK_ANSI_G)
         case .endSession: return .optionCommand(kVK_ANSI_X)
@@ -356,6 +381,7 @@ enum ShortcutAction: String, CaseIterable {
         case .clip5: return .optionCommand(kVK_ANSI_5)
         case .toggleMic, .toggleCamera, .toggleChat, .toggleNotes, .showMeetingWindow,
              .toggleMeetingBar, .shrinkMeeting, .switchGalleryOrSpeaker, .openGreenroom, .openSessions: return nil
+        default: return nil
         }
     }
 }

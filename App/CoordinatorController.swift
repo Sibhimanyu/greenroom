@@ -34,9 +34,7 @@ final class CoordinatorController: ObservableObject {
         customUIGridTask = nil
         MeetingControlBarController.close()
         ParticipantGridWindowController.close()
-        #if DEBUG
-        ViewSpike.shared.close()
-        #endif
+        MeetingViewWindows.closeAll()
         zoomChatClient.releaseCustomUIVideo()
         zoomChatClient.leave() // ends the meeting if we're hosting it
     }
@@ -488,11 +486,11 @@ final class CoordinatorController: ObservableObject {
     /// action ("Show/Hide Speaker Tile").
     @Published private(set) var speakerTileQuickHidden = false
 
-    /// A Meeting piece in a rectangle is in the layout right now, so
-    /// \u{2325}\u{2318}Z has something to hide. The menu item reads this.
+    /// A Meeting piece in a rectangle, or a view window, is in the layout right
+    /// now, so \u{2325}\u{2318}Z has something to hide. The menu item reads this.
     var canToggleMeeting: Bool {
         guard stageLive, let template = sessionTemplate else { return false }
-        return layoutEngine.placedMeeting(template) != nil
+        return layoutEngine.hasPlacedSurface(template)
     }
 
     /// \u{2325}\u{2318}Z: hides the placed Meeting piece (the neighbour that
@@ -504,10 +502,11 @@ final class CoordinatorController: ObservableObject {
             log("Speaker tile skipped \u{2014} this session arranges no windows.")
             return
         }
-        guard let template = sessionTemplate, let meeting = layoutEngine.placedMeeting(template) else {
-            log("No meeting window in the layout to hide \u{2014} it has none, or it fills a display.")
+        guard let template = sessionTemplate, layoutEngine.hasPlacedSurface(template) else {
+            log("No meeting window or view in the layout to hide \u{2014} it has none, or it fills a display.")
             return
         }
+        let meeting = layoutEngine.placedMeeting(template)
         Analytics.track(.quickHide)
         let hide = !speakerTileQuickHidden
         // Custom UI: the meeting window is ours, so hiding it is just ordering
@@ -515,17 +514,21 @@ final class CoordinatorController: ObservableObject {
         // a panel that got mistaken for the tile.
         if zoomChatClient.didUseCustomUI {
             speakerTileQuickHidden = hide
+            // The Meeting window and every view go together; the neighbours take the room.
+            MeetingViewWindows.setHiddenTogether(hide)
             if hide {
                 ParticipantGridWindowController.hide()
-            } else {
+            } else if meeting != nil {
                 openMeetingWindow()
+            } else {
+                placeCustomSurfaces()
             }
             layoutEngine.moveNeighbour(template, meetingHidden: hide)
-            log(hide ? "Meeting window hidden \u{2014} \(ShortcutStore.phrase(.toggleMeeting)) shows it."
-                     : "Meeting window shown \u{2014} \(ShortcutStore.phrase(.toggleMeeting)) hides it again.")
+            log(hide ? "Meeting hidden \u{2014} \(ShortcutStore.phrase(.toggleMeeting)) shows it."
+                     : "Meeting shown \u{2014} \(ShortcutStore.phrase(.toggleMeeting)) hides it again.")
             return
         }
-        guard let window = builtInMeetingWindow else {
+        guard let meeting, let window = builtInMeetingWindow else {
             // Surfaced, not just logged: the status log is collapsed by
             // default, so pressing the shortcut before the tile exists looked
             // like the shortcut was simply broken.
@@ -1281,10 +1284,12 @@ final class CoordinatorController: ObservableObject {
         sessionArranges = sessionTemplate != nil
         zoomChatClient.arrangesWindows = sessionArranges
         speakerTileQuickHidden = sessionTemplate.map { layoutEngine.startsHidden($0) } ?? false
-        // View pieces are editable but not drawn yet (.context/meeting-views-plan.md, phase 1).
-        if let template = sessionTemplate,
-           (template.oneDisplay + (template.twoDisplays.map { $0.main + $0.second } ?? [])).contains(where: { $0.kind.isView }) {
-            log("Layout has view pieces; showing them arrives in a later update")
+        // The Meeting window opens at Start unless the layout shows the meeting only as views.
+        meetingWindowWanted = sessionTemplate.map { !layoutEngine.hasViewsButNoMeeting($0) } ?? true
+        MeetingViewWindows.reset()
+        if let template = sessionTemplate, !layoutEngine.viewPieces(template).isEmpty {
+            let names = layoutEngine.viewPieces(template).compactMap { $0.piece.kind.view?.title }.joined(separator: ", ")
+            log("Layout has view windows: \(names).")
         }
         let startedAt = Date()
         sessionStartedAt = startedAt
@@ -1525,9 +1530,8 @@ final class CoordinatorController: ObservableObject {
             recorder?.disarmClipBuffer()
             zoomChatClient.onParticipantCountChanged = nil
                 if failure == nil { ParticipantGridWindowController.close() }
-            #if DEBUG
-            ViewSpike.shared.close()
-            #endif
+            MeetingViewWindows.reset()
+            meetingWindowWanted = true
             zoomChatClient.releaseCustomUIVideo()
             // A beat between cancelling the window-follow loops and the
             // SDK tearing its meeting windows down: the crash logs' seven
@@ -2532,7 +2536,7 @@ final class CoordinatorController: ObservableObject {
     /// "Starts hidden"), the neighbour that joins it has grown into the gap.
     private func placeCustomSurfaces() {
         guard sessionArranges, let template = sessionTemplate else { return }
-        if layoutEngine.placedMeeting(template) == nil { speakerTileQuickHidden = false }
+        if !layoutEngine.hasPlacedSurface(template) { speakerTileQuickHidden = false }
         layoutEngine.placeMeetingAndChat(template, hidden: speakerTileQuickHidden)
     }
 
@@ -2596,10 +2600,28 @@ final class CoordinatorController: ObservableObject {
         // A join or a leave shows at once rather than at the next poll.
         zoomChatClient.onParticipantCountChanged = {
             ParticipantGridWindowController.refreshNow()
+            MeetingViewWindows.tick()
         }
+        // The view windows (Active speaker, Gallery, Hands up, ...): where the layout
+        // puts each, and what a few of their buttons do.
+        MeetingViewWindows.configure(
+            client: zoomChatClient,
+            log: { [weak self] message in self?.log(message) },
+            frameFor: { [weak self] view in
+                guard let self, self.sessionArranges, let template = self.sessionTemplate else { return nil }
+                return self.layoutEngine.viewFrame(template, view)
+            },
+            copyInvite: { [weak self] in self?.meetingControls?.copyInviteLink() },
+            openMeetingWindow: { [weak self] in self?.openMeetingWindow() })
         let startedAt = sessionStartedAt ?? Date()
         let tick: @MainActor () -> Bool = { [weak self] in
-            guard let self, let target = self.meetingSurfaceTarget() else { return false }
+            guard let self else { return false }
+            // Always refresh the open view windows; drive the Meeting window only
+            // when it is wanted (a layout of views alone, or one the teacher closed,
+            // has none).
+            MeetingViewWindows.tick()
+            guard self.meetingWindowWanted || ParticipantGridWindowController.isOpen else { return true }
+            guard let target = self.meetingSurfaceTarget() else { return false }
             if target.form.isMeeting {
                 // A display plugged in mid-class can turn the full panel into a
                 // meeting window, which needs the controls the panel was
@@ -2616,11 +2638,6 @@ final class CoordinatorController: ObservableObject {
                 presetName: self.meetingPresets.first { $0.number == digits }?.name ?? "",
                 readiness: self.startReadiness)
             ParticipantGridWindowController.refresh(on: target.screen, session: session, form: target.form)
-            #if DEBUG
-            // Phase 0 spike, behind a hidden default (ViewSpike.swift): nothing here when it is off.
-            ViewSpike.shared.sync(client: self.zoomChatClient,
-                                  meetingWindowOpen: ParticipantGridWindowController.meetingWindowIsOpen)
-            #endif
             return true
         }
         if let target = meetingSurfaceTarget() {
@@ -3008,6 +3025,7 @@ final class CoordinatorController: ObservableObject {
         // be a second copy of it. (An arranged session keeps its column.)
         if !sessionArranges, ChatWindowController.isOpen { ChatWindowController.close() }
         let alreadyOpen = ParticipantGridWindowController.meetingWindowIsOpen
+        meetingWindowWanted = true
         startCustomUIGridFollow()
         if alreadyOpen { ParticipantGridWindowController.show() }
         placeCustomSurfaces()
@@ -3049,19 +3067,27 @@ final class CoordinatorController: ObservableObject {
 
     func closeMeetingWindow() {
         guard customUIGridTask != nil || ParticipantGridWindowController.isOpen else { return }
-        customUIGridTask?.cancel()
-        customUIGridTask = nil
+        meetingWindowWanted = false
+        // The follow loop also feeds the view windows: it stops only when none is open.
+        if !MeetingViewWindows.anyOpen {
+            customUIGridTask?.cancel()
+            customUIGridTask = nil
+            zoomChatClient.onParticipantCountChanged = nil
+        }
         ParticipantGridWindowController.close()
-        zoomChatClient.onParticipantCountChanged = nil
         MeetingControlBarController.reconcile(immediately: false)
     }
+
+    /// Whether the follow loop should keep Greenroom's meeting window open. False
+    /// when the layout shows the meeting only as views, or the window was closed.
+    private var meetingWindowWanted = true
 
     /// The close button. A placed Meeting counts as hidden: the neighbour that
     /// joins it grows into the room (\u{2325}\u{2318}Z, or the pill, brings it back).
     private func meetingWindowClosedByUser() {
         closeMeetingWindow()
         if sessionArranges, isRunning || stageLive, let template = sessionTemplate,
-           layoutEngine.placedMeeting(template) != nil {
+           layoutEngine.placedMeeting(template) != nil, !MeetingViewWindows.anyOpen {
             speakerTileQuickHidden = true
             layoutEngine.moveNeighbour(template, meetingHidden: true)
         }
@@ -3281,7 +3307,7 @@ final class CoordinatorController: ObservableObject {
             // Back to the layout's own starting state: hidden if the Meeting
             // starts hidden, shown otherwise.
             speakerTileQuickHidden = layoutEngine.startsHidden(template)
-        } else if layoutEngine.placedMeeting(template) == nil {
+        } else if !layoutEngine.hasPlacedSurface(template) {
             // A display change can turn a placed Meeting into a whole-display one
             // (or take it away): nothing is hidden then.
             speakerTileQuickHidden = false

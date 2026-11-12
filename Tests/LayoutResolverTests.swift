@@ -99,6 +99,29 @@ final class LayoutResolverTests: XCTestCase {
         XCTAssertEqual(LayoutResolver.frames(of: r, meetingHidden: true).count, 3)
     }
 
+    /// The Meeting window and the views go together (\u{2325}\u{2318}Z), and each gap is
+    /// taken by a neighbour that is not hidden itself.
+    func testHidingTheMeetingAndAViewTogetherGivesBothGapsToChat() {
+        let meeting = LayoutPiece(kind: .meeting(fillsDisplay: false, startsHidden: false), rect: UnitRect(x: 0.5, y: 0, w: 0.5, h: 0.3))
+        let view = LayoutPiece(kind: .view(.handsUp, startsHidden: false), rect: UnitRect(x: 0.5, y: 0.3, w: 0.5, h: 0.2))
+        let chat = LayoutPiece(kind: .chat, rect: UnitRect(x: 0.5, y: 0.5, w: 0.5, h: 0.5))
+        let app = LayoutPiece(kind: .app(AppPiece(bundleID: "com.example.app")), rect: UnitRect(x: 0, y: 0, w: 0.5, h: 1))
+        let r = LayoutResolver.resolve(LayoutTemplate(name: "T", oneDisplay: [app, meeting, view, chat]),
+                                       screens: [main], primaryHeight: primaryHeight)
+        let hidden = LayoutResolver.frames(of: r, meetingHidden: true)
+        XCTAssertEqual(hidden[chat.id]?.ns, CGRect(x: 720, y: 0, width: 720, height: 875), "chat took the meeting and the view's room")
+        XCTAssertEqual(hidden[app.id], LayoutResolver.frames(of: r, meetingHidden: false)[app.id])
+    }
+
+    func testAViewAloneHidesAndItsNeighbourGrows() {
+        let view = LayoutPiece(kind: .view(.gallery, startsHidden: false), rect: UnitRect(x: 0.5, y: 0, w: 0.5, h: 0.5))
+        let chat = LayoutPiece(kind: .chat, rect: UnitRect(x: 0.5, y: 0.5, w: 0.5, h: 0.5))
+        let r = LayoutResolver.resolve(LayoutTemplate(name: "T", oneDisplay: [view, chat]), screens: [main], primaryHeight: primaryHeight)
+        XCTAssertEqual(LayoutResolver.frames(of: r, meetingHidden: true)[chat.id]?.ns,
+                       CGRect(x: 720, y: 0, width: 720, height: 875))
+        XCTAssertEqual(LayoutResolver.frames(of: r, meetingHidden: false)[chat.id]?.ns.height, 437.5)
+    }
+
     func testNoJoiningNeighbourMeansNothingMoves() {
         // The meeting is a box in a corner: nothing joins it into a rectangle.
         let t = LayoutTemplate(name: "T", oneDisplay: [

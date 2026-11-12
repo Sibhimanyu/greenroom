@@ -75,18 +75,23 @@ struct AppPiece: Codable, Equatable, Hashable {
     }
 }
 
-/// Whether the six meeting-view pieces are offered. The runtime does not draw
-/// them yet, so they stay out of the Add panel until
-/// `defaults write com.sibhimanyu.greenroom meetingViews.enabled -bool true`.
-/// Layouts that already hold view pieces still load, draw and can be edited.
+/// Whether the meeting-view pieces are offered and drawn. On by default; the
+/// defaults key is the kill switch:
+/// `defaults write com.sibhimanyu.greenroom meetingViews.enabled -bool false`
+/// hides them again (the Add panel offers only the Meeting window and the runtime
+/// skips view pieces at Start). Layouts that already hold view pieces still
+/// load, draw and can be edited.
 enum MeetingViewPieces {
     static let defaultsKey = "meetingViews.enabled"
     /// Tests set this; nil reads the default.
     static var override: Bool?
-    static var enabled: Bool { override ?? UserDefaults.standard.bool(forKey: defaultsKey) }
+    static var enabled: Bool {
+        if let override { return override }
+        return (UserDefaults.standard.object(forKey: defaultsKey) as? Bool) ?? true
+    }
 
-    /// The Meeting group's tiles, as (id, title, kind): the window, then the
-    /// six views only when they are enabled.
+    /// The Meeting group's tiles, as (id, title, kind): the window, then every
+    /// view when they are enabled.
     static func addEntries(customUIMode: Bool, viewsEnabled: Bool)
         -> [(id: String, title: String, kind: LayoutPiece.Kind)] {
         var entries: [(id: String, title: String, kind: LayoutPiece.Kind)] = [
@@ -103,6 +108,12 @@ enum MeetingViewPieces {
 /// Raw values are stored in saved layouts: never rename one.
 enum MeetingView: String, Codable, CaseIterable, Hashable {
     case activeSpeaker, gallery, multiSpeaker, speakerStrip, selfView, people
+    /// A shared screen alone, with no people around it.
+    case sharedScreen
+    /// One participant you pick, large, on a window of its own.
+    case spotlight
+    /// Raised hands in order, with the waiting room on top. No video.
+    case handsUp
 
     var title: String {
         switch self {
@@ -112,8 +123,30 @@ enum MeetingView: String, Codable, CaseIterable, Hashable {
         case .speakerStrip: return "Speaker + strip"
         case .selfView: return "Self view"
         case .people: return "People list"
+        case .sharedScreen: return "Shared screen"
+        case .spotlight: return "Spotlight student"
+        case .handsUp: return "Hands up"
         }
     }
+
+    /// What it is for, in a few words, for the Add panel's tooltip.
+    var blurb: String {
+        switch self {
+        case .activeSpeaker: return "Whoever is talking, large"
+        case .gallery: return "Everyone in a grid, with pages"
+        case .multiSpeaker: return "The last three who spoke"
+        case .speakerStrip: return "The speaker with a strip of people"
+        case .selfView: return "Your own picture"
+        case .people: return "Participants, with actions"
+        case .sharedScreen: return "Only the shared screen"
+        case .spotlight: return "One student you choose, large"
+        case .handsUp: return "Raised hands and the waiting room"
+        }
+    }
+
+    /// Draws video, so it needs the SDK's render elements. The People list and
+    /// Hands up are plain lists.
+    var drawsVideo: Bool { self != .people && self != .handsUp }
 
     var symbol: String {
         switch self {
@@ -123,6 +156,9 @@ enum MeetingView: String, Codable, CaseIterable, Hashable {
         case .speakerStrip: return "rectangle.bottomthird.inset.filled"
         case .selfView: return "person.crop.circle.fill"
         case .people: return "person.2.fill"
+        case .sharedScreen: return "display"
+        case .spotlight: return "person.fill.viewfinder"
+        case .handsUp: return "hand.raised.fill"
         }
     }
 
@@ -135,6 +171,9 @@ enum MeetingView: String, Codable, CaseIterable, Hashable {
         case .speakerStrip: return CGSize(width: 320, height: 240)
         case .selfView: return CGSize(width: 160, height: 90)
         case .people: return CGSize(width: 220, height: 240)
+        case .sharedScreen: return CGSize(width: 320, height: 200)
+        case .spotlight: return CGSize(width: 240, height: 135)
+        case .handsUp: return CGSize(width: 240, height: 200)
         }
     }
 
@@ -147,6 +186,9 @@ enum MeetingView: String, Codable, CaseIterable, Hashable {
         case .speakerStrip: return (5, 5)
         case .selfView: return (3, 2)
         case .people: return (3, 6)
+        case .sharedScreen: return (6, 4)
+        case .spotlight: return (4, 3)
+        case .handsUp: return (3, 5)
         }
     }
 }
@@ -348,7 +390,9 @@ struct LayoutTemplate: Codable, Identifiable, Equatable {
     /// one piece per app (two windows of the same app cannot be told apart) and
     /// at most one of each view. The Meeting window already has a gallery and a
     /// speaker with strip, so it excludes those two views; Active speaker
-    /// excludes Speaker + strip, which contains it.
+    /// excludes Speaker + strip, which contains it. Everything else coexists: the
+    /// People list and Hands up, a Shared screen beside the Meeting window, a
+    /// Spotlight beside Active speaker.
     func canAdd(_ kind: LayoutPiece.Kind, to slot: LayoutSlot) -> Bool {
         let existing = piecesInVersion(of: slot)
         let views = Set(existing.compactMap { $0.kind.view })
@@ -361,7 +405,7 @@ struct LayoutTemplate: Codable, Identifiable, Equatable {
             case .gallery: return !hasMeeting
             case .speakerStrip: return !hasMeeting && !views.contains(.activeSpeaker)
             case .activeSpeaker: return !views.contains(.speakerStrip)
-            case .multiSpeaker, .selfView, .people: return true
+            case .multiSpeaker, .selfView, .people, .sharedScreen, .spotlight, .handsUp: return true
             }
         case .chat: return !existing.contains { $0.kind.isChat }
         case let .app(app):

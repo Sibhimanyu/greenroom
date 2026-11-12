@@ -43,6 +43,22 @@ final class ShareViewer: NSObject, ZoomSDKASControllerDelegate, ZoomSDKShareCont
     /// The rule last reported by the SDK, nil until it says.
     private(set) var reportedRule: ShareRule?
 
+    /// The Shared screen window draws the share. The SDK keys a share element by
+    /// its source (ZoomSDKShareContainer.h:121, getShareElementBySourceID:), and a
+    /// view has one superview, so one window draws a source at a time: while the
+    /// Shared screen window is open it takes the element from the Meeting window's
+    /// stage, which shows a "Showing in Shared screen window" placeholder.
+    private(set) var windowOwnsShare = false
+
+    func setWindowOwnsShare(_ owns: Bool) {
+        guard owns != windowOwnsShare else { return }
+        releaseElement()          // the element is made again, in the other window
+        windowOwnsShare = owns
+        Self.log(owns ? "the Shared screen window took the share from the meeting window"
+                      : "the meeting window has the share again")
+        onChange?()
+    }
+
     /// A share began or ended: redraw now rather than at the next poll.
     var onChange: (() -> Void)?
     /// A user's name, for the chip. Set by the client.

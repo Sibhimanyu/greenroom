@@ -758,7 +758,7 @@ struct LayoutPieceTile: View {
 
     private var caption: String {
         if look.missing { return "Not on this Mac" }
-        if look.comingLater { return "Coming in a later update" }
+        if look.comingLater { return "Views are turned off" }
         if look.needsCustomUI { return "Needs custom UI" }
         if piece.isFixed { return "Fills this display" }
         return "\(columns) of 12 \u{00B7} \(pointSize.w)\u{00D7}\(pointSize.h)"
@@ -899,6 +899,38 @@ struct MeetingViewDiagram: Shape {
                 p.addEllipse(in: CGRect(x: r.minX + r.width * 0.2, y: y, width: r.height * 0.2, height: r.height * 0.2))
                 p.move(to: CGPoint(x: r.minX + r.width * 0.2 + r.height * 0.3, y: y + r.height * 0.1))
                 p.addLine(to: CGPoint(x: r.minX + r.width * 0.85, y: y + r.height * 0.1))
+            }
+        case .sharedScreen:
+            // A screen on a stand, with a few lines of content.
+            box(0, 0, 1, 0.78)
+            for line in 0..<2 {
+                let y = r.minY + (0.22 + CGFloat(line) * 0.2) * r.height
+                p.move(to: CGPoint(x: r.minX + r.width * 0.14, y: y))
+                p.addLine(to: CGPoint(x: r.minX + r.width * (line == 0 ? 0.62 : 0.44), y: y))
+            }
+            p.move(to: CGPoint(x: r.midX, y: r.minY + r.height * 0.78))
+            p.addLine(to: CGPoint(x: r.midX, y: r.maxY - r.height * 0.06))
+            p.move(to: CGPoint(x: r.midX - r.width * 0.16, y: r.maxY - r.height * 0.04))
+            p.addLine(to: CGPoint(x: r.midX + r.width * 0.16, y: r.maxY - r.height * 0.04))
+        case .spotlight:
+            // One person, with a ring round the head: the student you picked.
+            box(0.1, 0, 0.8, 1)
+            p.addEllipse(in: CGRect(x: r.midX - r.height * 0.2, y: r.minY + r.height * 0.12,
+                                    width: r.height * 0.4, height: r.height * 0.4))
+            p.addEllipse(in: CGRect(x: r.midX - r.height * 0.1, y: r.minY + r.height * 0.22,
+                                    width: r.height * 0.2, height: r.height * 0.2))
+            p.move(to: CGPoint(x: r.midX - r.height * 0.28, y: r.maxY - r.height * 0.1))
+            p.addQuadCurve(to: CGPoint(x: r.midX + r.height * 0.28, y: r.maxY - r.height * 0.1),
+                           control: CGPoint(x: r.midX, y: r.midY + r.height * 0.1))
+        case .handsUp:
+            // A queue: a dot, a line and a raised mark for each.
+            for row in 0..<3 {
+                let y = r.minY + (CGFloat(row) * 0.36 + 0.1) * r.height
+                p.addEllipse(in: CGRect(x: r.minX + r.width * 0.1, y: y, width: r.height * 0.2, height: r.height * 0.2))
+                p.move(to: CGPoint(x: r.minX + r.width * 0.1 + r.height * 0.3, y: y + r.height * 0.1))
+                p.addLine(to: CGPoint(x: r.minX + r.width * 0.62, y: y + r.height * 0.1))
+                p.move(to: CGPoint(x: r.minX + r.width * 0.84, y: y + r.height * 0.2))
+                p.addLine(to: CGPoint(x: r.minX + r.width * 0.84, y: y))
             }
         }
         return p

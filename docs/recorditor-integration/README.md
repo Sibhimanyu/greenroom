@@ -78,6 +78,29 @@ Gap analysis at the start (2026-11-13):
 | 5 Drawing, whiteboard, Audio only card | Built (Debug, zero errors, 260 unit tests pass) 2026-11-13; untested by hand. See `drawing-port-log.md` |
 | 6 Presentation follow | Planned |
 
+### Not yet planned (in Recorditor, not ported)
+
+Quality and frame-rate settings (0.5/0.8/1.2 bpp, 30/60 fps, HEVC); live
+source switching mid-take; camera-only recording and the menu-bar "Record
+Camera Only"; the background strip on the bubble mid-take; a "Use <other
+camera>" button on fallback; a post-recording "saved" card; editor captions
+from Greenroom's own transcript; Greenroom notes drawn through the editor's
+`RoomCommentPopup` overlay. Out of scope: Live Feedback, Classroom, On Stage,
+WorkDrive, TrainerCentral.
+
+### Glass redesign (alongside the port, 2026-11-13)
+
+The owner asked for the whole app to match the macOS 26 Liquid Glass look
+while reviewing the port. Plan, decisions and per-screen changes:
+`docs/glass-redesign-plan.md`; binding rules: `DESIGN.md` ("Glass", "Chrome
+is the system's", "Cards and tiles", segmented rule, 2026-11-13 log rows).
+All chunks C0–C11 merged on `rethink-presence`. Ported UI follows these rules
+too: floating pieces use `.greenroomGlass`, switchers `GreenroomSegmented`,
+clickable tiles `.greenroomTile`, page chrome goes in the window toolbar.
+How it was run: one read-only audit (Plan agent), then each chunk in its own
+git worktree under `.context/wt/<chunk>` with its own `-derivedDataPath`,
+cherry-picked back and built + tested together.
+
 ## How to continue a phase (for agents)
 
 1. Read the phase's rows in Recorditor's `Recording-Customisation-Integration.md` and the matching section of `01-Recording.md`.

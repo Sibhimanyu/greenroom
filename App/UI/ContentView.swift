@@ -542,7 +542,7 @@ struct ContentView: View {
     private static let pageMinHeight: CGFloat = 600
 
     private static var window: NSWindow? {
-        NSApp.windows.first { $0.title == "Greenroom" }
+        MainWindow.current
     }
 
     /// The least the window may be, for the page it is on. On Home that is

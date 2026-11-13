@@ -19,7 +19,7 @@ import AppKit
 /// Whether the main window is somewhere a person is looking.
 enum MainWindowPresence {
     static var window: NSWindow? {
-        NSApp.windows.first { $0.title == "Greenroom" }
+        MainActor.assumeIsolated { MainWindow.current }
     }
 
     /// Open, not minimised, not entirely covered, and Greenroom is the app in

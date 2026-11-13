@@ -3735,7 +3735,7 @@ final class CoordinatorController: ObservableObject {
     /// closed window is brought back by reopening the app (the same event as a
     /// Dock click, which the Window scene answers by recreating it).
     func bringMainWindowForward() {
-        if NSApp.windows.contains(where: { $0.title == "Greenroom" }) {
+        if MainWindow.current != nil {
             showMainWindow()
         } else {
             NSWorkspace.shared.openApplication(at: Bundle.main.bundleURL,
@@ -3746,7 +3746,7 @@ final class CoordinatorController: ObservableObject {
     /// Menu bar's "Show Greenroom" - surfaces the main window.
     func showMainWindow() {
         NSApp.activate(ignoringOtherApps: true)
-        NSApp.windows.first { $0.title == "Greenroom" }?.makeKeyAndOrderFront(nil)
+        MainWindow.current?.makeKeyAndOrderFront(nil)
     }
 
     /// The create-mode meeting, made WHILE the picture comes up (see the async
@@ -4128,7 +4128,7 @@ final class CoordinatorController: ObservableObject {
             if ChatWindowController.owns(window) { return false } // "Meeting Chat" - ours
             if ParticipantGridWindowController.owns(window) { return false } // custom-UI gallery - ours
             if BrowserWindowController.owns(window) { return false } // built-in browser - title is the page's
-            if window.title == "Greenroom" { return false } // main window
+            if MainWindow.matches(window) { return false } // main window
             if window.title.localizedCaseInsensitiveContains("settings") { return false }
 
             let className = String(describing: type(of: window))
@@ -4283,7 +4283,7 @@ final class CoordinatorController: ObservableObject {
         // Title match, minus the browser: its title is the page's, and the
         // default home page is our own site.
         for window in NSApp.windows
-        where window.isVisible && window.title == "Greenroom" && !BrowserWindowController.owns(window) {
+        where window.isVisible && MainWindow.matches(window) && !BrowserWindowController.owns(window) {
             window.orderBack(nil)
         }
         // The largest App piece on the main display is what the teacher works in.

@@ -134,6 +134,24 @@ final class StageScreenSource: NSObject, SCStreamOutput, SCStreamDelegate {
     /// Set when the capture is of one window (a window share, or an app that
     /// is on another desktop), for the no-picture check.
     private var windowLabel: String?
+    /// What the picture is OF, in global CoreGraphics points (top-left origin
+    /// of the main display): the display's frame, or the window being
+    /// followed. Set in `start()`; read by `capturedFrame()`.
+    private var capturedDisplayFrame: CGRect?
+    private var capturedWindowID: CGWindowID?
+
+    /// The screen area the current picture shows, right now, in global
+    /// CoreGraphics points. A window is looked up afresh each call, because
+    /// it moves and resizes; nil when it has gone.
+    func capturedFrame() -> CGRect? {
+        stateLock.lock()
+        let windowID = capturedWindowID, display = capturedDisplayFrame
+        stateLock.unlock()
+        guard let windowID else { return display }
+        guard let info = CGWindowListCopyWindowInfo([.optionIncludingWindow], windowID) as? [[String: Any]],
+              let bounds = info.first?[kCGWindowBounds as String] as? NSDictionary else { return nil }
+        return CGRect(dictionaryRepresentation: bounds)
+    }
 
     func start() async throws {
         let content: SCShareableContent
@@ -151,6 +169,7 @@ final class StageScreenSource: NSObject, SCStreamOutput, SCStreamDelegate {
             Self.log("No display was found among \(content.displays.count).")
             throw Failure(errorDescription: "No screen was found to share.")
         }
+        stateLock.lock(); capturedDisplayFrame = display.frame; stateLock.unlock()
         let displays = content.displays.enumerated().map { i, d in
             ScreenDisplayInfo(index: i + 1, frame: d.frame, isMain: d.displayID == CGMainDisplayID())
         }
@@ -180,6 +199,7 @@ final class StageScreenSource: NSObject, SCStreamOutput, SCStreamDelegate {
             if !window.isOnScreen {
                 Self.log("\(windowLabel ?? "The window") is on another desktop or full screen; following it there.")
             }
+            stateLock.lock(); capturedWindowID = window.windowID; stateLock.unlock()
             filter = SCContentFilter(desktopIndependentWindow: window)
         }
 
@@ -269,6 +289,7 @@ final class StageScreenSource: NSObject, SCStreamOutput, SCStreamDelegate {
             if let window = content.windows.first(where: { $0.windowID == windowID }) {
                 windowLabel = Self.windowName(window)
                 Self.log("\(name) is on \(onScreen ? "another display" : "another desktop"); showing its main window.")
+                stateLock.lock(); capturedWindowID = window.windowID; stateLock.unlock()
                 return SCContentFilter(desktopIndependentWindow: window)
             }
         case .windows(let ids):

@@ -90,6 +90,8 @@ final class StageInputBoard {
     func clearScreen() { lock.lock(); screen = nil; activeScreen = nil; pendingScreen = nil; lock.unlock() }
 
     /// Returns true when this frame promoted a pending source to active.
+    var activeScreenID: UUID? { lock.lock(); defer { lock.unlock() }; return activeScreen }
+
     func offerScreen(_ buffer: CVPixelBuffer, wholeDisplay: Bool, from id: UUID) -> Bool {
         lock.lock(); defer { lock.unlock() }
         if id == activeScreen { screen = Screen(buffer: buffer, wholeDisplay: wholeDisplay); return false }
@@ -151,6 +153,37 @@ final class StageCompositor: StageFrameSource {
 
     func addSink(_ sink: StageFrameSink) { sinks.add(sink) }
     func removeSink(_ sink: StageFrameSink) { sinks.remove(sink) }
+
+    // MARK: Where the screen is in the picture
+
+    /// Maps a point on the real screen to where that spot is in the finished
+    /// video: 0...1, top-left origin, over the whole canvas. Nil when the
+    /// point is not on the shared content (outside the display or window being
+    /// captured) or no screen is drawn right now (nothing shared, or layout
+    /// with content off).
+    ///
+    ///   source  = captured display's frame, or the followed window's CURRENT
+    ///             frame (global CG points, top-left origin)
+    ///   u, v    = (p - source.origin) / source.size
+    ///   rect    = where `StageRenderer.compose` drew the screen in the last
+    ///             frame (canvas px, top-left): fitted + letterboxed into the
+    ///             full-frame box, the window margin box or the presenter panel
+    ///   x, y    = (rect.minX + u * rect.width) / canvas.width, likewise y
+    ///
+    /// Both halves are read at call time, so a window that moved or a layout
+    /// that changed mid-recording is followed.
+    func videoPosition(ofGlobalPoint p: CGPoint) -> CGPoint? {
+        guard let rect = renderer.lastContentRect, rect.width > 0, rect.height > 0 else { return nil }
+        lock.lock()
+        let source = board.activeScreenID.flatMap { screenSources[$0] }
+        lock.unlock()
+        guard let frame = source?.capturedFrame(), frame.width > 1, frame.height > 1,
+              frame.contains(p) else { return nil }
+        let u = (p.x - frame.minX) / frame.width
+        let v = (p.y - frame.minY) / frame.height
+        return CGPoint(x: (rect.minX + u * rect.width) / outputSize.width,
+                       y: (rect.minY + v * rect.height) / outputSize.height)
+    }
 
     // MARK: Permission
 

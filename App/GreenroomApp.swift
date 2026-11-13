@@ -87,6 +87,9 @@ enum Brand {
 struct GreenroomApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @StateObject private var coordinator = CoordinatorController()
+    /// One editor document for the life of the app, shared by the Editor window
+    /// and the Recordings view's Edit button.
+    @StateObject private var editor = EditorViewModel()
 
     /// Sparkle auto-updater: checks the appcast (SUFeedURL in Info.plist)
     /// every SUScheduledCheckInterval and offers "Install and Relaunch" -
@@ -117,6 +120,7 @@ struct GreenroomApp: App {
         Window("Greenroom", id: "main") {
             ContentView()
                 .environmentObject(coordinator)
+                .environmentObject(editor)
                 .tint(Brand.green)
                 .heresay()
                 // Once per install, and never over onboarding: on a first
@@ -137,6 +141,13 @@ struct GreenroomApp: App {
             }
             HeresayCommands()
         }
+
+        Window("Editor", id: "editor") {
+            EditorView()
+                .environmentObject(editor)
+                .tint(Brand.green)
+        }
+        .defaultSize(width: 1180, height: 760)
 
         Settings {
             SettingsView()

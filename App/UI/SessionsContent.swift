@@ -573,6 +573,8 @@ struct SessionInspectorModel {
     var takes: [Take] = []
     var canRename: Bool = true
     var canTrash: Bool = true
+    /// The selected take has a video the editor can open.
+    var canEdit: Bool = false
     var youtubeConnected: Bool = false
 
     var meta: String {
@@ -599,6 +601,7 @@ struct SessionInspectorActions {
     var rename: () -> Void = {}
     var showInFinder: () -> Void = {}
     var trash: () -> Void = {}
+    var edit: () -> Void = {}
 }
 
 /// "Back", top left of a page: the way out of a page of the main window.
@@ -722,6 +725,7 @@ struct SessionInspector<Player: View, Detail: View>: View {
                 HStack(spacing: 12) {
                     youtubeTile
                     analyseTile
+                    editTile
                 }
                 .fixedSize(horizontal: false, vertical: true)
 
@@ -799,6 +803,20 @@ struct SessionInspector<Player: View, Detail: View>: View {
     }
 
     // MARK: Tiles
+
+    /// Opens the take in the video editor. Saving writes a new session
+    /// folder; this recording is never modified.
+    @ViewBuilder private var editTile: some View {
+        if model.canEdit {
+            StatusTile(symbol: "scissors", tint: Brand.text,
+                       title: "Edit", subtitle: "Saved as a new recording",
+                       action: actions.edit)
+                .help("Opens this recording in the editor. Saving makes a new recording and leaves this one untouched.")
+        } else {
+            StatusTile(symbol: "scissors", tint: .secondary,
+                       title: "Edit", subtitle: "No recording to edit", action: nil)
+        }
+    }
 
     @ViewBuilder private var youtubeTile: some View {
         switch model.youtube {

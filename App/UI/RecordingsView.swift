@@ -184,6 +184,8 @@ struct RecordingsView: View {
 
     /// Used for the YouTube upload button and state.
     @EnvironmentObject private var coordinator: CoordinatorController
+    @EnvironmentObject private var editor: EditorViewModel
+    @Environment(\.openWindow) private var openWindow
 
     /// The work under the inspector's picture.
     ///
@@ -269,6 +271,8 @@ struct RecordingsView: View {
         .onReceive(NotificationCenter.default.publisher(for: NSWindow.didBecomeKeyNotification)) { _ in reload() }
         // An upload finishing while the page is open should show up here.
         .onChange(of: coordinator.isUploadingToYouTube) { reload() }
+        // A saved edit is its own new session folder.
+        .onChange(of: editor.savedExportURL) { _, url in if url != nil { reload() } }
         // An analysis finishing: the card gets its sparkles, and when this
         // page started the run, the report opens - that is what was asked for.
         .onChange(of: review.analysisRuns) {
@@ -550,6 +554,7 @@ struct RecordingsView: View {
         }
         model.canRename = session.folder != nil
         model.canTrash = take != nil
+        model.canEdit = take != nil
         return model
     }
 
@@ -631,6 +636,11 @@ struct RecordingsView: View {
                 [take?.url ?? session.folder ?? SessionFolders.recordingsDirectory])
         }
         actions.trash = { if let take { confirmingDelete = take } }
+        actions.edit = {
+            guard let take else { return }
+            openWindow(id: "editor")
+            Task { await editor.load(url: take.url) }
+        }
         return actions
     }
 

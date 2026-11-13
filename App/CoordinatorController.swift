@@ -1146,6 +1146,8 @@ final class CoordinatorController: ObservableObject {
     private var stage: StageCompositor?
     /// Films the stage. Made with a session; nil outside one.
     private var recorder: SessionRecorder?
+    /// Clicks and keys of the running recording; see `wireInputEvents`.
+    private let inputEvents = InputEventTracker()
     /// The cameras the stage holds right now, while a session runs. Nil means
     /// "the first camera only", which is what Start and the idle preview open.
     private var stageCameraUIDs: [String]?
@@ -4021,6 +4023,7 @@ final class CoordinatorController: ObservableObject {
             Task { @MainActor in self?.recorderStoppedItself(message) }
         }
         self.recorder = recorder
+        wireInputEvents(recorder, stage: stage)
 
         log("Starting the picture (screen + webcam)\u{2026}")
         let probe = StageFrameProbe()
@@ -4046,6 +4049,25 @@ final class CoordinatorController: ObservableObject {
         }
         reportStageStart(stage.status, configuration: configuration,
                          wantsScreen: screenExpected, wantsCamera: wantsCamera)
+    }
+
+    /// Clicks and keystrokes beside each recording (`<video>.events.json`), for
+    /// the editor's click ripples, key chips and auto-zoom. Meeting and
+    /// Record-mode recordings both come through `buildScene`, so one hook
+    /// covers both. Only while a screen is shared and Accessibility is on;
+    /// otherwise the tracker does nothing (no prompt from here).
+    /// `t` is the recorder's own clock (seconds since the file's first frame),
+    /// and positions come from where the stage drew the screen.
+    private func wireInputEvents(_ recorder: SessionRecorder, stage: StageCompositor) {
+        recorder.onRecordingStarted = { [weak self, weak recorder, weak stage] in
+            guard let self, let recorder, let stage, self.shareTarget.kind != .nothing else { return }
+            self.inputEvents.start(
+                elapsed: { [weak recorder] in recorder?.elapsedMilliseconds.map { Double($0) / 1000 } },
+                locate: { [weak stage] point in stage?.videoPosition(ofGlobalPoint: point) })
+        }
+        recorder.onRecordingEnded = { [weak self] url in
+            self?.inputEvents.stopAndSave(nextTo: url)
+        }
     }
 
     private func reportStageStart(_ status: StageStatus, configuration: StageConfiguration,

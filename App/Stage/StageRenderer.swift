@@ -41,6 +41,19 @@ final class StageRenderer {
     private var masks: [String: CIImage] = [:]
     private lazy var chromaKey: CIFilter? = Self.makeChromaKeyCube()
 
+    /// Where the shared screen was drawn in the last composed frame, in canvas
+    /// pixels, top-left origin; nil when no screen was drawn. Written on the
+    /// render queue by `compose`, read from any thread (input-event mapping).
+    private let placementLock = NSLock()
+    private var contentRect_: CGRect?
+    var lastContentRect: CGRect? {
+        placementLock.lock(); defer { placementLock.unlock() }
+        return contentRect_
+    }
+    private func setContentRect(_ rect: CGRect?) {
+        placementLock.lock(); contentRect_ = rect; placementLock.unlock()
+    }
+
     init(canvas: CGSize) {
         self.canvas = canvas
         let options: [CIContextOption: Any] = [
@@ -74,6 +87,7 @@ final class StageRenderer {
     func compose(scene: StageScene, screen: CIImage?, cameras: [Int: StageCameraInput]) -> CIImage {
         let layout = scene.layout
         var out = backdrop                                   // layer 0 (enforceLayerOrder :952)
+        setContentRect(nil)
 
         // Content: above the backdrop, below every camera.
         if layout.showsContent, let screen {
@@ -90,6 +104,7 @@ final class StageRenderer {
                 box = CGRect(x: m, y: m, width: canvas.width - 2 * m, height: canvas.height - 2 * m)
             }
             let placed = place(screen, inside: box)
+            setContentRect(placed.rect)
             var contentImage = placed.image
             if presenter {
                 // Panel mask: radius 2.5% of the drawn width (2.5% of the drawn width).

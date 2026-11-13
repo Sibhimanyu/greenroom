@@ -44,6 +44,12 @@ final class SessionRecorder: StageFrameSink {
     /// The recording ended without being asked to (disk full, writer failure).
     /// The file so far is kept. Called on an arbitrary queue.
     var onUnexpectedStop: ((String) -> Void)?
+    /// A recording has begun (its file is chosen; the first frame may not have
+    /// been written yet). On the main thread. For `InputEventTracker`.
+    var onRecordingStarted: (@MainActor () -> Void)?
+    /// A recording has ended, for any reason, with the finished file or nil
+    /// when nothing was kept. On the main thread, after the file is closed.
+    var onRecordingEnded: (@MainActor (URL?) -> Void)?
 
     /// One second, so a saved clip is at most a second behind the moment it was
     /// asked for (the buffer's keyframes are one second apart to match).
@@ -174,6 +180,15 @@ final class SessionRecorder: StageFrameSink {
         droppedBusy = 0
         lock.unlock()
         syncPlumbing()
+        if let started = onRecordingStarted {
+            if Thread.isMainThread { MainActor.assumeIsolated { started() } }
+            else { DispatchQueue.main.async { MainActor.assumeIsolated { started() } } }
+        }
+    }
+
+    private func announceEnd(_ url: URL?) async {
+        guard let ended = onRecordingEnded else { return }
+        await MainActor.run { ended(url) }
     }
 
     /// Stops the recording and returns the finished file. Nil when nothing was
@@ -188,7 +203,7 @@ final class SessionRecorder: StageFrameSink {
         }
         guard was else { return nil }
         defer { lock.withLock { stopping = false } }
-        guard let url else { return nil }
+        guard let url else { await announceEnd(nil); return nil }
         syncPlumbing()
 
         let encoder: StageEncoder? = await withCheckedContinuation { cont in
@@ -196,7 +211,7 @@ final class SessionRecorder: StageFrameSink {
                 let e = recording; recording = nil; cont.resume(returning: e)
             }
         }
-        guard let encoder else { return nil }
+        guard let encoder else { await announceEnd(nil); return nil }
         let closed = await encoder.finish()
         if !closed {
             log("The recording file did not finish closing within \(Int(StageEncoder.finishTimeout)) s; carrying on. The file is written in fragments, so it still plays.")
@@ -210,6 +225,7 @@ final class SessionRecorder: StageFrameSink {
         guard written > 0 else {
             try? FileManager.default.removeItem(at: url)
             log("Recording stopped before any picture arrived; nothing was saved.")
+            await announceEnd(nil)
             return nil
         }
         var line = "Recording stopped: \(written) frames over \(Int(seconds.rounded())) s."
@@ -227,6 +243,7 @@ final class SessionRecorder: StageFrameSink {
             line += " No microphone sound arrived, so the file is silent."
         }
         log(line)
+        await announceEnd(url)
         return url
     }
 
@@ -405,6 +422,7 @@ final class SessionRecorder: StageFrameSink {
         Task { [weak self] in
             await encoder.finish()
             self?.syncPlumbing()
+            await self?.announceEnd(self?.recordingURL)
             self?.onUnexpectedStop?(message)
         }
     }

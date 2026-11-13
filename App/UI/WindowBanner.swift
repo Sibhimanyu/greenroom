@@ -151,9 +151,7 @@ private struct BannerCard<Content: View>: View {
     var body: some View {
         content
             .padding(14)
-            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14))
-            .overlay(RoundedRectangle(cornerRadius: 14)
-                .strokeBorder(Color(nsColor: .separatorColor).opacity(0.6), lineWidth: 1))
+            .greenroomGlass(in: RoundedRectangle(cornerRadius: 14, style: .continuous))
             .shadow(color: .black.opacity(0.18), radius: 12, y: 4)
     }
 }
@@ -237,7 +235,7 @@ private struct ReadinessBanner: View {
             VStack(alignment: .leading, spacing: 10) {
                 Text(readiness.failure == nil ? "GETTING READY" : "COULD NOT START")
                     .font(.system(size: 10, weight: .semibold, design: .monospaced))
-                    .foregroundStyle(.tertiary)
+                    .foregroundStyle(.secondary)
 
                 GeometryReader { proxy in
                     ZStack(alignment: .leading) {
@@ -273,7 +271,7 @@ private struct ReadinessBanner: View {
                 } else if let detail = readiness.detail, !detail.isEmpty {
                     Text(detail)
                         .font(.system(size: 11))
-                        .foregroundStyle(.tertiary)
+                        .foregroundStyle(.secondary)
                         .lineLimit(2)
                 }
             }
@@ -290,13 +288,13 @@ private struct ReadinessBanner: View {
             Group {
                 switch step.state {
                 case .pending:
-                    Image(systemName: "circle").foregroundStyle(.tertiary)
+                    Image(systemName: "circle").foregroundStyle(.secondary)
                 case .active:
                     ProgressView().controlSize(.small).scaleEffect(0.7)
                 case .done:
                     Image(systemName: "checkmark.circle.fill").foregroundStyle(Brand.green)
                 case .skipped:
-                    Image(systemName: "minus.circle").foregroundStyle(.tertiary)
+                    Image(systemName: "minus.circle").foregroundStyle(.secondary)
                 case .failed:
                     Image(systemName: "exclamationmark.circle.fill").foregroundStyle(.red)
                 }
@@ -304,16 +302,16 @@ private struct ReadinessBanner: View {
             .frame(width: 16, height: 16)
             Text(step.label)
                 .font(.system(size: 13))
-                .foregroundStyle(color(step.state))
+                .foregroundStyle(style(step.state))
         }
     }
 
-    private func color(_ state: ParticipantGridWindowController.Readiness.State) -> Color {
+    private func style(_ state: ParticipantGridWindowController.Readiness.State) -> AnyShapeStyle {
         switch state {
-        case .pending, .skipped: return Color(nsColor: .tertiaryLabelColor)
-        case .active: return .primary
-        case .done: return .secondary
-        case .failed: return .red
+        case .pending, .skipped: return AnyShapeStyle(.secondary)
+        case .active: return AnyShapeStyle(.primary)
+        case .done: return AnyShapeStyle(.secondary)
+        case .failed: return AnyShapeStyle(Color.red)
         }
     }
 }

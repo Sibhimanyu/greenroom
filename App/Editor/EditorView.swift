@@ -89,8 +89,7 @@ struct EditorView: View {
             }
             .padding(30)
             .frame(maxWidth: 460)
-            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 18))
-            .overlay(RoundedRectangle(cornerRadius: 18).stroke(Color.white.opacity(0.12), lineWidth: 1))
+            .greenroomGlass(in: RoundedRectangle(cornerRadius: 18, style: .continuous))
         }
         .transition(.opacity)
     }
@@ -230,7 +229,7 @@ struct EditorView: View {
                                         Button("Cancel") { vm.cancelExport() }
                                     }
                                     .padding(28)
-                                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16))
+                                    .greenroomGlass(in: RoundedRectangle(cornerRadius: 16, style: .continuous))
                                 }
                                 .transition(.opacity)
                             }
@@ -618,8 +617,8 @@ struct EditorView: View {
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 10)
-            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 10))
-            .overlay(RoundedRectangle(cornerRadius: 10)
+            .greenroomGlass(in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous)
                 .stroke((isError ? Color.red : Color.green).opacity(0.5), lineWidth: 1))
             .padding(.top, 10)
             .frame(maxWidth: 560)

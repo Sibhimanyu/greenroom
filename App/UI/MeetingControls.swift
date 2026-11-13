@@ -548,8 +548,7 @@ struct MeetingControlBarRoot: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .clipShape(Capsule())
-        .background(.regularMaterial, in: Capsule())
-        .overlay(Capsule().strokeBorder(Color.primary.opacity(0.12), lineWidth: 1))
+        .greenroomGlass(in: Capsule(), interactive: true)
         .animation(Collapse.animation, value: collapsed)
     }
 }

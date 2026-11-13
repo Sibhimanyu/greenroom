@@ -167,32 +167,28 @@ enum ToastController {
         created.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
         created.ignoresMouseEvents = true      // a readout, nothing to click
 
-        let backing = NSVisualEffectView()
-        backing.material = .hudWindow
-        backing.blendingMode = .behindWindow
-        backing.state = .active
-        backing.wantsLayer = true
-        backing.layer?.cornerRadius = 14       // DESIGN.md radius-lg
-        backing.layer?.masksToBounds = true
+        GreenroomGlassAppKit.prepare(created)
+        let backing = GreenroomGlassAppKit.makeBacking(cornerRadius: 14)   // DESIGN.md radius-lg
+        let host = GreenroomGlassAppKit.host(of: backing)
         backing.autoresizingMask = [.width, .height]
         created.contentView = backing
 
         let image = NSImageView()
         image.imageScaling = .scaleProportionallyDown
-        backing.addSubview(image)
+        host.addSubview(image)
 
         let title = NSTextField(labelWithString: "")
         title.font = .systemFont(ofSize: 13, weight: .semibold)
         title.maximumNumberOfLines = 2
         title.lineBreakMode = .byTruncatingTail
-        backing.addSubview(title)
+        host.addSubview(title)
 
         let detail = NSTextField(labelWithString: "")
         detail.font = .systemFont(ofSize: 11)
         detail.textColor = .secondaryLabelColor
         detail.maximumNumberOfLines = 1
         detail.lineBreakMode = .byTruncatingMiddle
-        backing.addSubview(detail)
+        host.addSubview(detail)
 
         panel = created
         icon = image

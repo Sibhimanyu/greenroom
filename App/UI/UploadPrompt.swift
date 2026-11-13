@@ -106,13 +106,9 @@ enum UploadPromptCard {
         created.level = .floating
         created.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
 
-        let backing = NSVisualEffectView()
-        backing.material = .hudWindow
-        backing.blendingMode = .behindWindow
-        backing.state = .active
-        backing.wantsLayer = true
-        backing.layer?.cornerRadius = 14       // DESIGN.md radius-lg
-        backing.layer?.masksToBounds = true
+        GreenroomGlassAppKit.prepare(created)
+        let backing = GreenroomGlassAppKit.makeBacking(cornerRadius: 14)   // DESIGN.md radius-lg
+        let host = GreenroomGlassAppKit.host(of: backing)
         created.contentView = backing
 
         let icon = NSImageView(image: NSImage(systemSymbolName: "play.rectangle.fill", accessibilityDescription: nil)!)
@@ -140,7 +136,7 @@ enum UploadPromptCard {
         laterButton.controlSize = .regular
         laterButton.keyEquivalent = "\u{1b}"
 
-        [icon, titleLabel, detailLabel, uploadButton, laterButton].forEach(backing.addSubview)
+        [icon, titleLabel, detailLabel, uploadButton, laterButton].forEach(host.addSubview)
 
         // Layout by hand, like the toast: icon, then text; buttons on their
         // own row at the right, the way an alert lays them out.

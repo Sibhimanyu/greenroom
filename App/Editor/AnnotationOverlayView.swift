@@ -388,8 +388,7 @@ struct AnnotationPreviewOverlay: View {
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 6)
-        .background(.regularMaterial, in: Capsule())
-        .overlay(Capsule().stroke(Color.white.opacity(0.15), lineWidth: 1))
+        .greenroomGlass(in: Capsule(), interactive: true)
         .position(x: anchor.x, y: max(anchor.y - 30, 18))
     }
 

@@ -4369,18 +4369,14 @@ enum ReadinessHUDController {
         created.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
         created.ignoresMouseEvents = true      // purely a readout, nothing to click
 
-        let backing = NSVisualEffectView()
-        backing.material = .hudWindow
-        backing.blendingMode = .behindWindow
-        backing.state = .active
-        backing.wantsLayer = true
-        backing.layer?.cornerRadius = 14       // DESIGN.md radius-lg
-        backing.layer?.masksToBounds = true
+        GreenroomGlassAppKit.prepare(created)
+        let backing = GreenroomGlassAppKit.makeBacking(cornerRadius: 14)   // DESIGN.md radius-lg
+        let host = GreenroomGlassAppKit.host(of: backing)
         backing.autoresizingMask = [.width, .height]
         created.contentView = backing
 
         let readiness = ReadinessView()
-        backing.addSubview(readiness)
+        host.addSubview(readiness)
         panel = created
         view = readiness
         return created

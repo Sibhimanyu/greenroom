@@ -151,9 +151,7 @@ private struct CountdownView: View {
         }
         .padding(24)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous)
-            .strokeBorder(Color.primary.opacity(0.12), lineWidth: 1))
+        .greenroomGlass(in: RoundedRectangle(cornerRadius: 14, style: .continuous))
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Recording starts in \(model.value)")
     }
@@ -260,8 +258,7 @@ private struct RecordingControlBarView: View {
         }
         .padding(.horizontal, 8)
         .frame(width: RecordingControlBarController.size.width, height: RecordingControlBarController.size.height)
-        .background(.regularMaterial, in: Capsule())
-        .overlay(Capsule().strokeBorder(Color.primary.opacity(0.12), lineWidth: 1))
+        .greenroomGlass(in: Capsule(), interactive: true)
     }
 
     private func barButton(_ symbol: String, help: String, tint: Color,

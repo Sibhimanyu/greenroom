@@ -145,6 +145,7 @@ struct GreenroomApp: App {
                     updaterController.checkForUpdates(nil)
                 }
             }
+            SidebarCommands(coordinator: coordinator)
             HeresayCommands()
         }
 

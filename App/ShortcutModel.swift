@@ -163,6 +163,8 @@ enum ReservedShortcuts {
         Entry(keyCode: kVK_ANSI_Z, modifiers: cmd, reason: "\u{2318}Z is Undo in every app."),
         Entry(keyCode: kVK_ANSI_Z, modifiers: cmd | shift, reason: "\u{21E7}\u{2318}Z is Redo in every app."),
         Entry(keyCode: kVK_ANSI_S, modifiers: cmd, reason: "\u{2318}S is Save in every app."),
+        // Greenroom's own View menu command, which a global hotkey would swallow.
+        Entry(keyCode: kVK_ANSI_B, modifiers: cmd, reason: "\u{2318}B shows and hides Greenroom's Sessions sidebar."),
     ]
 
     /// Why this combination cannot be used, or nil when it is free to bind.

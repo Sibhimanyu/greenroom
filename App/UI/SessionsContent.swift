@@ -47,13 +47,10 @@ struct SessionsLayout<CardMenu: View>: View {
     /// the scroll position and tells Delete which session is meant.
     @Binding var selection: String?
     let thumbnail: (SessionCardModel) -> NSImage?
-    /// "~/Documents/Greenroom \u{00B7} 38 GB free".
-    let storage: String
     /// Set when the disk is getting full: amber for "plan ahead", red for
     /// "the next class may not fit". Said above the grid, in that colour.
     var spaceWarning: (text: String, color: Color)?
     var now = Date()
-    var revealRoot: () -> Void = {}
     var onDeleteKey: () -> Void = {}
     @ViewBuilder let cardMenu: (SessionCardModel) -> CardMenu
     /// A card was clicked, or Return pressed on the focused one: open its
@@ -67,12 +64,7 @@ struct SessionsLayout<CardMenu: View>: View {
     var isActive = true
     /// The window subtitle to hold while another page is up.
     var subtitleOverride: String?
-    /// The title-bar height the page was laid out under. The split view runs
-    /// up under the traffic lights (full-height sidebar); the sidebar's rows
-    /// and the grid add this back so nothing sits under the toolbar.
-    var topInset: CGFloat = 0
 
-    @State private var columns = NavigationSplitViewVisibility.all
     @FocusState private var focusedID: String?
 
     private var query: SessionsQuery {
@@ -80,21 +72,17 @@ struct SessionsLayout<CardMenu: View>: View {
                       sort: sort, now: now)
     }
 
+    /// The detail column's content. The sidebar is the window's own column
+    /// (SessionsSidebar.swift), and the toolbar items below land over this
+    /// column because that is where this view sits.
     var body: some View {
-        NavigationSplitView(columnVisibility: $columns) {
-            sidebar
-                .safeAreaInset(edge: .top, spacing: 0) { Color.clear.frame(height: topInset) }
-                .navigationSplitViewColumnWidth(min: 180, ideal: 220, max: 280)
-        } detail: {
-            grid
-                .safeAreaInset(edge: .top, spacing: 0) { Color.clear.frame(height: topInset) }
-                .frame(minWidth: 480, maxHeight: .infinity)
-        }
-        .searchable(text: $search, placement: .toolbar, prompt: "Search sessions")
-        .toolbar { gridToolbar }
-        // Subtitle only. Back is ContentView's one page-wide item; a second
-        // one here drew two side by side.
-        .navigationSubtitle(subtitleOverride ?? query.subtitle)
+        grid
+            .frame(minWidth: 480, maxHeight: .infinity)
+            .searchable(text: $search, placement: .toolbar, prompt: "Search sessions")
+            .toolbar { gridToolbar }
+            // Subtitle only. Back is ContentView's one page-wide item; a second
+            // one here drew two side by side.
+            .navigationSubtitle(subtitleOverride ?? query.subtitle)
     }
 
     // MARK: Toolbar
@@ -138,36 +126,6 @@ struct SessionsLayout<CardMenu: View>: View {
             Label("Sort", systemImage: "arrow.up.arrow.down")
         }
         .help("Sort sessions")
-    }
-
-    // MARK: Sidebar
-
-    private var sidebar: some View {
-        let q = query
-        return List(selection: Binding<SessionsShow?>(get: { show }, set: { value in if let value { show = value } })) {
-            Section("Show") {
-                ForEach(SessionsShow.allCases) { option in
-                    Label(option.rawValue, systemImage: option.symbol)
-                        .badge(q.count(for: option))
-                        .tag(option)
-                }
-            }
-        }
-        .listStyle(.sidebar)
-        .safeAreaInset(edge: .bottom, spacing: 0) {
-            Button(action: revealRoot) {
-                Text(storage)
-                    .font(.footnote)
-                    .foregroundStyle(spaceWarning?.color ?? .secondary)
-                    .lineLimit(2)
-                    .multilineTextAlignment(.leading)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 10)
-            }
-            .buttonStyle(.plain)
-            .help("Show the folder in Finder.")
-        }
     }
 
     // MARK: Grid

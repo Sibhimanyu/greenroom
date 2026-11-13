@@ -235,9 +235,6 @@ struct SessionDetailPage<Stage: View, Lane: View, Work: View>: View {
     /// False while the report is up over this page: its toolbar and subtitle
     /// then step aside.
     var isActive = true
-    /// The window toolbar's height. The split view runs full height under it,
-    /// so the player column and the inspector add it back at their tops.
-    var topInset: CGFloat = 0
     @Binding var take: URL?
     let tabs: [String]
     @Binding var tab: String
@@ -286,7 +283,6 @@ struct SessionDetailPage<Stage: View, Lane: View, Work: View>: View {
     /// its lane stay on screen while the tabs are used.
     private var playerColumn: some View {
         VStack(spacing: 0) {
-            Color.clear.frame(height: topInset)
             stage()
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .frame(minHeight: 200)
@@ -308,7 +304,6 @@ struct SessionDetailPage<Stage: View, Lane: View, Work: View>: View {
     private var inspectorColumn: some View {
         // No painted background: the system inspector draws its own material.
         VStack(spacing: 0) {
-            Color.clear.frame(height: topInset)
             if !tabs.isEmpty {
                 GreenroomSegmented("Work", selection: $tab, options: tabs) { Text($0) }
                     .controlSize(.small)

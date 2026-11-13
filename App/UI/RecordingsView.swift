@@ -186,6 +186,8 @@ struct RecordingsView: View {
     /// Used for the YouTube upload button and state.
     @EnvironmentObject private var coordinator: CoordinatorController
     @EnvironmentObject private var editor: EditorViewModel
+    /// The window's sidebar column reads its badges and storage line from here.
+    @EnvironmentObject private var sidebar: SessionsSidebarModel
     @Environment(\.openWindow) private var openWindow
 
     /// The work under the inspector's picture.
@@ -232,17 +234,13 @@ struct RecordingsView: View {
         }
     }
 
-    @State private var topInset: CGFloat = 0
-
     private var layers: some View {
         ZStack {
             // Unmounted (not hidden) under a session's page: a hidden grid kept
             // its search field in the window toolbar. Filters live here, so
             // Back finds them; the grid scrolls back to the last opened card.
-            // Full height: the split view runs up under the title bar so the
-            // sidebar is full height; the layout adds `topInset` back.
             if detailSession == nil {
-                grid.ignoresSafeArea(.container, edges: .top)
+                grid
             }
             if let session = detailSession {
                 detailPage(session)
@@ -254,15 +252,11 @@ struct RecordingsView: View {
                 ScreenroomReportView(onBack: { coordinator.goBack() })
             }
         }
-        .background(GeometryReader { proxy in
-            Color.clear
-                .onAppear { topInset = proxy.safeAreaInsets.top }
-                .onChange(of: proxy.safeAreaInsets.top) { _, top in topInset = top }
-        })
         // Grid, session, report: a short crossfade, not a hard swap. These
         // layers share the window's size, so nothing resizes.
         .animation(.easeInOut(duration: 0.15), value: coordinator.mainPage)
         .onAppear(perform: reload)
+        .onChange(of: sidebarSnapshot, initial: true) { _, snapshot in sidebar.snapshot = snapshot }
         .onChange(of: selectedID) { didSelect() }
         .onChange(of: selection) { _, newSelection in
             load(newSelection)
@@ -298,6 +292,11 @@ struct RecordingsView: View {
         .onDisappear(perform: teardownPlayer)
     }
 
+    private var sidebarSnapshot: SessionsSidebarModel.Snapshot {
+        .init(cards: cards, storage: storageSummary,
+              warningIsCritical: spaceLevel == .ok ? nil : spaceLevel == .critical)
+    }
+
     private var isReport: Bool {
         if case .report = coordinator.mainPage { return true }
         return false
@@ -326,16 +325,11 @@ struct RecordingsView: View {
             thumbnail: { card in
                 sessions.first { $0.id == card.id }?.primaryTake.flatMap { thumbnails.image(for: $0.url) }
             },
-            storage: storageSummary,
             spaceWarning: spaceWarning,
-            revealRoot: {
-                NSWorkspace.shared.activateFileViewerSelecting([SessionFolders.recordingsDirectory])
-            },
             onDeleteKey: { if let selection { confirmingDelete = selection } },
             cardMenu: { card in cardMenu(card) },
             onOpen: open,
-            onBack: { coordinator.goBack() },
-            topInset: topInset)
+            onBack: { coordinator.goBack() })
     }
 
     /// A session as one page: the player large with its marks lane and status
@@ -348,7 +342,6 @@ struct RecordingsView: View {
             analyseProgress: review.isAnalysing && review.selected?.folder == session.folder && review.stepCount > 0
                 ? (review.stepIndex, review.stepCount) : nil,
             isActive: !isReport,
-            topInset: topInset,
             take: Binding(get: { selection?.url },
                           set: { url in selection = session.takes.first { $0.url == url } }),
             tabs: Tab.allCases.filter(\.isAvailable).map(\.rawValue),

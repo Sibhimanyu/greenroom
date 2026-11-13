@@ -35,6 +35,17 @@ struct ContentView: View {
     @State private var pageSettledFrame: NSRect?
     private var homeWidth: CGFloat? { homeFrame?.width }
 
+    // The window's root is a NavigationSplitView (see body), so the system
+    // draws the Sessions sidebar as the full-height floating panel with the
+    // traffic lights inside it. Its column exists for the Sessions pages only.
+    @StateObject private var sidebarModel = SessionsSidebarModel()
+    /// The person's choice (Command-B, the system toggle). Saved, as in Finder.
+    @AppStorage(SidebarRules.hiddenKey) private var sidebarHidden = false
+    /// The sidebar column's real width, measured from the detail column once a
+    /// page has settled: the pages' pinned sizes and the window's minimum
+    /// subtract it. The ideal until measured.
+    @State private var sidebarWidth = SidebarRules.idealWidth
+
     // Page changes (Home <-> Sessions) are one motion - see changePage. Both
     // pages are mounted for its length, each laid out at its FINAL size and
     // pinned top-leading, so the window is a curtain over fixed content and
@@ -79,17 +90,29 @@ struct ContentView: View {
         }
     }
 
+    /// Sidebar for the Sessions pages, detail-only on Home and Record. Follows
+    /// `chromeOnPage`, so the column appears and goes at the fade-out point of
+    /// a page change, while Home is invisible, not at the click.
+    private var columnVisibility: Binding<NavigationSplitViewVisibility> {
+        Binding(
+            get: { SidebarRules.visibility(onSessionsPage: chromeOnPage, hidden: sidebarHidden) },
+            set: { sidebarHidden = SidebarRules.hidden(afterVisibility: $0, onSessionsPage: chromeOnPage,
+                                                       was: sidebarHidden) })
+    }
+
+    private var sidebarShown: Bool { chromeOnPage && !sidebarHidden }
+
     var body: some View {
-        // The sizing carrier: it alone gives the window its minimum (the held
-        // one, which trails a resize). The pages sit in an overlay so their
-        // pinned, final sizes never push the window's minimum up mid-shrink.
-        // GeometryReader rather than Color.clear: it keeps the title-bar
-        // safe area the pages were always laid out inside.
-        GeometryReader { _ in Color.clear }
-            .frame(minWidth: heldMinWidth, maxWidth: .infinity,
-                   minHeight: heldMinHeight, maxHeight: .infinity)
-            .overlay(alignment: .topLeading) { pageLayers }
-            .clipped()
+        // The window's ROOT content is the split view: only then does macOS 26
+        // draw the sidebar from the very top with the traffic lights in it, and
+        // keep the toolbar over the detail column. (An earlier attempt let a
+        // nested split view ignore the top safe area; it did not work.)
+        NavigationSplitView(columnVisibility: columnVisibility) {
+            SessionsSidebar(model: sidebarModel)
+        } detail: {
+            detailColumn
+        }
+        .environmentObject(sidebarModel)
         // The window OPENS at the preferred size every time, regardless
         // of the size it was closed at (explicit request) - SwiftUI
         // persists scene geometry across launches and defaultSize only
@@ -130,6 +153,40 @@ struct ContentView: View {
             }
             changePage(toHome: isHome)
         }
+        // Esc goes back too. Left to a text field that is being edited.
+        .onExitCommand {
+            guard onPage, !(Self.window?.firstResponder is NSText) else { return }
+            coordinator.goBack()
+        }
+        // The toast, the upload question and the start's progress card, while
+        // this window is the one in view (WindowBanner.swift).
+        .overlay { WindowBannerOverlay() }
+        .sheet(isPresented: $coordinator.showOnboarding) {
+            OnboardingView()
+                .environmentObject(coordinator)
+        }
+    }
+
+    /// The detail column: the sizing carrier, the pages, and the toolbar. The
+    /// toolbar is declared here, so its items sit over this column (Finder's
+    /// arrangement) and never over the sidebar.
+    private var detailColumn: some View {
+        // The sizing carrier: it alone gives the window its minimum (the held
+        // one, which trails a resize). The pages sit in an overlay so their
+        // pinned, final sizes never push the window's minimum up mid-shrink.
+        // GeometryReader rather than Color.clear: it keeps the title-bar
+        // safe area the pages were always laid out inside. The minimum is the
+        // window's minus the sidebar column, so the window as a whole keeps
+        // the 900pt page minimum with the sidebar showing.
+        GeometryReader { geo in
+            Color.clear.onChange(of: geo.size.width) { _, width in noteDetailWidth(width) }
+        }
+            .frame(minWidth: SidebarRules.detailMinWidth(windowMin: heldMinWidth, sidebarShown: sidebarShown,
+                                                         sidebarWidth: sidebarWidth),
+                   maxWidth: .infinity,
+                   minHeight: heldMinHeight, maxHeight: .infinity)
+            .overlay(alignment: .topLeading) { pageLayers }
+            .clipped()
         // The toolbar: Back (and \u{2318}[) on a page, Sessions / Setup guide /
         // Settings on Home. One unified toolbar on every page, so the title bar
         // never changes height during a page change. Subtitle only, never a
@@ -176,17 +233,17 @@ struct ContentView: View {
             }
         }
         .homeTitleHidden(!chromeOnPage)
-        // Esc goes back too. Left to a text field that is being edited.
-        .onExitCommand {
-            guard onPage, !(Self.window?.firstResponder is NSText) else { return }
-            coordinator.goBack()
-        }
-        // The toast, the upload question and the start's progress card, while
-        // this window is the one in view (WindowBanner.swift).
-        .overlay { WindowBannerOverlay() }
-        .sheet(isPresented: $coordinator.showOnboarding) {
-            OnboardingView()
-                .environmentObject(coordinator)
+        // Home and Record have no sidebar to toggle.
+        .toolbar(removing: chromeOnPage ? nil : .sidebarToggle)
+    }
+
+    /// Learns the sidebar's real width, from what the window has left over,
+    /// once nothing is moving.
+    private func noteDetailWidth(_ width: CGFloat) {
+        guard sidebarShown, homePin == nil, pagePin == nil, let window = Self.window else { return }
+        let measured = window.contentLayoutRect.width - width
+        if SidebarRules.widthRange.contains(measured), abs(measured - sidebarWidth) > 0.5 {
+            sidebarWidth = measured
         }
     }
 
@@ -334,8 +391,13 @@ struct ContentView: View {
         let titleBar = window.frame.height - window.contentLayoutRect.height
         let now = window.contentRect(forFrameRect: window.frame).size
         let settled = window.contentRect(forFrameRect: settledFrame(for: window, animated: true, returningHome: isHome)).size
-        let target = CGSize(width: settled.width, height: settled.height - titleBar)
-        let current = CGSize(width: now.width, height: now.height - titleBar)
+        // The pages sit in the detail column, so they lose the sidebar's width
+        // while it is up. Home's column is the whole window.
+        let credit = sidebarHidden ? 0 : sidebarWidth
+        let target = CGSize(width: isHome ? settled.width : settled.width - credit,
+                            height: settled.height - titleBar)
+        let current = CGSize(width: isHome ? now.width - credit : now.width,
+                             height: now.height - titleBar)
         if isHome {
             homePin = target
             if !inFlight { pagePin = current }

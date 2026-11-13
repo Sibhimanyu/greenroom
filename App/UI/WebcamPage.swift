@@ -192,11 +192,13 @@ struct WebcamPageContent<LivePicture: View, ShareDetail: View, Cameras: View, Mi
                 stageControls
                 LookPicker(selection: $shape, removal: removal)
                 if shape.usesChromaKey {
-                    Picker("Background", selection: $removal) {
-                        Label("Remove automatically", systemImage: "wand.and.stars").tag(BackgroundRemoval.automatic)
-                        Label("Green screen", systemImage: "rectangle.fill").tag(BackgroundRemoval.greenScreen)
+                    GreenroomSegmented("Background", selection: $removal,
+                                       options: [BackgroundRemoval.automatic, .greenScreen]) { option in
+                        switch option {
+                        case .automatic: Label("Remove automatically", systemImage: "wand.and.stars")
+                        case .greenScreen: Label("Green screen", systemImage: "rectangle.fill")
+                        }
                     }
-                    .pickerStyle(.segmented)
                     .help("Automatic finds you in the camera and removes the rest. Green screen keys out a real green backdrop instead.")
                 }
                 // Cutout and Presenter already take your background away, and
@@ -435,12 +437,14 @@ struct CameraBackgroundControl: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Picker("Background", selection: $mode.animatedCollapse()) {
-                Text("Normal").tag(CameraBackground.normal)
-                Text("Blur").tag(CameraBackground.blur)
-                Text("Image").tag(CameraBackground.image)
+            GreenroomSegmented("Background", selection: $mode.animatedCollapse(),
+                               options: [CameraBackground.normal, .blur, .image]) { option in
+                switch option {
+                case .normal: Text("Normal")
+                case .blur: Text("Blur")
+                case .image: Text("Image")
+                }
             }
-            .pickerStyle(.segmented)
             .help("Normal shows your room. Blur softens everything but you. Image puts a picture behind you.")
 
             Collapsible(hidden: mode != .image) {
@@ -480,12 +484,8 @@ private struct BackgroundImageRow: View {
                         .foregroundStyle(.primary)
                 }
                 .frame(width: 64, height: 40)
-                .background(RoundedRectangle(cornerRadius: 10).fill(Color(nsColor: .controlBackgroundColor)))
-                .overlay(RoundedRectangle(cornerRadius: 10)
-                    .strokeBorder(Color.secondary.opacity(0.25), lineWidth: 1))
-                .contentShape(RoundedRectangle(cornerRadius: 10))
             }
-            .buttonStyle(.plain)
+            .greenroomTile(role: .choice(selected: false))
             .help("Use a picture of your own")
             .accessibilityLabel("Choose your own background picture")
             Spacer(minLength: 0)
@@ -493,7 +493,7 @@ private struct BackgroundImageRow: View {
     }
 }
 
-/// One background picture as a small tile, outlined like `ChoiceTile` when picked.
+/// One background picture as a small tile, on the shared choice tile (ring and checkmark) when picked.
 private struct BackgroundThumb: View {
     let url: URL?
     let title: String
@@ -510,13 +510,9 @@ private struct BackgroundThumb: View {
                 }
             }
             .frame(width: 64, height: 40)
-            .clipShape(RoundedRectangle(cornerRadius: 10))
-            .overlay(RoundedRectangle(cornerRadius: 10)
-                .strokeBorder(selected ? Brand.green : Color.secondary.opacity(0.25),
-                              lineWidth: selected ? 2 : 1))
-            .contentShape(RoundedRectangle(cornerRadius: 10))
+            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
         }
-        .buttonStyle(.plain)
+        .greenroomTile(role: .choice(selected: selected))
         .help(title)
         .accessibilityLabel(title)
         .accessibilityAddTraits(selected ? .isSelected : [])

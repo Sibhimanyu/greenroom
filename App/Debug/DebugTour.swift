@@ -15,6 +15,9 @@
 //    sessionWindowSize  w=... [h=...]
 //    toast [title=...] [detail=...] [kind=success|failure|working]  a sample toast, held until `restore`.
 //    prompt       a sample upload prompt; its buttons only dismiss, nothing uploads.
+//    resetMeetingTip  show the meeting window's one-time "Control bar" tip again
+//                 (clears UserDefaults key meetingShrinkTip.done; the same as
+//                 `defaults delete <bundle id> meetingShrinkTip.done`).
 //    tree         dump the main window's view tree to <dir>/tree.txt.
 //    restore      Home, original appearance and frame, tour windows closed.
 //  Every command writes <dir>/last.json ({"ok":..,"cmd":..,"error":..,"seq":..}).
@@ -118,6 +121,7 @@ enum DebugTour {
                         title: "Upload this recording to YouTube?",
                         detail: "\u{201C}Sample recording\u{201D} \u{00B7} 128 MB \u{00B7} Unlisted. Debug tour: nothing is uploaded.",
                         timeout: 600, onUpload: {}, onDismiss: {})
+                case "resetMeetingTip": MeetingShrinkTip.reset()
                 case "tree": tree(dir: dir)
                 default: throw TourError("unknown cmd \(cmd)")
                 }

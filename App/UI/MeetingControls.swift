@@ -772,10 +772,10 @@ private struct MeetingControlBarView: View {
                 // every part of it as a window of its own.
                 iconButton("rectangle.inset.filled.on.rectangle", tint: .primary,
                            help: MeetingViewPieces.enabled ? "Views: the meeting window and its parts"
-                                                           : "Meeting window: video, people, chat and controls",
+                                                           : "Expand back to the meeting window: video, people, chat and controls",
                            action: MeetingViewPieces.enabled ? {} : model.toggleMeetingWindow)
                     .overlay { if MeetingViewPieces.enabled { MenuPopUpOverlay(label: "Views", entries: { model.viewsMenu() }) } }
-                    .accessibilityLabel(MeetingViewPieces.enabled ? "Views" : "Meeting window")
+                    .accessibilityLabel(MeetingViewPieces.enabled ? "Views" : "Expand to meeting window")
             }
             HStack(spacing: 4) {
                 Image(systemName: "person.2.fill").font(.system(size: 13))

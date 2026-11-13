@@ -89,7 +89,8 @@ final class ShortcutModelTests: XCTestCase {
             }
         }
         // Our own defaults are not reserved.
-        for action in ShortcutAction.allCases {
+        // (A window-scoped default may be a system key: it is never registered system-wide.)
+        for action in ShortcutAction.allCases where action.scope == .global {
             if let d = action.defaultCombo { XCTAssertNil(ReservedShortcuts.reason(for: d), d.glyphs) }
         }
     }
@@ -170,7 +171,30 @@ final class ShortcutModelTests: XCTestCase {
         let groups = ShortcutCatalog.grouped(layouts: [])
         XCTAssertEqual(groups.map(\.group.title), ["Class", "Meeting", "Layout", "Greenroom"])
         XCTAssertEqual(groups[0].slots.count, 8)
-        XCTAssertEqual(groups[1].slots.count, 9 + MeetingView.allCases.count, "the nine meeting actions and one per view")
+        XCTAssertEqual(groups[1].slots.count, 10 + MeetingView.allCases.count, "the ten meeting actions and one per view")
+    }
+
+    // MARK: Shrink meeting to control bar
+
+    func testShrinkToBarIsCommandMInTheMeetingWindowOnly() {
+        let shrink = ShortcutSlot.action(.shrinkToBar)
+        XCTAssertEqual(shrink.title(layouts: []), "Shrink meeting to control bar")
+        XCTAssertEqual(ShortcutBindings().combo(for: shrink), KeyCombo(keyCode: UInt32(kVK_ANSI_M), modifiers: KeyCombo.command))
+        XCTAssertEqual(shrink.scope, .meetingWindow)
+        XCTAssertEqual(shrink.group, .meeting)
+        XCTAssertEqual(ShortcutAction.shrinkToBar.rawValue, "meetingShrinkToBar")
+        // Every other action stays system-wide.
+        for action in ShortcutAction.allCases where action != .shrinkToBar { XCTAssertEqual(action.scope, .global, action.rawValue) }
+    }
+
+    func testNoDefaultClashesWithCommandM() {
+        let slots = ShortcutCatalog.slots(layouts: [])
+        let commandM = KeyCombo(keyCode: UInt32(kVK_ANSI_M), modifiers: KeyCombo.command)
+        let holders = slots.filter { ShortcutBindings().combo(for: $0) == commandM }
+        XCTAssertEqual(holders, [.action(.shrinkToBar)])
+        // Only global slots are registered with the system, so Command-M stays the system's.
+        let registered = ShortcutBindings().resolved(among: slots).filter { $0.slot.scope == .global }
+        XCTAssertFalse(registered.contains { $0.combo == commandM })
     }
 
     // MARK: View actions

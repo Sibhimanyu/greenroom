@@ -71,7 +71,9 @@ final class ShortcutRuntime {
             return
         }
         let slots = ShortcutCatalog.slots(layouts: layouts)
-        let resolved = store.bindings.resolved(among: slots)
+        // Window-scoped rows are answered by their own window (ControlPanel), never
+        // registered system-wide.
+        let resolved = store.bindings.resolved(among: slots).filter { $0.slot.scope == .global }
         let hotkeys = resolved.map { entry in
             HotkeyManager.Hotkey(id: entry.slot.id, keyCode: entry.combo.keyCode,
                                  modifiers: entry.combo.modifiers) {
@@ -141,6 +143,8 @@ final class ShortcutRuntime {
                 MeetingControlBarController.toggleCollapsed() // only while the bar is on screen
             case .shrinkMeeting:
                 c.toggleMeetingShrunk() // custom-UI meetings only; guards itself
+            case .shrinkToBar:
+                c.shrinkMeetingToBar() // normally answered by the meeting window itself
             case .switchGalleryOrSpeaker:
                 ParticipantGridWindowController.toggleGalleryOrSpeaker()
             case .openGreenroom:

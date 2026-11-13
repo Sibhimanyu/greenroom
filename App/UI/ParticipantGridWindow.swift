@@ -183,7 +183,38 @@ enum ParticipantGridWindowController {
     private final class ControlPanel: NSPanel {
         override var canBecomeKey: Bool { true }
         override var canBecomeMain: Bool { false }
+
+        /// Set for the meeting form only.
+        var isMeetingWindow = false
+
+        /// The yellow traffic light, the Window menu's Minimize, the title bar's
+        /// double click and Command-M all arrive here (the standard button calls
+        /// performMiniaturize, which calls miniaturize). NSWindowDelegate has no
+        /// "should miniaturize", so the window itself decides: while a meeting is
+        /// live it runs the shrink-to-control-bar morph instead of going to the Dock.
+        override func miniaturize(_ sender: Any?) {
+            if isMeetingWindow, ParticipantGridWindowController.shrinkInsteadOfMinimize?() == true { return }
+            super.miniaturize(sender)
+        }
+
+        /// The customisable "Shrink meeting to control bar" key (Command-M by
+        /// default), answered only while this window is key.
+        override func performKeyEquivalent(with event: NSEvent) -> Bool {
+            if isMeetingWindow, event.type == .keyDown,
+               let combo = ShortcutStore.shared.bindings.combo(for: .action(.shrinkToBar)),
+               combo.keyCode == UInt32(event.keyCode),
+               combo.modifiers == KeyCombo.carbonModifiers(cocoaFlags: event.modifierFlags.rawValue),
+               ParticipantGridWindowController.shrinkInsteadOfMinimize?() == true {
+                return true
+            }
+            return super.performKeyEquivalent(with: event)
+        }
     }
+
+    /// Set by the coordinator: shrinks the meeting to the control bar and returns
+    /// true while a meeting is live (see `MeetingMinimize`); false otherwise, and
+    /// the window then minimises as any window does.
+    static var shrinkInsteadOfMinimize: (@MainActor () -> Bool)?
 
     private static var panel: ControlPanel?
 
@@ -237,6 +268,7 @@ enum ParticipantGridWindowController {
                                    defer: false,
                                    screen: screen)
         created.title = "Meeting"
+        created.isMeetingWindow = form.isMeeting && !form.isPlaced
         ZoomMeetingSDKClient.videoLog("panel form=\(form) screen=\(screen.localizedName)"
             + " size=\(Int(frame.width))x\(Int(frame.height))")
         created.isReleasedWhenClosed = false
@@ -483,6 +515,7 @@ enum ParticipantGridWindowController {
         if let closeObserver { NotificationCenter.default.removeObserver(closeObserver) }
         closeObserver = nil
         onUserClosed = nil
+        shrinkInsteadOfMinimize = nil
         userHidden = false
         panel = nil
         root = nil
@@ -1706,7 +1739,8 @@ private final class RootView: NSView {
         meetingTopBar.actions = MeetingTopBarView.Actions(
             showInfo: { [weak self] anchor in self?.showMeetingInfoPopover(from: anchor) },
             viewMenu: { [weak self] in self?.viewMenuEntries() ?? [] },
-            shrink: { [weak self] in self?.controls?.shrinkToBar() })
+            shrink: { [weak self] in self?.controls?.shrinkToBar() },
+            tipClosed: { MeetingShrinkTip.markDone() })
         addSubview(meetingTopBar)
 
         // A black stage: letterboxing against window-background grey reads as a
@@ -1854,6 +1888,7 @@ private final class RootView: NSView {
         state.mode = viewMode
         state.isFullscreen = isFilling
         state.canShrink = form.isMeeting && !form.isPlaced
+        state.shrinkShortcut = ShortcutStore.shared.bindings.combo(for: .action(.shrinkToBar))?.glyphs ?? ""
         meetingTopBar.apply(state)
     }
 

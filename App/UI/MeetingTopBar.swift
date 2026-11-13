@@ -23,6 +23,8 @@ struct MeetingTopBarState: Equatable {
     var mode: MeetingViewMode = .gallery
     var isFullscreen = false
     var canShrink = true
+    /// The bound combination's glyphs for the shrink action, for the tip and the hover help.
+    var shrinkShortcut = ""
 }
 
 /// A flat button with Zoom's hover wash: a lighter rounded rectangle.
@@ -61,6 +63,8 @@ final class MeetingTopBarView: NSView {
         var showInfo: (NSView) -> Void = { _ in }
         var viewMenu: () -> [MenuEntry] = { [] }
         var shrink: () -> Void = {}
+        /// The one-time tip was closed with its x.
+        var tipClosed: () -> Void = {}
     }
 
     var actions = Actions()
@@ -74,7 +78,11 @@ final class MeetingTopBarView: NSView {
         guard let self else { return }
         MeetingMenuBuilder.popUp(self.actions.viewMenu(), above: self.viewButton, below: true)
     }
-    private lazy var shrinkButton: MeetingBarButton = MeetingBarButton { [weak self] in self?.actions.shrink() }
+    private lazy var shrinkButton: MeetingBarButton = MeetingBarButton { [weak self] in
+        self?.dismissTip(persist: true)
+        self?.actions.shrink()
+    }
+    private var tip: MeetingShrinkTipView?
     private let titleLabel = NSTextField(labelWithString: "")
     private let recordingDot = NSView()
     private let recordingLabel = NSTextField(labelWithString: "Recording")
@@ -91,13 +99,18 @@ final class MeetingTopBarView: NSView {
         shield.toolTip = "Meeting information"
         shield.setAccessibilityLabel("Meeting information")
 
-        shrinkButton.image = NSImage(systemSymbolName: "arrow.down.right.and.arrow.up.left",
-                                     accessibilityDescription: "Minimize to controls")?
+        // Icon and words, styled like View beside it: an unlabelled icon was not
+        // discoverable. "Control bar" names where it goes, as View names what it
+        // changes; "Shrink" alone would not say to what.
+        shrinkButton.image = NSImage(systemSymbolName: "arrow.down.right.and.arrow.up.left", accessibilityDescription: nil)?
             .withSymbolConfiguration(.init(pointSize: 12, weight: .regular))
-        shrinkButton.imagePosition = .imageOnly
+        shrinkButton.imagePosition = .imageLeading
+        shrinkButton.imageHugsTitle = true
+        shrinkButton.attributedTitle = NSAttributedString(string: " Control bar", attributes: [
+            .font: NSFont.systemFont(ofSize: 12), .foregroundColor: NSColor.white])
         shrinkButton.contentTintColor = .white
-        shrinkButton.toolTip = "Shrink to the control bar"
-        shrinkButton.setAccessibilityLabel("Minimize to controls")
+        shrinkButton.toolTip = Self.shrinkHelp(shortcut: "\u{2318}M")
+        shrinkButton.setAccessibilityLabel("Shrink to the control bar")
 
         viewButton.image = NSImage(systemSymbolName: "square.grid.2x2", accessibilityDescription: nil)?
             .withSymbolConfiguration(.init(pointSize: 12, weight: .regular))
@@ -132,7 +145,44 @@ final class MeetingTopBarView: NSView {
         recordingDot.isHidden = !state.recording
         recordingLabel.isHidden = !state.recording
         shrinkButton.isHidden = !state.canShrink
+        shrinkButton.toolTip = Self.shrinkHelp(shortcut: state.shrinkShortcut)
+        updateTip()
         needsLayout = true
+    }
+
+    static func shrinkHelp(shortcut: String) -> String {
+        "Shrink the meeting to the control bar so you can get back to your slides"
+            + (shortcut.isEmpty ? "" : " (\(shortcut))")
+    }
+
+    // MARK: One-time tip
+
+    /// Shows the tip while it is due (first meeting window on this Mac, not shrunk
+    /// or closed since) and takes it away once it is not.
+    private func updateTip() {
+        let due = MeetingShrinkTip.shouldShow(canShrink: state.canShrink) && !isHidden
+        if due, tip == nil, let host = superview {
+            let created = MeetingShrinkTipView(message: MeetingShrinkTip.message(shortcut: state.shrinkShortcut)) { [weak self] in
+                self?.dismissTip(persist: true)
+                self?.actions.tipClosed()
+            }
+            host.addSubview(created, positioned: .above, relativeTo: nil)
+            tip = created
+        } else if !due, tip != nil {
+            dismissTip(persist: false)
+        }
+        tip?.message = MeetingShrinkTip.message(shortcut: state.shrinkShortcut)
+    }
+
+    private func dismissTip(persist: Bool) {
+        if persist { MeetingShrinkTip.markDone() }
+        tip?.removeFromSuperview()
+        tip = nil
+    }
+
+    override func viewDidMoveToSuperview() {
+        super.viewDidMoveToSuperview()
+        if superview == nil { dismissTip(persist: false) } else { updateTip() }
     }
 
     override func layout() {
@@ -146,7 +196,9 @@ final class MeetingTopBarView: NSView {
         let viewWidth = viewButton.frame.width + 14
         viewButton.frame = NSRect(x: bounds.width - 10 - viewWidth, y: (h - 26) / 2, width: viewWidth, height: 26)
         var rightEdge = viewButton.frame.minX - 4
-        shrinkButton.frame = NSRect(x: rightEdge - 30, y: (h - 26) / 2, width: 30, height: 26)
+        shrinkButton.sizeToFit()
+        let shrinkWidth = shrinkButton.frame.width + 14
+        shrinkButton.frame = NSRect(x: rightEdge - shrinkWidth, y: (h - 26) / 2, width: shrinkWidth, height: 26)
         if !shrinkButton.isHidden { rightEdge = shrinkButton.frame.minX - 4 }
 
         var leftEdge = shield.frame.maxX + 12
@@ -162,6 +214,72 @@ final class MeetingTopBarView: NSView {
         titleLabel.frame = NSRect(x: (bounds.width - width) / 2, y: (h - titleLabel.frame.height) / 2,
                                   width: width, height: titleLabel.frame.height)
         titleLabel.isHidden = width < 60
+
+        // The tip hangs under the button, right edges level, in the superview's
+        // space so it can sit over the stage without taking the bar's hit area.
+        if let tip, let host = superview {
+            tip.sizeToFitWidth(maxWidth: min(300, host.bounds.width - 20))
+            let anchor = convert(shrinkButton.frame, to: host)
+            let x = min(max(10, anchor.maxX - tip.frame.width), host.bounds.width - tip.frame.width - 10)
+            tip.setFrameOrigin(NSPoint(x: x, y: frame.minY - tip.frame.height - 2))
+            tip.isHidden = shrinkButton.isHidden || isHidden
+        }
+    }
+}
+
+/// The first-time callout: a small glass card with the sentence and a close x.
+/// A subview of the window's content view, sized to its own text, so a click
+/// anywhere outside it goes to whatever is underneath.
+@MainActor
+final class MeetingShrinkTipView: NSView {
+    private let label = NSTextField(wrappingLabelWithString: "")
+    private let close: MeetingBarButton
+    private let backing: NSView
+    private let host: NSView
+    private static let pad: CGFloat = 12, closeSize: CGFloat = 20
+
+    var message: String {
+        get { label.stringValue }
+        set { if label.stringValue != newValue { label.stringValue = newValue } }
+    }
+
+    init(message: String, onClose: @escaping () -> Void) {
+        close = MeetingBarButton(onClose)
+        backing = GreenroomGlassAppKit.makeBacking(cornerRadius: 12)
+        host = GreenroomGlassAppKit.host(of: backing)
+        super.init(frame: .zero)
+        wantsLayer = true
+        label.stringValue = message
+        label.font = .systemFont(ofSize: 12)
+        label.textColor = MeetingTheme.textNS
+        label.isSelectable = false
+        close.image = NSImage(systemSymbolName: "xmark", accessibilityDescription: "Close tip")?
+            .withSymbolConfiguration(.init(pointSize: 10, weight: .semibold))
+        close.imagePosition = .imageOnly
+        close.contentTintColor = MeetingTheme.secondaryTextNS
+        close.toolTip = "Close this tip"
+        close.setAccessibilityLabel("Close tip")
+        addSubview(backing)
+        for view in [label, close] as [NSView] { host.addSubview(view) }
+        setAccessibilityRole(.group)
+        setAccessibilityLabel("Tip")
+    }
+    required init?(coder: NSCoder) { nil }
+
+    override var isFlipped: Bool { false }
+
+    func sizeToFitWidth(maxWidth: CGFloat) {
+        let textWidth = maxWidth - Self.pad * 2 - Self.closeSize - 6
+        label.preferredMaxLayoutWidth = textWidth
+        let text = label.sizeThatFits(NSSize(width: textWidth, height: .greatestFiniteMagnitude))
+        let height = max(text.height, Self.closeSize) + Self.pad * 2 - 4
+        setFrameSize(NSSize(width: min(maxWidth, ceil(text.width) + Self.pad * 2 + Self.closeSize + 6), height: ceil(height)))
+        backing.frame = bounds
+        let h = bounds.height
+        close.frame = NSRect(x: bounds.width - Self.pad - Self.closeSize + 4, y: h - Self.pad + 2 - Self.closeSize + 4,
+                             width: Self.closeSize, height: Self.closeSize)
+        label.frame = NSRect(x: Self.pad, y: (h - ceil(text.height)) / 2,
+                             width: ceil(text.width), height: ceil(text.height))
     }
 }
 

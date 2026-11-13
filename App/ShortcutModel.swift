@@ -209,6 +209,10 @@ enum ShortcutScope: String {
     case global
     /// Only while Greenroom is the active app.
     case appOnly
+    /// Only while Greenroom's meeting window is the key window. Never registered
+    /// with the system, so it cannot take the key from any other app (or from the
+    /// system's own use of it, as Command-M is for minimise).
+    case meetingWindow
 }
 
 enum ShortcutGroup: String, CaseIterable {
@@ -242,6 +246,7 @@ enum ShortcutAction: String, CaseIterable {
     case showMeetingWindow = "meetingWindow"
     case toggleMeetingBar = "meetingBar"
     case shrinkMeeting = "meetingShrink"
+    case shrinkToBar = "meetingShrinkToBar"
     case switchGalleryOrSpeaker = "galleryOrSpeaker"
     case toggleMeeting = "hideMeeting"
     case snapBack = "snap"
@@ -269,7 +274,7 @@ enum ShortcutAction: String, CaseIterable {
         switch self {
         case .startClass, .endSession, .toggleRecording, .togglePause, .toggleDrawing, .clip1, .clip2, .clip5: return .classGroup
         case .toggleMic, .toggleCamera, .toggleChat, .toggleNotes, .showMeetingWindow,
-             .toggleMeetingBar, .shrinkMeeting, .switchGalleryOrSpeaker, .toggleMeeting: return .meeting
+             .toggleMeetingBar, .shrinkMeeting, .shrinkToBar, .switchGalleryOrSpeaker, .toggleMeeting: return .meeting
         case .snapBack: return .layout
         case .openGreenroom, .openSessions: return .greenroom
         default: return .meeting
@@ -294,6 +299,7 @@ enum ShortcutAction: String, CaseIterable {
         case .showMeetingWindow: return "Show the meeting window"
         case .toggleMeetingBar: return "Collapse or expand the meeting bar"
         case .shrinkMeeting: return "Shrink or expand the meeting"
+        case .shrinkToBar: return "Shrink meeting to control bar"
         case .switchGalleryOrSpeaker: return "Switch Gallery and Speaker"
         case .toggleMeeting: return "Hide or show the meeting"
         case .snapBack: return "Snap windows back to the layout"
@@ -321,6 +327,7 @@ enum ShortcutAction: String, CaseIterable {
         case .showMeetingWindow: return "Brings the meeting back without moving your slides."
         case .toggleMeetingBar: return "The floating controls: the full bar, or a small round button."
         case .shrinkMeeting: return "Morphs the meeting window into the floating control bar, and back."
+        case .shrinkToBar: return "In the meeting window: shrinks it into the floating control bar, the same as its minimise button."
         case .switchGalleryOrSpeaker: return "In the meeting window."
         case .toggleMeeting: return "The layout's meeting piece; its neighbour takes the room."
         case .snapBack: return "After you have dragged windows around."
@@ -345,7 +352,7 @@ enum ShortcutAction: String, CaseIterable {
         case .toggleNotes: return "note.text"
         case .showMeetingWindow: return "macwindow"
         case .toggleMeetingBar: return "arrow.down.right.and.arrow.up.left"
-        case .shrinkMeeting: return "rectangle.bottomhalf.inset.filled"
+        case .shrinkMeeting, .shrinkToBar: return "rectangle.bottomhalf.inset.filled"
         case .switchGalleryOrSpeaker: return "square.grid.2x2"
         case .toggleMeeting: return "eye.slash"
         case .snapBack: return "arrow.uturn.backward"
@@ -358,7 +365,7 @@ enum ShortcutAction: String, CaseIterable {
     /// Every action here is system-wide: the point of each is that it works
     /// while the class, not Greenroom, is in front. (`.appOnly` is kept for an
     /// action that should only answer inside Greenroom; there is none today.)
-    var scope: ShortcutScope { .global }
+    var scope: ShortcutScope { self == .shrinkToBar ? .meetingWindow : .global }
 
     /// Option + Command, not Control + Option + Command.
     ///
@@ -388,6 +395,9 @@ enum ShortcutAction: String, CaseIterable {
         // and not a system shortcut.
         case .toggleDrawing: return KeyCombo(keyCode: UInt32(kVK_ANSI_D), modifiers: KeyCombo.option | KeyCombo.shift)
         case .snapBack: return .optionCommand(kVK_ANSI_S)
+        // The yellow traffic light's key, in the meeting window only (scope
+        // .meetingWindow): no global hotkey, so no other app loses Command-M.
+        case .shrinkToBar: return KeyCombo(keyCode: UInt32(kVK_ANSI_M), modifiers: KeyCombo.command)
         case .toggleMeeting: return .optionCommand(kVK_ANSI_Z)
         case .clip1: return .optionCommand(kVK_ANSI_1)
         case .clip2: return .optionCommand(kVK_ANSI_2)
@@ -434,6 +444,11 @@ enum ShortcutSlot: Hashable {
     var defaultCombo: KeyCombo? {
         if case .action(let a) = self { return a.defaultCombo }
         return nil
+    }
+
+    var scope: ShortcutScope {
+        if case .action(let a) = self { return a.scope }
+        return .global
     }
 
     var group: ShortcutGroup {

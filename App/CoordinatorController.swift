@@ -2941,6 +2941,16 @@ final class CoordinatorController: ObservableObject {
         ParticipantGridWindowController.onUserClosed = { [weak self] in
             Task { @MainActor in self?.meetingWindowClosedByUser() }
         }
+        // Minimise (the yellow light, Command-M) shrinks to the control bar while a
+        // meeting is live; with none, the window minimises as any other does.
+        ParticipantGridWindowController.shrinkInsteadOfMinimize = { [weak self] in
+            guard let self else { return false }
+            let live = self.isRunning || self.stageLive
+            let canShrink = self.zoomChatClient.didUseCustomUI && self.meetingWindowOpen
+            guard MeetingMinimize.outcome(meetingLive: live, canShrink: canShrink) == .shrinkToControlBar else { return false }
+            self.shrinkMeetingToBar()
+            return true
+        }
         // A join or a leave shows at once rather than at the next poll.
         zoomChatClient.onParticipantCountChanged = {
             ParticipantGridWindowController.refreshNow()
@@ -3382,6 +3392,7 @@ final class CoordinatorController: ObservableObject {
     /// closed, so its video elements stay attached and the way back is instant.
     func shrinkMeetingToBar() {
         guard zoomChatClient.didUseCustomUI, meetingWindowOpen else { return }
+        MeetingShrinkTip.markDone() // shrunk once, by any route: the tip has done its job
         MeetingControlBarController.morph(toward: 0)
     }
 

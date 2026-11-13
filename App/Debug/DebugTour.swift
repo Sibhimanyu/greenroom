@@ -291,14 +291,18 @@ enum DebugTour {
                 "frame": [w.frame.origin.x, w.frame.origin.y, w.frame.width, w.frame.height]]
             // Position on its own screen, in points from the screen's top-left,
             // plus the menu-bar and right-edge gaps, so placement can be checked.
-            if let ns = NSApp.windows.first(where: { CGWindowID($0.windowNumber) == w.windowID }),
-               let screen = ns.screen {
+            // NSWindow / NSScreen are MainActor-only, and shot() runs off it. Compare as Int: CGWindowID(-1) traps for windows without a number.
+            let wid = w.windowID
+            let placement: [String: Any]? = await MainActor.run {
+                guard let ns = NSApp.windows.first(where: { $0.windowNumber == Int(wid) }),
+                      let screen = ns.screen else { return nil }
                 let f = ns.frame, sf = screen.frame, vf = screen.visibleFrame
-                entry["screenRelative"] = [f.minX - sf.minX, sf.maxY - f.maxY, f.width, f.height]
-                entry["gapBelowMenuBar"] = vf.maxY - f.maxY
-                entry["gapFromRightEdge"] = vf.maxX - f.maxX
-                entry["screenSize"] = [sf.width, sf.height]
+                return ["screenRelative": [f.minX - sf.minX, sf.maxY - f.maxY, f.width, f.height],
+                        "gapBelowMenuBar": vf.maxY - f.maxY,
+                        "gapFromRightEdge": vf.maxX - f.maxX,
+                        "screenSize": [sf.width, sf.height]]
             }
+            if let placement { entry.merge(placement) { $1 } }
             if !w.isOnScreen { entry["warning"] = "isOnScreen false" }
             do {
                 let filter = SCContentFilter(desktopIndependentWindow: w)

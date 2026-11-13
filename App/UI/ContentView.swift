@@ -230,14 +230,22 @@ struct ContentView: View {
         .toolbar {
             // Record's own toolbar (Done) lives in RecordStudioContent.
             if !chromeOnPage && !coordinator.recordStudioShown {
-                ToolbarItemGroup(placement: .primaryAction) {
+                // Sessions leads, named: an icon alone did not say what it
+                // opens. Help and Settings sit at the trailing edge, as
+                // window-level utilities do in macOS apps.
+                ToolbarItem(placement: .navigation) {
                     Button {
                         coordinator.mainPage = .sessions
                     } label: {
                         Label("Sessions", systemImage: "film.stack")
+                            .labelStyle(.titleAndIcon)
                     }
                     .help("Sessions: every past class, its recordings and clips with a player, its YouTube links, and a name you can change.")
-
+                }
+                if #available(macOS 26, *) {
+                    ToolbarSpacer(.flexible)
+                }
+                ToolbarItemGroup(placement: .primaryAction) {
                     Button {
                         coordinator.presentOnboarding()
                     } label: {

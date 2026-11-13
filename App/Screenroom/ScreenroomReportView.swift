@@ -83,12 +83,14 @@ struct ScreenroomReportView: View {
         if paged {
             page
                 .tint(Brand.green)
-        } else if let onBack {
+        } else if onBack != nil {
             // Back and Export live in the window toolbar; nothing of them is
             // drawn in the page, and the paged path above never sees them.
+            // Back itself is ContentView's one page-wide item (it reads
+            // mainPage == .report and goes back to the session), so only
+            // Export is added here.
             ScrollView { page }
                 .tint(Brand.green)
-                .pageToolbar(back: PageBack(label: "Session", action: onBack), subtitle: "Report")
                 .toolbar { exportItem }
         } else {
             ScrollView { page }

@@ -53,6 +53,8 @@ struct HomeView: View {
     static let summaryHeight: CGFloat = 32
     static let readyHeight: CGFloat = 24
     static let buttonHeight: CGFloat = 44
+    /// A standard macOS 26 large control.
+    static let largeControlHeight: CGFloat = 32
     static let columnGap: CGFloat = 16
     /// The five tiles: three rows of 44 with 8pt gaps, and the gap above them.
     static let tilesHeight: CGFloat = 148
@@ -218,16 +220,19 @@ struct HomeView: View {
             : .bubble(aspect: coordinator.webcamShape.cropsToSquare ? 1 : camera)
     }
 
-    /// Icon only: the words moved into the hover help.
+    /// A glass capsule that says what it does: the icon and "Show live", or
+    /// "Stop live" while the camera is on. The hover help keeps the fuller words.
     private var liveButton: some View {
         Button(action: toggleLive) {
-            Image(systemName: showLive ? "eye.slash" : "video")
-                .font(.system(size: 14, weight: .medium))
-                .frame(width: 32, height: 32)
-                .contentShape(Circle())
+            Label(showLive ? "Stop live" : "Show live", systemImage: "video")
+                .labelStyle(.titleAndIcon)
+                .font(.system(size: 12.5, weight: .medium))
+                .padding(.horizontal, 12)
+                .frame(height: 28)
+                .contentShape(Capsule())
         }
         .buttonStyle(.plain)
-        .greenroomGlass(in: Circle(), interactive: true)
+        .greenroomGlass(in: Capsule(), interactive: true)
         .disabled(isLive)
         .help(showLive
               ? "Hide the live picture. This turns the camera off again."
@@ -342,7 +347,13 @@ struct HomeView: View {
 
     private var setupSection: some View {
         VStack(alignment: .leading, spacing: Self.columnGap) {
-            summaryRow
+            // One row, two faces: the summary while folded, a "Setup" caption
+            // with Done while the tiles show, so no value is drawn twice. Both
+            // are the same height, so the column keeps its balance.
+            ZStack(alignment: .topLeading) {
+                if setupOpen { setupCaptionRow.transition(.opacity) } else { summaryRow.transition(.opacity) }
+            }
+            .animation(.easeInOut(duration: 0.2), value: setupOpen)
             Collapsible(hidden: !setupOpen) {
                 // Equal tiles: Look | Share, Camera | Microphone, Layout across.
                 VStack(spacing: 8) {
@@ -388,16 +399,33 @@ struct HomeView: View {
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            Button(setupOpen ? "Done" : "Edit") {
-                Collapse.animate { setupOpen.toggle() }
-            }
-            .buttonStyle(.plain)
-            .font(.system(size: 12.5, weight: .medium))
-            .foregroundStyle(Brand.text)
-            .help(setupOpen ? "Fold the setup back into one line." : "Change the look, what you share, the camera, the microphone or the layout.")
-            .accessibilityLabel(setupOpen ? "Done editing setup" : "Edit setup")
+            setupToggle
         }
         .frame(minHeight: Self.summaryHeight, alignment: .top)
+    }
+
+    private var setupCaptionRow: some View {
+        HStack(alignment: .top, spacing: 8) {
+            Text("Setup")
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .accessibilityAddTraits(.isHeader)
+            setupToggle
+        }
+        .frame(minHeight: Self.summaryHeight, alignment: .top)
+    }
+
+    /// Edit while folded, Done while unfolded.
+    private var setupToggle: some View {
+        Button(setupOpen ? "Done" : "Edit") {
+            Collapse.animate { setupOpen.toggle() }
+        }
+        .buttonStyle(.plain)
+        .font(.system(size: 12.5, weight: .medium))
+        .foregroundStyle(Brand.text)
+        .help(setupOpen ? "Fold the setup back into one line." : "Change the look, what you share, the camera, the microphone or the layout.")
+        .accessibilityLabel(setupOpen ? "Done editing setup" : "Edit setup")
     }
 
     /// One part of the line. Amber (text colour `net-text`, glyph `net`) when
@@ -891,15 +919,15 @@ struct HomeView: View {
             Button {
                 coordinator.start()
             } label: {
-                HStack(spacing: 8) {
+                HStack(spacing: 6) {
                     primaryGlyph
                     Text(primaryText)
                         .contentTransition(.opacity)
                 }
-                .font(.headline)
-                .padding(.leading, 20)
-                .padding(.trailing, 14)
-                .frame(height: Self.buttonHeight)
+                .font(.system(size: 13, weight: .semibold))
+                .padding(.leading, 14)
+                .padding(.trailing, 10)
+                .frame(height: Self.largeControlHeight)
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
@@ -907,31 +935,38 @@ struct HomeView: View {
             .help(primaryHelp)
 
             Rectangle()
-                .fill(.white.opacity(0.35))
-                .frame(width: 1, height: 22)
+                .fill(.white.opacity(0.4))
+                .frame(width: 1, height: 16)
                 .accessibilityHidden(true)
 
-            Menu {
-                Section("Manual controls") {
-                    Button("Open Layout Apps") { coordinator.openMainAppWindow() }
-                        .disabled(!coordinator.layoutHasApps)
+            // The glyph is drawn here; the menu is a clear layer over it, since
+            // a borderless Menu label lost its glyph on the green.
+            Image(systemName: "chevron.down")
+                .font(.system(size: 10, weight: .bold))
+                .foregroundStyle(.white)
+                .frame(width: 28, height: Self.largeControlHeight)
+                .overlay {
+                    Menu {
+                        Section("Manual controls") {
+                            Button("Open Layout Apps") { coordinator.openMainAppWindow() }
+                                .disabled(!coordinator.layoutHasApps)
+                        }
+                    } label: {
+                        Color.clear.frame(width: 28, height: Self.largeControlHeight).contentShape(Rectangle())
+                    }
+                    .menuStyle(.borderlessButton)
+                    .menuIndicator(.hidden)
+                    .fixedSize()
+                    .help("Manual controls: each piece of the session on its own.")
+                    .accessibilityLabel("Manual controls")
                 }
-            } label: {
-                Image(systemName: "chevron.down")
-                    .font(.system(size: 11, weight: .semibold))
-                    .frame(width: 36, height: Self.buttonHeight)
-                    .contentShape(Rectangle())
-            }
-            .menuStyle(.borderlessButton)
-            .menuIndicator(.hidden)
-            .fixedSize()
-            .help("Manual controls: each piece of the session on its own.")
-            .accessibilityLabel("Manual controls")
         }
         .foregroundStyle(.white)
         .background(Capsule().fill(Brand.green.opacity(startDisabled ? 0.4 : 1)))
         .clipShape(Capsule())
         .animation(reduceMotion ? nil : .easeOut(duration: 0.18), value: mode)
+        // The column keeps its 44pt slot (the window's height is arithmetic
+        // from it); the standard 32pt large control sits in it.
         .frame(maxWidth: .infinity, minHeight: Self.buttonHeight, alignment: .leading)
     }
 

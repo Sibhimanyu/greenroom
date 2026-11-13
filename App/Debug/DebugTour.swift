@@ -105,6 +105,10 @@ enum DebugTour {
                           let m = MeetingMode.allCases.first(where: { "\($0)" == info["mode"] })
                     else { throw TourError("bad mode") }
                     withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) { c.meetingMode = m }
+                case "homeSetup":
+                    // expanded=true|false: the five tiles unfolded or the one line.
+                    NotificationCenter.default.post(name: .debugTourHomeSetup, object: nil,
+                                                    userInfo: ["expanded": info["expanded"] == "true"])
                 case "shareKind":
                     // Shows the window-only controls. `restore` puts the saved kind back.
                     guard let c = CoordinatorController.shared,
@@ -356,4 +360,8 @@ enum DebugTour {
         }
     }
 }
+extension Notification.Name {
+    static let debugTourHomeSetup = Notification.Name("com.greenroom.debug.tour.homeSetup")
+}
+
 #endif

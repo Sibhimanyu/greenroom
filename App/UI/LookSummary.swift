@@ -50,7 +50,7 @@ extension LookSummary {
                            showsCamera: showsCamera, parts: parts)
     }
 
-    private static func shareText(_ share: ShareTarget) -> String {
+    static func shareText(_ share: ShareTarget) -> String {
         switch share.kind {
         case .display: return "Whole screen"
         case .app: return share.appBundleID.isEmpty ? "One app" : "\(share.displayName) app"
@@ -61,7 +61,7 @@ extension LookSummary {
     }
 
     @MainActor
-    private static func cameraText(_ coordinator: CoordinatorController,
+    static func cameraText(_ coordinator: CoordinatorController,
                                    cameras: [LocalDeviceResolver.Camera]) -> String {
         if coordinator.cameraIsOff { return "No camera" }
         // sceneCameraUIDs' rule, worked against the list already held rather
@@ -75,7 +75,7 @@ extension LookSummary {
 
     /// An empty choice follows the system's input, so it is named as that
     /// device: "System microphone" says nothing about which one you get.
-    private static func microphoneText(uid: String, microphones: [LocalDeviceResolver.Microphone],
+    static func microphoneText(uid: String, microphones: [LocalDeviceResolver.Microphone],
                                        system: String?) -> String {
         if let picked = microphones.first(where: { $0.id == uid }) { return picked.name }
         return system ?? "System microphone"

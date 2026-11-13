@@ -410,7 +410,9 @@ struct WebcamShapePreview: View {
     var geometry: Binding<BubbleDragLayer.Geometry>?
     /// Which shape's geometry `geometry` is expressing.
     var mode: BubbleDragLayer.Mode = .bubble(aspect: 1)
-
+    /// The canvas's width over its height. The Webcam page draws 16:10; Home's
+    /// picture card is 16:9, the shape of the real picture.
+    var aspect: CGFloat = 16.0 / 10.0
 
     /// A chroma-key green screen, not the brand: DESIGN.md asks for the two
     /// to be named apart even though they share a value.
@@ -468,7 +470,7 @@ struct WebcamShapePreview: View {
             }
             .clipShape(RoundedRectangle(cornerRadius: 8))
         }
-        .aspectRatio(16.0 / 10.0, contentMode: .fit)
+        .aspectRatio(aspect, contentMode: .fit)
         .animation(.snappy(duration: 0.25), value: shape)
     }
 

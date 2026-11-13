@@ -133,7 +133,7 @@ struct GreenroomApp: App {
                     if !showing { Heresay.introduce() }
                 }
         }
-        // Derived from the button row, not chosen - see
+        // Derived from Home's two columns, not chosen - see
         // ContentView.minimumWindowWidth.
         .defaultSize(width: ContentView.defaultWindowWidth, height: 400)
         // A real toolbar on every page, so the title bar keeps one height

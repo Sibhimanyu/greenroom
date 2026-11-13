@@ -779,6 +779,20 @@ struct LayoutPageContent: View {
 
     /// Greenroom Browser, Safari and so on as the canvas should draw them.
     func look(_ piece: LayoutPiece) -> LayoutPieceLook {
+        Self.look(piece, customUIMode: customUIMode, canMoveApps: canMoveApps)
+    }
+
+    /// "Show on screen": outlines where each piece of `template` would go, on the
+    /// real displays, for a moment. The one action behind the Layout page's
+    /// button and Home's Layout tile.
+    @MainActor
+    static func showOnScreen(_ template: LayoutTemplate, customUIMode: Bool, canMoveApps: Bool) {
+        LayoutScreenPreview.show(LayoutScreenPreview.items(for: template) {
+            look($0, customUIMode: customUIMode, canMoveApps: canMoveApps)
+        })
+    }
+
+    static func look(_ piece: LayoutPiece, customUIMode: Bool, canMoveApps: Bool) -> LayoutPieceLook {
         switch piece.kind {
         case .meeting:
             return LayoutPieceLook(name: customUIMode ? "Meeting window" : "Zoom window", icon: nil, symbol: "video.fill")

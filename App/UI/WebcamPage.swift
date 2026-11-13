@@ -542,7 +542,7 @@ private struct BackgroundThumb: View {
 /// The sketch for a picture with one half missing: the camera alone, filling
 /// the frame, or the shared content alone. The full sketch draws a bubble on a
 /// screen, which is exactly what these two are not.
-private struct HalfSketch: View {
+struct HalfSketch: View {
     let showsCamera: Bool
 
     var body: some View {

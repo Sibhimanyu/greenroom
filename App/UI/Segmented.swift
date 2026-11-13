@@ -36,6 +36,10 @@ struct GreenroomSegmented<Value: Hashable, Label: View>: View {
     let title: String
     @Binding var selection: Value
     let options: [Value]
+    /// In a window toolbar: the toolbar item's own glass capsule is the track,
+    /// as it is for the Sessions button, so this draws no track and no inset,
+    /// plain primary labels, and the same solid green selection.
+    var toolbar = false
     @ViewBuilder let label: (Value) -> Label
 
     @Namespace private var ns
@@ -45,15 +49,17 @@ struct GreenroomSegmented<Value: Hashable, Label: View>: View {
     init(_ title: String,
          selection: Binding<Value>,
          options: [Value],
+         toolbar: Bool = false,
          @ViewBuilder label: @escaping (Value) -> Label) {
         self.title = title
         self._selection = selection
         self.options = options
+        self.toolbar = toolbar
         self.label = label
     }
 
-    private static var height: CGFloat { 22 }
-    private static var hPadding: CGFloat { 10 }
+    private var height: CGFloat { toolbar ? 26 : 22 }
+    private var hPadding: CGFloat { toolbar ? 14 : 10 }
 
     private var motion: Animation {
         reduceMotion ? .easeInOut(duration: 0.15) : .spring(response: 0.3, dampingFraction: 0.85)
@@ -92,12 +98,12 @@ struct GreenroomSegmented<Value: Hashable, Label: View>: View {
                 segment(option)
             }
         }
-        .padding(2)
-        .background(Capsule().fill(.quinary))
+        .padding(toolbar ? 0 : 2)
+        .background { if !toolbar { Capsule().fill(.quinary) } }
         // Lay out by the selection pill's edges, not the track's: the faint
         // track spills 2pt past them, so the green pill lines up with the
         // leading edge of the text and fields around it.
-        .padding(-2)
+        .padding(toolbar ? 0 : -2)
     }
 
     private func segment(_ option: Value) -> some View {
@@ -108,11 +114,11 @@ struct GreenroomSegmented<Value: Hashable, Label: View>: View {
             label(option)
                 .fontWeight(on ? .semibold : .regular)
                 .foregroundStyle(on ? AnyShapeStyle(Color.white)
-                                    : AnyShapeStyle(hovered == option ? .primary : .secondary))
+                                    : AnyShapeStyle(toolbar || hovered == option ? .primary : .secondary))
                 .lineLimit(1)
-                .padding(.horizontal, Self.hPadding)
+                .padding(.horizontal, hPadding)
                 .frame(maxWidth: .infinity)
-                .frame(height: Self.height)
+                .frame(height: height)
                 .contentShape(Capsule())
         }
         .buttonStyle(.plain)
@@ -122,14 +128,17 @@ struct GreenroomSegmented<Value: Hashable, Label: View>: View {
         .background { selectionCapsule(on: on) }
     }
 
+    /// Solid Brand green, in every style: no gradient, highlight, stroke or
+    /// transparency, so nothing blends it into the glass behind.
+    private var pill: some View { Capsule().fill(Brand.green) }
+
     @ViewBuilder
     private func selectionCapsule(on: Bool) -> some View {
         if reduceMotion {
             // No slide: each segment fades its own capsule in and out.
-            Capsule().fill(Brand.green).opacity(on ? 1 : 0)
+            pill.opacity(on ? 1 : 0)
         } else if on {
-            Capsule().fill(Brand.green)
-                .matchedGeometryEffect(id: "selection", in: ns)
+            pill.matchedGeometryEffect(id: "selection", in: ns)
         }
     }
 }

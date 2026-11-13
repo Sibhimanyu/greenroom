@@ -16,6 +16,9 @@ import UniformTypeIdentifiers
 extension Notification.Name {
     /// Home's "Change..." beside the picture summary: Settings, on Webcam.
     static let showWebcamSettings = Notification.Name("GreenroomShowWebcamSettings")
+    /// Home's Layout chip and Zoom readiness pill: Settings, on the tab named
+    /// by the notification's object ("layout", "zoom").
+    static let showSettingsTab = Notification.Name("GreenroomShowSettingsTab")
 }
 
 struct SettingsView: View {
@@ -76,6 +79,9 @@ struct SettingsView: View {
         // Settings is the first moment the fields actually need them.
         .onAppear { coordinator.loadSecretsIfNeeded() }
         .onReceive(NotificationCenter.default.publisher(for: .showWebcamSettings)) { _ in tab = "webcam" }
+        .onReceive(NotificationCenter.default.publisher(for: .showSettingsTab)) { note in
+            if let tag = note.object as? String, Self.tabOrder.contains(tag) { tab = tag }
+        }
         #if DEBUG
         .onReceive(NotificationCenter.default.publisher(for: .debugTourSettingsTab)) { tab = ($0.object as? String) ?? tab }
         #endif

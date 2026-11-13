@@ -22,6 +22,9 @@ import Metal
 struct StageCameraInput {
     var raw: CIImage
     var cutout: CIImage?
+    /// The frame with Blur or an Image behind the person (CameraEffects);
+    /// nil while the background is Normal.
+    var background: CIImage? = nil
 }
 
 struct StageScene {
@@ -147,7 +150,7 @@ final class StageRenderer {
     /// the look needs a cutout that has not arrived (one frame at most; an
     /// unremoved frame would flash the room).
     private func pixels(of input: StageCameraInput, scene: StageScene) -> CIImage? {
-        guard scene.layout.shape.usesChromaKey else { return input.raw }
+        guard scene.layout.shape.usesChromaKey else { return input.background ?? input.raw }
         switch scene.removal {
         case .automatic: return input.cutout
         case .greenScreen: return keyed(input.raw)

@@ -10,6 +10,7 @@
 import Foundation
 import Combine
 import AppKit
+import UniformTypeIdentifiers
 
 @MainActor
 final class CoordinatorController: ObservableObject {
@@ -643,6 +644,41 @@ final class CoordinatorController: ObservableObject {
         }
     }
 
+    /// Blur or a picture behind you, for the bubble shapes (Settings ->
+    /// Webcam). Applies live, like the shape.
+    @Published var cameraBackground: CameraBackground {
+        didSet {
+            defaults.set(cameraBackground.rawValue, forKey: "cameraBackground")
+            guard cameraBackground != oldValue else { return }
+            requestShapeApply()
+        }
+    }
+
+    /// The picture for `.image`: a preset's name, or `custom-<stamp>`.
+    @Published var cameraBackgroundImage: String {
+        didSet {
+            defaults.set(cameraBackgroundImage, forKey: "cameraBackgroundImage")
+            guard cameraBackgroundImage != oldValue else { return }
+            requestShapeApply()
+        }
+    }
+
+    /// Asks for a picture of the user's own and keeps a copy of it.
+    func chooseCameraBackgroundImage() {
+        let panel = NSOpenPanel()
+        panel.title = "Choose a picture to put behind you"
+        panel.allowedContentTypes = [.image]
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = false
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        guard let key = CameraBackgroundLibrary.importCustom(from: url) else {
+            log("Couldn\u{2019}t use \u{201C}\(url.lastPathComponent)\u{201D} as a background. Pick a JPEG or PNG.")
+            return
+        }
+        Collapse.animate { cameraBackground = .image }
+        cameraBackgroundImage = key
+    }
+
     /// False while background removal finds nobody in the camera, so the
     /// Webcam page can say why its picture is empty.
     @Published private(set) var cameraSeesYou = true
@@ -1018,6 +1054,8 @@ final class CoordinatorController: ObservableObject {
         }
         webcamShape = WebcamShape(rawValue: defaults.string(forKey: "webcamShape") ?? "") ?? .circle
         backgroundRemoval = BackgroundRemoval(rawValue: defaults.string(forKey: "backgroundRemoval") ?? "") ?? .automatic
+        cameraBackground = CameraBackground(rawValue: defaults.string(forKey: "cameraBackground") ?? "") ?? .normal
+        cameraBackgroundImage = defaults.string(forKey: "cameraBackgroundImage") ?? CameraBackgroundPreset.defaultChoice
         micDeviceUID = defaults.string(forKey: "micDeviceUID") ?? ""
         // First launch with this key migrates today's settings into "Your previous
         // layout" (see LayoutLibrary.loadOrMigrate); the old keys stay as they were.
@@ -1162,6 +1200,8 @@ final class CoordinatorController: ObservableObject {
                            share: shareTarget,
                            displayUUID: screenCaptureDisplayUUID,
                            backgroundRemoval: backgroundRemoval,
+                           cameraBackground: cameraBackground,
+                           cameraBackgroundImage: cameraBackgroundImage,
                            cameraUIDs: stageCameraUIDs ?? sceneCameraUIDs(limit: 1))
     }
 
@@ -1178,6 +1218,11 @@ final class CoordinatorController: ObservableObject {
             .store(in: &stageObservers)
         made.status.$camerasLive.removeDuplicates()
             .sink { [weak self] in self?.camerasLiveChanged($0) }
+            .store(in: &stageObservers)
+        made.status.$cameraStandIn.removeDuplicates().dropFirst()
+            .sink { [weak self] in
+                self?.log($0 ?? "The camera you chose is back.")
+            }
             .store(in: &stageObservers)
         return made
     }

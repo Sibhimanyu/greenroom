@@ -32,6 +32,12 @@ struct StageConfiguration: Equatable {
     /// `screenCaptureDisplayUUID`. Empty means the main display.
     var displayUUID = ""
     var backgroundRemoval: BackgroundRemoval = .automatic
+    /// Blur or a picture behind you in the bubble shapes. Ignored by Cutout
+    /// and Presenter, which remove the background instead.
+    var cameraBackground: CameraBackground = .normal
+    /// Which picture, for `.image`: a `CameraBackgroundPreset` raw value or
+    /// `custom-<stamp>` (see CameraBackgroundLibrary).
+    var cameraBackgroundImage = CameraBackgroundPreset.defaultChoice
     /// Camera uniqueIDs in cut order. Slot = index. All are opened at once.
     var cameraUIDs: [String] = []
 

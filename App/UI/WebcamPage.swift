@@ -15,6 +15,7 @@
 //  view can be rendered off screen with sample values to check it by eye.
 //  `WebcamSettingsTab` is the thin layer that feeds it from the coordinator.
 //
+import ImageIO
 import SwiftUI
 
 // MARK: - The tab
@@ -49,8 +50,12 @@ struct WebcamSettingsTab: View {
     var body: some View {
         WebcamPageContent(
             shape: Binding(get: { coordinator.webcamShape },
-                           set: { coordinator.webcamShape = $0; coordinator.requestShapeApply() }),
+                           set: { coordinator.webcamShape = $0; coordinator.requestShapeApply() })
+                .animatedCollapse(),
             removal: $coordinator.backgroundRemoval,
+            cameraBackground: $coordinator.cameraBackground,
+            backgroundImage: $coordinator.cameraBackgroundImage,
+            chooseBackgroundImage: { coordinator.chooseCameraBackgroundImage() },
             geometry: geometry,
             shareKind: $coordinator.shareTarget.kind,
             previewAspect: coordinator.shapePreviewAspect,
@@ -106,6 +111,9 @@ struct LiveCompositePicture: View {
 struct WebcamPageContent<LivePicture: View, ShareDetail: View, Cameras: View, Microphone: View, Recording: View>: View {
     @Binding var shape: WebcamShape
     @Binding var removal: BackgroundRemoval
+    @Binding var cameraBackground: CameraBackground
+    @Binding var backgroundImage: String
+    let chooseBackgroundImage: () -> Void
     @Binding var geometry: BubbleDragLayer.Geometry
     @Binding var shareKind: ShareTarget.Kind
     /// The live picture's size, or nil while the sketch is showing.
@@ -181,6 +189,12 @@ struct WebcamPageContent<LivePicture: View, ShareDetail: View, Cameras: View, Mi
                     }
                     .pickerStyle(.segmented)
                     .help("Automatic finds you in the camera and removes the rest. Green screen keys out a real green backdrop instead.")
+                }
+                // Cutout and Presenter already take your background away, and
+                // with no camera there is nothing to put one behind.
+                Collapsible(hidden: shape.usesChromaKey || cameraOff) {
+                    CameraBackgroundControl(mode: $cameraBackground, image: $backgroundImage,
+                                            choose: chooseBackgroundImage)
                 }
             }
 
@@ -398,6 +412,125 @@ struct LookPicker: View {
         case .cutout: return "You without your background, standing on the bottom edge"
         case .presenterLarge: return "Your screen as a panel, you beside it at full height"
         }
+    }
+}
+
+/// Normal, Blur or Image behind you; with Image, the pictures to pick from.
+///
+/// The picture row is its own `Collapsible`, so it folds away unless Image is
+/// chosen (the house rule: dependent controls hide, they are not greyed).
+struct CameraBackgroundControl: View {
+    @Binding var mode: CameraBackground
+    @Binding var image: String
+    let choose: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Picker("Background", selection: $mode.animatedCollapse()) {
+                Text("Normal").tag(CameraBackground.normal)
+                Text("Blur").tag(CameraBackground.blur)
+                Text("Image").tag(CameraBackground.image)
+            }
+            .pickerStyle(.segmented)
+            .help("Normal shows your room. Blur softens everything but you. Image puts a picture behind you.")
+
+            Collapsible(hidden: mode != .image) {
+                BackgroundImageRow(selection: $image, choose: choose)
+                    .padding(.top, 2)
+                    .padding(.bottom, 4)
+            }
+        }
+    }
+}
+
+/// The five bundled pictures, then the user's own, then Choose.
+private struct BackgroundImageRow: View {
+    @Binding var selection: String
+    let choose: () -> Void
+
+    private var hasCustom: Bool { CameraBackgroundLibrary.customFileURL != nil && CameraBackgroundLibrary.isCustom(selection) }
+
+    var body: some View {
+        HStack(spacing: 8) {
+            ForEach(CameraBackgroundPreset.allCases) { preset in
+                BackgroundThumb(url: preset.url, title: preset.label,
+                                selected: selection == preset.rawValue) {
+                    selection = preset.rawValue
+                }
+            }
+            if hasCustom {
+                BackgroundThumb(url: CameraBackgroundLibrary.customFileURL, title: "Yours", selected: true) {}
+            }
+            Button(action: choose) {
+                VStack(spacing: 4) {
+                    Image(systemName: "photo.badge.plus")
+                        .font(.system(size: 16, weight: .regular))
+                        .foregroundStyle(Color.secondary)
+                    Text("Choose\u{2026}")
+                        .font(.caption2)
+                        .foregroundStyle(.primary)
+                }
+                .frame(width: 64, height: 40)
+                .background(RoundedRectangle(cornerRadius: 10).fill(Color(nsColor: .controlBackgroundColor)))
+                .overlay(RoundedRectangle(cornerRadius: 10)
+                    .strokeBorder(Color.secondary.opacity(0.25), lineWidth: 1))
+                .contentShape(RoundedRectangle(cornerRadius: 10))
+            }
+            .buttonStyle(.plain)
+            .help("Use a picture of your own")
+            .accessibilityLabel("Choose your own background picture")
+            Spacer(minLength: 0)
+        }
+    }
+}
+
+/// One background picture as a small tile, outlined like `ChoiceTile` when picked.
+private struct BackgroundThumb: View {
+    let url: URL?
+    let title: String
+    let selected: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Group {
+                if let url, let picture = Self.thumbnail(url) {
+                    Image(nsImage: picture).resizable().scaledToFill()
+                } else {
+                    Color.secondary.opacity(0.2)
+                }
+            }
+            .frame(width: 64, height: 40)
+            .clipShape(RoundedRectangle(cornerRadius: 10))
+            .overlay(RoundedRectangle(cornerRadius: 10)
+                .strokeBorder(selected ? Brand.green : Color.secondary.opacity(0.25),
+                              lineWidth: selected ? 2 : 1))
+            .contentShape(RoundedRectangle(cornerRadius: 10))
+        }
+        .buttonStyle(.plain)
+        .help(title)
+        .accessibilityLabel(title)
+        .accessibilityAddTraits(selected ? .isSelected : [])
+    }
+
+    /// Small copies, kept: a full-size JPEG is not decoded again on every
+    /// redraw of the page. Keyed by file and modified time, so a new picture
+    /// of the user's own replaces the old one.
+    private static let cache = NSCache<NSString, NSImage>()
+    private static func thumbnail(_ url: URL) -> NSImage? {
+        let stamp = (try? url.resourceValues(forKeys: [.contentModificationDateKey]))?
+            .contentModificationDate?.timeIntervalSince1970 ?? 0
+        let key = "\(url.path)|\(stamp)" as NSString
+        if let hit = cache.object(forKey: key) { return hit }
+        guard let source = CGImageSourceCreateWithURL(url as CFURL, nil),
+              let cg = CGImageSourceCreateThumbnailAtIndex(source, 0, [
+                kCGImageSourceCreateThumbnailFromImageAlways: true,
+                kCGImageSourceCreateThumbnailWithTransform: true,
+                kCGImageSourceThumbnailMaxPixelSize: 160,
+              ] as CFDictionary) else { return nil }
+        let image = NSImage(cgImage: cg, size: NSSize(width: cg.width, height: cg.height))
+        cache.setObject(image, forKey: key)
+        return image
     }
 }
 

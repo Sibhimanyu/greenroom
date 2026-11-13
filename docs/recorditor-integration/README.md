@@ -8,6 +8,7 @@ log for the phase you are touching.
 |---|---|
 | `README.md` (this) | Why, the method, decisions, phase plan and status |
 | `events-port-log.md` | Phase 2: click/keystroke tracker, coordinate and time mapping, seams |
+| `camera-port-log.md` | Phase 3: camera Blur/Image backgrounds, camera unplug recovery, how it coexists with CameraDirector |
 | `editor-port-log.md` | Phase 1: every file copied for the editor, every change vs upstream, every seam in Greenroom |
 
 ## Source of truth
@@ -70,7 +71,8 @@ Gap analysis at the start (2026-11-13):
 | 0 Prep | Done |
 | 1 Editor | Built (Debug, zero errors) 2026-11-13; not yet tried by hand. Entry: Recordings inspector → Edit tile → `Window("Editor", id: "editor")` |
 | 2 Clicks & keystrokes | Built (Debug, zero errors) 2026-11-13; untested by hand. See `events-port-log.md` |
-| 3–6 | Planned |
+| 3 Camera backgrounds + recovery | Built (Debug, zero errors) 2026-11-13; untested with a real camera. See `camera-port-log.md` |
+| 4–6 | Planned |
 
 ## How to continue a phase (for agents)
 

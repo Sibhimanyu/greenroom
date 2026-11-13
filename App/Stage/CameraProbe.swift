@@ -50,6 +50,36 @@ final class CameraProbe: NSObject, ObservableObject {
     private var frameNumber = 0
     private var busy = false
 
+    private var deviceObservers: [NSObjectProtocol] = []
+
+    /// The camera being aimed can be unplugged, or come back, while Settings
+    /// is open. A dead session says nothing, so without this the readout kept
+    /// its last answer. Same events CutoutPublisher recovers from; this only
+    /// reports and re-opens (idle only, so there is never a stand-in here:
+    /// aiming a camera that is not the one you chose would be a wrong answer).
+    private func watchDevices() {
+        guard deviceObservers.isEmpty else { return }
+        let center = NotificationCenter.default
+        deviceObservers = [
+            center.addObserver(forName: AVCaptureDevice.wasDisconnectedNotification, object: nil, queue: .main) { [weak self] note in
+                MainActor.assumeIsolated {
+                    guard let self, let device = note.object as? AVCaptureDevice,
+                          device.uniqueID == self.cameraUID else { return }
+                    self.sight = .noPicture("\(device.localizedName) was unplugged.")
+                }
+            },
+            center.addObserver(forName: AVCaptureDevice.wasConnectedNotification, object: nil, queue: .main) { [weak self] note in
+                MainActor.assumeIsolated {
+                    guard let self, let device = note.object as? AVCaptureDevice,
+                          device.uniqueID == self.cameraUID else { return }
+                    let uid = device.uniqueID
+                    self.stop()
+                    self.start(uid: uid)
+                }
+            },
+        ]
+    }
+
     // MARK: Starting and stopping
 
     /// Opens a camera and starts reporting the angle.
@@ -57,6 +87,7 @@ final class CameraProbe: NSObject, ObservableObject {
     /// Idempotent per camera: asking for the one already open does nothing,
     /// so a settings view rebuilding does not restart the hardware.
     func start(uid: String) {
+        watchDevices()
         guard cameraUID != uid else { return }
         stop()
         cameraUID = uid

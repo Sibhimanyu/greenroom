@@ -40,6 +40,9 @@ final class StageStatus: ObservableObject {
     /// A saved display was not plugged in and the main display was used.
     @Published fileprivate(set) var displayFellBack = false
     @Published fileprivate(set) var lastError: String?
+    /// Slot 0's camera is gone and another stands in: a sentence for the log.
+    /// Nil while the chosen camera is the one in use.
+    @Published fileprivate(set) var cameraStandIn: String?
 }
 
 /// Latest picture from each input, behind one lock.
@@ -270,6 +273,9 @@ final class StageCompositor: StageFrameSource {
     private func apply(_ cfg: StageConfiguration) {
         let layout = cfg.normalizedLayout
         let wantsRemoval = layout.shape.usesChromaKey && layout.showsCamera && cfg.backgroundRemoval == .automatic
+        // Blur and Image are for the bubble shapes; Cutout and Presenter
+        // remove the background themselves.
+        let background = layout.shape.usesChromaKey ? CameraBackground.normal : cfg.cameraBackground
 
         // Cameras wanted: none when "No camera" was chosen.
         let uids = layout.showsCamera ? cfg.cameraUIDs : []
@@ -300,7 +306,7 @@ final class StageCompositor: StageFrameSource {
             StageScreenSource.log("Screen wanted: \(cfg.share.kind.rawValue)\(cfg.share.appBundleID.isEmpty ? "" : " " + cfg.share.appBundleID)\(cfg.share.windowTitle.isEmpty ? "" : " \u{201C}" + cfg.share.windowTitle + "\u{201D}"), display \(cfg.displayUUID.isEmpty ? "automatic" : cfg.displayUUID) (round \(generation)).")
         }
 
-        controlQueue.async { [self] in syncCameras(uids: uids, removal: wantsRemoval) }
+        controlQueue.async { [self] in syncCameras(uids: uids, removal: wantsRemoval, background: background, backgroundImage: cfg.cameraBackgroundImage) }
         if restartScreen { Task.detached { [self] in await syncScreen(cfg, generation: generation) } }
     }
 
@@ -346,7 +352,13 @@ final class StageCompositor: StageFrameSource {
     /// Every camera open at once, like `ensureCameraInputs`: a cut is a
     /// change of which one is drawn, nothing to open and nothing to wait for.
     /// Cameras already open are left alone so the picture does not blink.
-    private func syncCameras(uids: [String], removal: Bool) {
+    private func syncCameras(uids: [String], removal: Bool, background: CameraBackground, backgroundImage: String) {
+        // Loaded here, off the render queue; cached by choice.
+        let picture = background == .image ? CameraBackgroundLibrary.image(for: backgroundImage) : nil
+        if background != .normal { CameraEffects.warmUp() }
+        // One camera held: the system default may stand in for it if it
+        // disappears. Several: CameraDirector owns the choice of camera.
+        let standIn = uids.count == 1
         lock.lock()
         guard running else { lock.unlock(); return }
         let existing = publishers
@@ -358,20 +370,28 @@ final class StageCompositor: StageFrameSource {
         }
         var failure: String?
         for (slot, uid) in uids.enumerated() {
-            if let publisher = existing[uid] { publisher.removesBackground = removal; continue }
+            if let publisher = existing[uid] {
+                publisher.removesBackground = removal
+                publisher.setBackground(background, image: picture)
+                publisher.setAllowsStandIn(standIn)
+                continue
+            }
             switch AVCaptureDevice.authorizationStatus(for: .video) {
             case .denied, .restricted:
                 failure = "Camera access is off for Greenroom. System Settings \u{2192} Privacy & Security \u{2192} Camera."
                 continue
             default: break
             }
-            guard let publisher = CutoutPublisher(uid: uid, slot: slot, removesBackground: removal) else {
+            guard let publisher = CutoutPublisher(uid: uid, slot: slot, removesBackground: removal,
+                                                  allowsStandIn: standIn) else {
                 let name = LocalDeviceResolver.cameraName(uid: uid) ?? "the camera"
                 failure = "Couldn\u{2019}t open \u{201C}\(name)\u{201D}. It may be unplugged or in use by another app."
                 continue
             }
+            publisher.setBackground(background, image: picture)
             publisher.onFrame = { [board] frame in board.setCamera(uid, frame) }
             if slot == 0 {
+                publisher.onStandIn = { [weak self] note in self?.post { $0.cameraStandIn = note } }
                 publisher.onPersonInView = { [weak self] seen in self?.post { $0.personInView = seen } }
             }
             lock.lock(); publishers[uid] = publisher; lock.unlock()
@@ -523,7 +543,8 @@ final class StageCompositor: StageFrameSource {
         if let fade = scene.fade { needed.append(fade.outgoing) }
         for slot in needed where slotUIDs.indices.contains(slot) {
             if let frame = snap.cameras[slotUIDs[slot]] {
-                cameras[slot] = StageCameraInput(raw: CIImage(cvPixelBuffer: frame.raw), cutout: frame.cutout)
+                cameras[slot] = StageCameraInput(raw: CIImage(cvPixelBuffer: frame.raw), cutout: frame.cutout,
+                                                      background: frame.background)
             }
         }
         let image = renderer.compose(scene: scene,

@@ -239,7 +239,7 @@ struct CameraWhiteboardTools: View {
 
     var body: some View {
         HStack(spacing: 6) {
-            modeButton("Pen", icon: "pencil.tip", on: !board.isErasing) { board.isErasing = false }
+            modeButton("Pen", icon: "pencil", on: !board.isErasing) { board.isErasing = false }
             modeButton("Eraser", icon: "eraser", on: board.isErasing) { board.isErasing = true }
             divider
             ForEach(Array(CameraWhiteboardModel.colors.enumerated()), id: \.offset) { _, color in

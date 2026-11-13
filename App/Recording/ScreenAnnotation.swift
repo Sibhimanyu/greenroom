@@ -38,7 +38,7 @@ final class ScreenAnnotationModel: ObservableObject {
         var icon: String {
             switch self {
             case .pointer: "cursorarrow"
-            case .pen: "pencil.tip"
+            case .pen: "pencil"
             case .highlighter: "highlighter"
             case .arrow: "arrow.up.right"
             case .eraser: "eraser"

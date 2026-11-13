@@ -249,7 +249,7 @@ private struct RecordingControlBarView: View {
             BarDivider()
             // Draw on the screen being recorded (phase 5).
             BarLabelledButton(
-                symbol: "pencil.tip", title: "Draw", width: L.draw, on: coordinator.isDrawing,
+                symbol: "pencil", title: "Draw", width: L.draw, on: coordinator.isDrawing,
                 help: MeetingBarModel.help(coordinator.isDrawing ? "Close the drawing tools" : "Draw on the screen",
                                            .toggleDrawing, bindings),
                 spoken: coordinator.isDrawing ? "Close drawing tools" : "Draw on the screen") {

@@ -252,7 +252,7 @@ struct MeetingBarContent: View {
     private var drawButton: some View {
         let name = s.drawing ? "Close Drawing Tools" : "Draw on the Screen"
         return BarLabelledButton(
-            symbol: "pencil.tip", title: "Draw", width: L.draw, on: s.drawing,
+            symbol: "pencil", title: "Draw", width: L.draw, on: s.drawing,
             help: help(s.drawing ? "Close the drawing tools"
                                  : "Draw on the screen you share (marks show to the class and in the recording)",
                        .toggleDrawing),

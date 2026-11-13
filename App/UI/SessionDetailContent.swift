@@ -235,6 +235,9 @@ struct SessionDetailPage<Stage: View, Lane: View, Work: View>: View {
     /// False while the report is up over this page: its toolbar and subtitle
     /// then step aside.
     var isActive = true
+    /// The window toolbar's height. The split view runs full height under it,
+    /// so the player column and the inspector add it back at their tops.
+    var topInset: CGFloat = 0
     @Binding var take: URL?
     let tabs: [String]
     @Binding var tab: String
@@ -252,6 +255,7 @@ struct SessionDetailPage<Stage: View, Lane: View, Work: View>: View {
                     inspectorColumn
                         .inspectorColumnWidth(min: 300, ideal: 340, max: 480)
                 }
+                .frame(width: geo.size.width, height: geo.size.height)
                 .onChange(of: geo.size.width, initial: true) { _, width in
                     let next = SessionDetailRules.inspector(width: width, shown: showWork,
                                                             foldedByWidth: foldedByWidth)
@@ -282,36 +286,44 @@ struct SessionDetailPage<Stage: View, Lane: View, Work: View>: View {
     /// its lane stay on screen while the tabs are used.
     private var playerColumn: some View {
         VStack(spacing: 0) {
+            Color.clear.frame(height: topInset)
             stage()
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .frame(minHeight: 200)
                 .background(Color.black)
                 .clipped()
+                .layoutPriority(0)
             VStack(alignment: .leading, spacing: 8) {
                 lane()
                 SessionStatusStrip(model: model, actions: actions)
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 10)
+            .fixedSize(horizontal: false, vertical: true)
+            .layoutPriority(1)
         }
         .frame(minWidth: 480)
     }
 
     private var inspectorColumn: some View {
         // No painted background: the system inspector draws its own material.
-        work()
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-            .safeAreaInset(edge: .top, spacing: 0) {
-                if !tabs.isEmpty {
-                    VStack(spacing: 0) {
-                        GreenroomSegmented("Work", selection: $tab, options: tabs) { Text($0) }
-                            .controlSize(.small)
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 10)
-                        Divider()
-                    }
-                }
+        VStack(spacing: 0) {
+            Color.clear.frame(height: topInset)
+            if !tabs.isEmpty {
+                GreenroomSegmented("Work", selection: $tab, options: tabs) { Text($0) }
+                    .controlSize(.small)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 10)
+                Divider()
             }
+            // GeometryReader so the work's own ideal height never reaches the
+            // split view, which sized itself to it (about 1700pt) and pushed
+            // the page's top and bottom edges off the window.
+            GeometryReader { g in
+                work()
+                    .frame(width: g.size.width, height: g.size.height, alignment: .top)
+            }
+        }
     }
 }
 

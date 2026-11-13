@@ -358,8 +358,8 @@ The app is the other half of this system. Keep it aligned.
   gives these glass; we add none of our own.
 - **Segmented switchers:** one shared `GreenroomSegmented`
   (`App/UI/Segmented.swift`); the selected segment is Brand green with a white
-  semibold label; the selection slides (Liquid Glass morph on 26, spring
-  before); Reduce Motion crossfades; never a native tinted `Picker` that
+  semibold label; the selection slides (a `matchedGeometryEffect` spring on every macOS
+  version; no glass inside the row, it blurred the labels); Reduce Motion crossfades; never a native tinted `Picker` that
   jumps, and never a hand-built second switcher. A row of picture choices is
   not a segmented control; it follows the tile rule below.
 - **Cards and tiles:** one style (`App/UI/Tiles.swift`,
@@ -505,3 +505,4 @@ Ranked by user-visible impact. None of these block anything today.
 | 2026-11-13 | Segmented selections are brand green again, and they slide. Reverses the row above | The owner: "New Meeting should still be green like we had earlier, it's just that the menu shifting should animate well." The native Picker could be neutral and jump, or green and jump; `GreenroomSegmented` is now a custom row of buttons with one selection capsule (Brand green, white label) that slides: tinted Liquid Glass with `glassEffectID` on 26, `matchedGeometryEffect` before; Reduce Motion crossfades in 150ms. Same API, VoiceOver still hears a segmented Picker. |
 | 2026-11-13 | Amber "leaves this Mac" moves off the buttons onto the glyph, a first-time confirm and the status strip | The Upload tile carried an amber subtitle; toolbar buttons have no room for one, and hover help alone would weaken the rule that anything reaching the network reads amber. The Upload and agent-analysis glyphs are tinted `Brand.net`, the first upload asks once per Mac ("This sends the recording to YouTube. It leaves this Mac."), and the status strip under the player keeps `Brand.netText` ("On YouTube - Unlisted"). |
 | 2026-11-13 | Record what Sessions filters actually are: Everything / Classes / Recordings / Presentations plus a Status group | Out of step with the log: 2026-09-19 says All / Greens / Screens and 2026-09-18 says two lists behind one toggle, but the code ships the four Show options and a Status filter (None / Not uploaded / On YouTube / Analysed). This entry records what ships; the Show options become sidebar rows with counts and Status a toolbar menu. |
+| 2026-11-13 | Segmented selection is a plain green capsule on every macOS, no Liquid Glass morph. Amends the two rows above | The glass track and glass selection inside a `GlassEffectContainer` rendered as a blurred grey blob with unreadable labels in Home, the Editor and Webcam. A crisp, readable control beats the morph; the capsule still slides with a spring and sits behind the label. |

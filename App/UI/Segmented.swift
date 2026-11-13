@@ -3,9 +3,9 @@
 //
 //  The one segmented switcher (DESIGN.md, "Segmented switchers"): a row of
 //  plain buttons with ONE selection capsule, Brand green with a white label,
-//  that slides between segments. On macOS 26 the capsule is tinted Liquid
-//  Glass inside a GlassEffectContainer and morphs via `glassEffectID`; before
-//  26 it is a filled capsule moved with `matchedGeometryEffect`. Reduce Motion
+//  that slides between segments via `matchedGeometryEffect` with a spring, on
+//  every macOS version. No Liquid Glass here: glass inside the row blurred
+//  the labels, and a crisp readable control beats the morph. Reduce Motion
 //  swaps the slide for a 150ms crossfade. Never use a native tinted Picker
 //  (it jumps) and never hand-build another switcher.
 //
@@ -83,35 +83,17 @@ struct GreenroomSegmented<Value: Hashable, Label: View>: View {
         return .handled
     }
 
-    @ViewBuilder
     private var row: some View {
-        if #available(macOS 26, *) {
-            GlassEffectContainer(spacing: 0) { segments(glass: true) }
-        } else {
-            segments(glass: false)
-        }
-    }
-
-    private func segments(glass: Bool) -> some View {
         EqualWidthRow {
             ForEach(options, id: \.self) { option in
-                segment(option, glass: glass)
+                segment(option)
             }
         }
         .padding(2)
-        .background { track(glass: glass) }
+        .background(Capsule().fill(.quinary))
     }
 
-    @ViewBuilder
-    private func track(glass: Bool) -> some View {
-        if #available(macOS 26, *), glass {
-            Color.clear.glassEffect(.regular, in: Capsule())
-        } else {
-            Capsule().fill(.quinary)
-        }
-    }
-
-    private func segment(_ option: Value, glass: Bool) -> some View {
+    private func segment(_ option: Value) -> some View {
         let on = option == selection
         return Button {
             withAnimation(motion) { selection = option }
@@ -130,23 +112,17 @@ struct GreenroomSegmented<Value: Hashable, Label: View>: View {
         .onHover { inside in
             if inside { hovered = option } else if hovered == option { hovered = nil }
         }
-        .background { selectionCapsule(on: on, glass: glass) }
+        .background { selectionCapsule(on: on) }
     }
 
     @ViewBuilder
-    private func selectionCapsule(on: Bool, glass: Bool) -> some View {
+    private func selectionCapsule(on: Bool) -> some View {
         if reduceMotion {
             // No slide: each segment fades its own capsule in and out.
             Capsule().fill(Brand.green).opacity(on ? 1 : 0)
         } else if on {
-            if #available(macOS 26, *), glass {
-                Color.clear
-                    .glassEffect(.regular.tint(Brand.green).interactive(), in: Capsule())
-                    .glassEffectID("selection", in: ns)
-            } else {
-                Capsule().fill(Brand.green)
-                    .matchedGeometryEffect(id: "selection", in: ns)
-            }
+            Capsule().fill(Brand.green)
+                .matchedGeometryEffect(id: "selection", in: ns)
         }
     }
 }

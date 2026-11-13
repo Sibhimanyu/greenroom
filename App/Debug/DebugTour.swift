@@ -13,6 +13,7 @@
 //    appearance  mode=light|dark|system
 //    shot  name=... [dir=...]
 //    sessionWindowSize  w=... [h=...]
+//    tree         dump the main window's view tree to <dir>/tree.txt.
 //    restore      Home, original appearance and frame, tour windows closed.
 //  Every command writes <dir>/last.json ({"ok":..,"cmd":..,"error":..,"seq":..}).
 //
@@ -94,6 +95,7 @@ enum DebugTour {
                 case "shot": extra = try await shot(info, dir: dir)
                 case "sessionWindowSize": try resize(info)
                 case "restore": await restore()
+                case "tree": tree(dir: dir)
                 default: throw TourError("unknown cmd \(cmd)")
                 }
                 writeLast(dir: dir, ["ok": true, "cmd": cmd, "seq": mySeq].merging(extra) { a, _ in a })
@@ -118,6 +120,15 @@ enum DebugTour {
         case "home":
             c.showOnboarding = false
             c.mainPage = .home
+            // The opposite of getReadyToRecord, as the Record view's Done does.
+            if c.recordOnlyActive, !c.isRecording { c.stopRecordingSession() }
+            ChatWindowController.close()
+            closeEditor()
+            for w in opened where !MainWindow.matches(w) { w.close() }
+            opened.removeAll()
+            for _ in 0..<40 where c.recordStudioShown || c.isStopping {
+                try? await Task.sleep(nanoseconds: 100_000_000)
+            }
         case "sessions":
             c.mainPage = .sessions
         case "detail":
@@ -128,7 +139,10 @@ enum DebugTour {
             guard let p = ScreenroomLibrary.presentations().first(where: {
                 FileManager.default.fileExists(atPath: ScreenroomAnalysis.url(in: $0.folder).path)
                     || FileManager.default.fileExists(atPath: ScreenroomReport.url(in: $0.folder).path)
-            }) else { throw TourError("no analysed session") }
+            }) else {
+                note["skipped"] = "no analysed session"
+                return note
+            }
             c.mainPage = .report(p.folder.path)
         case "record":
             // Same call as Home's Record mode (getReadyToRecord). It opens the
@@ -188,6 +202,24 @@ enum DebugTour {
         w.setFrame(f, display: true, animate: false)
     }
 
+    /// Writes the main window's NSView tree (class and frame) to <dir>/tree.txt.
+    private static func tree(dir: String) {
+        var out = ""
+        func walk(_ v: NSView, _ depth: Int) {
+            out += String(repeating: " ", count: depth) + "\(type(of: v)) \(v.frame)\n"
+            for c in v.subviews { walk(c, depth + 1) }
+        }
+        if let v = MainWindow.current?.contentView { walk(v, 0) }
+        try? out.write(toFile: dir + "/tree.txt", atomically: true, encoding: .utf8)
+    }
+
+    private static func closeEditor() {
+        for w in NSApp.windows where w.isVisible && !MainWindow.matches(w) && w.level == .normal
+            && (w.identifier?.rawValue.contains("editor") == true || w.title.lowercased().contains("editor")) {
+            w.close()
+        }
+    }
+
     private static func restore() async {
         guard let c = CoordinatorController.shared else { return }
         c.showOnboarding = false
@@ -233,7 +265,19 @@ enum DebugTour {
                 cfg.height = Int(w.frame.height * 2)
                 cfg.showsCursor = false
                 cfg.captureResolution = .best
-                let image = try await SCScreenshotManager.captureImage(contentFilter: filter, configuration: cfg)
+                // SCStream error -3811 ("failed to start") comes and goes,
+                // mostly for windows behind others: retry after 0.5 s, and
+                // again after 1 s.
+                var image: CGImage?
+                var lastError: Error?
+                for wait in [0.0, 0.5, 1.0] {
+                    if wait > 0 { try? await Task.sleep(nanoseconds: UInt64(wait * 1_000_000_000)) }
+                    do {
+                        image = try await SCScreenshotManager.captureImage(contentFilter: filter, configuration: cfg)
+                        break
+                    } catch { lastError = error }
+                }
+                guard let image else { throw lastError ?? TourError("capture failed") }
                 let rep = NSBitmapImageRep(cgImage: image)
                 guard let png = rep.representation(using: .png, properties: [:]) else {
                     throw TourError("png encode failed")

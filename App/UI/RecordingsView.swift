@@ -348,6 +348,7 @@ struct RecordingsView: View {
             analyseProgress: review.isAnalysing && review.selected?.folder == session.folder && review.stepCount > 0
                 ? (review.stepIndex, review.stepCount) : nil,
             isActive: !isReport,
+            topInset: topInset,
             take: Binding(get: { selection?.url },
                           set: { url in selection = session.takes.first { $0.url == url } }),
             tabs: Tab.allCases.filter(\.isAvailable).map(\.rawValue),
@@ -1151,22 +1152,52 @@ struct RecordingsView: View {
     private struct PlayerView: NSViewRepresentable {
         let player: AVPlayer
 
-        func makeNSView(context: Context) -> AVPlayerView {
-            let view = AVPlayerView()
-            view.controlsStyle = .inline
-            view.videoGravity = .resizeAspect
-            view.wantsLayer = true
-            view.layer?.masksToBounds = true
-            view.setContentHuggingPriority(.defaultLow, for: .horizontal)
-            view.setContentHuggingPriority(.defaultLow, for: .vertical)
-            view.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-            view.setContentCompressionResistancePriority(.defaultLow, for: .vertical)
-            view.player = player
-            return view
+        /// A plain clipping host with no intrinsic size. The AVPlayerView sits
+        /// inside it, resized with it, so the movie's own pixel size can never
+        /// reach SwiftUI's layout: it made the stage far taller than its column
+        /// and pushed the marks lane and status strip off the page.
+        final class Host: NSView {
+            let playerView = AVPlayerView()
+            override var intrinsicContentSize: NSSize {
+                NSSize(width: NSView.noIntrinsicMetric, height: NSView.noIntrinsicMetric)
+            }
+            override init(frame: NSRect) {
+                super.init(frame: frame)
+                wantsLayer = true
+                layer?.masksToBounds = true
+                playerView.controlsStyle = .inline
+                playerView.videoGravity = .resizeAspect
+                playerView.translatesAutoresizingMaskIntoConstraints = true
+                playerView.autoresizingMask = [.width, .height]
+                playerView.frame = bounds
+                addSubview(playerView)
+            }
+            @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
+            override func layout() {
+                super.layout()
+                playerView.frame = bounds
+            }
         }
 
-        func updateNSView(_ view: AVPlayerView, context: Context) {
-            view.player = player
+        func makeNSView(context: Context) -> Host {
+            let host = Host(frame: .zero)
+            host.playerView.player = player
+            return host
+        }
+
+        func updateNSView(_ view: Host, context: Context) {
+            if view.playerView.player !== player { view.playerView.player = player }
+        }
+
+        /// Take whatever the column offers, never the video's own size: the
+        /// view's intrinsic size is the movie's pixels, which made the stage
+        /// far taller than its column and pushed the lane and strip off.
+        func sizeThatFits(_ proposal: ProposedViewSize, nsView: Host, context: Context) -> CGSize? {
+            func finite(_ v: CGFloat?, _ fallback: CGFloat) -> CGFloat {
+                guard let v, v.isFinite else { return fallback }
+                return v
+            }
+            return CGSize(width: finite(proposal.width, 480), height: finite(proposal.height, 270))
         }
     }
 }

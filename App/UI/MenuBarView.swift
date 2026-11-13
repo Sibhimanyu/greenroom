@@ -8,10 +8,12 @@
 //
 import SwiftUI
 import AppKit
+import AVFoundation
 
 struct MenuBarView: View {
     @EnvironmentObject private var coordinator: CoordinatorController
     @Environment(\.openWindow) private var openWindow
+    @Environment(\.openSettings) private var openSettings
     @ObservedObject private var notes = SessionNotes.shared
     /// Where the shortcut hints come from: the same bindings Settings edits and
     /// the hotkeys are registered from, so they never disagree.
@@ -21,114 +23,204 @@ struct MenuBarView: View {
     /// here too, not just the app menu.
     var checkForUpdates: () -> Void = {}
 
+    @State private var lastSession: MenuBarLastSession?
+    /// Bumped once a second while a session runs, so the elapsed times in the
+    /// header are redrawn if the menu is open. They are always current on open.
+    @State private var tick = 0
+    private let ticker = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
+
     var body: some View {
-        // Same enable/disable logic as the main window's buttons: Start
-        // only when idle, Stop only when starting or live, Record only
-        // with a live session (or to stop an active recording).
-        // The shortcuts shown here are registered as SYSTEM-WIDE
-        // hotkeys (ShortcutRuntime) - they work while other apps are
-        // focused, and macOS swallows the keypress before it could reach
-        // these menu items, so the hints below are documentation, not a
-        // second trigger.
-        Button(coordinator.isRunning ? "Starting\u{2026}"
-               : coordinator.stageLive ? "In Session"
-               : coordinator.recordOnlyActive ? (coordinator.isRecording ? "Recording" : "Ready to Record")
-               : coordinator.meetingMode == .record ? "Get Ready"
-               : coordinator.meetingMode == .create ? "Start Meeting" : "Join Meeting") {
-            coordinator.start()
+        // The list comes from MenuBarModel (pure, unit-tested); this view only
+        // draws it and runs the actions. The shortcuts shown are registered as
+        // SYSTEM-WIDE hotkeys (ShortcutRuntime): macOS swallows the keypress
+        // before it could reach these items, so the hints are documentation,
+        // not a second trigger.
+        let _ = tick
+        let items = MenuBarModel.items(state: state(), problems: problems(),
+                                       lastSession: lastSession, shortcuts: shortcuts.bindings)
+        ForEach(Array(items.enumerated()), id: \.offset) { _, item in
+            row(item)
         }
-        .shortcutHint(shortcuts.combo(for: .startClass))
-        .disabled(coordinator.startActionDisabled) // same gating as the main window's Start
+        .onAppear { loadLastSession() }
+        .onReceive(ticker) { _ in if coordinator.isRunning || coordinator.sceneInUse { tick &+= 1 } }
+        .onChange(of: coordinator.sceneInUse) { _, _ in loadLastSession() }
+    }
 
-        Button(coordinator.isStopping ? "Ending\u{2026}" : "End Session") {
-            coordinator.confirmAndStop()
-        }
-        .shortcutHint(shortcuts.combo(for: .endSession))
-        .disabled(coordinator.isStopping || (!coordinator.isRunning && !coordinator.sceneInUse))
+    // MARK: Drawing one item
 
-        Button(coordinator.isSavingRecording ? "Saving\u{2026}"
-                : coordinator.isRecording ? "Stop Recording" : "Start Recording") {
-            coordinator.toggleRecording()
-        }
-        .shortcutHint(shortcuts.combo(for: .toggleRecording))
-        .disabled(coordinator.isSavingRecording
-                  || (!coordinator.stageLive && !coordinator.isRecording && !coordinator.recordOnlyActive))
-
-        // Pauses the file only; the meeting carries on.
-        Button(coordinator.isRecordingPaused ? "Resume Recording" : "Pause Recording") {
-            coordinator.togglePauseRecording()
-        }
-        .shortcutHint(shortcuts.combo(for: .togglePause))
-        .disabled(!coordinator.isRecording || coordinator.isSavingRecording)
-
-        // For the arranged layout, which has no control bar. This session
-        // only: the Settings switch stays the default for the next one.
-        Button(notes.effectiveEnabled ? "Hide Notes" : "Show Notes") {
-            notes.toggle()
-        }
-        .shortcutHint(shortcuts.combo(for: .toggleNotes))
-        .disabled(!SessionNotes.sessionIsLive(coordinator))
-
-        // Which layout Start uses. Greyed while a class is live: that class keeps
-        // the layout it started with.
-        Menu("Layout: \(coordinator.layoutChoiceName)") {
-            LayoutChoiceItems()
-        }
-        .disabled(coordinator.layoutChoiceLocked)
-
-        // The upload runs in the background; this is where its progress
-        // lives, rather than a toast the teacher would have to watch.
-        if let progress = coordinator.youtubeUploadProgress {
-            Text("Uploading to YouTube \u{00B7} \(Int((progress * 100).rounded()))%")
-        }
-
-        // Cues: what it is doing, and the per-class off switch. The cards
-        // themselves are on the participants panel or the waveform item.
-        if coordinator.cuesListening {
-            Text(coordinator.cuesPaused
-                 ? "Cues is paused \u{2014} you are muted"
-                 : CuesStatus.listening(linksFound: coordinator.cuesLinkCount))
-            Button("Stop Cues for This Session") {
-                coordinator.stopCuesForClass()
-            }
-        }
-
-        Divider()
-
-        // Hidden, not greyed, in a session that arranges nothing: there is no
-        // layout to snap back to and no tile to hide.
-        if coordinator.layoutToolsAvailable {
-            Button("Snap Windows Back") {
-                coordinator.snapWindowsBack()
-            }
-            .shortcutHint(shortcuts.combo(for: .snapBack))
-
-            Button(coordinator.speakerTileQuickHidden ? "Show Speaker Tile" : "Hide Speaker Tile") {
-                coordinator.toggleSpeakerTile()
-            }
-            .shortcutHint(shortcuts.combo(for: .toggleMeeting))
-            .disabled(!coordinator.canToggleMeeting)
-
+    @ViewBuilder
+    private func row(_ item: MenuBarItem) -> some View {
+        switch item.kind {
+        case .separator:
             Divider()
+        case .status:
+            if let symbol = item.symbol {
+                Label(item.title, systemImage: symbol)
+                    .foregroundStyle(item.attention ? Brand.net : Color.primary)
+            } else {
+                Text(item.title)
+            }
+        case .layoutMenu:
+            Menu {
+                LayoutChoiceItems()
+            } label: {
+                Label(item.title, systemImage: item.symbol ?? "rectangle.3.group")
+            }
+        case .action(let action):
+            Button(role: item.destructive ? .destructive : nil) {
+                run(action)
+            } label: {
+                if let symbol = item.symbol {
+                    Label(item.title, systemImage: symbol)
+                } else {
+                    Text(item.title)
+                }
+            }
+            .shortcutHint(item.shortcut)
         }
+    }
 
-        Button("Show Greenroom") {
-            // openWindow RECREATES the window when it was closed -
-            // ordering front an existing window (showMainWindow) found
-            // nothing and silently did nothing (reproduced live).
-            openWindow(id: "main")
-            coordinator.showMainWindow()
+    // MARK: State in
+
+    private func state() -> MenuBarState {
+        var s = MenuBarState()
+        s.isStarting = coordinator.isRunning && !coordinator.stageLive
+        s.isLive = coordinator.sceneInUse
+        s.isStopping = coordinator.isStopping
+        s.className = coordinator.className
+        s.sessionElapsed = coordinator.sessionStartedAt.map { max(0, Date().timeIntervalSince($0)) }
+        s.isRecording = coordinator.isRecording
+        s.isPaused = coordinator.isRecordingPaused
+        s.isSavingRecording = coordinator.isSavingRecording
+        s.recordingElapsed = coordinator.recordingElapsed()
+        s.notesShown = notes.effectiveEnabled
+        s.layoutToolsAvailable = coordinator.layoutToolsAvailable
+        s.speakerTileHidden = coordinator.speakerTileQuickHidden
+        s.canToggleSpeakerTile = coordinator.canToggleMeeting
+        s.canDraw = coordinator.canDraw
+        s.isDrawing = coordinator.isDrawing
+        s.layoutName = coordinator.layoutChoiceName
+        s.layoutLocked = coordinator.layoutChoiceLocked
+        s.uploadProgress = coordinator.youtubeUploadProgress
+        s.cuesListening = coordinator.cuesListening
+        s.cuesPaused = coordinator.cuesPaused
+        s.cuesStatusText = coordinator.cuesPaused
+            ? "Cues is paused \u{2014} you are muted"
+            : CuesStatus.listening(linksFound: coordinator.cuesLinkCount)
+        return s
+    }
+
+    /// The same four checks as Home's readiness pills, for the mode Home is
+    /// in, so the menu and Home never disagree about what is wrong.
+    private func problems() -> [MenuBarProblem] {
+        var out: [MenuBarProblem] = []
+        let mode = coordinator.meetingMode
+        if mode != .record {
+            let sdk = coordinator.sdkClientID.isEmpty || coordinator.sdkClientSecret.isEmpty
+            let host = coordinator.s2sAccountID.isEmpty || coordinator.s2sClientID.isEmpty
+                || coordinator.s2sClientSecret.isEmpty
+            if mode == .create ? (sdk || host) : sdk {
+                out.append(MenuBarProblem(fix: .zoomSettings, text: "Zoom: add credentials"))
+            }
         }
-        .shortcutHint(shortcuts.combo(for: .openGreenroom))
-
-        Button("Check for Updates\u{2026}", action: checkForUpdates)
-
-        Button("How It Works & Privacy\u{2026}") {
-            NSWorkspace.shared.open(AppLinks.safety)
+        if !coordinator.cameraIsOff {
+            let a = AVCaptureDevice.authorizationStatus(for: .video)
+            if a == .denied || a == .restricted {
+                out.append(MenuBarProblem(fix: .cameraPrivacy, text: "Camera: not allowed"))
+            }
         }
+        let m = AVCaptureDevice.authorizationStatus(for: .audio)
+        if m == .denied || m == .restricted {
+            out.append(MenuBarProblem(fix: .micPrivacy, text: "Mic: not allowed"))
+        }
+        if coordinator.shareTarget.kind.capturesScreen, !StageCompositor.screenRecordingGranted {
+            out.append(MenuBarProblem(fix: .screenPrivacy, text: "Screen: permission needed"))
+        }
+        return out
+    }
 
-        Button("Quit Greenroom") {
-            NSApp.terminate(nil)
+    /// Newest session on disk, as Home's footer reads it.
+    private func loadLastSession() {
+        Task.detached(priority: .utility) {
+            guard let newest = ScreenroomLibrary.presentations().first else {
+                await MainActor.run { lastSession = nil }
+                return
+            }
+            var length: String?
+            if let url = newest.recording,
+               let seconds = try? await AVURLAsset(url: url).load(.duration).seconds,
+               seconds.isFinite, seconds > 0 {
+                length = SessionsFormat.length(seconds)
+            }
+            let found = MenuBarLastSession(path: newest.folder.path, title: newest.presenter, length: length)
+            await MainActor.run { lastSession = found }
+        }
+    }
+
+    // MARK: Actions out
+
+    /// openWindow RECREATES the main window when it was closed - ordering front
+    /// an existing window (showMainWindow) found nothing and silently did
+    /// nothing (reproduced live).
+    private func showMain() {
+        openWindow(id: "main")
+        coordinator.showMainWindow()
+    }
+
+    private func home(_ mode: MeetingMode) {
+        coordinator.meetingMode = mode
+        coordinator.mainPage = .home
+        showMain()
+    }
+
+    private func run(_ action: MenuBarAction) {
+        switch action {
+        case .newMeeting:
+            // The same click as Home's button in New mode. Without credentials
+            // Start refuses, so go where the fix is instead of doing nothing.
+            coordinator.meetingMode = .create
+            if coordinator.startActionDisabled { home(.create) } else { coordinator.start() }
+        case .joinMeeting: home(.join)
+        // Never starts silently: Home's Record mode, where its button gets ready.
+        case .record: home(.record)
+        case .sessions:
+            coordinator.mainPage = .sessions
+            showMain()
+        case .openLastSession:
+            if let last = lastSession { coordinator.mainPage = .detail(last.path) }
+            showMain()
+        case .settings:
+            openSettings()
+            NSApp.activate(ignoringOtherApps: true)
+        case .showGreenroom: showMain()
+        case .checkForUpdates: checkForUpdates()
+        case .howItWorks: NSWorkspace.shared.open(AppLinks.safety)
+        case .quit: NSApp.terminate(nil)
+        case .toggleRecording: coordinator.toggleRecording()
+        case .togglePause: coordinator.togglePauseRecording()
+        case .toggleNotes: notes.toggle()
+        case .snapBack: coordinator.snapWindowsBack()
+        case .toggleSpeakerTile: coordinator.toggleSpeakerTile()
+        case .toggleDrawing: coordinator.toggleDrawing()
+        case .endSession: coordinator.confirmAndStop()
+        case .stopCues: coordinator.stopCuesForClass()
+        case .fix(let fix):
+            switch fix {
+            case .zoomSettings:
+                openSettings()
+                DispatchQueue.main.async {
+                    NotificationCenter.default.post(name: .showSettingsTab, object: "zoom")
+                }
+            case .cameraPrivacy: openPrivacy("Privacy_Camera")
+            case .micPrivacy: openPrivacy("Privacy_Microphone")
+            case .screenPrivacy: openPrivacy("Privacy_ScreenCapture")
+            }
+        }
+    }
+
+    private func openPrivacy(_ pane: String) {
+        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?\(pane)") {
+            NSWorkspace.shared.open(url)
         }
     }
 }

@@ -322,6 +322,7 @@ targets:
       - path: App/UI/MenuBarModel.swift
       - path: App/UI/SidebarRules.swift
       - path: App/UI/HomeCalmRules.swift
+      - path: App/UI/MeetingBarModel.swift
     settings:
       base:
         PRODUCT_NAME: GreenroomTests

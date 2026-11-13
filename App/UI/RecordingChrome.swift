@@ -169,7 +169,7 @@ private struct CountdownView: View {
 /// view has those); phase 5 added the Draw button.
 @MainActor
 final class RecordingControlBarController {
-    static let size = CGSize(width: 272, height: 44)
+    static let size = CGSize(width: MeetingBarLayout.recordOnlyWidth, height: MeetingBarLayout.height)
     private static let frameKey = "recordingControlBar.frame"
 
     private var panel: NSPanel?
@@ -226,57 +226,63 @@ final class RecordingControlBarController {
     }
 }
 
+/// Same rules as the meeting bar: one timer (the recording's own, there is no
+/// class), Draw has a word, and the one red control is Stop. The dot is the
+/// recording signal, not a control.
+///   [dot REC 1:29] [pause] | [pencil Draw] | [Stop]
 private struct RecordingControlBarView: View {
     @ObservedObject var coordinator: CoordinatorController
+    @ObservedObject private var shortcuts = ShortcutStore.shared
+
+    private typealias L = MeetingBarLayout
 
     var body: some View {
         let paused = coordinator.isRecordingPaused
-        HStack(spacing: 8) {
-            HStack(spacing: 6) {
-                Circle()
-                    .fill(paused ? Color.secondary : Color.red)
-                    .frame(width: 8, height: 8)
-                Text(paused ? "PAUSED" : "REC")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(paused ? Color.secondary : Color.red)
-                TimelineView(.periodic(from: .now, by: 1)) { context in
-                    Text(MeetingControlsModel.clock(seconds: coordinator.recordingElapsed(at: context.date) ?? 0))
-                        .font(.system(size: 12, weight: .medium, design: .monospaced))
-                        .monospacedDigit()
-                        .foregroundStyle(.primary)
-                }
+        let bindings = shortcuts.bindings
+        HStack(spacing: L.spacing) {
+            TimelineView(.periodic(from: .now, by: 1)) { context in
+                pill(paused: paused, seconds: coordinator.recordingElapsed(at: context.date) ?? 0)
             }
-            .padding(.leading, 6)
-            Spacer(minLength: 0)
+            BarIconButton(symbol: paused ? "play.fill" : "pause.fill", width: L.pause,
+                          help: MeetingBarModel.help(paused ? "Resume Recording" : "Pause Recording", .togglePause, bindings),
+                          spoken: paused ? "Resume recording" : "Pause recording") { coordinator.togglePauseRecording() }
+            BarDivider()
             // Draw on the screen being recorded (phase 5).
-            barButton("pencil.tip", help: coordinator.isDrawing ? "Close the drawing tools" : "Draw on the screen",
-                      tint: coordinator.isDrawing ? Brand.green : .primary) { coordinator.toggleDrawing() }
-                .disabled(!coordinator.canDraw && !coordinator.isDrawing)
-            barButton(paused ? "play.fill" : "pause.fill",
-                      help: paused ? "Resume recording" : "Pause recording",
-                      tint: .primary) { coordinator.togglePauseRecording() }
-            barButton("stop.fill", help: "Stop and save the recording", tint: .red) {
-                coordinator.stopTake()
+            BarLabelledButton(
+                symbol: "pencil.tip", title: "Draw", width: L.draw, on: coordinator.isDrawing,
+                help: MeetingBarModel.help(coordinator.isDrawing ? "Close the drawing tools" : "Draw on the screen",
+                                           .toggleDrawing, bindings),
+                spoken: coordinator.isDrawing ? "Close drawing tools" : "Draw on the screen") {
+                coordinator.toggleDrawing()
             }
-            .disabled(coordinator.takeBusy)
+            .disabled(!coordinator.canDraw && !coordinator.isDrawing)
+            BarDivider()
+            BarRedButton(title: "Stop", width: L.recordOnlyStop,
+                         help: MeetingBarModel.help("Stop and save the recording", .toggleRecording, bindings),
+                         spoken: "Stop and save the recording") { coordinator.stopTake() }
+                .disabled(coordinator.takeBusy)
         }
-        .padding(.horizontal, 8)
+        .padding(.leading, 8)
+        .padding(.trailing, 8)
         .frame(width: RecordingControlBarController.size.width, height: RecordingControlBarController.size.height)
         .greenroomGlass(in: Capsule(), interactive: true)
     }
 
-    private func barButton(_ symbol: String, help: String, tint: Color,
-                           action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Image(systemName: symbol)
-                .font(.system(size: 14))
-                .foregroundStyle(tint)
-                .frame(width: 32, height: 32)
-                .contentShape(Rectangle())
+    private func pill(paused: Bool, seconds: TimeInterval) -> some View {
+        let clock = MeetingBarModel.clock(seconds)
+        return HStack(spacing: 5) {
+            BarRecDot(live: !paused)
+            Text(paused ? "Paused" : "REC")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(Color.primary)
+            Text(clock)
+                .font(.system(size: 12, weight: .medium, design: .monospaced))
+                .foregroundStyle(paused ? Color.secondary : Color.primary)
         }
-        .buttonStyle(.plain)
-        .help(help)
-        .accessibilityLabel(help)
+        .frame(width: L.recordOnlyPill, height: 32)
+        .help(paused ? "Recording paused at \(clock)" : "Recording \(clock)")
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(paused ? "Recording paused at \(clock)" : "Recording \(clock)")
     }
 }
 

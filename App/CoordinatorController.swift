@@ -3704,11 +3704,18 @@ final class CoordinatorController: ObservableObject {
         guard isRunning || stageLive else { return }
         NSApp.activate(ignoringOtherApps: true) // the hotkey fires while other apps are focused
         let alert = NSAlert()
-        alert.messageText = "End the session?"
-        alert.informativeText = "Ends the Zoom meeting for everyone when you're hosting (leaves it otherwise), saves any recording in progress, and stops the camera."
+        if let prompt = LiveExit.endPrompt(liveExitState) {
+            // The same words as closing the meeting window: End Meeting for All, or Leave Meeting.
+            alert.messageText = prompt.title
+            alert.informativeText = prompt.message
+            Self.addButtons(prompt.choices, to: alert)
+        } else {
+            alert.messageText = "End the session?"
+            alert.informativeText = "Ends the Zoom meeting for everyone when you're hosting (leaves it otherwise), saves any recording in progress, and stops the camera."
+            alert.addButton(withTitle: "End Session")
+            alert.addButton(withTitle: "Cancel")
+        }
         alert.alertStyle = .warning
-        alert.addButton(withTitle: "End Session")
-        alert.addButton(withTitle: "Cancel")
         if alert.runModal() == .alertFirstButtonReturn {
             stop()
         }

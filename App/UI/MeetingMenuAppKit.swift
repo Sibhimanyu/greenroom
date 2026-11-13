@@ -47,6 +47,15 @@ enum MeetingMenuBuilder {
             let item = Item(entry.title, handler: entry.action ?? {})
             item.isEnabled = entry.enabled
             item.state = entry.checked ? .on : .off
+            if let combo = entry.shortcut, let key = combo.menuKey, key.count == 1 {
+                item.keyEquivalent = key
+                var mask: NSEvent.ModifierFlags = []
+                if combo.modifiers & KeyCombo.command != 0 { mask.insert(.command) }
+                if combo.modifiers & KeyCombo.option != 0 { mask.insert(.option) }
+                if combo.modifiers & KeyCombo.control != 0 { mask.insert(.control) }
+                if combo.modifiers & KeyCombo.shift != 0 { mask.insert(.shift) }
+                item.keyEquivalentModifierMask = mask
+            }
             if let note = entry.note, !note.isEmpty {
                 let text = NSMutableAttributedString(
                     string: entry.title, attributes: [.font: NSFont.menuFont(ofSize: 0)])

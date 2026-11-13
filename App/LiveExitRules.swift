@@ -99,6 +99,29 @@ enum LiveExit {
         }
     }
 
+    /// The question End asks (the bar's End, the menu bar's End Session and the
+    /// End shortcut), in the same words as the close prompt: "End Meeting for
+    /// All" when hosting, "Leave Meeting" otherwise. Nil for the Record view
+    /// (stopping a take ends nothing for anybody) and when nothing is live.
+    static func endPrompt(_ s: LiveExitState) -> LiveExitPrompt? {
+        guard s.isLive else { return nil }
+        switch s.kind {
+        case .host:
+            return LiveExitPrompt(
+                title: "End the meeting for everyone?",
+                message: join("Your students are dropped from the call, and the camera stops.",
+                              s.isRecording ? recordingNote : nil),
+                choices: [.endMeetingForAll, .cancel])
+        case .participant:
+            return LiveExitPrompt(
+                title: "Leave the meeting?",
+                message: join("You leave the call, and the camera stops.", s.isRecording ? recordingNote : nil),
+                choices: [.leaveMeeting, .cancel])
+        case .recordOnly, .idle:
+            return nil
+        }
+    }
+
     /// The prompt for a quit (Command-Q, the app menu, the menu bar, the Dock).
     /// Nil when nothing is live, or when the system is ending the session
     /// (logout, shutdown, restart): that one must finish cleanly, never wait on

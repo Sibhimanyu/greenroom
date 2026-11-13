@@ -21,10 +21,14 @@ struct MenuEntry {
     var note: String?
     var children: [MenuEntry] = []
     var action: (() -> Void)?
+    /// The key bound to this item, drawn at its right edge as in any Mac menu.
+    var shortcut: KeyCombo?
 
     static func item(_ title: String, checked: Bool = false, enabled: Bool = true,
-                     note: String? = nil, _ action: @escaping () -> Void) -> MenuEntry {
-        MenuEntry(kind: .item, title: title, checked: checked, enabled: enabled, note: note, action: action)
+                     note: String? = nil, shortcut: KeyCombo? = nil,
+                     _ action: @escaping () -> Void) -> MenuEntry {
+        MenuEntry(kind: .item, title: title, checked: checked, enabled: enabled, note: note,
+                  action: action, shortcut: shortcut)
     }
     static func header(_ title: String) -> MenuEntry { MenuEntry(kind: .header, title: title) }
     static var separator: MenuEntry { MenuEntry(kind: .separator) }

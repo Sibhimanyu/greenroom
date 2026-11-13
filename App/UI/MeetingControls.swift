@@ -722,226 +722,81 @@ private struct MeetingBarPointerSurface: NSViewRepresentable {
 
 // MARK: Pill
 
+/// The live bar: the coordinator's state in, `MeetingBarContent` out. What each
+/// cell says and holds is decided in MeetingBarModel.swift.
 private struct MeetingControlBarView: View {
     @ObservedObject var model: MeetingControlsModel
     @ObservedObject var coordinator: CoordinatorController
     @ObservedObject private var notes = SessionNotes.shared
+    @ObservedObject private var shortcuts = ShortcutStore.shared
 
     var body: some View {
-        HStack(spacing: 4) {
-            // The window's own controls sit together at the leading end, apart
-            // from End, so collapsing is never a slip next to it.
-            MeetingBarGrip()
-            Button { MeetingControlBarController.setCollapsed(true) } label: {
-                Image(systemName: "arrow.down.right.and.arrow.up.left")
-                    .font(.system(size: 10, weight: .semibold))
-                    .foregroundStyle(.secondary)
-                    .frame(width: 22, height: 32)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .help("Collapse to a small button")
-            .accessibilityLabel("Collapse meeting controls")
-
-            iconButton(model.muted ? "mic.slash.fill" : "mic.fill",
-                       tint: model.muted ? .red : .primary,
-                       help: model.muted ? "Unmute" : "Mute",
-                       action: model.toggleMute)
-                .disabled(!model.inMeeting)
-            iconButton(model.cameraOn ? "video.fill" : "video.slash.fill",
-                       tint: model.cameraOn ? .primary : .red,
-                       help: model.cameraOn ? "Stop video" : "Start video",
-                       action: model.toggleCamera)
-                .disabled(!model.inMeeting)
-
-            divider
-            recordButton
-            drawButton
-            divider
-
-            iconButton("bubble.left.fill", tint: .primary,
-                       help: model.chatOpen ? "Close chat" : "Open chat",
-                       action: model.toggleChat)
-                .overlay(alignment: .topTrailing) { unreadBadge }
-            notesButton
-            if model.videoButtons {
-                // One button for the meeting window. The pill is up only while
-                // that window is closed, minimised or covered, so this brings it
-                // back; it also closes it if the pill is still showing.
-                // With the views on, it is the Views menu: the Meeting window and
-                // every part of it as a window of its own.
-                iconButton("rectangle.inset.filled.on.rectangle", tint: .primary,
-                           help: MeetingViewPieces.enabled ? "Views: the meeting window and its parts"
-                                                           : "Expand back to the meeting window: video, people, chat and controls",
-                           action: MeetingViewPieces.enabled ? {} : model.toggleMeetingWindow)
-                    .overlay { if MeetingViewPieces.enabled { MenuPopUpOverlay(label: "Views", entries: { model.viewsMenu() }) } }
-                    .accessibilityLabel(MeetingViewPieces.enabled ? "Views" : "Expand to meeting window")
-            }
-            HStack(spacing: 4) {
-                Image(systemName: "person.2.fill").font(.system(size: 13))
-                Text("\(model.participantCount)")
-                    .font(.system(size: 12, weight: .semibold).monospacedDigit())
-            }
-            .foregroundStyle(.secondary)
-            .frame(width: 48, height: 32)
-            .help("People in the meeting")
-
-            divider
-            Text(MeetingControlsModel.elapsed(since: { _ = model.now; return coordinator.sessionStartedAt }()))
-                .font(.system(size: 12, design: .monospaced))
-                .foregroundStyle(.secondary)
-                .frame(width: 56)
-                .help("How long the meeting has run")
-
-            Button { coordinator.confirmAndStop() } label: {
-                Text("End")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(.white)
-                    .frame(width: 52, height: 28)
-                    .background(Color.red, in: RoundedRectangle(cornerRadius: 10))
-            }
-            .buttonStyle(.plain)
-            .help("End the session")
-            .accessibilityLabel("End session")
-        }
-        .padding(.leading, 4)
-        .padding(.trailing, 8)
+        MeetingBarContent(s: snapshot, bindings: shortcuts.bindings, a: actions, grip: AnyView(MeetingBarGrip()))
     }
 
-    private var divider: some View {
-        Rectangle().fill(Color.primary.opacity(0.12)).frame(width: 1, height: 20).padding(.horizontal, 4)
-    }
-
-    private func iconButton(_ symbol: String, tint: Color, help: String,
-                            action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Image(systemName: symbol)
-                .font(.system(size: 14))
-                .foregroundStyle(tint)
-                .frame(width: 32, height: 32)
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .help(help)
-        .accessibilityLabel(help)
-    }
-
-    /// Filled with the brand tint while the notes bar is open.
-    private var notesButton: some View {
-        toggleButton("note.text", on: notes.effectiveEnabled,
-                     label: notes.effectiveEnabled ? "Close notes" : "Open notes",
-                     help: notes.effectiveEnabled ? "Close notes" : "Open notes",
-                     action: notes.toggle)
-    }
-
-    /// An icon button that shows whether its window is open.
-    private func toggleButton(_ symbol: String, on: Bool, label: String, help: String,
-                              action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Image(systemName: symbol)
-                .font(.system(size: 14))
-                .foregroundStyle(Color.primary)
-                .frame(width: 32, height: 32)
-                .background(on ? Brand.green.opacity(0.28) : Color.clear,
-                            in: RoundedRectangle(cornerRadius: 8))
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .help(help)
-        .accessibilityLabel(label)
-        .accessibilityAddTraits(on ? .isSelected : [])
-    }
-
-    /// Draw on the screen you share (phase 5): lit while the tools are up.
-    private var drawButton: some View {
-        toggleButton("pencil.tip", on: coordinator.isDrawing,
-                     label: coordinator.isDrawing ? "Close drawing tools" : "Draw on the screen",
-                     help: coordinator.isDrawing ? "Close the drawing tools"
-                                                 : "Draw on the screen you share (marks show to the class and in the recording)") {
-            coordinator.toggleDrawing()
-        }
-        .disabled(!coordinator.canDraw && !coordinator.isDrawing)
-    }
-
-    /// Idle: one Record button. Recording: REC and its timer, pause or
-    /// resume, and stop, in the same 136pt (the pill does not change width).
-    @ViewBuilder private var recordButton: some View {
-        if coordinator.isRecording && !coordinator.isSavingRecording {
-            let paused = coordinator.isRecordingPaused
-            HStack(spacing: 0) {
-                HStack(spacing: 5) {
-                    Circle().fill(paused ? Color.secondary : Color.red).frame(width: 8, height: 8)
-                    Text("REC")
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(paused ? Color.secondary : Color.red)
-                    Text(recordLabel)
-                        .font(.system(size: 12, weight: .medium, design: .monospaced))
-                        .foregroundStyle(paused ? Color.secondary : Color.primary)
-                }
-                .frame(width: 80, height: 32)
-                .help(paused ? "Recording paused" : "Recording")
-                .accessibilityElement(children: .combine)
-                .accessibilityLabel(paused ? "Recording paused" : "Recording")
-                recordSideButton(paused ? "play.fill" : "pause.fill",
-                                 help: paused ? "Resume recording" : "Pause recording (the meeting carries on)",
-                                 tint: .primary) { coordinator.togglePauseRecording() }
-                recordSideButton("stop.fill", help: "Stop recording", tint: .red) { coordinator.toggleRecording() }
-            }
-            .frame(width: 136, height: 32)
-        } else {
-            Button { coordinator.toggleRecording() } label: {
-                HStack(spacing: 6) {
-                    Image(systemName: coordinator.isRecording ? "stop.circle.fill" : "record.circle")
-                        .font(.system(size: 14))
-                        .foregroundStyle(coordinator.isRecording ? Color.red : Color.primary)
-                    Text(recordLabel)
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(Color.secondary)
-                }
-                .frame(width: 136, height: 32)
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .disabled(coordinator.isSavingRecording)
-            .help(coordinator.recordingCountdown != nil ? "Cancel the countdown" : "Record this class")
-            .accessibilityLabel(coordinator.recordingCountdown != nil ? "Cancel the countdown" : "Record")
-        }
-    }
-
-    private func recordSideButton(_ symbol: String, help: String, tint: Color,
-                                  action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Image(systemName: symbol)
-                .font(.system(size: 13))
-                .foregroundStyle(tint)
-                .frame(width: 28, height: 32)
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .help(help)
-        .accessibilityLabel(help)
-    }
-
-    private var recordLabel: String {
-        if coordinator.isSavingRecording { return "Saving\u{2026}" }
-        guard coordinator.isRecording else { return coordinator.recordingCountdown != nil ? "Cancel" : "Record" }
-        _ = model.now // read, so the tick redraws it
+    private var snapshot: MeetingBarSnapshot {
+        _ = model.now // read, so the tick redraws the clocks
+        var s = MeetingBarSnapshot()
+        s.inMeeting = model.inMeeting
+        s.muted = model.muted
+        s.cameraOn = model.cameraOn
+        s.videoButtons = model.videoButtons
+        s.unread = model.unread
+        s.participants = model.participantCount
+        s.phase = MeetingBarRecordPhase(recording: coordinator.isRecording, paused: coordinator.isRecordingPaused,
+                                        saving: coordinator.isSavingRecording,
+                                        countdown: coordinator.recordingCountdown != nil)
+        s.classSeconds = coordinator.sessionStartedAt.map { max(0, Date().timeIntervalSince($0)) } ?? 0
         // Paused time is not recording time: the same clock as the file.
-        return MeetingControlsModel.clock(seconds: coordinator.recordingElapsed() ?? 0)
+        s.recordingSeconds = coordinator.recordingElapsed() ?? 0
+        s.drawing = coordinator.isDrawing
+        s.canDraw = coordinator.canDraw
+        s.chatOpen = model.chatOpen
+        s.endName = coordinator.liveExitState.kind == .host ? LiveExitChoice.endMeetingForAll.title
+                                                            : LiveExitChoice.leaveMeeting.title
+        return s
     }
 
-    /// The lime is a fill, never text (DESIGN.md), so the count is dark on it.
-    @ViewBuilder private var unreadBadge: some View {
-        if model.unread > 0 {
-            Text(model.unread > 9 ? "9+" : "\(model.unread)")
-                .font(.system(size: 9, weight: .bold))
-                .foregroundStyle(Color.black)
-                .padding(.horizontal, 4)
-                .frame(minWidth: 14, minHeight: 14)
-                .background(Brand.fill, in: Capsule())
-                .offset(x: 2, y: -1)
-                .accessibilityLabel("\(model.unread) unread messages")
+    private var actions: MeetingBarActions {
+        let model = self.model, coordinator = self.coordinator, notes = self.notes
+        var a = MeetingBarActions()
+        a.toggleMute = model.toggleMute
+        a.toggleCamera = model.toggleCamera
+        a.meeting = model.toggleMeetingWindow
+        a.toggleChat = model.toggleChat
+        a.toggleDraw = { coordinator.toggleDrawing() }
+        a.togglePause = { coordinator.togglePauseRecording() }
+        // Asks first, exactly as the close and quit prompts do.
+        a.end = { coordinator.confirmAndStop() }
+        a.recordMenu = { [bindings = shortcuts.bindings] in
+            var r = MeetingBarModel.RecordActions()
+            r.start = { coordinator.toggleRecording() }
+            r.stop = { coordinator.toggleRecording() }
+            r.togglePause = { coordinator.togglePauseRecording() }
+            r.cancelCountdown = { coordinator.toggleRecording() }
+            let phase = MeetingBarRecordPhase(recording: coordinator.isRecording, paused: coordinator.isRecordingPaused,
+                                              saving: coordinator.isSavingRecording,
+                                              countdown: coordinator.recordingCountdown != nil)
+            return MeetingBarModel.recordMenu(phase, bindings, r)
         }
+        a.moreMenu = { [bindings = shortcuts.bindings] in
+            let views = MeetingViewPieces.enabled ? model.viewsMenu() : []
+            let liveLayout = coordinator.liveSessionLayoutID
+            let layouts: [MenuEntry] = coordinator.layoutToolsAvailable && liveLayout != nil
+                ? coordinator.layoutLibrary.templates.map { t in
+                    MenuEntry.item(t.name, checked: t.id == liveLayout) { coordinator.applyLayoutNow(t.id) }
+                }
+                : []
+            var state = MeetingBarModel.MoreState()
+            state.notesOpen = notes.effectiveEnabled
+            state.hasViews = !views.isEmpty
+            state.hasLayouts = !layouts.isEmpty
+            var m = MeetingBarModel.MoreActions()
+            m.toggleNotes = { notes.toggle() }
+            m.collapse = { MeetingControlBarController.setCollapsed(true) }
+            return MeetingBarModel.moreMenu(state, views: views, layouts: layouts, bindings, m)
+        }
+        return a
     }
 }
 
@@ -957,14 +812,12 @@ private struct MeetingControlBarView: View {
 /// each form, is remembered too. The arithmetic is in MeetingBarPlacement.swift.
 @MainActor
 enum MeetingControlBarController {
-    /// The pill without its meeting-window button: the 32pt buttons, the record
-    /// and clock cells, End, and the grip and collapse button at the leading end.
-    /// The record cell is 136pt: Record, or REC with its timer, pause and stop.
-    /// Plus the Draw button (32pt and its gap) since phase 5.
-    static let width: CGFloat = 584
-    /// One more 32pt button (and its gap) when the meeting window is offered.
-    static func width(videoButtons: Bool) -> CGFloat { videoButtons ? width + 36 : width }
-    static let height: CGFloat = 44
+    /// The pill's width, from its cells (MeetingBarLayout in MeetingBarModel.swift):
+    /// grip, Meeting, mic and camera, the REC pill with Pause, Draw, chat, people,
+    /// More and End. Without Greenroom's own meeting window there is no Meeting button.
+    static let width: CGFloat = MeetingBarLayout.width(videoButtons: false)
+    static func width(videoButtons: Bool) -> CGFloat { MeetingBarLayout.width(videoButtons: videoButtons) }
+    static let height: CGFloat = MeetingBarLayout.height
     static let puckSize: CGFloat = 44
     /// Gap under the pill, and between it and what stacks above it.
     static let bottomInset: CGFloat = MeetingBarPlacement.edgeMargin

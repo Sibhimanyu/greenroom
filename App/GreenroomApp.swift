@@ -133,6 +133,9 @@ struct GreenroomApp: App {
         // Derived from the button row, not chosen - see
         // ContentView.minimumWindowWidth.
         .defaultSize(width: ContentView.defaultWindowWidth, height: 400)
+        // A real toolbar on every page, so the title bar keeps one height
+        // through the Home <-> Sessions motion.
+        .windowToolbarStyle(.unified)
         .commands {
             CommandGroup(after: .appInfo) {
                 Button("Check for Updates\u{2026}") {

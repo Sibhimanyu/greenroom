@@ -39,6 +39,10 @@ struct ContentView: View {
     // nothing reflows while it moves.
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var homeMounted = true
+    /// Which page's toolbar is up. Follows `onPage` at the fade-out point of a
+    /// page change (not at the click), so the toolbar items swap with the
+    /// content instead of ahead of it.
+    @State private var chromeOnPage = false
     @State private var pageMounted = false
     @State private var homeOpacity = 1.0
     /// Rest values of the page layer are the HIDDEN ones, so it is invisible
@@ -148,6 +152,24 @@ struct ContentView: View {
 
     private var onPage: Bool { !coordinator.mainPage.isHome }
 
+    /// What Back goes to, named for its help and VoiceOver.
+    private var backLabel: String {
+        switch coordinator.mainPage {
+        case .report: return "Session"
+        case .detail, .home: return "Sessions"
+        case .sessions: return "Home"
+        }
+    }
+
+    private var pageSubtitle: String {
+        switch coordinator.mainPage {
+        case .home: return ""
+        case .sessions: return "Sessions"
+        case .detail: return "Session"
+        case .report: return "Report"
+        }
+    }
+
     var body: some View {
         // The sizing carrier: it alone gives the window its minimum (the held
         // one, which trails a resize). The pages sit in an overlay so their
@@ -198,18 +220,40 @@ struct ContentView: View {
             }
             changePage(toHome: isHome)
         }
-        // Back: the button, \u{2318}[ and Esc. Bound here, once, for whichever
-        // page is up. Esc is left to a text field that is being edited.
-        .background {
-            if onPage {
-                Button("") { coordinator.goBack() }
-                    .keyboardShortcut("[", modifiers: .command)
-                    .opacity(0)
-                    .frame(width: 0, height: 0)
-                    .allowsHitTesting(false)
-                    .accessibilityHidden(true)
+        // The toolbar: Back (and \u{2318}[) on a page, Sessions / Setup guide /
+        // Settings on Home. One unified toolbar on every page, so the title bar
+        // never changes height during a page change. Subtitle only, never a
+        // navigation title: the window is still found by its title.
+        .pageToolbar(back: chromeOnPage ? PageBack(label: backLabel, action: { coordinator.goBack() }) : nil,
+                     subtitle: chromeOnPage ? pageSubtitle : "")
+        .toolbar {
+            if !chromeOnPage {
+                ToolbarItemGroup(placement: .primaryAction) {
+                    Button {
+                        coordinator.mainPage = .sessions
+                    } label: {
+                        Label("Sessions", systemImage: "film.stack")
+                    }
+                    .help("Sessions: every past class, its recordings and clips with a player, its YouTube links, and a name you can change.")
+
+                    Button {
+                        coordinator.presentOnboarding()
+                    } label: {
+                        Label("Setup guide", systemImage: "questionmark.circle")
+                    }
+                    .help("Setup guide")
+
+                    Button {
+                        openSettings()
+                    } label: {
+                        Label("Settings", systemImage: "gearshape")
+                    }
+                    .help("Settings")
+                }
             }
         }
+        .homeTitleHidden(!chromeOnPage)
+        // Esc goes back too. Left to a text field that is being edited.
         .onExitCommand {
             guard onPage, !(Self.window?.firstResponder is NSText) else { return }
             coordinator.goBack()
@@ -287,6 +331,17 @@ struct ContentView: View {
         transitionToken += 1
         let token = transitionToken
         let window = Self.window
+        defer {
+            // The toolbar follows the content: at the fade-out point when it
+            // moves, at once when it does not.
+            if reduceMotion || !(window.map { !$0.styleMask.contains(.fullScreen) && !$0.isZoomed } ?? false) {
+                chromeOnPage = !isHome
+            } else {
+                DispatchQueue.main.asyncAfter(deadline: .now() + Self.fadeOutDuration) {
+                    if token == transitionToken { chromeOnPage = !isHome }
+                }
+            }
+        }
         let resizes = window.map { !$0.styleMask.contains(.fullScreen) && !$0.isZoomed } ?? false
         let moving = resizes && !reduceMotion
         let inFlight = homePin != nil || pagePin != nil || homeMounted == pageMounted
@@ -400,15 +455,6 @@ struct ContentView: View {
                 if !isRecordMode {
                     recordButton
                 }
-
-                Button {
-                    coordinator.mainPage = .sessions
-                } label: {
-                    Label("Sessions", systemImage: "film.stack")
-                }
-                .controlSize(.large)
-                .tint(Self.secondaryTint)
-                .help("Every past class: its recordings and clips with a player, its YouTube links, and a name you can change.")
             }
 
             // Quiet, under Start: which layout the next class uses.
@@ -449,28 +495,6 @@ struct ContentView: View {
                 Text("One click: camera on, Zoom in the meeting, your windows tiled.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
-            }
-            Spacer(minLength: 16)
-            HStack(spacing: 12) {
-                Button {
-                    coordinator.presentOnboarding()
-                } label: {
-                    Image(systemName: "questionmark.circle")
-                        .font(.title3)
-                        .foregroundStyle(.secondary)
-                }
-                .buttonStyle(.plain)
-                .help("Setup guide")
-
-                Button {
-                    openSettings()
-                } label: {
-                    Image(systemName: "gearshape")
-                        .font(.title3)
-                        .foregroundStyle(.secondary)
-                }
-                .buttonStyle(.plain)
-                .help("Settings")
             }
         }
     }
@@ -674,13 +698,8 @@ struct ContentView: View {
 
     private var meetingSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Picker("", selection: $coordinator.meetingMode) {
-                ForEach(MeetingMode.allCases) { mode in
-                    Text(mode.label).tag(mode)
-                }
-            }
-            .pickerStyle(.segmented)
-            .labelsHidden()
+            GreenroomSegmented("Mode", selection: $coordinator.meetingMode,
+                               options: Array(MeetingMode.allCases)) { Text($0.label) }
 
             switch coordinator.meetingMode {
             case .create:
@@ -935,3 +954,17 @@ struct ContentView: View {
     }
 }
 
+
+
+private extension View {
+    /// Hides the duplicate "Greenroom" title on Home (macOS 15+). The window's
+    /// title string is untouched, so lookups by title keep working. On a page
+    /// the title stays, because the subtitle sits under it.
+    @ViewBuilder func homeTitleHidden(_ hidden: Bool) -> some View {
+        if #available(macOS 15.0, *) {
+            self.toolbar(removing: hidden ? .title : nil)
+        } else {
+            self
+        }
+    }
+}

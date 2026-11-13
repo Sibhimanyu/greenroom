@@ -1,6 +1,6 @@
 # Phase 6: presentation follow
 
-Built 2026-11-13 on `rethink-presence`. Debug build, zero errors; GreenroomTests 302 tests, 0 failures (13 new, `Tests/SlideShowFollowTests.swift`).
+Built 2026-11-13 on `rethink-presence`. Debug build, zero errors; GreenroomTests 308 tests, 0 failures (19 new, `Tests/SlideShowFollowTests.swift`).
 
 ## What it does
 
@@ -42,11 +42,22 @@ Never moves while the person is choosing: if a share picker (Settings, Record st
 
 On each 1 s look: take the on-screen window list front to back. Walk it until the chosen window; the first window before it with the same PID, layer 0 and a frame equal to a display frame is the show. If the chosen window is not on screen, the first such window anywhere is the show. While following: return when the show window no longer exists, or is off screen while the chosen window is on screen.
 
+## Notched displays
+
+macOS keeps most apps' full-screen windows below the camera housing, so a show window there is the display minus a top strip as tall as `NSScreen.safeAreaInsets.top` (about 32-38 pt). A window maximised with the Dock hidden has the same frame, so the gap alone must not count (`testMaximisedBelowTheMenuBarIsNotFullScreen` still holds).
+
+Rule: an exact display-sized frame is accepted as before. A notch-gap frame (same x and width; y and height off by that display's own top inset, 2 pt tolerance; inset read per display from `NSScreen.safeAreaInsets.top`, matched by display ID, never a constant) is accepted only with a second signal:
+
+1. New window: its id was not among the app's windows (`CGWindowListCopyWindowInfo` `.optionAll`, same PID) when following began or at the previous look. Keynote, PowerPoint and Google Slides create a new window for the show; a window the user merely maximises already existed. The caller (`followLook`) keeps the known set; it is refreshed each look except while a follow candidate is pending, so the candidate still counts as new on the confirming second look.
+2. Space change: the chosen window is not on screen at all (the show took a new full-screen Space).
+
+Both are in the pure `SlideShowFollow.slideShowWindow` / `decide` (`knownWindowIDs`, `notchInsets` parameters, defaults keep old behaviour). Why both: a show in the same Space leaves the editor on screen (signal 1 only); Safari-style shows take a Space (signal 2, and the window may also be new). Residual false positive: a user opens a brand-new window of the app and maximises it within one second of creating it with the notch gap; unavoidable without app-specific knowledge.
+
 ## Untested
 
 - No real slide show was run (no Keynote, PowerPoint, Google Slides or PDF presentation, no Space switch). The rule is unit-tested; the ScreenCaptureKit retarget (`updateContentFilter` plus `updateConfiguration`) has never run against a real show.
 - The Settings toggle was seen in the real app (background tour, `follow-window-Webcam.png`); the "Following ..." line was not, because it needs a show.
-- Notched MacBooks: a native full-screen window there may be shorter than the display; the 2 pt rule would then miss it. Slide shows normally cover the whole panel.
+- Notched MacBooks: the rule below handles the notch gap, but it has never run on a notched display with a real show (see Notched displays).
 - The picture of a full-screen show is fitted with the window margin box, not filled like a whole display. Not changed.
 - Saved-target decoding for old settings is covered by code reading and the app launching with existing settings, not by a unit test (`ShareTarget.swift` pulls in too much for the test target).
 - Frame-size change mid-recording: the encoder takes the Stage canvas, so it should be unaffected, but no recording was made across a switch.

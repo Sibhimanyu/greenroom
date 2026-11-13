@@ -32,11 +32,23 @@ enum SlideShowFollow {
         case backToOriginal
     }
 
-    /// Frame equal to a display's frame, give or take a point or two.
-    static func isFullScreen(frame: CGRect, displayFrames: [CGRect], tolerance: CGFloat = 2) -> Bool {
-        displayFrames.contains {
-            abs($0.minX - frame.minX) <= tolerance && abs($0.minY - frame.minY) <= tolerance
-                && abs($0.width - frame.width) <= tolerance && abs($0.height - frame.height) <= tolerance
+    /// Frame equal to a display's frame, give or take a point or two. With
+    /// `allowNotchGap`, a frame that is the display minus a top strip as tall
+    /// as that display's own top safe-area inset also counts (`notchInsets`,
+    /// keyed by display frame; empty or 0 for a display without a notch). macOS
+    /// keeps most apps' full-screen windows below the camera housing, so that
+    /// is what a show looks like there. The gap is never a constant, and it is
+    /// only allowed when the caller has a second signal (see `slideShowWindow`),
+    /// because a window maximised with the Dock hidden has the same frame.
+    static func isFullScreen(frame: CGRect, displayFrames: [CGRect], tolerance: CGFloat = 2,
+                             notchInsets: [CGRect: CGFloat] = [:], allowNotchGap: Bool = false) -> Bool {
+        displayFrames.contains { display in
+            func near(_ a: CGFloat, _ b: CGFloat) -> Bool { abs(a - b) <= tolerance }
+            if near(display.minX, frame.minX), near(display.minY, frame.minY),
+               near(display.width, frame.width), near(display.height, frame.height) { return true }
+            guard allowNotchGap, let inset = notchInsets[display], inset > 0 else { return false }
+            return near(display.minX, frame.minX) && near(display.width, frame.width)
+                && near(display.minY + inset, frame.minY) && near(display.height - inset, frame.height)
         }
     }
 
@@ -47,12 +59,22 @@ enum SlideShowFollow {
     /// on-screen window list in its own order; anything behind the original
     /// does not count, so a second maximised window of the app behind the
     /// shared one is not mistaken for a show.
+    ///
+    /// A notch-gap frame counts only with one of two signals: the window is
+    /// NEW (its id is not in `knownWindowIDs`, the app's windows when following
+    /// began or at the previous look), or the original is not on screen (the
+    /// show took its own full-screen Space). `knownWindowIDs` nil means no
+    /// history, so only the Space signal can apply.
     static func slideShowWindow(onScreenFrontToBack: [Window], original: CGWindowID, pid: pid_t,
-                                displayFrames: [CGRect]) -> CGWindowID? {
+                                displayFrames: [CGRect], notchInsets: [CGRect: CGFloat] = [:],
+                                knownWindowIDs: Set<CGWindowID>? = nil) -> CGWindowID? {
+        let originalAway = !contains(onScreenFrontToBack, id: original)
         for window in onScreenFrontToBack {
             if window.id == original { return nil }
+            let secondSignal = originalAway || !(knownWindowIDs?.contains(window.id) ?? true)
             guard window.pid == pid, window.layer == 0,
-                  isFullScreen(frame: window.frame, displayFrames: displayFrames) else { continue }
+                  isFullScreen(frame: window.frame, displayFrames: displayFrames,
+                               notchInsets: notchInsets, allowNotchGap: secondSignal) else { continue }
             return window.id
         }
         return nil
@@ -68,11 +90,12 @@ enum SlideShowFollow {
     /// every window id that still exists, here or on another Space.
     static func decide(original: CGWindowID, current: CGWindowID, pid: pid_t,
                        onScreen: [Window], existing: Set<CGWindowID>,
-                       displayFrames: [CGRect]) -> Move {
+                       displayFrames: [CGRect], notchInsets: [CGRect: CGFloat] = [:],
+                       knownWindowIDs: Set<CGWindowID>? = nil) -> Move {
         if current == original {
             if let show = slideShowWindow(onScreenFrontToBack: onScreen, original: original, pid: pid,
-                                          displayFrames: displayFrames)
-                ?? offSpaceShow(onScreen: onScreen, original: original, pid: pid, displayFrames: displayFrames) {
+                                          displayFrames: displayFrames, notchInsets: notchInsets,
+                                          knownWindowIDs: knownWindowIDs) {
                 return .follow(show)
             }
             return .stay
@@ -84,16 +107,5 @@ enum SlideShowFollow {
         if !existing.contains(current) { return existing.contains(original) ? .backToOriginal : .stay }
         if !showHere, contains(onScreen, id: original) { return .backToOriginal }
         return .stay
-    }
-
-    /// The original is not in the on-screen list (another Space, or hidden):
-    /// take a full-screen window of the same app that is here.
-    private static func offSpaceShow(onScreen: [Window], original: CGWindowID, pid: pid_t,
-                                     displayFrames: [CGRect]) -> CGWindowID? {
-        guard !contains(onScreen, id: original) else { return nil }
-        return onScreen.first {
-            $0.pid == pid && $0.layer == 0 && $0.id != original
-                && isFullScreen(frame: $0.frame, displayFrames: displayFrames)
-        }?.id
     }
 }

@@ -420,10 +420,11 @@ extension StageScreenSource {
     fileprivate func startFollowing(original: CGWindowID, pid: pid_t) {
         let task = Task.detached { [weak self] in
             var pending: SlideShowFollow.Move = .stay
+            var known = Self.windowIDs(of: pid)
             while !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: 1_000_000_000)
                 guard !Task.isCancelled, let self else { return }
-                pending = await self.followLook(original: original, pid: pid, pending: pending)
+                pending = await self.followLook(original: original, pid: pid, pending: pending, known: &known)
             }
         }
         stateLock.lock(); followTask = task; stateLock.unlock()
@@ -433,7 +434,8 @@ extension StageScreenSource {
     /// a window must be seen twice in a row before the capture moves (no
     /// flapping on a window that flashes by).
     private func followLook(original: CGWindowID, pid: pid_t,
-                            pending: SlideShowFollow.Move) async -> SlideShowFollow.Move {
+                            pending: SlideShowFollow.Move,
+                            known: inout Set<CGWindowID>) async -> SlideShowFollow.Move {
         stateLock.lock()
         let current = capturedWindowID ?? original
         stateLock.unlock()
@@ -443,9 +445,15 @@ extension StageScreenSource {
 
         let onScreen = Self.windowList(.optionOnScreenOnly)
         let existing = current == original ? [] : Set(Self.windowList(.optionAll).map(\.id))
+        let insets = await MainActor.run { Self.notchInsets() }
+        let nowIDs = Self.windowIDs(of: pid)
         var move = SlideShowFollow.decide(original: original, current: current, pid: pid,
                                           onScreen: onScreen, existing: existing,
-                                          displayFrames: Self.displayFrames())
+                                          displayFrames: Self.displayFrames(), notchInsets: insets,
+                                          knownWindowIDs: known)
+        // "New window" is judged against the previous look. A candidate keeps
+        // counting as new until it has been confirmed or has gone.
+        if case .follow = move {} else { known = nowIDs }
         if !wanted {
             // Switched off mid-show: come back, once, without waiting to confirm.
             guard current != original else { return .stay }
@@ -502,6 +510,23 @@ extension StageScreenSource {
             return SlideShowFollow.Window(id: id, pid: pid, layer: info[kCGWindowLayer as String] as? Int ?? -1,
                                           frame: bounds)
         }
+    }
+
+    /// Every window id the process has, here or on another Space.
+    private static func windowIDs(of pid: pid_t) -> Set<CGWindowID> {
+        Set(windowList(.optionAll).filter { $0.pid == pid }.map(\.id))
+    }
+
+    /// Each notched display's top safe-area inset, keyed by its CoreGraphics
+    /// frame (matched by display ID). Displays without a notch are left out.
+    @MainActor private static func notchInsets() -> [CGRect: CGFloat] {
+        var result: [CGRect: CGFloat] = [:]
+        for screen in NSScreen.screens {
+            guard let number = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber,
+                  screen.safeAreaInsets.top > 0 else { continue }
+            result[CGDisplayBounds(CGDirectDisplayID(number.uint32Value))] = screen.safeAreaInsets.top
+        }
+        return result
     }
 
     private static func displayFrames() -> [CGRect] {

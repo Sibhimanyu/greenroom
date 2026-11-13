@@ -45,7 +45,20 @@ final class StageScreenSource: NSObject, SCStreamOutput, SCStreamDelegate {
     /// complete frame 3 s after starting. Plain words for the person.
     var onNoPicture: ((String) -> Void)?
 
+    /// Called on a background queue when the capture moves to a slide show
+    /// (the app's name) or back to the chosen window (nil). Phase 6.
+    var onFollowing: ((String?) -> Void)?
+    /// Asked at each look: is "follow the slide show" on? Set by the
+    /// compositor from the share target, so a change applies without a restart.
+    var followsSlideShow: () -> Bool = { false }
+
+    /// How many share pickers are on screen (Settings or the Record studio).
+    /// While one is, and Greenroom is the front app, the person may be choosing
+    /// a target, and the capture is never moved under them.
+    static let pickersOnScreen = LockedBox<Int>(0)
+
     private var stream: SCStream?   // under stateLock
+    private var followTask: Task<Void, Never>?   // under stateLock
     private let queue = DispatchQueue(label: "greenroom.stage.screen", qos: .userInteractive)
     private let maxSize: CGSize
     let captureAudio: Bool
@@ -147,6 +160,9 @@ final class StageScreenSource: NSObject, SCStreamOutput, SCStreamDelegate {
     /// followed. Set in `start()`; read by `capturedFrame()`.
     private var capturedDisplayFrame: CGRect?
     private var capturedWindowID: CGWindowID?
+    /// The process that owns the chosen window (`.window` only): a slide show
+    /// is followed only when it belongs to the same one.
+    private var followPID: pid_t?
 
     /// The screen area the current picture shows, right now, in global
     /// CoreGraphics points. A window is looked up afresh each call, because
@@ -215,6 +231,7 @@ final class StageScreenSource: NSObject, SCStreamOutput, SCStreamDelegate {
                 throw Failure(errorDescription: "That window can\u{2019}t be shared. Pick another one.")
             }
             windowLabel = Self.windowName(window)
+            followPID = window.owningApplication?.processID
             if !window.isOnScreen {
                 Self.log("\(windowLabel ?? "The window") is on another desktop or full screen; following it there.")
             }
@@ -222,6 +239,35 @@ final class StageScreenSource: NSObject, SCStreamOutput, SCStreamDelegate {
             filter = SCContentFilter(desktopIndependentWindow: window)
         }
 
+        let configuration = makeConfiguration(for: filter)
+
+        let stream = SCStream(filter: filter, configuration: configuration, delegate: self)
+        do {
+            try stream.addStreamOutput(self, type: .screen, sampleHandlerQueue: queue)
+            if captureAudio { try stream.addStreamOutput(self, type: .audio, sampleHandlerQueue: queue) }
+            try await stream.startCapture()
+        } catch {
+            throw Self.failure(for: error, doing: "Starting the capture")
+        }
+        // stop() may have come while the stream was starting. It had nothing to
+        // stop yet, so it is stopped here rather than left running unseen.
+        stateLock.lock()
+        let early = stopReason
+        if early == nil { self.stream = stream }
+        stateLock.unlock()
+        if let early {
+            Self.log("Stopped as it finished starting (\(early)).")
+            try? await stream.stopCapture()
+            return
+        }
+        Self.log("Capture started: \(targetText).")
+        if let label = windowLabel { watchForPicture(of: label) }
+        if case .window(let id) = target, let pid = followPID { startFollowing(original: id, pid: pid) }
+    }
+
+    /// The stream's settings for a filter: sized to the content, shrunk (never
+    /// enlarged) to fit the canvas. Also used when the capture follows another window.
+    private func makeConfiguration(for filter: SCContentFilter) -> SCStreamConfiguration {
         let configuration = SCStreamConfiguration()
         // Pixel size of the content, shrunk (never enlarged) to fit the canvas.
         let size = filter.contentRect.size
@@ -245,28 +291,7 @@ final class StageScreenSource: NSObject, SCStreamOutput, SCStreamDelegate {
         configuration.backgroundColor = .clear
         configuration.ignoreShadowsSingleWindow = true      // show_shadow: false
         configuration.queueDepth = 4
-
-        let stream = SCStream(filter: filter, configuration: configuration, delegate: self)
-        do {
-            try stream.addStreamOutput(self, type: .screen, sampleHandlerQueue: queue)
-            if captureAudio { try stream.addStreamOutput(self, type: .audio, sampleHandlerQueue: queue) }
-            try await stream.startCapture()
-        } catch {
-            throw Self.failure(for: error, doing: "Starting the capture")
-        }
-        // stop() may have come while the stream was starting. It had nothing to
-        // stop yet, so it is stopped here rather than left running unseen.
-        stateLock.lock()
-        let early = stopReason
-        if early == nil { self.stream = stream }
-        stateLock.unlock()
-        if let early {
-            Self.log("Stopped as it finished starting (\(early)).")
-            try? await stream.stopCapture()
-            return
-        }
-        Self.log("Capture started: \(targetText).")
-        if let label = windowLabel { watchForPicture(of: label) }
+        return configuration
     }
 
     /// A window capture that delivers nothing is not retried; it is said.
@@ -340,7 +365,11 @@ final class StageScreenSource: NSObject, SCStreamOutput, SCStreamDelegate {
         let existing = stream
         stream = nil
         if stopReason == nil { stopReason = reason }
+        let following = followTask
+        followTask = nil
         stateLock.unlock()
+        following?.cancel()
+        onFollowing = nil
         onFrame = nil
         onAudio = nil
         onStop = nil
@@ -378,4 +407,107 @@ final class StageScreenSource: NSObject, SCStreamOutput, SCStreamDelegate {
     }
 
     deinit { Self.log("Capture released: \(targetText).") }
+}
+
+// MARK: Presentation follow (phase 6)
+
+extension StageScreenSource {
+
+    /// One look a second, from a task that ends with the capture. The window
+    /// list is CoreGraphics' (no permission, no ScreenCaptureKit round trip);
+    /// ScreenCaptureKit is asked only when the capture actually moves. The
+    /// rule itself is `SlideShowFollow`.
+    fileprivate func startFollowing(original: CGWindowID, pid: pid_t) {
+        let task = Task.detached { [weak self] in
+            var pending: SlideShowFollow.Move = .stay
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 1_000_000_000)
+                guard !Task.isCancelled, let self else { return }
+                pending = await self.followLook(original: original, pid: pid, pending: pending)
+            }
+        }
+        stateLock.lock(); followTask = task; stateLock.unlock()
+    }
+
+    /// Returns the move seen on this look, so the next look can confirm it:
+    /// a window must be seen twice in a row before the capture moves (no
+    /// flapping on a window that flashes by).
+    private func followLook(original: CGWindowID, pid: pid_t,
+                            pending: SlideShowFollow.Move) async -> SlideShowFollow.Move {
+        stateLock.lock()
+        let current = capturedWindowID ?? original
+        stateLock.unlock()
+        let wanted = followsSlideShow()
+        let choosing = await MainActor.run { NSApp.isActive && Self.pickersOnScreen.withLock { $0 } > 0 }
+        if choosing { return .stay }
+
+        let onScreen = Self.windowList(.optionOnScreenOnly)
+        let existing = current == original ? [] : Set(Self.windowList(.optionAll).map(\.id))
+        var move = SlideShowFollow.decide(original: original, current: current, pid: pid,
+                                          onScreen: onScreen, existing: existing,
+                                          displayFrames: Self.displayFrames())
+        if !wanted {
+            // Switched off mid-show: come back, once, without waiting to confirm.
+            guard current != original else { return .stay }
+            move = Set(Self.windowList(.optionAll).map(\.id)).contains(original) ? .backToOriginal : .stay
+        } else if move != pending {
+            return move   // seen once; confirm on the next look
+        }
+        switch move {
+        case .stay:
+            return .stay
+        case .follow(let id):
+            if await retarget(to: id, following: true) { return .stay }
+        case .backToOriginal:
+            if await retarget(to: original, following: false) { return .stay }
+        }
+        return .stay
+    }
+
+    /// Points the running stream at another window. The Stage keeps the same
+    /// source, so the picture, the marks overlay and the events mapping all
+    /// read the new window through `capturedFrame()`.
+    private func retarget(to windowID: CGWindowID, following: Bool) async -> Bool {
+        stateLock.lock(); let running = stream; stateLock.unlock()
+        guard let running,
+              let content = try? await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: false),
+              let window = content.windows.first(where: { $0.windowID == windowID }),
+              ScreenWindowRules.isCapturable(layer: window.windowLayer, size: window.frame.size) else { return false }
+        let filter = SCContentFilter(desktopIndependentWindow: window)
+        do {
+            try await running.updateContentFilter(filter)
+            try await running.updateConfiguration(makeConfiguration(for: filter))
+        } catch {
+            Self.log("Following the slide show failed: \(Self.describe(error)).")
+            return false
+        }
+        stateLock.lock()
+        capturedWindowID = windowID
+        stateLock.unlock()
+        let app = window.owningApplication?.applicationName ?? "the app"
+        Self.log(following ? "\(app) went full screen; following its slide show (window \(windowID))."
+                           : "The slide show ended; back on the chosen window (window \(windowID)).")
+        onFollowing?(following ? app : nil)
+        return true
+    }
+
+    private static func windowList(_ option: CGWindowListOption) -> [SlideShowFollow.Window] {
+        let raw = (CGWindowListCopyWindowInfo([option, .excludeDesktopElements], kCGNullWindowID)
+                   as? [[String: Any]]) ?? []
+        return raw.compactMap { info in
+            guard let id = info[kCGWindowNumber as String] as? CGWindowID,
+                  let pid = info[kCGWindowOwnerPID as String] as? pid_t,
+                  let boundsInfo = info[kCGWindowBounds as String] as? NSDictionary,
+                  let bounds = CGRect(dictionaryRepresentation: boundsInfo) else { return nil }
+            return SlideShowFollow.Window(id: id, pid: pid, layer: info[kCGWindowLayer as String] as? Int ?? -1,
+                                          frame: bounds)
+        }
+    }
+
+    private static func displayFrames() -> [CGRect] {
+        var ids = [CGDirectDisplayID](repeating: 0, count: 16)
+        var count: UInt32 = 0
+        guard CGGetActiveDisplayList(16, &ids, &count) == .success else { return [] }
+        return ids.prefix(Int(count)).map { CGDisplayBounds($0) }
+    }
 }

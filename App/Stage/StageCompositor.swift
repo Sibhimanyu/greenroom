@@ -35,6 +35,9 @@ final class StageStatus: ObservableObject {
     @Published fileprivate(set) var personInView = true
     /// What is being shared ("Keynote", "Chrome \u{2013} Lesson plan"), nil for a display.
     @Published fileprivate(set) var shareLabel: String?
+    /// The app whose slide show the capture has moved to (phase 6); nil while
+    /// the chosen window itself is shown.
+    @Published fileprivate(set) var followingApp: String?
     /// Why the picked app or window was not shared and the display was.
     @Published fileprivate(set) var shareFallback: String?
     /// A saved display was not plugged in and the main display was used.
@@ -290,7 +293,7 @@ final class StageCompositor: StageFrameSource {
         renderQueue.async { [self] in timer?.cancel(); timer = nil }
         post {
             $0.isRunning = false; $0.screenLive = false; $0.camerasLive = []
-            $0.shareLabel = nil; $0.shareFallback = nil
+            $0.shareLabel = nil; $0.shareFallback = nil; $0.followingApp = nil
         }
     }
 
@@ -462,7 +465,7 @@ final class StageCompositor: StageFrameSource {
             // ScreenCaptureKit has no such problem.)
             retireScreens(except: nil, because: cfg.share.kind == .whiteboard ? "The whiteboard was chosen for Behind you" : "Nothing was chosen for Behind you")
             board.clearScreen()
-            post { $0.screenLive = false; $0.shareLabel = nil; $0.shareFallback = nil; $0.displayFellBack = false }
+            post { $0.screenLive = false; $0.shareLabel = nil; $0.shareFallback = nil; $0.displayFellBack = false; $0.followingApp = nil }
             return
         }
         guard Self.screenRecordingGranted else {
@@ -501,6 +504,13 @@ final class StageCompositor: StageFrameSource {
                 self.post { $0.screenLive = true; $0.lastError = nil }
             }
         }
+        // Presentation follow: read live, so the toggle applies without a restart.
+        source.followsSlideShow = { [weak self] in
+            guard let self else { return false }
+            self.lock.lock(); defer { self.lock.unlock() }
+            return self.lastConfiguration?.share.kind == .window && self.lastConfiguration?.share.followsSlideShow == true
+        }
+        source.onFollowing = { [weak self] app in self?.post { $0.followingApp = app } }
         source.onNoPicture = { [weak self] message in
             self?.post { $0.screenLive = false; $0.lastError = message }
         }
@@ -551,6 +561,7 @@ final class StageCompositor: StageFrameSource {
                                    isWholeDisplay: source.wholeDisplay))
         post {
             $0.shareLabel = resolved.label
+            $0.followingApp = nil
             $0.shareFallback = resolved.fallback
             $0.displayFellBack = display.fellBack
         }

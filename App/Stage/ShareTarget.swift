@@ -60,6 +60,26 @@ struct ShareTarget: Codable, Equatable {
     var appName: String = ""
     /// `.window` only. Empty means the app's front window.
     var windowTitle: String = ""
+    /// `.window` only: when the app opens a full-screen window (a slide show),
+    /// the capture moves to it, and back when it ends. Phase 6 of the
+    /// Recorditor port; see `SlideShowFollow`. On unless turned off.
+    var followsSlideShow: Bool = true
+
+    private enum CodingKeys: String, CodingKey {
+        case kind, appBundleID, appName, windowTitle, followsSlideShow
+    }
+
+    init() {}
+
+    /// Older saved targets have no `followsSlideShow`; they get the default.
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        kind = try c.decodeIfPresent(Kind.self, forKey: .kind) ?? .display
+        appBundleID = try c.decodeIfPresent(String.self, forKey: .appBundleID) ?? ""
+        appName = try c.decodeIfPresent(String.self, forKey: .appName) ?? ""
+        windowTitle = try c.decodeIfPresent(String.self, forKey: .windowTitle) ?? ""
+        followsSlideShow = try c.decodeIfPresent(Bool.self, forKey: .followsSlideShow) ?? true
+    }
 
     // MARK: Resolving it
 

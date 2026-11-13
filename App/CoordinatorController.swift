@@ -1065,6 +1065,9 @@ final class CoordinatorController: ObservableObject {
             if sceneInUse, let stage { stage.update(makeStageConfiguration()) }
         }
     }
+    /// The app whose slide show the screen capture has moved to, while it has
+    /// (phase 6); drives the quiet "Following Keynote's slide show" line.
+    @Published private(set) var followingSlideShowApp: String?
     private let defaults = UserDefaults.standard
 
     init() {
@@ -1253,6 +1256,10 @@ final class CoordinatorController: ObservableObject {
         made.status.$lastError.compactMap { $0 }.removeDuplicates()
             .sink { [weak self] in self?.reportStageError($0) }
             .store(in: &stageObservers)
+        made.status.$followingApp.removeDuplicates()
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] in self?.followingSlideShowApp = $0 }
+            .store(in: &stageObservers)
         made.status.$camerasLive.removeDuplicates()
             .sink { [weak self] in self?.camerasLiveChanged($0) }
             .store(in: &stageObservers)
@@ -1275,6 +1282,7 @@ final class CoordinatorController: ObservableObject {
         self.stage = nil
         stageObservers.removeAll()
         stageCameraUIDs = nil
+        followingSlideShowApp = nil
         lastReportedStageError = nil
         cameraSeesYou = true
     }

@@ -11,6 +11,7 @@ log for the phase you are touching.
 | `camera-port-log.md` | Phase 3: camera Blur/Image backgrounds, camera unplug recovery, how it coexists with CameraDirector |
 | `controls-port-log.md` | Phase 4: pause without gaps, countdown, control bar, recording border, system audio mix |
 | `drawing-port-log.md` | Phase 5: drawing on the screen (marks composited into the Stage picture), whiteboard as a share choice, Audio only card |
+| `follow-port-log.md` | Phase 6: follow a slide show that goes full screen, the pure detection rule, the setting, seams |
 | `editor-port-log.md` | Phase 1: every file copied for the editor, every change vs upstream, every seam in Greenroom |
 
 ## Source of truth
@@ -76,7 +77,7 @@ Gap analysis at the start (2026-11-13):
 | 3 Camera backgrounds + recovery | Built (Debug, zero errors) 2026-11-13; untested with a real camera. See `camera-port-log.md` |
 | 4 Pause, countdown, controls, border, system audio | Built (Debug, zero errors, 249 unit tests pass) 2026-11-13; untested by hand. See `controls-port-log.md` |
 | 5 Drawing, whiteboard, Audio only card | Built (Debug, zero errors, 260 unit tests pass) 2026-11-13; untested by hand. See `drawing-port-log.md` |
-| 6 Presentation follow | Planned |
+| 6 Presentation follow | Built (Debug, zero errors, 302 unit tests pass) 2026-11-13; no real slide show tried. See `follow-port-log.md` |
 
 ### Not yet planned (in Recorditor, not ported)
 

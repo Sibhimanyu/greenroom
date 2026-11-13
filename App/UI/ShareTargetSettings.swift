@@ -38,7 +38,11 @@ struct ShareTargetSettings: View {
                 EmptyView()
             }
         }
-        .onAppear(perform: refresh)
+        .animation(.default, value: coordinator.shareTarget.kind)
+        // While this picker is up and Greenroom is in front, the capture is
+        // never moved to a slide show under the person (SlideShowFollow).
+        .onAppear { StageScreenSource.pickersOnScreen.withLock { $0 += 1 }; refresh() }
+        .onDisappear { StageScreenSource.pickersOnScreen.withLock { $0 = max(0, $0 - 1) } }
         .onChange(of: coordinator.shareTarget) { _ in onChange() }
         .onChange(of: coordinator.shareTarget.kind) { _ in refresh() }
         .onChange(of: coordinator.screenCaptureDisplayUUID) { _ in onChange() }
@@ -115,6 +119,14 @@ struct ShareTargetSettings: View {
                 .buttonStyle(.borderless)
                 .help("Refresh the window list")
                 .accessibilityLabel("Refresh the window list")
+        }
+        Toggle("Follow the slide show when the window goes full screen", isOn: $coordinator.shareTarget.followsSlideShow)
+            .help("Keynote or PowerPoint play mode, a browser\u{2019}s Present, a PDF presentation: when this window\u{2019}s app opens a full-screen window, the picture moves to it, and back when the show ends. Another app\u{2019}s windows are never followed.")
+        if let app = coordinator.followingSlideShowApp {
+            Label("Following \(app)\u{2019}s slide show", systemImage: "play.rectangle")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .transition(.opacity)
         }
         if !canSeeTitles {
             HStack {

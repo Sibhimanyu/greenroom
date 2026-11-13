@@ -100,6 +100,12 @@ enum DebugTour {
                           let m = MeetingMode.allCases.first(where: { "\($0)" == info["mode"] })
                     else { throw TourError("bad mode") }
                     withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) { c.meetingMode = m }
+                case "shareKind":
+                    // Shows the window-only controls. `restore` puts the saved kind back.
+                    guard let c = CoordinatorController.shared,
+                          let k = ShareTarget.Kind(rawValue: info["kind"] ?? "") else { throw TourError("bad kind") }
+                    if savedShareKind == nil { savedShareKind = c.shareTarget.kind }
+                    c.shareTarget.kind = k
                 case "tree": tree(dir: dir)
                 default: throw TourError("unknown cmd \(cmd)")
                 }
@@ -109,6 +115,8 @@ enum DebugTour {
             }
         }
     }
+
+    private static var savedShareKind: ShareTarget.Kind?
 
     private struct TourError: Error, CustomStringConvertible {
         let description: String
@@ -238,6 +246,7 @@ enum DebugTour {
             if let f = o.frame { MainWindow.current?.setFrame(f, display: true, animate: false) }
         }
         original = nil
+        if let k = savedShareKind { c.shareTarget.kind = k; savedShareKind = nil }
         try? await Task.sleep(nanoseconds: 300_000_000)
     }
 

@@ -4,9 +4,12 @@
 //
 //  Home, "Direction A: Picture first" (DESIGN.md decisions log, 2026-11-13).
 //
+//  Calmer (DESIGN.md, 2026-11-13): setup is ONE summary line with an Edit
+//  button that unfolds the five tiles in place; readiness is one "Ready" chip
+//  (or only the problems); the primary button and its menu are one shape.
 //  Left, a 16:9 card showing the look the class will see. Right, the few
-//  things that change a start: a name (or the meeting to join), five setup
-//  chips, the readiness pills, and ONE button that follows the mode. A last
+//  things that change a start: a name (or the meeting to join), the setup
+//  line, the readiness chip, and ONE button that follows the mode. A last
 //  session line sits under both. The New / Join / Record switcher lives in
 //  the window toolbar (ContentView).
 //
@@ -35,11 +38,28 @@ struct HomeView: View {
     /// Tells ContentView whether the "Last session" line is drawn, since the
     /// window's height is measured with and without it.
     @Binding var hasFooter: Bool
+    /// Whether the five setup tiles are unfolded. Owned by ContentView, which
+    /// sizes the window for it; per launch only, collapsed by default.
+    @Binding var setupOpen: Bool
 
     /// Height of the open log. Eight lines.
     static let statusLogHeight: CGFloat = 180
     /// The options column; its two equal tiles share it with an 8pt gap.
     static let optionsWidth: CGFloat = 380
+    /// Fixed heights of the options column's parts, so the window's height is
+    /// arithmetic: 42 + 32 + 32 + 44 + 24, five rows with four 16pt gaps.
+    static let brandHeight: CGFloat = 42
+    static let fieldHeight: CGFloat = 32
+    static let summaryHeight: CGFloat = 32
+    static let readyHeight: CGFloat = 24
+    static let buttonHeight: CGFloat = 44
+    static let columnGap: CGFloat = 16
+    /// The five tiles: three rows of 44 with 8pt gaps, and the gap above them.
+    static let tilesHeight: CGFloat = 148
+    static var columnHeight: CGFloat {
+        brandHeight + fieldHeight + summaryHeight + readyHeight + buttonHeight + 4 * columnGap
+    }
+    static var tilesExtraHeight: CGFloat { tilesHeight + columnGap }
 
     @State private var showLive = false
     @State private var cameras: [LocalDeviceResolver.Camera] = []
@@ -74,8 +94,12 @@ struct HomeView: View {
             HStack(alignment: .top, spacing: 32) {
                 setupColumn
                     .frame(width: Self.optionsWidth)
-                pictureColumn
+                // The options column sets the row's height; the card fits the
+                // room beside it, against the right edge, so the two columns
+                // share a top and a bottom.
+                Color.clear
                     .frame(maxWidth: .infinity)
+                    .overlay(alignment: .trailing) { pictureCard }
             }
             .fixedSize(horizontal: false, vertical: true)
             if statusShown {
@@ -129,26 +153,6 @@ struct HomeView: View {
 
     // MARK: Left: the picture
 
-    private var pictureColumn: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            pictureCard
-            Spacer(minLength: 12)
-            readyRow
-        }
-    }
-
-    /// Readiness is about the picture (camera, screen, mic, Zoom), so it sits
-    /// under it.
-    private var readyRow: some View {
-        HStack(alignment: .center, spacing: 6) {
-            ChipFlow(spacing: 6) {
-                ForEach(readiness) { item in readinessPill(item) }
-            }
-            Spacer(minLength: 8)
-            detailsLink
-        }
-    }
-
     private var liveFrameReady: Bool { showLive && coordinator.shapePreviewAspect != nil }
 
     private var pictureCard: some View {
@@ -176,20 +180,10 @@ struct HomeView: View {
             }
         }
         .overlay(alignment: .topTrailing) { liveButton.padding(10) }
-        .overlay(alignment: .bottomLeading) { captionChip.padding(10) }
         .shadow(color: .black.opacity(0.18), radius: 14, y: 6)
         .animation(reduceMotion ? nil : .easeOut(duration: 0.2), value: liveFrameReady)
         .accessibilityElement(children: .contain)
         .accessibilityLabel(showLive ? "Live preview of the picture" : "Drawing of the picture: \(lookText)")
-    }
-
-    private var captionChip: some View {
-        Text(showLive ? "Live preview. Nothing is sent or saved." : "A drawing of your look. Camera off.")
-            .font(.caption)
-            .foregroundStyle(.secondary)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 5)
-            .greenroomGlass(in: Capsule())
     }
 
     /// What the card says in words, for VoiceOver and the tooltip.
@@ -224,19 +218,21 @@ struct HomeView: View {
             : .bubble(aspect: coordinator.webcamShape.cropsToSquare ? 1 : camera)
     }
 
+    /// Icon only: the words moved into the hover help.
     private var liveButton: some View {
         Button(action: toggleLive) {
-            Label(showLive ? "Hide live" : "Show live", systemImage: showLive ? "eye.slash" : "video")
-                .font(.callout.weight(.medium))
-                .padding(.horizontal, 12)
-                .padding(.vertical, 6)
+            Image(systemName: showLive ? "eye.slash" : "video")
+                .font(.system(size: 14, weight: .medium))
+                .frame(width: 32, height: 32)
+                .contentShape(Circle())
         }
         .buttonStyle(.plain)
-        .greenroomGlass(in: Capsule(), interactive: true)
+        .greenroomGlass(in: Circle(), interactive: true)
         .disabled(isLive)
         .help(showLive
-              ? "Turns the camera off again."
-              : "Turns the camera on to preview the real picture. Off until you ask, and off again when you start or leave Home.")
+              ? "Hide the live picture. This turns the camera off again."
+              : "Show the live picture. The camera stays off until you do.")
+        .accessibilityLabel(showLive ? "Hide live picture" : "Show live picture")
     }
 
     private func toggleLive() {
@@ -257,118 +253,171 @@ struct HomeView: View {
     // MARK: Right: setup
 
     private var setupColumn: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: Self.columnGap) {
             brand
-                .padding(.bottom, 4)
             nameSection
-            // Equal tiles: Look | Share, Camera | Microphone, Layout across.
-            VStack(spacing: 8) {
-                HStack(spacing: 8) { shapeChip; shareChip }
-                HStack(spacing: 8) { cameraChip; micChip }
-                layoutChip
-            }
+            setupSection
+            readyRow
             actionRow
         }
     }
 
     /// The mark and the name, large, at the top of the column. The mark is the
     /// shipped asset, never recoloured or stretched (it has its own dark
-    /// variant); the name is one colour (`Brand.name`).
+    /// variant); the name is one colour (`Brand.name`). No subtitle: the
+    /// toolbar's switcher says the mode.
     private var brand: some View {
         HStack(spacing: 10) {
             Image("LogoMark")
                 .resizable()
                 .scaledToFit()
-                .frame(height: 42)
+                .frame(height: Self.brandHeight)
                 .accessibilityHidden(true)
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Greenroom")
-                    .font(.system(size: 23, weight: .bold))
-                    .foregroundStyle(Brand.name)
-                Text(tagline)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .contentTransition(.opacity)
-                    .animation(reduceMotion ? nil : .easeOut(duration: 0.18), value: mode)
-            }
+            Text("Greenroom")
+                .font(.system(size: 23, weight: .bold))
+                .foregroundStyle(Brand.name)
         }
+        .frame(height: Self.brandHeight)
         .accessibilityElement(children: .combine)
-    }
-
-    private var tagline: String {
-        switch mode {
-        case .create: return "Start a class on Zoom"
-        case .join: return "Join a class"
-        case .record: return "Record without a meeting"
-        }
-    }
-
-    private func eyebrow(_ text: String) -> some View {
-        Text(text)
-            .font(.caption.weight(.semibold))
-            .textCase(.uppercase)
-            .tracking(0.4)
-            .foregroundStyle(.secondary)
     }
 
     // MARK: Name / meeting
 
     @ViewBuilder private var nameSection: some View {
         if mode == .join {
-            VStack(alignment: .leading, spacing: 6) {
-                HStack(spacing: 8) {
-                    eyebrow("Meeting")
-                    if pastedHint {
-                        Label("Pasted from clipboard", systemImage: "checkmark")
-                            .labelStyle(.titleAndIcon)
-                            .font(.caption)
-                            .foregroundStyle(Brand.text)
-                            .transition(.opacity)
-                    }
-                    Spacer(minLength: 0)
-                }
-                // One row, so Join is as tall as New and Record and the two
-                // columns stay level.
-                HStack(spacing: 8) {
-                    TextField("Meeting link or ID", text: meetingBinding)
-                        .textFieldStyle(.roundedBorder)
-                        .controlSize(.large)
-                        .disabled(isLive)
-                        .onSubmit(submit)
-                        .help("A Zoom link, an invite, or the meeting ID. A link also fills the passcode.")
-                    TextField("Passcode", text: $coordinator.meetingPassword)
-                        .textFieldStyle(.roundedBorder)
-                        .controlSize(.large)
-                        .frame(width: 96)
-                        .disabled(isLive)
-                        .onSubmit(submit)
-                        .help("The meeting's passcode, if it has one.")
-                    presetsMenu
-                    scheduledMeetingsMenu
-                }
-                .labelStyle(.iconOnly)
-                .onAppear {
-                    // Pre-fetch so the menu is ready by the time it is opened;
-                    // skipped silently when credentials or a scope are missing.
-                    if coordinator.scheduledMeetings.isEmpty && !coordinator.s2sAccountID.isEmpty {
-                        coordinator.refreshScheduledMeetings()
-                    }
-                }
-            }
-        } else {
-            VStack(alignment: .leading, spacing: 6) {
-                eyebrow("Name")
-                // The auto-name is the placeholder: it says what you will GET
-                // while the field says what to DO. Left empty, the folder is
-                // named by date and time.
-                TextField(folderPreview, text: $coordinator.className)
+            // One row, so Join is as tall as New and Record and the two
+            // columns stay level. No label: the placeholder says what to type.
+            HStack(spacing: 8) {
+                TextField("Meeting link or ID", text: meetingBinding)
                     .textFieldStyle(.roundedBorder)
                     .controlSize(.large)
                     .disabled(isLive)
                     .onSubmit(submit)
-                    .help("Names this session's folder in Documents/Greenroom. Leave it empty and the folder is named by date and time, as shown.")
+                    .overlay(alignment: .trailing) {
+                        if pastedHint {
+                            Image(systemName: "checkmark")
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundStyle(Brand.text)
+                                .padding(.trailing, 8)
+                                .help("Pasted from clipboard")
+                                .accessibilityLabel("Pasted from clipboard")
+                                .transition(.opacity)
+                        }
+                    }
+                    .help("A Zoom link, an invite, or the meeting ID. A link also fills the passcode.")
+                TextField("Passcode", text: $coordinator.meetingPassword)
+                    .textFieldStyle(.roundedBorder)
+                    .controlSize(.large)
+                    .frame(width: 96)
+                    .disabled(isLive)
+                    .onSubmit(submit)
+                    .help("The meeting's passcode, if it has one.")
+                presetsMenu
+                scheduledMeetingsMenu
+            }
+            .labelStyle(.iconOnly)
+            .frame(height: Self.fieldHeight)
+            .onAppear {
+                // Pre-fetch so the menu is ready by the time it is opened;
+                // skipped silently when credentials or a scope are missing.
+                if coordinator.scheduledMeetings.isEmpty && !coordinator.s2sAccountID.isEmpty {
+                    coordinator.refreshScheduledMeetings()
+                }
+            }
+        } else {
+            // The auto-name is the placeholder: it says what you will GET.
+            // Left empty, the folder is named by date and time.
+            TextField(folderPreview, text: $coordinator.className)
+                .textFieldStyle(.roundedBorder)
+                .controlSize(.large)
+                .frame(height: Self.fieldHeight)
+                .disabled(isLive)
+                .onSubmit(submit)
+                .accessibilityLabel("Name")
+                .help("Names this session's folder in Documents/Greenroom. Leave it empty and the folder is named by date and time, as shown.")
+        }
+    }
+
+    // MARK: Setup: one line, five tiles behind Edit
+
+    private var setupSection: some View {
+        VStack(alignment: .leading, spacing: Self.columnGap) {
+            summaryRow
+            Collapsible(hidden: !setupOpen) {
+                // Equal tiles: Look | Share, Camera | Microphone, Layout across.
+                VStack(spacing: 8) {
+                    HStack(spacing: 8) { shapeChip; shareChip }
+                    HStack(spacing: 8) { cameraChip; micChip }
+                    layoutChip
+                }
             }
         }
+    }
+
+    private var summaryItems: [SetupSummaryItem] {
+        let share = coordinator.shareTarget
+        let kind: SetupSummary.ShareKind
+        switch share.kind {
+        case .display: kind = .display
+        case .app: kind = .app
+        case .window: kind = .window
+        case .whiteboard: kind = .whiteboard
+        case .nothing: kind = .nothing
+        }
+        let gone = SetupSummary.shareIsGone(kind: kind, appBundleID: share.appBundleID,
+                                            windowTitle: share.windowTitle,
+                                            runningApps: apps.map(\.bundleID),
+                                            openWindows: windows.map { ($0.bundleID, $0.title) })
+        let camera = LookSummary.cameraText(coordinator, cameras: cameras)
+        let mic = LookSummary.microphoneText(uid: coordinator.micDeviceUID, microphones: microphones,
+                                             system: AVCaptureDevice.default(for: .audio)?.localizedName)
+        return SetupSummary.items(
+            cameraOff: coordinator.cameraIsOff,
+            lookSymbol: "circle.lefthalf.filled", lookText: coordinator.webcamShape.label,
+            shareSymbol: Self.symbol(for: share.kind), shareText: LookSummary.shareText(share), shareGone: gone,
+            cameraText: Self.shortDeviceName(camera), cameraMissing: cameras.isEmpty,
+            micText: Self.shortDeviceName(mic), layoutText: coordinator.layoutChoiceName)
+    }
+
+    private var summaryRow: some View {
+        let items = summaryItems
+        return HStack(alignment: .top, spacing: 8) {
+            ChipFlow(spacing: 6) {
+                ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
+                    summaryPart(item, last: index == items.count - 1)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            Button(setupOpen ? "Done" : "Edit") {
+                Collapse.animate { setupOpen.toggle() }
+            }
+            .buttonStyle(.plain)
+            .font(.system(size: 12.5, weight: .medium))
+            .foregroundStyle(Brand.text)
+            .help(setupOpen ? "Fold the setup back into one line." : "Change the look, what you share, the camera, the microphone or the layout.")
+            .accessibilityLabel(setupOpen ? "Done editing setup" : "Edit setup")
+        }
+        .frame(minHeight: Self.summaryHeight, alignment: .top)
+    }
+
+    /// One part of the line. Amber (text colour `net-text`, glyph `net`) when
+    /// it needs the user's attention.
+    private func summaryPart(_ item: SetupSummaryItem, last: Bool) -> some View {
+        HStack(spacing: 4) {
+            Image(systemName: item.symbol)
+                .font(.system(size: 11))
+                .foregroundStyle(item.attention ? Brand.net : Color.secondary)
+            Text(item.text)
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(item.attention ? Brand.netText : Color.primary)
+                .lineLimit(1)
+                .truncationMode(.middle)
+            if !last {
+                Text("\u{00B7}").foregroundStyle(.tertiary)
+            }
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(item.attention ? "\(item.text), needs attention" : item.text)
     }
 
     /// The folder the next Start will create, as the placeholder.
@@ -694,64 +743,95 @@ struct HomeView: View {
 
     private enum Fix { case zoomSettings, cameraPrivacy, micPrivacy, screenPrivacy }
 
-    private struct ReadyItem: Identifiable {
-        let id: String
-        let title: String
-        /// nil: ready. Otherwise what is wrong, in the pill's own words.
-        var problem: String?
-        var fix: Fix
+    private func fixFor(_ id: String) -> Fix {
+        switch id {
+        case "zoom": return .zoomSettings
+        case "camera": return .cameraPrivacy
+        case "mic": return .micPrivacy
+        default: return .screenPrivacy
+        }
     }
 
     /// What a start needs, from the same facts the start itself checks: the
     /// Zoom credentials `start()` refuses without, and the camera, microphone
     /// and Screen Recording permissions it would otherwise stall on.
-    private var readiness: [ReadyItem] {
-        var items: [ReadyItem] = []
+    private var readiness: [ReadinessItem] {
+        var items: [ReadinessItem] = []
         if mode != .record {
             let sdk = coordinator.sdkClientID.isEmpty || coordinator.sdkClientSecret.isEmpty
             let host = coordinator.s2sAccountID.isEmpty || coordinator.s2sClientID.isEmpty
                 || coordinator.s2sClientSecret.isEmpty
             let missing = mode == .create ? (sdk || host) : sdk
-            items.append(ReadyItem(id: "zoom", title: "Zoom",
-                                   problem: missing ? "Zoom: add credentials" : nil, fix: .zoomSettings))
+            items.append(ReadinessItem(id: "zoom", title: "Zoom", problem: missing ? "Zoom: add credentials" : nil))
         }
         if !coordinator.cameraIsOff {
             let blocked = cameraAccess == .denied || cameraAccess == .restricted
-            items.append(ReadyItem(id: "camera", title: "Camera",
-                                   problem: blocked ? "Camera: not allowed" : nil, fix: .cameraPrivacy))
+            items.append(ReadinessItem(id: "camera", title: "Camera", problem: blocked ? "Camera: not allowed" : nil))
         }
         let micBlocked = micAccess == .denied || micAccess == .restricted
-        items.append(ReadyItem(id: "mic", title: "Mic",
-                               problem: micBlocked ? "Mic: not allowed" : nil, fix: .micPrivacy))
+        items.append(ReadinessItem(id: "mic", title: "Mic", problem: micBlocked ? "Mic: not allowed" : nil))
         if coordinator.shareTarget.kind.capturesScreen {
-            items.append(ReadyItem(id: "screen", title: "Screen",
-                                   problem: screenAllowed ? nil : "Screen: permission needed", fix: .screenPrivacy))
+            items.append(ReadinessItem(id: "screen", title: "Screen", problem: screenAllowed ? nil : "Screen: permission needed"))
         }
         return items
     }
 
-    private func readinessPill(_ item: ReadyItem) -> some View {
-        let warn = item.problem != nil
-        return Button {
-            if warn { fix(item.fix) } else { withAnimation(.snappy(duration: 0.25)) { statusShown.toggle() } }
+    /// "Ready" as one chip when everything is fine; its click shows what each
+    /// step did (the status log, which is the details). When something is
+    /// wrong, only the problems, amber, each a click to its fix.
+    private var readyRow: some View {
+        Group {
+            switch ReadinessSummary.reduce(readiness) {
+            case .ready:
+                readyChip
+            case .problems(let bad):
+                ChipFlow(spacing: 6) { ForEach(bad) { problemPill($0) } }
+            }
+        }
+        .frame(maxWidth: .infinity, minHeight: Self.readyHeight, alignment: .leading)
+    }
+
+    private var readyChip: some View {
+        Button {
+            withAnimation(.snappy(duration: 0.25)) { statusShown.toggle() }
         } label: {
             HStack(spacing: 4) {
-                Image(systemName: warn ? "exclamationmark.triangle.fill" : "checkmark")
+                Image(systemName: "checkmark").font(.system(size: 9, weight: .bold))
+                Text("Ready").font(.system(size: 11.5, weight: .medium))
+            }
+            .foregroundStyle(Brand.text)
+            .padding(.horizontal, 10)
+            .frame(height: Self.readyHeight)
+            .background(Capsule().fill(Brand.green.opacity(0.14)))
+            .overlay(Capsule().strokeBorder(Brand.green.opacity(0.35), lineWidth: 0.5))
+            .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .help(statusShown ? "Ready. Click to hide the status details."
+                          : "Ready: Zoom, camera, microphone and screen are fine. Click for the status details.")
+        .accessibilityLabel("Ready")
+        .accessibilityHint(statusShown ? "Hides the status details" : "Shows the status details")
+    }
+
+    private func problemPill(_ item: ReadinessItem) -> some View {
+        Button { fix(fixFor(item.id)) } label: {
+            HStack(spacing: 4) {
+                Image(systemName: "exclamationmark.triangle.fill")
                     .font(.system(size: 9, weight: .bold))
                 Text(item.problem ?? item.title)
                     .font(.system(size: 11.5, weight: .medium))
             }
-            .foregroundStyle(warn ? Brand.netText : Brand.text)
+            .foregroundStyle(Brand.netText)
             .padding(.horizontal, 10)
-            .frame(height: 24)
-            .background(Capsule().fill((warn ? Brand.net : Brand.green).opacity(0.14)))
-            .overlay(Capsule().strokeBorder((warn ? Brand.net : Brand.green).opacity(0.35), lineWidth: 0.5))
+            .frame(height: Self.readyHeight)
+            .background(Capsule().fill(Brand.net.opacity(0.14)))
+            .overlay(Capsule().strokeBorder(Brand.net.opacity(0.35), lineWidth: 0.5))
             .contentShape(Capsule())
         }
         .buttonStyle(.plain)
-        .help(warn ? "Click to fix it." : "Ready. Click for the status details.")
-        .accessibilityLabel(item.problem ?? "\(item.title) ready")
-        .accessibilityHint(warn ? "Opens where to fix it" : "Shows the status details")
+        .help("Click to fix it.")
+        .accessibilityLabel(item.problem ?? item.title)
+        .accessibilityHint("Opens where to fix it")
     }
 
     private func fix(_ fix: Fix) {
@@ -771,26 +851,6 @@ struct HomeView: View {
         if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?\(pane)") {
             NSWorkspace.shared.open(url)
         }
-    }
-
-    /// What the Status row on Home was: the log of what each step did.
-    private var detailsLink: some View {
-        Button {
-            withAnimation(.snappy(duration: 0.25)) { statusShown.toggle() }
-        } label: {
-            HStack(spacing: 4) {
-                Text(statusShown ? "Hide details" : "Details")
-                if !coordinator.statusLines.isEmpty {
-                    Text("\(coordinator.statusLines.count)")
-                        .font(.system(size: 11, design: .monospaced))
-                }
-            }
-            .font(.caption)
-            .foregroundStyle(Brand.text)
-        }
-        .buttonStyle(.plain)
-        .help(statusShown ? "Hide the status log" : "Show what each step did and why")
-        .accessibilityLabel(statusShown ? "Hide status" : "Show status")
     }
 
     // MARK: The button
@@ -822,10 +882,12 @@ struct HomeView: View {
         }
     }
 
-    /// One button that follows the mode. The split chevron holds what the
-    /// "Manual controls" pull-down held.
+    /// One button that follows the mode: a single rounded shape, the label
+    /// and a small chevron segment inside it. The chevron holds what the
+    /// "Manual controls" pull-down held. Content-sized, Brand green in every
+    /// mode (Record is marked by its red dot only).
     private var primaryButton: some View {
-        HStack(spacing: 6) {
+        HStack(spacing: 0) {
             Button {
                 coordinator.start()
             } label: {
@@ -835,12 +897,19 @@ struct HomeView: View {
                         .contentTransition(.opacity)
                 }
                 .font(.headline)
-                .frame(minWidth: 148)
-                .padding(.horizontal, 8)
+                .padding(.leading, 20)
+                .padding(.trailing, 14)
+                .frame(height: Self.buttonHeight)
+                .contentShape(Rectangle())
             }
-            .greenroomGlassButton(prominent: true)
+            .buttonStyle(.plain)
             .disabled(startDisabled)
             .help(primaryHelp)
+
+            Rectangle()
+                .fill(.white.opacity(0.35))
+                .frame(width: 1, height: 22)
+                .accessibilityHidden(true)
 
             Menu {
                 Section("Manual controls") {
@@ -849,20 +918,21 @@ struct HomeView: View {
                 }
             } label: {
                 Image(systemName: "chevron.down")
-                    .font(.system(size: 12, weight: .semibold))
-                    .frame(width: 22)
+                    .font(.system(size: 11, weight: .semibold))
+                    .frame(width: 36, height: Self.buttonHeight)
+                    .contentShape(Rectangle())
             }
-            .menuStyle(.button)
+            .menuStyle(.borderlessButton)
             .menuIndicator(.hidden)
-            .greenroomGlassButton(prominent: true)
+            .fixedSize()
             .help("Manual controls: each piece of the session on its own.")
             .accessibilityLabel("Manual controls")
         }
-        .controlSize(.extraLarge)
-        // One style in every mode: the mode changes the label and glyph only.
-        .tint(Brand.green)
+        .foregroundStyle(.white)
+        .background(Capsule().fill(Brand.green.opacity(startDisabled ? 0.4 : 1)))
+        .clipShape(Capsule())
         .animation(reduceMotion ? nil : .easeOut(duration: 0.18), value: mode)
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(maxWidth: .infinity, minHeight: Self.buttonHeight, alignment: .leading)
     }
 
     /// Record's intent is a small red dot, not a red button.

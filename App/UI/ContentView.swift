@@ -18,6 +18,8 @@ struct ContentView: View {
     /// Hidden by default: the log is diagnostic detail, opened when something
     /// needs explaining. Not persisted - each launch starts compact.
     @State private var statusShown = false
+    /// Home's five setup tiles unfolded; per launch, collapsed by default.
+    @State private var setupOpen = false
     /// Home shows its "Last session" line, which is 44pt of the window's
     /// height. Reported by HomeView, which is the one that knows.
     @State private var homeHasFooter = false
@@ -33,6 +35,10 @@ struct ContentView: View {
     /// The frame the page last settled at, to tell whether the user moved the
     /// window while on it.
     @State private var pageSettledFrame: NSRect?
+    /// Home's content height when `homeFrame` was captured, so Back restores
+    /// the identical size while Home's state is unchanged (the title bar is
+    /// measured differently on a page, so recomputing it can drift).
+    @State private var homeFrameContentHeight: CGFloat?
     private var homeWidth: CGFloat? { homeFrame?.width }
 
     // The window's root is a NavigationSplitView (see body), so the system
@@ -136,6 +142,7 @@ struct ContentView: View {
         // from an anchored top edge, so nothing above the divider moves - see
         // resizeWindow.
         .onChange(of: statusShown) { _, _ in resizeWindow(animated: true) }
+        .onChange(of: setupOpen) { _, _ in resizeWindow(animated: true) }
         .onChange(of: homeHasFooter) { _, _ in resizeWindow(animated: true) }
         .onChange(of: coordinator.meetingMode) { _, _ in resizeWindow(animated: true) }
         .onChange(of: coordinator.recordStudioShown) { _, shown in
@@ -160,6 +167,7 @@ struct ContentView: View {
             let settled = homePin == nil && pagePin == nil
             if !isHome, settled, let window = Self.window, !window.styleMask.contains(.fullScreen), !window.isZoomed {
                 homeFrame = window.frame
+                homeFrameContentHeight = homeWindowHeight
                 pageSettledFrame = nil
             }
             changePage(toHome: isHome)
@@ -430,7 +438,7 @@ struct ContentView: View {
     }
 
     private var homeContent: some View {
-        HomeView(statusShown: $statusShown, hasFooter: $homeHasFooter)
+        HomeView(statusShown: $statusShown, hasFooter: $homeHasFooter, setupOpen: $setupOpen)
     }
 
     /// The window's height for the current state: the two columns, plus the
@@ -443,7 +451,10 @@ struct ContentView: View {
     /// it fades, so it must not follow `onPage`.
     private var homeWindowHeight: CGFloat {
         if coordinator.recordStudioShown { return RecordStudioView.windowHeight }
-        var height: CGFloat = 352
+        // 20pt of padding top and bottom around the options column, whose
+        // height is the sum of its fixed parts (HomeView.columnHeight).
+        var height: CGFloat = 40 + HomeView.columnHeight
+        if setupOpen { height += HomeView.tilesExtraHeight }
         if homeHasFooter { height += 44 }
         if statusShown { height += HomeView.statusLogHeight + 12 }
         return height
@@ -451,8 +462,8 @@ struct ContentView: View {
 
     /// The width Home's two columns need, and therefore the window's: 32pt of
     /// padding each side, the 380pt options column, a 32pt gutter, and 384pt for
-    /// the picture so it is still a picture (216pt tall at 16:9). The default 984pt makes the card 468 wide, which is
-    /// 263 tall: with the ready row under it, exactly the setup column's height. Wider than
+    /// the picture so it is still a picture (216pt tall at 16:9). The default 940pt makes the card about 424 wide, which is
+    /// 238 tall: exactly the options column's height (HomeView.columnHeight). Wider than
     /// that and the picture grows with the window.
     static var minimumWindowWidth: CGFloat { 900 }
 
@@ -474,9 +485,9 @@ struct ContentView: View {
     private var floorHeight: CGFloat { onPage ? Self.pageMinHeight : preferredWindowHeight }
     private var floorWidth: CGFloat { onPage ? Self.pageMinWidth : Self.minimumWindowWidth }
 
-    /// What the window opens at: the minimum plus 60pt, which is 60pt more
-    /// picture.
-    static var defaultWindowWidth: CGFloat { 984 }
+    /// What the window opens at: the width at which the 16:9 card is as tall as
+    /// the options column, so the two columns end level with no dead space.
+    static var defaultWindowWidth: CGFloat { 940 }
 
     /// Where the window ends up for the current page and state, top edge
     /// anchored and inside the visible frame.
@@ -503,18 +514,27 @@ struct ContentView: View {
         let titleBar = window.frame.height - window.contentLayoutRect.height
         var height = preferredWindowHeight + titleBar
         if let visible { height = min(height, visible.height) }
-        let size = window.frameRect(forContentRect: NSRect(x: 0, y: 0, width: width, height: height)).size
-        // The top edge is anchored (DESIGN.md) and width changes grow around
-        // the window's middle, so a page opens centred where Home was. Back
-        // returns to Home's own frame unless the window was moved on the page.
-        // The top edge only gives way where the bottom would leave the screen.
-        if returningHome && !onPage {
+        var size = window.frameRect(forContentRect: NSRect(x: 0, y: 0, width: width, height: height)).size
+        let visibleFrames = NSScreen.screens.map(\.visibleFrame)
+        // The top-left corner is anchored (DESIGN.md). Going to a page it
+        // grows down and right from Home's saved frame, shifted only by what
+        // would leave the screen; Back returns to that saved frame exactly.
+        if onPage {
+            let movedOnPage = WindowFrameRules.moved(from: pageSettledFrame, to: window.frame)
+            let anchor = (movedOnPage ? nil : homeFrame) ?? window.frame
+            return WindowFrameRules.pageFrame(from: anchor, size: size, visibleFrames: visibleFrames)
+        }
+        if returningHome, let remembered = homeFrame, homeFrameContentHeight == homeWindowHeight,
+           abs(remembered.width - size.width) < 1 {
+            size = remembered.size
+        }
+        if returningHome {
             return WindowFrameRules.returningHome(
                 remembered: homeFrame, size: size, current: window.frame,
                 movedOnPage: WindowFrameRules.moved(from: pageSettledFrame, to: window.frame),
-                visibleFrames: NSScreen.screens.map(\.visibleFrame), currentVisible: visible)
+                visibleFrames: visibleFrames, currentVisible: visible)
         }
-        return WindowFrameRules.centred(on: window.frame, size: size, in: visible)
+        return WindowFrameRules.topLeftAnchored(on: window.frame, size: size, in: visible)
     }
 
     /// Resizes from an anchored TOP edge. AppKit's `setContentSize` keeps the
@@ -540,6 +560,7 @@ struct ContentView: View {
         guard animated else {
             resizeGeneration += 1
             window.setFrame(frame, display: true)
+            if onPage { pageSettledFrame = window.frame }
             heldMinHeight = floorHeight
             heldMinWidth = floorWidth
             return
@@ -565,6 +586,9 @@ struct ContentView: View {
             // A resize that was superseded must not raise the minimum the
             // newer one lowered.
             guard generation == resizeGeneration else { return }
+            // What the window really settled at (AppKit may constrain it), so
+            // "the user moved it" compares against the truth.
+            if onPage { pageSettledFrame = window.frame }
             heldMinHeight = settled
             heldMinWidth = settledWidth
         }

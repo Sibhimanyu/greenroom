@@ -5,27 +5,50 @@ final class WindowFrameRulesTests: XCTestCase {
     let screen = NSRect(x: 0, y: 0, width: 1920, height: 1080)
     let page = CGSize(width: 1180, height: 760)
 
-    func testHomeCentredGrowsAroundMiddleTopKept() {
+    func testPageGrowsDownRightFromTopLeft() {
         let home = NSRect(x: 568, y: 400, width: 784, height: 600)
-        let f = WindowFrameRules.centred(on: home, size: page, in: screen)
-        XCTAssertEqual(f.midX, home.midX)
+        let f = WindowFrameRules.pageFrame(from: home, size: page, visibleFrames: [screen])
+        XCTAssertEqual(f.minX, home.minX)
         XCTAssertEqual(f.maxY, home.maxY)
-        XCTAssertEqual(f.width, 1180)
+        XCTAssertEqual(f.size, page)
     }
 
-    func testClampsRightAndLeft() {
+    func testClampsRightOnly() {
         let right = NSRect(x: 1500, y: 400, width: 400, height: 600)
-        XCTAssertEqual(WindowFrameRules.centred(on: right, size: page, in: screen).maxX, screen.maxX)
-        let left = NSRect(x: 10, y: 400, width: 400, height: 600)
-        XCTAssertEqual(WindowFrameRules.centred(on: left, size: page, in: screen).minX, screen.minX)
+        let f = WindowFrameRules.pageFrame(from: right, size: page, visibleFrames: [screen])
+        XCTAssertEqual(f.maxX, screen.maxX)
+        XCTAssertEqual(f.maxY, right.maxY)
     }
 
-    func testBottomShiftsUpOnlyWhenOffScreen() {
-        let low = NSRect(x: 568, y: 50, width: 784, height: 300)
-        let f = WindowFrameRules.centred(on: low, size: page, in: screen)
-        XCTAssertEqual(f.minY, 0)
+    func testLowHomeShiftsUpByOverflowAndRoundTripsExactly() {
+        // Home sits low: bottom at y=50, 300 tall. The page needs 460 more.
+        let home = NSRect(x: 568, y: 50, width: 784, height: 300)
+        let pageFrame = WindowFrameRules.pageFrame(from: home, size: page, visibleFrames: [screen])
+        XCTAssertEqual(pageFrame.minY, 0)
+        XCTAssertEqual(pageFrame.minX, home.minX)
+        let back = WindowFrameRules.returningHome(
+            remembered: home, size: home.size, current: pageFrame, movedOnPage: false,
+            visibleFrames: [screen], currentVisible: screen)
+        XCTAssertEqual(back, home)
+    }
+
+    func testNotShiftedWhenItFits() {
         let high = NSRect(x: 568, y: 400, width: 784, height: 600)
-        XCTAssertEqual(WindowFrameRules.centred(on: high, size: page, in: screen).minY, high.maxY - 760)
+        XCTAssertEqual(WindowFrameRules.pageFrame(from: high, size: page, visibleFrames: [screen]).minY,
+                       high.maxY - 760)
+    }
+
+    func testSecondaryScreenUsesItsOwnBounds() {
+        let second = NSRect(x: 1920, y: -200, width: 1440, height: 900)
+        let home = NSRect(x: 2400, y: -150, width: 784, height: 300)
+        let pageFrame = WindowFrameRules.pageFrame(from: home, size: page, visibleFrames: [screen, second])
+        XCTAssertEqual(pageFrame.minY, second.minY)
+        XCTAssertEqual(pageFrame.maxX, second.maxX)
+        XCTAssertTrue(second.contains(pageFrame))
+        let back = WindowFrameRules.returningHome(
+            remembered: home, size: home.size, current: pageFrame, movedOnPage: false,
+            visibleFrames: [screen, second], currentVisible: second)
+        XCTAssertEqual(back, home)
     }
 
     func testBackRestoresRememberedOriginWhenUnmoved() {
@@ -43,7 +66,7 @@ final class WindowFrameRulesTests: XCTestCase {
         let f = WindowFrameRules.returningHome(
             remembered: home, size: home.size, current: cur,
             movedOnPage: true, visibleFrames: [screen], currentVisible: screen)
-        XCTAssertEqual(f.midX, cur.midX)
+        XCTAssertEqual(f.minX, cur.minX)
         XCTAssertEqual(f.maxY, cur.maxY)
         XCTAssertEqual(f.size, home.size)
     }
@@ -54,7 +77,7 @@ final class WindowFrameRulesTests: XCTestCase {
         let f = WindowFrameRules.returningHome(
             remembered: home, size: home.size, current: cur,
             movedOnPage: false, visibleFrames: [screen], currentVisible: screen)
-        XCTAssertEqual(f.midX, cur.midX)
+        XCTAssertEqual(f.minX, cur.minX)
         XCTAssertEqual(f.maxY, cur.maxY)
     }
 

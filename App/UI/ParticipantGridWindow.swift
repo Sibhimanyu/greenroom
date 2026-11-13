@@ -4266,120 +4266,15 @@ private final class IconCellButton: NSButton {
 /// moment there is nothing left to say.
 enum ReadinessHUDController {
 
-    private final class HUDPanel: NSPanel {
-        override var canBecomeKey: Bool { false }
-        override var canBecomeMain: Bool { false }
-    }
-
-    private static var panel: HUDPanel?
-    private static var view: ReadinessView?
-    private static var dismissTask: Task<Void, Never>?
-    private static let width: CGFloat = 320
-    private static let padding: CGFloat = 20
-
+    /// `screen` is unused now: the card is drawn by the one message panel at
+    /// the top-right of the screen the person is working on (WindowBanner.swift).
     static func show(_ readiness: ParticipantGridWindowController.Readiness,
                      on screen: NSScreen) {
-        // Nothing left to report. A failure is the exception: it stays up,
-        // because the alternative is a card that vanishes at the exact moment
-        // it finally had something worth reading.
-        // Inside the main window when it is open and in view: the card is then
-        // part of the one window rather than a second thing over the screen.
-        // The floating card below is for when it is not.
-        if MainWindowPresence.isVisible {
-            dismissTask?.cancel()
-            dismissTask = nil
-            panel?.close()
-            panel = nil
-            view = nil
-            MainActor.assumeIsolated { BannerCenter.shared.showReadiness(readiness) }
-            return
-        }
-        MainActor.assumeIsolated { BannerCenter.shared.hideReadiness() }
-        guard !readiness.steps.isEmpty || readiness.failure != nil else {
-            scheduleDismiss()
-            return
-        }
-        dismissTask?.cancel()
-        dismissTask = nil
-
-        let hosting = panel ?? make(on: screen)
-        hosting.alphaValue = 1
-        view?.apply(readiness)
-
-        let height = (view?.fittingHeight ?? 0) + padding * 2
-        // Centred, not tucked in a corner.
-        //
-        // A corner looks like the polite choice and is not: the side column the
-        // workspace tiles - Zoom tile and chat - sits flush to the bottom and,
-        // in the default layout, to the right, so bottom-right lands squarely on
-        // it. Centre is the one spot that favours no tiled pane over another,
-        // and nothing on the display is usable during these seconds anyway. It
-        // also reads as a stage in the start rather than a notification that
-        // wandered in.
-        let area = screen.visibleFrame
-        hosting.setFrame(NSRect(x: (area.midX - width / 2).rounded(),
-                                y: (area.midY - height / 2).rounded(),
-                                width: width, height: height),
-                         display: true)
-        view?.frame = NSRect(x: padding, y: padding, width: width - padding * 2,
-                             height: height - padding * 2)
-        // Regardless, and every time: the whole point is to stay on top of a
-        // tiling pass that is actively reordering windows. It is small, it is
-        // non-activating and it leaves on its own, so this is not the
-        // tug-of-war the participant panel deliberately avoids.
-        hosting.orderFrontRegardless()
+        MainActor.assumeIsolated { BannerCenter.shared.showReadiness(readiness) }
     }
 
     static func close() {
         MainActor.assumeIsolated { BannerCenter.shared.hideReadiness() }
-        dismissTask?.cancel()
-        dismissTask = nil
-        panel?.close()
-        panel = nil
-        view = nil
-    }
-
-    private static func scheduleDismiss() {
-        guard panel != nil, dismissTask == nil else { return }
-        dismissTask = Task { @MainActor in
-            // A beat on the completed list before it goes, so the last step
-            // being ticked is something the teacher sees rather than infers.
-            try? await Task.sleep(nanoseconds: 900_000_000)
-            guard !Task.isCancelled, let hosting = panel else { return }
-            NSAnimationContext.runAnimationGroup { context in
-                context.duration = 0.25          // DESIGN.md, ease-in leaving
-                context.timingFunction = CAMediaTimingFunction(name: .easeIn)
-                hosting.animator().alphaValue = 0
-            } completionHandler: {
-                Task { @MainActor in close() }
-            }
-        }
-    }
-
-    private static func make(on screen: NSScreen) -> HUDPanel {
-        let created = HUDPanel(contentRect: NSRect(x: 0, y: 0, width: width, height: 200),
-                               styleMask: [.borderless, .nonactivatingPanel],
-                               backing: .buffered, defer: false, screen: screen)
-        created.isReleasedWhenClosed = false
-        created.isOpaque = false
-        created.backgroundColor = .clear
-        created.hasShadow = true
-        created.hidesOnDeactivate = false
-        created.level = .floating
-        created.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
-        created.ignoresMouseEvents = true      // purely a readout, nothing to click
-
-        GreenroomGlassAppKit.prepare(created)
-        let backing = GreenroomGlassAppKit.makeBacking(cornerRadius: 14)   // DESIGN.md radius-lg
-        let host = GreenroomGlassAppKit.host(of: backing)
-        backing.autoresizingMask = [.width, .height]
-        created.contentView = backing
-
-        let readiness = ReadinessView()
-        host.addSubview(readiness)
-        panel = created
-        view = readiness
-        return created
     }
 }
 

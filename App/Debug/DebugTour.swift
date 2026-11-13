@@ -13,6 +13,8 @@
 //    appearance  mode=light|dark|system
 //    shot  name=... [dir=...]
 //    sessionWindowSize  w=... [h=...]
+//    toast [title=...] [detail=...] [kind=success|failure|working]  a sample toast, held until `restore`.
+//    prompt       a sample upload prompt; its buttons only dismiss, nothing uploads.
 //    tree         dump the main window's view tree to <dir>/tree.txt.
 //    restore      Home, original appearance and frame, tour windows closed.
 //  Every command writes <dir>/last.json ({"ok":..,"cmd":..,"error":..,"seq":..}).
@@ -106,6 +108,16 @@ enum DebugTour {
                           let k = ShareTarget.Kind(rawValue: info["kind"] ?? "") else { throw TourError("bad kind") }
                     if savedShareKind == nil { savedShareKind = c.shareTarget.kind }
                     c.shareTarget.kind = k
+                case "toast":
+                    let kind: ToastController.Kind = ["failure": .failure, "working": .working][info["kind"] ?? ""] ?? .success
+                    ToastController.show(info["title"] ?? "Clipped the last 5 min",
+                                         detail: info["detail"] ?? "Sample toast from the debug tour",
+                                         kind: kind, dismissAfter: nil)
+                case "prompt":
+                    UploadPromptCard.show(
+                        title: "Upload this recording to YouTube?",
+                        detail: "\u{201C}Sample recording\u{201D} \u{00B7} 128 MB \u{00B7} Unlisted. Debug tour: nothing is uploaded.",
+                        timeout: 600, onUpload: {}, onDismiss: {})
                 case "tree": tree(dir: dir)
                 default: throw TourError("unknown cmd \(cmd)")
                 }
@@ -241,6 +253,8 @@ enum DebugTour {
         ChatWindowController.close()
         for w in opened where !MainWindow.matches(w) { w.close() }
         opened.removeAll()
+        ToastController.hide()
+        UploadPromptCard.hide(answered: true)
         if let o = original {
             NSApp.appearance = o.appearance
             if let f = o.frame { MainWindow.current?.setFrame(f, display: true, animate: false) }
@@ -260,7 +274,7 @@ enum DebugTour {
         let me = Bundle.main.bundleIdentifier
         let windows = content.windows.filter {
             $0.owningApplication?.bundleIdentifier == me && $0.frame.width > 120 && $0.frame.height > 80
-                && $0.windowLayer == 0
+                && ($0.windowLayer == 0 || $0.title == "Messages")
         }
         var entries: [[String: Any]] = []
         var errors: [String] = []
@@ -271,6 +285,16 @@ enum DebugTour {
             var entry: [String: Any] = [
                 "title": w.title ?? "", "file": file, "isOnScreen": w.isOnScreen,
                 "frame": [w.frame.origin.x, w.frame.origin.y, w.frame.width, w.frame.height]]
+            // Position on its own screen, in points from the screen's top-left,
+            // plus the menu-bar and right-edge gaps, so placement can be checked.
+            if let ns = NSApp.windows.first(where: { CGWindowID($0.windowNumber) == w.windowID }),
+               let screen = ns.screen {
+                let f = ns.frame, sf = screen.frame, vf = screen.visibleFrame
+                entry["screenRelative"] = [f.minX - sf.minX, sf.maxY - f.maxY, f.width, f.height]
+                entry["gapBelowMenuBar"] = vf.maxY - f.maxY
+                entry["gapFromRightEdge"] = vf.maxX - f.maxX
+                entry["screenSize"] = [sf.width, sf.height]
+            }
             if !w.isOnScreen { entry["warning"] = "isOnScreen false" }
             do {
                 let filter = SCContentFilter(desktopIndependentWindow: w)

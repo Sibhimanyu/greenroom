@@ -315,6 +315,7 @@ targets:
       - path: App/UI/SessionsQuery.swift
       - path: App/UI/SessionDetailRules.swift
       - path: App/UI/SegmentedMath.swift
+      - path: App/UI/BannerLayout.swift
     settings:
       base:
         PRODUCT_NAME: GreenroomTests

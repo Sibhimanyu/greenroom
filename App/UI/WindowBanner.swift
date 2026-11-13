@@ -2,41 +2,28 @@
 //  WindowBanner.swift
 //  Greenroom
 //
-//  Greenroom keeps a low profile: while the main window is open and in view,
-//  the things that used to float over the screen - a toast, the upload
-//  question and the start's progress card - are drawn inside it instead. The
-//  floating panels stay for when the window is closed, minimised or covered,
-//  which is the class itself: Zoom and Chrome tiled over everything, and a
-//  hotkey toast still has to land on the screen the teacher is looking at.
+//  Every message Greenroom shows - a toast, the upload question, the start's
+//  "Getting ready" card - lives in one place: a floating glass panel at the
+//  top-right of the screen the person is working on, where macOS shows its
+//  own notifications. Never inside a Greenroom window, so a message can never
+//  sit on Start Meeting or any other control.
 //
 //  ToastController, UploadPromptCard and ReadinessHUDController keep their
-//  APIs and ask `MainWindowPresence` where to draw. This file is the in-window
-//  half: one observable holding what is showing, and one overlay drawing it.
+//  APIs and hand their content to BannerCenter. This file is the one panel
+//  that draws it, and the pure frame math that places it.
 //
 import SwiftUI
 import AppKit
-
-/// Whether the main window is somewhere a person is looking.
-enum MainWindowPresence {
-    static var window: NSWindow? {
-        MainActor.assumeIsolated { MainWindow.current }
-    }
-
-    /// Open, not minimised, not entirely covered, and Greenroom is the app in
-    /// front. Occlusion alone is not enough: a window half under tiled Zoom
-    /// or Chrome still counts as visible, and a banner drawn in its hidden
-    /// half is a message nobody sees. When another app is in front, the
-    /// floating panel is the one that is certain to be seen.
-    static var isVisible: Bool {
-        guard let window else { return false }
-        return NSApp.isActive && window.isVisible && !window.isMiniaturized
-            && window.occlusionState.contains(.visible)
-    }
-}
+import Combine
 
 @MainActor
 final class BannerCenter: ObservableObject {
     static let shared = BannerCenter()
+
+    private init() {
+        // After init returns, so the panel can look this object up.
+        DispatchQueue.main.async { BannerPanelController.shared.start() }
+    }
 
     struct ToastItem: Equatable {
         var title: String
@@ -53,6 +40,10 @@ final class BannerCenter: ObservableObject {
     @Published private(set) var toast: ToastItem?
     @Published private(set) var prompt: PromptItem?
     @Published private(set) var readiness: ParticipantGridWindowController.Readiness?
+
+    var isShowing: Bool { toast != nil || prompt != nil || readiness != nil }
+    /// Something with a button: the panel takes clicks only then.
+    var isInteractive: Bool { prompt != nil || readiness?.failure != nil }
 
     private var toastTask: Task<Void, Never>?
     private var readinessTask: Task<Void, Never>?
@@ -114,45 +105,173 @@ final class BannerCenter: ObservableObject {
     }
 }
 
-/// Over the main window's content: the progress card centred, and below it
-/// the toast and the upload question, low and centred like the floating ones.
+/// Kept so a leftover `.overlay { WindowBannerOverlay() }` compiles; messages
+/// never draw inside a window any more.
 struct WindowBannerOverlay: View {
-    @ObservedObject private var banners = BannerCenter.shared
+    var body: some View { EmptyView() }
+}
+
+private struct StackSizeKey: PreferenceKey {
+    static let defaultValue: CGSize = .zero
+    static func reduce(value: inout CGSize, nextValue: () -> CGSize) { value = nextValue() }
+}
+
+/// What the panel draws: prompt, readiness, toast, top to bottom.
+private struct BannerStackView: View {
+    @ObservedObject var banners: BannerCenter
+    let onSize: (CGSize) -> Void
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    private var transition: AnyTransition {
+        reduceMotion ? .opacity : .move(edge: .trailing).combined(with: .opacity)
+    }
 
     var body: some View {
-        ZStack {
+        VStack(alignment: .trailing, spacing: BannerLayout.gap) {
+            if let prompt = banners.prompt {
+                PromptBanner(item: prompt).transition(transition)
+            }
             if let readiness = banners.readiness {
-                ReadinessBanner(readiness: readiness)
-                    .transition(.opacity)
+                ReadinessBanner(readiness: readiness).transition(transition)
             }
-            VStack(spacing: 12) {
-                Spacer(minLength: 0)
-                if let prompt = banners.prompt {
-                    PromptBanner(item: prompt)
-                        .transition(.opacity)
-                }
-                if let toast = banners.toast {
-                    ToastBanner(item: toast)
-                        .transition(.opacity)
-                }
+            if let toast = banners.toast {
+                ToastBanner(item: toast).transition(transition)
             }
-            .padding(.bottom, 28)
         }
-        .padding(.horizontal, 32)
-        // Only the cards take clicks; the window under them keeps its own.
-        .allowsHitTesting(banners.prompt != nil || banners.readiness?.failure != nil)
+        .frame(width: BannerLayout.cardWidth)
+        .padding(BannerLayout.shadowPad)
+        .background(GeometryReader { proxy in
+            Color.clear.preference(key: StackSizeKey.self, value: proxy.size)
+        })
+        .onPreferenceChange(StackSizeKey.self) { onSize($0) }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
     }
 }
 
-/// The card surface all three share: the HUD's material and radius-lg.
+/// The one panel. Non-activating, on every Space and over full-screen apps,
+/// above normal windows and below system alerts.
+@MainActor
+final class BannerPanelController {
+    static let shared = BannerPanelController()
+
+    private final class MessagePanel: NSPanel {
+        override var canBecomeKey: Bool { false }
+        override var canBecomeMain: Bool { false }
+    }
+
+    private var panel: MessagePanel?
+    private var screen: NSScreen?
+    private var stack: CGSize = .zero
+    private var shrinkTask: Task<Void, Never>?
+    private var tracking: AnyCancellable?
+
+    /// The panel's current frame, for the debug tour.
+    var frame: NSRect? { panel?.isVisible == true ? panel?.frame : nil }
+    var windowNumber: Int? { panel?.windowNumber }
+
+    func start() {
+        guard tracking == nil else { return }
+        let banners = BannerCenter.shared
+        // Make the panel the moment something is showing, so its content
+        // can measure itself and report the size.
+        tracking = banners.objectWillChange.sink { [weak self] in
+            DispatchQueue.main.async { self?.ensurePanel() }
+        }
+    }
+
+    /// The screen the person is working on: the one under the pointer.
+    private static func workingScreen() -> NSScreen? {
+        let point = NSEvent.mouseLocation
+        return NSScreen.screens.first { NSMouseInRect(point, $0.frame, false) } ?? NSScreen.main ?? NSScreen.screens.first
+    }
+
+    private func ensurePanel() {
+        let banners = BannerCenter.shared
+        guard banners.isShowing else {
+            scheduleHide()
+            return
+        }
+        shrinkTask?.cancel()
+        shrinkTask = nil
+        if panel == nil {
+            screen = Self.workingScreen()
+            panel = makePanel()
+        }
+        panel?.ignoresMouseEvents = !banners.isInteractive
+        place()
+        panel?.orderFrontRegardless()
+    }
+
+    private func makePanel() -> MessagePanel {
+        let created = MessagePanel(contentRect: NSRect(x: 0, y: 0, width: BannerLayout.cardWidth, height: 80),
+                                   styleMask: [.borderless, .nonactivatingPanel],
+                                   backing: .buffered, defer: false)
+        created.title = "Messages"
+        created.isReleasedWhenClosed = false
+        created.isOpaque = false
+        created.backgroundColor = .clear
+        created.hasShadow = false          // each card draws its own
+        created.hidesOnDeactivate = false
+        // Above normal windows, below modal panels and system alerts.
+        created.level = .floating
+        created.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
+        let host = NSHostingView(rootView: BannerStackView(banners: BannerCenter.shared) { [weak self] size in
+            Task { @MainActor in self?.stackSizeChanged(size) }
+        })
+        created.contentView = host
+        return created
+    }
+
+    private func stackSizeChanged(_ size: CGSize) {
+        // The size includes the shadow padding already.
+        let next = CGSize(width: size.width - BannerLayout.shadowPad * 2,
+                          height: size.height - BannerLayout.shadowPad * 2)
+        if next.height >= stack.height {
+            stack = next
+            place()
+        } else {
+            // Shrinking: let the card that is leaving finish its exit first.
+            shrinkTask?.cancel()
+            shrinkTask = Task { @MainActor [weak self] in
+                try? await Task.sleep(nanoseconds: 350_000_000)
+                guard !Task.isCancelled, let self else { return }
+                self.stack = next
+                self.place()
+            }
+        }
+    }
+
+    private func place() {
+        guard let panel, stack.height > 0 else { return }
+        let visible = (screen ?? Self.workingScreen())?.visibleFrame ?? .zero
+        let target = BannerLayout.panelFrame(stack: stack, in: visible)
+        if panel.frame != target { panel.setFrame(target, display: true) }
+    }
+
+    private func scheduleHide() {
+        guard panel != nil else { return }
+        shrinkTask?.cancel()
+        shrinkTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: 400_000_000)     // after the exit slide
+            guard !Task.isCancelled, let self, !BannerCenter.shared.isShowing else { return }
+            self.panel?.orderOut(nil)
+            self.panel?.close()
+            self.panel = nil
+            self.stack = .zero
+        }
+    }
+}
+
+/// The card surface all three share: Liquid Glass at radius-lg.
 private struct BannerCard<Content: View>: View {
     @ViewBuilder let content: Content
 
     var body: some View {
         content
             .padding(14)
+            .frame(width: BannerLayout.cardWidth, alignment: .leading)
             .greenroomGlass(in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-            .shadow(color: .black.opacity(0.18), radius: 12, y: 4)
+            .shadow(color: .black.opacity(0.18), radius: 10, y: 3)
     }
 }
 
@@ -186,7 +305,7 @@ private struct ToastBanner: View {
                     }
                 }
             }
-            .frame(maxWidth: 340, alignment: .leading)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
         .accessibilityElement(children: .combine)
     }
@@ -200,7 +319,8 @@ private struct PromptBanner: View {
             HStack(alignment: .top, spacing: 14) {
                 Image(systemName: "play.rectangle.fill")
                     .font(.system(size: 22))
-                    .foregroundStyle(Brand.green)
+                    // The upload leaves this Mac: amber, not green (DESIGN.md).
+                    .foregroundStyle(Brand.net)
                 VStack(alignment: .leading, spacing: 6) {
                     Text(item.title)
                         .font(.system(size: 14, weight: .semibold))
@@ -215,16 +335,17 @@ private struct PromptBanner: View {
                         Button("Not now") { UploadPromptCard.notNow() }
                         Button(item.uploadTitle) { UploadPromptCard.upload() }
                             .buttonStyle(.borderedProminent)
+                            .tint(Brand.net)
                     }
                     .padding(.top, 6)
                 }
             }
-            .frame(maxWidth: 440, alignment: .leading)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 }
 
-/// The start's steps, in the window. The same card as the floating one:
+/// The start's steps:
 /// a bar, the named steps, the newest status line, and on a failure the
 /// reason with its way out.
 private struct ReadinessBanner: View {
@@ -275,7 +396,7 @@ private struct ReadinessBanner: View {
                         .lineLimit(2)
                 }
             }
-            .frame(width: 320 - 28, alignment: .leading)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 

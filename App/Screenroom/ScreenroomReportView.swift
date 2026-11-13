@@ -67,11 +67,11 @@ struct ScreenroomReportView: View {
     /// ImageRenderer draws nothing inside a ScrollView, so a PDF of the
     /// scrolling view is the background and nothing else: blank white pages.
     /// Paged, the column is drawn at its full height with no scroller, and
-    /// the Export button, which means nothing on paper, is left off.
+    /// and the toolbar (Back, Export), which means nothing on paper, is never attached.
     private let paged: Bool
 
-    /// Set when the report is a page of the main window: a Back bar above
-    /// it, and no size of its own, because the window governs that.
+    /// Set when the report is a page of the main window: a Back button in the toolbar,
+    /// and no size of its own, because the window governs that.
     private let onBack: (() -> Void)?
 
     init(paged: Bool = false, onBack: (() -> Void)? = nil) {
@@ -84,21 +84,24 @@ struct ScreenroomReportView: View {
             page
                 .tint(Brand.green)
         } else if let onBack {
-            VStack(spacing: 0) {
-                HStack {
-                    BackButton(action: onBack)
-                    Spacer(minLength: 0)
-                }
-                .padding(.horizontal, 32)
-                .padding(.vertical, 12)
-                Divider()
-                ScrollView { page }
-            }
-            .tint(Brand.green)
+            // Back and Export live in the window toolbar; nothing of them is
+            // drawn in the page, and the paged path above never sees them.
+            ScrollView { page }
+                .tint(Brand.green)
+                .pageToolbar(back: PageBack(label: "Session", action: onBack), subtitle: "Report")
+                .toolbar { exportItem }
         } else {
             ScrollView { page }
                 .frame(minWidth: 720, minHeight: 600)
                 .tint(Brand.green)
+                .toolbar { exportItem }
+        }
+    }
+
+    @ToolbarContentBuilder
+    private var exportItem: some ToolbarContent {
+        ToolbarItem(placement: .primaryAction) {
+            ScreenroomExportMenu(review: review)
         }
     }
 
@@ -167,7 +170,6 @@ struct ScreenroomReportView: View {
                 .foregroundStyle(.secondary)
             }
             Spacer(minLength: 24)
-            if !paged { ScreenroomExportMenu(review: review) }
         }
     }
 

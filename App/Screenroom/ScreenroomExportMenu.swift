@@ -10,7 +10,7 @@ import AppKit
 import SwiftUI
 import UniformTypeIdentifiers
 
-/// The one control that gets everything out.
+/// The one control that gets everything out. Lives in the window toolbar.
 struct ScreenroomExportMenu: View {
     @ObservedObject var review: ScreenroomReviewController
     @State private var working = false
@@ -43,10 +43,7 @@ struct ScreenroomExportMenu: View {
                 Label("Export", systemImage: "square.and.arrow.up")
             }
         }
-        .menuStyle(.button)
-        .buttonStyle(.borderedProminent)
-        .controlSize(.large)
-        .fixedSize()
+        .help("Export")
         .disabled(review.selected == nil || working)
     }
 

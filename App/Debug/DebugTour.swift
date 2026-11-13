@@ -95,6 +95,11 @@ enum DebugTour {
                 case "shot": extra = try await shot(info, dir: dir)
                 case "sessionWindowSize": try resize(info)
                 case "restore": await restore()
+                case "homeMode":
+                    guard let c = CoordinatorController.shared,
+                          let m = MeetingMode.allCases.first(where: { "\($0)" == info["mode"] })
+                    else { throw TourError("bad mode") }
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) { c.meetingMode = m }
                 case "tree": tree(dir: dir)
                 default: throw TourError("unknown cmd \(cmd)")
                 }

@@ -157,12 +157,17 @@ final class BannerPanelController {
     private final class MessagePanel: NSPanel {
         override var canBecomeKey: Bool { false }
         override var canBecomeMain: Bool { false }
+        // AppKit pushes a window's top edge below the menu bar. The panel's top
+        // edge is its shadow room, 2pt above the card's inset, so keep our frame.
+        override func constrainFrameRect(_ frameRect: NSRect, to screen: NSScreen?) -> NSRect { frameRect }
     }
 
     private var panel: MessagePanel?
+    private var host: NSHostingView<BannerStackView>?
     private var screen: NSScreen?
     private var stack: CGSize = .zero
     private var shrinkTask: Task<Void, Never>?
+    private var refitTask: Task<Void, Never>?
     private var tracking: AnyCancellable?
 
     /// The panel's current frame, for the debug tour.
@@ -177,6 +182,9 @@ final class BannerPanelController {
         tracking = banners.objectWillChange.sink { [weak self] in
             DispatchQueue.main.async { self?.ensurePanel() }
         }
+        // BannerCenter is created lazily by the first message, so that
+        // message's change fired before this sink existed: catch up now.
+        ensurePanel()
     }
 
     /// The screen the person is working on: the one under the pointer.
@@ -198,8 +206,24 @@ final class BannerPanelController {
             panel = makePanel()
         }
         panel?.ignoresMouseEvents = !banners.isInteractive
-        place()
+        refit()
         panel?.orderFrontRegardless()
+        // SwiftUI finishes laying a new card out a beat later: measure again.
+        refitTask?.cancel()
+        refitTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: 120_000_000)
+            guard !Task.isCancelled else { return }
+            self?.refit()
+        }
+    }
+
+    /// Measure the stack straight from the hosting view and place the panel. The
+    /// preference callback alone is not enough: in a panel that has just been made
+    /// it can report only the first, empty size and then stay silent.
+    private func refit() {
+        guard let host else { return }
+        host.layoutSubtreeIfNeeded()
+        stackSizeChanged(host.fittingSize)
     }
 
     private func makePanel() -> MessagePanel {
@@ -218,11 +242,17 @@ final class BannerPanelController {
         let host = NSHostingView(rootView: BannerStackView(banners: BannerCenter.shared) { [weak self] size in
             Task { @MainActor in self?.stackSizeChanged(size) }
         })
+        // Intrinsic size only, so fittingSize measures the stack; the window's
+        // own size is ours, set by place() from that measurement.
+        host.sizingOptions = [.intrinsicContentSize]
         created.contentView = host
+        self.host = host
         return created
     }
 
     private func stackSizeChanged(_ size: CGSize) {
+        // Zero is the hosting view's first, not yet laid out report.
+        guard size.width > BannerLayout.shadowPad * 2, size.height > BannerLayout.shadowPad * 2 else { return }
         // The size includes the shadow padding already.
         let next = CGSize(width: size.width - BannerLayout.shadowPad * 2,
                           height: size.height - BannerLayout.shadowPad * 2)
@@ -257,6 +287,7 @@ final class BannerPanelController {
             self.panel?.orderOut(nil)
             self.panel?.close()
             self.panel = nil
+            self.host = nil
             self.stack = .zero
         }
     }

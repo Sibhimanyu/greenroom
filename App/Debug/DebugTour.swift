@@ -296,10 +296,14 @@ enum DebugTour {
             let placement: [String: Any]? = await MainActor.run {
                 guard let ns = NSApp.windows.first(where: { $0.windowNumber == Int(wid) }),
                       let screen = ns.screen else { return nil }
-                let f = ns.frame, sf = screen.frame, vf = screen.visibleFrame
+                let sf = screen.frame, vf = screen.visibleFrame
+                // The message panel's frame includes its shadow room: measure the cards.
+                let pad = ns.title == "Messages" ? BannerLayout.shadowPad : 0
+                let f = ns.frame
+                let card = f.insetBy(dx: pad, dy: pad)
                 return ["screenRelative": [f.minX - sf.minX, sf.maxY - f.maxY, f.width, f.height],
-                        "gapBelowMenuBar": vf.maxY - f.maxY,
-                        "gapFromRightEdge": vf.maxX - f.maxX,
+                        "gapBelowMenuBar": vf.maxY - card.maxY,
+                        "gapFromRightEdge": vf.maxX - card.maxX,
                         "screenSize": [sf.width, sf.height]]
             }
             if let placement { entry.merge(placement) { $1 } }

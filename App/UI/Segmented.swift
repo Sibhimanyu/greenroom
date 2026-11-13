@@ -94,6 +94,10 @@ struct GreenroomSegmented<Value: Hashable, Label: View>: View {
         }
         .padding(2)
         .background(Capsule().fill(.quinary))
+        // Lay out by the selection pill's edges, not the track's: the faint
+        // track spills 2pt past them, so the green pill lines up with the
+        // leading edge of the text and fields around it.
+        .padding(-2)
     }
 
     private func segment(_ option: Value) -> some View {

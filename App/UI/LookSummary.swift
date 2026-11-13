@@ -55,6 +55,7 @@ extension LookSummary {
         case .display: return "Whole screen"
         case .app: return share.appBundleID.isEmpty ? "One app" : "\(share.displayName) app"
         case .window: return share.appBundleID.isEmpty ? "One window" : "\(share.displayName) window"
+        case .whiteboard: return "Whiteboard"
         case .nothing: return "Nothing behind you"
         }
     }

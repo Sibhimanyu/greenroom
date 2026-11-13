@@ -613,6 +613,7 @@ final class CoordinatorController: ObservableObject {
                     cutoutHeightFraction: cutoutHeightFraction,
                     cutoutRightInset: cutoutRightInset,
                     shape: webcamShape,
+                    // The whiteboard is content too (a page behind the camera).
                     showsContent: shareTarget.kind != .nothing,
                     showsCamera: !cameraIsOff)
     }
@@ -1176,6 +1177,7 @@ final class CoordinatorController: ObservableObject {
             .store(in: &cancellables)
 
         cameraDirector.log = { [weak self] line in self?.log(line) }
+        wireDrawing()
     }
 
     private var cancellables = Set<AnyCancellable>()
@@ -1243,6 +1245,7 @@ final class CoordinatorController: ObservableObject {
         if let stage { return stage }
         guard let made = StageCompositor() else { return nil }
         stage = made
+        pushWhiteboardPage(to: made)
         stageObservers.removeAll()
         made.status.$personInView.removeDuplicates()
             .sink { [weak self] in self?.cameraSeesYou = $0 }
@@ -1265,6 +1268,7 @@ final class CoordinatorController: ObservableObject {
     private func stopStage() {
         permissionWatcher?.cancel()
         permissionWatcher = nil
+        endDrawingTools()
         guard let stage else { return }
         if previewAttached { stage.removeSink(previewSink); previewAttached = false }
         stage.stop()
@@ -1758,6 +1762,18 @@ final class CoordinatorController: ObservableObject {
     private var countdownToken: UUID?
     /// Draws the countdown, the control bar and the border (RecordingChrome.swift).
     private let recordingChrome = RecordingChrome()
+    /// Drawing on the screen and the whiteboard (phase 5, drawing-port-log.md).
+    let drawing = ScreenAnnotationController()
+    let whiteboardModel = CameraWhiteboardModel()
+    private let whiteboardWindow = WhiteboardWindowController()
+    /// The drawing tools are up (on the screen, or the whiteboard window).
+    @Published private(set) var isDrawing = false
+    /// What was shared before the whiteboard took over, to go back to.
+    private var shareBeforeWhiteboard: ShareTarget?
+    /// The screen canvas was put away for the whiteboard and comes back after it.
+    private var drawingSuspended = false
+    private var lastShareKind: ShareTarget.Kind?
+    private var whiteboardPushPending = false
     /// A recording has been stopped and its file is still being closed. The
     /// Record control reads "Saving\u{2026}" and is disabled, and nothing may
     /// start a new recording until it is done.
@@ -1866,6 +1882,147 @@ final class CoordinatorController: ObservableObject {
             else { return false }
             return CGDisplayBounds(id).contains(centre)
         }
+    }
+
+    // MARK: Drawing and the whiteboard (phase 5)
+
+    /// Drawing needs a picture to draw on: a session or the Record view is up
+    /// and something is shared (a screen, or the whiteboard).
+    var canDraw: Bool {
+        stage != nil && (sceneInUse || isRunning) && shareTarget.kind != .nothing
+    }
+
+    private func wireDrawing() {
+        drawing.onClose = { [weak self] in self?.stopDrawing() }
+        drawing.onWhiteboard = { [weak self] in self?.toggleWhiteboard() }
+        drawing.onOverlay = { [weak self] overlay in self?.stage?.setMarksOverlay(overlay) }
+        drawing.capturedFrame = { [weak self] in self?.capturedScreenFrame() }
+        // The page is drawn again for the Stage whenever a stroke changes.
+        whiteboardModel.objectWillChange
+            .sink { [weak self] _ in
+                DispatchQueue.main.async { self?.scheduleWhiteboardPush() }
+            }
+            .store(in: &cancellables)
+        // What is shared decides which tools make sense.
+        $shareTarget
+            .map(\.kind)
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] kind in self?.shareKindChanged(to: kind) }
+            .store(in: &cancellables)
+        whiteboardWindow.onClosed = { [weak self] in
+            guard let self, self.shareTarget.kind == .whiteboard else { return }
+            self.isDrawing = false
+        }
+    }
+
+    /// The Draw button, the pill's Draw, and the Draw shortcut.
+    func toggleDrawing() {
+        if isDrawing { stopDrawing(); return }
+        guard canDraw else {
+            log("Drawing needs something shared. Pick a screen, app, window or the whiteboard under Behind you, then start the class or the Record view.")
+            ToastController.show("Share a screen first, then draw", kind: .failure)
+            return
+        }
+        startDrawing()
+    }
+
+    private func startDrawing() {
+        switch shareTarget.kind {
+        case .whiteboard:
+            showWhiteboardWindow()
+        case .display, .app, .window:
+            guard let screen = recordedScreen ?? NSScreen.main ?? NSScreen.screens.first else { return }
+            drawing.begin(on: screen, followsWindow: stage?.followsWindow() ?? false)
+            isDrawing = true
+        case .nothing:
+            break
+        }
+    }
+
+    /// Done: the screen canvas goes and its marks are cleared; the whiteboard
+    /// window closes (its page stays as drawn while it is the share).
+    func stopDrawing() {
+        if drawing.isActive || drawingSuspended { drawing.end() }
+        drawingSuspended = false
+        whiteboardWindow.hide()
+        isDrawing = false
+    }
+
+    /// The session or the picture ended: nothing can be drawn on any more.
+    private func endDrawingTools() {
+        stopDrawing()
+        // The whiteboard was only borrowed with W: give back what was shared.
+        if let before = shareBeforeWhiteboard, shareTarget.kind == .whiteboard { shareTarget = before }
+        shareBeforeWhiteboard = nil
+    }
+
+    /// W from the drawing tools, or the whiteboard's "Back to screen":
+    /// switches what is shared to the whiteboard page, and back.
+    func toggleWhiteboard() {
+        if shareTarget.kind == .whiteboard {
+            shareTarget = shareBeforeWhiteboard ?? ShareTarget()
+            shareBeforeWhiteboard = nil
+        } else {
+            shareBeforeWhiteboard = shareTarget
+            shareTarget.kind = .whiteboard
+        }
+        requestShapeApply(rebuild: true)
+    }
+
+    private func shareKindChanged(to kind: ShareTarget.Kind) {
+        defer { lastShareKind = kind }
+        guard lastShareKind != nil, lastShareKind != kind else { return }
+        if kind != .whiteboard { shareBeforeWhiteboard = lastShareKind == .whiteboard ? nil : shareBeforeWhiteboard }
+        switch kind {
+        case .whiteboard:
+            pushWhiteboardPage()
+            guard canDraw else { return }
+            // The screen canvas steps aside (its marks are kept) and the page opens.
+            if drawing.isActive { drawingSuspended = true; drawing.suspend() }
+            showWhiteboardWindow()
+        case .display, .app, .window:
+            let wasWhiteboard = whiteboardWindow.isVisible
+            whiteboardWindow.hide()
+            if drawingSuspended || drawing.isActive {
+                drawingSuspended = false
+                // A different screen or window may now be what is captured:
+                // begin again on it. Marks stay.
+                if let screen = recordedScreen ?? NSScreen.main {
+                    drawing.begin(on: screen, followsWindow: stage?.followsWindow() ?? false)
+                    isDrawing = true
+                }
+            } else if wasWhiteboard {
+                isDrawing = false
+            }
+        case .nothing:
+            stopDrawing()
+        }
+    }
+
+    private func showWhiteboardWindow() {
+        whiteboardWindow.show(board: whiteboardModel) { [weak self] in self?.toggleWhiteboard() }
+        isDrawing = true
+    }
+
+    /// Renders the page for the Stage, at most ~30 times a second.
+    private func scheduleWhiteboardPush() {
+        guard shareTarget.kind == .whiteboard, !whiteboardPushPending else { return }
+        whiteboardPushPending = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0 / 30) { [weak self] in
+            guard let self else { return }
+            self.whiteboardPushPending = false
+            self.pushWhiteboardPage()
+        }
+    }
+
+    private func pushWhiteboardPage() {
+        guard let stage else { return }
+        pushWhiteboardPage(to: stage)
+    }
+
+    private func pushWhiteboardPage(to stage: StageCompositor) {
+        guard shareTarget.kind == .whiteboard else { return }
+        stage.setWhiteboardPage(whiteboardModel.renderPage(width: Int(stage.outputSize.width)))
     }
 
     /// Marks the last `minutes` of the recording, ending now.
@@ -2474,7 +2631,7 @@ final class CoordinatorController: ObservableObject {
     func requestShapeApply(rebuild: Bool = false) {
         // Choosing a screen-based tile is asking for the screen: if macOS has
         // not allowed it, say where, once.
-        if rebuild, shareTarget.kind != .nothing, !StageCompositor.screenRecordingGranted {
+        if rebuild, shareTarget.kind.capturesScreen, !StageCompositor.screenRecordingGranted {
             StageScreenSource.openPermissionPaneOnce()
         }
         shapePreviewApply?.cancel()
@@ -4185,7 +4342,7 @@ final class CoordinatorController: ObservableObject {
         // see bringInExtraCameras.
         stageCameraUIDs = sceneCameraUIDs(limit: 1)
         let configuration = makeStageConfiguration()
-        let wantsScreen = configuration.share.kind != .nothing
+        let wantsScreen = configuration.share.kind.capturesScreen
 
         if wantsScreen, !StageCompositor.screenRecordingGranted {
             log("Greenroom needs Screen Recording permission to share your screen, and it isn\u{2019}t on yet. macOS is asking now (or open System Settings \u{2192} Privacy & Security \u{2192} Screen Recording and turn Greenroom on, then quit and reopen Greenroom). Until then the class sees your camera only.")
@@ -4239,7 +4396,7 @@ final class CoordinatorController: ObservableObject {
     /// and positions come from where the stage drew the screen.
     private func wireInputEvents(_ recorder: SessionRecorder, stage: StageCompositor) {
         recorder.onRecordingStarted = { [weak self, weak recorder, weak stage] in
-            guard let self, let recorder, let stage, self.shareTarget.kind != .nothing else { return }
+            guard let self, let recorder, let stage, self.shareTarget.kind.capturesScreen else { return }
             self.inputEvents.start(
                 // Seconds into the file on the paused-adjusted clock; nil
                 // while paused, so nothing done during a pause is logged.
@@ -4266,6 +4423,9 @@ final class CoordinatorController: ObservableObject {
         }
         if shareTarget.kind == .nothing {
             log("Nothing shared, as set in Settings \u{2192} Webcam \u{2014} your camera fills the picture.")
+        }
+        if shareTarget.kind == .whiteboard {
+            log("Sharing the whiteboard \u{2014} what you draw on the page is the picture.")
         }
         if let reason = status.shareFallback {
             log("\(reason) \u{2014} sharing the whole screen instead. Open it and press Start again, or change what you share in Settings (\u{2318},) \u{2192} Layout.")

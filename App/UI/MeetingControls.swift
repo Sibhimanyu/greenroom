@@ -756,6 +756,7 @@ private struct MeetingControlBarView: View {
 
             divider
             recordButton
+            drawButton
             divider
 
             iconButton("bubble.left.fill", tint: .primary,
@@ -849,6 +850,17 @@ private struct MeetingControlBarView: View {
         .help(help)
         .accessibilityLabel(label)
         .accessibilityAddTraits(on ? .isSelected : [])
+    }
+
+    /// Draw on the screen you share (phase 5): lit while the tools are up.
+    private var drawButton: some View {
+        toggleButton("pencil.tip", on: coordinator.isDrawing,
+                     label: coordinator.isDrawing ? "Close drawing tools" : "Draw on the screen",
+                     help: coordinator.isDrawing ? "Close the drawing tools"
+                                                 : "Draw on the screen you share (marks show to the class and in the recording)") {
+            coordinator.toggleDrawing()
+        }
+        .disabled(!coordinator.canDraw && !coordinator.isDrawing)
     }
 
     /// Idle: one Record button. Recording: REC and its timer, pause or
@@ -948,7 +960,8 @@ enum MeetingControlBarController {
     /// The pill without its meeting-window button: the 32pt buttons, the record
     /// and clock cells, End, and the grip and collapse button at the leading end.
     /// The record cell is 136pt: Record, or REC with its timer, pause and stop.
-    static let width: CGFloat = 548
+    /// Plus the Draw button (32pt and its gap) since phase 5.
+    static let width: CGFloat = 584
     /// One more 32pt button (and its gap) when the meeting window is offered.
     static func width(videoButtons: Bool) -> CGFloat { videoButtons ? width + 36 : width }
     static let height: CGFloat = 44

@@ -111,6 +111,8 @@ final class ShortcutRuntime {
             case .togglePause:
                 guard c.isRecording, !c.isSavingRecording else { return }
                 c.togglePauseRecording()
+            case .toggleDrawing:
+                c.toggleDrawing()
             case .clip1: c.markClip(minutes: 1)
             case .clip2: c.markClip(minutes: 2)
             case .clip5: c.markClip(minutes: 5)

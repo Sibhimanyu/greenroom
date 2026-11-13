@@ -599,6 +599,7 @@ struct ShareKindPicker: View {
         case .display: return "Screen"
         case .app: return "App"
         case .window: return "Window"
+        case .whiteboard: return "Whiteboard"
         case .nothing: return "Nothing"
         }
     }
@@ -608,6 +609,7 @@ struct ShareKindPicker: View {
         case .display: return "display"
         case .app: return "square.grid.2x2"
         case .window: return "macwindow"
+        case .whiteboard: return "rectangle.and.pencil.and.ellipsis"
         case .nothing: return "person.crop.rectangle"
         }
     }
@@ -617,6 +619,7 @@ struct ShareKindPicker: View {
         case .display: return "Everything on one screen"
         case .app: return "Only one app\u{2019}s windows"
         case .window: return "Just one window, on a dark backdrop"
+        case .whiteboard: return "A white page you draw on, with you in front of it"
         case .nothing: return "Just you: the camera fills the frame"
         }
     }

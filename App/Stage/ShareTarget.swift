@@ -20,6 +20,11 @@ import Foundation
 struct ShareTarget: Codable, Equatable {
     enum Kind: String, Codable, CaseIterable, Identifiable {
         case display, app, window
+        /// A white 16:9 page the user draws on (Whiteboard, phase 5 of the
+        /// Recorditor port). It is the "screen" of the picture, so the camera
+        /// composites over it with the user's own shape and position, but
+        /// nothing is captured from the Mac.
+        case whiteboard
         /// No shared content: the camera fills the frame on the backdrop.
         /// For a talking-head recording, or a meeting where the screen is
         /// shared some other way. The compositor lets the screen go and
@@ -32,7 +37,17 @@ struct ShareTarget: Codable, Equatable {
             case .display: return "Whole screen"
             case .app: return "One app"
             case .window: return "One window"
+            case .whiteboard: return "Whiteboard"
             case .nothing: return "Nothing"
+            }
+        }
+
+        /// A picture comes from ScreenCaptureKit (a display, an app or a
+        /// window). The whiteboard has content but captures nothing.
+        var capturesScreen: Bool {
+            switch self {
+            case .display, .app, .window: return true
+            case .whiteboard, .nothing: return false
             }
         }
 
@@ -71,7 +86,7 @@ struct ShareTarget: Codable, Equatable {
         switch kind {
         // Nothing is shared, so nothing is captured from this. A display is
         // returned so a caller that does capture from it gets a valid source.
-        case .display, .nothing:
+        case .display, .nothing, .whiteboard:
             return Resolved(kind: .display, windowID: nil, label: nil, fallback: nil)
 
         case .app:

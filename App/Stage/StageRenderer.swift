@@ -42,6 +42,7 @@ final class StageRenderer {
     let context: CIContext
     private let sRGB = CGColorSpace(name: CGColorSpace.sRGB)!
     private var masks: [String: CIImage] = [:]
+    private lazy var audioOnlyCard: CIImage? = AudioOnlyCard.image(size: canvas)
     private lazy var chromaKey: CIFilter? = Self.makeChromaKeyCube()
 
     /// Where the shared screen was drawn in the last composed frame, in canvas
@@ -87,7 +88,7 @@ final class StageRenderer {
             .cropped(to: CGRect(origin: .zero, size: canvas))
     }
 
-    func compose(scene: StageScene, screen: CIImage?, cameras: [Int: StageCameraInput]) -> CIImage {
+    func compose(scene: StageScene, screen: CIImage?, marks: CIImage? = nil, cameras: [Int: StageCameraInput]) -> CIImage {
         let layout = scene.layout
         var out = backdrop                                   // layer 0 (enforceLayerOrder :952)
         setContentRect(nil)
@@ -109,6 +110,10 @@ final class StageRenderer {
             let placed = place(screen, inside: box)
             setContentRect(placed.rect)
             var contentImage = placed.image
+            // Marks drawn on the screen (phase 5): the overlay has the screen's
+            // own shape, so it is fitted to exactly the rect the screen took.
+            // Before the panel mask, so a rounded panel cuts them too.
+            if let marks { contentImage = stretch(marks, to: placed.rect).composited(over: contentImage) }
             if presenter {
                 // Panel mask: radius 2.5% of the drawn width (2.5% of the drawn width).
                 let rect = placed.rect
@@ -120,6 +125,7 @@ final class StageRenderer {
             out = contentImage.composited(over: out)
         }
 
+        var drewCamera = false
         // Cameras: non-live first, live last, on top (enforceLayerOrder :962).
         if layout.showsCamera {
             var order: [(slot: Int, opacity: Double)] = []
@@ -138,7 +144,14 @@ final class StageRenderer {
                       var layer = cameraLayer(pixels, layout: layout) else { continue }
                 if entry.opacity < 0.999 { layer = layer.withOpacity(max(0, entry.opacity)) }
                 out = layer.composited(over: out)
+                drewCamera = true
             }
+        }
+        // Nothing to show: no content is on and no camera has a picture (none
+        // plugged in, or not delivering yet). The recording still needs a
+        // picture, so it is a clean card instead of an empty backdrop.
+        if !layout.showsContent, !drewCamera, let card = audioOnlyCard {
+            out = card.composited(over: out)
         }
         return out.cropped(to: CGRect(origin: .zero, size: canvas))
     }

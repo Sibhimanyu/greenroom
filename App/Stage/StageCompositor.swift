@@ -47,16 +47,21 @@ final class StageStatus: ObservableObject {
 
 /// Latest picture from each input, behind one lock.
 final class StageInputBoard {
-    struct Screen { var buffer: CVPixelBuffer; var wholeDisplay: Bool }
+    struct Screen { var image: CIImage; var wholeDisplay: Bool }
     struct Snapshot {
         var screen: Screen?
         var slotUIDs: [String]
         var cameras: [String: CutoutPublisher.Frame]
         var cameraAge: [String: TimeInterval]
+        var whiteboardMode = false
     }
 
     private let lock = NSLock()
     private var screen: Screen?
+    /// The whiteboard page (phase 5). While `whiteboardMode` is on it IS the
+    /// screen: the snapshot hands it out in place of a captured one.
+    private var whiteboardMode = false
+    private var whiteboardPage: CIImage?
     private var activeScreen: UUID?
     private var pendingScreen: UUID?
     private var slotUIDs: [String] = []
@@ -66,8 +71,9 @@ final class StageInputBoard {
     func snapshot() -> Snapshot {
         lock.lock(); defer { lock.unlock() }
         let now = ProcessInfo.processInfo.systemUptime
-        return Snapshot(screen: screen, slotUIDs: slotUIDs, cameras: cameras,
-                        cameraAge: cameraTime.mapValues { now - $0 })
+        let shown = whiteboardMode ? whiteboardPage.map { Screen(image: $0, wholeDisplay: true) } : screen
+        return Snapshot(screen: shown, slotUIDs: slotUIDs, cameras: cameras,
+                        cameraAge: cameraTime.mapValues { now - $0 }, whiteboardMode: whiteboardMode)
     }
 
     func setSlots(_ uids: [String]) {
@@ -88,6 +94,9 @@ final class StageInputBoard {
         return cameras[slotUIDs[slot]]?.raw
     }
 
+    func setWhiteboard(mode: Bool) { lock.lock(); whiteboardMode = mode; lock.unlock() }
+    func setWhiteboardPage(_ page: CIImage?) { lock.lock(); whiteboardPage = page; lock.unlock() }
+
     func expectScreen(_ id: UUID) { lock.lock(); pendingScreen = id; lock.unlock() }
     func dropPending(_ id: UUID) { lock.lock(); if pendingScreen == id { pendingScreen = nil }; lock.unlock() }
     func clearScreen() { lock.lock(); screen = nil; activeScreen = nil; pendingScreen = nil; lock.unlock() }
@@ -97,10 +106,10 @@ final class StageInputBoard {
 
     func offerScreen(_ buffer: CVPixelBuffer, wholeDisplay: Bool, from id: UUID) -> Bool {
         lock.lock(); defer { lock.unlock() }
-        if id == activeScreen { screen = Screen(buffer: buffer, wholeDisplay: wholeDisplay); return false }
+        if id == activeScreen { screen = Screen(image: CIImage(cvPixelBuffer: buffer), wholeDisplay: wholeDisplay); return false }
         if id == pendingScreen {
             activeScreen = id; pendingScreen = nil
-            screen = Screen(buffer: buffer, wholeDisplay: wholeDisplay)
+            screen = Screen(image: CIImage(cvPixelBuffer: buffer), wholeDisplay: wholeDisplay)
             return true
         }
         return false
@@ -164,6 +173,21 @@ final class StageCompositor: StageFrameSource {
         set { systemAudioHandler.withLock { $0 = newValue } }
     }
 
+    // MARK: Drawing and the whiteboard (phase 5)
+
+    /// The marks drawn on the screen, as a picture the shape of the screen
+    /// (`AnnotationMarksRenderer`); nil for none. The renderer fits it over
+    /// the screen content, so marks show in the meeting and the recording.
+    private let marksOverlay = LockedBox<CIImage?>(nil)
+    func setMarksOverlay(_ overlay: StageMarksOverlay?) {
+        let image = overlay.map { CIImage(cgImage: $0.image) }
+        marksOverlay.withLock { $0 = image }
+    }
+
+    /// The whiteboard page, drawn by the whiteboard window. Used as the
+    /// screen while the share is `.whiteboard`.
+    func setWhiteboardPage(_ page: CGImage?) { board.setWhiteboardPage(page.map { CIImage(cgImage: $0) }) }
+
     // MARK: Where the screen is in the picture
 
     /// What the live capture shows, right now, in global CoreGraphics points
@@ -174,6 +198,14 @@ final class StageCompositor: StageFrameSource {
         let source = board.activeScreenID.flatMap { screenSources[$0] }
         lock.unlock()
         return source?.capturedFrame()
+    }
+
+    /// The live capture follows one window, so drawing is confined to it.
+    func followsWindow() -> Bool {
+        lock.lock()
+        let source = board.activeScreenID.flatMap { screenSources[$0] }
+        lock.unlock()
+        return source?.followsWindow ?? false
     }
 
     /// Maps a point on the real screen to where that spot is in the finished
@@ -297,6 +329,7 @@ final class StageCompositor: StageFrameSource {
         // Cameras wanted: none when "No camera" was chosen.
         let uids = layout.showsCamera ? cfg.cameraUIDs : []
         board.setSlots(uids)
+        board.setWhiteboard(mode: cfg.share.kind == .whiteboard)
 
         renderQueue.async { [self] in
             scene.layout = layout
@@ -342,7 +375,7 @@ final class StageCompositor: StageFrameSource {
         let cfg = lastConfiguration, isRunning = running
         let capture = activeCapture
         lock.unlock()
-        guard isRunning, let cfg, cfg.share.kind != .nothing, Self.screenRecordingGranted else { return }
+        guard isRunning, let cfg, cfg.share.kind.capturesScreen, Self.screenRecordingGranted else { return }
 
         let decision: DisplayPlan.Decision
         if capture.activeUUID == nil {
@@ -422,11 +455,12 @@ final class StageCompositor: StageFrameSource {
     private func syncScreen(_ cfg: StageConfiguration, generation: Int, retries: Int = 0) async {
         func current() -> Bool { isCurrent(generation) }
 
-        guard cfg.share.kind != .nothing else {
-            // Nothing shared: let the screen go entirely, not hidden. (An earlier design
+        guard cfg.share.kind.capturesScreen else {
+            // Nothing shared, or the whiteboard (a page, not a capture): let
+            // the screen go entirely, not hidden. (An earlier design
             // kept the source for the sake of a teardown crash;
             // ScreenCaptureKit has no such problem.)
-            retireScreens(except: nil, because: "Nothing was chosen for Behind you")
+            retireScreens(except: nil, because: cfg.share.kind == .whiteboard ? "The whiteboard was chosen for Behind you" : "Nothing was chosen for Behind you")
             board.clearScreen()
             post { $0.screenLive = false; $0.shareLabel = nil; $0.shareFallback = nil; $0.displayFellBack = false }
             return
@@ -572,7 +606,9 @@ final class StageCompositor: StageFrameSource {
             }
         }
         let image = renderer.compose(scene: scene,
-                                     screen: snap.screen.map { CIImage(cvPixelBuffer: $0.buffer) },
+                                     screen: snap.screen?.image,
+                                     // Marks belong to the real screen; the whiteboard page has its own ink.
+                                     marks: snap.whiteboardMode ? nil : marksOverlay.withLock { $0 },
                                      cameras: cameras)
         guard let buffer = pool.make() else { return }
         renderer.render(image, to: buffer)
@@ -604,13 +640,14 @@ extension StageCompositor {
     struct StillInputs {
         var scene = StageScene()
         var screen: CIImage?
+        var marks: CIImage?
         var cameras: [Int: StageCameraInput] = [:]
         var size = CGSize(width: 1920, height: 1080)
     }
 
     static func renderStill(inputs: StillInputs) -> CGImage? {
         let renderer = StageRenderer(canvas: inputs.size)
-        let image = renderer.compose(scene: inputs.scene, screen: inputs.screen, cameras: inputs.cameras)
+        let image = renderer.compose(scene: inputs.scene, screen: inputs.screen, marks: inputs.marks, cameras: inputs.cameras)
         return renderer.context.createCGImage(image, from: CGRect(origin: .zero, size: inputs.size),
                                               format: .BGRA8, colorSpace: CGColorSpace(name: CGColorSpace.sRGB))
     }

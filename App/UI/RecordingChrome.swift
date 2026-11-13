@@ -166,10 +166,10 @@ private struct CountdownView: View {
 /// background. Look follows DESIGN.md and the meeting pill (material capsule,
 /// red for the recording signal, no amber), not Recorditor's black bar, and
 /// it carries only what the Record view needs: no source pickers (the Record
-/// view has those), no drawing tools (phase 5).
+/// view has those); phase 5 added the Draw button.
 @MainActor
 final class RecordingControlBarController {
-    static let size = CGSize(width: 232, height: 44)
+    static let size = CGSize(width: 272, height: 44)
     private static let frameKey = "recordingControlBar.frame"
 
     private var panel: NSPanel?
@@ -248,6 +248,10 @@ private struct RecordingControlBarView: View {
             }
             .padding(.leading, 6)
             Spacer(minLength: 0)
+            // Draw on the screen being recorded (phase 5).
+            barButton("pencil.tip", help: coordinator.isDrawing ? "Close the drawing tools" : "Draw on the screen",
+                      tint: coordinator.isDrawing ? Brand.green : .primary) { coordinator.toggleDrawing() }
+                .disabled(!coordinator.canDraw && !coordinator.isDrawing)
             barButton(paused ? "play.fill" : "pause.fill",
                       help: paused ? "Resume recording" : "Pause recording",
                       tint: .primary) { coordinator.togglePauseRecording() }

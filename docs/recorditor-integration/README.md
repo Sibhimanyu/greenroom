@@ -10,6 +10,7 @@ log for the phase you are touching.
 | `events-port-log.md` | Phase 2: click/keystroke tracker, coordinate and time mapping, seams |
 | `camera-port-log.md` | Phase 3: camera Blur/Image backgrounds, camera unplug recovery, how it coexists with CameraDirector |
 | `controls-port-log.md` | Phase 4: pause without gaps, countdown, control bar, recording border, system audio mix |
+| `drawing-port-log.md` | Phase 5: drawing on the screen (marks composited into the Stage picture), whiteboard as a share choice, Audio only card |
 | `editor-port-log.md` | Phase 1: every file copied for the editor, every change vs upstream, every seam in Greenroom |
 
 ## Source of truth
@@ -74,7 +75,8 @@ Gap analysis at the start (2026-11-13):
 | 2 Clicks & keystrokes | Built (Debug, zero errors) 2026-11-13; untested by hand. See `events-port-log.md` |
 | 3 Camera backgrounds + recovery | Built (Debug, zero errors) 2026-11-13; untested with a real camera. See `camera-port-log.md` |
 | 4 Pause, countdown, controls, border, system audio | Built (Debug, zero errors, 249 unit tests pass) 2026-11-13; untested by hand. See `controls-port-log.md` |
-| 5–6 | Planned |
+| 5 Drawing, whiteboard, Audio only card | Built (Debug, zero errors, 260 unit tests pass) 2026-11-13; untested by hand. See `drawing-port-log.md` |
+| 6 Presentation follow | Planned |
 
 ## How to continue a phase (for agents)
 

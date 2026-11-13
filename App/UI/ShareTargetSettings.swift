@@ -33,7 +33,7 @@ struct ShareTargetSettings: View {
                 displayPicker(title: "On screen")
             case .window:
                 windowPicker
-            case .nothing:
+            case .nothing, .whiteboard:
                 // No "which one" to pick.
                 EmptyView()
             }

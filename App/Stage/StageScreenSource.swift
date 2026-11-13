@@ -151,6 +151,13 @@ final class StageScreenSource: NSObject, SCStreamOutput, SCStreamDelegate {
     /// The screen area the current picture shows, right now, in global
     /// CoreGraphics points. A window is looked up afresh each call, because
     /// it moves and resizes; nil when it has gone.
+    /// The capture follows one window (a window share, or an app that is on
+    /// another desktop), so its frame moves; false for a whole display.
+    var followsWindow: Bool {
+        stateLock.lock(); defer { stateLock.unlock() }
+        return capturedWindowID != nil
+    }
+
     func capturedFrame() -> CGRect? {
         stateLock.lock()
         let windowID = capturedWindowID, display = capturedDisplayFrame

@@ -308,6 +308,8 @@ targets:
       - path: App/Recording/ScreenAnnotation.swift
       - path: App/Recording/CameraWhiteboard.swift
       - path: App/Stage/AudioOnlyCard.swift
+      - path: App/UI/TileAppearance.swift
+      - path: App/UI/MainWindow.swift
     settings:
       base:
         PRODUCT_NAME: GreenroomTests

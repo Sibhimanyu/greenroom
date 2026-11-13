@@ -326,7 +326,10 @@ The app is the other half of this system. Keep it aligned.
   `.background(Color(nsColor: .windowBackgroundColor))` over a page: an opaque
   fill loses the tint and shows as a flat grey. Forms, lists and scroll views
   keep `.scrollContentBackground(.hidden)` so their default fill stays off.
-  Cards, tiles and grouped-form boxes sit on it in `controlBackgroundColor`.
+  A system sidebar or inspector draws its own material, and that counts as
+  the window's backdrop, not a painted fill. Browse tiles (Sessions) are
+  borderless and sit straight on the backdrop; choice tiles use `.quinary`
+  at rest, and grouped-form boxes keep `controlBackgroundColor`.
   Exceptions: the meeting window's video stage (black behind video), the
   floating pills and banners, which use Glass (next rule), not a hand-picked
   material (control pill, toasts, upload prompt, banners), the notes bar pill and the Cues rail preview (both
@@ -338,10 +341,33 @@ The app is the other half of this system. Keep it aligned.
   regular material with a hairline before that. AppKit panels use
   `GreenroomGlassAppKit.makeBacking` (`NSGlassEffectView` on 26, the HUD
   visual-effect view before) on a non-opaque, clear-background window.
-  Content surfaces (pages, cards, lists, side panels, docked bars) never use
-  glass. Never hand-pick a material (`.regularMaterial`, `NSVisualEffectView`
+  We never apply glass to content (pages, cards, lists, docked bars). System
+  sidebars, inspectors and toolbars draw their own; in-content control bars
+  (the Record view, transport) may use `.greenroomGlassButton(prominent:)`.
+  Never hand-pick a material (`.regularMaterial`, `NSVisualEffectView`
   and friends) for a floating control. Text on glass uses semantic styles
   (`.primary`, `.secondary`), never hardcoded greys, so vibrancy works.
+- **Chrome is the system's:** navigation and window actions live in the window
+  toolbar: Back (⌘[ / Esc), the page title as the subtitle
+  (`.navigationSubtitle`, never `.navigationTitle` until the main window is
+  found by identifier), search (`.searchable`), sort and filter menus, and
+  page actions. Collections with filters use `NavigationSplitView` with a
+  `.sidebar` List, `Section` headers and `.badge` counts; a page's secondary
+  work goes in an `.inspector`. Never hand-draw a back button, search field,
+  sidebar row, segmented tab bar or window toolbar. On macOS 26 the system
+  gives these glass; we add none of our own.
+- **Segmented switchers:** every segmented switcher is `GreenroomSegmented`
+  (`App/UI/Segmented.swift`): the native `Picker` with `.segmented` style and
+  the app's green tint removed, so the system draws the selection. On macOS 26
+  that selection is a Liquid Glass piece that slides between segments; 14 and
+  15 draw the standard raised segment. Never fill the selection with brand
+  green, and never hand-build a segmented control. A row of picture choices is
+  not a segmented control; it follows the tile rule below.
+- **Cards and tiles:** one style (`App/UI/Tiles.swift`,
+  `.greenroomTile(role:radius:)`), and every clickable tile has a hover lift.
+  Browse grids (Sessions) have no lasting selection, only a keyboard focus
+  ring. Choice tiles (Settings, onboarding) rest on `.quinary` and show
+  "chosen" with a 2pt accent ring and a checkmark, never a green wash.
 - **Type:** system font throughout. Mono (`.system(.body, design: .monospaced)`)
   for the same machine-fact content as the site.
 
@@ -472,3 +498,10 @@ Ranked by user-visible impact. None of these block anything today.
 | 2026-11-12 | Greenroom's own meeting window looks like Zoom's meeting window, dark whatever the system. Supersedes the "none of its look" line of 2026-11-11 and the 64pt cell of the entry above, for the meeting window only | The owner wants teachers and students to feel at home the moment the window opens: if it looks like the Zoom they already know, nobody has to learn where Mute, Participants or Share are. So this window now follows Zoom's macOS meeting window: #1A1A1A, tiles #232323 at 8pt radius and 4pt apart, a slim top bar in the title-bar area (green shield for meeting info, View menu with Speaker, Gallery and Fullscreen), a name capsule bottom left on each tile with a red slashed microphone when muted, a 2pt green ring on whoever is speaking, a yellow hand badge top left, the name large and centred when the camera is off, "Name (me)" on your own tile, Speaker view with its strip of small tiles along the TOP, Gallery paged by arrows at the sides, a 64pt toolbar with a hairline (Mute and Start Video with carets at the left, Security, Participants, Chat, React, Share in green, Record, Notes, More in the middle, a red End at the right, a lighter rounded wash on hover), and dark Participants (search, waiting room, initials rows, Invite and Mute All) and Chat (a rounded "Type message here..." input) panels. **The one hard line:** nothing is Zoom's logo, the word "Zoom" as branding inside the window, or Zoom's icon artwork; every glyph is an SF Symbol that reads the same. Every value lives in `MeetingTheme` (App/UI/MeetingTheme.swift), which says why, so no hex is scattered. Zoom's own meeting window is dark in any appearance, so this window forces dark aqua. The app accent stays `Brand.green` everywhere else; the greens here (shield, Share, speaking ring) are Zoom-familiar cues for this window only. Not changed: the reference display's full-display panel, the floating pill, Settings. Side-by-side view is not offered because it is not built. |
 | 2026-11-12 | One click shrinks the meeting window into the floating bar and one click grows it back, as a morph | A teacher who wants the slides back should not have to close the window and wait for the pill to appear. A snapshot of the window travels to where the bar will sit and fades while the bar fades in (and the reverse), 0.35s ease in and out, or a plain crossfade under Reduce Motion. The window is hidden, not closed, so its video elements stay attached and coming back is instant. The bar's show-when-covered rule is suspended while it runs, and a second click turns the morph round from wherever it has got to. The controls: "Minimize to controls" in the top bar, More, the pill's Meeting window button, the puck's "Expand to meeting window", and an unbound shortcut. |
 | 2026-11-13 | Floating surfaces use real macOS 26 Liquid Glass through one shared style; content never does | The owner saw the "Getting ready" banner over the dark main window as a flat grey slab with weak text, and said the HUD "is only good looking when the bg is the wallpaper and it gives the glass look. We have to stick with this macOS glass look throughout the app." Every floating control (banners, toasts, upload prompt, control pill, recording bar and countdown, readiness HUD, the editor's floating panels) now goes through `.greenroomGlass` / `GreenroomGlassAppKit` (`App/UI/Glass.swift`): `glassEffect` on macOS 26, material plus hairline on 14 and 15. Pages, cards, lists, side panels and docked bars stay plain, because glass belongs to the control layer. Banner text moved to semantic `.secondary` so it reads in light and dark. |
+| 2026-11-13 | A session is a page whose work tabs sit in a 300-480pt inspector beside the player. Partly reverses 2026-11-11 "a session is one page rather than grid plus a 400pt inspector" | The one-centred-column page left dead space at both sides and hid the notes below the fold. The page stays a page with its own Back; only the work moves beside the picture, as an `.inspector` that folds away, and the player uses system inline controls. Kept: 2026-09-18 picture and scrubber always on screen, flat tabs, and an empty pane centred with its action. |
+| 2026-11-13 | Browse grids drop the `controlBackgroundColor` card: the thumbnail is the card, with a hover lift. Reverses 2026-11-12 "Cards keep `controlBackgroundColor`" for browse grids only | The owner wanted a clear hover on every clickable card and a quieter selection. Photos and Music grids have no box, so Sessions follows. Choice tiles and grouped-form boxes keep their fills (choice tiles `.quinary`). Browse tiles show no lasting selection (a click opens, so it only read as a default after Back); only a keyboard focus ring. |
+| 2026-11-13 | Sessions uses a system sidebar, search, sort and filter in the toolbar. Replaces the RasanAI-style Sessions sidebar of commit 5d744db (44pt rows, 15pt labels, custom fill; never logged) | The owner said the page felt unrelated to the rest of the UI and that the whole app should align with the macOS glass feel. A hand-drawn column gets no glass on 26; `NavigationSplitView` with a `.sidebar` List does, and the 180pt floor of 2026-09-18 stays. The status filter becomes a toolbar menu, since a single-selection List cannot combine it with Show. |
+| 2026-11-13 | Glass rule amended: we never apply glass to content; system sidebars, inspectors and toolbars draw their own. Changes the "side panels never use glass" line of the entry above | A system inspector or sidebar gets its material from macOS, so allowing it adds no glass of ours, while the rule still bars glass on pages, cards and lists. In-content control bars may use `.greenroomGlassButton(prominent:)`. |
+| 2026-11-13 | Segmented selections are no longer brand green | The scene-root `.tint(Brand.green)` made every segmented control fill its selection green. `GreenroomSegmented` clears the tint on the picker only, so the system draws the selection (a sliding glass piece on 26); Start, links and toggles stay green. A hand-built segmented control is barred. |
+| 2026-11-13 | Amber "leaves this Mac" moves off the buttons onto the glyph, a first-time confirm and the status strip | The Upload tile carried an amber subtitle; toolbar buttons have no room for one, and hover help alone would weaken the rule that anything reaching the network reads amber. The Upload and agent-analysis glyphs are tinted `Brand.net`, the first upload asks once per Mac ("This sends the recording to YouTube. It leaves this Mac."), and the status strip under the player keeps `Brand.netText` ("On YouTube - Unlisted"). |
+| 2026-11-13 | Record what Sessions filters actually are: Everything / Classes / Recordings / Presentations plus a Status group | Out of step with the log: 2026-09-19 says All / Greens / Screens and 2026-09-18 says two lists behind one toggle, but the code ships the four Show options and a Status filter (None / Not uploaded / On YouTube / Analysed). This entry records what ships; the Show options become sidebar rows with counts and Status a toolbar menu. |

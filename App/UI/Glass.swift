@@ -24,6 +24,20 @@ extension View {
     }
 }
 
+extension View {
+    /// A button on an in-content control bar (the Record view, transport):
+    /// glass on macOS 26, the bordered styles before. Not for toolbar items,
+    /// which the system styles itself.
+    @ViewBuilder
+    func greenroomGlassButton(prominent: Bool = false) -> some View {
+        if #available(macOS 26, *) {
+            if prominent { self.buttonStyle(.glassProminent) } else { self.buttonStyle(.glass) }
+        } else {
+            if prominent { self.buttonStyle(.borderedProminent) } else { self.buttonStyle(.bordered) }
+        }
+    }
+}
+
 /// Groups neighbouring glass pieces so they blend and sample together on
 /// macOS 26; a plain pass-through before that.
 struct GreenroomGlassGroup<Content: View>: View {

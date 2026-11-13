@@ -31,9 +31,26 @@ struct RecordStudioView: View {
     @State private var displays: [DisplayInfo] = DisplayResolver.connectedDisplays()
     @State private var screenAllowed = StageCompositor.screenRecordingGranted
 
-    /// The window is this tall while the view is up: the picture, a pane of
-    /// controls that scrolls, and the pinned row of name and Record.
-    static let windowHeight: CGFloat = 780
+    /// The window's content is this tall while the view is up: the picture, a
+    /// pane of controls that scrolls, and the pinned row of name and Record.
+    /// 780 was measured with an in-page title row (a 28pt Done button, the
+    /// largest thing in it, plus the stack's 12pt gap = 40pt). Done and the
+    /// title moved into the window toolbar, so 740. The toolbar itself costs
+    /// nothing here: this is the height BELOW the title bar, and ContentView
+    /// adds the real bar (`frame.height - contentLayoutRect.height`) on top
+    /// when it sizes the window, so a toolbar of any height is covered.
+    static let windowHeight: CGFloat = 740
+
+    /// The window subtitle: "Record", then the folder this take will go into.
+    @MainActor static func subtitle(for coordinator: CoordinatorController) -> String {
+        "Record \u{00B7} " + folder(for: coordinator)
+    }
+
+    @MainActor static func folder(for coordinator: CoordinatorController) -> String {
+        if let live = coordinator.sessionFolder { return live.lastPathComponent }
+        return SessionFolders.sessionFolderName(className: coordinator.className, started: Date(),
+                                                fallback: "Recording")
+    }
 
     var body: some View {
         RecordStudioContent(
@@ -85,9 +102,7 @@ struct RecordStudioView: View {
 
     /// The folder this take will go into, shown as you type, as on Home.
     private var folderPreview: String {
-        if let live = coordinator.sessionFolder { return live.lastPathComponent }
-        return SessionFolders.sessionFolderName(className: coordinator.className, started: Date(),
-                                                fallback: "Recording")
+        Self.folder(for: coordinator)
     }
 
     /// One plain line, only while the screen is wanted and macOS has not
@@ -145,37 +160,22 @@ struct RecordStudioContent<LivePicture: View, ShareDetail: View, Cameras: View, 
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            topBar
             if let notice { noticeLine(notice) }
             stage
             controls
             Divider()
             bottomBar
         }
-    }
-
-    // MARK: Top
-
-    private var topBar: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 12) {
-            Text("Record")
-                .font(.title2.weight(.bold))
-                .foregroundStyle(Brand.name)
-            Text(folderPreview)
-                .font(.system(size: 11, design: .monospaced))
-                .foregroundStyle(.tertiary)
-                .lineLimit(1)
-                .truncationMode(.middle)
-                .help("The folder this recording will be saved in.")
-            Spacer(minLength: 16)
-            Button(action: done) {
-                Label("Done", systemImage: "xmark")
+        .toolbar {
+            ToolbarItem(placement: .cancellationAction) {
+                Button(action: done) {
+                    Label("Done", systemImage: "xmark")
+                }
+                .disabled(busy)
+                .help(isRecording
+                      ? "Asks first, then stops and saves the recording and turns the camera off."
+                      : "Turns the camera off and goes back to Home.")
             }
-            .controlSize(.large)
-            .disabled(busy)
-            .help(isRecording
-                  ? "Asks first, then stops and saves the recording and turns the camera off."
-                  : "Turns the camera off and goes back to Home.")
         }
     }
 
@@ -313,7 +313,7 @@ struct RecordStudioContent<LivePicture: View, ShareDetail: View, Cameras: View, 
                     Image(systemName: paused ? "play.fill" : "pause.fill")
                         .frame(width: 28, height: 28)
                 }
-                .buttonStyle(.bordered)
+                .greenroomGlassButton(prominent: false)
                 .controlSize(.large)
                 .disabled(saving)
                 .help(paused ? "Resume recording" : "Pause recording")
@@ -325,7 +325,7 @@ struct RecordStudioContent<LivePicture: View, ShareDetail: View, Cameras: View, 
                     .font(.title3.weight(.semibold))
                     .frame(minWidth: 120, minHeight: 28)
             }
-            .buttonStyle(.borderedProminent)
+            .greenroomGlassButton(prominent: true)
             .controlSize(.extraLarge)
             .tint(isRecording && !saving ? Color.red : Brand.green)
             .disabled(busy || opening || saving)

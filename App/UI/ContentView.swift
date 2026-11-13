@@ -225,9 +225,11 @@ struct ContentView: View {
         // never changes height during a page change. Subtitle only, never a
         // navigation title: the window is still found by its title.
         .pageToolbar(back: chromeOnPage ? PageBack(label: backLabel, action: { coordinator.goBack() }) : nil,
-                     subtitle: chromeOnPage ? pageSubtitle : "")
+                     subtitle: coordinator.recordStudioShown ? RecordStudioView.subtitle(for: coordinator)
+                                                : chromeOnPage ? pageSubtitle : "")
         .toolbar {
-            if !chromeOnPage {
+            // Record's own toolbar (Done) lives in RecordStudioContent.
+            if !chromeOnPage && !coordinator.recordStudioShown {
                 ToolbarItemGroup(placement: .primaryAction) {
                     Button {
                         coordinator.mainPage = .sessions

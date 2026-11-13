@@ -71,6 +71,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // bindings are Settings -> Shortcuts. ShortcutRuntime registers them
             // and keeps them registered as they change.
             ShortcutRuntime.shared.start()
+            #if DEBUG
+            DebugTour.start()
+            #endif
         }
     }
 

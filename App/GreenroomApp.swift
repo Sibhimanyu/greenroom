@@ -123,6 +123,9 @@ struct GreenroomApp: App {
                 .environmentObject(editor)
                 .tint(Brand.green)
                 .heresay()
+                #if DEBUG
+                .background(DebugTourBridge(editor: editor))
+                #endif
                 // Once per install, and never over onboarding: on a first
                 // run it waits for the onboarding sheet to close.
                 .onAppear { if !coordinator.showOnboarding { Heresay.introduce() } }

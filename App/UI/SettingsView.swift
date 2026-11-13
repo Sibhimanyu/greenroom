@@ -76,6 +76,9 @@ struct SettingsView: View {
         // Settings is the first moment the fields actually need them.
         .onAppear { coordinator.loadSecretsIfNeeded() }
         .onReceive(NotificationCenter.default.publisher(for: .showWebcamSettings)) { _ in tab = "webcam" }
+        #if DEBUG
+        .onReceive(NotificationCenter.default.publisher(for: .debugTourSettingsTab)) { tab = ($0.object as? String) ?? tab }
+        #endif
     }
 }
 

@@ -43,13 +43,7 @@ struct ChatWindowView: View {
     @State private var firstUnreadID: String?
 
     var body: some View {
-        VStack(spacing: 0) {
-            transcript
-            if let error = chat.lastError { errorBar(error) }
-            if let replyingTo { replyBar(replyingTo) }
-            if zoom { Rectangle().fill(MeetingTheme.hairline).frame(height: 1) } else { Divider() }
-            composer
-        }
+        content
         .frame(minWidth: 300, minHeight: 380)
         .background(zoom ? MeetingTheme.window : Color.clear)
         .environment(\.colorScheme, zoom ? .dark : (colorScheme))
@@ -69,6 +63,29 @@ struct ChatWindowView: View {
         .onChange(of: chat.messages.count) { _ in noteArrival() }
         .onChange(of: activeState) { state in
             if state == .key { firstUnreadID = nil }
+        }
+    }
+
+    /// The meeting form is the docked column it always was (2026-11-12). The
+    /// standalone chat floats a glass capsule composer over the transcript.
+    @ViewBuilder private var content: some View {
+        if zoom {
+            VStack(spacing: 0) {
+                transcript
+                if let error = chat.lastError { errorBar(error) }
+                if let replyingTo { replyBar(replyingTo) }
+                Rectangle().fill(MeetingTheme.hairline).frame(height: 1)
+                composer
+            }
+        } else {
+            transcript
+                .safeAreaInset(edge: .bottom, spacing: 0) {
+                    VStack(spacing: 0) {
+                        if let error = chat.lastError { errorBar(error) }
+                        if let replyingTo { replyBar(replyingTo) }
+                        composer
+                    }
+                }
         }
     }
 
@@ -218,7 +235,7 @@ struct ChatWindowView: View {
                          onPasteFiles: share)
                 .padding(.horizontal, 10)
                 .padding(.vertical, 7)
-                .background(.quaternary.opacity(0.5), in: Capsule())
+                .greenroomGlass(in: Capsule(), interactive: true)
 
             Button(action: send) {
                 Image(systemName: "arrow.up.circle.fill").font(.title2)

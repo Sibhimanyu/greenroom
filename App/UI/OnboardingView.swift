@@ -488,15 +488,13 @@ struct OnboardingView: View {
                 let thumbHeight = layoutThumbHeight(for: setupMainSize)
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: layoutCardWidth + 12), spacing: 8, alignment: .top)],
                           alignment: .leading, spacing: 8) {
-                    LayoutCard(title: "None", selected: coordinator.layoutLibrary.activeID == nil, isRenaming: false,
-                               draft: .constant(""), select: { chooseLayout(nil) }, beginRename: nil,
-                               commitRename: {}, cancelRename: {}) {
+                    OnboardingLayoutCard(title: "None", selected: coordinator.layoutLibrary.activeID == nil,
+                                         select: { chooseLayout(nil) }) {
                         LayoutNoneThumbnail(height: thumbHeight)
                     }
                     ForEach(coordinator.layoutLibrary.templates) { template in
-                        LayoutCard(title: template.name, selected: coordinator.layoutLibrary.activeID == template.id,
-                                   isRenaming: false, draft: .constant(""), select: { chooseLayout(template.id) },
-                                   beginRename: nil, commitRename: {}, cancelRename: {}) {
+                        OnboardingLayoutCard(title: template.name, selected: coordinator.layoutLibrary.activeID == template.id,
+                                             select: { chooseLayout(template.id) }) {
                             LayoutThumbnail(pieces: template.oneDisplay, aspect: layoutCardWidth / thumbHeight,
                                             look: LayoutPieceLook.thumbnail)
                         }
@@ -532,12 +530,10 @@ struct OnboardingView: View {
 
                 Divider()
                 Text("Your camera").font(.headline)
-                Picker("Camera shape", selection: $coordinator.webcamShape) {
-                    ForEach(WebcamShape.allCases) { shape in
-                        Text(shape.label).tag(shape)
-                    }
+                GreenroomSegmented("Camera shape", selection: $coordinator.webcamShape,
+                                   options: Array(WebcamShape.allCases)) { shape in
+                    Text(shape.label)
                 }
-                .pickerStyle(.segmented)
 
                 WebcamShapePreview(shape: coordinator.webcamShape)
                     .frame(maxWidth: .infinity)
@@ -841,5 +837,35 @@ private struct StatusRow: View {
         }
         .padding(12)
         .background(.quaternary.opacity(0.4), in: RoundedRectangle(cornerRadius: 10))
+    }
+}
+
+
+/// The onboarding layout choice: the shared choice tile around the same
+/// thumbnail Settings shows. Settings' `LayoutCard` (owned by the Settings
+/// chunk) is left alone; onboarding has no rename, so this is just a Button.
+private struct OnboardingLayoutCard<Thumbnail: View>: View {
+    let title: String
+    let selected: Bool
+    let select: () -> Void
+    @ViewBuilder let thumbnail: () -> Thumbnail
+
+    var body: some View {
+        Button(action: select) {
+            VStack(spacing: 6) {
+                thumbnail().frame(width: layoutCardWidth)
+                Text(title)
+                    .font(.callout.weight(selected ? .semibold : .regular))
+                    .lineLimit(2)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(width: layoutCardWidth, height: 34, alignment: .top)
+            }
+            .padding(6)
+        }
+        .greenroomTile(role: .choice(selected: selected))
+        .help(title)
+        .accessibilityLabel(title)
+        .accessibilityValue(selected ? "Start layout" : "")
     }
 }

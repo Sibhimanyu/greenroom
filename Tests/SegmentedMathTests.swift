@@ -17,7 +17,7 @@ final class SegmentedMathTests: XCTestCase {
 
     func testToolbarInsetIsUniform() {
         let h = SegmentedMath.capsuleHeight(pillHeight: SegmentedMath.toolbarPillHeight)
-        XCTAssertEqual(h, 34)
+        XCTAssertEqual(h, 36)  // matches the Sessions toolbar button
         let pill = SegmentedMath.pillSize(capsule: CGSize(width: 300, height: h))
         XCTAssertEqual(pill.height, SegmentedMath.toolbarPillHeight)
         XCTAssertEqual(pill.width, 294)

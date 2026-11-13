@@ -232,12 +232,18 @@ struct RecordingsView: View {
         }
     }
 
+    @State private var topInset: CGFloat = 0
+
     private var layers: some View {
         ZStack {
-            grid
-                .opacity(detailSession == nil ? 1 : 0)
-                .allowsHitTesting(detailSession == nil)
-                .accessibilityHidden(detailSession != nil)
+            // Unmounted (not hidden) under a session's page: a hidden grid kept
+            // its search field in the window toolbar. Filters live here, so
+            // Back finds them; the grid scrolls back to the last opened card.
+            // Full height: the split view runs up under the title bar so the
+            // sidebar is full height; the layout adds `topInset` back.
+            if detailSession == nil {
+                grid.ignoresSafeArea(.container, edges: .top)
+            }
             if let session = detailSession {
                 detailPage(session)
                     .opacity(isReport ? 0 : 1)
@@ -248,6 +254,11 @@ struct RecordingsView: View {
                 ScreenroomReportView(onBack: { coordinator.goBack() })
             }
         }
+        .background(GeometryReader { proxy in
+            Color.clear
+                .onAppear { topInset = proxy.safeAreaInsets.top }
+                .onChange(of: proxy.safeAreaInsets.top) { _, top in topInset = top }
+        })
         // Grid, session, report: a short crossfade, not a hard swap. These
         // layers share the window's size, so nothing resizes.
         .animation(.easeInOut(duration: 0.15), value: coordinator.mainPage)
@@ -324,8 +335,7 @@ struct RecordingsView: View {
             cardMenu: { card in cardMenu(card) },
             onOpen: open,
             onBack: { coordinator.goBack() },
-            isActive: detailSession == nil,
-            subtitleOverride: detailSession == nil ? nil : (isReport ? "Report" : detailMeta))
+            topInset: topInset)
     }
 
     /// A session as one page: the player large with its marks lane and status
@@ -660,6 +670,8 @@ struct RecordingsView: View {
         if selection != nil {
             if let player {
                 PlayerView(player: player)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .clipped()
             } else {
                 ProgressView().controlSize(.small)
             }
@@ -1142,6 +1154,13 @@ struct RecordingsView: View {
         func makeNSView(context: Context) -> AVPlayerView {
             let view = AVPlayerView()
             view.controlsStyle = .inline
+            view.videoGravity = .resizeAspect
+            view.wantsLayer = true
+            view.layer?.masksToBounds = true
+            view.setContentHuggingPriority(.defaultLow, for: .horizontal)
+            view.setContentHuggingPriority(.defaultLow, for: .vertical)
+            view.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+            view.setContentCompressionResistancePriority(.defaultLow, for: .vertical)
             view.player = player
             return view
         }

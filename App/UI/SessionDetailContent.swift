@@ -59,9 +59,16 @@ struct SessionDetailToolbar: ToolbarContent {
                 .help("This session holds more than one recording or clip. Pick which one plays.")
             }
         }
+        // Upload and Analyse are the actions that move or process the
+        // recording; Edit and the more menu are their own group.
         ToolbarItemGroup(placement: .primaryAction) {
             uploadItem
             analyseItem
+        }
+        if #available(macOS 26, *) {
+            ToolbarSpacer(.fixed, placement: .primaryAction)
+        }
+        ToolbarItemGroup(placement: .primaryAction) {
             editItem
             moreMenu
         }
@@ -76,6 +83,15 @@ struct SessionDetailToolbar: ToolbarContent {
         }
     }
 
+    /// Only the glyph carries amber; the label stays primary.
+    private func amberGlyph(_ title: String, _ symbol: String, amber: Bool = true) -> some View {
+        Label {
+            Text(title).foregroundStyle(Color.primary)
+        } icon: {
+            Image(systemName: symbol).foregroundStyle(amber ? Brand.net : Color.primary)
+        }
+    }
+
     // MARK: Upload
 
     @ViewBuilder private var uploadItem: some View {
@@ -87,16 +103,12 @@ struct SessionDetailToolbar: ToolbarContent {
                 .disabled(true)
                 .help("This session has no recording.")
         case .notConnected:
-            Button {} label: {
-                Label(title, systemImage: "square.and.arrow.up").foregroundStyle(Brand.net)
-            }
+            Button {} label: { amberGlyph(title, "square.and.arrow.up") }
             .labelStyle(.titleAndIcon)
             .disabled(true)
             .help("Connect a YouTube channel in Settings \u{2192} YouTube first. Uploading sends the recording off this Mac.")
         case .ready(let privacy):
-            Button(action: actions.upload) {
-                Label(title, systemImage: "square.and.arrow.up").foregroundStyle(Brand.net)
-            }
+            Button(action: actions.upload) { amberGlyph(title, "square.and.arrow.up") }
             .labelStyle(.titleAndIcon)
             .help("Uploads this recording to the connected channel as \(privacy). It leaves this Mac.")
         case .uploading:
@@ -120,7 +132,7 @@ struct SessionDetailToolbar: ToolbarContent {
                     Button("Delete from YouTube\u{2026}", role: .destructive, action: actions.deleteFromYouTube)
                 }
             } label: {
-                Label(title, systemImage: "checkmark.circle.fill").foregroundStyle(Brand.net)
+                amberGlyph(title, "checkmark.circle.fill")
             }
             .labelStyle(.titleAndIcon)
             .help("On YouTube. Open, copy the link, rename, or delete it.")
@@ -146,7 +158,7 @@ struct SessionDetailToolbar: ToolbarContent {
             Menu {
                 Button("How to analyse\u{2026}", action: actions.openAnalysisSetup)
             } label: {
-                Label(title, systemImage: "sparkles").foregroundStyle(leavesMac ? Brand.net : Color.primary)
+                amberGlyph(title, "sparkles", amber: leavesMac)
             } primaryAction: {
                 actions.analyse()
             }
@@ -172,7 +184,7 @@ struct SessionDetailToolbar: ToolbarContent {
                 Button("Analyse again", action: actions.analyse)
                 Button("How to analyse\u{2026}", action: actions.openAnalysisSetup)
             } label: {
-                Label(title, systemImage: "sparkles").foregroundStyle(leavesMac ? Brand.net : Color.primary)
+                amberGlyph(title, "sparkles", amber: leavesMac)
             } primaryAction: {
                 actions.openReport()
             }
@@ -204,7 +216,10 @@ struct SessionDetailToolbar: ToolbarContent {
                 .disabled(!model.canTrash)
         } label: {
             Label("More", systemImage: "ellipsis.circle")
+                .foregroundStyle(Color.primary)
         }
+        .menuIndicator(.hidden)
+        .tint(nil)
         .help("Rename, show in Finder, or move to the Trash")
     }
 }
@@ -271,6 +286,7 @@ struct SessionDetailPage<Stage: View, Lane: View, Work: View>: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .frame(minHeight: 200)
                 .background(Color.black)
+                .clipped()
             VStack(alignment: .leading, spacing: 8) {
                 lane()
                 SessionStatusStrip(model: model, actions: actions)
@@ -282,17 +298,20 @@ struct SessionDetailPage<Stage: View, Lane: View, Work: View>: View {
     }
 
     private var inspectorColumn: some View {
-        VStack(spacing: 0) {
-            if tabs.count > 1 {
-                GreenroomSegmented("Work", selection: $tab, options: tabs) { Text($0) }
-                    .controlSize(.small)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 10)
-                Divider()
+        // No painted background: the system inspector draws its own material.
+        work()
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+            .safeAreaInset(edge: .top, spacing: 0) {
+                if !tabs.isEmpty {
+                    VStack(spacing: 0) {
+                        GreenroomSegmented("Work", selection: $tab, options: tabs) { Text($0) }
+                            .controlSize(.small)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 10)
+                        Divider()
+                    }
+                }
             }
-            work()
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        }
     }
 }
 
@@ -498,12 +517,22 @@ struct SessionTabEmpty<Actions: View>: View {
     @ViewBuilder let actions: () -> Actions
 
     var body: some View {
-        ContentUnavailableView {
-            Label(title, systemImage: symbol)
-        } description: {
+        // Compact, in the upper third: a quiet note, not the page.
+        VStack(spacing: 8) {
+            Image(systemName: symbol)
+                .font(.system(size: 22))
+                .foregroundStyle(.secondary)
+            Text(title).font(.headline)
             Text(message)
-        } actions: {
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
             actions()
         }
+        .frame(maxWidth: 260)
+        .padding(.horizontal, 16)
+        .padding(.top, 40)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
     }
 }

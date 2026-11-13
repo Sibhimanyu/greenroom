@@ -67,6 +67,10 @@ struct SessionsLayout<CardMenu: View>: View {
     var isActive = true
     /// The window subtitle to hold while another page is up.
     var subtitleOverride: String?
+    /// The title-bar height the page was laid out under. The split view runs
+    /// up under the traffic lights (full-height sidebar); the sidebar's rows
+    /// and the grid add this back so nothing sits under the toolbar.
+    var topInset: CGFloat = 0
 
     @State private var columns = NavigationSplitViewVisibility.all
     @FocusState private var focusedID: String?
@@ -79,15 +83,18 @@ struct SessionsLayout<CardMenu: View>: View {
     var body: some View {
         NavigationSplitView(columnVisibility: $columns) {
             sidebar
+                .safeAreaInset(edge: .top, spacing: 0) { Color.clear.frame(height: topInset) }
                 .navigationSplitViewColumnWidth(min: 180, ideal: 220, max: 280)
         } detail: {
             grid
+                .safeAreaInset(edge: .top, spacing: 0) { Color.clear.frame(height: topInset) }
                 .frame(minWidth: 480, maxHeight: .infinity)
         }
         .searchable(text: $search, placement: .toolbar, prompt: "Search sessions")
-        .toolbar { if isActive { gridToolbar } }
-        .pageToolbar(back: isActive ? onBack.map { PageBack(label: "Home", action: $0) } : nil,
-                     subtitle: subtitleOverride ?? query.subtitle)
+        .toolbar { gridToolbar }
+        // Subtitle only. Back is ContentView's one page-wide item; a second
+        // one here drew two side by side.
+        .navigationSubtitle(subtitleOverride ?? query.subtitle)
     }
 
     // MARK: Toolbar
@@ -168,7 +175,8 @@ struct SessionsLayout<CardMenu: View>: View {
     private var grid: some View {
         let q = query
         let groups = q.groups
-        return ScrollView {
+        return ScrollViewReader { proxy in
+        ScrollView {
             VStack(alignment: .leading, spacing: 24) {
                 if let spaceWarning {
                     HStack(spacing: 8) {
@@ -204,6 +212,7 @@ struct SessionsLayout<CardMenu: View>: View {
                                     }
                                     .greenroomTile(role: .browse, radius: 12)
                                     .focused($focusedID, equals: card.id)
+                                    .id(card.id)
                                     .contextMenu { cardMenu(card) }
                                 }
                             }
@@ -218,6 +227,10 @@ struct SessionsLayout<CardMenu: View>: View {
         // button's own default action while it has focus).
         .onChange(of: focusedID) { _, id in if let id { selection = id } }
         .onDeleteCommand(perform: onDeleteKey)
+        // The grid is unmounted while a session's page is up (its search field
+        // would otherwise stay in the toolbar), so Back finds the place again.
+        .onAppear { if let selection { proxy.scrollTo(selection, anchor: .center) } }
+        }
     }
 
     @ViewBuilder
@@ -441,11 +454,8 @@ struct SessionClipsList: View {
 
     var body: some View {
         if lines.isEmpty {
-            ContentUnavailableView {
-                Label("No clips marked", systemImage: "scissors")
-            } description: {
-                Text("Use the clip shortcuts (Settings \u{2192} Shortcuts) during a class to mark the last 1, 2 or 5 minutes. Marks appear here afterwards.")
-            }
+            SessionTabEmpty(title: "No clips marked", symbol: "scissors",
+                            message: "Use the clip shortcuts (Settings \u{2192} Shortcuts) during a class to mark the last 1, 2 or 5 minutes. Marks appear here afterwards.") {}
         } else {
             VStack(spacing: 0) {
                 ScrollView {

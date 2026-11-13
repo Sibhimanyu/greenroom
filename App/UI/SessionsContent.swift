@@ -61,6 +61,12 @@ struct SessionsLayout<CardMenu: View>: View {
     var onOpen: (String) -> Void = { _ in }
     /// The way back to Home; nil where the grid is drawn on its own.
     var onBack: (() -> Void)?
+    /// False while a session's page is up over this grid (the grid stays in
+    /// the tree to keep its place). Its toolbar items and Back then step
+    /// aside, so the window has one toolbar, the page's.
+    var isActive = true
+    /// The window subtitle to hold while another page is up.
+    var subtitleOverride: String?
 
     @State private var columns = NavigationSplitViewVisibility.all
     @FocusState private var focusedID: String?
@@ -79,9 +85,9 @@ struct SessionsLayout<CardMenu: View>: View {
                 .frame(minWidth: 480, maxHeight: .infinity)
         }
         .searchable(text: $search, placement: .toolbar, prompt: "Search sessions")
-        .toolbar { gridToolbar }
-        .pageToolbar(back: onBack.map { PageBack(label: "Home", action: $0) },
-                     subtitle: query.subtitle)
+        .toolbar { if isActive { gridToolbar } }
+        .pageToolbar(back: isActive ? onBack.map { PageBack(label: "Home", action: $0) } : nil,
+                     subtitle: subtitleOverride ?? query.subtitle)
     }
 
     // MARK: Toolbar
@@ -413,379 +419,6 @@ struct SessionInspectorActions {
     var edit: () -> Void = {}
 }
 
-/// "Back", top left of a page: the way out of a page of the main window.
-/// ⌘[ (as in Safari and Finder) and Esc are bound once, by ContentView, not
-/// here: the grid stays alive under a session's page, and two buttons holding
-/// one shortcut would let the hidden one answer.
-struct BackButton: View {
-    var label = "Back"
-    let action: () -> Void
-    @State private var hovering = false
-
-    var body: some View {
-        Button(action: action) {
-            HStack(spacing: 6) {
-                Image(systemName: "chevron.left")
-                    .font(.system(size: 13, weight: .semibold))
-                Text(label)
-                    .font(.system(size: 14, weight: .medium))
-            }
-            .foregroundStyle(.primary)
-            .padding(.horizontal, 14)
-            .frame(height: 34)
-            .background(Capsule().fill(Color.primary.opacity(hovering ? 0.12 : 0.07)))
-            .overlay(Capsule().strokeBorder(Color.primary.opacity(0.18), lineWidth: 1))
-            .contentShape(Capsule())
-        }
-        .buttonStyle(.plain)
-        .onHover { hovering = $0 }
-        .help("\(label == "Back" ? "Back" : "Back to \(label)") (\u{2318}[)")
-        .accessibilityLabel(label == "Back" ? "Back" : "Back to \(label)")
-    }
-}
-
-struct SessionInspector<Player: View, Detail: View>: View {
-    let model: SessionInspectorModel
-    /// The width the page is held to. As a 400pt column it filled its
-    /// space; as a page it would run the player to the window's width, so
-    /// the column is capped and centred and the scroller stays at the edge.
-    var columnWidth: CGFloat?
-    var actions = SessionInspectorActions()
-    @Binding var take: URL?
-    let tabs: [String]
-    @Binding var tab: String
-    @ViewBuilder let player: () -> Player
-    @ViewBuilder let detail: () -> Detail
-
-    /// One scroll for the whole column, with the work pane at a fixed height
-    /// inside it. Two flexible halves split the height between them evenly,
-    /// which on a laptop pushed the picture off the top; a fixed pane keeps
-    /// the picture where the eye starts, and the Notes and Transcript panes
-    /// scroll inside themselves as they always did.
-    var body: some View {
-        ScrollView {
-            column
-                .frame(maxWidth: columnWidth)
-                .frame(maxWidth: .infinity)
-        }
-    }
-
-    private var column: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            VStack(alignment: .leading, spacing: 16) {
-                player()
-
-                header
-
-                HStack(spacing: 12) {
-                    youtubeTile
-                    analyseTile
-                    editTile
-                }
-                .fixedSize(horizontal: false, vertical: true)
-
-                howToAnalyse
-
-                if let upload = model.upload { uploadLine(upload) }
-
-                if case .running(_, _, let log?) = model.analyse, !log.isEmpty {
-                    Text(log)
-                        .font(.system(size: 10, design: .monospaced))
-                        .foregroundStyle(.tertiary)
-                        .lineLimit(2)
-                        .truncationMode(.head)
-                }
-
-                summary
-            }
-            .padding(20)
-
-            if tabs.count > 1 {
-                Picker("", selection: $tab) {
-                    ForEach(tabs, id: \.self) { Text($0).tag($0) }
-                }
-                .pickerStyle(.segmented)
-                .labelsHidden()
-                .fixedSize()
-                .padding(.horizontal, 20)
-                .padding(.bottom, 8)
-            }
-
-            detail()
-                .frame(maxWidth: .infinity, alignment: .top)
-                .frame(height: 300)
-        }
-    }
-
-    // MARK: Header
-
-    private var header: some View {
-        HStack(alignment: .top, spacing: 8) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text(model.title)
-                    .font(.title3.weight(.semibold))
-                    .lineLimit(2)
-                Text(model.meta)
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                if model.takes.count > 1 {
-                    Picker("Playing", selection: $take) {
-                        ForEach(model.takes) { Text($0.label).tag(Optional($0.id)) }
-                    }
-                    .pickerStyle(.menu)
-                    .controlSize(.small)
-                    .fixedSize()
-                    .help("This session holds more than one recording or clip. Pick which one plays.")
-                }
-            }
-            Spacer(minLength: 0)
-            Menu {
-                Button("Rename\u{2026}", action: actions.rename)
-                    .disabled(!model.canRename)
-                Button("Show in Finder", action: actions.showInFinder)
-                Divider()
-                Button("Move to Trash\u{2026}", role: .destructive, action: actions.trash)
-                    .disabled(!model.canTrash)
-            } label: {
-                Image(systemName: "ellipsis.circle")
-            }
-            .menuStyle(.borderlessButton)
-            .menuIndicator(.hidden)
-            .fixedSize()
-            .help("Rename, show in Finder, or move to the Trash")
-        }
-    }
-
-    // MARK: Tiles
-
-    /// Opens the take in the video editor. Saving writes a new session
-    /// folder; this recording is never modified.
-    @ViewBuilder private var editTile: some View {
-        if model.canEdit {
-            StatusTile(symbol: "scissors", tint: Brand.text,
-                       title: "Edit", subtitle: "Saved as a new recording",
-                       action: actions.edit)
-                .help("Opens this recording in the editor. Saving makes a new recording and leaves this one untouched.")
-        } else {
-            StatusTile(symbol: "scissors", tint: .secondary,
-                       title: "Edit", subtitle: "No recording to edit", action: nil)
-        }
-    }
-
-    @ViewBuilder private var youtubeTile: some View {
-        switch model.youtube {
-        case .noVideo:
-            StatusTile(symbol: "play.rectangle", tint: .secondary,
-                       title: "Upload to YouTube", subtitle: "No recording to upload",
-                       action: nil)
-                .help("This session has no recording.")
-        case .notConnected:
-            StatusTile(symbol: "play.rectangle", tint: Brand.net,
-                       title: "Upload to YouTube", subtitle: "Connect in Settings",
-                       action: nil)
-                .help("Connect a YouTube channel in Settings \u{2192} YouTube first. Uploading sends the recording off this Mac.")
-        case .ready(let privacy):
-            StatusTile(symbol: "play.rectangle", tint: Brand.net,
-                       title: "Upload to YouTube", subtitle: "\(privacy.capitalized) \u{00B7} leaves this Mac",
-                       subtitleColor: Brand.netText,
-                       action: actions.upload)
-                .help("Uploads this recording to the connected channel as \(privacy). It leaves this Mac.")
-        case .uploading:
-            StatusTile(symbol: "play.rectangle", tint: Brand.net,
-                       title: "Uploading\u{2026}", subtitle: "Leaves this Mac",
-                       subtitleColor: Brand.netText,
-                       mark: .spinner, action: nil)
-        case .uploaded(let privacy, let when):
-            StatusTile(symbol: "play.rectangle.fill", tint: Brand.net,
-                       title: "On YouTube",
-                       subtitle: "\(privacy.capitalized) \u{00B7} \(SessionsFormat.day(when, now: Date()))",
-                       mark: .check(Brand.net), action: actions.copyLink)
-                .help("Copies the link.")
-        }
-    }
-
-    /// Small, under the Analyse tile and only where Analyse can be pressed:
-    /// the way back to the two choices asked at the first press.
-    @ViewBuilder private var howToAnalyse: some View {
-        switch model.analyse {
-        case .ready, .analysed:
-            HStack {
-                Spacer(minLength: 0)
-                Button("How to analyse\u{2026}", action: actions.openAnalysisSetup)
-                    .buttonStyle(.link)
-                    .font(.caption)
-                    .help("Whisper, and whether this Mac or an agent you run writes the feedback.")
-            }
-        default:
-            EmptyView()
-        }
-    }
-
-    @ViewBuilder private var analyseTile: some View {
-        switch model.analyse {
-        case .unavailable(let why):
-            StatusTile(symbol: "sparkles", tint: .secondary,
-                       title: "Analyse", subtitle: why, action: nil)
-        case .busy:
-            StatusTile(symbol: "sparkles", tint: .secondary,
-                       title: "Analyse", subtitle: "Another session is running",
-                       action: nil)
-                .help("One analysis at a time. This one can start when that one finishes.")
-        case .ready(let engine, let leavesMac):
-            StatusTile(symbol: "sparkles", tint: leavesMac ? Brand.net : Brand.text,
-                       title: "Analyse", subtitle: engine,
-                       subtitleColor: leavesMac ? Brand.netText : .secondary,
-                       action: actions.analyse)
-                .help(leavesMac
-                      ? "Transcribes on this Mac, then sends the transcript and notes to the agent chosen under How to analyse. That part leaves this Mac; the video does not."
-                      : "Transcribes on this Mac, counts pace and filler words, and writes the report. Nothing leaves this Mac.")
-        case .running(let step, let detail, _):
-            StatusTile(symbol: "sparkles", tint: Brand.text,
-                       title: step, subtitle: detail,
-                       mark: .stop(actions.stopAnalysis), action: nil)
-        case .analysed(let engine, let when, let leavesMac):
-            StatusTile(symbol: "sparkles", tint: leavesMac ? Brand.net : Brand.text,
-                       title: "Analysed",
-                       subtitle: "\(engine) \u{00B7} \(when.formatted(.relative(presentation: .named)))",
-                       mark: .check(Brand.text), action: actions.openReport)
-                .help("Opens the full report.")
-        }
-    }
-
-    // MARK: Under the tiles
-
-    private func uploadLine(_ upload: SessionInspectorModel.UploadLine) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(upload.url)
-                .font(.system(size: 11, design: .monospaced))
-                .foregroundStyle(.secondary)
-                .textSelection(.enabled)
-                .lineLimit(1)
-                .truncationMode(.middle)
-            HStack(spacing: 12) {
-                Button("Open", action: actions.openOnYouTube)
-                Button("Copy link", action: actions.copyLink)
-                Button("Rename\u{2026}", action: actions.renameOnYouTube)
-                    .help("Change the title on YouTube.")
-                Button("Upload again", action: actions.upload)
-                    .disabled(!model.youtubeConnected)
-                    .help("Uploads a second copy; the existing video stays on the channel.")
-                if model.youtubeConnected {
-                    Button("Delete\u{2026}", action: actions.deleteFromYouTube)
-                        .help("Delete the video from YouTube. The recording on this Mac stays.")
-                }
-            }
-            .buttonStyle(.link)
-            .font(.caption)
-        }
-        .help("\u{201C}\(upload.title)\u{201D}, uploaded \(upload.uploadedAt.formatted(date: .abbreviated, time: .shortened))")
-    }
-
-    @ViewBuilder private var summary: some View {
-        if let text = model.summary {
-            VStack(alignment: .leading, spacing: 8) {
-                Text("SUMMARY")
-                    .font(.system(size: 10, weight: .semibold))
-                    .tracking(0.8)
-                    .foregroundStyle(.secondary)
-                Text(text)
-                    .font(.callout)
-                    .lineLimit(4)
-                    .fixedSize(horizontal: false, vertical: true)
-                if let caveat = model.summaryCaveat {
-                    Text(caveat)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                HStack(spacing: 16) {
-                    Button(action: actions.openReport) {
-                        Text("Open the full analysis \u{2192}")
-                            .foregroundStyle(Brand.text)
-                    }
-                    Button("Analyse again", action: actions.analyse)
-                        .foregroundStyle(.secondary)
-                }
-                .buttonStyle(.plain)
-                .font(.callout)
-            }
-        }
-    }
-}
-
-/// A big square-ish button that is also a status: what it does, and whether
-/// it has been done.
-struct StatusTile: View {
-    enum Mark {
-        case none
-        case check(Color)
-        case spinner
-        case stop(() -> Void)
-    }
-
-    let symbol: String
-    let tint: Color
-    let title: String
-    let subtitle: String
-    var subtitleColor: Color = .secondary
-    var mark: Mark = .none
-    let action: (() -> Void)?
-
-    var body: some View {
-        if let action {
-            Button(action: action) { face }
-                .buttonStyle(.plain)
-        } else {
-            face
-        }
-    }
-
-    private var face: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack {
-                Image(systemName: symbol)
-                    .font(.system(size: 16))
-                    .foregroundStyle(tint)
-                Spacer(minLength: 0)
-                switch mark {
-                case .none: EmptyView()
-                case .check(let color):
-                    Image(systemName: "checkmark.circle.fill").foregroundStyle(color)
-                case .spinner:
-                    ProgressView().controlSize(.small)
-                case .stop(let stop):
-                    Button("Stop", role: .destructive, action: stop)
-                        .controlSize(.small)
-                        .help("Stops the run and closes whatever it started. Nothing is written until it finishes.")
-                }
-            }
-            .frame(height: 20)
-            Text(title)
-                .font(.callout.weight(.semibold))
-                .foregroundStyle(action == nil && isInert ? .secondary : .primary)
-                .lineLimit(1)
-                .padding(.top, 4)
-            Text(subtitle)
-                .font(.caption)
-                .foregroundStyle(subtitleColor)
-                .lineLimit(1)
-                .truncationMode(.tail)
-        }
-        .padding(12)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .background(RoundedRectangle(cornerRadius: 10).fill(Color(nsColor: .controlBackgroundColor)))
-        .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Color(nsColor: .separatorColor)))
-        .contentShape(RoundedRectangle(cornerRadius: 10))
-    }
-
-    /// Nothing to press and nothing happening: drawn dimmer, per DESIGN.md's
-    /// "a control that is not ready says so".
-    private var isInert: Bool {
-        if case .none = mark { return true }
-        return false
-    }
-}
-
 // MARK: - Clips
 
 /// A clip marked on the recording, as the inspector lists it.
@@ -807,54 +440,55 @@ struct SessionClipsList: View {
     var exportAll: () -> Void = {}
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            HStack {
-                Text(lines.isEmpty ? "NO CLIPS MARKED" : "CLIPS")
-                    .font(.system(size: 10, weight: .semibold))
-                    .tracking(0.8)
-                    .foregroundStyle(.secondary)
-                Spacer()
-                if let exporting {
-                    ProgressView(value: Double(exporting.done), total: Double(max(1, exporting.total)))
-                        .frame(width: 90)
-                    Text("\(exporting.done)/\(exporting.total)")
-                        .font(.caption.monospacedDigit())
-                        .foregroundStyle(.secondary)
-                } else if !lines.isEmpty {
-                    Button("Export all", action: exportAll)
-                        .controlSize(.small)
-                        .help("Cuts every marked clip into its own file, next to the recording.")
-                }
-            }
-            .padding(.horizontal, 20)
-            .padding(.bottom, 8)
-
-            if lines.isEmpty {
+        if lines.isEmpty {
+            ContentUnavailableView {
+                Label("No clips marked", systemImage: "scissors")
+            } description: {
                 Text("Use the clip shortcuts (Settings \u{2192} Shortcuts) during a class to mark the last 1, 2 or 5 minutes. Marks appear here afterwards.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .padding(.horizontal, 20)
-            } else {
+            }
+        } else {
+            VStack(spacing: 0) {
                 ScrollView {
                     VStack(spacing: 0) {
                         ForEach(lines) { line in
                             row(line)
                         }
                     }
+                    .padding(.vertical, 4)
                 }
+                Divider()
+                footer
             }
         }
     }
 
+    /// Export all lives at the foot of the list, where the clips end.
+    private var footer: some View {
+        HStack {
+            if let exporting {
+                ProgressView(value: Double(exporting.done), total: Double(max(1, exporting.total)))
+                    .frame(maxWidth: 120)
+                Text("\(exporting.done)/\(exporting.total)")
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(.secondary)
+            }
+            Spacer(minLength: 0)
+            Button("Export all", action: exportAll)
+                .disabled(exporting != nil)
+                .help("Cuts every marked clip into its own file, next to the recording.")
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+    }
+
     private func row(_ line: SessionClipLine) -> some View {
-        HStack(spacing: 12) {
+        HStack(spacing: 10) {
             Button { play(line.id) } label: {
-                HStack(spacing: 12) {
+                HStack(spacing: 10) {
                     Text(line.start)
                         .font(.system(size: 12, design: .monospaced))
                         .foregroundStyle(.secondary)
-                        .frame(width: 52, alignment: .leading)
+                        .frame(width: 48, alignment: .leading)
                     Text(line.detail)
                         .font(.callout)
                         .lineLimit(1)
@@ -882,7 +516,7 @@ struct SessionClipsList: View {
             .buttonStyle(.plain)
             .help("Removes the mark, and the exported clip if there is one. The recording is untouched.")
         }
-        .padding(.horizontal, 20)
+        .padding(.horizontal, 12)
         .padding(.vertical, 6)
     }
 }

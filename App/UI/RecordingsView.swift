@@ -181,6 +181,7 @@ struct RecordingsView: View {
     @State private var renameError: String?
     @State private var deletingVideo: (upload: SessionMetadata.Upload, folder: URL)?
     @State private var deleteVideoError: String?
+    @State private var confirmingUpload: Recording?
 
     /// Used for the YouTube upload button and state.
     @EnvironmentObject private var coordinator: CoordinatorController
@@ -322,23 +323,31 @@ struct RecordingsView: View {
             onDeleteKey: { if let selection { confirmingDelete = selection } },
             cardMenu: { card in cardMenu(card) },
             onOpen: open,
-            onBack: { coordinator.goBack() })
+            onBack: { coordinator.goBack() },
+            isActive: detailSession == nil,
+            subtitleOverride: detailSession == nil ? nil : (isReport ? "Report" : detailMeta))
     }
 
-    /// A session as one page: what the side inspector used to hold, with the
-    /// room a page has. Same views, moved - the picture, the title and its
-    /// menu, the two action cards and the work tabs.
-    private func detailPage(_: Session) -> some View {
-        VStack(spacing: 0) {
-            HStack {
-                BackButton(action: { coordinator.goBack() })
-                Spacer(minLength: 0)
-            }
-            .padding(.horizontal, 20)
-            .padding(.vertical, 12)
-            Divider()
-            inspector
-        }
+    /// A session as one page: the player large with its marks lane and status
+    /// strip, the work in an inspector beside it, the actions in the window
+    /// toolbar (SessionDetailContent.swift). Back is the toolbar's, ContentView's.
+    @ViewBuilder private func detailPage(_ session: Session) -> some View {
+        SessionDetailPage(
+            model: inspectorModel(session),
+            actions: inspectorActions(session),
+            analyseProgress: review.isAnalysing && review.selected?.folder == session.folder && review.stepCount > 0
+                ? (review.stepIndex, review.stepCount) : nil,
+            isActive: !isReport,
+            take: Binding(get: { selection?.url },
+                          set: { url in selection = session.takes.first { $0.url == url } }),
+            tabs: Tab.allCases.filter(\.isAvailable).map(\.rawValue),
+            tab: $tab,
+            stage: { stage(for: session) },
+            lane: { lane },
+            work: { work(for: session) })
+        // A different session is a different page: nothing typed in one
+        // session's notes field should survive into the next.
+        .id(session.id)
     }
 
     var body: some View {
@@ -356,6 +365,21 @@ struct RecordingsView: View {
                     analysingFolder = nil
                     review.showingSetup = false
                 })
+        }
+        .confirmationDialog("Upload to YouTube?",
+                            isPresented: Binding(get: { confirmingUpload != nil },
+                                                 set: { if !$0 { confirmingUpload = nil } }),
+                            titleVisibility: .visible) {
+            Button("Upload") {
+                if let take = confirmingUpload {
+                    UserDefaults.standard.set(true, forKey: SessionDetailRules.uploadConfirmedKey)
+                    coordinator.uploadRecordingToYouTube(take.url)
+                }
+                confirmingUpload = nil
+            }
+            Button("Cancel", role: .cancel) { confirmingUpload = nil }
+        } message: {
+            Text("This sends the recording to YouTube. It leaves this Mac. You are asked once on this Mac.")
         }
         .alert("Rename this session",
                isPresented: Binding(get: { renaming != nil },
@@ -501,29 +525,7 @@ struct RecordingsView: View {
         }
     }
 
-    // MARK: Inspector
-
-    @ViewBuilder private var inspector: some View {
-        if let session = selectedSession {
-            SessionInspector(
-                model: inspectorModel(session),
-                columnWidth: 800,
-                actions: inspectorActions(session),
-                take: Binding(get: { selection?.url },
-                              set: { url in selection = session.takes.first { $0.url == url } }),
-                tabs: Tab.allCases.filter(\.isAvailable).map(\.rawValue),
-                tab: $tab,
-                player: { stage(for: session) },
-                detail: { work(for: session) })
-            // A different session is a different inspector: nothing typed in
-            // one session's notes field should survive into the next.
-            .id(session.id)
-        } else {
-            Text(sessions.isEmpty ? "No sessions yet" : "Select a session")
-                .foregroundStyle(.secondary)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-        }
-    }
+    // MARK: Inspector model
 
     private func inspectorModel(_ session: Session) -> SessionInspectorModel {
         let take = selection
@@ -597,7 +599,15 @@ struct RecordingsView: View {
         let take = selection
         let upload = take?.upload
         var actions = SessionInspectorActions()
-        actions.upload = { if let take { coordinator.uploadRecordingToYouTube(take.url) } }
+        actions.upload = {
+            guard let take else { return }
+            // The first upload on this Mac asks once; after that it goes.
+            if UserDefaults.standard.bool(forKey: SessionDetailRules.uploadConfirmedKey) {
+                coordinator.uploadRecordingToYouTube(take.url)
+            } else {
+                confirmingUpload = take
+            }
+        }
         actions.copyLink = { if let upload { copy(upload.url) } }
         actions.openOnYouTube = {
             if let upload, let url = URL(string: upload.url) { NSWorkspace.shared.open(url) }
@@ -644,38 +654,45 @@ struct RecordingsView: View {
         return actions
     }
 
-    /// The picture and its scrubber, or what is left when the tape is gone.
+    /// The picture (AVKit's own inline controls are its scrubber), or what is
+    /// left when the tape is gone.
     @ViewBuilder private func stage(for session: Session) -> some View {
+        if selection != nil {
+            if let player {
+                PlayerView(player: player)
+            } else {
+                ProgressView().controlSize(.small)
+            }
+        } else {
+            VStack(spacing: 10) {
+                SessionThumbnail(image: nil, kind: session.source.kind)
+                    .frame(maxWidth: 280)
+                Text("No recording here any more. The notes, transcript and report still are.")
+                    .font(.caption)
+                    .foregroundStyle(.white.opacity(0.7))
+                    .multilineTextAlignment(.center)
+            }
+            .padding()
+        }
+    }
+
+    /// The marks lane under the picture; nothing without a recording.
+    @ViewBuilder private var lane: some View {
         if let selection {
-            VStack(spacing: 8) {
-                Group {
-                    if let player {
-                        PlayerView(player: player)
-                    } else {
-                        ProgressView().controlSize(.small)
-                    }
-                }
-                .frame(maxWidth: .infinity)
-                .aspectRatio(16 / 9, contentMode: .fit)
-                .background(Color.black)
-                .clipShape(RoundedRectangle(cornerRadius: 10))
-                ClipTimeline(duration: duration,
+            SessionMarksLane(duration: duration,
                              playhead: playhead,
                              clips: selection.clips,
                              marks: marks(for: selection),
                              skipping: skipObserver != nil,
                              onStopSkipping: stopSkipping,
                              onSeek: seek)
-                    .frame(height: 46)
-            }
-        } else {
-            VStack(alignment: .leading, spacing: 8) {
-                SessionThumbnail(image: nil, kind: session.source.kind)
-                Text("No recording here any more. The notes, transcript and report still are.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
         }
+    }
+
+    /// The subtitle the window holds on a session's page.
+    private var detailMeta: String {
+        guard let session = detailSession else { return "" }
+        return inspectorModel(session).meta
     }
 
     /// Everything done on the recording, under it.
@@ -697,7 +714,20 @@ struct RecordingsView: View {
             }
         case .transcript where Tab.transcript.isAvailable:
             if let folder = session.folder {
-                SessionTranscriptView(folder: folder)
+                if FileManager.default.fileExists(atPath: SessionSummary.transcriptURL(in: folder).path) {
+                    SessionTranscriptView(folder: folder)
+                } else {
+                    let state = analyseState(session)
+                    SessionTabEmpty(title: "No transcript", symbol: "text.alignleft",
+                                    message: "Analyse writes one, on this Mac.") {
+                        switch state {
+                        case .ready, .analysed:
+                            Button("Analyse", action: inspectorActions(session).analyse)
+                        default:
+                            EmptyView()
+                        }
+                    }
+                }
             } else {
                 notInFolder("transcript")
             }
@@ -709,11 +739,8 @@ struct RecordingsView: View {
     }
 
     private func notInFolder(_ what: String) -> some View {
-        Text("These recordings are not in a session folder, so they have no \(what).")
-            .font(.caption)
-            .foregroundStyle(.secondary)
-            .padding(.horizontal, 20)
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        SessionTabEmpty(title: "No session folder", symbol: "folder.badge.questionmark",
+                        message: "These recordings are not in a session folder, so they have no \(what).") {}
     }
 
     private func clipsDetail() -> some View {
@@ -746,11 +773,8 @@ struct RecordingsView: View {
     /// chat, and Open and Copy on every row.
     @ViewBuilder private func linksDetail(for session: Session) -> some View {
         if session.links.isEmpty {
-            Text("With Cues on, the cards you open or send in a class are kept here.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .padding(.horizontal, 20)
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            SessionTabEmpty(title: "No links", symbol: "link",
+                            message: "Cues was off in this class. With Cues on, the cards you open or send are kept here.") {}
         } else {
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
@@ -770,7 +794,7 @@ struct RecordingsView: View {
                             }
                             Button("Copy") { copy(link.url) }.controlSize(.small)
                         }
-                        .padding(.horizontal, 20)
+                        .padding(.horizontal, 12)
                         .padding(.vertical, 6)
                     }
                 }
@@ -856,7 +880,7 @@ struct RecordingsView: View {
     /// Fillers and notes for the recording on screen, when Screenroom has
     /// analysed THIS take. Nothing otherwise - a mark measured against a
     /// different take points at the wrong moment.
-    private func marks(for selection: Recording) -> ClipTimeline.Marks {
+    private func marks(for selection: Recording) -> SessionMarksLane.Marks {
         guard let folder = sessions.first(where: { $0.takes.contains(selection) })?.folder,
               review.selected?.folder == folder else { return .init() }
         let found = review.scrubberMarks
@@ -1117,7 +1141,7 @@ struct RecordingsView: View {
 
         func makeNSView(context: Context) -> AVPlayerView {
             let view = AVPlayerView()
-            view.controlsStyle = .floating
+            view.controlsStyle = .inline
             view.player = player
             return view
         }
@@ -1125,118 +1149,5 @@ struct RecordingsView: View {
         func updateNSView(_ view: AVPlayerView, context: Context) {
             view.player = player
         }
-    }
-}
-
-/// The marked moments, drawn against the whole class.
-///
-/// This is the answer to "where was that bit?". A recording is otherwise an
-/// hour-long bar with nothing to aim at, and the marks made during the class -
-/// the one record of what was worth keeping - had nowhere to appear. Here they
-/// are blocks on the timeline, positioned by where they actually are, and
-/// clicking one jumps the player to it.
-private struct ClipTimeline: View {
-    /// Screenroom's moments, in seconds, drawn as ticks over the track so
-    /// the player itself shows where the fillers and notes fell.
-    struct Marks {
-        var fillers: [Double] = []
-        var notes: [Double] = []
-        var isEmpty: Bool { fillers.isEmpty && notes.isEmpty }
-    }
-
-    let duration: Double
-    let playhead: Double
-    let clips: [SessionClip]
-    var marks = Marks()
-    var skipping = false
-    var onStopSkipping: () -> Void = {}
-    let onSeek: (Double) -> Void
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            GeometryReader { geo in
-                let width = geo.size.width
-                ZStack(alignment: .leading) {
-                    RoundedRectangle(cornerRadius: 3)
-                        .fill(Color.secondary.opacity(0.18))
-                        .frame(height: 22)
-
-                    if duration > 0 {
-                        ForEach(clips) { clip in
-                            let start = clip.startSeconds / duration
-                            let span = max(0.004, Double(clip.durationMs) / 1000 / duration)
-                            RoundedRectangle(cornerRadius: 3)
-                                .fill(Color.accentColor.opacity(0.75))
-                                .frame(width: max(3, width * span), height: 22)
-                                .offset(x: width * start)
-                                .onTapGesture { onSeek(clip.startSeconds) }
-                                .help("\(clip.durationLabel), marked at \(clip.markedAtLabel.replacingOccurrences(of: "-", with: ":"))")
-                        }
-
-                        // Fillers as short ticks in the lower half, notes as
-                        // taller ones - two kinds of moment, told apart by
-                        // shape rather than by a second colour.
-                        ForEach(Array(marks.fillers.enumerated()), id: \.offset) { _, at in
-                            Capsule()
-                                .fill(Brand.fill)
-                                .frame(width: 2, height: 9)
-                                .offset(x: width * min(1, at / duration) - 1, y: 6)
-                                .allowsHitTesting(false)
-                        }
-                        ForEach(Array(marks.notes.enumerated()), id: \.offset) { _, at in
-                            Capsule()
-                                .fill(Color.primary.opacity(0.75))
-                                .frame(width: 3, height: 22)
-                                .offset(x: width * min(1, at / duration) - 1.5)
-                                .onTapGesture { onSeek(max(0, at - 4)) }
-                                .help("A note")
-                        }
-
-                        Rectangle()
-                            .fill(Color.primary)
-                            .frame(width: 2, height: 30)
-                            .offset(x: width * min(1, max(0, playhead / duration)) - 1)
-                            .allowsHitTesting(false)
-                    }
-                }
-                .frame(height: 30)
-                // Click anywhere on the track to scrub there. The player has its
-                // own scrubber, but this one is the one with the marks on it.
-                .contentShape(Rectangle())
-                .gesture(DragGesture(minimumDistance: 0).onEnded { value in
-                    guard duration > 0, width > 0 else { return }
-                    onSeek(min(duration, max(0, duration * value.location.x / width)))
-                })
-            }
-            .frame(height: 30)
-
-            HStack(spacing: 12) {
-                Text(RecordingsView.offsetLabel(Int(playhead * 1000)))
-                if skipping {
-                    // Said on the player, because the player is what is
-                    // behaving differently: every filler is being jumped.
-                    HStack(spacing: 6) {
-                        Text("Playing without fillers")
-                        Button("Stop", action: onStopSkipping)
-                            .buttonStyle(.link)
-                    }
-                    .font(.system(size: 11))
-                } else if !marks.isEmpty {
-                    Text(markLegend)
-                        .font(.system(size: 11))
-                }
-                Spacer()
-                Text(duration > 0 ? RecordingsView.offsetLabel(Int(duration * 1000)) : "\u{2014}")
-            }
-            .font(.system(size: 10, design: .monospaced))
-            .foregroundStyle(.secondary)
-        }
-    }
-
-    private var markLegend: String {
-        var parts: [String] = []
-        if !marks.fillers.isEmpty { parts.append("short ticks: \(marks.fillers.count) filler\(marks.fillers.count == 1 ? "" : "s")") }
-        if !marks.notes.isEmpty { parts.append("tall: \(marks.notes.count) note\(marks.notes.count == 1 ? "" : "s")") }
-        return parts.joined(separator: " \u{00B7} ")
     }
 }

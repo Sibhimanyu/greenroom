@@ -52,10 +52,12 @@ final class InputEventTracker {
         return !monitors.isEmpty
     }
 
-    /// Ends tracking; writes the sidecar next to the finished video.
+    /// Ends tracking; writes the sidecar next to the finished video, and only
+    /// when that video exists and has bytes. Otherwise the events are dropped,
+    /// so a share that recorded nothing leaves no lone `.events.json` behind.
     func stopAndSave(nextTo videoURL: URL?) {
         stopMonitors()
-        if let videoURL { events.save(for: videoURL) }
+        if let videoURL, SessionFolderRules.isNonEmptyFile(videoURL) { events.save(for: videoURL) }
         events = RecordingEvents()
     }
 

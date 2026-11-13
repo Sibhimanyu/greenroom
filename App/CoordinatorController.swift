@@ -2147,9 +2147,9 @@ final class CoordinatorController: ObservableObject {
     /// leave a dated empty folder every single morning.
     private func discardEmptySessionFolder() {
         guard let folder = sessionFolder else { return }
-        let contents = (try? FileManager.default.contentsOfDirectory(
-            at: folder, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles])) ?? []
-        guard contents.isEmpty else { return }
+        // Also counts a folder holding only leftovers as empty (a lone events
+        // sidecar, an empty notes.jsonl); see SessionFolderRules for the rule.
+        guard SessionFolderRules.isEffectivelyEmpty(folder) else { return }
         try? FileManager.default.removeItem(at: folder)
     }
 

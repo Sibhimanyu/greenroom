@@ -4,8 +4,7 @@
 //
 //  Every message Greenroom shows - a toast, the upload question, the start's
 //  "Getting ready" card - lives in one place: a floating glass panel at the
-//  top-right of the screen the person is working on, where macOS shows its
-//  own notifications. Never inside a Greenroom window, so a message can never
+//  top-centre of the screen the person is working on, just below the menu bar. Never inside a Greenroom window, so a message can never
 //  sit on Start Meeting or any other control.
 //
 //  ToastController, UploadPromptCard and ReadinessHUDController keep their
@@ -123,11 +122,11 @@ private struct BannerStackView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var transition: AnyTransition {
-        reduceMotion ? .opacity : .move(edge: .trailing).combined(with: .opacity)
+        reduceMotion ? .opacity : .offset(y: -10).combined(with: .opacity)
     }
 
     var body: some View {
-        VStack(alignment: .trailing, spacing: BannerLayout.gap) {
+        VStack(alignment: .center, spacing: BannerLayout.gap) {
             if let prompt = banners.prompt {
                 PromptBanner(item: prompt).transition(transition)
             }
@@ -144,7 +143,7 @@ private struct BannerStackView: View {
             Color.clear.preference(key: StackSizeKey.self, value: proxy.size)
         })
         .onPreferenceChange(StackSizeKey.self) { onSize($0) }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
     }
 }
 
@@ -299,9 +298,9 @@ private struct BannerCard<Content: View>: View {
 
     var body: some View {
         content
-            .padding(14)
+            .padding(12)
             .frame(width: BannerLayout.cardWidth, alignment: .leading)
-            .greenroomGlass(in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .greenroomGlass(in: RoundedRectangle(cornerRadius: 12, style: .continuous))
             .shadow(color: .black.opacity(0.18), radius: 10, y: 3)
     }
 }
@@ -319,17 +318,18 @@ private struct ToastBanner: View {
 
     var body: some View {
         BannerCard {
-            HStack(alignment: .top, spacing: 12) {
+            HStack(alignment: .top, spacing: 10) {
                 Image(systemName: item.kind.symbol)
+                    .font(.system(size: 14))
                     .foregroundStyle(tint)
-                    .frame(width: 22)
+                    .frame(width: 20)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(item.title)
-                        .font(.system(size: 13, weight: .semibold))
+                        .font(.callout.weight(.semibold))
                         .lineLimit(2)
                     if let detail = item.detail, !detail.isEmpty {
                         Text(detail)
-                            .font(.system(size: 11))
+                            .font(.subheadline)
                             .foregroundStyle(.secondary)
                             .lineLimit(1)
                             .truncationMode(.middle)
@@ -347,28 +347,30 @@ private struct PromptBanner: View {
 
     var body: some View {
         BannerCard {
-            HStack(alignment: .top, spacing: 14) {
+            HStack(alignment: .top, spacing: 10) {
                 Image(systemName: "play.rectangle.fill")
-                    .font(.system(size: 22))
+                    .font(.system(size: 20))
+                    .frame(width: 24)
                     // The upload leaves this Mac: amber, not green (DESIGN.md).
                     .foregroundStyle(Brand.net)
-                VStack(alignment: .leading, spacing: 6) {
+                VStack(alignment: .leading, spacing: 4) {
                     Text(item.title)
-                        .font(.system(size: 14, weight: .semibold))
+                        .font(.callout.weight(.semibold))
                         .lineLimit(2)
                     Text(item.detail)
-                        .font(.system(size: 12.5))
+                        .font(.subheadline)
                         .foregroundStyle(.secondary)
                         .lineLimit(4)
                         .fixedSize(horizontal: false, vertical: true)
-                    HStack(spacing: 10) {
+                    HStack(spacing: 8) {
                         Spacer(minLength: 0)
                         Button("Not now") { UploadPromptCard.notNow() }
                         Button(item.uploadTitle) { UploadPromptCard.upload() }
                             .buttonStyle(.borderedProminent)
                             .tint(Brand.net)
                     }
-                    .padding(.top, 6)
+                    .controlSize(.small)
+                    .padding(.top, 4)
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -384,9 +386,9 @@ private struct ReadinessBanner: View {
 
     var body: some View {
         BannerCard {
-            VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: 7) {
                 Text(readiness.failure == nil ? "GETTING READY" : "COULD NOT START")
-                    .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                    .font(.system(size: 9, weight: .semibold, design: .monospaced))
                     .foregroundStyle(.secondary)
 
                 GeometryReader { proxy in
@@ -398,7 +400,7 @@ private struct ReadinessBanner: View {
                             .animation(.easeInOut(duration: 0.25), value: fraction)
                     }
                 }
-                .frame(height: 3)
+                .frame(height: 2)
 
                 ForEach(Array(readiness.steps.enumerated()), id: \.offset) { _, step in
                     row(step)
@@ -406,11 +408,11 @@ private struct ReadinessBanner: View {
 
                 if let failure = readiness.failure {
                     Text(failure)
-                        .font(.system(size: 12))
+                        .font(.subheadline)
                         .foregroundStyle(.red)
                         .lineLimit(6)
                         .fixedSize(horizontal: false, vertical: true)
-                    HStack(spacing: 10) {
+                    HStack(spacing: 8) {
                         Spacer(minLength: 0)
                         Button("Close") {
                             Task { @MainActor in ParticipantGridWindowController.readinessDismiss?() }
@@ -420,9 +422,10 @@ private struct ReadinessBanner: View {
                         }
                         .buttonStyle(.borderedProminent)
                     }
+                    .controlSize(.small)
                 } else if let detail = readiness.detail, !detail.isEmpty {
                     Text(detail)
-                        .font(.system(size: 11))
+                        .font(.caption)
                         .foregroundStyle(.secondary)
                         .lineLimit(2)
                 }
@@ -436,13 +439,13 @@ private struct ReadinessBanner: View {
     }
 
     private func row(_ step: ParticipantGridWindowController.Readiness.Step) -> some View {
-        HStack(spacing: 8) {
+        HStack(spacing: 7) {
             Group {
                 switch step.state {
                 case .pending:
                     Image(systemName: "circle").foregroundStyle(.secondary)
                 case .active:
-                    ProgressView().controlSize(.small).scaleEffect(0.7)
+                    ProgressView().controlSize(.small).scaleEffect(0.6)
                 case .done:
                     Image(systemName: "checkmark.circle.fill").foregroundStyle(Brand.green)
                 case .skipped:
@@ -451,11 +454,13 @@ private struct ReadinessBanner: View {
                     Image(systemName: "exclamationmark.circle.fill").foregroundStyle(.red)
                 }
             }
-            .frame(width: 16, height: 16)
+            .font(.system(size: 15))
+            .frame(width: 15, height: 15)
             Text(step.label)
-                .font(.system(size: 13))
+                .font(.system(size: 12))
                 .foregroundStyle(style(step.state))
         }
+        .frame(height: 17)
     }
 
     private func style(_ state: ParticipantGridWindowController.Readiness.State) -> AnyShapeStyle {

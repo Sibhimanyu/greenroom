@@ -297,43 +297,27 @@ struct LayoutAddPanel: View {
 
     @ViewBuilder
     private func tile(_ item: Item) -> some View {
-        let isHovered = hovered == item.id
-        let isFocused = focus == item.id
-        let face = VStack(spacing: 4) {
-            glyph(item)
-                .frame(height: 34)
-            Text(item.title)
-                .font(.system(size: 11))
-                .multilineTextAlignment(.center)
-                .lineLimit(2)
-                .foregroundStyle(.primary)
-                .frame(maxWidth: .infinity)
-        }
-        .padding(.horizontal, 6)
-        .padding(.vertical, 8)
-        .frame(width: Self.tileWidth, height: Self.tileHeight, alignment: .top)
-        .background(RoundedRectangle(cornerRadius: 10)
-            .fill(item.placed ? Brand.green.opacity(0.12)
-                  : (isHovered && item.available ? Color.secondary.opacity(0.14) : Color(nsColor: .controlBackgroundColor))))
-        .overlay(RoundedRectangle(cornerRadius: 10)
-            .strokeBorder(isFocused ? Brand.green : (item.placed ? Brand.green.opacity(0.6) : Color.secondary.opacity(0.25)),
-                          lineWidth: isFocused ? 2 : 1))
-        .overlay(alignment: .topTrailing) {
-            if item.placed {
-                Image(systemName: "checkmark")
-                    .font(.system(size: 9, weight: .bold))
-                    .foregroundStyle(Brand.text)
-                    .padding(6)
+        let face = Button { activate(item) } label: {
+            VStack(spacing: 4) {
+                glyph(item)
+                    .frame(height: 34)
+                Text(item.title)
+                    .font(.system(size: 11))
+                    .multilineTextAlignment(.center)
+                    .lineLimit(2)
+                    .foregroundStyle(.primary)
+                    .frame(maxWidth: .infinity)
             }
+            .padding(.horizontal, 6)
+            .padding(.vertical, 8)
+            .frame(width: Self.tileWidth, height: Self.tileHeight, alignment: .top)
         }
+        .greenroomTile(role: .choice(selected: item.placed))
         .opacity(item.available ? 1 : 0.45)
-        .contentShape(RoundedRectangle(cornerRadius: 10))
-        .animation(reduceMotion ? nil : .easeOut(duration: 0.15), value: isHovered)
 
         let interactive = face
             .focusable()
             .focused($focus, equals: item.id)
-            .focusEffectDisabled()
             .onKeyPress(keys: [.return, .space, .leftArrow, .rightArrow, .upArrow, .downArrow]) { press in
                 key(press, on: item)
             }
@@ -344,7 +328,6 @@ struct LayoutAddPanel: View {
                 searchFocused = true
                 return .handled
             }
-            .onTapGesture { activate(item) }
             .onHover { inside in
                 if inside { hovered = item.id } else if hovered == item.id { hovered = nil }
             }

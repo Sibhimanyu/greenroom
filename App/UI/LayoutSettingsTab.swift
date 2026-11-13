@@ -536,16 +536,13 @@ struct LayoutPageContent: View {
             }
             Spacer(minLength: 8)
             if template.twoDisplays != nil {
-                Picker("Layout for", selection: Binding(get: { showsTwo },
+                GreenroomSegmented("Layout for", selection: Binding(get: { showsTwo },
                                                         set: { v in
                                                             withAnimation(anim) { showsTwo = v; activeSlot = v ? .main : .one; selection = nil }
-                                                        })) {
-                    Text("One display").tag(false)
-                    Text("Two displays").tag(true)
+                                                        }),
+                                   options: [false, true]) { two in
+                    Text(two ? "Two displays" : "One display")
                 }
-                .pickerStyle(.segmented)
-                .labelsHidden()
-                .fixedSize()
             } else if !template.isLocked {
                 Button {
                     withAnimation(anim) {
@@ -1088,6 +1085,7 @@ struct LayoutCard<Thumbnail: View>: View {
     }
 
     var body: some View {
+        Button(action: select) {
         VStack(spacing: 6) {
             thumbnail()
                 .frame(width: layoutCardWidth)
@@ -1113,12 +1111,8 @@ struct LayoutCard<Thumbnail: View>: View {
             }
         }
         .padding(6)
-        .background(RoundedRectangle(cornerRadius: 10)
-            .fill(selected ? Brand.green.opacity(0.12) : Color(nsColor: .controlBackgroundColor)))
-        .overlay(RoundedRectangle(cornerRadius: 10)
-            .strokeBorder(selected ? Brand.green : Color.secondary.opacity(0.25), lineWidth: selected ? 2 : 1))
-        .contentShape(RoundedRectangle(cornerRadius: 10))
-        .onTapGesture(perform: select)
+        }
+        .greenroomTile(role: .choice(selected: selected))
         .help(beginRename == nil ? title : "\(title)\nDouble-click the name to rename.")
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(title)

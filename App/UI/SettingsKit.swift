@@ -142,24 +142,17 @@ struct ChoiceTile<Picture: View>: View {
             .padding(.vertical, 8)
             .frame(minHeight: 40)
             .frame(maxWidth: .infinity)
-            .background(RoundedRectangle(cornerRadius: 10)
-                .fill(selected ? Brand.green.opacity(0.12) : Color(nsColor: .controlBackgroundColor)))
-            .overlay(RoundedRectangle(cornerRadius: 10)
-                .strokeBorder(selected ? Brand.green : Color.secondary.opacity(0.25),
-                              lineWidth: selected ? 2 : 1))
-            .overlay(alignment: .topTrailing) {
+            .overlay(alignment: .bottomTrailing) {
                 if let badge {
                     Image(systemName: badge)
                         .font(.caption2.weight(.semibold))
                         .foregroundStyle(selected ? Brand.green : Color.secondary)
-                        .padding(6)
+                        .padding(5)
                 }
             }
-            .contentShape(RoundedRectangle(cornerRadius: 10))
         }
-        .buttonStyle(.plain)
+        .greenroomTile(role: .choice(selected: selected))
         .accessibilityLabel(title)
-        .accessibilityAddTraits(selected ? .isSelected : [])
     }
 }
 

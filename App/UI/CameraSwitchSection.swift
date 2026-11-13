@@ -342,9 +342,10 @@ private struct CameraCard: View {
                     }
                 }
                 .frame(maxWidth: .infinity, minHeight: 28)
+                .padding(8)
                 .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
+            .greenroomTile(role: .choice(selected: chosen))
             .help(camera.name + (position != nil ? " · Click to leave this camera out" : " · Click to use this camera"))
             // Aim belongs to switching: with it off there is one camera and
             // nothing to measure, so the row collapses (LIVE stays while on air).
@@ -359,17 +360,13 @@ private struct CameraCard: View {
                     if isLive { PictureChip(text: "LIVE", dot: Brand.green) }
                 }
                 .padding(.top, 8)
+                .padding(.horizontal, 8)
+                .padding(.bottom, 8)
             }
         }
-        .padding(8)
         .frame(maxWidth: .infinity)
-        .background(RoundedRectangle(cornerRadius: 10)
-            .fill(chosen ? Brand.green.opacity(0.12) : Color(nsColor: .controlBackgroundColor)))
-        .overlay(RoundedRectangle(cornerRadius: 10)
-            .strokeBorder(chosen ? Brand.green : Color.secondary.opacity(0.25), lineWidth: chosen ? 2 : 1))
         .accessibilityElement(children: .contain)
         .accessibilityLabel(camera.name)
-        .accessibilityAddTraits(chosen ? .isSelected : [])
     }
 
     private var symbol: String {
@@ -396,24 +393,18 @@ private struct NoCameraCard: View {
                     .font(.callout.weight(chosen ? .semibold : .regular))
                     .lineLimit(1)
             }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 8)
             .frame(maxWidth: .infinity)
+            .frame(minHeight: 56)
             .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .greenroomTile(role: .choice(selected: chosen))
         .disabled(!allowed)
-        .padding(.horizontal, 8)
-        .padding(.vertical, 8)
-        .frame(maxWidth: .infinity)
-        .frame(minHeight: 56)
-        .background(RoundedRectangle(cornerRadius: 10)
-            .fill(chosen ? Brand.green.opacity(0.12) : Color(nsColor: .controlBackgroundColor)))
-        .overlay(RoundedRectangle(cornerRadius: 10)
-            .strokeBorder(chosen ? Brand.green : Color.secondary.opacity(0.25), lineWidth: chosen ? 2 : 1))
         .opacity(allowed ? 1 : 0.5)
         .help(allowed ? "Just what you share, full frame. No camera is opened."
                       : "Pick something for Behind you first. With nothing behind you and no camera, there\u{2019}s nothing to show.")
         .accessibilityLabel("No camera")
-        .accessibilityAddTraits(chosen ? .isSelected : [])
     }
 }
 

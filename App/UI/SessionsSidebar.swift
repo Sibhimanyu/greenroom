@@ -89,16 +89,18 @@ struct SessionsSidebar: View {
 
 // MARK: - Command
 
-/// View menu: "Toggle Sidebar" on Command-B, beside the system's own
-/// Show/Hide Sidebar (Control-Command-S). Does nothing on Home and the Record
-/// studio, where there is no sidebar.
+/// View menu: the one sidebar item, "Hide Sidebar" / "Show Sidebar" on
+/// Command-B, in place of the system's (which would be a second item). It
+/// writes the same saved choice ContentView's column visibility reads. Disabled
+/// on Home and the Record studio, where there is no sidebar. Control-Command-S
+/// is kept by a hidden key equivalent in ContentView.
 struct SidebarCommands: Commands {
     @ObservedObject var coordinator: CoordinatorController
     @AppStorage(SidebarRules.hiddenKey) private var hidden = false
 
     var body: some Commands {
-        CommandGroup(after: .sidebar) {
-            Button("Toggle Sidebar") { hidden.toggle() }
+        CommandGroup(replacing: .sidebar) {
+            Button(hidden ? "Show Sidebar" : "Hide Sidebar") { hidden.toggle() }
                 .keyboardShortcut("b", modifiers: .command)
                 .disabled(coordinator.mainPage.isHome || coordinator.recordStudioShown)
         }

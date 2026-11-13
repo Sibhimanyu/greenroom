@@ -113,6 +113,17 @@ struct ContentView: View {
             detailColumn
         }
         .environmentObject(sidebarModel)
+        // Control-Command-S, the system's own sidebar key, which the single
+        // View menu item (SidebarCommands) no longer carries. Present but
+        // invisible: the menu shows one item.
+        .background {
+            Button("") { sidebarHidden.toggle() }
+                .keyboardShortcut("s", modifiers: [.command, .control])
+                .disabled(!chromeOnPage)
+                .frame(width: 0, height: 0)
+                .opacity(0)
+                .accessibilityHidden(true)
+        }
         // The window OPENS at the preferred size every time, regardless
         // of the size it was closed at (explicit request) - SwiftUI
         // persists scene geometry across launches and defaultSize only

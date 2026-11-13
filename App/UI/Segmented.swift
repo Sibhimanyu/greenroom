@@ -62,7 +62,10 @@ struct GreenroomSegmented<Value: Hashable, Label: View>: View {
     var body: some View {
         row
             .fixedSize()
-            .focusable()
+            // Focusable only with Full Keyboard Access on, as a native
+            // segmented control is. Always-focusable made it take the
+            // window's first focus and wear a green focus ring on open.
+            .focusable(NSApplication.shared.isFullKeyboardAccessEnabled)
             .onKeyPress(.leftArrow) { move(-1) }
             .onKeyPress(.rightArrow) { move(1) }
             .accessibilityRepresentation {

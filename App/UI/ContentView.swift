@@ -154,10 +154,7 @@ struct ContentView: View {
                 }
                 // The mode switcher is the toolbar's centre: it decides what the
                 // one button below does, so it belongs with the window's chrome.
-                ToolbarItem(placement: .principal) {
-                    GreenroomSegmented("Mode", selection: $coordinator.meetingMode,
-                                       options: Array(MeetingMode.allCases), toolbar: true) { Text($0.label) }
-                }
+                modeSwitcherItem
                 if #available(macOS 26, *) {
                     ToolbarSpacer(.flexible)
                 }
@@ -191,6 +188,24 @@ struct ContentView: View {
             OnboardingView()
                 .environmentObject(coordinator)
         }
+    }
+
+    /// The switcher draws its own capsule (Segmented.swift), so the system's
+    /// shared toolbar background is hidden on macOS 26: its padding differed
+    /// top/bottom from the ends and could not be matched.
+    @ToolbarContentBuilder
+    private var modeSwitcherItem: some ToolbarContent {
+        if #available(macOS 26, *) {
+            ToolbarItem(placement: .principal) { modeSwitcher }
+                .sharedBackgroundVisibility(.hidden)
+        } else {
+            ToolbarItem(placement: .principal) { modeSwitcher }
+        }
+    }
+
+    private var modeSwitcher: some View {
+        GreenroomSegmented("Mode", selection: $coordinator.meetingMode,
+                           options: Array(MeetingMode.allCases), toolbar: true) { Text($0.label) }
     }
 
     /// Home and the pages, one over the other. Mounted by state (not by

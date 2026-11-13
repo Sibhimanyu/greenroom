@@ -36,9 +36,10 @@ struct GreenroomSegmented<Value: Hashable, Label: View>: View {
     let title: String
     @Binding var selection: Value
     let options: [Value]
-    /// In a window toolbar: the toolbar item's own glass capsule is the track,
-    /// as it is for the Sessions button, so this draws no track and no inset,
-    /// plain primary labels, and the same solid green selection.
+    /// In a window toolbar: draws its own track (a glass capsule on macOS 26,
+    /// whose system background the toolbar item hides) with one exact inset
+    /// (`SegmentedMath.inset`) on all four sides of the green selection, plain
+    /// primary labels, and the same solid green selection.
     var toolbar = false
     @ViewBuilder let label: (Value) -> Label
 
@@ -58,7 +59,7 @@ struct GreenroomSegmented<Value: Hashable, Label: View>: View {
         self.label = label
     }
 
-    private var height: CGFloat { toolbar ? 26 : 22 }
+    private var height: CGFloat { toolbar ? SegmentedMath.toolbarPillHeight : 22 }
     private var hPadding: CGFloat { toolbar ? 14 : 10 }
 
     private var motion: Animation {
@@ -98,12 +99,23 @@ struct GreenroomSegmented<Value: Hashable, Label: View>: View {
                 segment(option)
             }
         }
-        .padding(toolbar ? 0 : 2)
-        .background { if !toolbar { Capsule().fill(.quinary) } }
+        .padding(toolbar ? SegmentedMath.inset : 2)
+        .background { if toolbar { toolbarTrack } else { Capsule().fill(.quinary) } }
         // Lay out by the selection pill's edges, not the track's: the faint
         // track spills 2pt past them, so the green pill lines up with the
         // leading edge of the text and fields around it.
         .padding(toolbar ? 0 : -2)
+    }
+
+    /// The toolbar's capsule. Glass on macOS 26 to match the Sessions button;
+    /// the faint track before that.
+    @ViewBuilder
+    private var toolbarTrack: some View {
+        if #available(macOS 26, *) {
+            Color.clear.glassEffect(.regular, in: Capsule()) // GLASS-TRACK
+        } else {
+            Capsule().fill(.quinary)
+        }
     }
 
     private func segment(_ option: Value) -> some View {

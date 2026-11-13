@@ -61,7 +61,7 @@ struct HomeView: View {
     static var columnHeight: CGFloat {
         brandHeight + fieldHeight + summaryHeight + readyHeight + buttonHeight + 4 * columnGap
     }
-    static var tilesExtraHeight: CGFloat { tilesHeight + columnGap }
+    static var tilesExtraHeight: CGFloat { tilesHeight }
 
     @State private var showLive = false
     @State private var cameras: [LocalDeviceResolver.Camera] = []
@@ -354,6 +354,9 @@ struct HomeView: View {
                 if setupOpen { setupCaptionRow.transition(.opacity) } else { summaryRow.transition(.opacity) }
             }
             .animation(.easeInOut(duration: 0.2), value: setupOpen)
+            // The caption is centred in its 32pt row, so the tiles sit 8pt
+            // under it, the tiles' own spacing, not the column's 16pt gap.
+            .padding(.bottom, setupOpen ? -Self.columnGap : 0)
             Collapsible(hidden: !setupOpen) {
                 // Equal tiles: Look | Share, Camera | Microphone, Layout across.
                 VStack(spacing: 8) {
@@ -405,7 +408,7 @@ struct HomeView: View {
     }
 
     private var setupCaptionRow: some View {
-        HStack(alignment: .top, spacing: 8) {
+        HStack(alignment: .center, spacing: 8) {
             Text("Setup")
                 .font(.system(size: 12, weight: .medium))
                 .foregroundStyle(.secondary)
@@ -413,7 +416,7 @@ struct HomeView: View {
                 .accessibilityAddTraits(.isHeader)
             setupToggle
         }
-        .frame(minHeight: Self.summaryHeight, alignment: .top)
+        .frame(minHeight: Self.summaryHeight, alignment: .center)
     }
 
     /// Edit while folded, Done while unfolded.

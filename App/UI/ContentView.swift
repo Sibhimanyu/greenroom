@@ -115,14 +115,13 @@ struct ContentView: View {
         // nested split view ignore the top safe area; it did not work.)
         NavigationSplitView(columnVisibility: columnVisibility) {
             SessionsSidebar(model: sidebarModel)
+                // Home and Record have no sidebar to toggle. Documented home of
+                // the removal: the sidebar column's content.
+                .toolbar(removing: chromeOnPage ? nil : .sidebarToggle)
         } detail: {
             detailColumn
         }
         .environmentObject(sidebarModel)
-        // Home and Record have no sidebar to toggle. On the split view's root,
-        // not inside the detail column: the system's toggle belongs to the
-        // split view, so a removal set on the detail never reached it.
-        .toolbar(removing: chromeOnPage ? nil : .sidebarToggle)
         // Control-Command-S, the system's own sidebar key, which the single
         // View menu item (SidebarCommands) no longer carries. Present but
         // invisible: the menu shows one item.
@@ -147,8 +146,6 @@ struct ContentView: View {
         // resizeWindow.
         .onChange(of: statusShown) { _, _ in resizeWindow(animated: true) }
         .onChange(of: setupOpen) { _, _ in resizeWindow(animated: true) }
-        .onChange(of: chromeOnPage) { _, _ in syncSidebarToggle() }
-        .onAppear { DispatchQueue.main.async { syncSidebarToggle() } }
         #if DEBUG
         .onReceive(NotificationCenter.default.publisher(for: .debugTourHomeSetup)) { note in
             Collapse.animate { setupOpen = (note.userInfo?["expanded"] as? Bool) ?? false }
@@ -263,17 +260,6 @@ struct ContentView: View {
             }
         }
         .homeTitleHidden(!chromeOnPage)
-    }
-
-    /// SwiftUI's `.toolbar(removing: .sidebarToggle)` does not reach the toggle
-    /// the window's split view view-controller owns (it kept showing on Home,
-    /// where it does nothing), so the AppKit item is hidden directly: shown on
-    /// Sessions pages only.
-    private func syncSidebarToggle() {
-        guard #available(macOS 15.0, *), let toolbar = Self.window?.toolbar else { return }
-        for item in toolbar.items where item.itemIdentifier.rawValue.hasSuffix("toggleSidebar") {
-            item.isHidden = !chromeOnPage
-        }
     }
 
     /// Learns the sidebar's real width, from what the window has left over,

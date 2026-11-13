@@ -31,25 +31,28 @@ enum EditorTheme {
     }
 }
 
-struct EditorCardStyle: ViewModifier {
-    var padding: CGFloat
-    var cornerRadius: CGFloat
-
-    func body(content: Content) -> some View {
-        content
-            .padding(padding)
-            .background(
-                RoundedRectangle(cornerRadius: cornerRadius)
-                    .fill(EditorTheme.card)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: cornerRadius)
-                            .stroke(EditorTheme.cardStroke, lineWidth: 1)))
-    }
-}
-
 extension View {
+    /// The editor's card: the shared quinary tile fill (DESIGN.md, "Cards and
+    /// tiles") with the hairline, not a bespoke box.
     func editorCard(padding: CGFloat = 16, cornerRadius: CGFloat = 12) -> some View {
-        modifier(EditorCardStyle(padding: padding, cornerRadius: cornerRadius))
+        self.padding(padding)
+            .background(
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .fill(.quinary)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                            .strokeBorder(Color(nsColor: .separatorColor).opacity(0.5), lineWidth: 0.5)))
+    }
+
+    /// Round transport button: a `.glass` circle on macOS 26, the old flat
+    /// circle before.
+    @ViewBuilder
+    func editorRoundControl() -> some View {
+        if #available(macOS 26, *) {
+            self.buttonStyle(.glass).buttonBorderShape(.circle).controlSize(.large)
+        } else {
+            self.buttonStyle(EditorRoundControlButtonStyle())
+        }
     }
 }
 
@@ -129,52 +132,4 @@ extension ButtonStyle where Self == EditorButtonStyle {
     static var editorPrimary: EditorButtonStyle { EditorButtonStyle(kind: .primary) }
     static var editorSecondary: EditorButtonStyle { EditorButtonStyle(kind: .secondary) }
     static var editorDanger: EditorButtonStyle { EditorButtonStyle(kind: .danger) }
-}
-
-/// Single-choice segmented control.
-struct EditorSegmented<Value: Hashable>: View {
-    let options: [Value]
-    @Binding var selection: Value
-    let title: (Value) -> String
-    var fontSize: CGFloat = 13
-    var height: CGFloat = 32
-    @Namespace private var selectionSpace
-    @State private var hovered: Value?
-
-    var body: some View {
-        HStack(spacing: 0) {
-            ForEach(Array(options.enumerated()), id: \.offset) { index, option in
-                let selected = option == selection
-                Button {
-                    withAnimation(.spring(response: 0.28, dampingFraction: 0.8)) { selection = option }
-                } label: {
-                    Text(title(option))
-                        .font(.system(size: fontSize, weight: .semibold))
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.8)
-                        .foregroundStyle(selected ? Color.white : (hovered == option ? EditorTheme.textPrimary : EditorTheme.textSecondary))
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        .background {
-                            if selected {
-                                RoundedRectangle(cornerRadius: 8)
-                                    .fill(EditorTheme.accentDeep)
-                                    .matchedGeometryEffect(id: "selection", in: selectionSpace)
-                            }
-                        }
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .onHover { hovered = $0 ? option : (hovered == option ? nil : hovered) }
-                .overlay(alignment: .leading) {
-                    if index > 0, !selected, options[index - 1] != selection {
-                        Rectangle().fill(EditorTheme.border).frame(width: 1, height: height * 0.5)
-                    }
-                }
-            }
-        }
-        .padding(4)
-        .frame(height: height + 8)
-        .background(RoundedRectangle(cornerRadius: 10).fill(Color.primary.opacity(0.06)))
-        .overlay(RoundedRectangle(cornerRadius: 10).stroke(EditorTheme.border, lineWidth: 1))
-    }
 }

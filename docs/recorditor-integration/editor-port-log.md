@@ -70,3 +70,13 @@ Recorditor's video editor, ported into Greenroom. Upstream: ZRecorditor @7210322
 - Look follows Greenroom (system chrome, Brand.green), not the Recorditor navy/blue theme.
 - Frame rate / quality are fixed at 30 fps / 0.8 bpp.
 - Entry is from the Recordings inspector (Edit tile) or the Editor window's own Load Video / picker.
+
+## Glass redesign, chunk C7 (Editor window)
+- `EditorView.swift`: the window now has a `.toolbar`. Undo/Redo (`.navigation`), Trim/Cut as `GreenroomSegmented` (`.principal`), Effects button with the same popover (`.primaryAction`), a Side Panel toggle (`.primaryAction`, new), Cancel (`.cancellationAction`, was "Cancel Edit"), Save (`.confirmationAction`, `greenroomGlassButton(prominent: true)`, Brand.green tint). The old red/green bordered Cancel/Save are gone.
+- The in-page `toolbarRow` is now `toolsRow` and keeps only Delete Cut, Crop/Clear Crop, Merge Videos and the audio controls (no mode picker, Undo/Redo, Effects, Cancel/Save, no "MODE" caption). The export-options sheet and the cancel confirmation dialog moved to the `editor` view.
+- The 290pt side panel is now `.inspector` (`inspectorColumnWidth(min: 260, ideal: 300, max: 400)`). Info/Assistant is a `GreenroomSegmented` at its top; the label is `Label("Assistant", systemImage: "sparkles")` (the "✦" text glyph is gone).
+- Export options quality picker: native `.segmented` Picker -> `GreenroomSegmented`.
+- Effects popover: removed `.preferredColorScheme(.dark)`.
+- Transport (back 10, play/pause, forward 10): `.editorRoundControl()`.
+- `EditorTheme.swift`: `EditorCardStyle` deleted; `.editorCard()` now draws the shared tile look (`.quinary` fill, 0.5pt separator hairline) as a plain extension. `EditorSegmented` (no callers) deleted. New `editorRoundControl()`: `.glass` circle buttons on macOS 26, `EditorRoundControlButtonStyle` (previously unused) before that.
+- Still hand-styled, out of scope: `EditorButtonStyle`, `EditorPanelHeader`, the merge/audio popovers.

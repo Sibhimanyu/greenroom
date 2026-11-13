@@ -20,6 +20,7 @@ struct EditorView: View {
     @State private var showMergeSourcePanel = false
     @State private var showAudioOptions = false
     @State private var sideTab = 0
+    @State private var showInspector = true
     @StateObject private var library = EditorRecordingLibrary()
 
     var body: some View {
@@ -238,24 +239,6 @@ struct EditorView: View {
                     transport
                 }
                 .padding(12)
-
-                Divider()
-
-                VStack(spacing: 0) {
-                    Picker("", selection: $sideTab) {
-                        Text("Info").tag(0)
-                        Text("✦ Assistant").tag(1)
-                    }
-                    .pickerStyle(.segmented)
-                    .padding(10)
-                    .help("Info shows file details and edits; Assistant edits the video from text prompts")
-                    if sideTab == 0 {
-                        sidePanel
-                    } else {
-                        AssistantPanel()
-                    }
-                }
-                .frame(width: 290)
             }
 
             Divider()
@@ -264,12 +247,139 @@ struct EditorView: View {
                     .padding(.horizontal, 14)
                     .padding(.top, 8)
             }
-            toolbarRow
+            toolsRow
                 .padding(.horizontal, 14)
                 .padding(.vertical, 8)
             EditorTimelineView()
                 .padding(.horizontal, 14)
                 .padding(.bottom, 10)
+        }
+        .inspector(isPresented: $showInspector) {
+            VStack(spacing: 0) {
+                GreenroomSegmented("Side panel", selection: $sideTab, options: [0, 1]) { tab in
+                    if tab == 0 {
+                        Label("Info", systemImage: "info.circle")
+                    } else {
+                        Label("Assistant", systemImage: "sparkles")
+                    }
+                }
+                .padding(10)
+                .help("Info shows file details and edits; Assistant edits the video from text prompts")
+                if sideTab == 0 {
+                    sidePanel
+                } else {
+                    AssistantPanel()
+                }
+            }
+            .inspectorColumnWidth(min: 260, ideal: 300, max: 400)
+        }
+        .toolbar { editorToolbar }
+        .sheet(isPresented: $vm.showExportOptions) {
+            ExportOptionsSheet()
+                .environmentObject(vm)
+        }
+        .confirmationDialog(
+            "Cancel this edit?",
+            isPresented: $showCloseConfirm
+        ) {
+            Button("Discard Edits", role: .destructive) {
+                vm.closeVideo()
+            }
+            Button("Keep Editing", role: .cancel) {}
+        } message: {
+            Text("Cuts, trims, crop and merge clips will be lost unless you save first.")
+        }
+    }
+
+    // MARK: window toolbar
+
+    @ToolbarContentBuilder
+    private var editorToolbar: some ToolbarContent {
+        ToolbarItemGroup(placement: .navigation) {
+            Button {
+                vm.undo()
+            } label: {
+                Label("Undo", systemImage: "arrow.uturn.backward")
+            }
+            .disabled(!vm.canUndo)
+            .keyboardShortcut("z", modifiers: [.command])
+            .help("Undo the last edit (⌘Z)")
+
+            Button {
+                vm.redo()
+            } label: {
+                Label("Redo", systemImage: "arrow.uturn.forward")
+            }
+            .disabled(!vm.canRedo)
+            .keyboardShortcut("z", modifiers: [.command, .shift])
+            .help("Redo (⇧⌘Z)")
+        }
+
+        ToolbarItem(placement: .principal) {
+            GreenroomSegmented("Mode", selection: $vm.mode, options: TimelineMode.allCases) { mode in
+                Text(mode.rawValue)
+            }
+            .help("Trim: drag the edge handles · Cut: drag on the timeline to mark removals")
+        }
+
+        ToolbarItem(placement: .primaryAction) {
+            Button {
+                showEffectsPopover.toggle()
+            } label: {
+                Label("Effects", systemImage: "sparkles")
+            }
+            .popover(isPresented: $showEffectsPopover, arrowEdge: .bottom) {
+                effectsPopover
+                    .onAppear {
+                        speedFrom = TimeFormatting.clock(vm.playhead)
+                        speedTo = TimeFormatting.clock(min(vm.playhead + 10, vm.trimEnd))
+                        // Reopenings reflect the applied state: the dial sits
+                        // at the active speed.
+                        if let whole = wholeVideoSpeedSegment {
+                            newSpeedFactor = whole.factor
+                        } else if let at = vm.speedSegments.first(where: {
+                            vm.playhead >= $0.start && vm.playhead < $0.end
+                        }) {
+                            newSpeedFactor = at.factor
+                        }
+                    }
+            }
+            .help("Click ripples, keystrokes, captions, blur, arrows, speed — applied on Save")
+        }
+
+        ToolbarItem(placement: .primaryAction) {
+            Button {
+                showInspector.toggle()
+            } label: {
+                Label("Side Panel", systemImage: "sidebar.trailing")
+            }
+            .help("Show or hide the Info / Assistant panel")
+        }
+
+        ToolbarItem(placement: .cancellationAction) {
+            Button {
+                if vm.hasUnsavedEdits {
+                    showCloseConfirm = true
+                } else {
+                    vm.closeVideo()
+                }
+            } label: {
+                Text("Cancel")
+            }
+            .disabled(vm.isExporting)
+            .help("Discard all edits and close this video")
+        }
+
+        ToolbarItem(placement: .confirmationAction) {
+            Button {
+                vm.showExportOptions = true
+            } label: {
+                Label("Save", systemImage: "square.and.arrow.down")
+            }
+            .greenroomGlassButton(prominent: true)
+            .tint(Brand.green)
+            .disabled(vm.isExporting)
+            .help("Choose format and quality, see the estimated size, then save")
         }
     }
 
@@ -282,6 +392,7 @@ struct EditorView: View {
             } label: {
                 Image(systemName: "gobackward.10")
             }
+            .editorRoundControl()
             .keyboardShortcut(.leftArrow, modifiers: [])
             .help("Back 10 seconds (←)")
 
@@ -292,6 +403,7 @@ struct EditorView: View {
                     .font(.title3)
                     .frame(width: 28)
             }
+            .editorRoundControl()
             .keyboardShortcut(.space, modifiers: [])
             .help("Play / pause (Space)")
 
@@ -300,6 +412,7 @@ struct EditorView: View {
             } label: {
                 Image(systemName: "goforward.10")
             }
+            .editorRoundControl()
             .keyboardShortcut(.rightArrow, modifiers: [])
             .help("Forward 10 seconds (→)")
 
@@ -372,46 +485,11 @@ struct EditorView: View {
         .editorCard(padding: 12, cornerRadius: 10)
     }
 
-    // MARK: toolbar above the timeline
+    // MARK: tools above the timeline (the window toolbar holds undo, mode, effects, cancel, save)
 
     @ViewBuilder
     private func toolsContent(spacing: CGFloat) -> some View {
         HStack(spacing: spacing) {
-            if spacing >= 8 {
-                // Decorative caption — first thing to go when space is tight.
-                Text("MODE")
-                    .font(.caption2.bold())
-                    .foregroundStyle(.secondary)
-            }
-            Picker("", selection: $vm.mode) {
-                ForEach(TimelineMode.allCases, id: \.self) { mode in
-                    Text(mode.rawValue).tag(mode)
-                }
-            }
-            .pickerStyle(.segmented)
-            .frame(width: spacing >= 8 ? 150 : 118)
-            .help("Trim: drag the edge handles · Cut: drag on the timeline to mark removals")
-
-            Divider().frame(height: 18).padding(.horizontal, spacing >= 8 ? 2 : -2)
-
-            Button {
-                vm.undo()
-            } label: {
-                Label("Undo", systemImage: "arrow.uturn.backward")
-            }
-            .disabled(!vm.canUndo)
-            .keyboardShortcut("z", modifiers: [.command])
-            .help("Undo the last edit (⌘Z)")
-
-            Button {
-                vm.redo()
-            } label: {
-                Label("Redo", systemImage: "arrow.uturn.forward")
-            }
-            .disabled(!vm.canRedo)
-            .keyboardShortcut("z", modifiers: [.command, .shift])
-            .help("Redo (⇧⌘Z)")
-
             Button {
                 vm.deleteSelectedCut()
             } label: {
@@ -437,29 +515,6 @@ struct EditorView: View {
                 }
             }
 
-
-            Button {
-                showEffectsPopover.toggle()
-            } label: {
-                Label("Effects", systemImage: "sparkles")
-            }
-            .popover(isPresented: $showEffectsPopover, arrowEdge: .bottom) {
-                effectsPopover
-                    .onAppear {
-                        speedFrom = TimeFormatting.clock(vm.playhead)
-                        speedTo = TimeFormatting.clock(min(vm.playhead + 10, vm.trimEnd))
-                        // Reopenings reflect the applied state: the dial sits
-                        // at the active speed.
-                        if let whole = wholeVideoSpeedSegment {
-                            newSpeedFactor = whole.factor
-                        } else if let at = vm.speedSegments.first(where: {
-                            vm.playhead >= $0.start && vm.playhead < $0.end
-                        }) {
-                            newSpeedFactor = at.factor
-                        }
-                    }
-            }
-            .help("Click ripples, keystrokes, captions, blur, arrows, speed — applied on Save")
 
             Button {
                 showMergeSourceToolbar.toggle()
@@ -732,7 +787,6 @@ struct EditorView: View {
         }
         .padding(16)
         .frame(width: 340)
-        .preferredColorScheme(.dark)
     }
 
     private func startPlacement(_ kind: EditedEffects.Annotation.Kind) {
@@ -740,61 +794,16 @@ struct EditorView: View {
         vm.beginAnnotationPlacement(kind)
     }
 
-    private var toolbarRow: some View {
-        // Left tools scroll when narrow; Cancel/Export stay pinned visible.
+    private var toolsRow: some View {
+        // Adapts to the real available width: full labels when roomy,
+        // tighter when narrow. Labels always stay text.
         HStack(spacing: 10) {
-            // Adapts to the real available width: full labels when roomy,
-            // tighter icon-only when narrow. (Inside a ScrollView the width
-            // is infinite and the full variant always "fit" — hence removed.)
-            // Labels always stay text — narrow windows just tighten spacing.
             ViewThatFits(in: .horizontal) {
                 toolsContent(spacing: 12)
                 toolsContent(spacing: 8)
                 toolsContent(spacing: 5).controlSize(.small)
             }
-
             Spacer(minLength: 8)
-
-            Button {
-                if vm.hasUnsavedEdits {
-                    showCloseConfirm = true
-                } else {
-                    vm.closeVideo()
-                }
-            } label: {
-                Label("Cancel Edit", systemImage: "xmark.circle.fill")
-                    .fontWeight(.semibold)
-            }
-            .buttonStyle(.borderedProminent)
-            .tint(EditorTheme.danger.opacity(0.85))
-            .disabled(vm.isExporting)
-            .help("Discard all edits and close this video")
-            .confirmationDialog(
-                "Cancel this edit?",
-                isPresented: $showCloseConfirm
-            ) {
-                Button("Discard Edits", role: .destructive) {
-                    vm.closeVideo()
-                }
-                Button("Keep Editing", role: .cancel) {}
-            } message: {
-                Text("Cuts, trims, crop and merge clips will be lost unless you save first.")
-            }
-
-            Button {
-                vm.showExportOptions = true
-            } label: {
-                Label("Save", systemImage: "square.and.arrow.down")
-            }
-            .buttonStyle(.borderedProminent)
-            .tint(.green)
-            .disabled(vm.isExporting)
-            .help("Choose format and quality, see the estimated size, then save")
-
-        }
-        .sheet(isPresented: $vm.showExportOptions) {
-            ExportOptionsSheet()
-                .environmentObject(vm)
         }
         .frame(height: 46)   // horizontal ScrollViews are vertically greedy
     }
@@ -1136,13 +1145,9 @@ struct ExportOptionsSheet: View {
                 Text("QUALITY")
                     .font(.caption2.bold())
                     .foregroundStyle(.secondary)
-                Picker("", selection: $vm.exportQuality) {
-                    ForEach(ExportQuality.allCases) { quality in
-                        Text(quality.rawValue).tag(quality)
-                    }
+                GreenroomSegmented("Quality", selection: $vm.exportQuality, options: Array(ExportQuality.allCases)) { quality in
+                    Text(quality.rawValue)
                 }
-                .pickerStyle(.segmented)
-                .labelsHidden()
             }
 
             HStack {

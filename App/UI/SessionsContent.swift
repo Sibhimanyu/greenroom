@@ -21,105 +21,9 @@
 import AppKit
 import SwiftUI
 
-// MARK: - Values
+// MARK: - Look
 
-/// What made a session. Read from session.json's `kind` by RecordingsView.
-/// `.review` is the case name for folders the old presentation window made
-/// (kind "screen" on disk): they still list, play and analyse, and are
-/// labelled Presentation. Nothing writes that kind any more.
-enum SessionKind: String, CaseIterable, Hashable {
-    case classSession, recording, review
-
-    var label: String {
-        switch self {
-        case .classSession: return "Class"
-        case .recording: return "Recording"
-        case .review: return "Presentation"
-        }
-    }
-
-    var symbol: String {
-        switch self {
-        case .classSession: return "person.3.fill"
-        case .recording: return "record.circle"
-        case .review: return "list.bullet.rectangle"
-        }
-    }
-}
-
-/// One card in the grid.
-struct SessionCardModel: Identifiable, Hashable {
-    let id: String
-    var title: String
-    var kind: SessionKind
-    var date: Date
-    /// Seconds, once the recording has been measured. Nil until then, and for
-    /// a session with no recording at all.
-    var duration: Double?
-    var isUploaded: Bool
-    var isAnalysed: Bool
-}
-
-/// The sidebar's SHOW group: one kind, or all of them.
-enum SessionsShow: String, CaseIterable, Identifiable {
-    case everything = "Everything"
-    case classes = "Classes"
-    case recordings = "Recordings"
-    case reviews = "Presentations"
-    var id: String { rawValue }
-
-    var kind: SessionKind? {
-        switch self {
-        case .everything: return nil
-        case .classes: return .classSession
-        case .recordings: return .recording
-        case .reviews: return .review
-        }
-    }
-
-    var symbol: String {
-        switch self {
-        case .everything: return "square.grid.2x2"
-        case .classes: return SessionKind.classSession.symbol
-        case .recordings: return SessionKind.recording.symbol
-        case .reviews: return SessionKind.review.symbol
-        }
-    }
-
-    var emptyLine: String {
-        switch self {
-        case .everything: return "Nothing recorded yet"
-        case .classes: return "No classes yet"
-        case .recordings: return "No recordings yet"
-        case .reviews: return "No presentations yet"
-        }
-    }
-}
-
-/// The sidebar's STATUS group. At most one at a time; clicking the chosen
-/// one again clears it.
-enum SessionsStatus: String, CaseIterable, Identifiable {
-    case notUploaded = "Not uploaded"
-    case onYouTube = "On YouTube"
-    case analysed = "Analysed"
-    var id: String { rawValue }
-
-    func matches(_ card: SessionCardModel) -> Bool {
-        switch self {
-        case .notUploaded: return !card.isUploaded
-        case .onYouTube: return card.isUploaded
-        case .analysed: return card.isAnalysed
-        }
-    }
-
-    var symbol: String {
-        switch self {
-        case .notUploaded: return "icloud.slash"
-        case .onYouTube: return "play.rectangle.fill"
-        case .analysed: return "sparkles"
-        }
-    }
-
+extension SessionsStatus {
     /// Amber for YouTube, because it left the Mac. Green for an analysis,
     /// which is a file in the folder.
     var tint: Color {
@@ -131,58 +35,6 @@ enum SessionsStatus: String, CaseIterable, Identifiable {
     }
 }
 
-enum SessionsSort: String, CaseIterable, Identifiable {
-    case newest = "Newest first"
-    case oldest = "Oldest first"
-    var id: String { rawValue }
-}
-
-/// Words for dates and lengths, shared by the cards and the inspector.
-enum SessionsFormat {
-
-    /// "Today", "Yesterday", a weekday inside the week, then a date.
-    static func day(_ date: Date, now: Date, calendar: Calendar = .current) -> String {
-        if calendar.isDate(date, inSameDayAs: now) { return "Today" }
-        if let yesterday = calendar.date(byAdding: .day, value: -1, to: now),
-           calendar.isDate(date, inSameDayAs: yesterday) { return "Yesterday" }
-        if let days = calendar.dateComponents([.day], from: date, to: now).day, days < 7, days >= 0 {
-            return date.formatted(.dateTime.weekday(.abbreviated))
-        }
-        let sameYear = calendar.component(.year, from: date) == calendar.component(.year, from: now)
-        return sameYear
-            ? date.formatted(.dateTime.day().month(.abbreviated))
-            : date.formatted(.dateTime.day().month(.abbreviated).year())
-    }
-
-    static func time(_ date: Date) -> String {
-        date.formatted(date: .omitted, time: .shortened)
-    }
-
-    /// "48 min", "1 h 12 min", "under a minute".
-    static func length(_ seconds: Double) -> String {
-        let minutes = Int((seconds / 60).rounded())
-        if seconds < 60 { return "<1 min" }
-        if minutes < 60 { return "\(minutes) min" }
-        return minutes % 60 == 0 ? "\(minutes / 60) h" : "\(minutes / 60) h \(minutes % 60) min"
-    }
-
-    /// The heading a card is filed under: this week, last week, then the
-    /// Monday that started the week.
-    static func week(_ date: Date, now: Date, calendar: Calendar = .current) -> (key: Date, title: String) {
-        let start = calendar.dateInterval(of: .weekOfYear, for: date)?.start ?? date
-        let thisWeek = calendar.dateInterval(of: .weekOfYear, for: now)?.start ?? now
-        if start == thisWeek { return (start, "THIS WEEK") }
-        if let last = calendar.date(byAdding: .weekOfYear, value: -1, to: thisWeek), start == last {
-            return (start, "LAST WEEK")
-        }
-        let sameYear = calendar.component(.year, from: start) == calendar.component(.year, from: now)
-        let label = sameYear
-            ? start.formatted(.dateTime.day().month(.wide))
-            : start.formatted(.dateTime.day().month(.wide).year())
-        return (start, "WEEK OF \(label.uppercased())")
-    }
-}
-
 // MARK: - The window
 
 struct SessionsLayout<CardMenu: View>: View {
@@ -191,9 +43,11 @@ struct SessionsLayout<CardMenu: View>: View {
     @Binding var show: SessionsShow
     @Binding var status: SessionsStatus?
     @Binding var sort: SessionsSort
+    /// The session last opened. Never drawn as a selection; it only keeps
+    /// the scroll position and tells Delete which session is meant.
     @Binding var selection: String?
     let thumbnail: (SessionCardModel) -> NSImage?
-    /// "~/Documents/Greenroom · 38 GB free".
+    /// "~/Documents/Greenroom \u{00B7} 38 GB free".
     let storage: String
     /// Set when the disk is getting full: amber for "plan ahead", red for
     /// "the next class may not fit". Said above the grid, in that colour.
@@ -202,237 +56,186 @@ struct SessionsLayout<CardMenu: View>: View {
     var revealRoot: () -> Void = {}
     var onDeleteKey: () -> Void = {}
     @ViewBuilder let cardMenu: (SessionCardModel) -> CardMenu
-    /// A card was clicked, or Return pressed on the selected one: open its
+    /// A card was clicked, or Return pressed on the focused one: open its
     /// page. The grid itself never shows a session's detail.
     var onOpen: (String) -> Void = { _ in }
     /// The way back to Home; nil where the grid is drawn on its own.
     var onBack: (() -> Void)?
 
+    @State private var columns = NavigationSplitViewVisibility.all
+    @FocusState private var focusedID: String?
+
+    private var query: SessionsQuery {
+        SessionsQuery(cards: cards, show: show, status: status, search: search,
+                      sort: sort, now: now)
+    }
+
     var body: some View {
-        HStack(spacing: 0) {
+        NavigationSplitView(columnVisibility: $columns) {
             sidebar
-                .frame(width: 244)
-            Divider()
-            centre
-                .frame(minWidth: 480, maxWidth: .infinity, maxHeight: .infinity)
+                .navigationSplitViewColumnWidth(min: 180, ideal: 220, max: 280)
+        } detail: {
+            grid
+                .frame(minWidth: 480, maxHeight: .infinity)
+        }
+        .searchable(text: $search, placement: .toolbar, prompt: "Search sessions")
+        .toolbar { gridToolbar }
+        .pageToolbar(back: onBack.map { PageBack(label: "Home", action: $0) },
+                     subtitle: query.subtitle)
+    }
+
+    // MARK: Toolbar
+
+    @ToolbarContentBuilder
+    private var gridToolbar: some ToolbarContent {
+        ToolbarItem(placement: .primaryAction) { statusMenu }
+        ToolbarItem(placement: .primaryAction) { sortMenu }
+        if #available(macOS 26, *) {
+            ToolbarSpacer(.fixed, placement: .primaryAction)
         }
     }
 
-    // MARK: Filtering
-
-    private func matchesSearch(_ card: SessionCardModel) -> Bool {
-        let query = search.trimmingCharacters(in: .whitespaces)
-        guard !query.isEmpty else { return true }
-        return card.title.localizedCaseInsensitiveContains(query)
-            || card.kind.label.localizedCaseInsensitiveContains(query)
-    }
-
-    /// Searched and of the kind being shown, before the status filter - what
-    /// the STATUS counts are counted over.
-    private var ofKind: [SessionCardModel] {
-        cards.filter { card in
-            (show.kind == nil || card.kind == show.kind) && matchesSearch(card)
-        }
-    }
-
-    private var visible: [SessionCardModel] {
-        let filtered = ofKind.filter { status?.matches($0) ?? true }
-        return filtered.sorted { sort == .newest ? $0.date > $1.date : $0.date < $1.date }
-    }
-
-    private var groups: [(title: String, cards: [SessionCardModel])] {
-        var out: [(key: Date, title: String, cards: [SessionCardModel])] = []
-        for card in visible {
-            let week = SessionsFormat.week(card.date, now: now)
-            if let index = out.firstIndex(where: { $0.key == week.key }) {
-                out[index].cards.append(card)
-            } else {
-                out.append((week.key, week.title, [card]))
+    private var statusMenu: some View {
+        let q = query
+        return Menu {
+            Picker("Status", selection: $status) {
+                Text("All sessions").tag(SessionsStatus?.none)
+                ForEach(SessionsStatus.allCases) { option in
+                    Label("\(option.rawValue) \u{00B7} \(q.count(for: option))", systemImage: option.symbol)
+                        .tag(SessionsStatus?.some(option))
+                }
             }
+            .pickerStyle(.inline)
+        } label: {
+            Label("Status",
+                  systemImage: status == nil
+                    ? "line.3.horizontal.decrease.circle"
+                    : "line.3.horizontal.decrease.circle.fill")
         }
-        return out.map { ($0.title, $0.cards) }
+        .help(status.map { "Showing: \($0.rawValue)" } ?? "Filter by status")
+    }
+
+    private var sortMenu: some View {
+        Menu {
+            Picker("Sort", selection: $sort) {
+                ForEach(SessionsSort.allCases) { Text($0.rawValue).tag($0) }
+            }
+            .pickerStyle(.inline)
+        } label: {
+            Label("Sort", systemImage: "arrow.up.arrow.down")
+        }
+        .help("Sort sessions")
     }
 
     // MARK: Sidebar
 
     private var sidebar: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            if let onBack {
-                BackButton(label: "Home", action: onBack)
-                    .padding(.bottom, 16)
-            }
-            Text("Sessions")
-                .font(.title3.bold())
-                .padding(.bottom, 12)
-
-            HStack(spacing: 8) {
-                Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
-                TextField("Search", text: $search)
-                    .textFieldStyle(.plain)
-                if !search.isEmpty {
-                    Button { search = "" } label: {
-                        Image(systemName: "xmark.circle.fill").foregroundStyle(.tertiary)
-                    }
-                    .buttonStyle(.plain)
-                    .help("Clear the search")
+        let q = query
+        return List(selection: Binding<SessionsShow?>(get: { show }, set: { value in if let value { show = value } })) {
+            Section("Show") {
+                ForEach(SessionsShow.allCases) { option in
+                    Label(option.rawValue, systemImage: option.symbol)
+                        .badge(q.count(for: option))
+                        .tag(option)
                 }
             }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 8)
-            .background(RoundedRectangle(cornerRadius: 10).fill(Color.secondary.opacity(0.1)))
-            .padding(.bottom, 20)
-
-            ScrollView {
-                VStack(alignment: .leading, spacing: 2) {
-                    eyebrow("Show").padding(.bottom, 4)
-                    ForEach(SessionsShow.allCases) { option in
-                        SessionsFilterRow(
-                            symbol: option.symbol, title: option.rawValue,
-                            count: cards.filter { option.kind == nil || $0.kind == option.kind }.count,
-                            selected: show == option) {
-                            show = option
-                        }
-                    }
-
-                    eyebrow("Status").padding(.top, 18).padding(.bottom, 4)
-                    ForEach(SessionsStatus.allCases) { option in
-                        SessionsFilterRow(
-                            symbol: option.symbol, title: option.rawValue,
-                            count: ofKind.filter(option.matches).count,
-                            selected: status == option) {
-                            status = status == option ? nil : option
-                        }
-                    }
-                }
-            }
-            .scrollIndicators(.never)
-
-            Spacer(minLength: 12)
-
+        }
+        .listStyle(.sidebar)
+        .safeAreaInset(edge: .bottom, spacing: 0) {
             Button(action: revealRoot) {
                 Text(storage)
-                    .font(.system(size: 12))
+                    .font(.footnote)
                     .foregroundStyle(spaceWarning?.color ?? .secondary)
                     .lineLimit(2)
                     .multilineTextAlignment(.leading)
-                    .padding(.horizontal, 10)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 10)
             }
             .buttonStyle(.plain)
             .help("Show the folder in Finder.")
         }
-        .padding(16)
-    }
-
-    private func eyebrow(_ text: String) -> some View {
-        // RasanAI's section label: 12pt, regular, secondary (AppShell.swift:320).
-        Text(text)
-            .font(.system(size: 12))
-            .foregroundStyle(.secondary)
-            .padding(.horizontal, 10)
-            .accessibilityAddTraits(.isHeader)
     }
 
     // MARK: Grid
 
-    private var centre: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            HStack(alignment: .firstTextBaseline) {
-                Text(status.map { "\(show.rawValue) \u{00B7} \($0.rawValue)" } ?? show.rawValue)
-                    .font(.headline)
-                Spacer()
-                Picker("Sort", selection: $sort) {
-                    ForEach(SessionsSort.allCases) { Text($0.rawValue).tag($0) }
+    private var grid: some View {
+        let q = query
+        let groups = q.groups
+        return ScrollView {
+            VStack(alignment: .leading, spacing: 24) {
+                if let spaceWarning {
+                    HStack(spacing: 8) {
+                        Image(systemName: "exclamationmark.circle")
+                        Text(spaceWarning.text)
+                        Spacer(minLength: 0)
+                    }
+                    .font(.callout)
+                    .foregroundStyle(spaceWarning.color)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .background(RoundedRectangle(cornerRadius: 10).fill(spaceWarning.color.opacity(0.12)))
                 }
-                .labelsHidden()
-                .pickerStyle(.menu)
-                .fixedSize()
-            }
-            .padding(.horizontal, 24)
-            .padding(.top, 20)
-            .padding(.bottom, 12)
 
-            if let spaceWarning {
-                HStack(spacing: 8) {
-                    Image(systemName: "exclamationmark.circle")
-                    Text(spaceWarning.text)
-                    Spacer(minLength: 0)
-                }
-                .font(.callout)
-                .foregroundStyle(spaceWarning.color)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
-                .background(RoundedRectangle(cornerRadius: 10).fill(spaceWarning.color.opacity(0.12)))
-                .padding(.horizontal, 24)
-                .padding(.bottom, 12)
-            }
-
-            if visible.isEmpty {
-                empty
-            } else {
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 24) {
-                        ForEach(groups, id: \.title) { group in
-                            VStack(alignment: .leading, spacing: 12) {
-                                eyebrow(group.title)
-                                LazyVGrid(columns: [GridItem(.adaptive(minimum: 220, maximum: 360), spacing: 16)],
-                                          alignment: .leading, spacing: 16) {
-                                    ForEach(group.cards) { card in
-                                        SessionCard(card: card,
-                                                    image: thumbnail(card),
-                                                    selected: selection == card.id,
-                                                    now: now)
-                                            .onTapGesture {
-                                                selection = card.id
-                                                onOpen(card.id)
-                                            }
-                                            .contextMenu { cardMenu(card) }
+                if groups.isEmpty {
+                    empty(q)
+                        .frame(maxWidth: .infinity, minHeight: 360)
+                } else {
+                    ForEach(groups, id: \.title) { group in
+                        VStack(alignment: .leading, spacing: 12) {
+                            Text(group.title)
+                                .font(.headline)
+                                .foregroundStyle(.secondary)
+                                .accessibilityAddTraits(.isHeader)
+                            LazyVGrid(columns: [GridItem(.adaptive(minimum: 220, maximum: 360), spacing: 16)],
+                                      alignment: .leading, spacing: 16) {
+                                ForEach(group.cards) { card in
+                                    Button {
+                                        selection = card.id
+                                        onOpen(card.id)
+                                    } label: {
+                                        SessionCard(card: card, image: thumbnail(card), now: now)
                                     }
+                                    .greenroomTile(role: .browse, radius: 12)
+                                    .focused($focusedID, equals: card.id)
+                                    .contextMenu { cardMenu(card) }
                                 }
                             }
                         }
                     }
-                    .padding(.horizontal, 24)
-                    .padding(.bottom, 24)
-                }
-                // The key everyone reaches for first. The menus still work,
-                // but nobody should have to discover them.
-                .focusable()
-                .focusEffectDisabled()
-                .onDeleteCommand(perform: onDeleteKey)
-                // Return opens the card that is selected, as it does in Finder.
-                .onKeyPress(.return) {
-                    guard let selection else { return .ignored }
-                    onOpen(selection)
-                    return .handled
                 }
             }
+            .padding(.horizontal, 24)
+            .padding(.vertical, 16)
         }
+        // Delete trashes the focused card, as in Finder. Return opens it (the
+        // button's own default action while it has focus).
+        .onChange(of: focusedID) { _, id in if let id { selection = id } }
+        .onDeleteCommand(perform: onDeleteKey)
     }
 
-    private var empty: some View {
-        VStack(spacing: 8) {
-            Image(systemName: show.symbol)
-                .font(.system(size: 32, weight: .light))
-                .foregroundStyle(.tertiary)
-            Text(search.isEmpty && status == nil ? show.emptyLine : "Nothing matches")
-                .font(.headline)
-            Text(search.isEmpty && status == nil
-                 ? "Start a class or a recording from the main window. It lands here when it stops."
-                 : "Clear the search or the status filter to see more.")
-                .font(.callout)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-                .frame(maxWidth: 320)
+    @ViewBuilder
+    private func empty(_ q: SessionsQuery) -> some View {
+        if q.isSearching {
+            ContentUnavailableView.search(text: search)
+        } else if status != nil {
+            ContentUnavailableView("Nothing matches",
+                                   systemImage: "line.3.horizontal.decrease.circle",
+                                   description: Text("Choose All sessions in the Status menu to see more."))
+        } else {
+            ContentUnavailableView(show.emptyLine,
+                                   systemImage: show.symbol,
+                                   description: Text("Start a class or a recording from the main window. It lands here when it stops."))
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
 
 /// One session: its picture, what it is, when, how long, and where it went.
+/// No box at rest; the tile style adds the hover backdrop and lift, and the
+/// system draws the focus ring while the card has keyboard focus.
 struct SessionCard: View {
     let card: SessionCardModel
     let image: NSImage?
-    let selected: Bool
     let now: Date
 
     var body: some View {
@@ -445,6 +248,7 @@ struct SessionCard: View {
             VStack(alignment: .leading, spacing: 4) {
                 Text(card.title)
                     .font(.callout.weight(.semibold))
+                    .foregroundStyle(.primary)
                     .lineLimit(1)
                     .truncationMode(.middle)
                 HStack(spacing: 8) {
@@ -468,13 +272,9 @@ struct SessionCard: View {
             }
             .padding(.horizontal, 4)
         }
-        .padding(8)
-        .background(RoundedRectangle(cornerRadius: 14)
-            .fill(selected ? Brand.green.opacity(0.10) : Color(nsColor: .controlBackgroundColor)))
-        .overlay(RoundedRectangle(cornerRadius: 14)
-            .strokeBorder(selected ? Brand.green : Color(nsColor: .separatorColor),
-                          lineWidth: selected ? 2 : 1))
-        .contentShape(RoundedRectangle(cornerRadius: 14))
+        .padding(6)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .combine)
     }
 
     private var meta: String {
@@ -508,19 +308,28 @@ struct SessionThumbnail: View {
     }
 }
 
+/// The kind, over the picture: glass on macOS 26, a black capsule before.
 struct KindBadge: View {
     let kind: SessionKind
 
     var body: some View {
-        Label(kind.label.uppercased(), systemImage: kind.symbol)
+        let label = Label(kind.label.uppercased(), systemImage: kind.symbol)
             .font(.system(size: 10, weight: .bold))
             .tracking(0.4)
             .padding(.horizontal, 8)
             .padding(.vertical, 4)
-            .background(Capsule().fill(.black.opacity(0.72)))
-            .foregroundStyle(.white)
+        if #available(macOS 26, *) {
+            label
+                .foregroundStyle(.primary)
+                .greenroomGlass(in: Capsule())
+        } else {
+            label
+                .background(Capsule().fill(.black.opacity(0.72)))
+                .foregroundStyle(.white)
+        }
     }
 }
+
 
 // MARK: - Inspector
 
@@ -632,60 +441,6 @@ struct BackButton: View {
         .onHover { hovering = $0 }
         .help("\(label == "Back" ? "Back" : "Back to \(label)") (\u{2318}[)")
         .accessibilityLabel(label == "Back" ? "Back" : "Back to \(label)")
-    }
-}
-
-/// One row of the Sessions sidebar, in RasanAI's metrics (AppShell.swift
-/// SidebarNavLabel/SidebarRowButton): 44pt tall, 10pt radius, a 22pt icon in
-/// a 26pt column, a 15pt medium label. The chosen row is a neutral raised
-/// fill with the icon in the accent; the rest are secondary, with a faint
-/// fill on hover. A count shows as a pill only when it is above zero, but
-/// VoiceOver always hears it.
-struct SessionsFilterRow: View {
-    let symbol: String
-    let title: String
-    let count: Int
-    let selected: Bool
-    let action: () -> Void
-    @State private var hovering = false
-
-    var body: some View {
-        Button(action: action) {
-            HStack(spacing: 10) {
-                // Fitted into a 24pt box so a wide symbol (person.3) cannot
-                // push its label out of line with the others.
-                Image(systemName: symbol)
-                    .resizable().scaledToFit()
-                    .symbolRenderingMode(.monochrome)
-                    .foregroundStyle(selected ? Brand.green : Color.secondary)
-                    .frame(width: 24, height: 22)
-                    .frame(width: 26)
-                Text(title)
-                    .font(.system(size: 15, weight: .medium))
-                    .foregroundStyle(selected ? Color.primary : Color.secondary)
-                    .lineLimit(1)
-                Spacer(minLength: 4)
-                if count > 0 {
-                    Text("\(count)")
-                        .font(.system(size: 11, weight: .semibold)).monospacedDigit()
-                        .foregroundStyle(selected ? Color.primary : Color.secondary)
-                        .padding(.horizontal, 6)
-                        .frame(minWidth: 20, minHeight: 20)
-                        .background(Capsule().fill(Color.primary.opacity(selected ? 0.16 : 0.10)))
-                }
-            }
-            .padding(.horizontal, 10)
-            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-            .background(RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill(selected ? Color.primary.opacity(0.10)
-                      : hovering ? Color.primary.opacity(0.05) : Color.clear))
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .onHover { hovering = $0 }
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel("\(title), \(count)")
-        .accessibilityAddTraits(selected ? .isSelected : [])
     }
 }
 

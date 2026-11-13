@@ -310,6 +310,7 @@ targets:
       - path: App/Stage/AudioOnlyCard.swift
       - path: App/UI/TileAppearance.swift
       - path: App/UI/MainWindow.swift
+      - path: App/UI/SessionsQuery.swift
     settings:
       base:
         PRODUCT_NAME: GreenroomTests

@@ -24,7 +24,7 @@ enum SegmentedMath {
     static let inset: CGFloat = 3
     /// Selection pill height in the toolbar: 28 + 2 x 3 = 34pt capsule, the
     /// height of a macOS 26 toolbar button such as Sessions.
-    static let toolbarPillHeight: CGFloat = 28
+    static let toolbarPillHeight: CGFloat = 30  // capsule 36pt, matching the Sessions toolbar button as measured (2026-11-13)
 
     static func capsuleHeight(pillHeight: CGFloat, inset: CGFloat = inset) -> CGFloat { pillHeight + 2 * inset }
 

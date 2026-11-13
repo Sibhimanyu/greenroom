@@ -1,38 +1,46 @@
 //
 //  Segmented.swift
 //
-//  The one segmented switcher (DESIGN.md, "Segmented switchers"): the native
-//  `Picker` with `.segmented` style, with the app's green selection removed so
-//  the system draws it. On macOS 26 that is a Liquid Glass piece that slides
-//  between segments; on 14 and 15 the standard raised segment.
+//  The one segmented switcher (DESIGN.md, "Segmented switchers"): a row of
+//  plain buttons with ONE selection capsule, Brand green with a white label,
+//  that slides between segments. On macOS 26 the capsule is tinted Liquid
+//  Glass inside a GlassEffectContainer and morphs via `glassEffectID`; before
+//  26 it is a filled capsule moved with `matchedGeometryEffect`. Reduce Motion
+//  swaps the slide for a 150ms crossfade. Never use a native tinted Picker
+//  (it jumps) and never hand-build another switcher.
 //
-//  WHY NOT `.tint(nil)`: `tint(nil)` means "use the default tint", and the
-//  default is the app's accent, which is `AccentColor.colorset` (Brand.green),
-//  or the user's System Settings accent. So it would fall straight back to a
-//  green (or blue) selection and is not neutral. GreenroomApp.swift applies
-//  `.tint(Brand.green)` at every scene root so Start does not turn blue; a
-//  segmented control tinted that way fills its selected segment with the tint.
-//  We therefore give the picker an explicit neutral tint, `Self.neutral`, on
-//  this one view only, so Start, links and toggles stay green. Being an
-//  explicit colour it behaves the same on 14, 15 and 26 and ignores the user's
-//  accent.
-//
-//  NOT yet checked by eye on 14/15/26 (no app launch was allowed when this
-//  was written, and an off-screen render does not draw an active segmented
-//  control). Look at it once; if it reads too dark or too light, change
-//  `neutral` here and nowhere else.
-//
-//  Never hand-build a segmented control. `GlassSegmented` (icons over captions,
-//  unusual sizes) is specified in .context/glass-audit.md §7 and not built
-//  until a call site needs it.
+//  VoiceOver hears a real segmented Picker (`accessibilityRepresentation`);
+//  left/right arrows move the selection when the control has focus.
 //
 import SwiftUI
+
+/// Lays out children at one shared width: the widest child's ideal width.
+private struct EqualWidthRow: Layout {
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let w = subviews.map { $0.sizeThatFits(.unspecified).width }.max() ?? 0
+        let h = subviews.map { $0.sizeThatFits(.unspecified).height }.max() ?? 0
+        return CGSize(width: w * CGFloat(subviews.count), height: h)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        guard !subviews.isEmpty else { return }
+        let w = bounds.width / CGFloat(subviews.count)
+        for (i, v) in subviews.enumerated() {
+            v.place(at: CGPoint(x: bounds.minX + w * CGFloat(i), y: bounds.minY),
+                    anchor: .topLeading, proposal: ProposedViewSize(width: w, height: bounds.height))
+        }
+    }
+}
 
 struct GreenroomSegmented<Value: Hashable, Label: View>: View {
     let title: String
     @Binding var selection: Value
     let options: [Value]
     @ViewBuilder let label: (Value) -> Label
+
+    @Namespace private var ns
+    @State private var hovered: Value?
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     init(_ title: String,
          selection: Binding<Value>,
@@ -44,19 +52,102 @@ struct GreenroomSegmented<Value: Hashable, Label: View>: View {
         self.label = label
     }
 
-    /// The selection colour: a quiet system grey, not the accent.
-    static var neutral: Color { Color(nsColor: .systemGray) }
+    private static var height: CGFloat { 22 }
+    private static var hPadding: CGFloat { 10 }
+
+    private var motion: Animation {
+        reduceMotion ? .easeInOut(duration: 0.15) : .spring(response: 0.3, dampingFraction: 0.85)
+    }
 
     var body: some View {
-        Picker(title, selection: $selection) {
+        row
+            .fixedSize()
+            .focusable()
+            .onKeyPress(.leftArrow) { move(-1) }
+            .onKeyPress(.rightArrow) { move(1) }
+            .accessibilityRepresentation {
+                Picker(title, selection: $selection) {
+                    ForEach(options, id: \.self) { option in
+                        label(option).tag(option)
+                    }
+                }
+                .pickerStyle(.segmented)
+            }
+    }
+
+    private func move(_ delta: Int) -> KeyPress.Result {
+        guard let i = options.firstIndex(of: selection) else { return .ignored }
+        let n = SegmentedMath.step(from: i, by: delta, count: options.count)
+        guard n != i else { return .handled }
+        withAnimation(motion) { selection = options[n] }
+        return .handled
+    }
+
+    @ViewBuilder
+    private var row: some View {
+        if #available(macOS 26, *) {
+            GlassEffectContainer(spacing: 0) { segments(glass: true) }
+        } else {
+            segments(glass: false)
+        }
+    }
+
+    private func segments(glass: Bool) -> some View {
+        EqualWidthRow {
             ForEach(options, id: \.self) { option in
-                label(option).tag(option)
+                segment(option, glass: glass)
             }
         }
-        .pickerStyle(.segmented)
-        .labelsHidden()
-        .fixedSize()
-        .tint(Self.neutral)
+        .padding(2)
+        .background { track(glass: glass) }
+    }
+
+    @ViewBuilder
+    private func track(glass: Bool) -> some View {
+        if #available(macOS 26, *), glass {
+            Color.clear.glassEffect(.regular, in: Capsule())
+        } else {
+            Capsule().fill(.quinary)
+        }
+    }
+
+    private func segment(_ option: Value, glass: Bool) -> some View {
+        let on = option == selection
+        return Button {
+            withAnimation(motion) { selection = option }
+        } label: {
+            label(option)
+                .fontWeight(on ? .semibold : .regular)
+                .foregroundStyle(on ? AnyShapeStyle(Color.white)
+                                    : AnyShapeStyle(hovered == option ? .primary : .secondary))
+                .lineLimit(1)
+                .padding(.horizontal, Self.hPadding)
+                .frame(maxWidth: .infinity)
+                .frame(height: Self.height)
+                .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .onHover { inside in
+            if inside { hovered = option } else if hovered == option { hovered = nil }
+        }
+        .background { selectionCapsule(on: on, glass: glass) }
+    }
+
+    @ViewBuilder
+    private func selectionCapsule(on: Bool, glass: Bool) -> some View {
+        if reduceMotion {
+            // No slide: each segment fades its own capsule in and out.
+            Capsule().fill(Brand.green).opacity(on ? 1 : 0)
+        } else if on {
+            if #available(macOS 26, *), glass {
+                Color.clear
+                    .glassEffect(.regular.tint(Brand.green).interactive(), in: Capsule())
+                    .glassEffectID("selection", in: ns)
+            } else {
+                Capsule().fill(Brand.green)
+                    .matchedGeometryEffect(id: "selection", in: ns)
+            }
+        }
     }
 }
 

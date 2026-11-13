@@ -313,6 +313,7 @@ targets:
       - path: App/UI/MainWindow.swift
       - path: App/UI/SessionsQuery.swift
       - path: App/UI/SessionDetailRules.swift
+      - path: App/UI/SegmentedMath.swift
     settings:
       base:
         PRODUCT_NAME: GreenroomTests

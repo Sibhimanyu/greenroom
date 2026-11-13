@@ -191,13 +191,9 @@ No chunk touches `RecordingChrome.swift`, `MeetingControls.swift`, `ShortcutMode
 
 ## 7. Segmented switchers (Home mode switcher, session tabs, editor)
 
-**Rule (add to DESIGN.md → macOS App Mapping):** Every segmented switcher is `GreenroomSegmented` (App/UI/Segmented.swift): the native `Picker(...).pickerStyle(.segmented)` with the app's green tint removed, so the system draws the selection. On macOS 26 that selection is a Liquid Glass piece that slides between segments; 14 and 15 draw the standard raised segment. Never fill the selection with brand green, and never hand-build a segmented control. A row of picture choices (ChoiceTile rows) is not a segmented control; it follows the tile rule (§3).
+**Rule (in DESIGN.md → macOS App Mapping):** one shared `GreenroomSegmented` (App/UI/Segmented.swift); the selected segment is Brand green with a white semibold label; the selection slides (Liquid Glass morph on 26, spring before); Reduce Motion crossfades; never a native tinted Picker that jumps. Owner correction 2026-11-13: "New Meeting should still be green like we had earlier, it's just that the menu shifting should animate well." A row of picture choices (ChoiceTile rows) is not a segmented control; it follows the tile rule (§3).
 
-**Why it is green today:** `GreenroomApp.swift` applies `.tint(Brand.green)` at every scene root (needed so a System Settings accent cannot turn Start blue). On macOS a tinted segmented control fills its selected segment with the tint. `GreenroomSegmented` applies `.tint(nil)` (or a neutral tint if nil falls back to the user's accent) to the picker only, so Start, links and toggles stay green. Check this on 14, 15 and 26 before rolling it out.
-
-**Shared control (built in C1, App/UI/Segmented.swift):**
-- `GreenroomSegmented<Value: Hashable>(_ title: String, selection: Binding<Value>, options: [Value], label: (Value) -> Text)`: native segmented Picker, `.labelsHidden()`, `.fixedSize()`, tint cleared. Picture/symbol labels use `Label` inside the native picker.
-- `GlassSegmented`: specified, **not built until a call site needs it** (none does today). Only for a truly custom look (icons over captions, unusual sizes). On 26: an `HStack` of plain buttons inside `GlassEffectContainer`, with one selection capsule `.glassEffect(.regular.interactive(), in: Capsule())` + `.glassEffectID("selection", in: ns)` placed behind the selected segment, so it slides between segments. Before 26: the same capsule through `.greenroomGlass(in: Capsule())` with `matchedGeometryEffect(id: "selection", in: ns)`. Motion `.spring(response: 0.3, dampingFraction: 0.85)`; Reduce Motion → no slide, 150ms crossfade (DESIGN.md Motion). Selected label `.primary` semibold, others `.secondary`; hover lifts the label to `.primary`; no brand fill. Accessibility: `.accessibilityRepresentation { Picker(...) }` so VoiceOver hears a real picker; arrow keys move the selection with `onKeyPress(.leftArrow/.rightArrow)`.
+**Shared control (built, App/UI/Segmented.swift):** `GreenroomSegmented<Value: Hashable, Label: View>(_ title:, selection:, options:, label:)`, same API as before. A row of plain buttons in equal-width segments (widest label) on a quiet track (`.quinary`, glass on 26), with one selection capsule behind the selected segment. On 26: `GlassEffectContainer`, the capsule is `.glassEffect(.regular.tint(Brand.green).interactive(), in: Capsule())` + `.glassEffectID("selection", in: ns)`. Before 26: a Brand.green capsule with `matchedGeometryEffect(id: "selection", in: ns)`. Motion `.spring(response: 0.3, dampingFraction: 0.85)`; Reduce Motion → no slide, 150ms crossfade. Selected label white semibold, others `.secondary`, `.primary` on hover. Accessibility: `.accessibilityRepresentation { Picker(...).pickerStyle(.segmented) }`; left/right arrows move the selection when focused.
 
 **Every segmented or tab control, and what replaces it:**
 
@@ -219,5 +215,5 @@ No chunk touches `RecordingChrome.swift`, `MeetingControls.swift`, `ShortcutMode
 
 **QA:**
 - Accessibility tree: every switcher shows as `AXRadioGroup`/segmented with the right selected value.
-- Off-screen render: neutral selection in light and dark (no green).
+- Off-screen render: green selection in light and dark; switching slides (Reduce Motion: crossfade).
 - On 26, by eye: the glass selection slides; with Reduce Motion on, it does not.

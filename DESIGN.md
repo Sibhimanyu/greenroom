@@ -356,12 +356,11 @@ The app is the other half of this system. Keep it aligned.
   work goes in an `.inspector`. Never hand-draw a back button, search field,
   sidebar row, segmented tab bar or window toolbar. On macOS 26 the system
   gives these glass; we add none of our own.
-- **Segmented switchers:** every segmented switcher is `GreenroomSegmented`
-  (`App/UI/Segmented.swift`): the native `Picker` with `.segmented` style and
-  the app's green tint removed, so the system draws the selection. On macOS 26
-  that selection is a Liquid Glass piece that slides between segments; 14 and
-  15 draw the standard raised segment. Never fill the selection with brand
-  green, and never hand-build a segmented control. A row of picture choices is
+- **Segmented switchers:** one shared `GreenroomSegmented`
+  (`App/UI/Segmented.swift`); the selected segment is Brand green with a white
+  semibold label; the selection slides (Liquid Glass morph on 26, spring
+  before); Reduce Motion crossfades; never a native tinted `Picker` that
+  jumps, and never a hand-built second switcher. A row of picture choices is
   not a segmented control; it follows the tile rule below.
 - **Cards and tiles:** one style (`App/UI/Tiles.swift`,
   `.greenroomTile(role:radius:)`), and every clickable tile has a hover lift.
@@ -503,5 +502,6 @@ Ranked by user-visible impact. None of these block anything today.
 | 2026-11-13 | Sessions uses a system sidebar, search, sort and filter in the toolbar. Replaces the RasanAI-style Sessions sidebar of commit 5d744db (44pt rows, 15pt labels, custom fill; never logged) | The owner said the page felt unrelated to the rest of the UI and that the whole app should align with the macOS glass feel. A hand-drawn column gets no glass on 26; `NavigationSplitView` with a `.sidebar` List does, and the 180pt floor of 2026-09-18 stays. The status filter becomes a toolbar menu, since a single-selection List cannot combine it with Show. |
 | 2026-11-13 | Glass rule amended: we never apply glass to content; system sidebars, inspectors and toolbars draw their own. Changes the "side panels never use glass" line of the entry above | A system inspector or sidebar gets its material from macOS, so allowing it adds no glass of ours, while the rule still bars glass on pages, cards and lists. In-content control bars may use `.greenroomGlassButton(prominent:)`. |
 | 2026-11-13 | Segmented selections are no longer brand green | The scene-root `.tint(Brand.green)` made every segmented control fill its selection green. `GreenroomSegmented` clears the tint on the picker only, so the system draws the selection (a sliding glass piece on 26); Start, links and toggles stay green. A hand-built segmented control is barred. |
+| 2026-11-13 | Segmented selections are brand green again, and they slide. Reverses the row above | The owner: "New Meeting should still be green like we had earlier, it's just that the menu shifting should animate well." The native Picker could be neutral and jump, or green and jump; `GreenroomSegmented` is now a custom row of buttons with one selection capsule (Brand green, white label) that slides: tinted Liquid Glass with `glassEffectID` on 26, `matchedGeometryEffect` before; Reduce Motion crossfades in 150ms. Same API, VoiceOver still hears a segmented Picker. |
 | 2026-11-13 | Amber "leaves this Mac" moves off the buttons onto the glyph, a first-time confirm and the status strip | The Upload tile carried an amber subtitle; toolbar buttons have no room for one, and hover help alone would weaken the rule that anything reaching the network reads amber. The Upload and agent-analysis glyphs are tinted `Brand.net`, the first upload asks once per Mac ("This sends the recording to YouTube. It leaves this Mac."), and the status strip under the player keeps `Brand.netText` ("On YouTube - Unlisted"). |
 | 2026-11-13 | Record what Sessions filters actually are: Everything / Classes / Recordings / Presentations plus a Status group | Out of step with the log: 2026-09-19 says All / Greens / Screens and 2026-09-18 says two lists behind one toggle, but the code ships the four Show options and a Status filter (None / Not uploaded / On YouTube / Analysed). This entry records what ships; the Show options become sidebar rows with counts and Status a toolbar menu. |

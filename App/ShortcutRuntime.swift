@@ -106,8 +106,11 @@ final class ShortcutRuntime {
                 guard c.isRunning || c.sceneInUse else { return }
                 c.confirmAndStop() // destructive - always confirms
             case .toggleRecording:
-                guard !c.isSavingRecording, c.stageLive || c.isRecording else { return }
+                guard !c.isSavingRecording, c.stageLive || c.isRecording || c.recordingCountdown != nil else { return }
                 c.toggleRecording()
+            case .togglePause:
+                guard c.isRecording, !c.isSavingRecording else { return }
+                c.togglePauseRecording()
             case .clip1: c.markClip(minutes: 1)
             case .clip2: c.markClip(minutes: 2)
             case .clip5: c.markClip(minutes: 5)

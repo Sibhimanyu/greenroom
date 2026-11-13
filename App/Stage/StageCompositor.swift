@@ -157,7 +157,24 @@ final class StageCompositor: StageFrameSource {
     func addSink(_ sink: StageFrameSink) { sinks.add(sink) }
     func removeSink(_ sink: StageFrameSink) { sinks.remove(sink) }
 
+    /// Where the Mac's sound goes (the recorder). Called on the capture queue.
+    private let systemAudioHandler = LockedBox<((CMSampleBuffer) -> Void)?>(nil)
+    var onSystemAudio: ((CMSampleBuffer) -> Void)? {
+        get { systemAudioHandler.withLock { $0 } }
+        set { systemAudioHandler.withLock { $0 = newValue } }
+    }
+
     // MARK: Where the screen is in the picture
+
+    /// What the live capture shows, right now, in global CoreGraphics points
+    /// (top-left origin): the whole display, or the followed window's current
+    /// frame. Nil when nothing is captured. For the recording border.
+    func capturedScreenFrame() -> CGRect? {
+        lock.lock()
+        let source = board.activeScreenID.flatMap { screenSources[$0] }
+        lock.unlock()
+        return source?.capturedFrame()
+    }
 
     /// Maps a point on the real screen to where that spot is in the finished
     /// video: 0...1, top-left origin, over the whole canvas. Nil when the
@@ -290,7 +307,7 @@ final class StageCompositor: StageFrameSource {
 
         lock.lock()
         lastConfiguration = cfg
-        let key = "\(cfg.share.kind.rawValue)|\(cfg.share.appBundleID)|\(cfg.share.windowTitle)|\(cfg.displayUUID)"
+        let key = "\(cfg.share.kind.rawValue)|\(cfg.share.appBundleID)|\(cfg.share.windowTitle)|\(cfg.displayUUID)|\(cfg.captureSystemAudio)"
         let permissionArrived = waitingForPermission && Self.screenRecordingGranted
         let restartScreen = key != shareKey || permissionArrived
         // Cleared here, in the same locked step that bumps the round. It used
@@ -435,7 +452,14 @@ final class StageCompositor: StageFrameSource {
         case .window: target = .window(id: CGWindowID(resolved.windowID ?? 0))
         default: target = .display
         }
-        let source = StageScreenSource(target: target, displayUUID: displayUUID, maxSize: outputSize)
+        let source = StageScreenSource(target: target, displayUUID: displayUUID, maxSize: outputSize,
+                                       captureAudio: cfg.captureSystemAudio)
+        // Only the capture that is on air is heard: while a replacement starts
+        // beside the old one, both would otherwise deliver the same sound.
+        source.onAudio = { [weak self, weak source] buffer in
+            guard let self, let source, self.board.activeScreenID == source.id else { return }
+            self.systemAudioHandler.withLock { $0 }?(buffer)
+        }
         source.onFrame = { [weak self, weak source] buffer in
             guard let self, let source else { return }
             if self.board.offerScreen(buffer, wholeDisplay: source.wholeDisplay, from: source.id) {
@@ -592,3 +616,14 @@ extension StageCompositor {
     }
 }
 #endif
+
+/// One value behind a lock, for a callback that is set on one thread and read on another.
+final class LockedBox<T>: @unchecked Sendable {
+    private let lock = NSLock()
+    private var value: T
+    init(_ value: T) { self.value = value }
+    func withLock<R>(_ body: (inout T) -> R) -> R {
+        lock.lock(); defer { lock.unlock() }
+        return body(&value)
+    }
+}

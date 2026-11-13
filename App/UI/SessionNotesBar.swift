@@ -145,8 +145,10 @@ final class SessionNotes: ObservableObject {
     /// Where a note typed right now would land, and against what.
     private var position: (ms: Int, timedFrom: String?) {
         let now = Date()
-        if let coordinator, coordinator.isRecording, let rolled = coordinator.recordingStartedAt {
-            return (max(0, Int(now.timeIntervalSince(rolled) * 1000)), nil)
+        // The recording's own clock: paused time is not in the file, so a note
+        // typed after a pause lands where it was said, not that much later.
+        if let coordinator, let seconds = coordinator.recordingElapsed(at: now) {
+            return (max(0, Int(seconds * 1000)), nil)
         }
         let started = coordinator?.sessionStartedAt ?? now
         return (max(0, Int(now.timeIntervalSince(started) * 1000)), "session")

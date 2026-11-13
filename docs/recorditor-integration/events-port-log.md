@@ -38,7 +38,7 @@ x = (rect.minX + u * rect.width)  / canvas.width     y = (rect.minY + v * rect.h
 
 `t = SessionRecorder.elapsedMilliseconds / 1000` (`App/Recording/SessionRecorder.swift:120`): host clock now minus `firstFrameTime`, which is the PTS of the first frame the encoder wrote (`:373`), the same instant `StageEncoder` passes to `writer.startSession(atSourceTime:)` (`StageEncoder.swift:146`). So `t` is seconds into the file, not since the button press. Before the first frame it is nil and the event is dropped.
 
-TODO (phase 4, pause): when pause exists, `elapsed` must subtract paused time and return nil while paused. Marked in `InputEventTracker.start`.
+Phase 4 (pause) done: `elapsed` is the paused-adjusted clock and returns nil while paused; see `controls-port-log.md`.
 
 ## Greenroom seams touched
 

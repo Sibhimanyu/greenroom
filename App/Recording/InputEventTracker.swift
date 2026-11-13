@@ -25,9 +25,9 @@ final class InputEventTracker {
     private var locate: (CGPoint) -> CGPoint? = { _ in nil }
 
     /// elapsed: seconds into the finished video, nil before its first frame
-    /// (the event is then dropped).
-    /// TODO(phase 4, pause): `elapsed` must exclude paused time, and return
-    /// nil while paused, as Recorditor's guide asks.
+    /// or while the recording is paused (the event is then dropped). The caller
+    /// supplies the paused-adjusted clock (`SessionRecorder.elapsedMilliseconds`),
+    /// so times after a pause line up with the file. Phase 4 done.
     /// Returns false when nothing is being tracked (no Accessibility).
     @discardableResult
     func start(elapsed: @escaping () -> Double?, locate: @escaping (CGPoint) -> CGPoint?) -> Bool {

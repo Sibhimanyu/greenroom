@@ -9,6 +9,7 @@ log for the phase you are touching.
 | `README.md` (this) | Why, the method, decisions, phase plan and status |
 | `events-port-log.md` | Phase 2: click/keystroke tracker, coordinate and time mapping, seams |
 | `camera-port-log.md` | Phase 3: camera Blur/Image backgrounds, camera unplug recovery, how it coexists with CameraDirector |
+| `controls-port-log.md` | Phase 4: pause without gaps, countdown, control bar, recording border, system audio mix |
 | `editor-port-log.md` | Phase 1: every file copied for the editor, every change vs upstream, every seam in Greenroom |
 
 ## Source of truth
@@ -55,7 +56,7 @@ Gap analysis at the start (2026-11-13):
 - **Captions not ported.** Greenroom already transcribes recordings (`App/Screenroom/ScreenroomTranscriber.swift`); a later step can feed that transcript into the editor instead of Recorditor's caption generator.
 - **Room comments (Live Feedback) removed** — Greenroom has no rooms. Greenroom's own notes (`notes.jsonl`) are a candidate to reuse the `RoomCommentPopup` overlay later.
 - **Edits never touch the original.** A saved edit becomes a new recording folder next to the original (`<name> – Edited`).
-- **Pausing in a meeting** (phase 4, open): proposed to pause only the file while the meeting continues — owner to confirm.
+- **Pausing in a meeting**: pauses only the recording file; the meeting continues (owner confirmed, built in phase 4).
 
 ## Prep checks done (phase 0)
 
@@ -72,7 +73,8 @@ Gap analysis at the start (2026-11-13):
 | 1 Editor | Built (Debug, zero errors) 2026-11-13; not yet tried by hand. Entry: Recordings inspector → Edit tile → `Window("Editor", id: "editor")` |
 | 2 Clicks & keystrokes | Built (Debug, zero errors) 2026-11-13; untested by hand. See `events-port-log.md` |
 | 3 Camera backgrounds + recovery | Built (Debug, zero errors) 2026-11-13; untested with a real camera. See `camera-port-log.md` |
-| 4–6 | Planned |
+| 4 Pause, countdown, controls, border, system audio | Built (Debug, zero errors, 249 unit tests pass) 2026-11-13; untested by hand. See `controls-port-log.md` |
+| 5–6 | Planned |
 
 ## How to continue a phase (for agents)
 

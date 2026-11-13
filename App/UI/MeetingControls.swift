@@ -371,6 +371,13 @@ final class MeetingControlsModel: ObservableObject {
         refresh()
     }
 
+    /// m:ss, or h:mm:ss past the hour.
+    static func clock(seconds: TimeInterval) -> String {
+        let total = max(0, Int(seconds))
+        let (h, m, s) = (total / 3600, total / 60 % 60, total % 60)
+        return h > 0 ? String(format: "%d:%02d:%02d", h, m, s) : String(format: "%d:%02d", m, s)
+    }
+
     static func elapsed(since start: Date?) -> String {
         guard let start else { return "0:00" }
         let seconds = max(0, Int(Date().timeIntervalSince(start)))
@@ -411,9 +418,10 @@ struct MeetingToolbarView: View {
         s.handRaised = model.handRaised
         s.sharing = model.sharing
         s.recording = coordinator.isRecording
+        s.recordingPaused = coordinator.isRecordingPaused
         s.saving = coordinator.isSavingRecording
         s.recordCaption = coordinator.isRecording
-            ? MeetingControlsModel.elapsed(since: { _ = model.now; return coordinator.recordingStartedAt }())
+            ? MeetingControlsModel.clock(seconds: { _ = model.now; return coordinator.recordingElapsed() ?? 0 }())
             : "Record"
         s.notesOn = notes.effectiveEnabled
         s.clock = MeetingControlsModel.elapsed(since: { _ = model.now; return coordinator.sessionStartedAt }())
@@ -428,6 +436,7 @@ struct MeetingToolbarView: View {
         a.togglePeople = model.togglePeople
         a.toggleChat = model.toggleChat
         a.toggleRecording = { coordinator.toggleRecording() }
+        a.togglePause = { coordinator.togglePauseRecording() }
         a.toggleNotes = notes.toggle
         a.stopSharing = model.stopShare
         a.end = { coordinator.stop() }
@@ -580,7 +589,7 @@ private struct MeetingPuckView: View {
     /// What VoiceOver says after the label.
     private var stateText: String {
         var parts: [String] = []
-        if recording { parts.append("Recording") }
+        if recording { parts.append(coordinator.isRecordingPaused ? "Recording paused" : "Recording") }
         if muted { parts.append("Muted") }
         return parts.joined(separator: ", ")
     }
@@ -595,7 +604,7 @@ private struct MeetingPuckView: View {
                 .foregroundStyle(Color.primary)
             if recording {
                 // Red is the recording signal everywhere else in the bar.
-                Circle().fill(Color.red)
+                Circle().fill(coordinator.isRecordingPaused ? Color.secondary : Color.red)
                     .frame(width: 10, height: 10)
                     .overlay(Circle().strokeBorder(Color(nsColor: .windowBackgroundColor), lineWidth: 2))
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
@@ -843,31 +852,71 @@ private struct MeetingControlBarView: View {
         .accessibilityAddTraits(on ? .isSelected : [])
     }
 
-    private var recordButton: some View {
-        Button { coordinator.toggleRecording() } label: {
-            HStack(spacing: 6) {
-                Image(systemName: coordinator.isRecording ? "stop.circle.fill" : "record.circle")
-                    .font(.system(size: 14))
-                    .foregroundStyle(coordinator.isRecording ? Color.red : Color.primary)
-                Text(recordLabel)
-                    .font(.system(size: 12, weight: .medium,
-                                  design: coordinator.isRecording ? .monospaced : .default))
-                    .foregroundStyle(coordinator.isRecording ? Color.primary : Color.secondary)
+    /// Idle: one Record button. Recording: REC and its timer, pause or
+    /// resume, and stop, in the same 136pt (the pill does not change width).
+    @ViewBuilder private var recordButton: some View {
+        if coordinator.isRecording && !coordinator.isSavingRecording {
+            let paused = coordinator.isRecordingPaused
+            HStack(spacing: 0) {
+                HStack(spacing: 5) {
+                    Circle().fill(paused ? Color.secondary : Color.red).frame(width: 8, height: 8)
+                    Text("REC")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(paused ? Color.secondary : Color.red)
+                    Text(recordLabel)
+                        .font(.system(size: 12, weight: .medium, design: .monospaced))
+                        .foregroundStyle(paused ? Color.secondary : Color.primary)
+                }
+                .frame(width: 80, height: 32)
+                .help(paused ? "Recording paused" : "Recording")
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel(paused ? "Recording paused" : "Recording")
+                recordSideButton(paused ? "play.fill" : "pause.fill",
+                                 help: paused ? "Resume recording" : "Pause recording (the meeting carries on)",
+                                 tint: .primary) { coordinator.togglePauseRecording() }
+                recordSideButton("stop.fill", help: "Stop recording", tint: .red) { coordinator.toggleRecording() }
             }
-            .frame(width: 84, height: 32)
-            .contentShape(Rectangle())
+            .frame(width: 136, height: 32)
+        } else {
+            Button { coordinator.toggleRecording() } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: coordinator.isRecording ? "stop.circle.fill" : "record.circle")
+                        .font(.system(size: 14))
+                        .foregroundStyle(coordinator.isRecording ? Color.red : Color.primary)
+                    Text(recordLabel)
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(Color.secondary)
+                }
+                .frame(width: 136, height: 32)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .disabled(coordinator.isSavingRecording)
+            .help(coordinator.recordingCountdown != nil ? "Cancel the countdown" : "Record this class")
+            .accessibilityLabel(coordinator.recordingCountdown != nil ? "Cancel the countdown" : "Record")
+        }
+    }
+
+    private func recordSideButton(_ symbol: String, help: String, tint: Color,
+                                  action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: symbol)
+                .font(.system(size: 13))
+                .foregroundStyle(tint)
+                .frame(width: 28, height: 32)
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .disabled(coordinator.isSavingRecording)
-        .help(coordinator.isRecording ? "Stop recording" : "Record this class")
-        .accessibilityLabel(coordinator.isRecording ? "Stop recording" : "Record")
+        .help(help)
+        .accessibilityLabel(help)
     }
 
     private var recordLabel: String {
         if coordinator.isSavingRecording { return "Saving\u{2026}" }
-        guard coordinator.isRecording else { return "Record" }
+        guard coordinator.isRecording else { return coordinator.recordingCountdown != nil ? "Cancel" : "Record" }
         _ = model.now // read, so the tick redraws it
-        return MeetingControlsModel.elapsed(since: coordinator.recordingStartedAt)
+        // Paused time is not recording time: the same clock as the file.
+        return MeetingControlsModel.clock(seconds: coordinator.recordingElapsed() ?? 0)
     }
 
     /// The lime is a fill, never text (DESIGN.md), so the count is dark on it.
@@ -899,7 +948,8 @@ private struct MeetingControlBarView: View {
 enum MeetingControlBarController {
     /// The pill without its meeting-window button: the 32pt buttons, the record
     /// and clock cells, End, and the grip and collapse button at the leading end.
-    static let width: CGFloat = 496
+    /// The record cell is 136pt: Record, or REC with its timer, pause and stop.
+    static let width: CGFloat = 548
     /// One more 32pt button (and its gap) when the meeting window is offered.
     static func width(videoButtons: Bool) -> CGFloat { videoButtons ? width + 36 : width }
     static let height: CGFloat = 44
@@ -1312,6 +1362,12 @@ enum MeetingControlBarController {
             menu.addItem(MenuItem("Stop sharing") { model?.stopShare() })
         }
         let recording = coordinator?.isRecording ?? false
+        if recording {
+            menu.addItem(MenuItem((coordinator?.isRecordingPaused ?? false) ? "Resume recording" : "Pause recording",
+                                  enabled: !(coordinator?.isSavingRecording ?? false)) {
+                coordinator?.togglePauseRecording()
+            })
+        }
         menu.addItem(MenuItem("Stop recording",
                               enabled: recording && !(coordinator?.isSavingRecording ?? false)) {
             coordinator?.toggleRecording()

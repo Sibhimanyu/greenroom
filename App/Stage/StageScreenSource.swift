@@ -5,8 +5,11 @@
 //  One ScreenCaptureKit stream: a whole display, one app, or one window, the
 //  three things `ShareTarget` can name.
 //
-//  Complete frames only, BGRA, audio off. Greenroom has no use for system
-//  audio.
+//  Complete frames only, BGRA. Audio is off unless `captureAudio` is set (the
+//  recorder's "Record the Mac's sound"): then the stream also delivers the
+//  sound of what it captures (the display's, the app's or the window's app's)
+//  to `onAudio`, with Greenroom's own sound left out so the meeting is not
+//  recorded twice.
 //
 import AppKit
 import CoreMedia
@@ -33,6 +36,9 @@ final class StageScreenSource: NSObject, SCStreamOutput, SCStreamDelegate {
 
     /// Called on the capture queue with each complete frame.
     var onFrame: ((CVPixelBuffer) -> Void)?
+    /// Called on the capture queue with each buffer of the Mac's sound
+    /// (48 kHz stereo Float32, host-clock stamps). Only when `captureAudio`.
+    var onAudio: ((CMSampleBuffer) -> Void)?
     /// Called when macOS ends the stream under us (-3805 and friends).
     var onStop: ((Error) -> Void)?
     /// Called once, on a background queue, when a window capture has shown no
@@ -42,11 +48,13 @@ final class StageScreenSource: NSObject, SCStreamOutput, SCStreamDelegate {
     private var stream: SCStream?   // under stateLock
     private let queue = DispatchQueue(label: "greenroom.stage.screen", qos: .userInteractive)
     private let maxSize: CGSize
+    let captureAudio: Bool
 
-    init(target: Target, displayUUID: String, maxSize: CGSize) {
+    init(target: Target, displayUUID: String, maxSize: CGSize, captureAudio: Bool = false) {
         self.target = target
         self.displayUUID = displayUUID
         self.maxSize = maxSize
+        self.captureAudio = captureAudio
     }
 
     /// Shows macOS's own prompt the first time. After a refusal macOS never
@@ -182,6 +190,10 @@ final class StageScreenSource: NSObject, SCStreamOutput, SCStreamDelegate {
         case .display:
             // Greenroom's own windows stay out of the class picture, the rail and notes bar are on this screen.
             let own = content.applications.filter { $0.bundleIdentifier == Bundle.main.bundleIdentifier }
+            // Overlay panels made later (control bar, border, countdown) are
+            // Greenroom's windows too, and are kept out only because the whole
+            // app is excluded. If macOS does not list the app, say so.
+            if own.isEmpty { Self.log("Greenroom is not in ScreenCaptureKit's application list, so its own windows are not excluded from this capture.") }
             filter = SCContentFilter(display: display, excludingApplications: own, exceptingWindows: [])
         case .app(let bundleID):
             filter = try appFilter(bundleID: bundleID, content: content, display: display,
@@ -215,7 +227,14 @@ final class StageScreenSource: NSObject, SCStreamOutput, SCStreamDelegate {
         configuration.minimumFrameInterval = CMTime(value: 1, timescale: 30)
         configuration.pixelFormat = kCVPixelFormatType_32BGRA
         configuration.showsCursor = true
-        configuration.capturesAudio = false
+        configuration.capturesAudio = captureAudio
+        if captureAudio {
+            // Greenroom's and the meeting's own sound is already in the mix
+            // from the meeting side; leave it out here so it is not doubled.
+            configuration.excludesCurrentProcessAudio = true
+            configuration.sampleRate = 48_000
+            configuration.channelCount = 2
+        }
         configuration.backgroundColor = .clear
         configuration.ignoreShadowsSingleWindow = true      // show_shadow: false
         configuration.queueDepth = 4
@@ -223,6 +242,7 @@ final class StageScreenSource: NSObject, SCStreamOutput, SCStreamDelegate {
         let stream = SCStream(filter: filter, configuration: configuration, delegate: self)
         do {
             try stream.addStreamOutput(self, type: .screen, sampleHandlerQueue: queue)
+            if captureAudio { try stream.addStreamOutput(self, type: .audio, sampleHandlerQueue: queue) }
             try await stream.startCapture()
         } catch {
             throw Self.failure(for: error, doing: "Starting the capture")
@@ -315,6 +335,7 @@ final class StageScreenSource: NSObject, SCStreamOutput, SCStreamDelegate {
         if stopReason == nil { stopReason = reason }
         stateLock.unlock()
         onFrame = nil
+        onAudio = nil
         onStop = nil
         Self.log("Capture stopped: \(targetText), \(reason).")
         Task { try? await existing?.stopCapture() }
@@ -324,6 +345,10 @@ final class StageScreenSource: NSObject, SCStreamOutput, SCStreamDelegate {
 
     func stream(_ stream: SCStream, didOutputSampleBuffer sampleBuffer: CMSampleBuffer,
                 of type: SCStreamOutputType) {
+        if type == .audio {
+            if sampleBuffer.isValid, CMSampleBufferGetNumSamples(sampleBuffer) > 0 { onAudio?(sampleBuffer) }
+            return
+        }
         guard type == .screen, sampleBuffer.isValid,
               let attachments = CMSampleBufferGetSampleAttachmentsArray(sampleBuffer, createIfNecessary: false)
                 as? [[SCStreamFrameInfo: Any]],

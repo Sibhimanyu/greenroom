@@ -54,6 +54,13 @@ struct MenuBarView: View {
         .disabled(coordinator.isSavingRecording
                   || (!coordinator.stageLive && !coordinator.isRecording && !coordinator.recordOnlyActive))
 
+        // Pauses the file only; the meeting carries on.
+        Button(coordinator.isRecordingPaused ? "Resume Recording" : "Pause Recording") {
+            coordinator.togglePauseRecording()
+        }
+        .shortcutHint(shortcuts.combo(for: .togglePause))
+        .disabled(!coordinator.isRecording || coordinator.isSavingRecording)
+
         // For the arranged layout, which has no control bar. This session
         // only: the Settings switch stays the default for the next one.
         Button(notes.effectiveEnabled ? "Hide Notes" : "Show Notes") {

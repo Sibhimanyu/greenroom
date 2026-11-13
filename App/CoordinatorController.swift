@@ -1045,6 +1045,25 @@ final class CoordinatorController: ObservableObject {
             Analytics.setting("auto_record", on: autoRecordOnStart)
         }
     }
+    /// Seconds counted down, on screen, before a recording a person starts
+    /// begins: 0 (off), 3, 5 or 10. Not used when a meeting starts the
+    /// recording by itself (auto-record).
+    @Published var recordingCountdownSeconds: Int {
+        didSet { defaults.set(recordingCountdownSeconds, forKey: "recordingCountdownSeconds") }
+    }
+    /// Also record the Mac's own sound (what is playing from the shared
+    /// screen or app), mixed with the microphone into the one audio track.
+    /// Off by default. Greenroom's and the meeting's own sound is left out.
+    @Published var recordSystemAudio: Bool {
+        didSet {
+            defaults.set(recordSystemAudio, forKey: "recordSystemAudio")
+            Analytics.setting("record_system_audio", on: recordSystemAudio)
+            recorder?.recordsSystemAudio = recordSystemAudio
+            // The sound comes through the screen capture, which is built with
+            // or without it, so a running picture rebuilds its capture.
+            if sceneInUse, let stage { stage.update(makeStageConfiguration()) }
+        }
+    }
     private let defaults = UserDefaults.standard
 
     init() {
@@ -1068,6 +1087,8 @@ final class CoordinatorController: ObservableObject {
         // Defaults ON: the shortcuts are useless without it, and bool(forKey:)
         // alone cannot tell "never set" from "deliberately off".
         clipBufferEnabled = (defaults.object(forKey: "clipBufferEnabled") as? Bool) ?? true
+        recordingCountdownSeconds = (defaults.object(forKey: "recordingCountdownSeconds") as? Int) ?? 3
+        recordSystemAudio = defaults.bool(forKey: "recordSystemAudio")
         cutoutHeightFraction = (defaults.object(forKey: "cutoutHeightFraction") as? Double) ?? bubbleDefaults.cutoutHeightFraction
         cutoutRightInset = (defaults.object(forKey: "cutoutRightInset") as? Double) ?? bubbleDefaults.cutoutRightInset
         // ON by default: the point of the built-in browser is that the
@@ -1142,6 +1163,18 @@ final class CoordinatorController: ObservableObject {
             }
             .store(in: &cancellables)
 
+        // Countdown, control bar and border follow the recording's state. The
+        // values come from the publishers (they fire before the property
+        // changes), so they are handed on rather than re-read.
+        Publishers.CombineLatest4($isRecording, $isRecordingPaused, $recordOnlyActive, $recordingCountdown)
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] recording, paused, recordOnly, countdown in
+                guard let self else { return }
+                self.recordingChrome.update(coordinator: self, recording: recording, paused: paused,
+                                            recordOnly: recordOnly, countdownValue: countdown)
+            }
+            .store(in: &cancellables)
+
         cameraDirector.log = { [weak self] line in self?.log(line) }
     }
 
@@ -1202,7 +1235,8 @@ final class CoordinatorController: ObservableObject {
                            backgroundRemoval: backgroundRemoval,
                            cameraBackground: cameraBackground,
                            cameraBackgroundImage: cameraBackgroundImage,
-                           cameraUIDs: stageCameraUIDs ?? sceneCameraUIDs(limit: 1))
+                           cameraUIDs: stageCameraUIDs ?? sceneCameraUIDs(limit: 1),
+                           captureSystemAudio: recordSystemAudio)
     }
 
     private func ensureStage() -> StageCompositor? {
@@ -1458,7 +1492,7 @@ final class CoordinatorController: ObservableObject {
                 mark(.recording, autoRecordOnStart && !isRecording ? .active : .skipped)
                 if autoRecordOnStart && !isRecording {
                     log("Starting the recording automatically (Settings \u{2192} Webcam).")
-                    toggleRecording()
+                    toggleRecording(withCountdown: false)
                     mark(.recording, .done)
                 }
                 mark(.tiling, sessionArranges ? .active : .skipped)
@@ -1537,6 +1571,7 @@ final class CoordinatorController: ObservableObject {
         // A start still in flight gets abandoned at its next checkpoint -
         // without this, its meeting setup raced the teardown below.
         startTask?.cancel()
+        cancelRecordingCountdown()
         // Whoever is waiting on the Zoom SDK is let go now, not when a
         // watchdog fires: End during a stuck Start used to leave the Start
         // button dead for the rest of the join timeout.
@@ -1713,6 +1748,16 @@ final class CoordinatorController: ObservableObject {
     private(set) var sessionFolder: URL?
 
     @Published private(set) var isRecording = false
+    /// The recording file is paused: it is not growing, and everything after
+    /// resume is stitched on with no gap (SessionRecorder / PauseClock). The
+    /// meeting, if there is one, carries on and still sees and hears you.
+    @Published private(set) var isRecordingPaused = false
+    /// The number on screen while a recording a person started counts down to
+    /// its start; nil when no countdown is running.
+    @Published private(set) var recordingCountdown: Int?
+    private var countdownToken: UUID?
+    /// Draws the countdown, the control bar and the border (RecordingChrome.swift).
+    private let recordingChrome = RecordingChrome()
     /// A recording has been stopped and its file is still being closed. The
     /// Record control reads "Saving\u{2026}" and is disabled, and nothing may
     /// start a new recording until it is done.
@@ -1754,6 +1799,73 @@ final class CoordinatorController: ObservableObject {
         recorder.armClipBuffer(seconds: SessionFolders.clipBufferSeconds)
         let minutes = SessionFolders.clipBufferSeconds / 60
         log("Clip buffer armed \u{2014} the last \(minutes) minutes stay clippable with the clip shortcuts, recording or not.")
+    }
+
+    // MARK: Pause, countdown, and where the recording is
+
+    /// Pauses the recording file, or carries on. Only the file: the meeting is
+    /// untouched. Bound to the Pause shortcut, the menu bar item, the meeting
+    /// bar and the Record view's control bar.
+    func togglePauseRecording() {
+        guard isRecording, !isSavingRecording, let recorder else { return }
+        if isRecordingPaused {
+            guard recorder.resume() else { return }
+            isRecordingPaused = false
+            log("Recording resumed.")
+        } else {
+            guard recorder.pause() else { return }
+            isRecordingPaused = true
+            log("Recording paused \u{2014} nothing is being saved until you resume.")
+        }
+    }
+
+    /// Seconds of recording so far: wall time since Record, minus time paused.
+    /// Frozen while paused. This (not `Date() - recordingStartedAt`) is what
+    /// every timer and note position uses; it is the same clock as the file.
+    func recordingElapsed(at now: Date = Date()) -> TimeInterval? {
+        guard isRecording, let started = recordingStartedAt else { return nil }
+        return max(0, now.timeIntervalSince(started) - (recorder?.pausedSeconds ?? 0))
+    }
+
+    /// Counts down on screen, then returns true; false when it was cancelled
+    /// (Esc, Cancel, the start shortcut again, or the session ending). Returns
+    /// at once with true when the countdown is Off.
+    private func runRecordingCountdown() async -> Bool {
+        let seconds = recordingCountdownSeconds
+        guard seconds > 0 else { return true }
+        let token = UUID()
+        countdownToken = token
+        for remaining in stride(from: seconds, through: 1, by: -1) {
+            guard countdownToken == token else { return false }
+            recordingCountdown = remaining
+            try? await Task.sleep(nanoseconds: 1_000_000_000)
+        }
+        let finished = countdownToken == token
+        if finished { countdownToken = nil }
+        recordingCountdown = nil
+        return finished
+    }
+
+    /// Stops a countdown before it reaches zero. Nothing is recorded.
+    func cancelRecordingCountdown() {
+        guard recordingCountdown != nil else { return }
+        countdownToken = nil
+        recordingCountdown = nil
+        log("Recording cancelled during the countdown.")
+    }
+
+    /// What the live capture shows, in global CoreGraphics points. For the border.
+    func capturedScreenFrame() -> CGRect? { stage?.capturedScreenFrame() }
+
+    /// The display being recorded, for the countdown and the control bar to appear on.
+    var recordedScreen: NSScreen? {
+        guard let frame = capturedScreenFrame() else { return nil }
+        let centre = CGPoint(x: frame.midX, y: frame.midY)
+        return NSScreen.screens.first { screen in
+            guard let id = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? CGDirectDisplayID
+            else { return false }
+            return CGDisplayBounds(id).contains(centre)
+        }
     }
 
     /// Marks the last `minutes` of the recording, ending now.
@@ -1900,7 +2012,10 @@ final class CoordinatorController: ObservableObject {
             : String(format: "%d:%02d", minutes, seconds)
     }
 
-    func toggleRecording() {
+    /// `withCountdown: false` is for the meeting's own auto-record, which nobody pressed.
+    func toggleRecording(withCountdown: Bool = true) {
+        // The shortcut that starts a recording also cancels its countdown.
+        if recordingCountdown != nil { cancelRecordingCountdown(); return }
         // A press while the last file is still closing must never start a
         // second recording (it once did, and wrote one outside any session).
         guard !isSavingRecording, !isStopping else {
@@ -1937,6 +2052,10 @@ final class CoordinatorController: ObservableObject {
                         log("Recording stopped.")
                     }
                 } else {
+                    // A person pressing Record gets the countdown; the
+                    // meeting's auto-record calls beginRecording directly.
+                    if withCountdown { guard await runRecordingCountdown() else { return } }
+                    guard !isRecording, !isSavingRecording, !isStopping else { return }
                     try await beginRecording()
                 }
             } catch {
@@ -1986,7 +2105,9 @@ final class CoordinatorController: ObservableObject {
         }
         guard !isSavingRecording else { throw RecorderError.stillSaving }
         recorder.microphoneUID = micDeviceUID
+        recorder.recordsSystemAudio = recordSystemAudio
         try recorder.start(in: folder)
+        isRecordingPaused = false
         isRecording = true
         recordingStartedAt = Date()
         Analytics.track(.recordingStart)
@@ -2105,6 +2226,16 @@ final class CoordinatorController: ObservableObject {
     /// take is on disk, so the clip shortcuts mark the recording itself, as
     /// they do whenever one is running.
     func startTake() {
+        // The Record button while the countdown runs is Cancel.
+        if recordingCountdown != nil { cancelRecordingCountdown(); return }
+        guard recordOnlyActive, !isRecording, !isSavingRecording, !takeBusy, !isStopping else { return }
+        Task {
+            guard await runRecordingCountdown() else { return }
+            startTakeNow()
+        }
+    }
+
+    private func startTakeNow() {
         guard recordOnlyActive, !isRecording, !isSavingRecording, !takeBusy, !isStopping else { return }
         takeBusy = true
         let startedAt = Date()
@@ -2213,6 +2344,7 @@ final class CoordinatorController: ObservableObject {
     /// take could start after this had already decided there was none to stop.
     func stopRecordingSession() {
         guard !isStopping else { return }
+        cancelRecordingCountdown()
         isStopping = true
         let pending = startTask
         pending?.cancel()
@@ -4067,6 +4199,8 @@ final class CoordinatorController: ObservableObject {
         recorder.onUnexpectedStop = { [weak self] message in
             Task { @MainActor in self?.recorderStoppedItself(message) }
         }
+        recorder.recordsSystemAudio = recordSystemAudio
+        stage.onSystemAudio = { [weak recorder] buffer in recorder?.appendSystemAudio(buffer) }
         self.recorder = recorder
         wireInputEvents(recorder, stage: stage)
 
@@ -4107,7 +4241,12 @@ final class CoordinatorController: ObservableObject {
         recorder.onRecordingStarted = { [weak self, weak recorder, weak stage] in
             guard let self, let recorder, let stage, self.shareTarget.kind != .nothing else { return }
             self.inputEvents.start(
-                elapsed: { [weak recorder] in recorder?.elapsedMilliseconds.map { Double($0) / 1000 } },
+                // Seconds into the file on the paused-adjusted clock; nil
+                // while paused, so nothing done during a pause is logged.
+                elapsed: { [weak recorder] in
+                    guard let recorder, !recorder.isPaused else { return nil }
+                    return recorder.elapsedMilliseconds.map { Double($0) / 1000 }
+                },
                 locate: { [weak stage] point in stage?.videoPosition(ofGlobalPoint: point) })
         }
         recorder.onRecordingEnded = { [weak self] url in
@@ -4310,6 +4449,9 @@ struct SettingsTransfer: Codable {
     /// Import-only (older files); see CoordinatorController.speakerTileShortcutEnabled.
     var speakerTileShortcutEnabled: Bool?
     var autoRecordOnStart: Bool?
+    /// Added with phase 4 of the Recorditor port.
+    var recordingCountdownSeconds: Int?
+    var recordSystemAudio: Bool?
     var meetingPresets: [MeetingPreset]?
     /// Import-only (older files): decoded and folded into "Your previous layout".
     var workspaceLayout: WorkspaceLayout?
@@ -4389,6 +4531,8 @@ extension CoordinatorController {
             shareTarget: shareTarget,
             hideSelfView: hideSelfView,
             autoRecordOnStart: autoRecordOnStart,
+            recordingCountdownSeconds: recordingCountdownSeconds,
+            recordSystemAudio: recordSystemAudio,
             meetingPresets: meetingPresets,
             layoutLibrary: layoutLibrary,
             shortcutBindings: ShortcutStore.shared.bindings,
@@ -4479,6 +4623,8 @@ extension CoordinatorController {
         if let value = transfer.hideSelfView { hideSelfView = value }
         if let value = transfer.speakerTileShortcutEnabled { speakerTileShortcutEnabled = value }
         if let value = transfer.autoRecordOnStart { autoRecordOnStart = value }
+        if let value = transfer.recordingCountdownSeconds, [0, 3, 5, 10].contains(value) { recordingCountdownSeconds = value }
+        if let value = transfer.recordSystemAudio { recordSystemAudio = value }
         if let value = transfer.userDisplayName { userDisplayName = value }
         if let value = transfer.customUIMode { customUIMode = value }
         if let value = transfer.clipBufferEnabled { clipBufferEnabled = value }

@@ -169,7 +169,7 @@ final class ShortcutModelTests: XCTestCase {
     func testGroupsMatchThePage() {
         let groups = ShortcutCatalog.grouped(layouts: [])
         XCTAssertEqual(groups.map(\.group.title), ["Class", "Meeting", "Layout", "Greenroom"])
-        XCTAssertEqual(groups[0].slots.count, 6)
+        XCTAssertEqual(groups[0].slots.count, 7)
         XCTAssertEqual(groups[1].slots.count, 9 + MeetingView.allCases.count, "the nine meeting actions and one per view")
     }
 

@@ -230,6 +230,7 @@ enum ShortcutAction: String, CaseIterable {
     case startClass = "start"
     case endSession = "end"
     case toggleRecording = "record"
+    case togglePause = "pause"
     case clip1 = "clip1"
     case clip2 = "clip2"
     case clip5 = "clip5"
@@ -265,7 +266,7 @@ enum ShortcutAction: String, CaseIterable {
     var group: ShortcutGroup {
         if meetingView != nil { return .meeting }
         switch self {
-        case .startClass, .endSession, .toggleRecording, .clip1, .clip2, .clip5: return .classGroup
+        case .startClass, .endSession, .toggleRecording, .togglePause, .clip1, .clip2, .clip5: return .classGroup
         case .toggleMic, .toggleCamera, .toggleChat, .toggleNotes, .showMeetingWindow,
              .toggleMeetingBar, .shrinkMeeting, .switchGalleryOrSpeaker, .toggleMeeting: return .meeting
         case .snapBack: return .layout
@@ -280,6 +281,7 @@ enum ShortcutAction: String, CaseIterable {
         case .startClass: return "Start class"
         case .endSession: return "End session"
         case .toggleRecording: return "Start or stop recording"
+        case .togglePause: return "Pause or resume recording"
         case .clip1: return "Clip the last minute"
         case .clip2: return "Clip the last 2 minutes"
         case .clip5: return "Clip the last 5 minutes"
@@ -305,6 +307,7 @@ enum ShortcutAction: String, CaseIterable {
         case .startClass: return "Same as the Start button."
         case .endSession: return "Asks before it ends the class."
         case .toggleRecording: return "While a class is live or Record is ready."
+        case .togglePause: return "Pauses the recording file only. The meeting carries on, and the file picks up with no gap."
         case .clip1: return "Marks the moment that just happened, one minute back."
         case .clip2: return "Marks the moment that just happened, two minutes back."
         case .clip5: return "Marks the moment that just happened, five minutes back."
@@ -330,6 +333,7 @@ enum ShortcutAction: String, CaseIterable {
         case .startClass: return "play.fill"
         case .endSession: return "stop.fill"
         case .toggleRecording: return "record.circle"
+        case .togglePause: return "pause.circle"
         case .clip1, .clip2, .clip5: return "scissors"
         case .toggleMic: return "mic.fill"
         case .toggleCamera: return "video.fill"
@@ -374,6 +378,8 @@ enum ShortcutAction: String, CaseIterable {
         case .startClass: return .optionCommand(kVK_ANSI_G)
         case .endSession: return .optionCommand(kVK_ANSI_X)
         case .toggleRecording: return .optionCommand(kVK_ANSI_R)
+        // Recorditor's own Pause key. Free here: no other default uses Shift.
+        case .togglePause: return KeyCombo(keyCode: UInt32(kVK_ANSI_P), modifiers: KeyCombo.option | KeyCombo.shift)
         case .snapBack: return .optionCommand(kVK_ANSI_S)
         case .toggleMeeting: return .optionCommand(kVK_ANSI_Z)
         case .clip1: return .optionCommand(kVK_ANSI_1)

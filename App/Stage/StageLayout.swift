@@ -40,6 +40,9 @@ struct StageConfiguration: Equatable {
     var cameraBackgroundImage = CameraBackgroundPreset.defaultChoice
     /// Camera uniqueIDs in cut order. Slot = index. All are opened at once.
     var cameraUIDs: [String] = []
+    /// Also capture the sound of what is shared (the Mac's sound), for the
+    /// recorder to mix in. Changing it restarts the screen capture.
+    var captureSystemAudio = false
 
     /// The share target has the last word on content, and there is always
     /// something to show .

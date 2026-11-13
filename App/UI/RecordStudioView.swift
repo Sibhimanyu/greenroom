@@ -41,7 +41,10 @@ struct RecordStudioView: View {
             folderPreview: folderPreview,
             opening: coordinator.startingRecordOnly && !coordinator.recordOnlyActive,
             isRecording: coordinator.isRecording,
-            recordingStartedAt: coordinator.recordingStartedAt,
+            recordingElapsed: { coordinator.recordingElapsed(at: $0) },
+            paused: coordinator.isRecordingPaused,
+            countingDown: coordinator.recordingCountdown != nil,
+            togglePause: { coordinator.togglePauseRecording() },
             busy: coordinator.takeBusy || coordinator.isStopping,
             saving: coordinator.isSavingRecording,
             notice: screenNotice,
@@ -109,7 +112,12 @@ struct RecordStudioContent<LivePicture: View, ShareDetail: View, Cameras: View, 
     /// The picture is still opening: nothing to show yet.
     let opening: Bool
     let isRecording: Bool
-    let recordingStartedAt: Date?
+    /// Seconds recorded at a moment, paused time left out; nil when not recording.
+    let recordingElapsed: (Date) -> TimeInterval?
+    let paused: Bool
+    /// The countdown is running: Record reads Cancel.
+    let countingDown: Bool
+    let togglePause: () -> Void
     /// A take is starting or finishing, or the view is closing.
     let busy: Bool
     /// The take has stopped and its file is still closing: the button reads
@@ -250,8 +258,8 @@ struct RecordStudioContent<LivePicture: View, ShareDetail: View, Cameras: View, 
     @ViewBuilder private var chip: some View {
         if isRecording {
             TimelineView(.periodic(from: .now, by: 1)) { context in
-                PictureChip(text: "REC  \(Self.clock(from: recordingStartedAt, to: context.date))",
-                            dot: Color.red)
+                PictureChip(text: "\(paused ? "PAUSED" : "REC")  \(MeetingControlsModel.clock(seconds: recordingElapsed(context.date) ?? 0))",
+                            dot: paused ? Color.secondary : Color.red)
             }
         } else {
             PictureChip(text: "READY", dot: Brand.green)
@@ -296,15 +304,24 @@ struct RecordStudioContent<LivePicture: View, ShareDetail: View, Cameras: View, 
             Spacer(minLength: 16)
             if isRecording {
                 TimelineView(.periodic(from: .now, by: 1)) { context in
-                    Text(Self.clock(from: recordingStartedAt, to: context.date))
+                    Text(MeetingControlsModel.clock(seconds: recordingElapsed(context.date) ?? 0))
                         .font(.system(size: 20, weight: .semibold, design: .monospaced))
                         .monospacedDigit()
-                        .foregroundStyle(.primary)
+                        .foregroundStyle(paused ? .secondary : .primary)
                 }
+                Button(action: togglePause) {
+                    Image(systemName: paused ? "play.fill" : "pause.fill")
+                        .frame(width: 28, height: 28)
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.large)
+                .disabled(saving)
+                .help(paused ? "Resume recording" : "Pause recording")
+                .accessibilityLabel(paused ? "Resume recording" : "Pause recording")
             }
             Button(action: record) {
-                Label(saving ? "Saving\u{2026}" : isRecording ? "Stop" : "Record",
-                      systemImage: saving ? "hourglass" : isRecording ? "stop.circle.fill" : "record.circle")
+                Label(saving ? "Saving\u{2026}" : isRecording ? "Stop" : countingDown ? "Cancel" : "Record",
+                      systemImage: saving ? "hourglass" : isRecording ? "stop.circle.fill" : countingDown ? "xmark.circle" : "record.circle")
                     .font(.title3.weight(.semibold))
                     .frame(minWidth: 120, minHeight: 28)
             }
@@ -313,6 +330,7 @@ struct RecordStudioContent<LivePicture: View, ShareDetail: View, Cameras: View, 
             .tint(isRecording && !saving ? Color.red : Brand.green)
             .disabled(busy || opening || saving)
             .help(isRecording ? "Stops and saves the recording. The picture stays on for another."
+                              : countingDown ? "Cancels the countdown. Nothing is recorded."
                               : "Starts recording the picture above.")
         }
     }

@@ -20,6 +20,14 @@
 //  already waiting, or the encoder is not ready, the frame is dropped and
 //  counted, and the counts are logged in plain words at stop.
 //
+//  Pause (phase 4 of the Recorditor port): the writer is never stopped. While
+//  paused, frames and audio are dropped, and everything after is moved back by
+//  the paused time (`PauseClock`), so the file is one continuous take. The
+//  clip buffer skips paused time too: the pause means "do not keep this", and
+//  the buffer is what a clip shortcut would otherwise hand back. System sound
+//  (`appendSystemAudio`) is mixed with the microphone into the one audio
+//  track by `AudioMixer`.
+//
 //  No app-only dependencies: this file and its siblings compile with
 //  StageFrames.swift alone, which is how they are measured.
 //
@@ -36,6 +44,9 @@ final class SessionRecorder: StageFrameSink {
     /// is the system's input, nil is no audio at all. Read when a recording
     /// or the buffer starts,, like the other sources.
     var microphoneUID: String?
+    /// Also record the Mac's own sound (the coordinator feeds it through
+    /// `appendSystemAudio`). Read when a recording or the buffer starts.
+    var recordsSystemAudio = false
     /// Where a clip-buffer save lands. Defaults to the recording's folder,
     /// then the temporary folder. Set it to the session folder.
     var clipBufferFolder: URL?
@@ -71,7 +82,17 @@ final class SessionRecorder: StageFrameSink {
     private var bufferActive = false
     private var pendingFrames = 0
     private var droppedBusy = 0
+    /// The file's first frame, in the paused-adjusted clock (its own timestamp
+    /// minus the pauses before it), so `now - paused - firstFrameTime` is the
+    /// position in the file.
     private var firstFrameTime: CMTime?
+    /// Pauses as the recording sees them (reset at each start) and as the clip
+    /// buffer sees them (reset when the buffer is armed; it outlives recordings).
+    private let recordingClock = PauseClock()
+    private let bufferClock = PauseClock()
+    /// Present while system sound is on; owns the mix of it and the microphone.
+    private var mixer: AudioMixer?
+    private var mixerLogged = false
 
     private var recording: StageEncoder?
     private var recordingURL_: URL?
@@ -90,13 +111,11 @@ final class SessionRecorder: StageFrameSink {
         self.microphoneUID = microphoneUID
         self.log = log
         mic.onSamples = { [weak self] buffer in
-            self?.queue.async { [weak self] in
-                guard let self else { return }
-                self.recording?.appendAudio(buffer)
-                self.bufferEncoder?.appendAudio(buffer)
-            }
+            self?.queue.async { [weak self] in self?.handleMicrophone(buffer) }
         }
     }
+
+    private static func hostSeconds() -> Double { CMClockGetTime(CMClockGetHostTimeClock()).seconds }
 
     // MARK: Observable state
 
@@ -107,20 +126,50 @@ final class SessionRecorder: StageFrameSink {
     var recordingURL: URL? { lock.lock(); defer { lock.unlock() }; return recordingURL_ }
 
     /// Where the recording is, in seconds from the start of the file: what
-    /// a clip mark is taken against. Measured against the
-    /// host clock from the first frame written, so it keeps counting if the
-    /// picture stalls, the same as the file's own timeline does.
+    /// a clip mark is taken against. Measured against the host clock from the
+    /// first frame written, minus the time spent paused, so it keeps counting if
+    /// the picture stalls (the file's own timeline does) but not through a
+    /// pause. While paused it holds the moment the pause began.
     var elapsed: TimeInterval {
         lock.lock(); defer { lock.unlock() }
         guard recordingActive, let first = firstFrameTime else { return 0 }
-        return max(0, CMClockGetTime(CMClockGetHostTimeClock()).seconds - first.seconds)
+        return fileSeconds(first: first)
     }
     /// `elapsed` in whole milliseconds, nil when not recording or no frame has
     /// been written yet (`SessionClip.startMs/endMs` are milliseconds).
     var elapsedMilliseconds: Int? {
         lock.lock(); defer { lock.unlock() }
         guard recordingActive, let first = firstFrameTime else { return nil }
-        return Int(max(0, CMClockGetTime(CMClockGetHostTimeClock()).seconds - first.seconds) * 1000)
+        return Int(fileSeconds(first: first) * 1000)
+    }
+    /// Called with `lock` held.
+    private func fileSeconds(first: CMTime) -> Double {
+        let at = recordingClock.currentPauseBegin ?? Self.hostSeconds()
+        return max(0, at - recordingClock.pausedSeconds(at: at) - first.seconds)
+    }
+
+    /// The recording is paused (the file is not growing; the meeting, if any, is untouched).
+    var isPaused: Bool { recordingClock.isPaused }
+    /// Seconds spent paused so far in this recording, a pause in progress included.
+    var pausedSeconds: TimeInterval { recordingClock.pausedSeconds(at: Self.hostSeconds()) }
+
+    /// Pauses the recording file. False when nothing is recording or it is already paused.
+    @discardableResult
+    func pause() -> Bool {
+        guard isRecording else { return false }
+        let now = Self.hostSeconds()
+        guard recordingClock.pause(at: now) else { return false }
+        bufferClock.pause(at: now)
+        return true
+    }
+
+    /// Carries on after a pause.
+    @discardableResult
+    func resume() -> Bool {
+        let now = Self.hostSeconds()
+        guard recordingClock.resume(at: now) else { return false }
+        bufferClock.resume(at: now)
+        return true
     }
 
     /// Frames lost so far in this recording because the encoder was behind.
@@ -157,12 +206,15 @@ final class SessionRecorder: StageFrameSink {
                 .replacingOccurrences(of: ".mp4", with: " (\(counter)).mp4"))
             counter += 1
         }
-        let withAudio = microphoneUID != nil && MicrophoneTap.isAuthorized
+        let withAudio = wantsAudio
         let encoder = try StageEncoder(output: .file(url), size: source.outputSize,
                                        frameRate: source.frameRate, withAudio: withAudio)
-        if microphoneUID != nil, !withAudio {
-            log("Recording without sound \u{2014} Greenroom does not have microphone permission.")
+        if microphoneUID != nil, !MicrophoneTap.isAuthorized {
+            log(recordsSystemAudio
+                ? "Recording without the microphone \u{2014} Greenroom does not have microphone permission. The Mac\u{2019}s sound is still recorded."
+                : "Recording without sound \u{2014} Greenroom does not have microphone permission.")
         }
+        recordingClock.reset()
 
         // Async, never sync: this is called from the main thread, and the
         // queue may be busy. Frames only start once `recordingActive` is set
@@ -186,6 +238,18 @@ final class SessionRecorder: StageFrameSink {
         }
     }
 
+    /// Sound is wanted when the microphone can be heard or the Mac's sound is on.
+    private var wantsAudio: Bool {
+        (microphoneUID != nil && MicrophoneTap.isAuthorized) || recordsSystemAudio
+    }
+
+    /// A pause still open when the recording ends must not carry on into the clip buffer.
+    private func closePause() {
+        let now = Self.hostSeconds()
+        recordingClock.resume(at: now)
+        bufferClock.resume(at: now)
+    }
+
     private func announceEnd(_ url: URL?) async {
         guard let ended = onRecordingEnded else { return }
         await MainActor.run { ended(url) }
@@ -204,10 +268,13 @@ final class SessionRecorder: StageFrameSink {
         guard was else { return nil }
         defer { lock.withLock { stopping = false } }
         guard let url else { await announceEnd(nil); return nil }
+        closePause()
         syncPlumbing()
 
         let encoder: StageEncoder? = await withCheckedContinuation { cont in
             queue.async { [self] in
+                // The mixer holds back the last 150 ms; hand them over first.
+                mixer?.flush()
                 let e = recording; recording = nil; cont.resume(returning: e)
             }
         }
@@ -255,6 +322,7 @@ final class SessionRecorder: StageFrameSink {
         if bufferActive { lock.unlock(); return }
         bufferActive = true
         lock.unlock()
+        bufferClock.reset()
         queue.async { [self] in
             bufferSeconds = seconds
             ring = ClipRing(window: TimeInterval(seconds), segmentInterval: Self.segmentInterval)
@@ -326,7 +394,17 @@ final class SessionRecorder: StageFrameSink {
         if needed, !micRunning, microphoneUID != nil { micRunning = true; micOn = true }
         else if !needed, micRunning { micRunning = false; micOff = true }
         let uid = microphoneUID
+        let wantsMixer = needed && recordsSystemAudio
         lock.unlock()
+        queue.async { [self] in
+            if wantsMixer, mixer == nil {
+                let m = AudioMixer()
+                m.onChunk = { [weak self] chunk in self?.handleMixed(chunk) }
+                mixer = m
+            } else if !wantsMixer, mixer != nil {
+                mixer = nil
+            }
+        }
         if attach { source.addSink(self) }
         if detach { source.removeSink(self) }
         if micOn, let uid {
@@ -368,9 +446,14 @@ final class SessionRecorder: StageFrameSink {
         }
 
         if let encoder = recording {
-            let first = encoder.startTime == nil
-            if encoder.appendVideo(frame, at: time), first {
-                lock.lock(); firstFrameTime = time; lock.unlock()
+            // Paused: the frame is dropped; after a pause it is moved back by
+            // the time paused so the file has no gap (PauseClock).
+            if let moved = recordingClock.offset(at: time.seconds) {
+                let mapped = PauseClock.shifted(time, by: moved)
+                let first = encoder.startTime == nil
+                if encoder.appendVideo(frame, at: mapped), first {
+                    lock.lock(); firstFrameTime = mapped; lock.unlock()
+                }
             }
             if let failure = encoder.failure {
                 recording = nil
@@ -385,25 +468,82 @@ final class SessionRecorder: StageFrameSink {
             }
         }
 
-        if bufferActive_(), let ring {
+        // The clip buffer follows its own copy of the pauses (it outlives a recording).
+        if bufferActive_(), let ring, let moved = bufferClock.offset(at: time.seconds) {
+            let mapped = PauseClock.shifted(time, by: moved)
             if bufferEncoder == nil, Date().timeIntervalSince(bufferFailedAt) > 5 {
                 ring.reset()
                 bufferEncoder = try? StageEncoder(
-                    output: .segments(interval: Self.segmentInterval, start: time, delegate: ring),
+                    output: .segments(interval: Self.segmentInterval, start: mapped, delegate: ring),
                     size: source.outputSize, frameRate: source.frameRate,
-                    withAudio: microphoneUID != nil && MicrophoneTap.isAuthorized)
+                    withAudio: wantsAudio)
                 if bufferEncoder == nil {
                     bufferFailedAt = Date()
                     log("The clip buffer could not start; it will try again in a few seconds.")
                 }
             }
-            bufferEncoder?.appendVideo(frame, at: time)
+            bufferEncoder?.appendVideo(frame, at: mapped)
             if let failure = bufferEncoder?.failure {
                 log("The clip buffer hit a problem (\(failure)); it is starting over.")
                 bufferEncoder?.cancel(label: "clip buffer", keepAlive: ring, log: log)
                 bufferEncoder = nil
                 bufferFailedAt = Date()
             }
+        }
+    }
+
+    // MARK: Audio
+
+    /// The Mac's own sound, from the screen capture. Any queue; cheap when
+    /// nothing is recording. Needs `recordsSystemAudio`.
+    func appendSystemAudio(_ buffer: CMSampleBuffer) {
+        guard recordsSystemAudio else { return }
+        lock.lock(); let wanted = recordingActive || bufferActive; lock.unlock()
+        guard wanted else { return }
+        queue.async { [weak self] in
+            guard let self, let mixer = self.mixer else { return }
+            guard let converted = AudioMixer.floats(from: buffer) else {
+                if !self.mixerLogged {
+                    self.mixerLogged = true
+                    self.log("The Mac\u{2019}s sound arrived in a format Greenroom cannot mix (not 48 kHz float), so it is left out.")
+                }
+                return
+            }
+            mixer.add(converted.samples, at: converted.time, from: .system)
+        }
+    }
+
+    /// Microphone buffer, on `queue`. With system sound on it goes through the
+    /// mixer; without, straight to the writers as it always did.
+    private func handleMicrophone(_ buffer: CMSampleBuffer) {
+        if let mixer {
+            if let converted = AudioMixer.floats(from: buffer) {
+                mixer.add(converted.samples, at: converted.time, from: .microphone)
+            }
+            return
+        }
+        route(audio: buffer)
+    }
+
+    /// A 10 ms piece of the mix, on `queue`.
+    private func handleMixed(_ chunk: AudioMixer.Chunk) {
+        let stamp = CMTime(value: Int64((chunk.start * AudioMixer.sampleRate).rounded()),
+                           timescale: Int32(AudioMixer.sampleRate))
+        guard let buffer = AudioMixer.sampleBuffer(samples: chunk.samples, at: stamp) else { return }
+        route(audio: buffer)
+    }
+
+    /// Hands a buffer to each writer, moved for that writer's pauses, or not
+    /// at all while it is paused.
+    private func route(audio buffer: CMSampleBuffer) {
+        let pts = CMSampleBufferGetPresentationTimeStamp(buffer).seconds
+        if let recording, let moved = recordingClock.offset(at: pts),
+           let adjusted = PauseClock.retimed(buffer, by: moved) {
+            recording.appendAudio(adjusted)
+        }
+        if let bufferEncoder, let moved = bufferClock.offset(at: pts),
+           let adjusted = PauseClock.retimed(buffer, by: moved) {
+            bufferEncoder.appendAudio(adjusted)
         }
     }
 
@@ -418,6 +558,7 @@ final class SessionRecorder: StageFrameSink {
 
     private func endUnexpectedly(_ message: String, encoder: StageEncoder) {
         lock.lock(); recordingActive = false; lock.unlock()
+        closePause()
         log(message)
         Task { [weak self] in
             await encoder.finish()

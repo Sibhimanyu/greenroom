@@ -49,7 +49,8 @@ enum MeetingToolbarLayout {
     static let clockKeep = 4
 
     /// The items in toolbar order. `security` appears for a host or co-host.
-    static func specs(showsSecurity: Bool) -> [ToolbarItemSpec] {
+    /// While recording, Record is two cells wide: Stop (with the timer) and Pause.
+    static func specs(showsSecurity: Bool, recording: Bool = false) -> [ToolbarItemSpec] {
         var out: [ToolbarItemSpec] = [
             .init(id: .mute, group: 0, width: cell + caret, keep: 10),
             .init(id: .video, group: 0, width: cell + caret, keep: 9),
@@ -60,7 +61,7 @@ enum MeetingToolbarLayout {
             .init(id: .chat, group: 1, width: cell, keep: 6),
             .init(id: .react, group: 1, width: cell, keep: 3),
             .init(id: .share, group: 1, width: cell + caret, keep: 8),
-            .init(id: .record, group: 2, width: cell, keep: 2),
+            .init(id: .record, group: 2, width: recording ? cell * 2 + gap : cell, keep: 2),
             .init(id: .notes, group: 2, width: cell, keep: 1),
         ]
         return out

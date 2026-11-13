@@ -37,6 +37,8 @@ struct MeetingToolbarState {
     var handRaised = false
     var sharing = false
     var recording = false
+    /// The recording file is paused (the meeting is not).
+    var recordingPaused = false
     var saving = false
     var recordCaption = "Record"
     var notesOn = false
@@ -60,6 +62,7 @@ struct MeetingToolbarActions {
     var togglePeople: () -> Void = {}
     var toggleChat: () -> Void = {}
     var toggleRecording: () -> Void = {}
+    var togglePause: () -> Void = {}
     var toggleNotes: () -> Void = {}
     var stopSharing: () -> Void = {}
     var end: () -> Void = {}
@@ -79,7 +82,7 @@ struct MeetingToolbarBar: View {
     var body: some View {
         GeometryReader { geo in
             let fit = MeetingToolbarLayout.fit(
-                specs: MeetingToolbarLayout.specs(showsSecurity: state.isHost),
+                specs: MeetingToolbarLayout.specs(showsSecurity: state.isHost, recording: state.recording),
                 // "End for everyone" is wider than End; make room while it shows.
                 width: geo.size.width - (confirmingEnd ? 112 : 0))
             let groups = MeetingToolbarLayout.specs(showsSecurity: true).reduce(into: [ToolbarItemID: Int]()) { $0[$1.id] = $1.group }
@@ -188,12 +191,21 @@ struct MeetingToolbarBar: View {
                 }
             }
         case .record:
-            cell(symbol: state.recording ? "stop.circle.fill" : "record.circle",
-                 caption: state.saving ? "Saving\u{2026}" : state.recordCaption,
-                 tint: state.recording ? MeetingTheme.red : .white,
-                 help: state.recording ? "Stop recording" : "Record this class",
-                 action: actions.toggleRecording)
-                .disabled(state.saving)
+            HStack(spacing: MeetingToolbarLayout.gap) {
+                cell(symbol: state.recording ? "stop.circle.fill" : "record.circle",
+                     caption: state.saving ? "Saving\u{2026}" : state.recordCaption,
+                     tint: state.recording ? MeetingTheme.red : .white,
+                     help: state.recording ? "Stop recording" : "Record this class",
+                     action: actions.toggleRecording)
+                    .disabled(state.saving)
+                if state.recording && !state.saving {
+                    // Pauses the file only; the meeting carries on.
+                    cell(symbol: state.recordingPaused ? "play.circle" : "pause.circle",
+                         caption: state.recordingPaused ? "Resume" : "Pause",
+                         help: state.recordingPaused ? "Resume recording" : "Pause recording (the meeting carries on)",
+                         action: actions.togglePause)
+                }
+            }
         case .notes:
             cell(symbol: "note.text", caption: "Notes", on: state.notesOn, action: actions.toggleNotes)
         }

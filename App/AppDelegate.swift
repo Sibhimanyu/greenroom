@@ -77,13 +77,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    /// A Dock click while a class is live brings the class forward: the meeting
+    /// window, or the control bar if it is shrunk. Returning false stops AppKit
+    /// also opening the main window over it. With nothing live, the usual
+    /// reopen (the main window) applies.
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        MainActor.assumeIsolated {
+            guard let coordinator = CoordinatorController.shared else { return true }
+            return !coordinator.bringLiveSessionForward()
+        }
+    }
+
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         MainActor.assumeIsolated {
             guard let coordinator = CoordinatorController.shared else { return .terminateNow }
             // Before prepareForTermination, not after: that begins tearing the
             // session down, so asking afterwards would be asking about something
             // already half-ended.
-            guard coordinator.confirmQuitWhileLive() else { return .terminateCancel }
+            // Logout, shutdown and restart arrive as a quit Apple event whose reason
+            // says so: those end cleanly and save, with no question.
+            let reason = NSAppleEventManager.shared().currentAppleEvent?
+                .attributeDescriptor(forKeyword: AEKeyword(kAEQuitReason))?.enumCodeValue
+            let systemEnding = LiveExit.isSystemEnd(quitReason: reason)
+            guard coordinator.confirmQuitWhileLive(systemEnding: systemEnding) else { return .terminateCancel }
             coordinator.prepareForTermination()
             // A recording gets a graceful, WAITED-FOR finish before this
             // process exits, and the cameras and screen capture are stopped,

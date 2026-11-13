@@ -192,6 +192,15 @@ enum ParticipantGridWindowController {
         /// performMiniaturize, which calls miniaturize). NSWindowDelegate has no
         /// "should miniaturize", so the window itself decides: while a meeting is
         /// live it runs the shrink-to-control-bar morph instead of going to the Dock.
+        /// The red light and Command-W. While a class is live the coordinator puts a
+        /// sheet on this window instead (End / Leave, Shrink, Cancel); the close
+        /// happens only when nothing is live, or by code.
+        override func performClose(_ sender: Any?) {
+            if isMeetingWindow, !ParticipantGridWindowController.closingByCode,
+               ParticipantGridWindowController.confirmClose?(self) == false { return }
+            super.performClose(sender)
+        }
+
         override func miniaturize(_ sender: Any?) {
             if isMeetingWindow, ParticipantGridWindowController.shrinkInsteadOfMinimize?() == true { return }
             super.miniaturize(sender)
@@ -216,13 +225,17 @@ enum ParticipantGridWindowController {
     /// the window then minimises as any window does.
     static var shrinkInsteadOfMinimize: (@MainActor () -> Bool)?
 
+    /// Set by the coordinator: asked before the teacher's own close. True lets
+    /// the window close; false means a sheet is up and the close waits.
+    static var confirmClose: (@MainActor (NSWindow) -> Bool)?
+
     private static var panel: ControlPanel?
 
     /// Called when the teacher closes the meeting window with its own close
     /// button, so the coordinator can stop feeding it and the pill can take
     /// over. Not called for the closes the controller does itself.
     static var onUserClosed: (@MainActor () -> Void)?
-    private static var closingByCode = false
+    fileprivate static var closingByCode = false
     private static var closeObserver: NSObjectProtocol?
     /// Set when the window was hidden on purpose (the speaker shortcut), so the
     /// one-second refresh does not bring it straight back.
@@ -445,6 +458,20 @@ enum ParticipantGridWindowController {
         return panel.isVisible && !panel.isMiniaturized && panel.occlusionState.contains(.visible)
     }
 
+    /// The meeting window exists but is out of sight on purpose: shrunk to the
+    /// control bar, minimised or ordered out. Not the same as covered by another
+    /// window, which `meetingWindowIsShowing` also reports as not showing.
+    static var meetingWindowIsHidden: Bool {
+        guard let panel, currentForm?.isMeeting == true else { return false }
+        return !panel.isVisible || panel.isMiniaturized
+    }
+
+    /// A deliberate bring-forward (Dock click, menu choice): the window takes key.
+    static func makeMeetingWindowKey() {
+        guard let panel, currentForm?.isMeeting == true else { return }
+        panel.makeKeyAndOrderFront(nil)
+    }
+
     /// The Gallery / Speaker shortcut: flips the meeting window's video layout, as
     /// the segmented control does. False when there is nothing to switch (no
     /// meeting window, or the small slot form, which is always Speaker).
@@ -516,6 +543,7 @@ enum ParticipantGridWindowController {
         closeObserver = nil
         onUserClosed = nil
         shrinkInsteadOfMinimize = nil
+        confirmClose = nil
         userHidden = false
         panel = nil
         root = nil

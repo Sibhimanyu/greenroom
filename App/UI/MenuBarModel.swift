@@ -83,6 +83,8 @@ enum MenuBarAction: Equatable {
     case toggleRecording, togglePause
     case toggleNotes, snapBack, toggleSpeakerTile, toggleDrawing
     case endSession
+    /// The live header: brings the meeting (or the control bar) forward.
+    case showMeeting
     case stopCues
     case fix(MenuBarProblem.Fix)
 }
@@ -233,7 +235,8 @@ enum MenuBarModel {
             var parts = ["\u{25CF} Live"]
             if !name.isEmpty { parts.append(name) }
             if let e = s.sessionElapsed { parts.append(clock(e)) }
-            lines.append(MenuBarItem(kind: .status, title: parts.joined(separator: " \u{00B7} ")))
+            // Clickable: the way back to the meeting from anywhere.
+            lines.append(MenuBarItem(kind: .action(.showMeeting), title: parts.joined(separator: " \u{00B7} ")))
         }
         if s.isSavingRecording {
             lines.append(MenuBarItem(kind: .status, title: "Saving recording\u{2026}"))

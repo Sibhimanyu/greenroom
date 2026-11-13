@@ -2941,6 +2941,10 @@ final class CoordinatorController: ObservableObject {
         ParticipantGridWindowController.onUserClosed = { [weak self] in
             Task { @MainActor in self?.meetingWindowClosedByUser() }
         }
+        // The red light and Command-W: a sheet while live, never a silent close.
+        ParticipantGridWindowController.confirmClose = { [weak self] window in
+            self?.confirmCloseMeetingWindow(window) ?? true
+        }
         // Minimise (the yellow light, Command-M) shrinks to the control bar while a
         // meeting is live; with none, the window minimises as any other does.
         ParticipantGridWindowController.shrinkInsteadOfMinimize = { [weak self] in
@@ -3578,39 +3582,116 @@ final class CoordinatorController: ObservableObject {
     /// should be the recoverable one.
     ///
     /// Returns true when quitting should proceed.
-    func confirmQuitWhileLive() -> Bool {
+    func confirmQuitWhileLive(systemEnding: Bool = false) -> Bool {
+        // Logout, shutdown and restart finish cleanly and save; nobody is there
+        // to answer a question, and a question would block the system.
+        if systemEnding { return true }
         guard hasLiveSession || isUploadingToYouTube else { return true }
         // The quit may have been triggered from the menu bar while another app
         // held focus, so the alert has to come forward with the app.
         NSApp.activate(ignoringOtherApps: true)
 
         let alert = NSAlert()
-        if !hasLiveSession {
+        if let prompt = LiveExit.quitPrompt(liveExitState) {
+            alert.messageText = prompt.title
+            alert.informativeText = prompt.message + (isUploadingToYouTube ? " A YouTube upload in progress is cancelled too." : "")
+            Self.addButtons(prompt.choices, to: alert)
+        } else {
             // Only an upload is in flight: quitting abandons it (the recording
             // itself is safe on disk and can be uploaded again from Recordings).
             let percent = Int(((youtubeUploadProgress ?? 0) * 100).rounded())
             alert.messageText = "Quit Greenroom and cancel the YouTube upload?"
             alert.informativeText = "The upload is \(percent)% done. Quitting cancels it; the recording stays in Documents/Greenroom and can be uploaded again from Recordings."
-        } else {
-            alert.messageText = recordOnlyActive ? "Quit Greenroom and stop recording?" : "Quit Greenroom and end the class?"
-            alert.informativeText = recordOnlyActive
-                ? "The recording is finished and saved first."
-                : isRecording
-                ? "The recording is finished and saved first. Then the Zoom meeting ends for everyone when you're hosting, and your students are dropped from the call."
-                : "The Zoom meeting ends for everyone when you're hosting, and your students are dropped from the call."
-            if isUploadingToYouTube {
-                alert.informativeText += " A YouTube upload in progress is cancelled too."
-            }
+            Self.addButtons([.endMeetingAndQuit, .cancel], to: alert, firstTitle: "Quit Greenroom")
         }
         alert.alertStyle = .warning
-        alert.addButton(withTitle: "Quit Greenroom")
-        alert.addButton(withTitle: "Cancel")
-        alert.buttons[0].hasDestructiveAction = true
-        // Hand the Return key to Cancel. Escape already maps to it as the
-        // second button.
-        alert.buttons[0].keyEquivalent = ""
-        alert.buttons[1].keyEquivalent = "\r"
-        return alert.runModal() == .alertFirstButtonReturn
+        let response = alert.runModal()
+        return response == .alertFirstButtonReturn
+    }
+
+    /// What is live, for the close and quit prompts. The host is whoever made the
+    /// meeting; joining one makes you a participant.
+    var liveExitState: LiveExitState {
+        var s = LiveExitState()
+        guard hasLiveSession else { return s }
+        if recordOnlyActive || startingRecordOnly {
+            s.kind = .recordOnly
+        } else {
+            s.kind = meetingMode == .create ? .host : .participant
+        }
+        s.isRecording = isRecording
+        s.canShrink = zoomChatClient.didUseCustomUI && meetingWindowOpen
+        return s
+    }
+
+    /// Buttons in prompt order. The first is the action; Cancel is the default
+    /// (Return) and Escape; a middle choice has no key.
+    private static func addButtons(_ choices: [LiveExitChoice], to alert: NSAlert, firstTitle: String? = nil) {
+        for (index, choice) in choices.enumerated() {
+            let button = alert.addButton(withTitle: index == 0 ? (firstTitle ?? choice.title) : choice.title)
+            button.hasDestructiveAction = choice.isDestructive
+            button.keyEquivalent = choice == .cancel ? "\r" : ""
+        }
+        // Escape reaches Cancel, the last button, as the sheet's cancel button.
+        alert.buttons.last?.keyEquivalent = "\r"
+    }
+
+    /// The meeting window's close button and Command-W. True means close as
+    /// usual (nothing is live); false means a sheet is up on `window` and the
+    /// close waits for the answer.
+    func confirmCloseMeetingWindow(_ window: NSWindow) -> Bool {
+        guard let prompt = LiveExit.closePrompt(liveExitState) else { return true }
+        let alert = NSAlert()
+        alert.messageText = prompt.title
+        alert.informativeText = prompt.message
+        alert.alertStyle = .warning
+        Self.addButtons(prompt.choices, to: alert)
+        alert.beginSheetModal(for: window) { [weak self] response in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                let index = response.rawValue - NSApplication.ModalResponse.alertFirstButtonReturn.rawValue
+                guard prompt.choices.indices.contains(index) else { return }
+                switch prompt.choices[index] {
+                case .endMeetingForAll, .leaveMeeting: self.stop() // hosting ends it, otherwise leaves
+                case .shrinkToControlBar: self.shrinkMeetingToBar()
+                default: break
+                }
+            }
+        }
+        return false
+    }
+
+    /// Where a Dock click, Show Greenroom or the menu bar's live header goes.
+    private var reopenState: LiveExit.ReopenState {
+        var s = LiveExit.ReopenState()
+        s.isLive = hasLiveSession
+        s.hasMeetingSurfaces = zoomChatClient.didUseCustomUI && !recordOnlyActive
+        s.meetingShrunk = ParticipantGridWindowController.meetingWindowIsHidden
+        return s
+    }
+
+    /// True when it brought a meeting surface forward (so no main window is
+    /// needed); false means the caller shows the main window, which reads the
+    /// live state. A deliberate click, so the app activates.
+    @discardableResult
+    func bringLiveSessionForward() -> Bool {
+        let state = reopenState
+        guard LiveExit.reopenHandledByMeeting(state) else { return false }
+        NSApp.activate(ignoringOtherApps: true)
+        switch LiveExit.reopenTarget(state) {
+        case .meetingWindow:
+            if ParticipantGridWindowController.meetingWindowIsOpen {
+                ParticipantGridWindowController.show()
+                ParticipantGridWindowController.makeMeetingWindowKey()
+            } else {
+                openMeetingWindow()
+            }
+        case .controlBar:
+            MeetingControlBarController.bringForward()
+        case .mainWindow:
+            return false
+        }
+        return true
     }
 
     func confirmAndStop() {

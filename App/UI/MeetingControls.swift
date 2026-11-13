@@ -1390,6 +1390,13 @@ enum MeetingControlBarController {
         return menu
     }
 
+    /// A deliberate way back (Dock click, menu choice): the bar comes forward,
+    /// without taking key from whatever the teacher is using.
+    static func bringForward() {
+        guard morphTimeline == nil, let panel else { return }
+        panel.orderFrontRegardless()
+    }
+
     static func close() {
         morphTimer?.invalidate()
         morphTimer = nil

@@ -77,7 +77,8 @@ final class MenuBarModelTests: XCTestCase {
     func testLiveHeaderShowsClassAndElapsed() {
         let items = build(live())
         XCTAssertEqual(items.first?.title, "\u{25CF} Live \u{00B7} Maths 7 \u{00B7} 12:34")
-        XCTAssertEqual(items.first?.kind, .status)
+        // Clickable: it brings the meeting forward.
+        XCTAssertEqual(items.first?.kind, .action(.showMeeting))
     }
 
     func testLiveWithoutNameOmitsIt() {
@@ -111,7 +112,7 @@ final class MenuBarModelTests: XCTestCase {
 
     func testLiveItemsAndOrder() {
         let a = actions(build(live { $0.canDraw = true }))
-        XCTAssertEqual(a, [.toggleRecording, .toggleNotes, .snapBack, .toggleSpeakerTile, .toggleDrawing,
+        XCTAssertEqual(a, [.showMeeting, .toggleRecording, .toggleNotes, .snapBack, .toggleSpeakerTile, .toggleDrawing,
                            .endSession, .showGreenroom, .quit])
     }
 

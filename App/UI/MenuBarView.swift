@@ -192,7 +192,10 @@ struct MenuBarView: View {
         case .settings:
             openSettings()
             NSApp.activate(ignoringOtherApps: true)
-        case .showGreenroom: showMain()
+        case .showGreenroom, .showMeeting:
+            // A live class comes forward as itself (meeting window or control
+            // bar); with none, or in the Record view, the main window shows it.
+            if !coordinator.bringLiveSessionForward() { showMain() }
         case .checkForUpdates: checkForUpdates()
         case .howItWorks: NSWorkspace.shared.open(AppLinks.safety)
         case .quit: NSApp.terminate(nil)

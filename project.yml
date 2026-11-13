@@ -297,6 +297,7 @@ targets:
       - path: App/MeetingBarPlacement.swift
       - path: App/MeetingMorph.swift
       - path: App/MeetingShrinkRules.swift
+      - path: App/LiveExitRules.swift
       - path: App/UI/MeetingToolbarLayout.swift
       - path: App/UI/MeetingMenuSpec.swift
       - path: App/Zoom/MeetingShareRules.swift

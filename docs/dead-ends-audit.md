@@ -1,0 +1,32 @@
+# Dead ends while a meeting or recording is live
+
+Rule: while a class is live, nothing may leave the teacher with a running session and no window to get back to it, and nothing may end it without a question. Zoom's own app is the model. Decisions live in `App/LiveExitRules.swift` (pure, unit-tested in `Tests/LiveExitRulesTests.swift`).
+
+| Window | What closing does now | Path back | Fix |
+|---|---|---|---|
+| Meeting window (red button, Command-W) | Was: closed silently, class kept running. Now: a sheet on the window. Host: End Meeting for All / Shrink to Control Bar / Cancel. Participant: Leave Meeting / Shrink / Cancel. "Recording will stop and be saved." is added while recording. Cancel is the default and Escape. | Control bar; Dock click; Show Greenroom; menu bar live header | Sheet (`ParticipantGridWindowController.confirmClose`, `ControlPanel.performClose`). Nothing live: closes as before. |
+| Meeting window (yellow, Command-M) | Shrinks to the control bar while live (unchanged, 2026-11-13) | Control bar's expand button; Dock click | None needed. |
+| Quit (Command-Q, app menu, menu bar, Dock) | Was: one "Quit Greenroom" alert. Now: End Meeting & Quit (host), Leave & Quit (participant), Stop Recording & Quit (Record view), each with Cancel as default. Logout, shutdown and restart skip the question and end cleanly, saving the recording. | n/a | `applicationShouldTerminate` reads the quit Apple event's reason. |
+| Control bar | Borderless, no close button; cannot be closed | Always on screen when the meeting window is not | None needed. |
+| Chat window (arranged layouts) | Closes; the meeting goes on | Meeting window / bar Chat and Views entries | None needed; unverified in a real meeting. |
+| Participants panel | A side panel inside the meeting window, so closing the window is covered by the sheet | Meeting window | Covered by the meeting-window fix. |
+| Meeting view windows (Gallery, Active speaker, Hands up...) | Close or move; the meeting goes on | Views menu on the control bar and the meeting window | None needed. |
+| Drawing toolbar and canvas | Borderless panels with Done; no close button | Menu bar "Draw on the Screen", Draw shortcut, control bar Draw | None needed. |
+| Whiteboard window | Closes; drawing mode ends, the class goes on | Draw on the control bar, menu bar or shortcut | None needed. |
+| Floating recording bar and Record studio bar | Borderless, no close button | Menu bar Stop/Start Recording, Dock click | None needed. |
+| Main Greenroom window | Closes; the class goes on | Dock click, Show Greenroom, menu bar live header. It reopens on Home, which shows the live state (End Session and Record drawn only while live). | Dock click while live brings the meeting forward instead (`applicationShouldHandleReopen`). |
+| Browser window (a shared page) | Closes or minimises; the class goes on | Same sharing controls as before | None needed. |
+
+## Getting back
+
+`LiveExit.reopenTarget` decides. Dock click, Show Greenroom and the menu bar's "Live" header all use it:
+
+- Live custom-UI meeting, window hidden, minimised or shrunk: the control bar comes forward.
+- Live custom-UI meeting otherwise: the meeting window comes forward (reopened if it was closed) and takes key.
+- Record view, or nothing live: the main window, which shows the live state.
+
+These are deliberate clicks, so the app activates. Nothing here runs on its own.
+
+## Needs a real meeting to verify
+
+The sheet on a non-activating panel, the Dock click while shrunk, and the logout path (the quit event's reason code) were not driven here.

@@ -12,8 +12,7 @@
 //  video element, and the off-screen render in .context/mt draws it over
 //  placeholder colour.
 //
-//  MeetingVideoLayout is the same idea for geometry: where the tiles go in
-//  Gallery and in Speaker view's top strip, as pure arithmetic.
+//  Where the tiles go is MeetingViewRules.swift (MeetingVideoLayout).
 //
 import AppKit
 
@@ -144,58 +143,5 @@ final class MeetingTileChrome: NSView {
         handBadge.layer?.cornerRadius = badge / 2
         handIcon.frame = handBadge.bounds.insetBy(dx: 3, dy: 3)
         ring.frame = bounds
-    }
-}
-
-/// Where tiles go. AppKit coordinates (origin bottom left); index 0 is the top
-/// left. Pure, so the render and the window share it.
-enum MeetingVideoLayout {
-
-    /// The grid that gives 16:9 tiles the most area. Tiles are 16:9 like the
-    /// pictures they hold, packed with `gap` between them and centred in `size`,
-    /// the last row centred too.
-    static func gallery(count: Int, in size: NSSize, gap: CGFloat = MeetingTheme.tileGap) -> [NSRect] {
-        guard count > 0, size.width > 0, size.height > 0 else { return [] }
-        var best: (cols: Int, rows: Int, w: CGFloat, h: CGFloat) = (1, count, 0, 0)
-        for cols in 1...count {
-            let rows = Int(ceil(Double(count) / Double(cols)))
-            let maxW = (size.width - gap * CGFloat(cols - 1)) / CGFloat(cols)
-            let maxH = (size.height - gap * CGFloat(rows - 1)) / CGFloat(rows)
-            guard maxW > 0, maxH > 0 else { continue }
-            let w = min(maxW, maxH * 16 / 9), h = w * 9 / 16
-            if w * h > best.w * best.h { best = (cols, rows, w, h) }
-        }
-        let gridHeight = CGFloat(best.rows) * best.h + CGFloat(best.rows - 1) * gap
-        let top = (size.height + gridHeight) / 2
-        var out: [NSRect] = []
-        for index in 0..<count {
-            let row = index / best.cols, column = index % best.cols
-            let inRow = min(best.cols, count - row * best.cols)
-            let rowWidth = CGFloat(inRow) * best.w + CGFloat(inRow - 1) * gap
-            let x = (size.width - rowWidth) / 2 + CGFloat(column) * (best.w + gap)
-            let y = top - CGFloat(row + 1) * best.h - CGFloat(row) * gap
-            out.append(NSRect(x: x.rounded(), y: y.rounded(), width: best.w.rounded(), height: best.h.rounded()))
-        }
-        return out
-    }
-
-    /// Speaker view's strip: one row of 16:9 tiles along the top of `size`,
-    /// centred, leaving `reservedRight` free at the right end.
-    static func strip(count: Int, in size: NSSize, tileHeight: CGFloat, reservedRight: CGFloat = 0,
-                      gap: CGFloat = MeetingTheme.tileGap) -> [NSRect] {
-        guard count > 0 else { return [] }
-        let width = (tileHeight * 16 / 9).rounded()
-        let total = CGFloat(count) * width + CGFloat(count - 1) * gap
-        let room = max(0, size.width - reservedRight)
-        let start = max(0, ((room - total) / 2).rounded())
-        return (0..<count).map { index in
-            NSRect(x: start + CGFloat(index) * (width + gap), y: size.height - tileHeight, width: width, height: tileHeight)
-        }
-    }
-
-    /// How many strip tiles fit in `width`.
-    static func stripCapacity(width: CGFloat, tileHeight: CGFloat, gap: CGFloat = MeetingTheme.tileGap) -> Int {
-        let tile = (tileHeight * 16 / 9).rounded() + gap
-        return min(8, max(1, Int((width + gap) / tile)))
     }
 }

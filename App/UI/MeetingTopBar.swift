@@ -14,8 +14,6 @@
 import AppKit
 import SwiftUI
 
-enum MeetingViewMode: Int { case gallery, speaker }
-
 struct MeetingTopBarState: Equatable {
     var title = "Meeting"
     var clock = ""

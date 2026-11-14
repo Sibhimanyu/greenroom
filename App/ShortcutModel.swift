@@ -249,7 +249,7 @@ enum ShortcutAction: String, CaseIterable {
     case toggleMeetingBar = "meetingBar"
     case shrinkMeeting = "meetingShrink"
     case shrinkToBar = "meetingShrinkToBar"
-    case switchGalleryOrSpeaker = "galleryOrSpeaker"
+    case cycleMeetingView = "galleryOrSpeaker"   // raw value kept: saved bindings
     case toggleMeeting = "hideMeeting"
     case snapBack = "snap"
     case openGreenroom = "openGreenroom"
@@ -276,7 +276,7 @@ enum ShortcutAction: String, CaseIterable {
         switch self {
         case .startClass, .endSession, .toggleRecording, .togglePause, .toggleDrawing, .clip1, .clip2, .clip5: return .classGroup
         case .toggleMic, .toggleCamera, .toggleChat, .toggleNotes, .showMeetingWindow,
-             .toggleMeetingBar, .shrinkMeeting, .shrinkToBar, .switchGalleryOrSpeaker, .toggleMeeting: return .meeting
+             .toggleMeetingBar, .shrinkMeeting, .shrinkToBar, .cycleMeetingView, .toggleMeeting: return .meeting
         case .snapBack: return .layout
         case .openGreenroom, .openSessions: return .greenroom
         default: return .meeting
@@ -302,7 +302,7 @@ enum ShortcutAction: String, CaseIterable {
         case .toggleMeetingBar: return "Collapse or expand the meeting bar"
         case .shrinkMeeting: return "Shrink or expand the meeting"
         case .shrinkToBar: return "Shrink meeting to control bar"
-        case .switchGalleryOrSpeaker: return "Switch Gallery and Speaker"
+        case .cycleMeetingView: return "Cycle meeting view"
         case .toggleMeeting: return "Hide or show the meeting"
         case .snapBack: return "Snap windows back to the layout"
         case .openGreenroom: return "Open Greenroom"
@@ -330,7 +330,7 @@ enum ShortcutAction: String, CaseIterable {
         case .toggleMeetingBar: return "The floating controls: the full bar, or a small round button."
         case .shrinkMeeting: return "Morphs the meeting window into the floating control bar, and back."
         case .shrinkToBar: return "In the meeting window: shrinks it into the floating control bar, the same as its minimise button."
-        case .switchGalleryOrSpeaker: return "In the meeting window."
+        case .cycleMeetingView: return "In the meeting window: Speaker, Gallery, Multi-speaker, and round again."
         case .toggleMeeting: return "The layout's meeting piece; its neighbour takes the room."
         case .snapBack: return "After you have dragged windows around."
         case .openGreenroom: return "Brings the main window forward."
@@ -355,7 +355,7 @@ enum ShortcutAction: String, CaseIterable {
         case .showMeetingWindow: return "macwindow"
         case .toggleMeetingBar: return "arrow.down.right.and.arrow.up.left"
         case .shrinkMeeting, .shrinkToBar: return "rectangle.bottomhalf.inset.filled"
-        case .switchGalleryOrSpeaker: return "square.grid.2x2"
+        case .cycleMeetingView: return "square.grid.2x2"
         case .toggleMeeting: return "eye.slash"
         case .snapBack: return "arrow.uturn.backward"
         case .openGreenroom: return "house.fill"
@@ -405,7 +405,7 @@ enum ShortcutAction: String, CaseIterable {
         case .clip2: return .optionCommand(kVK_ANSI_2)
         case .clip5: return .optionCommand(kVK_ANSI_5)
         case .toggleMic, .toggleCamera, .toggleChat, .toggleNotes, .showMeetingWindow,
-             .toggleMeetingBar, .shrinkMeeting, .switchGalleryOrSpeaker, .openGreenroom, .openSessions: return nil
+             .toggleMeetingBar, .shrinkMeeting, .cycleMeetingView, .openGreenroom, .openSessions: return nil
         default: return nil
         }
     }

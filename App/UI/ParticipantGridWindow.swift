@@ -472,12 +472,12 @@ enum ParticipantGridWindowController {
         panel.makeKeyAndOrderFront(nil)
     }
 
-    /// The Gallery / Speaker shortcut: flips the meeting window's video layout, as
-    /// the segmented control does. False when there is nothing to switch (no
-    /// meeting window, or the small slot form, which is always Speaker).
+    /// The Cycle meeting view shortcut: Speaker, Gallery, Multi-speaker, as the
+    /// segmented control does. False when there is nothing to switch (no meeting
+    /// window, or the small slot form, which is always Speaker).
     @discardableResult
-    static func toggleGalleryOrSpeaker() -> Bool {
-        root?.toggleViewMode() ?? false
+    static func cycleMeetingView() -> Bool {
+        root?.cycleViewMode() ?? false
     }
 
     /// So SDK window hunting recognises this as ours, the same as the chat
@@ -667,11 +667,29 @@ private final class RootView: NSView {
 
     private typealias ViewMode = MeetingViewMode
     private var viewMode: ViewMode = .gallery
-    private var isSpeakerMode: Bool { meetingForm && viewMode == .speaker }
-    /// The View menu's two choices, held as a control so the rest of the window
+    /// The layouts drawn right now (MeetingViewRules.swift): Multi-speaker shows as
+    /// Speaker with fewer than three people. Rebuilt by `rebuildPlan`.
+    private var plan = MeetingTilePlan.empty
+    private var isSpeakerMode: Bool { meetingForm && plan.mode == .speaker }
+    private var isMultiMode: Bool { meetingForm && plan.mode == .multiSpeaker }
+    /// Speaker and Multi-speaker both keep a filmstrip.
+    private var usesStrip: Bool { isSpeakerMode || isMultiMode }
+    private let prefs = MeetingViewPrefs()
+    private var shareLayout: MeetingShareLayout = .standard
+    private var splitFraction = MeetingSplit.defaultFraction
+    private var hideSelfView = false
+    private var hideNoVideo = false
+    private var featuredSpeaker: UInt32?
+    /// Who holds Multi-speaker's large tiles: four places, kept for at least 3 s,
+    /// fed from who is talking each time the roster is read.
+    private var multiTracker = RecentSpeakers(limit: 4, minimumStay: 3)
+    private var recentIDs: [UInt32] = []
+    /// The stage as last laid out, for the divider's drag.
+    private var lastSideStage = NSRect.zero
+    /// The View menu's three choices, held as a control so the rest of the window
     /// keeps one way to read and write the mode. It is not on screen: the top bar's
     /// View button is the visible control.
-    private lazy var modeControl = FirstClickSegmented(labels: ["Gallery", "Speaker"],
+    private lazy var modeControl = FirstClickSegmented(labels: MeetingViewMode.menuOrder.map(\.title),
                                                        trackingMode: .selectOne,
                                                        target: self, action: #selector(modeChanged(_:)))
     /// Zoom-style slim top bar, in the title-bar area (MeetingTopBar.swift).
@@ -702,8 +720,12 @@ private final class RootView: NSView {
         return button
     }()
     private lazy var selfShareCard = SelfShareCardView { [weak self] in self?.stopOwnShare() }
-    /// Speaker was forced by a share; the view to go back to when it ends.
+    /// A share chose the view; the one to go back to when it ends.
     private var shareForcedSpeaker = false
+    /// Side-by-side: the share on the left, its own host, with a divider.
+    private let shareHost = NSView()
+    private let shareChrome = MeetingTileChrome(frame: .zero)
+    private let splitDivider = MeetingSplitDivider(frame: .zero)
     private var viewBeforeShare: ViewMode?
     private var userChoseDuringShare = false
     private var sharedNow: (sourceID: UInt32, userID: UInt32, name: String)? {
@@ -711,9 +733,11 @@ private final class RootView: NSView {
     }
     private var selfSharingNow: Bool { ParticipantGridWindowController.sdk?.shareViewer.selfSharing ?? false }
     /// Someone else's share is the stage's picture.
-    private var shareOnStage: Bool { meetingForm && viewMode == .speaker && sharedNow != nil }
+    private var shareOnStage: Bool { meetingForm && plan.mode == .speaker && sharedNow != nil && !shareBeside }
+    /// Someone else's share on the left of a view, with the divider between.
+    private var shareBeside: Bool { meetingForm && !form.isSlot && sharedNow != nil && shareLayout.isSideBySide }
     /// Your own share, as a card where the picture would be.
-    private var selfCardShown: Bool { meetingForm && viewMode == .speaker && selfSharingNow && sharedNow == nil }
+    private var selfCardShown: Bool { meetingForm && plan.mode == .speaker && selfSharingNow && sharedNow == nil }
     private var lastStageProvider: ((UInt32, NSRect) -> NSView?)?
     private var lastReleaseStage: (() -> Void)?
     /// While the Shared screen window draws the share, the stage says so.
@@ -1062,8 +1086,9 @@ private final class RootView: NSView {
     /// exactly, because a page size that changed by one on every few pixels of
     /// resize would reshuffle faces while a teacher was looking at them.
     private var perPage: Int {
-        // Speaker view's filmstrip is one row, as many as fit.
+        // Speaker view's filmstrip is one row, as many as fit; Multi-speaker adds its large tiles.
         if isSpeakerMode { return stripCapacity }
+        if isMultiMode { return max(1, plan.large.count) + stripCapacity }
         let area = gridHost.bounds
         guard area.width > 0, area.height > 0 else { return 9 }
         // ~260x150 is the smallest tile a face and a name label stay legible in.
@@ -1080,13 +1105,42 @@ private final class RootView: NSView {
     /// How many 16:9 filmstrip tiles fit along the strip, capped so the strip
     /// stays a strip. Quantised by whole tiles, so it moves only when a tile does.
     private var stripCapacity: Int {
-        MeetingVideoLayout.stripCapacity(width: max(0, gridHost.bounds.width), tileHeight: Self.stripHeight - 8)
+        MeetingVideoLayout.stripCapacity(width: max(0, gridHost.bounds.width - stripReservedRight),
+                                         tileHeight: Self.stripHeight - 8)
+    }
+    /// Multi-speaker's strip leaves its right end to your preview.
+    private var stripReservedRight: CGFloat {
+        guard isMultiMode, !hideSelfView, !plan.rest.isEmpty else { return 0 }
+        return ((Self.stripHeight - 8) * 16 / 9).rounded() + 8
     }
     /// Who the gallery or the filmstrip lists: everyone, or everyone but the
     /// person already on the stage.
     private var listed: [ZoomMeetingSDKClient.RosterEntry] {
-        // A share on the stage moves the speaker down to the filmstrip with the rest.
-        isSpeakerMode && !shareOnStage ? roster.filter { $0.id != stageSpeakerID } : roster
+        guard meetingForm else { return roster }
+        let byID = Dictionary(roster.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        return plan.listed.compactMap { byID[$0] }
+    }
+
+    /// Settles who has a tile and where, from the roster, the view, the two
+    /// filters and the recent speakers. Cheap; called whenever any of them moves.
+    private func rebuildPlan() {
+        guard meetingForm else { return }
+        let others = roster.map { MeetingTileCandidate(id: $0.id, videoOn: $0.videoOn) }
+        let choice = roster.first(where: \.isSpotlighted)?.id ?? roster.first(where: \.isPinned)?.id ?? featuredSpeaker
+        let sharing = sharedNow != nil && !shareBeside
+        plan = MeetingTilePlan.make(others: others, mode: viewMode, hideNoVideo: hideNoVideo, stageChoice: choice,
+                                    recentSpeakers: recentIDs, shareOnStage: sharing)
+        stageSpeakerID = plan.stage
+    }
+
+    /// The tracker takes who is talking now and the people the filter leaves.
+    private func feedMultiSpeakers() {
+        let now = Date()
+        let shown = MeetingTileFilter.apply(roster.map { MeetingTileCandidate(id: $0.id, videoOn: $0.videoOn) },
+                                            hideNoVideo: hideNoVideo).map(\.id)
+        multiTracker.heard(roster.filter(\.isTalking).map(\.id), selfID: nil, now: now)
+        multiTracker.update(present: Set(shown), now: now)
+        recentIDs = multiTracker.occupied.map(\.userID)
     }
     private static let barHeight: CGFloat = 44
     /// Zero: the rail carries every control now, so there is no bottom toolbar
@@ -1260,9 +1314,10 @@ private final class RootView: NSView {
         self.roster = roster
         self.featuredID = ParticipantGridWindowController.featuredViewEnabled && !meetingForm ? featured : nil
         if meetingForm {
+            featuredSpeaker = featured
             syncShareMode()
-            stageSpeakerID = roster.first(where: \.isSpotlighted)?.id
-                ?? roster.first(where: \.isPinned)?.id ?? featured
+            feedMultiSpeakers()
+            rebuildPlan()
             lastStageProvider = stageProvider
             lastReleaseStage = releaseStage
         }
@@ -1633,6 +1688,7 @@ private final class RootView: NSView {
     }
 
     private func layoutTiles() {
+        if isMultiMode { layoutMultiSpeaker(); return }
         if isSpeakerMode { layoutFilmstrip(); return }
         let visible = pageRoster
         guard !visible.isEmpty else { return }
@@ -1757,9 +1813,13 @@ private final class RootView: NSView {
     /// view is the corner preview, and Cues and the needs block sit at the top
     /// of the People panel.
     private func setupMeetingForm() {
-        let saved = UserDefaults.standard.string(forKey: "meetingWindow.view")
-        viewMode = form.isSlot ? .speaker : (saved == "speaker" ? .speaker : .gallery)
-        modeControl.selectedSegment = viewMode.rawValue
+        viewMode = form.isSlot ? .speaker : prefs.view
+        shareLayout = prefs.shareLayout
+        splitFraction = prefs.splitFraction
+        hideSelfView = prefs.hideSelfView
+        hideNoVideo = prefs.hideNoVideo
+        modeControl.selectedSegment = viewMode.segmentIndex
+        rebuildPlan()
         modeControl.setAccessibilityLabel("Video layout")
         // The old bar stays as an unused container (the shared code still
         // addresses it); the Zoom-style bar replaces it on screen.
@@ -1784,6 +1844,26 @@ private final class RootView: NSView {
         stageHost.addSubview(stageScrim)
         stageScrim.isHidden = true      // the chrome below draws the name instead
         stageHost.addSubview(stageChrome)
+        // Side-by-side's share, on its own host so the stage can hold the speaker.
+        shareHost.wantsLayer = true
+        shareHost.layer?.backgroundColor = MeetingTheme.tileNS.cgColor
+        shareHost.layer?.cornerRadius = MeetingTheme.tileRadius
+        shareHost.layer?.masksToBounds = true
+        shareHost.isHidden = true
+        addSubview(shareHost, positioned: .below, relativeTo: emptyState)
+        shareHost.addSubview(shareChrome)
+        splitDivider.isHidden = true
+        splitDivider.onDrag = { [weak self] x in self?.dragSplit(toBoundaryX: x) }
+        splitDivider.onEnd = { [weak self] in
+            guard let self else { return }
+            self.prefs.splitFraction = self.splitFraction
+        }
+        splitDivider.onReset = { [weak self] in
+            guard let self else { return }
+            self.splitFraction = MeetingSplit.defaultFraction
+            self.prefs.splitFraction = self.splitFraction
+            self.relayoutAfterSplit()
+        }
         selfShareCard.isHidden = true
         stageHost.addSubview(selfShareCard)
         stageName.font = .systemFont(ofSize: 13, weight: .medium)
@@ -1842,25 +1922,49 @@ private final class RootView: NSView {
             }
         }
         // Chrome last, so in the hover form it sits over the video.
-        for view in [shareChip, selfPreview, sidePanelHost, inspector, readiness, topBar, bottomBar] as [NSView] {
+        for view in [splitDivider, shareChip, selfPreview, sidePanelHost, inspector, readiness, topBar, bottomBar] as [NSView] {
             addSubview(view)
         }
     }
 
-    func toggleViewMode() -> Bool {
+    func cycleViewMode() -> Bool {
         guard meetingForm, !form.isSlot else { return false }
-        modeControl.selectedSegment = viewMode == .gallery ? ViewMode.speaker.rawValue : ViewMode.gallery.rawValue
+        let others = roster.count + 1 >= MeetingTilePlan.multiSpeakerMinimumPeople
+        modeControl.selectedSegment = viewMode.next(multiSpeakerAvailable: others).segmentIndex
         modeChanged(modeControl)
         return true
     }
 
-    /// The View button's menu: Speaker, Gallery, then Fullscreen. Side-by-side
-    /// (a share beside the speakers) is not built, so it is not offered.
+    /// The View button's menu. Without a share: Speaker, Gallery, Multi-speaker.
+    /// While someone shares: Standard and the three Side-by-side layouts. Then the
+    /// two tile filters, then Fullscreen.
     private func viewMenuEntries() -> [MenuEntry] {
         var entries: [MenuEntry] = []
         if !form.isSlot {
-            entries.append(.item("Speaker", checked: viewMode == .speaker) { [weak self] in self?.chooseMode(.speaker) })
-            entries.append(.item("Gallery", checked: viewMode == .gallery) { [weak self] in self?.chooseMode(.gallery) })
+            if sharedNow != nil {
+                for layout in MeetingShareLayout.allCases {
+                    entries.append(.item(layout.menuTitle, checked: shareLayout == layout) { [weak self] in
+                        self?.chooseShareLayout(layout)
+                    })
+                }
+            } else {
+                for mode in MeetingViewMode.menuOrder {
+                    entries.append(.item(mode.title, checked: viewMode == mode) { [weak self] in self?.chooseMode(mode) })
+                }
+            }
+            entries.append(.separator)
+            entries.append(.item("Hide self view", checked: hideSelfView) { [weak self] in
+                guard let self else { return }
+                self.hideSelfView.toggle()
+                self.prefs.hideSelfView = self.hideSelfView
+                self.applyViewChange()
+            })
+            entries.append(.item("Hide participants with video off", checked: hideNoVideo) { [weak self] in
+                guard let self else { return }
+                self.hideNoVideo.toggle()
+                self.prefs.hideNoVideo = self.hideNoVideo
+                self.applyViewChange()
+            })
             entries.append(.separator)
         }
         entries.append(.item(isFilling ? "Exit Fullscreen" : "Fullscreen") { [weak self] in self?.toggleFill() })
@@ -1869,8 +1973,30 @@ private final class RootView: NSView {
 
     private func chooseMode(_ mode: ViewMode) {
         guard viewMode != mode else { return }
-        modeControl.selectedSegment = mode.rawValue
+        modeControl.selectedSegment = mode.segmentIndex
         modeChanged(modeControl)
+    }
+
+    /// Standard, or the share beside a layout. Remembered for the next share; while
+    /// one is up it takes effect now, and the view the person had comes back after.
+    private func chooseShareLayout(_ layout: MeetingShareLayout) {
+        shareLayout = layout
+        prefs.shareLayout = layout
+        if sharedNow != nil, !form.isSlot {
+            setViewMode(layout.sideMode ?? .speaker)
+            applyViewChange()
+        }
+    }
+
+    private func dragSplit(toBoundaryX x: CGFloat) {
+        splitFraction = MeetingSplit.fraction(forBoundaryX: x, in: lastSideStage)
+        relayoutAfterSplit()
+    }
+
+    private func relayoutAfterSplit() {
+        layoutEverything()
+        if let provider = lastVideoProvider { attachVideo(provider) }
+        attachStage()
     }
 
     /// Fullscreen fills the display the window is on, over the menu bar and Dock
@@ -1921,15 +2047,28 @@ private final class RootView: NSView {
     }
 
     @objc private func modeChanged(_ sender: NSSegmentedControl) {
-        viewMode = ViewMode(rawValue: sender.selectedSegment) ?? .gallery
-        // A choice made while a share is up stays: it is not undone when the share ends.
-        if shareForcedSpeaker { userChoseDuringShare = true }
-        if !form.isSlot {
-            UserDefaults.standard.set(viewMode == .speaker ? "speaker" : "gallery", forKey: "meetingWindow.view")
+        let mode = ViewMode(segment: sender.selectedSegment)
+        let beside = shareBeside
+        setViewMode(mode)
+        if beside {
+            // Beside a share the choice is the share layout; the view the person had
+            // before the share is what comes back when it ends.
+            shareLayout = .sideBySide(mode)
+            prefs.shareLayout = shareLayout
+        } else {
+            // A choice made while a share is up stays: it is not undone when the share ends.
+            if shareForcedSpeaker { userChoseDuringShare = true }
+            if !form.isSlot { prefs.view = viewMode }
         }
-        page = 0
-        // A different list of people is on screen, so tiles, then layout, then
-        // video, in that order and without waiting for the poll.
+        applyViewChange()
+    }
+
+    /// A different list of people is on screen, so tiles, then layout, then
+    /// video, in that order and without waiting for the poll.
+    private func applyViewChange() {
+        rebuildPlan()
+        let pages = max(1, Int(ceil(Double(listed.count) / Double(perPage))))
+        page = min(page, pages - 1)
         syncTiles()
         updateChromeText()
         layoutEverything()
@@ -1943,45 +2082,30 @@ private final class RootView: NSView {
     }
 
     /// Speaker view's picture: one element, handed whoever is on the stage, or a
-    /// shared screen when somebody else is sharing.
+    /// shared screen when somebody else is sharing. Beside a share the screen has
+    /// its own host on the left and the stage keeps the speaker.
     private func attachStage() {
         let viewer = ParticipantGridWindowController.sdk?.shareViewer
-        if shareOnStage, let viewer {
+        let shareTarget: NSView? = shareOnStage ? stageHost : (shareBeside ? shareHost : nil)
+        if let viewer, let target = shareTarget {
+            drawShare(viewer, in: target)
+        } else {
+            shareElsewhere.isHidden = true
+            if shareVideo != nil {
+                shareVideo?.removeFromSuperview()
+                shareVideo = nil
+            }
+            if viewer?.windowOwnsShare != true { viewer?.releaseElement() }
+        }
+        if shareOnStage {
             // The speaker's 720p stream is given back while a screen is shown.
             if stageVideo != nil {
                 stageVideo?.removeFromSuperview()
                 stageVideo = nil
                 lastReleaseStage?()
             }
-            if viewer.windowOwnsShare {
-                shareVideo?.removeFromSuperview()
-                shareVideo = nil
-                if shareElsewhere.superview == nil { stageHost.addSubview(shareElsewhere, positioned: .below, relativeTo: stageScrim) }
-                shareElsewhere.isHidden = false
-                shareElsewhere.frame = NSRect(x: 12, y: stageHost.bounds.midY - 12,
-                                              width: max(0, stageHost.bounds.width - 24), height: 24)
-                return
-            }
-            shareElsewhere.isHidden = true
-            guard !stageHost.bounds.isEmpty, let view = viewer.stageView(frame: stageHost.bounds) else { return }
-            if shareVideo !== view {
-                shareVideo?.removeFromSuperview()
-                view.autoresizingMask = [.width, .height]
-                stageHost.addSubview(view, positioned: .below, relativeTo: stageScrim)
-                shareVideo = view
-            }
-            view.frame = stageHost.bounds
-            // Only now, with the view in a visible window: a share asked to draw
-            // before that never does (the video stage's lesson).
-            viewer.renderIfReady()
             return
         }
-        shareElsewhere.isHidden = true
-        if shareVideo != nil {
-            shareVideo?.removeFromSuperview()
-            shareVideo = nil
-        }
-        if viewer?.windowOwnsShare != true { viewer?.releaseElement() }
         guard isSpeakerMode, let id = stageSpeakerID, let provider = lastStageProvider else {
             stageVideo?.removeFromSuperview()
             stageVideo = nil
@@ -1999,18 +2123,55 @@ private final class RootView: NSView {
         view.frame = stageHost.bounds
     }
 
+    /// The share in `host`. A share that was drawn in the other host is given
+    /// back and made again: an element is not moved while it renders.
+    private func drawShare(_ viewer: ShareViewer, in host: NSView) {
+        let anchor: NSView = host === stageHost ? stageScrim : shareChrome
+        if viewer.windowOwnsShare {
+            shareVideo?.removeFromSuperview()
+            shareVideo = nil
+            if shareElsewhere.superview !== host {
+                shareElsewhere.removeFromSuperview()
+                host.addSubview(shareElsewhere, positioned: .below, relativeTo: anchor)
+            }
+            shareElsewhere.isHidden = false
+            shareElsewhere.frame = NSRect(x: 12, y: host.bounds.midY - 12,
+                                          width: max(0, host.bounds.width - 24), height: 24)
+            return
+        }
+        shareElsewhere.isHidden = true
+        if let video = shareVideo, video.superview !== host {
+            video.removeFromSuperview()
+            shareVideo = nil
+            viewer.releaseElement()
+        }
+        guard !host.bounds.isEmpty, let view = viewer.stageView(frame: host.bounds) else { return }
+        if shareVideo !== view {
+            shareVideo?.removeFromSuperview()
+            view.autoresizingMask = [.width, .height]
+            host.addSubview(view, positioned: .below, relativeTo: anchor)
+            shareVideo = view
+        }
+        view.frame = host.bounds
+        // Only now, with the view in a visible window: a share asked to draw
+        // before that never does (the video stage's lesson).
+        viewer.renderIfReady()
+    }
+
     // MARK: Shared screens
 
-    /// A share starting forces Speaker; its ending puts the view back, unless the
-    /// teacher picked one in between.
+    /// A share starting takes the view its layout names (Standard is Speaker with
+    /// the share on the stage); its ending puts the view back, unless the person
+    /// picked one in between.
     private func syncShareMode() {
         let sharing = sharedNow != nil
         if sharing, !shareForcedSpeaker {
             shareForcedSpeaker = true
             userChoseDuringShare = false
             viewBeforeShare = viewMode
-            if viewMode != .speaker, !form.isSlot { setViewMode(.speaker) }
-            ZoomMeetingSDKClient.videoLog("Share view: forced Speaker (was \(viewBeforeShare == .gallery ? "Gallery" : "Speaker"))")
+            let forced = shareLayout.sideMode ?? .speaker
+            if viewMode != forced, !form.isSlot { setViewMode(forced) }
+            ZoomMeetingSDKClient.videoLog("Share view: \(shareLayout.menuTitle) (was \(viewBeforeShare?.title ?? "?"))")
         } else if !sharing, shareForcedSpeaker {
             shareForcedSpeaker = false
             if !userChoseDuringShare, let before = viewBeforeShare, before != viewMode, !form.isSlot {
@@ -2023,8 +2184,9 @@ private final class RootView: NSView {
 
     private func setViewMode(_ mode: ViewMode) {
         viewMode = mode
-        modeControl.selectedSegment = mode.rawValue
+        modeControl.selectedSegment = mode.segmentIndex
         page = 0
+        rebuildPlan()
     }
 
     private func shareChipPressed() {
@@ -2043,15 +2205,15 @@ private final class RootView: NSView {
                 }
             }
             MeetingMenuBuilder.popUp(entries, above: shareChip, below: true)
-        } else {
+        } else if !shareBeside {
             showShareOnStage()
         }
     }
 
     /// Back to Speaker, where the share is drawn.
     private func showShareOnStage() {
-        guard viewMode != .speaker else { return }
-        modeControl.selectedSegment = ViewMode.speaker.rawValue
+        guard !shareBeside, viewMode != .speaker else { return }
+        modeControl.selectedSegment = ViewMode.speaker.segmentIndex
         modeChanged(modeControl)
     }
 
@@ -2067,7 +2229,7 @@ private final class RootView: NSView {
         if let now = sharedNow, let viewer {
             // On the stage the caption already says whose screen it is; the chip
             // is there to choose between several, and in Gallery to bring it back.
-            if !shareOnStage {
+            if !shareOnStage && !shareBeside {
                 text = "Viewing \(now.name)\u{2019}s screen \u{00B7} Show"
             } else if viewer.selection.hasChoice {
                 text = "\(now.name)\u{2019}s screen \u{25BE}"
@@ -2092,6 +2254,9 @@ private final class RootView: NSView {
     private func updateMeetingChrome() {
         if let sdk = ParticipantGridWindowController.sdk {
             selfPreview.apply(muted: sdk.iAmMuted, videoOn: sdk.myVideoIsOn, level: lastMicLevel)
+        }
+        if shareBeside, let now = sharedNow {
+            shareChrome.apply(MeetingTileModel(name: "\(now.name)\u{2019}s screen"))
         }
         if shareOnStage, let now = sharedNow {
             stageName.stringValue = "\(now.name)\u{2019}s screen"
@@ -2204,24 +2369,42 @@ private final class RootView: NSView {
             layoutSidePanel(panel)
         }
 
+        // Beside a share, the chosen view lives in the right part of the stage.
+        let side = shareBeside ? MeetingSplit.regions(stage: stage, fraction: splitFraction) : nil
+        lastSideStage = stage
+        shareHost.isHidden = side == nil
+        splitDivider.isHidden = side == nil
+        if let side {
+            shareHost.frame = side.share
+            shareChrome.frame = shareHost.bounds
+            splitDivider.frame = side.divider
+        }
+        let area = side?.video ?? stage
+
         let others = !listed.isEmpty
         let pages = max(1, Int(ceil(Double(listed.count) / Double(perPage))))
         // Paging is two arrows at the sides (layoutPager), not a band.
         let pagerHeight: CGFloat = 0
 
         // You, in the corner, over the grid: laid out after it and never part of
-        // its arithmetic.
+        // its arithmetic. "Hide self view" only hides this picture, here.
         let stripTile = Self.stripHeight - 8
         // In Speaker view you are one of the strip's small tiles, at its right
-        // end; in Gallery you are the corner picture.
-        let inStrip = isSpeakerMode && others
+        // end; in Multi-speaker the strip's too; in Gallery you are the corner picture.
+        let inStrip = !hideSelfView && ((isSpeakerMode && others) || (isMultiMode && !plan.rest.isEmpty))
         let preview = inStrip ? NSSize(width: (stripTile * 16 / 9).rounded(), height: stripTile) : Self.selfPreviewSize
-        selfPreview.isHidden = false
-        selfPreview.frame = inStrip
-            ? NSRect(x: min(stage.maxX, clearRight) - preview.width - 4, y: stage.maxY - 4 - preview.height,
-                     width: preview.width, height: preview.height)
-            : NSRect(x: min(stage.maxX, clearRight) - preview.width - 12,
-                     y: stage.minY + 12 + pagerHeight, width: preview.width, height: preview.height)
+        let areaRight = min(area.maxX, clearRight)
+        selfPreview.isHidden = hideSelfView
+        if isMultiMode, inStrip {
+            selfPreview.frame = NSRect(x: areaRight - MeetingTheme.tileGap - preview.width, y: area.minY + MeetingTheme.tileGap,
+                                       width: preview.width, height: preview.height)
+        } else {
+            selfPreview.frame = inStrip
+                ? NSRect(x: areaRight - preview.width - 4, y: area.maxY - 4 - preview.height,
+                         width: preview.width, height: preview.height)
+                : NSRect(x: areaRight - preview.width - 12,
+                         y: area.minY + 12 + pagerHeight, width: preview.width, height: preview.height)
+        }
         // Its video host is sized in its own layout pass; the self element is
         // attached later in this same update and needs real bounds.
         selfPreview.layoutSubtreeIfNeeded()
@@ -2231,12 +2414,12 @@ private final class RootView: NSView {
             let strip: CGFloat = others ? Self.stripHeight : 0
             gridHost.layer?.backgroundColor = NSColor.clear.cgColor
             // The preview owns the strip's right-hand end.
-            gridHost.frame = NSRect(x: stage.minX, y: stage.maxY - strip,
-                                    width: max(0, min(stage.maxX, clearRight) - stage.minX - (inStrip ? preview.width + 8 : 0)),
+            gridHost.frame = NSRect(x: area.minX, y: area.maxY - strip,
+                                    width: max(0, areaRight - area.minX - (inStrip ? preview.width + 8 : 0)),
                                     height: strip)
-            stageHost.isHidden = roster.isEmpty && !shareOnStage && !selfCardShown
-            stageHost.frame = NSRect(x: stage.minX + 4, y: stage.minY + 4,
-                                     width: max(0, stage.width - 8), height: max(0, stage.height - strip - 8))
+            stageHost.isHidden = (roster.isEmpty || plan.everyoneHidden) && !shareOnStage && !selfCardShown
+            stageHost.frame = NSRect(x: area.minX + 4, y: area.minY + 4,
+                                     width: max(0, area.width - 8), height: max(0, area.height - strip - 8))
             stageChrome.frame = stageHost.bounds
             selfShareCard.isHidden = !selfCardShown
             if selfCardShown {
@@ -2245,22 +2428,30 @@ private final class RootView: NSView {
                                              y: (stageHost.bounds.height - card.height) / 2,
                                              width: card.width, height: card.height)
             }
-            layoutPager(pages: 1, y: stage.minY, width: stage.width)
+            layoutPager(pages: 1, y: area.minY, width: area.width)
+        } else if isMultiMode {
+            gridHost.layer?.backgroundColor = NSColor.clear.cgColor
+            stageHost.isHidden = true
+            gridHost.frame = NSRect(x: area.minX + MeetingTheme.tileGap, y: area.minY + MeetingTheme.tileGap,
+                                    width: max(0, areaRight - area.minX - MeetingTheme.tileGap * 2),
+                                    height: max(0, area.height - MeetingTheme.tileGap * 2))
+            layoutPager(pages: 1, y: area.minY, width: area.width)
         } else {
             gridHost.layer?.backgroundColor = NSColor.clear.cgColor
             stageHost.isHidden = true
             // 4pt all round, so the gaps between tiles and the window's edge agree.
-            gridHost.frame = stage.insetBy(dx: MeetingTheme.tileGap, dy: MeetingTheme.tileGap)
-            layoutPager(pages: pages, y: stage.minY, width: stage.width)
+            gridHost.frame = area.insetBy(dx: MeetingTheme.tileGap, dy: MeetingTheme.tileGap)
+            layoutPager(pages: pages, y: area.minY, width: area.width)
         }
 
         if !isSpeakerMode { selfShareCard.isHidden = true }
-        layoutShareChip(in: NSRect(x: stage.minX, y: stage.minY, width: min(stage.maxX, clearRight) - stage.minX,
-                                   height: stage.height))
+        let shareArea = side?.share ?? NSRect(x: stage.minX, y: stage.minY,
+                                              width: min(stage.maxX, clearRight) - stage.minX, height: stage.height)
+        layoutShareChip(in: shareArea)
         readiness.isHidden = true
-        emptyState.isHidden = !roster.isEmpty || shareOnStage || selfCardShown
-        emptyState.frame = NSRect(x: stage.minX + 40, y: stage.midY - 40,
-                                  width: max(80, stage.width - 80), height: 80)
+        emptyState.isHidden = !(roster.isEmpty || plan.everyoneHidden) || shareOnStage || selfCardShown
+        emptyState.frame = NSRect(x: area.minX + 40, y: area.midY - 40,
+                                  width: max(80, area.width - 80), height: 80)
 
         inspector.isHidden = selected == nil
         updateEscapeMonitor(active: selected != nil)
@@ -2326,6 +2517,29 @@ private final class RootView: NSView {
         }
     }
 
+    /// Multi-speaker: the recent speakers large in a row or grid, everyone else
+    /// in a strip along the bottom, your preview at the strip's right end.
+    private func layoutMultiSpeaker() {
+        let visible = pageRoster
+        guard !visible.isEmpty else { return }
+        let largeCount = visible.filter { plan.large.contains($0.id) }.count
+        let frames = MeetingVideoLayout.multiSpeaker(largeCount: largeCount, stripCount: visible.count - largeCount,
+                                                     in: gridHost.bounds.size, stripHeight: Self.stripHeight,
+                                                     reservedStripRight: stripReservedRight)
+        for (entry, target) in zip(visible, frames.large + frames.strip) {
+            guard let tile = tiles[entry.id], tile.frame != target else { continue }
+            if !tile.frame.isEmpty {
+                NSAnimationContext.runAnimationGroup { context in
+                    context.duration = 0.2
+                    context.timingFunction = CAMediaTimingFunction(name: .easeOut)
+                    tile.animator().frame = target
+                }
+            } else {
+                tile.frame = target
+            }
+        }
+    }
+
     /// Speaker view's filmstrip: one centred row under the stage.
     private func layoutFilmstrip() {
         let visible = pageRoster
@@ -2382,7 +2596,7 @@ private final class RootView: NSView {
         recordingLabel.textColor = .labelColor
 
         if meetingForm {
-            emptyState.stringValue = waiting.isEmpty
+            emptyState.stringValue = plan.everyoneHidden ? MeetingTileFilter.emptyNote : waiting.isEmpty
                 ? "Waiting for others.\nThey appear here as they join."
                 : "\(waiting.count) waiting to be let in.\nOpen People to admit them."
         } else {
@@ -3765,6 +3979,47 @@ private final class SelfShareCardView: NSView {
 /// would need doing twice. See ClosureButton for the same lesson.
 private final class FirstClickSegmented: NSSegmentedControl {
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+}
+
+/// The grab strip between a share and the view beside it. Drags report the
+/// pointer's x in the parent's coordinates; a double click puts the split back.
+@MainActor
+private final class MeetingSplitDivider: NSView {
+    var onDrag: ((CGFloat) -> Void)?
+    var onEnd: (() -> Void)?
+    var onReset: (() -> Void)?
+    private var hovering = false { didSet { needsDisplay = true } }
+    private var dragging = false { didSet { needsDisplay = true } }
+
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+    override var mouseDownCanMoveWindow: Bool { false }
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        trackingAreas.forEach(removeTrackingArea)
+        addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .cursorUpdate, .activeAlways, .inVisibleRect],
+                                       owner: self))
+    }
+    override func cursorUpdate(with event: NSEvent) { NSCursor.resizeLeftRight.set() }
+    override func mouseEntered(with event: NSEvent) { hovering = true }
+    override func mouseExited(with event: NSEvent) { hovering = false }
+    override func mouseDown(with event: NSEvent) {
+        if event.clickCount == 2 { onReset?(); return }
+        dragging = true
+    }
+    override func mouseDragged(with event: NSEvent) {
+        guard dragging, let parent = superview else { return }
+        onDrag?(parent.convert(event.locationInWindow, from: nil).x)
+    }
+    override func mouseUp(with event: NSEvent) {
+        guard dragging else { return }
+        dragging = false
+        onEnd?()
+    }
+    override func draw(_ dirtyRect: NSRect) {
+        let handle = NSRect(x: bounds.midX - 2, y: bounds.midY - 18, width: 4, height: 36)
+        NSColor.white.withAlphaComponent(hovering || dragging ? 0.7 : 0.28).setFill()
+        NSBezierPath(roundedRect: handle, xRadius: 2, yRadius: 2).fill()
+    }
 }
 
 private final class FirstMouseHostingView<Content: View>: NSHostingView<Content> {

@@ -306,6 +306,7 @@ targets:
       - path: App/Zoom/RecentSpeakers.swift
       - path: App/Zoom/HandsUpOrdering.swift
       - path: App/UI/MeetingViewsMenu.swift
+      - path: App/UI/MeetingVideo/MeetingViewRules.swift
       - path: App/Recording/PauseClock.swift
       - path: App/Recording/AudioMixer.swift
       - path: App/Recording/ScreenAnnotation.swift

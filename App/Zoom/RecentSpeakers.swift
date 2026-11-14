@@ -27,6 +27,12 @@ struct RecentSpeakers {
         var lastHeard: Date
     }
 
+    /// Per instance, so the in-window Multi-speaker view can keep people for
+    /// less time (3 s, four places) than the Multi-speaker window (8 s).
+    let joinAfter: TimeInterval
+    let minimumStay: TimeInterval
+    let changeEvery: TimeInterval
+
     /// Slot i keeps its place for as long as it holds anyone.
     private(set) var slots: [Slot?]
     private var heardSince: [UInt32: Date] = [:]
@@ -34,8 +40,14 @@ struct RecentSpeakers {
     private var lastChange = Date.distantPast
     let limit: Int
 
-    init(limit: Int = 3) {
+    init(limit: Int = 3,
+         joinAfter: TimeInterval = RecentSpeakers.joinAfter,
+         minimumStay: TimeInterval = RecentSpeakers.minimumStay,
+         changeEvery: TimeInterval = RecentSpeakers.changeEvery) {
         self.limit = limit
+        self.joinAfter = joinAfter
+        self.minimumStay = minimumStay
+        self.changeEvery = changeEvery
         slots = Array(repeating: nil, count: limit)
     }
 
@@ -65,13 +77,13 @@ struct RecentSpeakers {
         // Candidates: heard for long enough, not already shown, most recent first.
         let candidates = heardSince
             .filter { present.contains($0.key) && !inView.contains($0.key)
-                      && now.timeIntervalSince($0.value) >= Self.joinAfter }
+                      && now.timeIntervalSince($0.value) >= joinAfter }
             .map(\.key)
             .sorted { a, b in
                 let la = lastHeardAt[a] ?? .distantPast, lb = lastHeardAt[b] ?? .distantPast
                 return la != lb ? la > lb : a < b
             }
-        if let newcomer = candidates.first, now.timeIntervalSince(lastChange) >= Self.changeEvery {
+        if let newcomer = candidates.first, now.timeIntervalSince(lastChange) >= changeEvery {
             if let empty = slots.firstIndex(where: { $0 == nil }) {
                 slots[empty] = Slot(userID: newcomer, since: now, lastHeard: lastHeardAt[newcomer] ?? now)
                 lastChange = now
@@ -79,7 +91,7 @@ struct RecentSpeakers {
                 // Replace the least recently heard, if they have stayed long enough.
                 let replaceable = slots.indices.filter {
                     guard let slot = slots[$0] else { return false }
-                    return now.timeIntervalSince(slot.since) >= Self.minimumStay
+                    return now.timeIntervalSince(slot.since) >= minimumStay
                 }
                 if let victim = replaceable.min(by: { (slots[$0]?.lastHeard ?? .distantPast) < (slots[$1]?.lastHeard ?? .distantPast) }) {
                     slots[victim] = Slot(userID: newcomer, since: now, lastHeard: lastHeardAt[newcomer] ?? now)
@@ -98,6 +110,6 @@ struct RecentSpeakers {
     }
 
     mutating func reset() {
-        self = RecentSpeakers(limit: limit)
+        self = RecentSpeakers(limit: limit, joinAfter: joinAfter, minimumStay: minimumStay, changeEvery: changeEvery)
     }
 }

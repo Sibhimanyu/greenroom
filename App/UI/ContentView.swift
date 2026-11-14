@@ -253,7 +253,7 @@ struct ContentView: View {
                         coordinator.mainPage = .sessions
                     } label: {
                         Label("Sessions", systemImage: "film.stack")
-                            .labelStyle(.titleAndIcon)
+                            .labelStyle(.iconOnly)  // icon only, so the toolbar balances and the switcher sits centred (owner, 2026-11-14); the footer names Sessions
                     }
                     .help("Sessions: every past class, its recordings and clips with a player, its YouTube links, and a name you can change.")
                 }

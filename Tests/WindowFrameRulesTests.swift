@@ -5,11 +5,11 @@ final class WindowFrameRulesTests: XCTestCase {
     let screen = NSRect(x: 0, y: 0, width: 1920, height: 1080)
     let page = CGSize(width: 1180, height: 760)
 
-    func testPageGrowsDownRightFromTopLeft() {
-        let home = NSRect(x: 568, y: 500, width: 592, height: 352)
+    func testPageGrowsOutFromHomesCentre() {
+        let home = NSRect(x: 664, y: 364, width: 592, height: 352)   // centred on the 1920x1080 screen
         let f = WindowFrameRules.pageFrame(from: home, size: page, visibleFrames: [screen])
-        XCTAssertEqual(f.minX, home.minX)
-        XCTAssertEqual(f.maxY, home.maxY)
+        XCTAssertEqual(f.midX, home.midX)
+        XCTAssertEqual(f.midY, home.midY)
         XCTAssertEqual(f.size, page)
     }
 
@@ -17,7 +17,7 @@ final class WindowFrameRulesTests: XCTestCase {
         let right = NSRect(x: 1500, y: 400, width: 400, height: 600)
         let f = WindowFrameRules.pageFrame(from: right, size: page, visibleFrames: [screen])
         XCTAssertEqual(f.maxX, screen.maxX)
-        XCTAssertEqual(f.maxY, right.maxY)
+        XCTAssertEqual(f.midY, right.midY)
     }
 
     func testLowHomeShiftsUpByOverflowAndRoundTripsExactly() {
@@ -25,7 +25,7 @@ final class WindowFrameRulesTests: XCTestCase {
         let home = NSRect(x: 568, y: 20, width: 592, height: 352)
         let pageFrame = WindowFrameRules.pageFrame(from: home, size: page, visibleFrames: [screen])
         XCTAssertEqual(pageFrame.minY, 0)
-        XCTAssertEqual(pageFrame.minX, home.minX)
+        XCTAssertEqual(pageFrame.midX, home.midX)
         let back = WindowFrameRules.returningHome(
             remembered: home, size: home.size, current: pageFrame, movedOnPage: false,
             visibleFrames: [screen], currentVisible: screen)
@@ -34,16 +34,14 @@ final class WindowFrameRulesTests: XCTestCase {
 
     func testNotShiftedWhenItFits() {
         let high = NSRect(x: 568, y: 500, width: 592, height: 352)
-        XCTAssertEqual(WindowFrameRules.pageFrame(from: high, size: page, visibleFrames: [screen]).minY,
-                       high.maxY - 760)
+        XCTAssertEqual(WindowFrameRules.pageFrame(from: high, size: page, visibleFrames: [screen]).midY,
+                       high.midY)
     }
 
     func testSecondaryScreenUsesItsOwnBounds() {
         let second = NSRect(x: 1920, y: -200, width: 1440, height: 900)
         let home = NSRect(x: 2400, y: -150, width: 592, height: 352)
         let pageFrame = WindowFrameRules.pageFrame(from: home, size: page, visibleFrames: [screen, second])
-        XCTAssertEqual(pageFrame.minY, second.minY)
-        XCTAssertEqual(pageFrame.maxX, second.maxX)
         XCTAssertTrue(second.contains(pageFrame))
         let back = WindowFrameRules.returningHome(
             remembered: home, size: home.size, current: pageFrame, movedOnPage: false,
@@ -60,14 +58,14 @@ final class WindowFrameRulesTests: XCTestCase {
         XCTAssertEqual(f, home)
     }
 
-    func testBackAfterMoveKeepsMiddleAndTop() {
+    func testBackAfterMoveCentresOnThePage() {
         let home = NSRect(x: 568, y: 500, width: 592, height: 352)
         let cur = NSRect(x: 100, y: 200, width: 1180, height: 760)
         let f = WindowFrameRules.returningHome(
             remembered: home, size: home.size, current: cur,
             movedOnPage: true, visibleFrames: [screen], currentVisible: screen)
-        XCTAssertEqual(f.minX, cur.minX)
-        XCTAssertEqual(f.maxY, cur.maxY)
+        XCTAssertEqual(f.midX, cur.midX)
+        XCTAssertEqual(f.midY, cur.midY)
         XCTAssertEqual(f.size, home.size)
     }
 
@@ -77,8 +75,8 @@ final class WindowFrameRulesTests: XCTestCase {
         let f = WindowFrameRules.returningHome(
             remembered: home, size: home.size, current: cur,
             movedOnPage: false, visibleFrames: [screen], currentVisible: screen)
-        XCTAssertEqual(f.minX, cur.minX)
-        XCTAssertEqual(f.maxY, cur.maxY)
+        XCTAssertEqual(f.midX, cur.midX)
+        XCTAssertEqual(f.midY, cur.midY)
     }
 
     // Home's preview (2026-11-14): collapsed 592 wide, expanded 592 + 24 + 405.

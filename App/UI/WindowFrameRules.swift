@@ -3,12 +3,18 @@ import AppKit
 /// The window-frame math for page changes, kept free of NSWindow so it can be
 /// tested. All rects are in screen coordinates (origin bottom-left).
 enum WindowFrameRules {
-    /// The page's frame: it grows down and right from Home's TOP-LEFT corner
-    /// (DESIGN.md 2026-09-04, anchored top edge), then sits inside the
-    /// visible frame of the screen Home is on. Shifted up only by the
-    /// overflow at the bottom, left only by the overflow at the right.
+    /// The page's frame: it grows outward from Home's CENTRE (owner,
+    /// 2026-11-14: a centred Home must open a centred Sessions), then sits
+    /// inside the visible frame of the screen Home is on, moved only by the
+    /// overflow at an edge.
     static func pageFrame(from home: NSRect, size: CGSize, visibleFrames: [NSRect]) -> NSRect {
-        anchored(left: home.minX, top: home.maxY, size: size, in: screen(of: home, in: visibleFrames))
+        centred(on: home, size: size, in: screen(of: home, in: visibleFrames))
+    }
+
+    /// `size`, centred on `frame`'s centre and kept on screen.
+    static func centred(on frame: NSRect, size: CGSize, in visible: NSRect?) -> NSRect {
+        clamp(NSRect(x: (frame.midX - size.width / 2).rounded(), y: (frame.midY - size.height / 2).rounded(),
+                     width: size.width, height: size.height), in: visible)
     }
 
     /// The visible frame holding most of `frame`; nil when there are none.
@@ -41,8 +47,8 @@ enum WindowFrameRules {
     /// Back to Home. `remembered` is the frame Home had when the page opened.
     /// - Unmoved on the page, and still on a screen: the remembered origin
     ///   (left edge and top edge), at the new size.
-    /// - Moved on the page, or the screen changed: Home's size from the
-    ///   window's current top-left.
+    /// - Moved on the page, or the screen changed: Home's size, centred on
+    ///   where the page now is.
     static func returningHome(remembered: NSRect?, size: CGSize, current: NSRect,
                               movedOnPage: Bool, visibleFrames: [NSRect],
                               currentVisible: NSRect?) -> NSRect {
@@ -51,7 +57,7 @@ enum WindowFrameRules {
             return clamp(NSRect(x: remembered.minX, y: remembered.maxY - size.height,
                                 width: size.width, height: size.height), in: screen)
         }
-        return topLeftAnchored(on: current, size: size, in: currentVisible)
+        return centred(on: current, size: size, in: currentVisible)
     }
 
     /// Home's preview opening: the window grows to the RIGHT with its top-left

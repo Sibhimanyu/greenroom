@@ -981,22 +981,65 @@ struct RecordingsView: View {
 
     // MARK: Scanning
 
+    /// What one look at the recordings folder found.
+    struct Scan {
+        var sessions: [Session]
+        var freeBytes: Int64?
+        var usedBytes: Int64
+    }
+
+    /// The last scan, kept for the next time the page opens. Opening Sessions
+    /// used to walk the whole recordings tree on the main thread while the
+    /// window was meant to be growing, so the window froze and then snapped
+    /// to size. Now the page opens on what it found last time, and the fresh
+    /// scan lands a moment later.
+    @MainActor private static var lastScan: Scan?
+    @MainActor private static var scanGeneration = 0
+
+    /// Called at launch so even the first visit opens with its cards.
+    @MainActor static func prewarm() {
+        guard lastScan == nil else { return }
+        scanGeneration += 1
+        let generation = scanGeneration
+        Task.detached(priority: .utility) {
+            let scan = RecordingsView.scan()
+            await MainActor.run {
+                if RecordingsView.scanGeneration == generation { RecordingsView.lastScan = scan }
+            }
+        }
+    }
+
     private func reload() {
-        freeBytes = SessionFolders.recordingsFreeBytes
-        usedBytes = SessionFolders.recordingsUsedBytes
+        if let cached = Self.lastScan, sessions.isEmpty { apply(cached) }
+        Self.scanGeneration += 1
+        let generation = Self.scanGeneration
+        Task.detached(priority: .userInitiated) {
+            let scan = RecordingsView.scan()
+            await MainActor.run {
+                // A newer reload has started since; its answer wins.
+                guard RecordingsView.scanGeneration == generation else { return }
+                RecordingsView.lastScan = scan
+                apply(scan)
+            }
+        }
+    }
+
+    nonisolated private static func scan() -> Scan {
+        let freeBytes = SessionFolders.recordingsFreeBytes
+        let usedBytes = SessionFolders.recordingsUsedBytes
         let root = SessionFolders.recordingsDirectory
         try? FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
 
         let entries = contents(of: root)
         let folders = entries.filter { isDirectory($0) && $0.lastPathComponent != "clips" }
         var found: [Session] = folders.compactMap { folder in
-            let all = self.recordings(in: folder)
+            let all = Self.recordings(in: folder)
             let recordings = all.filter { !SessionClipExporter.isClip($0.url) }
             // Clips sit in the session folder now, told apart by the `Clip `
             // prefix. The legacy clips/ subfolder is still read so anything
             // taken before that change does not vanish.
             let clips = all.filter { SessionClipExporter.isClip($0.url) }
-                + self.recordings(in: folder.appendingPathComponent("clips"))
+                + Self.recordings(in: folder.appendingPathComponent("clips"))
             // Not `recordings.isEmpty`: a session where the teacher clipped from
             // the buffer without ever pressing Record has clips and no master,
             // and dropping it here is what made those clips invisible.
@@ -1040,12 +1083,12 @@ struct RecordingsView: View {
         }
 
         // Everything recorded before sessions had folders.
-        let allLoose = self.recordings(from: entries.filter { !isDirectory($0) })
+        let allLoose = Self.recordings(from: entries.filter { !isDirectory($0) })
         let loose = allLoose.filter { !SessionClipExporter.isClip($0.url) }
         // Clips at the ROOT rather than in a session folder: everything taken
         // before buffer clips were routed into their session.
         let looseClips = allLoose.filter { SessionClipExporter.isClip($0.url) }
-            + self.recordings(in: root.appendingPathComponent("clips"))
+            + Self.recordings(in: root.appendingPathComponent("clips"))
         if !loose.isEmpty || !looseClips.isEmpty {
             found.append(Session(folder: nil,
                                  title: "Earlier recordings",
@@ -1055,7 +1098,13 @@ struct RecordingsView: View {
                                  clipFiles: looseClips))
         }
 
-        sessions = found.sorted { $0.date > $1.date }
+        return Scan(sessions: found.sorted { $0.date > $1.date }, freeBytes: freeBytes, usedBytes: usedBytes)
+    }
+
+    private func apply(_ scan: Scan) {
+        freeBytes = scan.freeBytes
+        usedBytes = scan.usedBytes
+        sessions = scan.sessions
         // The selected card must still exist; when it went to the Trash,
         // the newest session takes its place rather than an empty inspector.
         if selectedID == nil || !sessions.contains(where: { $0.id == selectedID }) {
@@ -1072,22 +1121,22 @@ struct RecordingsView: View {
         didSelect()
     }
 
-    private func contents(of directory: URL) -> [URL] {
+    nonisolated private static func contents(of directory: URL) -> [URL] {
         (try? FileManager.default.contentsOfDirectory(
             at: directory,
             includingPropertiesForKeys: [.contentModificationDateKey, .fileSizeKey, .isDirectoryKey],
             options: [.skipsHiddenFiles])) ?? []
     }
 
-    private func isDirectory(_ url: URL) -> Bool {
+    nonisolated private static func isDirectory(_ url: URL) -> Bool {
         (try? url.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory == true
     }
 
-    private func recordings(in folder: URL) -> [Recording] {
+    nonisolated private static func recordings(in folder: URL) -> [Recording] {
         recordings(from: contents(of: folder))
     }
 
-    private func recordings(from urls: [URL]) -> [Recording] {
+    nonisolated private static func recordings(from urls: [URL]) -> [Recording] {
         urls
             .filter { Self.playableExtensions.contains($0.pathExtension.lowercased()) }
             .map { url in

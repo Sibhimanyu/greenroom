@@ -32,7 +32,7 @@ struct LayoutChoiceItems: View {
     }
 }
 
-/// The Home line: small, secondary, and no louder than "Manual controls".
+/// The Home line: small and secondary.
 struct LayoutChoiceLine: View {
     @EnvironmentObject private var coordinator: CoordinatorController
 

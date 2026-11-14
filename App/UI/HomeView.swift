@@ -791,6 +791,13 @@ struct HomeView: View {
         Menu {
             LayoutChoiceItems()
             Divider()
+            // What the Start button's chevron used to hold, under a heading
+            // ("Manual controls") nobody could read. It belongs to the layout,
+            // so it lives with it, and only when there is something to open.
+            if coordinator.layoutHasApps {
+                Button("Open This Layout\u{2019}s Apps") { coordinator.openMainAppWindow() }
+                    .help("Opens the layout\u{2019}s apps in their places now, without starting a class.")
+            }
             Button("More\u{2026}") {
                 openSettings()
                 DispatchQueue.main.async {
@@ -992,10 +999,11 @@ struct HomeView: View {
         }
     }
 
-    /// One button that follows the mode: a single rounded shape, the label
-    /// and a small chevron segment inside it. The chevron holds what the
-    /// "Manual controls" pull-down held. Content-sized, Brand green in every
-    /// mode (Record is marked by its red dot only).
+    /// One button that follows the mode, a single rounded shape. No chevron:
+    /// its menu held one item under a "Manual controls" heading that read as
+    /// a second, mystery way to start; opening the layout's apps is in the
+    /// Layout chip's menu now. Content-sized, Brand green in every mode
+    /// (Record is marked by its red dot only).
     private var primaryButton: some View {
         HStack(spacing: 0) {
             Button {
@@ -1007,8 +1015,7 @@ struct HomeView: View {
                         .contentTransition(.opacity)
                 }
                 .font(.system(size: 13, weight: .semibold))
-                .padding(.leading, 14)
-                .padding(.trailing, 10)
+                .padding(.horizontal, 16)
                 .frame(maxWidth: Self.primaryFullWidth ? .infinity : nil)
                 .frame(height: Self.largeControlHeight)
                 .contentShape(Rectangle())
@@ -1016,33 +1023,6 @@ struct HomeView: View {
             .buttonStyle(.plain)
             .disabled(startDisabled)
             .help(primaryHelp)
-
-            Rectangle()
-                .fill(.white.opacity(0.4))
-                .frame(width: 1, height: 16)
-                .accessibilityHidden(true)
-
-            // The glyph is drawn here; the menu is a clear layer over it, since
-            // a borderless Menu label lost its glyph on the green.
-            Image(systemName: "chevron.down")
-                .font(.system(size: 10, weight: .bold))
-                .foregroundStyle(.white)
-                .frame(width: 28, height: Self.largeControlHeight)
-                .overlay {
-                    Menu {
-                        Section("Manual controls") {
-                            Button("Open Layout Apps") { coordinator.openMainAppWindow() }
-                                .disabled(!coordinator.layoutHasApps)
-                        }
-                    } label: {
-                        Color.clear.frame(width: 28, height: Self.largeControlHeight).contentShape(Rectangle())
-                    }
-                    .menuStyle(.borderlessButton)
-                    .menuIndicator(.hidden)
-                    .fixedSize()
-                    .help("Manual controls: each piece of the session on its own.")
-                    .accessibilityLabel("Manual controls")
-                }
         }
         .foregroundStyle(.white)
         .background(Capsule().fill(Brand.green.opacity(startDisabled ? 0.4 : 1)))

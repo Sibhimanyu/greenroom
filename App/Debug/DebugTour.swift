@@ -22,6 +22,7 @@
 //                 `defaults delete <bundle id> meetingShrinkTip.done`).
 //    status step=1..5 | live=true [recording=true] [hold=secs] | fail="..." | clear
 //                 drives the notch status pill with sample data only; nothing starts.
+//    film page=home|sessions [secs=1]  films the page change (DebugFilm.swift).
 //    tree         dump the main window's view tree to <dir>/tree.txt.
 //    restore      Home, original appearance and frame, tour windows closed.
 //  Every command writes <dir>/last.json ({"ok":..,"cmd":..,"error":..,"seq":..}).
@@ -102,6 +103,13 @@ enum DebugTour {
                 case "goto": extra = try await goto(info)
                 case "appearance": try appearance(info["mode"] ?? "")
                 case "shot": extra = try await shot(info, dir: dir)
+                case "film":
+                    // Films the page change asked for (DebugFilm.swift).
+                    guard let c = CoordinatorController.shared else { throw TourError("no coordinator") }
+                    let page = info["page"] ?? "home"
+                    extra = try await DebugFilm.film(info, dir: dir) {
+                        c.mainPage = page == "sessions" ? .sessions : .home
+                    }
                 case "sessionWindowSize": try resize(info)
                 case "restore": await restore()
                 case "homeMode":
@@ -209,7 +217,7 @@ enum DebugTour {
     private static var savedShareKind: ShareTarget.Kind?
     private static var savedPreview: Bool?
 
-    private struct TourError: Error, CustomStringConvertible {
+    struct TourError: Error, CustomStringConvertible {
         let description: String
         init(_ d: String) { description = d }
     }

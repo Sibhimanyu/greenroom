@@ -5,8 +5,8 @@
 //  One decision, one button: pick "New Meeting", "Join Existing" or "Record"
 //  in the toolbar, hit the button, and the whole session cascades - the picture, Zoom into
 //  the meeting, Chrome tiled to its side of the screen, chat window tiled
-//  to the other. Individual pieces remain available under the button's
-//  chevron ("Manual controls"); configuration lives in Settings (⌘,).
+//  to the other. The layout's apps can be opened on their own from the
+//  Layout chip's menu; configuration lives in Settings (⌘,).
 //  Home itself is HomeView.swift.
 //
 import SwiftUI
@@ -338,17 +338,25 @@ struct ContentView: View {
     // Page change timings (seconds). DESIGN.md: 150-250ms for state changes,
     // 250ms for layout moves, ease-out in, ease-in out, ease-in-out moving.
     private static let fadeOutDuration = 0.12
-    private static let growDelay = 0.08      // the window starts as Home thins out
     private static let growDuration = 0.25   // resizeWindow, ease-in-out
-    private static let fadeInDelay = 0.20    // the last part of the grow
+    private static let fadeInLead = 0.10     // the page fades in over the grow's last part
     private static let fadeInDuration = 0.2
     private static let pageRiseDistance: CGFloat = 6
-    private static let changeLength = 0.40   // fadeInDelay + fadeInDuration
     private static let crossfade = 0.15      // Reduce Motion, full screen
 
-    /// Home <-> Sessions as one motion: the outgoing page fades out, the
-    /// window grows (or shrinks) over both pages held at their final sizes,
-    /// then the incoming page fades in and settles 6pt up.
+    /// Home <-> Sessions as one motion, in steps that never overlap the
+    /// expensive ones:
+    ///
+    /// 1. The incoming page mounts, invisible, and the change waits a turn
+    ///    of the run loop so its first layout is paid while nothing moves.
+    /// 2. The outgoing page fades out.
+    /// 3. With the content invisible and the window still, the sidebar
+    ///    column and the toolbar swap. Both force a full layout of the
+    ///    window; done mid-grow, that is what made the window stall and then
+    ///    snap (filmed with the DEBUG `film` tour command, 2026-11-14).
+    /// 4. The window grows (or shrinks) over both pages held at their final
+    ///    sizes, and the incoming page fades in over the end of it, settling
+    ///    6pt up.
     ///
     /// A click mid-way simply starts the next one: every step checks the
     /// token, the opacities retarget from where they are, and the window
@@ -357,17 +365,6 @@ struct ContentView: View {
         transitionToken += 1
         let token = transitionToken
         let window = Self.window
-        defer {
-            // The toolbar follows the content: at the fade-out point when it
-            // moves, at once when it does not.
-            if reduceMotion || !(window.map { !$0.styleMask.contains(.fullScreen) && !$0.isZoomed } ?? false) {
-                chromeOnPage = !isHome
-            } else {
-                DispatchQueue.main.asyncAfter(deadline: .now() + Self.fadeOutDuration) {
-                    if token == transitionToken { chromeOnPage = !isHome }
-                }
-            }
-        }
         let resizes = window.map { !$0.styleMask.contains(.fullScreen) && !$0.isZoomed } ?? false
         let moving = resizes && !reduceMotion
         let inFlight = homePin != nil || pagePin != nil || homeMounted == pageMounted
@@ -382,6 +379,12 @@ struct ContentView: View {
 
         func after(_ delay: Double, _ step: @escaping () -> Void) {
             DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+                if token == transitionToken { step() }
+            }
+        }
+        /// Once the work already queued (a mount, a layout) has been done.
+        func next(_ step: @escaping () -> Void) {
+            DispatchQueue.main.async {
                 if token == transitionToken { step() }
             }
         }
@@ -401,6 +404,7 @@ struct ContentView: View {
         // Instant resize, plain crossfade: Reduce Motion, and full screen or
         // zoomed (where the size is the user's and nothing resizes).
         guard moving, let window else {
+            chromeOnPage = !isHome
             homePin = nil
             pagePin = nil
             resizeWindow(animated: false, returningHome: isHome)
@@ -434,16 +438,32 @@ struct ContentView: View {
             if !inFlight { homePin = CGSize(width: homeWidth ?? now.width, height: homeWindowHeight) }
         }
 
-        withAnimation(.easeIn(duration: Self.fadeOutDuration)) {
-            if isHome { pageOpacity = 0; pageRise = Self.pageRiseDistance } else { homeOpacity = 0 }
-        }
-        after(Self.growDelay) { resizeWindow(animated: true, returningHome: isHome) }
-        after(Self.fadeInDelay) {
-            withAnimation(.easeOut(duration: Self.fadeInDuration)) {
-                if isHome { homeOpacity = 1 } else { pageOpacity = 1; pageRise = 0 }
+        // 1. Let the mount land before anything moves.
+        next {
+            // 2. The outgoing page fades out.
+            withAnimation(.easeIn(duration: Self.fadeOutDuration)) {
+                if isHome { pageOpacity = 0; pageRise = Self.pageRiseDistance } else { homeOpacity = 0 }
+            }
+            after(Self.fadeOutDuration) {
+                // 3. Sidebar and toolbar, while nothing shows and nothing moves.
+                chromeOnPage = !isHome
+                next {
+                    // The swap's layout, now, not on the grow's first frame:
+                    // the animator is timed, so a frame lost there is a jump.
+                    window.contentView?.layoutSubtreeIfNeeded()
+                    window.displayIfNeeded()
+                    CATransaction.flush()
+                    // 4. The window, with the new page coming up over its end.
+                    resizeWindow(animated: true, returningHome: isHome)
+                    after(Self.growDuration - Self.fadeInLead) {
+                        withAnimation(.easeOut(duration: Self.fadeInDuration)) {
+                            if isHome { homeOpacity = 1 } else { pageOpacity = 1; pageRise = 0 }
+                        }
+                    }
+                    after(Self.growDuration - Self.fadeInLead + Self.fadeInDuration) { finish() }
+                }
             }
         }
-        after(Self.changeLength) { finish() }
     }
 
     private var homeContent: some View {

@@ -230,4 +230,18 @@ final class NotchStatusRulesTests: XCTestCase {
         XCTAssertTrue(IslandContent.prompt(prompt()).isInteractive)
         XCTAssertFalse(IslandContent.none.isInteractive)
     }
+
+    func testAConfirmTakesTheFloorAndWhatWasShowingComesBack() {
+        var q = IslandQueue()
+        let t = toast("One"), p = prompt()
+        q.enqueue(.toast(t)); q.promote()
+        q.enqueue(.prompt(p))
+        let end = IslandPrompt(title: "End the meeting for everyone?", detail: "", style: .confirm, dismissTitle: "Cancel")
+        q.enqueueFirst(.prompt(end))
+        XCTAssertEqual(q.content, .prompt(end), "End shows at once, ahead of the queue")
+        q.finish(end.id); q.promote()
+        XCTAssertEqual(q.content, .toast(t), "the toast it pushed aside shows again first")
+        q.finish(t.id); q.promote()
+        XCTAssertEqual(q.content, .prompt(p))
+    }
 }

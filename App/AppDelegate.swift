@@ -67,6 +67,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // the first to ask.
         DispatchQueue.global(qos: .utility).async { _ = ScreenroomWhisper.resolvedBinary }
         MainActor.assumeIsolated {
+            // The Sessions page opens on this, so its window can grow without
+            // waiting on a walk of the recordings folder.
+            RecordingsView.prewarm()
             // What each key does, and its default, is in ShortcutModel; the
             // bindings are Settings -> Shortcuts. ShortcutRuntime registers them
             // and keeps them registered as they change.

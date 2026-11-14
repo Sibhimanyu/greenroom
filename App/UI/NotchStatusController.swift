@@ -190,6 +190,23 @@ final class NotchStatusController {
         enqueue(.prompt(prompt))
     }
 
+    /// A question the person just asked for (End): shown at once, ahead of
+    /// anything waiting. `onConfirm` runs on the red button only; the other
+    /// button, a timeout and being taken away all run `onDismiss`.
+    func showConfirm(_ prompt: IslandPrompt, onConfirm: @escaping () -> Void, onDismiss: @escaping () -> Void) {
+        prompts[prompt.id] = PromptHandlers(onUpload: onConfirm, onDismiss: onDismiss)
+        queue.enqueueFirst(.prompt(prompt))
+        refresh()
+    }
+
+    /// Takes one prompt away; `answered` false runs its dismiss handler.
+    func hidePrompt(_ id: UUID, answered: Bool) {
+        let gone = queue.remove { $0.id == id }
+        let handler = prompts.removeValue(forKey: id)
+        afterRemoval(gone)
+        if !answered { handler?.onDismiss() }
+    }
+
     /// Takes every upload prompt away. `answered` false runs their dismiss handlers.
     func hidePrompts(answered: Bool) {
         let gone = queue.remove { if case .prompt = $0 { return true } else { return false } }
@@ -645,11 +662,14 @@ private struct NotchPillView: View {
     }
 
     private func promptRow(_ prompt: IslandPrompt) -> some View {
-        HStack(spacing: 12) {
-            // The upload leaves this Mac: amber, not green (DESIGN.md).
-            Image(systemName: "play.rectangle.fill")
-                .font(.system(size: 26))
-                .foregroundStyle(Brand.net)
+        // The upload leaves this Mac: amber, not green (DESIGN.md). A confirm
+        // ends something for other people: red, like Zoom's End.
+        let confirm = prompt.style == .confirm
+        let tint: Color = confirm ? Color(nsColor: .systemRed) : Brand.net
+        return HStack(spacing: 12) {
+            Image(systemName: confirm ? "phone.down.fill" : "play.rectangle.fill")
+                .font(.system(size: confirm ? 22 : 26))
+                .foregroundStyle(tint)
                 .frame(width: 32)
             VStack(alignment: .leading, spacing: 3) {
                 Text(prompt.title)
@@ -658,12 +678,13 @@ private struct NotchPillView: View {
                 Text(prompt.detail)
                     .font(.system(size: 12))
                     .foregroundStyle(.secondary)
-                    .lineLimit(1)
+                    .lineLimit(confirm ? 2 : 1)
                     .truncationMode(.middle)
+                    .fixedSize(horizontal: false, vertical: confirm)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             Button { model.onNotNow?(prompt.id) } label: {
-                Text("Not now")
+                Text(prompt.dismissTitle)
                     .font(.system(size: 12, weight: .medium))
                     .foregroundStyle(Color.white)
                     .padding(.horizontal, 12).padding(.vertical, 5)
@@ -673,9 +694,9 @@ private struct NotchPillView: View {
             Button { model.onUpload?(prompt.id) } label: {
                 Text(prompt.uploadTitle)
                     .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(Color.black)
+                    .foregroundStyle(confirm ? Color.white : Color.black)
                     .padding(.horizontal, 12).padding(.vertical, 5)
-                    .background(Brand.net, in: Capsule())
+                    .background(tint, in: Capsule())
             }
             .buttonStyle(.plain)
         }

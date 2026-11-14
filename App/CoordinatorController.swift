@@ -1667,6 +1667,11 @@ final class CoordinatorController: ObservableObject {
             return
         }
         isStopping = true
+        // Ending some other way (the menu, Zoom, a failure) answers the End question too.
+        if let asked = endPromptID {
+            endPromptID = nil
+            NotchStatusController.shared.hidePrompt(asked, answered: true)
+        }
         Analytics.track(.sessionEnd, [
             .durationBand: Analytics.band(seconds: sessionStartedAt.map { Date().timeIntervalSince($0) } ?? 0),
             .customUI: customUIMode ? "yes" : "no"
@@ -2783,7 +2788,7 @@ final class CoordinatorController: ObservableObject {
             ?? (sessionTemplate ?? layoutLibrary.active)?.twoDisplays?.main.compactMap { $0.kind.app?.bundleID }.first
     }
 
-    /// The Manual controls item: opens the apps of the layout this class runs, or
+    /// The Layout chip's "Open This Layout's Apps": opens the apps of the layout this class runs, or
     /// of the layout chosen in Settings when there is no class, each in its frame.
     /// Chrome-family browsers go through AppleScript; everything else launches
     /// and AX-tiles, which can take a few seconds for a cold-started app.
@@ -3827,24 +3832,33 @@ final class CoordinatorController: ObservableObject {
             return
         }
         guard isRunning || stageLive else { return }
-        NSApp.activate(ignoringOtherApps: true) // the hotkey fires while other apps are focused
-        let alert = NSAlert()
-        if let prompt = LiveExit.endPrompt(liveExitState) {
-            // The same words as closing the meeting window: End Meeting for All, or Leave Meeting.
-            alert.messageText = prompt.title
-            alert.informativeText = prompt.message
-            Self.addButtons(prompt.choices, to: alert)
-        } else {
-            alert.messageText = "End the session?"
-            alert.informativeText = "Ends the Zoom meeting for everyone when you're hosting (leaves it otherwise), saves any recording in progress, and stops the camera."
-            alert.addButton(withTitle: "End Session")
-            alert.addButton(withTitle: "Cancel")
+        // Asked in the island, not an alert: the island is on every Space, so
+        // the question appears where the person pressed End (an alert went to
+        // the main window's desktop, which may be empty). Nothing is activated.
+        if let shown = endPromptID {
+            // A second End while asking: take the question away, keep going.
+            NotchStatusController.shared.hidePrompt(shown, answered: false)
+            return
         }
-        alert.alertStyle = .warning
-        if alert.runModal() == .alertFirstButtonReturn {
-            stop()
-        }
+        let ask = LiveExit.endPrompt(liveExitState) ?? LiveExitPrompt(
+            title: "End the session?",
+            message: "Ends the Zoom meeting, saves any recording in progress, and stops the camera.",
+            choices: [.endMeetingForAll, .cancel])
+        let action = ask.choices.first ?? .endMeetingForAll
+        let prompt = IslandPrompt(title: ask.title, detail: ask.message, help: nil,
+                                  uploadTitle: action.title, timeout: IslandRules.confirmTimeout,
+                                  style: .confirm, dismissTitle: LiveExitChoice.cancel.title)
+        endPromptID = prompt.id
+        NotchStatusController.shared.showConfirm(prompt, onConfirm: { [weak self] in
+            self?.endPromptID = nil
+            self?.stop()
+        }, onDismiss: { [weak self] in
+            self?.endPromptID = nil
+        })
     }
+
+    /// The End question showing in the island, if any.
+    private var endPromptID: UUID?
 
     /// The menu bar's "Snap Windows Back": re-tiles everything to the
     /// session layout after the user has dragged windows around - the apps, the

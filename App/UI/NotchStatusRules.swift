@@ -154,6 +154,13 @@ struct IslandPrompt: Equatable {
     var help: String?
     var uploadTitle = "Upload"
     var timeout: TimeInterval = IslandRules.promptTimeout
+    /// An upload offer (amber, leaves this Mac) or a confirmation of something
+    /// that ends for other people, like End Meeting for All (red, Zoom's End).
+    var style: Style = .upload
+    /// The button that answers no; it is also what a timeout counts as.
+    var dismissTitle = "Not now"
+
+    enum Style: Equatable { case upload, confirm }
 }
 
 enum IslandMessage: Equatable {
@@ -202,6 +209,8 @@ enum IslandRules {
     static let failureHold: TimeInterval = 4
     /// An unanswered upload prompt counts as "Not now" after this.
     static let promptTimeout: TimeInterval = 120
+    /// An unanswered End question counts as Cancel: nothing ends by waiting.
+    static let confirmTimeout: TimeInterval = 15
     /// How long "Recording" holds after the countdown reaches go.
     static let goHold: TimeInterval = 1
     /// The island retracts for this long between two queued messages.
@@ -260,6 +269,14 @@ struct IslandQueue: Equatable {
             }
         }
         waiting.append(message)
+    }
+
+    /// Takes the floor now, ahead of everything waiting: a question the person
+    /// just asked for (End) must not queue behind toasts. Whatever was showing
+    /// goes back to the front of the line and shows again afterwards.
+    mutating func enqueueFirst(_ message: IslandMessage) {
+        if let c = current { waiting.insert(c, at: 0) }
+        current = message
     }
 
     /// Gives the floor to the next message when nobody holds it.

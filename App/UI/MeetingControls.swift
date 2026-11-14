@@ -141,7 +141,10 @@ final class MeetingControlsModel: ObservableObject {
         }
         meetingWindowOpen = coordinator.meetingWindowOpen
         if !meetingWindowOpen, sidePanel != nil { sidePanel = nil }
-        chatOpen = sidePanel == .chat || ChatWindowController.isOpen
+        // A chat panel in a hidden window is not an open chat: the bar would
+        // offer "Close Chat" for something nobody can see.
+        chatOpen = (sidePanel == .chat && ParticipantGridWindowController.meetingWindowIsShowing)
+            || ChatWindowController.isOpen
         let incoming = coordinator.zoomChatBridge.messages.filter { !$0.isOutgoing }.count
         if chatOpen { seenIncoming = incoming }
         unread = max(0, incoming - seenIncoming)
@@ -323,7 +326,10 @@ final class MeetingControlsModel: ObservableObject {
     /// opened on demand and then left alone: no layout, so no tiling pass ever
     /// claims it (the follow loops only run for an arranged session).
     func toggleChat() {
-        if coordinator.meetingWindowOpen, !coordinator.sessionArranges {
+        // The window must be SHOWING, not just open: collapsed into the bar it
+        // is open but hidden, and the chat panel then opened inside a window
+        // nobody could see. The bar's Chat button did nothing (owner, 2026-11-14).
+        if ParticipantGridWindowController.meetingWindowIsShowing, !coordinator.sessionArranges {
             sidePanel = sidePanel == .chat ? nil : .chat
         } else if ChatWindowController.isOpen {
             ChatWindowController.close()

@@ -44,24 +44,32 @@ struct HomeView: View {
 
     /// Height of the open log. Eight lines.
     static let statusLogHeight: CGFloat = 180
-    /// The options column; its two equal tiles share it with an 8pt gap.
-    static let optionsWidth: CGFloat = 380
-    /// Fixed heights of the options column's parts, so the window's height is
-    /// arithmetic: 42 + 32 + 32 + 44 + 24, five rows with four 16pt gaps.
+    /// Home is ONE column (DESIGN.md, 2026-11-13, "Try a vertical Home"): the
+    /// content is at most this wide and centred when the window is wider. The
+    /// card is 16:9 of it, so the window's height is arithmetic.
+    static let contentWidth: CGFloat = 544
+    static var cardHeight: CGFloat { contentWidth * 9 / 16 }
+    /// Fixed heights of the column's parts: brand 42, card 306, Ready 24, name
+    /// 32, summary 32, button 32, with 16pt between groups and 12pt between
+    /// the card and its Ready chip.
     static let brandHeight: CGFloat = 42
     static let fieldHeight: CGFloat = 32
     static let summaryHeight: CGFloat = 32
     static let readyHeight: CGFloat = 24
-    static let buttonHeight: CGFloat = 44
     /// A standard macOS 26 large control.
     static let largeControlHeight: CGFloat = 32
+    static let buttonHeight: CGFloat = 32
     static let columnGap: CGFloat = 16
+    static let cardGap: CGFloat = 12
     /// The five tiles: three rows of 44 with 8pt gaps, and the gap above them.
     static let tilesHeight: CGFloat = 148
     static var columnHeight: CGFloat {
-        brandHeight + fieldHeight + summaryHeight + readyHeight + buttonHeight + 4 * columnGap
+        brandHeight + cardHeight + readyHeight + fieldHeight + summaryHeight + buttonHeight
+            + columnGap * 3 + columnGap + cardGap
     }
     static var tilesExtraHeight: CGFloat { tilesHeight }
+    /// The button fills the column (false: sized to its label, at the left).
+    static let primaryFullWidth = true
 
     @State private var showLive = false
     @State private var cameras: [LocalDeviceResolver.Camera] = []
@@ -73,6 +81,7 @@ struct HomeView: View {
     @State private var cameraAccess = AVCaptureDevice.authorizationStatus(for: .video)
     @State private var micAccess = AVCaptureDevice.authorizationStatus(for: .audio)
     @State private var lastSession: LastSession?
+    @State private var sessionCount = 0
     @State private var pastedHint = false
     @State private var showSavePreset = false
     @State private var presetNameDraft = ""
@@ -87,23 +96,14 @@ struct HomeView: View {
     private var mode: MeetingMode { coordinator.meetingMode }
 
     var body: some View {
-        // The two columns share a top and a bottom: the picture card (16:9 of
-        // its width) plus the ready row is as tall as the right column.
-        // Extra window height is shared out above and below the block, so a
-        // large window never leaves dead space under only one side.
+        // One column, top to bottom. Extra window height is shared out above
+        // and below the block, so a tall window never leaves dead space under
+        // only one end.
         VStack(alignment: .leading, spacing: 0) {
             Spacer(minLength: 0)
-            HStack(alignment: .top, spacing: 32) {
-                setupColumn
-                    .frame(width: Self.optionsWidth)
-                // The options column sets the row's height; the card fits the
-                // room beside it, against the right edge, so the two columns
-                // share a top and a bottom.
-                Color.clear
-                    .frame(maxWidth: .infinity)
-                    .overlay(alignment: .trailing) { pictureCard }
-            }
-            .fixedSize(horizontal: false, vertical: true)
+            setupColumn
+                .frame(maxWidth: Self.contentWidth)
+                .frame(maxWidth: .infinity)
             if statusShown {
                 statusLog.padding(.top, 12)
             }
@@ -260,9 +260,12 @@ struct HomeView: View {
     private var setupColumn: some View {
         VStack(alignment: .leading, spacing: Self.columnGap) {
             brand
+            VStack(alignment: .leading, spacing: Self.cardGap) {
+                pictureCard
+                readyRow
+            }
             nameSection
             setupSection
-            readyRow
             actionRow
         }
     }
@@ -930,6 +933,7 @@ struct HomeView: View {
                 .font(.system(size: 13, weight: .semibold))
                 .padding(.leading, 14)
                 .padding(.trailing, 10)
+                .frame(maxWidth: Self.primaryFullWidth ? .infinity : nil)
                 .frame(height: Self.largeControlHeight)
                 .contentShape(Rectangle())
             }
@@ -970,7 +974,7 @@ struct HomeView: View {
         .animation(reduceMotion ? nil : .easeOut(duration: 0.18), value: mode)
         // The column keeps its 44pt slot (the window's height is arithmetic
         // from it); the standard 32pt large control sits in it.
-        .frame(maxWidth: .infinity, minHeight: Self.buttonHeight, alignment: .leading)
+        .frame(maxWidth: Self.primaryFullWidth ? nil : .infinity, minHeight: Self.buttonHeight, alignment: .leading)
     }
 
     /// Record's intent is a small red dot, not a red button.
@@ -1041,6 +1045,15 @@ struct HomeView: View {
                 .buttonStyle(.plain)
                 .help("Opens that session's page.")
                 Spacer(minLength: 0)
+                if sessionCount > 0 {
+                    Button {
+                        coordinator.mainPage = .sessions
+                    } label: {
+                        Text("All sessions (\(sessionCount)) \u{2192}").foregroundStyle(Brand.text)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Opens Sessions.")
+                }
             }
             .font(.callout)
         }
@@ -1050,8 +1063,9 @@ struct HomeView: View {
     /// thread: the library walks the folders and the length opens a file.
     private func loadLastSession() {
         Task.detached(priority: .utility) {
-            guard let newest = ScreenroomLibrary.presentations().first else {
-                await MainActor.run { lastSession = nil }
+            let all = ScreenroomLibrary.presentations()
+            guard let newest = all.first else {
+                await MainActor.run { lastSession = nil; sessionCount = 0 }
                 return
             }
             var length: String?
@@ -1061,7 +1075,7 @@ struct HomeView: View {
                 length = SessionsFormat.length(seconds)
             }
             let found = LastSession(path: newest.folder.path, title: newest.presenter, length: length)
-            await MainActor.run { lastSession = found }
+            await MainActor.run { lastSession = found; sessionCount = all.count }
         }
     }
 

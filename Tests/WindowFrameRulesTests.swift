@@ -6,7 +6,7 @@ final class WindowFrameRulesTests: XCTestCase {
     let page = CGSize(width: 1180, height: 760)
 
     func testPageGrowsDownRightFromTopLeft() {
-        let home = NSRect(x: 568, y: 400, width: 784, height: 600)
+        let home = NSRect(x: 568, y: 400, width: 592, height: 636)
         let f = WindowFrameRules.pageFrame(from: home, size: page, visibleFrames: [screen])
         XCTAssertEqual(f.minX, home.minX)
         XCTAssertEqual(f.maxY, home.maxY)
@@ -21,8 +21,8 @@ final class WindowFrameRulesTests: XCTestCase {
     }
 
     func testLowHomeShiftsUpByOverflowAndRoundTripsExactly() {
-        // Home sits low: bottom at y=50, 300 tall. The page needs 460 more.
-        let home = NSRect(x: 568, y: 50, width: 784, height: 300)
+        // Home sits low: bottom at y=20, 636 tall (Home, 2026-11-13: one column). The page needs 280 more.
+        let home = NSRect(x: 568, y: 20, width: 592, height: 636)
         let pageFrame = WindowFrameRules.pageFrame(from: home, size: page, visibleFrames: [screen])
         XCTAssertEqual(pageFrame.minY, 0)
         XCTAssertEqual(pageFrame.minX, home.minX)
@@ -33,14 +33,14 @@ final class WindowFrameRulesTests: XCTestCase {
     }
 
     func testNotShiftedWhenItFits() {
-        let high = NSRect(x: 568, y: 400, width: 784, height: 600)
+        let high = NSRect(x: 568, y: 400, width: 592, height: 636)
         XCTAssertEqual(WindowFrameRules.pageFrame(from: high, size: page, visibleFrames: [screen]).minY,
                        high.maxY - 760)
     }
 
     func testSecondaryScreenUsesItsOwnBounds() {
         let second = NSRect(x: 1920, y: -200, width: 1440, height: 900)
-        let home = NSRect(x: 2400, y: -150, width: 784, height: 300)
+        let home = NSRect(x: 2400, y: -150, width: 592, height: 636)
         let pageFrame = WindowFrameRules.pageFrame(from: home, size: page, visibleFrames: [screen, second])
         XCTAssertEqual(pageFrame.minY, second.minY)
         XCTAssertEqual(pageFrame.maxX, second.maxX)
@@ -52,7 +52,7 @@ final class WindowFrameRulesTests: XCTestCase {
     }
 
     func testBackRestoresRememberedOriginWhenUnmoved() {
-        let home = NSRect(x: 568, y: 400, width: 784, height: 600)
+        let home = NSRect(x: 568, y: 400, width: 592, height: 636)
         let f = WindowFrameRules.returningHome(
             remembered: home, size: home.size,
             current: NSRect(x: 370, y: 240, width: 1180, height: 760),
@@ -61,7 +61,7 @@ final class WindowFrameRulesTests: XCTestCase {
     }
 
     func testBackAfterMoveKeepsMiddleAndTop() {
-        let home = NSRect(x: 568, y: 400, width: 784, height: 600)
+        let home = NSRect(x: 568, y: 400, width: 592, height: 636)
         let cur = NSRect(x: 100, y: 200, width: 1180, height: 760)
         let f = WindowFrameRules.returningHome(
             remembered: home, size: home.size, current: cur,
@@ -72,7 +72,7 @@ final class WindowFrameRulesTests: XCTestCase {
     }
 
     func testBackFallsBackWhenRememberedScreenGone() {
-        let home = NSRect(x: 2500, y: 400, width: 784, height: 600)
+        let home = NSRect(x: 2500, y: 400, width: 592, height: 636)
         let cur = NSRect(x: 370, y: 240, width: 1180, height: 760)
         let f = WindowFrameRules.returningHome(
             remembered: home, size: home.size, current: cur,

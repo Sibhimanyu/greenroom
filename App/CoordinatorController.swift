@@ -4661,6 +4661,16 @@ enum MeetingMode: String, CaseIterable, Identifiable {
         case .record: return "Record"
         }
     }
+
+    /// The toolbar switcher's words: short, so the switcher, Sessions, Help and
+    /// Settings all fit a 560pt window without an overflow chevron.
+    var shortLabel: String {
+        switch self {
+        case .create: return "New"
+        case .join: return "Join"
+        case .record: return "Record"
+        }
+    }
 }
 
 // MARK: - Settings transfer

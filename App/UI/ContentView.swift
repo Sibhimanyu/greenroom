@@ -224,10 +224,11 @@ struct ContentView: View {
         .toolbar {
             // Record's own toolbar (Done) lives in RecordStudioContent.
             if !chromeOnPage && !coordinator.recordStudioShown {
-                // Sessions leads, named: an icon alone did not say what it
-                // opens. Help and Settings sit at the trailing edge, as
-                // window-level utilities do in macOS apps.
-                ToolbarItem(placement: .navigation) {
+                // The switcher is the toolbar's centre and the only main choice;
+                // the leading side is empty. Sessions, Help and Settings are the
+                // places and utilities, trailing.
+                modeSwitcherItem
+                ToolbarItem(placement: .primaryAction) {
                     Button {
                         coordinator.mainPage = .sessions
                     } label: {
@@ -236,11 +237,8 @@ struct ContentView: View {
                     }
                     .help("Sessions: every past class, its recordings and clips with a player, its YouTube links, and a name you can change.")
                 }
-                // The mode switcher is the toolbar's centre: it decides what the
-                // one button below does, so it belongs with the window's chrome.
-                modeSwitcherItem
                 if #available(macOS 26, *) {
-                    ToolbarSpacer(.flexible)
+                    ToolbarSpacer(.fixed, placement: .primaryAction)
                 }
                 ToolbarItemGroup(placement: .primaryAction) {
                     Button {
@@ -287,7 +285,7 @@ struct ContentView: View {
 
     private var modeSwitcher: some View {
         GreenroomSegmented("Mode", selection: $coordinator.meetingMode,
-                           options: Array(MeetingMode.allCases), toolbar: true) { Text($0.label) }
+                           options: Array(MeetingMode.allCases), toolbar: true) { Text($0.shortLabel) }
     }
 
     /// Home and the pages, one over the other. Mounted by state (not by
@@ -303,9 +301,9 @@ struct ContentView: View {
                         homeContent
                     }
                 }
-                // 32pt at the sides so nothing sits at the window's edge (20pt read as
-                // about to be cut off); 20pt top and bottom, which the heights assume.
-                .padding(.horizontal, 32)
+                // 24pt at the sides (Home is one column, 2026-11-13); 20pt top and
+                // bottom, which the heights assume. Record's studio keeps 32.
+                .padding(.horizontal, coordinator.recordStudioShown ? 32 : 24)
                 .padding(.vertical, 20)
                 .frame(minWidth: Self.minimumWindowWidth, minHeight: homeWindowHeight)
                 .frame(width: homePin?.width, height: homePin?.height)
@@ -457,8 +455,8 @@ struct ContentView: View {
     /// it fades, so it must not follow `onPage`.
     private var homeWindowHeight: CGFloat {
         if coordinator.recordStudioShown { return RecordStudioView.windowHeight }
-        // 20pt of padding top and bottom around the options column, whose
-        // height is the sum of its fixed parts (HomeView.columnHeight).
+        // 20pt of padding top and bottom around the column, whose height is
+        // the sum of its fixed parts (HomeView.columnHeight).
         var height: CGFloat = 40 + HomeView.columnHeight
         if setupOpen { height += HomeView.tilesExtraHeight }
         if homeHasFooter { height += 44 }
@@ -466,12 +464,10 @@ struct ContentView: View {
         return height
     }
 
-    /// The width Home's two columns need, and therefore the window's: 32pt of
-    /// padding each side, the 380pt options column, a 32pt gutter, and 384pt for
-    /// the picture so it is still a picture (216pt tall at 16:9). The default 940pt makes the card about 424 wide, which is
-    /// 238 tall: exactly the options column's height (HomeView.columnHeight). Wider than
-    /// that and the picture grows with the window.
-    static var minimumWindowWidth: CGFloat { 900 }
+    /// The least Home may be: 24pt of padding each side leaves 472pt, which
+    /// still shows the 16:9 card at 265pt tall. The default (592) gives the
+    /// 544pt column its full width.
+    static var minimumWindowWidth: CGFloat { 520 }
 
     /// The pages' size: room for a grid of cards, or a 16:9 picture with its
     /// title and actions above the fold. Home's size is theirs to give back.
@@ -491,9 +487,10 @@ struct ContentView: View {
     private var floorHeight: CGFloat { onPage ? Self.pageMinHeight : preferredWindowHeight }
     private var floorWidth: CGFloat { onPage ? Self.pageMinWidth : Self.minimumWindowWidth }
 
-    /// What the window opens at: the width at which the 16:9 card is as tall as
-    /// the options column, so the two columns end level with no dead space.
-    static var defaultWindowWidth: CGFloat { 940 }
+    /// What the window opens at: the 544pt column plus 24pt each side. 560 was
+    /// too narrow in light mode: the toolbar folded Help and Settings away. The
+    /// height is then the content's (homeWindowHeight).
+    static var defaultWindowWidth: CGFloat { 592 }
 
     /// Where the window ends up for the current page and state, top edge
     /// anchored and inside the visible frame.

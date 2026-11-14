@@ -28,7 +28,7 @@ struct ContentView: View {
     @State private var heldMinHeight: CGFloat = 0
     /// The same, for width: Home is narrower than the pages, so the minimum
     /// follows the window out and back instead of forcing it open first.
-    @State private var heldMinWidth: CGFloat = ContentView.minimumWindowWidth
+    @State private var heldMinWidth: CGFloat = ContentView.collapsedWindowWidth
     /// The frame Home had before a page widened the window, so Back returns
     /// to it rather than to wherever the page left things.
     @State private var homeFrame: NSRect?
@@ -40,6 +40,16 @@ struct ContentView: View {
     /// measured differently on a page, so recomputing it can drift).
     @State private var homeFrameContentHeight: CGFloat?
     private var homeWidth: CGFloat? { homeFrame?.width }
+
+    /// Home's picture card: hidden until asked for, and collapsed on every launch
+    /// (the camera must never start by itself; DESIGN.md, 2026-11-14). `previewMounted` lags a collapse by the
+    /// window's shrink, so the card is drawn until the curtain has closed on it.
+    @State private var previewShown = false
+    @State private var previewMounted = false
+    /// The frame the window had before the card opened, to give back exactly.
+    @State private var previewRestoreFrame: NSRect?
+    /// The frame the opening settled at, to tell whether the window was moved.
+    @State private var previewExpandedFrame: NSRect?
 
     // The window's root is a NavigationSplitView (see body), so the system
     // draws the Sessions sidebar as the full-height floating panel with the
@@ -146,6 +156,13 @@ struct ContentView: View {
         // resizeWindow.
         .onChange(of: statusShown) { _, _ in resizeWindow(animated: true) }
         .onChange(of: setupOpen) { _, _ in resizeWindow(animated: true) }
+        .onChange(of: previewShown) { _, shown in previewChanged(shown) }
+        #if DEBUG
+        .onReceive(NotificationCenter.default.publisher(for: .debugTourHomePreview)) { note in
+            HomeView.debugSkipLive = (note.userInfo?["camera"] as? Bool) == false
+            previewShown = (note.userInfo?["shown"] as? Bool) ?? false
+        }
+        #endif
         #if DEBUG
         .onReceive(NotificationCenter.default.publisher(for: .debugTourHomeSetup)) { note in
             Collapse.animate { setupOpen = (note.userInfo?["expanded"] as? Bool) ?? false }
@@ -211,7 +228,10 @@ struct ContentView: View {
             .frame(minWidth: SidebarRules.detailMinWidth(windowMin: heldMinWidth, sidebarShown: sidebarShown,
                                                          sidebarWidth: sidebarWidth),
                    maxWidth: .infinity,
-                   minHeight: heldMinHeight, maxHeight: .infinity)
+                   // The split view counts the title bar twice in the window's
+                   // minimum (held + 104, measured with `cmd=tree`), which left
+                   // Home squeezed and its margins uneven; take one off.
+                   minHeight: max(0, heldMinHeight - Self.titleBarCredit), maxHeight: .infinity)
             .overlay(alignment: .topLeading) { pageLayers }
             .clipped()
         // The toolbar: Back (and \u{2318}[) on a page, Sessions / Setup guide /
@@ -304,8 +324,8 @@ struct ContentView: View {
                 // 24pt at the sides (Home is one column, 2026-11-13); 20pt top and
                 // bottom, which the heights assume. Record's studio keeps 32.
                 .padding(.horizontal, coordinator.recordStudioShown ? 32 : 24)
-                .padding(.vertical, 20)
-                .frame(minWidth: Self.minimumWindowWidth, minHeight: homeWindowHeight)
+                .padding(.vertical, coordinator.recordStudioShown ? 20 : HomeView.verticalMargin)
+                .frame(minWidth: coordinator.recordStudioShown ? Self.minimumWindowWidth : homeMinWidth, minHeight: homeWindowHeight)
                 .frame(width: homePin?.width, height: homePin?.height)
                 // Pinned to the top while the window catches up to a new
                 // height; otherwise the content is centred and everything
@@ -442,7 +462,8 @@ struct ContentView: View {
     }
 
     private var homeContent: some View {
-        HomeView(statusShown: $statusShown, hasFooter: $homeHasFooter, setupOpen: $setupOpen)
+        HomeView(statusShown: $statusShown, hasFooter: $homeHasFooter, setupOpen: $setupOpen,
+                 previewShown: $previewShown, previewMounted: previewMounted)
     }
 
     /// The window's height for the current state: the two columns, plus the
@@ -457,7 +478,7 @@ struct ContentView: View {
         if coordinator.recordStudioShown { return RecordStudioView.windowHeight }
         // 20pt of padding top and bottom around the column, whose height is
         // the sum of its fixed parts (HomeView.columnHeight).
-        var height: CGFloat = 40 + HomeView.columnHeight
+        var height: CGFloat = HomeView.verticalMargin * 2 + HomeView.columnHeight
         if setupOpen { height += HomeView.tilesExtraHeight }
         if homeHasFooter { height += 44 }
         if statusShown { height += HomeView.statusLogHeight + 12 }
@@ -485,16 +506,27 @@ struct ContentView: View {
     /// its height for the state; on a page, the drag floor - not the page's
     /// opening size, which the user may shrink below.
     private var floorHeight: CGFloat { onPage ? Self.pageMinHeight : preferredWindowHeight }
-    private var floorWidth: CGFloat { onPage ? Self.pageMinWidth : Self.minimumWindowWidth }
+    private var floorWidth: CGFloat {
+        onPage ? Self.pageMinWidth : coordinator.recordStudioShown ? Self.minimumWindowWidth
+            : previewShown ? Self.expandedWindowWidth : Self.collapsedWindowWidth
+    }
 
-    /// What the window opens at: the 544pt column plus 24pt each side. 560 was
-    /// too narrow in light mode: the toolbar folded Help and Settings away. The
-    /// height is then the content's (homeWindowHeight).
-    static var defaultWindowWidth: CGFloat { 592 }
+    /// Home's collapsed width. 592, not column + margins (544): at 508 and 540 the
+    /// toolbar folded Sessions, Help and Settings into an overflow chevron.
+    private static let titleBarCredit: CGFloat = 52
+    static var collapsedWindowWidth: CGFloat { 592 }
+    /// With the picture card beside the column.
+    static var expandedWindowWidth: CGFloat { collapsedWindowWidth + HomeView.previewExtraWidth }
+    /// What the window opens at: collapsed unless the person left the picture
+    /// open. The height is then the content's (homeWindowHeight).
+    static var defaultWindowWidth: CGFloat { collapsedWindowWidth }
+    /// The least Home may be, for whether the card is open.
+    private var homeMinWidth: CGFloat { previewMounted ? Self.expandedWindowWidth : Self.collapsedWindowWidth }
 
     /// Where the window ends up for the current page and state, top edge
     /// anchored and inside the visible frame.
-    private func settledFrame(for window: NSWindow, animated: Bool, returningHome: Bool) -> NSRect {
+    private func settledFrame(for window: NSWindow, animated: Bool, returningHome: Bool,
+                              previewChange: Bool = false) -> NSRect {
         let content = window.contentRect(forFrameRect: window.frame)
         // Home keeps the width the user gave it; a page widens it, within the
         // screen, and Back returns Home to the width it left.
@@ -502,6 +534,9 @@ struct ContentView: View {
         var width: CGFloat
         if onPage {
             width = animated ? max(content.width, Self.pageWidth) : Self.pageWidth
+        } else if previewChange {
+            // The card opening or closing moves only the right edge.
+            width = content.width + (previewShown ? HomeView.previewExtraWidth : -HomeView.previewExtraWidth)
         } else {
             width = returningHome ? (homeWidth ?? content.width)
                 : animated ? content.width : Self.defaultWindowWidth
@@ -527,6 +562,15 @@ struct ContentView: View {
             let anchor = (movedOnPage ? nil : homeFrame) ?? window.frame
             return WindowFrameRules.pageFrame(from: anchor, size: size, visibleFrames: visibleFrames)
         }
+        if previewChange {
+            if previewShown {
+                return WindowFrameRules.expandedFrame(from: window.frame, size: size, in: visible)
+            }
+            return WindowFrameRules.collapsedFrame(
+                restoring: previewRestoreFrame, current: window.frame, size: size,
+                movedSinceExpand: WindowFrameRules.moved(from: previewExpandedFrame, to: window.frame),
+                in: visible)
+        }
         if returningHome, let remembered = homeFrame, homeFrameContentHeight == homeWindowHeight,
            abs(remembered.width - size.width) < 1 {
             size = remembered.size
@@ -540,6 +584,33 @@ struct ContentView: View {
         return WindowFrameRules.topLeftAnchored(on: window.frame, size: size, in: visible)
     }
 
+    /// The Preview button (or the tour): grows the window to the right with the
+    /// top-left anchored, or gives the exact collapsed frame back. Under Reduce
+    /// Motion there is no slide: the frame jumps and the card crossfades.
+    private func previewChanged(_ shown: Bool) {
+        guard !onPage, !coordinator.recordStudioShown else {
+            previewMounted = shown
+            return
+        }
+        let animated = !reduceMotion && Self.window.map { !$0.styleMask.contains(.fullScreen) && !$0.isZoomed } == true
+        if shown {
+            if let window = Self.window { previewRestoreFrame = window.frame }
+            previewExpandedFrame = nil
+            withAnimation(.easeInOut(duration: animated ? Self.growDuration : Self.crossfade)) { previewMounted = true }
+        } else {
+            let delay = animated ? Self.growDuration + 0.03 : Self.crossfade
+            withAnimation(.easeInOut(duration: animated ? Self.growDuration : Self.crossfade)) {
+                // Keep the card drawn while the window closes over it; the
+                // crossfade under Reduce Motion fades it at once.
+                if !animated { previewMounted = false }
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+                if !previewShown { withAnimation(nil) { previewMounted = false } }
+            }
+        }
+        resizeWindow(animated: animated, previewChange: true)
+    }
+
     /// Resizes from an anchored TOP edge. AppKit's `setContentSize` keeps the
     /// bottom-left corner, so every expansion used to send the whole window
     /// climbing the screen while the rows above reflowed (reported live:
@@ -547,7 +618,7 @@ struct ContentView: View {
     /// the controls stay exactly where the cursor left them and only the
     /// bottom edge travels - down when the log opens, up when it closes.
     /// Width is the user's.
-    private func resizeWindow(animated: Bool, returningHome: Bool = false) {
+    private func resizeWindow(animated: Bool, returningHome: Bool = false, previewChange: Bool = false) {
         guard let window = Self.window else { return }
         // Full screen (or zoomed to fill the screen) is the user's size, not
         // ours. Resizing here shrank the window to a page's 1180x760 and left
@@ -558,12 +629,14 @@ struct ContentView: View {
             heldMinWidth = floorWidth
             return
         }
-        let frame = settledFrame(for: window, animated: animated, returningHome: returningHome)
+        let frame = settledFrame(for: window, animated: animated, returningHome: returningHome,
+                                previewChange: previewChange)
         pageSettledFrame = onPage ? frame : nil
         guard animated else {
             resizeGeneration += 1
             window.setFrame(frame, display: true)
             if onPage { pageSettledFrame = window.frame }
+            if previewChange && previewShown { previewExpandedFrame = window.frame }
             heldMinHeight = floorHeight
             heldMinWidth = floorWidth
             return
@@ -592,6 +665,7 @@ struct ContentView: View {
             // What the window really settled at (AppKit may constrain it), so
             // "the user moved it" compares against the truth.
             if onPage { pageSettledFrame = window.frame }
+            if previewChange && previewShown { previewExpandedFrame = window.frame }
             heldMinHeight = settled
             heldMinWidth = settledWidth
         }

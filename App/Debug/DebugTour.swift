@@ -109,6 +109,15 @@ enum DebugTour {
                     // expanded=true|false: the five tiles unfolded or the one line.
                     NotificationCenter.default.post(name: .debugTourHomeSetup, object: nil,
                                                     userInfo: ["expanded": info["expanded"] == "true"])
+                case "homePreview":
+                    // shown=true|false: the picture card opened or folded away.
+                    // `restore` folds it.
+                    // camera=on starts the owner's camera, as the Preview button does;
+                    // the default here is camera=off, so a tour never turns it on.
+                    savedPreview = false
+                    NotificationCenter.default.post(name: .debugTourHomePreview, object: nil,
+                                                    userInfo: ["shown": info["shown"] == "true",
+                                                               "camera": info["camera"] == "on"])
                 case "shareKind":
                     // Shows the window-only controls. `restore` puts the saved kind back.
                     guard let c = CoordinatorController.shared,
@@ -137,6 +146,7 @@ enum DebugTour {
     }
 
     private static var savedShareKind: ShareTarget.Kind?
+    private static var savedPreview: Bool?
 
     private struct TourError: Error, CustomStringConvertible {
         let description: String
@@ -242,6 +252,7 @@ enum DebugTour {
             out += String(repeating: " ", count: depth) + "\(type(of: v)) \(v.frame)\n"
             for c in v.subviews { walk(c, depth + 1) }
         }
+        if let w = MainWindow.current { out += "WIN frame \(w.frame) layout \(w.contentLayoutRect) minSize \(w.contentMinSize)\n" }
         if let v = MainWindow.current?.contentView { walk(v, 0) }
         try? out.write(toFile: dir + "/tree.txt", atomically: true, encoding: .utf8)
     }
@@ -263,6 +274,11 @@ enum DebugTour {
         opened.removeAll()
         ToastController.hide()
         UploadPromptCard.hide(answered: true)
+        if let shown = savedPreview {
+            NotificationCenter.default.post(name: .debugTourHomePreview, object: nil, userInfo: ["shown": shown])
+            savedPreview = nil
+            try? await Task.sleep(nanoseconds: 600_000_000)
+        }
         if let o = original {
             NSApp.appearance = o.appearance
             if let f = o.frame { MainWindow.current?.setFrame(f, display: true, animate: false) }
@@ -361,6 +377,7 @@ enum DebugTour {
     }
 }
 extension Notification.Name {
+    static let debugTourHomePreview = Notification.Name("com.greenroom.debug.tour.homePreview")
     static let debugTourHomeSetup = Notification.Name("com.greenroom.debug.tour.homeSetup")
 }
 

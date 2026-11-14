@@ -6,7 +6,7 @@ final class WindowFrameRulesTests: XCTestCase {
     let page = CGSize(width: 1180, height: 760)
 
     func testPageGrowsDownRightFromTopLeft() {
-        let home = NSRect(x: 568, y: 400, width: 592, height: 636)
+        let home = NSRect(x: 568, y: 500, width: 592, height: 352)
         let f = WindowFrameRules.pageFrame(from: home, size: page, visibleFrames: [screen])
         XCTAssertEqual(f.minX, home.minX)
         XCTAssertEqual(f.maxY, home.maxY)
@@ -21,8 +21,8 @@ final class WindowFrameRulesTests: XCTestCase {
     }
 
     func testLowHomeShiftsUpByOverflowAndRoundTripsExactly() {
-        // Home sits low: bottom at y=20, 636 tall (Home, 2026-11-13: one column). The page needs 280 more.
-        let home = NSRect(x: 568, y: 20, width: 592, height: 636)
+        // Home sits low: bottom at y=20, 352 tall (Home, 2026-11-14: the collapsed column). The page needs 408 more.
+        let home = NSRect(x: 568, y: 20, width: 592, height: 352)
         let pageFrame = WindowFrameRules.pageFrame(from: home, size: page, visibleFrames: [screen])
         XCTAssertEqual(pageFrame.minY, 0)
         XCTAssertEqual(pageFrame.minX, home.minX)
@@ -33,14 +33,14 @@ final class WindowFrameRulesTests: XCTestCase {
     }
 
     func testNotShiftedWhenItFits() {
-        let high = NSRect(x: 568, y: 400, width: 592, height: 636)
+        let high = NSRect(x: 568, y: 500, width: 592, height: 352)
         XCTAssertEqual(WindowFrameRules.pageFrame(from: high, size: page, visibleFrames: [screen]).minY,
                        high.maxY - 760)
     }
 
     func testSecondaryScreenUsesItsOwnBounds() {
         let second = NSRect(x: 1920, y: -200, width: 1440, height: 900)
-        let home = NSRect(x: 2400, y: -150, width: 592, height: 636)
+        let home = NSRect(x: 2400, y: -150, width: 592, height: 352)
         let pageFrame = WindowFrameRules.pageFrame(from: home, size: page, visibleFrames: [screen, second])
         XCTAssertEqual(pageFrame.minY, second.minY)
         XCTAssertEqual(pageFrame.maxX, second.maxX)
@@ -52,7 +52,7 @@ final class WindowFrameRulesTests: XCTestCase {
     }
 
     func testBackRestoresRememberedOriginWhenUnmoved() {
-        let home = NSRect(x: 568, y: 400, width: 592, height: 636)
+        let home = NSRect(x: 568, y: 500, width: 592, height: 352)
         let f = WindowFrameRules.returningHome(
             remembered: home, size: home.size,
             current: NSRect(x: 370, y: 240, width: 1180, height: 760),
@@ -61,7 +61,7 @@ final class WindowFrameRulesTests: XCTestCase {
     }
 
     func testBackAfterMoveKeepsMiddleAndTop() {
-        let home = NSRect(x: 568, y: 400, width: 592, height: 636)
+        let home = NSRect(x: 568, y: 500, width: 592, height: 352)
         let cur = NSRect(x: 100, y: 200, width: 1180, height: 760)
         let f = WindowFrameRules.returningHome(
             remembered: home, size: home.size, current: cur,
@@ -72,13 +72,66 @@ final class WindowFrameRulesTests: XCTestCase {
     }
 
     func testBackFallsBackWhenRememberedScreenGone() {
-        let home = NSRect(x: 2500, y: 400, width: 592, height: 636)
+        let home = NSRect(x: 2500, y: 400, width: 592, height: 352)
         let cur = NSRect(x: 370, y: 240, width: 1180, height: 760)
         let f = WindowFrameRules.returningHome(
             remembered: home, size: home.size, current: cur,
             movedOnPage: false, visibleFrames: [screen], currentVisible: screen)
         XCTAssertEqual(f.minX, cur.minX)
         XCTAssertEqual(f.maxY, cur.maxY)
+    }
+
+    // Home's preview (2026-11-14): collapsed 592 wide, expanded 592 + 24 + 405.
+    let collapsed = NSRect(x: 568, y: 400, width: 592, height: 352)
+    let extra: CGFloat = 429
+
+    func testCollapsedRoundTripReturnsIdenticalFrame() {
+        let pageFrame = WindowFrameRules.pageFrame(from: collapsed, size: page, visibleFrames: [screen])
+        let back = WindowFrameRules.returningHome(
+            remembered: collapsed, size: collapsed.size, current: pageFrame, movedOnPage: false,
+            visibleFrames: [screen], currentVisible: screen)
+        XCTAssertEqual(back, collapsed)
+    }
+
+    func testExpandedRoundTripReturnsIdenticalFrame() {
+        let expanded = WindowFrameRules.expandedFrame(
+            from: collapsed, size: CGSize(width: 592 + extra, height: 352), in: screen)
+        let pageFrame = WindowFrameRules.pageFrame(from: expanded, size: page, visibleFrames: [screen])
+        let back = WindowFrameRules.returningHome(
+            remembered: expanded, size: expanded.size, current: pageFrame, movedOnPage: false,
+            visibleFrames: [screen], currentVisible: screen)
+        XCTAssertEqual(back, expanded)
+    }
+
+    func testExpandGrowsRightWithTopLeftAnchoredThenCollapseIsIdentical() {
+        let size = CGSize(width: 592 + extra, height: 352)
+        let expanded = WindowFrameRules.expandedFrame(from: collapsed, size: size, in: screen)
+        XCTAssertEqual(expanded.minX, collapsed.minX)
+        XCTAssertEqual(expanded.maxY, collapsed.maxY)
+        let back = WindowFrameRules.collapsedFrame(restoring: collapsed, current: expanded, size: collapsed.size,
+                                                   movedSinceExpand: false, in: screen)
+        XCTAssertEqual(back, collapsed)
+    }
+
+    func testExpandShiftsLeftOnlyByOverflowAndCollapseRestoresExactFrame() {
+        let near = NSRect(x: 1700, y: 400, width: 592, height: 352)
+        let expanded = WindowFrameRules.expandedFrame(
+            from: near, size: CGSize(width: 592 + extra, height: 352), in: screen)
+        XCTAssertEqual(expanded.maxX, screen.maxX)
+        XCTAssertEqual(expanded.minX, screen.maxX - (592 + extra))
+        XCTAssertEqual(expanded.maxY, near.maxY)
+        let back = WindowFrameRules.collapsedFrame(restoring: near, current: expanded, size: near.size,
+                                                   movedSinceExpand: false, in: screen)
+        XCTAssertEqual(back, near)
+    }
+
+    func testCollapseAfterMoveKeepsCurrentTopLeft() {
+        let expanded = NSRect(x: 300, y: 200, width: 592 + extra, height: 352)
+        let back = WindowFrameRules.collapsedFrame(restoring: collapsed, current: expanded, size: collapsed.size,
+                                                   movedSinceExpand: true, in: screen)
+        XCTAssertEqual(back.minX, expanded.minX)
+        XCTAssertEqual(back.maxY, expanded.maxY)
+        XCTAssertEqual(back.size, collapsed.size)
     }
 
     func testMovedDetection() {

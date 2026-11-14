@@ -54,6 +54,23 @@ enum WindowFrameRules {
         return topLeftAnchored(on: current, size: size, in: currentVisible)
     }
 
+    /// Home's preview opening: the window grows to the RIGHT with its top-left
+    /// anchored, and slides left only by the overflow at the screen's edge.
+    static func expandedFrame(from collapsed: NSRect, size: CGSize, in visible: NSRect?) -> NSRect {
+        topLeftAnchored(on: collapsed, size: size, in: visible)
+    }
+
+    /// The preview closing. Unmoved since it opened, the exact frame it had
+    /// before (so a shifted-left window goes back where it was); moved, the
+    /// collapsed size from the window's current top-left.
+    static func collapsedFrame(restoring saved: NSRect?, current: NSRect, size: CGSize,
+                               movedSinceExpand: Bool, in visible: NSRect?) -> NSRect {
+        if !movedSinceExpand, let saved, abs(saved.width - size.width) < 1 {
+            return NSRect(x: saved.minX, y: saved.maxY - size.height, width: size.width, height: size.height)
+        }
+        return topLeftAnchored(on: current, size: size, in: visible)
+    }
+
     /// Whether the user dragged the window since the page settled.
     static func moved(from settled: NSRect?, to current: NSRect, tolerance: CGFloat = 2) -> Bool {
         guard let settled else { return false }

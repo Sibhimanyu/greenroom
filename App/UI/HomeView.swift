@@ -41,31 +41,50 @@ struct HomeView: View {
     /// Whether the five setup tiles are unfolded. Owned by ContentView, which
     /// sizes the window for it; per launch only, collapsed by default.
     @Binding var setupOpen: Bool
+    /// The picture is hidden until asked for (DESIGN.md, 2026-11-14): the
+    /// owner's choice, kept per Mac by ContentView, which also grows the window.
+    @Binding var previewShown: Bool
+    /// Whether the card is drawn. It outlives `previewShown` by the window's
+    /// shrink, so a collapse reveals nothing but a closing curtain.
+    let previewMounted: Bool
 
     /// Height of the open log. Eight lines.
     static let statusLogHeight: CGFloat = 180
-    /// Home is ONE column (DESIGN.md, 2026-11-13, "Try a vertical Home"): the
-    /// content is at most this wide and centred when the window is wider. The
-    /// card is 16:9 of it, so the window's height is arithmetic.
-    static let contentWidth: CGFloat = 544
-    static var cardHeight: CGFloat { contentWidth * 9 / 16 }
-    /// Fixed heights of the column's parts: brand 42, card 306, Ready 24, name
-    /// 32, summary 32, button 32, with 16pt between groups and 12pt between
-    /// the card and its Ready chip.
+    /// Home is a compact options column (DESIGN.md, 2026-11-14): this wide (the window is 592 so the
+    /// toolbar fits),
+    /// with the 16:9 picture card beside it only when Preview is pressed.
+    static let contentWidth: CGFloat = 496
+    /// Space between the column and the card, and the card's width: 16:9 of
+    /// the column's height, so the card's top meets the logo and its bottom
+    /// meets the Start button.
+    static let cardGutter: CGFloat = 24
+    static var cardWidth: CGFloat { (columnHeight * 16 / 9).rounded() }
+    /// What the window gains when the card shows.
+    static var previewExtraWidth: CGFloat { cardGutter + cardWidth }
+    /// Fixed heights of the column's parts: brand 42, name 32, summary 32,
+    /// the Ready / Preview row 26, button 32, with 16pt between them.
     static let brandHeight: CGFloat = 42
     static let fieldHeight: CGFloat = 32
-    static let summaryHeight: CGFloat = 32
+    static let summaryHeight: CGFloat = 22
     static let readyHeight: CGFloat = 24
+    static let readyRowHeight: CGFloat = 26
     /// A standard macOS 26 large control.
     static let largeControlHeight: CGFloat = 32
     static let buttonHeight: CGFloat = 32
     static let columnGap: CGFloat = 16
-    static let cardGap: CGFloat = 12
+    /// The column's rhythm (owner, 2026-11-14): logo to name 16, name to setup
+    /// 12, setup to the Ready row 12, Ready row to the button 16.
+    static let brandGap: CGFloat = 16
+    static let fieldGap: CGFloat = 12
+    static let summaryGap: CGFloat = 12
+    static let readyGap: CGFloat = 16
+    /// Top margin under the toolbar and bottom margin under the last element.
+    static let verticalMargin: CGFloat = 24
     /// The five tiles: three rows of 44 with 8pt gaps, and the gap above them.
     static let tilesHeight: CGFloat = 148
     static var columnHeight: CGFloat {
-        brandHeight + cardHeight + readyHeight + fieldHeight + summaryHeight + buttonHeight
-            + columnGap * 3 + columnGap + cardGap
+        brandHeight + fieldHeight + summaryHeight + readyRowHeight + buttonHeight
+            + brandGap + fieldGap + summaryGap + readyGap
     }
     static var tilesExtraHeight: CGFloat { tilesHeight }
     /// The button fills the column (false: sized to its label, at the left).
@@ -101,16 +120,28 @@ struct HomeView: View {
         // only one end.
         VStack(alignment: .leading, spacing: 0) {
             Spacer(minLength: 0)
-            setupColumn
-                .frame(maxWidth: Self.contentWidth)
-                .frame(maxWidth: .infinity)
-            if statusShown {
-                statusLog.padding(.top, 12)
+            VStack(alignment: .leading, spacing: 0) {
+                HStack(alignment: .top, spacing: Self.cardGutter) {
+                    setupColumn
+                        .frame(width: Self.contentWidth)
+                    if previewMounted {
+                        // Level with the logo at the top and the Start button
+                        // at the bottom (the column's height is the card's).
+                        pictureCard
+                            .frame(width: Self.cardWidth)
+                            .transition(.opacity)
+                    }
+                }
+                .fixedSize(horizontal: false, vertical: true)
+                if statusShown {
+                    statusLog.padding(.top, 12)
+                }
+                if let lastSession {
+                    footer(lastSession)
+                        .padding(.top, 16)
+                }
             }
-            if let lastSession {
-                footer(lastSession)
-                    .padding(.top, 16)
-            }
+            .frame(maxWidth: .infinity, alignment: .center)
             Spacer(minLength: 0)
         }
         .onAppear {
@@ -127,6 +158,9 @@ struct HomeView: View {
             meter.stop()
         }
         .onChange(of: lastSession) { _, session in hasFooter = session != nil }
+        // The camera starts only from the person pressing Preview, and stops
+        // when it folds (or Home goes away, or a start begins).
+        .onChange(of: previewShown) { _, shown in if shown { startLive() } else { stopLive() } }
         .onChange(of: coordinator.isRunning) { _, running in if running { stopLive() } }
         .onChange(of: coordinator.mainPage.isHome) { _, home in if !home { stopLive() } }
         .onChange(of: coordinator.sceneInUse) { _, inUse in if !inUse { loadLastSession() } }
@@ -181,11 +215,25 @@ struct HomeView: View {
                 PictureChip(text: "LIVE PREVIEW", dot: .red).padding(10)
             }
         }
-        .overlay(alignment: .topTrailing) { liveButton.padding(10) }
+        .overlay(alignment: .bottomLeading) {
+            if previewShown, !showLive, let problem = cameraProblem {
+                HStack(spacing: 6) {
+                    Text(problem.text).font(.system(size: 11.5, weight: .medium)).foregroundStyle(.secondary)
+                    if let fixer = problem.fix {
+                        Button("Open Settings") { fix(fixer) }
+                            .buttonStyle(.plain).font(.system(size: 11.5, weight: .medium)).foregroundStyle(Brand.text)
+                    }
+                }
+                .padding(.horizontal, 10).padding(.vertical, 6)
+                .background(.black.opacity(0.45), in: Capsule())
+                .colorScheme(.dark)
+                .padding(10)
+            }
+        }
         .shadow(color: .black.opacity(0.18), radius: 14, y: 6)
         .animation(reduceMotion ? nil : .easeOut(duration: 0.2), value: liveFrameReady)
         .accessibilityElement(children: .contain)
-        .accessibilityLabel(showLive ? "Live preview of the picture" : "Drawing of the picture: \(lookText)")
+        .accessibilityLabel(showLive ? "Live preview of the picture" : "Picture people will see: \(lookText)")
     }
 
     /// What the card says in words, for VoiceOver and the tooltip.
@@ -220,31 +268,53 @@ struct HomeView: View {
             : .bubble(aspect: coordinator.webcamShape.cropsToSquare ? 1 : camera)
     }
 
-    /// A glass capsule that says what it does: the icon and "Show live", or
-    /// "Stop live" while the camera is on. The hover help keeps the fuller words.
-    private var liveButton: some View {
-        Button(action: toggleLive) {
-            Label(showLive ? "Stop live" : "Show live", systemImage: "video")
+    /// A quiet glass capsule in the Ready row that grows the window to the
+    /// right for the picture, and folds it away again.
+    private var previewButton: some View {
+        Button { previewShown.toggle() } label: {
+            Label(previewShown ? "Hide preview" : "Preview",
+                  systemImage: previewShown ? "rectangle.lefthalf.inset.filled" : "rectangle.righthalf.inset.filled")
                 .labelStyle(.titleAndIcon)
-                .font(.system(size: 12.5, weight: .medium))
-                .padding(.horizontal, 12)
-                .frame(height: 28)
+                .font(.system(size: 11.5, weight: .medium))
+                .padding(.horizontal, 10)
+                .frame(height: Self.readyRowHeight)
                 .contentShape(Capsule())
         }
         .buttonStyle(.plain)
         .greenroomGlass(in: Capsule(), interactive: true)
-        .disabled(isLive)
-        .help(showLive
-              ? "Hide the live picture. This turns the camera off again."
-              : "Show the live picture. The camera stays off until you do.")
-        .accessibilityLabel(showLive ? "Hide live picture" : "Show live picture")
+        .fixedSize()
+        .help(previewShown ? "Hide the picture and turn the camera off"
+                           : "Show the picture people will see. This turns the camera on.")
+        .accessibilityLabel(previewShown ? "Hide preview" : "Preview")
+        .accessibilityHint(previewShown ? "Narrows the window, hides the picture and turns the camera off"
+                                        : "Widens the window and turns the camera on to show the picture people will see")
     }
 
-    private func toggleLive() {
-        if showLive { stopLive() } else {
-            showLive = true
-            coordinator.startShapePreview()
+    /// Pressing Preview is the explicit ask: it starts the same live preview the
+    /// Webcam page and the Record view use (`startShapePreview`). Never on a
+    /// launch, never on a mere appearance of Home. A camera that cannot start
+    /// shows its reason in the card instead.
+    private func startLive() {
+        #if DEBUG
+        if Self.debugSkipLive { return }
+        #endif
+        guard !showLive, !isLive, cameraProblem == nil else { return }
+        showLive = true
+        coordinator.startShapePreview()
+    }
+
+    #if DEBUG
+    /// The tour expands the card without turning the owner's camera on.
+    static var debugSkipLive = false
+    #endif
+
+    /// Why the picture cannot be live, in words; nil when it can.
+    private var cameraProblem: (text: String, fix: Fix?)? {
+        if cameraAccess == .denied || cameraAccess == .restricted {
+            return ("Camera unavailable: access is turned off", .cameraPrivacy)
         }
+        if cameras.isEmpty { return ("Camera unavailable: no camera found", nil) }
+        return nil
     }
 
     /// Off when Home goes away or a start begins. Only if this view turned it
@@ -258,15 +328,17 @@ struct HomeView: View {
     // MARK: Right: setup
 
     private var setupColumn: some View {
-        VStack(alignment: .leading, spacing: Self.columnGap) {
+        VStack(alignment: .leading, spacing: 0) {
             brand
-            VStack(alignment: .leading, spacing: Self.cardGap) {
-                pictureCard
+            nameSection.padding(.top, Self.brandGap)
+            setupSection.padding(.top, Self.fieldGap)
+            HStack(spacing: 8) {
                 readyRow
+                previewButton
             }
-            nameSection
-            setupSection
-            actionRow
+            .frame(height: Self.readyRowHeight)
+            .padding(.top, Self.summaryGap)
+            actionRow.padding(.top, Self.readyGap)
         }
     }
 

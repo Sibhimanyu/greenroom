@@ -283,6 +283,16 @@ enum MeetingVideoLayout {
         return out
     }
 
+    /// Gallery with you in it: `count` other people, then you as the last tile of
+    /// the same grid (never floating over anyone). `me` is nil when `includeSelf`
+    /// is false ("Hide self view").
+    static func galleryWithSelf(count: Int, includeSelf: Bool, in size: CGSize, gap: CGFloat = defaultGap)
+        -> (others: [CGRect], me: CGRect?) {
+        let frames = gallery(count: count + (includeSelf ? 1 : 0), in: size, gap: gap)
+        guard includeSelf, let last = frames.last else { return (frames, nil) }
+        return (Array(frames.dropLast()), last)
+    }
+
     /// Speaker view's strip: one row of 16:9 tiles along the top of `size`,
     /// centred, leaving `reservedRight` free at the right end.
     static func strip(count: Int, in size: CGSize, tileHeight: CGFloat, reservedRight: CGFloat = 0,
@@ -308,14 +318,18 @@ enum MeetingVideoLayout {
     /// tile and its margins); `reservedStripRight` leaves the strip's right end
     /// to your own preview.
     static func multiSpeaker(largeCount: Int, stripCount: Int, in size: CGSize, stripHeight: CGFloat,
-                             reservedStripRight: CGFloat = 0, gap: CGFloat = defaultGap)
-        -> (large: [CGRect], strip: [CGRect]) {
+                             reservedStripRight: CGFloat = 0, includeSelf: Bool = false, gap: CGFloat = defaultGap)
+        -> (large: [CGRect], strip: [CGRect], me: CGRect?) {
         let tileHeight = stripHeight - 8
-        let band: CGFloat = stripCount > 0 ? tileHeight + gap : 0
+        // With `includeSelf` you are the strip's last tile, so the strip exists
+        // even when nobody else is in it.
+        let total = stripCount + (includeSelf ? 1 : 0)
+        let band: CGFloat = total > 0 ? tileHeight + gap : 0
         let upper = CGSize(width: size.width, height: max(0, size.height - band))
         let large = gallery(count: largeCount, in: upper, gap: gap).map { $0.offsetBy(dx: 0, dy: band) }
-        let strip = self.strip(count: stripCount, in: CGSize(width: size.width, height: tileHeight), tileHeight: tileHeight,
+        var strip = self.strip(count: total, in: CGSize(width: size.width, height: tileHeight), tileHeight: tileHeight,
                                reservedRight: reservedStripRight, gap: gap)
-        return (large, strip)
+        let me = includeSelf ? strip.popLast() : nil
+        return (large, strip, me)
     }
 }

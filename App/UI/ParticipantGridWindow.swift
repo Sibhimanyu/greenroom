@@ -1110,7 +1110,7 @@ private final class RootView: NSView {
     }
     /// Multi-speaker's strip leaves its right end to your preview.
     private var stripReservedRight: CGFloat {
-        guard isMultiMode, !hideSelfView, !plan.rest.isEmpty else { return 0 }
+        guard isMultiMode, !hideSelfView else { return 0 }
         return ((Self.stripHeight - 8) * 16 / 9).rounded() + 8
     }
     /// Who the gallery or the filmstrip lists: everyone, or everyone but the
@@ -1687,15 +1687,27 @@ private final class RootView: NSView {
         return Array(list[start..<min(start + perPage, list.count)])
     }
 
+    /// Puts your own picture at `rect` (in the grid host's space): in Gallery and
+    /// Multi-speaker you are an ordinary tile of the grid or strip, placed last.
+    private func placeSelf(_ rect: CGRect?) {
+        guard let rect else { return }
+        selfPreview.frame = rect.offsetBy(dx: gridHost.frame.minX, dy: gridHost.frame.minY)
+        selfPreview.layoutSubtreeIfNeeded()
+    }
+
     private func layoutTiles() {
         if isMultiMode { layoutMultiSpeaker(); return }
         if isSpeakerMode { layoutFilmstrip(); return }
         let visible = pageRoster
+        let lastPage = (page + 1) * perPage >= listed.count
+        let withSelf = meetingForm && !hideSelfView && lastPage
+        if meetingForm { placeSelf(MeetingVideoLayout.galleryWithSelf(count: visible.count, includeSelf: withSelf,
+                                                                      in: gridHost.bounds.size).me) }
         guard !visible.isEmpty else { return }
         let full = gridHost.bounds
         if meetingForm {
-            // Zoom's gallery: an even grid of 16:9 tiles, 4pt apart, centred.
-            let frames = MeetingVideoLayout.gallery(count: visible.count, in: full.size)
+            // Zoom's gallery: an even grid of 16:9 tiles, 4pt apart, centred, you last.
+            let frames = MeetingVideoLayout.galleryWithSelf(count: visible.count, includeSelf: withSelf, in: full.size).others
             let shape = (0, 0, visible.count)
             let animate = lastGridShape.count >= 0 && shape != lastGridShape
             lastGridShape = shape
@@ -2521,11 +2533,12 @@ private final class RootView: NSView {
     /// in a strip along the bottom, your preview at the strip's right end.
     private func layoutMultiSpeaker() {
         let visible = pageRoster
-        guard !visible.isEmpty else { return }
         let largeCount = visible.filter { plan.large.contains($0.id) }.count
         let frames = MeetingVideoLayout.multiSpeaker(largeCount: largeCount, stripCount: visible.count - largeCount,
                                                      in: gridHost.bounds.size, stripHeight: Self.stripHeight,
-                                                     reservedStripRight: stripReservedRight)
+                                                     includeSelf: !hideSelfView)
+        placeSelf(frames.me)
+        guard !visible.isEmpty else { return }
         for (entry, target) in zip(visible, frames.large + frames.strip) {
             guard let tile = tiles[entry.id], tile.frame != target else { continue }
             if !tile.frame.isEmpty {

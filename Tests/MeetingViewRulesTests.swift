@@ -296,3 +296,49 @@ final class MeetingViewRulesTests: XCTestCase {
         XCTAssertEqual(f[0].width / f[0].height, 16.0 / 9.0, accuracy: 0.02)
     }
 }
+
+// MARK: Self is a member, never floating over anyone
+
+final class MeetingSelfTileTests: XCTestCase {
+    private func noOverlaps(_ rects: [CGRect], _ message: String, file: StaticString = #filePath, line: UInt = #line) {
+        for (i, a) in rects.enumerated() {
+            for b in rects[(i + 1)...] { XCTAssertFalse(a.intersects(b), "\(message): \(a) overlaps \(b)", file: file, line: line) }
+        }
+    }
+
+    func testGalleryPutsYouLastInTheGridWithoutOverlaps() {
+        for share in [false, true] {
+            let size = share ? CGSize(width: 560, height: 700) : CGSize(width: 1200, height: 700)
+            for count in 0...12 {
+                let g = MeetingVideoLayout.galleryWithSelf(count: count, includeSelf: true, in: size)
+                XCTAssertEqual(g.others.count, count)
+                let me = try! XCTUnwrap(g.me)
+                noOverlaps(g.others + [me], "gallery \(count) share=\(share)")
+                let bounds = CGRect(origin: .zero, size: size).insetBy(dx: -1, dy: -1)
+                for r in g.others + [me] { XCTAssertTrue(bounds.contains(r)) }
+            }
+        }
+    }
+
+    func testHideSelfViewLeavesNoSelfTile() {
+        let g = MeetingVideoLayout.galleryWithSelf(count: 3, includeSelf: false, in: CGSize(width: 600, height: 600))
+        XCTAssertNil(g.me)
+        XCTAssertEqual(g.others.count, 3)
+        XCTAssertNil(MeetingVideoLayout.multiSpeaker(largeCount: 2, stripCount: 2, in: CGSize(width: 900, height: 600),
+                                                     stripHeight: 104, includeSelf: false).me)
+    }
+
+    func testMultiSpeakerPutsYouInTheStripLastWithoutOverlaps() {
+        let size = CGSize(width: 1000, height: 600)
+        // The window caps the strip at what fits beside your own tile.
+        let room = MeetingVideoLayout.stripCapacity(width: size.width - 96 * 16 / 9 - 8 - 4, tileHeight: 96)
+        for strips in 0...room {
+            let f = MeetingVideoLayout.multiSpeaker(largeCount: 3, stripCount: strips, in: size, stripHeight: 104, includeSelf: true)
+            let me = try! XCTUnwrap(f.me)
+            XCTAssertEqual(f.strip.count, strips)
+            if let lastOther = f.strip.last { XCTAssertGreaterThan(me.minX, lastOther.minX, "you are last") }
+            noOverlaps(f.large + f.strip + [me], "multi \(strips)")
+            XCTAssertLessThanOrEqual(me.maxX, size.width)
+        }
+    }
+}

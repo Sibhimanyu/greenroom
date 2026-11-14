@@ -134,10 +134,14 @@ struct HomeView: View {
                 }
                 .fixedSize(horizontal: false, vertical: true)
                 if statusShown {
-                    statusLog.padding(.top, 12)
+                    statusLog.frame(width: blockWidth).padding(.top, 12)
                 }
                 if let lastSession {
+                    // The column's own width, so the block stays one width
+                    // and centres: a wider footer made the stack take its
+                    // width and pushed the column to the left (owner, 2026-11-14).
                     footer(lastSession)
+                        .frame(width: blockWidth)
                         .padding(.top, 16)
                 }
             }
@@ -1097,6 +1101,11 @@ struct HomeView: View {
         let path: String
         let title: String
         let length: String?
+    }
+
+    /// The width of the whole block: the column, plus the picture when shown.
+    private var blockWidth: CGFloat {
+        Self.contentWidth + (previewMounted ? Self.cardGutter + Self.cardWidth : 0)
     }
 
     private func footer(_ session: LastSession) -> some View {

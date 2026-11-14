@@ -52,7 +52,7 @@ final class StageScreenSource: NSObject, SCStreamOutput, SCStreamDelegate {
     /// compositor from the share target, so a change applies without a restart.
     var followsSlideShow: () -> Bool = { false }
 
-    /// How many share pickers are on screen (Settings or the Record studio).
+    /// How many share pickers are on screen (Settings).
     /// While one is, and Greenroom is the front app, the person may be choosing
     /// a target, and the capture is never moved under them.
     static let pickersOnScreen = LockedBox<Int>(0)

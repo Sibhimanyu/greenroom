@@ -988,7 +988,7 @@ struct HomeView: View {
         case .join:
             return "Starts your screen and camera picture, joins the meeting above (starting it as host if it's yours), and tiles your windows."
         case .record:
-            return "Starts the picture set in Settings \u{2192} Webcam and opens the Record view, where you can check it and press Record when you are ready. No meeting, no windows moved."
+            return "Brings up the picture set in Settings \u{2192} Webcam, counts down on the notch, then records. The recording bar controls it. No meeting, no windows moved."
         }
     }
 

@@ -12,7 +12,7 @@ enum SidebarRules {
     /// Persisted: a teacher who hid the sidebar finds it hidden next time, as in Finder.
     static let hiddenKey = "sessionsSidebarHidden"
 
-    /// Home and the Record studio never show it. A Sessions page shows it unless
+    /// Home never show it. A Sessions page shows it unless
     /// the person hid it.
     static func visibility(onSessionsPage: Bool, hidden: Bool) -> NavigationSplitViewVisibility {
         onSessionsPage && !hidden ? .all : .detailOnly

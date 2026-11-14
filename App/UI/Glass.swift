@@ -25,7 +25,7 @@ extension View {
 }
 
 extension View {
-    /// A button on an in-content control bar (the Record view, transport):
+    /// A button on an in-content control bar (transport):
     /// glass on macOS 26, the bordered styles before. Not for toolbar items,
     /// which the system styles itself.
     @ViewBuilder

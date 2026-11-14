@@ -232,11 +232,12 @@ enum MeetingBarLayout {
 
     // MARK: The record-only bar (RecordingChrome.swift)
 
-    /// Grip-less: [dot REC 1:29] [pause] | [Draw] | [Stop].
+    /// Grip-less: [dot REC 1:29] [pause] | [Draw] [Notes] | [Stop].
     static let recordOnlyPill: CGFloat = 116
+    static let notes: CGFloat = 74
     static let recordOnlyStop: CGFloat = 56
     static var recordOnlyWidth: CGFloat {
-        let cells: [CGFloat] = [recordOnlyPill, pause, divider, draw, divider, recordOnlyStop]
+        let cells: [CGFloat] = [recordOnlyPill, pause, divider, draw, notes, divider, recordOnlyStop]
         return 8 + 8 + cells.reduce(0, +) + spacing * CGFloat(cells.count - 1)
     }
 }

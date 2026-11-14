@@ -7,7 +7,7 @@
 //
 //   - the countdown before it starts (a big number on the island at the notch,
 //     NotchStatusController.swift)
-//   - the floating control bar, Record view only (a meeting's controls live on
+//   - the floating control bar, Record only (a meeting's controls live on
 //     the meeting bar instead)
 //   - the border around what is being recorded
 //
@@ -59,7 +59,7 @@ final class RecordingChrome {
     }
 }
 
-// MARK: - Control bar (Record view)
+// MARK: - Control bar (Record)
 
 /// A QuickTime-style floating bar for a recording started from the Record
 /// view: REC dot and timer, pause or resume, stop. Ported in shape from
@@ -137,6 +137,7 @@ final class RecordingControlBarController {
 private struct RecordingControlBarView: View {
     @ObservedObject var coordinator: CoordinatorController
     @ObservedObject private var shortcuts = ShortcutStore.shared
+    @ObservedObject private var notes = SessionNotes.shared
 
     private typealias L = MeetingBarLayout
 
@@ -160,6 +161,14 @@ private struct RecordingControlBarView: View {
                 coordinator.toggleDrawing()
             }
             .disabled(!coordinator.canDraw && !coordinator.isDrawing)
+            // The notes bar: the same action and window as the menu bar's Show Notes.
+            BarLabelledButton(
+                symbol: "note.text", title: "Notes", width: L.notes, on: notes.effectiveEnabled,
+                help: MeetingBarModel.help(notes.effectiveEnabled ? "Close the notes bar" : "Open the notes bar",
+                                           .toggleNotes, bindings),
+                spoken: notes.effectiveEnabled ? "Close the notes bar" : "Open the notes bar") {
+                notes.toggle()
+            }
             BarDivider()
             BarRedButton(title: "Stop", width: L.recordOnlyStop,
                          help: MeetingBarModel.help("Stop and save the recording", .toggleRecording, bindings),

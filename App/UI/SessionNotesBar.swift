@@ -355,24 +355,3 @@ struct SessionNotesBarContent: View {
             .strokeBorder(Color(nsColor: .separatorColor)))
     }
 }
-
-/// The Notes button for the Record view: one tap opens or closes this
-/// session's notes bar, and it reads "on" whenever the bar is open or will
-/// open (before Record is pressed it sets what the session starts with).
-struct SessionNotesButton: View {
-    @EnvironmentObject private var coordinator: CoordinatorController
-    @ObservedObject private var notes = SessionNotes.shared
-
-    var body: some View {
-        let on = notes.effectiveEnabled
-        Toggle(isOn: Binding(get: { on }, set: { _ in notes.toggle() })) {
-            Label("Notes", systemImage: "note.text")
-        }
-        .toggleStyle(.button)
-        .controlSize(.large)
-        .help(on
-              ? "Close the notes bar. Notes already written stay with the session."
-              : "Open a small notes bar. Each note is timed to the recording from your first keystroke and saved with the session, where Sessions can analyse it.")
-        .onAppear { notes.attach(coordinator) }
-    }
-}

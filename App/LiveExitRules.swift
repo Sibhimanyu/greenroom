@@ -94,7 +94,7 @@ enum LiveExit {
                               s.isRecording ? recordingNote : nil),
                 choices: withShrink([.leaveMeeting], s) + [.cancel])
         case .recordOnly, .idle:
-            // The Record studio is not a meeting window; it has no close prompt here.
+            // A recording has no window of its own to close; the bar is controlled by Stop.
             return nil
         }
     }

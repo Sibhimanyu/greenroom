@@ -316,7 +316,7 @@ enum ShortcutAction: String, CaseIterable {
         switch self {
         case .startClass: return "Same as the Start button."
         case .endSession: return "Asks before it ends the class."
-        case .toggleRecording: return "While a class is live or Record is ready."
+        case .toggleRecording: return "Starts a recording when nothing is live (with the countdown); during a class or a recording it starts or stops the tape."
         case .togglePause: return "Pauses the recording file only. The meeting carries on, and the file picks up with no gap."
         case .toggleDrawing: return "Opens the drawing tools over the screen you share, or closes them. Marks show in the meeting and the recording."
         case .clip1: return "Marks the moment that just happened, one minute back."

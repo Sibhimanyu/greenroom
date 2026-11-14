@@ -170,12 +170,6 @@ struct ContentView: View {
         #endif
         .onChange(of: homeHasFooter) { _, _ in resizeWindow(animated: true) }
         .onChange(of: coordinator.meetingMode) { _, _ in resizeWindow(animated: true) }
-        .onChange(of: coordinator.recordStudioShown) { _, shown in
-            // A recording started from the menu bar or a hotkey opens in this
-            // window, on Home, wherever the window was.
-            if shown { coordinator.mainPage = .home }
-            resizeWindow(animated: true)
-        }
         // Leaving full screen puts the window back at the frame it had going
         // in, which may be Home's size under a page: size it for the page.
         .onReceive(NotificationCenter.default.publisher(for: NSWindow.didExitFullScreenNotification)) { note in
@@ -238,11 +232,9 @@ struct ContentView: View {
         // never changes height during a page change. Subtitle only, never a
         // navigation title: the window is still found by its title.
         .pageToolbar(back: chromeOnPage ? PageBack(label: backLabel, action: { coordinator.goBack() }) : nil,
-                     subtitle: coordinator.recordStudioShown && coordinator.mainPage.isHome ? RecordStudioView.subtitle(for: coordinator)
-                                                : chromeOnPage ? pageSubtitle : "")
+                     subtitle: chromeOnPage ? pageSubtitle : "")
         .toolbar {
-            // Record's own toolbar (Done) lives in RecordStudioContent.
-            if !chromeOnPage && !coordinator.recordStudioShown {
+            if !chromeOnPage {
                 // The switcher is the toolbar's centre and the only main choice;
                 // the leading side is empty. Sessions, Help and Settings are the
                 // places and utilities, trailing.
@@ -313,18 +305,12 @@ struct ContentView: View {
     private var pageLayers: some View {
         ZStack(alignment: .topLeading) {
             if homeMounted {
-                Group {
-                    if coordinator.recordStudioShown {
-                        RecordStudioView()
-                    } else {
-                        homeContent
-                    }
-                }
+                homeContent
                 // 24pt at the sides (Home is one column, 2026-11-13); 20pt top and
-                // bottom, which the heights assume. Record's studio keeps 32.
-                .padding(.horizontal, coordinator.recordStudioShown ? 32 : 24)
-                .padding(.vertical, coordinator.recordStudioShown ? 20 : HomeView.verticalMargin)
-                .frame(minWidth: coordinator.recordStudioShown ? Self.minimumWindowWidth : homeMinWidth, minHeight: homeWindowHeight)
+                // bottom, which the heights assume.
+                .padding(.horizontal, 24)
+                .padding(.vertical, HomeView.verticalMargin)
+                .frame(minWidth: homeMinWidth, minHeight: homeWindowHeight)
                 .frame(width: homePin?.width, height: homePin?.height)
                 // Pinned to the top while the window catches up to a new
                 // height; otherwise the content is centred and everything
@@ -474,7 +460,6 @@ struct ContentView: View {
     /// Home's own height, whichever page is up: Home is laid out at this while
     /// it fades, so it must not follow `onPage`.
     private var homeWindowHeight: CGFloat {
-        if coordinator.recordStudioShown { return RecordStudioView.windowHeight }
         // 20pt of padding top and bottom around the column, whose height is
         // the sum of its fixed parts (HomeView.columnHeight).
         var height: CGFloat = HomeView.verticalMargin * 2 + HomeView.columnHeight
@@ -506,7 +491,7 @@ struct ContentView: View {
     /// opening size, which the user may shrink below.
     private var floorHeight: CGFloat { onPage ? Self.pageMinHeight : preferredWindowHeight }
     private var floorWidth: CGFloat {
-        onPage ? Self.pageMinWidth : coordinator.recordStudioShown ? Self.minimumWindowWidth
+        onPage ? Self.pageMinWidth
             : previewShown ? Self.expandedWindowWidth : Self.collapsedWindowWidth
     }
 
@@ -587,7 +572,7 @@ struct ContentView: View {
     /// top-left anchored, or gives the exact collapsed frame back. Under Reduce
     /// Motion there is no slide: the frame jumps and the card crossfades.
     private func previewChanged(_ shown: Bool) {
-        guard !onPage, !coordinator.recordStudioShown else {
+        guard !onPage else {
             previewMounted = shown
             return
         }

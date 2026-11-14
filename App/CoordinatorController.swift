@@ -190,6 +190,12 @@ final class CoordinatorController: ObservableObject {
         // A failed start is the exception to both guards below: it always needs
         // a card with a way out, wherever the panel is or is not.
         let failed = startReadiness.failure != nil
+        // A Record start has no panel and no meeting: the island carries it,
+        // its failure and its Try again, always.
+        if recordFlowHUD, let screen = DisplayResolver.mainDisplayScreen() ?? NSScreen.main {
+            ReadinessHUDController.show(startReadiness, on: screen)
+            return
+        }
         guard customUIMode || !sessionArranges || failed else {
             ReadinessHUDController.close()
             return
@@ -228,7 +234,12 @@ final class CoordinatorController: ObservableObject {
         }
     }
 
+    /// The island carries a Record start (no meeting panel exists for it).
+    private var recordFlowHUD = false
+
     private func resetStartReadiness() {
+        recordFlowHUD = false
+        lastStartWasRecordFlow = false
         startReadiness = .init(steps: StartStep.allCases.map {
             .init(label: $0.label, state: .pending)
         })
@@ -1424,7 +1435,7 @@ final class CoordinatorController: ObservableObject {
         // meeting onto a live session.
         guard !isRunning, !sceneInUse, !isStopping else { return }
         if meetingMode == .record {
-            getReadyToRecord()
+            startRecordingFlow()
             return
         }
         loadSecretsIfNeeded()
@@ -1556,7 +1567,7 @@ final class CoordinatorController: ObservableObject {
                 case .join:
                     try await joinAllInOne()
                 case .record:
-                    break // routed to getReadyToRecord before any of this
+                    break // routed to startRecordingFlow before any of this
                 }
 
                 try Task.checkCancellation()
@@ -2275,10 +2286,15 @@ final class CoordinatorController: ObservableObject {
             log("Recording is still saving \u{2014} wait a moment.")
             return
         }
-        // In the Record view the picture outlives each take: the shortcut
-        // starts or stops a take and leaves the picture up for the next.
+        // Nothing live and nothing starting: the shortcut records, through the
+        // same one flow as Home's Start Recording.
+        if !isRunning, !sceneInUse, !isRecording {
+            startRecordingFlow()
+            return
+        }
+        // A Record-mode take: stopping it also puts the picture away.
         if recordOnlyActive {
-            if isRecording { stopTake() } else { startTake() }
+            if isRecording { stopTake() }
             return
         }
         Task {
@@ -2374,17 +2390,17 @@ final class CoordinatorController: ObservableObject {
 
     // MARK: Record mode - get ready, then record, as often as you like
 
-    /// The Record view is open: the picture is up (compositor, cameras, screen
-    /// share) and the tape may or may not be rolling. No meeting, so neither
+    /// A Record-mode session: the picture is up (compositor, cameras, screen
+    /// share) for a take that is about to roll or is rolling. No meeting, so neither
     /// `stageLive` nor anything keyed to the meeting is set. `isRecording` says
     /// whether a take is running.
     @Published private(set) var recordOnlyActive = false
-    /// A Get Ready is in flight, so Stop knows which teardown the half-started
-    /// picture needs, and the window can show the Record view straight away.
+    /// A Record start is in flight, so Stop knows which teardown the half-started
+    /// picture needs.
     @Published private(set) var startingRecordOnly = false
-    /// A take is starting or finishing, so the Record button waits.
+    /// A take is starting or finishing, so the bar's Stop waits.
     @Published private(set) var takeBusy = false
-    /// The Record view wants the live picture, whether or not Settings does.
+    /// A Record start wants the live picture, whether or not Settings does.
     /// Held apart from `shapePreviewOn` so closing the Webcam tab does not
     /// blank the Record view, and the other way round.
     private var studioPreviewOn = false
@@ -2421,77 +2437,120 @@ final class CoordinatorController: ObservableObject {
         if case .detail(let id) = mainPage { mainPage = .report(id) }
     }
 
-    /// The Record view is showing, or is about to.
-    var recordStudioShown: Bool { recordOnlyActive || startingRecordOnly }
-    /// The Record view is up and nothing is being recorded.
-    var recordStudioIdle: Bool { recordOnlyActive && !isRecording && !takeBusy }
+    /// Which start the failure card's Try again repeats.
+    private var lastStartWasRecordFlow = false
 
-    /// Get Ready, in Record mode: the picture half of a meeting's Start, with
-    /// the tape left stopped.
+    /// Start Recording, from Home, the shortcut or the menu bar: one flow, no
+    /// screen of its own. The steps and their order are `RecordStartFlow`'s.
     ///
-    /// The same picture as a meeting - same look, same share, same camera and
-    /// microphone - because the Webcam page is the one description of the
-    /// picture and Record is just another place to send it. Everything else a
-    /// Start does is left out: no meeting, no chat window, no tiling.
+    ///  1. The picture comes up (the island says "Opening your picture").
+    ///  2. The countdown, on the island (Off, 3, 5 or 10 from Settings). Esc or
+    ///     Cancel there puts everything away and Home is as it was.
+    ///  3. The tape rolls and the main window steps aside (MainWindowVisibility
+    ///     hides it once `isRecording`). The floating recording bar is the controller.
     ///
-    /// Nothing is recorded and no folder is made: that waits for Record, so
-    /// the picture can be looked at, adjusted and named first.
-    func getReadyToRecord() {
+    /// If a step fails the picture is put away, the island keeps the failure
+    /// with Try again and Close, and the main window comes back or stays.
+    ///
+    /// The picture is the same as a meeting's - same look, share, camera and
+    /// microphone - because the Webcam page is the one description of it. No
+    /// meeting, no chat window, no tiling. No folder is made until the tape is
+    /// about to roll.
+    func startRecordingFlow() {
         guard !isRunning, !sceneInUse, !isStopping else { return }
         isRunning = true
         startingRecordOnly = true
         studioPreviewOn = true
+        lastStartWasRecordFlow = true
+        recordFlowHUD = true
         statusLines = []
         Analytics.track(.sessionStart, [
             .mode: "record",
             .displays: String(NSScreen.screens.count)
         ])
+        startReadiness = .init(steps: RecordStartFlow.stepLabels.map { .init(label: $0, state: .pending) })
 
         startTask = Task {
+            var flow = RecordStartFlow()
+            var action = flow.handle(.begin)
             do {
-                try await buildScene()
-                try Task.checkCancellation()
-                recordOnlyActive = true
-                // A second camera, if switching is on, and the director to cut
-                // to it - the same as a meeting.
-                bringInExtraCameras()
-                log("Ready to record. Press Record when you are.")
+                run: while true {
+                    switch action {
+                    case .buildPicture:
+                        startReadiness.steps[0].state = .active
+                        try await buildScene()
+                        try Task.checkCancellation()
+                        recordOnlyActive = true
+                        // A second camera, if switching is on, and the director
+                        // to cut to it - the same as a meeting.
+                        bringInExtraCameras()
+                        startReadiness.steps[0].state = .done
+                        action = flow.handle(.pictureReady)
+                    case .countdown:
+                        let finished = await runRecordingCountdown()
+                        try Task.checkCancellation()
+                        action = flow.handle(finished ? .countdownFinished : .cancelled)
+                    case .beginTake:
+                        startReadiness.steps[1].state = .active
+                        try await beginTakeOrThrow()
+                        startReadiness.steps[1].state = .done
+                        action = flow.handle(.takeStarted)
+                    case .finish:
+                        // Every step settled: the island's "Live" beat, then it folds.
+                        finishStartReadiness()
+                        break run
+                    case .putAway:
+                        log("Recording cancelled.")
+                        await abandonRecordFlow()
+                        finishStartReadiness()
+                        break run
+                    case .showFailure, .idle:
+                        break run
+                    }
+                }
             } catch {
                 if error is CancellationError {
-                    log("Get Ready cancelled.")
+                    log("Recording start cancelled.")
+                    await abandonRecordFlow()
+                    finishStartReadiness()
                 } else {
-                    log("Couldn\u{2019}t get ready to record: \(error.localizedDescription)")
+                    let message = error.localizedDescription
+                    log("Couldn\u{2019}t start recording: \(message)")
                     Analytics.failure("record_start")
+                    await abandonRecordFlow()
+                    // The island keeps the failure, with Try again and Close.
+                    failStartReadiness(message)
+                    Notifier.post(title: "Greenroom couldn\u{2019}t start recording", body: message)
+                    mainWindowStartFailed()
                 }
-                // Left as Stop would leave it, so the next try begins clean
-                // and no camera stays open behind an abandoned attempt.
-                await tearDownRecordingScene()
-                mainWindowStartFailed()
             }
             isRunning = false
             startingRecordOnly = false
         }
     }
 
-    /// Record: a take, into a session folder of its own.
-    ///
-    /// Each take is a session in Sessions (kind "recording"), named by the
-    /// name typed at the moment Record is pressed. No clip buffer: the whole
-    /// take is on disk, so the clip shortcuts mark the recording itself, as
-    /// they do whenever one is running.
-    func startTake() {
-        // The Record button while the countdown runs is Cancel.
-        if recordingCountdown != nil { cancelRecordingCountdown(); return }
-        guard recordOnlyActive, !isRecording, !isSavingRecording, !takeBusy, !isStopping else { return }
-        Task {
-            guard await runRecordingCountdown() else { return }
-            startTakeNow()
-        }
+    /// Puts the half-started picture away exactly as Stop would, so the next try
+    /// begins clean and no camera stays open behind an abandoned attempt.
+    private func abandonRecordFlow() async {
+        discardEmptySessionFolder()
+        sessionFolder = nil
+        sessionStartedAt = nil
+        await tearDownRecordingScene()
+        recordOnlyActive = false
     }
 
-    private func startTakeNow() {
-        guard recordOnlyActive, !isRecording, !isSavingRecording, !takeBusy, !isStopping else { return }
+    /// The tape: a take, into a session folder of its own.
+    ///
+    /// Each take is a session in Sessions (kind "recording"), named by the name
+    /// on Home at the moment it starts. No clip buffer: the whole take is on
+    /// disk, so the clip shortcuts mark the recording itself, as they do
+    /// whenever one is running. Throws when the recorder cannot start.
+    private func beginTakeOrThrow() async throws {
+        guard recordOnlyActive, !isRecording, !isSavingRecording, !isStopping else {
+            throw CancellationError()
+        }
         takeBusy = true
+        defer { takeBusy = false }
         let startedAt = Date()
         let folder = SessionFolders.uniqueSessionFolder(
             named: SessionFolders.sessionFolderName(className: className, started: startedAt,
@@ -2499,40 +2558,29 @@ final class CoordinatorController: ObservableObject {
             in: SessionFolders.recordingsDirectory)
         sessionFolder = folder
         sessionStartedAt = startedAt
-        Task {
-            do {
-                try await beginRecording()
-                // Only once the tape is rolling: a take that fails before
-                // this leaves an empty folder, which is then removed.
-                var metadata = SessionMetadata()
-                metadata.kind = SessionMetadata.Kind.recording.rawValue
-                let typed = SessionFolders.sanitizedClassName(className)
-                metadata.title = typed.isEmpty ? nil : typed
-                metadata.save(in: folder)
-                log("Recording into \u{201C}\(folder.lastPathComponent)\u{201D} in Documents/Greenroom.")
-            } catch {
-                log("Couldn\u{2019}t start recording: \(error.localizedDescription)")
-                Analytics.failure("record_start")
-                discardEmptySessionFolder()
-                sessionFolder = nil
-                sessionStartedAt = nil
-            }
-            takeBusy = false
+        do {
+            try await beginRecording()
+            // Only once the tape is rolling: a take that fails before this
+            // leaves an empty folder, which is then removed.
+            var metadata = SessionMetadata()
+            metadata.kind = SessionMetadata.Kind.recording.rawValue
+            let typed = SessionFolders.sanitizedClassName(className)
+            metadata.title = typed.isEmpty ? nil : typed
+            metadata.save(in: folder)
+            log("Recording into \u{201C}\(folder.lastPathComponent)\u{201D} in Documents/Greenroom.")
+        } catch {
+            discardEmptySessionFolder()
+            sessionFolder = nil
+            sessionStartedAt = nil
+            throw error
         }
     }
 
-    /// Stop, in the Record view: the file is finished and saved, the picture
-    /// stays up for the next take.
+    /// Stop, from the recording bar, the shortcut or the menu: the file is
+    /// finished and saved, the picture is put away and Home comes back.
     func stopTake() {
         guard recordOnlyActive, isRecording, !takeBusy else { return }
-        takeBusy = true
-        Task {
-            let saved = await finishTake()
-            takeBusy = false
-            // Last, as after a class: the upload question waits for
-            // everything else to have finished.
-            if let saved { recordingFinished(path: saved) }
-        }
+        stopRecordingSession()
     }
 
     /// Finishes the tape, adopts the clip marks and closes the take's
@@ -2570,26 +2618,7 @@ final class CoordinatorController: ObservableObject {
         return saved
     }
 
-    /// Done, in the Record view: asks first when a take is rolling, because
-    /// leaving is the one button that would end it. Cancel keeps recording.
-    func confirmAndCloseRecordStudio() {
-        guard recordStudioShown, !isStopping else { return }
-        if isRecording {
-            NSApp.activate(ignoringOtherApps: true)
-            let alert = NSAlert()
-            alert.messageText = "Stop recording and leave?"
-            alert.informativeText = "The recording is finished and saved to Documents/Greenroom first, then the camera turns off."
-            alert.addButton(withTitle: "Stop and Save")
-            alert.addButton(withTitle: "Keep Recording")
-            // The reflex answer is the one that loses nothing.
-            alert.buttons[0].keyEquivalent = ""
-            alert.buttons[1].keyEquivalent = "\r"
-            guard alert.runModal() == .alertFirstButtonReturn else { return }
-        }
-        stopRecordingSession()
-    }
-
-    /// Leaves the Record view: any take finished and saved first, then the
+    /// Ends a Record-mode session: any take finished and saved first, then the
     /// picture torn down exactly as End Session leaves it, so the camera light
     /// goes off.
     ///
@@ -3654,9 +3683,7 @@ final class CoordinatorController: ObservableObject {
     /// second confirmation, and asking again during teardown would be a dialog
     /// nobody can act on usefully.
     var hasLiveSession: Bool {
-        // The Record view with the tape stopped is only a picture: nothing is
-        // lost by quitting from it, so it is not asked about.
-        !isStopping && (isRunning || (sceneInUse && !recordStudioIdle) || isRecording)
+        !isStopping && (isRunning || sceneInUse || isRecording)
     }
 
     /// Asks before quitting out from under a live class.
@@ -3890,6 +3917,7 @@ final class CoordinatorController: ObservableObject {
         customUIGridTask = nil
         ParticipantGridWindowController.close()
         ReadinessHUDController.close()
+        recordFlowHUD = false
         finishStartReadiness()
     }
 
@@ -3901,7 +3929,7 @@ final class CoordinatorController: ObservableObject {
             for _ in 0..<50 where isRunning || isStopping {
                 try? await Task.sleep(nanoseconds: 200_000_000)
             }
-            start()
+            if lastStartWasRecordFlow { startRecordingFlow() } else { start() }
         }
     }
 
@@ -4748,7 +4776,7 @@ struct MeetingPreset: Codable, Identifiable, Hashable {
 enum MeetingMode: String, CaseIterable, Identifiable {
     case create, join
     /// No meeting: the Webcam page's picture recorded to this Mac. See
-    /// `getReadyToRecord`.
+    /// `startRecordingFlow`.
     case record
 
     var id: String { rawValue }

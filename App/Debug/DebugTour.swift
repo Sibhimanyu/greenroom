@@ -224,13 +224,11 @@ enum DebugTour {
         case "home":
             c.showOnboarding = false
             c.mainPage = .home
-            // The opposite of getReadyToRecord, as the Record view's Done does.
-            if c.recordOnlyActive, !c.isRecording { c.stopRecordingSession() }
             ChatWindowController.close()
             closeEditor()
             for w in opened where !MainWindow.matches(w) { w.close() }
             opened.removeAll()
-            for _ in 0..<40 where c.recordStudioShown || c.isStopping {
+            for _ in 0..<40 where c.isStopping {
                 try? await Task.sleep(nanoseconds: 100_000_000)
             }
         case "sessions":
@@ -248,12 +246,6 @@ enum DebugTour {
                 return note
             }
             c.mainPage = .report(p.folder.path)
-        case "record":
-            // Same call as Home's Record mode (getReadyToRecord). It opens the
-            // camera/screen preview; it does not record or start a meeting.
-            c.mainPage = .home
-            c.getReadyToRecord()
-            note["note"] = "camera/screen preview started; nothing recording"
         case "editor":
             guard let p = ScreenroomLibrary.presentations().first(where: { $0.recording != nil }),
                   let url = p.recording else { throw TourError("no recording") }
@@ -329,7 +321,6 @@ enum DebugTour {
         guard let c = CoordinatorController.shared else { return }
         c.showOnboarding = false
         c.mainPage = .home
-        if c.recordOnlyActive, !c.isRecording { c.stopRecordingSession() }
         ChatWindowController.close()
         for w in opened where !MainWindow.matches(w) { w.close() }
         opened.removeAll()

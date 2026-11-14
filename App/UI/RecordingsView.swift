@@ -938,6 +938,8 @@ struct RecordingsView: View {
         let folder = recording.url.deletingLastPathComponent()
         do {
             try FileManager.default.trashItem(at: recording.url, resultingItemURL: nil)
+            // Logged, so a missing recording can always be traced to a delete.
+            coordinator.log("Moved to Trash: \(folder.lastPathComponent)/\(recording.url.lastPathComponent)")
             let sidecar = SessionClipStore.sidecarURL(for: recording.url)
             try? FileManager.default.trashItem(at: sidecar, resultingItemURL: nil)
             // Only clips cut FROM this recording. Now that clips share the
@@ -973,6 +975,7 @@ struct RecordingsView: View {
         }
         if meaningful.isEmpty {
             try? FileManager.default.trashItem(at: folder, resultingItemURL: nil)
+            coordinator.log("Moved to Trash: \(folder.lastPathComponent) (empty after delete)")
         }
     }
 

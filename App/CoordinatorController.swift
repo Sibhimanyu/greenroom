@@ -2151,6 +2151,7 @@ final class CoordinatorController: ObservableObject {
         // sidecar, an empty notes.jsonl); see SessionFolderRules for the rule.
         guard SessionFolderRules.isEffectivelyEmpty(folder) else { return }
         try? FileManager.default.removeItem(at: folder)
+        log("Removed empty session folder: \(folder.lastPathComponent)")
     }
 
     /// Marries this session's pending marks to the file the recorder just finished.

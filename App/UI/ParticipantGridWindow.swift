@@ -2359,6 +2359,7 @@ private final class RootView: NSView {
         meetingTopBar.isHidden = !chrome
         bottomBar.isHidden = !chrome
         meetingTopBar.frame = NSRect(x: 0, y: height - barHeight, width: width, height: barHeight)
+        meetingTopBar.needsLayout = true   // re-lifts its tip above tiles added since
         bottomBar.frame = NSRect(x: 0, y: 0, width: width, height: toolbarHeight)
 
         // The slot form has no room for permanent chrome, so it lies over the

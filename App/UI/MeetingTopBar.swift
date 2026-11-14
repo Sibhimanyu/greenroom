@@ -216,6 +216,10 @@ final class MeetingTopBarView: NSView {
         // The tip hangs under the button, right edges level, in the superview's
         // space so it can sit over the stage without taking the bar's hit area.
         if let tip, let host = superview {
+            // Tiles and the stage are added to the same host after the tip, and
+            // later rebuilds add more, so keep it on top: front of the subview
+            // list, and a layer z above any sibling layer (render surfaces too).
+            if host.subviews.last !== tip { host.addSubview(tip, positioned: .above, relativeTo: nil) }
             tip.sizeToFitWidth(maxWidth: min(300, host.bounds.width - 20))
             let anchor = convert(shrinkButton.frame, to: host)
             let x = min(max(10, anchor.maxX - tip.frame.width), host.bounds.width - tip.frame.width - 10)
@@ -247,6 +251,7 @@ final class MeetingShrinkTipView: NSView {
         host = GreenroomGlassAppKit.host(of: backing)
         super.init(frame: .zero)
         wantsLayer = true
+        layer?.zPosition = 1000
         label.stringValue = message
         label.font = .systemFont(ofSize: 12)
         label.textColor = MeetingTheme.textNS

@@ -15,6 +15,7 @@ Rule: while a class is live, nothing may leave the teacher with a running sessio
 | Whiteboard window | Closes; drawing mode ends, the class goes on | Draw on the control bar, menu bar or shortcut | None needed. |
 | Floating recording bar and Record studio bar | Borderless, no close button | Menu bar Stop/Start Recording, Dock click | None needed. |
 | Main Greenroom window | Closes; the class goes on | Dock click, Show Greenroom, menu bar live header. It reopens on Home, which shows the live state (End Session and Record drawn only while live). | Dock click while live brings the meeting forward instead (`applicationShouldHandleReopen`). |
+| Main Greenroom window | Hidden (ordered out, not closed) when a session goes live: a meeting joined with the readiness card done, or a Record take running. Never hidden while getting ready, so a failed start leaves it in place. Frame remembered. | Dock click, Show Greenroom and the menu bar live header bring back the meeting window, control bar or recording bar, not this window. On purpose: menu bar "Open Greenroom Window", Sessions..., Last: ..., Settings... (own window); it then stays until the next session. On End, Leave, Stop recording, host-ended or dropped meeting, or a failure: back at its frame on Home, ordered front without activating (a full-screen app keeps focus). A deliberate quit does not reshow it. | `App/MainWindowVisibility.swift` (pure, `Tests/MainWindowVisibilityTests.swift`); coordinator `reconcileMainWindow`. |
 | Browser window (a shared page) | Closes or minimises; the class goes on | Same sharing controls as before | None needed. |
 
 ## Getting back
@@ -30,3 +31,5 @@ These are deliberate clicks, so the app activates. Nothing here runs on its own.
 ## Needs a real meeting to verify
 
 The sheet on a non-activating panel, the Dock click while shrunk, and the logout path (the quit event's reason code) were not driven here.
+
+The hidden main window, its ways back and the failure rule are in the Main Greenroom window rows above. Not driven here: the hide and restore in a real class and a real take, a full-screen app keeping focus on restore, and the host-ended path.

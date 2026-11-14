@@ -53,6 +53,9 @@ final class RecordingChrome {
         }
     }
 
+    /// The way back to a recording whose main window is hidden: the bar, in front.
+    func bringBarForward() { bar.bringForward() }
+
     func teardown() {
         countdown.hide(); border.hide(); bar.hide()
     }
@@ -215,6 +218,8 @@ final class RecordingControlBarController {
     }
 
     func hide() { panel?.orderOut(nil) }
+
+    func bringForward() { panel?.orderFrontRegardless() }
 
     private final class BarPanel: NSPanel {
         override var canBecomeKey: Bool { false }

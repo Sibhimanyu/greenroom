@@ -163,6 +163,7 @@ struct MenuBarView: View {
     /// an existing window (showMainWindow) found nothing and silently did
     /// nothing (reproduced live).
     private func showMain() {
+        coordinator.mainWindowOpenedOnPurpose()
         openWindow(id: "main")
         coordinator.showMainWindow()
     }
@@ -196,6 +197,7 @@ struct MenuBarView: View {
             // A live class comes forward as itself (meeting window or control
             // bar); with none, or in the Record view, the main window shows it.
             if !coordinator.bringLiveSessionForward() { showMain() }
+        case .openGreenroomWindow: home(coordinator.meetingMode)
         case .checkForUpdates: checkForUpdates()
         case .howItWorks: NSWorkspace.shared.open(AppLinks.safety)
         case .quit: NSApp.terminate(nil)

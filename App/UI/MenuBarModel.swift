@@ -79,7 +79,7 @@ enum MenuBarAction: Equatable {
     case newMeeting, joinMeeting, record
     case sessions, openLastSession
     case settings
-    case showGreenroom, checkForUpdates, howItWorks, quit
+    case showGreenroom, openGreenroomWindow, checkForUpdates, howItWorks, quit
     case toggleRecording, togglePause
     case toggleNotes, snapBack, toggleSpeakerTile, toggleDrawing
     case endSession
@@ -183,6 +183,8 @@ enum MenuBarModel {
                 out.append(.separator)
             }
             out.append(action(.showGreenroom, "Show Greenroom", "macwindow", key(.openGreenroom)))
+            // While live the main window is out of the way; this is how to bring Home back on purpose.
+            out.append(action(.openGreenroomWindow, "Open Greenroom Window", "house"))
             out.append(action(.quit, "Quit Greenroom", "power"))
             return out
         }

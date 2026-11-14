@@ -26,6 +26,8 @@ final class CoordinatorController: ObservableObject {
     /// deadlocking the app into
     /// force-quit territory.
     func prepareForTermination() {
+        // A deliberate quit: the main window is not shown again on the way out.
+        applyMainWindow(mainWindowVisibility.handle(.quitting))
         stopCues()
         layoutFollowTask?.cancel()
         peopleViewTask?.cancel()
@@ -1179,11 +1181,91 @@ final class CoordinatorController: ObservableObject {
             }
             .store(in: &cancellables)
 
+        // The main window steps aside while a class or recording is live. Read
+        // one hop later, so the values are the new ones.
+        objectWillChange
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in self?.reconcileMainWindow() }
+            .store(in: &cancellables)
+        // Anything that brings the main window forward while it is hidden for a
+        // session (a SwiftUI openWindow, a hotkey) is the person opening it on purpose.
+        NotificationCenter.default.publisher(for: NSWindow.didBecomeKeyNotification)
+            .sink { [weak self] note in
+                guard let window = note.object as? NSWindow else { return }
+                MainActor.assumeIsolated {
+                    guard let self, MainWindow.matches(window) else { return }
+                    self.mainWindowOpenedOnPurpose()
+                }
+            }
+            .store(in: &cancellables)
+
         cameraDirector.log = { [weak self] line in self?.log(line) }
         wireDrawing()
     }
 
     private var cancellables = Set<AnyCancellable>()
+
+    // MARK: The main window steps aside while live
+
+    private var mainWindowVisibility = MainWindowVisibility()
+    private var rememberedMainFrame: NSRect?
+
+    /// True once a session is actually live: a meeting joined with the readiness
+    /// card done, or a Record take running. nil while it is being torn down, so
+    /// the window comes back when the teardown ends, not when it begins.
+    private var mainWindowLiveSignal: Bool? {
+        if isStopping { return nil }
+        if recordOnlyActive { return isRecording }
+        return stageLive && !isRunning && startReadiness.failure == nil && startReadiness.steps.isEmpty
+    }
+
+    /// Applies the state machine to the current session state. True when it
+    /// brought the main window forward itself.
+    @discardableResult
+    private func reconcileMainWindow() -> Bool {
+        guard let live = mainWindowLiveSignal else { return false }
+        return applyMainWindow(mainWindowVisibility.handle(.liveChanged(live)))
+    }
+
+    /// A start failed at some step: the main window must be visible.
+    private func mainWindowStartFailed() {
+        applyMainWindow(mainWindowVisibility.handle(.startFailed))
+    }
+
+    /// The person asked for the main window (Sessions, Last, Open Greenroom
+    /// Window). It stays until the next session starts.
+    func mainWindowOpenedOnPurpose() {
+        _ = mainWindowVisibility.handle(.openedOnPurpose)
+    }
+
+    /// True when the main window is hidden because a session is live.
+    var mainWindowHiddenForSession: Bool { mainWindowVisibility.hiddenByUs }
+
+    @discardableResult
+    private func applyMainWindow(_ actions: [MainWindowVisibility.Action]) -> Bool {
+        var showed = false
+        for action in actions {
+            switch action {
+            case .rememberFrame:
+                rememberedMainFrame = MainWindow.current?.frame
+            case .hide:
+                MainWindow.current?.orderOut(nil)
+            case .restoreFrame:
+                if let window = MainWindow.current, let frame = rememberedMainFrame,
+                   NSScreen.screens.contains(where: { $0.visibleFrame.intersects(frame) }),
+                   window.frame != frame, !window.styleMask.contains(.fullScreen) {
+                    window.setFrame(frame, display: false)
+                }
+            case .goHome:
+                mainPage = .home
+            case .show:
+                // orderFront, not activate: a full-screen app keeps the focus.
+                MainWindow.current?.orderFront(nil)
+                showed = true
+            }
+        }
+        return showed
+    }
 
     private func chatSessionDidEnd() {
         layoutFollowTask?.cancel()
@@ -1550,6 +1632,7 @@ final class CoordinatorController: ObservableObject {
                 // recorder and the half-started meeting running behind the card
                 // (the CPU in Vision and AAC after a hung Start). Same teardown as
                 // End Session, minus closing the failure card.
+                mainWindowStartFailed()
                 stop(failure: message)
             }
             isRunning = false
@@ -1672,7 +1755,7 @@ final class CoordinatorController: ObservableObject {
             // The session pushed Greenroom to the back (finalizeLayout) so
             // the main app could take the stage - with the meeting over,
             // bring it home to front for the next thing.
-            showMainWindow()
+            if !reconcileMainWindow() { showMainWindow() }
             // Everything is over now - the meeting, the recording, the picture - so
             // the upload question is the last thing, and nothing waits on it.
             if let saving = savingTask {
@@ -2379,6 +2462,7 @@ final class CoordinatorController: ObservableObject {
                 // Left as Stop would leave it, so the next try begins clean
                 // and no camera stays open behind an abandoned attempt.
                 await tearDownRecordingScene()
+                mainWindowStartFailed()
             }
             isRunning = false
             startingRecordOnly = false
@@ -2522,6 +2606,7 @@ final class CoordinatorController: ObservableObject {
             if recordOnlyActive { await tearDownRecordingScene() }
             recordOnlyActive = false
             isStopping = false
+            reconcileMainWindow()
             // Last, as after a class: the upload question waits for
             // everything else to have finished.
             if let saved { recordingFinished(path: saved) }
@@ -3677,7 +3762,15 @@ final class CoordinatorController: ObservableObject {
     @discardableResult
     func bringLiveSessionForward() -> Bool {
         let state = reopenState
-        guard LiveExit.reopenHandledByMeeting(state) else { return false }
+        guard LiveExit.reopenHandledByMeeting(state) else {
+            // Record-only, window hidden for it: the recording bar is the way back,
+            // not the main window.
+            if state.isLive, mainWindowHiddenForSession {
+                recordingChrome.bringBarForward()
+                return true
+            }
+            return false
+        }
         NSApp.activate(ignoringOtherApps: true)
         switch LiveExit.reopenTarget(state) {
         case .meetingWindow:
@@ -3843,6 +3936,7 @@ final class CoordinatorController: ObservableObject {
     /// closed window is brought back by reopening the app (the same event as a
     /// Dock click, which the Window scene answers by recreating it).
     func bringMainWindowForward() {
+        mainWindowOpenedOnPurpose()
         if MainWindow.current != nil {
             showMainWindow()
         } else {

@@ -113,7 +113,7 @@ final class MenuBarModelTests: XCTestCase {
     func testLiveItemsAndOrder() {
         let a = actions(build(live { $0.canDraw = true }))
         XCTAssertEqual(a, [.showMeeting, .toggleRecording, .toggleNotes, .snapBack, .toggleSpeakerTile, .toggleDrawing,
-                           .endSession, .showGreenroom, .quit])
+                           .endSession, .showGreenroom, .openGreenroomWindow, .quit])
     }
 
     func testLayoutToolsHiddenWhenSessionArrangesNothing() {

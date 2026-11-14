@@ -98,6 +98,11 @@ final class LiveExitRulesTests: XCTestCase {
         XCTAssertEqual(LiveExit.reopenTarget(s), .controlBar)
     }
 
+    func testReopenWithTheMiniUpFrontsTheMini() {
+        let s = LiveExit.ReopenState(isLive: true, hasMeetingSurfaces: true, meetingShrunk: true, miniOpen: true)
+        XCTAssertEqual(LiveExit.reopenTarget(s), .mini)
+    }
+
     func testReopenRecordOnlyShowsMainWindowLiveState() {
         let s = LiveExit.ReopenState(isLive: true, hasMeetingSurfaces: false, meetingShrunk: false)
         XCTAssertEqual(LiveExit.reopenTarget(s), .mainWindow)

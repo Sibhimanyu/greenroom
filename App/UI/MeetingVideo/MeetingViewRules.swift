@@ -333,3 +333,53 @@ enum MeetingVideoLayout {
         return (large, strip, me)
     }
 }
+
+// MARK: - The Mini window
+
+/// What the Mini window draws and where: whoever is talking, large, with you
+/// as a small inset in a corner. Alone, you fill it. Pure, so it is tested.
+enum MeetingMiniPlan {
+    /// The picture's size when first opened, 16:9, and the smallest it may shrink to.
+    static let defaultContent = CGSize(width: 320, height: 180)
+    static let minimum = CGSize(width: 240, height: 135)
+    /// Air between the window and the screen's edge on first use.
+    static let screenMargin: CGFloat = 20
+    /// Your inset: a share of the width, kept 16:9, and its gap from the corner.
+    static let insetFraction: CGFloat = 0.28
+    static let insetGap: CGFloat = 6
+
+    struct Choice: Equatable {
+        /// The other person on the stage, nil when you are alone.
+        var stage: UInt32?
+        /// You fill the window (alone in the meeting).
+        var selfFills: Bool
+        /// You are the small inset over the stage.
+        var showsInset: Bool
+    }
+
+    /// A Spotlight pick wins over the active speaker, and either only counts
+    /// while that person is still in the meeting. Nobody speaking yet shows the
+    /// first person. You are never your own stage unless you are alone.
+    static func choose(spotlightID: UInt32?, activeSpeakerID: UInt32?, otherIDs: [UInt32], hasMe: Bool) -> Choice {
+        guard !otherIDs.isEmpty else { return Choice(stage: nil, selfFills: hasMe, showsInset: false) }
+        let stage = [spotlightID, activeSpeakerID].compactMap { $0 }.first { otherIDs.contains($0) } ?? otherIDs[0]
+        return Choice(stage: stage, selfFills: false, showsInset: hasMe)
+    }
+
+    /// AppKit coordinates (origin bottom left) in a content of `size`: the stage
+    /// fills it, the inset sits top right (the hover controls take the bottom).
+    static func frames(in size: CGSize) -> (stage: CGRect, inset: CGRect) {
+        let width = (size.width * insetFraction).rounded()
+        let height = (width * 9 / 16).rounded()
+        let inset = CGRect(x: size.width - insetGap - width, y: size.height - insetGap - height, width: width, height: height)
+        return (CGRect(origin: .zero, size: size), inset)
+    }
+
+    /// Where it opens the first time: bottom right of the screen's visible
+    /// frame, a margin in from both edges.
+    static func firstFrame(content: CGSize = defaultContent, on visible: CGRect) -> CGRect {
+        let width = min(content.width, max(minimum.width, visible.width - screenMargin * 2))
+        let height = (width * 9 / 16).rounded()
+        return CGRect(x: visible.maxX - screenMargin - width, y: visible.minY + screenMargin, width: width, height: height)
+    }
+}

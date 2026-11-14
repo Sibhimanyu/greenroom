@@ -148,7 +148,7 @@ final class ShortcutRuntime {
             case .shrinkMeeting:
                 c.toggleMeetingShrunk() // custom-UI meetings only; guards itself
             case .shrinkToBar:
-                c.shrinkMeetingToBar() // normally answered by the meeting window itself
+                c.collapseMeeting() // normally answered by the meeting window itself
             case .cycleMeetingView:
                 ParticipantGridWindowController.cycleMeetingView()
             case .openGreenroom:

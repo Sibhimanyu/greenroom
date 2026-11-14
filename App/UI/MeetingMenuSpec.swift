@@ -274,7 +274,7 @@ enum MeetingMenus {
             info.append(.separator)
             info.append(.item("Copy invite link") { a.copy(facts.joinURL, "Invite link") })
         }
-        if let shrink = a.shrink { out.append(.item("Shrink to the control bar", shrink)) }
+        if let shrink = a.shrink { out.append(.item("Shrink to the Mini", shrink)) }
         out.append(.submenu("Meeting info", enabled: facts.hasInvite, info))
         out.append(.item("Open this meeting in the Zoom app\u{2026}",
                          enabled: facts.hasInvite,

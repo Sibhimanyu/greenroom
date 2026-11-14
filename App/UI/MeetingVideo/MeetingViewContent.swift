@@ -46,6 +46,10 @@ struct MeetingViewSnapshot: Equatable {
     var peopleWaiting: [MeetingWaitingRow] = []
     var canDeny = false
     var isHost = false
+    /// Mini: the other person on the stage, you as the small inset, or you alone, large.
+    var miniStage: MeetingViewPerson?
+    var miniInset: MeetingViewPerson?
+    var miniSelfFills = false
 }
 
 struct MeetingViewSlotPlan: Equatable {
@@ -67,6 +71,12 @@ final class MeetingViewContentView: NSView {
     /// The title bar's height: the content starts below it.
     static let titleInset: CGFloat = 28
     static let pad: CGFloat = 4
+    /// The Mini has no title bar and no air: the picture fills the window.
+    private var topInset: CGFloat { view == .mini ? 0 : Self.titleInset }
+    private var edgePad: CGFloat { view == .mini ? 0 : Self.pad }
+    /// The Mini's hover strip (nil in every other view).
+    private(set) var miniChrome: MeetingMiniChrome?
+    private var hoverArea: NSTrackingArea?
 
     // Callbacks the live window wires.
     var onChange: (() -> Void)?
@@ -143,6 +153,14 @@ final class MeetingViewContentView: NSView {
         default: break
         }
         addSubview(failure)
+        if view == .mini {
+            layer?.cornerRadius = 10
+            layer?.masksToBounds = true
+            let chrome = MeetingMiniChrome(frame: .zero)
+            miniChrome = chrome
+            addSubview(chrome)
+            chrome.place(in: bounds)
+        }
     }
 
     required init?(coder: NSCoder) { nil }
@@ -150,12 +168,27 @@ final class MeetingViewContentView: NSView {
     override var isFlipped: Bool { false }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
+    // MARK: Hover (the Mini's strip)
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let hoverArea { removeTrackingArea(hoverArea) }
+        guard view == .mini else { return }
+        let area = NSTrackingArea(rect: .zero, options: [.activeAlways, .mouseEnteredAndExited, .inVisibleRect],
+                                  owner: self, userInfo: nil)
+        addTrackingArea(area)
+        hoverArea = area
+    }
+
+    override func mouseEntered(with event: NSEvent) { miniChrome?.setVisible(true) }
+    override func mouseExited(with event: NSEvent) { miniChrome?.setVisible(false) }
+
     // MARK: Geometry
 
     /// Where video may go: under the title bar, with a little air.
     var area: NSRect {
-        NSRect(x: 0, y: 0, width: bounds.width, height: max(0, bounds.height - Self.titleInset))
-            .insetBy(dx: Self.pad, dy: Self.pad)
+        NSRect(x: 0, y: 0, width: bounds.width, height: max(0, bounds.height - topInset))
+            .insetBy(dx: edgePad, dy: edgePad)
     }
 
     // MARK: Step 1: where the tiles go
@@ -219,6 +252,19 @@ final class MeetingViewContentView: NSView {
         case .selfView:
             guard let me = s.me else { return [] }
             return [MeetingViewSlotPlan(slot: .selfView, person: me, frame: area, wanted: .p360, floor: .p180, priority: 60)]
+        case .mini:
+            if s.miniSelfFills, let me = s.me {
+                return [MeetingViewSlotPlan(slot: .selfView, person: me, frame: area, wanted: .p360, floor: .p180, priority: 60)]
+            }
+            guard let stage = s.miniStage else { return [] }
+            var plans = [MeetingViewSlotPlan(slot: .stage, person: stage, frame: area,
+                                             wanted: .p360, floor: .p180, priority: 15)]
+            if let me = s.miniInset {
+                let inset = MeetingMiniPlan.frames(in: area.size).inset.offsetBy(dx: area.minX, dy: area.minY)
+                plans.append(MeetingViewSlotPlan(slot: .selfView, person: me, frame: inset,
+                                                 wanted: .p180, floor: .p90, priority: 61))
+            }
+            return plans
         case .people, .sharedScreen, .handsUp:
             return []
         }
@@ -336,6 +382,7 @@ final class MeetingViewContentView: NSView {
             if !s.spotlightPicked { return "Choose a student in the title bar" }
             return s.spotlight == nil ? "\(s.spotlightName.isEmpty ? "They" : s.spotlightName) left" : nil
         case .selfView: return s.me == nil ? "Not in the meeting yet" : nil
+        case .mini: return (s.miniStage == nil && !s.miniSelfFills) ? "Waiting for others" : nil
         case .sharedScreen: return s.share == nil ? "No one is sharing" : nil
         case .people, .handsUp: return nil
         }
@@ -368,7 +415,7 @@ final class MeetingViewContentView: NSView {
     }
 
     private func renderLists(_ s: MeetingViewSnapshot) {
-        let full = NSRect(x: 0, y: 0, width: bounds.width, height: max(0, bounds.height - Self.titleInset))
+        let full = NSRect(x: 0, y: 0, width: bounds.width, height: max(0, bounds.height - topInset))
         switch view {
         case .handsUp:
             hands.frame = full
@@ -416,5 +463,6 @@ final class MeetingViewContentView: NSView {
         // The runtime re-plans every second; between ticks keep what is there coherent.
         if view == .people || view == .handsUp { renderLists(lastSnapshot) }
         layoutOverlays(lastSnapshot)
+        miniChrome?.place(in: bounds)
     }
 }

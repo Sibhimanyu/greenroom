@@ -174,11 +174,11 @@ final class ShortcutModelTests: XCTestCase {
         XCTAssertEqual(groups[1].slots.count, 10 + MeetingView.allCases.count, "the ten meeting actions and one per view")
     }
 
-    // MARK: Shrink meeting to control bar
+    // MARK: Shrink meeting to the Mini
 
     func testShrinkToBarIsCommandMInTheMeetingWindowOnly() {
         let shrink = ShortcutSlot.action(.shrinkToBar)
-        XCTAssertEqual(shrink.title(layouts: []), "Shrink meeting to control bar")
+        XCTAssertEqual(shrink.title(layouts: []), "Shrink meeting to the Mini")
         XCTAssertEqual(ShortcutBindings().combo(for: shrink), KeyCombo(keyCode: UInt32(kVK_ANSI_M), modifiers: KeyCombo.command))
         XCTAssertEqual(shrink.scope, .meetingWindow)
         XCTAssertEqual(shrink.group, .meeting)

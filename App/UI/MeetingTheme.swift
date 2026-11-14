@@ -61,6 +61,10 @@ enum MeetingTheme {
     /// Zoom's red: muted microphone, stopped camera, recording, End.
     static let redNS = ns(0xE02828)
     static let endNS = ns(0xE02828)
+    /// Amber, "this leaves the Mac": the border and label of a window shown on
+    /// the share. Mirrors the `--net` token (Brand.net).
+    static let netNS = ns(0xB9770E)
+    /// Small text on the dark window uses the same value, as Brand.netText does on dark.
     /// The raised hand.
     static let handNS = ns(0xFFC107)
 

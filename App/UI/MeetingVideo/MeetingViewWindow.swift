@@ -50,10 +50,18 @@ final class MeetingViewWindowController: NSObject, NSWindowDelegate {
     private var pickerSignature = ""
     var onClosedByUser: ((MeetingView) -> Void)?
 
+    // Show on my share (per window, this session only, off until switched on).
+    private(set) var showOnShare = false
+    private var shareBorder: ShareBorderOverlay?
+    private var shareButtons: [NSButton] = []
+
     init(view: MeetingView, frame: NSRect, screen: NSScreen?) {
         self.view = view
-        let panel = MeetingViewPanel(contentRect: frame,
-                                     styleMask: [.titled, .closable, .resizable, .nonactivatingPanel, .fullSizeContentView],
+        let isMini = view == .mini
+        let style: NSWindow.StyleMask = isMini
+            ? [.titled, .resizable, .nonactivatingPanel, .fullSizeContentView]
+            : [.titled, .closable, .resizable, .nonactivatingPanel, .fullSizeContentView]
+        let panel = MeetingViewPanel(contentRect: frame, styleMask: style,
                                      backing: .buffered, defer: false, screen: screen)
         self.panel = panel
         self.content = MeetingViewContentView(view: view, frame: NSRect(origin: .zero, size: frame.size))
@@ -63,37 +71,94 @@ final class MeetingViewWindowController: NSObject, NSWindowDelegate {
         panel.hidesOnDeactivate = false
         panel.appearance = NSAppearance(named: .darkAqua)     // Zoom's window is dark whatever the system is
         panel.titlebarAppearsTransparent = true
-        panel.titleVisibility = .visible
+        panel.titleVisibility = isMini ? .hidden : .visible
         panel.backgroundColor = MeetingTheme.windowNS
-        panel.level = .normal
-        panel.collectionBehavior = [.managed, .fullScreenAuxiliary]
+        panel.level = isMini ? .floating : .normal
+        panel.collectionBehavior = isMini ? [.canJoinAllSpaces, .fullScreenAuxiliary] : [.managed, .fullScreenAuxiliary]
         panel.keyable = view == .people
-        panel.minSize = NSSize(width: view.minimumPoints.width, height: view.minimumPoints.height + MeetingViewContentView.titleInset)
+        let title = isMini ? 0 : MeetingViewContentView.titleInset
+        panel.minSize = NSSize(width: view.minimumPoints.width, height: view.minimumPoints.height + title)
         panel.delegate = self
         content.autoresizingMask = [.width, .height]
         panel.contentView = content
-        if view == .spotlight || view == .sharedScreen { addPicker() }
+        if isMini {
+            // A small floating picture: no title bar, dragged by its background, 16:9, never key.
+            for button in [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton] {
+                panel.standardWindowButton(button)?.isHidden = true
+            }
+            panel.isMovableByWindowBackground = true
+            panel.hasShadow = true
+            panel.aspectRatio = NSSize(width: 16, height: 9)
+            GreenroomGlassAppKit.prepare(panel)
+            if let chrome = content.miniChrome {
+                chrome.onToggleShare = { [weak self] in self?.toggleShare() }
+                shareButtons = [chrome.share]
+            }
+        } else {
+            addTitleControls()
+        }
     }
 
     func windowWillClose(_ notification: Notification) {
+        releaseShare()
         if !closingByCode { onClosedByUser?(view) }
     }
 
-    // MARK: The title bar's picker
+    func windowDidResize(_ notification: Notification) { shareBorder?.sync() }
+    func windowDidMove(_ notification: Notification) { shareBorder?.sync() }
 
-    private func addPicker() {
-        let button = FirstClickPopUp(frame: NSRect(x: 0, y: 0, width: 190, height: 22), pullsDown: false)
-        button.controlSize = .small
-        button.font = .systemFont(ofSize: 12)
-        button.setAccessibilityLabel(view == .spotlight ? "Choose a student" : "Choose whose screen")
+    // MARK: Show on my share
+
+    func toggleShare() { setShowOnShare(!showOnShare) }
+
+    func setShowOnShare(_ on: Bool) {
+        guard on != showOnShare else { return }
+        showOnShare = on
+        if on { ShareVisibleWindows.add(panel.windowNumber) } else { ShareVisibleWindows.remove(panel.windowNumber) }
+        refreshShare()
+    }
+
+    /// The switch, the border and the label follow what is being shared right now.
+    func refreshShare() {
+        let kind = ShareVisibleWindows.kind
+        for button in shareButtons { ShowOnShareSwitch.apply(to: button, on: showOnShare, kind: kind) }
+        let marked = ShowOnShare.marksWindow(on: showOnShare, kind: kind)
+        if marked, shareBorder == nil { shareBorder = ShareBorderOverlay(parent: panel) }
+        shareBorder?.show(marked)
+    }
+
+    /// The window is closing: leave the registry, take the border down.
+    private func releaseShare() {
+        if showOnShare { ShareVisibleWindows.remove(panel.windowNumber) }
+        showOnShare = false
+        shareBorder?.close()
+        shareBorder = nil
+    }
+
+    // MARK: The title bar's controls: the picker, and the share switch beside it
+
+    private func addTitleControls() {
+        let hasPicker = view == .spotlight || view == .sharedScreen
+        let switchSize: CGFloat = 24
+        let pickerWidth: CGFloat = hasPicker ? 196 : 0
+        let host = NSView(frame: NSRect(x: 0, y: 0, width: pickerWidth + switchSize + 12, height: 28))
+        if hasPicker {
+            let button = FirstClickPopUp(frame: NSRect(x: 0, y: 3, width: 190, height: 22), pullsDown: false)
+            button.controlSize = .small
+            button.font = .systemFont(ofSize: 12)
+            button.setAccessibilityLabel(view == .spotlight ? "Choose a student" : "Choose whose screen")
+            host.addSubview(button)
+            picker = button
+        }
+        let share = ShowOnShareSwitch.make(size: switchSize) { [weak self] in self?.toggleShare() }
+        share.frame = NSRect(x: pickerWidth, y: 2, width: switchSize, height: switchSize)
+        host.addSubview(share)
+        shareButtons = [share]
+        ShowOnShareSwitch.apply(to: share, on: false, kind: ShareVisibleWindows.kind, pointSize: 12)
         let controller = NSTitlebarAccessoryViewController()
-        let host = NSView(frame: NSRect(x: 0, y: 0, width: 202, height: 28))
-        button.frame = NSRect(x: 0, y: 3, width: 190, height: 22)
-        host.addSubview(button)
         controller.view = host
         controller.layoutAttribute = .trailing
         panel.addTitlebarAccessoryViewController(controller)
-        picker = button
     }
 
     /// Rebuilt only when the choices change.
@@ -120,7 +185,7 @@ final class MeetingViewWindowController: NSObject, NSWindowDelegate {
         }
     }
 
-    func showPicker(_ show: Bool) { picker?.superview?.isHidden = !show }
+    func showPicker(_ show: Bool) { picker?.isHidden = !show }
 }
 
 // MARK: - The runtime
@@ -136,6 +201,10 @@ enum MeetingViewWindows {
     private static var frameFor: (MeetingView) -> (frame: NSRect, screen: NSScreen?)? = { _ in nil }
     private static var copyInvite: () -> Void = {}
     private static var openMeetingWindow: () -> Void = {}
+    /// What the Mini's hover strip does; set by the coordinator.
+    static var miniActions = MeetingMiniActions()
+    /// The screen the Mini first opens on (the Meeting window's), when it has no saved place.
+    private static var miniScreen: NSScreen?
 
     static func configure(client: ZoomMeetingSDKClient,
                           log: @escaping (String) -> Void,
@@ -173,6 +242,13 @@ enum MeetingViewWindows {
     static var openViews: Set<MeetingView> { Set(controllers.keys) }
     static func isOpen(_ view: MeetingView) -> Bool { controllers[view] != nil }
     static var anyOpen: Bool { !controllers.isEmpty }
+    /// The Mini draws video, so it is there only while the views are on.
+    static var miniAvailable: Bool { isEnabled }
+    static var miniIsOpen: Bool { controllers[.mini] != nil }
+    /// A view window other than the Mini is open (the Mini does not count as a view).
+    static var anyViewOpen: Bool { controllers.keys.contains { $0 != .mini } }
+    /// A window showing the active speaker large (the Mini counts for itself, not here).
+    static var speakerViewOpen: Bool { isOpen(.activeSpeaker) || isOpen(.speakerStrip) || isOpen(.spotlight) }
     static func owns(_ window: NSWindow) -> Bool { controllers.values.contains { $0.panel === window } }
 
     /// The Views menu's checkmarks and offer.
@@ -211,6 +287,25 @@ enum MeetingViewWindows {
         }
     }
 
+    /// The Mini opens at once (no queue, so going down from the window never flickers).
+    /// False when it cannot (the views are off, or the SDK is not in custom UI).
+    @discardableResult
+    static func openMini(on screen: NSScreen?) -> Bool {
+        guard miniAvailable else { return false }
+        if let existing = controllers[.mini] {
+            existing.panel.orderFrontRegardless()
+            return true
+        }
+        miniScreen = screen
+        create(.mini, at: nil)
+        return controllers[.mini] != nil
+    }
+
+    static func closeMini() { close(.mini) }
+
+    /// The Mini's own window number, for tests and the share registry's sake.
+    static func miniWindowNumber() -> Int? { controllers[.mini]?.panel.windowNumber }
+
     private static func create(_ view: MeetingView, at explicit: NSRect?) {
         guard controllers[view] == nil, let client else { return }
         let placed = explicit.map { (frame: $0, screen: nil as NSScreen?) } ?? frameFor(view)
@@ -219,6 +314,7 @@ enum MeetingViewWindows {
         let controller = MeetingViewWindowController(view: view, frame: frame, screen: screen)
         wire(controller, client: client)
         controllers[view] = controller
+        if view == .mini { controller.content.miniChrome?.actions = miniActions }
 
         let panel = controller.panel
         let key = "MeetingView.\(view.rawValue)"
@@ -238,6 +334,10 @@ enum MeetingViewWindows {
     }
 
     private static func defaultFrame(for view: MeetingView, on screen: NSScreen?) -> NSRect {
+        if view == .mini {
+            let visible = (miniScreen ?? screen ?? NSScreen.main)?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
+            return MeetingMiniPlan.firstFrame(on: visible)
+        }
         let area = (screen ?? NSScreen.main)?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
         let min = view.minimumPoints
         let width = Swift.min(area.width - 40, Swift.max(min.width * 1.6, 380))
@@ -302,7 +402,8 @@ enum MeetingViewWindows {
     /// ⌥⌘Z: every view goes out, or comes back, with the Meeting window.
     static func setHiddenTogether(_ hidden: Bool) {
         hiddenTogether = hidden
-        for controller in controllers.values {
+        // The Mini is a size of the Meeting window, not a view: it never hides this way.
+        for controller in controllers.values where controller.view != .mini {
             if hidden { controller.panel.orderOut(nil) } else { controller.panel.orderFrontRegardless() }
         }
     }
@@ -314,7 +415,8 @@ enum MeetingViewWindows {
         spotlightUserID = userID
         spotlightName = name
         log("Spotlight student: \(name)")
-        if isOpen(.spotlight) { tick() } else { open(.spotlight, at: frameFor(.spotlight)?.frame) }
+        // In the Mini the pick replaces the active speaker; no extra window opens.
+        if isOpen(.spotlight) || isOpen(.mini) { tick() } else { open(.spotlight, at: frameFor(.spotlight)?.frame) }
     }
 
     // MARK: Fallback
@@ -391,6 +493,7 @@ enum MeetingViewWindows {
         let now = Date()
         let roster = client.meetingRoster()
         let snapshot = makeSnapshot(client: client, roster: roster, now: now)
+        for controller in controllers.values { controller.refreshShare() }
 
         // Who is on screen, who has been away long enough to give its video back.
         var live: [MeetingViewWindowController] = []
@@ -479,6 +582,7 @@ enum MeetingViewWindows {
         switch view {
         case .activeSpeaker: return 10
         case .spotlight: return 11
+        case .mini: return 12
         case .speakerStrip: return 20
         case .multiSpeaker: return 30
         case .sharedScreen: return 40
@@ -552,6 +656,13 @@ enum MeetingViewWindows {
 
         if isOpen(.activeSpeaker) || isOpen(.speakerStrip) {
             s.stage = client.stagePerson().map(person)
+        }
+        if isOpen(.mini) {
+            let choice = MeetingMiniPlan.choose(spotlightID: spotlightUserID, activeSpeakerID: client.stagePerson()?.id,
+                                                otherIDs: s.others.map(\.id), hasMe: s.me != nil)
+            s.miniStage = choice.stage.flatMap { id in s.others.first { $0.id == id } }
+            s.miniInset = choice.showsInset ? s.me : nil
+            s.miniSelfFills = choice.selfFills
         }
         if isOpen(.multiSpeaker) {
             s.placeCount = min(3, s.others.count)

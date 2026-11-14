@@ -2,9 +2,9 @@
 //  MeetingShrinkRules.swift
 //  Greenroom
 //
-//  The pure decisions behind "shrink the meeting window to the control bar":
+//  The pure decisions behind "shrink the meeting window to the Mini":
 //  what the yellow traffic light and the minimise shortcut do, and when the
-//  one-time tip under the top bar's "Control bar" button is shown. Foundation
+//  one-time tip under the top bar's "Mini" button is shown. Foundation
 //  only, so the test target compiles this file as it is.
 //
 import Foundation
@@ -27,7 +27,7 @@ enum MeetingMinimize {
     }
 }
 
-/// The first-time callout under the top bar's "Control bar" button. Remembered
+/// The first-time callout under the top bar's "Mini" button. Remembered
 /// per Mac, in UserDefaults: it is gone for good once the teacher shrinks the
 /// meeting once (by any route) or closes the tip.
 enum MeetingShrinkTip {
@@ -35,7 +35,7 @@ enum MeetingShrinkTip {
 
     static func isDone(_ defaults: UserDefaults = .standard) -> Bool { defaults.bool(forKey: defaultsKey) }
 
-    /// Whether to show the tip: the window has a Control bar button and it has
+    /// Whether to show the tip: the window has a Mini button and it has
     /// not been shrunk or dismissed before on this Mac.
     static func shouldShow(canShrink: Bool, defaults: UserDefaults = .standard) -> Bool {
         canShrink && !isDone(defaults)
@@ -52,7 +52,7 @@ enum MeetingShrinkTip {
 
     /// The tip's words; `shortcut` is the bound combination's glyphs, empty if cleared.
     static func message(shortcut: String) -> String {
-        let base = "Shrink to the control bar to get back to your slides."
+        let base = "Shrink to the Mini window to get back to your slides."
         return shortcut.isEmpty ? base : base + " " + shortcut
     }
 }

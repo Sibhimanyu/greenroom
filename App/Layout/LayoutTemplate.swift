@@ -114,6 +114,26 @@ enum MeetingView: String, Codable, CaseIterable, Hashable {
     case spotlight
     /// Raised hands in order, with the waiting room on top. No video.
     case handsUp
+    /// The Mini window: the small floating picture a collapsed meeting becomes.
+    /// It runs on the view-window runtime but is never offered to a layout, the
+    /// Views menu or the shortcut list, and never read back from a saved layout.
+    case mini
+
+    /// Every view a person can choose: all but the Mini window.
+    static var allCases: [MeetingView] {
+        [.activeSpeaker, .gallery, .multiSpeaker, .speakerStrip, .selfView, .people, .sharedScreen, .spotlight, .handsUp]
+    }
+
+    /// Saved layouts name a view by its raw value. The Mini window is not a
+    /// layout piece, so a layout that says "mini" is rejected rather than opened.
+    init(from decoder: Decoder) throws {
+        let raw = try decoder.singleValueContainer().decode(String.self)
+        guard let view = MeetingView(rawValue: raw), view != .mini else {
+            throw DecodingError.dataCorrupted(.init(codingPath: decoder.codingPath,
+                                                    debugDescription: "Not a layout view: \(raw)"))
+        }
+        self = view
+    }
 
     var title: String {
         switch self {
@@ -126,6 +146,7 @@ enum MeetingView: String, Codable, CaseIterable, Hashable {
         case .sharedScreen: return "Shared screen"
         case .spotlight: return "Spotlight student"
         case .handsUp: return "Hands up"
+        case .mini: return "Mini window"
         }
     }
 
@@ -141,6 +162,7 @@ enum MeetingView: String, Codable, CaseIterable, Hashable {
         case .sharedScreen: return "Only the shared screen"
         case .spotlight: return "One student you choose, large"
         case .handsUp: return "Raised hands and the waiting room"
+        case .mini: return "A small floating picture of whoever is talking"
         }
     }
 
@@ -159,6 +181,7 @@ enum MeetingView: String, Codable, CaseIterable, Hashable {
         case .sharedScreen: return "display"
         case .spotlight: return "person.fill.viewfinder"
         case .handsUp: return "hand.raised.fill"
+        case .mini: return "pip"
         }
     }
 
@@ -174,6 +197,7 @@ enum MeetingView: String, Codable, CaseIterable, Hashable {
         case .sharedScreen: return CGSize(width: 320, height: 200)
         case .spotlight: return CGSize(width: 240, height: 135)
         case .handsUp: return CGSize(width: 240, height: 200)
+        case .mini: return MeetingMiniPlan.minimum
         }
     }
 
@@ -189,6 +213,7 @@ enum MeetingView: String, Codable, CaseIterable, Hashable {
         case .sharedScreen: return (6, 4)
         case .spotlight: return (4, 3)
         case .handsUp: return (3, 5)
+        case .mini: return (3, 2)
         }
     }
 }
@@ -406,6 +431,7 @@ struct LayoutTemplate: Codable, Identifiable, Equatable {
             case .speakerStrip: return !hasMeeting && !views.contains(.activeSpeaker)
             case .activeSpeaker: return !views.contains(.speakerStrip)
             case .multiSpeaker, .selfView, .people, .sharedScreen, .spotlight, .handsUp: return true
+            case .mini: return false
             }
         case .chat: return !existing.contains { $0.kind.isChat }
         case let .app(app):

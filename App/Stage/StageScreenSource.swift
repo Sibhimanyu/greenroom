@@ -59,6 +59,9 @@ final class StageScreenSource: NSObject, SCStreamOutput, SCStreamDelegate {
 
     private var stream: SCStream?   // under stateLock
     private var followTask: Task<Void, Never>?   // under stateLock
+    /// "Show on my share": watches the windows let into a display share.
+    private var exceptionTask: Task<Void, Never>?   // under stateLock
+    private var exceptionsApplied: Set<Int> = []    // under stateLock (written once in start)
     private let queue = DispatchQueue(label: "greenroom.stage.screen", qos: .userInteractive)
     private let maxSize: CGSize
     let captureAudio: Bool
@@ -217,7 +220,11 @@ final class StageScreenSource: NSObject, SCStreamOutput, SCStreamDelegate {
             // Greenroom's windows too, and are kept out only because the whole
             // app is excluded. If macOS does not list the app, say so.
             if own.isEmpty { Self.log("Greenroom is not in ScreenCaptureKit's application list, so its own windows are not excluded from this capture.") }
-            filter = SCContentFilter(display: display, excludingApplications: own, exceptingWindows: [])
+            // "Show on my share" windows are let back in: excepted from that exclusion.
+            let wanted = await MainActor.run { ShareVisibleWindows.effectiveNumbers }
+            let excepted = content.windows.filter { wanted.contains(Int($0.windowID)) }
+            stateLock.lock(); exceptionsApplied = wanted; stateLock.unlock()
+            filter = SCContentFilter(display: display, excludingApplications: own, exceptingWindows: excepted)
         case .app(let bundleID):
             filter = try appFilter(bundleID: bundleID, content: content, display: display,
                                    info: displayInfo, all: displays)
@@ -263,6 +270,7 @@ final class StageScreenSource: NSObject, SCStreamOutput, SCStreamDelegate {
         Self.log("Capture started: \(targetText).")
         if let label = windowLabel { watchForPicture(of: label) }
         if case .window(let id) = target, let pid = followPID { startFollowing(original: id, pid: pid) }
+        if case .display = target { startWatchingExceptions(displayID: display.displayID) }
     }
 
     /// The stream's settings for a filter: sized to the content, shrunk (never
@@ -367,8 +375,11 @@ final class StageScreenSource: NSObject, SCStreamOutput, SCStreamDelegate {
         if stopReason == nil { stopReason = reason }
         let following = followTask
         followTask = nil
+        let watching = exceptionTask
+        exceptionTask = nil
         stateLock.unlock()
         following?.cancel()
+        watching?.cancel()
         onFollowing = nil
         onFrame = nil
         onAudio = nil
@@ -407,6 +418,48 @@ final class StageScreenSource: NSObject, SCStreamOutput, SCStreamDelegate {
     }
 
     deinit { Self.log("Capture released: \(targetText).") }
+}
+
+// MARK: Show on my share
+
+extension StageScreenSource {
+
+    /// A look a second at which of our windows are let into the display share
+    /// (a window that came on screen, went away, or was switched on or off). The
+    /// filter is rebuilt and handed to the running stream only when that set changed.
+    fileprivate func startWatchingExceptions(displayID: CGDirectDisplayID) {
+        stateLock.lock(); let first = exceptionsApplied; stateLock.unlock()
+        let task = Task.detached { [weak self] in
+            var applied = first
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 1_000_000_000)
+                guard !Task.isCancelled, let self else { return }
+                let wanted = await MainActor.run { ShareVisibleWindows.effectiveNumbers }
+                guard wanted != applied else { continue }
+                if await self.updateExceptions(wanted, displayID: displayID) { applied = wanted }
+            }
+        }
+        stateLock.lock(); exceptionTask = task; stateLock.unlock()
+    }
+
+    private func updateExceptions(_ wanted: Set<Int>, displayID: CGDirectDisplayID) async -> Bool {
+        stateLock.lock(); let running = stream; stateLock.unlock()
+        guard let running,
+              let content = try? await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: false),
+              let display = content.displays.first(where: { $0.displayID == displayID }) else { return false }
+        let own = content.applications.filter { $0.bundleIdentifier == Bundle.main.bundleIdentifier }
+        let excepted = content.windows.filter { wanted.contains(Int($0.windowID)) }
+        let filter = SCContentFilter(display: display, excludingApplications: own, exceptingWindows: excepted)
+        do {
+            try await running.updateContentFilter(filter)
+        } catch {
+            Self.log("Updating which Greenroom windows show on the share failed: \(Self.describe(error)).")
+            return false
+        }
+        Self.log(wanted.isEmpty ? "No Greenroom window is shown on the share."
+                                : "\(wanted.count) Greenroom window\(wanted.count == 1 ? "" : "s") shown on the share.")
+        return true
+    }
 }
 
 // MARK: Presentation follow (phase 6)

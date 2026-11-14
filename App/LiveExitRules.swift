@@ -184,6 +184,8 @@ enum LiveExit {
     enum ReopenTarget: Equatable {
         /// Greenroom's own meeting window (opened if it was closed).
         case meetingWindow
+        /// The Mini window, the small floating picture, when that is the size it is at.
+        case mini
         /// The floating control bar, shrunk or the only surface left.
         case controlBar
         /// The main window, showing the live state.
@@ -196,10 +198,13 @@ enum LiveExit {
         var hasMeetingSurfaces = false
         /// The meeting window is hidden, shrunk to the bar or minimised.
         var meetingShrunk = false
+        /// The Mini window is up: it is the surface to bring forward.
+        var miniOpen = false
     }
 
     static func reopenTarget(_ s: ReopenState) -> ReopenTarget {
         guard s.isLive, s.hasMeetingSurfaces else { return .mainWindow }
+        if s.miniOpen { return .mini }
         return s.meetingShrunk ? .controlBar : .meetingWindow
     }
 

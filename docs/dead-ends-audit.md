@@ -5,9 +5,10 @@ Rule: while a class is live, nothing may leave the teacher with a running sessio
 | Window | What closing does now | Path back | Fix |
 |---|---|---|---|
 | Meeting window (red button, Command-W) | Was: closed silently, class kept running. Now: a sheet on the window. Host: End Meeting for All / Shrink to Control Bar / Cancel. Participant: Leave Meeting / Shrink / Cancel. "Recording will stop and be saved." is added while recording. Cancel is the default and Escape. | Control bar; Dock click; Show Greenroom; menu bar live header | Sheet (`ParticipantGridWindowController.confirmClose`, `ControlPanel.performClose`). Nothing live: closes as before. |
-| Meeting window (yellow, Command-M) | Shrinks to the control bar while live (unchanged, 2026-11-13) | Control bar's expand button; Dock click | None needed. |
+| Meeting window (yellow, Command-M) | Shrinks to the Mini window, or straight to the control bar when the layout already shows the faces (a speaker view or a Meeting slot) or the bar was the last size chosen (2026-11-14; was: always the bar) | Control bar's expand button; Dock click | None needed. |
 | Quit (Command-Q, app menu, menu bar, Dock) | Was: one "Quit Greenroom" alert. Now: End Meeting & Quit (host), Leave & Quit (participant), Stop Recording & Quit (a recording), each with Cancel as default. Logout, shutdown and restart skip the question and end cleanly, saving the recording. | n/a | `applicationShouldTerminate` reads the quit Apple event's reason. |
-| Control bar | Borderless, no close button; cannot be closed | Always on screen when the meeting window is not | None needed. |
+| Control bar | Borderless, no close button; cannot be closed | Shows only when neither the Meeting window nor the Mini is up, so exactly one control surface is on screen while live. Installed for every live meeting except layouts that use Zoom's own window. In a layout, a placed full-size Meeting collapses to the Mini and its neighbour takes the room; a Meeting slot goes straight to the bar. | None needed. |
+| Mini window (320x180, floating) | Closes into nothing: the bar fills in. Closed automatically when the Meeting window opens. Excluded from Hide together. | Bar's Meeting button (Option-click opens the window), Dock click, Show Greenroom | `MeetingSurfaces` (pure, tested). |
 | Chat window (arranged layouts) | Closes; the meeting goes on | Meeting window / bar Chat and Views entries | None needed; unverified in a real meeting. |
 | Participants panel | A side panel inside the meeting window, so closing the window is covered by the sheet | Meeting window | Covered by the meeting-window fix. |
 | Meeting view windows (Gallery, Active speaker, Hands up...) | Close or move; the meeting goes on | Views menu on the control bar and the meeting window | None needed. |
@@ -24,7 +25,8 @@ Rule: while a class is live, nothing may leave the teacher with a running sessio
 
 `LiveExit.reopenTarget` decides. Dock click, Show Greenroom and the menu bar's "Live" header all use it:
 
-- Live custom-UI meeting, window hidden, minimised or shrunk: the control bar comes forward.
+- Live custom-UI meeting with the Mini up: the Mini comes forward.
+- Live custom-UI meeting, window hidden, minimised or shrunk: the control bar comes forward, or whichever of window, Mini and bar exists if the bar was never installed (`MeetingSurfaces.wayBack`).
 - Live custom-UI meeting otherwise: the meeting window comes forward (reopened if it was closed) and takes key.
 - A recording, or nothing live: the main window, which shows the live state.
 

@@ -1,10 +1,11 @@
 //
 //  NotchStatusRules.swift
 //
-//  The pure parts of the status pill that grows out of the notch: what each
-//  start step says, the state machine from readiness to pill, the notch's
-//  rectangle, and where the pill sits. No AppKit view code here, so the unit
-//  tests compile it alone.
+//  The pure parts of the island that grows out of the notch: what each start
+//  step says, the state machine from readiness to pill, what the island shows
+//  when several things want it (status, countdown, then a FIFO of upload
+//  prompts and toasts), its sizes, the notch's rectangle, and where it sits.
+//  No AppKit view code here, so the unit tests compile it alone.
 //
 import Foundation
 import CoreGraphics
@@ -109,13 +110,200 @@ enum NotchStatusRules {
     }
 }
 
-/// Where the notch is and where the pill goes. Rectangles are in AppKit screen
+// MARK: - Everything else the island says
+
+/// The recording countdown on the island: a number ticking down, then "go".
+enum CountdownPhase: Equatable {
+    case tick(Int)
+    case go
+}
+
+enum IslandToastKind: Equatable {
+    case working, success, failure
+
+    var symbol: String {
+        switch self {
+        case .working: return "hourglass"
+        case .success: return "checkmark.circle.fill"
+        case .failure: return "exclamationmark.triangle.fill"
+        }
+    }
+}
+
+struct IslandToast: Equatable {
+    var id = UUID()
+    var title: String
+    var detail: String?
+    var kind: IslandToastKind
+    /// Seconds on the island; nil holds it until replaced, removed or clicked.
+    var duration: TimeInterval?
+    /// Clicking runs something, so the island takes clicks and a failure waits for one.
+    var hasAction = false
+
+    var hasDetail: Bool { !(detail ?? "").isEmpty }
+    /// A toast that waits for its own result to replace it.
+    var holds: Bool { duration == nil }
+}
+
+struct IslandPrompt: Equatable {
+    var id = UUID()
+    var title: String
+    /// ONE line: "Class \u{00B7} 14 Nov \u{00B7} 982 KB \u{00B7} Unlisted".
+    var detail: String
+    /// The longer explanation, as hover help.
+    var help: String?
+    var uploadTitle = "Upload"
+    var timeout: TimeInterval = IslandRules.promptTimeout
+}
+
+enum IslandMessage: Equatable {
+    case toast(IslandToast)
+    case prompt(IslandPrompt)
+
+    var id: UUID {
+        switch self {
+        case .toast(let t): return t.id
+        case .prompt(let p): return p.id
+        }
+    }
+}
+
+/// What the island is drawing right now.
+enum IslandContent: Equatable {
+    case none
+    case status(NotchPhase)
+    case countdown(CountdownPhase)
+    case toast(IslandToast)
+    case prompt(IslandPrompt)
+
+    var isNone: Bool { self == .none }
+    /// The island takes clicks only when it has something to press.
+    var isInteractive: Bool {
+        switch self {
+        case .none: return false
+        case .status(let phase): return phase.isFailure
+        case .countdown(let c): return c != .go
+        case .toast(let t): return t.hasAction
+        case .prompt: return true
+        }
+    }
+    var messageID: UUID? {
+        switch self {
+        case .toast(let t): return t.id
+        case .prompt(let p): return p.id
+        default: return nil
+        }
+    }
+}
+
+enum IslandRules {
+    /// How long a plain toast stays; a failure stays a little longer.
+    static let toastHold: TimeInterval = 2.5
+    static let failureHold: TimeInterval = 4
+    /// An unanswered upload prompt counts as "Not now" after this.
+    static let promptTimeout: TimeInterval = 120
+    /// How long "Recording" holds after the countdown reaches go.
+    static let goHold: TimeInterval = 1
+    /// The island retracts for this long between two queued messages.
+    static let retractGap: TimeInterval = 0.45
+
+    /// nil means hold: a failure toast with an action waits for the click.
+    static func toastDuration(kind: IslandToastKind, hasAction: Bool) -> TimeInterval? {
+        switch kind {
+        case .failure: return hasAction ? nil : failureHold
+        case .working, .success: return toastHold
+        }
+    }
+
+    /// 3, 2, 1, go. Empty when the countdown is Off.
+    static func countdownSequence(seconds: Int) -> [CountdownPhase] {
+        guard seconds > 0 else { return [] }
+        return stride(from: seconds, through: 1, by: -1).map { CountdownPhase.tick($0) } + [.go]
+    }
+}
+
+/// Who gets the island. A failure first, then the countdown, then the start's
+/// status; upload prompts and toasts wait in a FIFO and show one at a time.
+/// Nothing stacks. A message that was showing when something stronger arrived
+/// keeps its place and comes back once that is gone.
+struct IslandQueue: Equatable {
+    private(set) var status: NotchPhase = .hidden
+    private(set) var countdown: CountdownPhase?
+    /// The message that has the floor (shown unless something stronger is up).
+    private(set) var current: IslandMessage?
+    private(set) var waiting: [IslandMessage] = []
+
+    var content: IslandContent {
+        if status.isFailure { return .status(status) }
+        if let countdown { return .countdown(countdown) }
+        if !status.isHidden { return .status(status) }
+        switch current {
+        case .toast(let t)?: return .toast(t)
+        case .prompt(let p)?: return .prompt(p)
+        case nil: return .none
+        }
+    }
+
+    var pendingCount: Int { waiting.count + (current == nil ? 0 : 1) }
+
+    mutating func setStatus(_ phase: NotchPhase) { status = phase }
+    mutating func setCountdown(_ phase: CountdownPhase?) { countdown = phase }
+
+    /// Adds a message at the back. A toast replaces a held toast (a "working"
+    /// one waiting for its result) that is current or still waiting.
+    mutating func enqueue(_ message: IslandMessage) {
+        if case .toast = message {
+            if case .toast(let old)? = current, old.holds { current = message; return }
+            if let i = waiting.firstIndex(where: { if case .toast(let t) = $0 { return t.holds } else { return false } }) {
+                waiting[i] = message
+                return
+            }
+        }
+        waiting.append(message)
+    }
+
+    /// Gives the floor to the next message when nobody holds it.
+    mutating func promote() {
+        guard current == nil, !waiting.isEmpty else { return }
+        current = waiting.removeFirst()
+    }
+
+    /// The current message was answered, timed out or clicked.
+    @discardableResult
+    mutating func finish(_ id: UUID) -> Bool {
+        guard current?.id == id else { return false }
+        current = nil
+        return true
+    }
+
+    /// Drops every message the test matches, current or waiting; returns them.
+    @discardableResult
+    mutating func remove(where match: (IslandMessage) -> Bool) -> [IslandMessage] {
+        var gone: [IslandMessage] = []
+        if let c = current, match(c) { gone.append(c); current = nil }
+        gone += waiting.filter(match)
+        waiting.removeAll(where: match)
+        return gone
+    }
+}
+
+/// Where the notch is and where the island goes. Rectangles are in AppKit screen
 /// coordinates (bottom-left origin), like NSScreen's own.
 enum NotchGeometry {
     static let workingWidth: CGFloat = 360
     static let failureWidth: CGFloat = 460
     /// The pill's body below the notch line.
     static let bodyHeight: CGFloat = 44
+    /// The widest and tallest the island gets (the upload prompt): the panel is
+    /// this big, so it never resizes while the island inside morphs.
+    static let panelWidth: CGFloat = 540
+    static let panelBodyHeight: CGFloat = 76
+    static let promptSize = CGSize(width: 540, height: 76)
+    static let countdownSize = CGSize(width: 320, height: 56)
+    static let goSize = CGSize(width: 220, height: 44)
+    static let toastWidth: CGFloat = 360
+    static let toastOneLine: CGFloat = 44
+    static let toastTwoLines: CGFloat = 58
     /// Fallback: gap under the menu bar.
     static let fallbackGap: CGFloat = 6
 
@@ -133,34 +321,34 @@ enum NotchGeometry {
         phase.isFailure ? failureWidth : workingWidth
     }
 
-    /// The panel is as wide as the widest pill and as tall as the open one, so
-    /// it never resizes while the pill inside morphs.
+    /// The island's body (below the notch line) for what it shows.
+    static func bodySize(for content: IslandContent) -> CGSize {
+        switch content {
+        case .none: return CGSize(width: workingWidth, height: bodyHeight)
+        case .status(let phase): return CGSize(width: width(for: phase), height: bodyHeight)
+        case .countdown(.go): return goSize
+        case .countdown: return countdownSize
+        case .prompt: return promptSize
+        case .toast(let t):
+            return CGSize(width: toastWidth, height: t.hasDetail ? toastTwoLines : toastOneLine)
+        }
+    }
+
     static func panelFrame(screenFrame: CGRect, visibleFrame: CGRect, notch: CGRect?) -> CGRect {
         if let notch {
-            let height = notch.height + bodyHeight
-            return CGRect(x: notch.midX - failureWidth / 2, y: screenFrame.maxY - height,
-                          width: failureWidth, height: height)
+            let height = notch.height + panelBodyHeight
+            return CGRect(x: notch.midX - panelWidth / 2, y: screenFrame.maxY - height,
+                          width: panelWidth, height: height)
         }
         let top = visibleFrame.maxY - fallbackGap
-        return CGRect(x: visibleFrame.midX - failureWidth / 2, y: top - bodyHeight,
-                      width: failureWidth, height: bodyHeight)
+        return CGRect(x: visibleFrame.midX - panelWidth / 2, y: top - panelBodyHeight,
+                      width: panelWidth, height: panelBodyHeight)
     }
 
-    /// The pill's own frame inside that panel for a phase: top-aligned, centred.
-    static func pillFrame(panel: CGRect, notch: CGRect?, phase: NotchPhase) -> CGRect {
-        let w = width(for: phase)
-        let h = (notch?.height ?? 0) + bodyHeight
-        return CGRect(x: panel.midX - w / 2, y: panel.maxY - h, width: w, height: h)
-    }
-}
-
-extension BannerLayout {
-    /// Other messages stack below the pill when it shows: the area they use
-    /// starts under its bottom edge.
-    static func clearing(_ visible: CGRect, pill: CGRect?) -> CGRect {
-        guard let pill, pill.minY < visible.maxY else { return visible }
-        var out = visible
-        out.size.height = max(0, pill.minY - visible.minY)
-        return out
+    /// The island's own frame inside that panel: top-aligned, centred.
+    static func pillFrame(panel: CGRect, notch: CGRect?, content: IslandContent) -> CGRect {
+        let body = bodySize(for: content)
+        let h = (notch?.height ?? 0) + body.height
+        return CGRect(x: panel.midX - body.width / 2, y: panel.maxY - h, width: body.width, height: h)
     }
 }

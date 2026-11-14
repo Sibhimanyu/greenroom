@@ -335,17 +335,29 @@ The app is the other half of this system. Keep it aligned.
   material (control pill, toasts, upload prompt, banners), the notes bar pill and the Cues rail preview (both
   keep `windowBackgroundColor` as a self-contained shape), and the
   participants panel's `underPageBackground`.
-- **Messages:** every message (toast, upload prompt, the "Getting ready" card)
-  appears in one floating glass panel horizontally centred at the top of the
-  screen the person is working on, 12pt below the menu bar (`visibleFrame`),
-  stacked downward with 8pt gaps. Cards are compact: 340pt wide, 12pt padding,
-  12pt radius, 20pt icon, `.callout` semibold title, `.subheadline` detail,
-  `.small` buttons; the Getting ready steps are 17pt rows with 15pt glyphs.
-  Never inside a Greenroom window, so a message can never cover a control.
-  Non-activating, on all Spaces, above normal windows and below system alerts;
-  drops in from a few points above and fades (fade only under Reduce Motion).
-  Glyphs and buttons for anything that leaves this Mac (the upload) are amber
-  (`Brand.net`). Frame math: `App/UI/BannerLayout.swift`.
+- **Messages (the island) and the Status pill:** every message Greenroom shows
+  lives in ONE black pill that grows out of the notch, flush with the top of
+  the screen and centred on it (top-centre capsule, 6pt under the menu bar,
+  without a notch). There are no top-centre cards. The island is pure black with
+  no second-colour band; a failure speaks through an amber icon, amber text
+  (`Brand.netText`) and amber buttons (`Brand.net`). It shows one thing at a
+  time, by priority: a failure (preempts everything), the recording countdown,
+  the start's status (getting ready, then "Live"), then a FIFO queue of upload
+  prompts and toasts, each shown after the last retracts (a 0.45s gap).
+  Nothing stacks or overlaps. Sizes (body below the notch line): status 360x44,
+  failure 460x44, countdown 320x56, "Recording" 220x44, toast 360x44 (58 with a
+  second line), upload prompt 540x76; sizes morph with a spring, Reduce Motion
+  fades. Upload prompt: amber YouTube glyph, title and ONE detail line, "Not
+  now" and an amber "Upload"; the longer explanation is hover help; unanswered
+  for 120s counts as Not now. Toast: icon plus one line (and an optional short
+  second line), 2.5s; a failure 4s, or until clicked if it has an action; a held
+  "working" toast is replaced by its result. Countdown: a 34pt rounded number
+  ticking 3, 2, 1 with a spring scale-in, "Recording starts" and a small Cancel
+  (Esc cancels); on go it morphs to "Recording" for 1s and retracts. Never
+  inside a Greenroom window. Non-activating, over the menu bar, on all Spaces.
+  Glyphs and buttons for anything that leaves this Mac (the upload) are amber.
+  Rules and sizes: `IslandQueue`, `IslandRules`, `NotchGeometry` in
+  `App/UI/NotchStatusRules.swift`; drawing in `App/UI/NotchStatusController.swift`.
 - **Glass:** floating controls, HUDs, banners, toasts and pills (anything that
   floats over content) use `.greenroomGlass(in:interactive:)` from
   `App/UI/Glass.swift`: real Liquid Glass (`glassEffect`) on macOS 26, a
@@ -533,3 +545,4 @@ Ranked by user-visible impact. None of these block anything today.
 | 2026-11-14 | The meeting window gains Multi-speaker, Side-by-side share layouts and two tile filters. Reverses "Side-by-side view is not offered" in 2026-11-12 | The owner compared the window with Zoom's desktop app and approved these. Multi-speaker is a third view beside Speaker and Gallery: the 2-4 most recent speakers large, everyone else in a strip below, your preview at the strip's end; people keep a tile at least 3 s, and with fewer than three people it is Speaker, as Zoom's is. While someone shares, View offers Standard (the share fills the stage) and Side-by-side: Speaker, Gallery or Multi-speaker (share left, a draggable divider, default 70/30, clamped 50/85, double-click resets). The layout, the split, Hide self view and Hide participants with video off are remembered per Mac; a share's end returns to the view the person had. Hiding your self view changes only what this window draws. The segmented control is Speaker / Gallery / Multi-speaker and the shortcut is "Cycle meeting view". Still forced dark, same tiles, gaps and chrome; the divider's handle is a 4pt white pill at 28% (70% on hover). Logic lives in `MeetingViewRules.swift`, with tests. |
 | 2026-11-14 | While a class or recording is live, the main window steps aside (hidden, not closed) and returns on Home when it ends | The meeting window or the recording bar is the surface while live, and Home underneath was clutter on the teacher's screen. Hidden only once actually live, so a failed start shows its error in place. Dock, Show Greenroom and the live header bring back the meeting, not Home; the menu bar's Open Greenroom Window, Sessions and Last bring Home back on purpose and it stays until the next session. Restores at its old frame without taking focus from a full-screen app; a deliberate quit does not reshow it. Rows in `docs/dead-ends-audit.md`. |
 | 2026-11-14 | Status pill: getting ready, live and failure show in one black pill that grows out of the notch (Dynamic Island style), top-centre on displays without one; one step at a time with a progress ring, "● Live" then back into the notch, failures stay with an amber icon and one fix button | The owner found the old GETTING READY card (all five steps listed, parked under the menu bar) neither glass-like nor well placed: "either it should feel like it's coming from the notch or dead centre". The notch keeps it off the slides. Other messages stay top-centre and stack below the pill. |
+| 2026-11-14 | Every message moves into the island: the upload prompt, toasts and the recording countdown share the notch pill with the status; the top-centre glass cards, `WindowBanner` and `BannerLayout` go, and so does the centred countdown overlay. Supersedes the "Other messages stay top-centre" line of the Status pill row and the 2026-11-13 top-centre Messages rows | The owner approved one island for everything. Priority: failure, countdown, status, then upload prompts and toasts in a FIFO, one at a time, retracting between. Failures are amber icon, text and buttons on the same black island. The upload prompt keeps its timeout and actions, with one detail line and the rest as hover help; toasts last 2.5s (failure 4s). |

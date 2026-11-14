@@ -234,7 +234,7 @@ extension CoordinatorController {
                                        url: card.url.absoluteString, action: "opened")
         }
         ToastController.show("Opened in \(name)",
-                             detail: card.title, dismissAfter: 2)
+                             detail: card.title)
     }
 
     /// Posts the bare URL to everyone in the meeting chat. Zoom linkifies it.
@@ -252,6 +252,6 @@ extension CoordinatorController {
             SessionMetadata.recordLink(in: folder, kind: card.kind.rawValue, title: card.title,
                                        url: card.url.absoluteString, action: "sent")
         }
-        ToastController.show("Sent to the class chat", detail: card.title, dismissAfter: 2)
+        ToastController.show("Sent to the class chat", detail: card.title)
     }
 }

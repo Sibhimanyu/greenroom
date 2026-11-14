@@ -204,7 +204,6 @@ struct ContentView: View {
         }
         // The toast, the upload question and the start's progress card, while
         // this window is the one in view (WindowBanner.swift).
-        .overlay { WindowBannerOverlay() }
         .sheet(isPresented: $coordinator.showOnboarding) {
             OnboardingView()
                 .environmentObject(coordinator)

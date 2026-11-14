@@ -319,7 +319,6 @@ targets:
       - path: App/UI/SessionsQuery.swift
       - path: App/UI/SessionDetailRules.swift
       - path: App/UI/SegmentedMath.swift
-      - path: App/UI/BannerLayout.swift
       - path: App/UI/NotchStatusRules.swift
       - path: App/Recording/SessionFolderRules.swift
       - path: App/UI/MenuBarModel.swift

@@ -5,7 +5,8 @@
 //  What appears on the Mac while a recording is starting or running (phase 4
 //  of the Recorditor port, docs/recorditor-integration/controls-port-log.md):
 //
-//   - the countdown before it starts (a big number in the middle of the screen)
+//   - the countdown before it starts (a big number on the island at the notch,
+//     NotchStatusController.swift)
 //   - the floating control bar, Record view only (a meeting's controls live on
 //     the meeting bar instead)
 //   - the border around what is being recorded
@@ -26,16 +27,13 @@ import SwiftUI
 final class RecordingChrome {
     private let border = RecordingBorderController()
     private let bar = RecordingControlBarController()
-    private let countdown = CountdownOverlayController()
 
     func update(coordinator: CoordinatorController, recording: Bool, paused: Bool,
                 recordOnly: Bool, countdownValue: Int?) {
-        if let value = countdownValue {
-            countdown.show(value: value, on: coordinator.recordedScreen) { [weak coordinator] in
-                coordinator?.cancelRecordingCountdown()
-            }
-        } else {
-            countdown.hide()
+        // The countdown lives on the island; the end of a countdown that
+        // reached go is announced by the coordinator itself.
+        NotchStatusController.shared.setCountdown(countdownValue) { [weak coordinator] in
+            coordinator?.cancelRecordingCountdown()
         }
 
         // The border says "this is being recorded", so it is up only while the
@@ -57,106 +55,7 @@ final class RecordingChrome {
     func bringBarForward() { bar.bringForward() }
 
     func teardown() {
-        countdown.hide(); border.hide(); bar.hide()
-    }
-}
-
-// MARK: - Countdown
-
-/// The big 3-2-1 before a recording starts, with Cancel (Esc). Ported from
-/// Recorditor's `CountdownOverlay` (RecorderView.swift), but as a window of its
-/// own so it shows over whatever is about to be recorded, not over Greenroom's
-/// Home. Never takes keyboard focus: Esc is heard by monitors, and the same
-/// shortcut that started the recording cancels it too.
-@MainActor
-final class CountdownOverlayController {
-    private var panel: NSPanel?
-    private let model = CountdownModel()
-    private var monitors: [Any] = []
-
-    func show(value: Int, on screen: NSScreen?, onCancel: @escaping () -> Void) {
-        model.value = value
-        model.onCancel = onCancel
-        if panel == nil {
-            let size = NSSize(width: 340, height: 260)
-            let created = NSPanel(contentRect: NSRect(origin: .zero, size: size),
-                                  styleMask: [.borderless, .nonactivatingPanel],
-                                  backing: .buffered, defer: false)
-            created.isReleasedWhenClosed = false
-            created.level = .statusBar
-            created.isOpaque = false
-            created.backgroundColor = .clear
-            created.hasShadow = true
-            created.hidesOnDeactivate = false
-            created.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
-            let host = NSHostingView(rootView: CountdownView(model: model).tint(Brand.green))
-            host.frame = NSRect(origin: .zero, size: size)
-            created.contentView = host
-            panel = created
-        }
-        if let panel, !panel.isVisible {
-            let area = (screen ?? NSScreen.main ?? NSScreen.screens.first)?.visibleFrame ?? .zero
-            panel.setFrameOrigin(NSPoint(x: (area.midX - panel.frame.width / 2).rounded(),
-                                         y: (area.midY - panel.frame.height / 2).rounded()))
-            panel.orderFrontRegardless()
-            installMonitors()
-        }
-    }
-
-    func hide() {
-        for monitor in monitors { NSEvent.removeMonitor(monitor) }
-        monitors = []
-        panel?.orderOut(nil)
-    }
-
-    /// Esc cancels. A local monitor hears it while Greenroom is in front; a
-    /// global one while another app is (it needs Accessibility, like the
-    /// events tracker; without it the Cancel button and the start shortcut
-    /// still work).
-    private func installMonitors() {
-        if let local = NSEvent.addLocalMonitorForEvents(matching: .keyDown, handler: { [weak self] event in
-            guard event.keyCode == 53 else { return event }
-            self?.model.onCancel?()
-            return nil
-        }) { monitors.append(local) }
-        if AXIsProcessTrusted(),
-           let global = NSEvent.addGlobalMonitorForEvents(matching: .keyDown, handler: { [weak self] event in
-               guard event.keyCode == 53 else { return }
-               MainActor.assumeIsolated { self?.model.onCancel?() }
-           }) { monitors.append(global) }
-    }
-}
-
-@MainActor
-final class CountdownModel: ObservableObject {
-    @Published var value = 3
-    var onCancel: (() -> Void)?
-}
-
-private struct CountdownView: View {
-    @ObservedObject var model: CountdownModel
-
-    var body: some View {
-        VStack(spacing: 12) {
-            Text("\(model.value)")
-                .font(.system(size: 120, weight: .semibold, design: .rounded))
-                .monospacedDigit()
-                .foregroundStyle(.primary)
-                .contentTransition(.numericText(countsDown: true))
-                .animation(Collapse.animation, value: model.value)
-            Text("Recording starts in\u{2026}")
-                .font(.callout)
-                .foregroundStyle(.secondary)
-            Button("Cancel (Esc)") { model.onCancel?() }
-                .buttonStyle(.bordered)
-                .help("Stop the countdown. Nothing is recorded.")
-                .accessibilityLabel("Cancel recording")
-        }
-        .padding(24)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .greenroomGlass(in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-        .accessibilityElement(children: .contain)
-        .accessibilityLabel("Recording starts in \(model.value)")
+        NotchStatusController.shared.setCountdown(nil); border.hide(); bar.hide()
     }
 }
 

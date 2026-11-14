@@ -15,6 +15,8 @@
 //    sessionWindowSize  w=... [h=...]
 //    toast [title=...] [detail=...] [kind=success|failure|working]  a sample toast, held until `restore`.
 //    prompt       a sample upload prompt; its buttons only dismiss, nothing uploads.
+//    countdown n=3 [go=true]  the island's countdown, no recording; Cancel/Esc clear it.
+//    queue [kind=failure] [hold=secs]  a toast then a prompt back to back; one shows, one waits.
 //    resetMeetingTip  show the meeting window's one-time "Control bar" tip again
 //                 (clears UserDefaults key meetingShrinkTip.done; the same as
 //                 `defaults delete <bundle id> meetingShrinkTip.done`).
@@ -132,10 +134,24 @@ enum DebugTour {
                                          detail: info["detail"] ?? "Sample toast from the debug tour",
                                          kind: kind, dismissAfter: nil)
                 case "prompt":
-                    UploadPromptCard.show(
-                        title: "Upload this recording to YouTube?",
-                        detail: "\u{201C}Sample recording\u{201D} \u{00B7} 128 MB \u{00B7} Unlisted. Debug tour: nothing is uploaded.",
-                        timeout: 600, onUpload: {}, onDismiss: {})
+                    samplePrompt()
+                case "countdown":
+                    // n=3: the island's countdown on sample data; nothing records.
+                    // Esc and Cancel clear it. `restore` clears it too.
+                    let n = max(1, min(10, Int(info["n"] ?? "") ?? 3))
+                    if info["go"] == "true" {
+                        NotchStatusController.shared.countdownGo()
+                    } else {
+                        NotchStatusController.shared.setCountdown(n) { NotchStatusController.shared.setCountdown(nil) }
+                    }
+                case "queue":
+                    // A toast then an upload prompt back to back: one shows,
+                    // the other waits its turn. kind=failure for a failure toast.
+                    let kind: ToastController.Kind = info["kind"] == "failure" ? .failure : .success
+                    ToastController.show(info["title"] ?? "Clipped the last 5 min",
+                                         detail: info["detail"], kind: kind,
+                                         dismissAfter: info["hold"].flatMap(Double.init) ?? ToastController.automatic)
+                    samplePrompt()
                 case "status": extra = status(info)
                 case "resetMeetingTip": MeetingShrinkTip.reset()
                 case "tree": tree(dir: dir)
@@ -146,6 +162,14 @@ enum DebugTour {
                 writeLast(dir: dir, ["ok": false, "cmd": cmd, "seq": mySeq, "error": "\(error)"])
             }
         }
+    }
+
+    private static func samplePrompt() {
+        UploadPromptCard.show(
+            title: "Upload this recording to YouTube?",
+            detail: "Class \u{00B7} 14 Nov \u{00B7} 982 KB \u{00B7} Unlisted",
+            help: "Debug tour: nothing is uploaded. The file stays in Documents/Greenroom either way.",
+            timeout: 600, onUpload: {}, onDismiss: {})
     }
 
     /// Sample data only. The buttons just fold the pill; they never reach the
@@ -309,9 +333,7 @@ enum DebugTour {
         ChatWindowController.close()
         for w in opened where !MainWindow.matches(w) { w.close() }
         opened.removeAll()
-        ToastController.hide()
-        UploadPromptCard.hide(answered: true)
-        NotchStatusController.shared.clear()
+        NotchStatusController.shared.clearAll()
         NotchStatusController.shared.liveHold = NotchStatusRules.liveHold
         if let shown = savedPreview {
             NotificationCenter.default.post(name: .debugTourHomePreview, object: nil, userInfo: ["shown": shown])
@@ -337,7 +359,7 @@ enum DebugTour {
         let me = Bundle.main.bundleIdentifier
         let windows = content.windows.filter {
             $0.owningApplication?.bundleIdentifier == me
-                && (($0.frame.width > 120 && $0.frame.height > 80 && ($0.windowLayer == 0 || $0.title == "Messages"))
+                && (($0.frame.width > 120 && $0.frame.height > 80 && $0.windowLayer == 0)
                     || $0.title == "Status")
         }
         var entries: [[String: Any]] = []
@@ -358,9 +380,8 @@ enum DebugTour {
                       let screen = ns.screen else { return nil }
                 let sf = screen.frame, vf = screen.visibleFrame
                 // The message panel's frame includes its shadow room: measure the cards.
-                let pad = ns.title == "Messages" ? BannerLayout.shadowPad : 0
                 let f = ns.frame
-                let card = f.insetBy(dx: pad, dy: pad)
+                let card = f
                 var statusInfo: [String: Any] = [:]
                 if ns.title == "Status" {
                     let notch = NotchStatusController.shared.debugNotch
@@ -371,6 +392,7 @@ enum DebugTour {
                         statusInfo["panelMidXMinusNotchMidX"] = f.midX - n.midX
                     } else { statusInfo["notchRect"] = "none: fallback placement" }
                     statusInfo["level"] = ns.level.rawValue
+                    statusInfo["content"] = "\(NotchStatusController.shared.debugContent)"
                 }
                 return statusInfo.merging(["screenRelative": [f.minX - sf.minX, sf.maxY - f.maxY, f.width, f.height],
                         "gapBelowMenuBar": vf.maxY - card.maxY,

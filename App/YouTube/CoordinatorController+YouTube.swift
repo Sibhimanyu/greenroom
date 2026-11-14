@@ -80,7 +80,8 @@ extension CoordinatorController {
         let sizeLabel = ByteCountFormatter.string(fromByteCount: size, countStyle: .file)
         UploadPromptCard.show(
             title: "Upload this recording to YouTube?",
-            detail: "\u{201C}\(title)\u{201D} \u{00B7} \(sizeLabel) \u{00B7} \(youtubePrivacy). The file stays in Documents/Greenroom either way; you can also upload it later from Recordings.",
+            detail: "\(uploadDetailPrefix(for: file)) \u{00B7} \(sizeLabel) \u{00B7} \(youtubePrivacy)",
+            help: "\u{201C}\(title)\u{201D}. The file stays in Documents/Greenroom either way; you can also upload it later from Recordings.",
             onUpload: { [weak self] in
                 guard let self else { return }
                 Task { await self.uploadToYouTube(file, title: title) }
@@ -95,7 +96,8 @@ extension CoordinatorController {
         let title = youtubeTitle(for: file)
         UploadPromptCard.show(
             title: "Upload this recording to YouTube?",
-            detail: "YouTube isn\u{2019}t connected. Connect your Google account and Greenroom will upload it (\(youtubePrivacy)).",
+            detail: "Google account not connected \u{00B7} \(youtubePrivacy)",
+            help: "YouTube isn\u{2019}t connected. Connect your Google account and Greenroom will upload it (\(youtubePrivacy)).",
             uploadTitle: "Connect & Upload",
             onUpload: { [weak self] in
                 guard let self else { return }
@@ -111,6 +113,13 @@ extension CoordinatorController {
             onDismiss: { [weak self] in
                 self?.log("Not uploaded to YouTube \u{2014} the recording is in Documents/Greenroom, and Recordings has an Upload button.")
             })
+    }
+
+    /// "Morning Reading · 14 Nov": the one detail line's lead, year left out.
+    private func uploadDetailPrefix(for file: URL) -> String {
+        let modified = (try? file.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate ?? Date()
+        let name = className.trimmingCharacters(in: .whitespaces)
+        return "\(name.isEmpty ? "Class" : name) \u{00B7} \(modified.formatted(.dateTime.day().month(.abbreviated)))"
     }
 
     /// "Morning Reading · 4 Sep 2026", or "Class · 4 Sep 2026" with no
@@ -189,7 +198,7 @@ extension CoordinatorController {
             NSPasteboard.general.clearContents()
             NSPasteboard.general.setString(result.url.absoluteString, forType: .string)
             log("Uploaded to YouTube (\(youtubePrivacy)): \(result.url.absoluteString) \u{2014} link copied, and kept with the session.")
-            ToastController.show("Uploaded to YouTube", detail: "Link copied: \(result.url.absoluteString)", dismissAfter: 6)
+            ToastController.show("Uploaded to YouTube", detail: "Link copied: \(result.url.absoluteString)")
             Notifier.post(title: "Uploaded to YouTube", body: "\(title) \u{2014} the \(youtubePrivacy) link is on your clipboard.")
         } catch {
             Analytics.failure("youtube_upload")
@@ -201,7 +210,7 @@ extension CoordinatorController {
                                  detail: signInLost
                                      ? "Your Google sign-in expired. Reconnect in Settings \u{2192} YouTube, then retry from Recordings."
                                      : "Details in the status log. The recording is saved; retry from Recordings.",
-                                 kind: .failure, dismissAfter: 8)
+                                 kind: .failure)
             Notifier.post(title: "YouTube upload failed", body: "\(title) is still in Documents/Greenroom. Details in Greenroom\u{2019}s status log.")
         }
     }

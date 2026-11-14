@@ -1942,13 +1942,17 @@ final class CoordinatorController: ObservableObject {
         guard seconds > 0 else { return true }
         let token = UUID()
         countdownToken = token
-        for remaining in stride(from: seconds, through: 1, by: -1) {
+        for case .tick(let remaining) in IslandRules.countdownSequence(seconds: seconds) {
             guard countdownToken == token else { return false }
             recordingCountdown = remaining
             try? await Task.sleep(nanoseconds: 1_000_000_000)
         }
         let finished = countdownToken == token
-        if finished { countdownToken = nil }
+        if finished {
+            countdownToken = nil
+            // "Recording" on the island for a beat, then it retracts.
+            NotchStatusController.shared.countdownGo()
+        }
         recordingCountdown = nil
         return finished
     }

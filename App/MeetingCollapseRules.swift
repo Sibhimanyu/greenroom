@@ -83,6 +83,39 @@ enum MeetingCollapse {
     }
 }
 
+// MARK: - One control surface at a time
+
+/// While a meeting is live exactly one of the Meeting window, the Mini and the
+/// Control bar is on screen, and every way back lands on one that exists.
+enum MeetingSurfaces {
+    /// The bar is the one that fills in: it shows only when neither the window
+    /// nor the Mini is up.
+    static func barVisible(windowShowing: Bool, miniOpen: Bool) -> Bool {
+        !windowShowing && !miniOpen
+    }
+
+    /// How many control surfaces are on screen. `barExists` is whether the bar
+    /// has been installed for this meeting.
+    static func visibleCount(windowShowing: Bool, miniOpen: Bool, barExists: Bool) -> Int {
+        (windowShowing ? 1 : 0) + (miniOpen ? 1 : 0)
+            + (barExists && barVisible(windowShowing: windowShowing, miniOpen: miniOpen) ? 1 : 0)
+    }
+
+    /// The invariant: one, never none and never two.
+    static func isSound(windowShowing: Bool, miniOpen: Bool, barExists: Bool) -> Bool {
+        visibleCount(windowShowing: windowShowing, miniOpen: miniOpen, barExists: barExists) == 1
+    }
+
+    /// Where a Dock click, a menu choice or the status tracker lands: the first
+    /// of window, Mini, bar that exists. Nil only with nothing built at all.
+    static func wayBack(windowExists: Bool, miniAvailable: Bool, barExists: Bool) -> MeetingSize? {
+        if windowExists { return .window }
+        if miniAvailable { return .mini }
+        if barExists { return .bar }
+        return nil
+    }
+}
+
 // MARK: - Show on my share
 
 /// "Show on my share": a window of ours that is let into the picture of a

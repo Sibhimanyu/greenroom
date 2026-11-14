@@ -38,7 +38,7 @@ final class MeetingShrinkRulesTests: XCTestCase {
 
     func testTipMessageCarriesTheBoundShortcut() {
         XCTAssertEqual(MeetingShrinkTip.message(shortcut: "\u{2318}M"),
-                       "Shrink to the control bar to get back to your slides. \u{2318}M")
-        XCTAssertEqual(MeetingShrinkTip.message(shortcut: ""), "Shrink to the control bar to get back to your slides.")
+                       "Shrink to the Mini window to get back to your slides. \u{2318}M")
+        XCTAssertEqual(MeetingShrinkTip.message(shortcut: ""), "Shrink to the Mini window to get back to your slides.")
     }
 }

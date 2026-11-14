@@ -354,20 +354,27 @@ final class MeetingControlsModel: ObservableObject {
                                   toggleView: { MeetingViewWindows.toggle($0) })
     }
 
+    /// The bar's Meeting button. The bar is up only while neither the window nor
+    /// the Mini is, so this brings the meeting back one size: the Mini, or the
+    /// Meeting window with Option held.
     func toggleMeetingWindow() {
-        // The pill is up only while the window is away, so this brings it back,
-        // by the morph.
         if ParticipantGridWindowController.meetingWindowIsShowing {
             coordinator.toggleMeetingWindow()
         } else {
-            coordinator.expandMeetingFromBar()
+            coordinator.expandMeetingFromBar(option: NSEvent.modifierFlags.contains(.option))
         }
         refresh()
     }
 
-    /// The meeting window's Minimize to controls.
-    func shrinkToBar() {
-        coordinator.shrinkMeetingToBar()
+    /// The puck menu's "Expand to meeting window": always the window.
+    func expandToMeetingWindow() {
+        coordinator.expandMeetingFromBar(option: true)
+        refresh()
+    }
+
+    /// The meeting window's Mini button, Minimize and Command-M: one size down.
+    func collapseMeeting() {
+        coordinator.collapseMeeting()
         refresh()
     }
 
@@ -501,7 +508,7 @@ struct MeetingToolbarView: View {
             var a = MeetingMenus.MoreMenuActions()
             a.copy = model.copy
             a.openInZoom = model.openInZoomApp
-            a.shrink = model.videoButtons ? { model.shrinkToBar() } : nil
+            a.shrink = model.videoButtons ? { model.collapseMeeting() } : nil
             return MeetingMenus.more(overflow: overflow, facts: model.meetingFacts, views: model.viewsMenu(), a)
         }
         return m
@@ -956,7 +963,10 @@ enum MeetingControlBarController {
         let work = DispatchWorkItem {
             MainActor.assumeIsolated {
                 guard let panel, morphTimeline == nil else { return }
-                if ParticipantGridWindowController.meetingWindowIsShowing {
+                // One control surface at a time: the window or the Mini carries the
+                // controls when it is up, the bar when neither is.
+                if !MeetingSurfaces.barVisible(windowShowing: ParticipantGridWindowController.meetingWindowIsShowing,
+                                               miniOpen: MeetingViewWindows.miniIsOpen) {
                     panel.orderOut(nil)
                 } else if !panel.isVisible {
                     // Without activating the app: Zoom or the slides stay in front.
@@ -1210,7 +1220,7 @@ enum MeetingControlBarController {
         let model = self.model, coordinator = self.coordinator
         menu.addItem(MenuItem("Expand") { setCollapsed(false) })
         if model?.videoButtons ?? false {
-            menu.addItem(MenuItem("Expand to meeting window") { model?.toggleMeetingWindow() })
+            menu.addItem(MenuItem("Expand to meeting window") { model?.expandToMeetingWindow() })
         }
         if let views = model?.viewsMenu(), !views.isEmpty {
             let item = NSMenuItem(title: "Views", action: nil, keyEquivalent: "")
@@ -1245,10 +1255,19 @@ enum MeetingControlBarController {
 
     /// A deliberate way back (Dock click, menu choice): the bar comes forward,
     /// without taking key from whatever the teacher is using.
-    static func bringForward() {
-        guard morphTimeline == nil, let panel else { return }
+    /// False when there is no bar to bring (none installed), so the caller falls
+    /// back to a surface that exists.
+    @discardableResult
+    static func bringForward() -> Bool {
+        guard let panel else { return false }
+        // A morph in progress is already bringing a surface up.
+        guard morphTimeline == nil else { return true }
         panel.orderFrontRegardless()
+        return true
     }
+
+    /// The bar has been built for this meeting.
+    static var isInstalled: Bool { panel != nil }
 
     static func close() {
         morphTimer?.invalidate()

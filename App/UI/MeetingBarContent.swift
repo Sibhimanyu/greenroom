@@ -178,13 +178,13 @@ struct MeetingBarContent: View {
 
     // MARK: Cells
 
-    /// Brings the meeting window back (the bar is up only while it is away),
-    /// by the morph. The icon is the expand glyph; the word says where it goes.
+    /// Brings the meeting back one size: the Mini, or with Option held the Meeting
+    /// window. The icon is the expand glyph; the word says what comes back.
     private var meetingButton: some View {
         BarLabelledButton(symbol: "arrow.up.left.and.arrow.down.right", title: "Meeting", width: L.meeting,
                           filled: true,
-                          help: help("Back to the meeting window", .shrinkMeeting),
-                          spoken: "Back to the meeting window", action: a.meeting)
+                          help: help("Open the Mini window. Option-click opens the Meeting window", .shrinkMeeting),
+                          spoken: "Open the Mini window. Option-click opens the Meeting window", action: a.meeting)
     }
 
     private var micButton: some View {

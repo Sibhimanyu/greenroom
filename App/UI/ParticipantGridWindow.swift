@@ -281,7 +281,7 @@ enum ParticipantGridWindowController {
                                    defer: false,
                                    screen: screen)
         created.title = "Meeting"
-        created.isMeetingWindow = form.isMeeting && !form.isPlaced
+        created.isMeetingWindow = form.isMeeting
         ZoomMeetingSDKClient.videoLog("panel form=\(form) screen=\(screen.localizedName)"
             + " size=\(Int(frame.width))x\(Int(frame.height))")
         created.isReleasedWhenClosed = false
@@ -489,7 +489,7 @@ enum ParticipantGridWindowController {
     /// hierarchy drawn into a bitmap, so the SDK's own video surfaces may come
     /// out as the tile colour: the picture is only on screen for a third of a second.
     static func morphSnapshot() -> (image: NSImage, frame: NSRect)? {
-        guard let panel, let form = currentForm, form.isMeeting, !form.isPlaced,
+        guard let panel, let form = currentForm, form.isMeeting,
               let view = panel.contentView, view.bounds.width > 0, view.bounds.height > 0,
               let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { return nil }
         view.cacheDisplay(in: view.bounds, to: rep)
@@ -534,6 +534,14 @@ enum ParticipantGridWindowController {
     /// under it.
     static var frameInScreen: NSRect? { panel?.frame }
     static var isSlot: Bool { currentForm?.isSlot ?? false }
+    /// The layout placed the Meeting piece in a rectangle at full size (not compact).
+    static var isPlacedFull: Bool { currentForm?.isPlaced == true && !isSlot }
+    /// The display the meeting window is on, from where it sits (also while hidden).
+    static var meetingScreen: NSScreen? {
+        guard let frame = panel?.frame else { return nil }
+        let center = CGPoint(x: frame.midX, y: frame.midY)
+        return NSScreen.screens.first { $0.frame.contains(center) } ?? panel?.screen
+    }
 
     static func close() {
         root?.detachAllVideo()
@@ -1839,7 +1847,7 @@ private final class RootView: NSView {
         meetingTopBar.actions = MeetingTopBarView.Actions(
             showInfo: { [weak self] anchor in self?.showMeetingInfoPopover(from: anchor) },
             viewMenu: { [weak self] in self?.viewMenuEntries() ?? [] },
-            shrink: { [weak self] in self?.controls?.shrinkToBar() },
+            shrink: { [weak self] in self?.controls?.collapseMeeting() },
             tipClosed: { MeetingShrinkTip.markDone() })
         addSubview(meetingTopBar)
 
@@ -2053,7 +2061,7 @@ private final class RootView: NSView {
         state.recording = session.isRecording
         state.mode = viewMode
         state.isFullscreen = isFilling
-        state.canShrink = form.isMeeting && !form.isPlaced
+        state.canShrink = form.isMeeting && !form.isSlot
         state.shrinkShortcut = ShortcutStore.shared.bindings.combo(for: .action(.shrinkToBar))?.glyphs ?? ""
         meetingTopBar.apply(state)
     }

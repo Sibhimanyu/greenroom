@@ -165,4 +165,35 @@ final class MeetingCollapseRulesTests: XCTestCase {
         XCTAssertThrowsError(try decoder.decode([MeetingView].self, from: Data("[\"nonsense\"]".utf8)))
         XCTAssertEqual(try decoder.decode([MeetingView].self, from: Data("[\"gallery\"]".utf8)), [.gallery])
     }
+
+    // MARK: One control surface at a time
+
+    func testExactlyOneSurfaceForEveryStateWithABar() {
+        for (window, mini) in [(true, false), (false, true), (false, false)] {
+            XCTAssertTrue(MeetingSurfaces.isSound(windowShowing: window, miniOpen: mini, barExists: true),
+                          "window \(window) mini \(mini)")
+        }
+    }
+
+    func testTheBarFillsInOnlyWhenNothingElseIsUp() {
+        XCTAssertTrue(MeetingSurfaces.barVisible(windowShowing: false, miniOpen: false))
+        XCTAssertFalse(MeetingSurfaces.barVisible(windowShowing: true, miniOpen: false))
+        XCTAssertFalse(MeetingSurfaces.barVisible(windowShowing: false, miniOpen: true))
+    }
+
+    func testNoBarAndNothingElseIsNoSurfaceAtAll() {
+        XCTAssertEqual(MeetingSurfaces.visibleCount(windowShowing: false, miniOpen: false, barExists: false), 0)
+        XCTAssertFalse(MeetingSurfaces.isSound(windowShowing: false, miniOpen: false, barExists: false))
+    }
+
+    func testTwoSurfacesTogetherBreakTheInvariant() {
+        XCTAssertFalse(MeetingSurfaces.isSound(windowShowing: true, miniOpen: true, barExists: true))
+    }
+
+    func testEveryWayBackLandsOnSomethingThatExists() {
+        XCTAssertEqual(MeetingSurfaces.wayBack(windowExists: true, miniAvailable: true, barExists: true), .window)
+        XCTAssertEqual(MeetingSurfaces.wayBack(windowExists: false, miniAvailable: true, barExists: true), .mini)
+        XCTAssertEqual(MeetingSurfaces.wayBack(windowExists: false, miniAvailable: false, barExists: true), .bar)
+        XCTAssertNil(MeetingSurfaces.wayBack(windowExists: false, miniAvailable: false, barExists: false))
+    }
 }

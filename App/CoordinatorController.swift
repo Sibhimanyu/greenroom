@@ -1579,6 +1579,13 @@ final class CoordinatorController: ObservableObject {
                 if !sessionArranges {
                     ensureMeetingControls()
                     if zoomChatClient.didUseCustomUI { openMeetingWindow() }
+                }
+                // The bar is the surface of last resort, so a live meeting always has
+                // one built: Greenroom's own window in a layout can go to the Mini or
+                // the bar too, and every way back must land somewhere. (A layout with
+                // Zoom's own window keeps Zoom's controls and gets no bar.)
+                if !sessionArranges || zoomChatClient.didUseCustomUI {
+                    ensureMeetingControls()
                     if let controls = meetingControls {
                         MeetingControlBarController.install(coordinator: self, model: controls)
                     }
@@ -3035,10 +3042,21 @@ final class CoordinatorController: ObservableObject {
     /// whether or not any single event was missed. One second, because the
     /// roster carries live state - who is talking, whose hand is up.
     private func startCustomUIGridFollow() {
+        // The panel's hooks go in every time: closing the meeting window clears
+        // them (ParticipantGridWindowController.close), and the follow loop can
+        // outlive it while a view window is open. A reopen with the loop still
+        // running must still find the panel configured.
+        installGridHooks()
         // Idempotent. It is called more than once: on the first frame of a start
         // so the reference panel can show progress, and again once the meeting
         // is live. Restarting would re-stamp the session clock.
         if customUIGridTask != nil { return }
+        startGridFollowLoop()
+    }
+
+    /// Configures the meeting window's panel and sets the hooks it calls back
+    /// into. Safe to run again and again; the window's close clears them all.
+    private func installGridHooks() {
         // Surface subscription refusals. A black tile with no explanation was
         // exactly how this went unnoticed until a second person joined.
         zoomChatClient.onVideoSubscribeFailure = { [weak self] message in
@@ -3067,16 +3085,22 @@ final class CoordinatorController: ObservableObject {
         ParticipantGridWindowController.confirmClose = { [weak self] window in
             self?.confirmCloseMeetingWindow(window) ?? true
         }
-        // Minimise (the yellow light, Command-M) shrinks to the control bar while a
-        // meeting is live; with none, the window minimises as any other does.
+        // Minimise (the yellow light, Command-M) goes one size down while a meeting
+        // is live: the Mini, or the control bar where the Mini would add nothing.
+        // With no meeting live, the window minimises as any other does.
         ParticipantGridWindowController.shrinkInsteadOfMinimize = { [weak self] in
             guard let self else { return false }
             let live = self.isRunning || self.stageLive
             let canShrink = self.zoomChatClient.didUseCustomUI && self.meetingWindowOpen
             guard MeetingMinimize.outcome(meetingLive: live, canShrink: canShrink) == .shrinkToControlBar else { return false }
-            self.shrinkMeetingToBar()
+            self.collapseMeeting()
             return true
         }
+    }
+
+    /// The one-second follow loop that drives the meeting window and the view
+    /// windows. Started once; `startCustomUIGridFollow` guards that.
+    private func startGridFollowLoop() {
         // A join or a leave shows at once rather than at the next poll.
         zoomChatClient.onParticipantCountChanged = {
             ParticipantGridWindowController.refreshNow()
@@ -3093,6 +3117,7 @@ final class CoordinatorController: ObservableObject {
             },
             copyInvite: { [weak self] in self?.meetingControls?.copyInviteLink() },
             openMeetingWindow: { [weak self] in self?.openMeetingWindow() })
+        MeetingViewWindows.miniActions = miniActions
         let startedAt = sessionStartedAt ?? Date()
         let tick: @MainActor () -> Bool = { [weak self] in
             guard let self else { return false }
@@ -3100,6 +3125,12 @@ final class CoordinatorController: ObservableObject {
             // when it is wanted (a layout of views alone, or one the teacher closed,
             // has none).
             MeetingViewWindows.tick()
+            // One control surface at a time: the Meeting window back on screen
+            // (by any route) retires the Mini.
+            if MeetingViewWindows.miniIsOpen, ParticipantGridWindowController.meetingWindowIsShowing {
+                MeetingViewWindows.closeMini()
+                MeetingControlBarController.reconcile(immediately: false)
+            }
             guard self.meetingWindowWanted || ParticipantGridWindowController.isOpen else { return true }
             guard let target = self.meetingSurfaceTarget() else { return false }
             if target.form.isMeeting {
@@ -3506,44 +3537,193 @@ final class CoordinatorController: ObservableObject {
         if !sessionArranges, ChatWindowController.isOpen { ChatWindowController.close() }
         let alreadyOpen = ParticipantGridWindowController.meetingWindowIsOpen
         meetingWindowWanted = true
+        // A deliberate reopen: the room the layout gave the neighbour goes back,
+        // before the window is placed, so it is placed as shown.
+        giveRoomBackToMeeting()
         startCustomUIGridFollow()
         if alreadyOpen { ParticipantGridWindowController.show() }
         placeCustomSurfaces()
+        // The Mini hands over to the window, window first so there is no gap. (With
+        // no window yet the follow loop's next tick retires the Mini once it shows.)
+        if ParticipantGridWindowController.meetingWindowIsOpen { MeetingViewWindows.closeMini() }
         MeetingControlBarController.reconcile(immediately: false)
     }
 
-    // MARK: Shrink and expand
+    // MARK: The three sizes
 
-    /// The window morphs into the floating bar. The window is hidden, not
-    /// closed, so its video elements stay attached and the way back is instant.
-    func shrinkMeetingToBar() {
-        guard zoomChatClient.didUseCustomUI, meetingWindowOpen else { return }
-        MeetingShrinkTip.markDone() // shrunk once, by any route: the tip has done its job
-        MeetingControlBarController.morph(toward: 0)
+    /// The size the meeting is at now, read from what is on screen. A morph
+    /// heading for the window counts as the window; one heading for the bar,
+    /// as the bar.
+    var meetingSize: MeetingSize {
+        if MeetingViewWindows.miniIsOpen { return .mini }
+        if let heading = MeetingControlBarController.morphTarget { return heading == 1 ? .window : .bar }
+        let window = ParticipantGridWindowController.meetingWindowIsOpen
+            && !ParticipantGridWindowController.meetingWindowIsHidden
+        return window ? .window : .bar
     }
 
-    /// The bar morphs back into the window. With no window at all (closed with its
-    /// own button) it simply opens one.
-    func expandMeetingFromBar() {
-        guard zoomChatClient.didUseCustomUI else { return }
-        if meetingWindowOpen {
-            MeetingControlBarController.morph(toward: 1)
-        } else {
-            openMeetingWindow()
+    /// What the layout already shows, which changes where a collapse goes.
+    private var collapseContext: MeetingCollapseContext {
+        MeetingCollapseContext(placedFull: ParticipantGridWindowController.isPlacedFull,
+                               meetingIsSlot: ParticipantGridWindowController.isSlot,
+                               speakerViewOnScreen: MeetingViewWindows.speakerViewOpen)
+    }
+
+    /// The Mini's buttons: your mic and camera, the way up to the Meeting window,
+    /// the way down to the bar, and End with the same prompt as the bar's.
+    private var miniActions: MeetingMiniActions {
+        var a = MeetingMiniActions()
+        a.toggleMic = { [weak self] in self?.meetingControls?.toggleMute() }
+        a.toggleCamera = { [weak self] in self?.meetingControls?.toggleCamera() }
+        a.toMeetingWindow = { [weak self] in self?.moveMeeting(to: .window) }
+        a.toBar = { [weak self] in self?.moveMeeting(to: .bar) }
+        a.end = { [weak self] in self?.confirmAndStop() }
+        a.state = { [weak self] in
+            guard let controls = self?.meetingControls else { return (false, true) }
+            return (controls.inMeeting && controls.muted, controls.cameraOn)
         }
+        return a
     }
 
-    /// The shortcut and the one click: whichever way it is not. A click during a
-    /// morph turns it round.
+    /// One step down: the yellow light, Command-M, the top bar's Mini button.
+    /// Window to Mini (or to the bar where the Mini would only repeat what is on
+    /// screen), Mini to bar. The bar is the bottom.
+    func collapseMeeting() {
+        guard zoomChatClient.didUseCustomUI else { return }
+        let size = meetingSize
+        guard size != .bar else { return }
+        MeetingShrinkTip.markDone() // shrunk once, by any route: the tip has done its job
+        let context = collapseContext
+        let target = MeetingCollapse.next(from: size, step: .down, lastCollapsed: MeetingCollapse.lastCollapsed(),
+                                          context: context)
+        move(from: size, to: target, step: .down, context: context)
+    }
+
+    /// The window goes to the control bar by the morph (the choice in the close
+    /// prompt, which names the bar). Where the window is not showing, it is already
+    /// the Mini or the bar.
+    func shrinkMeetingToBar() {
+        guard zoomChatClient.didUseCustomUI else { return }
+        let size = meetingSize
+        guard size != .bar else { return }
+        MeetingShrinkTip.markDone()
+        move(from: size, to: .bar, step: .down, context: collapseContext)
+    }
+
+    /// The bar's Meeting button: one size up, the Mini, or with Option held the
+    /// Meeting window. A click during a morph turns it round.
+    func expandMeetingFromBar(option: Bool = false) {
+        guard zoomChatClient.didUseCustomUI else { return }
+        if MeetingControlBarController.morphTarget != nil {
+            if meetingWindowOpen { giveRoomBackToMeeting(); MeetingControlBarController.morph(toward: 1) }
+            else { openMeetingWindow() }
+            return
+        }
+        // The bar shows while the window is merely covered: bring the window up.
+        guard meetingSize == .bar else { openMeetingWindow(); return }
+        let context = collapseContext
+        let target = MeetingCollapse.next(from: .bar, step: .up, option: option,
+                                          lastCollapsed: MeetingCollapse.lastCollapsed(), context: context)
+        move(from: .bar, to: target, step: .up, context: context)
+    }
+
+    /// Goes to a size from wherever the meeting is, for the Mini's own arrows.
+    func moveMeeting(to size: MeetingSize) {
+        guard zoomChatClient.didUseCustomUI else { return }
+        let from = meetingSize
+        guard from != size else { return }
+        let context = collapseContext
+        let rank: (MeetingSize) -> Int = { $0 == .window ? 0 : ($0 == .mini ? 1 : 2) }
+        move(from: from, to: size, step: rank(size) > rank(from) ? .down : .up, context: context)
+    }
+
+    /// The shortcut and the one click: one step the other way from where it is.
+    /// Window goes down; Mini or bar comes up. A click during a morph turns it round.
     func toggleMeetingShrunk() {
         guard zoomChatClient.didUseCustomUI else { return }
         if let heading = MeetingControlBarController.morphTarget {
-            heading == 0 ? expandMeetingFromBar() : shrinkMeetingToBar()
-        } else if ParticipantGridWindowController.meetingWindowIsShowing {
-            shrinkMeetingToBar()
-        } else {
-            expandMeetingFromBar()
+            heading == 0 ? expandMeetingFromBar(option: true) : shrinkMeetingToBar()
+            return
         }
+        switch meetingSize {
+        case .window: collapseMeeting()
+        case .mini: moveMeeting(to: .window)
+        case .bar: expandMeetingFromBar()
+        }
+    }
+
+    /// Does the move and keeps the rest in step: the neighbour's room, the bar's
+    /// visibility, and which collapsed size is remembered.
+    private func move(from: MeetingSize, to wanted: MeetingSize, step: MeetingCollapse.Step,
+                      context: MeetingCollapseContext) {
+        var target = wanted
+        // Where a size cannot be built, the closest one that can.
+        if target == .mini, !MeetingViewWindows.miniAvailable { target = step == .down ? .bar : .window }
+        if target == .bar, !MeetingControlBarController.isInstalled {
+            target = MeetingViewWindows.miniAvailable && from != .mini ? .mini : from
+        }
+        guard target != from else { return }
+
+        switch (from, target) {
+        case (.window, .mini):
+            guard showMini() else { move(from: from, to: .bar, step: step, context: context); return }
+            giveRoomToNeighbourIfPlaced(going: .mini, context: context)
+            ParticipantGridWindowController.hide()
+            MeetingControlBarController.reconcile(immediately: true)
+        case (.window, .bar):
+            giveRoomToNeighbourIfPlaced(going: .bar, context: context)
+            MeetingControlBarController.morph(toward: 0)
+        case (.mini, .bar):
+            MeetingViewWindows.closeMini()
+            MeetingControlBarController.reconcile(immediately: true)
+        case (.bar, .mini):
+            guard showMini() else { openMeetingWindow(); return }
+            MeetingControlBarController.reconcile(immediately: true)
+        case (.mini, .window):
+            openMeetingWindow()
+        case (.bar, .window):
+            if meetingWindowOpen {
+                giveRoomBackToMeeting()
+                MeetingControlBarController.morph(toward: 1)
+            } else {
+                openMeetingWindow()
+            }
+        default:
+            break
+        }
+
+        if step == .down {
+            MeetingCollapse.setLastCollapsed(MeetingCollapse.remembered(
+                after: step, from: from, to: target, context: context, current: MeetingCollapse.lastCollapsed()))
+        }
+    }
+
+    /// Opens the Mini on the display the meeting window is on. The follow loop
+    /// feeds it, so it is running first.
+    private func showMini() -> Bool {
+        ensureMeetingControls()
+        startCustomUIGridFollow()
+        return MeetingViewWindows.openMini(on: ParticipantGridWindowController.meetingScreen ?? NSScreen.main)
+    }
+
+    /// A full-size placed Meeting leaves its slot: the neighbour takes the room,
+    /// the same as hiding the speaker tile.
+    private func giveRoomToNeighbourIfPlaced(going size: MeetingSize, context: MeetingCollapseContext) {
+        guard MeetingCollapse.neighbourTakesRoom(going: size, context: context),
+              sessionArranges, let template = sessionTemplate else { return }
+        speakerTileQuickHidden = true
+        layoutEngine.moveNeighbour(template, meetingHidden: true)
+    }
+
+    /// The Meeting is coming back: the neighbour gives the room up, and the views
+    /// that went with it return. Idempotent.
+    private func giveRoomBackToMeeting() {
+        guard speakerTileQuickHidden else { return }
+        speakerTileQuickHidden = false
+        if sessionArranges, let template = sessionTemplate {
+            layoutEngine.moveNeighbour(template, meetingHidden: false)
+        }
+        MeetingViewWindows.setHiddenTogether(false)
     }
 
     func closeMeetingWindow() {
@@ -3787,6 +3967,7 @@ final class CoordinatorController: ObservableObject {
         s.isLive = hasLiveSession
         s.hasMeetingSurfaces = zoomChatClient.didUseCustomUI && !recordOnlyActive
         s.meetingShrunk = ParticipantGridWindowController.meetingWindowIsHidden
+        s.miniOpen = MeetingViewWindows.miniIsOpen
         return s
     }
 
@@ -3814,8 +3995,23 @@ final class CoordinatorController: ObservableObject {
             } else {
                 openMeetingWindow()
             }
+        case .mini:
+            // Already up: this only brings it to the front.
+            _ = MeetingViewWindows.openMini(on: ParticipantGridWindowController.meetingScreen ?? NSScreen.main)
         case .controlBar:
-            MeetingControlBarController.bringForward()
+            // No bar built is a dead end, so fall back to the first surface that
+            // exists: the Meeting window, then the Mini.
+            if !MeetingControlBarController.bringForward() {
+                switch MeetingSurfaces.wayBack(windowExists: meetingWindowOpen,
+                                               miniAvailable: MeetingViewWindows.miniAvailable, barExists: false) {
+                case .mini:
+                    moveMeeting(to: .mini)
+                case .window:
+                    openMeetingWindow()
+                default:
+                    openMeetingWindow()
+                }
+            }
         case .mainWindow:
             return false
         }

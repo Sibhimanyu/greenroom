@@ -98,17 +98,17 @@ final class MeetingTopBarView: NSView {
         shield.setAccessibilityLabel("Meeting information")
 
         // Icon and words, styled like View beside it: an unlabelled icon was not
-        // discoverable. "Control bar" names where it goes, as View names what it
+        // discoverable. "Mini" names where it goes, as View names what it
         // changes; "Shrink" alone would not say to what.
-        shrinkButton.image = NSImage(systemSymbolName: "arrow.down.right.and.arrow.up.left", accessibilityDescription: nil)?
+        shrinkButton.image = NSImage(systemSymbolName: "pip", accessibilityDescription: nil)?
             .withSymbolConfiguration(.init(pointSize: 12, weight: .regular))
         shrinkButton.imagePosition = .imageLeading
         shrinkButton.imageHugsTitle = true
-        shrinkButton.attributedTitle = NSAttributedString(string: " Control bar", attributes: [
+        shrinkButton.attributedTitle = NSAttributedString(string: " Mini", attributes: [
             .font: NSFont.systemFont(ofSize: 12), .foregroundColor: NSColor.white])
         shrinkButton.contentTintColor = .white
         shrinkButton.toolTip = Self.shrinkHelp(shortcut: "\u{2318}M")
-        shrinkButton.setAccessibilityLabel("Shrink to the control bar")
+        shrinkButton.setAccessibilityLabel("Shrink to the Mini window")
 
         viewButton.image = NSImage(systemSymbolName: "square.grid.2x2", accessibilityDescription: nil)?
             .withSymbolConfiguration(.init(pointSize: 12, weight: .regular))
@@ -149,7 +149,7 @@ final class MeetingTopBarView: NSView {
     }
 
     static func shrinkHelp(shortcut: String) -> String {
-        "Shrink the meeting to the control bar so you can get back to your slides"
+        "Shrink the meeting to a small floating Mini window so you can get back to your slides"
             + (shortcut.isEmpty ? "" : " (\(shortcut))")
     }
 

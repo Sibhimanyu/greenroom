@@ -2,13 +2,14 @@
 //  WindowBanner.swift
 //  Greenroom
 //
-//  Every message Greenroom shows - a toast, the upload question, the start's
-//  "Getting ready" card - lives in one place: a floating glass panel at the
+//  Every message Greenroom shows - a toast, the upload question - lives in one
+//  place: a floating glass panel at the
 //  top-centre of the screen the person is working on, just below the menu bar. Never inside a Greenroom window, so a message can never
 //  sit on Start Meeting or any other control.
 //
-//  ToastController, UploadPromptCard and ReadinessHUDController keep their
-//  APIs and hand their content to BannerCenter. This file is the one panel
+//  ToastController and UploadPromptCard keep their APIs and hand their content
+//  to BannerCenter. The start's status is not here: it is the pill that grows
+//  out of the notch (NotchStatusController.swift), and these stack below it. This file is the one panel
 //  that draws it, and the pure frame math that places it.
 //
 import SwiftUI
@@ -38,14 +39,12 @@ final class BannerCenter: ObservableObject {
 
     @Published private(set) var toast: ToastItem?
     @Published private(set) var prompt: PromptItem?
-    @Published private(set) var readiness: ParticipantGridWindowController.Readiness?
 
-    var isShowing: Bool { toast != nil || prompt != nil || readiness != nil }
+    var isShowing: Bool { toast != nil || prompt != nil }
     /// Something with a button: the panel takes clicks only then.
-    var isInteractive: Bool { prompt != nil || readiness?.failure != nil }
+    var isInteractive: Bool { prompt != nil }
 
     private var toastTask: Task<Void, Never>?
-    private var readinessTask: Task<Void, Never>?
 
     func showToast(_ item: ToastItem, dismissAfter: TimeInterval?) {
         toastTask?.cancel()
@@ -74,34 +73,6 @@ final class BannerCenter: ObservableObject {
         guard prompt != nil else { return }
         withAnimation(.easeIn(duration: 0.25)) { prompt = nil }
     }
-
-    func showReadiness(_ value: ParticipantGridWindowController.Readiness) {
-        // Nothing left to report. A failure stays; otherwise a beat on the
-        // ticked list before it goes, as the floating card does.
-        guard !value.steps.isEmpty || value.failure != nil else {
-            guard readiness != nil, readinessTask == nil else { return }
-            readinessTask = Task { @MainActor in
-                try? await Task.sleep(nanoseconds: 900_000_000)
-                guard !Task.isCancelled else { return }
-                hideReadiness()
-            }
-            return
-        }
-        readinessTask?.cancel()
-        readinessTask = nil
-        if readiness == nil {
-            withAnimation(.easeOut(duration: 0.25)) { readiness = value }
-        } else {
-            readiness = value
-        }
-    }
-
-    func hideReadiness() {
-        readinessTask?.cancel()
-        readinessTask = nil
-        guard readiness != nil else { return }
-        withAnimation(.easeIn(duration: 0.25)) { readiness = nil }
-    }
 }
 
 /// Kept so a leftover `.overlay { WindowBannerOverlay() }` compiles; messages
@@ -115,7 +86,7 @@ private struct StackSizeKey: PreferenceKey {
     static func reduce(value: inout CGSize, nextValue: () -> CGSize) { value = nextValue() }
 }
 
-/// What the panel draws: prompt, readiness, toast, top to bottom.
+/// What the panel draws: prompt, toast, top to bottom.
 private struct BannerStackView: View {
     @ObservedObject var banners: BannerCenter
     let onSize: (CGSize) -> Void
@@ -129,9 +100,6 @@ private struct BannerStackView: View {
         VStack(alignment: .center, spacing: BannerLayout.gap) {
             if let prompt = banners.prompt {
                 PromptBanner(item: prompt).transition(transition)
-            }
-            if let readiness = banners.readiness {
-                ReadinessBanner(readiness: readiness).transition(transition)
             }
             if let toast = banners.toast {
                 ToastBanner(item: toast).transition(transition)
@@ -168,6 +136,7 @@ final class BannerPanelController {
     private var shrinkTask: Task<Void, Never>?
     private var refitTask: Task<Void, Never>?
     private var tracking: AnyCancellable?
+    private var pillObserver: NSObjectProtocol?
 
     /// The panel's current frame, for the debug tour.
     var frame: NSRect? { panel?.isVisible == true ? panel?.frame : nil }
@@ -181,13 +150,18 @@ final class BannerPanelController {
         tracking = banners.objectWillChange.sink { [weak self] in
             DispatchQueue.main.async { self?.ensurePanel() }
         }
+        // The status pill opened or left: re-stack below it.
+        pillObserver = NotificationCenter.default.addObserver(forName: .notchStatusFrameChanged, object: nil,
+                                                              queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.place() }
+        }
         // BannerCenter is created lazily by the first message, so that
         // message's change fired before this sink existed: catch up now.
         ensurePanel()
     }
 
     /// The screen the person is working on: the one under the pointer.
-    private static func workingScreen() -> NSScreen? {
+    static func workingScreen() -> NSScreen? {
         let point = NSEvent.mouseLocation
         return NSScreen.screens.first { NSMouseInRect(point, $0.frame, false) } ?? NSScreen.main ?? NSScreen.screens.first
     }
@@ -272,7 +246,10 @@ final class BannerPanelController {
 
     private func place() {
         guard let panel, stack.height > 0 else { return }
-        let visible = (screen ?? Self.workingScreen())?.visibleFrame ?? .zero
+        let target_screen = screen ?? Self.workingScreen()
+        // The status pill, when open, is the topmost thing: stack below it.
+        let visible = BannerLayout.clearing(target_screen?.visibleFrame ?? .zero,
+                                            pill: NotchStatusController.shared.occupiedFrame(on: target_screen))
         let target = BannerLayout.panelFrame(stack: stack, in: visible)
         if panel.frame != target { panel.setFrame(target, display: true) }
     }
@@ -292,7 +269,7 @@ final class BannerPanelController {
     }
 }
 
-/// The card surface all three share: Liquid Glass at radius-lg.
+/// The card surface both share: Liquid Glass at radius-lg.
 private struct BannerCard<Content: View>: View {
     @ViewBuilder let content: Content
 
@@ -374,101 +351,6 @@ private struct PromptBanner: View {
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-        }
-    }
-}
-
-/// The start's steps:
-/// a bar, the named steps, the newest status line, and on a failure the
-/// reason with its way out.
-private struct ReadinessBanner: View {
-    let readiness: ParticipantGridWindowController.Readiness
-
-    var body: some View {
-        BannerCard {
-            VStack(alignment: .leading, spacing: 7) {
-                Text(readiness.failure == nil ? "GETTING READY" : "COULD NOT START")
-                    .font(.system(size: 9, weight: .semibold, design: .monospaced))
-                    .foregroundStyle(.secondary)
-
-                GeometryReader { proxy in
-                    ZStack(alignment: .leading) {
-                        Capsule().fill(Color.secondary.opacity(0.2))
-                        // A fill, which is the one thing DESIGN.md allows the lime to be.
-                        Capsule().fill(Brand.fill)
-                            .frame(width: proxy.size.width * fraction)
-                            .animation(.easeInOut(duration: 0.25), value: fraction)
-                    }
-                }
-                .frame(height: 2)
-
-                ForEach(Array(readiness.steps.enumerated()), id: \.offset) { _, step in
-                    row(step)
-                }
-
-                if let failure = readiness.failure {
-                    Text(failure)
-                        .font(.subheadline)
-                        .foregroundStyle(.red)
-                        .lineLimit(6)
-                        .fixedSize(horizontal: false, vertical: true)
-                    HStack(spacing: 8) {
-                        Spacer(minLength: 0)
-                        Button("Close") {
-                            Task { @MainActor in ParticipantGridWindowController.readinessDismiss?() }
-                        }
-                        Button("Try again") {
-                            Task { @MainActor in ParticipantGridWindowController.readinessTryAgain?() }
-                        }
-                        .buttonStyle(.borderedProminent)
-                    }
-                    .controlSize(.small)
-                } else if let detail = readiness.detail, !detail.isEmpty {
-                    Text(detail)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(2)
-                }
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-        }
-    }
-
-    private var fraction: Double {
-        readiness.steps.isEmpty ? 0 : Double(readiness.settled) / Double(readiness.steps.count)
-    }
-
-    private func row(_ step: ParticipantGridWindowController.Readiness.Step) -> some View {
-        HStack(spacing: 7) {
-            Group {
-                switch step.state {
-                case .pending:
-                    Image(systemName: "circle").foregroundStyle(.secondary)
-                case .active:
-                    ProgressView().controlSize(.small).scaleEffect(0.6)
-                case .done:
-                    Image(systemName: "checkmark.circle.fill").foregroundStyle(Brand.green)
-                case .skipped:
-                    Image(systemName: "minus.circle").foregroundStyle(.secondary)
-                case .failed:
-                    Image(systemName: "exclamationmark.circle.fill").foregroundStyle(.red)
-                }
-            }
-            .font(.system(size: 15))
-            .frame(width: 15, height: 15)
-            Text(step.label)
-                .font(.system(size: 12))
-                .foregroundStyle(style(step.state))
-        }
-        .frame(height: 17)
-    }
-
-    private func style(_ state: ParticipantGridWindowController.Readiness.State) -> AnyShapeStyle {
-        switch state {
-        case .pending, .skipped: return AnyShapeStyle(.secondary)
-        case .active: return AnyShapeStyle(.primary)
-        case .done: return AnyShapeStyle(.secondary)
-        case .failed: return AnyShapeStyle(Color.red)
         }
     }
 }

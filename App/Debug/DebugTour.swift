@@ -18,6 +18,8 @@
 //    resetMeetingTip  show the meeting window's one-time "Control bar" tip again
 //                 (clears UserDefaults key meetingShrinkTip.done; the same as
 //                 `defaults delete <bundle id> meetingShrinkTip.done`).
+//    status step=1..5 | live=true [recording=true] [hold=secs] | fail="..." | clear
+//                 drives the notch status pill with sample data only; nothing starts.
 //    tree         dump the main window's view tree to <dir>/tree.txt.
 //    restore      Home, original appearance and frame, tour windows closed.
 //  Every command writes <dir>/last.json ({"ok":..,"cmd":..,"error":..,"seq":..}).
@@ -134,6 +136,7 @@ enum DebugTour {
                         title: "Upload this recording to YouTube?",
                         detail: "\u{201C}Sample recording\u{201D} \u{00B7} 128 MB \u{00B7} Unlisted. Debug tour: nothing is uploaded.",
                         timeout: 600, onUpload: {}, onDismiss: {})
+                case "status": extra = status(info)
                 case "resetMeetingTip": MeetingShrinkTip.reset()
                 case "tree": tree(dir: dir)
                 default: throw TourError("unknown cmd \(cmd)")
@@ -143,6 +146,40 @@ enum DebugTour {
                 writeLast(dir: dir, ["ok": false, "cmd": cmd, "seq": mySeq, "error": "\(error)"])
             }
         }
+    }
+
+    /// Sample data only. The buttons just fold the pill; they never reach the
+    /// coordinator, so "Try again" cannot start a meeting.
+    private static func status(_ info: [String: String]) -> [String: Any] {
+        let pill = NotchStatusController.shared
+        let fold: () -> Void = { NotchStatusController.shared.clear() }
+        let labels = ["Workspace", "Picture", "Meeting", "Recording", "Tiling windows"]
+        func put(_ input: NotchInput) { pill.update(input, onAction: fold, onDismiss: fold) }
+        if info["clear"] != nil {
+            pill.clear()
+            return [:]
+        }
+        if let message = info["fail"] {
+            let n = max(1, min(5, Int(info["step"] ?? "") ?? 2))
+            var steps = labels.enumerated().map { NotchStep(label: $1, state: $0 < n - 1 ? .done : .pending) }
+            steps[n - 1].state = .failed
+            put(NotchInput(steps: steps, failure: message, detail: "Sample failure from the debug tour"))
+            return [:]
+        }
+        if info["live"] == "true" {
+            let recording = info["recording"] == "true"
+            pill.liveHold = info["hold"].flatMap(Double.init) ?? 12
+            put(NotchInput(steps: labels.map {
+                NotchStep(label: $0, state: $0 == "Recording" && !recording ? .skipped : .done)
+            }))
+            put(NotchInput())
+            return [:]
+        }
+        let n = max(1, min(5, Int(info["step"] ?? "") ?? 1))
+        put(NotchInput(steps: labels.enumerated().map {
+            NotchStep(label: $1, state: $0 < n - 1 ? .done : ($0 == n - 1 ? .active : .pending))
+        }, detail: "Sample status from the debug tour"))
+        return [:]
     }
 
     private static var savedShareKind: ShareTarget.Kind?
@@ -274,6 +311,8 @@ enum DebugTour {
         opened.removeAll()
         ToastController.hide()
         UploadPromptCard.hide(answered: true)
+        NotchStatusController.shared.clear()
+        NotchStatusController.shared.liveHold = NotchStatusRules.liveHold
         if let shown = savedPreview {
             NotificationCenter.default.post(name: .debugTourHomePreview, object: nil, userInfo: ["shown": shown])
             savedPreview = nil
@@ -297,8 +336,9 @@ enum DebugTour {
         let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: false)
         let me = Bundle.main.bundleIdentifier
         let windows = content.windows.filter {
-            $0.owningApplication?.bundleIdentifier == me && $0.frame.width > 120 && $0.frame.height > 80
-                && ($0.windowLayer == 0 || $0.title == "Messages")
+            $0.owningApplication?.bundleIdentifier == me
+                && (($0.frame.width > 120 && $0.frame.height > 80 && ($0.windowLayer == 0 || $0.title == "Messages"))
+                    || $0.title == "Status")
         }
         var entries: [[String: Any]] = []
         var errors: [String] = []
@@ -321,10 +361,21 @@ enum DebugTour {
                 let pad = ns.title == "Messages" ? BannerLayout.shadowPad : 0
                 let f = ns.frame
                 let card = f.insetBy(dx: pad, dy: pad)
-                return ["screenRelative": [f.minX - sf.minX, sf.maxY - f.maxY, f.width, f.height],
+                var statusInfo: [String: Any] = [:]
+                if ns.title == "Status" {
+                    let notch = NotchStatusController.shared.debugNotch
+                    statusInfo["screenFrame"] = [sf.minX, sf.minY, sf.width, sf.height]
+                    statusInfo["topGapToScreenTop"] = sf.maxY - f.maxY
+                    if let n = notch {
+                        statusInfo["notchRect"] = [n.minX - sf.minX, sf.maxY - n.maxY, n.width, n.height]
+                        statusInfo["panelMidXMinusNotchMidX"] = f.midX - n.midX
+                    } else { statusInfo["notchRect"] = "none: fallback placement" }
+                    statusInfo["level"] = ns.level.rawValue
+                }
+                return statusInfo.merging(["screenRelative": [f.minX - sf.minX, sf.maxY - f.maxY, f.width, f.height],
                         "gapBelowMenuBar": vf.maxY - card.maxY,
                         "gapFromRightEdge": vf.maxX - card.maxX,
-                        "screenSize": [sf.width, sf.height]]
+                        "screenSize": [sf.width, sf.height]] as [String: Any]) { a, _ in a }
             }
             if let placement { entry.merge(placement) { $1 } }
             if !w.isOnScreen { entry["warning"] = "isOnScreen false" }

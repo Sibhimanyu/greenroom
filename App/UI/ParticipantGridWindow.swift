@@ -4592,20 +4592,41 @@ private final class IconCellButton: NSButton {
 /// window, so the tiling step buries it - the panel gets covered by the very
 /// thing it is reporting on.
 ///
-/// So on one display a small floating card carries it instead. Small enough not
-/// to fight the layout, above it so the tiling cannot hide it, and gone the
+/// So on one display a small floating pill carries it instead: it grows out of
+/// the notch, sits above the tiling so nothing hides it, and folds away the
 /// moment there is nothing left to say.
 enum ReadinessHUDController {
 
-    /// `screen` is unused now: the card is drawn by the one message panel at
-    /// the top-right of the screen the person is working on (WindowBanner.swift).
+    /// `screen` is unused: the pill goes on the screen the person is working on
+    /// (NotchStatusController.swift).
     static func show(_ readiness: ParticipantGridWindowController.Readiness,
                      on screen: NSScreen) {
-        MainActor.assumeIsolated { BannerCenter.shared.showReadiness(readiness) }
+        let input = NotchInput(
+            steps: readiness.steps.map { NotchStep(label: $0.label, state: NotchStepState($0.state)) },
+            failure: readiness.failure,
+            detail: readiness.detail)
+        MainActor.assumeIsolated {
+            NotchStatusController.shared.update(
+                input,
+                onAction: { ParticipantGridWindowController.readinessTryAgain?() },
+                onDismiss: { ParticipantGridWindowController.readinessDismiss?() })
+        }
     }
 
     static func close() {
-        MainActor.assumeIsolated { BannerCenter.shared.hideReadiness() }
+        MainActor.assumeIsolated { NotchStatusController.shared.clear() }
+    }
+}
+
+extension NotchStepState {
+    init(_ state: ParticipantGridWindowController.Readiness.State) {
+        switch state {
+        case .pending: self = .pending
+        case .active: self = .active
+        case .done: self = .done
+        case .skipped: self = .skipped
+        case .failed: self = .failed
+        }
     }
 }
 

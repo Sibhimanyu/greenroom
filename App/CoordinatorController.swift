@@ -2013,7 +2013,10 @@ final class CoordinatorController: ObservableObject {
         $shareTarget
             .map(\.kind)
             .receive(on: DispatchQueue.main)
-            .sink { [weak self] kind in self?.shareKindChanged(to: kind) }
+            .sink { [weak self] kind in
+                ShareVisibleWindows.setKind(ShowOnShare.ShareKind(kind))
+                self?.shareKindChanged(to: kind)
+            }
             .store(in: &cancellables)
         whiteboardWindow.onClosed = { [weak self] in
             guard let self, self.shareTarget.kind == .whiteboard else { return }

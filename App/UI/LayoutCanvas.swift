@@ -877,6 +877,9 @@ struct MeetingViewDiagram: Shape {
             p.move(to: CGPoint(x: r.midX - r.height * 0.3, y: r.maxY - r.height * 0.14))
             p.addQuadCurve(to: CGPoint(x: r.midX + r.height * 0.3, y: r.maxY - r.height * 0.14),
                            control: CGPoint(x: r.midX, y: r.midY - r.height * 0.02))
+        case .mini:
+            box(0, 0, 1, 1)
+            box(0.64, 0.08, 0.28, 0.28)
         case .gallery:
             for row in 0..<2 { for col in 0..<3 {
                 box(CGFloat(col) * 0.35, CGFloat(row) * 0.55, 0.3, 0.45)

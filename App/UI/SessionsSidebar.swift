@@ -23,7 +23,7 @@ final class SessionsSidebarModel: ObservableObject {
     struct Snapshot: Equatable {
         var cards: [SessionCardModel] = []
         var storage = ""
-        /// Set when the disk is getting full; critical is red, otherwise amber.
+        /// Set when the disk is getting full; true when critically low.
         var warningIsCritical: Bool?
     }
     @Published var snapshot = Snapshot()
@@ -67,24 +67,28 @@ struct SessionsSidebar: View {
         Button {
             NSWorkspace.shared.activateFileViewerSelecting([SessionFolders.recordingsDirectory])
         } label: {
-            Text(model.snapshot.storage)
-                .font(.footnote)
-                .foregroundStyle(warningColor ?? .secondary)
-                .lineLimit(2)
-                .multilineTextAlignment(.leading)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 16)
-                .padding(.vertical, 10)
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                if critical {
+                    Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.red)
+                }
+                Text(model.snapshot.storage)
+                    .foregroundStyle(critical ? Color.red : Color.secondary)
+                    .lineLimit(2)
+                    .multilineTextAlignment(.leading)
+            }
+            .font(.footnote)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 10)
         }
         .buttonStyle(.plain)
         .help("Show the folder in Finder.")
     }
 
-    /// Semantic system colours: this is about the disk, not about anything
-    /// leaving the Mac, so not Brand.net.
-    private var warningColor: Color? {
-        model.snapshot.warningIsCritical.map { $0 ? .red : .orange }
-    }
+    /// Amber means "leaves your Mac" (DESIGN.md), so a disk that is merely
+    /// getting full stays secondary. Only the critical case is drawn in a
+    /// warning colour, with an icon so it does not rest on colour alone.
+    private var critical: Bool { model.snapshot.warningIsCritical == true }
 }
 
 // MARK: - Command
@@ -98,11 +102,17 @@ struct SidebarCommands: Commands {
     @ObservedObject var coordinator: CoordinatorController
     @AppStorage(SidebarRules.hiddenKey) private var hidden = false
 
+    /// Only the Sessions grid has a sidebar to toggle.
+    static func canToggle(_ page: CoordinatorController.MainPage) -> Bool {
+        if case .sessions = page { return true }
+        return false
+    }
+
     var body: some Commands {
         CommandGroup(replacing: .sidebar) {
             Button(hidden ? "Show Sidebar" : "Hide Sidebar") { hidden.toggle() }
                 .keyboardShortcut("b", modifiers: .command)
-                .disabled(coordinator.mainPage.isHome)
+                .disabled(!SidebarCommands.canToggle(coordinator.mainPage))
         }
     }
 }

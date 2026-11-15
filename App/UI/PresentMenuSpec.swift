@@ -64,6 +64,7 @@ enum PresentMenu {
     }
 
     static let cameraOffNote = "No camera is picked, so there is no look to choose."
+    static let noCameraNote = "No camera is picked, so there would be nothing to show."
 
     static func entries(_ s: State, _ a: Actions) -> [MenuEntry] {
         var out: [MenuEntry] = [.header("What the class sees")]
@@ -101,7 +102,7 @@ enum PresentMenu {
 
         out.append(.item("Whiteboard", checked: s.kind == .whiteboard) { a.pickKind(.whiteboard) })
         out.append(.item("Just my camera", checked: s.kind == .nothing, enabled: !s.cameraOff,
-                         note: s.cameraOff ? cameraOffNote : nil) { a.pickKind(.nothing) })
+                         note: s.cameraOff ? noCameraNote : nil) { a.pickKind(.nothing) })
 
         // Look.
         out.append(.separator)

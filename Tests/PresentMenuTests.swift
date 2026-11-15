@@ -114,7 +114,7 @@ final class PresentMenuTests: XCTestCase {
         let m = menu(state { $0.cameraOff = true })
         let camera = m.entry(titled: "Just my camera")
         XCTAssertEqual(camera?.enabled, false)
-        XCTAssertEqual(camera?.note, P.cameraOffNote)
+        XCTAssertEqual(camera?.note, P.noCameraNote)
         let look = m.entry(titled: "Look")
         XCTAssertEqual(look?.enabled, false)
         XCTAssertEqual(look?.note, P.cameraOffNote)

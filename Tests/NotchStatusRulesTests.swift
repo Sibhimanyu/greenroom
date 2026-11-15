@@ -11,10 +11,12 @@ final class NotchStatusRulesTests: XCTestCase {
     }
 
     func testStepWords() {
-        XCTAssertEqual(NotchStatusRules.words(forStep: "Picture"), "Opening your picture\u{2026}")
-        XCTAssertEqual(NotchStatusRules.words(forStep: "Meeting"), "Joining the meeting\u{2026}")
+        XCTAssertEqual(NotchStatusRules.words(forStep: "Workspace"), "Opening your apps\u{2026}")
+        XCTAssertEqual(NotchStatusRules.words(forStep: "Picture"), "Getting your camera and screen ready\u{2026}")
+        XCTAssertEqual(NotchStatusRules.words(forStep: "Meeting"), "Starting the meeting\u{2026}")
+        XCTAssertEqual(NotchStatusRules.words(forStep: "Joining meeting"), "Joining the meeting\u{2026}")
         XCTAssertEqual(NotchStatusRules.words(forStep: "Recording"), "Starting the recording\u{2026}")
-        XCTAssertEqual(NotchStatusRules.words(forStep: "Tiling windows"), "Tiling windows\u{2026}")
+        XCTAssertEqual(NotchStatusRules.words(forStep: "Tiling windows"), "Arranging your windows\u{2026}")
     }
 
     func testProgressCounterAndText() {
@@ -22,9 +24,25 @@ final class NotchStatusRulesTests: XCTestCase {
             return XCTFail("expected working")
         }
         XCTAssertEqual(p.counter, "3/5")
-        XCTAssertEqual(p.text, "Joining the meeting\u{2026}")
+        XCTAssertEqual(p.text, "Starting the meeting\u{2026}")
         XCTAssertEqual(p.settled, 2)
         XCTAssertEqual(p.fraction, 0.4, accuracy: 0.0001)
+    }
+
+    func testSkippedStepsAreNotCounted() {
+        let input = NotchInput(steps: [
+            NotchStep(label: "Workspace", state: .skipped),
+            NotchStep(label: "Picture", state: .active),
+            NotchStep(label: "Meeting", state: .pending),
+            NotchStep(label: "Recording", state: .skipped),
+            NotchStep(label: "Tiling windows", state: .skipped),
+        ])
+        guard case .working(let p) = NotchStatusRules.next(from: .hidden, input: input) else {
+            return XCTFail("expected working")
+        }
+        XCTAssertEqual(p.counter, "1/2")
+        XCTAssertEqual(p.fraction, 0, accuracy: 0.0001)
+        XCTAssertFalse(p.allSettled)
     }
 
     func testFinishedStartBecomesLive() {

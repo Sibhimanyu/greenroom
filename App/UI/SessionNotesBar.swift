@@ -302,7 +302,8 @@ private struct SessionNotesBar: View {
                                timingRecording: notes.timingRecording,
                                count: notes.notes.count,
                                last: notes.notes.last?.text,
-                               commit: notes.commit)
+                               commit: notes.commit,
+                               close: notes.toggle)
     }
 }
 
@@ -314,6 +315,8 @@ struct SessionNotesBarContent: View {
     let count: Int
     let last: String?
     let commit: () -> Void
+    /// Puts the bar away for this session (the Notes button brings it back).
+    var close: () -> Void = {}
     @FocusState private var focused: Bool
 
     var body: some View {
@@ -332,11 +335,24 @@ struct SessionNotesBarContent: View {
                     .font(.system(size: 14))
                     .focused($focused)
                     .onSubmit { commit() }
-                    .onExitCommand { draft = "" }
+                    // Esc clears a draft; on an empty bar it closes the bar.
+                    .onExitCommand { if draft.isEmpty { close() } else { draft = "" } }
                 Label("\(count)", systemImage: "note.text")
                     .font(.system(size: 12).monospacedDigit())
                     .foregroundStyle(.secondary)
                     .help("\(count) note\(count == 1 ? "" : "s") in this session. They open in Sessions, under Notes.")
+                // The bar could not be put away from itself (owner, 2026-11-15).
+                Button(action: close) {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 20, height: 20)
+                        .background(Color.primary.opacity(0.08), in: Circle())
+                        .contentShape(Circle())
+                }
+                .buttonStyle(.plain)
+                .help("Close the notes bar. Notes in the meeting bar or the menu bar opens it again.")
+                .accessibilityLabel("Close the notes bar")
             }
             Text(last.map { "Saved: \($0)" }
                  ?? (timingRecording ? "Timed to the recording" : "Timed from the start of the session"))

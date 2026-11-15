@@ -331,8 +331,10 @@ final class MeetingControlsModel: ObservableObject {
         // nobody could see. The bar's Chat button did nothing (owner, 2026-11-14).
         if ParticipantGridWindowController.meetingWindowIsShowing, !coordinator.sessionArranges {
             sidePanel = sidePanel == .chat ? nil : .chat
-        } else if ChatWindowController.isOpen {
+        } else if ChatWindowController.isOpenHere {
             ChatWindowController.close()
+        } else if ChatWindowController.isOpen {
+            ChatWindowController.reveal() // on another desktop: brings it to this one
         } else {
             coordinator.revealChatWindow()
         }
@@ -347,6 +349,19 @@ final class MeetingControlsModel: ObservableObject {
         } else {
             sidePanel = .people
             coordinator.toggleMeetingWindow()
+        }
+        refresh()
+    }
+
+    /// The bar's people count. The bar is up while the window is not, so this
+    /// brings the meeting window back with the People panel open; with the
+    /// window already showing it toggles the panel like the window's own button.
+    func showPeople() {
+        if ParticipantGridWindowController.meetingWindowIsShowing {
+            sidePanel = sidePanel == .people ? nil : .people
+        } else {
+            sidePanel = .people
+            coordinator.expandMeetingFromBar(option: true)
         }
         refresh()
     }
@@ -778,6 +793,7 @@ private struct MeetingControlBarView: View {
         a.toggleCamera = model.toggleCamera
         a.meeting = model.toggleMeetingWindow
         a.toggleChat = model.toggleChat
+        a.people = model.showPeople
         a.toggleDraw = { coordinator.toggleDrawing() }
         a.togglePause = { coordinator.togglePauseRecording() }
         // Asks first, exactly as the close and quit prompts do.

@@ -72,11 +72,6 @@ struct ContentView: View {
     /// page change (not at the click), so the toolbar items swap with the
     /// content instead of ahead of it.
     @State private var chromeOnPage = false
-    /// The mode switcher is held invisible while the window resizes back to
-    /// Home and fades in once it is still. A centred toolbar item is
-    /// re-centred by AppKit a frame behind the moving window, so it visibly
-    /// jittered across the shrink (owner, 2026-11-15).
-    @State private var switcherOpacity = 1.0
     @State private var pageMounted = false
     @State private var homeOpacity = 1.0
     /// Rest values of the page layer are the HIDDEN ones, so it is invisible
@@ -314,8 +309,6 @@ struct ContentView: View {
     private var modeSwitcher: some View {
         GreenroomSegmented("Mode", selection: $coordinator.meetingMode,
                            options: Array(MeetingMode.allCases), toolbar: true) { Text($0.shortLabel) }
-            .opacity(switcherOpacity)
-            .allowsHitTesting(switcherOpacity > 0.5)
     }
 
     /// Home and the pages, one over the other. Mounted by state (not by
@@ -362,7 +355,7 @@ struct ContentView: View {
     private static let fadeInDuration = 0.2
     private static let pageRiseDistance: CGFloat = 6
     private static let crossfade = 0.15      // Reduce Motion, full screen
-    private static let switcherFadeIn = 0.15 // once the window is still
+    private static let toolbarFadeIn = 0.15  // once the window is still
 
     /// Home <-> Sessions as one motion, in steps that never overlap the
     /// expensive ones:
@@ -411,9 +404,7 @@ struct ContentView: View {
         func finish() {
             homePin = nil
             pagePin = nil
-            if switcherOpacity < 1 {
-                withAnimation(.easeOut(duration: Self.switcherFadeIn)) { switcherOpacity = 1 }
-            }
+            if let window { Self.setToolbarItemsAlpha(1, in: window, duration: Self.toolbarFadeIn) }
             if isHome {
                 pageMounted = false
                 pageOpacity = 0
@@ -427,7 +418,7 @@ struct ContentView: View {
         // Instant resize, plain crossfade: Reduce Motion, and full screen or
         // zoomed (where the size is the user's and nothing resizes).
         guard moving, let window else {
-            switcherOpacity = 1
+            if let window { Self.setToolbarItemsAlpha(1, in: window, duration: 0) }
             chromeOnPage = !isHome
             homePin = nil
             pagePin = nil
@@ -470,14 +461,17 @@ struct ContentView: View {
             }
             after(Self.fadeOutDuration) {
                 // 3. Sidebar and toolbar, while nothing shows and nothing moves.
-                // The switcher arrives hidden and fades in once the window stops.
-                if isHome { switcherOpacity = 0 }
+                // The toolbar's items go out of sight for the resize and fade
+                // back in once the window stops (setToolbarItemsAlpha).
+                Self.setToolbarItemsAlpha(0, in: window, duration: 0)
                 chromeOnPage = !isHome
                 next {
                     // The swap's layout, now, not on the grow's first frame:
                     // the animator is timed, so a frame lost there is a jump.
                     window.contentView?.layoutSubtreeIfNeeded()
                     window.displayIfNeeded()
+                    // The swap's new items, hidden too.
+                    Self.setToolbarItemsAlpha(0, in: window, duration: 0)
                     CATransaction.flush()
                     // 4. The window, with the new page coming up over its end.
                     resizeWindow(animated: true, returningHome: isHome)
@@ -648,6 +642,40 @@ struct ContentView: View {
     /// the controls stay exactly where the cursor left them and only the
     /// bottom edge travels - down when the log opens, up when it closes.
     /// Width is the user's.
+    /// The toolbar's items, out of sight while the window resizes for a page
+    /// change. AppKit lays toolbar items out a frame behind a moving window, so
+    /// every item (the switcher, Sessions, Help, Settings, Back) visibly shook
+    /// across the grow and the shrink (owner, 2026-11-15). Hiding only the
+    /// SwiftUI content left the system's glass capsules sliding, so this fades
+    /// the toolbar's own view. The traffic lights stay: anything holding a
+    /// window button is split until only item views are faded.
+    private static func setToolbarItemsAlpha(_ alpha: CGFloat, in window: NSWindow, duration: Double) {
+        let buttons = [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton]
+            .compactMap { window.standardWindowButton($0) }
+        guard let titlebar = buttons.first?.superview?.superview else { return }
+        func holdsButton(_ view: NSView) -> Bool { buttons.contains { $0.isDescendant(of: view) } }
+        func find(_ view: NSView) -> NSView? {
+            if String(describing: type(of: view)).hasSuffix("NSToolbarView") { return view }
+            for sub in view.subviews { if let hit = find(sub) { return hit } }
+            return nil
+        }
+        guard let toolbar = find(titlebar) else { return }
+        var targets: [NSView] = []
+        func collect(_ view: NSView) {
+            if holdsButton(view) { view.subviews.forEach(collect) } else { targets.append(view) }
+        }
+        collect(toolbar)
+        guard duration > 0 else {
+            targets.forEach { $0.alphaValue = alpha }
+            return
+        }
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = duration
+            context.timingFunction = CAMediaTimingFunction(name: .easeOut)
+            targets.forEach { $0.animator().alphaValue = alpha }
+        }
+    }
+
     private func resizeWindow(animated: Bool, returningHome: Bool = false, previewChange: Bool = false) {
         guard let window = Self.window else { return }
         // Full screen (or zoomed to fill the screen) is the user's size, not

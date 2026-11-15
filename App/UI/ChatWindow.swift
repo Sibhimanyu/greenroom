@@ -710,6 +710,10 @@ enum ChatWindowController {
             newWindow.center() // opened on demand with no layout, it must not land in a corner
             newWindow.styleMask = [.titled, .closable, .miniaturizable, .resizable]
             newWindow.isReleasedWhenClosed = false // ARC + close() below manage its lifetime
+            // Opens on the desktop you are on. Without this a chat window left
+            // on another Space stayed there, and the bar's Chat button raised
+            // it out of sight (owner, 2026-11-15).
+            newWindow.collectionBehavior = [.moveToActiveSpace]
             window = newWindow
             targetWindow = newWindow
         }
@@ -723,6 +727,10 @@ enum ChatWindowController {
     }
 
     static var isOpen: Bool { window?.isVisible ?? false }
+
+    /// Open and on the desktop you are looking at. Open on another Space it is
+    /// not "here", and the Chat button brings it over instead of closing it.
+    static var isOpenHere: Bool { isOpen && (window?.isOnActiveSpace ?? false) }
 
     /// Whether a given window is the chat window - the ghost-window hider
     /// needs to tell ours apart from the SDK's (whose titles also contain

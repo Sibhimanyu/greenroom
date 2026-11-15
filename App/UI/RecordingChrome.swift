@@ -174,7 +174,7 @@ private struct RecordingControlBarView: View {
             BarDivider()
             BarRedButton(title: "Stop", width: L.recordOnlyStop,
                          help: MeetingBarModel.help("Stop and save the recording", .toggleRecording, bindings),
-                         spoken: "Stop and save the recording") { coordinator.stopTake() }
+                         spoken: "Stop and save the recording") { coordinator.confirmStopTake() }
                 .disabled(coordinator.takeBusy)
         }
         .padding(.leading, 8)

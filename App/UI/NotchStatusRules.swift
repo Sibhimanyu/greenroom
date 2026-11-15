@@ -28,11 +28,17 @@ struct NotchProgress: Equatable {
     var steps: [NotchStep]
     var detail: String?
 
-    var total: Int { steps.count }
+    /// Steps this start actually takes: a skipped one is not counted, so a
+    /// class with no apps and no layout reads "1/3", not "2/5" while it is
+    /// still on its first real step (owner, 2026-11-15).
+    private var counted: [NotchStep] { steps.filter { $0.state != .skipped } }
+    var total: Int { counted.count }
     var settled: Int { steps.filter { $0.state == .done || $0.state == .skipped }.count }
-    var allSettled: Bool { !steps.isEmpty && settled == total }
-    /// 0...1, for the ring.
-    var fraction: Double { total == 0 ? 0 : Double(settled) / Double(total) }
+    var allSettled: Bool { !steps.isEmpty && settled == steps.count }
+    /// 0...1, for the ring: the counted steps that are done.
+    var fraction: Double {
+        total == 0 ? 0 : Double(counted.filter { $0.state == .done }.count) / Double(total)
+    }
     /// The step being worked on: the active one, else the first not yet settled.
     var currentIndex: Int? {
         steps.firstIndex { $0.state == .active }
@@ -40,7 +46,7 @@ struct NotchProgress: Equatable {
     }
     /// "3/5": the step in hand out of all of them.
     var counter: String {
-        let n = currentIndex.map { $0 + 1 } ?? total
+        let n = currentIndex.map { i in steps[..<i].filter { $0.state != .skipped }.count + 1 } ?? total
         return "\(min(n, max(total, 1)))/\(total)"
     }
     var text: String {
@@ -72,11 +78,14 @@ enum NotchStatusRules {
     /// The step in words, for the middle of the pill.
     static func words(forStep label: String) -> String {
         switch label {
-        case "Workspace": return "Preparing your workspace\u{2026}"
-        case "Picture": return "Opening your picture\u{2026}"
-        case "Meeting": return "Joining the meeting\u{2026}"
+        // What the person would say is happening, not the step's name: "your
+        // picture" meant nothing to anyone (owner, 2026-11-15).
+        case "Workspace": return "Opening your apps\u{2026}"
+        case "Picture": return "Getting your camera and screen ready\u{2026}"
+        case "Meeting": return "Starting the meeting\u{2026}"
+        case "Joining meeting": return "Joining the meeting\u{2026}"
         case "Recording": return "Starting the recording\u{2026}"
-        case "Tiling windows": return "Tiling windows\u{2026}"
+        case "Tiling windows": return "Arranging your windows\u{2026}"
         default: return label + "\u{2026}"
         }
     }

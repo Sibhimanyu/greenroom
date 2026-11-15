@@ -146,6 +146,8 @@ struct MeetingBarActions {
     var toggleCamera: () -> Void = {}
     var meeting: () -> Void = {}
     var toggleChat: () -> Void = {}
+    /// The people count: opens the meeting window on its People panel.
+    var people: () -> Void = {}
     var toggleDraw: () -> Void = {}
     var togglePause: () -> Void = {}
     var end: () -> Void = {}
@@ -302,15 +304,21 @@ struct MeetingBarContent: View {
     }
 
     private var peopleCount: some View {
-        HStack(spacing: 4) {
-            Image(systemName: "person.2.fill").font(.system(size: 13))
-            Text("\(s.participants)").font(.system(size: 12, weight: .semibold).monospacedDigit())
+        Button(action: a.people) {
+            HStack(spacing: 4) {
+                Image(systemName: "person.2.fill").font(.system(size: 13))
+                Text("\(s.participants)").font(.system(size: 12, weight: .semibold).monospacedDigit())
+            }
+            .foregroundStyle(.secondary)
+            .frame(width: L.people, height: 32)
+            .contentShape(Rectangle())
         }
-        .foregroundStyle(.secondary)
-        .frame(width: L.people, height: 32)
-        .help("People in the meeting: \(s.participants)")
+        .buttonStyle(.plain)
+        .help("People in the meeting: \(s.participants). Click to see who is here.")
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("\(s.participants) \(s.participants == 1 ? "person" : "people") in the meeting")
+        .accessibilityHint("Opens the meeting window on the People list")
+        .accessibilityAddTraits(.isButton)
     }
 
     private var moreButton: some View {

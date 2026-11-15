@@ -240,8 +240,13 @@ final class CoordinatorController: ObservableObject {
     private func resetStartReadiness() {
         recordFlowHUD = false
         lastStartWasRecordFlow = false
-        startReadiness = .init(steps: StartStep.allCases.map {
-            .init(label: $0.label, state: .pending)
+        // Steps this start will skip are marked now, so the island counts only
+        // what it will really do ("1/2", not "2/5"). Joining says joining.
+        startReadiness = .init(steps: StartStep.allCases.map { step in
+            var label = step.label
+            if step == .meeting, meetingMode == .join { label = "Joining meeting" }
+            let skipped = (step == .tiling && !sessionArranges) || (step == .recording && !autoRecordOnStart)
+            return .init(label: label, state: skipped ? .skipped : .pending)
         })
     }
 
@@ -1510,6 +1515,11 @@ final class CoordinatorController: ObservableObject {
 
         startTask = Task {
             do {
+                // The island first: its grow is drawn on the main thread, and the
+                // steps below keep it busy, so starting them at once made the
+                // island arrive late and stutter (owner, 2026-11-15).
+                await ReadinessHUDController.letItOpen()
+                try Task.checkCancellation()
                 // Perceived speed: the main app doesn't depend on
                 // anything else - open it first so something visibly
                 // happens the instant Start is pressed.
@@ -2309,7 +2319,7 @@ final class CoordinatorController: ObservableObject {
         }
         // A Record-mode take: stopping it also puts the picture away.
         if recordOnlyActive {
-            if isRecording { stopTake() }
+            if isRecording { confirmStopTake() }
             return
         }
         Task {
@@ -2492,6 +2502,9 @@ final class CoordinatorController: ObservableObject {
                 run: while true {
                     switch action {
                     case .buildPicture:
+                        // The island grows before the picture work takes the main thread.
+                        await ReadinessHUDController.letItOpen()
+                        try Task.checkCancellation()
                         startReadiness.steps[0].state = .active
                         try await buildScene()
                         try Task.checkCancellation()
@@ -2598,6 +2611,32 @@ final class CoordinatorController: ObservableObject {
         stopRecordingSession()
     }
 
+    /// The Record bar's Stop, the shortcut and the menu: asks in the island
+    /// before the take ends, as End asks before the meeting does. A second
+    /// press while asking takes the question away and keeps recording.
+    func confirmStopTake() {
+        guard recordOnlyActive, isRecording, !takeBusy else { return }
+        if let shown = stopTakePromptID {
+            NotchStatusController.shared.hidePrompt(shown, answered: false)
+            return
+        }
+        let prompt = IslandPrompt(title: "Stop the recording?",
+                                  detail: "Saves the recording and puts your camera away.",
+                                  help: nil, uploadTitle: "Stop and Save",
+                                  timeout: IslandRules.confirmTimeout,
+                                  style: .confirm, dismissTitle: "Keep Recording")
+        stopTakePromptID = prompt.id
+        NotchStatusController.shared.showConfirm(prompt, onConfirm: { [weak self] in
+            self?.stopTakePromptID = nil
+            self?.stopTake()
+        }, onDismiss: { [weak self] in
+            self?.stopTakePromptID = nil
+        })
+    }
+
+    /// The Stop question showing in the island, if any.
+    private var stopTakePromptID: UUID?
+
     /// Finishes the tape, adopts the clip marks and closes the take's
     /// session. Returns the saved file's path.
     private func finishTake() async -> String? {
@@ -2642,6 +2681,11 @@ final class CoordinatorController: ObservableObject {
     /// take could start after this had already decided there was none to stop.
     func stopRecordingSession() {
         guard !isStopping else { return }
+        // Stopping some other way answers the Stop question too.
+        if let asked = stopTakePromptID {
+            stopTakePromptID = nil
+            NotchStatusController.shared.hidePrompt(asked, answered: true)
+        }
         cancelRecordingCountdown()
         isStopping = true
         let pending = startTask
@@ -4024,10 +4068,11 @@ final class CoordinatorController: ObservableObject {
     }
 
     func confirmAndStop() {
-        // Stopping a recording ends nothing for anybody else, so it is not
-        // asked about: Stop, and the file is saved.
+        // A take that is rolling asks first, the way End does (owner,
+        // 2026-11-15). One still starting or counting down has nothing to
+        // lose yet, so it stops at once.
         if recordOnlyActive || (isRunning && startingRecordOnly) {
-            stopRecordingSession()
+            if recordOnlyActive, isRecording { confirmStopTake() } else { stopRecordingSession() }
             return
         }
         guard isRunning || stageLive else { return }

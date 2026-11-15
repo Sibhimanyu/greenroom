@@ -455,7 +455,7 @@ enum ParticipantGridWindowController {
     /// unreachable.
     static var meetingWindowIsShowing: Bool {
         guard let panel, currentForm?.isMeeting == true else { return false }
-        return panel.isVisible && !panel.isMiniaturized && panel.occlusionState.contains(.visible)
+        return panel.isVisible && !panel.isMiniaturized && panel.isOnActiveSpace && panel.occlusionState.contains(.visible)
     }
 
     /// The meeting window exists but is out of sight on purpose: shrunk to the
@@ -4614,6 +4614,10 @@ enum ReadinessHUDController {
             steps: readiness.steps.map { NotchStep(label: $0.label, state: NotchStepState($0.state)) },
             failure: readiness.failure,
             detail: readiness.detail)
+        // An empty reading is the end of the start: the island says Live and folds.
+        let carrying = !readiness.steps.isEmpty || readiness.failure != nil
+        if carrying, !isShowing { shownAt = Date() }
+        isShowing = carrying
         MainActor.assumeIsolated {
             NotchStatusController.shared.update(
                 input,
@@ -4623,7 +4627,23 @@ enum ReadinessHUDController {
     }
 
     static func close() {
+        isShowing = false
         MainActor.assumeIsolated { NotchStatusController.shared.clear() }
+    }
+
+    /// The island is carrying a start right now.
+    private(set) static var isShowing = false
+    /// When it first came up, for `letItOpen`.
+    private static var shownAt: Date?
+
+    /// Waits until the island has finished growing (its spring settles in about
+    /// 0.35s), so the start's heavy main-thread work does not stall the grow.
+    /// Returns at once when the island is not carrying the start.
+    @MainActor static func letItOpen() async {
+        guard isShowing, let shownAt else { return }
+        let left = 0.35 - Date().timeIntervalSince(shownAt)
+        guard left > 0 else { return }
+        try? await Task.sleep(nanoseconds: UInt64(left * 1_000_000_000))
     }
 }
 

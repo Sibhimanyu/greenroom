@@ -72,6 +72,11 @@ struct ContentView: View {
     /// page change (not at the click), so the toolbar items swap with the
     /// content instead of ahead of it.
     @State private var chromeOnPage = false
+    /// The mode switcher is held invisible while the window resizes back to
+    /// Home and fades in once it is still. A centred toolbar item is
+    /// re-centred by AppKit a frame behind the moving window, so it visibly
+    /// jittered across the shrink (owner, 2026-11-15).
+    @State private var switcherOpacity = 1.0
     @State private var pageMounted = false
     @State private var homeOpacity = 1.0
     /// Rest values of the page layer are the HIDDEN ones, so it is invisible
@@ -297,6 +302,8 @@ struct ContentView: View {
     private var modeSwitcher: some View {
         GreenroomSegmented("Mode", selection: $coordinator.meetingMode,
                            options: Array(MeetingMode.allCases), toolbar: true) { Text($0.shortLabel) }
+            .opacity(switcherOpacity)
+            .allowsHitTesting(switcherOpacity > 0.5)
     }
 
     /// Home and the pages, one over the other. Mounted by state (not by
@@ -343,6 +350,7 @@ struct ContentView: View {
     private static let fadeInDuration = 0.2
     private static let pageRiseDistance: CGFloat = 6
     private static let crossfade = 0.15      // Reduce Motion, full screen
+    private static let switcherFadeIn = 0.15 // once the window is still
 
     /// Home <-> Sessions as one motion, in steps that never overlap the
     /// expensive ones:
@@ -391,6 +399,9 @@ struct ContentView: View {
         func finish() {
             homePin = nil
             pagePin = nil
+            if switcherOpacity < 1 {
+                withAnimation(.easeOut(duration: Self.switcherFadeIn)) { switcherOpacity = 1 }
+            }
             if isHome {
                 pageMounted = false
                 pageOpacity = 0
@@ -404,6 +415,7 @@ struct ContentView: View {
         // Instant resize, plain crossfade: Reduce Motion, and full screen or
         // zoomed (where the size is the user's and nothing resizes).
         guard moving, let window else {
+            switcherOpacity = 1
             chromeOnPage = !isHome
             homePin = nil
             pagePin = nil
@@ -446,6 +458,8 @@ struct ContentView: View {
             }
             after(Self.fadeOutDuration) {
                 // 3. Sidebar and toolbar, while nothing shows and nothing moves.
+                // The switcher arrives hidden and fades in once the window stops.
+                if isHome { switcherOpacity = 0 }
                 chromeOnPage = !isHome
                 next {
                     // The swap's layout, now, not on the grow's first frame:

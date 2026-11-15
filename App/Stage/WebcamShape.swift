@@ -35,6 +35,18 @@ enum WebcamShape: String, CaseIterable, Identifiable {
         }
     }
 
+    /// The SF Symbol for this look on the Home Look chip: what the class
+    /// sees of you, not a generic "appearance" glyph (owner, 2026-11-15).
+    var symbol: String {
+        switch self {
+        case .square: return "person.crop.square"
+        case .circle: return "person.crop.circle"
+        case .roundedRectangle: return "person.crop.rectangle"
+        case .cutout: return "person.and.background.dotted"
+        case .presenterLarge: return "rectangle.inset.filled.and.person.filled"
+        }
+    }
+
     /// These key the background out instead of masking a bubble shape.
     var usesChromaKey: Bool { self == .cutout || self == .presenterLarge }
 

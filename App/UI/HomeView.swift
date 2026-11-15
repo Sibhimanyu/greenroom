@@ -466,7 +466,7 @@ struct HomeView: View {
                                              system: AVCaptureDevice.default(for: .audio)?.localizedName)
         return SetupSummary.items(
             cameraOff: coordinator.cameraIsOff,
-            lookSymbol: "circle.lefthalf.filled", lookText: coordinator.webcamShape.label,
+            lookSymbol: coordinator.webcamShape.symbol, lookText: coordinator.webcamShape.label,
             shareSymbol: Self.symbol(for: share.kind), shareText: LookSummary.shareText(share), shareGone: gone,
             cameraText: Self.shortDeviceName(camera), cameraMissing: cameras.isEmpty,
             micText: Self.shortDeviceName(mic), layoutText: coordinator.layoutChoiceName)

@@ -32,8 +32,10 @@ struct MenuEntry {
     }
     static func header(_ title: String) -> MenuEntry { MenuEntry(kind: .header, title: title) }
     static var separator: MenuEntry { MenuEntry(kind: .separator) }
-    static func submenu(_ title: String, enabled: Bool = true, _ children: [MenuEntry]) -> MenuEntry {
-        MenuEntry(kind: .submenu, title: title, enabled: enabled, children: children)
+    static func submenu(_ title: String, checked: Bool = false, enabled: Bool = true,
+                        note: String? = nil, _ children: [MenuEntry]) -> MenuEntry {
+        MenuEntry(kind: .submenu, title: title, checked: checked, enabled: enabled, note: note,
+                  children: children)
     }
 
     /// Titles of the real items, top to bottom, for tests.
@@ -197,15 +199,20 @@ enum MeetingMenus {
         var setRule: (ShareRule) -> Void = { _ in }
     }
 
-    /// Zoom's share here is a whole display sent as its own thing. Greenroom's
-    /// camera picture keeps running underneath, so the wording says "as well".
+    /// The meeting window's Share menu: the Present entries first (what the class
+    /// sees: PresentMenuSpec.swift), then Zoom's own display share, worded as the
+    /// second, separate option. Zoom's share is a whole display sent as its own
+    /// thing while Greenroom's camera picture keeps running underneath.
     static func share(_ s: ShareMenuState, _ a: ShareMenuActions,
-                      lastConcurrent: ConcurrentShare = .one) -> [MenuEntry] {
-        var out: [MenuEntry] = []
+                      lastConcurrent: ConcurrentShare = .one,
+                      present: [MenuEntry] = []) -> [MenuEntry] {
+        var out: [MenuEntry] = present
+        if !present.isEmpty { out.append(.separator) }
         if s.sharing {
+            out.append(.header("Your display share"))
             out.append(.item("Stop sharing", a.stop))
         } else {
-            out.append(.header("Share a display, as well as your camera picture"))
+            out.append(.header("Also share a display on its own"))
             for display in s.displays {
                 out.append(.item(display.label, enabled: s.inMeeting && s.cannotShare == nil,
                                  note: s.cannotShare) { a.shareDisplay(display.id) })

@@ -96,6 +96,9 @@ struct MenuBarItem: Equatable {
         case action(MenuBarAction)
         /// The Layout submenu; its contents are the layout choices.
         case layoutMenu
+        /// The Share submenu: what the class sees, your look, the layout
+        /// (PresentMenuSpec.swift). Only while a class or recording is live.
+        case presentMenu
         case separator
     }
     var kind: Kind
@@ -171,6 +174,7 @@ enum MenuBarModel {
                 tools.append(action(.toggleDrawing, state.isDrawing ? "Stop Drawing" : "Draw on the Screen",
                                     "pencil.tip.crop.circle", key(.toggleDrawing)))
             }
+            tools.append(MenuBarItem(kind: .presentMenu, title: "Share", symbol: "rectangle.on.rectangle"))
             if !state.layoutLocked {
                 tools.append(MenuBarItem(kind: .layoutMenu, title: "Layout: \(state.layoutName)",
                                          symbol: "rectangle.3.group"))

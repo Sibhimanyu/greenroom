@@ -56,22 +56,28 @@ enum MeetingMenuBuilder {
                 if combo.modifiers & KeyCombo.shift != 0 { mask.insert(.shift) }
                 item.keyEquivalentModifierMask = mask
             }
-            if let note = entry.note, !note.isEmpty {
-                let text = NSMutableAttributedString(
-                    string: entry.title, attributes: [.font: NSFont.menuFont(ofSize: 0)])
-                text.append(NSAttributedString(
-                    string: "\n" + note,
-                    attributes: [.font: NSFont.menuFont(ofSize: 11),
-                                 .foregroundColor: NSColor.secondaryLabelColor]))
-                item.attributedTitle = text
-            }
+            applyNote(entry, to: item)
             return item
         case .submenu:
             let item = NSMenuItem(title: entry.title, action: nil, keyEquivalent: "")
             item.isEnabled = entry.enabled
+            item.state = entry.checked ? .on : .off
+            applyNote(entry, to: item)
             item.submenu = menu(entry.children)
             return item
         }
+    }
+
+    /// A second, quieter line under the title.
+    private static func applyNote(_ entry: MenuEntry, to item: NSMenuItem) {
+        guard let note = entry.note, !note.isEmpty else { return }
+        let text = NSMutableAttributedString(
+            string: entry.title, attributes: [.font: NSFont.menuFont(ofSize: 0)])
+        text.append(NSAttributedString(
+            string: "\n" + note,
+            attributes: [.font: NSFont.menuFont(ofSize: 11),
+                         .foregroundColor: NSColor.secondaryLabelColor]))
+        item.attributedTitle = text
     }
 
     /// Pops the menu so it opens upward from `view`'s top edge: the toolbar sits

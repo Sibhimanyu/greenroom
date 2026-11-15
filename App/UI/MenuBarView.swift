@@ -66,6 +66,13 @@ struct MenuBarView: View {
             } label: {
                 Label(item.title, systemImage: item.symbol ?? "rectangle.3.group")
             }
+        case .presentMenu:
+            Menu {
+                // Built each time the menu is drawn, so the app and window lists are current.
+                PresentMenuItems(entries: coordinator.presentMenuEntries())
+            } label: {
+                Label(item.title, systemImage: item.symbol ?? "rectangle.on.rectangle")
+            }
         case .action(let action):
             Button(role: item.destructive ? .destructive : nil) {
                 run(action)
@@ -226,6 +233,37 @@ struct MenuBarView: View {
     private func openPrivacy(_ pane: String) {
         if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?\(pane)") {
             NSWorkspace.shared.open(url)
+        }
+    }
+}
+
+// MARK: - A menu spec, drawn
+
+/// A `[MenuEntry]` as SwiftUI menu content (the control bar and meeting window
+/// pop the same list as an NSMenu).
+private struct PresentMenuItems: View {
+    let entries: [MenuEntry]
+
+    var body: some View {
+        ForEach(Array(entries.enumerated()), id: \.offset) { _, entry in
+            switch entry.kind {
+            case .separator:
+                Divider()
+            case .header:
+                Text(entry.title)
+            case .item:
+                Button { entry.action?() } label: {
+                    if entry.checked { Label(entry.title, systemImage: "checkmark") } else { Text(entry.title) }
+                }
+                .disabled(!entry.enabled)
+            case .submenu:
+                Menu {
+                    PresentMenuItems(entries: entry.children)
+                } label: {
+                    if entry.checked { Label(entry.title, systemImage: "checkmark") } else { Text(entry.title) }
+                }
+                .disabled(!entry.enabled)
+            }
         }
     }
 }

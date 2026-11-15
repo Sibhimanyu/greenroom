@@ -397,9 +397,30 @@ final class MeetingMenuSpecTests: XCTestCase {
         XCTAssertEqual(menu.entry(titled: "Display 1")?.note, "The host has locked sharing")
     }
 
-    func testTheShareHeaderSaysTheCameraPictureKeepsGoing() {
+    func testTheZoomDisplayShareIsWordedAsTheSecondSeparateOption() {
         let menu = share(.init(displays: [(1, "Display 1")]))
-        XCTAssertTrue(menu.flatTitles.contains { $0.contains("as well as your camera picture") })
+        XCTAssertTrue(menu.flatTitles.contains("Also share a display on its own"))
+    }
+
+    func testPresentEntriesComeFirstThenAHairlineThenZoomShareThenWhoCanShare() {
+        let present = PresentMenu.entries(.init(), .init())
+        let menu = MeetingMenus.share(.init(displays: [(1, "Display 1")], isHost: true, rule: ShareRule(sdkRaw: 0)),
+                                      .init(), present: present)
+        XCTAssertEqual(menu.first?.title, "What the class sees")
+        XCTAssertEqual(menu[present.count].kind, .separator)
+        XCTAssertEqual(menu[present.count + 1].title, "Also share a display on its own")
+        let titles = menu.flatTitles
+        XCTAssertLessThan(titles.firstIndex(of: "Layout") ?? titles.firstIndex(of: "Look")!,
+                          titles.firstIndex(of: "Also share a display on its own")!)
+        XCTAssertLessThan(titles.firstIndex(of: "Also share a display on its own")!,
+                          titles.firstIndex(of: "Who can share")!)
+    }
+
+    func testPresentPartStaysEnabledWhenZoomSharingIsNot() {
+        let present = PresentMenu.entries(.init(), .init())
+        let menu = MeetingMenus.share(.init(inMeeting: false, displays: [(1, "Display 1")]), .init(), present: present)
+        XCTAssertEqual(menu.entry(titled: "Whole screen")?.enabled, true)
+        XCTAssertEqual(menu.entry(titled: "Display 1")?.enabled, false)
     }
 
     // MARK: More

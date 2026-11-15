@@ -508,7 +508,8 @@ struct MeetingToolbarView: View {
             a.shareDisplay = { model.startShare(displayID: CGDirectDisplayID($0)) }
             a.stop = model.stopShare
             a.setRule = model.setShareRule
-            return MeetingMenus.share(s, a, lastConcurrent: model.coordinator.zoomChatClient.roomEvents.lastConcurrent)
+            return MeetingMenus.share(s, a, lastConcurrent: model.coordinator.zoomChatClient.roomEvents.lastConcurrent,
+                                      present: model.coordinator.presentMenuEntries())
         }
         m.more = { overflow in
             var a = MeetingMenus.MoreMenuActions()
@@ -792,22 +793,16 @@ private struct MeetingControlBarView: View {
                                               countdown: coordinator.recordingCountdown != nil)
             return MeetingBarModel.recordMenu(phase, bindings, r)
         }
+        a.presentMenu = { coordinator.presentMenuEntries() }
         a.moreMenu = { [bindings = shortcuts.bindings] in
             let views = MeetingViewPieces.enabled ? model.viewsMenu() : []
-            let liveLayout = coordinator.liveSessionLayoutID
-            let layouts: [MenuEntry] = coordinator.layoutToolsAvailable && liveLayout != nil
-                ? coordinator.layoutLibrary.templates.map { t in
-                    MenuEntry.item(t.name, checked: t.id == liveLayout) { coordinator.applyLayoutNow(t.id) }
-                }
-                : []
             var state = MeetingBarModel.MoreState()
             state.notesOpen = notes.effectiveEnabled
             state.hasViews = !views.isEmpty
-            state.hasLayouts = !layouts.isEmpty
             var m = MeetingBarModel.MoreActions()
             m.toggleNotes = { notes.toggle() }
             m.collapse = { MeetingControlBarController.setCollapsed(true) }
-            return MeetingBarModel.moreMenu(state, views: views, layouts: layouts, bindings, m)
+            return MeetingBarModel.moreMenu(state, views: views, bindings, m)
         }
         return a
     }
@@ -826,7 +821,7 @@ private struct MeetingControlBarView: View {
 @MainActor
 enum MeetingControlBarController {
     /// The pill's width, from its cells (MeetingBarLayout in MeetingBarModel.swift):
-    /// grip, Meeting, mic and camera, the REC pill with Pause, Draw, chat, people,
+    /// grip, Meeting, mic and camera, the REC pill with Pause, Share, Draw, chat, people,
     /// More and End. Without Greenroom's own meeting window there is no Meeting button.
     static let width: CGFloat = MeetingBarLayout.width(videoButtons: false)
     static func width(videoButtons: Bool) -> CGFloat { MeetingBarLayout.width(videoButtons: videoButtons) }

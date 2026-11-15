@@ -167,7 +167,6 @@ enum MeetingBarModel {
         var notesOpen = false
         /// Greenroom's own meeting UI is on and the views menu has entries.
         var hasViews = false
-        var hasLayouts = false
     }
 
     struct MoreActions {
@@ -176,16 +175,16 @@ enum MeetingBarModel {
     }
 
     /// The \u{22EF} menu: what the bar used to carry as icons of its own (notes, the
-    /// Views menu, collapsing to the small round button) and the layout switch.
-    /// `views` and `layouts` are the live submenus, built when it is opened.
-    static func moreMenu(_ s: MoreState, views: [MenuEntry], layouts: [MenuEntry],
+    /// Views menu, collapsing to the small round button). The layout switch is in
+    /// the Share cell's menu (PresentMenuSpec.swift), once. `views` is the live
+    /// submenu, built when it is opened.
+    static func moreMenu(_ s: MoreState, views: [MenuEntry],
                          _ bindings: ShortcutBindings, _ a: MoreActions) -> [MenuEntry] {
         func key(_ action: ShortcutAction) -> KeyCombo? { bindings.combo(for: .action(action)) }
         var out: [MenuEntry] = [
             .item(s.notesOpen ? "Hide Notes" : "Show Notes", shortcut: key(.toggleNotes), a.toggleNotes),
         ]
         if s.hasViews { out.append(.submenu("Meeting Views", views)) }
-        if s.hasLayouts { out.append(.submenu("Layout", layouts)) }
         out.append(.separator)
         out.append(.item("Collapse to Small Button", shortcut: key(.toggleMeetingBar), a.collapse))
         return out
@@ -195,8 +194,9 @@ enum MeetingBarModel {
 // MARK: - Width
 
 /// The bar's size, from its cells, so the panel and the content cannot disagree.
-/// Left to right: grip, Meeting, | mic, camera, | REC pill and pause, | Draw,
-/// | chat, people, More, | End.
+/// Left to right: grip, Meeting, | mic, camera, | REC pill and pause, | Share,
+/// Draw, | chat, people, More, | End. Share opens the Present menu: what the
+/// class sees, your look, the layout.
 enum MeetingBarLayout {
     static let height: CGFloat = 44
     static let spacing: CGFloat = 2
@@ -212,6 +212,8 @@ enum MeetingBarLayout {
     /// takes the whole cell, so there is no hole where pause will be.
     static let recCell: CGFloat = recPill + pause
     static let draw: CGFloat = 70
+    /// Share: glyph and word, like Draw.
+    static let present: CGFloat = 66
     static let people: CGFloat = 46
     static let end: CGFloat = 52
     /// A hairline and 4pt each side.
@@ -220,7 +222,7 @@ enum MeetingBarLayout {
     static func cells(videoButtons: Bool) -> [CGFloat] {
         var out: [CGFloat] = [grip]
         if videoButtons { out.append(meeting) }
-        out += [divider, icon, icon, divider, recCell, divider, draw, divider,
+        out += [divider, icon, icon, divider, recCell, divider, present, draw, divider,
                 icon, people, icon, divider, end]
         return out
     }
@@ -232,12 +234,12 @@ enum MeetingBarLayout {
 
     // MARK: The record-only bar (RecordingChrome.swift)
 
-    /// Grip-less: [dot REC 1:29] [pause] | [Draw] [Notes] | [Stop].
+    /// Grip-less: [dot REC 1:29] [pause] | [Share] [Draw] [Notes] | [Stop].
     static let recordOnlyPill: CGFloat = 116
     static let notes: CGFloat = 74
     static let recordOnlyStop: CGFloat = 56
     static var recordOnlyWidth: CGFloat {
-        let cells: [CGFloat] = [recordOnlyPill, pause, divider, draw, notes, divider, recordOnlyStop]
+        let cells: [CGFloat] = [recordOnlyPill, pause, divider, present, draw, notes, divider, recordOnlyStop]
         return 8 + 8 + cells.reduce(0, +) + spacing * CGFloat(cells.count - 1)
     }
 }

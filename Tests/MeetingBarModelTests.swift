@@ -93,17 +93,16 @@ final class MeetingBarModelTests: XCTestCase {
     // The More menu
 
     func testMoreMenuKeepsNotesAndCollapseAlways() {
-        let t = titles(M.moreMenu(.init(), views: [], layouts: [], none, .init()))
+        let t = titles(M.moreMenu(.init(), views: [], none, .init()))
         XCTAssertEqual(t, ["Show Notes", "Collapse to Small Button"])
     }
 
-    func testMoreMenuHoldsViewsAndLayoutWhenThereAreSome() {
+    func testMoreMenuHoldsViewsWhenThereAreSome_AndNoLayoutBecauseShareHasIt() {
         var s = M.MoreState()
-        s.notesOpen = true; s.hasViews = true; s.hasLayouts = true
-        let menu = M.moreMenu(s, views: [.item("Gallery") {}], layouts: [.item("Side by side") {}], none, .init())
+        s.notesOpen = true; s.hasViews = true
+        let menu = M.moreMenu(s, views: [.item("Gallery") {}], none, .init())
         XCTAssertEqual(titles(menu).first, "Hide Notes")
-        XCTAssertEqual(menu.flatTitles, ["Hide Notes", "Meeting Views", "Gallery", "Layout", "Side by side",
-                                         "Collapse to Small Button"])
+        XCTAssertEqual(menu.flatTitles, ["Hide Notes", "Meeting Views", "Gallery", "Collapse to Small Button"])
     }
 
     // Hover help uses the person's shortcuts
@@ -130,6 +129,18 @@ final class MeetingBarModelTests: XCTestCase {
         }
         XCTAssertEqual(L.width(videoButtons: true) - L.width(videoButtons: false), L.meeting + L.spacing)
         XCTAssertLessThan(L.width(videoButtons: true), 720)
+    }
+
+    func testShareCellSitsBesideDrawAndCountsInBothBars() {
+        typealias L = MeetingBarLayout
+        let cells = L.cells(videoButtons: false)
+        XCTAssertTrue(cells.contains(L.present))
+        let i = cells.firstIndex(of: L.present)!
+        XCTAssertEqual(cells[i + 1], L.draw)
+        let withShare = cells.reduce(0, +) + L.spacing * CGFloat(cells.count - 1)
+        let without = cells.filter { $0 != L.present }.reduce(0, +) + L.spacing * CGFloat(cells.count - 2)
+        XCTAssertEqual(withShare - without, L.present + L.spacing)
+        XCTAssertGreaterThan(L.recordOnlyWidth, L.recordOnlyPill + L.pause + L.draw + L.notes + L.present)
     }
 
     func testRecordCellIsOneWidthInEveryState() {

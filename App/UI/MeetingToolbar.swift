@@ -186,8 +186,9 @@ struct MeetingToolbarBar: View {
                     cell(symbol: "rectangle.on.rectangle.slash", caption: "Stop Share", tint: MeetingTheme.red,
                          action: actions.stopSharing)
                 } else {
+                    // Always on: the Present part works with no Zoom share (Zoom's own items grey themselves).
                     menuCell(symbol: "arrow.up.square.fill", caption: "Share", tint: MeetingTheme.zoomGreen,
-                             enabled: state.inMeeting, entries: menus.share)
+                             enabled: true, entries: menus.share)
                 }
             }
         case .record:
@@ -257,7 +258,7 @@ struct MeetingToolbarBar: View {
         case .react: return .submenu("React", enabled: state.inMeeting, menus.react())
         case .share:
             return state.sharing ? .item("Stop sharing", actions.stopSharing)
-                                 : .submenu("Share", enabled: state.inMeeting, menus.share())
+                                 : .submenu("Share", menus.share())
         case .record:
             return .item(state.recording ? "Stop recording" : "Record", enabled: !state.saving,
                          actions.toggleRecording)

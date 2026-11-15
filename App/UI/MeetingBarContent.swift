@@ -9,7 +9,7 @@
 //  MeetingBarModel.swift.
 //
 //  Left to right:
-//    grip | [Meeting] | mic camera | REC pill, pause | Draw | chat people More | [End]
+//    grip | [Meeting] | mic camera | REC pill, pause | Share Draw | chat people More | [End]
 //
 //  Red appears in two places only: the muted mic and stopped camera (state the
 //  bar has always shown), and the End button. The REC dot is the recording signal
@@ -78,6 +78,22 @@ struct BarLabelledButton: View {
     }
 }
 
+/// Share: the Present menu (what the class sees, your look, the layout). Looks
+/// like Draw, a glyph and a word; a press pops the menu rather than toggling.
+struct BarPresentButton: View {
+    var width: CGFloat = MeetingBarLayout.present
+    var entries: () -> [MenuEntry]
+    static let help = "What the class sees, your look and the layout"
+
+    var body: some View {
+        BarLabelledButton(symbol: "rectangle.on.rectangle", title: "Share", width: width,
+                          help: Self.help, spoken: "Share. What the class sees, your look and the layout",
+                          action: {})
+            .overlay { MenuPopUpOverlay(label: "Share. What the class sees, your look and the layout", entries: entries) }
+            .help(Self.help)
+    }
+}
+
 /// The one red control: End, and the record-only bar's Stop.
 struct BarRedButton: View {
     var title: String
@@ -135,6 +151,8 @@ struct MeetingBarActions {
     var end: () -> Void = {}
     /// Built when the menu opens, so each shows the state of that moment.
     var recordMenu: () -> [MenuEntry] = { [] }
+    /// What the class sees, your look, the layout (PresentMenuSpec.swift).
+    var presentMenu: () -> [MenuEntry] = { [] }
     var moreMenu: () -> [MenuEntry] = { [] }
 }
 
@@ -157,6 +175,7 @@ struct MeetingBarContent: View {
             BarDivider()
             recordCell
             BarDivider()
+            BarPresentButton(entries: a.presentMenu)
             drawButton
             BarDivider()
             chatButton
@@ -301,6 +320,6 @@ struct MeetingBarContent: View {
             .frame(width: L.icon, height: 32)
             .contentShape(Rectangle())
             .overlay { MenuPopUpOverlay(label: "More", entries: a.moreMenu) }
-            .help("More: notes, meeting views, layout, collapse")
+            .help("More: notes, meeting views, collapse")
     }
 }

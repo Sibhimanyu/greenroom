@@ -122,6 +122,11 @@ final class MenuBarModelTests: XCTestCase {
         XCTAssertFalse(a.contains(.toggleSpeakerTile))
     }
 
+    func testShareSubmenuIsThereWhileLiveAndNeverWhenIdle() {
+        XCTAssertTrue(build(live()).contains { $0.kind == .presentMenu && $0.title == "Share" })
+        XCTAssertFalse(build(MenuBarState()).contains { $0.kind == .presentMenu })
+    }
+
     func testLayoutSubmenuHiddenWhileLockedShownWhenNot() {
         XCTAssertFalse(build(live()).contains { $0.kind == .layoutMenu })
         XCTAssertTrue(build(live { $0.layoutLocked = false }).contains { $0.kind == .layoutMenu })

@@ -181,15 +181,18 @@ struct MeetingToolbarBar: View {
             menuCell(symbol: "face.smiling", caption: "React", on: state.handRaised,
                      enabled: state.inMeeting, entries: menus.react)
         case .share:
-            withCaret(menus.share, label: "Sharing options") {
-                if state.sharing {
+            // Not sharing, Share IS the menu, so no caret: a second control
+            // opening the same menu read as two buttons (owner, 2026-11-15).
+            // Sharing, the button stops it and the caret keeps the options.
+            if state.sharing {
+                withCaret(menus.share, label: "Sharing options") {
                     cell(symbol: "rectangle.on.rectangle.slash", caption: "Stop Share", tint: MeetingTheme.red,
                          action: actions.stopSharing)
-                } else {
-                    // Always on: the Present part works with no Zoom share (Zoom's own items grey themselves).
-                    menuCell(symbol: "arrow.up.square.fill", caption: "Share", tint: MeetingTheme.zoomGreen,
-                             enabled: true, entries: menus.share)
                 }
+            } else {
+                // Always on: the Present part works with no Zoom share (Zoom's own items grey themselves).
+                menuCell(symbol: "arrow.up.square.fill", caption: "Share", tint: MeetingTheme.zoomGreen,
+                         enabled: true, entries: menus.share)
             }
         case .record:
             HStack(spacing: MeetingToolbarLayout.gap) {

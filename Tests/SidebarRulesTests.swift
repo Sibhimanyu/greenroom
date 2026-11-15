@@ -22,6 +22,25 @@ final class SidebarRulesTests: XCTestCase {
         XCTAssertTrue(SidebarRules.hidden(afterVisibility: .all, onSessionsPage: false, was: true))
     }
 
+    func testASingleSessionHasNoSidebarWhateverWasSaved() {
+        XCTAssertEqual(SidebarRules.visibility(onSessionsPage: true, hidden: false, onSingleSession: true), .detailOnly)
+        XCTAssertEqual(SidebarRules.visibility(onSessionsPage: true, hidden: true, onSingleSession: true), .detailOnly)
+        XCTAssertFalse(SidebarRules.shown(onSessionsPage: true, hidden: false, onSingleSession: true))
+        XCTAssertTrue(SidebarRules.shown(onSessionsPage: true, hidden: false, onSingleSession: false))
+    }
+
+    func testTheSavedGridChoiceSurvivesASingleSession() {
+        // The column going away for a session page is not a choice: the saved
+        // value is returned untouched, in both directions.
+        XCTAssertFalse(SidebarRules.hidden(afterVisibility: .detailOnly, onSessionsPage: true, was: false,
+                                           onSingleSession: true))
+        XCTAssertTrue(SidebarRules.hidden(afterVisibility: .all, onSessionsPage: true, was: true,
+                                          onSingleSession: true))
+        // Back on the grid it is the person's choice again.
+        XCTAssertTrue(SidebarRules.hidden(afterVisibility: .detailOnly, onSessionsPage: true, was: false,
+                                          onSingleSession: false))
+    }
+
     func testDetailMinimumLeavesRoomForTheSidebar() {
         XCTAssertEqual(SidebarRules.detailMinWidth(windowMin: 900, sidebarShown: true, sidebarWidth: 220), 680)
         XCTAssertEqual(SidebarRules.detailMinWidth(windowMin: 900, sidebarShown: false, sidebarWidth: 220), 900)

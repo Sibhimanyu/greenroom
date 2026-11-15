@@ -28,6 +28,7 @@
 //  status the grid can filter on.
 //
 import SwiftUI
+import Combine
 import AVKit
 
 struct RecordingsView: View {
@@ -157,7 +158,7 @@ struct RecordingsView: View {
     @AppStorage("sessionsShow") private var show: SessionsShow = .everything
     @AppStorage("sessionsSort") private var sort: SessionsSort = .newest
     @State private var status: SessionsStatus?
-    @State private var tab = Tab.clips.rawValue
+    @State private var tab = Tab.moments.rawValue
     /// The folder whose analysis this window started, so the report opens
     /// when it finishes - and only then, not for a run begun elsewhere.
     @State private var analysingFolder: URL?
@@ -171,6 +172,12 @@ struct RecordingsView: View {
     @ObservedObject private var thumbnails = SessionThumbnails.shared
     @State private var playhead: Double = 0
     @State private var timeObserver: Any?
+    /// The movie's shape, from the player item's presentation size; 16:9
+    /// until it is known.
+    @State private var stageAspect: CGFloat = 16.0 / 9.0
+    @State private var isPlaying = false
+    @State private var rate: Float = 1
+    @State private var playerWatchers: [AnyCancellable] = []
     @State private var trashError: String?
     @State private var exporting: (done: Int, total: Int)?
     @State private var confirmingDelete: Recording?
@@ -189,23 +196,18 @@ struct RecordingsView: View {
     /// The window's sidebar column reads its badges and storage line from here.
     @EnvironmentObject private var sidebar: SessionsSidebarModel
     @Environment(\.openWindow) private var openWindow
+    @Environment(\.openSettings) private var openSettings
 
-    /// The work under the inspector's picture.
-    ///
-    /// The analysis is not one of them any more: it is a tile above, with its
-    /// verdict under it and the full report a click away. What is left is the
-    /// work done ON the recording, which wants the room under the player.
+    /// The work in the rail's last card. Clips and notes are one list now.
     enum Tab: String, CaseIterable {
-        case clips = "Clips"
-        case notes = "Notes"
+        case moments = "Moments"
         case transcript = "Transcript"
         /// What Cues offered in the class and the teacher opened or sent.
         case links = "Links"
 
         var isAvailable: Bool {
             switch self {
-            case .clips: return true
-            case .notes: return true
+            case .moments: return true
             // Analyse writes transcript.txt too, so this tab can be filled
             // even when Cues is held back.
             case .transcript: return true
@@ -332,22 +334,23 @@ struct RecordingsView: View {
             onBack: { coordinator.goBack() })
     }
 
-    /// A session as one page: the player large with its marks lane and status
-    /// strip, the work in an inspector beside it, the actions in the window
-    /// toolbar (SessionDetailContent.swift). Back is the toolbar's, ContentView's.
+    /// A session as one watch page: the picture at its own shape, one
+    /// timeline under it, and a rail of cards beside it
+    /// (SessionDetailContent.swift). Back is the toolbar's, ContentView's.
     @ViewBuilder private func detailPage(_ session: Session) -> some View {
         SessionDetailPage(
             model: inspectorModel(session),
             actions: inspectorActions(session),
-            analyseProgress: review.isAnalysing && review.selected?.folder == session.folder && review.stepCount > 0
-                ? (review.stepIndex, review.stepCount) : nil,
             isActive: !isReport,
             take: Binding(get: { selection?.url },
                           set: { url in selection = session.takes.first { $0.url == url } }),
+            aspect: stageAspect,
+            hasVideo: selection != nil && player != nil,
+            onTogglePlay: togglePlay,
             tabs: Tab.allCases.filter(\.isAvailable).map(\.rawValue),
             tab: $tab,
             stage: { stage(for: session) },
-            lane: { lane },
+            timeline: { timeline },
             work: { work(for: session) })
         // A different session is a different page: nothing typed in one
         // session's notes field should survive into the next.
@@ -552,11 +555,15 @@ struct RecordingsView: View {
                 model.summaryCaveat = "About \(review.analysisTarget?.lastPathComponent ?? "the longest take"), not the take playing."
             }
         }
+        var takeNumber = 0, clipNumber = 0
         model.takes = session.takes.map { take in
-            .init(id: take.url,
-                  label: SessionClipExporter.isClip(take.url) || session.clipFiles.contains(take)
-                    ? "Clip \u{00B7} \(take.url.deletingPathExtension().lastPathComponent)"
-                    : "\(take.title) \u{00B7} \(take.sizeLabel)")
+            let isClip = SessionClipExporter.isClip(take.url) || session.clipFiles.contains(take)
+            if isClip { clipNumber += 1 } else { takeNumber += 1 }
+            return .init(id: take.url,
+                         label: isClip
+                            ? "Clip \u{00B7} \(take.url.deletingPathExtension().lastPathComponent)"
+                            : "\(take.title) \u{00B7} \(take.sizeLabel)",
+                         short: isClip ? "Clip \(clipNumber)" : "Take \(takeNumber)")
         }
         model.canRename = session.folder != nil
         model.canTrash = take != nil
@@ -633,6 +640,10 @@ struct RecordingsView: View {
             review.requestAnalyse()
         }
         actions.openAnalysisSetup = { review.openSetup() }
+        actions.connectYouTube = {
+            openSettings()
+            NotificationCenter.default.post(name: .showSettingsTab, object: "youtube")
+        }
         actions.stopAnalysis = {
             analysingFolder = nil
             review.cancel()
@@ -658,66 +669,50 @@ struct RecordingsView: View {
         return actions
     }
 
-    /// The picture (AVKit's own inline controls are its scrubber), or what is
-    /// left when the tape is gone.
+    /// The picture, or what is left when the tape is gone. No AVKit controls:
+    /// the page's timeline is the control, and a click on the picture plays
+    /// and pauses.
     @ViewBuilder private func stage(for session: Session) -> some View {
         if selection != nil {
             if let player {
                 PlayerView(player: player)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .clipped()
             } else {
                 ProgressView().controlSize(.small)
             }
         } else {
-            VStack(spacing: 10) {
-                SessionThumbnail(image: nil, kind: session.source.kind)
-                    .frame(maxWidth: 280)
+            VStack(spacing: 8) {
+                Image(systemName: session.source.kind.symbol)
+                    .font(.system(size: 28, weight: .light))
+                    .foregroundStyle(.tertiary)
                 Text("No recording here any more. The notes, transcript and report still are.")
                     .font(.caption)
-                    .foregroundStyle(.white.opacity(0.7))
+                    .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
             }
             .padding()
         }
     }
 
-    /// The marks lane under the picture; nothing without a recording.
-    @ViewBuilder private var lane: some View {
+    /// The one timeline under the picture; nothing without a recording.
+    @ViewBuilder private var timeline: some View {
         if let selection {
-            SessionMarksLane(duration: duration,
-                             playhead: playhead,
-                             clips: selection.clips,
-                             marks: marks(for: selection),
-                             skipping: skipObserver != nil,
-                             onStopSkipping: stopSkipping,
-                             onSeek: seek)
+            SessionTimeline(duration: duration,
+                            playhead: playhead,
+                            isPlaying: isPlaying,
+                            clips: selection.clips,
+                            marks: marks(for: selection),
+                            rate: rate,
+                            skipping: skipObserver != nil,
+                            onStopSkipping: stopSkipping,
+                            onTogglePlay: togglePlay,
+                            onSeek: scrub,
+                            onRate: setRate)
         }
     }
 
-    /// The subtitle the window holds on a session's page.
-    private var detailMeta: String {
-        guard let session = detailSession else { return "" }
-        return inspectorModel(session).meta
-    }
-
-    /// Everything done on the recording, under it.
+    /// The Moments card's content: Moments, Transcript, Links.
     @ViewBuilder private func work(for session: Session) -> some View {
-        switch Tab(rawValue: tab) ?? .clips {
-        case .notes where Tab.notes.isAvailable:
-            if session.folder != nil {
-                ScreenroomAnalysisPane(
-                    folder: session.folder,
-                    recording: selection?.url,
-                    showing: .notes,
-                    seek: { ms in seek(to: Double(ms) / 1000) },
-                    position: { Int(playhead * 1000) },
-                    rate: { player?.rate = $0 },
-                    skip: { playSkipping($0) },
-                    openReport: { coordinator.openReport() })
-            } else {
-                notInFolder("notes")
-            }
+        switch Tab(rawValue: tab) ?? .moments {
         case .transcript where Tab.transcript.isAvailable:
             if let folder = session.folder {
                 if FileManager.default.fileExists(atPath: SessionSummary.transcriptURL(in: folder).path) {
@@ -725,10 +720,10 @@ struct RecordingsView: View {
                 } else {
                     let state = analyseState(session)
                     SessionTabEmpty(title: "No transcript", symbol: "text.alignleft",
-                                    message: "Analyse writes one, on this Mac.") {
+                                    message: "Feedback writes one, on this Mac.") {
                         switch state {
                         case .ready, .analysed:
-                            Button("Analyse", action: inspectorActions(session).analyse)
+                            Button("Get feedback", action: inspectorActions(session).analyse)
                         default:
                             EmptyView()
                         }
@@ -740,7 +735,7 @@ struct RecordingsView: View {
         case .links where Tab.links.isAvailable:
             linksDetail(for: session)
         default:
-            clipsDetail()
+            momentsDetail(for: session)
         }
     }
 
@@ -749,30 +744,46 @@ struct RecordingsView: View {
                         message: "These recordings are not in a session folder, so they have no \(what).") {}
     }
 
-    private func clipsDetail() -> some View {
+    /// Clips and notes as one time-ordered list. Notes are Screenroom's, and
+    /// belong to the take that was analysed; the clips are this take's own.
+    private func momentsDetail(for session: Session) -> some View {
         let clips = selection?.clips ?? []
-        return SessionClipsList(
-            lines: clips.map { clip in
-                SessionClipLine(
-                    id: clip.id,
-                    start: Self.offsetLabel(clip.startMs),
-                    detail: "\(clip.durationLabel) \u{00B7} marked at \(clip.markedAtLabel.replacingOccurrences(of: "-", with: ":"))",
-                    exported: selection.map { SessionClipExporter.isExported(clip, from: $0.url) } ?? false)
-            },
+        let notesApply = session.folder != nil && review.selected?.folder == session.folder
+            && !review.selectionMismatch
+        let notes = notesApply ? review.notes : []
+        let moments = clips.map { clip in
+            SessionMoment(id: "c-\(clip.id.uuidString)", kind: .clip, at: clip.startSeconds,
+                          label: "Clip \u{00B7} \(clip.durationLabel)",
+                          exported: selection.map { SessionClipExporter.isExported(clip, from: $0.url) } ?? false)
+        } + notes.map { note in
+            SessionMoment(id: "n-\(note.id.uuidString)", kind: .note, at: Double(note.atMs) / 1000,
+                          label: note.text)
+        }
+        return SessionMomentsList(
+            moments: moments,
             exporting: exporting,
-            play: { id in
-                if let clip = clips.first(where: { $0.id == id }) { seek(to: clip.startSeconds) }
+            canAddNotes: notesApply,
+            disabledReason: session.folder == nil ? "No session folder"
+                : review.selectionMismatch ? "Notes belong to another take" : "Add a note here",
+            notePosition: { Int(playhead * 1000) },
+            onSeek: { moment in
+                seek(to: moment.kind == .note ? SessionDetailRules.noteSeekTime(moment.at) : moment.at)
             },
-            reveal: { id in
-                guard let selection, let clip = clips.first(where: { $0.id == id }) else { return }
+            onAddNote: { text, ms in review.addNote(text, at: ms) },
+            onRemove: { moment in
+                if moment.kind == .clip {
+                    guard let selection, let clip = clips.first(where: { "c-\($0.id.uuidString)" == moment.id }) else { return }
+                    removeClip(clip, from: selection)
+                } else if let note = notes.first(where: { "n-\($0.id.uuidString)" == moment.id }) {
+                    review.deleteNote(note)
+                }
+            },
+            onReveal: { moment in
+                guard let selection, let clip = clips.first(where: { "c-\($0.id.uuidString)" == moment.id }) else { return }
                 NSWorkspace.shared.activateFileViewerSelecting(
                     [SessionClipExporter.exportURL(for: clip, from: selection.url)])
             },
-            remove: { id in
-                guard let selection, let clip = clips.first(where: { $0.id == id }) else { return }
-                removeClip(clip, from: selection)
-            },
-            exportAll: { if let selection { exportAll(for: selection) } })
+            onExportAll: { if let selection { exportAll(for: selection) } })
     }
 
     /// The class's links: what it was, where it goes, whether it went to the
@@ -838,11 +849,26 @@ struct RecordingsView: View {
         duration = 0
         guard let recording else { return }
         let item = AVPlayer(url: recording.url)
+        item.defaultRate = rate
         player = item
         timeObserver = item.addPeriodicTimeObserver(
-            forInterval: CMTime(seconds: 0.25, preferredTimescale: 600), queue: .main) { time in
+            forInterval: CMTime(seconds: 0.1, preferredTimescale: 600), queue: .main) { time in
                 playhead = time.seconds
             }
+        // The picture's own shape, and whether it is playing, observed rather
+        // than polled.
+        stageAspect = 16.0 / 9.0
+        var watchers: [AnyCancellable] = [
+            item.publisher(for: \.timeControlStatus)
+                .receive(on: DispatchQueue.main)
+                .sink { status in isPlaying = status != .paused },
+        ]
+        if let current = item.currentItem {
+            watchers.append(current.publisher(for: \.presentationSize)
+                .receive(on: DispatchQueue.main)
+                .sink { size in stageAspect = SessionDetailRules.aspect(of: size) })
+        }
+        playerWatchers = watchers
         // Loaded, not played. Opening a class to read its transcript or copy
         // its link started the recording with sound, on a Mac that is often
         // in a staffroom.
@@ -858,6 +884,8 @@ struct RecordingsView: View {
         timeObserver = nil
         player?.pause()
         player = nil
+        playerWatchers = []
+        isPlaying = false
     }
 
     /// Plays from the start and jumps over each span as the playhead
@@ -886,7 +914,7 @@ struct RecordingsView: View {
     /// Fillers and notes for the recording on screen, when Screenroom has
     /// analysed THIS take. Nothing otherwise - a mark measured against a
     /// different take points at the wrong moment.
-    private func marks(for selection: Recording) -> SessionMarksLane.Marks {
+    private func marks(for selection: Recording) -> SessionTimeline.Marks {
         guard let folder = sessions.first(where: { $0.takes.contains(selection) })?.folder,
               review.selected?.folder == folder else { return .init() }
         let found = review.scrubberMarks
@@ -895,9 +923,32 @@ struct RecordingsView: View {
     }
 
     private func seek(to seconds: Double) {
+        scrub(to: seconds)
+        player?.play()
+    }
+
+    /// Moves the picture without starting it: the timeline's click and drag.
+    private func scrub(to seconds: Double) {
+        playhead = seconds
         player?.seek(to: CMTime(seconds: seconds, preferredTimescale: 600),
                      toleranceBefore: .zero, toleranceAfter: .zero)
-        player?.play()
+    }
+
+    private func togglePlay() {
+        guard let player else { return }
+        if player.timeControlStatus == .paused {
+            // At the very end play() does nothing; start again instead.
+            if duration > 0, playhead >= duration - 0.2 { scrub(to: 0) }
+            player.play()
+        } else {
+            player.pause()
+        }
+    }
+
+    private func setRate(_ new: Float) {
+        rate = new
+        player?.defaultRate = new
+        if player?.timeControlStatus != .paused { player?.rate = new }
     }
 
     // MARK: Actions
@@ -1210,7 +1261,7 @@ struct RecordingsView: View {
                 super.init(frame: frame)
                 wantsLayer = true
                 layer?.masksToBounds = true
-                playerView.controlsStyle = .inline
+                playerView.controlsStyle = .none
                 playerView.videoGravity = .resizeAspect
                 playerView.translatesAutoresizingMaskIntoConstraints = true
                 playerView.autoresizingMask = [.width, .height]

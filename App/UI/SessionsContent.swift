@@ -334,7 +334,10 @@ struct SessionInspectorModel {
 
     struct Take: Identifiable, Hashable {
         let id: URL
+        /// The whole name, for a tooltip.
         let label: String
+        /// What the page's small take switch says: "Take 1", "Clip 2".
+        var short: String = ""
     }
 
     struct UploadLine {
@@ -363,11 +366,11 @@ struct SessionInspectorModel {
     var canEdit: Bool = false
     var youtubeConnected: Bool = false
 
-    var meta: String {
-        var parts = [kind.label,
-                     "\(SessionsFormat.day(date, now: Date())) \(SessionsFormat.time(date))"]
+    /// The line under the page's title: "Today 2:05 PM \u{00B7} 48 min \u{00B7} Class".
+    var headerMeta: String {
+        var parts = ["\(SessionsFormat.day(date, now: Date())) \(SessionsFormat.time(date))"]
         if let duration { parts.append(SessionsFormat.length(duration)) }
-        if clipCount > 0 { parts.append("\(clipCount) clip\(clipCount == 1 ? "" : "s")") }
+        parts.append(kind.label)
         return parts.joined(separator: " \u{00B7} ")
     }
 }
@@ -388,103 +391,6 @@ struct SessionInspectorActions {
     var showInFinder: () -> Void = {}
     var trash: () -> Void = {}
     var edit: () -> Void = {}
-}
-
-// MARK: - Clips
-
-/// A clip marked on the recording, as the inspector lists it.
-struct SessionClipLine: Identifiable {
-    let id: UUID
-    /// Where it starts, mono: "18:40".
-    let start: String
-    /// "1 min · marked at 9:48".
-    let detail: String
-    let exported: Bool
-}
-
-struct SessionClipsList: View {
-    let lines: [SessionClipLine]
-    var exporting: (done: Int, total: Int)?
-    var play: (UUID) -> Void = { _ in }
-    var reveal: (UUID) -> Void = { _ in }
-    var remove: (UUID) -> Void = { _ in }
-    var exportAll: () -> Void = {}
-
-    var body: some View {
-        if lines.isEmpty {
-            SessionTabEmpty(title: "No clips marked", symbol: "scissors",
-                            message: "Use the clip shortcuts (Settings \u{2192} Shortcuts) during a class to mark the last 1, 2 or 5 minutes. Marks appear here afterwards.") {}
-        } else {
-            VStack(spacing: 0) {
-                ScrollView {
-                    VStack(spacing: 0) {
-                        ForEach(lines) { line in
-                            row(line)
-                        }
-                    }
-                    .padding(.vertical, 4)
-                }
-                Divider()
-                footer
-            }
-        }
-    }
-
-    /// Export all lives at the foot of the list, where the clips end.
-    private var footer: some View {
-        HStack {
-            if let exporting {
-                ProgressView(value: Double(exporting.done), total: Double(max(1, exporting.total)))
-                    .frame(maxWidth: 120)
-                Text("\(exporting.done)/\(exporting.total)")
-                    .font(.caption.monospacedDigit())
-                    .foregroundStyle(.secondary)
-            }
-            Spacer(minLength: 0)
-            Button("Export all", action: exportAll)
-                .disabled(exporting != nil)
-                .help("Cuts every marked clip into its own file, next to the recording.")
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-    }
-
-    private func row(_ line: SessionClipLine) -> some View {
-        HStack(spacing: 10) {
-            Button { play(line.id) } label: {
-                HStack(spacing: 10) {
-                    Text(line.start)
-                        .font(.system(size: 12, design: .monospaced))
-                        .foregroundStyle(.secondary)
-                        .frame(width: 48, alignment: .leading)
-                    Text(line.detail)
-                        .font(.callout)
-                        .lineLimit(1)
-                    Spacer(minLength: 0)
-                }
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .help("Play from here")
-
-            if line.exported {
-                Button { reveal(line.id) } label: {
-                    Image(systemName: "checkmark.circle.fill").foregroundStyle(Brand.text)
-                }
-                .buttonStyle(.plain)
-                .help("Cut to a file. Show it in Finder.")
-            } else {
-                Image(systemName: "scissors")
-                    .foregroundStyle(.secondary)
-                    .help("Marked, not cut yet. Export all cuts it.")
-            }
-            Button { remove(line.id) } label: {
-                Image(systemName: "trash").foregroundStyle(.secondary)
-            }
-            .buttonStyle(.plain)
-            .help("Removes the mark, and the exported clip if there is one. The recording is untouched.")
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 6)
-    }
+    /// Opens Settings on the YouTube tab.
+    var connectYouTube: () -> Void = {}
 }

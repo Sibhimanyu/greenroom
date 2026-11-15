@@ -106,7 +106,7 @@ struct ContentView: View {
         switch coordinator.mainPage {
         case .home: return ""
         case .sessions: return "Sessions"
-        case .detail: return "Session"
+        case .detail: return ""   // the watch page names itself in its header
         case .report: return "Report"
         }
     }
@@ -116,12 +116,24 @@ struct ContentView: View {
     /// a page change, while Home is invisible, not at the click.
     private var columnVisibility: Binding<NavigationSplitViewVisibility> {
         Binding(
-            get: { SidebarRules.visibility(onSessionsPage: chromeOnPage, hidden: sidebarHidden) },
+            get: { SidebarRules.visibility(onSessionsPage: chromeOnPage, hidden: sidebarHidden,
+                                           onSingleSession: onSingleSession) },
             set: { sidebarHidden = SidebarRules.hidden(afterVisibility: $0, onSessionsPage: chromeOnPage,
-                                                       was: sidebarHidden) })
+                                                       was: sidebarHidden,
+                                                       onSingleSession: onSingleSession) })
     }
 
-    private var sidebarShown: Bool { chromeOnPage && !sidebarHidden }
+    /// A session's page or its report: no sidebar (the watch page).
+    private var onSingleSession: Bool {
+        switch coordinator.mainPage {
+        case .detail, .report: return true
+        case .home, .sessions: return false
+        }
+    }
+
+    private var sidebarShown: Bool {
+        SidebarRules.shown(onSessionsPage: chromeOnPage, hidden: sidebarHidden, onSingleSession: onSingleSession)
+    }
 
     var body: some View {
         // The window's ROOT content is the split view: only then does macOS 26
@@ -132,7 +144,7 @@ struct ContentView: View {
             SessionsSidebar(model: sidebarModel)
                 // Home and Record have no sidebar to toggle. Documented home of
                 // the removal: the sidebar column's content.
-                .toolbar(removing: chromeOnPage ? nil : .sidebarToggle)
+                .toolbar(removing: chromeOnPage && !onSingleSession ? nil : .sidebarToggle)
         } detail: {
             detailColumn
         }
@@ -143,7 +155,7 @@ struct ContentView: View {
         .background {
             Button("") { sidebarHidden.toggle() }
                 .keyboardShortcut("s", modifiers: [.command, .control])
-                .disabled(!chromeOnPage)
+                .disabled(!chromeOnPage || onSingleSession)
                 .frame(width: 0, height: 0)
                 .opacity(0)
                 .accessibilityHidden(true)
@@ -437,7 +449,7 @@ struct ContentView: View {
         let settled = window.contentRect(forFrameRect: settledFrame(for: window, animated: true, returningHome: isHome)).size
         // The pages sit in the detail column, so they lose the sidebar's width
         // while it is up. Home's column is the whole window.
-        let credit = sidebarHidden ? 0 : sidebarWidth
+        let credit = sidebarHidden || onSingleSession ? 0 : sidebarWidth
         let target = CGSize(width: isHome ? settled.width : settled.width - credit,
                             height: settled.height - titleBar)
         let current = CGSize(width: isHome ? now.width - credit : now.width,

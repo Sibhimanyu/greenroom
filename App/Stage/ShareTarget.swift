@@ -31,6 +31,10 @@ struct ShareTarget: Codable, Equatable {
         /// draws the camera alone - see `StageLayout.showsContent`.
         case nothing
         var id: String { rawValue }
+        /// What the pickers offer. One app is gone (owner, 2026-11-16): one
+        /// window says the same thing more simply. `.app` stays so a saved
+        /// choice still decodes; it is read back as the whole screen.
+        static var pickable: [Kind] { allCases.filter { $0 != .app } }
 
         var label: String {
             switch self {

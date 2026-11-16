@@ -3,10 +3,10 @@
 //  Greenroom
 //
 //  A session's page as a drawing: the watch page. A title and one meta line at
-//  the top left, the picture at its own shape under them, one timeline under
-//  the picture, and a rail on the right of three cards (Share with the class,
-//  How it went, Moments). Under about 960pt the rail drops under the picture
-//  and the page scrolls.
+//  the top left, the picture as large as the column allows under them, one
+//  timeline right under the picture, and one side panel on the right (Moments,
+//  Transcript, Links) that ⌥⌘I hides. Analyse and Share are toolbar buttons.
+//  Under about 960pt the panel drops under the picture and the page scrolls.
 //
 //  Like SessionsContent.swift this takes plain values and closures, and knows
 //  nothing about the coordinator, the disk or AVKit: RecordingsView hands it
@@ -18,9 +18,8 @@ import SwiftUI
 // MARK: - Toolbar
 
 /// The Watch / Edit switch in the middle; on the right, Undo, Redo and Save
-/// while editing, or the More menu while watching. Everything else is on the
-/// page: sharing and feedback are the rail's cards, the take switch is in the
-/// header.
+/// while editing, or Analyse, Share and More while watching; last, the side
+/// panel's toggle. The take switch is in the header.
 struct SessionDetailToolbar: ToolbarContent {
     let model: SessionInspectorModel
     let actions: SessionInspectorActions
@@ -33,6 +32,7 @@ struct SessionDetailToolbar: ToolbarContent {
     var onRedo: () -> Void = {}
     var onSave: () -> Void = {}
     var onShare: () -> Void = {}
+    @Binding var panelHidden: Bool
 
     var body: some ToolbarContent {
         ToolbarItem(placement: .principal) {
@@ -64,6 +64,7 @@ struct SessionDetailToolbar: ToolbarContent {
                         .help("Nothing to save yet")
                 }
             } else {
+                SessionAnalyseButton(model: model, actions: actions)
                 Button(action: onShare) {
                     Label("Share\u{2026}", systemImage: "square.and.arrow.up")
                 }
@@ -71,6 +72,13 @@ struct SessionDetailToolbar: ToolbarContent {
                 .help("Share this class: YouTube, or post the link to the class")
                 moreMenu
             }
+            Button {
+                withAnimation(.snappy(duration: 0.25)) { panelHidden.toggle() }
+            } label: {
+                Label(panelHidden ? "Show Side Panel" : "Hide Side Panel", systemImage: "sidebar.right")
+            }
+            .keyboardShortcut("i", modifiers: [.command, .option])
+            .help(panelHidden ? "Show the side panel (\u{2325}\u{2318}I)" : "Hide the side panel for a bigger picture (\u{2325}\u{2318}I)")
         }
     }
 
@@ -109,6 +117,8 @@ struct SessionDetailPage<Stage: View, Timeline: View, Work: View, Transcript: Vi
     @EnvironmentObject private var editor: EditorViewModel
     @StateObject private var chrome = EditorChrome()
     @State private var showShare = false
+    /// The side panel is folded away, so the picture takes the page's width.
+    @AppStorage("sessionPanelHidden") private var panelHidden = false
 
     let model: SessionInspectorModel
     var actions = SessionInspectorActions()
@@ -155,7 +165,8 @@ struct SessionDetailPage<Stage: View, Timeline: View, Work: View, Transcript: Vi
                     canSave: !editor.isExporting && editor.hasVideo && editor.hasUnsavedEdits,
                     onUndo: { editor.undo() }, onRedo: { editor.redo() },
                     onSave: { editor.showExportOptions = true },
-                    onShare: { showShare.toggle() })
+                    onShare: { showShare.toggle() },
+                    panelHidden: $panelHidden)
             }
         }
         // Space belongs to the editor's own key monitor while editing.
@@ -172,13 +183,18 @@ struct SessionDetailPage<Stage: View, Timeline: View, Work: View, Transcript: Vi
     // MARK: Layouts
 
     private func wide(_ size: CGSize) -> some View {
-        let column = size.width - SessionDetailRules.railWidth - gutter * 3
+        let column = panelHidden
+            ? size.width - gutter * 2
+            : size.width - SessionDetailRules.railWidth - gutter * 3
         let height = size.height - 20 - gutter
         return HStack(alignment: .top, spacing: gutter) {
             mainColumn(available: CGSize(width: column, height: height))
                 .frame(width: max(0, column), height: max(0, height), alignment: .topLeading)
-            sidePanel(fillsHeight: true, columnWidth: column)
-                .frame(width: SessionDetailRules.railWidth, height: max(0, height))
+            if !panelHidden {
+                sidePanel(fillsHeight: true, columnWidth: column)
+                    .frame(width: SessionDetailRules.railWidth, height: max(0, height))
+                    .transition(.move(edge: .trailing).combined(with: .opacity))
+            }
         }
         .padding(.horizontal, gutter)
         .padding(.top, 20)
@@ -192,7 +208,9 @@ struct SessionDetailPage<Stage: View, Timeline: View, Work: View, Transcript: Vi
         return ScrollView {
             VStack(alignment: .leading, spacing: 20) {
                 mainColumn(available: CGSize(width: width, height: room + headerHeight + gap * 2))
-                sidePanel(fillsHeight: false, columnWidth: width)
+                if !panelHidden {
+                    sidePanel(fillsHeight: false, columnWidth: width)
+                }
             }
             .padding(.horizontal, gutter)
             .padding(.top, 20)
@@ -205,10 +223,11 @@ struct SessionDetailPage<Stage: View, Timeline: View, Work: View, Transcript: Vi
         editor.hasVideo ? SessionDetailRules.aspect(of: editor.displayVideoSize) : 16.0 / 9.0
     }
 
-    /// The bar's block under the picture. Edit needs all of it (play row,
-    /// filmstrip, lanes); Watch uses the top of it. The picture is sized
-    /// against this in both modes, so it never moves or changes size.
-    private var barBlockHeight: CGFloat { 210 }
+    /// The block under the picture. Edit needs room for the tools, the
+    /// filmstrip and the lanes; Watch only for its play row and the moments
+    /// lane, so the picture takes the rest. Switching modes resizes the
+    /// picture, animated.
+    private var barBlockHeight: CGFloat { isEditing ? 250 : 60 }
 
     /// Header, picture, then the play row and the timeline right under it.
     private func mainColumn(available: CGSize) -> some View {
@@ -232,6 +251,7 @@ struct SessionDetailPage<Stage: View, Timeline: View, Work: View, Transcript: Vi
             }
             .frame(width: fitted.width, height: barBlockHeight, alignment: .topLeading)
         }
+        .animation(.snappy(duration: 0.3), value: isEditing)
     }
 
     @ViewBuilder private func picture(_ size: CGSize) -> some View {
@@ -299,12 +319,9 @@ struct SessionDetailPage<Stage: View, Timeline: View, Work: View, Transcript: Vi
     }
 
     private func rail(fillsHeight: Bool) -> some View {
-        VStack(spacing: 16) {
-            SessionFeedbackLine(model: model, actions: actions)
-            momentsCard
-                .frame(maxHeight: fillsHeight ? .infinity : nil)
-                .frame(height: fillsHeight ? nil : 380)
-        }
+        momentsCard
+            .frame(maxHeight: fillsHeight ? .infinity : nil)
+            .frame(height: fillsHeight ? nil : 380)
     }
 
     private var momentsCard: some View {
@@ -313,6 +330,10 @@ struct SessionDetailPage<Stage: View, Timeline: View, Work: View, Transcript: Vi
                 GreenroomSegmented("Work", selection: $tab, options: tabs) { Text($0) }
                     .controlSize(.small)
                     .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            if tab == tabs.first, let summary = model.summary {
+                SessionSummaryNote(summary: summary, caveat: model.summaryCaveat,
+                                   onOpen: actions.openReport)
             }
             work()
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
@@ -622,54 +643,115 @@ struct SessionTabEmpty<Actions: View>: View {
     }
 }
 
-/// How it went as one line: what state it is in, and the one action for it.
-struct SessionFeedbackLine: View {
+/// How it went, as a toolbar button that follows the analysis: Analyse
+/// before it is asked for (the glyph amber when the work leaves this Mac; the
+/// first press opens the setup, which is the one-time ask), a spinner with the
+/// step while it runs (click for the detail and Stop), then Report.
+struct SessionAnalyseButton: View {
     let model: SessionInspectorModel
     let actions: SessionInspectorActions
+    @State private var showProgress = false
 
     var body: some View {
-        HStack(spacing: 10) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text("How it went").font(.system(size: 13, weight: .semibold))
-                Text(subtitle)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .truncationMode(.tail)
+        switch model.analyse {
+        case .ready(let engine, let leavesMac):
+            Button(action: actions.analyse) {
+                Label {
+                    Text("Analyse")
+                } icon: {
+                    Image(systemName: "sparkles")
+                        .foregroundStyle(leavesMac ? AnyShapeStyle(Brand.net) : AnyShapeStyle(.primary))
+                }
             }
-            Spacer(minLength: 8)
-            action
-        }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 10)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(RailCardStyle.shape.fill(RailCardStyle.fill))
-    }
-
-    private var subtitle: String {
-        switch model.analyse {
-        case .unavailable(let why): return why
-        case .ready(_, let leavesMac): return leavesMac ? "Not asked for yet. Leaves this Mac." : "Not asked for yet"
-        case .running(let step, _, _): return step
-        case .busy: return "Another session is being analysed."
-        case .analysed(let engine, _, _): return model.summary ?? "Analysed \u{00B7} \(engine)"
-        }
-    }
-
-    @ViewBuilder private var action: some View {
-        switch model.analyse {
-        case .ready:
-            Button("Get feedback", action: actions.analyse).controlSize(.small)
-        case .running:
-            Button("Stop", role: .destructive, action: actions.stopAnalysis).controlSize(.small)
+            .labelStyle(.titleAndIcon)
+            .help("Get feedback on how this class went. \(engine).")
+        case .running(let step, let detail, let log):
+            Button {
+                showProgress.toggle()
+            } label: {
+                HStack(spacing: 6) {
+                    ProgressView().controlSize(.small)
+                    Text("Analysing")
+                }
+            }
+            .help(step)
+            .popover(isPresented: $showProgress, arrowEdge: .bottom) {
+                progress(step: step, detail: detail, log: log)
+            }
+        case .busy:
+            Label("Analyse", systemImage: "sparkles")
+                .labelStyle(.titleAndIcon)
+                .foregroundStyle(.tertiary)
+                .help("Another session is being analysed.")
+        case .unavailable(let why):
+            Label("Analyse", systemImage: "sparkles")
+                .labelStyle(.titleAndIcon)
+                .foregroundStyle(.tertiary)
+                .help(why)
         case .analysed:
             Button(action: actions.openReport) {
-                Text("Open").foregroundStyle(Brand.text)
+                Label("Report", systemImage: "doc.text.magnifyingglass")
             }
-            .buttonStyle(.plain)
-            .font(.callout.weight(.medium))
-        default:
-            EmptyView()
+            .labelStyle(.titleAndIcon)
+            .help("Open the report on how this class went")
         }
+    }
+
+    private func progress(step: String, detail: String, log: String?) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(step).font(.callout).fixedSize(horizontal: false, vertical: true)
+            if !detail.isEmpty {
+                Text(detail).font(.caption).foregroundStyle(.secondary)
+            }
+            if let last = log?.split(whereSeparator: \.isNewline).last, !last.isEmpty {
+                Text(String(last))
+                    .font(.system(size: 10, design: .monospaced))
+                    .foregroundStyle(.tertiary)
+                    .lineLimit(2)
+                    .truncationMode(.head)
+            }
+            HStack {
+                Spacer(minLength: 0)
+                Button("Stop", role: .destructive) {
+                    showProgress = false
+                    actions.stopAnalysis()
+                }
+                .help("Stops the run and closes whatever it started. Nothing is written until it finishes.")
+            }
+        }
+        .padding(14)
+        .frame(width: 280, alignment: .leading)
+    }
+}
+
+/// The analysis in a sentence, at the top of Moments: a note about the
+/// class, a click away from the report.
+struct SessionSummaryNote: View {
+    let summary: String
+    var caveat: String?
+    var onOpen: () -> Void
+
+    var body: some View {
+        Button(action: onOpen) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("\u{201C}\(summary)\u{201D}")
+                    .font(.callout)
+                    .foregroundStyle(.primary)
+                    .lineLimit(3)
+                    .fixedSize(horizontal: false, vertical: true)
+                if let caveat {
+                    Text(caveat).font(.caption).foregroundStyle(.secondary)
+                }
+                Text("Open report \u{2192}")
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(Brand.text)
+            }
+            .padding(10)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(Brand.green.opacity(0.08)))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help("Open the report")
     }
 }

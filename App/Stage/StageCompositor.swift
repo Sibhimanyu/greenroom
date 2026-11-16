@@ -167,6 +167,9 @@ final class StageCompositor: StageFrameSource {
     }
 
     func addSink(_ sink: StageFrameSink) { sinks.add(sink) }
+    /// The last frame's camera alpha (StageRenderer.lastCameraCoverage).
+    /// Read on the render queue from a sink, it belongs to the frame being delivered.
+    var lastCameraCoverage: CIImage? { renderer.lastCameraCoverage }
     func removeSink(_ sink: StageFrameSink) { sinks.remove(sink) }
 
     /// Where the Mac's sound goes (the recorder). Called on the capture queue.

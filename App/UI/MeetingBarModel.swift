@@ -59,6 +59,8 @@ struct MeetingBarSnapshot: Equatable {
     var chatOpen = false
     /// "End Meeting for All" when hosting, "Leave Meeting" otherwise: what End does.
     var endName = "End Meeting for All"
+    /// End was pressed once and waits for the second press.
+    var endArmed = false
 }
 
 // MARK: - Text

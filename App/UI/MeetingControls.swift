@@ -848,6 +848,7 @@ private struct MeetingControlBarView: View {
         s.chatOpen = model.chatOpen
         s.endName = coordinator.liveExitState.kind == .host ? LiveExitChoice.endMeetingForAll.title
                                                             : LiveExitChoice.leaveMeeting.title
+        s.endArmed = coordinator.exitAsk == .end
         return s
     }
 

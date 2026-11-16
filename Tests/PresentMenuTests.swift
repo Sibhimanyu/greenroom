@@ -8,7 +8,6 @@ final class PresentMenuTests: XCTestCase {
     private func state(_ edit: (inout P.State) -> Void = { _ in }) -> P.State {
         var s = P.State()
         s.displays = [choice("A", "Built-in \u{2014} 3024\u{00D7}1964 \u{00B7} Main"), choice("B", "Studio \u{2014} 2560\u{00D7}1440")]
-        s.apps = [choice("com.apple.Keynote", "Keynote"), choice("com.google.Chrome", "Chrome")]
         s.windows = [
             .init(bundleID: "com.google.Chrome", appName: "Chrome", title: "Lesson", label: "Chrome \u{2013} Lesson"),
             .init(bundleID: "com.apple.Keynote", appName: "Keynote", title: "", label: "Keynote window"),
@@ -26,18 +25,12 @@ final class PresentMenuTests: XCTestCase {
 
     func testOrderIsWhatTheClassSeesThenLookThenLayout() {
         let titles = menu(state()).filter { $0.kind != .separator }.map(\.title)
-        XCTAssertEqual(titles, ["What the class sees", "Whole screen", "One app", "One window",
+        XCTAssertEqual(titles, ["What the class sees", "Whole screen", "One window",
                                 "Whiteboard", "Just my camera", "Look", "Layout"])
         XCTAssertEqual(menu(state()).first?.kind, .header)
     }
 
     func testTheCurrentChoiceIsTickedAtEveryLevel() {
-        let onApp = menu(state { $0.kind = .app; $0.appBundleID = "com.google.Chrome" })
-        XCTAssertEqual(onApp.entry(titled: "One app")?.checked, true)
-        XCTAssertEqual(onApp.entry(titled: "Chrome")?.checked, true)
-        XCTAssertEqual(onApp.entry(titled: "Keynote")?.checked, false)
-        XCTAssertEqual(onApp.entry(titled: "Whole screen")?.checked, false)
-
         let onWindow = menu(state { $0.kind = .window; $0.windowBundleID = "com.google.Chrome"; $0.windowTitle = "Lesson" })
         XCTAssertEqual(onWindow.entry(titled: "One window")?.checked, true)
         XCTAssertEqual(onWindow.entry(titled: "Chrome \u{2013} Lesson")?.checked, true)
@@ -51,11 +44,14 @@ final class PresentMenuTests: XCTestCase {
         XCTAssertEqual(menu(state()).entry(titled: "Teach")?.checked, false)
     }
 
-    func testAppTickNeedsTheAppKindNotJustTheBundle() {
-        // A saved app is remembered while the target is a window: no tick under One app.
-        let m = menu(state { $0.kind = .window; $0.appBundleID = "com.google.Chrome" })
-        XCTAssertEqual(m.entry(titled: "One app")?.checked, false)
-        XCTAssertEqual(m.entry(titled: "Chrome")?.checked, false)
+    func testOneAppIsNotOffered() {
+        // Owner, 2026-11-16: one window is the only per-app choice.
+        let m = menu(state())
+        XCTAssertNil(m.entry(titled: "One app"))
+        // A saved app target ticks nothing rather than a stale row.
+        let saved = menu(state { $0.kind = .app })
+        XCTAssertEqual(saved.entry(titled: "Whole screen")?.checked, false)
+        XCTAssertEqual(saved.entry(titled: "One window")?.checked, false)
     }
 
     func testSeveralDisplaysMakeASubmenuWithAutomaticFirst() {
@@ -72,9 +68,9 @@ final class PresentMenuTests: XCTestCase {
         let m = menu(state { $0.displayID = "B" })
         XCTAssertEqual(m.entry(titled: "Automatic (main display)")?.checked, false)
         XCTAssertEqual(m.entry(titled: "Studio \u{2014} 2560\u{00D7}1440")?.checked, true)
-        let app = menu(state { $0.kind = .app; $0.displayID = "B" })
-        XCTAssertEqual(app.entry(titled: "Whole screen")?.checked, false)
-        XCTAssertEqual(app.entry(titled: "Studio \u{2014} 2560\u{00D7}1440")?.checked, false)
+        let window = menu(state { $0.kind = .window; $0.displayID = "B" })
+        XCTAssertEqual(window.entry(titled: "Whole screen")?.checked, false)
+        XCTAssertEqual(window.entry(titled: "Studio \u{2014} 2560\u{00D7}1440")?.checked, false)
     }
 
     func testOneDisplayIsASingleItem() {
@@ -90,20 +86,18 @@ final class PresentMenuTests: XCTestCase {
         var a = P.Actions()
         a.pickKind = { log.append("kind:\($0.rawValue)") }
         a.pickDisplay = { log.append("display:\($0)") }
-        a.pickApp = { log.append("app:\($0.id)") }
         a.pickWindow = { log.append("window:\($0.bundleID)/\($0.title)") }
         a.pickShape = { log.append("shape:\($0)") }
         a.pickLayout = { log.append("layout:\($0)") }
         let m = menu(state(), a)
         m.entry(titled: "Automatic (main display)")?.action?()
         m.entry(titled: "Studio \u{2014} 2560\u{00D7}1440")?.action?()
-        m.entry(titled: "Chrome")?.action?()
         m.entry(titled: "Chrome \u{2013} Lesson")?.action?()
         m.entry(titled: "Whiteboard")?.action?()
         m.entry(titled: "Just my camera")?.action?()
         m.entry(titled: "Square")?.action?()
         m.entry(titled: "Teach")?.action?()
-        XCTAssertEqual(log, ["display:", "display:B", "app:com.google.Chrome", "window:com.google.Chrome/Lesson",
+        XCTAssertEqual(log, ["display:", "display:B", "window:com.google.Chrome/Lesson",
                              "kind:whiteboard", "kind:nothing", "shape:square", "layout:L1"])
         let single = menu(state { $0.displays = [] }, a)
         single.entry(titled: "Whole screen")?.action?()
@@ -120,7 +114,7 @@ final class PresentMenuTests: XCTestCase {
         XCTAssertEqual(look?.note, P.cameraOffNote)
         // The screen choices still work.
         XCTAssertEqual(m.entry(titled: "Whiteboard")?.enabled, true)
-        XCTAssertEqual(m.entry(titled: "One app")?.enabled, true)
+        XCTAssertEqual(m.entry(titled: "One window")?.enabled, true)
     }
 
     func testWithACameraBothAreOn() {
@@ -138,9 +132,8 @@ final class PresentMenuTests: XCTestCase {
     }
 
     func testEmptyListsSayWhySoTheSubmenuIsNeverBlank() {
-        let m = menu(state { $0.apps = []; $0.windows = [] })
-        XCTAssertEqual(m.entry(titled: "One app")?.children.map(\.title), ["No other app is open"])
+        let m = menu(state { $0.windows = [] })
         XCTAssertEqual(m.entry(titled: "One window")?.children.map(\.title), ["No window to share"])
-        XCTAssertEqual(m.entry(titled: "No other app is open")?.enabled, false)
+        XCTAssertEqual(m.entry(titled: "No window to share")?.enabled, false)
     }
 }

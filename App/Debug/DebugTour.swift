@@ -581,9 +581,9 @@ extension Notification.Name {
                              })),
             ("layout-none", .init(title: "Layout", value: "None", text: "Where Start puts the meeting, the chat and your apps.",
                                   visual: DockHintVisual.layout(nil) { _ in fatalError() })),
-            ("record-hand", .init(title: "Record", value: "By hand", text: "Recording starts when you press Record.",
+            ("record-hand", .init(title: "Record", value: "Manual", text: "Recording starts when you press Record.",
                                   visual: DockHintVisual.record(withMeeting: false))),
-            ("record-auto", .init(title: "Record", value: "With the meeting",
+            ("record-auto", .init(title: "Record", value: "Auto-record",
                                   text: "Recording starts with the meeting.", visual: DockHintVisual.record(withMeeting: true))),
         ]
         var written: [String] = []

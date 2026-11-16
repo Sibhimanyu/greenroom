@@ -58,6 +58,16 @@ final class StageRenderer {
         placementLock.lock(); contentRect_ = rect; placementLock.unlock()
     }
 
+    /// Where the last frame's cameras drew, as their own alpha (the cutout's
+    /// person, the bubble's shape), in canvas coordinates; nil when no camera
+    /// drew over shared content. Home's preview draws the layout outlines
+    /// under it, so they pass behind you. Never part of the class picture.
+    private var cameraCoverage_: CIImage?
+    var lastCameraCoverage: CIImage? {
+        placementLock.lock(); defer { placementLock.unlock() }
+        return cameraCoverage_
+    }
+
     init(canvas: CGSize) {
         self.canvas = canvas
         let options: [CIContextOption: Any] = [
@@ -126,6 +136,7 @@ final class StageRenderer {
         }
 
         var drewCamera = false
+        var coverage: CIImage?
         // Cameras: non-live first, live last, on top (enforceLayerOrder :962).
         if layout.showsCamera {
             var order: [(slot: Int, opacity: Double)] = []
@@ -144,12 +155,14 @@ final class StageRenderer {
                       var layer = cameraLayer(pixels, layout: layout) else { continue }
                 if entry.opacity < 0.999 { layer = layer.withOpacity(max(0, entry.opacity)) }
                 out = layer.composited(over: out)
+                if layout.showsContent { coverage = coverage.map { layer.composited(over: $0) } ?? layer }
                 drewCamera = true
             }
         }
         // Nothing to show: no content is on and no camera has a picture (none
         // plugged in, or not delivering yet). The recording still needs a
         // picture, so it is a clean card instead of an empty backdrop.
+        placementLock.lock(); cameraCoverage_ = coverage; placementLock.unlock()
         if !layout.showsContent, !drewCamera, let card = audioOnlyCard {
             out = card.composited(over: out)
         }

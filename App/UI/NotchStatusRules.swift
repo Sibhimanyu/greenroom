@@ -164,9 +164,12 @@ enum CountdownPhase: Equatable {
 
 enum IslandToastKind: Equatable {
     case working, success, failure
+    /// End or Stop is armed: says what pressing it again does.
+    case ask
 
     var symbol: String {
         switch self {
+        case .ask: return "questionmark.circle.fill"
         case .working: return "hourglass"
         case .success: return "checkmark.circle.fill"
         case .failure: return "exclamationmark.triangle.fill"
@@ -255,7 +258,7 @@ enum IslandRules {
     static let failureHold: TimeInterval = 4
     /// An unanswered upload prompt counts as "Not now" after this.
     static let promptTimeout: TimeInterval = 120
-    /// An unanswered End question counts as Cancel: nothing ends by waiting.
+    /// An armed End or Stop disarms after this: nothing ends by waiting.
     static let confirmTimeout: TimeInterval = 15
     /// How long "Recording" holds after the countdown reaches go.
     static let goHold: TimeInterval = 1
@@ -267,6 +270,7 @@ enum IslandRules {
         switch kind {
         case .failure: return hasAction ? nil : failureHold
         case .working, .success: return toastHold
+        case .ask: return confirmTimeout
         }
     }
 

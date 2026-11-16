@@ -465,6 +465,14 @@ enum DockHintVisual {
         }
     }
 
+    /// More: the dock's button goes to Settings.
+    static var more: AnyView {
+        AnyView(ZStack {
+            stage
+            HStack(spacing: 10) { orb("ellipsis"); Flow(); orb("gearshape") }
+        })
+    }
+
     private static func orb(_ symbol: String) -> some View {
         RoundedRectangle(cornerRadius: 11, style: .continuous)
             .fill(.white.opacity(0.12))

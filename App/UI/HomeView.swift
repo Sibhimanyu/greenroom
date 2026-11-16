@@ -35,9 +35,6 @@ struct HomeView: View {
     /// The status log's disclosure. Owned by ContentView, which sizes the
     /// window for it.
     @Binding var statusShown: Bool
-    /// Tells ContentView whether the "Last session" line is drawn, since the
-    /// window's height is measured with and without it.
-    @Binding var hasFooter: Bool
     /// The picture is hidden until asked for (DESIGN.md, 2026-11-14): the
     /// owner's choice, kept per Mac by ContentView, which also grows the window.
     @Binding var previewShown: Bool
@@ -88,9 +85,11 @@ struct HomeView: View {
 
     @State private var scheduledSheet: NewScheduledMeetingSheet.Mode?
     @State private var showLive = false
+    /// The live preview was asked for but no picture came, even after one
+    /// automatic restart: the card says so and offers Try again.
+    @State private var previewStalled = false
     /// What the preview card shows: the picture the class sees, or how your
     /// screen is laid out (owner, 2026-11-16: "preview the layout and all").
-    @State private var cardFace: CardFace = .picture
     @State private var cameras: [LocalDeviceResolver.Camera] = []
     @State private var microphones: [LocalDeviceResolver.Microphone] = []
     @State private var displays: [DisplayInfo] = []
@@ -99,7 +98,6 @@ struct HomeView: View {
     @State private var screenAllowed = StageCompositor.screenRecordingGranted
     @State private var cameraAccess = AVCaptureDevice.authorizationStatus(for: .video)
     @State private var micAccess = AVCaptureDevice.authorizationStatus(for: .audio)
-    @State private var lastSession: LastSession?
     @State private var lookOpen = false
     @State private var recordOpen = false
     /// Only ever started while a session is live, when the microphone is
@@ -134,14 +132,6 @@ struct HomeView: View {
                 if statusShown {
                     statusLog.frame(width: blockWidth).padding(.top, 12)
                 }
-                if let lastSession {
-                    // The column's own width, so the block stays one width
-                    // and centres: a wider footer made the stack take its
-                    // width and pushed the column to the left (owner, 2026-11-14).
-                    footer(lastSession)
-                        .frame(width: blockWidth)
-                        .padding(.top, 16)
-                }
             }
             .frame(maxWidth: .infinity, alignment: .center)
             Spacer(minLength: 0)
@@ -151,20 +141,23 @@ struct HomeView: View {
             refreshDevices()
             refreshPermissions()
             refreshShareLists()
-            loadLastSession()
             if coordinator.stageLive { meter.start() }
+            // The card opens with Home (owner, 2026-11-16), so its picture is live too.
+            if previewShown { startLive() }
         }
         .onDisappear {
             stopLive()
             meter.stop()
         }
-        .onChange(of: lastSession) { _, session in hasFooter = session != nil }
-        // The camera starts only from the person pressing Preview, and stops
-        // when it folds (or Home goes away, or a start begins).
+        // The camera runs while the card is open on Home, and stops when it
+        // folds (or Home goes away, or a start begins).
         .onChange(of: previewShown) { _, shown in if shown { startLive() } else { stopLive() } }
-        .onChange(of: coordinator.isRunning) { _, running in if running { stopLive() } }
-        .onChange(of: coordinator.mainPage.isHome) { _, home in if !home { stopLive() } }
-        .onChange(of: coordinator.sceneInUse) { _, inUse in if !inUse { loadLastSession() } }
+        .onChange(of: coordinator.isRunning) { _, running in
+            if running { stopLive() } else if previewShown, coordinator.mainPage.isHome { startLive() }
+        }
+        .onChange(of: coordinator.mainPage.isHome) { _, home in
+            if !home { stopLive() } else if previewShown, !coordinator.isRunning { startLive() }
+        }
         .onChange(of: coordinator.stageLive) { _, live in
             if live { meter.start() } else { meter.stop() }
         }
@@ -187,109 +180,76 @@ struct HomeView: View {
 
     private var liveFrameReady: Bool { showLive && coordinator.shapePreviewAspect != nil }
 
+    /// One card: the live picture, with the layout outlined on the screen in
+    /// it (owner, 2026-11-16: no Picture / Screen switch).
     private var pictureCard: some View {
-        ZStack {
-            pictureFace.opacity(cardFace == .picture ? 1 : 0)
-            if cardFace == .screen {
-                screenFace
-                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                    .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .strokeBorder(Color(nsColor: .separatorColor).opacity(0.7), lineWidth: 1))
-                    .transition(.opacity)
-            }
-        }
-        .frame(maxWidth: .infinity)
-        .aspectRatio(16.0 / 9.0, contentMode: .fit)
-        .overlay(alignment: .topTrailing) { cardSwitch.padding(10) }
-        .animation(reduceMotion ? nil : .easeOut(duration: 0.18), value: cardFace)
-        // Changing a setting shows the face it changes.
-        .onChange(of: coordinator.layoutChoiceName) { _, _ in cardFace = .screen }
-        .onChange(of: coordinator.webcamShape) { _, _ in cardFace = .picture }
-        .onChange(of: coordinator.shareTarget) { _, _ in cardFace = .picture }
-        #if DEBUG
-        .onReceive(NotificationCenter.default.publisher(for: .debugTourHomeCard)) { note in
-            cardFace = (note.userInfo?["screen"] as? Bool) == true ? .screen : .picture
-        }
-        #endif
+        pictureFace
     }
 
-    /// Picture / Screen, a small glass switch on the card.
-    private var cardSwitch: some View {
-        HStack(spacing: 2) {
-            ForEach(CardFace.allCases, id: \.self) { face in
-                let on = cardFace == face
-                Button { cardFace = face } label: {
-                    Text(face.title)
-                        .font(.system(size: 11, weight: on ? .semibold : .medium))
-                        .foregroundStyle(on ? Color.white : Color.white.opacity(0.7))
-                        .padding(.horizontal, 9)
-                        .frame(height: 22)
-                        .background(Capsule().fill(on ? Color.white.opacity(0.22) : .clear))
-                        .contentShape(Capsule())
-                }
-                .buttonStyle(.plain)
-                .help(face.help)
-                .accessibilityAddTraits(on ? .isSelected : [])
-            }
-        }
-        .padding(2)
-        .background(.black.opacity(0.45), in: Capsule())
-        .colorScheme(.dark)
+    /// The shared screen, when the picture shows one (Whole screen or One app):
+    /// the layout's places only line up with a picture of the display.
+    private var sharedScreen: NSScreen? {
+        guard [.display, .app].contains(coordinator.shareTarget.kind)  else { return nil }
+        return DisplayResolver.screen(forUUID: coordinator.screenCaptureDisplayUUID)
+            ?? DisplayResolver.mainDisplayScreen()
     }
 
-    /// The layout on your screen: where each window goes, drawn from the
-    /// layout itself (never a capture), at your display's shape.
-    private var screenFace: some View {
-        let template = coordinator.layoutLibrary.active
-        let screen = NSScreen.main?.frame.size ?? CGSize(width: 16, height: 10)
-        let aspect = max(screen.width / max(screen.height, 1), 1.2)
-        return ZStack {
-            Color(red: 0.11, green: 0.12, blue: 0.14)
-            VStack(spacing: 10) {
-                Spacer(minLength: 34)
-                if let template, !template.oneDisplay.isEmpty {
-                    LayoutThumbnail(pieces: template.oneDisplay, aspect: aspect) {
-                        LayoutPageContent.look($0, customUIMode: coordinator.customUIMode,
-                                               canMoveApps: AppWindowManager.hasAccessibilityPermission)
-                    }
-                    .padding(6)
-                    .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(.black.opacity(0.35)))
-                    .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        .strokeBorder(.white.opacity(0.12), lineWidth: 1))
-                    .padding(.horizontal, 28)
-                    HStack(spacing: 10) {
-                        Text(template.name)
-                            .font(.system(size: 12, weight: .semibold))
-                            .foregroundStyle(.white.opacity(0.85))
-                        Button {
-                            LayoutPageContent.showOnScreen(template, customUIMode: coordinator.customUIMode,
-                                                           canMoveApps: AppWindowManager.hasAccessibilityPermission)
-                        } label: {
-                            Label("Show on screen", systemImage: "rectangle.dashed")
-                                .font(.system(size: 11.5, weight: .medium))
+    /// The active layout's places on the shared screen, as fractions of it
+    /// (top-left origin), named as Show on screen names them.
+    private var layoutOutlines: [(id: Int, rect: CGRect, title: String)] {
+        guard let screen = sharedScreen, let template = coordinator.layoutLibrary.active else { return [] }
+        let s = screen.frame
+        let items = LayoutScreenPreview.items(for: template) {
+            LayoutPageContent.look($0, customUIMode: coordinator.customUIMode,
+                                   canMoveApps: AppWindowManager.hasAccessibilityPermission)
+        }
+        return items.enumerated().compactMap { index, item in
+            PreviewOutlineRules.fraction(of: item.frame, on: s).map { (index, $0, item.title) }
+        }
+    }
+
+    /// Green outlines over the screen in the picture, where each window goes.
+    @ViewBuilder private var layoutOverlay: some View {
+        if liveFrameReady, let screen = sharedScreen {
+            let outlines = layoutOutlines
+            GeometryReader { geo in
+                // The picture (a 16:9 canvas) sits fitted in the card, and the
+                // screen sits fitted in the picture, with bars at its sides;
+                // Presenter puts the screen in a box at the right.
+                let frames = PreviewOutlineRules.frames(
+                    card: geo.size, canvasAspect: coordinator.shapePreviewAspect.map { $0.width / max($0.height, 1) },
+                    screen: screen.frame.size, presenter: coordinator.stageLayout.cameraShape == .presenterLarge)
+                let canvas = frames.canvas, shown = frames.screen
+                ZStack {
+                ForEach(outlines, id: \.id) { outline in
+                    let box = PreviewOutlineRules.place(outline.rect, in: shown).insetBy(dx: 1.5, dy: 1.5)
+                    // Names at the top right: clear of LIVE PREVIEW and of you.
+                    ZStack(alignment: .topTrailing) {
+                        RoundedRectangle(cornerRadius: 4, style: .continuous).fill(Brand.green.opacity(0.12))
+                        RoundedRectangle(cornerRadius: 4, style: .continuous).strokeBorder(Brand.green, lineWidth: 1.5)
+                        if box.width > 50, box.height > 22 {
+                            Text(outline.title)
+                                .font(.system(size: 10.5, weight: .semibold))
+                                .lineLimit(1)
+                                .foregroundStyle(.white)
+                                .padding(.horizontal, 6).padding(.vertical, 3)
+                                .background(RoundedRectangle(cornerRadius: 4, style: .continuous).fill(.black.opacity(0.72)))
+                                .padding(4)
                         }
-                        .buttonStyle(.plain)
-                        .foregroundStyle(Brand.text)
-                        .help("Outline where each window goes, on your real screen, for a moment.")
                     }
-                } else {
-                    Image(systemName: "rectangle.split.2x1")
-                        .font(.system(size: 26, weight: .light))
-                        .foregroundStyle(.white.opacity(0.45))
-                    Text("No layout")
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(.white.opacity(0.85))
-                    Text("Greenroom opens and moves nothing.\nPick one from Layout.")
-                        .font(.system(size: 11.5))
-                        .multilineTextAlignment(.center)
-                        .foregroundStyle(.white.opacity(0.55))
+                    .frame(width: max(box.width, 0), height: max(box.height, 0))
+                    .position(x: box.midX, y: box.midY)
                 }
-                Spacer(minLength: 14)
+                }
+                // The outlines are on the screen, so they pass under you: the
+                // compositor's own camera alpha (your cutout, the bubble) is
+                // cut out of them, frame by frame.
+                .mask { CameraOpenMask(feed: coordinator.shapePreview, canvas: canvas) }
             }
+            .allowsHitTesting(false)
+            .transition(.opacity)
+            .accessibilityHidden(true)
         }
-        .colorScheme(.dark)
-        .accessibilityElement(children: .contain)
-        .accessibilityLabel("Your screen: \(template?.name ?? "no layout")")
     }
 
     private var pictureFace: some View {
@@ -300,12 +260,39 @@ struct HomeView: View {
             if liveFrameReady {
                 Color.black
                 LiveCompositePicture(feed: coordinator.shapePreview)
+                layoutOverlay
+            } else if showLive, previewStalled {
+                HStack(spacing: 8) {
+                    Text("The preview didn\u{2019}t start")
+                        .font(.system(size: 11.5, weight: .medium))
+                        .foregroundStyle(.secondary)
+                    Button("Try again") { retryPreview() }
+                        .buttonStyle(.plain)
+                        .font(.system(size: 11.5, weight: .medium))
+                        .foregroundStyle(Brand.text)
+                }
+                .padding(.horizontal, 12).padding(.vertical, 7)
+                .background(.black.opacity(0.55), in: Capsule())
+                .colorScheme(.dark)
             } else if showLive {
                 ProgressView().controlSize(.small).colorScheme(.dark)
                     .padding(10)
                     .background(.black.opacity(0.55), in: Capsule())
             }
         }
+        // A safety net: waiting 3s with no picture restarts the preview once;
+        // 3s more and the card says so instead of spinning for ever.
+        .task(id: showLive) {
+            previewStalled = false
+            guard showLive else { return }
+            try? await Task.sleep(nanoseconds: 3_000_000_000)
+            guard !Task.isCancelled, showLive, !liveFrameReady else { return }
+            coordinator.revivePreviewIfStalled(evenIfRunning: true)
+            try? await Task.sleep(nanoseconds: 3_000_000_000)
+            guard !Task.isCancelled, showLive, !liveFrameReady else { return }
+            previewStalled = true
+        }
+        .onChange(of: liveFrameReady) { _, ready in if ready { previewStalled = false } }
         .frame(maxWidth: .infinity)
         .aspectRatio(16.0 / 9.0, contentMode: .fit)
         .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
@@ -391,17 +378,27 @@ struct HomeView: View {
                                         : "Widens the window and turns the camera on to show the picture people will see")
     }
 
-    /// Pressing Preview is the explicit ask: it starts the same live preview the
-    /// Webcam page and the Record view use (`startShapePreview`). Never on a
-    /// launch, never on a mere appearance of Home. A camera that cannot start
-    /// shows its reason in the card instead.
+    /// The open card starts the same live preview the Webcam page and the
+    /// Record view use (`startShapePreview`): on Home appearing with the card
+    /// open, or on pressing Preview. A camera that cannot start shows its
+    /// reason in the card instead.
     private func startLive() {
         #if DEBUG
         if Self.debugSkipLive { return }
         #endif
         guard !showLive, !isLive, cameraProblem == nil else { return }
         showLive = true
-        coordinator.startShapePreview()
+        coordinator.startShapePreview(for: .home)
+    }
+
+    /// Try again on a stalled card: restart the picture and wait once more.
+    private func retryPreview() {
+        previewStalled = false
+        coordinator.revivePreviewIfStalled(evenIfRunning: true)
+        Task {
+            try? await Task.sleep(nanoseconds: 4_000_000_000)
+            if showLive, !liveFrameReady { previewStalled = true }
+        }
     }
 
     #if DEBUG
@@ -423,7 +420,7 @@ struct HomeView: View {
     private func stopLive() {
         guard showLive else { return }
         showLive = false
-        coordinator.stopShapePreview()
+        coordinator.stopShapePreview(for: .home)
     }
 
     // MARK: Right: setup
@@ -505,6 +502,7 @@ struct HomeView: View {
             micChip
             layoutChip
             if mode != .record { recordControl }
+            moreControl
         }
         .padding(6)
         .frame(height: Self.dockHeight)
@@ -676,18 +674,6 @@ struct HomeView: View {
                 choice(ShareTarget.Kind.display.label, selected: share.kind == .display) { pickDisplay("") }
             }
             Menu {
-                if apps.isEmpty { Text("No other app is open") }
-                ForEach(apps, id: \.bundleID) { app in
-                    choice(app.name, selected: share.kind == .app && share.appBundleID == app.bundleID) {
-                        coordinator.shareTarget.kind = .app
-                        coordinator.shareTarget.appBundleID = app.bundleID
-                        coordinator.shareTarget.appName = app.name
-                        coordinator.shareTarget.windowTitle = ""
-                        coordinator.requestShapeApply(rebuild: true)
-                    }
-                }
-            } label: { checkedLabel(ShareTarget.Kind.app.label, share.kind == .app) }
-            Menu {
                 if windows.isEmpty { Text("No window to share") }
                 ForEach(windows) { window in
                     choice((window.title.isEmpty ? window.appName : "\(window.appName) \u{2013} \(window.title)")
@@ -699,6 +685,7 @@ struct HomeView: View {
                         coordinator.shareTarget.appName = window.appName
                         coordinator.shareTarget.windowTitle = window.title
                         coordinator.requestShapeApply(rebuild: true)
+                        coordinator.bringSharedWindowForward(window)
                     }
                 }
             } label: { checkedLabel(ShareTarget.Kind.window.label, share.kind == .window) }
@@ -707,22 +694,6 @@ struct HomeView: View {
                        disabled: kind == .nothing && coordinator.cameraIsOff) {
                     coordinator.shareTarget.kind = kind
                     coordinator.requestShapeApply(rebuild: true)
-                }
-            }
-            // One app is drawn on one display; which, when there is a choice.
-            if share.kind == .app && displays.count > 1 {
-                Divider()
-                Menu("Display") {
-                    choice("Automatic (your main display)", selected: coordinator.screenCaptureDisplayUUID.isEmpty) {
-                        coordinator.screenCaptureDisplayUUID = ""
-                        coordinator.requestShapeApply(rebuild: true)
-                    }
-                    ForEach(displays) { display in
-                        choice(display.label, selected: coordinator.screenCaptureDisplayUUID == display.id) {
-                            coordinator.screenCaptureDisplayUUID = display.id
-                            coordinator.requestShapeApply(rebuild: true)
-                        }
-                    }
                 }
             }
             Divider()
@@ -885,18 +856,30 @@ struct HomeView: View {
     private var recordControl: some View {
         let on = coordinator.autoRecordOnStart
         return Button { recordOpen.toggle() } label: {
-            dockLabel(symbol: on ? "record.circle.fill" : "record.circle",
-                      value: on ? "With meeting" : "By hand", lit: on)
+            dockLabel(symbol: "record.circle", value: on ? "Auto-rec" : "Manual rec", lit: on)
         }
         .buttonStyle(DockButtonStyle())
         .disabled(isLive)
         .popover(isPresented: $recordOpen, arrowEdge: .bottom) { recordPicker }
         .dockHint(DockHintContent(
-            title: "Record", value: on ? "With the meeting" : "By hand",
+            title: "Record", value: on ? "Auto-record" : "Manual",
             text: on ? SetupSummary.autoRecordHelp : "Recording starts when you press Record.",
             visual: DockHintVisual.record(withMeeting: on)))
         .accessibilityLabel("Record")
         .accessibilityValue(on ? "With the meeting" : "When I press it")
+    }
+
+    /// More: every other setting, in Settings (owner, 2026-11-16).
+    private var moreControl: some View {
+        Button { openSettings() } label: {
+            dockLabel(symbol: "ellipsis", value: "More")
+        }
+        .buttonStyle(DockButtonStyle())
+        .dockHint(DockHintContent(
+            title: "More", value: "Settings",
+            text: "Every other setting: webcam, layouts, shortcuts, Zoom, YouTube and more.",
+            visual: DockHintVisual.more))
+        .accessibilityLabel("More settings")
     }
 
     private var recordPicker: some View {
@@ -1145,8 +1128,11 @@ struct HomeView: View {
             Button {
                 coordinator.confirmAndStop()
             } label: {
-                Label(coordinator.isStopping ? "Ending\u{2026}" : coordinator.stageLive ? "End Session" : "Stop",
-                      systemImage: "stop.fill")
+                // Asks in place: pressed once it names what the second press does.
+                Label(coordinator.isStopping ? "Ending\u{2026}"
+                        : coordinator.exitAsk != nil ? "Confirm: \(coordinator.exitConfirmHelp)"
+                        : coordinator.stageLive ? "End Session" : "Stop",
+                      systemImage: coordinator.exitAsk != nil ? "exclamationmark.circle.fill" : "stop.fill")
                     .frame(maxWidth: .infinity)
             }
             .greenroomGlassButton(prominent: true)
@@ -1171,63 +1157,9 @@ struct HomeView: View {
         .controlSize(.extraLarge)
     }
 
-    // MARK: Footer
-
-    private struct LastSession: Equatable {
-        let path: String
-        let title: String
-        let length: String?
-    }
-
     /// The width of the whole block: the column, plus the picture when shown.
     private var blockWidth: CGFloat {
         Self.contentWidth + (previewMounted ? Self.cardGutter + Self.cardWidth : 0)
-    }
-
-    private func footer(_ session: LastSession) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Divider()
-            HStack(spacing: 6) {
-                Text("Last session:")
-                    .foregroundStyle(.secondary)
-                Text([session.title, session.length].compactMap { $0 }.joined(separator: " \u{00B7} "))
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-                Text("\u{00B7}").foregroundStyle(.secondary)
-                Button {
-                    coordinator.mainPage = .detail(session.path)
-                } label: {
-                    Text("Open \u{2192}").foregroundStyle(Brand.text)
-                }
-                .buttonStyle(.plain)
-                .help("Opens that session's page.")
-                // No "All sessions" link: the toolbar's Sessions button is
-                // that, and three ways to the same place was one too many
-                // (owner, 2026-11-16).
-                Spacer(minLength: 0)
-            }
-            .font(.callout)
-        }
-    }
-
-    /// Newest session on disk, its length read from the recording. Off the main
-    /// thread: the library walks the folders and the length opens a file.
-    private func loadLastSession() {
-        Task.detached(priority: .utility) {
-            let all = ScreenroomLibrary.presentations()
-            guard let newest = all.first else {
-                await MainActor.run { lastSession = nil }
-                return
-            }
-            var length: String?
-            if let url = newest.recording,
-               let seconds = try? await AVURLAsset(url: url).load(.duration).seconds,
-               seconds.isFinite, seconds > 0 {
-                length = SessionsFormat.length(seconds)
-            }
-            let found = LastSession(path: newest.folder.path, title: newest.presenter, length: length)
-            await MainActor.run { lastSession = found }
-        }
     }
 
     // MARK: Status log
@@ -1581,6 +1513,7 @@ private struct DockFace: View {
                     .font(.system(size: 10.5, weight: .medium))
                     .foregroundStyle(warn ? Brand.netText : Color.secondary)
                     .lineLimit(1)
+                    .minimumScaleFactor(0.85)
                     .truncationMode(.middle)
                 if let meter { MiniMeter(level: meter) }
             }
@@ -1593,13 +1526,20 @@ private struct DockFace: View {
     }
 }
 
-/// The two faces of Home's preview card.
-private enum CardFace: CaseIterable {
-    case picture, screen
+/// White wherever the picture's cameras did not draw, fitted to the canvas:
+/// masks Home's layout outlines so they pass behind you. Its own view so it
+/// follows the preview feed frame by frame.
+private struct CameraOpenMask: View {
+    @ObservedObject var feed: ShapePreviewFeed
+    let canvas: CGRect
 
-    var title: String { self == .picture ? "Picture" : "Screen" }
-    var help: String {
-        self == .picture ? "What the class sees: your share with you over it."
-                         : "How your screen is laid out: where each window goes."
+    var body: some View {
+        if let open = feed.openMask {
+            Image(nsImage: open).resizable()
+                .frame(width: canvas.width, height: canvas.height)
+                .position(x: canvas.midX, y: canvas.midY)
+        } else {
+            Color.white
+        }
     }
 }

@@ -2,7 +2,7 @@
 //  PresentMenuSpec.swift
 //  Greenroom
 //
-//  The Present menu as data: what the class sees (the whole screen, one app,
+//  The Present menu as data: what the class sees (the whole screen,
 //  one window, the whiteboard, just the camera), how you look over it, and the
 //  window layout. The same list opens from the floating control bar's Share
 //  cell, the meeting window's Share button and the menu bar, so a person in a
@@ -40,8 +40,6 @@ enum PresentMenu {
         /// "" is Automatic: the main display.
         var displayID = ""
         var displays: [Choice] = []
-        var apps: [Choice] = []
-        var appBundleID = ""
         var windows: [WindowChoice] = []
         var windowBundleID = ""
         var windowTitle = ""
@@ -57,7 +55,6 @@ enum PresentMenu {
     struct Actions {
         var pickKind: (Kind) -> Void = { _ in }
         var pickDisplay: (String) -> Void = { _ in }
-        var pickApp: (Choice) -> Void = { _ in }
         var pickWindow: (WindowChoice) -> Void = { _ in }
         var pickShape: (String) -> Void = { _ in }
         var pickLayout: (String) -> Void = { _ in }
@@ -82,14 +79,6 @@ enum PresentMenu {
         } else {
             out.append(.item("Whole screen", checked: onScreen) { a.pickKind(.display) })
         }
-
-        // One app.
-        let apps: [MenuEntry] = s.apps.isEmpty
-            ? [.item("No other app is open", enabled: false) {}]
-            : s.apps.map { app in
-                .item(app.title, checked: s.kind == .app && s.appBundleID == app.id) { a.pickApp(app) }
-            }
-        out.append(.submenu("One app", checked: s.kind == .app, apps))
 
         // One window.
         let windows: [MenuEntry] = s.windows.isEmpty

@@ -100,19 +100,30 @@ struct BarRedButton: View {
     var width: CGFloat
     var help: String
     var spoken: String
+    /// Pressed once and waiting for the second press: reads Confirm, in place.
+    var armed = false
+    var armedHelp = ""
     var action: () -> Void
 
     var body: some View {
         Button(action: action) {
-            Text(title)
-                .font(.system(size: 12, weight: .semibold))
+            Text(armed ? "Confirm" : title)
+                .font(.system(size: armed ? 11 : 12, weight: .semibold))
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
                 .foregroundStyle(.white)
                 .frame(width: width, height: 28)
                 .background(Color.red, in: RoundedRectangle(cornerRadius: 10))
+                .overlay {
+                    if armed {
+                        RoundedRectangle(cornerRadius: 10).strokeBorder(Color.white.opacity(0.85), lineWidth: 1.5)
+                    }
+                }
+                .animation(.snappy(duration: 0.2), value: armed)
         }
         .buttonStyle(.plain)
-        .help(help)
-        .accessibilityLabel(spoken)
+        .help(armed ? "\(armedHelp). Esc keeps going." : help)
+        .accessibilityLabel(armed ? "Confirm: \(armedHelp)" : spoken)
     }
 }
 
@@ -188,7 +199,7 @@ struct MeetingBarContent: View {
             BarDivider()
             BarRedButton(title: "End", width: L.end,
                          help: MeetingBarModel.help(s.endName, .endSession, bindings),
-                         spoken: s.endName, action: a.end)
+                         spoken: s.endName, armed: s.endArmed, armedHelp: s.endName, action: a.end)
         }
         .padding(.leading, L.leadingPad)
         .padding(.trailing, L.trailingPad)

@@ -2,24 +2,22 @@
 //  ShareTargetSettings.swift
 //  Greenroom
 //
-//  Which screen, app or window is shared (Settings -> Webcam -> Behind you).
+//  Which screen or window is shared (Settings -> Webcam -> Behind you).
 //
 import CoreGraphics
 import SwiftUI
 
-/// What the class sees behind the webcam: a whole display, one app or one
-/// window. Its own view because the window list has state of its own and
+/// What the class sees behind the webcam: a whole display or one window. Its own view because the window list has state of its own and
 /// refreshes on its own schedule.
 struct ShareTargetSettings: View {
     let displays: [DisplayInfo]
     /// Called after any change, so the live picture can rebuild for it.
     var onChange: () -> Void = {}
     @EnvironmentObject private var coordinator: CoordinatorController
-    @State private var apps: [(bundleID: String, name: String)] = []
     @State private var windows: [ShareTarget.Window] = []
     @State private var canSeeTitles = CGPreflightScreenCaptureAccess()
 
-    /// The kind (screen, app, window) is picked with the tiles on the
+    /// The kind (screen, window) is picked with the tiles on the
     /// Webcam page; this is the "which one" that follows.
     var body: some View {
         Group {
@@ -27,13 +25,9 @@ struct ShareTargetSettings: View {
             case .display:
                 displayPicker(title: "Screen")
                     .help("If this screen is unplugged at Start, the main display is shared instead.")
-            case .app:
-                appPicker
-                    .help("Only this app\u{2019}s windows are shown. Everything else on that screen stays private.")
-                displayPicker(title: "On screen")
             case .window:
                 windowPicker
-            case .nothing, .whiteboard:
+            case .app, .nothing, .whiteboard:
                 // No "which one" to pick.
                 EmptyView()
             }
@@ -63,27 +57,6 @@ struct ShareTargetSettings: View {
         }
     }
 
-    private var appPicker: some View {
-        Picker("App", selection: Binding(
-            get: { coordinator.shareTarget.appBundleID },
-            set: { id in
-                coordinator.shareTarget.appBundleID = id
-                coordinator.shareTarget.appName = apps.first { $0.bundleID == id }?.name ?? ""
-                coordinator.shareTarget.windowTitle = ""
-            })) {
-            Text("Choose an app").tag("")
-            ForEach(apps, id: \.bundleID) { app in
-                Text(app.name).tag(app.bundleID)
-            }
-            // A saved app that is not open stays selectable, for the same
-            // reason as a disconnected display.
-            let saved = coordinator.shareTarget.appBundleID
-            if !saved.isEmpty, !apps.contains(where: { $0.bundleID == saved }) {
-                Text("\(coordinator.shareTarget.displayName) (not open)").tag(saved)
-            }
-        }
-    }
-
     @ViewBuilder
     private var windowPicker: some View {
         let target = coordinator.shareTarget
@@ -97,6 +70,7 @@ struct ShareTargetSettings: View {
                     coordinator.shareTarget.appBundleID = window.bundleID
                     coordinator.shareTarget.appName = window.appName
                     coordinator.shareTarget.windowTitle = window.title
+                    coordinator.bringSharedWindowForward(window)
                 })) {
                 Text("Choose a window").tag("")
                 ForEach(windows) { window in
@@ -147,7 +121,6 @@ struct ShareTargetSettings: View {
     /// first (the front one) is listed; picking it shares the front window,
     /// which is what an untitled choice means at Start too.
     private func refresh() {
-        apps = ShareTarget.runningApps()
         var seen = Set<String>()
         windows = ShareTarget.windows().filter { seen.insert($0.key).inserted }
         canSeeTitles = CGPreflightScreenCaptureAccess()

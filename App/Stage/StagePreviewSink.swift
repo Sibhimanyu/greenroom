@@ -18,8 +18,13 @@ import CoreMedia
 import CoreVideo
 
 final class StagePreviewSink: StageFrameSink {
-    /// Called on the main thread with each new picture.
-    var onPicture: ((NSImage) -> Void)?
+    /// Called on the main thread with each new picture, and a mask that is
+    /// opaque everywhere the cameras did not draw (nil when none drew over
+    /// shared content).
+    var onPicture: ((NSImage, NSImage?) -> Void)?
+    /// The camera alpha of the frame being delivered; read on the render
+    /// queue inside `stageDidRender`, so it matches that frame.
+    var coverage: (() -> CIImage?)?
 
     private let framesPerSecond: Double
     private let width: CGFloat
@@ -41,6 +46,7 @@ final class StagePreviewSink: StageFrameSink {
         if due { busy = true; lastTaken = now }
         lock.unlock()
         guard due else { return }
+        let cameras = coverage?()
         queue.async { [self] in
             defer { lock.lock(); busy = false; lock.unlock() }
             let image = CIImage(cvPixelBuffer: frame)
@@ -48,7 +54,18 @@ final class StagePreviewSink: StageFrameSink {
             let small = image.transformed(by: CGAffineTransform(scaleX: scale, y: scale))
             guard let cg = context.createCGImage(small, from: small.extent) else { return }
             let picture = NSImage(cgImage: cg, size: NSSize(width: cg.width, height: cg.height))
-            DispatchQueue.main.async { [weak self] in self?.onPicture?(picture) }
+            // Everything but the cameras: white, with the cameras' alpha cut out.
+            var mask: NSImage?
+            if let cameras {
+                let all = CIImage(color: .white).cropped(to: image.extent)
+                let open = all.applyingFilter("CISourceOutCompositing",
+                                              parameters: [kCIInputBackgroundImageKey: cameras])
+                    .transformed(by: CGAffineTransform(scaleX: scale, y: scale))
+                if let m = context.createCGImage(open, from: small.extent) {
+                    mask = NSImage(cgImage: m, size: picture.size)
+                }
+            }
+            DispatchQueue.main.async { [weak self] in self?.onPicture?(picture, mask) }
         }
     }
 }

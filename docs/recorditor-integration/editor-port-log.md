@@ -80,3 +80,9 @@ Recorditor's video editor, ported into Greenroom. Upstream: ZRecorditor @7210322
 - Transport (back 10, play/pause, forward 10): `.editorRoundControl()`.
 - `EditorTheme.swift`: `EditorCardStyle` deleted; `.editorCard()` now draws the shared tile look (`.quinary` fill, 0.5pt separator hairline) as a plain extension. `EditorSegmented` (no callers) deleted. New `editorRoundControl()`: `.glass` circle buttons on macOS 26, `EditorRoundControlButtonStyle` (previously unused) before that.
 - Still hand-styled, out of scope: `EditorButtonStyle`, `EditorPanelHeader`, the merge/audio popovers.
+
+## 2026-11-16: tool hierarchy back to Recorditor's, scrubbing on handle drags
+- `App/Editor/EditorView.swift` `EditToolRow`: its own row between the transport and the timeline (was inside the transport line). Order follows Recorditor's `toolsContent`: Trim (menu), Cut / Put Back (Recorditor's Delete Cut), divider, Crop / Done Cropping, Clear Crop, Effects popover, divider, Join Videos… (Recorditor's Merge Videos…), Add Audio… or the audio chip. Same `ViewThatFits` at spacing 12 / 8 / 5 + `.controlSize(.small)`.
+- Not ported: the Trim|Cut mode picker (Greenroom selects by dragging across the bar), Undo/Redo in the row (they are in the window toolbar), Cancel Edit (Watch is the way out).
+- The Effects popover is Blur / Text / Arrow buttons over the existing `SpeedPopover`. The audio chip opens `BackgroundAudioOptions` (pulled out of `EditsPanel` so both use it); Recorditor's inline "at 0:00" menu and volume slider are left in the options and the Edits panel.
+- `App/Editor/TimelineView.swift` `timelineGesture`: trim, extra-clip trim and removed-stretch edge drags pause and `vm.seek` to the handle's frame (end handles 0.04s inside, extra-clip handles 0.01s past the boundary so the seek lands in that clip). Recorditor does not do this.

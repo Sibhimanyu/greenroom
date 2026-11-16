@@ -254,26 +254,37 @@ struct EditStage: View {
     }
 }
 
-// MARK: - Tools under the picture
+// MARK: - Tools above the timeline
 
-/// Cut, Trim, Blur, Text, Arrow, Crop, Speed, More: ranked by how often they
-/// are the next thing a teacher wants. Tools act on the picked stretch if
-/// there is one, else at the playhead.
+/// The editing tools in their own row above the timeline, in Recorditor's
+/// order of weight: the timeline tools first (Trim, Cut), then what changes
+/// the picture (Crop, Effects), then what adds to the video (Join, Audio).
+/// Every tool is one click away; nothing hides under More. Undo, Redo and
+/// Save stay in the window toolbar. Tools act on the picked stretch if there
+/// is one, else at the playhead.
 struct EditToolRow: View {
     @EnvironmentObject private var vm: EditorViewModel
     @StateObject private var library = EditorRecordingLibrary()
     @State private var showMergeSource = false
-    @State private var showSpeed = false
+    @State private var showEffects = false
+    @State private var showAudioOptions = false
 
     var body: some View {
-        toolButtons
-            .fixedSize()
+        // Labels always stay text; a narrow window just tightens the row.
+        ViewThatFits(in: .horizontal) {
+            tools(spacing: 12)
+            tools(spacing: 8)
+            tools(spacing: 5).controlSize(.small)
+        }
     }
 
-    /// Trim, Cut and Blur up front; Text, Arrow, Crop, Speed, Join and the
-    /// audio under More. (Make clip is a session action, not built here.)
-    private var toolButtons: some View {
-        HStack(spacing: 8) {
+    private func divider(_ spacing: CGFloat) -> some View {
+        Divider().frame(height: 18).padding(.horizontal, spacing >= 8 ? 2 : -2)
+    }
+
+    private func tools(spacing: CGFloat) -> some View {
+        HStack(spacing: spacing) {
+            // The timeline: Trim the ends, Cut a stretch out.
             Menu {
                 Button("Start here") { vm.setTrimStartToPlayhead() }
                 Button("End here") { vm.setTrimEndToPlayhead() }
@@ -289,51 +300,151 @@ struct EditToolRow: View {
             .fixedSize()
             .help("Cut the start or the end of the video at the playhead. Or drag the edges of the timeline.")
 
-            Button {
-                vm.removeSelection()
-            } label: {
-                Label("Cut", systemImage: "scissors")
-            }
-            .fixedSize()
-            .disabled(vm.selection == nil)
-            .help(vm.selection == nil
-                  ? "Drag across the timeline to pick a stretch, then cut it out"
-                  : "Take the picked stretch out of the video (\u{232B})")
-
-            Button {
-                vm.beginAnnotationPlacement(.blur)
-            } label: {
-                Label("Blur", systemImage: "eye.slash")
-            }
-            .fixedSize()
-            .help("Hide something on screen. Drag over the video after choosing.")
-
-            Menu {
-                Button("Text") { vm.beginAnnotationPlacement(.text) }
-                Button("Arrow") { vm.beginAnnotationPlacement(.arrow) }
-                Button(vm.isCropping ? "Done Cropping" : "Crop") { vm.isCropping.toggle() }
-                Button("Speed\u{2026}") { showSpeed = true }
-                Divider()
-                Button("Join Videos\u{2026}") { showMergeSource = true }
-                Button(vm.overlayAudioURL == nil ? "Background Audio\u{2026}" : "Change Background Audio\u{2026}") {
-                    vm.addAudioPanel()
+            if vm.selectedCutID != nil, vm.selection == nil {
+                Button {
+                    vm.deleteSelectedCut()
+                } label: {
+                    Label("Put Back", systemImage: "arrow.uturn.backward.square")
                 }
-                Button("Open Another Video\u{2026}") { vm.openVideoPanel() }
-            } label: {
-                Label("More", systemImage: "ellipsis.circle")
+                .fixedSize()
+                .help("Put the picked removed stretch back in the video (\u{232B})")
+            } else {
+                Button {
+                    vm.removeSelection()
+                } label: {
+                    Label("Cut", systemImage: "scissors")
+                }
+                .fixedSize()
+                .disabled(vm.selection == nil)
+                .help(vm.selection == nil
+                      ? "Drag across the timeline to pick a stretch, then cut it out"
+                      : "Take the picked stretch out of the video (\u{232B})")
             }
-            .menuStyle(.button)
+
+            divider(spacing)
+
+            // The picture: Crop, then Effects (blur, text, arrows, speed).
+            Button {
+                vm.isCropping.toggle()
+            } label: {
+                Label(vm.isCropping ? "Done Cropping" : "Crop", systemImage: "crop")
+            }
             .fixedSize()
-            .popover(isPresented: $showMergeSource, arrowEdge: .top) {
+            .tint(vm.isCropping ? Brand.green : nil)
+            .help("Drag a rectangle over the video to crop it")
+
+            if vm.cropRect != nil {
+                Button("Clear Crop") { vm.setCrop(nil) }
+                    .fixedSize()
+                    .help("Show the whole picture again")
+            }
+
+            Button {
+                showEffects.toggle()
+            } label: {
+                Label("Effects", systemImage: "sparkles")
+            }
+            .fixedSize()
+            .popover(isPresented: $showEffects, arrowEdge: .bottom) {
+                effectsPopover
+            }
+            .help("Blur, text, arrows and speed")
+
+            divider(spacing)
+
+            // Adding to the video: other videos after it, audio over it.
+            Button {
+                showMergeSource.toggle()
+            } label: {
+                Label("Join Videos\u{2026}", systemImage: "plus.rectangle.on.rectangle")
+            }
+            .fixedSize()
+            .popover(isPresented: $showMergeSource, arrowEdge: .bottom) {
                 mergeSourcePopover(isPresented: $showMergeSource)
             }
-            .background(
-                Color.clear
-                    .popover(isPresented: $showSpeed, arrowEdge: .top) {
-                        SpeedPopover(isPresented: $showSpeed)
-                            .environmentObject(vm)
-                    })
-            .help("Text, Arrow, Crop, Speed, join videos, background audio")
+            .help("Add videos after this one: browse files, or pick from your recordings")
+
+            if let audioURL = vm.overlayAudioURL {
+                audioChip(name: audioURL.deletingPathExtension().lastPathComponent)
+            } else {
+                Button {
+                    vm.addAudioPanel()
+                } label: {
+                    Label("Add Audio\u{2026}", systemImage: "music.note")
+                }
+                .fixedSize()
+                .help("Play music or a voiceover under the video")
+            }
+        }
+        .fixedSize()
+    }
+
+    /// Once audio is in, the button becomes the audio: its name opens the
+    /// options, x takes it out.
+    private func audioChip(name: String) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: "music.note")
+                .foregroundStyle(Brand.text)
+            Button {
+                showAudioOptions.toggle()
+            } label: {
+                Text(name)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .frame(maxWidth: 110)
+            }
+            .buttonStyle(.plain)
+            .help("Audio options: which part to use, repeat, volume")
+            .popover(isPresented: $showAudioOptions, arrowEdge: .bottom) {
+                BackgroundAudioOptions(name: name).environmentObject(vm)
+            }
+            Button {
+                vm.overlayAudioURL = nil
+            } label: {
+                Image(systemName: "xmark.circle.fill")
+                    .foregroundStyle(.secondary)
+            }
+            .buttonStyle(.plain)
+            .help("Take the background audio out")
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .background(Capsule().fill(Color.secondary.opacity(0.12)))
+        .fixedSize()
+    }
+
+    /// Mark the picture (blur, text, arrow), then speed below it.
+    private var effectsPopover: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            VStack(alignment: .leading, spacing: 10) {
+                Text("MARK THE PICTURE")
+                    .font(.caption2.bold())
+                    .foregroundStyle(.secondary)
+                HStack(spacing: 8) {
+                    effectButton("Blur", "eye.slash", .blur)
+                    effectButton("Text", "textformat", .text)
+                    effectButton("Arrow", "arrow.up.right", .arrow)
+                }
+                Text("Choose one, then drag over the video.")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+            .padding([.horizontal, .top], 16)
+            .padding(.bottom, 4)
+            Divider().padding(.horizontal, 16).padding(.top, 8)
+            SpeedPopover(isPresented: $showEffects)
+                .environmentObject(vm)
+        }
+        .frame(width: 300)
+    }
+
+    private func effectButton(_ title: String, _ symbol: String,
+                              _ kind: EditedEffects.Annotation.Kind) -> some View {
+        Button {
+            showEffects = false
+            vm.beginAnnotationPlacement(kind)
+        } label: {
+            Label(title, systemImage: symbol)
         }
     }
 
@@ -403,14 +514,18 @@ struct EditToolRow: View {
 
 // MARK: - Transport and timeline
 
-/// Play, the time, and the opened-up timeline: the same place on the page as
-/// Watch mode's one timeline, with room for the filmstrip and the lanes.
+/// Play and the time, the tools in their own row, then the opened-up
+/// timeline: the same place on the page as Watch mode's one timeline, with
+/// room for the filmstrip and the lanes.
 struct EditTimelineBlock: View {
     @EnvironmentObject private var vm: EditorViewModel
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             transport
+            EditToolRow()
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.vertical, 6)
             // Natural height up to the block's frame; past it the lanes
             // scroll rather than push the picture off the page.
             ViewThatFits(in: .vertical) {
@@ -449,8 +564,6 @@ struct EditTimelineBlock: View {
                 .monospacedDigit()
                 .foregroundStyle(.secondary)
                 .fixedSize()
-
-            EditToolRow()
 
             if let index = vm.playingMergeIndex {
                 Text("Extra clip \(index + 1)")
@@ -558,57 +671,6 @@ struct EditsPanel: View {
                 .monospacedDigit()
                 .fixedSize()
         }
-    }
-
-    /// Full background-audio controls: the slice of the file to use,
-    /// looping, and volume.
-    private func audioOptionsPopover(name: String) -> some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Label(name, systemImage: "music.note")
-                .font(.headline)
-
-            VStack(alignment: .leading, spacing: 6) {
-                Text("USE THIS PART OF THE AUDIO")
-                    .font(.caption2.bold())
-                    .foregroundStyle(.secondary)
-                HStack {
-                    Text("From \(TimeFormatting.clock(vm.overlayAudioClipStart))")
-                        .font(.caption.monospaced())
-                        .frame(width: 90, alignment: .leading)
-                    Slider(value: $vm.overlayAudioClipStart,
-                           in: 0...max(0.5, vm.overlayAudioClipEnd - 0.5))
-                }
-                HStack {
-                    Text("To \(TimeFormatting.clock(vm.overlayAudioClipEnd))")
-                        .font(.caption.monospaced())
-                        .frame(width: 90, alignment: .leading)
-                    Slider(value: $vm.overlayAudioClipEnd,
-                           in: min(vm.overlayAudioClipStart + 0.5, vm.overlayAudioDuration)...max(vm.overlayAudioDuration, 0.5))
-                }
-                Text("Selected: \(TimeFormatting.clock(vm.overlayClipLength)) of \(TimeFormatting.clock(vm.overlayAudioDuration))")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-
-            Toggle("Fade in and out", isOn: $vm.overlayAudioFades)
-                .help("Ease the audio in at its start and out at its end")
-            Toggle("Repeat until the video ends", isOn: $vm.overlayAudioLoops)
-                .toggleStyle(.checkbox)
-
-            VStack(alignment: .leading, spacing: 6) {
-                Text("VOLUME")
-                    .font(.caption2.bold())
-                    .foregroundStyle(.secondary)
-                Slider(value: $vm.overlayAudioVolume, in: 0...1)
-            }
-
-            Text("Starts in the video at \(TimeFormatting.clock(vm.overlayAudioStart)) — drag the green bar under the timeline to move it.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-        .padding(16)
-        .frame(width: 320)
     }
 
     // MARK: Edits panel
@@ -733,7 +795,7 @@ struct EditsPanel: View {
                             }
                         }
                         .popover(isPresented: $showAudioOptions, arrowEdge: .leading) {
-                            audioOptionsPopover(name: name)
+                            BackgroundAudioOptions(name: name).environmentObject(vm)
                         }
                         HStack {
                             Image(systemName: "speaker.fill").foregroundStyle(.secondary)
@@ -895,6 +957,62 @@ struct EditsPanel: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .editorCard(padding: 12, cornerRadius: 10)
+    }
+}
+
+/// Full background-audio controls: the slice of the file to use, looping,
+/// and volume. Opens from the audio chip and from the Edits panel.
+struct BackgroundAudioOptions: View {
+    @EnvironmentObject private var vm: EditorViewModel
+    let name: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Label(name, systemImage: "music.note")
+                .font(.headline)
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text("USE THIS PART OF THE AUDIO")
+                    .font(.caption2.bold())
+                    .foregroundStyle(.secondary)
+                HStack {
+                    Text("From \(TimeFormatting.clock(vm.overlayAudioClipStart))")
+                        .font(.caption.monospaced())
+                        .frame(width: 90, alignment: .leading)
+                    Slider(value: $vm.overlayAudioClipStart,
+                           in: 0...max(0.5, vm.overlayAudioClipEnd - 0.5))
+                }
+                HStack {
+                    Text("To \(TimeFormatting.clock(vm.overlayAudioClipEnd))")
+                        .font(.caption.monospaced())
+                        .frame(width: 90, alignment: .leading)
+                    Slider(value: $vm.overlayAudioClipEnd,
+                           in: min(vm.overlayAudioClipStart + 0.5, vm.overlayAudioDuration)...max(vm.overlayAudioDuration, 0.5))
+                }
+                Text("Selected: \(TimeFormatting.clock(vm.overlayClipLength)) of \(TimeFormatting.clock(vm.overlayAudioDuration))")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Toggle("Fade in and out", isOn: $vm.overlayAudioFades)
+                .help("Ease the audio in at its start and out at its end")
+            Toggle("Repeat until the video ends", isOn: $vm.overlayAudioLoops)
+                .toggleStyle(.checkbox)
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text("VOLUME")
+                    .font(.caption2.bold())
+                    .foregroundStyle(.secondary)
+                Slider(value: $vm.overlayAudioVolume, in: 0...1)
+            }
+
+            Text("Starts in the video at \(TimeFormatting.clock(vm.overlayAudioStart)) — drag the green bar under the timeline to move it.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(16)
+        .frame(width: 320)
     }
 }
 

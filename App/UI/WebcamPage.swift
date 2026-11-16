@@ -91,9 +91,9 @@ struct WebcamSettingsTab: View {
             })
         .onAppear {
             displays = DisplayResolver.connectedDisplays()
-            coordinator.startShapePreview()
+            coordinator.startShapePreview(for: .webcamSettings)
         }
-        .onDisappear { coordinator.stopShapePreview() }
+        .onDisappear { coordinator.stopShapePreview(for: .webcamSettings) }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didChangeScreenParametersNotification)) { _ in
             displays = DisplayResolver.connectedDisplays()
         }
@@ -570,7 +570,7 @@ struct HalfSketch: View {
     }
 }
 
-/// Whole screen, one app, one window or nothing, as pictures.
+/// Whole screen, one window, the whiteboard or nothing, as pictures.
 struct ShareKindPicker: View {
     @Binding var selection: ShareTarget.Kind
     /// False while there is no camera: nothing shared would leave nothing.
@@ -578,7 +578,7 @@ struct ShareKindPicker: View {
 
     var body: some View {
         HStack(spacing: 8) {
-            ForEach(ShareTarget.Kind.allCases) { kind in
+            ForEach(ShareTarget.Kind.pickable) { kind in
                 let allowed = kind != .nothing || nothingAllowed
                 ChoiceTile(title: title(kind), selected: kind == selection, badge: nil) {
                     Image(systemName: symbol(kind))

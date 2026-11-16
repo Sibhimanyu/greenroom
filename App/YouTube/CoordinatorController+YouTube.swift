@@ -38,26 +38,21 @@ enum YouTubeUploadMode: String, CaseIterable, Identifiable {
 extension CoordinatorController {
 
     /// Every recording ends here - the ⌥⌘R stop and End Session's stop both
-    /// call it with the final path the recorder reported. Never blocks the caller:
-    /// the ask, and the upload, run on their own.
+    /// call it with the final path the recorder reported. Never blocks the
+    /// caller. Once nothing is live, the after-session card shows (it holds
+    /// the Upload button that used to be the island's question); a recording
+    /// stopped mid-class waits for the class to end. Automatic upload starts
+    /// at once either way.
     func recordingFinished(path: String) {
-        guard youtubeUploadMode != .off else { return }
+        let file = URL(fileURLWithPath: path)
+        lastFinishedRecording = file
+        if !isRunning, !stageLive, !recordOnlyActive { presentFinishedSession() }
+        guard youtubeUploadMode == .automatic else { return }
         guard youtubeConnected else {
-            log("YouTube upload is on, but no Google account is connected \u{2014} Settings \u{2192} YouTube \u{2192} Connect.")
-            // Still ask: a log line nobody reads is a recording that silently
-            // never goes up. The card's button connects first, then uploads.
-            askToConnectAndUpload(URL(fileURLWithPath: path))
+            log("YouTube upload is on, but no Google account is connected \u{2014} the card after the class has Connect & Upload.")
             return
         }
-        let file = URL(fileURLWithPath: path)
-        switch youtubeUploadMode {
-        case .ask:
-            askToUpload(file)
-        case .automatic:
-            Task { await uploadToYouTube(file, title: youtubeTitle(for: file)) }
-        case .off:
-            break
-        }
+        Task { await uploadToYouTube(file, title: youtubeTitle(for: file)) }
     }
 
     /// The Recordings window's button: an explicit act, so no mode check -
@@ -71,55 +66,19 @@ extension CoordinatorController {
         Task { await uploadToYouTube(file, title: youtubeTitle(for: file)) }
     }
 
-    /// A floating card, not a modal: the class teardown keeps running behind
-    /// it, the main window stays where it is, and two minutes of silence
-    /// count as "Not now".
-    private func askToUpload(_ file: URL) {
+    /// The after-session card's Upload: connects first when no account is
+    /// connected (sign-in expired, or never made), then uploads.
+    func connectAndUpload(_ file: URL) {
+        guard !youtubeConnected else { uploadRecordingToYouTube(file); return }
         let title = youtubeTitle(for: file)
-        let size = (try? FileManager.default.attributesOfItem(atPath: file.path))?[.size] as? Int64 ?? 0
-        let sizeLabel = ByteCountFormatter.string(fromByteCount: size, countStyle: .file)
-        UploadPromptCard.show(
-            title: "Upload this recording to YouTube?",
-            detail: "\(uploadDetailPrefix(for: file)) \u{00B7} \(sizeLabel) \u{00B7} \(youtubePrivacy)",
-            help: "\u{201C}\(title)\u{201D}. The file stays in Documents/Greenroom either way; you can also upload it later from Recordings.",
-            onUpload: { [weak self] in
-                guard let self else { return }
-                Task { await self.uploadToYouTube(file, title: title) }
-            },
-            onDismiss: { [weak self] in
-                self?.log("Not uploaded to YouTube \u{2014} the recording is in Documents/Greenroom, and Recordings has an Upload button.")
-            })
-    }
-
-    /// The ask when no account is connected (sign-in expired, or never made).
-    private func askToConnectAndUpload(_ file: URL) {
-        let title = youtubeTitle(for: file)
-        UploadPromptCard.show(
-            title: "Upload this recording to YouTube?",
-            detail: "Google account not connected \u{00B7} \(youtubePrivacy)",
-            help: "YouTube isn\u{2019}t connected. Connect your Google account and Greenroom will upload it (\(youtubePrivacy)).",
-            uploadTitle: "Connect & Upload",
-            onUpload: { [weak self] in
-                guard let self else { return }
-                Task { @MainActor in
-                    await self.connectYouTube()
-                    guard self.youtubeConnected else {
-                        ToastController.show("Couldn\u{2019}t connect to YouTube", detail: "The recording is saved. Settings \u{2192} YouTube \u{2192} Connect Google account, then upload from Recordings.", kind: .failure)
-                        return
-                    }
-                    await self.uploadToYouTube(file, title: title)
-                }
-            },
-            onDismiss: { [weak self] in
-                self?.log("Not uploaded to YouTube \u{2014} the recording is in Documents/Greenroom, and Recordings has an Upload button.")
-            })
-    }
-
-    /// "Morning Reading · 14 Nov": the one detail line's lead, year left out.
-    private func uploadDetailPrefix(for file: URL) -> String {
-        let modified = (try? file.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate ?? Date()
-        let name = className.trimmingCharacters(in: .whitespaces)
-        return "\(name.isEmpty ? "Class" : name) \u{00B7} \(modified.formatted(.dateTime.day().month(.abbreviated)))"
+        Task { @MainActor in
+            await self.connectYouTube()
+            guard self.youtubeConnected else {
+                ToastController.show("Couldn\u{2019}t connect to YouTube", detail: "The recording is saved. Settings \u{2192} YouTube \u{2192} Connect Google account, then upload from Sessions.", kind: .failure)
+                return
+            }
+            await self.uploadToYouTube(file, title: title)
+        }
     }
 
     /// "Morning Reading · 4 Sep 2026", or "Class · 4 Sep 2026" with no

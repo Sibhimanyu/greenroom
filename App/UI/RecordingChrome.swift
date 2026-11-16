@@ -26,12 +26,6 @@ import SwiftUI
 @MainActor
 final class RecordingChrome {
     private let border = RecordingBorderController()
-    /// The preview's outline: dashed, "this is in the picture", never while
-    /// the solid recording one is up.
-    private let previewBorder = RecordingBorderController(dashed: true)
-    private var previewing = false
-    private var recordingNow = false
-    private weak var coordinator: CoordinatorController?
     private let bar = RecordingControlBarController()
     private var wasRecording = false
 
@@ -45,8 +39,6 @@ final class RecordingChrome {
 
         // The border says "this is being recorded", so it is up only while the
         // file is growing: hidden while paused, back on resume.
-        self.coordinator = coordinator
-        recordingNow = recording
         if recording, !paused {
             // Only while what is recorded is on this desktop: the outline is on
             // every Space, and a window on another one left it framing nothing.
@@ -56,7 +48,6 @@ final class RecordingChrome {
         } else {
             border.hide()
         }
-        updatePreviewBorder()
 
         // The moment it starts (not on resume), what is recorded comes forward.
         if recording, !wasRecording, recordOnly {
@@ -71,30 +62,15 @@ final class RecordingChrome {
         }
     }
 
-    /// A preview (Home's Preview, the Webcam page) is showing the picture: a
-    /// dashed outline marks what is in it, so the shared app or window is
-    /// recognisable when you go to it (owner, 2026-11-16).
-    func setPreviewing(_ on: Bool, coordinator: CoordinatorController) {
-        self.coordinator = coordinator
-        previewing = on
-        updatePreviewBorder()
-    }
-
-    private func updatePreviewBorder() {
-        if previewing, !recordingNow {
-            previewBorder.show(window: { [weak coordinator] in coordinator?.capturedWindowID }) { [weak coordinator] in
-                coordinator?.capturedScreenFrame(onThisDesktop: true)
-            }
-        } else {
-            previewBorder.hide()
-        }
-    }
+    // No outline while only previewing: the dashed one that marked what the
+    // preview showed was removed (owner, 2026-11-16: "unnecessary before we
+    // actually start the meeting"). The solid one says "being recorded".
 
     /// The way back to a recording whose main window is hidden: the bar, in front.
     func bringBarForward() { bar.bringForward() }
 
     func teardown() {
-        NotchStatusController.shared.setCountdown(nil); border.hide(); previewBorder.hide(); bar.hide()
+        NotchStatusController.shared.setCountdown(nil); border.hide(); bar.hide()
     }
 }
 
@@ -213,7 +189,9 @@ private struct RecordingControlBarView: View {
             BarDivider()
             BarRedButton(title: "Stop", width: L.recordOnlyStop,
                          help: MeetingBarModel.help("Stop and save the recording", .toggleRecording, bindings),
-                         spoken: "Stop and save the recording") { coordinator.confirmStopTake() }
+                         spoken: "Stop and save the recording",
+                         armed: coordinator.exitAsk == .stopTake,
+                         armedHelp: "Stop and save the recording") { coordinator.confirmStopTake() }
                 .disabled(coordinator.takeBusy)
         }
         .padding(.leading, 8)

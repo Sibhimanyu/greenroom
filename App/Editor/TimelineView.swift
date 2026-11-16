@@ -603,6 +603,8 @@ struct EditorTimelineView: View {
                     switch drag {
                     case .trimLead, .trimTrail, .mergeTrimLead, .mergeTrimTrail, .cutEdge:
                         vm.pushUndo()
+                        // The picture follows the handle, so hold still.
+                        vm.player.pause()
                     default:
                         break
                     }
@@ -616,21 +618,39 @@ struct EditorTimelineView: View {
                     let clamped = min(max(t, 0), vm.duration)
                     vm.selection = min(anchor, clamped)...max(anchor, clamped)
                     vm.selectedCutID = nil
+                // Handle drags scrub the picture to the frame the handle is
+                // on, so you see where the video will start or stop.
                 case .trimLead:
                     vm.trimStart = min(max(0, t), vm.trimEnd - 0.1)
+                    vm.seek(to: vm.trimStart)
                 case .trimTrail:
                     vm.trimEnd = max(min(vm.duration, t), vm.trimStart + 0.1)
+                    vm.seek(to: max(vm.trimStart, vm.trimEnd - 0.04))
                 case .mergeTrimLead(let index):
-                    vm.setMergeTrimStart(index: index, to: t - vm.mergeOffset(upTo: index))
+                    let base = vm.mergeOffset(upTo: index)
+                    vm.setMergeTrimStart(index: index, to: t - base)
+                    if vm.mergeClips.indices.contains(index) {
+                        // A hair past the boundary, or seek lands on the clip before.
+                        vm.seek(to: base + vm.mergeClips[index].trimStart + 0.01)
+                    }
                 case .mergeTrimTrail(let index):
-                    vm.setMergeTrimEnd(index: index, to: t - vm.mergeOffset(upTo: index))
+                    let base = vm.mergeOffset(upTo: index)
+                    vm.setMergeTrimEnd(index: index, to: t - base)
+                    if vm.mergeClips.indices.contains(index) {
+                        let clip = vm.mergeClips[index]
+                        vm.seek(to: base + max(clip.trimStart + 0.01, clip.trimEnd - 0.04))
+                    }
                 case .cutEdge(let id, let isLead):
                     if let cut = vm.cuts.first(where: { $0.id == id }) {
                         let clamped = min(max(t, 0), vm.duration)
                         if isLead {
-                            vm.setCutRange(id: id, start: min(clamped, cut.end - 0.15), end: cut.end)
+                            let start = min(clamped, cut.end - 0.15)
+                            vm.setCutRange(id: id, start: start, end: cut.end)
+                            vm.seek(to: start)
                         } else {
-                            vm.setCutRange(id: id, start: cut.start, end: max(clamped, cut.start + 0.15))
+                            let end = max(clamped, cut.start + 0.15)
+                            vm.setCutRange(id: id, start: cut.start, end: end)
+                            vm.seek(to: end)
                         }
                     }
                 case .ignore, nil:

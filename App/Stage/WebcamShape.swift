@@ -68,6 +68,9 @@ enum WebcamShape: String, CaseIterable, Identifiable {
 @MainActor
 final class ShapePreviewFeed: ObservableObject {
     @Published var frame: NSImage?
+    /// Opaque where no camera drew, for drawing under the cameras (Home's
+    /// layout outlines); nil when no camera covers shared content.
+    @Published var openMask: NSImage?
 }
 
 /// How Cutout and Presenter take your background away.

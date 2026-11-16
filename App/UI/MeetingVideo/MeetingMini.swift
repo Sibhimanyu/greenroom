@@ -18,6 +18,8 @@ struct MeetingMiniActions {
     var toMeetingWindow: () -> Void = {}
     var toBar: () -> Void = {}
     var end: () -> Void = {}
+    /// End was pressed once and waits for the second press.
+    var endArmed: () -> Bool = { false }
     /// Read every second: is the mic muted, is the camera on.
     var state: () -> (muted: Bool, cameraOn: Bool) = { (false, true) }
 }
@@ -146,7 +148,22 @@ final class MeetingMiniChrome: NSView {
     // the familiar expand and collapse arrows so the pair reads as bigger / smaller.
     private lazy var toWindow = iconButton("arrow.up.left.and.arrow.down.right", "Bigger: back to the Meeting window") { [weak self] in self?.actions.toMeetingWindow() }
     private lazy var toBar = iconButton("arrow.down.right.and.arrow.up.left", "Smaller: shrink to the Control bar") { [weak self] in self?.actions.toBar() }
-    private lazy var end = ClosureButton { [weak self] in self?.actions.end() }
+    private lazy var end = ClosureButton { [weak self] in self?.actions.end(); self?.refresh(); self?.watchArm() }
+    private var armWatch: Timer?
+
+    /// While End is armed, look again every half second, so a timeout or Esc
+    /// turns Confirm back into End.
+    private func watchArm() {
+        armWatch?.invalidate()
+        guard actions.endArmed() else { return }
+        armWatch = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] timer in
+            MainActor.assumeIsolated {
+                guard let self else { timer.invalidate(); return }
+                self.refresh()
+                if !self.actions.endArmed() { timer.invalidate(); self.armWatch = nil }
+            }
+        }
+    }
 
     override init(frame: NSRect) {
         backing = GreenroomGlassAppKit.makeBacking(cornerRadius: 12)
@@ -197,7 +214,7 @@ final class MeetingMiniChrome: NSView {
         super.layout()
         backing.frame = bounds
         host.frame = backing.bounds
-        let size: CGFloat = 26, gap: CGFloat = 4, endWidth: CGFloat = 38
+        let size: CGFloat = 26, gap: CGFloat = 4, endWidth: CGFloat = 50
         let icons: [NSView] = [mic, camera, share, toWindow, toBar]
         let total = CGFloat(icons.count) * size + CGFloat(icons.count - 1) * gap + gap * 2 + endWidth
         var x = max(6, (bounds.width - total) / 2)
@@ -221,6 +238,14 @@ final class MeetingMiniChrome: NSView {
         camera.contentTintColor = s.cameraOn ? .white : MeetingTheme.redNS
         camera.toolTip = s.cameraOn ? "Turn camera off" : "Turn camera on"
         camera.setAccessibilityLabel(camera.toolTip)
+        // End asks in place: pressed once it reads Confirm until pressed again,
+        // Esc, or 15 seconds.
+        let armed = actions.endArmed()
+        end.title = armed ? "Confirm" : "End"
+        end.layer?.borderWidth = armed ? 1.5 : 0
+        end.layer?.borderColor = NSColor.white.withAlphaComponent(0.85).cgColor
+        end.toolTip = armed ? "Press again to end. Esc keeps going." : "End or leave the meeting"
+        end.setAccessibilityLabel(armed ? "Confirm end meeting" : "End meeting")
     }
 
     func setVisible(_ visible: Bool) {

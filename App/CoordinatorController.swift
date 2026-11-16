@@ -31,7 +31,8 @@ final class CoordinatorController: ObservableObject {
         stopCues()
         layoutFollowTask?.cancel()
         peopleViewTask?.cancel()
-        stopShapePreview()
+        stopShapePreview(for: .home)
+        stopShapePreview(for: .webcamSettings)
         ChatWindowController.close()
         PeoplePopOutController.close()
         customUIGridTask?.cancel()
@@ -1136,8 +1137,11 @@ final class CoordinatorController: ObservableObject {
         // the Apptics setup already carries. An explicit false stays false.
         analyticsEnabled = (defaults.object(forKey: "analyticsEnabled") as? Bool) ?? true
         screenCaptureDisplayUUID = defaults.string(forKey: "screenCaptureDisplayUUID") ?? ""
-        shareTarget = defaults.data(forKey: "shareTarget")
+        // One app is no longer offered: a saved one shares the whole screen.
+        var savedShare = defaults.data(forKey: "shareTarget")
             .flatMap { try? JSONDecoder().decode(ShareTarget.self, from: $0) } ?? ShareTarget()
+        if savedShare.kind == .app { savedShare.kind = .display }
+        shareTarget = savedShare
         // On unless the teacher turned it off; Macs that stored the old default
         // (off) are flipped once, so the new default actually reaches them.
         ZoomMeetingSDKClient.migrateCustomUIDefault()
@@ -1698,10 +1702,7 @@ final class CoordinatorController: ObservableObject {
         }
         isStopping = true
         // Ending some other way (the menu, Zoom, a failure) answers the End question too.
-        if let asked = endPromptID {
-            endPromptID = nil
-            NotchStatusController.shared.hidePrompt(asked, answered: true)
-        }
+        disarmExit()
         Analytics.track(.sessionEnd, [
             .durationBand: Analytics.band(seconds: sessionStartedAt.map { Date().timeIntervalSince($0) } ?? 0),
             .customUI: customUIMode ? "yes" : "no"
@@ -1809,6 +1810,9 @@ final class CoordinatorController: ObservableObject {
             if let saving = savingTask {
                 savingTask = nil
                 Task { if let path = await saving.value { recordingFinished(path: path) } }
+            } else {
+                // A recording stopped earlier in the class: its card now.
+                presentFinishedSession()
             }
         }
     }
@@ -2601,6 +2605,7 @@ final class CoordinatorController: ObservableObject {
         sessionStartedAt = nil
         await tearDownRecordingScene()
         recordOnlyActive = false
+        revivePreviewIfStalled()
     }
 
     /// The tape: a take, into a session folder of its own.
@@ -2647,31 +2652,96 @@ final class CoordinatorController: ObservableObject {
         stopRecordingSession()
     }
 
-    /// The Record bar's Stop, the shortcut and the menu: asks in the island
-    /// before the take ends, as End asks before the meeting does. A second
-    /// press while asking takes the question away and keeps recording.
+    /// The Record bar's Stop, the shortcut and the menu. The first press arms
+    /// Stop (the button itself turns into Confirm); the second, while armed,
+    /// stops. Esc or 15 seconds disarm it.
     func confirmStopTake() {
         guard recordOnlyActive, isRecording, !takeBusy else { return }
-        if let shown = stopTakePromptID {
-            NotchStatusController.shared.hidePrompt(shown, answered: false)
+        if exitAsk == .stopTake {
+            disarmExit()
+            stopTake()
             return
         }
-        let prompt = IslandPrompt(title: "Stop the recording?",
-                                  detail: "Saves the recording and puts your camera away.",
-                                  help: nil, uploadTitle: "Stop and Save",
-                                  timeout: IslandRules.confirmTimeout,
-                                  style: .confirm, dismissTitle: "Keep Recording")
-        stopTakePromptID = prompt.id
-        NotchStatusController.shared.showConfirm(prompt, onConfirm: { [weak self] in
-            self?.stopTakePromptID = nil
-            self?.stopTake()
-        }, onDismiss: { [weak self] in
-            self?.stopTakePromptID = nil
-        })
+        armExit(.stopTake, title: "Stop the recording?",
+                detail: "Press Stop again to save it. Esc keeps recording.")
     }
 
-    /// The Stop question showing in the island, if any.
-    private var stopTakePromptID: UUID?
+    // MARK: After a session
+
+    /// The card over the main window once a session or a take has ended and
+    /// its recording is saved: Watch, Edit, Upload to YouTube, Finder, Done.
+    /// It replaces the island's upload question and Home's "Last session"
+    /// line (owner, 2026-11-16).
+    struct FinishedSession: Equatable, Identifiable {
+        let id = UUID()
+        /// The session's folder, which is also its page's id.
+        let folder: URL
+        let file: URL
+        let title: String
+    }
+    @Published var finishedSession: FinishedSession?
+    /// The newest recording saved while a session was live, shown on the
+    /// card once it ends.
+    var lastFinishedRecording: URL?
+
+    func presentFinishedSession() {
+        guard let file = lastFinishedRecording else { return }
+        lastFinishedRecording = nil
+        let folder = file.deletingLastPathComponent()
+        let title = SessionMetadata.load(in: folder).title
+            ?? { let n = className.trimmingCharacters(in: .whitespaces); return n.isEmpty ? file.deletingPathExtension().lastPathComponent : n }()
+        finishedSession = FinishedSession(folder: folder, file: file, title: title)
+    }
+
+    // MARK: Asking before End and Stop
+
+    /// What End or Stop is waiting to be pressed again for. Asked in place:
+    /// the button that was pressed turns into Confirm, and the island only
+    /// says what it means (owner, 2026-11-16: the island shows status, it
+    /// has no buttons).
+    enum ExitAsk: Equatable { case end, stopTake }
+    @Published private(set) var exitAsk: ExitAsk?
+    private var exitAskToast: UUID?
+    private var exitAskTimer: Task<Void, Never>?
+    private var exitAskMonitors: [Any] = []
+
+    private func armExit(_ ask: ExitAsk, title: String, detail: String) {
+        disarmExit()
+        exitAsk = ask
+        let toast = IslandToast(title: title, detail: detail, kind: .ask, duration: IslandRules.confirmTimeout)
+        exitAskToast = toast.id
+        NotchStatusController.shared.showToastFirst(toast)
+        exitAskTimer = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: UInt64(IslandRules.confirmTimeout * 1_000_000_000))
+            guard !Task.isCancelled else { return }
+            self?.disarmExit()
+        }
+        // Esc keeps going: heard while Greenroom is in front, and while another
+        // app is when Accessibility is granted (as the countdown's Esc).
+        if let local = NSEvent.addLocalMonitorForEvents(matching: .keyDown, handler: { [weak self] event in
+            guard event.keyCode == 53, self?.exitAsk != nil else { return event }
+            self?.disarmExit()
+            return nil
+        }) { exitAskMonitors.append(local) }
+        if AXIsProcessTrusted(),
+           let global = NSEvent.addGlobalMonitorForEvents(matching: .keyDown, handler: { [weak self] event in
+               guard event.keyCode == 53 else { return }
+               MainActor.assumeIsolated { self?.disarmExit() }
+           }) { exitAskMonitors.append(global) }
+    }
+
+    /// Takes the question away: answered, timed out, Esc, or ended some other way.
+    func disarmExit() {
+        exitAskTimer?.cancel()
+        exitAskTimer = nil
+        for m in exitAskMonitors { NSEvent.removeMonitor(m) }
+        exitAskMonitors = []
+        if let id = exitAskToast {
+            exitAskToast = nil
+            NotchStatusController.shared.hidePrompt(id, answered: true)
+        }
+        if exitAsk != nil { exitAsk = nil }
+    }
 
     /// Finishes the tape, adopts the clip marks and closes the take's
     /// session. Returns the saved file's path.
@@ -2718,10 +2788,7 @@ final class CoordinatorController: ObservableObject {
     func stopRecordingSession() {
         guard !isStopping else { return }
         // Stopping some other way answers the Stop question too.
-        if let asked = stopTakePromptID {
-            stopTakePromptID = nil
-            NotchStatusController.shared.hidePrompt(asked, answered: true)
-        }
+        disarmExit()
         cancelRecordingCountdown()
         isStopping = true
         let pending = startTask
@@ -2733,6 +2800,9 @@ final class CoordinatorController: ObservableObject {
             // A start that failed has already torn down; this one has not.
             if recordOnlyActive { await tearDownRecordingScene() }
             recordOnlyActive = false
+            // The teardown tried to bring the preview back while the take
+            // still counted as running, so it could not start the camera.
+            revivePreviewIfStalled()
             isStopping = false
             reconcileMainWindow()
             // Last, as after a class: the upload question waits for
@@ -2775,7 +2845,12 @@ final class CoordinatorController: ObservableObject {
     let shapePreview = ShapePreviewFeed()
     /// The live picture's size, or nil while the schematic is showing.
     @Published private(set) var shapePreviewAspect: CGSize?
-    private var shapePreviewOn = false
+    /// Who is looking at the preview. Home's card and Settings → Webcam share
+    /// one picture; it stops only when the last of them leaves, so closing
+    /// Settings no longer blanks Home's card (and the other way round).
+    enum PreviewViewer: Hashable { case home, webcamSettings }
+    private var previewViewers: Set<PreviewViewer> = []
+    private var shapePreviewOn: Bool { !previewViewers.isEmpty }
     private var shapePreviewApply: Task<Void, Never>?
     private let previewSink = StagePreviewSink()
     private var previewAttached = false
@@ -2785,12 +2860,12 @@ final class CoordinatorController: ObservableObject {
     /// session will send; during a live session it simply mirrors that one.
     /// Never asks for a permission: with Screen Recording off the picture is
     /// the camera alone.
-    func startShapePreview() {
-        guard !shapePreviewOn else { return }
-        shapePreviewOn = true
-        StageScreenSource.log("Settings preview opened.")
+    func startShapePreview(for viewer: PreviewViewer) {
+        let wasOn = shapePreviewOn
+        previewViewers.insert(viewer)
+        guard !wasOn else { return }
+        StageScreenSource.log("Preview opened (\(viewer)).")
         attachPreview()
-        recordingChrome.setPreviewing(true, coordinator: self)
     }
 
     private func attachPreview() {
@@ -2800,7 +2875,8 @@ final class CoordinatorController: ObservableObject {
             stage.start(makeStageConfiguration())
         }
         guard let stage else { return }
-        previewSink.onPicture = { [weak self] image in self?.publishPreviewFrame(image) }
+        previewSink.onPicture = { [weak self] image, mask in self?.publishPreviewFrame(image, mask: mask) }
+        previewSink.coverage = { [weak stage] in stage?.lastCameraCoverage }
         stage.addSink(previewSink)
         previewAttached = true
     }
@@ -2809,6 +2885,24 @@ final class CoordinatorController: ObservableObject {
     private func resumePreviewIfWanted() {
         previewAttached = false
         if shapePreviewOn { attachPreview() }
+    }
+
+    /// Someone is waiting on the preview but no picture is coming: the stage
+    /// was stopped under it (a Record take ending while `recordOnlyActive`
+    /// still read true), or it never started. Starts it again. Safe to call
+    /// any time; it does nothing while a session owns the picture or frames
+    /// are flowing.
+    /// `evenIfRunning`: Home has waited seconds with no frame from a stage
+    /// that says it is running, so restart it anyway.
+    func revivePreviewIfStalled(evenIfRunning: Bool = false) {
+        guard shapePreviewOn || studioPreviewOn, !sceneInUse, !isRunning else { return }
+        if let stage, stage.status.isRunning, previewAttached,
+           shapePreviewAspect != nil || !evenIfRunning { return }
+        StageScreenSource.log("Preview had no picture; starting it again.")
+        if let stage, previewAttached { stage.removeSink(previewSink) }
+        previewAttached = false
+        if let stage, stage.status.isRunning { stopStage() }
+        attachPreview()
     }
 
     /// Looks through one camera so Settings can show the angle it reads you
@@ -2824,11 +2918,14 @@ final class CoordinatorController: ObservableObject {
 
     func stopAiming() { cameraProbe.stop() }
 
-    func stopShapePreview() {
-        StageScreenSource.log("Settings preview closed\(!sceneInUse && !isRunning ? "; the picture stops with it" : "").")
-        shapePreviewOn = false
+    func stopShapePreview(for viewer: PreviewViewer) {
+        guard previewViewers.remove(viewer) != nil else { return }
+        guard previewViewers.isEmpty else {
+            StageScreenSource.log("Preview closed (\(viewer)); still shown elsewhere.")
+            return
+        }
+        StageScreenSource.log("Preview closed (\(viewer))\(!sceneInUse && !isRunning ? "; the picture stops with it" : "").")
         shapePreviewApply?.cancel()
-        recordingChrome.setPreviewing(false, coordinator: self)
         // The Record view is still watching the same picture: one compositor
         // serves both, and the last to leave turns the light off.
         if studioPreviewOn { return }
@@ -2840,8 +2937,9 @@ final class CoordinatorController: ObservableObject {
         publishPreviewFrame(nil)
     }
 
-    private func publishPreviewFrame(_ frame: NSImage?) {
+    private func publishPreviewFrame(_ frame: NSImage?, mask: NSImage? = nil) {
         shapePreview.frame = frame
+        shapePreview.openMask = mask
         let aspect = frame?.size
         if aspect != shapePreviewAspect { shapePreviewAspect = aspect }
     }
@@ -3649,6 +3747,7 @@ final class CoordinatorController: ObservableObject {
         a.toMeetingWindow = { [weak self] in self?.moveMeeting(to: .window) }
         a.toBar = { [weak self] in self?.moveMeeting(to: .bar) }
         a.end = { [weak self] in self?.confirmAndStop() }
+        a.endArmed = { [weak self] in self?.exitAsk == .end }
         a.state = { [weak self] in
             guard let controls = self?.meetingControls else { return (false, true) }
             return (controls.inMeeting && controls.muted, controls.cameraOn)
@@ -4130,33 +4229,30 @@ final class CoordinatorController: ObservableObject {
             return
         }
         guard isRunning || stageLive else { return }
-        // Asked in the island, not an alert: the island is on every Space, so
-        // the question appears where the person pressed End (an alert went to
-        // the main window's desktop, which may be empty). Nothing is activated.
-        if let shown = endPromptID {
-            // A second End while asking: take the question away, keep going.
-            NotchStatusController.shared.hidePrompt(shown, answered: false)
+        // Asked in place, like the meeting window's End: the first press arms
+        // End (the button turns into Confirm), the second ends. No alert (it
+        // went to the main window's desktop, which may be empty) and no
+        // buttons in the island, which only says what Confirm will do.
+        if exitAsk == .end {
+            disarmExit()
+            stop()
             return
         }
-        let ask = LiveExit.endPrompt(liveExitState) ?? LiveExitPrompt(
-            title: "End the session?",
-            message: "Ends the Zoom meeting, saves any recording in progress, and stops the camera.",
-            choices: [.endMeetingForAll, .cancel])
-        let action = ask.choices.first ?? .endMeetingForAll
-        let prompt = IslandPrompt(title: ask.title, detail: ask.message, help: nil,
-                                  uploadTitle: action.title, timeout: IslandRules.confirmTimeout,
-                                  style: .confirm, dismissTitle: LiveExitChoice.cancel.title)
-        endPromptID = prompt.id
-        NotchStatusController.shared.showConfirm(prompt, onConfirm: { [weak self] in
-            self?.endPromptID = nil
-            self?.stop()
-        }, onDismiss: { [weak self] in
-            self?.endPromptID = nil
-        })
+        let ask = LiveExit.endPrompt(liveExitState)
+        let action = ask?.choices.first ?? .endMeetingForAll
+        let title = action == .leaveMeeting ? "Leave the meeting?" : "End the meeting for everyone?"
+        let again = action == .leaveMeeting ? "Press End again to leave." : "Press End again to end it."
+        armExit(.end, title: title, detail: "\(again) Esc keeps it going.")
     }
 
-    /// The End question showing in the island, if any.
-    private var endPromptID: UUID?
+    /// What the armed End does, for the buttons' Confirm help.
+    var exitConfirmHelp: String {
+        switch exitAsk {
+        case .stopTake: return "Stop and save the recording"
+        case .end: return (LiveExit.endPrompt(liveExitState)?.choices.first ?? .endMeetingForAll).title
+        case nil: return ""
+        }
+    }
 
     /// The menu bar's "Snap Windows Back": re-tiles everything to the
     /// session layout after the user has dragged windows around - the apps, the

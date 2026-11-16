@@ -2,7 +2,7 @@
 //  ContentView.swift
 //  Greenroom
 //
-//  One decision, one button: pick "New Meeting", "Join Existing" or "Record"
+//  One decision, one button: pick "New Meeting", "Scheduled" or "Record"
 //  in the toolbar, hit the button, and the whole session cascades - the picture, Zoom into
 //  the meeting, Chrome tiled to its side of the screen, chat window tiled
 //  to the other. The layout's apps can be opened on their own from the
@@ -20,15 +20,12 @@ struct ContentView: View {
     /// needs explaining. Not persisted - each launch starts compact.
     @State private var statusShown = false
     /// Home's five setup tiles unfolded; per launch, collapsed by default.
-    /// Home shows its "Last session" line, which is 44pt of the window's
-    /// height. Reported by HomeView, which is the one that knows.
-    @State private var homeHasFooter = false
     /// The window's minimum height, which TRAILS a resize instead of leading
     /// it - see resizeWindow. Starts at 0 and is set on appear.
     @State private var heldMinHeight: CGFloat = 0
     /// The same, for width: Home is narrower than the pages, so the minimum
     /// follows the window out and back instead of forcing it open first.
-    @State private var heldMinWidth: CGFloat = ContentView.collapsedWindowWidth
+    @State private var heldMinWidth: CGFloat = ContentView.expandedWindowWidth
     /// The frame Home had before a page widened the window, so Back returns
     /// to it rather than to wherever the page left things.
     @State private var homeFrame: NSRect?
@@ -41,11 +38,12 @@ struct ContentView: View {
     @State private var homeFrameContentHeight: CGFloat?
     private var homeWidth: CGFloat? { homeFrame?.width }
 
-    /// Home's picture card: hidden until asked for, and collapsed on every launch
-    /// (the camera must never start by itself; DESIGN.md, 2026-11-14). `previewMounted` lags a collapse by the
-    /// window's shrink, so the card is drawn until the curtain has closed on it.
-    @State private var previewShown = false
-    @State private var previewMounted = false
+    /// Home's picture card: open on every launch, live (owner, 2026-11-16;
+    /// supersedes 2026-11-14's "collapsed on launch"). Hide preview folds it
+    /// for this run. `previewMounted` lags a collapse by the window's shrink,
+    /// so the card is drawn until the curtain has closed on it.
+    @State private var previewShown = true
+    @State private var previewMounted = true
     /// The frame the window had before the card opened, to give back exactly.
     @State private var previewRestoreFrame: NSRect?
     /// The frame the opening settled at, to tell whether the window was moved.
@@ -152,6 +150,13 @@ struct ContentView: View {
             detailColumn
         }
         .environmentObject(sidebarModel)
+        // After a class or a take: what to do with the recording.
+        .overlay {
+            if let finished = coordinator.finishedSession {
+                SessionFinishedCard(coordinator: coordinator, session: finished)
+            }
+        }
+        .animation(.easeOut(duration: 0.2), value: coordinator.finishedSession)
         // Control-Command-S, the system's own sidebar key, which the single
         // View menu item (SidebarCommands) no longer carries. Present but
         // invisible: the menu shows one item.
@@ -187,7 +192,6 @@ struct ContentView: View {
             previewShown = (note.userInfo?["shown"] as? Bool) ?? false
         }
         #endif
-        .onChange(of: homeHasFooter) { _, _ in resizeWindow(animated: true) }
         .onChange(of: coordinator.meetingMode) { _, _ in resizeWindow(animated: true) }
         // Leaving full screen puts the window back at the frame it had going
         // in, which may be Home's size under a page: size it for the page.
@@ -316,6 +320,7 @@ struct ContentView: View {
     private var modeSwitcher: some View {
         GreenroomSegmented("Mode", selection: $coordinator.meetingMode,
                            options: Array(MeetingMode.allCases), toolbar: true) { Text($0.shortLabel) }
+            .segmentHelp { $0 == .join ? MeetingMode.scheduledHelp : nil }
     }
 
     /// Home and the pages, one over the other. Mounted by state (not by
@@ -494,12 +499,11 @@ struct ContentView: View {
     }
 
     private var homeContent: some View {
-        HomeView(statusShown: $statusShown, hasFooter: $homeHasFooter,
+        HomeView(statusShown: $statusShown,
                  previewShown: $previewShown, previewMounted: previewMounted)
     }
 
-    /// The window's height for the current state: the two columns, plus the
-    /// "Last session" line when there is one, plus Join's passcode row, plus the
+    /// The window's height for the current state: the two columns, plus Join's passcode row, plus the
     /// log when it is shown. Measured from the accessibility tree rather than
     /// guessed, on the 4px scale (DESIGN.md: size from the content).
     private var preferredWindowHeight: CGFloat { onPage ? Self.pageHeight : homeWindowHeight }
@@ -510,7 +514,6 @@ struct ContentView: View {
         // 20pt of padding top and bottom around the column, whose height is
         // the sum of its fixed parts (HomeView.columnHeight).
         var height: CGFloat = HomeView.verticalMargin * 2 + HomeView.columnHeight
-        if homeHasFooter { height += 44 }
         if statusShown { height += HomeView.statusLogHeight + 12 }
         return height
     }
@@ -560,9 +563,9 @@ struct ContentView: View {
     static var collapsedWindowWidth: CGFloat { 592 }
     /// With the picture card beside the column.
     static var expandedWindowWidth: CGFloat { collapsedWindowWidth + HomeView.previewExtraWidth }
-    /// What the window opens at: collapsed unless the person left the picture
-    /// open. The height is then the content's (homeWindowHeight).
-    static var defaultWindowWidth: CGFloat { collapsedWindowWidth }
+    /// What the window opens at: with the picture card open. The height is
+    /// then the content's (homeWindowHeight).
+    static var defaultWindowWidth: CGFloat { expandedWindowWidth }
     /// The least Home may be, for whether the card is open.
     private var homeMinWidth: CGFloat { previewMounted ? Self.expandedWindowWidth : Self.collapsedWindowWidth }
 

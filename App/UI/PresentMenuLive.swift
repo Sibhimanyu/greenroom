@@ -12,7 +12,7 @@
 //  compositor to rebuild (`requestShapeApply(rebuild: true)`), which applies
 //  live.
 //
-import Foundation
+import AppKit
 
 extension CoordinatorController {
 
@@ -27,8 +27,6 @@ extension CoordinatorController {
         s.kind = PresentMenu.Kind(rawValue: target.kind.rawValue) ?? .display
         s.displayID = screenCaptureDisplayUUID
         s.displays = DisplayResolver.connectedDisplays().map { .init(id: $0.id, title: $0.label) }
-        s.apps = ShareTarget.runningApps().map { .init(id: $0.bundleID, title: $0.name) }
-        s.appBundleID = target.appBundleID
         var seen = Set<String>()
         s.windows = ShareTarget.windows().filter { seen.insert($0.key).inserted }.map { w in
             let base = w.title.isEmpty ? w.appName : "\(w.appName) \u{2013} \(w.title)"
@@ -59,14 +57,6 @@ extension CoordinatorController {
             self.shareTarget.kind = .display
             self.requestShapeApply(rebuild: true)
         }
-        a.pickApp = { [weak self] app in
-            guard let self else { return }
-            self.shareTarget.kind = .app
-            self.shareTarget.appBundleID = app.id
-            self.shareTarget.appName = app.title
-            self.shareTarget.windowTitle = ""
-            self.requestShapeApply(rebuild: true)
-        }
         a.pickWindow = { [weak self] w in
             guard let self else { return }
             self.shareTarget.kind = .window
@@ -74,6 +64,7 @@ extension CoordinatorController {
             self.shareTarget.appName = w.appName
             self.shareTarget.windowTitle = w.title
             self.requestShapeApply(rebuild: true)
+            self.bringSharedWindowForward(bundleID: w.bundleID, title: w.title)
         }
         a.pickShape = { [weak self] id in
             guard let self, let shape = WebcamShape(rawValue: id) else { return }
@@ -85,5 +76,22 @@ extension CoordinatorController {
             self.applyLayoutNow(uuid)
         }
         return a
+    }
+
+    /// A window picked to share comes to the front, and macOS takes the person
+    /// to the desktop (or full-screen space) it is on, so what the class sees
+    /// is what they see (owner, 2026-11-16). The window is raised by its ID
+    /// with Accessibility; without it, its app comes forward.
+    func bringSharedWindowForward(_ window: ShareTarget.Window) {
+        guard let app = NSRunningApplication.runningApplications(withBundleIdentifier: window.bundleID).first,
+              app.processIdentifier != ProcessInfo.processInfo.processIdentifier else { return }
+        AppWindowManager.bringForward(app, windowID: window.id)
+    }
+
+    /// The same, from a menu that knows the window by app and title only.
+    func bringSharedWindowForward(bundleID: String, title: String) {
+        let key = ShareTarget.windowKey(bundleID: bundleID, title: title)
+        guard let window = ShareTarget.windows().first(where: { $0.key == key }) else { return }
+        bringSharedWindowForward(window)
     }
 }

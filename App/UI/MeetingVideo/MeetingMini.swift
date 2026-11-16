@@ -39,7 +39,9 @@ enum ShowOnShareSwitch {
     static func apply(to button: NSButton, on: Bool, kind: ShowOnShare.ShareKind, pointSize: CGFloat = 13) {
         let available = ShowOnShare.isAvailable(kind)
         let marked = ShowOnShare.marksWindow(on: on, kind: kind)
-        button.image = NSImage(systemSymbolName: "rectangle.on.rectangle", accessibilityDescription: ShowOnShare.label)?
+        // An eye, not the Share symbol: it says whether others see this window,
+        // and two window-shaped icons side by side read as the same thing.
+        button.image = NSImage(systemSymbolName: marked ? "eye" : "eye.slash", accessibilityDescription: ShowOnShare.label)?
             .withSymbolConfiguration(.init(pointSize: pointSize, weight: .semibold))
         button.isEnabled = available
         button.state = marked ? .on : .off
@@ -140,8 +142,10 @@ final class MeetingMiniChrome: NSView {
     private lazy var mic = iconButton("mic.fill", "Mute") { [weak self] in self?.actions.toggleMic(); self?.refresh() }
     private lazy var camera = iconButton("video.fill", "Turn camera off") { [weak self] in self?.actions.toggleCamera(); self?.refresh() }
     private(set) lazy var share = ShowOnShareSwitch.make(size: 26) { [weak self] in self?.onToggleShare?() }
-    private lazy var toWindow = iconButton("arrow.up.right.square", "Meeting window") { [weak self] in self?.actions.toMeetingWindow() }
-    private lazy var toBar = iconButton("arrow.down.right.square", "Control bar") { [weak self] in self?.actions.toBar() }
+    // The Mini is the middle size: one button grows it, one shrinks it, drawn as
+    // the familiar expand and collapse arrows so the pair reads as bigger / smaller.
+    private lazy var toWindow = iconButton("arrow.up.left.and.arrow.down.right", "Bigger: back to the Meeting window") { [weak self] in self?.actions.toMeetingWindow() }
+    private lazy var toBar = iconButton("arrow.down.right.and.arrow.up.left", "Smaller: shrink to the Control bar") { [weak self] in self?.actions.toBar() }
     private lazy var end = ClosureButton { [weak self] in self?.actions.end() }
 
     override init(frame: NSRect) {

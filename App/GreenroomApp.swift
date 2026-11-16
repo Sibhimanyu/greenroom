@@ -87,8 +87,8 @@ enum Brand {
 struct GreenroomApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @StateObject private var coordinator = CoordinatorController()
-    /// One editor document for the life of the app, shared by the Editor window
-    /// and the Recordings view's Edit button.
+    /// One editor document for the life of the app, shown as a page of the main
+    /// window (MainPage.editor), opened by the session page's Edit button.
     @StateObject private var editor = EditorViewModel()
 
     /// Sparkle auto-updater: checks the appcast (SUFeedURL in Info.plist)
@@ -151,13 +151,6 @@ struct GreenroomApp: App {
             HeresayCommands()
         }
 
-        Window("Editor", id: "editor") {
-            EditorView()
-                .environmentObject(editor)
-                .tint(Brand.green)
-        }
-        .defaultSize(width: 1180, height: 760)
-
         Settings {
             SettingsView()
                 .environmentObject(coordinator)
@@ -166,7 +159,8 @@ struct GreenroomApp: App {
 
         // Sessions and the report are not scenes. They were windows, and
         // before that a sheet; Greenroom keeps a low profile, so they are
-        // pages of the main window (CoordinatorController.MainPage), which
+        // pages of the main window (CoordinatorController.MainPage, the video
+        // editor too), which
         // grows to hold them and gives its size back on Back.
 
         // The mark, as a one-colour template image (MenuBarMark, a vector

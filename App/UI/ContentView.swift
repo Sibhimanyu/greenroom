@@ -14,6 +14,7 @@ import AppKit
 
 struct ContentView: View {
     @EnvironmentObject private var coordinator: CoordinatorController
+    @EnvironmentObject private var editor: EditorViewModel
     @Environment(\.openSettings) private var openSettings
     /// Hidden by default: the log is diagnostic detail, opened when something
     /// needs explaining. Not persisted - each launch starts compact.
@@ -87,10 +88,17 @@ struct ContentView: View {
 
     private var onPage: Bool { !coordinator.mainPage.isHome }
 
+    /// The editor's Back goes through its own "Discard your edits?" question
+    /// (a request the editor answers), and Esc is the editor's own key.
+    private var isEditorPage: Bool {
+        if case .editor = coordinator.mainPage { return true }
+        return false
+    }
+
     /// What Back goes to, named for its help and VoiceOver.
     private var backLabel: String {
         switch coordinator.mainPage {
-        case .report: return "Session"
+        case .report, .editor: return "Session"
         case .detail, .home: return "Sessions"
         case .sessions: return "Home"
         }
@@ -102,6 +110,7 @@ struct ContentView: View {
         case .sessions: return "Sessions"
         case .detail: return ""   // the watch page names itself in its header
         case .report: return "Report"
+        case .editor: return "Edit"
         }
     }
 
@@ -120,7 +129,7 @@ struct ContentView: View {
     /// A session's page or its report: no sidebar (the watch page).
     private var onSingleSession: Bool {
         switch coordinator.mainPage {
-        case .detail, .report: return true
+        case .detail, .report, .editor: return true
         case .home, .sessions: return false
         }
     }
@@ -160,6 +169,7 @@ struct ContentView: View {
         // covers the first-ever open, so the size is asserted on appear.
         .onAppear {
             SessionNotes.shared.attach(coordinator)
+            coordinator.warmUpForStart()
             DispatchQueue.main.async {
                 resizeWindow(animated: false)
                 Self.centreWindow()
@@ -202,7 +212,7 @@ struct ContentView: View {
         }
         // Esc goes back too. Left to a text field that is being edited.
         .onExitCommand {
-            guard onPage, !(Self.window?.firstResponder is NSText) else { return }
+            guard onPage, !isEditorPage, !(Self.window?.firstResponder is NSText) else { return }
             coordinator.goBack()
         }
         // The toast, the upload question and the start's progress card, while
@@ -240,7 +250,7 @@ struct ContentView: View {
         // Settings on Home. One unified toolbar on every page, so the title bar
         // never changes height during a page change. Subtitle only, never a
         // navigation title: the window is still found by its title.
-        .pageToolbar(back: chromeOnPage ? PageBack(label: backLabel, action: { coordinator.goBack() }) : nil,
+        .pageToolbar(back: chromeOnPage ? PageBack(label: backLabel, action: { if isEditorPage { editor.backRequests += 1 } else { coordinator.goBack() } }) : nil,
                      subtitle: chromeOnPage ? pageSubtitle : "")
         .toolbar {
             if !chromeOnPage {

@@ -1,26 +1,20 @@
 // Ported from Recorditor (ZRecorditor @7210322, native/MacRecorder/Editor/EditorView.swift).
+import AppKit
 import SwiftUI
 
 struct EditorView: View {
     @EnvironmentObject private var vm: EditorViewModel
-    @State private var showCloseConfirm = false
-    @State private var showMergeSourceToolbar = false
-    @State private var showEffectsPopover = false
-    @State private var newSpeedFactor: Double = 1
-    @State private var speedFrom = "0:00"
-    @State private var speedTo = "0:10"
-    @State private var savedPlaybackURL: URL?
+    /// Where Back goes from the empty start page (a loaded video closes
+    /// itself, and the page follows).
+    var onBack: () -> Void = {}
 
-    /// The single segment covering the whole video, when that's the state.
-    private var wholeVideoSpeedSegment: EditorViewModel.SpeedSegment? {
-        guard vm.speedSegments.count == 1, let segment = vm.speedSegments.first,
-              segment.start <= vm.trimStart + 0.2, segment.end >= vm.trimEnd - 0.2 else { return nil }
-        return segment
-    }
-    @State private var showMergeSourcePanel = false
+    @State private var showDiscardConfirm = false
+    @State private var showMergeSource = false
+    @State private var showSpeed = false
     @State private var showAudioOptions = false
-    @State private var sideTab = 0
     @State private var showInspector = true
+    @State private var savedPlaybackURL: URL?
+    @State private var keyMonitor = EditorKeyMonitor()
     @StateObject private var library = EditorRecordingLibrary()
 
     var body: some View {
@@ -40,6 +34,30 @@ struct EditorView: View {
                 EditorPlaybackSheet(url: url, title: url.lastPathComponent)
             }
         }
+        .confirmationDialog("Discard your edits?", isPresented: $showDiscardConfirm) {
+            Button("Keep Editing", role: .cancel) {}
+            Button("Discard", role: .destructive) { vm.closeVideo() }
+            Button("Save\u{2026}") { vm.showExportOptions = true }
+        } message: {
+            Text("Your trims, removed stretches, effects and extra clips will be lost unless you save them first.")
+        }
+        // Back (the page's button, \u{2318}[ or Esc) arrives here as a request.
+        .onChange(of: vm.backRequests) { _, _ in handleBack() }
+        .onAppear {
+            keyMonitor.install(vm: vm)
+        }
+        .onDisappear { keyMonitor.remove() }
+    }
+
+    private func handleBack() {
+        guard !vm.isExporting, vm.savedExportURL == nil else { return }
+        if !vm.hasVideo {
+            onBack()
+        } else if vm.hasUnsavedEdits {
+            showDiscardConfirm = true
+        } else {
+            vm.closeVideo()
+        }
     }
 
     /// Post-save popup over the editor's start page: the session is closed,
@@ -50,10 +68,10 @@ struct EditorView: View {
                 .onTapGesture { vm.savedExportURL = nil }
             VStack(spacing: 16) {
                 ZStack {
-                    Circle().fill(Color.green.opacity(0.15)).frame(width: 72, height: 72)
+                    Circle().fill(Brand.green.opacity(0.15)).frame(width: 72, height: 72)
                     Image(systemName: "checkmark.seal.fill")
                         .font(.system(size: 34))
-                        .foregroundStyle(.green)
+                        .foregroundStyle(Brand.green)
                 }
                 Text("Saved \(url.lastPathComponent)")
                     .font(.title3.weight(.semibold))
@@ -68,8 +86,12 @@ struct EditorView: View {
                         Label("Play", systemImage: "play.fill")
                     }
                     Button {
-                        vm.savedExportURL = nil
-                        Task { await vm.load(url: url) }
+                        // Load first: clearing the popup with nothing loaded
+                        // reads as "editor closed" and leaves the page.
+                        Task {
+                            await vm.load(url: url)
+                            vm.savedExportURL = nil
+                        }
                     } label: {
                         Label("Edit Exported Video", systemImage: "slider.horizontal.3")
                     }
@@ -85,6 +107,7 @@ struct EditorView: View {
                         Text("Done")
                     }
                     .buttonStyle(.borderedProminent)
+                    .tint(Brand.green)
                     .keyboardShortcut(.defaultAction)
                 }
             }
@@ -107,7 +130,7 @@ struct EditorView: View {
             }
             Text("Load a video to start editing")
                 .font(.title3.weight(.semibold))
-            Text("Trim, cut, crop and merge — then export a single MP4.")
+            Text("Trim, remove stretches, blur, crop and join videos, then save a new recording.")
                 .font(.callout)
                 .foregroundStyle(.secondary)
             Button("Load Video…") {
@@ -191,7 +214,7 @@ struct EditorView: View {
                                         Label(String(format: "%g×", vm.activePreviewRate),
                                               systemImage: vm.activePreviewRate < 1 ? "tortoise.fill" : "hare.fill")
                                             .font(.callout.bold())
-                                            .foregroundStyle(vm.activePreviewRate < 1 ? .cyan : .orange)
+                                            .foregroundStyle(.white)
                                             .padding(.horizontal, 10)
                                             .padding(.vertical, 5)
                                             .background(Color.black.opacity(0.65), in: Capsule())
@@ -224,7 +247,7 @@ struct EditorView: View {
                                             .controlSize(.large)
                                         Text("Saving… \(Int(vm.exportProgress * 100))%")
                                             .font(.title3.weight(.semibold))
-                                        Text("Effects and edits are being rendered into the video.")
+                                        Text("Your edits are being put into the video.")
                                             .font(.caption)
                                             .foregroundStyle(.secondary)
                                         Button("Cancel") { vm.cancelExport() }
@@ -242,11 +265,6 @@ struct EditorView: View {
             }
 
             Divider()
-            if let exportURL = vm.lastExportURL {
-                exportBanner(exportURL)
-                    .padding(.horizontal, 14)
-                    .padding(.top, 8)
-            }
             toolsRow
                 .padding(.horizontal, 14)
                 .padding(.vertical, 8)
@@ -255,43 +273,17 @@ struct EditorView: View {
                 .padding(.bottom, 10)
         }
         .inspector(isPresented: $showInspector) {
-            VStack(spacing: 0) {
-                GreenroomSegmented("Side panel", selection: $sideTab, options: [0, 1]) { tab in
-                    if tab == 0 {
-                        Label("Info", systemImage: "info.circle")
-                    } else {
-                        Label("Assistant", systemImage: "sparkles")
-                    }
-                }
-                .padding(10)
-                .help("Info shows file details and edits; Assistant edits the video from text prompts")
-                if sideTab == 0 {
-                    sidePanel
-                } else {
-                    AssistantPanel()
-                }
-            }
-            .inspectorColumnWidth(min: 260, ideal: 300, max: 400)
+            editsPanel
+                .inspectorColumnWidth(min: 260, ideal: 300, max: 400)
         }
         .toolbar { editorToolbar }
         .sheet(isPresented: $vm.showExportOptions) {
             ExportOptionsSheet()
                 .environmentObject(vm)
         }
-        .confirmationDialog(
-            "Cancel this edit?",
-            isPresented: $showCloseConfirm
-        ) {
-            Button("Discard Edits", role: .destructive) {
-                vm.closeVideo()
-            }
-            Button("Keep Editing", role: .cancel) {}
-        } message: {
-            Text("Cuts, trims, crop and merge clips will be lost unless you save first.")
-        }
     }
 
-    // MARK: window toolbar
+    // MARK: window toolbar (Back comes from the page chrome)
 
     @ToolbarContentBuilder
     private var editorToolbar: some ToolbarContent {
@@ -315,71 +307,26 @@ struct EditorView: View {
             .help("Redo (⇧⌘Z)")
         }
 
-        ToolbarItem(placement: .principal) {
-            GreenroomSegmented("Mode", selection: $vm.mode, options: TimelineMode.allCases) { mode in
-                Text(mode.rawValue)
-            }
-            .help("Trim: drag the edge handles · Cut: drag on the timeline to mark removals")
-        }
-
-        ToolbarItem(placement: .primaryAction) {
-            Button {
-                showEffectsPopover.toggle()
-            } label: {
-                Label("Effects", systemImage: "sparkles")
-            }
-            .popover(isPresented: $showEffectsPopover, arrowEdge: .bottom) {
-                effectsPopover
-                    .onAppear {
-                        speedFrom = TimeFormatting.clock(vm.playhead)
-                        speedTo = TimeFormatting.clock(min(vm.playhead + 10, vm.trimEnd))
-                        // Reopenings reflect the applied state: the dial sits
-                        // at the active speed.
-                        if let whole = wholeVideoSpeedSegment {
-                            newSpeedFactor = whole.factor
-                        } else if let at = vm.speedSegments.first(where: {
-                            vm.playhead >= $0.start && vm.playhead < $0.end
-                        }) {
-                            newSpeedFactor = at.factor
-                        }
-                    }
-            }
-            .help("Click ripples, keystrokes, captions, blur, arrows, speed — applied on Save")
-        }
-
         ToolbarItem(placement: .primaryAction) {
             Button {
                 showInspector.toggle()
             } label: {
                 Label("Side Panel", systemImage: "sidebar.trailing")
             }
-            .help("Show or hide the Info / Assistant panel")
-        }
-
-        ToolbarItem(placement: .cancellationAction) {
-            Button {
-                if vm.hasUnsavedEdits {
-                    showCloseConfirm = true
-                } else {
-                    vm.closeVideo()
-                }
-            } label: {
-                Text("Cancel")
-            }
-            .disabled(vm.isExporting)
-            .help("Discard all edits and close this video")
+            .help("Show or hide the list of your edits")
         }
 
         ToolbarItem(placement: .confirmationAction) {
             Button {
                 vm.showExportOptions = true
             } label: {
-                Label("Save", systemImage: "square.and.arrow.down")
+                Text("Save as New Recording")
             }
+            .keyboardShortcut("s", modifiers: .command)
             .greenroomGlassButton(prominent: true)
             .tint(Brand.green)
             .disabled(vm.isExporting)
-            .help("Choose format and quality, see the estimated size, then save")
+            .help("Choose the format and quality, then save this as a new recording (⌘S)")
         }
     }
 
@@ -388,13 +335,12 @@ struct EditorView: View {
     private var transport: some View {
         HStack(spacing: 14) {
             Button {
-                vm.step(by: -10)
+                vm.step(by: -5)
             } label: {
-                Image(systemName: "gobackward.10")
+                Image(systemName: "gobackward.5")
             }
             .editorRoundControl()
-            .keyboardShortcut(.leftArrow, modifiers: [])
-            .help("Back 10 seconds (←)")
+            .help("Back 5 seconds (←)")
 
             Button {
                 vm.togglePlay()
@@ -404,32 +350,30 @@ struct EditorView: View {
                     .frame(width: 28)
             }
             .editorRoundControl()
-            .keyboardShortcut(.space, modifiers: [])
-            .help("Play / pause (Space)")
+            .help("Play or pause (Space)")
 
             Button {
-                vm.step(by: 10)
+                vm.step(by: 5)
             } label: {
-                Image(systemName: "goforward.10")
+                Image(systemName: "goforward.5")
             }
             .editorRoundControl()
-            .keyboardShortcut(.rightArrow, modifiers: [])
-            .help("Forward 10 seconds (→)")
+            .help("Forward 5 seconds (→)")
 
             Text("\(TimeFormatting.clockWithTenths(vm.playhead)) / \(TimeFormatting.clock(vm.timelineDuration))")
                 .font(.system(.body, design: .monospaced))
             if let index = vm.playingMergeIndex {
-                Text("Merge clip \(index + 1)")
+                Text("Extra clip \(index + 1)")
                     .font(.caption.weight(.semibold))
-                    .foregroundStyle(.purple)
+                    .foregroundStyle(Brand.text)
                     .padding(.horizontal, 8)
                     .padding(.vertical, 3)
-                    .background(Capsule().fill(Color.purple.opacity(0.15)))
+                    .background(Capsule().fill(Brand.green.opacity(0.15)))
             }
 
             Toggle("Preview edits", isOn: $vm.previewEdits)
                 .toggleStyle(.checkbox)
-                .help("Skip cut regions and respect trim while playing")
+                .help("Skip removed stretches and respect the trim while playing")
 
             Spacer()
 
@@ -442,150 +386,81 @@ struct EditorView: View {
                     vm.cancelExport()
                 }
                 .controlSize(.small)
-                .help("Stop the export — no file is saved")
+                .help("Stop saving. No file is made.")
             }
         }
     }
 
-    /// Shown after a successful export: keep going, wipe the edits, or start
-    /// a fresh session on the exported file.
-    private func exportBanner(_ url: URL) -> some View {
-        HStack(spacing: 12) {
-            Image(systemName: "checkmark.seal.fill")
-                .font(.title3)
-                .foregroundStyle(.green)
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Saved \(url.lastPathComponent)")
-                    .font(.callout.weight(.semibold))
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-                Text("It's in your Recordings. Keep editing, clear the edits, or edit the exported file.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+    // MARK: tools under the player
+
+    private var toolsRow: some View {
+        HStack(spacing: 8) {
+            ViewThatFits(in: .horizontal) {
+                toolButtons(spacing: 10)
+                toolButtons(spacing: 6).controlSize(.small)
             }
-            Spacer()
-            Button("Edit Exported Video") {
-                vm.editExportedVideo()
-            }
-            .buttonStyle(.borderedProminent)
-            Button("Clear Edits") {
-                vm.clearAllEdits()
-            }
-            .help("Remove all cuts, trims, crop and merge clips — undoable with ⌘Z")
-            Button {
-                vm.lastExportURL = nil
-            } label: {
-                Image(systemName: "xmark")
-                    .font(.caption.bold())
-            }
-            .buttonStyle(.plain)
-            .foregroundStyle(.secondary)
-            .help("Keep editing")
+            Spacer(minLength: 8)
+            Text(vm.selection == nil ? "Tools act at the playhead" : "Tools act on your selection")
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
-        .editorCard(padding: 12, cornerRadius: 10)
+        .frame(height: 40)
     }
 
-    // MARK: tools above the timeline (the window toolbar holds undo, mode, effects, cancel, save)
-
-    @ViewBuilder
-    private func toolsContent(spacing: CGFloat) -> some View {
+    private func toolButtons(spacing: CGFloat) -> some View {
         HStack(spacing: spacing) {
-            Button {
-                vm.deleteSelectedCut()
-            } label: {
-                Label("Delete Cut", systemImage: "trash")
+            toolButton("Blur", icon: "eye.slash", help: "Hide something on screen. Drag over the video after choosing.") {
+                vm.beginAnnotationPlacement(.blur)
             }
-            .disabled(vm.selectedCutID == nil)
-            .keyboardShortcut(.delete, modifiers: [])
-            .help("Remove the selected cut region")
-
-            Divider().frame(height: 18).padding(.horizontal, spacing >= 8 ? 2 : -2)
-
+            toolButton("Text", icon: "textformat", help: "Put a line of text on the video") {
+                vm.beginAnnotationPlacement(.text)
+            }
+            toolButton("Arrow", icon: "arrow.up.right", help: "Point at something. Drag from the tail to the tip.") {
+                vm.beginAnnotationPlacement(.arrow)
+            }
             Button {
                 vm.isCropping.toggle()
             } label: {
                 Label(vm.isCropping ? "Done Cropping" : "Crop", systemImage: "crop")
             }
-            .tint(vm.isCropping ? .yellow : nil)
-            .help("Drag a rectangle over the video to crop it on export")
-
-            if vm.cropRect != nil {
-                Button("Clear Crop") {
-                    vm.setCrop(nil)
-                }
-            }
-
+            .tint(vm.isCropping ? Brand.green : nil)
+            .help("Drag a rectangle over the video to cut away the edges")
 
             Button {
-                showMergeSourceToolbar.toggle()
+                showSpeed.toggle()
             } label: {
-                Label("Merge Videos…", systemImage: "plus.rectangle.on.rectangle")
+                Label("Speed", systemImage: "speedometer")
             }
-            .fixedSize()
-            .popover(isPresented: $showMergeSourceToolbar, arrowEdge: .bottom) {
-                mergeSourcePopover(isPresented: $showMergeSourceToolbar)
+            .popover(isPresented: $showSpeed, arrowEdge: .top) {
+                SpeedPopover(isPresented: $showSpeed)
+                    .environmentObject(vm)
             }
-            .help("Append one or more videos after this one — browse Files, or pick from your recordings")
+            .help("Play a stretch faster or slower")
 
-            if let audioURL = vm.overlayAudioURL {
-                HStack(spacing: 6) {
-                    Image(systemName: "music.note")
-                        .foregroundStyle(EditorTheme.accent)
-                    Button {
-                        showAudioOptions.toggle()
-                    } label: {
-                        Text(audioURL.deletingPathExtension().lastPathComponent)
-                            .lineLimit(1)
-                            .truncationMode(.middle)
-                            .frame(maxWidth: 80)
-                            .underline()
-                    }
-                    .buttonStyle(.plain)
-                    .help("Audio options: which part to use, repeat, volume")
-                    .popover(isPresented: $showAudioOptions, arrowEdge: .bottom) {
-                        audioOptionsPopover(name: audioURL.deletingPathExtension().lastPathComponent)
-                    }
-                    Menu {
-                        Button("Start at playhead (\(TimeFormatting.clock(vm.editedTimeAtPlayhead())))") {
-                            vm.overlayAudioStart = vm.editedTimeAtPlayhead()
-                        }
-                        Button("Start at 0:00") {
-                            vm.overlayAudioStart = 0
-                        }
-                    } label: {
-                        Text("at \(TimeFormatting.clock(vm.overlayAudioStart))")
-                            .font(.caption.monospaced())
-                    }
-                    .menuStyle(.button)
-                    .buttonStyle(.plain)
-                    .fixedSize()
-                    .help("Where the audio begins in the exported video — move the playhead, then pick 'Start at playhead'")
-                    Slider(value: $vm.overlayAudioVolume, in: 0...1)
-                        .frame(width: 56)
-                        .help("Background audio volume")
-                    Button {
-                        vm.overlayAudioURL = nil
-                    } label: {
-                        Image(systemName: "xmark.circle.fill")
-                            .foregroundStyle(.secondary)
-                    }
-                    .buttonStyle(.plain)
-                    .help("Remove the background audio")
-                }
-                .padding(.horizontal, 8)
-                .padding(.vertical, 4)
-                .background(Capsule().fill(Color.white.opacity(0.07)))
-                .help("Mixed over the video on export")
-            } else {
-                Button {
+            Menu {
+                Button("Merge Videos\u{2026}") { showMergeSource = true }
+                Button(vm.overlayAudioURL == nil ? "Add Audio\u{2026}" : "Change Audio\u{2026}") {
                     vm.addAudioPanel()
-                } label: {
-                    Label("Add Audio…", systemImage: "music.note")
                 }
-                .help("Mix a music or voiceover file over the video — applied on export")
+                Button("Open Another Video\u{2026}") { vm.openVideoPanel() }
+            } label: {
+                Label("More", systemImage: "ellipsis.circle")
             }
+            .menuStyle(.button)
+            .fixedSize()
+            .popover(isPresented: $showMergeSource, arrowEdge: .top) {
+                mergeSourcePopover(isPresented: $showMergeSource)
+            }
+            .help("Join more videos, add background audio, or open a different video")
+        }
+    }
 
-            }
+    private func toolButton(_ title: String, icon: String, help: String,
+                            action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Label(title, systemImage: icon)
+        }
+        .help(help)
     }
 
     /// Shared "add videos to merge" popover: Browse Files… pinned at the top
@@ -657,7 +532,7 @@ struct EditorView: View {
             let isError = vm.errorMessage != nil
             HStack(spacing: 8) {
                 Image(systemName: isError ? "exclamationmark.triangle.fill" : "checkmark.circle.fill")
-                    .foregroundStyle(isError ? .red : .green)
+                    .foregroundStyle(isError ? EditorTheme.danger : Brand.green)
                 Text(message)
                     .font(.callout)
                     .lineLimit(3)
@@ -674,7 +549,7 @@ struct EditorView: View {
             .padding(.vertical, 10)
             .greenroomGlass(in: RoundedRectangle(cornerRadius: 10, style: .continuous))
             .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .stroke((isError ? Color.red : Color.green).opacity(0.5), lineWidth: 1))
+                .stroke((isError ? EditorTheme.danger : Brand.green).opacity(0.5), lineWidth: 1))
             .padding(.top, 10)
             .frame(maxWidth: 560)
             .transition(.move(edge: .top).combined(with: .opacity))
@@ -685,127 +560,6 @@ struct EditorView: View {
                 if vm.exportMessage == message { vm.exportMessage = nil }
             }
         }
-    }
-
-    /// All the applied-on-Save enhancements in one place.
-    private var effectsPopover: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("ANNOTATE (drag on the video after choosing)")
-                .font(.caption2.bold())
-                .foregroundStyle(.secondary)
-            HStack(spacing: 8) {
-                Button { startPlacement(.blur) } label: { Label("Blur", systemImage: "eye.slash") }
-                    .help("Hide sensitive content behind a blur box")
-                Button { startPlacement(.text) } label: { Label("Text", systemImage: "textformat") }
-                Button { startPlacement(.arrow) } label: { Label("Arrow", systemImage: "arrow.up.right") }
-            }
-            Divider()
-
-            Text("SPEED")
-                .font(.caption2.bold())
-                .foregroundStyle(.secondary)
-            // Custom control: AppKit-backed Slider rendered broken on the
-            // popover's first layout pass, whatever its configuration.
-            SpeedDial(value: $newSpeedFactor)
-            HStack {
-                Text("0.25×")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                Spacer()
-                Text("8×")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-            }
-            HStack(spacing: 8) {
-                Text("From")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                TextField("0:00", text: $speedFrom)
-                    .textFieldStyle(.greenroom)
-                    .frame(width: 62)
-                Text("To")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                TextField("0:10", text: $speedTo)
-                    .textFieldStyle(.greenroom)
-                    .frame(width: 62)
-                Spacer()
-                Text("prefilled from the playhead")
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
-            }
-            HStack(spacing: 8) {
-                Button {
-                    if let from = EditorViewModel.parseClock(speedFrom),
-                       let to = EditorViewModel.parseClock(speedTo) {
-                        vm.applySpeed(factor: newSpeedFactor, from: from, to: to)
-                        showEffectsPopover = false
-                    }
-                } label: {
-                    Label(String(format: "Apply %g× to range", newSpeedFactor),
-                          systemImage: newSpeedFactor < 1 ? "tortoise.fill" : "hare.fill")
-                }
-                .buttonStyle(.borderedProminent)
-                .disabled(!vm.mergeClips.isEmpty || abs(newSpeedFactor - 1) < 0.01)
-                Button {
-                    vm.applySpeedToWholeVideo(factor: newSpeedFactor)
-                    showEffectsPopover = false
-                } label: {
-                    if wholeVideoSpeedSegment != nil {
-                        Label(String(format: "Whole video %g×", wholeVideoSpeedSegment?.factor ?? 1),
-                              systemImage: "checkmark")
-                    } else {
-                        Text("Whole video")
-                    }
-                }
-                .tint(wholeVideoSpeedSegment != nil ? .orange : nil)
-                .buttonStyle(.bordered)
-                .disabled(!vm.mergeClips.isEmpty || abs(newSpeedFactor - 1) < 0.01)
-            }
-            if !vm.speedSegments.isEmpty {
-                Text(vm.speedSegments.map {
-                    String(format: "%g× %@–%@", $0.factor,
-                           TimeFormatting.clock($0.start), TimeFormatting.clock($0.end))
-                }.joined(separator: "  ·  "))
-                    .font(.caption)
-                    .foregroundStyle(.orange)
-            }
-            if !vm.mergeClips.isEmpty {
-                Text("Speed segments aren't available while merge clips are added.")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-            } else {
-                Text("Below 1× is slow motion. Segments can be adjusted or removed in the side panel.")
-                    .fixedSize(horizontal: false, vertical: true)
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-            }
-
-            Text("Everything here is rendered into the video when you Save.")
-                .font(.caption2)
-                .foregroundStyle(.tertiary)
-        }
-        .padding(16)
-        .frame(width: 340)
-    }
-
-    private func startPlacement(_ kind: EditedEffects.Annotation.Kind) {
-        showEffectsPopover = false
-        vm.beginAnnotationPlacement(kind)
-    }
-
-    private var toolsRow: some View {
-        // Adapts to the real available width: full labels when roomy,
-        // tighter when narrow. Labels always stay text.
-        HStack(spacing: 10) {
-            ViewThatFits(in: .horizontal) {
-                toolsContent(spacing: 12)
-                toolsContent(spacing: 8)
-                toolsContent(spacing: 5).controlSize(.small)
-            }
-            Spacer(minLength: 8)
-        }
-        .frame(height: 46)   // horizontal ScrollViews are vertically greedy
     }
 
     /// Full background-audio controls: the slice of the file to use,
@@ -850,7 +604,7 @@ struct EditorView: View {
                 Slider(value: $vm.overlayAudioVolume, in: 0...1)
             }
 
-            Text("Starts in the video at \(TimeFormatting.clock(vm.overlayAudioStart)) — use the \u{201c}at\u{201d} menu in the toolbar or drag the green bar on the timeline.")
+            Text("Starts in the video at \(TimeFormatting.clock(vm.overlayAudioStart)) — drag the green bar under the timeline to move it.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -859,222 +613,280 @@ struct EditorView: View {
         .frame(width: 320)
     }
 
-    // MARK: side panel
+    // MARK: Edits panel
 
+    private var hasAnyEdit: Bool {
+        vm.trimIsSet || !vm.cuts.isEmpty || !vm.annotations.isEmpty || !vm.speedSegments.isEmpty
+            || vm.cropRect != nil || !vm.mergeClips.isEmpty || vm.overlayAudioURL != nil
+    }
 
-    private var sidePanel: some View {
+    private var editsPanel: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 18) {
-                panelSection("FILE INFO") {
-                    infoRow("Name", vm.sourceURL?.lastPathComponent ?? "—")
-                    infoRow("Duration", TimeFormatting.clock(vm.duration))
-                    infoRow("Size", vm.fileSizeText)
-                    infoRow("Dimensions", "\(Int(vm.videoSize.width)) × \(Int(vm.videoSize.height))")
-                    infoRow("Edited length", TimeFormatting.clock(vm.editedDuration))
-                    Button("Load another video…") {
-                        vm.openVideoPanel()
-                    }
-                    .font(.caption)
-                    .help("Open a different video file in the editor")
+            VStack(alignment: .leading, spacing: 14) {
+                if !hasAnyEdit {
+                    emptyEditsHint
                 }
 
-                panelSection("CUTS (\(vm.cuts.count))") {
-                    if vm.cuts.isEmpty {
-                        Text("Switch to Cut mode and drag on the timeline.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                    ForEach(vm.cuts) { cut in
-                        HStack {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("\(TimeFormatting.clock(cut.start)) → \(TimeFormatting.clock(cut.end))")
-                                    .font(.system(.callout, design: .monospaced))
-                                Text("\(TimeFormatting.spoken(cut.duration)) removed")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
-                            Spacer()
-                            Button {
-                                vm.deleteCut(id: cut.id)
-                            } label: {
-                                Image(systemName: "xmark")
-                                    .font(.caption)
-                            }
-                            .buttonStyle(.plain)
-                            .foregroundStyle(.secondary)
+                if vm.trimIsSet {
+                    panelSection("TRIM") {
+                        if vm.trimStart > 0.05 {
+                            trimRow("Start", time: vm.trimStart) { vm.resetTrimStart() }
                         }
-                        .padding(8)
-                        .background(
-                            RoundedRectangle(cornerRadius: 6)
-                                .fill(vm.selectedCutID == cut.id ? Color.red.opacity(0.18) : Color.secondary.opacity(0.08)))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 6)
-                                .stroke(vm.selectedCutID == cut.id ? Color.red.opacity(0.6) : .clear))
-                        .contentShape(Rectangle())
-                        .onTapGesture {
-                            vm.selectedCutID = cut.id
-                            vm.seek(to: cut.start)
+                        if vm.trimEnd < vm.duration - 0.05 {
+                            trimRow("End", time: vm.trimEnd) { vm.resetTrimEnd() }
                         }
                     }
                 }
 
-                panelSection("MERGE (\(vm.mergeClips.count))") {
-                    Text("Videos appended after this one on export, in this order.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    ForEach(Array(vm.mergeClips.enumerated()), id: \.element.id) { index, clip in
-                        HStack(spacing: 8) {
-                            Text("\(index + 1)")
-                                .font(.caption.bold().monospaced())
-                                .foregroundStyle(EditorTheme.accent)
-                                .frame(width: 18, height: 18)
-                                .background(Circle().fill(EditorTheme.accent.opacity(0.15)))
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(clip.url.lastPathComponent)
-                                    .font(.callout)
-                                    .lineLimit(1)
-                                    .truncationMode(.middle)
-                                Text(clip.isTrimmed
-                                     ? "\(TimeFormatting.clock(clip.trimmedDuration)) of \(TimeFormatting.clock(clip.duration)) (trimmed)"
-                                     : TimeFormatting.clock(clip.duration))
-                                    .font(.caption)
-                                    .foregroundStyle(clip.isTrimmed ? Color.purple : .secondary)
-                            }
-                            Spacer()
-                            VStack(spacing: 2) {
-                                Button {
-                                    vm.moveMergeClip(id: clip.id, up: true)
-                                } label: {
-                                    Image(systemName: "chevron.up").font(.system(size: 9, weight: .bold))
+                if !vm.cuts.isEmpty {
+                    panelSection("REMOVED STRETCHES") {
+                        ForEach(vm.cuts) { cut in
+                            editRow(selected: vm.selectedCutID == cut.id,
+                                    onTap: { vm.selectedCutID = cut.id; vm.selection = nil; vm.seek(to: cut.start) },
+                                    onRemove: { vm.deleteCut(id: cut.id) }) {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("\(TimeFormatting.clock(cut.start)) → \(TimeFormatting.clock(cut.end))")
+                                        .font(.system(.callout, design: .monospaced))
+                                    Text("\(TimeFormatting.spoken(cut.duration)) removed")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
                                 }
-                                .buttonStyle(.plain)
-                                .foregroundStyle(index == 0 ? .quaternary : .secondary)
-                                .disabled(index == 0)
-                                .help("Move this clip earlier")
-                                Button {
-                                    vm.moveMergeClip(id: clip.id, up: false)
-                                } label: {
-                                    Image(systemName: "chevron.down").font(.system(size: 9, weight: .bold))
-                                }
-                                .buttonStyle(.plain)
-                                .foregroundStyle(index == vm.mergeClips.count - 1 ? .quaternary : .secondary)
-                                .disabled(index == vm.mergeClips.count - 1)
-                                .help("Move this clip later")
                             }
-                            Button {
-                                vm.removeMergeClip(id: clip.id)
-                            } label: {
-                                Image(systemName: "xmark")
-                                    .font(.caption)
-                            }
-                            .buttonStyle(.plain)
-                            .foregroundStyle(.secondary)
                         }
-                        .padding(8)
-                        .background(RoundedRectangle(cornerRadius: 6).fill(Color.secondary.opacity(0.08)))
                     }
-                    Button {
-                        showMergeSourcePanel.toggle()
-                    } label: {
-                        Label("Add videos…", systemImage: "plus")
-                            .font(.caption)
-                    }
-                    .popover(isPresented: $showMergeSourcePanel, arrowEdge: .bottom) {
-                        mergeSourcePopover(isPresented: $showMergeSourcePanel)
-                    }
-                    .help("Append more videos to the export — browse Files, or pick from your recordings")
                 }
 
                 if !vm.annotations.isEmpty {
-                    panelSection("ANNOTATIONS (\(vm.annotations.count))") {
+                    panelSection("BLUR, TEXT AND ARROWS") {
                         ForEach($vm.annotations) { $annotation in
-                            VStack(alignment: .leading, spacing: 4) {
-                                HStack(spacing: 6) {
-                                    Image(systemName: annotation.kind == .blur ? "eye.slash"
-                                          : annotation.kind == .text ? "textformat" : "arrow.up.right")
-                                        .foregroundStyle(EditorTheme.accent)
-                                    Text("\(TimeFormatting.clock(annotation.start)) – \(TimeFormatting.clock(annotation.end))")
-                                        .font(.caption.monospaced())
-                                    Spacer()
-                                    Button {
-                                        vm.removeAnnotation(id: annotation.id)
-                                    } label: {
-                                        Image(systemName: "xmark")
+                            editRow(selected: vm.selectedAnnotationID == annotation.id,
+                                    onTap: { vm.selectedAnnotationID = annotation.id; vm.seek(to: annotation.start) },
+                                    onRemove: { vm.removeAnnotation(id: annotation.id) }) {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    HStack(spacing: 6) {
+                                        Image(systemName: annotation.kind == .blur ? "eye.slash"
+                                              : annotation.kind == .text ? "textformat" : "arrow.up.right")
+                                            .foregroundStyle(Brand.text)
+                                        Text("\(TimeFormatting.clock(annotation.start)) – \(TimeFormatting.clock(annotation.end))")
+                                            .font(.caption.monospaced())
+                                    }
+                                    if annotation.kind == .text {
+                                        TextField("Text", text: $annotation.text)
+                                            .textFieldStyle(.greenroom)
                                             .font(.caption)
                                     }
-                                    .buttonStyle(.plain)
-                                    .foregroundStyle(.secondary)
-                                }
-                                if annotation.kind == .text {
-                                    TextField("Text", text: $annotation.text)
-                                        .textFieldStyle(.greenroom)
-                                        .font(.caption)
                                 }
                             }
-                            .padding(8)
-                            .background(RoundedRectangle(cornerRadius: 6).fill(Color.secondary.opacity(0.08)))
                         }
-                        Text("Shown from the playhead where you placed them; rendered on Save.")
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
                     }
                 }
 
                 if !vm.speedSegments.isEmpty {
-                    panelSection("SPEED (\(vm.speedSegments.count))") {
+                    panelSection("SPEED") {
                         ForEach(vm.speedSegments) { segment in
-                            HStack(spacing: 6) {
-                                Text(String(format: "%g×", segment.factor))
-                                    .font(.caption.bold())
-                                    .foregroundStyle(.orange)
-                                Text("\(TimeFormatting.clock(segment.start)) – \(TimeFormatting.clock(segment.end))")
-                                    .font(.caption.monospaced())
-                                Spacer()
-                                Button {
-                                    vm.removeSpeedSegment(id: segment.id)
-                                } label: {
-                                    Image(systemName: "xmark")
-                                        .font(.caption)
+                            editRow(selected: vm.selectedSpeedID == segment.id,
+                                    onTap: { vm.selectedSpeedID = segment.id; vm.seek(to: segment.start) },
+                                    onRemove: { vm.removeSpeedSegment(id: segment.id) }) {
+                                HStack(spacing: 6) {
+                                    Text(String(format: "%g×", segment.factor))
+                                        .font(.caption.bold())
+                                    Text("\(TimeFormatting.clock(segment.start)) – \(TimeFormatting.clock(segment.end))")
+                                        .font(.caption.monospaced())
                                 }
-                                .buttonStyle(.plain)
-                                .foregroundStyle(.secondary)
                             }
-                            .padding(8)
-                            .background(RoundedRectangle(cornerRadius: 6).fill(Color.secondary.opacity(0.08)))
                         }
-                        Text("Preview plays these faster; the saved video is shortened to match.")
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
                     }
                 }
 
-                panelSection("CROP") {
-                    if let crop = vm.cropRect {
-                        Text("\(Int(crop.width * vm.videoSize.width)) × \(Int(crop.height * vm.videoSize.height)) px")
-                            .font(.system(.callout, design: .monospaced))
-                        Text("Previewing the crop — saved on export.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    } else {
-                        Text("No crop. Use the Crop button under the player.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+                if let crop = vm.cropRect {
+                    panelSection("CROP") {
+                        editRow(selected: false, onTap: { vm.isCropping = true },
+                                onRemove: { vm.setCrop(nil) }) {
+                            Text("\(Int(crop.width * vm.videoSize.width)) × \(Int(crop.height * vm.videoSize.height)) px")
+                                .font(.system(.callout, design: .monospaced))
+                        }
                     }
                 }
 
-                if let message = vm.exportMessage {
-                    Label(message, systemImage: "checkmark.circle.fill")
-                        .foregroundStyle(.green)
-                        .font(.caption)
+                if !vm.mergeClips.isEmpty {
+                    panelSection("EXTRA CLIPS") {
+                        Text("Joined after this video, in this order.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        ForEach(Array(vm.mergeClips.enumerated()), id: \.element.id) { index, clip in
+                            mergeClipRow(index: index, clip: clip)
+                        }
+                    }
                 }
-                if let message = vm.errorMessage {
-                    Text(message)
-                        .foregroundStyle(.red)
-                        .font(.caption)
+
+                if let audioURL = vm.overlayAudioURL {
+                    panelSection("AUDIO") {
+                        let name = audioURL.deletingPathExtension().lastPathComponent
+                        editRow(selected: false, onTap: { showAudioOptions = true },
+                                onRemove: { vm.overlayAudioURL = nil }) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Label(name, systemImage: "music.note")
+                                    .font(.callout)
+                                    .lineLimit(1)
+                                    .truncationMode(.middle)
+                                Text("Starts at \(TimeFormatting.clock(vm.overlayAudioStart)). Click for options.")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        .popover(isPresented: $showAudioOptions, arrowEdge: .leading) {
+                            audioOptionsPopover(name: name)
+                        }
+                        HStack {
+                            Image(systemName: "speaker.fill").foregroundStyle(.secondary)
+                            Slider(value: $vm.overlayAudioVolume, in: 0...1)
+                        }
+                        .help("Background audio volume")
+                    }
                 }
+
+                if vm.hasRecordedEvents {
+                    panelSection("RECORDED CLICKS AND KEYS") {
+                        Toggle("Click ripples", isOn: $vm.showClickRipples)
+                            .help("Show a ripple wherever you clicked while recording")
+                        Toggle("Keystrokes", isOn: $vm.showKeystrokes)
+                            .help("Show the keys you pressed on screen")
+                        Toggle("Auto zoom", isOn: $vm.autoZoom)
+                            .help("Zoom in around your clicks")
+                    }
+                    .toggleStyle(.switch)
+                    .controlSize(.small)
+                }
+
+                Text(infoLine)
+                    .font(.system(size: 10, design: .monospaced))
+                    .foregroundStyle(.tertiary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .padding(.top, 4)
             }
             .padding(14)
+            .animation(.snappy(duration: 0.2), value: hasAnyEdit)
         }
+    }
+
+    private var infoLine: String {
+        "\(Int(vm.videoSize.width)) × \(Int(vm.videoSize.height)) · \(vm.fileSizeText) · \(TimeFormatting.clock(vm.editedDuration)) edited"
+    }
+
+    private var emptyEditsHint: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Nothing edited yet")
+                .font(.headline)
+            hintRow("arrow.left.and.right", "Drag the edges of the bar to trim the start or end.")
+            hintRow("rectangle.dashed", "Drag across the bar to select a stretch, then remove it, speed it up or blur it.")
+            hintRow("cursorarrow.click", "Click the bar to jump to that moment.")
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.vertical, 4)
+    }
+
+    private func hintRow(_ icon: String, _ text: String) -> some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: icon)
+                .foregroundStyle(Brand.text)
+                .frame(width: 18)
+            Text(text)
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private func trimRow(_ label: String, time: Double, reset: @escaping () -> Void) -> some View {
+        editRow(selected: false, onTap: { vm.seek(to: time) }, onRemove: reset) {
+            HStack {
+                Text(label).foregroundStyle(.secondary)
+                Text(TimeFormatting.clock(time))
+                    .font(.system(.callout, design: .monospaced))
+            }
+            .font(.callout)
+        }
+    }
+
+    private func mergeClipRow(index: Int, clip: MergeClip) -> some View {
+        HStack(spacing: 8) {
+            Text("\(index + 1)")
+                .font(.caption.bold().monospaced())
+                .foregroundStyle(Brand.text)
+                .frame(width: 18, height: 18)
+                .background(Circle().fill(Brand.green.opacity(0.15)))
+            VStack(alignment: .leading, spacing: 2) {
+                Text(clip.url.lastPathComponent)
+                    .font(.callout)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                Text(clip.isTrimmed
+                     ? "\(TimeFormatting.clock(clip.trimmedDuration)) of \(TimeFormatting.clock(clip.duration)) (trimmed)"
+                     : TimeFormatting.clock(clip.duration))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+            VStack(spacing: 2) {
+                Button {
+                    vm.moveMergeClip(id: clip.id, up: true)
+                } label: {
+                    Image(systemName: "chevron.up").font(.system(size: 9, weight: .bold))
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(index == 0 ? .quaternary : .secondary)
+                .disabled(index == 0)
+                .help("Move this clip earlier")
+                Button {
+                    vm.moveMergeClip(id: clip.id, up: false)
+                } label: {
+                    Image(systemName: "chevron.down").font(.system(size: 9, weight: .bold))
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(index == vm.mergeClips.count - 1 ? .quaternary : .secondary)
+                .disabled(index == vm.mergeClips.count - 1)
+                .help("Move this clip later")
+            }
+            Button {
+                vm.removeMergeClip(id: clip.id)
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.caption)
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(.secondary)
+            .help("Take this clip out")
+        }
+        .padding(8)
+        .background(RoundedRectangle(cornerRadius: 6).fill(Color.secondary.opacity(0.08)))
+    }
+
+    /// One row of the Edits list: tap to jump to it, x to take it away.
+    private func editRow<Content: View>(selected: Bool,
+                                        onTap: @escaping () -> Void,
+                                        onRemove: @escaping () -> Void,
+                                        @ViewBuilder content: () -> Content) -> some View {
+        HStack {
+            content()
+            Spacer(minLength: 6)
+            Button(action: onRemove) {
+                Image(systemName: "xmark")
+                    .font(.caption)
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(.secondary)
+            .help("Remove this edit")
+        }
+        .padding(8)
+        .background(
+            RoundedRectangle(cornerRadius: 6)
+                .fill(selected ? Brand.green.opacity(0.16) : Color.secondary.opacity(0.08)))
+        .overlay(
+            RoundedRectangle(cornerRadius: 6)
+                .stroke(selected ? Brand.green.opacity(0.6) : .clear))
+        .contentShape(Rectangle())
+        .onTapGesture(perform: onTap)
     }
 
     private func panelSection<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
@@ -1085,17 +897,171 @@ struct EditorView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .editorCard(padding: 12, cornerRadius: 10)
     }
+}
 
-    private func infoRow(_ label: String, _ value: String) -> some View {
-        HStack {
-            Text(label).foregroundStyle(.secondary)
-            Spacer()
-            Text(value)
-                .font(.system(.callout, design: .monospaced))
-                .lineLimit(1)
-                .truncationMode(.middle)
+/// Speed for a stretch: the selection if there is one, else the playhead plus
+/// ten seconds. Also offered for the whole video.
+struct SpeedPopover: View {
+    @EnvironmentObject private var vm: EditorViewModel
+    @Binding var isPresented: Bool
+    @State private var factor: Double = 2
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("SPEED")
+                .font(.caption2.bold())
+                .foregroundStyle(.secondary)
+            // Custom control: AppKit-backed Slider rendered broken on the
+            // popover's first layout pass, whatever its configuration.
+            SpeedDial(value: $factor)
+            HStack {
+                Text("0.25×").font(.caption2).foregroundStyle(.secondary)
+                Spacer()
+                Text("8×").font(.caption2).foregroundStyle(.secondary)
+            }
+            if vm.mergeClips.isEmpty {
+                let span = vm.toolSpan(defaultLength: 10)
+                Text(vm.selection == nil
+                     ? "From the playhead, \(TimeFormatting.clock(span.0)) to \(TimeFormatting.clock(span.1)). Select a stretch first to choose your own."
+                     : "For your selection, \(TimeFormatting.clock(span.0)) to \(TimeFormatting.clock(span.1)).")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                HStack(spacing: 8) {
+                    Button {
+                        vm.applySpeedToSelection(factor: factor)
+                        isPresented = false
+                    } label: {
+                        Text(String(format: "Apply %g×", factor))
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(Brand.green)
+                    .disabled(abs(factor - 1) < 0.01)
+                    Button("Whole video") {
+                        vm.applySpeedToWholeVideo(factor: factor)
+                        isPresented = false
+                    }
+                    .disabled(abs(factor - 1) < 0.01)
+                }
+                Text("Below 1× is slow motion. The saved video is shortened or stretched to match.")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else {
+                Text("Speed can't be combined with extra clips. Take the extra clips out first.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
-        .font(.callout)
+        .padding(16)
+        .frame(width: 300)
+        .onAppear {
+            if let at = vm.speedSegments.first(where: { vm.playhead >= $0.start && vm.playhead < $0.end }) {
+                factor = at.factor
+            }
+        }
+    }
+}
+
+/// Keys for the editor, caught at the window so they never fire while a text
+/// field is being typed in. Installed while the editor page is showing.
+final class EditorKeyMonitor {
+    private var monitor: Any?
+
+    func install(vm: EditorViewModel) {
+        remove()
+        monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+            let handled = MainActor.assumeIsolated { Self.handle(event, vm: vm) }
+            return handled ? nil : event
+        }
+    }
+
+    func remove() {
+        if let monitor { NSEvent.removeMonitor(monitor) }
+        monitor = nil
+    }
+
+    deinit { remove() }
+
+    @MainActor
+    private static func handle(_ event: NSEvent, vm: EditorViewModel) -> Bool {
+        guard vm.hasVideo, vm.savedExportURL == nil, !vm.isExporting,
+              let window = event.window,
+              window.styleMask.contains(.titled), window.attachedSheet == nil,
+              window.title == "Greenroom",
+              !(window.firstResponder is NSText) else { return false }
+
+        let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+        let key = event.charactersIgnoringModifiers ?? ""
+        let command = flags.contains(.command)
+
+        if command {
+            // Zoom the timeline.
+            guard !flags.contains(.option), !flags.contains(.control) else { return false }
+            if key == "=" || key == "+" {
+                vm.timelineZoom = min(16, vm.timelineZoom * 2)
+                return true
+            }
+            if key == "-" {
+                vm.timelineZoom = max(1, vm.timelineZoom / 2)
+                return true
+            }
+            return false
+        }
+        guard !flags.contains(.control), !flags.contains(.option) else { return false }
+        let shift = flags.contains(.shift)
+
+        switch event.keyCode {
+        case 49:   // space
+            vm.togglePlay()
+            return true
+        case 123:  // left
+            vm.step(by: shift ? -1 : -5)
+            return true
+        case 124:  // right
+            vm.step(by: shift ? 1 : 5)
+            return true
+        case 51, 117:  // delete, forward delete
+            if vm.selection != nil {
+                vm.removeSelection()
+            } else if vm.selectedCutID != nil {
+                vm.deleteSelectedCut()
+            } else if let id = vm.selectedAnnotationID {
+                vm.removeAnnotation(id: id)
+            } else if let id = vm.selectedSpeedID {
+                vm.removeSpeedSegment(id: id)
+            } else {
+                return false
+            }
+            return true
+        case 53:   // escape
+            if vm.hasSomethingToDismiss {
+                vm.dismissSelections()
+            } else {
+                vm.backRequests += 1
+            }
+            return true
+        default:
+            break
+        }
+
+        guard !shift else { return false }
+        switch key {
+        case "[":
+            vm.setTrimStartToPlayhead()
+        case "]":
+            vm.setTrimEndToPlayhead()
+        case "i":
+            vm.setSelectionStart(to: vm.playhead)
+        case "o":
+            vm.setSelectionEnd(to: vm.playhead)
+        case "b":
+            vm.beginAnnotationPlacement(.blur)
+        default:
+            return false
+        }
+        return true
     }
 }
 
@@ -1207,7 +1173,7 @@ struct SpeedDial: View {
                 // The exact value rides right above the knob.
                 Text(String(format: "%g×", value))
                     .font(.caption.monospacedDigit().weight(.bold))
-                    .foregroundStyle(value < 1 ? Color.cyan : Color.orange)
+                    .foregroundStyle(value < 1 ? Color.primary : Brand.text)
                     .padding(.horizontal, 6)
                     .padding(.vertical, 2)
                     .background(Capsule().fill(Color.black.opacity(0.55)))

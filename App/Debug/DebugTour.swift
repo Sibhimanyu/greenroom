@@ -358,8 +358,8 @@ enum DebugTour {
         case "editor":
             guard let p = ScreenroomLibrary.presentations().first(where: { $0.recording != nil }),
                   let url = p.recording else { throw TourError("no recording") }
-            guard let open = openWindowByID, let editor else { throw TourError("bridge not ready") }
-            open("editor")                      // as the Edit button does
+            guard let editor else { throw TourError("bridge not ready") }
+            c.mainPage = .editor(p.folder.path) // as the Edit button does
             await editor.load(url: url)
         case "settings":
             guard let open = openSettingsWindow else { throw TourError("bridge not ready") }
@@ -378,7 +378,7 @@ enum DebugTour {
         for w in NSApp.windows where !before.contains(ObjectIdentifier(w)) && w.isVisible {
             opened.append(w)
         }
-        if ["editor", "settings", "chat"].contains(page) {
+        if ["settings", "chat"].contains(page) {
             for w in NSApp.windows where !MainWindow.matches(w) && w.isVisible
                 && (opened.contains(w) || page == "chat") { w.orderBack(nil) }
         }

@@ -1797,6 +1797,7 @@ final class CoordinatorController: ObservableObject {
             stageLive = false
             isRunning = false
             isStopping = false
+            warmUpForStart()
             sessionTemplate = nil
             speakerTileQuickHidden = false
             resumePreviewIfWanted()
@@ -2475,6 +2476,8 @@ final class CoordinatorController: ObservableObject {
         case sessions
         case detail(String)
         case report(String)
+        /// The video editor, in place of the session's page.
+        case editor(String)
 
         var isHome: Bool { self == .home }
     }
@@ -2484,7 +2487,7 @@ final class CoordinatorController: ObservableObject {
     /// One step back: report to its session, session to the grid, grid to Home.
     func goBack() {
         switch mainPage {
-        case .report(let id): mainPage = .detail(id)
+        case .report(let id), .editor(let id): mainPage = .detail(id)
         case .detail: mainPage = .sessions
         case .sessions: mainPage = .home
         case .home: break
@@ -4323,19 +4326,38 @@ final class CoordinatorController: ObservableObject {
     /// unreachable by construction.
     private func prepareMeetingIfNeeded() async throws -> ZoomServerToServerClient.CreatedMeeting? {
         guard meetingMode == .create else { return nil }
-        // Both are network calls to Zoom with no limit of their own that a
-        // person would call short. The clean-up is a courtesy and is dropped if
-        // slow; the creation is the step the whole start needs.
+        // Both are network calls to Zoom. The clean-up is a courtesy and is
+        // dropped if slow; the creation is the step the whole start needs.
+        // They run side by side: Zoom's one-live-meeting rule only bites when
+        // the SDK starts the new meeting, and this function returns (so
+        // startAsHost can run) only after the clean-up has finished or timed out.
+        async let staleCheck: Void = runStaleCheck()
+        let created: ZoomServerToServerClient.CreatedMeeting
+        do {
+            created = try await withStartTimeout(30, step: "Creating the meeting",
+                advice: "Check your internet connection and the Server-to-Server credentials in Settings (\u{2318},) \u{2192} Zoom, then press Try again.") {
+                try await self.createMeetingViaAPI()
+            }
+        } catch {
+            await staleCheck
+            throw error
+        }
+        await staleCheck
+        // Ended only now that the new meeting's id is known, so it can never
+        // be the one that is ended.
+        await endStaleMeetings(except: created.number)
+        return created
+    }
+
+    private var staleLiveFound: [Int64] = []
+
+    private func runStaleCheck() async {
         do {
             try await withStartTimeout(15, step: "Checking for meetings left running",
-                                       advice: "Carrying on without it.") { await self.endStaleLiveMeetings() }
+                                       advice: "Carrying on without it.") { await self.findStaleLiveMeetings() }
         } catch let error as StartTimeoutError {
             Self.sessionLog("Pre-flight: \(error.localizedDescription)")
-        }
-        return try await withStartTimeout(30, step: "Creating the meeting",
-            advice: "Check your internet connection and the Server-to-Server credentials in Settings (\u{2318},) \u{2192} Zoom, then press Try again.") {
-            try await self.createMeetingViaAPI()
-        }
+        } catch {}
     }
 
     /// Ends any meeting still live on the account before starting a new one.
@@ -4355,10 +4377,17 @@ final class CoordinatorController: ObservableObject {
     /// Logs the clean case too. Finding nothing live is the result that
     /// DISPROVES this being the cause of a failed start, and that is worth as
     /// much as finding something when the next one goes wrong.
-    private func endStaleLiveMeetings() async {
+    private func findStaleLiveMeetings() async {
+        staleLiveFound = []
         guard !s2sAccountID.isEmpty, !s2sClientID.isEmpty, !s2sClientSecret.isEmpty else { return }
         let live = await ZoomServerToServerClient.liveMeetings(
             accountID: s2sAccountID, clientID: s2sClientID, clientSecret: s2sClientSecret)
+        staleLiveFound = live
+    }
+
+    private func endStaleMeetings(except newNumber: String) async {
+        let live = staleLiveFound.filter { String($0) != newNumber }
+        staleLiveFound = []
         guard !live.isEmpty else {
             Self.sessionLog("Pre-flight: no meetings already live on the account.")
             return
@@ -4405,6 +4434,27 @@ final class CoordinatorController: ObservableObject {
     private func prefetchSDKAuth() async {
         guard !sdkClientID.isEmpty, !sdkClientSecret.isEmpty else { return }
         try? await zoomChatClient.ensureReady(clientID: sdkClientID, clientSecret: sdkClientSecret)
+    }
+
+    /// Quietly gets the two slow, silent parts of Start done while idle: the
+    /// Server-to-Server token (cached in ZoomServerToServerClient) and the
+    /// Meeting SDK init + auth (ensureReady is idempotent and de-duplicates
+    /// with a later call). Neither opens UI or asks for a permission; the
+    /// secrets are plain UserDefaults, not Keychain. Skipped while a session
+    /// is running or starting.
+    func warmUpForStart() {
+        guard !isRunning, !isStopping, !isConnectingChat else { return }
+        loadSecretsIfNeeded()
+        let s2s = (s2sAccountID, s2sClientID, s2sClientSecret)
+        let sdk = (sdkClientID, sdkClientSecret)
+        Task { [weak self] in
+            if !s2s.0.isEmpty, !s2s.1.isEmpty, !s2s.2.isEmpty {
+                await ZoomServerToServerClient.warmToken(accountID: s2s.0, clientID: s2s.1, clientSecret: s2s.2)
+            }
+            guard let self, !sdk.0.isEmpty, !sdk.1.isEmpty else { return }
+            guard !self.isRunning, !self.isStopping, !self.isConnectingChat else { return }
+            try? await self.zoomChatClient.ensureReady(clientID: sdk.0, clientSecret: sdk.1)
+        }
     }
 
     private func createMeetingViaAPI() async throws -> ZoomServerToServerClient.CreatedMeeting {
@@ -5069,7 +5119,9 @@ final class CoordinatorController: ObservableObject {
     /// stream of text that says WHY was both invisible to the teacher and gone
     /// the moment the app quit. Every diagnosis of a stalled start starts here.
     static func sessionLog(_ message: String) {
-        let line = "\(ISO8601DateFormatter().string(from: Date())) \(message)\n"
+        let stamp = ISO8601DateFormatter()
+        stamp.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        let line = "\(stamp.string(from: Date())) \(message)\n"
         let url = FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent("Library/Logs/Greenroom-session.log")
         if let handle = try? FileHandle(forWritingTo: url) {

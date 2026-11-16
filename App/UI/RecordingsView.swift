@@ -200,7 +200,6 @@ struct RecordingsView: View {
     @EnvironmentObject private var editor: EditorViewModel
     /// The window's sidebar column reads its badges and storage line from here.
     @EnvironmentObject private var sidebar: SessionsSidebarModel
-    @Environment(\.openWindow) private var openWindow
     @Environment(\.openSettings) private var openSettings
 
     /// The work in the rail's last card. Clips and notes are one list now.
@@ -236,7 +235,7 @@ struct RecordingsView: View {
     /// on the coordinator (mainPage), the one place the window's page is kept.
     private var detailSession: Session? {
         switch coordinator.mainPage {
-        case .detail(let id), .report(let id): return sessions.first { $0.id == id }
+        case .detail(let id), .report(let id), .editor(let id): return sessions.first { $0.id == id }
         default: return nil
         }
     }
@@ -251,12 +250,16 @@ struct RecordingsView: View {
             }
             if let session = detailSession {
                 detailPage(session)
-                    .opacity(isReport ? 0 : 1)
-                    .allowsHitTesting(!isReport)
-                    .accessibilityHidden(isReport)
+                    .opacity(isReport || isEditor ? 0 : 1)
+                    .allowsHitTesting(!(isReport || isEditor))
+                    .accessibilityHidden(isReport || isEditor)
             }
             if isReport {
                 ScreenroomReportView(onBack: { coordinator.goBack() })
+            }
+            // The editor is a page of this window, not a window of its own.
+            if isEditor {
+                EditorView(onBack: { coordinator.goBack() })
             }
         }
         // Grid, session, report: a short crossfade, not a hard swap. These
@@ -269,12 +272,14 @@ struct RecordingsView: View {
             load(newSelection)
             review.selectedRecording = newSelection?.url
         }
-        .onChange(of: coordinator.mainPage) { _, page in
+        .onChange(of: coordinator.mainPage) { old, page in
+            // Leaving the editor by any road ends the editing session.
+            if case .editor = old, !isEditor { editor.closeVideo(); editor.savedExportURL = nil }
             switch page {
             // Back on the grid: nothing is playing there.
             case .sessions: teardownPlayer()
             // Nobody listens to a recording under a report.
-            case .report: player?.pause()
+            case .report, .editor: player?.pause()
             default: break
             }
         }
@@ -286,6 +291,12 @@ struct RecordingsView: View {
         .onChange(of: coordinator.isUploadingToYouTube) { reload() }
         // A saved edit is its own new session folder.
         .onChange(of: editor.savedExportURL) { _, url in if url != nil { reload() } }
+        // Cancel, Discard, or Done after a save closes the editor's video;
+        // the page then goes back to the session. (Idle also holds before the
+        // load finishes, but then nothing changes, so nothing fires.)
+        .onChange(of: editorIdle) { _, idle in
+            if idle, isEditor { coordinator.goBack() }
+        }
         // An analysis finishing: the card gets its sparkles, and when this
         // page started the run, the report opens - that is what was asked for.
         .onChange(of: review.analysisRuns) {
@@ -303,6 +314,14 @@ struct RecordingsView: View {
         .init(cards: cards, storage: storageSummary,
               warningIsCritical: spaceLevel == .ok ? nil : spaceLevel == .critical)
     }
+
+    private var isEditor: Bool {
+        if case .editor = coordinator.mainPage { return true }
+        return false
+    }
+
+    /// No video loaded and no saved-export popup up.
+    private var editorIdle: Bool { !editor.hasVideo && editor.savedExportURL == nil }
 
     private var isReport: Bool {
         if case .report = coordinator.mainPage { return true }
@@ -354,7 +373,7 @@ struct RecordingsView: View {
         SessionDetailPage(
             model: inspectorModel(session),
             actions: inspectorActions(session),
-            isActive: !isReport,
+            isActive: !isReport && !isEditor,
             take: Binding(get: { selection?.url },
                           set: { url in selection = session.takes.first { $0.url == url } }),
             aspect: stageAspect,
@@ -688,7 +707,7 @@ struct RecordingsView: View {
         actions.trash = { if let take { confirmingDelete = take } }
         actions.edit = {
             guard let take else { return }
-            openWindow(id: "editor")
+            coordinator.mainPage = .editor(session.id)
             Task { await editor.load(url: take.url) }
         }
         return actions

@@ -39,6 +39,37 @@ enum ZoomServerToServerClient {
     private struct AccessTokenResponse: Decodable {
         let access_token: String
         let scope: String
+        let expires_in: Int?
+    }
+
+    /// One cached token per account+client. Zoom's S2S tokens last an hour;
+    /// every call used to fetch its own, so one Start paid for 2-3 round trips.
+    private static let tokenLock = NSLock()
+    private static var cachedTokens: [String: (token: String, expires: Date)] = [:]
+
+    private static func tokenKey(_ a: String, _ c: String) -> String { "\(a)|\(c)" }
+
+    private static func dropToken(accountID: String, clientID: String) {
+        tokenLock.lock(); cachedTokens[tokenKey(accountID, clientID)] = nil; tokenLock.unlock()
+    }
+
+    /// Runs a request built from the cached token; on a 401 drops the cache
+    /// and retries once with a fresh one.
+    private static func authorized(accountID: String, clientID: String, clientSecret: String,
+                                   build: (String) throws -> URLRequest) async throws -> (Data, URLResponse) {
+        var token = try await fetchAccessToken(accountID: accountID, clientID: clientID, clientSecret: clientSecret)
+        var result = try await URLSession.shared.data(for: try build(token))
+        if (result.1 as? HTTPURLResponse)?.statusCode == 401 {
+            dropToken(accountID: accountID, clientID: clientID)
+            token = try await fetchAccessToken(accountID: accountID, clientID: clientID, clientSecret: clientSecret)
+            result = try await URLSession.shared.data(for: try build(token))
+        }
+        return result
+    }
+
+    /// Fetches (and caches) the token ahead of Start. Silent; errors ignored.
+    static func warmToken(accountID: String, clientID: String, clientSecret: String) async {
+        _ = try? await fetchAccessToken(accountID: accountID, clientID: clientID, clientSecret: clientSecret)
     }
 
     private static func fetchAuthorization(accountID: String, clientID: String, clientSecret: String) async throws -> AccessTokenResponse {
@@ -57,7 +88,18 @@ enum ZoomServerToServerClient {
     }
 
     private static func fetchAccessToken(accountID: String, clientID: String, clientSecret: String) async throws -> String {
-        try await fetchAuthorization(accountID: accountID, clientID: clientID, clientSecret: clientSecret).access_token
+        let key = tokenKey(accountID, clientID)
+        tokenLock.lock()
+        if let hit = cachedTokens[key], hit.expires > Date() {
+            tokenLock.unlock(); return hit.token
+        }
+        tokenLock.unlock()
+        let auth = try await fetchAuthorization(accountID: accountID, clientID: clientID, clientSecret: clientSecret)
+        let lifetime = TimeInterval(auth.expires_in ?? 3600)
+        tokenLock.lock()
+        cachedTokens[key] = (auth.access_token, Date().addingTimeInterval(max(0, lifetime - 60)))
+        tokenLock.unlock()
+        return auth.access_token
     }
 
     /// Read the app's granted scopes without creating or ending a meeting.
@@ -77,15 +119,14 @@ enum ZoomServerToServerClient {
         clientID: String,
         clientSecret: String
     ) async throws -> CreatedMeeting {
-        let token = try await fetchAccessToken(accountID: accountID, clientID: clientID, clientSecret: clientSecret)
-
-        var request = URLRequest(url: URL(string: "https://api.zoom.us/v2/users/me/meetings")!)
-        request.httpMethod = "POST"
-        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody = try JSONSerialization.data(withJSONObject: ["topic": topic, "type": 1])
-
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await authorized(accountID: accountID, clientID: clientID, clientSecret: clientSecret) { token in
+            var request = URLRequest(url: URL(string: "https://api.zoom.us/v2/users/me/meetings")!)
+            request.httpMethod = "POST"
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.httpBody = try JSONSerialization.data(withJSONObject: ["topic": topic, "type": 1])
+            return request
+        }
         guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
             throw ZoomServerToServerError.createMeetingFailed(String(data: data, encoding: .utf8) ?? "unknown error")
         }
@@ -117,14 +158,12 @@ enum ZoomServerToServerClient {
     static func liveMeetings(accountID: String,
                              clientID: String,
                              clientSecret: String) async -> [Int64] {
-        guard let token = try? await fetchAccessToken(accountID: accountID,
-                                                      clientID: clientID,
-                                                      clientSecret: clientSecret),
-              let url = URL(string: "https://api.zoom.us/v2/users/me/meetings?type=live")
-        else { return [] }
-        var request = URLRequest(url: url)
-        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-        guard let (data, response) = try? await URLSession.shared.data(for: request),
+        guard let url = URL(string: "https://api.zoom.us/v2/users/me/meetings?type=live"),
+              let (data, response) = try? await authorized(accountID: accountID, clientID: clientID, clientSecret: clientSecret, build: { token in
+                  var request = URLRequest(url: url)
+                  request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+                  return request
+              }),
               let http = response as? HTTPURLResponse,
               (200...299).contains(http.statusCode),
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
@@ -156,17 +195,16 @@ enum ZoomServerToServerClient {
                                     accountID: String,
                                     clientID: String,
                                     clientSecret: String) async -> (ok: Bool, status: Int, code: Int?, detail: String) {
-        guard let token = try? await fetchAccessToken(accountID: accountID,
-                                                      clientID: clientID,
-                                                      clientSecret: clientSecret),
-              let url = URL(string: "https://api.zoom.us/v2/meetings/\(id)/status")
+        guard let url = URL(string: "https://api.zoom.us/v2/meetings/\(id)/status")
         else { return (false, 0, nil, "no access token") }
-        var request = URLRequest(url: url)
-        request.httpMethod = "PUT"
-        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody = try? JSONSerialization.data(withJSONObject: ["action": "end"])
-        guard let (data, response) = try? await URLSession.shared.data(for: request),
+        guard let (data, response) = try? await authorized(accountID: accountID, clientID: clientID, clientSecret: clientSecret, build: { token in
+                  var request = URLRequest(url: url)
+                  request.httpMethod = "PUT"
+                  request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+                  request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+                  request.httpBody = try? JSONSerialization.data(withJSONObject: ["action": "end"])
+                  return request
+              }),
               let http = response as? HTTPURLResponse else { return (false, 0, nil, "no response") }
         let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
         let detail = [json?["code"].map { "code=\($0)" }, json?["message"] as? String]

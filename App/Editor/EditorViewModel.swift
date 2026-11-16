@@ -24,11 +24,6 @@ struct MergeClip: Identifiable, Equatable {
     var isTrimmed: Bool { trimStart > 0.05 || trimEnd < duration - 0.05 }
 }
 
-enum TimelineMode: String, CaseIterable {
-    case trim = "Trim"
-    case cut = "Cut"
-}
-
 @MainActor
 final class EditorViewModel: ObservableObject {
 
@@ -54,7 +49,14 @@ final class EditorViewModel: ObservableObject {
     @Published private(set) var fileSizeText = "—"
 
     // MARK: edit state
-    @Published var mode: TimelineMode = .trim
+    /// The stretch dragged across the timeline bar, in timeline seconds.
+    /// Remove, Speed and Blur act on it; nil means "at the playhead".
+    @Published var selection: ClosedRange<Double>?
+    @Published var selectedSpeedID: UUID?
+    /// 1 = the whole bar fits the window; more zooms the bar in.
+    @Published var timelineZoom: Double = 1
+    /// ContentView's Back button asks; EditorView answers (it knows about edits).
+    @Published var backRequests = 0
     @Published var cuts: [CutRegion] = []
     @Published var trimStart: Double = 0
     @Published var trimEnd: Double = 0
@@ -111,10 +113,6 @@ final class EditorViewModel: ObservableObject {
     @Published var estimatedSizeText = "—"
     private var exportTask: Task<Void, Never>?
     private var estimateTask: Task<Void, Never>?
-
-    /// Chat history for the prompt-based edit assistant (kept here so it
-    /// survives tab switches).
-    @Published var assistantMessages: [AssistantMessage] = []
 
     /// Any edit state worth warning about before closing the video.
     var hasUnsavedEdits: Bool {
@@ -198,8 +196,17 @@ final class EditorViewModel: ObservableObject {
         pendingAnnotationKind = nil
         // Blur/text boxes lose the drag direction; arrows keep it (tail→tip).
         let shaped = kind == .arrow ? rect : rect.standardized
-        let start = min(max(playhead, trimStart), max(trimEnd - 0.5, trimStart))
-        let end = min(start + 4, trimEnd)
+        let start: Double
+        let end: Double
+        if let selection {
+            // The selected stretch is the span.
+            start = min(max(selection.lowerBound, trimStart), max(trimEnd - 0.5, trimStart))
+            end = min(selection.upperBound, trimEnd)
+        } else {
+            start = min(max(playhead, trimStart), max(trimEnd - 0.5, trimStart))
+            end = min(start + 4, trimEnd)
+        }
+        pushUndo()
         let annotation = EditorAnnotation(
             id: UUID(), kind: kind, rect: shaped, start: start, end: max(end, start + 0.5),
             text: "")
@@ -207,10 +214,124 @@ final class EditorViewModel: ObservableObject {
         // Fresh annotations come up selected — text opens straight into
         // its inline field, arrows/boxes show their handles.
         selectedAnnotationID = annotation.id
+        selection = nil
     }
 
     func removeAnnotation(id: UUID) {
+        guard annotations.contains(where: { $0.id == id }) else { return }
+        pushUndo()
         annotations.removeAll { $0.id == id }
+        if selectedAnnotationID == id { selectedAnnotationID = nil }
+    }
+
+    /// Moves or resizes an annotation's span. The timeline pushes undo once
+    /// at the start of the drag.
+    func setAnnotationRange(id: UUID, start: Double, end: Double) {
+        guard let index = annotations.firstIndex(where: { $0.id == id }) else { return }
+        let s = min(max(0, start), max(0, duration - 0.5))
+        let e = min(max(end, s + 0.5), duration)
+        annotations[index].start = s
+        annotations[index].end = e
+    }
+
+    // MARK: selection
+
+    func clearSelection() {
+        selection = nil
+    }
+
+    /// Whether Esc has anything to put away before it means Back.
+    var hasSomethingToDismiss: Bool {
+        selection != nil || selectedCutID != nil || selectedAnnotationID != nil
+            || selectedSpeedID != nil || pendingAnnotationKind != nil || isCropping
+    }
+
+    func dismissSelections() {
+        selection = nil
+        selectedCutID = nil
+        selectedAnnotationID = nil
+        selectedSpeedID = nil
+        pendingAnnotationKind = nil
+        isCropping = false
+    }
+
+    /// I and O: set one end of the selection to the playhead.
+    func setSelectionStart(to t: Double) {
+        let limit = trimEnd
+        let lo = min(max(t, trimStart), limit)
+        let hi = selection?.upperBound ?? limit
+        selection = lo...max(hi, min(lo + 0.5, limit))
+    }
+
+    func setSelectionEnd(to t: Double) {
+        let hi = min(max(t, trimStart), trimEnd)
+        let lo = selection?.lowerBound ?? trimStart
+        selection = min(lo, max(hi - 0.5, trimStart))...hi
+    }
+
+    /// [ and ]: trim the video's ends to the playhead.
+    func setTrimStartToPlayhead() {
+        guard playingMergeIndex == nil, playhead < trimEnd - 0.2 else { return }
+        pushUndo()
+        trimStart = max(0, playhead)
+    }
+
+    func setTrimEndToPlayhead() {
+        guard playingMergeIndex == nil, playhead > trimStart + 0.2 else { return }
+        pushUndo()
+        trimEnd = min(duration, playhead)
+    }
+
+    /// Takes the selected stretch out of the video (a removed stretch).
+    func removeSelection() {
+        guard let selection else { return }
+        addCut(start: selection.lowerBound, end: selection.upperBound)
+        self.selection = nil
+    }
+
+    /// The span a tool acts on: the selection, else from the playhead.
+    func toolSpan(defaultLength: Double) -> (Double, Double) {
+        if let selection { return (selection.lowerBound, selection.upperBound) }
+        let start = min(max(playhead, trimStart), trimEnd)
+        return (start, min(start + defaultLength, trimEnd))
+    }
+
+    func applySpeedToSelection(factor: Double) {
+        let span = toolSpan(defaultLength: 10)
+        applySpeed(factor: factor, from: span.0, to: span.1)
+        selection = nil
+    }
+
+    /// Moves or resizes a speed segment (undo pushed once at drag start).
+    func setSpeedRange(id: UUID, start: Double, end: Double) {
+        guard let index = speedSegments.firstIndex(where: { $0.id == id }) else { return }
+        let s = min(max(trimStart, start), trimEnd - 0.3)
+        let e = min(max(end, s + 0.3), trimEnd)
+        speedSegments[index].start = s
+        speedSegments[index].end = e
+    }
+
+    /// Moves or resizes a removed stretch (undo pushed once at drag start).
+    func setCutRange(id: UUID, start: Double, end: Double) {
+        guard let index = cuts.firstIndex(where: { $0.id == id }) else { return }
+        let s = min(max(0, start), duration - 0.15)
+        let e = min(max(end, s + 0.15), duration)
+        cuts[index].start = s
+        cuts[index].end = e
+    }
+
+    var hasRecordedEvents: Bool { recordingEvents.map { !$0.isEmpty } ?? false }
+
+    var trimIsSet: Bool { trimStart > 0.05 || trimEnd < duration - 0.05 }
+
+    func resetTrimStart() {
+        pushUndo()
+        trimStart = 0
+    }
+
+    func resetTrimEnd() {
+        pushUndo()
+        trimEnd = duration
     }
 
     /// Applies a speed to [from, to], REPLACING whatever overlaps — a second
@@ -222,9 +343,10 @@ final class EditorViewModel: ObservableObject {
         let from = min(max(rawFrom, trimStart), trimEnd)
         let to = min(max(rawTo, trimStart), trimEnd)
         guard to - from > 0.3 else {
-            errorMessage = "The speed range is too short — check the From/To times."
+            errorMessage = "That stretch is too short for a speed change. Select a longer one."
             return
         }
+        pushUndo()
         // Carve the new range out of existing segments.
         var carved: [SpeedSegment] = []
         for segment in speedSegments {
@@ -268,7 +390,10 @@ final class EditorViewModel: ObservableObject {
     }
 
     func removeSpeedSegment(id: UUID) {
+        guard speedSegments.contains(where: { $0.id == id }) else { return }
+        pushUndo()
         speedSegments.removeAll { $0.id == id }
+        if selectedSpeedID == id { selectedSpeedID = nil }
     }
 
     // MARK: source → edited → final time mapping
@@ -534,6 +659,13 @@ final class EditorViewModel: ObservableObject {
         var trimEnd: Double
         var cropRect: CGRect?
         var mergeClips: [MergeClip]
+        var annotations: [EditorAnnotation]
+        var speedSegments: [SpeedSegment]
+    }
+
+    private func snapshot() -> Snapshot {
+        Snapshot(cuts: cuts, trimStart: trimStart, trimEnd: trimEnd, cropRect: cropRect,
+                 mergeClips: mergeClips, annotations: annotations, speedSegments: speedSegments)
     }
 
     // MARK: loading
@@ -570,6 +702,9 @@ final class EditorViewModel: ObservableObject {
             cropRect = nil
             mergeClips = []
             selectedCutID = nil
+            selection = nil
+            selectedSpeedID = nil
+            timelineZoom = 1
             undoStack = []
             redoStack = []
             playhead = 0
@@ -759,20 +894,20 @@ final class EditorViewModel: ObservableObject {
     // MARK: edits
 
     func pushUndo() {
-        undoStack.append(Snapshot(cuts: cuts, trimStart: trimStart, trimEnd: trimEnd, cropRect: cropRect, mergeClips: mergeClips))
+        undoStack.append(snapshot())
         redoStack = []
     }
 
     func undo() {
-        guard let snapshot = undoStack.popLast() else { return }
-        redoStack.append(Snapshot(cuts: cuts, trimStart: trimStart, trimEnd: trimEnd, cropRect: cropRect, mergeClips: mergeClips))
-        apply(snapshot)
+        guard let previous = undoStack.popLast() else { return }
+        redoStack.append(snapshot())
+        apply(previous)
     }
 
     func redo() {
-        guard let snapshot = redoStack.popLast() else { return }
-        undoStack.append(Snapshot(cuts: cuts, trimStart: trimStart, trimEnd: trimEnd, cropRect: cropRect, mergeClips: mergeClips))
-        apply(snapshot)
+        guard let next = redoStack.popLast() else { return }
+        undoStack.append(snapshot())
+        apply(next)
     }
 
     private func apply(_ snapshot: Snapshot) {
@@ -781,8 +916,17 @@ final class EditorViewModel: ObservableObject {
         trimEnd = snapshot.trimEnd
         cropRect = snapshot.cropRect
         mergeClips = snapshot.mergeClips
+        annotations = snapshot.annotations
+        speedSegments = snapshot.speedSegments
+        selection = nil
         if let selected = selectedCutID, !cuts.contains(where: { $0.id == selected }) {
             selectedCutID = nil
+        }
+        if let selected = selectedAnnotationID, !annotations.contains(where: { $0.id == selected }) {
+            selectedAnnotationID = nil
+        }
+        if let selected = selectedSpeedID, !speedSegments.contains(where: { $0.id == selected }) {
+            selectedSpeedID = nil
         }
         exitMergePlaybackIfNeeded()
     }
@@ -1074,6 +1218,10 @@ final class EditorViewModel: ObservableObject {
         cropRect = nil
         mergeClips = []
         selectedCutID = nil
+        selection = nil
+        selectedSpeedID = nil
+        annotations = []
+        speedSegments = []
         undoStack = []
         redoStack = []
         playhead = 0

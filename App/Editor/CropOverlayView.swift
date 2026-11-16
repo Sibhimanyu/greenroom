@@ -26,7 +26,7 @@ struct CropOverlayView: View {
                             .position(x: rect.midX, y: rect.midY)
                     }
                 Rectangle()
-                    .stroke(Color.yellow, lineWidth: 2)
+                    .stroke(Color.white, lineWidth: 2)
                     .frame(width: rect.width, height: rect.height)
                     .position(x: rect.midX, y: rect.midY)
                 Text(cropLabel)
@@ -34,7 +34,7 @@ struct CropOverlayView: View {
                     .padding(.horizontal, 6)
                     .padding(.vertical, 2)
                     .background(Color.black.opacity(0.7), in: RoundedRectangle(cornerRadius: 4))
-                    .foregroundStyle(.yellow)
+                    .foregroundStyle(.white)
                     .position(x: rect.midX, y: max(rect.minY - 14, 10))
             } else {
                 Color.black.opacity(0.25)

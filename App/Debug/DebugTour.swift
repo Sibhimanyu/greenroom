@@ -163,6 +163,8 @@ enum DebugTour {
                 case "status": extra = status(info)
                 case "resetMeetingTip": MeetingShrinkTip.reset()
                 case "tree": tree(dir: dir)
+                case "live": extra = try live(info)
+                case "probe": extra = probe()
                 default: throw TourError("unknown cmd \(cmd)")
                 }
                 writeLast(dir: dir, ["ok": true, "cmd": cmd, "seq": mySeq].merging(extra) { a, _ in a })
@@ -212,6 +214,74 @@ enum DebugTour {
             NotchStep(label: $1, state: $0 < n - 1 ? .done : ($0 == n - 1 ? .active : .pending))
         }, detail: "Sample status from the debug tour"))
         return [:]
+    }
+
+    /// Real sessions, for an agent the owner has asked to test end to end
+    /// (2026-11-16). Unlike every other command these DO start things:
+    ///   live what=record app=<bundle id> [title=...]  a Record-view take of one window
+    ///   live what=stopRecord                          stops the take, no question
+    ///   live what=meeting                             a new meeting (Create mode), no one invited
+    ///   live what=end                                 ends the session, no question
+    ///   live what=size to=window|mini|bar             moves the live meeting
+    private static func live(_ info: [String: String]) throws -> [String: Any] {
+        guard let c = CoordinatorController.shared else { throw TourError("no coordinator") }
+        switch info["what"] ?? "" {
+        case "record":
+            var target = c.shareTarget
+            if savedTarget == nil { savedTarget = target }
+            target.kind = .window
+            target.appBundleID = info["app"] ?? ""
+            target.appName = info["app"] ?? ""
+            target.windowTitle = info["title"] ?? ""
+            c.shareTarget = target
+            if savedMode == nil { savedMode = c.meetingMode }
+            c.meetingMode = .record
+            c.start()
+        case "stopRecord":
+            c.stopRecordingSession()
+        case "meeting":
+            if savedMode == nil { savedMode = c.meetingMode }
+            c.meetingMode = .create
+            c.start()
+        case "end":
+            c.stop()
+        case "size":
+            guard let to = MeetingSize(rawValue: info["to"] ?? "") else { throw TourError("bad size") }
+            c.moveMeeting(to: to)
+        case "putBack":
+            if let savedTarget { c.shareTarget = savedTarget }
+            if let savedMode { c.meetingMode = savedMode }
+            savedTarget = nil; savedMode = nil
+        default:
+            throw TourError("bad what")
+        }
+        return [:]
+    }
+    private static var savedTarget: ShareTarget?
+    private static var savedMode: MeetingMode?
+
+    /// What is on screen right now: the session, the front app, and every
+    /// visible Greenroom window with its frame (CG top-left points), level and
+    /// whether it is on the desktop in view.
+    private static func probe() -> [String: Any] {
+        guard let c = CoordinatorController.shared else { return [:] }
+        let mainHeight = NSScreen.screens.first?.frame.height ?? 0
+        let windows: [[String: Any]] = NSApp.windows.filter(\.isVisible).map { w in
+            let f = w.frame
+            return ["title": w.title, "class": "\(type(of: w))", "level": w.level.rawValue,
+                    "onActiveSpace": w.isOnActiveSpace, "alpha": w.alphaValue,
+                    "frame": [f.minX, mainHeight - f.maxY, f.width, f.height].map { Int($0) }]
+        }
+        var out: [String: Any] = [
+            "front": NSWorkspace.shared.frontmostApplication?.bundleIdentifier ?? "",
+            "isRunning": c.isRunning, "stageLive": c.stageLive, "isRecording": c.isRecording,
+            "recordOnly": c.recordOnlyActive, "meetingSize": c.meetingSize.rawValue,
+            "meetingWindowShowing": ParticipantGridWindowController.meetingWindowIsShowing,
+            "miniOpen": MeetingViewWindows.miniIsOpen, "barVisible": MeetingControlBarController.isVisible,
+            "island": "\(NotchStatusController.shared.debugContent)",
+            "windows": windows]
+        if let r = c.capturedScreenFrame() { out["captured"] = [r.minX, r.minY, r.width, r.height].map { Int($0) } }
+        return out
     }
 
     private static var savedShareKind: ShareTarget.Kind?

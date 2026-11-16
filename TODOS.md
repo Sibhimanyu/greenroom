@@ -27,6 +27,12 @@ window it outlines. Still to try:
   bar, and a click on the island's "waiting to join" notice, switch to the
   window's desktop (a full-screen browser too) and open the right panel;
   Greenroom's main window does not come up over the slides.
+- [ ] **Meeting window polish (811606c):** at the smallest window size the
+  toolbar shows Mute and End whole; End reads "End Meeting for All"; the
+  close, caret, pager, Admit/Deny, Invite, Mute All and Copy buttons
+  highlight under the pointer; the People panel has one waiting list; the
+  line beside the side panel runs top to bottom. Look too at where that line
+  meets the top bar and toolbar, and at a camera-off tile's name shown twice.
 
 ## Participant panel and live speaker
 

@@ -27,6 +27,7 @@ import SwiftUI
 final class RecordingChrome {
     private let border = RecordingBorderController()
     private let bar = RecordingControlBarController()
+    private var wasRecording = false
 
     func update(coordinator: CoordinatorController, recording: Bool, paused: Bool,
                 recordOnly: Bool, countdownValue: Int?) {
@@ -45,6 +46,12 @@ final class RecordingChrome {
         } else {
             border.hide()
         }
+
+        // The moment it starts (not on resume), what is recorded comes forward.
+        if recording, !wasRecording, recordOnly {
+            coordinator.bringRecordedForward()
+        }
+        wasRecording = recording
 
         if recording, recordOnly {
             bar.show(coordinator: coordinator)

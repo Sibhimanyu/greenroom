@@ -203,6 +203,14 @@ final class StageCompositor: StageFrameSource {
         return source?.capturedFrame(onThisDesktop: onThisDesktop)
     }
 
+    /// What to bring to the front when a recording starts (see StageScreenSource).
+    func capturedFrontTarget() -> (bundleID: String?, pid: pid_t?, windowID: CGWindowID?)? {
+        lock.lock()
+        let source = board.activeScreenID.flatMap { screenSources[$0] }
+        lock.unlock()
+        return source?.frontTarget
+    }
+
     /// The live capture follows one window, so drawing is confined to it.
     func followsWindow() -> Bool {
         lock.lock()

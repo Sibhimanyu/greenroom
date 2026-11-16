@@ -2001,6 +2001,23 @@ final class CoordinatorController: ObservableObject {
     /// What the live capture shows, in global CoreGraphics points. For the border.
     func capturedScreenFrame(onThisDesktop: Bool = false) -> CGRect? { stage?.capturedScreenFrame(onThisDesktop: onThisDesktop) }
 
+    /// A recording just started: the app or window inside the outline comes to
+    /// the front, so the person can work in it straight away (owner, 2026-11-16).
+    /// A whole display has nothing to raise.
+    func bringRecordedForward() {
+        guard let front = stage?.capturedFrontTarget() else { return }
+        let app: NSRunningApplication?
+        if let pid = front.pid {
+            app = NSRunningApplication(processIdentifier: pid)
+        } else if let bundleID = front.bundleID {
+            app = NSRunningApplication.runningApplications(withBundleIdentifier: bundleID).first
+        } else {
+            app = nil
+        }
+        guard let app else { return }
+        AppWindowManager.bringForward(app, windowID: front.windowID)
+    }
+
     /// The display being recorded, for the countdown and the control bar to appear on.
     var recordedScreen: NSScreen? {
         guard let frame = capturedScreenFrame() else { return nil }

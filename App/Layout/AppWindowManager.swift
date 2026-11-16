@@ -61,6 +61,32 @@ enum AppWindowManager {
         return windows(ofAppWithBundleID: bundleID).first
     }
 
+    /// Brings an app to the front, and with Accessibility granted raises the one
+    /// window given (matched by its frame) above the app's other windows.
+    /// Without the grant the app still comes forward with its own front window.
+    static func bringForward(_ app: NSRunningApplication, windowID: CGWindowID?) {
+        if let windowID, hasAccessibilityPermission,
+           let info = (CGWindowListCopyWindowInfo([.optionIncludingWindow], windowID) as? [[String: Any]])?.first,
+           let bounds = info[kCGWindowBounds as String] as? NSDictionary,
+           let target = CGRect(dictionaryRepresentation: bounds) {
+            let axApp = AXUIElementCreateApplication(app.processIdentifier)
+            var windowsRef: CFTypeRef?
+            if AXUIElementCopyAttributeValue(axApp, kAXWindowsAttribute as CFString, &windowsRef) == .success,
+               let windows = windowsRef as? [AXUIElement],
+               let match = windows.first(where: { w in
+                   guard let f = frame(of: w) else { return false }
+                   return abs(f.minX - target.minX) < 2 && abs(f.minY - target.minY) < 2
+                       && abs(f.width - target.width) < 2 && abs(f.height - target.height) < 2
+               }) {
+                AXUIElementSetAttributeValue(match, kAXMainAttribute as CFString, kCFBooleanTrue)
+                AXUIElementPerformAction(match, kAXRaiseAction as CFString)
+            }
+        }
+        // macOS 14 lets an app hand the front over only when it offers it.
+        NSApp.yieldActivation(to: app)
+        app.activate()
+    }
+
     static func title(of window: AXUIElement) -> String? {
         var titleRef: CFTypeRef?
         AXUIElementCopyAttributeValue(window, kAXTitleAttribute as CFString, &titleRef)

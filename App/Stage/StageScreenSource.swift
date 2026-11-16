@@ -177,6 +177,26 @@ final class StageScreenSource: NSObject, SCStreamOutput, SCStreamDelegate {
         return capturedWindowID != nil
     }
 
+    /// What a recording brings to the front as it starts: the app (by bundle
+    /// id, or the owner of the chosen window) and the one window the picture
+    /// follows, if any. Nil for a whole display: there is nothing to raise.
+    var frontTarget: (bundleID: String?, pid: pid_t?, windowID: CGWindowID?)? {
+        stateLock.lock()
+        let followed = capturedWindowID
+        stateLock.unlock()
+        switch target {
+        case .display:
+            return nil
+        case .app(let bundleID):
+            return (bundleID, nil, followed)
+        case .window(let id):
+            let windowID = followed ?? id
+            let info = (CGWindowListCopyWindowInfo([.optionIncludingWindow], windowID) as? [[String: Any]])?.first
+            let pid = (info?[kCGWindowOwnerPID as String] as? Int).map { pid_t($0) }
+            return (nil, pid, windowID)
+        }
+    }
+
     /// `onThisDesktop`: nil for a followed window that is on another Space (or
     /// minimised), so an outline drawn here does not frame an empty spot where
     /// that window would be (owner, 2026-11-16).

@@ -145,6 +145,8 @@ struct MeetingBarActions {
     var toggleMute: () -> Void = {}
     var toggleCamera: () -> Void = {}
     var meeting: () -> Void = {}
+    /// The chevron beside Meeting: the Meeting window or the Mini, by name.
+    var meetingMenu: () -> [MenuEntry] = { [] }
     var toggleChat: () -> Void = {}
     /// The people count: opens the meeting window on its People panel.
     var people: () -> Void = {}
@@ -199,13 +201,23 @@ struct MeetingBarContent: View {
 
     // MARK: Cells
 
-    /// Brings the meeting back one size: the Mini, or with Option held the Meeting
-    /// window. The icon is the expand glyph; the word says what comes back.
+    /// Brings the Meeting window straight back, as Zoom's "exit minimised" does;
+    /// Option-click, the Mini. The chevron beside it names both sizes.
     private var meetingButton: some View {
-        BarLabelledButton(symbol: "arrow.up.left.and.arrow.down.right", title: "Meeting", width: L.meeting,
-                          filled: true,
-                          help: help("Open the Mini window. Option-click opens the Meeting window", .shrinkMeeting),
-                          spoken: "Open the Mini window. Option-click opens the Meeting window", action: a.meeting)
+        HStack(spacing: 0) {
+            BarLabelledButton(symbol: "arrow.up.left.and.arrow.down.right", title: "Meeting", width: L.meetingButton,
+                              filled: true,
+                              help: help("Open the Meeting window. Option-click opens the Mini window", .shrinkMeeting),
+                              spoken: "Open the Meeting window. Option-click opens the Mini window", action: a.meeting)
+            Image(systemName: "chevron.down")
+                .font(.system(size: 9, weight: .bold))
+                .foregroundStyle(.secondary)
+                .frame(width: L.meetingMenu, height: 28)
+                .contentShape(Rectangle())
+                .overlay { MenuPopUpOverlay(label: "Meeting size", entries: a.meetingMenu) }
+                .help("Choose the Meeting window or the Mini window")
+                .accessibilityLabel("Meeting size")
+        }
     }
 
     private var micButton: some View {

@@ -361,7 +361,7 @@ final class MeetingControlsModel: ObservableObject {
             sidePanel = sidePanel == .people ? nil : .people
         } else {
             sidePanel = .people
-            coordinator.expandMeetingFromBar(option: true)
+            coordinator.expandMeetingFromBar()
         }
         refresh()
     }
@@ -376,8 +376,8 @@ final class MeetingControlsModel: ObservableObject {
     }
 
     /// The bar's Meeting button. The bar is up only while neither the window nor
-    /// the Mini is, so this brings the meeting back one size: the Mini, or the
-    /// Meeting window with Option held.
+    /// the Mini is, so this brings the Meeting window straight back; with Option
+    /// held, the Mini. The chevron beside it offers both by name.
     func toggleMeetingWindow() {
         if ParticipantGridWindowController.meetingWindowIsShowing {
             coordinator.toggleMeetingWindow()
@@ -389,8 +389,24 @@ final class MeetingControlsModel: ObservableObject {
 
     /// The puck menu's "Expand to meeting window": always the window.
     func expandToMeetingWindow() {
-        coordinator.expandMeetingFromBar(option: true)
+        coordinator.expandMeetingFromBar()
         refresh()
+    }
+
+    /// The chevron's "Mini window".
+    func expandToMini() {
+        coordinator.moveMeeting(to: .mini)
+        refresh()
+    }
+
+    /// The menu beside the bar's Meeting button: the sizes to come back to.
+    func meetingSizeMenu() -> [MenuEntry] {
+        [.item("Meeting window", note: "The full meeting, everyone and the chat") { [weak self] in self?.expandToMeetingWindow() },
+         .item("Mini window", enabled: coordinator.miniAvailable,
+               note: coordinator.miniAvailable ? "A small floating video with the controls"
+                                               : "Not with this layout: the meeting has a slot of its own") { [weak self] in
+             self?.expandToMini()
+         }]
     }
 
     /// The meeting window's Mini button, Minimize and Command-M: one size down.
@@ -792,6 +808,7 @@ private struct MeetingControlBarView: View {
         a.toggleMute = model.toggleMute
         a.toggleCamera = model.toggleCamera
         a.meeting = model.toggleMeetingWindow
+        a.meetingMenu = model.meetingSizeMenu
         a.toggleChat = model.toggleChat
         a.people = model.showPeople
         a.toggleDraw = { coordinator.toggleDrawing() }

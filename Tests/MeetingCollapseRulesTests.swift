@@ -31,9 +31,15 @@ final class MeetingCollapseRulesTests: XCTestCase {
         XCTAssertEqual(MeetingCollapse.next(from: .window, step: .up, lastCollapsed: .mini), .window)
     }
 
-    func testBarStepsUpToTheMiniFirstAndOptionGoesToTheWindow() {
-        XCTAssertEqual(MeetingCollapse.next(from: .bar, step: .up, lastCollapsed: .bar), .mini)
-        XCTAssertEqual(MeetingCollapse.next(from: .bar, step: .up, option: true, lastCollapsed: .bar), .window)
+    func testBarStepsStraightUpToTheWindowAndOptionAsksForTheMini() {
+        XCTAssertEqual(MeetingCollapse.next(from: .bar, step: .up, lastCollapsed: .bar), .window)
+        XCTAssertEqual(MeetingCollapse.next(from: .bar, step: .up, lastCollapsed: .mini), .window)
+        XCTAssertEqual(MeetingCollapse.next(from: .bar, step: .up, option: true, lastCollapsed: .bar), .mini)
+    }
+
+    func testOptionCannotReachAMiniTheLayoutSkips() {
+        let ctx = MeetingCollapseContext(placedFull: false, meetingIsSlot: true, speakerViewOnScreen: false)
+        XCTAssertEqual(MeetingCollapse.next(from: .bar, step: .up, option: true, lastCollapsed: .mini, context: ctx), .window)
     }
 
     // MARK: Layout cases

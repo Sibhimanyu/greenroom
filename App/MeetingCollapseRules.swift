@@ -36,8 +36,9 @@ enum MeetingCollapse {
     static let defaultsKey = "meetingCollapse.last"
 
     /// Where one step goes. Down: Meeting window, Mini, Control bar. Up is the
-    /// way back: from the Mini always the window; from the bar the Mini first,
-    /// unless Option is held or the Mini would be pointless here.
+    /// way back, and like Zoom's "exit minimised" it goes all the way: the
+    /// window, from the Mini or the bar. Option from the bar asks for the Mini
+    /// instead, where the Mini makes sense here.
     /// `lastCollapsed` is the size a collapse from the window lands on (Mini or bar).
     static func next(from size: MeetingSize, step: Step, option: Bool = false,
                      lastCollapsed: MeetingSize, context: MeetingCollapseContext = MeetingCollapseContext()) -> MeetingSize {
@@ -50,7 +51,7 @@ enum MeetingCollapse {
         case (.window, .up), (.mini, .up):
             return .window
         case (.bar, .up):
-            return option || context.skipsMini ? .window : .mini
+            return option && !context.skipsMini ? .mini : .window
         }
     }
 

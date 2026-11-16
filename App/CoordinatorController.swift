@@ -3693,8 +3693,8 @@ final class CoordinatorController: ObservableObject {
         move(from: size, to: .bar, step: .down, context: collapseContext)
     }
 
-    /// The bar's Meeting button: one size up, the Mini, or with Option held the
-    /// Meeting window. A click during a morph turns it round.
+    /// The bar's Meeting button: straight back to the Meeting window, or with
+    /// Option held the Mini. A click during a morph turns it round.
     func expandMeetingFromBar(option: Bool = false) {
         guard zoomChatClient.didUseCustomUI else { return }
         if MeetingControlBarController.morphTarget != nil {
@@ -3738,6 +3738,9 @@ final class CoordinatorController: ObservableObject {
         if meetingSize == .bar { moveMeeting(to: .window) }
     }
 
+    /// Whether the Mini is a size the meeting can take in this layout.
+    var miniAvailable: Bool { !collapseContext.skipsMini }
+
     /// Goes to a size from wherever the meeting is, for the Mini's own arrows.
     func moveMeeting(to size: MeetingSize) {
         guard zoomChatClient.didUseCustomUI else { return }
@@ -3753,7 +3756,7 @@ final class CoordinatorController: ObservableObject {
     func toggleMeetingShrunk() {
         guard zoomChatClient.didUseCustomUI else { return }
         if let heading = MeetingControlBarController.morphTarget {
-            heading == 0 ? expandMeetingFromBar(option: true) : shrinkMeetingToBar()
+            heading == 0 ? expandMeetingFromBar() : shrinkMeetingToBar()
             return
         }
         switch meetingSize {

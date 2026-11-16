@@ -203,7 +203,11 @@ enum MeetingBarLayout {
     static let leadingPad: CGFloat = 4
     static let trailingPad: CGFloat = 8
     static let grip: CGFloat = 18
-    static let meeting: CGFloat = 92
+    /// The Meeting button and the chevron beside it, one cell, as wide as the
+    /// button alone was: the bar stays under its 720pt cap.
+    static let meeting: CGFloat = meetingButton + meetingMenu
+    static let meetingButton: CGFloat = 78
+    static let meetingMenu: CGFloat = 14
     static let icon: CGFloat = 32
     /// The REC pill, the same width in every state so the bar never jumps.
     static let recPill: CGFloat = 132

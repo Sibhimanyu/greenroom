@@ -223,28 +223,32 @@ private struct RecordingControlBarView: View {
 @MainActor
 final class RecordingBorderController {
     private var panel: NSPanel?
-    private var timer: Timer?
+    private var link: CADisplayLink?
+    private var ticker: BorderTicker?
     private var rounded = false
 
     /// `provider` gives the captured area in global CoreGraphics points
     /// (top-left origin), or nil when there is nothing to outline.
+    ///
+    /// Read on every screen refresh, not on a slow timer: a window dragged
+    /// around left a 0.4s timer's outline trailing far behind it (owner,
+    /// 2026-11-16). One window-list lookup per frame is cheap.
     func show(provider: @escaping () -> CGRect?) {
-        guard timer == nil else { return }
+        guard link == nil else { return }
         apply(provider())
-        let tick = Timer(timeInterval: 0.4, repeats: true) { [weak self] timer in
-            MainActor.assumeIsolated {
-                // A tick can land after hide(); only act while this is the live timer.
-                guard let self, self.timer === timer else { return }
-                self.apply(provider())
-            }
-        }
-        RunLoop.main.add(tick, forMode: .common)
-        timer = tick
+        let ticker = BorderTicker { [weak self] in self?.apply(provider()) }
+        guard let screen = NSScreen.main ?? NSScreen.screens.first else { return }
+        let link = screen.displayLink(target: ticker, selector: #selector(BorderTicker.tick))
+        link.preferredFrameRateRange = CAFrameRateRange(minimum: 30, maximum: 60, preferred: 60)
+        link.add(to: .main, forMode: .common)
+        self.ticker = ticker
+        self.link = link
     }
 
     func hide() {
-        timer?.invalidate()
-        timer = nil
+        link?.invalidate()
+        link = nil
+        ticker = nil
         panel?.orderOut(nil)
     }
 
@@ -286,6 +290,13 @@ final class RecordingBorderController {
         panel = created
         return created
     }
+}
+
+/// The display link's target: it needs an Objective-C selector.
+private final class BorderTicker: NSObject {
+    private let action: @MainActor () -> Void
+    init(_ action: @escaping @MainActor () -> Void) { self.action = action }
+    @objc func tick() { MainActor.assumeIsolated { action() } }
 }
 
 /// Understated: a thin line in the brand tint hugging the recorded area.

@@ -13,6 +13,19 @@ final class WindowFrameRulesTests: XCTestCase {
         XCTAssertEqual(f.size, page)
     }
 
+    func testEditGrowsAboutTheMiddle() {
+        let home = NSRect(x: 664, y: 364, width: 592, height: 352)
+        let f = WindowFrameRules.centred(on: home, size: CGSize(width: 592, height: 502), in: screen)
+        XCTAssertEqual(f.midY, home.midY)
+        XCTAssertEqual(f.minX, home.minX)
+        XCTAssertEqual(f.height, 502)
+        // Near the bottom of the screen it is pushed up only by the overflow.
+        let low = NSRect(x: 100, y: 20, width: 592, height: 352)
+        let g = WindowFrameRules.centred(on: low, size: CGSize(width: 592, height: 502), in: screen)
+        XCTAssertEqual(g.minY, 0)
+        XCTAssertEqual(g.height, 502)
+    }
+
     func testClampsRightOnly() {
         let right = NSRect(x: 1500, y: 400, width: 400, height: 600)
         let f = WindowFrameRules.pageFrame(from: right, size: page, visibleFrames: [screen])
@@ -101,11 +114,11 @@ final class WindowFrameRulesTests: XCTestCase {
         XCTAssertEqual(back, expanded)
     }
 
-    func testExpandGrowsRightWithTopLeftAnchoredThenCollapseIsIdentical() {
+    func testExpandGrowsAboutTheCentreThenCollapseIsIdentical() {
         let size = CGSize(width: 592 + extra, height: 352)
         let expanded = WindowFrameRules.expandedFrame(from: collapsed, size: size, in: screen)
-        XCTAssertEqual(expanded.minX, collapsed.minX)
-        XCTAssertEqual(expanded.maxY, collapsed.maxY)
+        XCTAssertEqual(expanded.midX, collapsed.midX, accuracy: 0.5)
+        XCTAssertEqual(expanded.midY, collapsed.midY, accuracy: 0.5)
         let back = WindowFrameRules.collapsedFrame(restoring: collapsed, current: expanded, size: collapsed.size,
                                                    movedSinceExpand: false, in: screen)
         XCTAssertEqual(back, collapsed)
@@ -117,18 +130,18 @@ final class WindowFrameRulesTests: XCTestCase {
             from: near, size: CGSize(width: 592 + extra, height: 352), in: screen)
         XCTAssertEqual(expanded.maxX, screen.maxX)
         XCTAssertEqual(expanded.minX, screen.maxX - (592 + extra))
-        XCTAssertEqual(expanded.maxY, near.maxY)
+        XCTAssertEqual(expanded.midY, near.midY)
         let back = WindowFrameRules.collapsedFrame(restoring: near, current: expanded, size: near.size,
                                                    movedSinceExpand: false, in: screen)
         XCTAssertEqual(back, near)
     }
 
-    func testCollapseAfterMoveKeepsCurrentTopLeft() {
+    func testCollapseAfterMoveKeepsCurrentCentre() {
         let expanded = NSRect(x: 300, y: 200, width: 592 + extra, height: 352)
         let back = WindowFrameRules.collapsedFrame(restoring: collapsed, current: expanded, size: collapsed.size,
                                                    movedSinceExpand: true, in: screen)
-        XCTAssertEqual(back.minX, expanded.minX)
-        XCTAssertEqual(back.maxY, expanded.maxY)
+        XCTAssertEqual(back.midX, expanded.midX, accuracy: 0.5)
+        XCTAssertEqual(back.midY, expanded.midY, accuracy: 0.5)
         XCTAssertEqual(back.size, collapsed.size)
     }
 

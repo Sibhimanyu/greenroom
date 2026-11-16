@@ -60,21 +60,22 @@ enum WindowFrameRules {
         return centred(on: current, size: size, in: currentVisible)
     }
 
-    /// Home's preview opening: the window grows to the RIGHT with its top-left
-    /// anchored, and slides left only by the overflow at the screen's edge.
+    /// Home's preview opening: the window grows about its CENTRE, equally left
+    /// and right (owner, 2026-11-16: a Home in the middle of the screen stays
+    /// there), moved only by the overflow at the screen's edge.
     static func expandedFrame(from collapsed: NSRect, size: CGSize, in visible: NSRect?) -> NSRect {
-        topLeftAnchored(on: collapsed, size: size, in: visible)
+        centred(on: collapsed, size: size, in: visible)
     }
 
     /// The preview closing. Unmoved since it opened, the exact frame it had
-    /// before (so a shifted-left window goes back where it was); moved, the
-    /// collapsed size from the window's current top-left.
+    /// before (so a window pushed in from an edge goes back where it was);
+    /// moved, the collapsed size about the window's current centre.
     static func collapsedFrame(restoring saved: NSRect?, current: NSRect, size: CGSize,
                                movedSinceExpand: Bool, in visible: NSRect?) -> NSRect {
         if !movedSinceExpand, let saved, abs(saved.width - size.width) < 1 {
             return NSRect(x: saved.minX, y: saved.maxY - size.height, width: size.width, height: size.height)
         }
-        return topLeftAnchored(on: current, size: size, in: visible)
+        return centred(on: current, size: size, in: visible)
     }
 
     /// Whether the user dragged the window since the page settled.

@@ -167,7 +167,8 @@ struct ContentView: View {
         // from an anchored top edge, so nothing above the divider moves - see
         // resizeWindow.
         .onChange(of: statusShown) { _, _ in resizeWindow(animated: true) }
-        .onChange(of: setupOpen) { _, _ in resizeWindow(animated: true) }
+        // Edit grows about the middle, not down from the top (owner, 2026-11-16).
+        .onChange(of: setupOpen) { _, _ in resizeWindow(animated: true, middle: true) }
         .onChange(of: previewShown) { _, shown in previewChanged(shown) }
         #if DEBUG
         .onReceive(NotificationCenter.default.publisher(for: .debugTourHomePreview)) { note in
@@ -550,7 +551,7 @@ struct ContentView: View {
     /// Where the window ends up for the current page and state, top edge
     /// anchored and inside the visible frame.
     private func settledFrame(for window: NSWindow, animated: Bool, returningHome: Bool,
-                              previewChange: Bool = false) -> NSRect {
+                              previewChange: Bool = false, middle: Bool = false) -> NSRect {
         let content = window.contentRect(forFrameRect: window.frame)
         // Home keeps the width the user gave it; a page widens it, within the
         // screen, and Back returns Home to the width it left.
@@ -605,11 +606,12 @@ struct ContentView: View {
                 movedOnPage: WindowFrameRules.moved(from: pageSettledFrame, to: window.frame),
                 visibleFrames: visibleFrames, currentVisible: visible)
         }
+        if middle { return WindowFrameRules.centred(on: window.frame, size: size, in: visible) }
         return WindowFrameRules.topLeftAnchored(on: window.frame, size: size, in: visible)
     }
 
-    /// The Preview button (or the tour): grows the window to the right with the
-    /// top-left anchored, or gives the exact collapsed frame back. Under Reduce
+    /// The Preview button (or the tour): grows the window about its centre, or
+    /// gives the exact collapsed frame back. Under Reduce
     /// Motion there is no slide: the frame jumps and the card crossfades.
     private func previewChanged(_ shown: Bool) {
         guard !onPage else {
@@ -676,7 +678,8 @@ struct ContentView: View {
         }
     }
 
-    private func resizeWindow(animated: Bool, returningHome: Bool = false, previewChange: Bool = false) {
+    private func resizeWindow(animated: Bool, returningHome: Bool = false, previewChange: Bool = false,
+                              middle: Bool = false) {
         guard let window = Self.window else { return }
         // Full screen (or zoomed to fill the screen) is the user's size, not
         // ours. Resizing here shrank the window to a page's 1180x760 and left
@@ -688,7 +691,7 @@ struct ContentView: View {
             return
         }
         let frame = settledFrame(for: window, animated: animated, returningHome: returningHome,
-                                previewChange: previewChange)
+                                previewChange: previewChange, middle: middle && !onPage)
         pageSettledFrame = onPage ? frame : nil
         guard animated else {
             resizeGeneration += 1

@@ -667,8 +667,11 @@ struct HomeView: View {
         .buttonStyle(DockButtonStyle())
         .disabled(coordinator.cameraIsOff)
         .popover(isPresented: $lookOpen, arrowEdge: .bottom) { lookPicker }
-        .help(coordinator.cameraIsOff ? "No camera is picked, so there is no look to choose."
-                                      : "Look: \(coordinator.webcamShape.label). How you appear over what you share.")
+        .dockHint(DockHintContent(
+            title: "Look", value: coordinator.cameraIsOff ? "No camera" : coordinator.webcamShape.label,
+            text: coordinator.cameraIsOff ? "No camera is picked, so there is no look to choose."
+                                          : "How you appear over what you share.",
+            visual: DockHintVisual.look(coordinator.webcamShape, cameraOff: coordinator.cameraIsOff)))
         .accessibilityLabel("Look")
         .accessibilityValue(coordinator.webcamShape.label)
     }
@@ -789,9 +792,14 @@ struct HomeView: View {
                       warn: shareGone || problem("screen"))
         }
         .dockMenu()
-        .help(shareGone ? SetupSummary.shareGoneHelp
-              : problem("screen") ? "Greenroom needs Screen Recording permission to share. The line under the dock opens it."
-              : "Share: \(shareValue). What the class sees behind you.")
+        .dockHint(DockHintContent(
+            title: "Share", value: shareValue,
+            text: shareGone ? SetupSummary.shareGoneHelp
+                : problem("screen") ? "Greenroom needs Screen Recording permission to share. The line under the dock opens it."
+                : "What the class sees behind you.",
+            warn: shareGone || problem("screen"),
+            visual: DockHintVisual.share(coordinator.shareTarget.kind, shape: coordinator.webcamShape,
+                                         cameraOff: coordinator.cameraIsOff)))
         .accessibilityLabel("Behind you")
         .accessibilityValue(LookSummary.shareText(coordinator.shareTarget))
     }
@@ -825,8 +833,13 @@ struct HomeView: View {
                       warn: problem("camera") || (cameras.isEmpty && !coordinator.cameraIsOff))
         }
         .dockMenu()
-        .help(cameras.isEmpty && !coordinator.cameraIsOff ? SetupSummary.cameraMissingHelp
-              : "Camera: \(name). Which camera you appear on.")
+        .dockHint(DockHintContent(
+            title: "Camera", value: coordinator.cameraIsOff ? "Off" : name,
+            text: cameras.isEmpty && !coordinator.cameraIsOff ? SetupSummary.cameraMissingHelp
+                : coordinator.cameraIsOff ? "No camera: the class sees only what you share."
+                : "Which camera you appear on.",
+            warn: problem("camera") || (cameras.isEmpty && !coordinator.cameraIsOff),
+            visual: DockHintVisual.camera(off: coordinator.cameraIsOff)))
         .accessibilityLabel("Camera")
         .accessibilityValue(name)
     }
@@ -851,7 +864,10 @@ struct HomeView: View {
             dockLabel(symbol: "mic", value: Self.shortDeviceName(name), warn: problem("mic"), meter: micMeterLevel)
         }
         .dockMenu()
-        .help("Microphone: \(name). Which microphone the class hears and the recording takes.")
+        .dockHint(DockHintContent(
+            title: "Microphone", value: name,
+            text: "Which microphone the class hears, and the recording takes.",
+            warn: problem("mic"), visual: DockHintVisual.microphone))
         .accessibilityLabel("Microphone")
         .accessibilityValue(name)
     }
@@ -900,9 +916,15 @@ struct HomeView: View {
         }
         .dockMenu()
         .disabled(coordinator.layoutChoiceLocked)
-        .help(coordinator.layoutChoiceLocked
-              ? "A class runs the layout it started with. Pick the next one after it ends."
-              : "Where Start puts the meeting, the chat and your apps.")
+        .dockHint(DockHintContent(
+            title: "Layout", value: coordinator.layoutChoiceName,
+            text: coordinator.layoutChoiceLocked
+                ? "A class runs the layout it started with. Pick the next one after it ends."
+                : "Where Start puts the meeting, the chat and your apps.",
+            visual: DockHintVisual.layout(coordinator.layoutLibrary.active?.oneDisplay) { [coordinator] piece in
+                LayoutPageContent.look(piece, customUIMode: coordinator.customUIMode,
+                                       canMoveApps: AppWindowManager.hasAccessibilityPermission)
+            }))
         .accessibilityLabel("Layout")
         .accessibilityValue(coordinator.layoutChoiceName)
     }
@@ -919,7 +941,10 @@ struct HomeView: View {
         .buttonStyle(DockButtonStyle())
         .disabled(isLive)
         .popover(isPresented: $recordOpen, arrowEdge: .bottom) { recordPicker }
-        .help(on ? SetupSummary.autoRecordHelp : "Recording starts when you press Record.")
+        .dockHint(DockHintContent(
+            title: "Record", value: on ? "With the meeting" : "By hand",
+            text: on ? SetupSummary.autoRecordHelp : "Recording starts when you press Record.",
+            visual: DockHintVisual.record(withMeeting: on)))
         .accessibilityLabel("Record")
         .accessibilityValue(on ? "With the meeting" : "When I press it")
     }

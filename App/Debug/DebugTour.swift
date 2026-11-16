@@ -121,6 +121,9 @@ enum DebugTour {
                     // Plays the launch again over the main window.
                     guard let window = MainWindow.current else { throw TourError("no main window") }
                     LaunchSplashCover.replay(over: window)
+                case "hintCards":
+                    // Renders every dock hover card to hint-<name>.png, off screen.
+                    extra["written"] = DockHintCards.render(dir: dir, dark: info["mode"] != "light")
                 case "homeCard":
                     // face=picture|screen: which face Home's preview card shows.
                     NotificationCenter.default.post(name: .debugTourHomeCard, object: nil,
@@ -536,3 +539,52 @@ extension Notification.Name {
 }
 
 #endif
+
+/// The dock's hover cards, drawn to PNGs with sample values, for review.
+@MainActor enum DockHintCards {
+    static func render(dir: String, dark: Bool) -> [String] {
+        let sampleLayout = CoordinatorController.shared?.layoutLibrary.templates.first { $0.pieceCount > 0 }?.oneDisplay
+        let cards: [(String, DockHintContent)] = [
+            ("look-circle", .init(title: "Look", value: "Circle", text: "How you appear over what you share.",
+                                  visual: DockHintVisual.look(.circle, cameraOff: false))),
+            ("look-presenter", .init(title: "Look", value: "Presenter", text: "How you appear over what you share.",
+                                     visual: DockHintVisual.look(.presenterLarge, cameraOff: false))),
+            ("share-window", .init(title: "Share", value: "Keynote", text: "What the class sees behind you.",
+                                   visual: DockHintVisual.share(.window, shape: .roundedRectangle, cameraOff: false))),
+            ("share-display", .init(title: "Share", value: "Whole screen", text: "What the class sees behind you.",
+                                    visual: DockHintVisual.share(.display, shape: .circle, cameraOff: false))),
+            ("share-whiteboard", .init(title: "Share", value: "Whiteboard", text: "What the class sees behind you.",
+                                       visual: DockHintVisual.share(.whiteboard, shape: .square, cameraOff: false))),
+            ("camera", .init(title: "Camera", value: "MacBook Pro Camera", text: "Which camera you appear on.",
+                             visual: DockHintVisual.camera(off: false))),
+            ("mic", .init(title: "Microphone", value: "MacBook Pro Microphone",
+                          text: "Which microphone the class hears, and the recording takes.",
+                          visual: DockHintVisual.microphone)),
+            ("layout", .init(title: "Layout", value: "Sample", text: "Where Start puts the meeting, the chat and your apps.",
+                             visual: DockHintVisual.layout(sampleLayout) {
+                                 LayoutPageContent.look($0, customUIMode: false, canMoveApps: true)
+                             })),
+            ("layout-none", .init(title: "Layout", value: "None", text: "Where Start puts the meeting, the chat and your apps.",
+                                  visual: DockHintVisual.layout(nil) { _ in fatalError() })),
+            ("record-hand", .init(title: "Record", value: "By hand", text: "Recording starts when you press Record.",
+                                  visual: DockHintVisual.record(withMeeting: false))),
+            ("record-auto", .init(title: "Record", value: "With the meeting",
+                                  text: "Recording starts with the meeting.", visual: DockHintVisual.record(withMeeting: true))),
+        ]
+        var written: [String] = []
+        for (name, hint) in cards {
+            let view = DockHintCard(hint: hint)
+                .background(dark ? Color(white: 0.17) : Color(white: 0.96))
+                .environment(\.colorScheme, dark ? .dark : .light)
+            let renderer = ImageRenderer(content: view)
+            renderer.scale = 2
+            guard let image = renderer.cgImage else { continue }
+            let url = URL(fileURLWithPath: dir).appendingPathComponent("hint-\(name).png")
+            let rep = NSBitmapImageRep(cgImage: image)
+            if let data = rep.representation(using: .png, properties: [:]), (try? data.write(to: url)) != nil {
+                written.append(url.lastPathComponent)
+            }
+        }
+        return written
+    }
+}

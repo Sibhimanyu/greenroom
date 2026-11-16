@@ -328,7 +328,14 @@ final class MeetingControlsModel: ObservableObject {
     /// The chat in one place: the pop-out opened from the bar folds into the
     /// window's Chat panel once the window is in view (back on its desktop, or
     /// brought here). Called whenever the bar decides again, and every second.
+    /// The People pop-out folds the same way, into the People panel.
     func foldPopOutChatIntoWindow() {
+        if MeetingSurfaces.foldsPopOutChat(windowShowing: ParticipantGridWindowController.meetingWindowIsShowing,
+                                           popOutOpen: PeoplePopOutController.isOpen, arranged: false) {
+            PeoplePopOutController.close()
+            sidePanel = .people
+            refresh()
+        }
         guard coordinator.zoomChatClient.didUseCustomUI,
               MeetingSurfaces.foldsPopOutChat(windowShowing: ParticipantGridWindowController.meetingWindowIsShowing,
                                               popOutOpen: ChatWindowController.isOpen,
@@ -366,16 +373,28 @@ final class MeetingControlsModel: ObservableObject {
         refresh()
     }
 
-    /// The bar's people count. The bar is up while the window is not, so this
-    /// brings the meeting window back with the People panel open; with the
-    /// window already showing it toggles the panel like the window's own button.
+    /// The bar's people count. With the window showing it toggles the panel
+    /// like the window's own button; otherwise the list opens as a small window
+    /// beside the bar, not the whole meeting (owner, 2026-11-16), and a second
+    /// click closes it. Left on another desktop, it comes to this one.
     func showPeople() {
         if ParticipantGridWindowController.meetingWindowIsShowing {
             sidePanel = sidePanel == .people ? nil : .people
+        } else if PeoplePopOutController.isOpenHere {
+            PeoplePopOutController.close()
+        } else if PeoplePopOutController.isOpen {
+            PeoplePopOutController.reveal()
         } else {
-            sidePanel = .people
-            coordinator.expandMeetingFromBar()
+            PeoplePopOutController.show(near: MeetingControlBarController.currentFrame)
         }
+        refresh()
+    }
+
+    /// From a row in the People pop-out: the Meeting window, People panel open.
+    func openPeopleInWindow() {
+        PeoplePopOutController.close()
+        sidePanel = .people
+        coordinator.expandMeetingFromBar()
         refresh()
     }
 
@@ -896,6 +915,9 @@ enum MeetingControlBarController {
 
     /// The bar as the stack sees it: where it is now, or where it would sit by
     /// default before it has been built.
+    /// The bar where it is now; nil while it is not built.
+    static var currentFrame: NSRect? { panel?.frame }
+
     private static func barFrame(in area: CGRect) -> CGRect {
         panel?.frame ?? MeetingBarPlacement.defaultFrame(size: CGSize(width: width, height: height), in: area)
     }

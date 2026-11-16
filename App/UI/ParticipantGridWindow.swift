@@ -1360,6 +1360,7 @@ private final class RootView: NSView {
 
         syncTiles()
         updateChromeText()
+        if let popOut = PeoplePopOutController.view { feedPeople(popOut) }
         // Rebuilt ONLY when something a bar actually shows has changed.
         //
         // The first version tore every button down and recreated it on each tick
@@ -2295,7 +2296,27 @@ private final class RootView: NSView {
         updateMeetingTopBar()
     }
 
-    private func updatePeopleRows() {
+    private func updatePeopleRows() { applyPeople(to: peopleView) }
+
+    /// The bar's People pop-out shows the same list. A row opens the Meeting
+    /// window on that person, since their actions live in its inspector.
+    private func feedPeople(_ popOut: MeetingPeopleView) {
+        popOut.onSelect = { [weak self] id in
+            guard let self, id != ParticipantGridWindowController.myEntry?.id else { return }
+            self.selected = id
+            self.selectionChanged()
+            self.controls?.openPeopleInWindow()
+        }
+        popOut.onAdmit = peopleView.onAdmit
+        popOut.onDeny = peopleView.onDeny
+        popOut.onInvite = peopleView.onInvite
+        popOut.onAdmitAll = peopleView.onAdmitAll
+        popOut.onMuteAll = peopleView.onMuteAll
+        popOut.onAskAllToUnmute = peopleView.onAskAllToUnmute
+        applyPeople(to: popOut)
+    }
+
+    private func applyPeople(to target: MeetingPeopleView) {
         let queue = handQueue
         let handIDs = Set(queue.map(\.id))
         func row(_ entry: ZoomMeetingSDKClient.RosterEntry) -> MeetingPeopleView.Row {
@@ -2319,7 +2340,7 @@ private final class RootView: NSView {
             }
             mine = [entry]
         }
-        peopleView.apply(waiting: waiting.map { .init(id: $0.id, name: $0.name) },
+        target.apply(waiting: waiting.map { .init(id: $0.id, name: $0.name) },
                          canDeny: ParticipantGridWindowController.sdk?.canExpelFromWaitingRoom() ?? false,
                          isHost: flags.iAmHostOrCoHost,
                          hands: queue.map(row),

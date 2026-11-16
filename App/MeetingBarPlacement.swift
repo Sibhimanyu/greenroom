@@ -171,3 +171,17 @@ enum MeetingBarPlacement {
                       height: from.height + (to.height - from.height) * k)
     }
 }
+
+/// Where the People pop-out lands beside the bar. Pure, for the tests.
+enum PeoplePopOutPlacement {
+    static let gap: CGFloat = 8
+
+    static func frame(size: CGSize, bar: CGRect, area: CGRect) -> CGRect {
+        let below = bar.midY > area.midY
+        var y = below ? bar.minY - gap - size.height : bar.maxY + gap
+        var x = bar.maxX - size.width
+        x = min(max(x, area.minX), area.maxX - size.width)
+        y = min(max(y, area.minY), area.maxY - size.height)
+        return CGRect(x: x, y: y, width: size.width, height: size.height)
+    }
+}

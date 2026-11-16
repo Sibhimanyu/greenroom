@@ -33,6 +33,7 @@ final class CoordinatorController: ObservableObject {
         peopleViewTask?.cancel()
         stopShapePreview()
         ChatWindowController.close()
+        PeoplePopOutController.close()
         customUIGridTask?.cancel()
         customUIGridTask = nil
         MeetingControlBarController.close()
@@ -1290,6 +1291,7 @@ final class CoordinatorController: ObservableObject {
         if !sessionArranges { closeMeetingWindow() }
         meetingControls?.stop()
         meetingControls = nil
+        PeoplePopOutController.close()
         if ChatWindowController.isOpen {
             ChatWindowController.close()
         }
@@ -1729,6 +1731,7 @@ final class CoordinatorController: ObservableObject {
             MeetingControlBarController.close()
             meetingControls?.stop()
             meetingControls = nil
+            PeoplePopOutController.close()
             if ChatWindowController.isOpen {
                 ChatWindowController.close()
                 log("Left the meeting chat.")
@@ -2472,6 +2475,8 @@ final class CoordinatorController: ObservableObject {
         case sessions
         case detail(String)
         case report(String)
+        /// The video editor, in place of the session's page.
+        case editor(String)
 
         var isHome: Bool { self == .home }
     }
@@ -2481,7 +2486,7 @@ final class CoordinatorController: ObservableObject {
     /// One step back: report to its session, session to the grid, grid to Home.
     func goBack() {
         switch mainPage {
-        case .report(let id): mainPage = .detail(id)
+        case .report(let id), .editor(let id): mainPage = .detail(id)
         case .detail: mainPage = .sessions
         case .sessions: mainPage = .home
         case .home: break
@@ -3620,6 +3625,11 @@ final class CoordinatorController: ObservableObject {
         // The chat is a panel inside the window now; a loose chat window would
         // be a second copy of it. (An arranged session keeps its column.)
         if !sessionArranges, ChatWindowController.isOpen { ChatWindowController.close() }
+        // Likewise the People pop-out: the window opens on its People panel.
+        if PeoplePopOutController.isOpen {
+            PeoplePopOutController.close()
+            meetingControls?.sidePanel = .people
+        }
         let alreadyOpen = ParticipantGridWindowController.meetingWindowIsOpen
         meetingWindowWanted = true
         growWhenSomeoneJoins = false // brought up some other way: it stays the teacher's choice
@@ -4687,6 +4697,7 @@ final class CoordinatorController: ObservableObject {
         NSApp.windows.filter { window in
             guard window.isVisible, !window.isSheet else { return false }
             if ChatWindowController.owns(window) { return false } // "Meeting Chat" - ours
+            if PeoplePopOutController.owns(window) { return false } // the bar's People list - ours
             if ParticipantGridWindowController.owns(window) { return false } // custom-UI gallery - ours
             if BrowserWindowController.owns(window) { return false } // built-in browser - title is the page's
             if MainWindow.matches(window) { return false } // main window

@@ -110,7 +110,9 @@ final class MeetingViewContentView: NSView {
         self.view = view
         super.init(frame: frame)
         wantsLayer = true
-        layer?.backgroundColor = MeetingTheme.windowNS.cgColor
+        // No background of its own: the window shows a frost while only you see
+        // it, and a solid sheet while the class does (WindowFrost).
+        layer?.backgroundColor = NSColor.clear.cgColor
 
         message.font = .systemFont(ofSize: 15, weight: .medium)
         message.textColor = MeetingTheme.secondaryTextNS

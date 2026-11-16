@@ -21,14 +21,13 @@ enum PeoplePopOutController {
             people.autoresizingMask = [.width, .height]
             let container = NSView(frame: NSRect(origin: .zero, size: size))
             container.wantsLayer = true
-            container.layer?.backgroundColor = MeetingTheme.windowNS.cgColor
+            container.layer?.backgroundColor = NSColor.clear.cgColor
             container.addSubview(people)
             let made = NSWindow(contentRect: NSRect(origin: .zero, size: size),
                                 styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
             made.title = "Participants"
             made.contentView = container
             made.appearance = NSAppearance(named: .darkAqua)
-            made.backgroundColor = MeetingTheme.windowNS
             made.minSize = NSSize(width: 260, height: 260)
             made.isReleasedWhenClosed = false
             // On every desktop, full-screen ones too, like the bar it opens
@@ -36,6 +35,8 @@ enum PeoplePopOutController {
             // main window, out of sight (2026-11-16).
             made.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
             made.setFrame(frame(near: anchor, size: made.frame.size), display: false)
+            // Only you see this window: a dark frost behind, opaque rows on top.
+            WindowFrost.install(in: made, material: .hudWindow, solid: MeetingTheme.windowNS)
             window = made
             view = people
         }

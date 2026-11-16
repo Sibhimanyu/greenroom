@@ -96,7 +96,7 @@ final class MeetingTopBarView: NSView {
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
         wantsLayer = true
-        layer?.backgroundColor = MeetingTheme.windowNS.cgColor
+        layer?.backgroundColor = NSColor.clear.cgColor // the window's frost shows through
 
         shield.image = NSImage(systemSymbolName: "checkmark.shield.fill", accessibilityDescription: "Meeting info")?
             .withSymbolConfiguration(.init(pointSize: 15, weight: .regular))

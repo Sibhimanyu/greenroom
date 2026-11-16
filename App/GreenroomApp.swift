@@ -131,6 +131,8 @@ struct GreenroomApp: App {
                 .heresay()
                 // The launch: the mark plays over a frosted window, once.
                 .background(LaunchSplashCover())
+                // Only you see this window: a frosted background, opaque content.
+                .background(FrostedWindow())
                 #if DEBUG
                 .background(DebugTourBridge(editor: editor))
                 #endif

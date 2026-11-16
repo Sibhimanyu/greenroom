@@ -128,7 +128,7 @@ struct MeetingToolbarBar: View {
             .frame(width: geo.size.width, height: geo.size.height)
         }
         .frame(height: Self.height)
-        .background(MeetingTheme.window)
+        // No background of its own: the window's frost shows through.
         .overlay(alignment: .top) { Rectangle().fill(MeetingTheme.hairline).frame(height: 1) }
         .environment(\.colorScheme, .dark)
     }

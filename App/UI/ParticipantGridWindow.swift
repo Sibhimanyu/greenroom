@@ -370,6 +370,11 @@ enum ParticipantGridWindowController {
             let view = RootView(frame: hosting.contentLayoutRect, form: form)
             view.autoresizingMask = [.width, .height]
             hosting.contentView = view
+            // Only you see the Meeting window: its background is a dark frost,
+            // the faces, text and controls on it stay opaque.
+            if form.isMeeting {
+                WindowFrost.install(in: hosting, material: .hudWindow, solid: MeetingTheme.windowNS)
+            }
             panel = hosting
             root = view
             userHidden = false
@@ -1201,7 +1206,8 @@ private final class RootView: NSView {
         // when self left the grid, because alone in a room there was then
         // nothing on the right at all. A real surface colour reads as a panel
         // that is ready, which is what it is.
-        layer?.backgroundColor = (form.isMeeting ? MeetingTheme.windowNS : NSColor.windowBackgroundColor).cgColor
+        // The meeting window's background is the frost behind it (WindowFrost).
+        layer?.backgroundColor = (form.isMeeting ? NSColor.clear : NSColor.windowBackgroundColor).cgColor
 
         for bar in [topBar, rail, contextBar, bottomBar] { addSubview(bar) }
         gridHost.wantsLayer = true
@@ -1927,7 +1933,7 @@ private final class RootView: NSView {
 
         sidePanelHost.isHidden = true
         sidePanelBacking.wantsLayer = true
-        sidePanelBacking.layer?.backgroundColor = MeetingTheme.windowNS.cgColor
+        sidePanelBacking.layer?.backgroundColor = NSColor.clear.cgColor // the window's frost shows through
         sidePanelHost.addSubview(sidePanelBacking)
         sidePanelTitle.font = .systemFont(ofSize: 14, weight: .semibold)
         sidePanelTitle.textColor = .white

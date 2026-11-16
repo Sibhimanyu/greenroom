@@ -41,24 +41,55 @@ enum ShowOnShareSwitch {
 
     /// Dimmed and off when the share is an app or a window (the tooltip says why);
     /// amber when it is on and really going out.
-    static func apply(to button: NSButton, on: Bool, kind: ShowOnShare.ShareKind, pointSize: CGFloat = 13) {
+    /// `showsTitle`: the words "Class sees this" / "Only you" beside the eye (the
+    /// title bar has room; the Mini's strip is icon-only and says it on hover).
+    static func apply(to button: NSButton, on: Bool, kind: ShowOnShare.ShareKind, pointSize: CGFloat = 13,
+                      showsTitle: Bool = false) {
         let available = ShowOnShare.isAvailable(kind)
         let marked = ShowOnShare.marksWindow(on: on, kind: kind)
+        let visibility = ShareVisibility(marked: marked)
         // An eye, not the Share symbol: it says whether others see this window,
         // and two window-shaped icons side by side read as the same thing.
-        button.image = NSImage(systemSymbolName: marked ? "eye" : "eye.slash", accessibilityDescription: ShowOnShare.label)?
+        button.image = NSImage(systemSymbolName: visibility.symbol, accessibilityDescription: visibility.label)?
             .withSymbolConfiguration(.init(pointSize: pointSize, weight: .semibold))
         button.isEnabled = available
         button.state = marked ? .on : .off
-        button.contentTintColor = marked ? MeetingTheme.netNS : (available ? .white : MeetingTheme.secondaryTextNS)
+        let tint = marked ? MeetingTheme.netNS : (available ? NSColor.white : MeetingTheme.secondaryTextNS)
+        button.contentTintColor = tint
+        if showsTitle {
+            button.imagePosition = .imageLeading
+            button.attributedTitle = NSAttributedString(string: visibility.label, attributes: [
+                .font: NSFont.systemFont(ofSize: 11, weight: .semibold), .foregroundColor: tint,
+            ])
+        }
         button.toolTip = ShowOnShare.help(kind: kind, on: on)
         button.setAccessibilityLabel(ShowOnShare.label)
-        button.setAccessibilityValue(marked ? "on" : "off")
+        button.setAccessibilityValue(visibility.label)
         button.setAccessibilityHelp(ShowOnShare.help(kind: kind, on: on))
     }
 }
 
-// MARK: - Show on my share: the amber border
+// MARK: - Show on my share: telling the person once
+
+/// Remembers what one window was, and the first time on this Mac that it goes
+/// from hidden to seen or back, says so on the island. Never again after that.
+@MainActor
+final class ShareVisibilityAnnouncer {
+    private var last = ShareVisibility.onlyYou
+    private let defaults: UserDefaults
+    init(defaults: UserDefaults = .standard) { self.defaults = defaults }
+
+    func update(marked: Bool) {
+        let now = ShareVisibility(marked: marked)
+        defer { last = now }
+        guard let words = ShareVisibilityExplainer.toast(
+            was: last, now: now, alreadyExplained: ShareVisibilityExplainer.hasExplained(defaults)) else { return }
+        ShareVisibilityExplainer.markExplained(defaults)
+        ToastController.show(words)
+    }
+}
+
+// MARK: - Show on my share: the amber edge (every window the class can see)
 
 /// A click-through panel laid over a window while it is going out on the share.
 /// It is a separate window of ours that is NOT in the share's exceptions, so the

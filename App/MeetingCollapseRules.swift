@@ -155,8 +155,8 @@ enum ShowOnShare {
 
     static let label = "Show on my share"
     static let unavailableTip = "Works when you share a whole display"
-    /// The small label on the amber border.
-    static let borderLabel = "On your share"
+    /// The small label on the amber edge: the same words as the switch.
+    static let borderLabel = ShareVisibility.classSees.label
 
     /// The windows to let through, as window numbers; nil when the switch cannot
     /// work (an app or window share captures only that app or window).
@@ -169,8 +169,8 @@ enum ShowOnShare {
     /// The switch's tooltip and accessibility help.
     static func help(kind: ShareKind, on: Bool) -> String {
         guard isAvailable(kind) else { return unavailableTip }
-        return on ? "\(label): on. This window is in the picture others see."
-                  : "\(label): off. Greenroom\u{2019}s windows stay out of the picture."
+        return on ? "\(ShareVisibility.classSees.label): this window is in the picture others see."
+                  : "\(ShareVisibility.onlyYou.label): Greenroom\u{2019}s windows stay out of the picture."
     }
 
     /// The border and its label draw only while the window is really going out.

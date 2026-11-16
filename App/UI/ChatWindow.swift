@@ -461,6 +461,8 @@ enum ChatWindowController {
             // it be there over a full-screen app: without it macOS sends you to
             // another desktop instead (owner, 2026-11-16).
             newWindow.collectionBehavior = [.moveToActiveSpace, .fullScreenAuxiliary]
+            // Only you see the chat: a frosted background, opaque messages.
+            WindowFrost.install(in: newWindow, material: .underWindowBackground, solid: .windowBackgroundColor)
             window = newWindow
             targetWindow = newWindow
         }

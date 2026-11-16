@@ -78,6 +78,7 @@ final class MeetingViewWindowController: NSObject, NSWindowDelegate {
     private(set) var showOnShare = false
     private var shareBorder: ShareBorderOverlay?
     private var shareButtons: [NSButton] = []
+    private let shareAnnouncer = ShareVisibilityAnnouncer()
 
     init(view: MeetingView, frame: NSRect, screen: NSScreen?) {
         self.view = view
@@ -121,6 +122,7 @@ final class MeetingViewWindowController: NSObject, NSWindowDelegate {
         } else {
             addTitleControls()
         }
+        WindowFrost.install(in: panel, material: .hudWindow, solid: MeetingTheme.windowNS)
     }
 
     func windowWillClose(_ notification: Notification) {
@@ -145,10 +147,15 @@ final class MeetingViewWindowController: NSObject, NSWindowDelegate {
     /// The switch, the border and the label follow what is being shared right now.
     func refreshShare() {
         let kind = ShareVisibleWindows.kind
-        for button in shareButtons { ShowOnShareSwitch.apply(to: button, on: showOnShare, kind: kind) }
+        let titled = view != .mini
+        for button in shareButtons {
+            ShowOnShareSwitch.apply(to: button, on: showOnShare, kind: kind, pointSize: titled ? 12 : 13, showsTitle: titled)
+        }
         let marked = ShowOnShare.marksWindow(on: showOnShare, kind: kind)
         if marked, shareBorder == nil { shareBorder = ShareBorderOverlay(parent: panel) }
         shareBorder?.show(marked)
+        WindowFrost.show(ShareVisibility(marked: marked).backdrop, in: panel)
+        shareAnnouncer.update(marked: marked)
     }
 
     /// The window is closing: leave the registry, take the border down.
@@ -164,8 +171,10 @@ final class MeetingViewWindowController: NSObject, NSWindowDelegate {
     private func addTitleControls() {
         let hasPicker = view == .spotlight || view == .sharedScreen
         let switchSize: CGFloat = 24
+        // Room for the eye and "Class sees this".
+        let switchWidth: CGFloat = 108
         let pickerWidth: CGFloat = hasPicker ? 196 : 0
-        let host = NSView(frame: NSRect(x: 0, y: 0, width: pickerWidth + switchSize + 12, height: 28))
+        let host = NSView(frame: NSRect(x: 0, y: 0, width: pickerWidth + switchWidth + 12, height: 28))
         if hasPicker {
             let button = FirstClickPopUp(frame: NSRect(x: 0, y: 3, width: 190, height: 22), pullsDown: false)
             button.controlSize = .small
@@ -175,10 +184,10 @@ final class MeetingViewWindowController: NSObject, NSWindowDelegate {
             picker = button
         }
         let share = ShowOnShareSwitch.make(size: switchSize) { [weak self] in self?.toggleShare() }
-        share.frame = NSRect(x: pickerWidth, y: 2, width: switchSize, height: switchSize)
+        share.frame = NSRect(x: pickerWidth, y: 2, width: switchWidth, height: switchSize)
         host.addSubview(share)
         shareButtons = [share]
-        ShowOnShareSwitch.apply(to: share, on: false, kind: ShareVisibleWindows.kind, pointSize: 12)
+        ShowOnShareSwitch.apply(to: share, on: false, kind: ShareVisibleWindows.kind, pointSize: 12, showsTitle: true)
         let controller = NSTitlebarAccessoryViewController()
         controller.view = host
         controller.layoutAttribute = .trailing

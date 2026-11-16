@@ -695,13 +695,16 @@ private struct MeetingPuckView: View {
                 .scaledToFit()
                 .frame(height: 18)
                 .foregroundStyle(Color.primary)
+            // Both badges sit inside the 44pt circle (centre to badge edge under
+            // 22pt at 45 degrees): the capsule clips its content, so a badge on
+            // the square's corner would be cut off flat.
             if recording {
                 // Red is the recording signal everywhere else in the bar.
                 Circle().fill(coordinator.isRecordingPaused ? Color.secondary : Color.red)
                     .frame(width: 10, height: 10)
                     .overlay(Circle().strokeBorder(Color(nsColor: .windowBackgroundColor), lineWidth: 2))
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
-                    .padding(.top, 3).padding(.trailing, 3)
+                    .padding(.top, 6).padding(.trailing, 6)
             }
             if muted {
                 Image(systemName: "mic.slash.fill")
@@ -711,7 +714,7 @@ private struct MeetingPuckView: View {
                     .background(Color.red, in: Circle())
                     .overlay(Circle().strokeBorder(Color(nsColor: .windowBackgroundColor), lineWidth: 2))
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
-                    .padding(.bottom, 1).padding(.trailing, 1)
+                    .padding(.bottom, 5).padding(.trailing, 5)
             }
         }
         .frame(width: MeetingControlBarController.puckSize, height: MeetingControlBarController.puckSize)

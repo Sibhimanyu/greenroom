@@ -3180,6 +3180,7 @@ final class CoordinatorController: ObservableObject {
                 MeetingViewWindows.closeMini()
                 MeetingControlBarController.reconcile(immediately: false)
             }
+            MeetingControlBarController.healIfNeeded()
             guard self.meetingWindowWanted || ParticipantGridWindowController.isOpen else { return true }
             guard let target = self.meetingSurfaceTarget() else { return false }
             if target.form.isMeeting {

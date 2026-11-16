@@ -889,6 +889,7 @@ enum MeetingControlBarController {
     private static var model: MeetingControlsModel?
     private static var coordinator: CoordinatorController?
     private static var observers: [NSObjectProtocol] = []
+    private static var spaceObserver: NSObjectProtocol?
     private static var pending: DispatchWorkItem?
     private static var settleTimer: Timer?
 
@@ -958,6 +959,12 @@ enum MeetingControlBarController {
                 }
             })
         }
+        // The meeting window counts as showing only on the desktop in view, so a
+        // desktop switch changes the answer without the window changing at all.
+        spaceObserver = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.activeSpaceDidChangeNotification, object: nil, queue: .main) { _ in
+            MainActor.assumeIsolated { reconcile(immediately: false) }
+        }
         // A display unplugged, or the Dock or menu bar moved: a spot that is now
         // off screen goes back to the default, one that is merely close to an
         // edge is pulled in.
@@ -997,6 +1004,17 @@ enum MeetingControlBarController {
         } else {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5, execute: work)
         }
+    }
+
+    /// A belt for the one-surface rule: called every second by the meeting's
+    /// follow loop. When the pill's state disagrees with what it should be (the
+    /// bar up beside the meeting window, or neither up) because some change
+    /// sent no notification, decide again.
+    static func healIfNeeded() {
+        guard let panel, morphTimeline == nil else { return }
+        let wanted = MeetingSurfaces.barVisible(windowShowing: ParticipantGridWindowController.meetingWindowIsShowing,
+                                                miniOpen: MeetingViewWindows.miniIsOpen)
+        if wanted != panel.isVisible { reconcile(immediately: false) }
     }
 
     // MARK: Shrink to the bar, and back
@@ -1297,6 +1315,8 @@ enum MeetingControlBarController {
         cancelSettling()
         for observer in observers { NotificationCenter.default.removeObserver(observer) }
         observers = []
+        if let spaceObserver { NSWorkspace.shared.notificationCenter.removeObserver(spaceObserver) }
+        spaceObserver = nil
         panel?.close()
         panel = nil
         state = nil

@@ -26,6 +26,12 @@ import SwiftUI
 @MainActor
 final class RecordingChrome {
     private let border = RecordingBorderController()
+    /// The preview's outline: dashed, "this is in the picture", never while
+    /// the solid recording one is up.
+    private let previewBorder = RecordingBorderController(dashed: true)
+    private var previewing = false
+    private var recordingNow = false
+    private weak var coordinator: CoordinatorController?
     private let bar = RecordingControlBarController()
     private var wasRecording = false
 
@@ -39,6 +45,8 @@ final class RecordingChrome {
 
         // The border says "this is being recorded", so it is up only while the
         // file is growing: hidden while paused, back on resume.
+        self.coordinator = coordinator
+        recordingNow = recording
         if recording, !paused {
             // Only while what is recorded is on this desktop: the outline is on
             // every Space, and a window on another one left it framing nothing.
@@ -46,6 +54,7 @@ final class RecordingChrome {
         } else {
             border.hide()
         }
+        updatePreviewBorder()
 
         // The moment it starts (not on resume), what is recorded comes forward.
         if recording, !wasRecording, recordOnly {
@@ -60,11 +69,28 @@ final class RecordingChrome {
         }
     }
 
+    /// A preview (Home's Preview, the Webcam page) is showing the picture: a
+    /// dashed outline marks what is in it, so the shared app or window is
+    /// recognisable when you go to it (owner, 2026-11-16).
+    func setPreviewing(_ on: Bool, coordinator: CoordinatorController) {
+        self.coordinator = coordinator
+        previewing = on
+        updatePreviewBorder()
+    }
+
+    private func updatePreviewBorder() {
+        if previewing, !recordingNow {
+            previewBorder.show { [weak coordinator] in coordinator?.capturedScreenFrame(onThisDesktop: true) }
+        } else {
+            previewBorder.hide()
+        }
+    }
+
     /// The way back to a recording whose main window is hidden: the bar, in front.
     func bringBarForward() { bar.bringForward() }
 
     func teardown() {
-        NotchStatusController.shared.setCountdown(nil); border.hide(); bar.hide()
+        NotchStatusController.shared.setCountdown(nil); border.hide(); previewBorder.hide(); bar.hide()
     }
 }
 
@@ -226,6 +252,9 @@ final class RecordingBorderController {
     private var link: CADisplayLink?
     private var ticker: BorderTicker?
     private var rounded = false
+    private let dashed: Bool
+
+    init(dashed: Bool = false) { self.dashed = dashed }
 
     /// `provider` gives the captured area in global CoreGraphics points
     /// (top-left origin), or nil when there is nothing to outline.
@@ -267,7 +296,7 @@ final class RecordingBorderController {
         let panel = ensurePanel()
         if rounded == isDisplay {
             rounded = !isDisplay
-            panel.contentView = NSHostingView(rootView: RecordingBorderView(rounded: rounded))
+            panel.contentView = NSHostingView(rootView: RecordingBorderView(rounded: rounded, dashed: dashed))
         }
         if panel.frame != frame { panel.setFrame(frame, display: true) }
         if !panel.isVisible { panel.orderFrontRegardless() }
@@ -286,7 +315,7 @@ final class RecordingBorderController {
         created.hidesOnDeactivate = false
         created.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .ignoresCycle]
         created.sharingType = .none
-        created.contentView = NSHostingView(rootView: RecordingBorderView(rounded: rounded))
+        created.contentView = NSHostingView(rootView: RecordingBorderView(rounded: rounded, dashed: dashed))
         panel = created
         return created
     }
@@ -300,12 +329,15 @@ private final class BorderTicker: NSObject {
 }
 
 /// Understated: a thin line in the brand tint hugging the recorded area.
+/// Dashed and lighter for a preview, so it never reads as "recording".
 private struct RecordingBorderView: View {
     let rounded: Bool
+    var dashed = false
 
     var body: some View {
         RoundedRectangle(cornerRadius: rounded ? 12 : 0, style: .continuous)
-            .strokeBorder(Brand.green.opacity(0.9), lineWidth: 3)
+            .strokeBorder(Brand.green.opacity(dashed ? 0.75 : 0.9),
+                          style: StrokeStyle(lineWidth: dashed ? 2 : 3, dash: dashed ? [8, 6] : []))
             .ignoresSafeArea()
             .accessibilityHidden(true)
     }

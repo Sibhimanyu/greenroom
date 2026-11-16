@@ -2772,6 +2772,7 @@ final class CoordinatorController: ObservableObject {
         shapePreviewOn = true
         StageScreenSource.log("Settings preview opened.")
         attachPreview()
+        recordingChrome.setPreviewing(true, coordinator: self)
     }
 
     private func attachPreview() {
@@ -2809,6 +2810,7 @@ final class CoordinatorController: ObservableObject {
         StageScreenSource.log("Settings preview closed\(!sceneInUse && !isRunning ? "; the picture stops with it" : "").")
         shapePreviewOn = false
         shapePreviewApply?.cancel()
+        recordingChrome.setPreviewing(false, coordinator: self)
         // The Record view is still watching the same picture: one compositor
         // serves both, and the last to leave turns the light off.
         if studioPreviewOn { return }

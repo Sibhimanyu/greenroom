@@ -117,10 +117,10 @@ enum DebugTour {
                           let m = MeetingMode.allCases.first(where: { "\($0)" == info["mode"] })
                     else { throw TourError("bad mode") }
                     withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) { c.meetingMode = m }
-                case "homeSetup":
-                    // expanded=true|false: the five tiles unfolded or the one line.
-                    NotificationCenter.default.post(name: .debugTourHomeSetup, object: nil,
-                                                    userInfo: ["expanded": info["expanded"] == "true"])
+                case "homeCard":
+                    // face=picture|screen: which face Home's preview card shows.
+                    NotificationCenter.default.post(name: .debugTourHomeCard, object: nil,
+                                                    userInfo: ["screen": info["face"] == "screen"])
                 case "homePreview":
                     // shown=true|false: the picture card opened or folded away.
                     // `restore` folds it.
@@ -528,7 +528,7 @@ enum DebugTour {
 }
 extension Notification.Name {
     static let debugTourHomePreview = Notification.Name("com.greenroom.debug.tour.homePreview")
-    static let debugTourHomeSetup = Notification.Name("com.greenroom.debug.tour.homeSetup")
+    static let debugTourHomeCard = Notification.Name("com.greenroom.debug.tour.homeCard")
 }
 
 #endif

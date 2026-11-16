@@ -87,6 +87,9 @@ struct HomeView: View {
     static let primaryFullWidth = true
 
     @State private var showLive = false
+    /// What the preview card shows: the picture the class sees, or how your
+    /// screen is laid out (owner, 2026-11-16: "preview the layout and all").
+    @State private var cardFace: CardFace = .picture
     @State private var cameras: [LocalDeviceResolver.Camera] = []
     @State private var microphones: [LocalDeviceResolver.Microphone] = []
     @State private var displays: [DisplayInfo] = []
@@ -191,6 +194,111 @@ struct HomeView: View {
     private var liveFrameReady: Bool { showLive && coordinator.shapePreviewAspect != nil }
 
     private var pictureCard: some View {
+        ZStack {
+            pictureFace.opacity(cardFace == .picture ? 1 : 0)
+            if cardFace == .screen {
+                screenFace
+                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .strokeBorder(Color(nsColor: .separatorColor).opacity(0.7), lineWidth: 1))
+                    .transition(.opacity)
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .aspectRatio(16.0 / 9.0, contentMode: .fit)
+        .overlay(alignment: .topTrailing) { cardSwitch.padding(10) }
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.18), value: cardFace)
+        // Changing a setting shows the face it changes.
+        .onChange(of: coordinator.layoutChoiceName) { _, _ in cardFace = .screen }
+        .onChange(of: coordinator.webcamShape) { _, _ in cardFace = .picture }
+        .onChange(of: coordinator.shareTarget) { _, _ in cardFace = .picture }
+        #if DEBUG
+        .onReceive(NotificationCenter.default.publisher(for: .debugTourHomeCard)) { note in
+            cardFace = (note.userInfo?["screen"] as? Bool) == true ? .screen : .picture
+        }
+        #endif
+    }
+
+    /// Picture / Screen, a small glass switch on the card.
+    private var cardSwitch: some View {
+        HStack(spacing: 2) {
+            ForEach(CardFace.allCases, id: \.self) { face in
+                let on = cardFace == face
+                Button { cardFace = face } label: {
+                    Text(face.title)
+                        .font(.system(size: 11, weight: on ? .semibold : .medium))
+                        .foregroundStyle(on ? Color.white : Color.white.opacity(0.7))
+                        .padding(.horizontal, 9)
+                        .frame(height: 22)
+                        .background(Capsule().fill(on ? Color.white.opacity(0.22) : .clear))
+                        .contentShape(Capsule())
+                }
+                .buttonStyle(.plain)
+                .help(face.help)
+                .accessibilityAddTraits(on ? .isSelected : [])
+            }
+        }
+        .padding(2)
+        .background(.black.opacity(0.45), in: Capsule())
+        .colorScheme(.dark)
+    }
+
+    /// The layout on your screen: where each window goes, drawn from the
+    /// layout itself (never a capture), at your display's shape.
+    private var screenFace: some View {
+        let template = coordinator.layoutLibrary.active
+        let screen = NSScreen.main?.frame.size ?? CGSize(width: 16, height: 10)
+        let aspect = max(screen.width / max(screen.height, 1), 1.2)
+        return ZStack {
+            Color(red: 0.11, green: 0.12, blue: 0.14)
+            VStack(spacing: 10) {
+                Spacer(minLength: 34)
+                if let template, !template.oneDisplay.isEmpty {
+                    LayoutThumbnail(pieces: template.oneDisplay, aspect: aspect) {
+                        LayoutPageContent.look($0, customUIMode: coordinator.customUIMode,
+                                               canMoveApps: AppWindowManager.hasAccessibilityPermission)
+                    }
+                    .padding(6)
+                    .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(.black.opacity(0.35)))
+                    .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .strokeBorder(.white.opacity(0.12), lineWidth: 1))
+                    .padding(.horizontal, 28)
+                    HStack(spacing: 10) {
+                        Text(template.name)
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(.white.opacity(0.85))
+                        Button {
+                            LayoutPageContent.showOnScreen(template, customUIMode: coordinator.customUIMode,
+                                                           canMoveApps: AppWindowManager.hasAccessibilityPermission)
+                        } label: {
+                            Label("Show on screen", systemImage: "rectangle.dashed")
+                                .font(.system(size: 11.5, weight: .medium))
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(Brand.green)
+                        .help("Outline where each window goes, on your real screen, for a moment.")
+                    }
+                } else {
+                    Image(systemName: "rectangle.split.2x1")
+                        .font(.system(size: 26, weight: .light))
+                        .foregroundStyle(.white.opacity(0.45))
+                    Text("No layout")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(.white.opacity(0.85))
+                    Text("Greenroom opens and moves nothing.\nPick one from Layout.")
+                        .font(.system(size: 11.5))
+                        .multilineTextAlignment(.center)
+                        .foregroundStyle(.white.opacity(0.55))
+                }
+                Spacer(minLength: 14)
+            }
+        }
+        .colorScheme(.dark)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Your screen: \(template?.name ?? "no layout")")
+    }
+
+    private var pictureFace: some View {
         ZStack {
             // The drawing is always underneath, so Show live fades into
             // the same frame it replaces rather than a blank one.
@@ -1444,5 +1552,16 @@ private struct DockFace: View {
         .padding(.bottom, 3)
         .frame(maxWidth: .infinity)
         .contentShape(Rectangle())
+    }
+}
+
+/// The two faces of Home's preview card.
+private enum CardFace: CaseIterable {
+    case picture, screen
+
+    var title: String { self == .picture ? "Picture" : "Screen" }
+    var help: String {
+        self == .picture ? "What the class sees: your share with you over it."
+                         : "How your screen is laid out: where each window goes."
     }
 }

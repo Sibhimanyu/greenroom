@@ -10,7 +10,7 @@
 
 - Open the Zoom app builder directly, with instructions and credential fields grouped by app type.
 - Copy each required hosting permission separately, matching Zoom’s one-at-a-time scope search.
-- Run nine setup checks covering Meeting SDK credentials, hosting credentials and activation, all five hosting scopes, scheduled meeting lookup, and the hosting-token endpoint.
+- Run eleven setup checks covering Meeting SDK credentials, hosting credentials and activation, all seven hosting scopes, scheduled meeting lookup, and the hosting-token endpoint.
 - View progress and results in a dedicated panel. Permission checks do not create or end a meeting.
 
 ## More compact Settings

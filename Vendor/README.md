@@ -43,11 +43,13 @@ features run off TWO Marketplace apps:
 Scheduled-meetings list, and hosting your own meetings):**
 
 1. Build App -> **Server-to-Server OAuth**.
-2. On its Scopes page add ALL FIVE scopes (each one's absence was
+2. On its Scopes page add ALL SEVEN scopes (each one's absence was
    discovered as a live 4711 error; the in-app errors name them too):
    - `meeting:write:meeting:admin` - create meetings
    - `meeting:read:list_meetings:admin` - the Scheduled list
-   - `meeting:read:meeting:admin` - recurring meetings' next times
+   - `meeting:read:meeting:admin` - recurring meetings' next times, and loading a meeting to edit
+   - `meeting:update:meeting:admin` - edit scheduled meetings
+   - `meeting:delete:meeting:admin` - delete scheduled meetings
    - `user:read:token:admin` - the ZAK that host-starts your own meetings
    - `meeting:update:status:admin` - End session ends the meeting for
      everyone, and a meeting left running is cleared before the next start

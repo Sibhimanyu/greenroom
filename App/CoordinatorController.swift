@@ -242,10 +242,9 @@ final class CoordinatorController: ObservableObject {
         recordFlowHUD = false
         lastStartWasRecordFlow = false
         // Steps this start will skip are marked now, so the island counts only
-        // what it will really do ("1/2", not "2/5"). Joining says joining.
+        // what it will really do ("1/2", not "2/5").
         startReadiness = .init(steps: StartStep.allCases.map { step in
-            var label = step.label
-            if step == .meeting, meetingMode == .join { label = "Joining meeting" }
+            let label = step.label
             let skipped = (step == .tiling && !sessionArranges) || (step == .recording && !autoRecordOnStart)
             return .init(label: label, state: skipped ? .skipped : .pending)
         })
@@ -1463,7 +1462,7 @@ final class CoordinatorController: ObservableObject {
             }
         case .join:
             guard !meetingNumberDigits.isEmpty else {
-                log("Paste a meeting link or enter a meeting ID first.")
+                log("Choose a scheduled meeting first.")
                 return
             }
         }
@@ -2961,12 +2960,9 @@ final class CoordinatorController: ObservableObject {
         }
     }
 
-    /// Join Existing via the built-in client - you as one participant,
-    /// camera/mic live, chat as yourself, window parked top-right. The SDK can
-    /// only join meetings hosted under the account that owns the Marketplace
-    /// app (Zoom rejects others as error 63, confirmed by live testing); that
-    /// fails with a plain message saying what to do, rather than handing the
-    /// meeting to the Zoom app, which cannot receive Greenroom's picture.
+    /// Scheduled: starts one of the account's own scheduled meetings as host
+    /// via the built-in client, camera/mic live, chat as yourself. Never joins
+    /// as a guest (the name is kept from when this tab was "Join").
     private func joinAllInOne() async throws {
         guard !sdkClientID.isEmpty, !sdkClientSecret.isEmpty else {
             throw NSError(domain: "Greenroom", code: 21, userInfo: [
@@ -2976,7 +2972,7 @@ final class CoordinatorController: ObservableObject {
         isConnectingChat = true
         defer { isConnectingChat = false }
 
-        log("Joining meeting \(meetingNumber) in Greenroom's built-in Zoom client\u{2026}")
+        log("Starting meeting \(meetingNumber) in Greenroom's built-in Zoom client\u{2026}")
         try await zoomChatClient.ensureReady(clientID: sdkClientID, clientSecret: sdkClientSecret)
         await settleBeforeJoining()
         zoomChatClient.setDualScreenMode(sessionArranges && galleryWindowExists)
@@ -2987,56 +2983,42 @@ final class CoordinatorController: ObservableObject {
 
         let name = userDisplayName.isEmpty ? NSFullUserName() : userDisplayName
 
-        // The account's OWN meetings (the Scheduled list) must be STARTED
-        // with a fresh ZAK, not joined: the SDK authenticates the app,
-        // not the Zoom user, so a plain join arrives as an anonymous
-        // participant and Zoom throws up a "Claim host" key prompt
-        // instead of promoting (seen live). Falls back to a normal join
-        // if the ZAK fetch fails (e.g. missing user-token scope).
-        var startedAsHost = false
-        if isOwnScheduledMeeting {
-            do {
-                log("This meeting is yours \u{2014} starting it as host\u{2026}")
-                let zak: String
-                if let prefetched = prefetchedZAK, prefetched.meetingNumber == meetingNumberDigits,
-                   Date().timeIntervalSince(prefetched.fetchedAt) < 600 {
-                    // Warmed when the meeting was picked from the
-                    // Scheduled menu - saves the fetch's network time.
-                    zak = prefetched.zak
-                } else {
-                    let (account, client, secret) = (s2sAccountID, s2sClientID, s2sClientSecret)
-                    zak = try await withStartTimeout(20, step: "Getting your host key from Zoom",
-                                                     advice: "Joining as a participant instead.") {
-                        try await ZoomServerToServerClient.fetchZAK(accountID: account, clientID: client, clientSecret: secret)
-                    }
-                }
-                try await zoomChatClient.startAsHost(meetingNumber: meetingNumber, zak: zak, displayName: name, enableMedia: true)
-                startedAsHost = true
-            } catch {
-                log("\(error.localizedDescription) \u{2014} joining as a participant instead.")
-            }
+        // The Scheduled tab only starts the account's OWN meetings, as host.
+        // The SDK authenticates the app, not the Zoom user, so a host start
+        // needs a fresh ZAK. There is no guest fallback: Greenroom does not
+        // join other people's meetings.
+        guard !s2sAccountID.isEmpty, !s2sClientID.isEmpty, !s2sClientSecret.isEmpty else {
+            throw NSError(domain: "Greenroom", code: 23, userInfo: [
+                NSLocalizedDescriptionKey: "Couldn't start this meeting as host: add your Zoom account (Server-to-Server credentials) in Settings (\u{2318},) \u{2192} Zoom."
+            ])
         }
-
-        if !startedAsHost {
-            do {
-                try await zoomChatClient.join(meetingNumber: meetingNumber, password: meetingPassword, displayName: name, enableMedia: true)
-            } catch {
-                if (error as? ZoomMeetingSDKError)?.isCrossAccountRejection == true {
-                    throw NSError(domain: "Greenroom", code: 22, userInfo: [
-                        NSLocalizedDescriptionKey: "That meeting is hosted on another Zoom account, and Greenroom's Zoom client can only join meetings hosted under the account that owns your Meeting SDK app. Ask the host to run it from your account, or use New Meeting."
-                    ])
+        do {
+            log("Starting your scheduled meeting as host\u{2026}")
+            let zak: String
+            if let prefetched = prefetchedZAK, prefetched.meetingNumber == meetingNumberDigits,
+               Date().timeIntervalSince(prefetched.fetchedAt) < 600 {
+                // Warmed when the meeting was picked from the Scheduled
+                // menu - saves the fetch's network time.
+                zak = prefetched.zak
+            } else {
+                let (account, client, secret) = (s2sAccountID, s2sClientID, s2sClientSecret)
+                zak = try await withStartTimeout(20, step: "Getting your host key from Zoom",
+                                                 advice: "Check your Zoom account in Settings \u{2192} Zoom.") {
+                    try await ZoomServerToServerClient.fetchZAK(accountID: account, clientID: client, clientSecret: secret)
                 }
-                throw error
             }
+            try await zoomChatClient.startAsHost(meetingNumber: meetingNumber, zak: zak, displayName: name, enableMedia: true)
+        } catch {
+            throw NSError(domain: "Greenroom", code: 24, userInfo: [
+                NSLocalizedDescriptionKey: "Couldn't start this meeting as host: \(error.localizedDescription)"
+            ])
         }
 
         if let controller = zoomChatClient.chatController() {
             zoomChatBridge.attach(to: controller)
         }
         if let template = sessionTemplate { layoutEngine.openChat(template, meetingHidden: speakerTileQuickHidden) }
-        log(startedAsHost
-            ? "Meeting is live \u{2014} you're hosting from Greenroom."
-            : "In the meeting.")
+        log("Meeting is live \u{2014} you're hosting from Greenroom.")
 
         if sessionArranges {
             presentMeetingSurfaces(resetQuickHideToDefault: true) // session start = the mode's default state
@@ -3044,14 +3026,6 @@ final class CoordinatorController: ObservableObject {
         }
     }
 
-    /// Whether the Join Existing target is one of the account's own
-    /// meetings - i.e. it appears in the Scheduled list fetched with the
-    /// S2S credentials. Own meetings get host-started; everything else
-    /// gets a plain join.
-    private var isOwnScheduledMeeting: Bool {
-        !s2sAccountID.isEmpty && !s2sClientID.isEmpty && !s2sClientSecret.isEmpty
-            && scheduledMeetings.contains { String($0.id) == meetingNumberDigits }
-    }
 
     /// Parks the built-in client's meeting window into the side column's
     /// top slot and keeps the chat aligned below it - all plain NSWindow
@@ -4473,7 +4447,7 @@ final class CoordinatorController: ObservableObject {
     }
 
     // MARK: Scheduled meetings - pulled from the Zoom account with the
-    // same S2S credentials that create meetings, so "Join Existing" can
+    // same S2S credentials that create meetings, so the Scheduled tab can
     // offer the account's recurring class meeting instead of making the
     // user paste an ID every morning.
 
@@ -4504,7 +4478,7 @@ final class CoordinatorController: ObservableObject {
         }
     }
 
-    /// Fills the Join Existing fields from a picked scheduled meeting.
+    /// Fills the meeting number from a picked scheduled meeting.
     /// The list endpoint omits the raw passcode, but the join URL carries
     /// it in the encrypted pwd= form joins accept - the same parsing as
     /// Paste Link.
@@ -4522,6 +4496,67 @@ final class CoordinatorController: ObservableObject {
         // meetings get host-started with a ZAK, and this fetch is pure
         // network time otherwise sitting inside the start.
         prefetchZAK(for: meetingNumberDigits)
+    }
+
+    /// Schedules a meeting on the Zoom account, then refreshes the list,
+    /// picks the new one, and copies its invite link. Throws Zoom's error so
+    /// the sheet can show it.
+    func createScheduledMeeting(_ spec: NewMeetingRequest) async throws {
+        loadSecretsIfNeeded()
+        let (account, client, secret) = (s2sAccountID, s2sClientID, s2sClientSecret)
+        let created = try await ZoomServerToServerClient.createScheduledMeeting(
+            spec, accountID: account, clientID: client, clientSecret: secret)
+        Analytics.feature("scheduled_create")
+        if let result = try? await ZoomServerToServerClient.listScheduledMeetings(
+            accountID: account, clientID: client, clientSecret: secret) {
+            scheduledMeetings = result.meetings
+        }
+        let meeting = scheduledMeetings.first { $0.id == created.id }
+            ?? ZoomServerToServerClient.ScheduledMeeting(
+                id: created.id, topic: created.topic, startTime: nil,
+                isRecurring: spec.weekly, joinURL: created.joinURL)
+        if !scheduledMeetings.contains(where: { $0.id == created.id }) { scheduledMeetings.append(meeting) }
+        selectScheduledMeeting(meeting)
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(created.joinURL, forType: .string)
+        log("Created \(created.topic). Invite link copied.")
+    }
+
+    /// What the edit sheet pre-fills from.
+    func loadMeetingForEdit(id: Int64) async throws -> NewMeetingRequest {
+        loadSecretsIfNeeded()
+        let json = try await ZoomServerToServerClient.meetingDetails(
+            id: id, accountID: s2sAccountID, clientID: s2sClientID, clientSecret: s2sClientSecret)
+        return NewMeetingRequest.parse(json)
+    }
+
+    /// Saves an edit, refreshes the list and keeps the meeting selected.
+    func updateScheduledMeeting(id: Int64, _ spec: NewMeetingRequest) async throws {
+        loadSecretsIfNeeded()
+        let (account, client, secret) = (s2sAccountID, s2sClientID, s2sClientSecret)
+        try await ZoomServerToServerClient.updateScheduledMeeting(
+            id: id, spec, accountID: account, clientID: client, clientSecret: secret)
+        if let result = try? await ZoomServerToServerClient.listScheduledMeetings(
+            accountID: account, clientID: client, clientSecret: secret) {
+            scheduledMeetings = result.meetings
+        }
+        if let meeting = scheduledMeetings.first(where: { $0.id == id }) { selectScheduledMeeting(meeting) }
+        log("Saved \(spec.trimmedName).")
+    }
+
+    /// Deletes the meeting, refreshes the list and clears the selection.
+    func deleteScheduledMeeting(id: Int64, name: String) async throws {
+        loadSecretsIfNeeded()
+        let (account, client, secret) = (s2sAccountID, s2sClientID, s2sClientSecret)
+        try await ZoomServerToServerClient.deleteScheduledMeeting(
+            id: id, accountID: account, clientID: client, clientSecret: secret)
+        scheduledMeetings.removeAll { $0.id == id }
+        if let result = try? await ZoomServerToServerClient.listScheduledMeetings(
+            accountID: account, clientID: client, clientSecret: secret) {
+            scheduledMeetings = result.meetings
+        }
+        if meetingNumberDigits == String(id) { meetingNumber = ""; meetingPassword = "" }
+        log("Deleted \(name).")
     }
 
     private var prefetchedZAK: (meetingNumber: String, zak: String, fetchedAt: Date)?
@@ -5160,7 +5195,7 @@ struct MeetingPreset: Codable, Identifiable, Hashable {
 }
 
 /// The one up-front decision in the single-button flow: does Start create
-/// a fresh meeting, or join one you already have a link/ID for?
+/// a fresh meeting, or start one of your scheduled meetings?
 enum MeetingMode: String, CaseIterable, Identifiable {
     case create, join
     /// No meeting: the Webcam page's picture recorded to this Mac. See
@@ -5169,10 +5204,14 @@ enum MeetingMode: String, CaseIterable, Identifiable {
 
     var id: String { rawValue }
 
+    /// The raw value "join" is what older versions saved, so it keeps loading
+    /// into the Scheduled tab.
+    static let scheduledHelp = "Meetings scheduled on your Zoom account. To join someone else\u{2019}s meeting, use the Zoom app."
+
     var label: String {
         switch self {
         case .create: return "New Meeting"
-        case .join: return "Join Existing"
+        case .join: return "Scheduled"
         case .record: return "Record"
         }
     }
@@ -5182,7 +5221,7 @@ enum MeetingMode: String, CaseIterable, Identifiable {
     var shortLabel: String {
         switch self {
         case .create: return "New"
-        case .join: return "Join"
+        case .join: return "Scheduled"
         case .record: return "Record"
         }
     }

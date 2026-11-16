@@ -41,6 +41,8 @@ struct GreenroomSegmented<Value: Hashable, Label: View>: View {
     /// (`SegmentedMath.inset`) on all four sides of the green selection, plain
     /// primary labels, and the same solid green selection.
     var toolbar = false
+    /// A tooltip for one segment, or nil.
+    var segmentTips: (Value) -> String? = { _ in nil }
     @ViewBuilder let label: (Value) -> Label
 
     @Namespace private var ns
@@ -85,6 +87,13 @@ struct GreenroomSegmented<Value: Hashable, Label: View>: View {
                 }
                 .pickerStyle(.segmented)
             }
+    }
+
+    /// Adds a tooltip to the segments that have one.
+    func segmentHelp(_ help: @escaping (Value) -> String?) -> Self {
+        var copy = self
+        copy.segmentTips = help
+        return copy
     }
 
     private func move(_ delta: Int) -> KeyPress.Result {
@@ -136,6 +145,7 @@ struct GreenroomSegmented<Value: Hashable, Label: View>: View {
                 .contentShape(Capsule())
         }
         .buttonStyle(.plain)
+        .help(segmentTips(option) ?? "")
         .onHover { inside in
             if inside { hovered = option } else if hovered == option { hovered = nil }
         }

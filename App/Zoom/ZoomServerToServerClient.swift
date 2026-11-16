@@ -143,6 +143,84 @@ enum ZoomServerToServerClient {
         return CreatedMeeting(number: String(id), password: password, startURL: startURL, zak: zak)
     }
 
+    struct CreatedScheduledMeeting {
+        let id: Int64
+        let topic: String
+        let joinURL: String
+        let password: String
+    }
+
+    /// Schedules a meeting on the account (POST /users/me/meetings): type 3
+    /// ("no fixed time") or a weekly type 8 series, per `NewMeetingRequest`.
+    /// Needs the create-a-meeting scope on the Server-to-Server app.
+    static func createScheduledMeeting(
+        _ spec: NewMeetingRequest,
+        accountID: String,
+        clientID: String,
+        clientSecret: String
+    ) async throws -> CreatedScheduledMeeting {
+        let body = try JSONSerialization.data(withJSONObject: spec.body())
+        let (data, response) = try await authorized(accountID: accountID, clientID: clientID, clientSecret: clientSecret) { token in
+            var request = URLRequest(url: URL(string: "https://api.zoom.us/v2/users/me/meetings")!)
+            request.httpMethod = "POST"
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.httpBody = body
+            return request
+        }
+        guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
+            throw ZoomServerToServerError.scheduleMeetingFailed(String(data: data, encoding: .utf8) ?? "unknown error")
+        }
+        guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let id = json["id"] as? Int64,
+              let joinURL = json["join_url"] as? String else {
+            throw ZoomServerToServerError.unexpectedResponse
+        }
+        return CreatedScheduledMeeting(id: id, topic: json["topic"] as? String ?? spec.trimmedName,
+                                       joinURL: joinURL, password: json["password"] as? String ?? "")
+    }
+
+    private static func meetingCall(_ id: Int64, method: String, body: Data?,
+                                    accountID: String, clientID: String, clientSecret: String) async throws -> Data {
+        let (data, response) = try await authorized(accountID: accountID, clientID: clientID, clientSecret: clientSecret) { token in
+            var request = URLRequest(url: URL(string: "https://api.zoom.us/v2/meetings/\(id)")!)
+            request.httpMethod = method
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+            if let body {
+                request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+                request.httpBody = body
+            }
+            return request
+        }
+        guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
+            throw ZoomServerToServerError.meetingEditFailed(method == "GET" ? .details : method == "PATCH" ? .update : .delete, String(data: data, encoding: .utf8) ?? "unknown error")
+        }
+        return data
+    }
+
+    /// GET /meetings/{id}: the fields the edit sheet pre-fills from.
+    static func meetingDetails(id: Int64, accountID: String, clientID: String, clientSecret: String) async throws -> [String: Any] {
+        let data = try await meetingCall(id, method: "GET", body: nil,
+                                         accountID: accountID, clientID: clientID, clientSecret: clientSecret)
+        guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            throw ZoomServerToServerError.unexpectedResponse
+        }
+        return json
+    }
+
+    /// PATCH /meetings/{id} with the same body the create call sends.
+    static func updateScheduledMeeting(id: Int64, _ spec: NewMeetingRequest,
+                                       accountID: String, clientID: String, clientSecret: String) async throws {
+        _ = try await meetingCall(id, method: "PATCH", body: try JSONSerialization.data(withJSONObject: spec.body()),
+                                  accountID: accountID, clientID: clientID, clientSecret: clientSecret)
+    }
+
+    /// DELETE /meetings/{id}.
+    static func deleteScheduledMeeting(id: Int64, accountID: String, clientID: String, clientSecret: String) async throws {
+        _ = try await meetingCall(id, method: "DELETE", body: nil,
+                                  accountID: accountID, clientID: clientID, clientSecret: clientSecret)
+    }
+
     /// The meetings this account currently has LIVE.
     ///
     /// A Zoom host cannot run two meetings at once, so one left running makes
@@ -332,6 +410,8 @@ enum ZoomServerToServerClient {
 enum ZoomServerToServerError: LocalizedError {
     case tokenRequestFailed(String)
     case createMeetingFailed(String)
+    case scheduleMeetingFailed(String)
+    case meetingEditFailed(ZoomScopes.Key, String)
     case listMeetingsFailed(String)
     case meetingDetailsFailed(String)
     case zakRequestFailed(String)
@@ -341,6 +421,17 @@ enum ZoomServerToServerError: LocalizedError {
         switch self {
         case .tokenRequestFailed(let body): return "Couldn't get a Zoom API token: \(body)"
         case .createMeetingFailed(let body): return "Couldn't create the meeting: \(body)"
+        case .scheduleMeetingFailed(let body):
+            if body.contains("scopes") {
+                return "Zoom didn\u{2019}t allow scheduling: add the \u{201C}Create a meeting\u{201D} scope (meeting:write:meeting:admin) on your Server-to-Server app\u{2019}s Scopes page at marketplace.zoom.us."
+            }
+            return "Zoom couldn\u{2019}t schedule the meeting: \(Self.plainMessage(body))"
+        case .meetingEditFailed(let key, let body):
+            if body.contains("scopes") {
+                let scope = ZoomScopes.scope(key)
+                return "Zoom didn\u{2019}t allow that: add \(scope.name) (\u{201C}\(scope.purpose)\u{201D}) on your Server-to-Server app\u{2019}s Scopes page at marketplace.zoom.us. Settings \u{2192} Zoom \u{2192} Check Zoom setup lists them all."
+            }
+            return "Zoom couldn\u{2019}t do that: \(Self.plainMessage(body))"
         case .listMeetingsFailed(let body):
             var message = "Couldn't list your Zoom meetings: \(body)"
             if body.contains("scopes") {
@@ -361,5 +452,13 @@ enum ZoomServerToServerError: LocalizedError {
             return message
         case .unexpectedResponse: return "Zoom's response didn't look like a meeting list."
         }
+    }
+
+    /// Zoom's error bodies are JSON with a "message"; show just that.
+    fileprivate static func plainMessage(_ body: String) -> String {
+        if let data = body.data(using: .utf8),
+           let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+           let message = json["message"] as? String { return message }
+        return body
     }
 }

@@ -330,6 +330,9 @@ targets:
       - path: App/UI/HomeCalmRules.swift
       - path: App/UI/MeetingBarModel.swift
       - path: App/UI/PresentMenuSpec.swift
+      - path: App/Zoom/NewMeetingRequest.swift
+      - path: App/Zoom/ZoomScopes.swift
+      - path: App/Zoom/ZoomServerToServerClient.swift
     settings:
       base:
         PRODUCT_NAME: GreenroomTests

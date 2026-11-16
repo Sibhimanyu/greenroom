@@ -86,6 +86,7 @@ struct HomeView: View {
     /// The button fills the column (false: sized to its label, at the left).
     static let primaryFullWidth = true
 
+    @State private var scheduledSheet: NewScheduledMeetingSheet.Mode?
     @State private var showLive = false
     /// What the preview card shows: the picture the class sees, or how your
     /// screen is laid out (owner, 2026-11-16: "preview the layout and all").
@@ -99,11 +100,8 @@ struct HomeView: View {
     @State private var cameraAccess = AVCaptureDevice.authorizationStatus(for: .video)
     @State private var micAccess = AVCaptureDevice.authorizationStatus(for: .audio)
     @State private var lastSession: LastSession?
-    @State private var pastedHint = false
     @State private var lookOpen = false
     @State private var recordOpen = false
-    @State private var showSavePreset = false
-    @State private var presetNameDraft = ""
     /// Only ever started while a session is live, when the microphone is
     /// already in use: see `micMeterLevel`.
     @StateObject private var meter = MicLevelMonitor()
@@ -154,7 +152,6 @@ struct HomeView: View {
             refreshPermissions()
             refreshShareLists()
             loadLastSession()
-            if mode == .join { prefillFromClipboard() }
             if coordinator.stageLive { meter.start() }
         }
         .onDisappear {
@@ -170,9 +167,6 @@ struct HomeView: View {
         .onChange(of: coordinator.sceneInUse) { _, inUse in if !inUse { loadLastSession() } }
         .onChange(of: coordinator.stageLive) { _, live in
             if live { meter.start() } else { meter.stop() }
-        }
-        .onChange(of: coordinator.meetingMode) { _, new in
-            if new == .join { prefillFromClipboard() } else { pastedHint = false }
         }
         .onChange(of: coordinator.shareTarget.kind) { _, _ in refreshShareLists() }
         .onReceive(Timer.publish(every: 2, on: .main, in: .common).autoconnect()) { _ in
@@ -472,36 +466,9 @@ struct HomeView: View {
 
     @ViewBuilder private var nameSection: some View {
         if mode == .join {
-            // One row, so Join is as tall as New and Record and the two
-            // columns stay level. No label: the placeholder says what to type.
-            HStack(spacing: 8) {
-                TextField("Meeting link or ID", text: meetingBinding)
-                    .textFieldStyle(.greenroom)
-                    .controlSize(.large)
-                    .disabled(isLive)
-                    .onSubmit(submit)
-                    .overlay(alignment: .trailing) {
-                        if pastedHint {
-                            Image(systemName: "checkmark")
-                                .font(.system(size: 11, weight: .semibold))
-                                .foregroundStyle(Brand.text)
-                                .padding(.trailing, 8)
-                                .help("Pasted from clipboard")
-                                .accessibilityLabel("Pasted from clipboard")
-                                .transition(.opacity)
-                        }
-                    }
-                    .help("A Zoom link, an invite, or the meeting ID. A link also fills the passcode.")
-                TextField("Passcode", text: $coordinator.meetingPassword)
-                    .textFieldStyle(.greenroom)
-                    .controlSize(.large)
-                    .frame(width: 96)
-                    .disabled(isLive)
-                    .onSubmit(submit)
-                    .help("The meeting's passcode, if it has one.")
-                presetsMenu
-                scheduledMeetingsMenu
-            }
+            // One row, so Scheduled is as tall as New and Record and the two
+            // columns stay level: one picker styled like the other fields.
+            scheduledRow
             .labelStyle(.iconOnly)
             .frame(height: Self.fieldHeight)
             .onAppear {
@@ -585,36 +552,6 @@ struct HomeView: View {
         if coordinator.className.isEmpty { return "Class name (optional)" }
         return SessionFolders.sessionFolderName(className: coordinator.className, started: Date(),
                                                 fallback: mode == .record ? "Recording" : "Green")
-    }
-
-    /// Join reads the same two values it always did, the meeting number and the
-    /// passcode. A link or invite typed or pasted here is parsed into both; a
-    /// bare ID is kept as typed, spaces and all, since `meetingNumberDigits`
-    /// strips them at every use.
-    private var meetingBinding: Binding<String> {
-        Binding(
-            get: { coordinator.meetingNumber },
-            set: { text in
-                pastedHint = false
-                let bareID = text.allSatisfy { $0.isNumber || $0.isWhitespace || $0 == "-" }
-                if !bareID, let parsed = ZoomMeetingLinkParser.parse(text) {
-                    coordinator.meetingNumber = parsed.number
-                    coordinator.meetingPassword = parsed.password
-                } else {
-                    coordinator.meetingNumber = text
-                }
-            })
-    }
-
-    /// Choosing Join with a Zoom link already on the clipboard fills it in, with
-    /// a hint so it is not a surprise. Only into an empty field.
-    private func prefillFromClipboard() {
-        guard coordinator.meetingNumberDigits.isEmpty,
-              let text = NSPasteboard.general.string(forType: .string),
-              let parsed = ZoomMeetingLinkParser.parse(text) else { return }
-        coordinator.meetingNumber = parsed.number
-        coordinator.meetingPassword = parsed.password
-        withAnimation(.easeOut(duration: 0.15)) { pastedHint = true }
     }
 
     /// Return in a field starts, as the button does.
@@ -1142,7 +1079,7 @@ struct HomeView: View {
     private var primaryText: String {
         switch mode {
         case .create: return "Start Meeting"
-        case .join: return "Join Meeting"
+        case .join: return "Start Meeting"
         case .record: return "Start Recording"
         }
     }
@@ -1152,7 +1089,7 @@ struct HomeView: View {
         case .create:
             return "Starts your screen and camera picture, creates a fresh meeting under your Zoom account with you as host, and tiles your windows \u{2014} the whole session in one click."
         case .join:
-            return "Starts your screen and camera picture, joins the meeting above (starting it as host if it's yours), and tiles your windows."
+            return "Starts your screen and camera picture, starts the chosen meeting with you as host, and tiles your windows."
         case .record:
             return "Brings up the picture set in Settings \u{2192} Webcam, counts down on the notch, then records. The recording bar controls it. No meeting, no windows moved."
         }
@@ -1196,7 +1133,7 @@ struct HomeView: View {
     @ViewBuilder private var primaryGlyph: some View {
         switch mode {
         case .create: Image(systemName: "play.fill")
-        case .join: Image(systemName: "arrow.right")
+        case .join: Image(systemName: "play.fill")
         case .record: Circle().fill(Color.red).frame(width: 9, height: 9)
         }
     }
@@ -1334,62 +1271,125 @@ struct HomeView: View {
         DispatchQueue.main.async { proxy.scrollTo(newest, anchor: .bottom) }
     }
 
-    // MARK: Join's menus
+    // MARK: Scheduled picker
 
-    private var presetsMenu: some View {
-        Menu {
-            if coordinator.meetingPresets.isEmpty {
-                Text("No saved presets")
-            } else {
-                ForEach(coordinator.meetingPresets) { preset in
-                    Button(preset.menuLabel) { coordinator.applyPreset(preset) }
-                }
-            }
-            Divider()
-            Button("Save current as preset\u{2026}") { showSavePreset = true }
-                .disabled(coordinator.meetingNumberDigits.isEmpty)
-            if !coordinator.meetingPresets.isEmpty {
-                Menu("Delete preset") {
-                    ForEach(coordinator.meetingPresets) { preset in
-                        Button(preset.menuLabel, role: .destructive) { coordinator.deletePreset(preset) }
-                    }
-                }
-            }
-        } label: {
-            Label("Presets", systemImage: "bookmark")
-        }
-        .help("Saved meetings")
-        .menuStyle(.borderlessButton)
-        .fixedSize()
-        .alert("Save meeting preset", isPresented: $showSavePreset) {
-            TextField("Name (e.g. Morning class)", text: $presetNameDraft)
-            Button("Save") {
-                coordinator.saveCurrentAsPreset(name: presetNameDraft)
-                presetNameDraft = ""
-            }
-            Button("Cancel", role: .cancel) { presetNameDraft = "" }
-        } message: {
-            Text("Saves the meeting ID \(coordinator.meetingNumberDigits) and its passcode for one-click filling later.")
-        }
+    private var selectedScheduledMeeting: ZoomServerToServerClient.ScheduledMeeting? {
+        let digits = coordinator.meetingNumberDigits
+        guard !digits.isEmpty else { return nil }
+        return coordinator.scheduledMeetings.first { String($0.id) == digits }
     }
 
-    private var scheduledMeetingsMenu: some View {
-        Menu {
+    private var hasS2SCredentials: Bool {
+        !coordinator.s2sAccountID.isEmpty && !coordinator.s2sClientID.isEmpty && !coordinator.s2sClientSecret.isEmpty
+    }
+
+    /// One full-width picker in the field's own look: calendar symbol, the
+    /// chosen meeting (or the placeholder), a chevron.
+    private var scheduledPicker: some View {
+        let chosen = selectedScheduledMeeting
+        let shape = RoundedRectangle(cornerRadius: 10, style: .continuous)
+        return Menu {
             if coordinator.scheduledMeetings.isEmpty {
-                Text(coordinator.isLoadingScheduled ? "Loading\u{2026}" : "No scheduled meetings found")
+                if coordinator.isLoadingScheduled {
+                    Text("Loading\u{2026}")
+                } else if !hasS2SCredentials {
+                    Button("Add your Zoom account in Settings \u{2192} Zoom") { fix(.zoomSettings) }
+                } else {
+                    Text("No scheduled meetings on this Zoom account. Schedule one in Zoom, then Refresh.")
+                }
             } else {
                 ForEach(coordinator.scheduledMeetings) { meeting in
-                    Button(scheduledMeetingLabel(meeting)) { coordinator.selectScheduledMeeting(meeting) }
+                    Button {
+                        coordinator.selectScheduledMeeting(meeting)
+                    } label: {
+                        if chosen?.id == meeting.id {
+                            Label(scheduledMeetingLabel(meeting), systemImage: "checkmark")
+                        } else {
+                            Text(scheduledMeetingLabel(meeting))
+                        }
+                    }
                 }
             }
             Divider()
             Button("Refresh") { coordinator.refreshScheduledMeetings() }
+            Text(MeetingMode.scheduledHelp)
         } label: {
-            Label("Scheduled", systemImage: "calendar")
+            HStack(spacing: 8) {
+                Image(systemName: "calendar")
+                    .font(.system(size: 13))
+                    .foregroundStyle(.secondary)
+                Text(chosen.map(scheduledMeetingLabel) ?? scheduledPlaceholder)
+                    .font(.system(size: 14))
+                    .foregroundStyle(chosen == nil ? .secondary : .primary)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                Spacer(minLength: 4)
+                Image(systemName: "chevron.up.chevron.down")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(.secondary)
+            }
+            .padding(.horizontal, 11)
+            .frame(maxWidth: .infinity)
+            .frame(height: Self.fieldHeight)
+            .background { shape.fill(.quinary) }
+            .overlay { shape.strokeBorder(Color(nsColor: .separatorColor).opacity(0.6), lineWidth: 0.5) }
+            .contentShape(shape)
         }
-        .help("Scheduled meetings")
-        .menuStyle(.borderlessButton)
-        .fixedSize()
+        .menuStyle(.button)
+        .buttonStyle(.plain)
+        .menuIndicator(.hidden)
+        .disabled(isLive)
+        .opacity(isLive ? 0.6 : 1)
+        .help("Choose one of the meetings scheduled on your Zoom account")
+        .accessibilityLabel("Scheduled meeting")
+    }
+
+    /// Nothing scheduled yet (loaded, credentials present): say so, and the +
+    /// button turns green.
+    private var noScheduledYet: Bool {
+        hasS2SCredentials && coordinator.scheduledMeetings.isEmpty && !coordinator.isLoadingScheduled
+    }
+
+    private var scheduledPlaceholder: String {
+        noScheduledYet ? "No scheduled meetings yet" : "Choose a scheduled meeting"
+    }
+
+    /// The row: the picker, then Edit and New as square buttons in the same
+    /// field look. Both vanish without Zoom credentials.
+    private var scheduledRow: some View {
+        HStack(spacing: 8) {
+            scheduledPicker
+            if hasS2SCredentials {
+                scheduledSquare("pencil", help: "Edit this meeting", highlight: false,
+                                disabled: isLive || selectedScheduledMeeting == nil) {
+                    if let m = selectedScheduledMeeting { scheduledSheet = .edit(m.id) }
+                }
+                scheduledSquare("plus", help: "New scheduled meeting", highlight: noScheduledYet,
+                                disabled: isLive) { scheduledSheet = .new }
+            }
+        }
+        .sheet(item: $scheduledSheet) { mode in
+            NewScheduledMeetingSheet(mode: mode).environmentObject(coordinator)
+        }
+    }
+
+    private func scheduledSquare(_ symbol: String, help: String, highlight: Bool, disabled: Bool,
+                                 action: @escaping () -> Void) -> some View {
+        let shape = RoundedRectangle(cornerRadius: 10, style: .continuous)
+        return Button(action: action) {
+            Image(systemName: symbol)
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(highlight ? Color.white : Color.primary)
+                .frame(width: Self.fieldHeight, height: Self.fieldHeight)
+                .background { shape.fill(highlight ? AnyShapeStyle(Brand.buttonFill) : AnyShapeStyle(.quinary)) }
+                .overlay { shape.strokeBorder(Color(nsColor: .separatorColor).opacity(0.6), lineWidth: 0.5) }
+                .contentShape(shape)
+        }
+        .buttonStyle(.plain)
+        .disabled(disabled)
+        .opacity(disabled ? 0.5 : 1)
+        .help(help)
+        .accessibilityLabel(help)
     }
 
     /// Recurring meetings' times come from the per-meeting details call (their

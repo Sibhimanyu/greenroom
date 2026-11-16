@@ -146,7 +146,7 @@ struct OnboardingView: View {
     }
 
     private enum ZoomCheck: String, CaseIterable {
-        case sdk, account, create, list, details, host, end, meetings, hostToken
+        case sdk, account, create, list, details, update, delete, host, end, meetings, hostToken
         var title: String {
             switch self {
             case .sdk: "Meeting and chat credentials"
@@ -154,6 +154,8 @@ struct OnboardingView: View {
             case .create: "Permission to create meetings"
             case .list: "Permission to list meetings"
             case .details: "Permission to read meeting details"
+            case .update: "Permission to edit scheduled meetings"
+            case .delete: "Permission to delete scheduled meetings"
             case .host: "Permission to get the hosting token"
             case .end: "Permission to end meetings"
             case .meetings: "Scheduled meetings API"
@@ -172,22 +174,8 @@ struct OnboardingView: View {
         var ok: Bool { status == .passed }
     }
 
-    private struct ZoomScope: Identifiable {
-        let check: ZoomCheck
-        let name: String
-        let purpose: String
-        let legacy: String
-        var id: String { name }
-    }
-
     private static let zoomBuilder = URL(string: "https://marketplace.zoom.us/user/build")!
-    private static let requiredScopes = [
-        ZoomScope(check: .create, name: "meeting:write:meeting:admin", purpose: "Create meetings", legacy: "meeting:write:admin"),
-        ZoomScope(check: .list, name: "meeting:read:list_meetings:admin", purpose: "List scheduled meetings", legacy: "meeting:read:admin"),
-        ZoomScope(check: .details, name: "meeting:read:meeting:admin", purpose: "Read meeting details", legacy: "meeting:read:admin"),
-        ZoomScope(check: .host, name: "user:read:token:admin", purpose: "Get your hosting token", legacy: "user:read:admin"),
-        ZoomScope(check: .end, name: "meeting:update:status:admin", purpose: "End meetings for everyone", legacy: "meeting:write:admin")
-    ]
+    private static let requiredScopes = ZoomScopes.all
 
     private var credentialsStep: some View {
         // Keep native disclosure chevrons and focus rings inside the scroll clip.
@@ -225,7 +213,7 @@ struct OnboardingView: View {
                 }
                 Text(coordinator.isRunning || coordinator.stageLive
                      ? "End the current session before checking Zoom."
-                     : "Checks both Zoom apps, all five hosting permissions, meeting lookup and the hosting token. No meeting is created or ended.")
+                     : "Checks both Zoom apps, all \(ZoomScopes.countWord) hosting permissions, meeting lookup and the hosting token. No meeting is created or ended.")
                     .font(.caption).foregroundStyle(.secondary)
                 Divider()
                 DisclosureGroup(chatConfigured && hostingConfigured ? "Review or edit your Zoom apps" : "Set up Zoom without a settings file", isExpanded: $editCredentials) {
@@ -285,7 +273,7 @@ struct OnboardingView: View {
                     credentialField("Client Secret", text: $coordinator.s2sClientSecret, secure: true)
                     Divider()
                     Text("Add permissions, one at a time").font(.headline)
-                    Text("In Zoom’s Scopes → Add Scopes, copy one name below, paste it into the search field and select the matching permission. Repeat for all five, then save.")
+                    Text("In Zoom’s Scopes → Add Scopes, copy one name below, paste it into the search field and select the matching permission. Repeat for all \(ZoomScopes.countWord), then save.")
                         .font(.callout).foregroundStyle(.secondary)
                     scopesList
                     Divider()
@@ -432,8 +420,9 @@ struct OnboardingView: View {
                 let scopes = try await ZoomServerToServerClient.grantedScopes(accountID: account, clientID: client, clientSecret: secret)
                 updateCheck(.account, .passed, "Zoom issued an access token. The hosting app is active.")
                 for scope in Self.requiredScopes {
-                    let granted = scopes.contains(scope.name) || scopes.contains(scope.legacy)
-                    updateCheck(scope.check, granted ? .passed : .failed,
+                    let granted = ZoomScopes.isGranted(scope, in: scopes)
+                    guard let check = ZoomCheck(rawValue: scope.key.rawValue) else { continue }
+                    updateCheck(check, granted ? .passed : .failed,
                                 granted ? "Granted by Zoom." : "Missing \(scope.name). Add it in the Server-to-Server app’s Scopes page, save, and check again.")
                 }
             } catch {
@@ -616,7 +605,7 @@ struct OnboardingView: View {
                 summaryRow("Accessibility", detail: ZoomWindowManager.hasAccessibilityPermission ? "Window arrangement allowed" : "Allow window arrangement in System Settings", page: .permissions)
                 Divider()
                 Text("Your first class").font(.headline)
-                Text("Choose New Meeting or Join Existing on the main screen, then press Start. To record without a meeting, choose Record.")
+                Text("Choose New or Scheduled on the main screen, then press Start Meeting. To record without a meeting, choose Record.")
                 Label("Greenroom sends its own picture into the meeting, so there is no camera to pick in Zoom.", systemImage: "web.camera")
                     .font(.callout).foregroundStyle(.secondary)
                 Text("Need a change later? Use Settings, or reopen this guide with the ? button.")

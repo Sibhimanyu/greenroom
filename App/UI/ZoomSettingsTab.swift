@@ -63,13 +63,7 @@ struct ZoomPageContent: View {
     /// Starts with the scope list open; for the off-screen render only.
     var scopesOpen = false
 
-    static let scopes = [
-        "meeting:write:meeting:admin",
-        "meeting:read:list_meetings:admin",
-        "meeting:read:meeting:admin",
-        "user:read:token:admin",
-        "meeting:update:status:admin",
-    ]
+    static let scopes = ZoomScopes.names
 
     private var sdkState: CredentialState {
         CredentialState([("Client ID", sdkClientID), ("Client Secret", sdkClientSecret)])
@@ -186,7 +180,7 @@ private struct AppCard: View {
     }
 }
 
-/// The five scopes the Server-to-Server app needs: folded away, one click to
+/// The scopes the Server-to-Server app needs: folded away, one click to
 /// copy, selectable when open.
 private struct ScopeList: View {
     let scopes: [String]

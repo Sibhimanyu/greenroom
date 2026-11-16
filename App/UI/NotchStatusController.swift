@@ -23,6 +23,9 @@ final class NotchStatusModel: ObservableObject {
     @Published var content: IslandContent = .none
     /// Open (a pill) or folded into the notch (nothing to see).
     @Published var shown = false
+    /// Bumped to rebuild the pill in its finished state, dropping any morph a
+    /// stalled main thread or a system dialog froze part way.
+    @Published var settle = 0
     var notch: CGRect?
     var reduceMotion = false
     var onAction: (() -> Void)?
@@ -62,6 +65,7 @@ final class NotchStatusController {
     private var timerFor: UUID?
     private var goTask: Task<Void, Never>?
     private var retractTask: Task<Void, Never>?
+    private var settleTask: Task<Void, Never>?
     private var retracting = false
     private var prompts: [UUID: PromptHandlers] = [:]
     private var toastActions: [UUID: () -> Void] = [:]
@@ -72,6 +76,13 @@ final class NotchStatusController {
         model.onUpload = { [weak self] id in self?.answerPrompt(id, upload: true) }
         model.onNotNow = { [weak self] id in self?.answerPrompt(id, upload: false) }
         model.onToastTap = { [weak self] id in self?.tapToast(id) }
+        // A permission dialog takes the app out of front mid-morph, and the
+        // spring can freeze half drawn. Land it again once focus moves.
+        for name in [NSApplication.didResignActiveNotification, NSApplication.didBecomeActiveNotification] {
+            NotificationCenter.default.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { self?.scheduleSettle() }
+            }
+        }
     }
 
     // MARK: Readiness in
@@ -336,13 +347,30 @@ final class NotchStatusController {
                     self.model.shown = true
                 }
                 self.panel?.ignoresMouseEvents = !self.queue.content.isInteractive
+                self.scheduleSettle()
             }
         } else {
             withAnimation(animation) { model.content = content }
         }
     }
 
+    /// Once the morph should be over, redraw the island in its end state
+    /// without animation, so it never stays stuck half open.
+    private func scheduleSettle() {
+        guard panel != nil else { return }
+        settleTask?.cancel()
+        settleTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: 600_000_000)
+            guard !Task.isCancelled, let self, self.panel != nil, self.model.shown else { return }
+            var quiet = Transaction()
+            quiet.disablesAnimations = true
+            withTransaction(quiet) { self.model.settle &+= 1 }
+            self.panel?.contentView?.needsDisplay = true
+        }
+    }
+
     private func collapse() {
+        settleTask?.cancel()
         withAnimation(animation) { model.shown = false }
         teardownTask?.cancel()
         teardownTask = Task { @MainActor [weak self] in
@@ -429,6 +457,7 @@ private struct NotchPillView: View {
 
     var body: some View {
         pill
+            .id(model.settle)
             .frame(width: NotchGeometry.panelWidth, height: notchHeight + NotchGeometry.panelBodyHeight,
                    alignment: .top)
             .environment(\.colorScheme, .dark)

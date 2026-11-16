@@ -1586,9 +1586,20 @@ final class CoordinatorController: ObservableObject {
                 // surface, and the pill is what is left when it is closed,
                 // minimised or covered. With Zoom's own window as the picture
                 // (custom UI off) there is no meeting window, so the pill stays.
+                // Alone in the room, it starts as the bar and the window comes up
+                // when the first person joins. Decided before anything opens: the
+                // window used to open and then shrink away a moment later.
+                let startsAlone = !sessionArranges && zoomChatClient.didUseCustomUI
+                    && zoomChatClient.meetingRoster().allSatisfy(\.isMyself)
                 if !sessionArranges {
                     ensureMeetingControls()
-                    if zoomChatClient.didUseCustomUI { openMeetingWindow() }
+                    if startsAlone {
+                        // The follow loop still runs: it is what notices someone join.
+                        meetingWindowWanted = false
+                        startCustomUIGridFollow()
+                    } else if zoomChatClient.didUseCustomUI {
+                        openMeetingWindow()
+                    }
                 }
                 // The bar is the surface of last resort, so a live meeting always has
                 // one built: Greenroom's own window in a layout can go to the Mini or

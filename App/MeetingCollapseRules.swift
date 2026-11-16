@@ -89,11 +89,20 @@ enum MeetingCollapse {
 /// While a meeting is live exactly one of the Meeting window, the Mini and the
 /// Control bar is on screen, and every way back lands on one that exists.
 enum MeetingSurfaces {
-    /// Bringing the window up from another desktop takes it off that one first,
-    /// so it comes in on the desktop being looked at instead of switching
-    /// desktops under the teacher.
+    /// The small windows that follow the bar (the chat and People pop-outs):
+    /// left on another desktop, they are taken off it first, so they come in
+    /// on the desktop being looked at.
     static func comesHereFirst(visible: Bool, onActiveSpace: Bool) -> Bool {
         visible && !onActiveSpace
+    }
+
+    /// The Meeting window is up on another desktop: open there, not shrunk or
+    /// minimised. Then Expand, Chat, People and the island's waiting notice take
+    /// the teacher to that desktop instead of leaving them where they are
+    /// (owner, 2026-11-16). Bringing it here never worked for the window: it
+    /// came back on its own desktop, out of sight.
+    static func meetingWindowElsewhere(visible: Bool, miniaturized: Bool, onActiveSpace: Bool) -> Bool {
+        visible && !miniaturized && !onActiveSpace
     }
 
     /// The chat lives in one place at a time. The pop-out is for while the bar

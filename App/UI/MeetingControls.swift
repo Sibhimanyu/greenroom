@@ -88,9 +88,13 @@ final class MeetingControlsModel: ObservableObject {
         }
         client.roomEvents.onChange = redraw
         client.shareViewer.onChange = redraw
-        client.roomEvents.onWaitingJoin = { person, total in
+        client.roomEvents.onWaitingJoin = { [weak self] person, total in
             let words = WaitingRoomWords.joined(person.name, total: total)
-            ToastController.show(words.title, detail: words.detail, kind: .working, dismissAfter: 6)
+            // A click on the island opens the Meeting window on People, wherever
+            // it is, to admit them (owner, 2026-11-16). Only with Greenroom's own
+            // meeting window; the Zoom app's own windows are Zoom's.
+            let open: (() -> Void)? = client.didUseCustomUI ? { self?.openPeopleInWindow() } : nil
+            ToastController.show(words.title, detail: words.detail, kind: .working, dismissAfter: 6, action: open)
             coordinator.log(words.title + ".")
         }
         refresh()
@@ -352,6 +356,10 @@ final class MeetingControlsModel: ObservableObject {
         // nobody could see. The bar's Chat button did nothing (owner, 2026-11-14).
         if ParticipantGridWindowController.meetingWindowIsShowing, !coordinator.sessionArranges {
             sidePanel = sidePanel == .chat ? nil : .chat
+        } else if ParticipantGridWindowController.meetingWindowIsElsewhere, !coordinator.sessionArranges {
+            // Up on another desktop: there, with the chat open (owner, 2026-11-16).
+            coordinator.openMeetingWindow()
+            sidePanel = .chat
         } else if ChatWindowController.isOpenHere {
             ChatWindowController.close()
         } else if ChatWindowController.isOpen {
@@ -377,10 +385,15 @@ final class MeetingControlsModel: ObservableObject {
     /// The bar's people count. With the window showing it toggles the panel
     /// like the window's own button; otherwise the list opens as a small window
     /// beside the bar, not the whole meeting (owner, 2026-11-16), and a second
-    /// click closes it. Left on another desktop, it comes to this one.
+    /// click closes it. With the window up on another desktop, it goes there,
+    /// People open.
     func showPeople() {
         if ParticipantGridWindowController.meetingWindowIsShowing {
             sidePanel = sidePanel == .people ? nil : .people
+        } else if ParticipantGridWindowController.meetingWindowIsElsewhere {
+            PeoplePopOutController.close()
+            coordinator.openMeetingWindow()
+            sidePanel = .people
         } else if PeoplePopOutController.isOpenHere {
             PeoplePopOutController.close()
         } else if PeoplePopOutController.isOpen {

@@ -205,11 +205,20 @@ final class MeetingCollapseRulesTests: XCTestCase {
 
     // MARK: Other desktops
 
-    func testTheWindowComesToThisDesktopRatherThanSwitchingDesktops() {
+    func testThePopOutsComeToThisDesktop() {
         XCTAssertTrue(MeetingSurfaces.comesHereFirst(visible: true, onActiveSpace: false))
         XCTAssertFalse(MeetingSurfaces.comesHereFirst(visible: true, onActiveSpace: true))
         // Hidden (shrunk to the bar): ordering it in already lands it here.
         XCTAssertFalse(MeetingSurfaces.comesHereFirst(visible: false, onActiveSpace: false))
+    }
+
+    func testTheMeetingWindowOnAnotherDesktopTakesYouThere() {
+        XCTAssertTrue(MeetingSurfaces.meetingWindowElsewhere(visible: true, miniaturized: false, onActiveSpace: false))
+        // In view already: nothing to switch to.
+        XCTAssertFalse(MeetingSurfaces.meetingWindowElsewhere(visible: true, miniaturized: false, onActiveSpace: true))
+        // Shrunk to the bar or minimised: it comes up here, the pop-outs stay.
+        XCTAssertFalse(MeetingSurfaces.meetingWindowElsewhere(visible: false, miniaturized: false, onActiveSpace: false))
+        XCTAssertFalse(MeetingSurfaces.meetingWindowElsewhere(visible: true, miniaturized: true, onActiveSpace: false))
     }
 
     func testThePopOutChatFoldsIntoTheWindowOnceTheWindowIsInView() {

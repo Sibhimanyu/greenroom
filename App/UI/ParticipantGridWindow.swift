@@ -507,15 +507,31 @@ enum ParticipantGridWindowController {
 
     /// Brings the window back from hidden, closed-to-the-Dock or covered,
     /// without activating the app.
-    /// Left on another desktop, it comes to this one: never a desktop switch.
-    static func show() {
+    /// Up on another desktop, it takes the teacher there: the window is made key
+    /// first, so the activation switches to its desktop and raises it alone, not
+    /// Greenroom's main window over the slides. A layout placing its pieces
+    /// (`takingYouThere: false`) only raises it where it is: that can run on a
+    /// display change, which no one clicked.
+    static func show(takingYouThere: Bool = true) {
         userHidden = false
         guard let panel else { return }
-        if panel.isMiniaturized { panel.deminiaturize(nil) }
-        if MeetingSurfaces.comesHereFirst(visible: panel.isVisible, onActiveSpace: panel.isOnActiveSpace) {
-            panel.orderOut(nil)
+        if takingYouThere, isElsewhere {
+            panel.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
+            panel.makeKeyAndOrderFront(nil)
+            return
         }
+        if panel.isMiniaturized { panel.deminiaturize(nil) }
         panel.orderFrontRegardless()
+    }
+
+    /// The meeting window is up on a desktop other than the one in view.
+    static var meetingWindowIsElsewhere: Bool { currentForm?.isMeeting == true && isElsewhere }
+
+    private static var isElsewhere: Bool {
+        guard let panel else { return false }
+        return MeetingSurfaces.meetingWindowElsewhere(visible: panel.isVisible, miniaturized: panel.isMiniaturized,
+                                                      onActiveSpace: panel.isOnActiveSpace)
     }
 
     /// Puts a placed window back at its frame (Snap Windows Back, a display

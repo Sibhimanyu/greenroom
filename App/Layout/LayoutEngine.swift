@@ -219,7 +219,8 @@ final class LayoutEngine {
         if hidden {
             ParticipantGridWindowController.hide()
         } else {
-            ParticipantGridWindowController.show()   // Snap Back never leaves it hidden
+            // Snap Back never leaves it hidden; a placing pass never switches desktops.
+            ParticipantGridWindowController.show(takingYouThere: false)
             ParticipantGridWindowController.place(frame: meeting.frames.ns)
         }
     }

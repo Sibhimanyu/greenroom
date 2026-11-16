@@ -20,6 +20,13 @@ window it outlines. Still to try:
   taller island does not block clicks just below it while it shows.
 - [ ] **Share outline stacking:** another window dragged over the shared one
   hides the outline too; a whole-display share keeps it over everything.
+- [ ] **Black stage, with a real second person:** someone who joins with their
+  camera off and turns it on later shows on the stage; the video log has
+  "camera came on after the subscription; asking again".
+- [ ] **Meeting window on another desktop:** Expand, Chat and People on the
+  bar, and a click on the island's "waiting to join" notice, switch to the
+  window's desktop (a full-screen browser too) and open the right panel;
+  Greenroom's main window does not come up over the slides.
 
 ## Participant panel and live speaker
 

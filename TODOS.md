@@ -3,6 +3,24 @@
 Open items, newest first. Each one says what is wrong, what is known, and
 where to start.
 
+## Built 2026-11-16, not yet tried live
+
+- [ ] **Mini window, camera already on:** opens with your picture and no
+  "Video didn't start in this window" overlay (fc5a3bf, `viewVideoWaiting`
+  now asks `getDataType()`). Also check the overlay still appears when video
+  really does not start.
+- [ ] **People pop-out** (af2fa0d): the bar's People count opens the small
+  Participants window beside the bar; its rows update while the meeting
+  window is folded; Admit and Mute all work from it; a row opens the meeting
+  window on that person; it folds into the window's People panel when the
+  window comes back.
+- [ ] **Island failure, opened** (b9d0f53): the chevron opens the full
+  message, on a notched Mac and on a plain screen (the rounded card); check
+  the taller island does not block clicks just below it while it shows.
+- [ ] **Share outline stacking** (d3e9c45): the preview and recording
+  outlines sit just above the shared window, so another window on top of it
+  hides the outline too; a whole-display share keeps it over everything.
+
 ## Participant panel and live speaker
 
 - [ ] **Verify in a real class:** the speaker window's name bar shows the

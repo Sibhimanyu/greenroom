@@ -91,7 +91,7 @@ final class NotchStatusRulesTests: XCTestCase {
         let panel = NotchGeometry.panelFrame(screenFrame: screen, visibleFrame: screen, notch: notch)
         XCTAssertEqual(panel.maxY, screen.maxY)
         XCTAssertEqual(panel.midX, notch.midX)
-        XCTAssertEqual(panel.height, 38 + NotchGeometry.panelBodyHeight)
+        XCTAssertEqual(panel.height, 38 + NotchGeometry.panelBodyHeight + NotchGeometry.shadowInset)
         let pill = NotchGeometry.pillFrame(panel: panel, notch: notch, content: .status(.live(recording: false)))
         XCTAssertEqual(pill.maxY, screen.maxY)
         XCTAssertEqual(pill.midX, notch.midX)

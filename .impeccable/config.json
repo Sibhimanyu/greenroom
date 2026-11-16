@@ -29,6 +29,42 @@
         ],
         "createdAt": "2026-09-24T09:24:55.208Z",
         "reason": "agent triage: only .table-scroll is flagged; it wraps tables whose cells carry 11x14px padding, same wrapper as docs/guide.html"
+      },
+      {
+        "rule": "low-contrast",
+        "value": "*",
+        "files": [
+          ".context/session-redesign/index.html"
+        ],
+        "createdAt": "2026-11-15T02:26:22.210Z",
+        "reason": "Claude: scanner pairs dark-theme tokens (#8cc96a, #b4b9c3) with the light #fff background; each theme pairs its own tokens. Mockup tertiary greys imitate macOS labels. Scratch review page, not shipped."
+      },
+      {
+        "rule": "all-caps-body",
+        "value": "*",
+        "files": [
+          ".context/session-redesign/index.html"
+        ],
+        "createdAt": "2026-11-15T02:26:44.138Z",
+        "reason": "Claude: window mockups drawn in container units imitate macOS chrome (short uppercase card labels, compact toolbar pills); scratch review page, not shipped."
+      },
+      {
+        "rule": "cramped-padding",
+        "value": "*",
+        "files": [
+          ".context/session-redesign/index.html"
+        ],
+        "createdAt": "2026-11-15T02:26:44.747Z",
+        "reason": "Claude: window mockups drawn in container units imitate macOS chrome (short uppercase card labels, compact toolbar pills); scratch review page, not shipped."
+      },
+      {
+        "rule": "tight-leading",
+        "value": "*",
+        "files": [
+          ".context/session-redesign/index.html"
+        ],
+        "createdAt": "2026-11-15T02:26:45.311Z",
+        "reason": "Claude: window mockups drawn in container units imitate macOS chrome (short uppercase card labels, compact toolbar pills); scratch review page, not shipped."
       }
     ]
   }

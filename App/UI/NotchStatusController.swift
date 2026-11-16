@@ -433,6 +433,45 @@ final class NotchStatusController {
     func debugSetFailureOpen(_ open: Bool) { model.failureOpen = open }
 }
 
+// MARK: - The island's shape
+
+/// The island's silhouette: the top edge runs flareRadius past each side and
+/// curves concavely down into the body (like the notch's own inverse corners),
+/// then straight down and round the bottom corners. The rect is body + flare
+/// each side; flare 0 gives a plain bottom-rounded body.
+private struct IslandShape: Shape {
+    var flareRadius: CGFloat
+    var bottomRadius: CGFloat
+
+    var animatableData: CGFloat {
+        get { flareRadius }
+        set { flareRadius = newValue }
+    }
+
+    func path(in rect: CGRect) -> Path {
+        let f = max(0, min(flareRadius, rect.width / 4))
+        let left = rect.minX + f, right = rect.maxX - f
+        let r = max(0, min(bottomRadius, (right - left) / 2, rect.height - f))
+        var p = Path()
+        p.move(to: CGPoint(x: rect.minX, y: rect.minY))
+        p.addLine(to: CGPoint(x: rect.maxX, y: rect.minY))
+        // Right ear: concave quarter circle, centre outside the body.
+        p.addQuadCurve(to: CGPoint(x: right, y: rect.minY + f),
+                       control: CGPoint(x: right, y: rect.minY))
+        p.addLine(to: CGPoint(x: right, y: rect.maxY - r))
+        p.addArc(center: CGPoint(x: right - r, y: rect.maxY - r), radius: r,
+                 startAngle: .degrees(0), endAngle: .degrees(90), clockwise: false)
+        p.addLine(to: CGPoint(x: left + r, y: rect.maxY))
+        p.addArc(center: CGPoint(x: left + r, y: rect.maxY - r), radius: r,
+                 startAngle: .degrees(90), endAngle: .degrees(180), clockwise: false)
+        p.addLine(to: CGPoint(x: left, y: rect.minY + f))
+        p.addQuadCurve(to: CGPoint(x: rect.minX, y: rect.minY),
+                       control: CGPoint(x: left, y: rect.minY))
+        p.closeSubpath()
+        return p
+    }
+}
+
 // MARK: - The pill
 
 private struct NotchPillView: View {
@@ -455,6 +494,8 @@ private struct NotchPillView: View {
         return openSize
     }
 
+    private static let flareRadius: CGFloat = 11
+
     private var shapeOpacity: Double {
         if model.shown { return 1 }
         return hasNotch && !model.reduceMotion ? 1 : 0
@@ -463,7 +504,8 @@ private struct NotchPillView: View {
     var body: some View {
         pill
             .id(model.settle)
-            .frame(width: NotchGeometry.panelWidth, height: notchHeight + NotchGeometry.panelBodyHeight,
+            .frame(width: NotchGeometry.panelWidth + (hasNotch ? 2 * NotchGeometry.shadowInset : 0),
+                   height: notchHeight + NotchGeometry.panelBodyHeight + (hasNotch ? NotchGeometry.shadowInset : 0),
                    alignment: .top)
             .environment(\.colorScheme, .dark)
     }
@@ -483,18 +525,28 @@ private struct NotchPillView: View {
         .frame(width: size.width, height: size.height, alignment: .top)
         .opacity(model.shown ? 1 : 0)
         .animation(model.reduceMotion ? .easeInOut(duration: 0.2)
-                   : .easeOut(duration: 0.18).delay(model.shown ? 0.1 : 0), value: model.shown)
+                   : .easeOut(duration: 0.18).delay(model.shown ? 0.16 : 0), value: model.shown)
 
         if hasNotch {
-            let shape = UnevenRoundedRectangle(bottomLeadingRadius: 22, bottomTrailingRadius: 22, style: .continuous)
+            // Flared ears only while open: folded, the island is exactly the
+            // notch. The model's withAnimation drives this in step with the size.
+            let flare: CGFloat = model.shown ? Self.flareRadius : 0
+            let shape = IslandShape(flareRadius: flare, bottomRadius: 22)
             content
+                // The words stay inside the black while it grows (owner,
+                // 2026-11-16: "the text shows up before the black box
+                // finishes"). Clipped here, on the content only, so the
+                // island's shadow below is not clipped with it.
+                .mask { shape.padding(.horizontal, -flare) }
                 .background {
                     // Always one black island, like Dynamic Island: a failure
                     // speaks through its amber icon, text and button, not a
-                    // second-coloured band (owner, 2026-11-14).
+                    // second-coloured band (owner, 2026-11-14). The shape's
+                    // rect is the body plus the flare each side.
                     shape.fill(Color.black)
+                        .padding(.horizontal, -flare)
+                        .shadow(color: .black.opacity(model.shown ? 0.4 : 0), radius: 16, y: 5)
                 }
-                .clipShape(shape)
                 .opacity(shapeOpacity)
         } else {
             // A pill, or a rounded card once a failure is opened to read.

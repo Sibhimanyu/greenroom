@@ -364,6 +364,10 @@ enum NotchGeometry {
     /// never resizes while the island inside morphs.
     static let panelWidth: CGFloat = 540
     static let panelBodyHeight: CGFloat = failureOpenHeight
+    /// Room the notch panel keeps either side of and below the island, for the
+    /// flared top corners and the soft shadow. Transparent; nothing is drawn
+    /// in it while the island is folded.
+    static let shadowInset: CGFloat = 24
     static let promptSize = CGSize(width: 540, height: 76)
     static let countdownSize = CGSize(width: 320, height: 56)
     static let goSize = CGSize(width: 220, height: 44)
@@ -405,9 +409,10 @@ enum NotchGeometry {
 
     static func panelFrame(screenFrame: CGRect, visibleFrame: CGRect, notch: CGRect?) -> CGRect {
         if let notch {
-            let height = notch.height + panelBodyHeight
-            return CGRect(x: notch.midX - panelWidth / 2, y: screenFrame.maxY - height,
-                          width: panelWidth, height: height)
+            let height = notch.height + panelBodyHeight + shadowInset
+            let width = panelWidth + 2 * shadowInset
+            return CGRect(x: notch.midX - width / 2, y: screenFrame.maxY - height,
+                          width: width, height: height)
         }
         let top = visibleFrame.maxY - fallbackGap
         return CGRect(x: visibleFrame.midX - panelWidth / 2, y: top - panelBodyHeight,

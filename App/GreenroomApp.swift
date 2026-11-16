@@ -123,6 +123,8 @@ struct GreenroomApp: App {
                 .environmentObject(editor)
                 .tint(Brand.green)
                 .heresay()
+                // The launch: the mark plays over a frosted window, once.
+                .background(LaunchSplashCover())
                 #if DEBUG
                 .background(DebugTourBridge(editor: editor))
                 #endif

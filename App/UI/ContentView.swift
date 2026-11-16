@@ -160,7 +160,10 @@ struct ContentView: View {
         // covers the first-ever open, so the size is asserted on appear.
         .onAppear {
             SessionNotes.shared.attach(coordinator)
-            DispatchQueue.main.async { resizeWindow(animated: false) }
+            DispatchQueue.main.async {
+                resizeWindow(animated: false)
+                Self.centreWindow()
+            }
         }
         // The things that change the window's height. All grow it DOWNWARD
         // from an anchored top edge, so nothing above the divider moves - see
@@ -517,6 +520,19 @@ struct ContentView: View {
 
     private static var window: NSWindow? {
         MainWindow.current
+    }
+
+    /// The window opens in the middle of the screen, every time (owner,
+    /// 2026-11-16), not wherever it was last closed. The true middle of the
+    /// visible area, not AppKit's `center()`, which sits it a third of the
+    /// way down.
+    private static func centreWindow() {
+        guard let window, !window.styleMask.contains(.fullScreen),
+              let screen = NSScreen.main ?? window.screen else { return }
+        let area = screen.visibleFrame
+        let size = window.frame.size
+        window.setFrameOrigin(NSPoint(x: (area.midX - size.width / 2).rounded(),
+                                      y: (area.midY - size.height / 2).rounded()))
     }
 
     /// The least the window may be, for the page it is on. On Home that is

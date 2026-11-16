@@ -117,6 +117,10 @@ enum DebugTour {
                           let m = MeetingMode.allCases.first(where: { "\($0)" == info["mode"] })
                     else { throw TourError("bad mode") }
                     withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) { c.meetingMode = m }
+                case "splash":
+                    // Plays the launch again over the main window.
+                    guard let window = MainWindow.current else { throw TourError("no main window") }
+                    LaunchSplashCover.replay(over: window)
                 case "homeCard":
                     // face=picture|screen: which face Home's preview card shows.
                     NotificationCenter.default.post(name: .debugTourHomeCard, object: nil,

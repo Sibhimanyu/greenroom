@@ -9,7 +9,7 @@
 //  MeetingBarModel.swift.
 //
 //  Left to right:
-//    grip | [Meeting] | mic camera | REC pill, pause | Share Draw | chat people More | [End]
+//    grip | [Meeting] | mic camera | REC pill, pause | Share Draw | chat people Notes Views Collapse | [End]
 //
 //  Red appears in two places only: the muted mic and stopped camera (state the
 //  bar has always shown), and the End button. The REC dot is the recording signal
@@ -201,7 +201,10 @@ struct MeetingBarActions {
     var recordMenu: () -> [MenuEntry] = { [] }
     /// What the class sees, your look, the layout (PresentMenuSpec.swift).
     var presentMenu: () -> [MenuEntry] = { [] }
-    var moreMenu: () -> [MenuEntry] = { [] }
+    var toggleNotes: () -> Void = {}
+    /// The Meeting Views entries, built when the icon is opened.
+    var viewsMenu: () -> [MenuEntry] = { [] }
+    var collapse: () -> Void = {}
 }
 
 struct MeetingBarContent: View {
@@ -228,7 +231,9 @@ struct MeetingBarContent: View {
             BarDivider()
             chatButton
             peopleCount
-            moreButton
+            notesButton
+            if s.videoButtons { viewsButton }
+            collapseButton
             BarDivider()
             BarRedButton(title: "End", width: L.end,
                          help: MeetingBarModel.help(s.endName, .endSession, bindings),
@@ -385,10 +390,10 @@ struct MeetingBarContent: View {
     private var peopleCount: some View {
         Button(action: a.people) {
             HStack(spacing: 4) {
-                Image(systemName: "person.2.fill").font(.system(size: 13))
+                Image(systemName: "person.2.fill").font(.system(size: 14))
                 Text("\(s.participants)").font(.system(size: 12, weight: .semibold).monospacedDigit())
             }
-            .foregroundStyle(.secondary)
+            .foregroundStyle(Color.primary)
             .frame(width: L.people, height: 32)
             .contentShape(Rectangle())
         }
@@ -400,13 +405,20 @@ struct MeetingBarContent: View {
         .accessibilityAddTraits(.isButton)
     }
 
-    private var moreButton: some View {
-        Image(systemName: "ellipsis")
-            .font(.system(size: 14, weight: .semibold))
-            .foregroundStyle(Color.primary)
-            .frame(width: L.icon, height: 32)
-            .contentShape(Rectangle())
-            .overlay { MenuPopUpOverlay(label: "More", entries: a.moreMenu) }
-            .help("More: notes, meeting views, collapse")
+    private var notesButton: some View {
+        let c = MeetingBarModel.notesCell(open: s.notesOpen, bindings)
+        return BarIconButton(symbol: c.symbol, on: c.on, help: c.help, spoken: c.spoken, action: a.toggleNotes)
+    }
+
+    private var viewsButton: some View {
+        let c = MeetingBarModel.viewsCell(bindings)
+        return BarIconButton(symbol: c.symbol, help: c.help, spoken: c.spoken, action: {})
+            .overlay { if s.hasViews { MenuPopUpOverlay(label: c.spoken, entries: a.viewsMenu) } }
+            .opacity(s.hasViews ? 1 : 0.45)
+    }
+
+    private var collapseButton: some View {
+        let c = MeetingBarModel.collapseCell(bindings)
+        return BarIconButton(symbol: c.symbol, help: c.help, spoken: c.spoken, action: a.collapse)
     }
 }

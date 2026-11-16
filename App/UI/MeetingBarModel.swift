@@ -57,6 +57,10 @@ struct MeetingBarSnapshot: Equatable {
     var drawing = false
     var canDraw = true
     var chatOpen = false
+    /// The notes bar is open (the Notes icon is lit).
+    var notesOpen = false
+    /// The Meeting Views icon is live; with the setting off it is dimmed.
+    var hasViews = true
     /// "End Meeting for All" when hosting, "Leave Meeting" otherwise: what End does.
     var endName = "End Meeting for All"
     /// End was pressed once and waits for the second press.
@@ -169,31 +173,33 @@ enum MeetingBarModel {
         }
     }
 
-    struct MoreState: Equatable {
-        var notesOpen = false
-        /// Greenroom's own meeting UI is on and the views menu has entries.
-        var hasViews = false
+    /// One icon cell: its glyph, hover help (with the key the person bound) and
+    /// what VoiceOver says. `on` lights it with the brand tint.
+    struct IconCell: Equatable {
+        var symbol: String
+        var help: String
+        var spoken: String
+        var on = false
     }
 
-    struct MoreActions {
-        var toggleNotes: () -> Void = {}
-        var collapse: () -> Void = {}
+    /// Notes: lit while the notes bar is open.
+    static func notesCell(open: Bool, _ bindings: ShortcutBindings) -> IconCell {
+        IconCell(symbol: "note.text",
+                 help: help(open ? "Hide Notes" : "Show Notes", .toggleNotes, bindings),
+                 spoken: open ? "Hide notes" : "Show notes", on: open)
     }
 
-    /// The \u{22EF} menu: what the bar used to carry as icons of its own (notes, the
-    /// Views menu, collapsing to the small round button). The layout switch is in
-    /// the Share cell's menu (PresentMenuSpec.swift), once. `views` is the live
-    /// submenu, built when it is opened.
-    static func moreMenu(_ s: MoreState, views: [MenuEntry],
-                         _ bindings: ShortcutBindings, _ a: MoreActions) -> [MenuEntry] {
-        func key(_ action: ShortcutAction) -> KeyCombo? { bindings.combo(for: .action(action)) }
-        var out: [MenuEntry] = [
-            .item(s.notesOpen ? "Hide Notes" : "Show Notes", shortcut: key(.toggleNotes), a.toggleNotes),
-        ]
-        if s.hasViews { out.append(.submenu("Meeting Views", views)) }
-        out.append(.separator)
-        out.append(.item("Collapse to Small Button", shortcut: key(.toggleMeetingBar), a.collapse))
-        return out
+    /// Meeting Views: opens the views submenu's entries as a menu of its own.
+    static func viewsCell(_ bindings: ShortcutBindings) -> IconCell {
+        IconCell(symbol: "square.grid.2x2", help: "Meeting Views", spoken: "Meeting views. Menu")
+    }
+
+    /// Collapse to the small round button. Not the arrows the Meeting button
+    /// uses (they open the Meeting window): a ring in a ring, the puck itself.
+    static func collapseCell(_ bindings: ShortcutBindings) -> IconCell {
+        IconCell(symbol: "circle.circle",
+                 help: help("Collapse to Small Button", .toggleMeetingBar, bindings),
+                 spoken: "Collapse to the small button")
     }
 }
 
@@ -201,7 +207,7 @@ enum MeetingBarModel {
 
 /// The bar's size, from its cells, so the panel and the content cannot disagree.
 /// Left to right: grip, Meeting, | mic, camera, | REC pill and pause, | Share,
-/// Draw, | chat, people, More, | End. Share opens the Present menu: what the
+/// Draw, | chat, people, Notes, Views, Collapse, | End. Share opens the Present menu: what the
 /// class sees, your look, the layout.
 enum MeetingBarLayout {
     static let height: CGFloat = 44
@@ -229,11 +235,16 @@ enum MeetingBarLayout {
     /// A hairline and 4pt each side.
     static let divider: CGFloat = 9
 
+    /// Notes, Views (only beside the Meeting button, which is what makes views
+    /// exist), Collapse: three icons where the \u{22EF} menu was. The Views slot
+    /// follows `videoButtons`, so the panel's width has one switch, not two.
     static func cells(videoButtons: Bool) -> [CGFloat] {
         var out: [CGFloat] = [grip]
         if videoButtons { out.append(meeting) }
         out += [divider, icon, icon, divider, recCell, divider, present, draw, divider,
-                icon, people, icon, divider, end]
+                icon, people, icon]
+        if videoButtons { out.append(icon) }
+        out += [icon, divider, end]
         return out
     }
 

@@ -849,6 +849,8 @@ private struct MeetingControlBarView: View {
         s.drawing = coordinator.isDrawing
         s.canDraw = coordinator.canDraw
         s.chatOpen = model.chatOpen
+        s.notesOpen = notes.effectiveEnabled
+        s.hasViews = MeetingViewPieces.enabled
         s.endName = coordinator.liveExitState.kind == .host ? LiveExitChoice.endMeetingForAll.title
                                                             : LiveExitChoice.leaveMeeting.title
         s.endArmed = coordinator.exitAsk == .end
@@ -883,16 +885,9 @@ private struct MeetingControlBarView: View {
             return MeetingBarModel.recordMenu(phase, bindings, r)
         }
         a.presentMenu = { coordinator.presentMenuEntries() }
-        a.moreMenu = { [bindings = shortcuts.bindings] in
-            let views = MeetingViewPieces.enabled ? model.viewsMenu() : []
-            var state = MeetingBarModel.MoreState()
-            state.notesOpen = notes.effectiveEnabled
-            state.hasViews = !views.isEmpty
-            var m = MeetingBarModel.MoreActions()
-            m.toggleNotes = { notes.toggle() }
-            m.collapse = { MeetingControlBarController.setCollapsed(true) }
-            return MeetingBarModel.moreMenu(state, views: views, bindings, m)
-        }
+        a.toggleNotes = { notes.toggle() }
+        a.viewsMenu = { model.viewsMenu() }
+        a.collapse = { MeetingControlBarController.setCollapsed(true) }
         return a
     }
 }

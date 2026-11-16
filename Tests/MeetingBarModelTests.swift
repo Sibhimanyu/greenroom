@@ -97,19 +97,30 @@ final class MeetingBarModelTests: XCTestCase {
                        ShortcutAction.togglePause.defaultCombo)
     }
 
-    // The More menu
+    // Notes, Views and Collapse: icons where the ellipsis menu was
 
-    func testMoreMenuKeepsNotesAndCollapseAlways() {
-        let t = titles(M.moreMenu(.init(), views: [], none, .init()))
-        XCTAssertEqual(t, ["Show Notes", "Collapse to Small Button"])
+    func testNotesIconIsLitWhileTheNotesBarIsOpen() {
+        let closed = M.notesCell(open: false, none), open = M.notesCell(open: true, none)
+        XCTAssertEqual(closed.symbol, "note.text")
+        XCTAssertFalse(closed.on)
+        XCTAssertEqual(closed.help, "Show Notes")
+        XCTAssertTrue(open.on)
+        XCTAssertEqual(open.help, "Hide Notes")
+        XCTAssertEqual(open.spoken, "Hide notes")
     }
 
-    func testMoreMenuHoldsViewsWhenThereAreSome_AndNoLayoutBecauseShareHasIt() {
-        var s = M.MoreState()
-        s.notesOpen = true; s.hasViews = true
-        let menu = M.moreMenu(s, views: [.item("Gallery") {}], none, .init())
-        XCTAssertEqual(titles(menu).first, "Hide Notes")
-        XCTAssertEqual(menu.flatTitles, ["Hide Notes", "Meeting Views", "Gallery", "Collapse to Small Button"])
+    func testIconCellsHelpNameTheBoundKey() {
+        var b = ShortcutBindings()
+        b.set(KeyCombo.optionCommand(kVK_ANSI_M), for: .action(.toggleMeetingBar))
+        XCTAssertEqual(M.collapseCell(b).help, "Collapse to Small Button (\u{2325}\u{2318}M)")
+        XCTAssertEqual(M.collapseCell(none).spoken, "Collapse to the small button")
+        XCTAssertNotEqual(M.collapseCell(none).symbol, "arrow.up.left.and.arrow.down.right")
+        XCTAssertEqual(M.viewsCell(none).help, "Meeting Views")
+    }
+
+    func testViewsSlotFollowsTheMeetingButton() {
+        typealias L = MeetingBarLayout
+        XCTAssertEqual(L.cells(videoButtons: true).count - L.cells(videoButtons: false).count, 2)
     }
 
     // Hover help uses the person's shortcuts
@@ -134,7 +145,8 @@ final class MeetingBarModelTests: XCTestCase {
             XCTAssertEqual(L.width(videoButtons: video),
                            L.leadingPad + L.trailingPad + cells.reduce(0, +) + L.spacing * CGFloat(cells.count - 1))
         }
-        XCTAssertEqual(L.width(videoButtons: true) - L.width(videoButtons: false), L.meeting + L.spacing)
+        XCTAssertEqual(L.width(videoButtons: true) - L.width(videoButtons: false),
+                       L.meeting + L.icon + 2 * L.spacing)  // Meeting, and the Views icon beside it
         XCTAssertLessThan(L.width(videoButtons: true), 720)
     }
 

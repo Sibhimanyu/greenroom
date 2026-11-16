@@ -223,6 +223,12 @@ enum DebugTour {
     ///   live what=meeting                             a new meeting (Create mode), no one invited
     ///   live what=end                                 ends the session, no question
     ///   live what=size to=window|mini|bar             moves the live meeting
+    private static func putBack(_ c: CoordinatorController) {
+        if let savedTarget { c.shareTarget = savedTarget }
+        if let savedMode { c.meetingMode = savedMode }
+        savedTarget = nil; savedMode = nil
+    }
+
     private static func live(_ info: [String: String]) throws -> [String: Any] {
         guard let c = CoordinatorController.shared else { throw TourError("no coordinator") }
         switch info["what"] ?? "" {
@@ -231,7 +237,9 @@ enum DebugTour {
             if savedTarget == nil { savedTarget = target }
             target.kind = .window
             target.appBundleID = info["app"] ?? ""
-            target.appName = info["app"] ?? ""
+            let bundle = info["app"] ?? ""
+            target.appName = NSRunningApplication.runningApplications(withBundleIdentifier: bundle).first?
+                .localizedName ?? bundle
             target.windowTitle = info["title"] ?? ""
             c.shareTarget = target
             if savedMode == nil { savedMode = c.meetingMode }
@@ -239,19 +247,19 @@ enum DebugTour {
             c.start()
         case "stopRecord":
             c.stopRecordingSession()
+            putBack(c) // the owner's own choices come back at once: a relaunch forgets what was saved
         case "meeting":
             if savedMode == nil { savedMode = c.meetingMode }
             c.meetingMode = .create
             c.start()
         case "end":
             c.stop()
+            putBack(c)
         case "size":
             guard let to = MeetingSize(rawValue: info["to"] ?? "") else { throw TourError("bad size") }
             c.moveMeeting(to: to)
         case "putBack":
-            if let savedTarget { c.shareTarget = savedTarget }
-            if let savedMode { c.meetingMode = savedMode }
-            savedTarget = nil; savedMode = nil
+            putBack(c)
         default:
             throw TourError("bad what")
         }

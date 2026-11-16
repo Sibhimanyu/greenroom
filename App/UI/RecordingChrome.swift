@@ -50,7 +50,9 @@ final class RecordingChrome {
         if recording, !paused {
             // Only while what is recorded is on this desktop: the outline is on
             // every Space, and a window on another one left it framing nothing.
-            border.show { [weak coordinator] in coordinator?.capturedScreenFrame(onThisDesktop: true) }
+            border.show(window: { [weak coordinator] in coordinator?.capturedWindowID }) { [weak coordinator] in
+                coordinator?.capturedScreenFrame(onThisDesktop: true)
+            }
         } else {
             border.hide()
         }
@@ -80,7 +82,9 @@ final class RecordingChrome {
 
     private func updatePreviewBorder() {
         if previewing, !recordingNow {
-            previewBorder.show { [weak coordinator] in coordinator?.capturedScreenFrame(onThisDesktop: true) }
+            previewBorder.show(window: { [weak coordinator] in coordinator?.capturedWindowID }) { [weak coordinator] in
+                coordinator?.capturedScreenFrame(onThisDesktop: true)
+            }
         } else {
             previewBorder.hide()
         }
@@ -262,10 +266,15 @@ final class RecordingBorderController {
     /// Read on every screen refresh, not on a slow timer: a window dragged
     /// around left a 0.4s timer's outline trailing far behind it (owner,
     /// 2026-11-16). One window-list lookup per frame is cheap.
-    func show(provider: @escaping () -> CGRect?) {
+    ///
+    /// `window` is the captured window, when it is one. The outline then sits
+    /// directly above that window in the stack instead of above everything, so
+    /// a window covering it covers its outline too (owner, 2026-11-16: the
+    /// outline showed on top of Greenroom over a Finder window underneath).
+    func show(window: @escaping () -> CGWindowID? = { nil }, provider: @escaping () -> CGRect?) {
         guard link == nil else { return }
-        apply(provider())
-        let ticker = BorderTicker { [weak self] in self?.apply(provider()) }
+        apply(provider(), above: window())
+        let ticker = BorderTicker { [weak self] in self?.apply(provider(), above: window()) }
         guard let screen = NSScreen.main ?? NSScreen.screens.first else { return }
         let link = screen.displayLink(target: ticker, selector: #selector(BorderTicker.tick))
         link.preferredFrameRateRange = CAFrameRateRange(minimum: 30, maximum: 60, preferred: 60)
@@ -281,7 +290,10 @@ final class RecordingBorderController {
         panel?.orderOut(nil)
     }
 
-    private func apply(_ captured: CGRect?) {
+    /// Frames since the outline was last put back above its window.
+    private var sinceRestack = 0
+
+    private func apply(_ captured: CGRect?, above windowID: CGWindowID?) {
         guard let captured, captured.width > 1, captured.height > 1 else { panel?.orderOut(nil); return }
         // CG coordinates are top-left origin; AppKit's are bottom-left.
         let primaryHeight = NSScreen.screens.first(where: { $0.frame.origin == .zero })?.frame.height
@@ -299,7 +311,21 @@ final class RecordingBorderController {
             panel.contentView = NSHostingView(rootView: RecordingBorderView(rounded: rounded, dashed: dashed))
         }
         if panel.frame != frame { panel.setFrame(frame, display: true) }
-        if !panel.isVisible { panel.orderFrontRegardless() }
+        if let windowID {
+            // In the stack with ordinary windows, just above the captured one.
+            // Clicking that app (or Greenroom) re-stacks windows, so it is put
+            // back every few frames; ordering into the same place is a no-op.
+            if panel.level != .normal { panel.level = .normal; sinceRestack = .max }
+            sinceRestack = sinceRestack == .max ? .max : sinceRestack + 1
+            if !panel.isVisible || sinceRestack >= 4 {
+                panel.order(.above, relativeTo: Int(windowID))
+                sinceRestack = 0
+            }
+        } else {
+            // A whole display: nothing covers it, so the outline rides on top.
+            if panel.level != .statusBar { panel.level = .statusBar }
+            if !panel.isVisible { panel.orderFrontRegardless() }
+        }
     }
 
     private func ensurePanel() -> NSPanel {

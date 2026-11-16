@@ -203,6 +203,14 @@ final class StageCompositor: StageFrameSource {
         return source?.capturedFrame(onThisDesktop: onThisDesktop)
     }
 
+    /// The window being captured, nil for a whole display.
+    func capturedWindowID() -> CGWindowID? {
+        lock.lock()
+        let source = board.activeScreenID.flatMap { screenSources[$0] }
+        lock.unlock()
+        return source?.followedWindowID
+    }
+
     /// What to bring to the front when a recording starts (see StageScreenSource).
     func capturedFrontTarget() -> (bundleID: String?, pid: pid_t?, windowID: CGWindowID?)? {
         lock.lock()

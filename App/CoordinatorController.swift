@@ -2012,6 +2012,8 @@ final class CoordinatorController: ObservableObject {
 
     /// What the live capture shows, in global CoreGraphics points. For the border.
     func capturedScreenFrame(onThisDesktop: Bool = false) -> CGRect? { stage?.capturedScreenFrame(onThisDesktop: onThisDesktop) }
+    /// The window being captured, for the outline to sit just above; nil for a display.
+    var capturedWindowID: CGWindowID? { stage?.capturedWindowID() }
 
     /// A recording just started: the app or window inside the outline comes to
     /// the front, so the person can work in it straight away (owner, 2026-11-16).

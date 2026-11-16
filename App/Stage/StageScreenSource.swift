@@ -180,6 +180,12 @@ final class StageScreenSource: NSObject, SCStreamOutput, SCStreamDelegate {
     /// What a recording brings to the front as it starts: the app (by bundle
     /// id, or the owner of the chosen window) and the one window the picture
     /// follows, if any. Nil for a whole display: there is nothing to raise.
+    /// The window the capture follows, nil for a whole display.
+    var followedWindowID: CGWindowID? {
+        stateLock.lock(); defer { stateLock.unlock() }
+        return capturedWindowID
+    }
+
     var frontTarget: (bundleID: String?, pid: pid_t?, windowID: CGWindowID?)? {
         stateLock.lock()
         let followed = capturedWindowID

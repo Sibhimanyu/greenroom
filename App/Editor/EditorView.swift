@@ -721,13 +721,13 @@ struct EditorView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 TextField("0:00", text: $speedFrom)
-                    .textFieldStyle(.roundedBorder)
+                    .textFieldStyle(.greenroom)
                     .frame(width: 62)
                 Text("To")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 TextField("0:10", text: $speedTo)
-                    .textFieldStyle(.roundedBorder)
+                    .textFieldStyle(.greenroom)
                     .frame(width: 62)
                 Spacer()
                 Text("prefilled from the playhead")
@@ -1007,7 +1007,7 @@ struct EditorView: View {
                                 }
                                 if annotation.kind == .text {
                                     TextField("Text", text: $annotation.text)
-                                        .textFieldStyle(.roundedBorder)
+                                        .textFieldStyle(.greenroom)
                                         .font(.caption)
                                 }
                             }
@@ -1122,7 +1122,7 @@ struct ExportOptionsSheet: View {
                     .font(.caption2.bold())
                     .foregroundStyle(.secondary)
                 TextField("File name", text: $vm.exportName)
-                    .textFieldStyle(.roundedBorder)
+                    .textFieldStyle(.greenroom)
                 Text("Saved as its own recording in Greenroom, in a new \u{201C}\u{2013} Edited\u{201D} folder next to the original.")
                     .font(.caption2)
                     .foregroundStyle(.secondary)

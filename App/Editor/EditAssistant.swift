@@ -366,7 +366,7 @@ struct AssistantPanel: View {
             Divider()
             HStack(spacing: 8) {
                 TextField("e.g. cut from 1:20 to 1:45", text: $input)
-                    .textFieldStyle(.roundedBorder)
+                    .textFieldStyle(.greenroom)
                     .focused($focused)
                     .onSubmit(send)
                 Button(action: send) {

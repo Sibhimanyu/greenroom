@@ -945,7 +945,7 @@ struct LayoutPageContent: View {
                     set: { new in update(piece.id) { p in
                         if var a = p.kind.app { a.url = AppCatalog.sanitizedURLText(new); p.kind = .app(a) }
                     } }), prompt: Text("e.g. docs.google.com"))
-                    .textFieldStyle(.roundedBorder)
+                    .textFieldStyle(.greenroom)
                     .focused($focus, equals: .website)
                     .help("Opens at Start")
             }

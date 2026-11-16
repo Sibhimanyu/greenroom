@@ -62,6 +62,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// System-wide shortcuts (see HotkeyManager and ShortcutRuntime - they work
     /// while OTHER apps are focused, which is the whole point mid-class).
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // A click on anything that is not text lets go of a text field.
+        FieldFocusRelease.install()
         // Find whisper once, off the main thread, before any view asks.
         // See ScreenroomWhisper.resolvedBinary for why a view must never be
         // the first to ask.

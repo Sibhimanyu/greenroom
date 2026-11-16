@@ -344,7 +344,7 @@ struct ScreenroomPageContent<Setup: View>: View {
             TextField("Command", text: $command, prompt: Text("command"), axis: .vertical)
                 .labelsHidden()
                 .multilineTextAlignment(.leading)
-                .textFieldStyle(.roundedBorder)
+                .textFieldStyle(.greenroom)
                 .font(.system(size: 11, design: .monospaced))
                 .lineLimit(1...4)
                 .help("Runs in your own shell, with your own credentials. $GREENROOM_FOLDER is the read-only copy it works in.")

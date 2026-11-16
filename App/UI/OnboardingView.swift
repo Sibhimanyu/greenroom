@@ -246,7 +246,7 @@ struct OnboardingView: View {
                 else { TextField(title, text: text) }
             }
             .labelsHidden()
-            .textFieldStyle(.roundedBorder)
+            .textFieldStyle(.greenroom)
             .frame(maxWidth: 360)
         }
     }

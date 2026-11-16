@@ -370,7 +370,7 @@ struct HomeView: View {
             // columns stay level. No label: the placeholder says what to type.
             HStack(spacing: 8) {
                 TextField("Meeting link or ID", text: meetingBinding)
-                    .textFieldStyle(.roundedBorder)
+                    .textFieldStyle(.greenroom)
                     .controlSize(.large)
                     .disabled(isLive)
                     .onSubmit(submit)
@@ -387,7 +387,7 @@ struct HomeView: View {
                     }
                     .help("A Zoom link, an invite, or the meeting ID. A link also fills the passcode.")
                 TextField("Passcode", text: $coordinator.meetingPassword)
-                    .textFieldStyle(.roundedBorder)
+                    .textFieldStyle(.greenroom)
                     .controlSize(.large)
                     .frame(width: 96)
                     .disabled(isLive)
@@ -409,7 +409,7 @@ struct HomeView: View {
             // The auto-name is the placeholder: it says what you will GET.
             // Left empty, the folder is named by date and time.
             TextField(folderPreview, text: $coordinator.className)
-                .textFieldStyle(.roundedBorder)
+                .textFieldStyle(.greenroom)
                 .controlSize(.large)
                 .frame(height: Self.fieldHeight)
                 .disabled(isLive)
@@ -862,7 +862,7 @@ struct HomeView: View {
     /// from Edit (owner, 2026-11-16).
     private var recordTile: some View {
         let on = coordinator.autoRecordOnStart
-        return Toggle(isOn: $coordinator.autoRecordOnStart) {
+        return Button { coordinator.autoRecordOnStart.toggle() } label: {
             HStack(spacing: 8) {
                 Image(systemName: "record.circle")
                     .font(.system(size: 15))
@@ -879,14 +879,21 @@ struct HomeView: View {
                         .lineLimit(1)
                 }
                 Spacer(minLength: 4)
+                // Drawn, not clicked: the whole tile is the button.
+                Toggle("", isOn: .constant(on))
+                    .labelsHidden()
+                    .toggleStyle(.switch)
+                    .controlSize(.mini)
+                    .allowsHitTesting(false)
+                    .accessibilityHidden(true)
             }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 7)
+            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+            .contentShape(Rectangle())
         }
-        .toggleStyle(.switch)
-        .controlSize(.mini)
-        .padding(.horizontal, 10)
-        .padding(.vertical, 7)
-        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
         .greenroomTile(role: .choice(selected: false), radius: 10)
+        .accessibilityValue(on ? "On" : "Off")
         .disabled(isLive)
         .help(on ? "Recording starts by itself when the meeting starts. Turn off to start it yourself."
                  : "Turn on to start recording by itself when the meeting starts.")

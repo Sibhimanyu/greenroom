@@ -1050,7 +1050,7 @@ private struct AddressBar: View {
             }
 
             TextField("Address", text: addressBinding, prompt: Text("Search or enter a website"))
-                .textFieldStyle(.roundedBorder)
+                .textFieldStyle(.greenroom)
                 .focused(focused)
                 .padding(.horizontal, 4)
                 .onSubmit {
@@ -1305,7 +1305,7 @@ private struct FindBar: View {
             Image(systemName: "magnifyingglass")
                 .foregroundStyle(.secondary)
             TextField("Find in page", text: $tab.findText)
-                .textFieldStyle(.roundedBorder)
+                .textFieldStyle(.greenroom)
                 .frame(maxWidth: 320)
                 .focused(focused)
                 .onSubmit { tab.findNext() }
@@ -1353,7 +1353,7 @@ private struct HistoryView: View {
     var body: some View {
         VStack(spacing: 0) {
             TextField("Search history", text: $query)
-                .textFieldStyle(.roundedBorder)
+                .textFieldStyle(.greenroom)
                 .padding(12)
 
             Divider()

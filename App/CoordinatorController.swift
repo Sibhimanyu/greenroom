@@ -1600,6 +1600,7 @@ final class CoordinatorController: ObservableObject {
                         MeetingControlBarController.install(coordinator: self, model: controls)
                     }
                 }
+                startSmallWhileAlone()
                 bringInExtraCameras()
 
                 // Only now, with the meeting live: Cues never listens
@@ -3198,6 +3199,7 @@ final class CoordinatorController: ObservableObject {
                 MeetingControlBarController.reconcile(immediately: false)
             }
             MeetingControlBarController.healIfNeeded()
+            self.growIfSomeoneJoined()
             guard self.meetingWindowWanted || ParticipantGridWindowController.isOpen else { return true }
             guard let target = self.meetingSurfaceTarget() else { return false }
             if target.form.isMeeting {
@@ -3604,6 +3606,7 @@ final class CoordinatorController: ObservableObject {
         if !sessionArranges, ChatWindowController.isOpen { ChatWindowController.close() }
         let alreadyOpen = ParticipantGridWindowController.meetingWindowIsOpen
         meetingWindowWanted = true
+        growWhenSomeoneJoins = false // brought up some other way: it stays the teacher's choice
         // A deliberate reopen: the room the layout gave the neighbour goes back,
         // before the window is placed, so it is placed as shown.
         giveRoomBackToMeeting()
@@ -3694,6 +3697,34 @@ final class CoordinatorController: ObservableObject {
         move(from: .bar, to: target, step: .up, context: context)
     }
 
+    /// Set when a meeting started with nobody else in it and went to the bar:
+    /// the first person to join brings the Meeting window up. Any size change
+    /// made by hand clears it, and so does the end of the meeting.
+    private var growWhenSomeoneJoins = false
+
+    /// A meeting nobody has joined yet is an empty window over the very thing
+    /// being shared. So it starts as the Control bar, and what is shared
+    /// comes to the front. Only when nothing is arranged: a layout places
+    /// the Meeting where it wants it.
+    private func startSmallWhileAlone() {
+        growWhenSomeoneJoins = false
+        guard !sessionArranges, zoomChatClient.didUseCustomUI,
+              MeetingControlBarController.isInstalled,
+              zoomChatClient.meetingRoster().allSatisfy(\.isMyself) else { return }
+        if meetingSize == .window { MeetingControlBarController.morph(toward: 0) }
+        growWhenSomeoneJoins = true
+        bringRecordedForward()
+    }
+
+    /// From the follow loop: the first person in brings the window up.
+    private func growIfSomeoneJoined() {
+        guard growWhenSomeoneJoins else { return }
+        guard isRunning || stageLive else { growWhenSomeoneJoins = false; return }
+        guard zoomChatClient.meetingRoster().contains(where: { !$0.isMyself }) else { return }
+        growWhenSomeoneJoins = false
+        if meetingSize == .bar { moveMeeting(to: .window) }
+    }
+
     /// Goes to a size from wherever the meeting is, for the Mini's own arrows.
     func moveMeeting(to size: MeetingSize) {
         guard zoomChatClient.didUseCustomUI else { return }
@@ -3723,6 +3754,7 @@ final class CoordinatorController: ObservableObject {
     /// visibility, and which collapsed size is remembered.
     private func move(from: MeetingSize, to wanted: MeetingSize, step: MeetingCollapse.Step,
                       context: MeetingCollapseContext) {
+        growWhenSomeoneJoins = false
         var target = wanted
         // Where a size cannot be built, the closest one that can.
         if target == .mini, !MeetingViewWindows.miniAvailable { target = step == .down ? .bar : .window }

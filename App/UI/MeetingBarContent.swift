@@ -103,6 +103,9 @@ struct BarRedButton: View {
     /// Pressed once and waiting for the second press: reads Confirm, in place.
     var armed = false
     var armedHelp = ""
+    /// The callout above the armed button: the question, and how to answer.
+    var armedTitle = ""
+    var armedDetail = ""
     var action: () -> Void
 
     var body: some View {
@@ -122,8 +125,32 @@ struct BarRedButton: View {
                 .animation(.snappy(duration: 0.2), value: armed)
         }
         .buttonStyle(.plain)
+        // Asked where you press: a callout right above the button, never the
+        // island (owner, 2026-11-16).
+        .popover(isPresented: Binding(get: { armed && !armedTitle.isEmpty }, set: { _ in }),
+                 arrowEdge: .top) {
+            ConfirmCallout(title: armedTitle, detail: armedDetail)
+        }
         .help(armed ? "\(armedHelp). Esc keeps going." : help)
         .accessibilityLabel(armed ? "Confirm: \(armedHelp)" : spoken)
+    }
+}
+
+/// The question an armed End or Stop asks, in a popover right above it.
+/// Words only: the answer is the Confirm button it points at.
+struct ConfirmCallout: View {
+    var title: String
+    var detail: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(title).font(.system(size: 13, weight: .semibold))
+            Text(detail).font(.system(size: 12)).foregroundStyle(.secondary)
+        }
+        .fixedSize()
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .accessibilityElement(children: .combine)
     }
 }
 
@@ -199,7 +226,8 @@ struct MeetingBarContent: View {
             BarDivider()
             BarRedButton(title: "End", width: L.end,
                          help: MeetingBarModel.help(s.endName, .endSession, bindings),
-                         spoken: s.endName, armed: s.endArmed, armedHelp: s.endName, action: a.end)
+                         spoken: s.endName, armed: s.endArmed, armedHelp: s.endName,
+                         armedTitle: s.endAskTitle, armedDetail: s.endAskDetail, action: a.end)
         }
         .padding(.leading, L.leadingPad)
         .padding(.trailing, L.trailingPad)

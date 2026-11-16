@@ -191,13 +191,6 @@ final class NotchStatusController {
         enqueue(.toast(toast))
     }
 
-    /// A line the person just caused (End armed): shown at once, ahead of
-    /// anything waiting.
-    func showToastFirst(_ toast: IslandToast) {
-        queue.enqueueFirst(.toast(toast))
-        refresh()
-    }
-
     /// Takes every toast, showing or waiting, off the island.
     func hideToasts() {
         let gone = queue.remove { if case .toast = $0 { return true } else { return false } }
@@ -772,7 +765,6 @@ private struct NotchPillView: View {
             case .working: return Color.white.opacity(0.7)
             case .success: return Brand.green
             case .failure: return Brand.net
-            case .ask: return Color(nsColor: .systemRed)
             }
         }()
         return HStack(spacing: 10) {

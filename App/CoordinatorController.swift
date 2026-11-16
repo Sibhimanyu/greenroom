@@ -31,8 +31,7 @@ final class CoordinatorController: ObservableObject {
         stopCues()
         layoutFollowTask?.cancel()
         peopleViewTask?.cancel()
-        stopShapePreview(for: .home)
-        stopShapePreview(for: .webcamSettings)
+        for viewer in previewViewers { stopShapePreview(for: viewer) }
         ChatWindowController.close()
         PeoplePopOutController.close()
         customUIGridTask?.cancel()
@@ -2663,7 +2662,7 @@ final class CoordinatorController: ObservableObject {
             return
         }
         armExit(.stopTake, title: "Stop the recording?",
-                detail: "Press Stop again to save it. Esc keeps recording.")
+                detail: "Press Confirm to save it. Esc keeps recording.")
     }
 
     // MARK: After a session
@@ -2698,19 +2697,22 @@ final class CoordinatorController: ObservableObject {
     /// What End or Stop is waiting to be pressed again for. Asked in place:
     /// the button that was pressed turns into Confirm, and the island only
     /// says what it means (owner, 2026-11-16: the island shows status, it
-    /// has no buttons).
+    /// has no buttons). The question sits in a callout right above the
+    /// button, not in the island: "I should be asked in the same place I'm
+    /// supposed to press" (owner, same day).
     enum ExitAsk: Equatable { case end, stopTake }
     @Published private(set) var exitAsk: ExitAsk?
-    private var exitAskToast: UUID?
+    /// What the armed button's callout says, right above it.
+    @Published private(set) var exitAskTitle = ""
+    @Published private(set) var exitAskDetail = ""
     private var exitAskTimer: Task<Void, Never>?
     private var exitAskMonitors: [Any] = []
 
     private func armExit(_ ask: ExitAsk, title: String, detail: String) {
         disarmExit()
+        exitAskTitle = title
+        exitAskDetail = detail
         exitAsk = ask
-        let toast = IslandToast(title: title, detail: detail, kind: .ask, duration: IslandRules.confirmTimeout)
-        exitAskToast = toast.id
-        NotchStatusController.shared.showToastFirst(toast)
         exitAskTimer = Task { @MainActor [weak self] in
             try? await Task.sleep(nanoseconds: UInt64(IslandRules.confirmTimeout * 1_000_000_000))
             guard !Task.isCancelled else { return }
@@ -2736,10 +2738,6 @@ final class CoordinatorController: ObservableObject {
         exitAskTimer = nil
         for m in exitAskMonitors { NSEvent.removeMonitor(m) }
         exitAskMonitors = []
-        if let id = exitAskToast {
-            exitAskToast = nil
-            NotchStatusController.shared.hidePrompt(id, answered: true)
-        }
         if exitAsk != nil { exitAsk = nil }
     }
 
@@ -2848,7 +2846,15 @@ final class CoordinatorController: ObservableObject {
     /// Who is looking at the preview. Home's card and Settings → Webcam share
     /// one picture; it stops only when the last of them leaves, so closing
     /// Settings no longer blanks Home's card (and the other way round).
-    enum PreviewViewer: Hashable { case home, webcamSettings }
+    /// Each Home carries its own id: SwiftUI can bring a new Home up before
+    /// the old one goes, and with one shared `.home` the old one's leaving
+    /// turned off the new one's camera.
+    enum PreviewViewer: Hashable, CustomStringConvertible {
+        case home(UUID), webcamSettings
+        var description: String {
+            switch self { case .home: return "home"; case .webcamSettings: return "webcamSettings" }
+        }
+    }
     private var previewViewers: Set<PreviewViewer> = []
     private var shapePreviewOn: Bool { !previewViewers.isEmpty }
     private var shapePreviewApply: Task<Void, Never>?
@@ -2860,6 +2866,9 @@ final class CoordinatorController: ObservableObject {
     /// session will send; during a live session it simply mirrors that one.
     /// Never asks for a permission: with Screen Recording off the picture is
     /// the camera alone.
+    /// Whether this viewer's claim on the preview is held, for Home's check.
+    func isShowingPreview(for viewer: PreviewViewer) -> Bool { previewViewers.contains(viewer) }
+
     func startShapePreview(for viewer: PreviewViewer) {
         let wasOn = shapePreviewOn
         previewViewers.insert(viewer)
@@ -3748,6 +3757,7 @@ final class CoordinatorController: ObservableObject {
         a.toBar = { [weak self] in self?.moveMeeting(to: .bar) }
         a.end = { [weak self] in self?.confirmAndStop() }
         a.endArmed = { [weak self] in self?.exitAsk == .end }
+        a.endAsk = { [weak self] in (self?.exitAskTitle ?? "", self?.exitAskDetail ?? "") }
         a.state = { [weak self] in
             guard let controls = self?.meetingControls else { return (false, true) }
             return (controls.inMeeting && controls.muted, controls.cameraOn)
@@ -4241,7 +4251,7 @@ final class CoordinatorController: ObservableObject {
         let ask = LiveExit.endPrompt(liveExitState)
         let action = ask?.choices.first ?? .endMeetingForAll
         let title = action == .leaveMeeting ? "Leave the meeting?" : "End the meeting for everyone?"
-        let again = action == .leaveMeeting ? "Press End again to leave." : "Press End again to end it."
+        let again = action == .leaveMeeting ? "Press Confirm to leave." : "Press Confirm to end it."
         armExit(.end, title: title, detail: "\(again) Esc keeps it going.")
     }
 

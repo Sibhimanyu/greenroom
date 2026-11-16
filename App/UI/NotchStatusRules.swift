@@ -164,12 +164,9 @@ enum CountdownPhase: Equatable {
 
 enum IslandToastKind: Equatable {
     case working, success, failure
-    /// End or Stop is armed: says what pressing it again does.
-    case ask
 
     var symbol: String {
         switch self {
-        case .ask: return "questionmark.circle.fill"
         case .working: return "hourglass"
         case .success: return "checkmark.circle.fill"
         case .failure: return "exclamationmark.triangle.fill"
@@ -270,7 +267,6 @@ enum IslandRules {
         switch kind {
         case .failure: return hasAction ? nil : failureHold
         case .working, .success: return toastHold
-        case .ask: return confirmTimeout
         }
     }
 

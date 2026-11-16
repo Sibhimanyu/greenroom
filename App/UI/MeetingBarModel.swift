@@ -61,6 +61,8 @@ struct MeetingBarSnapshot: Equatable {
     var endName = "End Meeting for All"
     /// End was pressed once and waits for the second press.
     var endArmed = false
+    var endAskTitle = ""
+    var endAskDetail = ""
 }
 
 // MARK: - Text

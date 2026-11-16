@@ -88,6 +88,8 @@ struct HomeView: View {
     /// The live preview was asked for but no picture came, even after one
     /// automatic restart: the card says so and offers Try again.
     @State private var previewStalled = false
+    /// This Home's claim on the shared preview (CoordinatorController.PreviewViewer).
+    @State private var previewID = UUID()
     /// What the preview card shows: the picture the class sees, or how your
     /// screen is laid out (owner, 2026-11-16: "preview the layout and all").
     @State private var cameras: [LocalDeviceResolver.Camera] = []
@@ -165,6 +167,7 @@ struct HomeView: View {
         .onReceive(Timer.publish(every: 2, on: .main, in: .common).autoconnect()) { _ in
             refreshPermissions()
             refreshShareLists()
+            keepPreviewHonest()
         }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             refreshPermissions()
@@ -388,7 +391,20 @@ struct HomeView: View {
         #endif
         guard !showLive, !isLive, cameraProblem == nil else { return }
         showLive = true
-        coordinator.startShapePreview(for: .home)
+        coordinator.startShapePreview(for: .home(previewID))
+    }
+
+    /// The card says live only when it is: every 2 seconds, an open card on
+    /// Home with nothing live starts its picture if it is off, and claims it
+    /// again if something else let go of it (owner, 2026-11-16: after a
+    /// meeting ended the card stayed on the drawing).
+    private func keepPreviewHonest() {
+        guard previewShown, coordinator.mainPage.isHome, !isLive, !coordinator.isStopping else { return }
+        if !showLive {
+            startLive()
+        } else if !coordinator.isShowingPreview(for: .home(previewID)) {
+            coordinator.startShapePreview(for: .home(previewID))
+        }
     }
 
     /// Try again on a stalled card: restart the picture and wait once more.
@@ -420,7 +436,7 @@ struct HomeView: View {
     private func stopLive() {
         guard showLive else { return }
         showLive = false
-        coordinator.stopShapePreview(for: .home)
+        coordinator.stopShapePreview(for: .home(previewID))
     }
 
     // MARK: Right: setup

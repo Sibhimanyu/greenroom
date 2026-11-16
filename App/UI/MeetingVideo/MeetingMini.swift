@@ -8,6 +8,7 @@
 //  and MeetingMiniPlan (both tested); this file only draws and wires them.
 //
 import AppKit
+import SwiftUI
 
 // MARK: - What the Mini's buttons do
 
@@ -20,6 +21,8 @@ struct MeetingMiniActions {
     var end: () -> Void = {}
     /// End was pressed once and waits for the second press.
     var endArmed: () -> Bool = { false }
+    /// The armed End's question and how to answer it, for its callout.
+    var endAsk: () -> (title: String, detail: String) = { ("", "") }
     /// Read every second: is the mic muted, is the camera on.
     var state: () -> (muted: Bool, cameraOn: Bool) = { (false, true) }
 }
@@ -150,6 +153,7 @@ final class MeetingMiniChrome: NSView {
     private lazy var toBar = iconButton("arrow.down.right.and.arrow.up.left", "Smaller: shrink to the Control bar") { [weak self] in self?.actions.toBar() }
     private lazy var end = ClosureButton { [weak self] in self?.actions.end(); self?.refresh(); self?.watchArm() }
     private var armWatch: Timer?
+    private var callout: NSPopover?
 
     /// While End is armed, look again every half second, so a timeout or Esc
     /// turns Confirm back into End.
@@ -246,6 +250,19 @@ final class MeetingMiniChrome: NSView {
         end.layer?.borderColor = NSColor.white.withAlphaComponent(0.85).cgColor
         end.toolTip = armed ? "Press again to end. Esc keeps going." : "End or leave the meeting"
         end.setAccessibilityLabel(armed ? "Confirm end meeting" : "End meeting")
+        // Asked where you press: a callout right above End, never the island.
+        if armed, callout == nil, end.window != nil {
+            let ask = actions.endAsk()
+            let pop = NSPopover()
+            pop.behavior = .applicationDefined
+            pop.animates = true
+            pop.contentViewController = NSHostingController(rootView: ConfirmCallout(title: ask.title, detail: ask.detail))
+            pop.show(relativeTo: end.bounds, of: end, preferredEdge: end.isFlipped ? .minY : .maxY)
+            callout = pop
+        } else if !armed, let pop = callout {
+            pop.close()
+            callout = nil
+        }
     }
 
     func setVisible(_ visible: Bool) {

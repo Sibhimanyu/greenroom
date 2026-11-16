@@ -191,7 +191,9 @@ private struct RecordingControlBarView: View {
                          help: MeetingBarModel.help("Stop and save the recording", .toggleRecording, bindings),
                          spoken: "Stop and save the recording",
                          armed: coordinator.exitAsk == .stopTake,
-                         armedHelp: "Stop and save the recording") { coordinator.confirmStopTake() }
+                         armedHelp: "Stop and save the recording",
+                         armedTitle: coordinator.exitAskTitle,
+                         armedDetail: coordinator.exitAskDetail) { coordinator.confirmStopTake() }
                 .disabled(coordinator.takeBusy)
         }
         .padding(.leading, 8)

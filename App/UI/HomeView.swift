@@ -177,9 +177,7 @@ struct HomeView: View {
         .onChange(of: coordinator.shareTarget.kind) { _, _ in refreshShareLists() }
         .onReceive(Timer.publish(every: 2, on: .main, in: .common).autoconnect()) { _ in
             refreshPermissions()
-            if coordinator.shareTarget.kind == .app || coordinator.shareTarget.kind == .window {
-                refreshShareLists()
-            }
+            refreshShareLists()
         }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             refreshPermissions()
@@ -618,6 +616,17 @@ struct HomeView: View {
         return name
     }
 
+    /// A submenu's title with the tick when the current pick is inside it.
+    @ViewBuilder private func checkedLabel(_ title: String, _ checked: Bool) -> some View {
+        if checked { Label(title, systemImage: "checkmark") } else { Text(title) }
+    }
+
+    private func pickDisplay(_ id: String) {
+        coordinator.screenCaptureDisplayUUID = id
+        coordinator.shareTarget.kind = .display
+        coordinator.requestShapeApply(rebuild: true)
+    }
+
     private func choice(_ title: String, selected: Bool, disabled: Bool = false,
                         action: @escaping () -> Void) -> some View {
         Button(action: action) {
@@ -648,46 +657,65 @@ struct HomeView: View {
         .accessibilityValue(coordinator.webcamShape.label)
     }
 
-    /// Share target: the Webcam page's "Behind you", kind then which one.
+    /// Share target: the Webcam page's "Behind you". One pick says both what
+    /// kind and which one: "One window" opens the window list itself, so
+    /// choosing a window is the whole job, as in the control bar's Present menu.
     private var shareChip: some View {
-        Menu {
-            ForEach(ShareTarget.Kind.allCases) { kind in
-                choice(kind.label, selected: coordinator.shareTarget.kind == kind,
+        let share = coordinator.shareTarget
+        return Menu {
+            // Whole screen: a list of displays only when there is a choice.
+            if displays.count > 1 {
+                Menu {
+                    choice("Automatic (your main display)",
+                           selected: share.kind == .display && coordinator.screenCaptureDisplayUUID.isEmpty) {
+                        pickDisplay("")
+                    }
+                    ForEach(displays) { display in
+                        choice(display.label,
+                               selected: share.kind == .display && coordinator.screenCaptureDisplayUUID == display.id) {
+                            pickDisplay(display.id)
+                        }
+                    }
+                } label: { checkedLabel(ShareTarget.Kind.display.label, share.kind == .display) }
+            } else {
+                choice(ShareTarget.Kind.display.label, selected: share.kind == .display) { pickDisplay("") }
+            }
+            Menu {
+                if apps.isEmpty { Text("No other app is open") }
+                ForEach(apps, id: \.bundleID) { app in
+                    choice(app.name, selected: share.kind == .app && share.appBundleID == app.bundleID) {
+                        coordinator.shareTarget.kind = .app
+                        coordinator.shareTarget.appBundleID = app.bundleID
+                        coordinator.shareTarget.appName = app.name
+                        coordinator.shareTarget.windowTitle = ""
+                        coordinator.requestShapeApply(rebuild: true)
+                    }
+                }
+            } label: { checkedLabel(ShareTarget.Kind.app.label, share.kind == .app) }
+            Menu {
+                if windows.isEmpty { Text("No window to share") }
+                ForEach(windows) { window in
+                    choice((window.title.isEmpty ? window.appName : "\(window.appName) \u{2013} \(window.title)")
+                           + window.placement.menuSuffix,
+                           selected: share.kind == .window && share.appBundleID == window.bundleID
+                               && share.windowTitle == window.title) {
+                        coordinator.shareTarget.kind = .window
+                        coordinator.shareTarget.appBundleID = window.bundleID
+                        coordinator.shareTarget.appName = window.appName
+                        coordinator.shareTarget.windowTitle = window.title
+                        coordinator.requestShapeApply(rebuild: true)
+                    }
+                }
+            } label: { checkedLabel(ShareTarget.Kind.window.label, share.kind == .window) }
+            ForEach([ShareTarget.Kind.whiteboard, .nothing], id: \.self) { kind in
+                choice(kind.label, selected: share.kind == kind,
                        disabled: kind == .nothing && coordinator.cameraIsOff) {
                     coordinator.shareTarget.kind = kind
                     coordinator.requestShapeApply(rebuild: true)
                 }
             }
-            if coordinator.shareTarget.kind == .app {
-                Divider()
-                Menu("App") {
-                    ForEach(apps, id: \.bundleID) { app in
-                        choice(app.name, selected: coordinator.shareTarget.appBundleID == app.bundleID) {
-                            coordinator.shareTarget.appBundleID = app.bundleID
-                            coordinator.shareTarget.appName = app.name
-                            coordinator.shareTarget.windowTitle = ""
-                            coordinator.requestShapeApply(rebuild: true)
-                        }
-                    }
-                }
-            }
-            if coordinator.shareTarget.kind == .window {
-                Divider()
-                Menu("Window") {
-                    ForEach(windows) { window in
-                        choice((window.title.isEmpty ? window.appName : "\(window.appName) \u{2013} \(window.title)")
-                               + window.placement.menuSuffix,
-                               selected: coordinator.shareTarget.appBundleID == window.bundleID
-                                   && coordinator.shareTarget.windowTitle == window.title) {
-                            coordinator.shareTarget.appBundleID = window.bundleID
-                            coordinator.shareTarget.appName = window.appName
-                            coordinator.shareTarget.windowTitle = window.title
-                            coordinator.requestShapeApply(rebuild: true)
-                        }
-                    }
-                }
-            }
-            if coordinator.shareTarget.kind == .display || coordinator.shareTarget.kind == .app {
+            // One app is drawn on one display; which, when there is a choice.
+            if share.kind == .app && displays.count > 1 {
                 Divider()
                 Menu("Display") {
                     choice("Automatic (your main display)", selected: coordinator.screenCaptureDisplayUUID.isEmpty) {
@@ -1268,15 +1296,17 @@ struct HomeView: View {
         micAccess = AVCaptureDevice.authorizationStatus(for: .audio)
     }
 
+    /// Both lists, whatever is picked now: the Share menu offers every app and
+    /// every window at once. Set only when they changed, so the 2s tick does
+    /// not redraw Home for nothing.
     private func refreshShareLists() {
-        switch coordinator.shareTarget.kind {
-        case .app:
-            apps = ShareTarget.runningApps()
-        case .window:
-            var seen = Set<String>()
-            windows = ShareTarget.windows().filter { seen.insert($0.key).inserted }
-        default: break
+        let freshApps = ShareTarget.runningApps()
+        if freshApps.map(\.bundleID) != apps.map(\.bundleID) || freshApps.map(\.name) != apps.map(\.name) {
+            apps = freshApps
         }
+        var seen = Set<String>()
+        let freshWindows = ShareTarget.windows().filter { seen.insert($0.key).inserted }
+        if freshWindows != windows { windows = freshWindows }
     }
 
     private func openWebcamSettings() {

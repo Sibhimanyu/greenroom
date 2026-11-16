@@ -2475,8 +2475,6 @@ final class CoordinatorController: ObservableObject {
         case sessions
         case detail(String)
         case report(String)
-        /// The video editor, in place of the session's page.
-        case editor(String)
 
         var isHome: Bool { self == .home }
     }
@@ -2486,7 +2484,7 @@ final class CoordinatorController: ObservableObject {
     /// One step back: report to its session, session to the grid, grid to Home.
     func goBack() {
         switch mainPage {
-        case .report(let id), .editor(let id): mainPage = .detail(id)
+        case .report(let id): mainPage = .detail(id)
         case .detail: mainPage = .sessions
         case .sessions: mainPage = .home
         case .home: break

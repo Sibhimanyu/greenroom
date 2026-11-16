@@ -134,6 +134,7 @@ final class MeetingControlsModel: ObservableObject {
                 cannotShare = client.cannotShareReason()
             }
             raisedHands = client.meetingRoster().filter { $0.isRaisingHand && !$0.isMyself }.count
+            if PeoplePopOutController.isOpen { PeoplePopOutController.feedWithoutWindow(client: client, controls: self) }
             // Device lists are not worth asking for every second.
             if ticks % 5 == 1 { refreshDevices() }
             // Stale reactions clear themselves from the ledger.

@@ -283,6 +283,9 @@ final class MeetingPeopleView: NSView {
     }
 
     private let box = Box()
+    #if DEBUG
+    var debugRowCount: Int { box.content.everyone.count }
+    #endif
     private var host: Host?
 
     override init(frame frameRect: NSRect) {

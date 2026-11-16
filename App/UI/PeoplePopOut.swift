@@ -31,7 +31,10 @@ enum PeoplePopOutController {
             made.backgroundColor = MeetingTheme.windowNS
             made.minSize = NSSize(width: 260, height: 260)
             made.isReleasedWhenClosed = false
-            made.collectionBehavior = [.moveToActiveSpace]
+            // On every desktop, full-screen ones too, like the bar it opens
+            // from: `.moveToActiveSpace` left it on the desktop of Greenroom's
+            // main window, out of sight (2026-11-16).
+            made.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
             made.setFrame(frame(near: anchor, size: made.frame.size), display: false)
             window = made
             view = people
@@ -59,6 +62,62 @@ enum PeoplePopOutController {
     }
 
     static func owns(_ candidate: NSWindow) -> Bool { candidate == window }
+
+    /// A start alone goes straight to the bar and never builds the meeting
+    /// window, whose grid is what fills this list. Until that window exists,
+    /// the bar's one-second tick fills it straight from Zoom, so the waiting
+    /// room can be answered from here (it was empty, 2026-11-16).
+    static func feedWithoutWindow(client: ZoomMeetingSDKClient, controls: MeetingControlsModel) {
+        guard let view, !ParticipantGridWindowController.isOpen else { return }
+        let roster = client.meetingRoster()
+        let myID = roster.first(where: \.isMyself)?.id
+        func row(_ entry: ZoomMeetingSDKClient.RosterEntry) -> MeetingPeopleView.Row {
+            var tags: [String] = []
+            if entry.isHost { tags.append("Host") } else if entry.isCoHost { tags.append("Co-host") }
+            if entry.isMyself { tags.append("me") }
+            var entryRow = MeetingPeopleView.Row(
+                id: entry.id, name: entry.name, tags: tags, detail: entry.isSpotlighted ? "spotlit" : "",
+                handUp: entry.isRaisingHand, muted: entry.isMuted, hasAudio: entry.hasJoinedAudio,
+                cameraOff: !entry.videoOn, selected: false)
+            if entry.isMyself {
+                entryRow.muted = client.iAmMuted
+                entryRow.cameraOff = !client.myVideoIsOn
+            }
+            return entryRow
+        }
+        let hands = roster.filter { $0.isRaisingHand && !$0.isMyself }
+        let handIDs = Set(hands.map(\.id))
+        let mine = roster.filter(\.isMyself)
+        let others = roster.filter { !$0.isMyself && !handIDs.contains($0.id) }
+        let waiting = client.waitingRoomNames()
+        func act(_ body: @escaping (ZoomMeetingSDKClient) -> Bool) -> () -> Void {
+            { [weak client, weak controls] in
+                guard let client else { return }
+                _ = body(client)
+                controls?.refresh()
+            }
+        }
+        view.onSelect = { [weak controls] id in
+            guard id != myID else { return }
+            controls?.openPeopleInWindow()
+        }
+        view.onAdmit = { id in act { $0.admitFromWaitingRoom(userID: id) }() }
+        view.onDeny = { id in act { $0.denyWaiting(userID: id) }() }
+        view.onInvite = { [weak controls] in controls?.copyInviteLink() }
+        view.onAdmitAll = act { $0.admitEveryoneWaiting() }
+        view.onMuteAll = act { $0.muteEveryone() }
+        view.onAskAllToUnmute = act { $0.askEveryoneToUnmute() }
+        view.apply(waiting: waiting.map { .init(id: $0.id, name: $0.name) },
+                   canDeny: client.canExpelFromWaitingRoom(),
+                   isHost: client.roomFlags().iAmHostOrCoHost,
+                   hands: hands.map(row),
+                   everyone: (mine + others).map(row),
+                   total: roster.count)
+    }
+
+    #if DEBUG
+    static var debugRowCount: Int { view?.debugRowCount ?? -1 }
+    #endif
 
     /// Under the bar's right end when the bar is in the top half of its screen,
     /// above it otherwise; kept on the screen. Centred with no bar to go by.

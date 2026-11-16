@@ -267,6 +267,20 @@ enum DebugTour {
             c.moveMeeting(to: to)
         case "putBack":
             putBack(c)
+        case "people":
+            // The bar's People button, as a click on it does.
+            guard let controls = c.meetingControls else { throw TourError("no meeting controls") }
+            controls.showPeople()
+        case "fail":
+            // A long failure on the island, as a real start failure shows it.
+            NotchStatusController.shared.update(
+                NotchInput(failure: info["message"] ?? "Video didn't start",
+                           detail: info["detail"] ?? "Zoom refused the camera subscription three times (code 7, requests came too quickly). Greenroom will try again once the camera is back on; until then the meeting window shows your class."),
+                onAction: {}, onDismiss: {})
+        case "failOpen":
+            NotchStatusController.shared.debugSetFailureOpen(info["open"] != "false")
+        case "clearFail":
+            NotchStatusController.shared.update(NotchInput(), onAction: {}, onDismiss: {})
         default:
             throw TourError("bad what")
         }
@@ -292,7 +306,9 @@ enum DebugTour {
             "isRunning": c.isRunning, "stageLive": c.stageLive, "isRecording": c.isRecording,
             "recordOnly": c.recordOnlyActive, "meetingSize": c.meetingSize.rawValue,
             "meetingWindowShowing": ParticipantGridWindowController.meetingWindowIsShowing,
-            "miniOpen": MeetingViewWindows.miniIsOpen, "barVisible": MeetingControlBarController.isVisible,
+            "miniOpen": MeetingViewWindows.miniIsOpen, "miniVideoFailed": MeetingViewWindows.debugMiniVideoFailed,
+            "peoplePopOut": PeoplePopOutController.isOpen, "peopleRows": PeoplePopOutController.debugRowCount,
+            "failureOpen": NotchStatusController.shared.debugFailureOpen, "barVisible": MeetingControlBarController.isVisible,
             "island": "\(NotchStatusController.shared.debugContent)",
             "windows": windows]
         if let r = c.capturedScreenFrame() { out["captured"] = [r.minX, r.minY, r.width, r.height].map { Int($0) } }

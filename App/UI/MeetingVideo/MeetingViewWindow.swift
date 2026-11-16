@@ -245,6 +245,9 @@ enum MeetingViewWindows {
     /// The Mini draws video, so it is there only while the views are on.
     static var miniAvailable: Bool { isEnabled }
     static var miniIsOpen: Bool { controllers[.mini] != nil }
+    #if DEBUG
+    static var debugMiniVideoFailed: Bool { controllers[.mini]?.content.videoFailed ?? false }
+    #endif
     /// A view window other than the Mini is open (the Mini does not count as a view).
     static var anyViewOpen: Bool { controllers.keys.contains { $0 != .mini } }
     /// A window showing the active speaker large (the Mini counts for itself, not here).

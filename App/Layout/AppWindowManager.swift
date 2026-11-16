@@ -82,9 +82,19 @@ enum AppWindowManager {
                 AXUIElementPerformAction(match, kAXRaiseAction as CFString)
             }
         }
-        // macOS 14 lets an app hand the front over only when it offers it.
+        // macOS 14 lets an app hand the front over only when it offers it,
+        // and only the active app can offer. Greenroom is often in the
+        // background when a take starts, so the offer is refused; asking
+        // Launch Services to open the app (what `open -a` does) still works.
         NSApp.yieldActivation(to: app)
         app.activate()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+            guard !app.isTerminated, !app.isActive, let url = app.bundleURL else { return }
+            let config = NSWorkspace.OpenConfiguration()
+            config.activates = true
+            config.addsToRecentItems = false
+            NSWorkspace.shared.openApplication(at: url, configuration: config)
+        }
     }
 
     static func title(of window: AXUIElement) -> String? {

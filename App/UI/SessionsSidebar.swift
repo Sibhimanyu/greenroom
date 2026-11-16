@@ -48,7 +48,12 @@ struct SessionsSidebar: View {
             }
         }
         .listStyle(.sidebar)
-        .safeAreaInset(edge: .bottom, spacing: 0) { storageFooter }
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            VStack(spacing: 0) {
+                AccountChip()
+                storageFooter
+            }
+        }
         .navigationSplitViewColumnWidth(min: SidebarRules.widthRange.lowerBound,
                                         ideal: SidebarRules.idealWidth,
                                         max: SidebarRules.widthRange.upperBound)

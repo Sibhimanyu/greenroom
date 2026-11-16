@@ -22,7 +22,7 @@ extension Notification.Name {
 }
 
 struct SettingsView: View {
-    private static let tabOrder = ["webcam", "layout", "shortcuts", "zoom", "youtube", "cues", "transfer"]
+    private static let tabOrder = ["account", "webcam", "layout", "shortcuts", "zoom", "youtube", "cues", "transfer"]
 
     private var tabShortcuts: some View {
         ZStack {
@@ -43,6 +43,10 @@ struct SettingsView: View {
 
     var body: some View {
         TabView(selection: $tab) {
+            AccountSettingsTab()
+                .tabItem { Label("Account", systemImage: "person.crop.circle") }
+                .tag("account")
+
             WebcamSettingsTab()
                 .tabItem { Label("Webcam", systemImage: "video.fill") }
                 .tag("webcam")
@@ -72,7 +76,7 @@ struct SettingsView: View {
                 .tag("transfer")
         }
         .frame(width: 760, height: 730)
-        // ⌘1...⌘7 pick a tab, as in every macOS Settings window. The buttons
+        // ⌘1...⌘8 pick a tab, as in every macOS Settings window. The buttons
         // live in this view, so the shortcuts exist only while Settings is key.
         .background(tabShortcuts)
         // Secrets are loaded lazily (see loadSecretsIfNeeded) - opening

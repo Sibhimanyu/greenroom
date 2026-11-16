@@ -56,6 +56,8 @@ struct YouTubePageContent: View {
 
     var body: some View {
         Form {
+            Section("Upload to") { SharedChannelRow() }
+
             Section("Recordings") {
                 UploadFlowPicture(mode: uploadMode, connected: connected, uploading: uploading)
                 uploadChoices
@@ -304,5 +306,25 @@ private struct VisibilityPicker: View {
             }
         }
         .padding(.vertical, 4)
+    }
+}
+
+// MARK: - Shared channel (through Thriveni)
+
+private struct SharedChannelRow: View {
+    @ObservedObject private var account = AccountStore.shared
+
+    var body: some View {
+        if account.has(.youtubeUpload) {
+            StatusBadge(text: "Zoho Schools channel (through your Thriveni account)", tone: .good)
+        } else {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Sign in with a Thriveni account that has YouTube access to upload to the Zoho Schools channel")
+                    .foregroundStyle(.secondary)
+                Button("Open Account") {
+                    NotificationCenter.default.post(name: .showSettingsTab, object: "account")
+                }
+            }
+        }
     }
 }

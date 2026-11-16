@@ -1549,7 +1549,7 @@ enum ZoomMeetingSDKError: LocalizedError {
         case .timedOut(let what, let seconds, let advice):
             return "\(what) didn\u{2019}t finish in \(seconds) seconds. \(advice)"
         case .videoInstallFailed(let detail):
-            return "Greenroom couldn\u{2019}t put your picture into the meeting, so the class would see nothing from you (Zoom said: \(detail)). Nothing was left running. Press Try again; if it keeps happening, quit and reopen Greenroom."
+            return "Your picture didn\u{2019}t reach the meeting, so the class would see nothing from you. Zoom said: \(detail). Nothing was left running. Press Try again; if it keeps happening, quit and reopen Greenroom."
         }
     }
 }

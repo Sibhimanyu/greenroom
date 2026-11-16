@@ -62,6 +62,19 @@ struct NotchProgress: Equatable {
 struct NotchFailure: Equatable {
     var message: String
     var detail: String?
+
+    /// The one line the folded island shows.
+    var headline: String { NotchStatusRules.headline(for: message) }
+    /// Everything there is to read once it is opened.
+    var fullText: String {
+        [message, detail].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: "\n\n")
+    }
+    /// More to read than the headline: the island offers to open.
+    var hasMore: Bool {
+        var all = fullText.trimmingCharacters(in: .whitespacesAndNewlines)
+        while all.hasSuffix(".") { all.removeLast() }
+        return all != headline
+    }
 }
 
 enum NotchPhase: Equatable {
@@ -75,6 +88,19 @@ enum NotchPhase: Equatable {
 }
 
 enum NotchStatusRules {
+    /// A failure's first line: its first sentence, cut at the first clause
+    /// break, so it fits the island beside Try again (owner, 2026-11-16: "how
+    /// can i see the full msg?"). The whole message is one click away.
+    static func headline(for message: String) -> String {
+        var s = message.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let r = s.range(of: ". ") { s = String(s[..<r.lowerBound]) }
+        for cut in [" (", ", so ", "; ", ": "] {
+            if let r = s.range(of: cut) { s = String(s[..<r.lowerBound]) }
+        }
+        while s.hasSuffix(".") { s.removeLast() }
+        return s.isEmpty ? message : s
+    }
+
     /// The step in words, for the middle of the pill.
     static func words(forStep label: String) -> String {
         switch label {
@@ -194,6 +220,8 @@ enum IslandContent: Equatable {
 
     var isNone: Bool { self == .none }
     /// The island takes clicks only when it has something to press.
+    var isFailure: Bool { if case .status(let p) = self { return p.isFailure } else { return false } }
+
     var isInteractive: Bool {
         switch self {
         case .none: return false
@@ -318,12 +346,15 @@ struct IslandQueue: Equatable {
 enum NotchGeometry {
     static let workingWidth: CGFloat = 360
     static let failureWidth: CGFloat = 460
+    /// A failure opened to read in full: its line plus the words below.
+    static let failureOpenHeight: CGFloat = 140
     /// The pill's body below the notch line.
     static let bodyHeight: CGFloat = 44
-    /// The widest and tallest the island gets (the upload prompt): the panel is
-    /// this big, so it never resizes while the island inside morphs.
+    /// The widest and tallest the island gets (the upload prompt is the
+    /// widest, an opened failure the tallest): the panel is this big, so it
+    /// never resizes while the island inside morphs.
     static let panelWidth: CGFloat = 540
-    static let panelBodyHeight: CGFloat = 76
+    static let panelBodyHeight: CGFloat = failureOpenHeight
     static let promptSize = CGSize(width: 540, height: 76)
     static let countdownSize = CGSize(width: 320, height: 56)
     static let goSize = CGSize(width: 220, height: 44)
@@ -348,10 +379,13 @@ enum NotchGeometry {
     }
 
     /// The island's body (below the notch line) for what it shows.
-    static func bodySize(for content: IslandContent) -> CGSize {
+    /// `open` is a failure opened to read in full.
+    static func bodySize(for content: IslandContent, open: Bool = false) -> CGSize {
         switch content {
         case .none: return CGSize(width: workingWidth, height: bodyHeight)
-        case .status(let phase): return CGSize(width: width(for: phase), height: bodyHeight)
+        case .status(let phase):
+            let opened = open && phase.isFailure
+            return CGSize(width: width(for: phase), height: opened ? failureOpenHeight : bodyHeight)
         case .countdown(.go): return goSize
         case .countdown: return countdownSize
         case .prompt: return promptSize

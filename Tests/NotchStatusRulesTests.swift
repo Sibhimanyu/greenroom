@@ -262,4 +262,34 @@ final class NotchStatusRulesTests: XCTestCase {
         q.finish(t.id); q.promote()
         XCTAssertEqual(q.content, .prompt(p))
     }
+
+    // MARK: A long failure folds to one line and opens to the rest
+
+    func testALongFailureShowsItsFirstClauseAndOpensToTheWholeMessage() {
+        let f = NotchFailure(message: "Your picture didn\u{2019}t reach the meeting, so the class would see nothing from you. Zoom said: 3. Press Try again.", detail: nil)
+        XCTAssertEqual(f.headline, "Your picture didn\u{2019}t reach the meeting")
+        XCTAssertTrue(f.hasMore)
+        XCTAssertEqual(f.fullText, f.message)
+    }
+
+    func testAShortFailureHasNothingMoreToOpen() {
+        let f = NotchFailure(message: "Camera not found.", detail: nil)
+        XCTAssertEqual(f.headline, "Camera not found")
+        XCTAssertFalse(f.hasMore, "a trailing full stop is not more to read")
+    }
+
+    func testADetailIsMoreToRead() {
+        let f = NotchFailure(message: "Camera not found", detail: "Plug it back in")
+        XCTAssertTrue(f.hasMore)
+        XCTAssertEqual(f.fullText, "Camera not found\n\nPlug it back in")
+    }
+
+    func testAnOpenedFailureIsTallerAndStillFitsThePanel() {
+        let fail = IslandContent.status(.failed(NotchFailure(message: "x", detail: nil)))
+        XCTAssertEqual(NotchGeometry.bodySize(for: fail).height, NotchGeometry.bodyHeight)
+        XCTAssertEqual(NotchGeometry.bodySize(for: fail, open: true).height, NotchGeometry.failureOpenHeight)
+        XCTAssertEqual(NotchGeometry.bodySize(for: .status(.live(recording: false)), open: true).height,
+                       NotchGeometry.bodyHeight, "only a failure opens")
+        XCTAssertLessThanOrEqual(NotchGeometry.failureOpenHeight, NotchGeometry.panelBodyHeight)
+    }
 }

@@ -26,6 +26,8 @@ final class NotchStatusModel: ObservableObject {
     /// Bumped to rebuild the pill in its finished state, dropping any morph a
     /// stalled main thread or a system dialog froze part way.
     @Published var settle = 0
+    /// A failure opened to read its whole message; folds again on a click.
+    @Published var failureOpen = false
     var notch: CGRect?
     var reduceMotion = false
     var onAction: (() -> Void)?
@@ -338,6 +340,7 @@ final class NotchStatusController {
         }
         panel?.ignoresMouseEvents = !content.isInteractive
         panel?.orderFrontRegardless()
+        if !content.isFailure { model.failureOpen = false }
         if opening || !model.shown {
             // One turn of the run loop in the folded state, so the morph has a start.
             DispatchQueue.main.async { [weak self] in
@@ -438,7 +441,7 @@ private struct NotchPillView: View {
     private var failed: Bool { if case .status(let p) = model.content { return p.isFailure } else { return false } }
 
     private var openSize: CGSize {
-        let body = NotchGeometry.bodySize(for: model.content)
+        let body = NotchGeometry.bodySize(for: model.content, open: model.failureOpen)
         return CGSize(width: body.width, height: notchHeight + body.height)
     }
 
@@ -471,7 +474,8 @@ private struct NotchPillView: View {
             row
                 .id(rowKind)
                 .transition(.opacity)
-                .frame(height: NotchGeometry.bodySize(for: model.content).height)
+                .frame(height: NotchGeometry.bodySize(for: model.content, open: model.failureOpen).height,
+                       alignment: .top)
         }
         .padding(.horizontal, 16)
         .frame(width: size.width, height: size.height, alignment: .top)
@@ -491,15 +495,18 @@ private struct NotchPillView: View {
                 .clipShape(shape)
                 .opacity(shapeOpacity)
         } else {
+            // A pill, or a rounded card once a failure is opened to read.
+            // (A rounded rectangle with half the height as radius is the capsule.)
+            let shape = RoundedRectangle(cornerRadius: model.failureOpen && failed ? 22 : size.height / 2)
             content
                 .background {
                     ZStack {
-                        Capsule().fill(Color.black.opacity(0.55))
-                        if failed { Capsule().fill(Brand.net.opacity(0.2)) }
+                        shape.fill(Color.black.opacity(0.55))
+                        if failed { shape.fill(Brand.net.opacity(0.2)) }
                     }
                 }
-                .greenroomGlass(in: Capsule())
-                .overlay { if failed { Capsule().strokeBorder(Brand.net.opacity(0.7), lineWidth: 1) } }
+                .greenroomGlass(in: shape)
+                .overlay { if failed { shape.stroke(Brand.net.opacity(0.7), lineWidth: 1) } }
                 .shadow(color: .black.opacity(0.25), radius: 8, y: 3)
                 .opacity(shapeOpacity)
                 .offset(y: dropped ? -14 : 0)
@@ -577,16 +584,61 @@ private struct NotchPillView: View {
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(NotchStatusRules.liveText(recording: recording))
         case .failed(let failure):
-            HStack(spacing: 10) {
-                Image(systemName: "exclamationmark.triangle.fill")
-                    .font(.system(size: 13))
-                    .foregroundStyle(Brand.net)
-                Text(failure.message)
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundStyle(Brand.netText)
-                    .lineLimit(1)
-                    .truncationMode(.tail)
+            VStack(alignment: .leading, spacing: 0) {
+                failureLine(failure)
+                    .frame(height: NotchGeometry.bodyHeight)
+                if model.failureOpen && failure.hasMore {
+                    // The whole message, Zoom's own words included. Scrolls
+                    // if a long one runs past the island.
+                    ScrollView {
+                        Text(failure.fullText)
+                            .font(.system(size: 12))
+                            .foregroundStyle(Color.white.opacity(0.85))
+                            .fixedSize(horizontal: false, vertical: true)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .scrollIndicators(.automatic)
+                    .padding(.leading, 23)
+                    .padding(.bottom, 12)
+                    .transition(.opacity)
+                }
+            }
+            .help(model.failureOpen ? "" : failure.fullText)
+        }
+    }
+
+    /// Icon, headline, Try again and the cross. The headline and its chevron
+    /// open the island to the whole message, and fold it again.
+    private func failureLine(_ failure: NotchFailure) -> some View {
+        HStack(spacing: 10) {
+                Button {
+                    guard failure.hasMore else { return }
+                    withAnimation(model.reduceMotion ? .easeInOut(duration: 0.2)
+                                  : .spring(response: 0.35, dampingFraction: 0.85)) {
+                        model.failureOpen.toggle()
+                    }
+                } label: {
+                    HStack(spacing: 10) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .font(.system(size: 13))
+                            .foregroundStyle(Brand.net)
+                        Text(failure.headline)
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundStyle(Brand.netText)
+                            .lineLimit(1)
+                            .truncationMode(.tail)
+                        if failure.hasMore {
+                            Image(systemName: model.failureOpen ? "chevron.up" : "chevron.down")
+                                .font(.system(size: 9, weight: .bold))
+                                .foregroundStyle(Color.secondary)
+                        }
+                    }
                     .frame(maxWidth: .infinity, alignment: .leading)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(failure.headline)
+                .accessibilityHint(failure.hasMore ? (model.failureOpen ? "Folds the message" : "Shows the whole message") : "")
                 Button { model.onAction?() } label: {
                     Text("Try again")
                         .font(.system(size: 12, weight: .semibold))
@@ -604,8 +656,6 @@ private struct NotchPillView: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Dismiss")
-            }
-            .help([failure.message, failure.detail].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: "\n"))
         }
     }
 

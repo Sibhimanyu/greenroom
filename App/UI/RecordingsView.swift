@@ -181,6 +181,11 @@ struct RecordingsView: View {
     @State private var trashError: String?
     @State private var exporting: (done: Int, total: Int)?
     @State private var confirmingDelete: Recording?
+    /// The cards picked in the grid, for Move to Trash on several at once.
+    @State private var marked = SessionSelection()
+    /// Sessions waiting on the one question, and how many were left out
+    /// because they are live.
+    @State private var confirmingTrash: (ids: [String], skipped: Int)?
     @State private var renaming: Session?
     @State private var renameDraft = ""
     @State private var renamingVideo: (upload: SessionMetadata.Upload, folder: URL)?
@@ -329,6 +334,14 @@ struct RecordingsView: View {
             },
             spaceWarning: spaceWarning,
             onDeleteKey: { if let selection { confirmingDelete = selection } },
+            marked: $marked,
+            onTrashMany: requestTrash,
+            onRevealMany: { ids in
+                let urls = ids.compactMap { id in
+                    sessions.first { $0.id == id }.flatMap { $0.folder ?? $0.primaryTake?.url }
+                }
+                if !urls.isEmpty { NSWorkspace.shared.activateFileViewerSelecting(urls) }
+            },
             cardMenu: { card in cardMenu(card) },
             onOpen: open,
             onBack: { coordinator.goBack() })
@@ -467,6 +480,18 @@ struct RecordingsView: View {
             Button("OK", role: .cancel) {}
         } message: {
             Text(trashError ?? "")
+        }
+        .confirmationDialog(confirmingTrash.map { "Move \(SessionTrashPlan.noun($0.ids.count)) to the Trash?" } ?? "",
+                            isPresented: Binding(get: { confirmingTrash != nil },
+                                                 set: { if !$0 { confirmingTrash = nil } }),
+                            titleVisibility: .visible) {
+            Button("Move to Trash", role: .destructive) {
+                if let target = confirmingTrash { trashSessions(target.ids) }
+                confirmingTrash = nil
+            }
+            Button("Cancel", role: .cancel) { confirmingTrash = nil }
+        } message: {
+            Text(confirmingTrash.map { SessionTrashPlan.message(trash: $0.ids.count, skipped: $0.skipped) } ?? "")
         }
         .confirmationDialog("Move this recording to the Trash?",
                             isPresented: Binding(get: { confirmingDelete != nil },
@@ -986,26 +1011,83 @@ struct RecordingsView: View {
         if selection == recording { teardownPlayer(); selection = nil }
         // reload() below moves the inspector to what is left of the session,
         // or to the next session when this was its only take.
-        let folder = recording.url.deletingLastPathComponent()
         do {
-            try FileManager.default.trashItem(at: recording.url, resultingItemURL: nil)
-            // Logged, so a missing recording can always be traced to a delete.
-            coordinator.log("Moved to Trash: \(folder.lastPathComponent)/\(recording.url.lastPathComponent)")
-            let sidecar = SessionClipStore.sidecarURL(for: recording.url)
-            try? FileManager.default.trashItem(at: sidecar, resultingItemURL: nil)
-            // Only clips cut FROM this recording. Now that clips share the
-            // session folder, a blanket sweep would take clips belonging to
-            // another take, or to no recording at all.
-            for clip in recording.clips {
-                let exported = SessionClipExporter.exportURL(for: clip, from: recording.url)
-                try? FileManager.default.trashItem(at: exported, resultingItemURL: nil)
-            }
-            trashEmptySessionFolder(folder)
+            try trashTake(recording)
         } catch {
             // Never silent: a failed trash looked identical to success
             // (Codex design audit #15).
             trashError = error.localizedDescription
         }
+        reload()
+    }
+
+    /// One take, its sidecar and its exported clips; the folder too when that
+    /// leaves it empty. Shared by the single and the several-at-once paths.
+    private func trashTake(_ recording: Recording) throws {
+        let folder = recording.url.deletingLastPathComponent()
+        try FileManager.default.trashItem(at: recording.url, resultingItemURL: nil)
+        // Logged, so a missing recording can always be traced to a delete.
+        coordinator.log("Moved to Trash: \(folder.lastPathComponent)/\(recording.url.lastPathComponent)")
+        let sidecar = SessionClipStore.sidecarURL(for: recording.url)
+        try? FileManager.default.trashItem(at: sidecar, resultingItemURL: nil)
+        // Only clips cut FROM this recording. Now that clips share the
+        // session folder, a blanket sweep would take clips belonging to
+        // another take, or to no recording at all.
+        for clip in recording.clips {
+            let exported = SessionClipExporter.exportURL(for: clip, from: recording.url)
+            try? FileManager.default.trashItem(at: exported, resultingItemURL: nil)
+        }
+        trashEmptySessionFolder(folder)
+    }
+
+    /// The session being recorded or run right now: still being written to.
+    private var liveSessionIDs: Set<String> {
+        guard let folder = coordinator.sessionFolder else { return [] }
+        return [folder.path]
+    }
+
+    /// Delete key, bar or menu on a picked set: split off live sessions, then
+    /// ask once.
+    private func requestTrash(_ ids: [String]) {
+        let plan = SessionTrashPlan.split(ids, live: liveSessionIDs)
+        if plan.trash.isEmpty {
+            trashError = plan.skipped.isEmpty
+                ? "Nothing was selected."
+                : "That session is live right now. Stop it first, then move it to the Trash."
+            return
+        }
+        confirmingTrash = (plan.trash, plan.skipped.count)
+    }
+
+    /// Every picked session to the Trash. A session folder goes whole (notes,
+    /// analysis and the session.json with its YouTube links go with it);
+    /// loose older files go one by one through the single-delete path.
+    /// Never a hard delete.
+    private func trashSessions(_ ids: [String]) {
+        // Checked again: a class may have started while the question was open.
+        let go = SessionTrashPlan.split(ids, live: liveSessionIDs).trash
+        let targets = sessions.filter { go.contains($0.id) }
+        if let current = selection, targets.contains(where: { $0.takes.contains(current) }) {
+            teardownPlayer(); selection = nil
+        }
+        var failures: [String] = []
+        var done = 0
+        for session in targets {
+            do {
+                if let folder = session.folder {
+                    try FileManager.default.trashItem(at: folder, resultingItemURL: nil)
+                    coordinator.log("Moved to Trash: \(folder.lastPathComponent)")
+                } else {
+                    for take in session.takes { try trashTake(take) }
+                }
+                done += 1
+            } catch {
+                failures.append("\(session.displayTitle): \(error.localizedDescription)")
+            }
+        }
+        marked.clear()
+        if !failures.isEmpty { trashError = failures.joined(separator: "\n") }
+        else if done > 0 { ToastController.show("Moved \(SessionTrashPlan.noun(done)) to the Trash") }
         reload()
     }
 

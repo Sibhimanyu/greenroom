@@ -52,9 +52,15 @@ struct SessionsLayout<CardMenu: View>: View {
     var spaceWarning: (text: String, color: Color)?
     var now = Date()
     var onDeleteKey: () -> Void = {}
+    /// The cards picked in the grid (click, Command-click, Shift-click).
+    @Binding var marked: SessionSelection
+    /// Move the picked sessions (in display order) to the Trash; the host asks
+    /// once and does it.
+    var onTrashMany: ([String]) -> Void = { _ in }
+    var onRevealMany: ([String]) -> Void = { _ in }
     @ViewBuilder let cardMenu: (SessionCardModel) -> CardMenu
-    /// A card was clicked, or Return pressed on the focused one: open its
-    /// page. The grid itself never shows a session's detail.
+    /// A card was double-clicked, or Return pressed on the focused one: open
+    /// its page. A single click only selects. The grid itself never shows a session's detail.
     var onOpen: (String) -> Void = { _ in }
     /// The way back to Home; nil where the grid is drawn on its own.
     var onBack: (() -> Void)?
@@ -133,6 +139,8 @@ struct SessionsLayout<CardMenu: View>: View {
     private var grid: some View {
         let q = query
         let groups = q.groups
+        // Every card on screen in the order drawn.
+        let order = groups.flatMap { $0.cards.map(\.id) }
         return ScrollViewReader { proxy in
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
@@ -163,15 +171,38 @@ struct SessionsLayout<CardMenu: View>: View {
                                       alignment: .leading, spacing: 16) {
                                 ForEach(group.cards) { card in
                                     Button {
-                                        selection = card.id
-                                        onOpen(card.id)
+                                        clicked(card.id, order: order)
                                     } label: {
-                                        SessionCard(card: card, image: thumbnail(card), now: now)
+                                        SessionCard(card: card, image: thumbnail(card), now: now,
+                                                    selected: marked.contains(card.id))
                                     }
                                     .greenroomTile(role: .browse, radius: 12)
                                     .focused($focusedID, equals: card.id)
                                     .id(card.id)
-                                    .contextMenu { cardMenu(card) }
+                                    // Double-click opens. Simultaneous, so the
+                                    // button's own single click still selects.
+                                    .simultaneousGesture(TapGesture(count: 2).onEnded {
+                                        marked.click(card.id, order: order, command: false, shift: false)
+                                        selection = card.id
+                                        onOpen(card.id)
+                                    })
+                                    // Return opens the focused card.
+                                    .onKeyPress(.return) {
+                                        selection = card.id
+                                        onOpen(card.id)
+                                        return .handled
+                                    }
+                                    .contextMenu {
+                                        if marked.count > 1, marked.contains(card.id) {
+                                            let ids = marked.ordered(order)
+                                            Button("Move \(ids.count) to Trash\u{2026}", role: .destructive) {
+                                                onTrashMany(ids)
+                                            }
+                                            Button("Show in Finder") { onRevealMany(ids) }
+                                        } else {
+                                            cardMenu(card)
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -180,15 +211,62 @@ struct SessionsLayout<CardMenu: View>: View {
             }
             .padding(.horizontal, 24)
             .padding(.vertical, 16)
+            // Empty space clears the selection.
+            .background {
+                Color.clear.contentShape(Rectangle())
+                    .onTapGesture { marked.clear() }
+            }
         }
-        // Delete trashes the focused card, as in Finder. Return opens it (the
-        // button's own default action while it has focus).
         .onChange(of: focusedID) { _, id in if let id { selection = id } }
-        .onDeleteCommand(perform: onDeleteKey)
+        // Delete trashes the picked cards, as in Finder; with none picked it
+        // trashes the focused one, as it did before.
+        .onDeleteCommand {
+            if marked.isEmpty { onDeleteKey() } else { onTrashMany(marked.ordered(order)) }
+        }
+        .onKeyPress(.escape) {
+            guard !marked.isEmpty else { return .ignored }
+            marked.clear()
+            return .handled
+        }
+        .onKeyPress(characters: CharacterSet(charactersIn: "a")) { press in
+            guard press.modifiers.contains(.command) else { return .ignored }
+            marked.selectAll(order)
+            return .handled
+        }
+        // A filter or search that hides a picked card un-picks it.
+        .onChange(of: order) { _, now in marked.keep(only: now) }
+        .overlay(alignment: .bottom) {
+            if !marked.isEmpty { selectionBar(order) }
+        }
         // The grid is unmounted while a session's page is up (its search field
         // would otherwise stay in the toolbar), so Back finds the place again.
         .onAppear { if let selection { proxy.scrollTo(selection, anchor: .center) } }
         }
+    }
+
+    private func clicked(_ id: String, order: [String]) {
+        let flags = NSEvent.modifierFlags
+        marked.click(id, order: order,
+                     command: flags.contains(.command), shift: flags.contains(.shift))
+        selection = id
+    }
+
+    /// "N selected", Move to Trash, Deselect, floating over the grid.
+    private func selectionBar(_ order: [String]) -> some View {
+        HStack(spacing: 12) {
+            Text("\(marked.count) selected")
+                .font(.callout.weight(.semibold))
+            Button("Move to Trash\u{2026}", role: .destructive) {
+                onTrashMany(marked.ordered(order))
+            }
+            Button("Deselect") { marked.clear() }
+        }
+        .greenroomGlassButton()
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+        .greenroomGlass(in: Capsule())
+        .padding(.bottom, 16)
+        .transition(.move(edge: .bottom).combined(with: .opacity))
     }
 
     @ViewBuilder
@@ -214,6 +292,8 @@ struct SessionCard: View {
     let card: SessionCardModel
     let image: NSImage?
     let now: Date
+    /// Picked in the grid: a ring in the brand colour (Brand.green).
+    var selected = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -251,7 +331,11 @@ struct SessionCard: View {
         }
         .padding(6)
         .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 12).fill(selected ? Brand.green.opacity(0.10) : .clear))
+        .overlay(RoundedRectangle(cornerRadius: 12)
+            .strokeBorder(Brand.green, lineWidth: 2).opacity(selected ? 1 : 0))
         .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(selected ? .isSelected : [])
     }
 
     private var meta: String {

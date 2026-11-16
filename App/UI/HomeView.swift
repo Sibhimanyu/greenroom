@@ -38,9 +38,6 @@ struct HomeView: View {
     /// Tells ContentView whether the "Last session" line is drawn, since the
     /// window's height is measured with and without it.
     @Binding var hasFooter: Bool
-    /// Whether the five setup tiles are unfolded. Owned by ContentView, which
-    /// sizes the window for it; per launch only, collapsed by default.
-    @Binding var setupOpen: Bool
     /// The picture is hidden until asked for (DESIGN.md, 2026-11-14): the
     /// owner's choice, kept per Mac by ContentView, which also grows the window.
     @Binding var previewShown: Bool
@@ -65,7 +62,9 @@ struct HomeView: View {
     /// the Ready / Preview row 26, button 32, with 16pt between them.
     static let brandHeight: CGFloat = 42
     static let fieldHeight: CGFloat = 32
-    static let summaryHeight: CGFloat = 22
+    /// The setup dock: one row of icon buttons with the value under each
+    /// (owner, 2026-11-16, "B · Dock"), 6pt inside its plate.
+    static let dockHeight: CGFloat = 70
     static let readyHeight: CGFloat = 24
     static let readyRowHeight: CGFloat = 26
     /// A standard macOS 26 large control.
@@ -80,13 +79,10 @@ struct HomeView: View {
     static let readyGap: CGFloat = 16
     /// Top margin under the toolbar and bottom margin under the last element.
     static let verticalMargin: CGFloat = 24
-    /// The five tiles: three rows of 44 with 8pt gaps, and the gap above them.
-    static let tilesHeight: CGFloat = 148
     static var columnHeight: CGFloat {
-        brandHeight + fieldHeight + summaryHeight + readyRowHeight + buttonHeight
+        brandHeight + fieldHeight + dockHeight + readyRowHeight + buttonHeight
             + brandGap + fieldGap + summaryGap + readyGap
     }
-    static var tilesExtraHeight: CGFloat { tilesHeight }
     /// The button fills the column (false: sized to its label, at the left).
     static let primaryFullWidth = true
 
@@ -101,6 +97,8 @@ struct HomeView: View {
     @State private var micAccess = AVCaptureDevice.authorizationStatus(for: .audio)
     @State private var lastSession: LastSession?
     @State private var pastedHint = false
+    @State private var lookOpen = false
+    @State private var recordOpen = false
     @State private var showSavePreset = false
     @State private var presetNameDraft = ""
     /// Only ever started while a session is live, when the microphone is
@@ -419,38 +417,33 @@ struct HomeView: View {
         }
     }
 
-    // MARK: Setup: one line, five tiles behind Edit
+    // MARK: Setup: the dock
 
+    /// Every setting in one row, each one click from its picker: no Edit step
+    /// (owner, 2026-11-16, "B · Dock"). A setting that needs attention wears an
+    /// amber dot; recording with the meeting lights its button green.
     private var setupSection: some View {
-        VStack(alignment: .leading, spacing: Self.columnGap) {
-            // One row, two faces: the summary while folded, a "Setup" caption
-            // with Done while the tiles show, so no value is drawn twice. Both
-            // are the same height, so the column keeps its balance.
-            ZStack(alignment: .topLeading) {
-                if setupOpen { setupCaptionRow.transition(.opacity) } else { summaryRow.transition(.opacity) }
-            }
-            .animation(.easeInOut(duration: 0.2), value: setupOpen)
-            // The caption is centred in its 32pt row, so the tiles sit 8pt
-            // under it, the tiles' own spacing, not the column's 16pt gap.
-            .padding(.bottom, setupOpen ? -Self.columnGap : 0)
-            Collapsible(hidden: !setupOpen) {
-                // Equal tiles: Look | Share, Camera | Microphone, Layout across.
-                VStack(spacing: 8) {
-                    HStack(spacing: 8) { shapeChip; shareChip }
-                    HStack(spacing: 8) { cameraChip; micChip }
-                    // Record shares the Layout row, so Edit grows by the same
-                    // three rows in every mode. Record mode has no meeting to
-                    // follow, so the tile is not there and Layout fills the row.
-                    HStack(spacing: 8) {
-                        layoutChip
-                        if mode != .record { recordTile }
-                    }
-                }
-            }
+        HStack(spacing: 2) {
+            lookControl
+            shareChip
+            cameraChip
+            micChip
+            layoutChip
+            if mode != .record { recordControl }
+        }
+        .padding(6)
+        .frame(height: Self.dockHeight)
+        .background {
+            RoundedRectangle(cornerRadius: 16, style: .continuous).fill(.quinary.opacity(0.7))
+        }
+        .overlay {
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .strokeBorder(Color(nsColor: .separatorColor).opacity(0.5), lineWidth: 0.5)
         }
     }
 
-    private var summaryItems: [SetupSummaryItem] {
+    /// A share target that has gone away (the app quit, its window closed).
+    private var shareGone: Bool {
         let share = coordinator.shareTarget
         let kind: SetupSummary.ShareKind
         switch share.kind {
@@ -460,83 +453,20 @@ struct HomeView: View {
         case .whiteboard: kind = .whiteboard
         case .nothing: kind = .nothing
         }
-        let gone = SetupSummary.shareIsGone(kind: kind, appBundleID: share.appBundleID,
-                                            windowTitle: share.windowTitle,
-                                            runningApps: apps.map(\.bundleID),
-                                            openWindows: windows.map { ($0.bundleID, $0.title) })
-        let camera = LookSummary.cameraText(coordinator, cameras: cameras)
-        let mic = LookSummary.microphoneText(uid: coordinator.micDeviceUID, microphones: microphones,
-                                             system: AVCaptureDevice.default(for: .audio)?.localizedName)
-        return SetupSummary.items(
-            cameraOff: coordinator.cameraIsOff,
-            lookSymbol: coordinator.webcamShape.symbol, lookText: coordinator.webcamShape.label,
-            shareSymbol: Self.symbol(for: share.kind),
-            shareText: gone ? SetupSummary.goneShareText(kind: kind, appName: share.displayName)
-                            : LookSummary.shareText(share),
-            shareGone: gone,
-            cameraText: Self.shortDeviceName(camera), cameraMissing: cameras.isEmpty,
-            micText: Self.shortDeviceName(mic), layoutText: coordinator.layoutChoiceName,
-            autoRecord: coordinator.autoRecordOnStart && mode != .record)
+        return SetupSummary.shareIsGone(kind: kind, appBundleID: share.appBundleID,
+                                        windowTitle: share.windowTitle,
+                                        runningApps: apps.map(\.bundleID),
+                                        openWindows: windows.map { ($0.bundleID, $0.title) })
     }
 
-    private var summaryRow: some View {
-        let items = summaryItems
-        return HStack(alignment: .top, spacing: 8) {
-            ChipFlow(spacing: 6) {
-                ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
-                    summaryPart(item, last: index == items.count - 1)
-                }
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            setupToggle
-        }
-        .frame(minHeight: Self.summaryHeight, alignment: .top)
+    /// Short enough for the dock; the help says what the class would see.
+    private var shareValue: String {
+        shareGone ? "Not open" : LookSummary.shareText(coordinator.shareTarget)
     }
 
-    private var setupCaptionRow: some View {
-        HStack(alignment: .center, spacing: 8) {
-            Text("Setup")
-                .font(.system(size: 12, weight: .medium))
-                .foregroundStyle(.secondary)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .accessibilityAddTraits(.isHeader)
-            setupToggle
-        }
-        .frame(minHeight: Self.summaryHeight, alignment: .center)
-    }
-
-    /// Edit while folded, Done while unfolded.
-    private var setupToggle: some View {
-        Button(setupOpen ? "Done" : "Edit") {
-            Collapse.animate { setupOpen.toggle() }
-        }
-        .buttonStyle(.plain)
-        .font(.system(size: 12.5, weight: .medium))
-        .foregroundStyle(Brand.text)
-        .help(setupOpen ? "Fold the setup back into one line." : "Change the look, what you share, the camera, the microphone or the layout.")
-        .accessibilityLabel(setupOpen ? "Done editing setup" : "Edit setup")
-    }
-
-    /// One part of the line. Amber (text colour `net-text`, glyph `net`) when
-    /// it needs the user's attention.
-    private func summaryPart(_ item: SetupSummaryItem, last: Bool) -> some View {
-        HStack(spacing: 4) {
-            Image(systemName: item.symbol)
-                .font(.system(size: 11))
-                .foregroundStyle(item.attention ? Brand.net : Color.secondary)
-            Text(item.text)
-                .font(.system(size: 12, weight: .medium))
-                .foregroundStyle(item.attention ? Brand.netText : Color.primary)
-                .lineLimit(1)
-                .truncationMode(.middle)
-            if !last {
-                Text("\u{00B7}").foregroundStyle(.tertiary)
-            }
-        }
-        .help(item.help ?? "")
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel(item.attention ? "\(item.text), needs attention" : item.text)
-        .accessibilityHint(item.help ?? "")
+    /// The readiness problem that belongs to one dock button, if any.
+    private func problem(_ id: String) -> Bool {
+        readiness.contains { $0.id == id && $0.problem != nil }
     }
 
     /// The folder the next Start will create, as the placeholder.
@@ -584,38 +514,12 @@ struct HomeView: View {
 
     // MARK: Chips
 
-    /// An equal-size tile: icon, a small caption, and the current choice with a
-    /// chevron. `trailingInset` keeps room for a button laid over the tile.
-    private func tileLabel(symbol: String, caption: String, text: String, meter: Double? = nil,
-                           trailingInset: CGFloat = 0) -> some View {
-        HStack(spacing: 8) {
-            Image(systemName: symbol)
-                .font(.system(size: 15))
-                .foregroundStyle(.secondary)
-                .frame(width: 20)
-            VStack(alignment: .leading, spacing: 1) {
-                Text(caption)
-                    .font(.system(size: 9.5, weight: .semibold))
-                    .tracking(0.4)
-                    .foregroundStyle(.secondary)
-                HStack(spacing: 6) {
-                    Text(text)
-                        .font(.system(size: 12.5, weight: .medium))
-                        .foregroundStyle(.primary)
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                    if let meter { MiniMeter(level: meter) }
-                }
-            }
-            Spacer(minLength: trailingInset)
-            Image(systemName: "chevron.down")
-                .font(.system(size: 8, weight: .semibold))
-                .foregroundStyle(.tertiary)
-        }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 7)
-        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-        .contentShape(Rectangle())
+    /// One dock button's face: a rounded orb with the glyph, the current value
+    /// under it. `lit` fills the orb green (a setting that acts on its own);
+    /// `warn` adds an amber dot and turns the value amber.
+    private func dockLabel(symbol: String, value: String, lit: Bool = false, warn: Bool = false,
+                           meter: Double? = nil) -> some View {
+        DockFace(symbol: symbol, value: value, lit: lit, warn: warn, meter: meter)
     }
 
     /// "MacBook Pro Camera" is "MacBook Pro" on the tile; the hover help and
@@ -646,26 +550,55 @@ struct HomeView: View {
         .disabled(disabled)
     }
 
-    /// Shape: the Webcam page's look picker, one setting, one apply.
-    private var shapeChip: some View {
-        Menu {
-            ForEach(WebcamShape.allCases) { shape in
-                choice(shape.label, selected: coordinator.webcamShape == shape) {
-                    coordinator.webcamShape = shape
-                    coordinator.requestShapeApply()
-                }
-            }
-            Divider()
-            Button("More\u{2026}", action: openWebcamSettings)
-        } label: {
-            tileLabel(symbol: Self.symbol(for: coordinator.webcamShape), caption: "LOOK", text: coordinator.webcamShape.label)
+    /// Look: the shapes as swatches in a popover, one click each.
+    private var lookControl: some View {
+        Button { lookOpen.toggle() } label: {
+            dockLabel(symbol: Self.symbol(for: coordinator.webcamShape),
+                      value: coordinator.cameraIsOff ? "No camera" : coordinator.webcamShape.label)
         }
-        .chipMenu()
+        .buttonStyle(DockButtonStyle())
         .disabled(coordinator.cameraIsOff)
+        .popover(isPresented: $lookOpen, arrowEdge: .bottom) { lookPicker }
         .help(coordinator.cameraIsOff ? "No camera is picked, so there is no look to choose."
-                                      : "How you appear over what you share.")
+                                      : "Look: \(coordinator.webcamShape.label). How you appear over what you share.")
         .accessibilityLabel("Look")
         .accessibilityValue(coordinator.webcamShape.label)
+    }
+
+    private var lookPicker: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("LOOK")
+                .font(.system(size: 10, weight: .semibold)).tracking(0.5)
+                .foregroundStyle(.secondary)
+            HStack(spacing: 6) {
+                ForEach(WebcamShape.allCases) { shape in
+                    let chosen = coordinator.webcamShape == shape
+                    Button {
+                        coordinator.webcamShape = shape
+                        coordinator.requestShapeApply()
+                        lookOpen = false
+                    } label: {
+                        VStack(spacing: 6) {
+                            Image(systemName: Self.symbol(for: shape))
+                                .font(.system(size: 22, weight: .regular))
+                                .frame(width: 58, height: 40)
+                            Text(shape.label)
+                                .font(.system(size: 11, weight: chosen ? .semibold : .regular))
+                                .foregroundStyle(chosen ? .primary : .secondary)
+                        }
+                        .padding(.vertical, 6)
+                        .frame(width: 70)
+                    }
+                    .greenroomTile(role: .choice(selected: chosen), radius: 10)
+                    .help(shape.label)
+                }
+            }
+            Button("More look settings\u{2026}") { lookOpen = false; openWebcamSettings() }
+                .buttonStyle(.plain)
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(Brand.text)
+        }
+        .padding(14)
     }
 
     /// Share target: the Webcam page's "Behind you". One pick says both what
@@ -744,11 +677,13 @@ struct HomeView: View {
             Divider()
             Button("More\u{2026}", action: openWebcamSettings)
         } label: {
-            tileLabel(symbol: Self.symbol(for: coordinator.shareTarget.kind), caption: "SHARE",
-                      text: LookSummary.shareText(coordinator.shareTarget))
+            dockLabel(symbol: Self.symbol(for: coordinator.shareTarget.kind), value: shareValue,
+                      warn: shareGone || problem("screen"))
         }
-        .chipMenu()
-        .help("What the class sees behind you.")
+        .dockMenu()
+        .help(shareGone ? SetupSummary.shareGoneHelp
+              : problem("screen") ? "Greenroom needs Screen Recording permission to share. The line under the dock opens it."
+              : "Share: \(shareValue). What the class sees behind you.")
         .accessibilityLabel("Behind you")
         .accessibilityValue(LookSummary.shareText(coordinator.shareTarget))
     }
@@ -777,11 +712,13 @@ struct HomeView: View {
             Divider()
             Button("More\u{2026}", action: openWebcamSettings)
         } label: {
-            tileLabel(symbol: coordinator.cameraIsOff ? "video.slash" : "camera", caption: "CAMERA",
-                      text: Self.shortDeviceName(name))
+            dockLabel(symbol: coordinator.cameraIsOff ? "video.slash" : "camera",
+                      value: coordinator.cameraIsOff ? "Off" : Self.shortDeviceName(name),
+                      warn: problem("camera") || (cameras.isEmpty && !coordinator.cameraIsOff))
         }
-        .chipMenu()
-        .help("Camera: \(name). Which camera you appear on.")
+        .dockMenu()
+        .help(cameras.isEmpty && !coordinator.cameraIsOff ? SetupSummary.cameraMissingHelp
+              : "Camera: \(name). Which camera you appear on.")
         .accessibilityLabel("Camera")
         .accessibilityValue(name)
     }
@@ -803,9 +740,9 @@ struct HomeView: View {
             Divider()
             Button("More\u{2026}", action: openWebcamSettings)
         } label: {
-            tileLabel(symbol: "mic", caption: "MICROPHONE", text: Self.shortDeviceName(name), meter: micMeterLevel)
+            dockLabel(symbol: "mic", value: Self.shortDeviceName(name), warn: problem("mic"), meter: micMeterLevel)
         }
-        .chipMenu()
+        .dockMenu()
         .help("Microphone: \(name). Which microphone the class hears and the recording takes.")
         .accessibilityLabel("Microphone")
         .accessibilityValue(name)
@@ -833,6 +770,13 @@ struct HomeView: View {
             // What the Start button's chevron used to hold, under a heading
             // ("Manual controls") nobody could read. It belongs to the layout,
             // so it lives with it, and only when there is something to open.
+            if let template = coordinator.layoutLibrary.active, template.pieceCount > 0 {
+                Button("Show on Screen") {
+                    LayoutPageContent.showOnScreen(template, customUIMode: coordinator.customUIMode,
+                                                   canMoveApps: AppWindowManager.hasAccessibilityPermission)
+                }
+                .help("Preview this layout on your screen")
+            }
             if coordinator.layoutHasApps {
                 Button("Open This Layout\u{2019}s Apps") { coordinator.openMainAppWindow() }
                     .help("Opens the layout\u{2019}s apps in their places now, without starting a class.")
@@ -844,12 +788,10 @@ struct HomeView: View {
                 }
             }
         } label: {
-            tileLabel(symbol: "rectangle.split.2x1", caption: "LAYOUT", text: coordinator.layoutChoiceName,
-                      trailingInset: 34)
+            dockLabel(symbol: "rectangle.split.2x1", value: coordinator.layoutChoiceName)
         }
-        .chipMenu()
+        .dockMenu()
         .disabled(coordinator.layoutChoiceLocked)
-        .overlay(alignment: .trailing) { showLayoutButton.padding(.trailing, 26) }
         .help(coordinator.layoutChoiceLocked
               ? "A class runs the layout it started with. Pick the next one after it ends."
               : "Where Start puts the meeting, the chat and your apps.")
@@ -857,66 +799,55 @@ struct HomeView: View {
         .accessibilityValue(coordinator.layoutChoiceName)
     }
 
-    /// "Record with the meeting" (Settings → Webcam) where the setup line
-    /// reports it, so the line's "Records with the meeting" can be changed
-    /// from Edit (owner, 2026-11-16).
-    private var recordTile: some View {
+    /// Record: whether recording starts with the meeting (Settings → Webcam's
+    /// "Record automatically with the meeting"). Lit green while it does, so a
+    /// recording that starts by itself is never a surprise.
+    private var recordControl: some View {
         let on = coordinator.autoRecordOnStart
-        return Button { coordinator.autoRecordOnStart.toggle() } label: {
-            HStack(spacing: 8) {
-                Image(systemName: "record.circle")
-                    .font(.system(size: 15))
-                    .foregroundStyle(.secondary)
-                    .frame(width: 20)
-                VStack(alignment: .leading, spacing: 1) {
-                    Text("RECORD")
-                        .font(.system(size: 9.5, weight: .semibold))
-                        .tracking(0.4)
-                        .foregroundStyle(.secondary)
-                    Text(on ? "With the meeting" : "When I press it")
-                        .font(.system(size: 12.5, weight: .medium))
-                        .foregroundStyle(.primary)
-                        .lineLimit(1)
-                }
-                Spacer(minLength: 4)
-                // Drawn, not clicked: the whole tile is the button.
-                Toggle("", isOn: .constant(on))
-                    .labelsHidden()
-                    .toggleStyle(.switch)
-                    .controlSize(.mini)
-                    .allowsHitTesting(false)
-                    .accessibilityHidden(true)
-            }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 7)
-            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-            .contentShape(Rectangle())
+        return Button { recordOpen.toggle() } label: {
+            dockLabel(symbol: on ? "record.circle.fill" : "record.circle",
+                      value: on ? "With meeting" : "By hand", lit: on)
         }
-        .greenroomTile(role: .choice(selected: false), radius: 10)
-        .accessibilityValue(on ? "On" : "Off")
+        .buttonStyle(DockButtonStyle())
         .disabled(isLive)
-        .help(on ? "Recording starts by itself when the meeting starts. Turn off to start it yourself."
-                 : "Turn on to start recording by itself when the meeting starts.")
-        .accessibilityLabel("Record with the meeting")
+        .popover(isPresented: $recordOpen, arrowEdge: .bottom) { recordPicker }
+        .help(on ? SetupSummary.autoRecordHelp : "Recording starts when you press Record.")
+        .accessibilityLabel("Record")
+        .accessibilityValue(on ? "With the meeting" : "When I press it")
     }
 
-    /// The Layout page's "Show on screen", through the same call.
-    @ViewBuilder private var showLayoutButton: some View {
-        if let template = coordinator.layoutLibrary.active, template.pieceCount > 0 {
-            Button {
-                LayoutPageContent.showOnScreen(template, customUIMode: coordinator.customUIMode,
-                                               canMoveApps: AppWindowManager.hasAccessibilityPermission)
-            } label: {
-                Image(systemName: "rectangle.dashed.badge.record")
-                    .font(.system(size: 14))
-                    .foregroundStyle(Brand.text)
-                    .frame(width: 26, height: 26)
-                    .contentShape(Rectangle())
+    private var recordPicker: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("RECORD")
+                .font(.system(size: 10, weight: .semibold)).tracking(0.5)
+                .foregroundStyle(.secondary)
+            HStack(spacing: 8) {
+                recordChoice(true, symbol: "record.circle.fill", title: "With the meeting",
+                             detail: "Starts by itself")
+                recordChoice(false, symbol: "hand.tap", title: "When I press it",
+                             detail: "You start it")
             }
-            .buttonStyle(.plain)
-            .help("Preview this layout on your screen")
-            .accessibilityLabel("Show layout on screen")
         }
+        .padding(14)
+    }
+
+    private func recordChoice(_ value: Bool, symbol: String, title: String, detail: String) -> some View {
+        let chosen = coordinator.autoRecordOnStart == value
+        return Button {
+            coordinator.autoRecordOnStart = value
+            recordOpen = false
+        } label: {
+            VStack(alignment: .leading, spacing: 4) {
+                Image(systemName: symbol)
+                    .font(.system(size: 18))
+                    .foregroundStyle(value ? Color.red.opacity(0.85) : Color.secondary)
+                Text(title).font(.system(size: 12.5, weight: .semibold))
+                Text(detail).font(.system(size: 11)).foregroundStyle(.secondary)
+            }
+            .padding(10)
+            .frame(width: 140, alignment: .leading)
+        }
+        .greenroomTile(role: .choice(selected: chosen), radius: 10)
     }
 
     private static func symbol(for shape: WebcamShape) -> String {
@@ -990,25 +921,25 @@ struct HomeView: View {
         .frame(maxWidth: .infinity, minHeight: Self.readyHeight, alignment: .leading)
     }
 
+    /// The status line's ready state: a green dot and words. Its click shows
+    /// what each step did (the status log).
     private var readyChip: some View {
         Button {
             withAnimation(.snappy(duration: 0.25)) { statusShown.toggle() }
         } label: {
-            HStack(spacing: 4) {
-                Image(systemName: "checkmark").font(.system(size: 9, weight: .bold))
-                Text("Ready").font(.system(size: 11.5, weight: .medium))
+            HStack(spacing: 8) {
+                Circle().fill(Brand.green).frame(width: 7, height: 7)
+                    .background(Circle().fill(Brand.green.opacity(0.2)).frame(width: 13, height: 13))
+                Text("Ready to start").font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(.secondary)
             }
-            .foregroundStyle(Brand.text)
-            .padding(.horizontal, 10)
             .frame(height: Self.readyHeight)
-            .background(Capsule().fill(Brand.green.opacity(0.14)))
-            .overlay(Capsule().strokeBorder(Brand.green.opacity(0.35), lineWidth: 0.5))
-            .contentShape(Capsule())
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .help(statusShown ? "Ready. Click to hide the status details."
                           : "Ready: Zoom, camera, microphone and screen are fine. Click for the status details.")
-        .accessibilityLabel("Ready")
+        .accessibilityLabel("Ready to start")
         .accessibilityHint(statusShown ? "Hides the status details" : "Shows the status details")
     }
 
@@ -1370,10 +1301,10 @@ struct HomeView: View {
 // MARK: - Pieces
 
 private extension View {
-    /// A tile's menu: the shared tile look, no arrow of its own.
-    func chipMenu() -> some View {
+    /// A dock button that opens a menu.
+    func dockMenu() -> some View {
         self.menuStyle(.button)
-            .greenroomTile(role: .choice(selected: false), radius: 10)
+            .buttonStyle(DockButtonStyle())
             .menuIndicator(.hidden)
     }
 }
@@ -1431,5 +1362,87 @@ private struct ChipFlow: Layout {
             widest = max(widest, x - spacing)
         }
         return (frames, widest, y + rowHeight)
+    }
+}
+
+/// A dock button: no box at rest, a soft wash under the pointer, the orb
+/// lifts 1pt. Under Reduce Motion only the wash changes.
+private struct DockButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        DockBody(configuration: configuration)
+    }
+
+    private struct DockBody: View {
+        let configuration: ButtonStyle.Configuration
+        @State private var hovering = false
+        @Environment(\.isEnabled) private var enabled
+        @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+        var body: some View {
+            configuration.label
+                .environment(\.dockLift, hovering && enabled && !reduceMotion)
+                .background {
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(.quaternary.opacity(hovering && enabled ? 1 : 0))
+                }
+                .opacity(enabled ? 1 : 0.45)
+                .scaleEffect(configuration.isPressed && !reduceMotion ? 0.96 : 1)
+                .animation(.easeOut(duration: 0.15), value: hovering)
+                .animation(.easeOut(duration: 0.1), value: configuration.isPressed)
+                .onHover { hovering = $0 }
+        }
+    }
+}
+
+private struct DockLiftKey: EnvironmentKey { static let defaultValue = false }
+private extension EnvironmentValues {
+    var dockLift: Bool {
+        get { self[DockLiftKey.self] }
+        set { self[DockLiftKey.self] = newValue }
+    }
+}
+
+/// The face of a dock button: orb and value, the whole cell clickable.
+private struct DockFace: View {
+    let symbol: String
+    let value: String
+    var lit = false
+    var warn = false
+    var meter: Double?
+    @Environment(\.dockLift) private var lift
+
+    var body: some View {
+        VStack(spacing: 4) {
+            ZStack(alignment: .topTrailing) {
+                RoundedRectangle(cornerRadius: 11, style: .continuous)
+                    .fill(lit ? AnyShapeStyle(Brand.green) : AnyShapeStyle(.quaternary))
+                    .frame(width: 36, height: 34)
+                    .overlay {
+                        Image(systemName: symbol)
+                            .font(.system(size: 15, weight: .medium))
+                            .foregroundStyle(lit ? Color.white : Color.primary)
+                    }
+                if warn {
+                    Circle().fill(Brand.net)
+                        .frame(width: 9, height: 9)
+                        .overlay(Circle().strokeBorder(Color(nsColor: .windowBackgroundColor), lineWidth: 2))
+                        .offset(x: 3, y: -3)
+                }
+            }
+            .offset(y: lift ? -1 : 0)
+            HStack(spacing: 3) {
+                Text(value)
+                    .font(.system(size: 10.5, weight: .medium))
+                    .foregroundStyle(warn ? Brand.netText : Color.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                if let meter { MiniMeter(level: meter) }
+            }
+            .padding(.horizontal, 3)
+        }
+        .padding(.top, 4)
+        .padding(.bottom, 3)
+        .frame(maxWidth: .infinity)
+        .contentShape(Rectangle())
     }
 }

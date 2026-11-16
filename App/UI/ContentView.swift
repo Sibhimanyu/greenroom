@@ -19,7 +19,6 @@ struct ContentView: View {
     /// needs explaining. Not persisted - each launch starts compact.
     @State private var statusShown = false
     /// Home's five setup tiles unfolded; per launch, collapsed by default.
-    @State private var setupOpen = false
     /// Home shows its "Last session" line, which is 44pt of the window's
     /// height. Reported by HomeView, which is the one that knows.
     @State private var homeHasFooter = false
@@ -168,17 +167,11 @@ struct ContentView: View {
         // resizeWindow.
         .onChange(of: statusShown) { _, _ in resizeWindow(animated: true) }
         // Edit grows about the middle, not down from the top (owner, 2026-11-16).
-        .onChange(of: setupOpen) { _, _ in resizeWindow(animated: true, middle: true) }
         .onChange(of: previewShown) { _, shown in previewChanged(shown) }
         #if DEBUG
         .onReceive(NotificationCenter.default.publisher(for: .debugTourHomePreview)) { note in
             HomeView.debugSkipLive = (note.userInfo?["camera"] as? Bool) == false
             previewShown = (note.userInfo?["shown"] as? Bool) ?? false
-        }
-        #endif
-        #if DEBUG
-        .onReceive(NotificationCenter.default.publisher(for: .debugTourHomeSetup)) { note in
-            Collapse.animate { setupOpen = (note.userInfo?["expanded"] as? Bool) ?? false }
         }
         #endif
         .onChange(of: homeHasFooter) { _, _ in resizeWindow(animated: true) }
@@ -488,7 +481,7 @@ struct ContentView: View {
     }
 
     private var homeContent: some View {
-        HomeView(statusShown: $statusShown, hasFooter: $homeHasFooter, setupOpen: $setupOpen,
+        HomeView(statusShown: $statusShown, hasFooter: $homeHasFooter,
                  previewShown: $previewShown, previewMounted: previewMounted)
     }
 
@@ -504,7 +497,6 @@ struct ContentView: View {
         // 20pt of padding top and bottom around the column, whose height is
         // the sum of its fixed parts (HomeView.columnHeight).
         var height: CGFloat = HomeView.verticalMargin * 2 + HomeView.columnHeight
-        if setupOpen { height += HomeView.tilesExtraHeight }
         if homeHasFooter { height += 44 }
         if statusShown { height += HomeView.statusLogHeight + 12 }
         return height

@@ -90,9 +90,9 @@ extension SetupSummary {
         }
     }
 
-    static let shareGoneHelp = "What you picked to share isn\u{2019}t open, so the class would see your whole screen. Open it again, or pick something else under Edit."
-    static let autoRecordHelp = "Recording starts by itself as soon as the meeting is live. Turn it off in Settings \u{2192} Webcam."
-    static let cameraMissingHelp = "No camera is connected. Plug one in, or pick No camera under Edit."
+    static let shareGoneHelp = "What you picked to share isn\u{2019}t open, so the class would see your whole screen. Open it again, or pick something else from Share."
+    static let autoRecordHelp = "Recording starts by itself as soon as the meeting is live. Change it from the Record button on Home."
+    static let cameraMissingHelp = "No camera is connected. Plug one in, or pick No camera from Camera."
 }
 
 /// One thing a start needs.

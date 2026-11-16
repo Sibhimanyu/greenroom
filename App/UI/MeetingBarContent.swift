@@ -148,7 +148,7 @@ struct MeetingBarActions {
     /// The chevron beside Meeting: the Meeting window or the Mini, by name.
     var meetingMenu: () -> [MenuEntry] = { [] }
     var toggleChat: () -> Void = {}
-    /// The people count: opens the meeting window on its People panel.
+    /// The people count: opens the Participants list in a small window beside the bar.
     var people: () -> Void = {}
     var toggleDraw: () -> Void = {}
     var togglePause: () -> Void = {}
@@ -326,10 +326,10 @@ struct MeetingBarContent: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .help("People in the meeting: \(s.participants). Click to see who is here.")
+        .help("Participants in the meeting: \(s.participants). Click to see who is here.")
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("\(s.participants) \(s.participants == 1 ? "person" : "people") in the meeting")
-        .accessibilityHint("Opens the meeting window on the People list")
+        .accessibilityLabel("\(s.participants) \(s.participants == 1 ? "participant" : "participants") in the meeting")
+        .accessibilityHint("Opens the Participants list in a small window beside the bar, or takes you to the meeting window if it is open on another desktop")
         .accessibilityAddTraits(.isButton)
     }
 

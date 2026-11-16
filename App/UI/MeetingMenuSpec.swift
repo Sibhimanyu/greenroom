@@ -210,7 +210,7 @@ enum MeetingMenus {
         if !present.isEmpty { out.append(.separator) }
         if s.sharing {
             out.append(.header("Your display share"))
-            out.append(.item("Stop sharing", a.stop))
+            out.append(.item("Stop Share", a.stop))
         } else {
             out.append(.header("Also share a display on its own"))
             for display in s.displays {

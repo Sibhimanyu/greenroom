@@ -29,7 +29,15 @@ struct MeetingTopBarState: Equatable {
 @MainActor
 final class MeetingBarButton: NSButton {
     private let body: () -> Void
-    private var hovering = false { didSet { layer?.backgroundColor = hovering ? MeetingTheme.hoverNS.cgColor : NSColor.clear.cgColor } }
+    /// What it wears at rest and under the pointer. A disabled one wears nothing.
+    var restColor: NSColor = .clear { didSet { refreshWash() } }
+    var hoverColor: NSColor = MeetingTheme.hoverNS { didSet { refreshWash() } }
+    private var hovering = false { didSet { refreshWash() } }
+    override var isEnabled: Bool { didSet { refreshWash() } }
+
+    private func refreshWash() {
+        layer?.backgroundColor = (!isEnabled ? NSColor.clear : hovering ? hoverColor : restColor).cgColor
+    }
 
     init(_ body: @escaping () -> Void) {
         self.body = body
@@ -325,7 +333,7 @@ struct MeetingInfoView: View {
                     .padding(.horizontal, 10).frame(height: 24)
                     .background(MeetingTheme.raised, in: RoundedRectangle(cornerRadius: MeetingTheme.controlRadius))
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.meetingControl)
             .accessibilityLabel("Copy \(label)")
         }
     }

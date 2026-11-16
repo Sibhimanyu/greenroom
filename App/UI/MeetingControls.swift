@@ -514,6 +514,9 @@ struct MeetingToolbarView: View {
             ? MeetingControlsModel.clock(seconds: { _ = model.now; return coordinator.recordingElapsed() ?? 0 }())
             : "Record"
         s.notesOn = notes.effectiveEnabled
+        let host = coordinator.liveExitState.kind == .host
+        s.endsForAll = host
+        s.endName = host ? LiveExitChoice.endMeetingForAll.title : LiveExitChoice.leaveMeeting.title
         s.clock = MeetingControlsModel.elapsed(since: { _ = model.now; return coordinator.sessionStartedAt }())
         return s
     }
@@ -1336,7 +1339,7 @@ enum MeetingControlBarController {
         // The pill has no room for Share or Security (it is already 532pt wide), so
         // the one share control that matters when the window is away is here.
         if model?.sharing ?? false {
-            menu.addItem(MenuItem("Stop sharing") { model?.stopShare() })
+            menu.addItem(MenuItem("Stop Share") { model?.stopShare() })
         }
         let recording = coordinator?.isRecording ?? false
         if recording {
@@ -1345,7 +1348,7 @@ enum MeetingControlBarController {
                 coordinator?.togglePauseRecording()
             })
         }
-        menu.addItem(MenuItem("Stop recording",
+        menu.addItem(MenuItem("Stop Recording",
                               enabled: recording && !(coordinator?.isSavingRecording ?? false)) {
             coordinator?.toggleRecording()
         })

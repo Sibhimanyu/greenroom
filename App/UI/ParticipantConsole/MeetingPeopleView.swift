@@ -69,6 +69,7 @@ struct MeetingParticipantsPanel: View {
                     if !hands.isEmpty {
                         sectionHeader("Raised hands (\(hands.count))")
                         ForEach(hands) { row($0) }
+                        divider
                     }
                     ForEach(everyone) { row($0) }
                     if matches.isEmpty && !query.isEmpty {
@@ -122,7 +123,8 @@ struct MeetingParticipantsPanel: View {
             Spacer()
             if let trailing {
                 Button(trailing.0, action: trailing.1)
-                    .buttonStyle(.plain).font(.system(size: 12)).foregroundStyle(.white)
+                    .buttonStyle(.meetingControl).font(.system(size: 12)).foregroundStyle(.white)
+                    .padding(.horizontal, 6).padding(.trailing, -6)
             }
         }
         .padding(.horizontal, 16).padding(.top, 10).padding(.bottom, 4)
@@ -130,7 +132,7 @@ struct MeetingParticipantsPanel: View {
 
     private var waitingSection: some View {
         VStack(alignment: .leading, spacing: 0) {
-            sectionHeader("Waiting room (\(content.waiting.count))",
+            sectionHeader("Waiting room (\(waiting.count))",
                           trailing: content.waiting.count > 1 ? ("Admit all", actions.admitAll) : nil)
             ForEach(waiting) { person in
                 HStack(spacing: 10) {
@@ -148,8 +150,13 @@ struct MeetingParticipantsPanel: View {
                 }
                 .padding(.horizontal, 16).frame(height: 46)
             }
-            Rectangle().fill(MeetingTheme.hairline).frame(height: 1).padding(.top, 6).padding(.horizontal, 12)
+            divider
         }
+    }
+
+    /// The hairline that closes a section.
+    private var divider: some View {
+        Rectangle().fill(MeetingTheme.hairline).frame(height: 1).padding(.top, 6).padding(.horizontal, 12)
     }
 
     private func pill(_ title: String, fill: Color, _ action: @escaping () -> Void) -> some View {
@@ -157,7 +164,7 @@ struct MeetingParticipantsPanel: View {
             Text(title).font(.system(size: 12, weight: .medium)).foregroundStyle(.white)
                 .padding(.horizontal, 12).frame(height: 24)
                 .background(fill, in: RoundedRectangle(cornerRadius: MeetingTheme.controlRadius))
-        }.buttonStyle(.plain)
+        }.buttonStyle(.meetingControl)
     }
 
     private func row(_ person: MeetingParticipantRow) -> some View {
@@ -179,6 +186,7 @@ struct MeetingParticipantsPanel: View {
                             .background(MeetingTheme.raised, in: RoundedRectangle(cornerRadius: MeetingTheme.controlRadius))
                     }
                     .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
+                    .meetingHoverWash()
                     .accessibilityLabel("More")
                 }
                 Spacer(minLength: 0)
@@ -192,7 +200,7 @@ struct MeetingParticipantsPanel: View {
             Text(title).font(.system(size: 13)).foregroundStyle(.white)
                 .padding(.horizontal, 14).frame(height: 28)
                 .background(MeetingTheme.raised, in: RoundedRectangle(cornerRadius: MeetingTheme.controlRadius))
-        }.buttonStyle(.plain)
+        }.buttonStyle(.meetingControl)
     }
 }
 

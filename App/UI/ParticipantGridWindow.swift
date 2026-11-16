@@ -798,7 +798,7 @@ private final class RootView: NSView {
         button.setAccessibilityLabel("Copy invite link")
         return button
     }()
-    private lazy var sidePanelClose = ClosureButton { [weak self] in self?.controls?.sidePanel = nil }
+    private lazy var sidePanelClose = MeetingBarButton { [weak self] in self?.controls?.sidePanel = nil }
     private var chatHost: NSView?
     private let peopleView = MeetingPeopleView(frame: .zero)
     private var controlsSub: AnyCancellable?
@@ -2272,10 +2272,11 @@ private final class RootView: NSView {
             // is there to choose between several, and in Gallery to bring it back.
             if !shareOnStage && !shareBeside {
                 text = "Viewing \(now.name)\u{2019}s screen \u{00B7} Show"
+                help = "Show \(now.name)\u{2019}s screen again."
             } else if viewer.selection.hasChoice {
                 text = "\(now.name)\u{2019}s screen \u{25BE}"
+                help = "Several people are sharing. Choose whose screen to see."
             }
-            help = "Several people are sharing. Choose whose screen to see."
         } else if selfSharingNow, !selfCardShown {
             text = "You are sharing your screen \u{00B7} Stop"
             help = "Stop sharing your screen"
@@ -2513,7 +2514,7 @@ private final class RootView: NSView {
         readiness.isHidden = true
         emptyState.isHidden = !(roster.isEmpty || plan.everyoneHidden) || shareOnStage || selfCardShown
         emptyState.frame = NSRect(x: area.minX + 40, y: area.midY - 40,
-                                  width: max(80, area.width - 80), height: 80)
+                                  width: max(80, areaRight - area.minX - 80), height: 80)
 
         inspector.isHidden = selected == nil
         updateEscapeMonitor(active: selected != nil)
@@ -2668,7 +2669,7 @@ private final class RootView: NSView {
         if meetingForm {
             emptyState.stringValue = plan.everyoneHidden ? MeetingTileFilter.emptyNote : waiting.isEmpty
                 ? "Waiting for others.\nThey appear here as they join."
-                : "\(waiting.count) waiting to be let in.\nOpen People to admit them."
+                : "\(waiting.count) waiting to be let in.\nOpen Participants to admit them."
         } else {
             emptyState.stringValue = waiting.isEmpty
                 ? "Waiting for students.\nThey will appear here as they join."
@@ -3406,12 +3407,12 @@ private final class RootView: NSView {
         guard show else { return }
 
         if pagePrev == nil {
-            let previous = Self.pagerButton("chevron.left") { [weak self] in
+            let previous = Self.pagerButton("chevron.left", meetingForm: meetingForm) { [weak self] in
                 guard let self else { return }
                 self.page = max(0, self.page - 1)
                 self.pageChanged()
             }
-            let next = Self.pagerButton("chevron.right") { [weak self] in
+            let next = Self.pagerButton("chevron.right", meetingForm: meetingForm) { [weak self] in
                 guard let self, let pageCount = self.pageCount else { return }
                 self.page = min(pageCount - 1, self.page + 1)
                 self.pageChanged()
@@ -3428,13 +3429,18 @@ private final class RootView: NSView {
             for button in [pagePrev, pageNext] {
                 button?.isBordered = false
                 button?.wantsLayer = true
-                button?.layer?.backgroundColor = MeetingTheme.capsuleNS.cgColor
                 button?.layer?.cornerRadius = 8
                 button?.contentTintColor = .white
+                if let arrow = button as? MeetingBarButton {
+                    arrow.restColor = MeetingTheme.capsuleNS
+                    arrow.hoverColor = MeetingTheme.capsuleHoverNS
+                }
             }
             pageLabel.isHidden = true
             pagePrev?.isEnabled = page > 0
             pageNext?.isEnabled = page < pages - 1
+            // An arrow with nowhere to go loses its capsule and fades.
+            for button in [pagePrev, pageNext] { button?.alphaValue = button?.isEnabled == true ? 1 : 0.35 }
             pagePrev?.frame = NSRect(x: area.minX + 6, y: area.midY - size.height / 2, width: size.width, height: size.height)
             pageNext?.frame = NSRect(x: area.maxX - 6 - size.width, y: area.midY - size.height / 2,
                                      width: size.width, height: size.height)
@@ -3806,8 +3812,9 @@ private final class RootView: NSView {
         return button
     }
 
-    private static func pagerButton(_ symbol: String, action: @escaping () -> Void) -> NSButton {
-        let button = ClosureButton(action)
+    private static func pagerButton(_ symbol: String, meetingForm: Bool, action: @escaping () -> Void) -> NSButton {
+        // Meeting form wears the capsule and its hover (set in layoutPager).
+        let button: NSButton = meetingForm ? MeetingBarButton(action) : ClosureButton(action)
         button.image = NSImage(systemSymbolName: symbol, accessibilityDescription: symbol)
         button.imagePosition = .imageOnly
         button.bezelStyle = .rounded

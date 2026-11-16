@@ -43,6 +43,11 @@ struct MeetingToolbarState {
     var recordCaption = "Record"
     var notesOn = false
     var clock = "0:00"
+    /// What End is called: "End Meeting for All" for the host, "Leave Meeting"
+    /// for everyone else (LiveExitChoice's titles, as the bar and island use).
+    var endName = LiveExitChoice.endMeetingForAll.title
+    /// Whether End closes the meeting for everyone, not only for this Mac.
+    var endsForAll = true
 }
 
 struct MeetingToolbarMenus {
@@ -77,7 +82,7 @@ struct MeetingToolbarBar: View {
     @State private var confirmingEnd = false
 
     static let height: CGFloat = 64
-    private static let cellHeight: CGFloat = 52
+    fileprivate static let cellHeight: CGFloat = 52
 
     var body: some View {
         GeometryReader { geo in
@@ -95,7 +100,10 @@ struct MeetingToolbarBar: View {
                 + (confirmingEnd ? 190 : MeetingToolbarLayout.end)
             HStack(spacing: MeetingToolbarLayout.gap) {
                 ForEach(Array(left.enumerated()), id: \.offset) { _, id in control(id) }
-                Color.clear.frame(width: max(0, rightWidth - leftWidth), height: 1)
+                // The pads yield first (layoutPriority) and never count in
+                // MeetingToolbarLayout.required, so a tight row loses its
+                // centring before it clips a control.
+                Color.clear.frame(maxWidth: max(0, rightWidth - leftWidth), maxHeight: 1).layoutPriority(-1)
                 Spacer(minLength: MeetingToolbarLayout.spacer)
                 ForEach(Array(pieces(centre).enumerated()), id: \.offset) { _, piece in
                     switch piece {
@@ -106,7 +114,7 @@ struct MeetingToolbarBar: View {
                 if !centre.isEmpty { Color.clear.frame(width: MeetingToolbarLayout.divider, height: 1) }
                 moreCell(overflow: fit.overflow)
                 Spacer(minLength: MeetingToolbarLayout.spacer)
-                Color.clear.frame(width: max(0, leftWidth - rightWidth), height: 1)
+                Color.clear.frame(maxWidth: max(0, leftWidth - rightWidth), maxHeight: 1).layoutPriority(-1)
                 if fit.showsClock {
                     Text(state.clock)
                         .font(.system(size: 12, design: .monospaced))
@@ -228,13 +236,7 @@ struct MeetingToolbarBar: View {
                                                        @ViewBuilder _ content: () -> Content) -> some View {
         HStack(spacing: 0) {
             content()
-            Image(systemName: "chevron.up")
-                .font(.system(size: 9, weight: .semibold))
-                .foregroundStyle(MeetingTheme.secondaryText)
-                .frame(width: MeetingToolbarLayout.caret, height: Self.cellHeight)
-                .contentShape(Rectangle())
-                .overlay { MenuPopUpOverlay(label: label, entries: entries) }
-                .help(label)
+            ToolbarCaret(label: label, entries: entries)
         }
     }
 
@@ -260,10 +262,10 @@ struct MeetingToolbarBar: View {
                          checked: state.chatOpen, actions.toggleChat)
         case .react: return .submenu("React", enabled: state.inMeeting, menus.react())
         case .share:
-            return state.sharing ? .item("Stop sharing", actions.stopSharing)
+            return state.sharing ? .item("Stop Share", actions.stopSharing)
                                  : .submenu("Share", menus.share())
         case .record:
-            return .item(state.recording ? "Stop recording" : "Record", enabled: !state.saving,
+            return .item(state.recording ? "Stop Recording" : "Record", enabled: !state.saving,
                          actions.toggleRecording)
         case .notes: return .item("Notes", checked: state.notesOn, actions.toggleNotes)
         }
@@ -314,7 +316,7 @@ struct MeetingToolbarBar: View {
                     confirmingEnd = false
                     actions.end()
                 } label: {
-                    Text("End for everyone")
+                    Text(state.endName)
                         .font(.system(size: 12, weight: .semibold))
                         .foregroundStyle(.white)
                         .padding(.horizontal, 12)
@@ -322,7 +324,9 @@ struct MeetingToolbarBar: View {
                         .background(MeetingTheme.end, in: RoundedRectangle(cornerRadius: MeetingTheme.controlRadius + 2))
                 }
                 .buttonStyle(.plain)
-                .help("Ends the meeting for everyone, saves any recording and turns the camera off")
+                .help(state.endsForAll
+                    ? "Ends the meeting for everyone, saves any recording and turns the camera off"
+                    : "Leaves the meeting, saves any recording and turns the camera off")
             }
         } else {
             Button { confirmingEnd = true } label: {
@@ -333,12 +337,33 @@ struct MeetingToolbarBar: View {
                     .background(MeetingTheme.end, in: RoundedRectangle(cornerRadius: MeetingTheme.controlRadius + 2))
             }
             .buttonStyle(.plain)
-            .help("End the session")
-            .accessibilityLabel("End session")
+            .help(state.endName)
+            .accessibilityLabel(state.endName)
         }
     }
 }
 
+
+/// The chevron beside a cell: its own hit area, with the same hover wash as the
+/// glyph cell next to it.
+private struct ToolbarCaret: View {
+    let label: String
+    let entries: () -> [MenuEntry]
+    @State private var hovering = false
+
+    var body: some View {
+        Image(systemName: "chevron.up")
+            .font(.system(size: 9, weight: .semibold))
+            .foregroundStyle(MeetingTheme.secondaryText)
+            .frame(width: MeetingToolbarLayout.caret, height: MeetingToolbarBar.cellHeight)
+            .background(hovering ? MeetingTheme.hover : Color.clear,
+                        in: RoundedRectangle(cornerRadius: MeetingTheme.controlRadius))
+            .contentShape(Rectangle())
+            .overlay { MenuPopUpOverlay(label: label, entries: entries) }
+            .onHover { hovering = $0 }
+            .help(label)
+    }
+}
 
 /// One cell's drawing: glyph 22pt over an 11pt caption, a lighter rounded wash
 /// while the pointer is over it or its panel is open.

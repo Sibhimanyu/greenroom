@@ -75,18 +75,25 @@ enum MeetingToolbarLayout {
         var showsClock: Bool
     }
 
-    /// The width the bar needs for these items, More and End included.
+    /// The width the toolbar's HStack needs for these items, More and End
+    /// included: every child, both spacers at their minimum, and the gap between
+    /// all of them. The two balancing pads (the shorter outer group padded to
+    /// the longer, to centre the middle) count as nothing: they give way first
+    /// when the row is tight, so only the gaps around them count.
     static func required(items: [ToolbarItemSpec], showsClock: Bool) -> CGFloat {
-        var total = side * 2 + end + more + spacer
-        total += items.reduce(0) { $0 + $1.width + gap }
-        // A divider between neighbouring groups, and one before More.
-        var groups = 0
+        let left = items.filter { $0.group == 0 }
+        let centre = items.filter { $0.group != 0 }
+        var dividers = 0
         var last: Int?
-        for item in items where item.group != last { groups += 1; last = item.group }
-        total += CGFloat(max(0, groups - 1)) * divider
-        if !items.isEmpty { total += divider }
-        total += gap                       // More's own gap
-        if showsClock { total += clock + gap }
+        for item in centre { if let last, last != item.group { dividers += 1 }; last = item.group }
+        let trailing = centre.isEmpty ? 0 : 1
+        // Children: left controls, two pads, two spacers, the centre controls
+        // and dividers, the divider before More, More, clock, End.
+        let children = left.count + 2 + 2 + centre.count + dividers + trailing + 1 + (showsClock ? 1 : 0) + 1
+        var total = side * 2 + end + more + spacer * 2 + gap * CGFloat(children - 1)
+        total += (left + centre).reduce(0) { $0 + $1.width }
+        total += CGFloat(dividers + trailing) * divider
+        if showsClock { total += clock }
         return total
     }
 

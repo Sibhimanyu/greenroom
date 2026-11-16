@@ -44,7 +44,8 @@ struct ChatWindowView: View {
 
     var body: some View {
         content
-        .frame(minWidth: 300, minHeight: 380)
+        // The meeting window's smallest height leaves its side panel about 376pt.
+        .frame(minWidth: 300, minHeight: 300)
         .background(zoom ? MeetingTheme.window : Color.clear)
         .environment(\.colorScheme, zoom ? .dark : (colorScheme))
         .overlay {
@@ -143,10 +144,10 @@ struct ChatWindowView: View {
             Text(message).font(.caption)
             Spacer()
         }
-        .foregroundStyle(.orange)
+        .foregroundStyle(Brand.netText)
         .padding(.horizontal, 12)
         .padding(.vertical, 6)
-        .background(Color.orange.opacity(0.12))
+        .background(Brand.net.opacity(0.12))
     }
 
     /// The message being answered, shown above the composer so it is obvious
@@ -157,7 +158,7 @@ struct ChatWindowView: View {
             VStack(alignment: .leading, spacing: 1) {
                 Text("Replying to \(message.senderName)")
                     .font(.caption2.bold())
-                    .foregroundStyle(Color.accentColor)
+                    .foregroundStyle(Brand.text)
                 Text(message.isFile ? (message.attachment?.name ?? "") : message.content)
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -342,7 +343,7 @@ private struct UnreadDivider: View {
             Rectangle().fill(Color.accentColor.opacity(0.6)).frame(height: 1)
             Text("NEW")
                 .font(.system(size: 9, weight: .bold, design: .monospaced))
-                .foregroundStyle(Color.accentColor)
+                .foregroundStyle(Brand.text)
             Rectangle().fill(Color.accentColor.opacity(0.6)).frame(height: 1)
         }
         .padding(.vertical, 6)
@@ -539,7 +540,7 @@ private struct MessageRow: View {
                 Label("private to \(privateTo)", systemImage: "lock.fill")
                     .labelStyle(.titleAndIcon)
                     .font(.system(size: 9, weight: .semibold))
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(Brand.netText)
             }
             if hovering {
                 Button(action: onReply) {
@@ -582,7 +583,7 @@ private struct MessageRow: View {
         HStack(spacing: 6) {
             Rectangle().fill(Color.accentColor.opacity(0.7)).frame(width: 2)
             VStack(alignment: .leading, spacing: 1) {
-                Text(quote.sender).font(.caption2.bold()).foregroundStyle(Color.accentColor)
+                Text(quote.sender).font(.caption2.bold()).foregroundStyle(Brand.text)
                 Text(quote.snippet).font(.caption).foregroundStyle(.secondary).lineLimit(2)
             }
         }

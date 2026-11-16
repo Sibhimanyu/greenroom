@@ -76,6 +76,19 @@ final class MeetingToolbarLayoutTests: XCTestCase {
         }
     }
 
+    func testWhatFitsNeverNeedsMoreThanTheWidth() {
+        // The row draws a balancing pad and two spacers; counting them is what
+        // keeps Mute and End from clipping before a cell moves into More.
+        for host in [true, false] {
+            for width in stride(from: CGFloat(700), through: 1600, by: 4) {
+                let f = L.fit(specs: L.specs(showsSecurity: host), width: width)
+                let kept = L.specs(showsSecurity: host).filter { f.visible.contains($0.id) }
+                XCTAssertLessThanOrEqual(L.required(items: kept, showsClock: f.showsClock), width,
+                                         "overflows at \(width), host \(host)")
+            }
+        }
+    }
+
     func testTheWindowsMinimumWidthStillHasTheEssentials() {
         // The meeting window's minimum is 760pt.
         let f = fit(760)
@@ -387,7 +400,7 @@ final class MeetingMenuSpecTests: XCTestCase {
 
     func testWhileSharingTheMenuOffersStopAndNotAnotherShare() {
         let menu = share(.init(sharing: true, displays: [(1, "Display 1")]))
-        XCTAssertNotNil(menu.entry(titled: "Stop sharing"))
+        XCTAssertNotNil(menu.entry(titled: "Stop Share"))
         XCTAssertNil(menu.entry(titled: "Display 1"))
     }
 

@@ -45,6 +45,8 @@ enum MeetingTheme {
     static let hairlineNS = ns(0xFFFFFF, alpha: 0.10)
     /// The name capsule over a tile.
     static let capsuleNS = ns(0x000000, alpha: 0.55)
+    /// The same capsule under the pointer.
+    static let capsuleHoverNS = ns(0x000000, alpha: 0.78)
 
     // MARK: Text
 
@@ -113,5 +115,40 @@ enum MeetingTheme {
         let letters = name.split(separator: " ").compactMap { $0.first(where: { $0.isLetter }).map(String.init) }.prefix(2)
         if letters.isEmpty { return name.first.map { String($0).uppercased() } ?? "?" }
         return letters.joined().uppercased()
+    }
+}
+
+/// Hover and pressed feedback for the SwiftUI buttons on the meeting's dark
+/// surfaces (pills, footer buttons, Copy), so they answer the pointer the way
+/// the rows and the toolbar cells do: the hover wash on top, dimmer while down.
+struct MeetingControlStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .meetingHoverWash()
+            .opacity(configuration.isPressed ? 0.7 : 1)
+    }
+}
+
+extension ButtonStyle where Self == MeetingControlStyle {
+    static var meetingControl: MeetingControlStyle { MeetingControlStyle() }
+}
+
+extension View {
+    /// The toolbar's hover wash over this control, for the ones a ButtonStyle
+    /// cannot reach (a Menu).
+    func meetingHoverWash() -> some View { modifier(MeetingHoverWash()) }
+}
+
+private struct MeetingHoverWash: ViewModifier {
+    @State private var hovering = false
+
+    func body(content: Content) -> some View {
+        content
+            .overlay {
+                RoundedRectangle(cornerRadius: MeetingTheme.controlRadius)
+                    .fill(hovering ? MeetingTheme.hover : Color.clear)
+                    .allowsHitTesting(false)
+            }
+            .onHover { hovering = $0 }
     }
 }

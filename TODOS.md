@@ -5,20 +5,20 @@ where to start.
 
 ## Built 2026-11-16, not yet tried live
 
-- [ ] **Mini window, camera already on:** opens with your picture and no
-  "Video didn't start in this window" overlay (fc5a3bf, `viewVideoWaiting`
-  now asks `getDataType()`). Also check the overlay still appears when video
-  really does not start.
-- [ ] **People pop-out** (af2fa0d): the bar's People count opens the small
-  Participants window beside the bar; its rows update while the meeting
-  window is folded; Admit and Mute all work from it; a row opens the meeting
-  window on that person; it folds into the window's People panel when the
-  window comes back.
-- [ ] **Island failure, opened** (b9d0f53): the chevron opens the full
-  message, on a notched Mac and on a plain screen (the rounded card); check
-  the taller island does not block clicks just below it while it shows.
-- [ ] **Share outline stacking** (d3e9c45): the preview and recording
-  outlines sit just above the shared window, so another window on top of it
+Tried in a solo meeting on 2026-11-16: the Mini window shows your picture
+with no overlay; the People pop-out opens on this desktop, lists you, and
+closes when the window comes back; the island opens to the whole message on
+the notched screen; a window recording's outline sits just above the Finder
+window it outlines. Still to try:
+
+- [ ] **Mini window:** the "Video didn't start" overlay still appears when
+  video really does not start.
+- [ ] **People pop-out, with real people:** rows update as people join and
+  leave; Admit and Mute all work from it; a row opens the meeting window on
+  that person.
+- [ ] **Island failure, opened:** on a plain screen (the rounded card); the
+  taller island does not block clicks just below it while it shows.
+- [ ] **Share outline stacking:** another window dragged over the shared one
   hides the outline too; a whole-display share keeps it over everything.
 
 ## Participant panel and live speaker

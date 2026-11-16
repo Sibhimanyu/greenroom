@@ -429,6 +429,8 @@ final class NotchStatusController {
     var debugPanel: NSPanel? { panel }
     var debugNotch: CGRect? { model.notch }
     var debugContent: IslandContent { queue.content }
+    var debugFailureOpen: Bool { model.failureOpen }
+    func debugSetFailureOpen(_ open: Bool) { model.failureOpen = open }
 }
 
 // MARK: - The pill
@@ -591,7 +593,7 @@ private struct NotchPillView: View {
                     // The whole message, Zoom's own words included. Scrolls
                     // if a long one runs past the island.
                     ScrollView {
-                        Text(failure.fullText)
+                        Text(failure.openedText)
                             .font(.system(size: 12))
                             .foregroundStyle(Color.white.opacity(0.85))
                             .fixedSize(horizontal: false, vertical: true)

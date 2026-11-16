@@ -69,11 +69,20 @@ struct NotchFailure: Equatable {
     var fullText: String {
         [message, detail].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: "\n\n")
     }
+    /// What the opened island shows under the headline: the whole message,
+    /// or only the detail when the headline already is the whole message (it
+    /// said the same line twice, 2026-11-16).
+    var openedText: String {
+        let body = Self.plain(message) == headline ? nil : message
+        return [body, detail].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: "\n\n")
+    }
     /// More to read than the headline: the island offers to open.
-    var hasMore: Bool {
-        var all = fullText.trimmingCharacters(in: .whitespacesAndNewlines)
-        while all.hasSuffix(".") { all.removeLast() }
-        return all != headline
+    var hasMore: Bool { Self.plain(fullText) != headline }
+
+    private static func plain(_ text: String) -> String {
+        var s = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        while s.hasSuffix(".") { s.removeLast() }
+        return s
     }
 }
 

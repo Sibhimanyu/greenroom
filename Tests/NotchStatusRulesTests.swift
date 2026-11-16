@@ -282,6 +282,12 @@ final class NotchStatusRulesTests: XCTestCase {
         let f = NotchFailure(message: "Camera not found", detail: "Plug it back in")
         XCTAssertTrue(f.hasMore)
         XCTAssertEqual(f.fullText, "Camera not found\n\nPlug it back in")
+        XCTAssertEqual(f.openedText, "Plug it back in", "the headline is not said twice")
+    }
+
+    func testALongMessageOpensToAllOfIt() {
+        let f = NotchFailure(message: "Your picture didn\u{2019}t reach the meeting, so the class sees nothing.", detail: "Zoom said: 3")
+        XCTAssertEqual(f.openedText, f.message + "\n\nZoom said: 3")
     }
 
     func testAnOpenedFailureIsTallerAndStillFitsThePanel() {

@@ -429,7 +429,9 @@ struct SessionShareCard: View {
         HStack(spacing: 8) {
             Button("Copy", action: actions.copyLink)
             Button("Open", action: actions.openOnYouTube)
+            #if DEBUG
             if let upload = model.upload { PostToThriveniButton(link: upload.url) }
+            #endif
             Spacer(minLength: 0)
             Menu {
                 Button("Rename on YouTube\u{2026}", action: actions.renameOnYouTube)

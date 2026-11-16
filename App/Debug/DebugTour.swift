@@ -554,7 +554,6 @@ extension Notification.Name {
     static let debugTourHomeCard = Notification.Name("com.greenroom.debug.tour.homeCard")
 }
 
-#endif
 
 /// The dock's hover cards, drawn to PNGs with sample values, for review.
 @MainActor enum DockHintCards {
@@ -604,3 +603,4 @@ extension Notification.Name {
         return written
     }
 }
+#endif

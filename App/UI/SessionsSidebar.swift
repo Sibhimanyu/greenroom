@@ -63,7 +63,9 @@ struct SessionsSidebar: View {
         .listStyle(.sidebar)
         .safeAreaInset(edge: .bottom, spacing: 0) {
             VStack(spacing: 0) {
+                #if DEBUG
                 AccountChip()
+                #endif
                 storageFooter
             }
         }

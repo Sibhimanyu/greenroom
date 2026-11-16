@@ -22,7 +22,12 @@ extension Notification.Name {
 }
 
 struct SettingsView: View {
+    // The Thriveni account is a mock for now, so it only shows in Debug.
+    #if DEBUG
     private static let tabOrder = ["account", "webcam", "layout", "shortcuts", "zoom", "youtube", "cues", "transfer"]
+    #else
+    private static let tabOrder = ["webcam", "layout", "shortcuts", "zoom", "youtube", "cues", "transfer"]
+    #endif
 
     private var tabShortcuts: some View {
         ZStack {
@@ -56,9 +61,11 @@ struct SettingsView: View {
 
     var body: some View {
         TabView(selection: $tab) {
+            #if DEBUG
             AccountSettingsTab()
                 .tabItem { Label("Account", systemImage: "person.crop.circle") }
                 .tag("account")
+            #endif
 
             WebcamSettingsTab()
                 .tabItem { Label("Webcam", systemImage: "video.fill") }

@@ -56,7 +56,9 @@ struct YouTubePageContent: View {
 
     var body: some View {
         Form {
+            #if DEBUG
             Section("Upload to") { SharedChannelRow(ownChannelConnected: connected) }
+            #endif
 
             Section("Recordings") {
                 UploadFlowPicture(mode: uploadMode, connected: connected, uploading: uploading)

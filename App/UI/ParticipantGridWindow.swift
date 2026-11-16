@@ -507,10 +507,14 @@ enum ParticipantGridWindowController {
 
     /// Brings the window back from hidden, closed-to-the-Dock or covered,
     /// without activating the app.
+    /// Left on another desktop, it comes to this one: never a desktop switch.
     static func show() {
         userHidden = false
         guard let panel else { return }
         if panel.isMiniaturized { panel.deminiaturize(nil) }
+        if MeetingSurfaces.comesHereFirst(visible: panel.isVisible, onActiveSpace: panel.isOnActiveSpace) {
+            panel.orderOut(nil)
+        }
         panel.orderFrontRegardless()
     }
 

@@ -89,6 +89,21 @@ enum MeetingCollapse {
 /// While a meeting is live exactly one of the Meeting window, the Mini and the
 /// Control bar is on screen, and every way back lands on one that exists.
 enum MeetingSurfaces {
+    /// Bringing the window up from another desktop takes it off that one first,
+    /// so it comes in on the desktop being looked at instead of switching
+    /// desktops under the teacher.
+    static func comesHereFirst(visible: Bool, onActiveSpace: Bool) -> Bool {
+        visible && !onActiveSpace
+    }
+
+    /// The chat lives in one place at a time. The pop-out is for while the bar
+    /// carries the controls; once the Meeting window is in view again it folds
+    /// into the window's Chat panel. A layout's chat is a placed piece of its
+    /// own and is left alone.
+    static func foldsPopOutChat(windowShowing: Bool, popOutOpen: Bool, arranged: Bool) -> Bool {
+        windowShowing && popOutOpen && !arranged
+    }
+
     /// The bar is the one that fills in: it shows only when neither the window
     /// nor the Mini is up.
     static func barVisible(windowShowing: Bool, miniOpen: Bool) -> Bool {

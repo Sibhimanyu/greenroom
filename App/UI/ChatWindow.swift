@@ -742,7 +742,12 @@ enum ChatWindowController {
     /// lives in its own window, so the button raises that rather than opening a
     /// panel inside the meeting view.
     static func reveal() {
-        window?.orderFrontRegardless()
+        guard let window else { return }
+        // Left on another desktop: off that one first, so it lands on this one.
+        if MeetingSurfaces.comesHereFirst(visible: window.isVisible, onActiveSpace: window.isOnActiveSpace) {
+            window.orderOut(nil)
+        }
+        window.orderFrontRegardless()
     }
 
     /// Moves the open chat window; no-op when it is closed.

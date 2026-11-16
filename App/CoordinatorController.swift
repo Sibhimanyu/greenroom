@@ -3212,6 +3212,7 @@ final class CoordinatorController: ObservableObject {
                 MeetingControlBarController.reconcile(immediately: false)
             }
             MeetingControlBarController.healIfNeeded()
+            self.meetingControls?.foldPopOutChatIntoWindow()
             self.growIfSomeoneJoined()
             guard self.meetingWindowWanted || ParticipantGridWindowController.isOpen else { return true }
             guard let target = self.meetingSurfaceTarget() else { return false }

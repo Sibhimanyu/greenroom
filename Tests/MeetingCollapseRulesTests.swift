@@ -202,4 +202,22 @@ final class MeetingCollapseRulesTests: XCTestCase {
         XCTAssertEqual(MeetingSurfaces.wayBack(windowExists: false, miniAvailable: false, barExists: true), .bar)
         XCTAssertNil(MeetingSurfaces.wayBack(windowExists: false, miniAvailable: false, barExists: false))
     }
+
+    // MARK: Other desktops
+
+    func testTheWindowComesToThisDesktopRatherThanSwitchingDesktops() {
+        XCTAssertTrue(MeetingSurfaces.comesHereFirst(visible: true, onActiveSpace: false))
+        XCTAssertFalse(MeetingSurfaces.comesHereFirst(visible: true, onActiveSpace: true))
+        // Hidden (shrunk to the bar): ordering it in already lands it here.
+        XCTAssertFalse(MeetingSurfaces.comesHereFirst(visible: false, onActiveSpace: false))
+    }
+
+    func testThePopOutChatFoldsIntoTheWindowOnceTheWindowIsInView() {
+        XCTAssertTrue(MeetingSurfaces.foldsPopOutChat(windowShowing: true, popOutOpen: true, arranged: false))
+        // Still on another desktop: the pop-out is the chat here.
+        XCTAssertFalse(MeetingSurfaces.foldsPopOutChat(windowShowing: false, popOutOpen: true, arranged: false))
+        XCTAssertFalse(MeetingSurfaces.foldsPopOutChat(windowShowing: true, popOutOpen: false, arranged: false))
+        // A layout's chat is a placed piece, never folded away.
+        XCTAssertFalse(MeetingSurfaces.foldsPopOutChat(windowShowing: true, popOutOpen: true, arranged: true))
+    }
 }

@@ -325,6 +325,19 @@ final class MeetingControlsModel: ObservableObject {
     /// window, in an arranged session); closed, it is a window of its own,
     /// opened on demand and then left alone: no layout, so no tiling pass ever
     /// claims it (the follow loops only run for an arranged session).
+    /// The chat in one place: the pop-out opened from the bar folds into the
+    /// window's Chat panel once the window is in view (back on its desktop, or
+    /// brought here). Called whenever the bar decides again, and every second.
+    func foldPopOutChatIntoWindow() {
+        guard coordinator.zoomChatClient.didUseCustomUI,
+              MeetingSurfaces.foldsPopOutChat(windowShowing: ParticipantGridWindowController.meetingWindowIsShowing,
+                                              popOutOpen: ChatWindowController.isOpen,
+                                              arranged: coordinator.sessionArranges) else { return }
+        ChatWindowController.close()
+        sidePanel = .chat
+        refresh()
+    }
+
     func toggleChat() {
         // The window must be SHOWING, not just open: collapsed into the bar it
         // is open but hidden, and the chat panel then opened inside a window
@@ -1013,6 +1026,7 @@ enum MeetingControlBarController {
                     // Without activating the app: Zoom or the slides stay in front.
                     panel.orderFrontRegardless()
                 }
+                model?.foldPopOutChatIntoWindow()
             }
         }
         pending = work

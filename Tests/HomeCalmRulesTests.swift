@@ -34,12 +34,26 @@ final class HomeCalmRulesTests: XCTestCase {
                                                 runningApps: ["a.b"], openWindows: []))
         XCTAssertFalse(SetupSummary.shareIsGone(kind: .app, appBundleID: "", windowTitle: "",
                                                 runningApps: [], openWindows: []))
+        // A window whose title changed is still shared (ShareTarget.bestWindow).
+        XCTAssertFalse(SetupSummary.shareIsGone(kind: .window, appBundleID: "a.b", windowTitle: "Doc",
+                                                runningApps: [], openWindows: [("a.b", "Other")]))
         XCTAssertTrue(SetupSummary.shareIsGone(kind: .window, appBundleID: "a.b", windowTitle: "Doc",
-                                               runningApps: [], openWindows: [("a.b", "Other")]))
+                                               runningApps: [], openWindows: [("c.d", "Doc")]))
         XCTAssertFalse(SetupSummary.shareIsGone(kind: .window, appBundleID: "a.b", windowTitle: "Doc",
                                                 runningApps: [], openWindows: [("a.b", "Doc")]))
         XCTAssertFalse(SetupSummary.shareIsGone(kind: .display, appBundleID: "x", windowTitle: "",
                                                 runningApps: [], openWindows: []))
+    }
+
+    func testGoneShareSaysWhatHappens() {
+        XCTAssertEqual(SetupSummary.goneShareText(kind: .window, appName: "Finder"),
+                       "No Finder window open, shares whole screen")
+        XCTAssertEqual(SetupSummary.goneShareText(kind: .app, appName: "Keynote"),
+                       "Keynote isn\u{2019}t open, shares whole screen")
+        let result = items(shareGone: true, cameraMissing: true)
+        XCTAssertNotNil(result.first { $0.kind == .share }?.help)
+        XCTAssertNotNil(result.first { $0.kind == .camera }?.help)
+        XCTAssertTrue(items().allSatisfy { $0.help == nil })
     }
 
     func testReadinessReduction() {

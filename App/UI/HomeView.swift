@@ -465,7 +465,10 @@ struct HomeView: View {
         return SetupSummary.items(
             cameraOff: coordinator.cameraIsOff,
             lookSymbol: coordinator.webcamShape.symbol, lookText: coordinator.webcamShape.label,
-            shareSymbol: Self.symbol(for: share.kind), shareText: LookSummary.shareText(share), shareGone: gone,
+            shareSymbol: Self.symbol(for: share.kind),
+            shareText: gone ? SetupSummary.goneShareText(kind: kind, appName: share.displayName)
+                            : LookSummary.shareText(share),
+            shareGone: gone,
             cameraText: Self.shortDeviceName(camera), cameraMissing: cameras.isEmpty,
             micText: Self.shortDeviceName(mic), layoutText: coordinator.layoutChoiceName)
     }
@@ -524,8 +527,10 @@ struct HomeView: View {
                 Text("\u{00B7}").foregroundStyle(.tertiary)
             }
         }
+        .help(item.help ?? "")
         .accessibilityElement(children: .combine)
         .accessibilityLabel(item.attention ? "\(item.text), needs attention" : item.text)
+        .accessibilityHint(item.help ?? "")
     }
 
     /// The folder the next Start will create, as the placeholder.

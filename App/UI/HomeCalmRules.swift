@@ -17,6 +17,8 @@ struct SetupSummaryItem: Equatable, Identifiable {
     let text: String
     /// Needs the user's attention: drawn amber.
     var attention: Bool = false
+    /// What to do about it, on hover. Only set when `attention` is.
+    var help: String? = nil
 
     var id: String { kind.rawValue }
 }
@@ -33,9 +35,12 @@ enum SetupSummary {
         if !cameraOff {
             items.append(SetupSummaryItem(kind: .look, symbol: lookSymbol, text: lookText))
         }
-        items.append(SetupSummaryItem(kind: .share, symbol: shareSymbol, text: shareText, attention: shareGone))
+        items.append(SetupSummaryItem(kind: .share, symbol: shareSymbol, text: shareText, attention: shareGone,
+                                      help: shareGone ? shareGoneHelp : nil))
+        let noCamera = cameraMissing && !cameraOff
         items.append(SetupSummaryItem(kind: .camera, symbol: cameraOff ? "video.slash" : "camera",
-                                      text: cameraText, attention: cameraMissing && !cameraOff))
+                                      text: cameraText, attention: noCamera,
+                                      help: noCamera ? cameraMissingHelp : nil))
         items.append(SetupSummaryItem(kind: .microphone, symbol: "mic", text: micText))
         items.append(SetupSummaryItem(kind: .layout, symbol: "rectangle.split.2x1", text: layoutText))
         return items
@@ -47,6 +52,11 @@ enum SetupSummary {
     /// not a loss.
     enum ShareKind { case display, app, window, whiteboard, nothing }
 
+    ///
+    /// The same rule the share itself follows (`ShareTarget.resolve`): a
+    /// window whose title changed (a Finder window moved to another folder,
+    /// a browser on another tab) is still that app's window and still shared,
+    /// so only an app with no window open at all counts as gone.
     static func shareIsGone(kind: ShareKind, appBundleID: String, windowTitle: String,
                             runningApps: [String], openWindows: [(bundleID: String, title: String)]) -> Bool {
         switch kind {
@@ -54,11 +64,26 @@ enum SetupSummary {
             return !appBundleID.isEmpty && !runningApps.contains(appBundleID)
         case .window:
             return !appBundleID.isEmpty
-                && !openWindows.contains { $0.bundleID == appBundleID && $0.title == windowTitle }
+                && !openWindows.contains { $0.bundleID == appBundleID }
         case .display, .whiteboard, .nothing:
             return false
         }
     }
+}
+
+extension SetupSummary {
+    /// The line's words when the share is gone: what is missing, and what the
+    /// class would see instead, so the amber explains itself.
+    static func goneShareText(kind: ShareKind, appName: String) -> String {
+        switch kind {
+        case .window: return "No \(appName) window open, shares whole screen"
+        case .app: return "\(appName) isn\u{2019}t open, shares whole screen"
+        case .display, .whiteboard, .nothing: return ""
+        }
+    }
+
+    static let shareGoneHelp = "What you picked to share isn\u{2019}t open, so the class would see your whole screen. Open it again, or pick something else under Edit."
+    static let cameraMissingHelp = "No camera is connected. Plug one in, or pick No camera under Edit."
 }
 
 /// One thing a start needs.

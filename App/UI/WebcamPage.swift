@@ -273,13 +273,17 @@ struct WebcamPageContent<LivePicture: View, ShareDetail: View, Cameras: View, Mi
     private var stageControls: some View {
         HStack(spacing: 16) {
             if isAdjustable {
+                Text("Size").font(.caption).foregroundStyle(.secondary).fixedSize()
                 SizePresetPicker(presets: sizePresets, value: geometry.size) { size in
                     set(size: size)
                 }
+                .help("How big you are in the picture")
                 Spacer(minLength: 0)
+                Text("Position").font(.caption).foregroundStyle(.secondary).fixedSize()
                 PlacementPicker(spots: spots, current: currentSpot) { spot in
                     place(spot)
                 }
+                .help("Where you sit in the picture")
                 Button { draft = nil; reset() } label: {
                     Image(systemName: "arrow.counterclockwise")
                 }
@@ -579,7 +583,7 @@ struct ShareKindPicker: View {
                 ChoiceTile(title: title(kind), selected: kind == selection, badge: nil) {
                     Image(systemName: symbol(kind))
                         .font(.system(size: 22, weight: .regular))
-                        .foregroundStyle(kind == selection ? Brand.green : Color.secondary)
+                        .foregroundStyle(kind == selection ? Brand.text : Color.secondary)
                         .frame(height: 32)
                 } action: { selection = kind }
                 .disabled(!allowed)

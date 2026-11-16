@@ -46,6 +46,8 @@ struct GreenroomSegmented<Value: Hashable, Label: View>: View {
     @Namespace private var ns
     @State private var hovered: Value?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// Read so the glass track is rebuilt when the appearance flips.
+    @Environment(\.colorScheme) private var scheme
 
     init(_ title: String,
          selection: Binding<Value>,
@@ -112,7 +114,7 @@ struct GreenroomSegmented<Value: Hashable, Label: View>: View {
     @ViewBuilder
     private var toolbarTrack: some View {
         if #available(macOS 26, *) {
-            Color.clear.glassEffect(.regular, in: Capsule()) // GLASS-TRACK
+            Color.clear.glassEffect(.regular, in: Capsule()).id(scheme) // GLASS-TRACK
         } else {
             Capsule().fill(.quinary)
         }
@@ -142,7 +144,7 @@ struct GreenroomSegmented<Value: Hashable, Label: View>: View {
 
     /// Solid Brand green, in every style: no gradient, highlight, stroke or
     /// transparency, so nothing blends it into the glass behind.
-    private var pill: some View { Capsule().fill(Brand.green) }
+    private var pill: some View { Capsule().fill(Brand.buttonFill) }
 
     @ViewBuilder
     private func selectionCapsule(on: Bool) -> some View {

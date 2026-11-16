@@ -320,6 +320,7 @@ targets:
       - path: App/UI/TileAppearance.swift
       - path: App/UI/MainWindow.swift
       - path: App/UI/SessionsQuery.swift
+      - path: App/UI/SessionTitleSuggester.swift
       - path: App/UI/SessionDetailRules.swift
       - path: App/UI/SegmentedMath.swift
       - path: App/UI/NotchStatusRules.swift

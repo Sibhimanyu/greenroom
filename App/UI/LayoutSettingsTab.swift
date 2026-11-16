@@ -176,26 +176,20 @@ struct LayoutPageContent: View {
                 }
             }
 
-            Section {
-                if let template = library.active {
+            // With None chosen the caption above already says it all: no second
+            // set of starter buttons, no second Reset, no tall empty panel.
+            if let template = library.active {
+                Section {
                     editor(template)
                         .padding(.vertical, 4)
-                } else {
-                    noneState
                 }
             }
 
             Section("During class") {
                 Toggle("Open notes when a session starts", isOn: $notesOnStart)
-                Text("Notes are timed to the recording and saved with the session. You can still open or close them during a session.")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                VStack(alignment: .leading, spacing: 2) {
-                    Toggle("Hide my own tile", isOn: $hideSelfView)
-                    Text("Your own video is left out of the meeting you see. The class still sees you.")
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                }
+                    .help("Notes are timed to the recording and saved with the session. You can still open or close them during a session.")
+                Toggle("Hide my own tile", isOn: $hideSelfView)
+                    .help("Your own video is left out of the meeting you see. The class still sees you.")
             }
 
             Section("Privacy") {
@@ -403,48 +397,6 @@ struct LayoutPageContent: View {
         case 1: return items[0]
         case 2: return "\(items[0]) and \(items[1])"
         default: return items.dropLast().joined(separator: ", ") + " and " + items[items.count - 1]
-        }
-    }
-
-    // MARK: None
-
-    private var noneState: some View {
-        VStack(spacing: 14) {
-            Image(systemName: "rectangle.dashed")
-                .font(.system(size: 30, weight: .light))
-                .foregroundStyle(.secondary)
-            VStack(spacing: 4) {
-                Text("Greenroom opens and moves nothing")
-                    .font(.headline)
-                Text("Zoom and your apps stay wherever they are. Pick a layout above, or start from one of these.")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-            }
-            HStack(spacing: 8) {
-                ForEach(LayoutLibrary.starters(), id: \.starter) { starter in
-                    Button { pickStarter(starter.starter ?? "") } label: {
-                        Label(starter.name, systemImage: starter.starter == LayoutLibrary.teachFromBrowser
-                              ? "safari" : starter.starter == LayoutLibrary.rajMode
-                              ? "sidebar.right" : "rectangle.split.2x1")
-                    }
-                }
-                Button(action: addLayout) { Label("Start from scratch", systemImage: "plus") }
-            }
-            Button("Reset to defaults\u{2026}") { confirmReset = true }
-                .buttonStyle(.plain)
-                .font(.callout)
-                .foregroundStyle(.secondary)
-                .help("Removes your layouts and brings back the built-in ones.")
-        }
-        .frame(maxWidth: .infinity, minHeight: 220)
-        .padding(.vertical, 8)
-    }
-
-    private func pickStarter(_ key: String) {
-        withAnimation(anim) {
-            if let id = library.starterID(key) { library.select(id) }
-            resetEditorState()
         }
     }
 

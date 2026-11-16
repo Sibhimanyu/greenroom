@@ -41,6 +41,10 @@ struct SessionMetadata: Codable {
     }
 
     var title: String?
+    /// The Thriveni course this session belongs to, when something reliable
+    /// says so. Nothing writes it yet (the post sheet is a mock and does not
+    /// know its session); the suggested title reads it when present.
+    var course: String?
     var uploads: [Upload] = []
     var links: [Link] = []
 

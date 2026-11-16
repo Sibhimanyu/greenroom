@@ -83,10 +83,10 @@ struct TransferPageContent: View {
 
             Section("Settings file") {
                 HStack(spacing: 8) {
-                    ChoiceTile(title: "Export\u{2026}", selected: false, badge: "key.fill") {
+                    ChoiceTile(title: "Export\u{2026}", selected: false, badge: nil) {
                         glyph("square.and.arrow.up")
                     } action: { confirmingExport = true }
-                    .help("One file with every setting, credentials included, in plain text. Hand it over directly (AirDrop) and delete it once imported.")
+                    .help("One file with every setting, including your Zoom and YouTube keys, in plain text. Hand it over directly (AirDrop) and delete it once imported.")
                     .confirmationDialog("This file will contain your Zoom secrets in plain text.",
                                         isPresented: $confirmingExport, titleVisibility: .visible) {
                         Button("Export Plaintext File") { export() }

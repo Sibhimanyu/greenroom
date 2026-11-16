@@ -83,29 +83,29 @@ struct ZoomPageContent: View {
     var body: some View {
         Form {
             Section {
-                HStack(spacing: 12) {
-                    AppCard(title: "Meeting SDK", symbol: "video.fill",
-                            powers: [("video", "Meeting"), ("bubble.left", "Chat")],
-                            state: sdkState)
-                        .help("A General App in the Zoom Marketplace \u{2192} Features \u{2192} Embed \u{2192} Meeting SDK. Powers the built-in meeting client and the chat window. Works only in meetings hosted under this Zoom account.")
-                    AppCard(title: "Server-to-Server", symbol: "server.rack",
-                            powers: [("plus.circle", "New meeting"), ("calendar", "Scheduled")],
-                            state: s2sState)
-                        .help("A Server-to-Server OAuth app on the same Zoom account. Powers New Meeting and the scheduled list. The setup guide (?) walks through it and tests the result.")
-                }
-                .padding(.vertical, 4)
-            }
-
-            Section("Meeting SDK") {
                 TextField("Client ID", text: $sdkClientID)
                 SecureField("Client Secret", text: $sdkClientSecret)
+            } header: {
+                HStack {
+                    Text("Meeting SDK")
+                    Spacer()
+                    sdkState.badge
+                }
+                .help("A General App in the Zoom Marketplace \u{2192} Features \u{2192} Embed \u{2192} Meeting SDK. Powers the built-in meeting client and the chat window. Works only in meetings hosted under this Zoom account.")
             }
 
-            Section("Server-to-Server") {
+            Section {
                 TextField("Account ID", text: $s2sAccountID)
                 TextField("Client ID", text: $s2sClientID)
                 SecureField("Client Secret", text: $s2sClientSecret)
                 ScopeList(scopes: Self.scopes, open: scopesOpen)
+            } header: {
+                HStack {
+                    Text("Server-to-Server")
+                    Spacer()
+                    s2sState.badge
+                }
+                .help("A Server-to-Server OAuth app on the same Zoom account. Powers New Meeting and the scheduled list. The setup guide (?) walks through it and tests the result.")
             }
 
             Section("Meeting") {
@@ -123,10 +123,7 @@ struct ZoomPageContent: View {
                                 .strokeBorder(Color.secondary.opacity(0.4)))
                     }
                 }
-                .help("On: Zoom opens no windows; Greenroom shows the meeting in its own meeting window \u{2014} video, people, chat and controls. Takes effect after a relaunch.")
-                Text("On: Zoom opens no windows. Greenroom shows the meeting in its own meeting window, with Gallery and Speaker views, people, chat and the meeting controls.")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
+                .help("On: Zoom opens no windows. Greenroom shows the meeting in its own meeting window, with Gallery and Speaker views, people, chat and the meeting controls. Takes effect after a relaunch.")
                 if customUINeedsRelaunch {
                     StatusBadge(text: "Quit and reopen Greenroom to apply", tone: .problem)
                 }
@@ -224,9 +221,10 @@ private struct ScopeList: View {
                     copied = true
                     DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { copied = false }
                 } label: {
-                    Label(copied ? "Copied" : "Copy", systemImage: copied ? "checkmark" : "doc.on.doc")
+                    Label(copied ? "Copied" : "Copy scopes", systemImage: copied ? "checkmark" : "doc.on.doc")
                 }
                 .buttonStyle(.borderless)
+                .foregroundStyle(Brand.text)
                 .help("Copy all \(scopes.count) scopes, one per line")
             }
         }

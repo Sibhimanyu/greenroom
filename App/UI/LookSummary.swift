@@ -171,12 +171,12 @@ private struct LookThumbnail: View {
             // The camera fills the frame: you, centred, full height.
             Image(systemName: "person.fill")
                 .resizable().scaledToFit()
-                .foregroundStyle(Brand.green)
+                .foregroundStyle(Brand.text)
                 .frame(height: height - 4)
         } else if shape.usesChromaKey {
             Image(systemName: "person.fill")
                 .resizable().scaledToFit()
-                .foregroundStyle(Brand.green)
+                .foregroundStyle(Brand.text)
                 .frame(height: shape.isPresenterStyle ? height - 4 : 9)
                 .offset(x: shape.isPresenterStyle ? -10 : 9, y: shape.isPresenterStyle ? 1 : 3)
         } else {

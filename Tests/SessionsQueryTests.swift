@@ -98,3 +98,34 @@ final class SessionsQueryTests: XCTestCase {
         XCTAssertTrue(query(search: "x").isFiltering)
     }
 }
+
+/// Status chips, day headings and transcript search (SessionsQuery.swift).
+final class SessionsTimelineTests: XCTestCase {
+    func testChipsSayWhatIsLeft() {
+        var c = SessionCardModel(id: "a", title: "A", kind: .classSession, date: Date(), duration: 60,
+                                 isUploaded: false, isAnalysed: false)
+        XCTAssertTrue(SessionChips.chips(for: c).isEmpty)
+        c.hasVideo = true; c.momentCount = 3; c.isAnalysed = true
+        XCTAssertEqual(SessionChips.chips(for: c).map(\.text), ["Not shared", "3 moments", "Feedback ready"])
+        c.isUploaded = true; c.uploadPrivacy = "unlisted"
+        XCTAssertEqual(SessionChips.chips(for: c).first?.text, "On YouTube \u{00B7} Unlisted")
+        XCTAssertFalse(SessionsNeed.notShared.matches(c))
+    }
+
+    func testTranscriptSearchFindsSentenceAndTime() {
+        let lines = [("0:00:05", "Welcome back everyone"), ("0:12:40", "Jonas receives the memory"), ("1:02:05", "jonas again")]
+        let hits = TranscriptSearch.hits(sessionID: "s", lines: lines, query: "JONAS")
+        XCTAssertEqual(hits.map(\.seconds), [760, 3725])
+        XCTAssertEqual(hits.first?.clock, "12:40")
+        XCTAssertTrue(TranscriptSearch.hits(sessionID: "s", lines: lines, query: "  ").isEmpty)
+    }
+
+    func testSearchKeepsSessionWhoseTranscriptMatches() {
+        let c = SessionCardModel(id: "a", title: "Chapter 4", kind: .classSession, date: Date(), duration: 60,
+                                 isUploaded: false, isAnalysed: false)
+        let hit = TranscriptHit(sessionID: "a", seconds: 5, stamp: "0:00:05", text: "Jonas")
+        let q = SessionsQuery(cards: [c], search: "jonas", transcriptHits: ["a": [hit]])
+        XCTAssertEqual(q.visible.count, 1)
+        XCTAssertEqual(SessionsQuery(cards: [c], search: "jonas").visible.count, 0)
+    }
+}

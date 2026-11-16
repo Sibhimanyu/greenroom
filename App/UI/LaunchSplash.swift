@@ -74,6 +74,7 @@ struct LaunchSplashCover: NSViewRepresentable {
             frame.addSubview(frost, positioned: .above, relativeTo: nil)
             self.frost = frost
             self.content = content
+            DockHintPanel.shared.splashUp = true
             if window.isVisible, window.occlusionState.contains(.visible) {
                 begin()
             } else {
@@ -123,6 +124,7 @@ struct LaunchSplashCover: NSViewRepresentable {
         nonisolated func animationDidStop(_ animation: CAAnimation, finished: Bool) {
             MainActor.assumeIsolated {
                 frost?.removeFromSuperview()
+                DockHintPanel.shared.splashUp = false
                 frost = nil
                 content = nil
             }

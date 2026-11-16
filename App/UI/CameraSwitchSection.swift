@@ -331,7 +331,7 @@ private struct CameraCard: View {
                 HStack(spacing: 8) {
                     Image(systemName: symbol)
                         .font(.system(size: 18))
-                        .foregroundStyle(chosen ? Brand.green : Color.secondary)
+                        .foregroundStyle(chosen ? Brand.text : Color.secondary)
                     Text(camera.name)
                         .font(.callout.weight(chosen ? .semibold : .regular))
                         .lineLimit(2)
@@ -387,7 +387,7 @@ private struct NoCameraCard: View {
             HStack(spacing: 8) {
                 Image(systemName: "video.slash")
                     .font(.system(size: 18))
-                    .foregroundStyle(chosen ? Brand.green : Color.secondary)
+                    .foregroundStyle(chosen ? Brand.text : Color.secondary)
                     .frame(height: 28)
                 Text("No camera")
                     .font(.callout.weight(chosen ? .semibold : .regular))

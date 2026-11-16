@@ -2,8 +2,9 @@
 //  SessionsContent.swift
 //  Greenroom
 //
-//  The Sessions window as a drawing: a sidebar of filters, a grid of sessions
-//  grouped by week, and an inspector for the one selected.
+//  The Sessions window as a drawing: a timeline of sessions grouped by day,
+//  each row saying what is still left to do (SessionChips), searchable by
+//  title and by what was said (SessionsIndex, TranscriptSearch).
 //
 //  Nothing in this file knows about the coordinator, the disk, AVKit or
 //  Screenroom. RecordingsView scans the folders, owns the player and runs the
@@ -12,11 +13,9 @@
 //  keeps the layout honest, since a layout that can only be checked by opening
 //  the real window with real recordings in it is one nobody checks.
 //
-//  Why a grid and not the list it replaced: a teacher looks for a class by
-//  what was on the screen at least as often as by its date, and a frame of it
-//  answers that at a glance. The list made every session one more line of
-//  dates. Three kinds now share the window - classes, recordings and reviews -
-//  and a badge on the picture tells them apart without a second column.
+//  Why a list by day again: the owner chose "One Timeline" (redesign r01).
+//  A row carries its frame, its time and its state, so a teacher can tell
+//  from the list alone what still needs doing, without opening anything.
 //
 import AppKit
 import SwiftUI
@@ -62,6 +61,10 @@ struct SessionsLayout<CardMenu: View>: View {
     /// A card was double-clicked, or Return pressed on the focused one: open
     /// its page. A single click only selects. The grid itself never shows a session's detail.
     var onOpen: (String) -> Void = { _ in }
+    /// A transcript result was clicked: open the session at that second.
+    /// The time is also left in SessionsPendingSeek.shared for the page to
+    /// take; a host that does not pass this still opens the session.
+    var onOpenAt: (String, Double) -> Void = { _, _ in }
     /// The way back to Home; nil where the grid is drawn on its own.
     var onBack: (() -> Void)?
     /// False while a session's page is up over this grid (the grid stays in
@@ -72,19 +75,24 @@ struct SessionsLayout<CardMenu: View>: View {
     var subtitleOverride: String?
 
     @FocusState private var focusedID: String?
+    @ObservedObject private var index = SessionsIndex.shared
+    /// The sidebar's NEEDS YOU choice ("" for none).
+    @AppStorage("sessionsNeed") private var needRaw = ""
 
     private var query: SessionsQuery {
-        SessionsQuery(cards: cards, show: show, status: status, search: search,
-                      sort: sort, now: now)
+        SessionsQuery(cards: index.enrich(cards), show: show, status: status,
+                      need: SessionsNeed(rawValue: needRaw), search: search,
+                      transcriptHits: index.hits(for: search), sort: sort, now: now)
     }
 
     /// The detail column's content. The sidebar is the window's own column
     /// (SessionsSidebar.swift), and the toolbar items below land over this
     /// column because that is where this view sits.
     var body: some View {
-        grid
+        timeline
             .frame(minWidth: 480, maxHeight: .infinity)
-            .searchable(text: $search, placement: .toolbar, prompt: "Search sessions")
+            .task(id: cards) { await index.refresh(cards) }
+            .searchable(text: $search, placement: .toolbar, prompt: "Search titles and what was said")
             .toolbar { gridToolbar }
             // Subtitle only. Back is ContentView's one page-wide item; a second
             // one here drew two side by side.
@@ -95,31 +103,10 @@ struct SessionsLayout<CardMenu: View>: View {
 
     @ToolbarContentBuilder
     private var gridToolbar: some ToolbarContent {
-        ToolbarItem(placement: .primaryAction) { statusMenu }
         ToolbarItem(placement: .primaryAction) { sortMenu }
         if #available(macOS 26, *) {
             ToolbarSpacer(.fixed, placement: .primaryAction)
         }
-    }
-
-    private var statusMenu: some View {
-        let q = query
-        return Menu {
-            Picker("Status", selection: $status) {
-                Text("All sessions").tag(SessionsStatus?.none)
-                ForEach(SessionsStatus.allCases) { option in
-                    Label("\(option.rawValue) \u{00B7} \(q.count(for: option))", systemImage: option.symbol)
-                        .tag(SessionsStatus?.some(option))
-                }
-            }
-            .pickerStyle(.inline)
-        } label: {
-            Label("Status",
-                  systemImage: status == nil
-                    ? "line.3.horizontal.decrease.circle"
-                    : "line.3.horizontal.decrease.circle.fill")
-        }
-        .help(status.map { "Showing: \($0.rawValue)" } ?? "Filter by status")
     }
 
     private var sortMenu: some View {
@@ -134,16 +121,16 @@ struct SessionsLayout<CardMenu: View>: View {
         .help("Sort sessions")
     }
 
-    // MARK: Grid
+    // MARK: Timeline
 
-    private var grid: some View {
+    private var timeline: some View {
         let q = query
-        let groups = q.groups
-        // Every card on screen in the order drawn.
+        let groups = q.dayGroups
+        // Every row on screen in the order drawn.
         let order = groups.flatMap { $0.cards.map(\.id) }
         return ScrollViewReader { proxy in
         ScrollView {
-            VStack(alignment: .leading, spacing: 24) {
+            VStack(alignment: .leading, spacing: 0) {
                 if let spaceWarning {
                     HStack(spacing: 8) {
                         Image(systemName: "exclamationmark.circle")
@@ -155,57 +142,31 @@ struct SessionsLayout<CardMenu: View>: View {
                     .padding(.horizontal, 12)
                     .padding(.vertical, 8)
                     .background(RoundedRectangle(cornerRadius: 10).fill(spaceWarning.color.opacity(0.12)))
+                    .padding(.bottom, 12)
                 }
 
                 if groups.isEmpty {
                     empty(q)
                         .frame(maxWidth: .infinity, minHeight: 360)
                 } else {
-                    ForEach(groups, id: \.title) { group in
-                        VStack(alignment: .leading, spacing: 12) {
-                            Text(group.title)
-                                .font(.headline)
-                                .foregroundStyle(.secondary)
-                                .accessibilityAddTraits(.isHeader)
-                            LazyVGrid(columns: [GridItem(.adaptive(minimum: 220, maximum: 360), spacing: 16)],
-                                      alignment: .leading, spacing: 16) {
-                                ForEach(group.cards) { card in
-                                    Button {
-                                        clicked(card.id, order: order)
-                                    } label: {
-                                        SessionCard(card: card, image: thumbnail(card), now: now,
-                                                    selected: marked.contains(card.id))
-                                    }
-                                    .greenroomTile(role: .browse, radius: 12)
-                                    .focused($focusedID, equals: card.id)
-                                    .id(card.id)
-                                    // Double-click opens. Simultaneous, so the
-                                    // button's own single click still selects.
-                                    .simultaneousGesture(TapGesture(count: 2).onEnded {
-                                        marked.click(card.id, order: order, command: false, shift: false)
-                                        selection = card.id
-                                        onOpen(card.id)
-                                    })
-                                    // Return opens the focused card.
-                                    .onKeyPress(.return) {
-                                        selection = card.id
-                                        onOpen(card.id)
-                                        return .handled
-                                    }
-                                    .contextMenu {
-                                        if marked.count > 1, marked.contains(card.id) {
-                                            let ids = marked.ordered(order)
-                                            Button("Move \(ids.count) to Trash\u{2026}", role: .destructive) {
-                                                onTrashMany(ids)
-                                            }
-                                            Button("Show in Finder") { onRevealMany(ids) }
-                                        } else {
-                                            cardMenu(card)
-                                        }
-                                    }
-                                }
-                            }
+                    ForEach(Array(groups.enumerated()), id: \.element.day) { index, group in
+                        if index > 0 { Divider().padding(.vertical, 10) }
+                        HStack(alignment: .firstTextBaseline, spacing: 8) {
+                            Text(group.title).font(.system(size: 15, weight: .bold))
+                            Text(group.subtitle).font(.callout).foregroundStyle(.secondary)
                         }
+                        .padding(.bottom, 8)
+                        .accessibilityElement(children: .combine)
+                        .accessibilityAddTraits(.isHeader)
+                        ForEach(group.cards) { card in
+                            row(card, order: order, hits: q.transcriptHits[card.id] ?? [])
+                        }
+                    }
+                    if q.isSearching, let note = untranscribedNote(q) {
+                        Text(note)
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                            .padding(.top, 14)
                     }
                 }
             }
@@ -218,7 +179,7 @@ struct SessionsLayout<CardMenu: View>: View {
             }
         }
         .onChange(of: focusedID) { _, id in if let id { selection = id } }
-        // Delete trashes the picked cards, as in Finder; with none picked it
+        // Delete trashes the picked rows, as in Finder; with none picked it
         // trashes the focused one, as it did before.
         .onDeleteCommand {
             if marked.isEmpty { onDeleteKey() } else { onTrashMany(marked.ordered(order)) }
@@ -233,15 +194,50 @@ struct SessionsLayout<CardMenu: View>: View {
             marked.selectAll(order)
             return .handled
         }
-        // A filter or search that hides a picked card un-picks it.
+        // A filter or search that hides a picked row un-picks it.
         .onChange(of: order) { _, now in marked.keep(only: now) }
         .overlay(alignment: .bottom) {
             if !marked.isEmpty { selectionBar(order) }
         }
-        // The grid is unmounted while a session's page is up (its search field
+        // The list is unmounted while a session's page is up (its search field
         // would otherwise stay in the toolbar), so Back finds the place again.
         .onAppear { if let selection { proxy.scrollTo(selection, anchor: .center) } }
         }
+    }
+
+    /// Under the results: classes that could not be searched by what was said.
+    private func untranscribedNote(_ q: SessionsQuery) -> String? {
+        let n = q.ofKind.filter { !$0.hasTranscript && $0.kind != .recording }.count
+        guard n > 0 else { return nil }
+        return n == 1 ? "1 class has no transcript, so only its title was searched."
+                      : "\(n) classes have no transcript, so only their titles were searched."
+    }
+
+    private func row(_ card: SessionCardModel, order: [String], hits: [TranscriptHit]) -> some View {
+        SessionRow(card: card, image: thumbnail(card), now: now,
+                   selected: marked.contains(card.id), hits: hits, term: search,
+                   onSelect: { clicked(card.id, order: order) },
+                   onOpen: {
+                       marked.click(card.id, order: order, command: false, shift: false)
+                       selection = card.id
+                       onOpen(card.id)
+                   },
+                   onOpenAt: { seconds in
+                       selection = card.id
+                       SessionsPendingSeek.shared.set(card.id, seconds: seconds)
+                       onOpenAt(card.id, seconds)
+                   },
+                   menu: {
+                       if marked.count > 1, marked.contains(card.id) {
+                           let ids = marked.ordered(order)
+                           Button("Move \(ids.count) to Trash\u{2026}", role: .destructive) { onTrashMany(ids) }
+                           Button("Show in Finder") { onRevealMany(ids) }
+                       } else {
+                           cardMenu(card)
+                       }
+                   })
+        .focused($focusedID, equals: card.id)
+        .id(card.id)
     }
 
     private func clicked(_ id: String, order: [String]) {
@@ -273,10 +269,10 @@ struct SessionsLayout<CardMenu: View>: View {
     private func empty(_ q: SessionsQuery) -> some View {
         if q.isSearching {
             ContentUnavailableView.search(text: search)
-        } else if status != nil {
+        } else if status != nil || needRaw != "" {
             ContentUnavailableView("Nothing matches",
                                    systemImage: "line.3.horizontal.decrease.circle",
-                                   description: Text("Choose All sessions in the Status menu to see more."))
+                                   description: Text("Choose All sessions in the sidebar to see more."))
         } else {
             ContentUnavailableView(show.emptyLine,
                                    systemImage: show.symbol,

@@ -27,7 +27,7 @@ struct EditorTimelineView: View {
         case cutEdge(id: UUID, isLead: Bool)
     }
 
-    private let pillRow: CGFloat = 32
+    private let pillRow: CGFloat = 28
     private let rulerHeight: CGFloat = 20
     private let trackHeight: CGFloat = 76
     private let handleWidth: CGFloat = 10
@@ -106,7 +106,7 @@ struct EditorTimelineView: View {
             }
         }
         .frame(height: height + (vm.timelineZoom > 1 ? 12 : 0))
-        .padding(.horizontal, 4)
+        .padding(.horizontal, 10)
     }
 
     private func content(width: CGFloat, height: CGFloat,
@@ -145,18 +145,24 @@ struct EditorTimelineView: View {
 
     private func ruler(width: CGFloat) -> some View {
         let step = niceStep(width: width)
+        let labelWidth: CGFloat = 40
         return ZStack(alignment: .topLeading) {
             ForEach(Array(stride(from: 0.0, through: vm.timelineDuration, by: step)), id: \.self) { t in
                 let xPos = x(for: t, width: width)
-                VStack(spacing: 1) {
-                    Text(TimeFormatting.clock(t))
-                        .font(.system(size: 9, design: .monospaced))
-                        .foregroundStyle(.secondary)
-                    Rectangle()
-                        .fill(Color.secondary.opacity(0.5))
-                        .frame(width: 1, height: 5)
-                }
-                .position(x: xPos, y: rulerHeight / 2)
+                // The label is centred on its tick but kept inside the ruler,
+                // so the first one reads "0:00", whole, not a clipped "00".
+                let labelX = min(max(xPos, labelWidth / 2), max(labelWidth / 2, width - labelWidth / 2))
+                Text(SessionDetailRules.clock(t))
+                    .font(.system(size: 9, design: .monospaced))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .fixedSize()
+                    .frame(width: labelWidth)
+                    .position(x: labelX, y: 5)
+                Rectangle()
+                    .fill(Color.secondary.opacity(0.5))
+                    .frame(width: 1, height: 5)
+                    .position(x: xPos, y: rulerHeight - 3)
             }
         }
         .frame(height: rulerHeight)
@@ -245,12 +251,12 @@ struct EditorTimelineView: View {
     /// inward to show which clip the handle trims.
     private func mergeHandle(at xPos: CGFloat, isLead: Bool) -> some View {
         RoundedRectangle(cornerRadius: 2)
-            .fill(Color.white)
+            .fill(Color.primary.opacity(0.85))
             .frame(width: 7, height: trackHeight + 4)
             .overlay(
                 Image(systemName: isLead ? "chevron.right" : "chevron.left")
                     .font(.system(size: 6, weight: .black))
-                    .foregroundStyle(Color.black.opacity(0.6)))
+                    .foregroundStyle(Color(nsColor: .windowBackgroundColor)))
             .shadow(radius: 1)
             .position(x: xPos + (isLead ? handleInset : -handleInset), y: trackTop + trackHeight / 2)
     }
@@ -342,12 +348,12 @@ struct EditorTimelineView: View {
 
     private func trimHandle(at seconds: Double, width: CGFloat, isLead: Bool) -> some View {
         RoundedRectangle(cornerRadius: 3)
-            .fill(Color.white)
+            .fill(Color.primary.opacity(0.85))
             .frame(width: handleWidth, height: trackHeight + 8)
             .overlay(
                 Image(systemName: isLead ? "chevron.right" : "chevron.left")
                     .font(.system(size: 7, weight: .black))
-                    .foregroundStyle(Color.black.opacity(0.6)))
+                    .foregroundStyle(Color(nsColor: .windowBackgroundColor)))
             .shadow(radius: 1)
             .position(x: x(for: seconds, width: width) + (isLead ? handleInset : -handleInset),
                       y: trackTop + trackHeight / 2)
@@ -578,7 +584,7 @@ struct EditorTimelineView: View {
                 .position(x: xPos, y: lineTop + (trackTop + trackHeight + 6 - lineTop) / 2)
             Image(systemName: "arrowtriangle.down.fill")
                 .font(.system(size: 10))
-                .foregroundStyle(.white)
+                .foregroundStyle(Color.primary)
                 .shadow(color: .black.opacity(0.5), radius: 1)
                 .position(x: xPos, y: lineTop + 4)
         }

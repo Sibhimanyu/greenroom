@@ -21,6 +21,8 @@ import SwiftUI
 
 struct SessionTranscriptView: View {
     let folder: URL
+    /// Watch mode: a click on a line moves the picture to it.
+    var onSeek: ((Double) -> Void)?
 
     @State private var lines: [SessionSummary.Line] = []
     @State private var summary: String?
@@ -139,6 +141,10 @@ struct SessionTranscriptView: View {
                         }
                         .padding(.horizontal, 14)
                         .padding(.vertical, 5)
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            if let onSeek, let at = SessionDetailRules.stampSeconds(line.stamp) { onSeek(at) }
+                        }
                     }
                 }
                 .padding(.vertical, 6)
@@ -182,6 +188,109 @@ struct SessionTranscriptView: View {
         Task {
             try? await Task.sleep(nanoseconds: 1_800_000_000)
             await MainActor.run { copied = false }
+        }
+    }
+}
+
+// MARK: - Edit mode
+
+/// The transcript as a way to cut: a click on a sentence marks that stretch as
+/// removed (shift-click extends to a second sentence), a click on a struck
+/// sentence puts it back, and the stamp moves the picture there.
+struct SessionEditTranscript: View {
+    let folder: URL
+    @EnvironmentObject private var vm: EditorViewModel
+    @State private var lines: [SessionSummary.Line] = []
+    @State private var starts: [Double] = []
+    @State private var anchor: Int?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text("TRANSCRIPT")
+                .font(.system(size: 11, weight: .semibold))
+                .tracking(0.6)
+                .foregroundStyle(.tertiary)
+                .padding(.horizontal, 14)
+                .padding(.top, 14)
+                .padding(.bottom, 6)
+            if lines.isEmpty {
+                Text("No transcript to click on. Get feedback writes one, on this Mac.")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .padding(14)
+                    .fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: 0)
+            } else {
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 0) {
+                        ForEach(Array(lines.enumerated()), id: \.element.id) { index, line in
+                            row(index, line)
+                        }
+                    }
+                    .padding(.bottom, 8)
+                }
+                Text("Click a sentence to cut it out. Shift-click to cut through a second one.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .padding(14)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .task(id: folder) {
+            lines = SessionSummary.lines(in: folder)
+            starts = lines.map { SessionDetailRules.stampSeconds($0.stamp) ?? 0 }
+        }
+    }
+
+    private var current: Int? { SessionDetailRules.currentLine(starts: starts, at: vm.playhead) }
+
+    private func cut(covering index: Int) -> CutRegion? {
+        guard let span = SessionDetailRules.transcriptSpan(starts: starts, from: index, duration: vm.duration)
+        else { return nil }
+        let mid = (span.lowerBound + span.upperBound) / 2
+        return vm.cuts.first { $0.start <= mid && mid <= $0.end }
+    }
+
+    private func row(_ index: Int, _ line: SessionSummary.Line) -> some View {
+        let struck = cut(covering: index) != nil
+        let isCurrent = current == index
+        return HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Text(line.stamp)
+                .font(.system(size: 11, design: .monospaced))
+                .monospacedDigit()
+                .foregroundStyle(.tertiary)
+                .frame(width: 50, alignment: .leading)
+                .onTapGesture { vm.seek(to: starts[index]) }
+            Text(line.text)
+                .font(.system(size: 13))
+                .strikethrough(struck)
+                .foregroundStyle(struck ? Color.secondary : Color.primary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 5)
+        .background(isCurrent ? Color.primary.opacity(0.07) : Color.clear)
+        .contentShape(Rectangle())
+        .onTapGesture { clicked(index) }
+        .help(struck ? "Click to put this back" : "Click to cut this out of the video")
+    }
+
+    private func clicked(_ index: Int) {
+        if let existing = cut(covering: index) {
+            vm.deleteCut(id: existing.id)
+            anchor = nil
+            return
+        }
+        let shift = NSEvent.modifierFlags.contains(.shift)
+        if shift, let first = anchor {
+            let lo = min(first, index), hi = max(first, index)
+            if let span = SessionDetailRules.transcriptSpan(starts: starts, from: lo, to: hi, duration: vm.duration) {
+                vm.addCut(start: span.lowerBound, end: span.upperBound)
+            }
+            anchor = nil
+        } else if let span = SessionDetailRules.transcriptSpan(starts: starts, from: index, duration: vm.duration) {
+            vm.addCut(start: span.lowerBound, end: span.upperBound)
+            anchor = index
         }
     }
 }

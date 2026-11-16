@@ -250,16 +250,12 @@ struct RecordingsView: View {
             }
             if let session = detailSession {
                 detailPage(session)
-                    .opacity(isReport || isEditor ? 0 : 1)
-                    .allowsHitTesting(!(isReport || isEditor))
-                    .accessibilityHidden(isReport || isEditor)
+                    .opacity(isReport ? 0 : 1)
+                    .allowsHitTesting(!isReport)
+                    .accessibilityHidden(isReport)
             }
             if isReport {
                 ScreenroomReportView(onBack: { coordinator.goBack() })
-            }
-            // The editor is a page of this window, not a window of its own.
-            if isEditor {
-                EditorView(onBack: { coordinator.goBack() })
             }
         }
         // Grid, session, report: a short crossfade, not a hard swap. These
@@ -272,9 +268,26 @@ struct RecordingsView: View {
             load(newSelection)
             review.selectedRecording = newSelection?.url
         }
-        .onChange(of: coordinator.mainPage) { old, page in
-            // Leaving the editor by any road ends the editing session.
-            if case .editor = old, !isEditor { editor.closeVideo(); editor.savedExportURL = nil }
+        .onChange(of: coordinator.mainPage, initial: true) { old, page in
+            // A page reached without clicking a card (the tour, a link) must
+            // still own the player: point the selection at its session.
+            switch page {
+            case .detail(let id), .report(let id), .editor(let id):
+                if selectedID != id {
+                    selectedID = id
+                } else if player == nil, selection != nil {
+                    DispatchQueue.main.async { if player == nil { load(selection) } }
+                }
+            default: break
+            }
+            // Leaving Edit by any road ends the editing session; Watch
+            // picks up where the editor's playhead was.
+            if case .editor = old, !isEditor {
+                let at = editor.playhead
+                let wasEdited = editor.hasVideo
+                editor.closeVideo(); editor.savedExportURL = nil
+                if wasEdited, case .detail = page, duration > 0 { scrub(to: min(at, max(duration - 0.2, 0))) }
+            }
             switch page {
             // Back on the grid: nothing is playing there.
             case .sessions: teardownPlayer()
@@ -363,6 +376,17 @@ struct RecordingsView: View {
             },
             cardMenu: { card in cardMenu(card) },
             onOpen: open,
+            onOpenAt: { id, _ in
+                open(id)
+                // Already loaded (same session reopened): nothing will call
+                // load, so take the seek here.
+                DispatchQueue.main.async {
+                    if player != nil, duration > 0,
+                       let at = SessionsPendingSeek.shared.take(for: id) {
+                        scrub(to: min(at, max(duration - 0.2, 0)))
+                    }
+                }
+            },
             onBack: { coordinator.goBack() })
     }
 
@@ -373,7 +397,17 @@ struct RecordingsView: View {
         SessionDetailPage(
             model: inspectorModel(session),
             actions: inspectorActions(session),
-            isActive: !isReport && !isEditor,
+            isActive: !isReport,
+            isEditing: isEditor,
+            onMode: { edit in
+                if edit {
+                    if !isEditor { inspectorActions(session).edit() }
+                } else if isEditor {
+                    // Through the editor's own Back: asks before dropping edits.
+                    editor.backRequests += 1
+                }
+            },
+            onLeaveEdit: { coordinator.goBack() },
             take: Binding(get: { selection?.url },
                           set: { url in selection = session.takes.first { $0.url == url } }),
             aspect: stageAspect,
@@ -382,8 +416,9 @@ struct RecordingsView: View {
             tabs: Tab.allCases.filter(\.isAvailable).map(\.rawValue),
             tab: $tab,
             stage: { stage(for: session) },
-            timeline: { timeline },
-            work: { work(for: session) })
+            timeline: { timeline(for: session) },
+            work: { work(for: session) },
+            editTranscript: { editTranscriptView(for: session) })
         // A different session is a different page: nothing typed in one
         // session's notes field should survive into the next.
         .id(session.id)
@@ -581,7 +616,7 @@ struct RecordingsView: View {
     private func inspectorModel(_ session: Session) -> SessionInspectorModel {
         let take = selection
         var model = SessionInspectorModel(
-            title: session.displayTitle,
+            title: SessionsIndex.shared.title(for: session.id, fallback: session.displayTitle),
             kind: session.source.kind,
             date: session.date,
             duration: take.flatMap { thumbnails.durations[$0.url] }.flatMap { $0 > 0 ? $0 : nil },
@@ -707,8 +742,13 @@ struct RecordingsView: View {
         actions.trash = { if let take { confirmingDelete = take } }
         actions.edit = {
             guard let take else { return }
+            let at = playhead
             coordinator.mainPage = .editor(session.id)
-            Task { await editor.load(url: take.url) }
+            Task {
+                await editor.load(url: take.url)
+                // Edit opens where Watch was.
+                if at > 0.05 { editor.seek(to: at) }
+            }
         }
         return actions
     }
@@ -738,7 +778,7 @@ struct RecordingsView: View {
     }
 
     /// The one timeline under the picture; nothing without a recording.
-    @ViewBuilder private var timeline: some View {
+    @ViewBuilder private func timeline(for session: Session) -> some View {
         if let selection {
             SessionTimeline(duration: duration,
                             playhead: playhead,
@@ -747,6 +787,10 @@ struct RecordingsView: View {
                             marks: marks(for: selection),
                             rate: rate,
                             skipping: skipObserver != nil,
+                            moments: moments(for: session),
+                            onSeekMoment: { moment in
+                                seek(to: moment.kind == .note ? SessionDetailRules.noteSeekTime(moment.at) : moment.at)
+                            },
                             onStopSkipping: stopSkipping,
                             onTogglePlay: togglePlay,
                             onSeek: scrub,
@@ -760,7 +804,7 @@ struct RecordingsView: View {
         case .transcript where Tab.transcript.isAvailable:
             if let folder = session.folder {
                 if FileManager.default.fileExists(atPath: SessionSummary.transcriptURL(in: folder).path) {
-                    SessionTranscriptView(folder: folder)
+                    SessionTranscriptView(folder: folder, onSeek: seek)
                 } else {
                     let state = analyseState(session)
                     SessionTabEmpty(title: "No transcript", symbol: "text.alignleft",
@@ -783,9 +827,44 @@ struct RecordingsView: View {
         }
     }
 
+    /// Edit mode's transcript: the same sentences, each one a way to cut.
+    @ViewBuilder private func editTranscriptView(for session: Session) -> some View {
+        if let folder = session.folder,
+           FileManager.default.fileExists(atPath: SessionSummary.transcriptURL(in: folder).path) {
+            SessionEditTranscript(folder: folder)
+        } else {
+            SessionTabEmpty(title: "No transcript", symbol: "text.alignleft",
+                            message: "Feedback writes one, on this Mac. Then you can click a sentence to cut it.") {
+                switch analyseState(session) {
+                case .ready, .analysed:
+                    Button("Get feedback", action: inspectorActions(session).analyse)
+                default:
+                    EmptyView()
+                }
+            }
+        }
+    }
+
     private func notInFolder(_ what: String) -> some View {
         SessionTabEmpty(title: "No session folder", symbol: "folder.badge.questionmark",
                         message: "These recordings are not in a session folder, so they have no \(what).") {}
+    }
+
+    /// Clips and notes as moments, shared by the Moments list and the lane
+    /// under the timeline.
+    private func moments(for session: Session) -> [SessionMoment] {
+        let clips = selection?.clips ?? []
+        let notesApply = session.folder != nil && review.selected?.folder == session.folder
+            && !review.selectionMismatch
+        let notes = notesApply ? review.notes : []
+        return clips.map { clip in
+            SessionMoment(id: "c-\(clip.id.uuidString)", kind: .clip, at: clip.startSeconds,
+                          label: "Clip \u{00B7} \(clip.durationLabel)",
+                          exported: selection.map { SessionClipExporter.isExported(clip, from: $0.url) } ?? false)
+        } + notes.map { note in
+            SessionMoment(id: "n-\(note.id.uuidString)", kind: .note, at: Double(note.atMs) / 1000,
+                          label: note.text)
+        }
     }
 
     /// Clips and notes as one time-ordered list. Notes are Screenroom's, and
@@ -795,14 +874,7 @@ struct RecordingsView: View {
         let notesApply = session.folder != nil && review.selected?.folder == session.folder
             && !review.selectionMismatch
         let notes = notesApply ? review.notes : []
-        let moments = clips.map { clip in
-            SessionMoment(id: "c-\(clip.id.uuidString)", kind: .clip, at: clip.startSeconds,
-                          label: "Clip \u{00B7} \(clip.durationLabel)",
-                          exported: selection.map { SessionClipExporter.isExported(clip, from: $0.url) } ?? false)
-        } + notes.map { note in
-            SessionMoment(id: "n-\(note.id.uuidString)", kind: .note, at: Double(note.atMs) / 1000,
-                          label: note.text)
-        }
+        let moments = moments(for: session)
         return SessionMomentsList(
             moments: moments,
             exporting: exporting,
@@ -919,6 +991,11 @@ struct RecordingsView: View {
         Task {
             let asset = AVURLAsset(url: recording.url)
             duration = (try? await asset.load(.duration))?.seconds ?? 0
+            // A transcript search result opened this page at a second.
+            if let id = sessions.first(where: { $0.takes.contains(recording) })?.id,
+               let at = SessionsPendingSeek.shared.take(for: id) {
+                scrub(to: min(at, max(duration - 0.2, 0)))
+            }
         }
     }
 

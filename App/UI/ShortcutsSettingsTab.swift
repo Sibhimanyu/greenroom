@@ -3,9 +3,8 @@
 //  Greenroom
 //
 //  Settings -> Shortcuts: which keys do what. A grouped list, one row per
-//  action (icon, name, a line saying what it does, and a recorder on the right).
-//  The rows are the same family as the Sessions list: roomy, 14pt cards,
-//  12pt secondary section labels.
+//  action (icon, name and a recorder on the right; what it does is hover help).
+//  A grouped Form, the same as every other Settings tab.
 //
 //  `ShortcutsPageContent` takes the store and plain values, so it can be drawn
 //  off screen with any state (a row recording, a conflict). `ShortcutsSettingsTab`
@@ -37,58 +36,32 @@ struct ShortcutsPageContent: View {
     private var allSlots: [ShortcutSlot] { ShortcutCatalog.slots(layouts: layouts) }
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 24) {
-                intro
-                ForEach(ShortcutCatalog.grouped(layouts: layouts), id: \.group) { section in
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text(section.group.title.uppercased())
-                            .font(.system(size: 12))
-                            .foregroundStyle(.secondary)
-                            .padding(.horizontal, 10)
-                            .accessibilityAddTraits(.isHeader)
-                        VStack(spacing: 0) {
-                            ForEach(Array(section.slots.enumerated()), id: \.element) { index, slot in
-                                if index > 0 { Divider().padding(.leading, 62) }
-                                ShortcutRow(slot: slot, store: store, layouts: layouts, allSlots: allSlots)
-                            }
-                        }
-                        .background(RoundedRectangle(cornerRadius: 14)
-                            .fill(Color(nsColor: .controlBackgroundColor)))
-                        .overlay(RoundedRectangle(cornerRadius: 14)
-                            .strokeBorder(Color(nsColor: .separatorColor), lineWidth: 1))
+        Form {
+            ForEach(ShortcutCatalog.grouped(layouts: layouts), id: \.group) { section in
+                Section(section.group.title) {
+                    ForEach(section.slots, id: \.self) { slot in
+                        ShortcutRow(slot: slot, store: store, layouts: layouts, allSlots: allSlots)
                     }
                 }
-                footer
             }
-            .padding(24)
+            Section {
+                HStack {
+                    Button("Restore Defaults\u{2026}") { confirmingRestore = true }
+                        .disabled(store.bindings.entries.isEmpty)
+                    Spacer()
+                }
+            } footer: {
+                Text("Click a shortcut, then press the keys. Esc cancels and Delete clears it. These work from any app.")
+            }
         }
+        .formStyle(.grouped)
+        .scrollContentBackground(.hidden)
         .alert("Restore the default shortcuts?", isPresented: $confirmingRestore) {
             Button("Cancel", role: .cancel) {}
             Button("Restore Defaults", role: .destructive) { store.resetAll() }
         } message: {
             Text("Every shortcut goes back to how Greenroom shipped. Layout shortcuts go back to None.")
         }
-    }
-
-    private var intro: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text("These work from any app, so you can run the class without leaving your slides.")
-                .font(.callout)
-            Text("Click a shortcut, then press the keys. Esc cancels and Delete clears it.")
-                .font(.callout)
-                .foregroundStyle(.secondary)
-        }
-        .padding(.horizontal, 10)
-    }
-
-    private var footer: some View {
-        HStack {
-            Button("Restore Defaults\u{2026}") { confirmingRestore = true }
-                .disabled(store.bindings.entries.isEmpty)
-            Spacer()
-        }
-        .padding(.horizontal, 10)
     }
 }
 
@@ -106,25 +79,20 @@ private struct ShortcutRow: View {
     private var differsFromDefault: Bool { store.bindings.isCustomised(slot) }
 
     var body: some View {
-        HStack(alignment: .center, spacing: 14) {
+        HStack(alignment: .center, spacing: 12) {
             Image(systemName: slot.symbol)
                 .font(.system(size: 14, weight: .medium))
                 .foregroundStyle(Brand.text)
-                .frame(width: 32, height: 32)
-                .background(RoundedRectangle(cornerRadius: 8).fill(Brand.green.opacity(0.12)))
+                .frame(width: 28, height: 28)
                 .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: 3) {
                 Text(title)
-                    .font(.callout.weight(.semibold))
                     .lineLimit(1)
                     .truncationMode(.middle)
-                Text(slot.detail)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(2)
                 if let notice { noticeLine(notice) }
             }
+            .help(slot.detail)
 
             Spacer(minLength: 12)
 
@@ -139,9 +107,7 @@ private struct ShortcutRow: View {
                                   titleOf: { $0.title(layouts: layouts) },
                                   pending: notice?.pendingCombo, warns: notice != nil)
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 10)
-        .frame(minHeight: 56)
+        .frame(minHeight: 40)
     }
 
     @ViewBuilder

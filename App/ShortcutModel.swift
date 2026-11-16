@@ -287,7 +287,7 @@ enum ShortcutAction: String, CaseIterable {
         if let view = meetingView { return "Open or close \(view.title)" }
         switch self {
         case .startClass: return "Start class"
-        case .endSession: return "End session"
+        case .endSession: return "End class"
         case .toggleRecording: return "Start or stop recording"
         case .togglePause: return "Pause or resume recording"
         case .toggleDrawing: return "Draw on the screen"
@@ -316,12 +316,12 @@ enum ShortcutAction: String, CaseIterable {
         switch self {
         case .startClass: return "Same as the Start button."
         case .endSession: return "Asks before it ends the class."
-        case .toggleRecording: return "Starts a recording when nothing is live (with the countdown); during a class or a recording it starts or stops the tape."
+        case .toggleRecording: return "Starts a recording when nothing is live (with the countdown); during a class or a recording it starts or stops the recording."
         case .togglePause: return "Pauses the recording file only. The meeting carries on, and the file picks up with no gap."
         case .toggleDrawing: return "Opens the drawing tools over the screen you share, or closes them. Marks show in the meeting and the recording."
-        case .clip1: return "Marks the moment that just happened, one minute back."
-        case .clip2: return "Marks the moment that just happened, two minutes back."
-        case .clip5: return "Marks the moment that just happened, five minutes back."
+        case .clip1: return "Saves a clip of what just happened, the last minute."
+        case .clip2: return "Saves a clip of what just happened, the last 2 minutes."
+        case .clip5: return "Saves a clip of what just happened, the last 5 minutes."
         case .toggleMic: return "Your microphone in the meeting."
         case .toggleCamera: return "Your camera in the meeting."
         case .toggleChat: return "Opens or closes the class chat."

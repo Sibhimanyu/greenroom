@@ -17,24 +17,60 @@ import SwiftUI
 
 // MARK: - Toolbar
 
-/// After Back there is only Edit and a menu. Everything else moved onto the
+/// The Watch / Edit switch in the middle; on the right, Undo, Redo and Save
+/// while editing, or the More menu while watching. Everything else is on the
 /// page: sharing and feedback are the rail's cards, the take switch is in the
-/// header, the work panel is not a thing to toggle any more.
+/// header.
 struct SessionDetailToolbar: ToolbarContent {
     let model: SessionInspectorModel
     let actions: SessionInspectorActions
+    var isEditing = false
+    var onMode: (Bool) -> Void = { _ in }
+    var canUndo = false
+    var canRedo = false
+    var canSave = false
+    var onUndo: () -> Void = {}
+    var onRedo: () -> Void = {}
+    var onSave: () -> Void = {}
+    var onShare: () -> Void = {}
 
     var body: some ToolbarContent {
+        ToolbarItem(placement: .principal) {
+            GreenroomSegmented("Mode",
+                               selection: Binding(get: { isEditing ? "Edit" : "Watch" },
+                                                  set: { onMode($0 == "Edit") }),
+                               options: ["Watch", "Edit"],
+                               toolbar: true) { Text($0) }
+                .help(model.canEdit
+                      ? "Watch plays the recording. Edit adds the tools. Saving makes a new recording and leaves this one untouched."
+                      : "No recording to edit.")
+        }
         ToolbarItemGroup(placement: .primaryAction) {
-            Button(action: actions.edit) {
-                Label("Edit", systemImage: "scissors")
+            if isEditing {
+                Button(action: onUndo) { Label("Undo", systemImage: "arrow.uturn.backward") }
+                    .disabled(!canUndo)
+                    .help("Undo the last edit (\u{2318}Z)")
+                Button(action: onRedo) { Label("Redo", systemImage: "arrow.uturn.forward") }
+                    .disabled(!canRedo)
+                    .help("Redo (\u{21E7}\u{2318}Z)")
+                // Quiet until there is something to save.
+                if canSave {
+                    Button(action: onSave) { Text("Save") }
+                        .buttonStyle(.borderedProminent)
+                        .help("Save the edits as a new recording")
+                } else {
+                    Button(action: onSave) { Text("Save") }
+                        .disabled(true)
+                        .help("Nothing to save yet")
+                }
+            } else {
+                Button(action: onShare) {
+                    Label("Share\u{2026}", systemImage: "square.and.arrow.up")
+                }
+                .labelStyle(.titleAndIcon)
+                .help("Share this class: YouTube, or post the link to the class")
+                moreMenu
             }
-            .labelStyle(.titleAndIcon)
-            .disabled(!model.canEdit)
-            .help(model.canEdit
-                  ? "Opens this recording in the editor. Saving makes a new recording and leaves this one untouched."
-                  : "No recording to edit.")
-            moreMenu
         }
     }
 
@@ -66,12 +102,24 @@ struct SessionDetailToolbar: ToolbarContent {
 
 // MARK: - Page
 
-struct SessionDetailPage<Stage: View, Timeline: View, Work: View>: View {
+/// One page, two modes. The header, the picture and the timeline sit in the
+/// same place in both. Watch puts the rail's cards on the right; Edit adds the
+/// tools between picture and timeline, and "Your edits" in place of the rail.
+struct SessionDetailPage<Stage: View, Timeline: View, Work: View, Transcript: View>: View {
+    @EnvironmentObject private var editor: EditorViewModel
+    @StateObject private var chrome = EditorChrome()
+    @State private var showShare = false
+
     let model: SessionInspectorModel
     var actions = SessionInspectorActions()
     /// False while the report is up over this page: its toolbar and the space
     /// bar then step aside.
     var isActive = true
+    var isEditing = false
+    /// Watch (false) or Edit (true) was picked in the toolbar.
+    var onMode: (Bool) -> Void = { _ in }
+    /// Where Back goes when the editor has no video to close.
+    var onLeaveEdit: () -> Void = {}
     @Binding var take: URL?
     /// The movie's width over its height; 16:9 until the player knows.
     var aspect: CGFloat = 16.0 / 9.0
@@ -82,10 +130,12 @@ struct SessionDetailPage<Stage: View, Timeline: View, Work: View>: View {
     @ViewBuilder let stage: () -> Stage
     @ViewBuilder let timeline: () -> Timeline
     @ViewBuilder let work: () -> Work
+    /// The transcript for Edit mode: click a sentence to cut it.
+    @ViewBuilder let editTranscript: () -> Transcript
 
     private let gutter: CGFloat = 24
     private let headerHeight: CGFloat = 52
-    private let timelineHeight: CGFloat = 40
+    private let toolsHeight: CGFloat = 36
     private let gap: CGFloat = 16
 
     var body: some View {
@@ -97,10 +147,26 @@ struct SessionDetailPage<Stage: View, Timeline: View, Work: View>: View {
             }
         }
         .toolbar {
-            if isActive { SessionDetailToolbar(model: model, actions: actions) }
+            if isActive {
+                SessionDetailToolbar(
+                    model: model, actions: actions,
+                    isEditing: isEditing, onMode: onMode,
+                    canUndo: editor.canUndo, canRedo: editor.canRedo,
+                    canSave: !editor.isExporting && editor.hasVideo && editor.hasUnsavedEdits,
+                    onUndo: { editor.undo() }, onRedo: { editor.redo() },
+                    onSave: { editor.showExportOptions = true },
+                    onShare: { showShare.toggle() })
+            }
         }
-        .background(SpaceBarPlayback(active: isActive && hasVideo, onToggle: onTogglePlay))
-        .onDeleteCommand(perform: actions.trash)
+        // Space belongs to the editor's own key monitor while editing.
+        .background(SpaceBarPlayback(active: isActive && hasVideo && !isEditing, onToggle: onTogglePlay))
+        .popover(isPresented: $showShare, arrowEdge: .top) {
+            SessionShareCard(model: model, actions: actions)
+                .padding(16)
+                .frame(width: 300)
+        }
+        .modifier(EditingSupport(isEditing: isEditing, chrome: chrome, onBack: onLeaveEdit))
+        .onDeleteCommand { if !isEditing { actions.trash() } }
     }
 
     // MARK: Layouts
@@ -109,9 +175,9 @@ struct SessionDetailPage<Stage: View, Timeline: View, Work: View>: View {
         let column = size.width - SessionDetailRules.railWidth - gutter * 3
         let height = size.height - 20 - gutter
         return HStack(alignment: .top, spacing: gutter) {
-            watchColumn(available: CGSize(width: column, height: height))
+            mainColumn(available: CGSize(width: column, height: height))
                 .frame(width: max(0, column), height: max(0, height), alignment: .topLeading)
-            rail(fillsHeight: true)
+            sidePanel(fillsHeight: true, columnWidth: column)
                 .frame(width: SessionDetailRules.railWidth, height: max(0, height))
         }
         .padding(.horizontal, gutter)
@@ -122,11 +188,11 @@ struct SessionDetailPage<Stage: View, Timeline: View, Work: View>: View {
 
     private func narrow(_ size: CGSize) -> some View {
         let width = size.width - gutter * 2
+        let room = max(isEditing ? 520 : 220, size.height * (isEditing ? 0.9 : 0.55))
         return ScrollView {
             VStack(alignment: .leading, spacing: 20) {
-                watchColumn(available: CGSize(width: width, height: max(220, size.height * 0.55)
-                                              + headerHeight + timelineHeight + gap * 2))
-                rail(fillsHeight: false)
+                mainColumn(available: CGSize(width: width, height: room + headerHeight + gap * 2))
+                sidePanel(fillsHeight: false, columnWidth: width)
             }
             .padding(.horizontal, gutter)
             .padding(.top, 20)
@@ -135,36 +201,55 @@ struct SessionDetailPage<Stage: View, Timeline: View, Work: View>: View {
         }
     }
 
-    /// Header, picture, timeline. The picture is sized here from the shape of
-    /// the movie, so its frame is the picture and nothing else.
-    private func watchColumn(available: CGSize) -> some View {
+    private var editAspect: CGFloat {
+        editor.hasVideo ? SessionDetailRules.aspect(of: editor.displayVideoSize) : 16.0 / 9.0
+    }
+
+    /// The bar's block under the picture. Edit needs all of it (play row,
+    /// filmstrip, lanes); Watch uses the top of it. The picture is sized
+    /// against this in both modes, so it never moves or changes size.
+    private var barBlockHeight: CGFloat { 210 }
+
+    /// Header, picture, then the play row and the timeline right under it.
+    private func mainColumn(available: CGSize) -> some View {
         let room = CGSize(width: available.width,
-                          height: available.height - headerHeight - timelineHeight - gap * 2)
-        let fitted = SessionDetailRules.fit(aspect: hasVideo ? aspect : 16.0 / 9.0, in: room)
+                          height: max(120, available.height - headerHeight - gap * 2 - barBlockHeight))
+        // The shape comes from the recording itself in both modes (the editor
+        // and the watch player read the same file), so the picture is the same.
+        let shape = hasVideo ? aspect : (editor.hasVideo ? editAspect : 16.0 / 9.0)
+        let fitted = SessionDetailRules.fit(aspect: shape, in: room)
         return VStack(alignment: .leading, spacing: gap) {
             header
                 .frame(height: headerHeight, alignment: .topLeading)
             picture(fitted)
-            timeline()
-                .frame(width: max(fitted.width, min(available.width, 400)), height: timelineHeight,
-                       alignment: .topLeading)
+            Group {
+                if isEditing {
+                    EditTimelineBlock()
+                } else {
+                    timeline()
+                        .frame(maxHeight: .infinity, alignment: .topLeading)
+                }
+            }
+            .frame(width: fitted.width, height: barBlockHeight, alignment: .topLeading)
         }
     }
 
-    private func picture(_ size: CGSize) -> some View {
-        stage()
-            .frame(width: size.width, height: size.height)
-            .background(hasVideo ? Color.black : Color.primary.opacity(0.06))
-            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-            .overlay {
-                if hasVideo {
-                    Color.clear
-                        .contentShape(Rectangle())
-                        .onTapGesture(perform: onTogglePlay)
-                }
+    @ViewBuilder private func picture(_ size: CGSize) -> some View {
+        Group {
+            if isEditing { EditStage() } else { stage() }
+        }
+        .frame(width: size.width, height: size.height)
+        .background(hasVideo || isEditing ? Color.black : Color.primary.opacity(0.06))
+        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .overlay {
+            if hasVideo, !isEditing {
+                Color.clear
+                    .contentShape(Rectangle())
+                    .onTapGesture(perform: onTogglePlay)
             }
-            .accessibilityElement(children: .contain)
-            .accessibilityLabel("Recording")
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Recording")
     }
 
     // MARK: Header
@@ -182,7 +267,7 @@ struct SessionDetailPage<Stage: View, Timeline: View, Work: View>: View {
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
                 Spacer(minLength: 0)
-                if model.takes.count > 1 { takeSwitch }
+                if model.takes.count > 1, !isEditing { takeSwitch }
             }
         }
     }
@@ -199,12 +284,23 @@ struct SessionDetailPage<Stage: View, Timeline: View, Work: View>: View {
         .help("This session holds more than one recording or clip. Pick which one plays.")
     }
 
-    // MARK: Rail
+    // MARK: Right side
+
+    @ViewBuilder private func sidePanel(fillsHeight: Bool, columnWidth: CGFloat) -> some View {
+        if isEditing {
+            EditSidePanel(transcriptHere: true, transcript: editTranscript)
+                .frame(maxWidth: .infinity, maxHeight: fillsHeight ? .infinity : nil, alignment: .top)
+                .frame(height: fillsHeight ? nil : 520)
+                .background(RailCardStyle.shape.fill(RailCardStyle.fill))
+                .clipShape(RailCardStyle.shape)
+        } else {
+            rail(fillsHeight: fillsHeight)
+        }
+    }
 
     private func rail(fillsHeight: Bool) -> some View {
         VStack(spacing: 16) {
-            RailCard(caption: "Share with the class") { SessionShareCard(model: model, actions: actions) }
-            RailCard(caption: "How it went") { SessionFeedbackCard(model: model, actions: actions) }
+            SessionFeedbackLine(model: model, actions: actions)
             momentsCard
                 .frame(maxHeight: fillsHeight ? .infinity : nil)
                 .frame(height: fillsHeight ? nil : 380)
@@ -216,6 +312,7 @@ struct SessionDetailPage<Stage: View, Timeline: View, Work: View>: View {
             if tabs.count > 1 {
                 GreenroomSegmented("Work", selection: $tab, options: tabs) { Text($0) }
                     .controlSize(.small)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
             work()
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
@@ -223,6 +320,21 @@ struct SessionDetailPage<Stage: View, Timeline: View, Work: View>: View {
         .padding(16)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(RailCardStyle.shape.fill(RailCardStyle.fill))
+    }
+}
+
+/// Dialogs, sheets and the editor's keys, mounted only while editing.
+private struct EditingSupport: ViewModifier {
+    let isEditing: Bool
+    @ObservedObject var chrome: EditorChrome
+    var onBack: () -> Void
+
+    func body(content: Content) -> some View {
+        if isEditing {
+            content.editorSupport(chrome: chrome, onBack: onBack)
+        } else {
+            content
+        }
     }
 }
 
@@ -505,5 +617,57 @@ struct SessionTabEmpty<Actions: View>: View {
         .padding(.horizontal, 16)
         .padding(.top, 24)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+    }
+}
+
+/// How it went as one line: what state it is in, and the one action for it.
+struct SessionFeedbackLine: View {
+    let model: SessionInspectorModel
+    let actions: SessionInspectorActions
+
+    var body: some View {
+        HStack(spacing: 10) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("How it went").font(.system(size: 13, weight: .semibold))
+                Text(subtitle)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+            }
+            Spacer(minLength: 8)
+            action
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RailCardStyle.shape.fill(RailCardStyle.fill))
+    }
+
+    private var subtitle: String {
+        switch model.analyse {
+        case .unavailable(let why): return why
+        case .ready(_, let leavesMac): return leavesMac ? "Not asked for yet. Leaves this Mac." : "Not asked for yet"
+        case .running(let step, _, _): return step
+        case .busy: return "Another session is being analysed."
+        case .analysed(let engine, _, _): return model.summary ?? "Analysed \u{00B7} \(engine)"
+        }
+    }
+
+    @ViewBuilder private var action: some View {
+        switch model.analyse {
+        case .ready:
+            Button("Get feedback", action: actions.analyse).controlSize(.small)
+        case .running:
+            Button("Stop", role: .destructive, action: actions.stopAnalysis).controlSize(.small)
+        case .analysed:
+            Button(action: actions.openReport) {
+                Text("Open").foregroundStyle(Brand.text)
+            }
+            .buttonStyle(.plain)
+            .font(.callout.weight(.medium))
+        default:
+            EmptyView()
+        }
     }
 }

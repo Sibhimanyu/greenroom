@@ -97,6 +97,43 @@ enum SessionDetailRules {
         pageActive && !textInputFocused && !controlFocused && !hasModifiers && !sheetUp
     }
 
+    // MARK: Watch / Edit
+
+    /// The transcript sits beside the picture in Edit when the picture's
+    /// column is at least this wide; narrower, it moves into the side panel.
+    static let besideMinColumn: CGFloat = 640
+    static let besideWidth: CGFloat = 250
+
+    static func transcriptBeside(columnWidth: CGFloat) -> Bool { columnWidth >= besideMinColumn }
+
+    /// A transcript stamp, "0:04:12" or "4:12", in seconds.
+    static func stampSeconds(_ stamp: String) -> Double? {
+        let parts = stamp.trimmingCharacters(in: .whitespaces).split(separator: ":").map { Double($0) }
+        guard !parts.isEmpty, parts.count <= 3, !parts.contains(where: { $0 == nil }) else { return nil }
+        return parts.compactMap { $0 }.reduce(0) { $0 * 60 + $1 }
+    }
+
+    /// The stretch a transcript line covers: from its own stamp to the next
+    /// line's, never longer than `maxSpan` (a long silence after a sentence is
+    /// not the sentence) and never past the end of the recording. Nil when it
+    /// would be shorter than the editor's smallest cut.
+    static func transcriptSpan(starts: [Double], from first: Int, to last: Int? = nil,
+                               duration: Double, maxSpan: Double = 25) -> ClosedRange<Double>? {
+        let last = last ?? first
+        guard starts.indices.contains(first), starts.indices.contains(last) else { return nil }
+        let lo = min(first, last), hi = max(first, last)
+        let start = starts[lo]
+        let nextStart = hi + 1 < starts.count ? starts[hi + 1] : duration
+        let end = min(nextStart, starts[hi] + maxSpan, duration)
+        guard end - start >= 0.15 else { return nil }
+        return start...end
+    }
+
+    /// The index of the line being spoken at `time`.
+    static func currentLine(starts: [Double], at time: Double) -> Int? {
+        starts.lastIndex { $0 <= time + 0.05 }
+    }
+
     /// The first upload asks once; after that it just goes.
     static let uploadConfirmedKey = "youtubeUploadConfirmed"
 }

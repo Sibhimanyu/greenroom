@@ -56,7 +56,7 @@ struct YouTubePageContent: View {
 
     var body: some View {
         Form {
-            Section("Upload to") { SharedChannelRow() }
+            Section("Upload to") { SharedChannelRow(ownChannelConnected: connected) }
 
             Section("Recordings") {
                 UploadFlowPicture(mode: uploadMode, connected: connected, uploading: uploading)
@@ -65,7 +65,7 @@ struct YouTubePageContent: View {
                 Collapsible(hidden: uploadMode == .off) { visibilityChoices }
             }
 
-            Section("Account") {
+            Section("Your own channel") {
                 TextField("Client ID", text: $clientID)
                     .help(Self.clientHelp)
                 SecureField("Client Secret", text: $clientSecret)
@@ -107,6 +107,7 @@ struct YouTubePageContent: View {
                 if uploading { ProgressView().controlSize(.small) }
                 if connected {
                     Button("Disconnect") { Task { await disconnect() } }
+                        .foregroundStyle(Brand.text)
                 } else {
                     Button(connecting ? "Waiting\u{2026}" : "Connect\u{2026}") {
                         connecting = true
@@ -264,7 +265,7 @@ private struct ModePicker: View {
 
     private func symbol(_ mode: YouTubeUploadMode) -> String {
         switch mode {
-        case .off: return "internaldrive"
+        case .off: return "hand.raised"
         case .ask: return "questionmark.bubble"
         case .automatic: return "arrow.up.circle"
         }
@@ -299,7 +300,7 @@ private struct VisibilityPicker: View {
                 ChoiceTile(title: option.title, selected: selected, badge: nil) {
                     Image(systemName: option.symbol)
                         .font(.system(size: 22, weight: .regular))
-                        .foregroundStyle(selected ? Brand.green : Color.secondary)
+                        .foregroundStyle(selected ? Brand.text : Color.secondary)
                         .frame(height: 32)
                 } action: { selection = option.tag }
                 .help(option.help)
@@ -313,17 +314,26 @@ private struct VisibilityPicker: View {
 
 private struct SharedChannelRow: View {
     @ObservedObject private var account = AccountStore.shared
+    /// The Google sign-in below. Only used to say where uploads go.
+    let ownChannelConnected: Bool
 
     var body: some View {
+        // One status, one action: where uploads go right now. The Thriveni
+        // sign-in wins when present; otherwise the channel connected below;
+        // otherwise nothing, and the one action is to sign in.
         if account.has(.youtubeUpload) {
             StatusBadge(text: "Zoho Schools channel (through your Thriveni account)", tone: .good)
+        } else if ownChannelConnected {
+            StatusBadge(text: "Your own YouTube channel", tone: .good)
         } else {
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Sign in with a Thriveni account that has YouTube access to upload to the Zoho Schools channel")
-                    .foregroundStyle(.secondary)
+            HStack {
+                StatusBadge(text: "Not set up", tone: .waiting)
+                Spacer()
                 Button("Open Account") {
                     NotificationCenter.default.post(name: .showSettingsTab, object: "account")
                 }
+                .foregroundStyle(Brand.text)
+                .help("Sign in with a Thriveni account that has YouTube access to upload to the Zoho Schools channel, or connect your own channel below.")
             }
         }
     }

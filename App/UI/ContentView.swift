@@ -110,7 +110,7 @@ struct ContentView: View {
         case .sessions: return "Sessions"
         case .detail: return ""   // the watch page names itself in its header
         case .report: return "Report"
-        case .editor: return "Edit"
+        case .editor: return ""   // the page names itself, and the switch says Edit
         }
     }
 

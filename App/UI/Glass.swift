@@ -8,6 +8,15 @@
 import SwiftUI
 import AppKit
 
+/// Re-creates glass when the appearance flips. `glassEffect` samples its
+/// light/dark variant once, so without this a control drawn before the switch
+/// keeps the old look (white labels on light glass in a dark window) until
+/// something else redraws it.
+private struct GlassAppearanceID: ViewModifier {
+    @Environment(\.colorScheme) private var scheme
+    func body(content: Content) -> some View { content.id(scheme) }
+}
+
 extension View {
     /// Floating control surface. `interactive` lets the glass react to
     /// touch/pointer (use it for tappable pills, not for read-only cards).
@@ -15,7 +24,7 @@ extension View {
     func greenroomGlass<S: InsettableShape>(in shape: S, interactive: Bool = false) -> some View {
         if #available(macOS 26, *) {
             let glass: Glass = interactive ? .regular.interactive() : .regular
-            self.glassEffect(glass, in: shape)
+            self.glassEffect(glass, in: shape).modifier(GlassAppearanceID())
         } else {
             self
                 .background(.regularMaterial, in: shape)
@@ -31,7 +40,8 @@ extension View {
     @ViewBuilder
     func greenroomGlassButton(prominent: Bool = false) -> some View {
         if #available(macOS 26, *) {
-            if prominent { self.buttonStyle(.glassProminent) } else { self.buttonStyle(.glass) }
+            if prominent { self.buttonStyle(.glassProminent).modifier(GlassAppearanceID()) }
+            else { self.buttonStyle(.glass).modifier(GlassAppearanceID()) }
         } else {
             if prominent { self.buttonStyle(.borderedProminent) } else { self.buttonStyle(.bordered) }
         }

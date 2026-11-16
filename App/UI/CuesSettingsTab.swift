@@ -458,7 +458,7 @@ private struct CuesPicture: View {
             VStack(alignment: .leading, spacing: 8) {
                 HStack(spacing: 8) {
                     Image(systemName: "mic.fill")
-                        .foregroundStyle(on ? Brand.green : Color.secondary)
+                        .foregroundStyle(on ? Brand.text : Color.secondary)
                     Waveform(on: on)
                 }
                 Text("\u{201C}\u{2026}as Kahneman puts it in Thinking, Fast and Slow\u{2026}\u{201D}")
@@ -594,7 +594,7 @@ private struct EngineGlyph: View {
     var body: some View {
         Image(systemName: symbol)
             .font(.system(size: 22, weight: .regular))
-            .foregroundStyle(selected ? Brand.green : Color.secondary)
+            .foregroundStyle(selected ? Brand.text : Color.secondary)
             .frame(height: 32)
     }
 }

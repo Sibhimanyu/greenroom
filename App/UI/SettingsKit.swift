@@ -127,29 +127,31 @@ struct ChoiceTile<Picture: View>: View {
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 8) {
+            // Picture above, name below: every name gets the tile's full
+            // width, and the chosen check in the top-right corner sits above
+            // the name instead of on it.
+            VStack(spacing: 6) {
                 picture()
                     .fixedSize()
                     .accessibilityHidden(true)
-                Text(title)
-                    .font(.callout.weight(selected ? .semibold : .regular))
-                    .foregroundStyle(.primary)
-                    .lineLimit(1)
-                    .layoutPriority(1)
-                    .padding(.trailing, badge == nil ? 0 : 8)
-            }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 8)
-            .frame(minHeight: 40)
-            .frame(maxWidth: .infinity)
-            .overlay(alignment: .bottomTrailing) {
-                if let badge {
-                    Image(systemName: badge)
-                        .font(.caption2.weight(.semibold))
-                        .foregroundStyle(selected ? Brand.green : Color.secondary)
-                        .padding(5)
+                HStack(spacing: 3) {
+                    if let badge {
+                        Image(systemName: badge)
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(selected ? Brand.text : Color.secondary)
+                            .accessibilityHidden(true)
+                    }
+                    Text(title)
+                        .font(.callout.weight(selected ? .semibold : .regular))
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.85)
                 }
             }
+            .padding(.horizontal, 8)
+            .padding(.top, 12)
+            .padding(.bottom, 8)
+            .frame(maxWidth: .infinity)
         }
         .greenroomTile(role: .choice(selected: selected))
         .accessibilityLabel(title)
@@ -206,7 +208,7 @@ struct StatusBadge: View {
 
     private var color: Color {
         switch tone {
-        case .good: return Brand.green
+        case .good: return Brand.text
         case .waiting: return .secondary
         case .problem: return .orange
         }

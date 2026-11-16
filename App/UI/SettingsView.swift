@@ -36,6 +36,19 @@ struct SettingsView: View {
         .accessibilityHidden(true)
     }
 
+    /// The window fits the tab: short pages (Transfer, Cues) no longer sit in a
+    /// window three times taller than they are. The long ones scroll past 730.
+    private static func height(for tab: String) -> CGFloat {
+        switch tab {
+        case "transfer": return 420
+        case "cues": return 480
+        case "account": return 560
+        case "zoom": return 600
+        case "youtube": return 640
+        default: return 730
+        }
+    }
+
     @EnvironmentObject private var coordinator: CoordinatorController
     /// Only Webcam is ever chosen from outside; the other tags are there so
     /// the TabView can track which tab is showing.
@@ -60,7 +73,7 @@ struct SettingsView: View {
                 .tag("shortcuts")
 
             ZoomSettingsTab()
-                .tabItem { Label("Zoom", systemImage: "video.fill") }
+                .tabItem { Label("Zoom", systemImage: "video.bubble") }
                 .tag("zoom")
 
             YouTubeSettingsTab()
@@ -75,7 +88,8 @@ struct SettingsView: View {
                 .tabItem { Label("Transfer", systemImage: "square.and.arrow.up.on.square") }
                 .tag("transfer")
         }
-        .frame(width: 760, height: 730)
+        .frame(width: 760, height: Self.height(for: tab))
+        .animation(.snappy(duration: 0.25), value: tab)
         // ⌘1...⌘8 pick a tab, as in every macOS Settings window. The buttons
         // live in this view, so the shortcuts exist only while Settings is key.
         .background(tabShortcuts)

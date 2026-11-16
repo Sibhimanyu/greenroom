@@ -1,52 +1,68 @@
 // Ported from Recorditor (ZRecorditor @7210322, native/MacRecorder/Editor/EditorView.swift).
+//
+// Reworked: the editor is not a page of its own any more. It is the Edit mode
+// of a session's page (SessionDetailContent.swift), so this file holds the
+// editor's PARTS and the page lays them out around the picture and timeline
+// that Watch mode shares:
+//
+//   EditStage          the picture: the editor's player, crop, blur, text and
+//                      arrow overlays, the status toast and the saving card
+//   EditToolRow        the tools under the picture (Cut, Trim, Blur, ...)
+//   EditTimelineBlock  the transport row and the opened-up timeline
+//   EditSidePanel      "Your edits" (and the transcript when it has no room
+//                      beside the picture)
+//   EditorSupport      what hangs off the whole page while editing: the Save
+//                      sheet, the discard question, the saved card, the keys
 import AppKit
 import SwiftUI
 
-struct EditorView: View {
+/// State the edit parts share, kept out of the views so the page can build
+/// them in different places.
+@MainActor
+final class EditorChrome: ObservableObject {
+    @Published var showDiscardConfirm = false
+    @Published var savedPlaybackURL: URL?
+    let keyMonitor = EditorKeyMonitor()
+}
+
+/// Everything that belongs to the page while it is in Edit mode but is not a
+/// region of it. Applied once, to the page, only while editing.
+struct EditorSupport: ViewModifier {
     @EnvironmentObject private var vm: EditorViewModel
-    /// Where Back goes from the empty start page (a loaded video closes
-    /// itself, and the page follows).
+    @ObservedObject var chrome: EditorChrome
+    /// Where Back goes when no video is loaded (a loaded one closes itself,
+    /// and the page follows).
     var onBack: () -> Void = {}
 
-    @State private var showDiscardConfirm = false
-    @State private var showMergeSource = false
-    @State private var showSpeed = false
-    @State private var showAudioOptions = false
-    @State private var showInspector = true
-    @State private var savedPlaybackURL: URL?
-    @State private var keyMonitor = EditorKeyMonitor()
-    @StateObject private var library = EditorRecordingLibrary()
-
-    var body: some View {
-        ZStack {
-            if !vm.hasVideo {
-                emptyState
-            } else {
-                editor
+    func body(content: Content) -> some View {
+        content
+            .overlay {
+                if let saved = vm.savedExportURL {
+                    EditorSavedPopup(url: saved, chrome: chrome)
+                }
             }
-            if let saved = vm.savedExportURL {
-                savedPopup(saved)
+            .sheet(isPresented: $vm.showExportOptions) {
+                ExportOptionsSheet()
+                    .environmentObject(vm)
             }
-        }
-        .sheet(isPresented: Binding(get: { savedPlaybackURL != nil },
-                                    set: { if !$0 { savedPlaybackURL = nil } })) {
-            if let url = savedPlaybackURL {
-                EditorPlaybackSheet(url: url, title: url.lastPathComponent)
+            .sheet(isPresented: Binding(get: { chrome.savedPlaybackURL != nil },
+                                        set: { if !$0 { chrome.savedPlaybackURL = nil } })) {
+                if let url = chrome.savedPlaybackURL {
+                    EditorPlaybackSheet(url: url, title: url.lastPathComponent)
+                }
             }
-        }
-        .confirmationDialog("Discard your edits?", isPresented: $showDiscardConfirm) {
-            Button("Keep Editing", role: .cancel) {}
-            Button("Discard", role: .destructive) { vm.closeVideo() }
-            Button("Save\u{2026}") { vm.showExportOptions = true }
-        } message: {
-            Text("Your trims, removed stretches, effects and extra clips will be lost unless you save them first.")
-        }
-        // Back (the page's button, \u{2318}[ or Esc) arrives here as a request.
-        .onChange(of: vm.backRequests) { _, _ in handleBack() }
-        .onAppear {
-            keyMonitor.install(vm: vm)
-        }
-        .onDisappear { keyMonitor.remove() }
+            .confirmationDialog("Discard your edits?", isPresented: $chrome.showDiscardConfirm) {
+                Button("Keep Editing", role: .cancel) {}
+                Button("Discard", role: .destructive) { vm.closeVideo() }
+                Button("Save\u{2026}") { vm.showExportOptions = true }
+            } message: {
+                Text("Your trims, removed stretches, effects and extra clips will be lost unless you save them first.")
+            }
+            // Back (the page's button, \u{2318}[, Esc, or the Watch switch)
+            // arrives here as a request.
+            .onChange(of: vm.backRequests) { _, _ in handleBack() }
+            .onAppear { chrome.keyMonitor.install(vm: vm) }
+            .onDisappear { chrome.keyMonitor.remove() }
     }
 
     private func handleBack() {
@@ -54,17 +70,29 @@ struct EditorView: View {
         if !vm.hasVideo {
             onBack()
         } else if vm.hasUnsavedEdits {
-            showDiscardConfirm = true
+            chrome.showDiscardConfirm = true
         } else {
             vm.closeVideo()
         }
     }
+}
 
-    /// Post-save popup over the editor's start page: the session is closed,
-    /// the file is in Recordings, one click re-opens it for further edits.
-    private func savedPopup(_ url: URL) -> some View {
+extension View {
+    func editorSupport(chrome: EditorChrome, onBack: @escaping () -> Void) -> some View {
+        modifier(EditorSupport(chrome: chrome, onBack: onBack))
+    }
+}
+
+/// Post-save card over the page: the edit is its own new recording in the
+/// library, one click re-opens it for further edits.
+struct EditorSavedPopup: View {
+    @EnvironmentObject private var vm: EditorViewModel
+    let url: URL
+    @ObservedObject var chrome: EditorChrome
+
+    var body: some View {
         ZStack {
-            Color.black.opacity(0.5).ignoresSafeArea()
+            Color.black.opacity(0.5)
                 .onTapGesture { vm.savedExportURL = nil }
             VStack(spacing: 16) {
                 ZStack {
@@ -81,7 +109,7 @@ struct EditorView: View {
                     .foregroundStyle(.secondary)
                 HStack(spacing: 10) {
                     Button {
-                        savedPlaybackURL = url
+                        chrome.savedPlaybackURL = url
                     } label: {
                         Label("Play", systemImage: "play.fill")
                     }
@@ -117,329 +145,177 @@ struct EditorView: View {
         }
         .transition(.opacity)
     }
+}
 
-    private var emptyState: some View {
-        VStack(spacing: 16) {
+// MARK: - The picture
+
+/// The editor's picture. It fills whatever frame the page gives it; the page
+/// owns the size, the clip and the background.
+struct EditStage: View {
+    @EnvironmentObject private var vm: EditorViewModel
+
+    var body: some View {
+        GeometryReader { geo in
             ZStack {
-                Circle()
-                    .fill(EditorTheme.accent.opacity(0.12))
-                    .frame(width: 92, height: 92)
-                Image(systemName: "film.stack")
-                    .font(.system(size: 40))
-                    .foregroundStyle(EditorTheme.accent)
+                if vm.hasVideo {
+                    PlayerContainerView(player: vm.player)
+                    if vm.isCropping {
+                        CropOverlayView(containerSize: geo.size)
+                    }
+                    AnnotationPreviewOverlay(containerSize: geo.size)
+                    if abs(vm.activePreviewRate - 1) > 0.01 {
+                        VStack {
+                            HStack {
+                                Spacer()
+                                Label(String(format: "%g\u{00D7}", vm.activePreviewRate),
+                                      systemImage: vm.activePreviewRate < 1 ? "tortoise.fill" : "hare.fill")
+                                    .font(.callout.bold())
+                                    .foregroundStyle(.white)
+                                    .padding(.horizontal, 10)
+                                    .padding(.vertical, 5)
+                                    .background(Color.black.opacity(0.65), in: Capsule())
+                                    .padding(10)
+                            }
+                            Spacer()
+                        }
+                        .allowsHitTesting(false)
+                    }
+                    if vm.pendingAnnotationKind != nil {
+                        AnnotationPlacementOverlay(containerSize: geo.size)
+                    }
+                } else {
+                    ProgressView().controlSize(.small)
+                }
             }
-            Text("Load a video to start editing")
-                .font(.title3.weight(.semibold))
-            Text("Trim, remove stretches, blur, crop and join videos, then save a new recording.")
-                .font(.callout)
-                .foregroundStyle(.secondary)
-            Button("Load Video…") {
-                vm.openVideoPanel()
+            .frame(width: geo.size.width, height: geo.size.height)
+            // Status toast floats over the picture: messages at the bottom of
+            // a scrolling panel went unseen.
+            .overlay(alignment: .top) { messageToast }
+            // Saving takes a while (two encode passes with effects): make the
+            // progress impossible to miss.
+            .overlay {
+                if vm.isExporting {
+                    ZStack {
+                        Color.black.opacity(0.55)
+                        VStack(spacing: 14) {
+                            ProgressView(value: vm.exportProgress)
+                                .progressViewStyle(.circular)
+                                .controlSize(.large)
+                            Text("Saving\u{2026} \(Int(vm.exportProgress * 100))%")
+                                .font(.title3.weight(.semibold))
+                            Text("Your edits are being put into the video.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            Button("Cancel") { vm.cancelExport() }
+                        }
+                        .padding(28)
+                        .greenroomGlass(in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    }
+                    .transition(.opacity)
+                }
             }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.large)
-            if let message = vm.errorMessage {
-                Text(message).foregroundStyle(EditorTheme.danger)
-            }
+        }
+    }
 
-            // Recent recordings from the Library — one click to start editing.
-            if !library.items.isEmpty {
-                VStack(alignment: .leading, spacing: 12) {
-                    Text("Or pick a recording")
-                        .font(.headline)
+    @ViewBuilder
+    private var messageToast: some View {
+        if let message = vm.errorMessage ?? vm.exportMessage {
+            let isError = vm.errorMessage != nil
+            HStack(spacing: 8) {
+                Image(systemName: isError ? "exclamationmark.triangle.fill" : "checkmark.circle.fill")
+                    .foregroundStyle(isError ? EditorTheme.danger : Brand.green)
+                Text(message)
+                    .font(.callout)
+                    .lineLimit(3)
+                Button {
+                    vm.errorMessage = nil
+                    vm.exportMessage = nil
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
                         .foregroundStyle(.secondary)
-                    ScrollView {
-                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 190), spacing: 14)], spacing: 14) {
-                            ForEach(library.items) { item in
-                                libraryPick(item)
-                            }
-                        }
-                        .padding(.bottom, 8)
-                    }
-                    .frame(maxHeight: 480)
                 }
-                .frame(maxWidth: 900)
-                .padding(.top, 16)
+                .buttonStyle(.plain)
             }
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .task {
-            library.refresh()
-        }
-    }
-
-    private func libraryPick(_ item: EditorRecordingLibrary.Item) -> some View {
-        Button {
-            Task { await vm.load(url: item.url) }
-        } label: {
-            VStack(alignment: .leading, spacing: 6) {
-                EditorRecordingThumb(url: item.url)
-                .frame(width: 190, height: 107)
-                .clipShape(RoundedRectangle(cornerRadius: 9))
-                .overlay(alignment: .bottomTrailing) {
-                    EditorRecordingDuration(url: item.url)
-                        .font(.caption2.monospaced().weight(.semibold))
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2)
-                        .background(Capsule().fill(Color.black.opacity(0.65)))
-                        .padding(5)
-                }
-                Text(item.name)
-                    .font(.caption)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-                    .frame(width: 190, alignment: .leading)
-            }
-        }
-        .buttonStyle(.plain)
-        .help("Edit this recording")
-    }
-
-    private var editor: some View {
-        VStack(spacing: 0) {
-            HStack(spacing: 0) {
-                // ---- player + transport (shrinks first; side panel is fixed)
-                VStack(spacing: 8) {
-                    GeometryReader { geo in
-                        ZStack {
-                            PlayerContainerView(player: vm.player)
-                            if vm.isCropping {
-                                CropOverlayView(containerSize: geo.size)
-                            }
-                            AnnotationPreviewOverlay(containerSize: geo.size)
-                            if abs(vm.activePreviewRate - 1) > 0.01 {
-                                VStack {
-                                    HStack {
-                                        Spacer()
-                                        Label(String(format: "%g×", vm.activePreviewRate),
-                                              systemImage: vm.activePreviewRate < 1 ? "tortoise.fill" : "hare.fill")
-                                            .font(.callout.bold())
-                                            .foregroundStyle(.white)
-                                            .padding(.horizontal, 10)
-                                            .padding(.vertical, 5)
-                                            .background(Color.black.opacity(0.65), in: Capsule())
-                                            .padding(10)
-                                    }
-                                    Spacer()
-                                }
-                                .allowsHitTesting(false)
-                            }
-                            if vm.pendingAnnotationKind != nil {
-                                AnnotationPlacementOverlay(containerSize: geo.size)
-                            }
-                        }
-                        .clipShape(RoundedRectangle(cornerRadius: 10))
-                        .overlay(RoundedRectangle(cornerRadius: 10).stroke(EditorTheme.cardStroke, lineWidth: 1))
-                        // Status toast floats over the player — messages at
-                        // the bottom of the scrolling side panel went unseen.
-                        .overlay(alignment: .top) {
-                            messageToast
-                        }
-                        // Saving takes a while (two encode passes with
-                        // effects) — make the progress impossible to miss.
-                        .overlay {
-                            if vm.isExporting {
-                                ZStack {
-                                    Color.black.opacity(0.55)
-                                    VStack(spacing: 14) {
-                                        ProgressView(value: vm.exportProgress)
-                                            .progressViewStyle(.circular)
-                                            .controlSize(.large)
-                                        Text("Saving… \(Int(vm.exportProgress * 100))%")
-                                            .font(.title3.weight(.semibold))
-                                        Text("Your edits are being put into the video.")
-                                            .font(.caption)
-                                            .foregroundStyle(.secondary)
-                                        Button("Cancel") { vm.cancelExport() }
-                                    }
-                                    .padding(28)
-                                    .greenroomGlass(in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-                                }
-                                .transition(.opacity)
-                            }
-                        }
-                    }
-                    transport
-                }
-                .padding(12)
-            }
-
-            Divider()
-            toolsRow
-                .padding(.horizontal, 14)
-                .padding(.vertical, 8)
-            EditorTimelineView()
-                .padding(.horizontal, 14)
-                .padding(.bottom, 10)
-        }
-        .inspector(isPresented: $showInspector) {
-            editsPanel
-                .inspectorColumnWidth(min: 260, ideal: 300, max: 400)
-        }
-        .toolbar { editorToolbar }
-        .sheet(isPresented: $vm.showExportOptions) {
-            ExportOptionsSheet()
-                .environmentObject(vm)
-        }
-    }
-
-    // MARK: window toolbar (Back comes from the page chrome)
-
-    @ToolbarContentBuilder
-    private var editorToolbar: some ToolbarContent {
-        ToolbarItemGroup(placement: .navigation) {
-            Button {
-                vm.undo()
-            } label: {
-                Label("Undo", systemImage: "arrow.uturn.backward")
-            }
-            .disabled(!vm.canUndo)
-            .keyboardShortcut("z", modifiers: [.command])
-            .help("Undo the last edit (⌘Z)")
-
-            Button {
-                vm.redo()
-            } label: {
-                Label("Redo", systemImage: "arrow.uturn.forward")
-            }
-            .disabled(!vm.canRedo)
-            .keyboardShortcut("z", modifiers: [.command, .shift])
-            .help("Redo (⇧⌘Z)")
-        }
-
-        ToolbarItem(placement: .primaryAction) {
-            Button {
-                showInspector.toggle()
-            } label: {
-                Label("Side Panel", systemImage: "sidebar.trailing")
-            }
-            .help("Show or hide the list of your edits")
-        }
-
-        ToolbarItem(placement: .confirmationAction) {
-            Button {
-                vm.showExportOptions = true
-            } label: {
-                Text("Save as New Recording")
-            }
-            .keyboardShortcut("s", modifiers: .command)
-            .greenroomGlassButton(prominent: true)
-            .tint(Brand.green)
-            .disabled(vm.isExporting)
-            .help("Choose the format and quality, then save this as a new recording (⌘S)")
-        }
-    }
-
-    // MARK: transport
-
-    private var transport: some View {
-        HStack(spacing: 14) {
-            Button {
-                vm.step(by: -5)
-            } label: {
-                Image(systemName: "gobackward.5")
-            }
-            .editorRoundControl()
-            .help("Back 5 seconds (←)")
-
-            Button {
-                vm.togglePlay()
-            } label: {
-                Image(systemName: vm.isPlaying ? "pause.fill" : "play.fill")
-                    .font(.title3)
-                    .frame(width: 28)
-            }
-            .editorRoundControl()
-            .help("Play or pause (Space)")
-
-            Button {
-                vm.step(by: 5)
-            } label: {
-                Image(systemName: "goforward.5")
-            }
-            .editorRoundControl()
-            .help("Forward 5 seconds (→)")
-
-            Text("\(TimeFormatting.clockWithTenths(vm.playhead)) / \(TimeFormatting.clock(vm.timelineDuration))")
-                .font(.system(.body, design: .monospaced))
-            if let index = vm.playingMergeIndex {
-                Text("Extra clip \(index + 1)")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(Brand.text)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 3)
-                    .background(Capsule().fill(Brand.green.opacity(0.15)))
-            }
-
-            Toggle("Preview edits", isOn: $vm.previewEdits)
-                .toggleStyle(.checkbox)
-                .help("Skip removed stretches and respect the trim while playing")
-
-            Spacer()
-
-            if vm.isExporting {
-                ProgressView(value: vm.exportProgress)
-                    .frame(width: 140)
-                Text("\(Int(vm.exportProgress * 100))%")
-                    .font(.caption.monospaced())
-                Button("Cancel") {
-                    vm.cancelExport()
-                }
-                .controlSize(.small)
-                .help("Stop saving. No file is made.")
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
+            .greenroomGlass(in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .stroke((isError ? EditorTheme.danger : Brand.green).opacity(0.5), lineWidth: 1))
+            .padding(.top, 10)
+            .frame(maxWidth: 560)
+            .transition(.move(edge: .top).combined(with: .opacity))
+            // Successes fade on their own; errors stay until dismissed.
+            .task(id: message) {
+                guard !isError else { return }
+                try? await Task.sleep(nanoseconds: 5_000_000_000)
+                if vm.exportMessage == message { vm.exportMessage = nil }
             }
         }
     }
+}
 
-    // MARK: tools under the player
+// MARK: - Tools under the picture
 
-    private var toolsRow: some View {
+/// Cut, Trim, Blur, Text, Arrow, Crop, Speed, More: ranked by how often they
+/// are the next thing a teacher wants. Tools act on the picked stretch if
+/// there is one, else at the playhead.
+struct EditToolRow: View {
+    @EnvironmentObject private var vm: EditorViewModel
+    @StateObject private var library = EditorRecordingLibrary()
+    @State private var showMergeSource = false
+    @State private var showSpeed = false
+
+    var body: some View {
+        toolButtons
+            .fixedSize()
+    }
+
+    /// Trim, Cut and Blur up front; Text, Arrow, Crop, Speed, Join and the
+    /// audio under More. (Make clip is a session action, not built here.)
+    private var toolButtons: some View {
         HStack(spacing: 8) {
-            ViewThatFits(in: .horizontal) {
-                toolButtons(spacing: 10)
-                toolButtons(spacing: 6).controlSize(.small)
+            Menu {
+                Button("Start here") { vm.setTrimStartToPlayhead() }
+                Button("End here") { vm.setTrimEndToPlayhead() }
+                if vm.trimIsSet {
+                    Divider()
+                    if vm.trimStart > 0.05 { Button("Reset the start") { vm.resetTrimStart() } }
+                    if vm.trimEnd < vm.duration - 0.05 { Button("Reset the end") { vm.resetTrimEnd() } }
+                }
+            } label: {
+                Label("Trim", systemImage: "arrow.left.and.right.square")
             }
-            Spacer(minLength: 8)
-            Text(vm.selection == nil ? "Tools act at the playhead" : "Tools act on your selection")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-        }
-        .frame(height: 40)
-    }
+            .menuStyle(.button)
+            .fixedSize()
+            .help("Cut the start or the end of the video at the playhead. Or drag the edges of the timeline.")
 
-    private func toolButtons(spacing: CGFloat) -> some View {
-        HStack(spacing: spacing) {
-            toolButton("Blur", icon: "eye.slash", help: "Hide something on screen. Drag over the video after choosing.") {
+            Button {
+                vm.removeSelection()
+            } label: {
+                Label("Cut", systemImage: "scissors")
+            }
+            .fixedSize()
+            .disabled(vm.selection == nil)
+            .help(vm.selection == nil
+                  ? "Drag across the timeline to pick a stretch, then cut it out"
+                  : "Take the picked stretch out of the video (\u{232B})")
+
+            Button {
                 vm.beginAnnotationPlacement(.blur)
-            }
-            toolButton("Text", icon: "textformat", help: "Put a line of text on the video") {
-                vm.beginAnnotationPlacement(.text)
-            }
-            toolButton("Arrow", icon: "arrow.up.right", help: "Point at something. Drag from the tail to the tip.") {
-                vm.beginAnnotationPlacement(.arrow)
-            }
-            Button {
-                vm.isCropping.toggle()
             } label: {
-                Label(vm.isCropping ? "Done Cropping" : "Crop", systemImage: "crop")
+                Label("Blur", systemImage: "eye.slash")
             }
-            .tint(vm.isCropping ? Brand.green : nil)
-            .help("Drag a rectangle over the video to cut away the edges")
-
-            Button {
-                showSpeed.toggle()
-            } label: {
-                Label("Speed", systemImage: "speedometer")
-            }
-            .popover(isPresented: $showSpeed, arrowEdge: .top) {
-                SpeedPopover(isPresented: $showSpeed)
-                    .environmentObject(vm)
-            }
-            .help("Play a stretch faster or slower")
+            .fixedSize()
+            .help("Hide something on screen. Drag over the video after choosing.")
 
             Menu {
-                Button("Merge Videos\u{2026}") { showMergeSource = true }
-                Button(vm.overlayAudioURL == nil ? "Add Audio\u{2026}" : "Change Audio\u{2026}") {
+                Button("Text") { vm.beginAnnotationPlacement(.text) }
+                Button("Arrow") { vm.beginAnnotationPlacement(.arrow) }
+                Button(vm.isCropping ? "Done Cropping" : "Crop") { vm.isCropping.toggle() }
+                Button("Speed\u{2026}") { showSpeed = true }
+                Divider()
+                Button("Join Videos\u{2026}") { showMergeSource = true }
+                Button(vm.overlayAudioURL == nil ? "Background Audio\u{2026}" : "Change Background Audio\u{2026}") {
                     vm.addAudioPanel()
                 }
                 Button("Open Another Video\u{2026}") { vm.openVideoPanel() }
@@ -451,16 +327,14 @@ struct EditorView: View {
             .popover(isPresented: $showMergeSource, arrowEdge: .top) {
                 mergeSourcePopover(isPresented: $showMergeSource)
             }
-            .help("Join more videos, add background audio, or open a different video")
+            .background(
+                Color.clear
+                    .popover(isPresented: $showSpeed, arrowEdge: .top) {
+                        SpeedPopover(isPresented: $showSpeed)
+                            .environmentObject(vm)
+                    })
+            .help("Text, Arrow, Crop, Speed, join videos, background audio")
         }
-    }
-
-    private func toolButton(_ title: String, icon: String, help: String,
-                            action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Label(title, systemImage: icon)
-        }
-        .help(help)
     }
 
     /// Shared "add videos to merge" popover: Browse Files… pinned at the top
@@ -525,40 +399,164 @@ struct EditorView: View {
         // straight from a recording it would still be empty here.
         .task { library.refresh() }
     }
+}
 
-    @ViewBuilder
-    private var messageToast: some View {
-        if let message = vm.errorMessage ?? vm.exportMessage {
-            let isError = vm.errorMessage != nil
-            HStack(spacing: 8) {
-                Image(systemName: isError ? "exclamationmark.triangle.fill" : "checkmark.circle.fill")
-                    .foregroundStyle(isError ? EditorTheme.danger : Brand.green)
-                Text(message)
-                    .font(.callout)
-                    .lineLimit(3)
-                Button {
-                    vm.errorMessage = nil
-                    vm.exportMessage = nil
-                } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .foregroundStyle(.secondary)
-                }
-                .buttonStyle(.plain)
+// MARK: - Transport and timeline
+
+/// Play, the time, and the opened-up timeline: the same place on the page as
+/// Watch mode's one timeline, with room for the filmstrip and the lanes.
+struct EditTimelineBlock: View {
+    @EnvironmentObject private var vm: EditorViewModel
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            transport
+            // Natural height up to the block's frame; past it the lanes
+            // scroll rather than push the picture off the page.
+            ViewThatFits(in: .vertical) {
+                EditorTimelineView()
+                ScrollView(.vertical, showsIndicators: true) { EditorTimelineView() }
             }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 10)
-            .greenroomGlass(in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .stroke((isError ? EditorTheme.danger : Brand.green).opacity(0.5), lineWidth: 1))
-            .padding(.top, 10)
-            .frame(maxWidth: 560)
-            .transition(.move(edge: .top).combined(with: .opacity))
-            // Successes fade on their own; errors stay until dismissed.
-            .task(id: message) {
-                guard !isError else { return }
-                try? await Task.sleep(nanoseconds: 5_000_000_000)
-                if vm.exportMessage == message { vm.exportMessage = nil }
+        }
+    }
+
+    private var hint: String {
+        guard let selection = vm.selection else { return "Drag across the timeline to pick a stretch" }
+        return "Picked \(SessionDetailRules.clock(selection.lowerBound)) to \(SessionDetailRules.clock(selection.upperBound))"
+    }
+
+    private var transport: some View {
+        HStack(spacing: 12) {
+            Button {
+                vm.togglePlay()
+            } label: {
+                Image(systemName: vm.isPlaying ? "pause.fill" : "play.fill")
+                    .font(.system(size: 13, weight: .semibold))
+                    .frame(width: 28, height: 28)
+                    .background(Circle().fill(Color.primary.opacity(0.08)))
+                    .contentShape(Circle())
             }
+            .buttonStyle(.plain)
+            .help(vm.isPlaying ? "Pause (Space)" : "Play (Space)")
+            .accessibilityLabel(vm.isPlaying ? "Pause" : "Play")
+
+            Text(SessionDetailRules.clock(vm.playhead))
+                .font(.system(size: 12, design: .monospaced))
+                .monospacedDigit()
+                .fixedSize()
+            Text("/ \(SessionDetailRules.clock(vm.timelineDuration))")
+                .font(.system(size: 12, design: .monospaced))
+                .monospacedDigit()
+                .foregroundStyle(.secondary)
+                .fixedSize()
+
+            EditToolRow()
+
+            if let index = vm.playingMergeIndex {
+                Text("Extra clip \(index + 1)")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(Brand.text)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(Capsule().fill(Brand.green.opacity(0.15)))
+                    .fixedSize()
+            }
+
+            Spacer(minLength: 0)
+
+            if vm.isExporting {
+                ProgressView(value: vm.exportProgress)
+                    .frame(width: 120)
+                Text("\(Int(vm.exportProgress * 100))%")
+                    .font(.caption.monospaced())
+                Button("Cancel") { vm.cancelExport() }
+                    .controlSize(.small)
+                    .help("Stop saving. No file is made.")
+            } else {
+                Text(hint)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                    .layoutPriority(-1)
+            }
+        }
+        .frame(height: 32)
+    }
+}
+
+// MARK: - Side panel
+
+/// "Your edits", and, when the transcript has no room beside the picture, a
+/// second tab for it.
+struct EditSidePanel<Transcript: View>: View {
+    var transcriptHere: Bool
+    @ViewBuilder let transcript: () -> Transcript
+    @State private var tab = "Edits"
+
+    var body: some View {
+        VStack(spacing: 0) {
+            if transcriptHere {
+                GreenroomSegmented("Side", selection: $tab, options: ["Edits", "Transcript"]) { Text($0) }
+                    .controlSize(.small)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 16)
+                    .padding(.top, 16)
+                    .padding(.bottom, 4)
+            }
+            if transcriptHere, tab == "Transcript" {
+                transcript()
+            } else {
+                EditsPanel()
+            }
+        }
+    }
+}
+
+/// The list of what has been done, each row a way back to it, and the two
+/// lengths: the original, and what Save will make.
+struct EditsPanel: View {
+    @EnvironmentObject private var vm: EditorViewModel
+    @State private var showAudioOptions = false
+    @StateObject private var library = EditorRecordingLibrary()
+
+    var body: some View {
+        VStack(spacing: 0) {
+            Text("YOUR EDITS")
+                .font(.system(size: 11, weight: .semibold))
+                .tracking(0.6)
+                .foregroundStyle(.tertiary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 14)
+                .padding(.top, 14)
+            editsPanel
+            footer
+        }
+    }
+
+    private var footer: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Divider()
+            lengthRow("Original", vm.duration)
+            lengthRow("After edits", vm.editedDuration, strong: true)
+            Text("Save makes a new recording. The original file stays as it is.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(14)
+    }
+
+    private func lengthRow(_ label: String, _ seconds: Double, strong: Bool = false) -> some View {
+        HStack {
+            Text(label)
+                .font(.callout)
+                .foregroundStyle(strong ? Color.primary : Color.secondary)
+            Spacer(minLength: 8)
+            Text(SessionDetailRules.clock(seconds))
+                .font(.system(size: 13, weight: strong ? .semibold : .regular, design: .monospaced))
+                .monospacedDigit()
+                .fixedSize()
         }
     }
 
@@ -771,7 +769,7 @@ struct EditorView: View {
     }
 
     private var infoLine: String {
-        "\(Int(vm.videoSize.width)) × \(Int(vm.videoSize.height)) · \(vm.fileSizeText) · \(TimeFormatting.clock(vm.editedDuration)) edited"
+        "\(Int(vm.videoSize.width)) × \(Int(vm.videoSize.height)) · \(vm.fileSizeText)"
     }
 
     private var emptyEditsHint: some View {
@@ -780,6 +778,7 @@ struct EditorView: View {
                 .font(.headline)
             hintRow("arrow.left.and.right", "Drag the edges of the bar to trim the start or end.")
             hintRow("rectangle.dashed", "Drag across the bar to select a stretch, then remove it, speed it up or blur it.")
+            hintRow("text.quote", "Click a sentence in the transcript to cut it out.")
             hintRow("cursorarrow.click", "Click the bar to jump to that moment.")
         }
         .frame(maxWidth: .infinity, alignment: .leading)

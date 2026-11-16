@@ -275,7 +275,7 @@ struct HomeView: View {
                                 .font(.system(size: 11.5, weight: .medium))
                         }
                         .buttonStyle(.plain)
-                        .foregroundStyle(Brand.green)
+                        .foregroundStyle(Brand.text)
                         .help("Outline where each window goes, on your real screen, for a moment.")
                     }
                 } else {
@@ -521,7 +521,7 @@ struct HomeView: View {
                 .disabled(isLive)
                 .onSubmit(submit)
                 .accessibilityLabel("Name")
-                .help("Names this session's folder in Documents/Greenroom. Leave it empty and the folder is named by date and time, as shown.")
+                .help("Names this session's folder in Documents/Greenroom. Leave it empty and the folder is named Green or Recording, with the date and time.")
         }
     }
 
@@ -580,6 +580,9 @@ struct HomeView: View {
     /// The folder the next Start will create, as the placeholder.
     private var folderPreview: String {
         if let live = coordinator.sessionFolder { return live.lastPathComponent }
+        // Not started yet: ask for a name in words. Left empty, the folder is
+        // still named by date and time (the help says so).
+        if coordinator.className.isEmpty { return "Class name (optional)" }
         return SessionFolders.sessionFolderName(className: coordinator.className, started: Date(),
                                                 fallback: mode == .record ? "Recording" : "Green")
     }
@@ -861,7 +864,7 @@ struct HomeView: View {
             Divider()
             Button("More\u{2026}", action: openWebcamSettings)
         } label: {
-            dockLabel(symbol: "mic", value: Self.shortDeviceName(name), warn: problem("mic"), meter: micMeterLevel)
+            dockLabel(symbol: "mic", value: micCaption(name), warn: problem("mic"), meter: micMeterLevel)
         }
         .dockMenu()
         .dockHint(DockHintContent(
@@ -870,6 +873,15 @@ struct HomeView: View {
             warn: problem("mic"), visual: DockHintVisual.microphone))
         .accessibilityLabel("Microphone")
         .accessibilityValue(name)
+    }
+
+    /// The tile's caption. The same laptop is often the camera and the
+    /// microphone, and two tiles saying "MacBook Pro" tell nobody which is
+    /// which, so the mic says "Mic" when the names would match.
+    private func micCaption(_ name: String) -> String {
+        let short = Self.shortDeviceName(name)
+        let camera = Self.shortDeviceName(LookSummary.cameraText(coordinator, cameras: cameras))
+        return short == camera ? "Mic" : short
     }
 
     private func pickMic(_ uid: String) {
@@ -912,7 +924,8 @@ struct HomeView: View {
                 }
             }
         } label: {
-            dockLabel(symbol: "rectangle.split.2x1", value: coordinator.layoutChoiceName)
+            dockLabel(symbol: "rectangle.split.2x1",
+                      value: coordinator.layoutChoiceName == "None" ? "No layout" : coordinator.layoutChoiceName)
         }
         .dockMenu()
         .disabled(coordinator.layoutChoiceLocked)
@@ -1171,7 +1184,7 @@ struct HomeView: View {
             .help(primaryHelp)
         }
         .foregroundStyle(.white)
-        .background(Capsule().fill(Brand.green.opacity(startDisabled ? 0.4 : 1)))
+        .background(Capsule().fill(Brand.buttonFill.opacity(startDisabled ? 0.4 : 1)))
         .clipShape(Capsule())
         .animation(reduceMotion ? nil : .easeOut(duration: 0.18), value: mode)
         // The column keeps its 44pt slot (the window's height is arithmetic

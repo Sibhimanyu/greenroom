@@ -30,6 +30,12 @@ enum AppLinks {
 enum Brand {
     static let green = Color("AccentColor")
 
+    /// The accent darkened to #4E8C30 for fills that carry a WHITE label
+    /// (Start button, segmented selection): white on `green` measures about
+    /// 2.9, on this about 4.1. Tint and rings keep `green`.
+    static let buttonFill = Color(nsColor: NSColor(srgbRed: 0x4E / 255, green: 0x8C / 255,
+                                                   blue: 0x30 / 255, alpha: 1))
+
     /// Green that is allowed to be TEXT.
     ///
     /// `Brand.green` is the asset-catalog accent, which controls tint and is a

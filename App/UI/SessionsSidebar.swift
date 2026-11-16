@@ -35,15 +35,28 @@ struct SessionsSidebar: View {
     @ObservedObject var model: SessionsSidebarModel
     @EnvironmentObject private var coordinator: CoordinatorController
     @AppStorage("sessionsShow") private var show: SessionsShow = .everything
+    /// The NEEDS YOU choice ("" for none), read by the list (SessionsLayout).
+    @AppStorage("sessionsNeed") private var needRaw = ""
+    @ObservedObject private var index = SessionsIndex.shared
+
+    private enum Item: Hashable { case show(SessionsShow), need(SessionsNeed) }
 
     var body: some View {
-        let query = SessionsQuery(cards: model.snapshot.cards)
-        List(selection: Binding<SessionsShow?>(get: { show }, set: choose)) {
-            Section("Show") {
+        let query = SessionsQuery(cards: index.enrich(model.snapshot.cards))
+        let selected: Item = SessionsNeed(rawValue: needRaw).map(Item.need) ?? .show(show)
+        List(selection: Binding<Item?>(get: { selected }, set: choose)) {
+            Section("Library") {
                 ForEach(SessionsShow.allCases) { option in
                     Label(option.rawValue, systemImage: option.symbol)
                         .badge(query.count(for: option))
-                        .tag(option)
+                        .tag(Item.show(option))
+                }
+            }
+            Section("Needs you") {
+                ForEach(SessionsNeed.allCases) { option in
+                    Label(option.rawValue, systemImage: option.symbol)
+                        .badge(query.count(for: option))
+                        .tag(Item.need(option))
                 }
             }
         }
@@ -61,9 +74,12 @@ struct SessionsSidebar: View {
 
     /// Picking a kind while a session or its report is up goes to the grid,
     /// as picking a folder in Finder shows that folder.
-    private func choose(_ value: SessionsShow?) {
+    private func choose(_ value: Item?) {
         guard let value else { return }
-        show = value
+        switch value {
+        case .show(let option): show = option; needRaw = ""
+        case .need(let option): show = .everything; needRaw = option.rawValue
+        }
         if case .sessions = coordinator.mainPage { return }
         if !coordinator.mainPage.isHome { coordinator.mainPage = .sessions }
     }

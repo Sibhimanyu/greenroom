@@ -79,8 +79,14 @@ private struct DockHintAnchor: NSViewRepresentable {
 
     private static let delay: TimeInterval = 0.45
 
+    /// True while the launch splash frosts the window: no card may open over
+    /// it, and one already open is put away.
+    var splashUp = false {
+        didSet { if splashUp { hide() } }
+    }
+
     func hover(_ hint: DockHintContent, over view: NSView?) {
-        guard let view else { return }
+        guard let view, !splashUp else { return }
         pending?.cancel()
         if owner !== view { suppressed = false }
         owner = view
@@ -108,7 +114,7 @@ private struct DockHintAnchor: NSViewRepresentable {
     }
 
     private func show(_ hint: DockHintContent, over view: NSView) {
-        guard let window = view.window, window.isVisible, window.isKeyWindow || window.isMainWindow else { return }
+        guard !splashUp, let window = view.window, window.isVisible, window.isKeyWindow || window.isMainWindow else { return }
         let panel = panel ?? makePanel()
         let card = DockHintCard(hint: hint)
         if let host { host.rootView = card } else {

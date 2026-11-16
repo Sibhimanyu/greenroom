@@ -367,7 +367,7 @@ struct ScreenroomPageContent<Setup: View>: View {
     private func tileSymbol(_ name: String, selected: Bool) -> some View {
         Image(systemName: name)
             .font(.system(size: 22, weight: .regular))
-            .foregroundStyle(selected ? Brand.green : Color.secondary)
+            .foregroundStyle(selected ? Brand.text : Color.secondary)
             .frame(height: 32)
     }
 
@@ -490,7 +490,7 @@ private struct ScreenroomFlowPicture: View {
         VStack(spacing: 4) {
             Image(systemName: symbol)
                 .font(.system(size: 18, weight: .regular))
-                .foregroundStyle(active ? Brand.green : Color.secondary)
+                .foregroundStyle(active ? Brand.text : Color.secondary)
                 .frame(width: 32, height: 32)
                 .background(RoundedRectangle(cornerRadius: 10)
                     .fill(Color(nsColor: .controlBackgroundColor)))
@@ -501,7 +501,7 @@ private struct ScreenroomFlowPicture: View {
                     if let badge {
                         Image(systemName: badge)
                             .font(.caption2.weight(.bold))
-                            .foregroundStyle(Brand.green)
+                            .foregroundStyle(Brand.text)
                             .offset(x: 6, y: -6)
                     }
                 }
@@ -557,7 +557,7 @@ private struct ModelGlyph: View {
         HStack(spacing: 4) {
             Image(systemName: model.englishOnly ? "character.bubble" : "globe")
                 .font(.system(size: CGFloat(16 + model.tier * 4), weight: .regular))
-                .foregroundStyle(model.chosen ? Brand.green : Color.secondary)
+                .foregroundStyle(model.chosen ? Brand.text : Color.secondary)
                 .frame(height: 24)
             Text(model.size)
                 .font(.caption2.monospacedDigit())

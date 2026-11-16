@@ -131,4 +131,49 @@ final class SessionDetailRulesTests: XCTestCase {
         XCTAssertFalse(SessionDetailRules.spaceTogglesPlayback(
             textInputFocused: false, controlFocused: false, hasModifiers: false, sheetUp: false, pageActive: false))
     }
+
+    // MARK: Transcript and cuts
+
+    func testStampsReadAsSeconds() {
+        XCTAssertEqual(SessionDetailRules.stampSeconds("0:04:12"), 252)
+        XCTAssertEqual(SessionDetailRules.stampSeconds("4:12"), 252)
+        XCTAssertEqual(SessionDetailRules.stampSeconds("1:00:01"), 3601)
+        XCTAssertNil(SessionDetailRules.stampSeconds("soon"))
+        XCTAssertNil(SessionDetailRules.stampSeconds(""))
+    }
+
+    func testALineRunsToTheNextOne() {
+        let span = SessionDetailRules.transcriptSpan(starts: [0, 10, 18], from: 1, duration: 60)
+        XCTAssertEqual(span, 10...18)
+    }
+
+    func testALongSilenceAfterALineIsNotPartOfIt() {
+        let span = SessionDetailRules.transcriptSpan(starts: [0, 100], from: 0, duration: 200)
+        XCTAssertEqual(span, 0...25)
+    }
+
+    func testTheLastLineRunsToTheEnd() {
+        let span = SessionDetailRules.transcriptSpan(starts: [0, 50], from: 1, duration: 58)
+        XCTAssertEqual(span, 50...58)
+    }
+
+    func testSeveralLinesMakeOneCut() {
+        let span = SessionDetailRules.transcriptSpan(starts: [0, 5, 9, 14], from: 2, to: 1, duration: 60)
+        XCTAssertEqual(span, 5...14)
+    }
+
+    func testTooShortALineMakesNoCut() {
+        XCTAssertNil(SessionDetailRules.transcriptSpan(starts: [0, 0.1], from: 0, duration: 60))
+        XCTAssertNil(SessionDetailRules.transcriptSpan(starts: [0], from: 3, duration: 60))
+    }
+
+    func testTheLineBeingSpoken() {
+        XCTAssertEqual(SessionDetailRules.currentLine(starts: [0, 10, 18], at: 12), 1)
+        XCTAssertNil(SessionDetailRules.currentLine(starts: [5, 10], at: 1))
+    }
+
+    func testTranscriptSitsBesideThePictureOnlyWhenThereIsRoom() {
+        XCTAssertTrue(SessionDetailRules.transcriptBeside(columnWidth: 700))
+        XCTAssertFalse(SessionDetailRules.transcriptBeside(columnWidth: 600))
+    }
 }

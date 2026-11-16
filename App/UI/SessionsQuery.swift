@@ -45,6 +45,129 @@ struct SessionCardModel: Identifiable, Hashable {
     var duration: Double?
     var isUploaded: Bool
     var isAnalysed: Bool
+    // What the list says is left to do. The host (RecordingsView) does not
+    // know these; SessionsIndex reads them from the folder and merges them in
+    // (SessionsIndex.enrich), so the defaults mean "not known yet".
+    /// The folder holds a recording that could be shared.
+    var hasVideo = false
+    /// Clips plus notes: the marks drawn on the session's timeline.
+    var momentCount = 0
+    /// "unlisted", "public"... of the last upload, when there is one.
+    var uploadPrivacy: String?
+    /// A transcript with at least one spoken line exists, so a search can
+    /// look inside this class.
+    var hasTranscript = false
+}
+
+/// One thing still to do (or already done) about a session, drawn as a chip.
+struct SessionChip: Identifiable, Hashable {
+    enum Tone { case plain, amber, green }
+    let id: String
+    var text: String
+    var symbol: String?
+    var tone: Tone
+}
+
+/// The sidebar's NEEDS YOU group: sessions with something left to do.
+enum SessionsNeed: String, CaseIterable, Identifiable {
+    case notShared = "Not shared yet"
+    case feedbackReady = "Feedback ready"
+    var id: String { rawValue }
+
+    func matches(_ card: SessionCardModel) -> Bool {
+        switch self {
+        case .notShared: return card.hasVideo && !card.isUploaded
+        case .feedbackReady: return card.isAnalysed
+        }
+    }
+
+    var symbol: String {
+        switch self {
+        case .notShared: return "square.and.arrow.up"
+        case .feedbackReady: return "sparkles"
+        }
+    }
+}
+
+enum SessionChips {
+    /// Amber "Not shared" or "On YouTube \u{00B7} Unlisted" (amber because
+    /// both are about what leaves the Mac), the moment count, and green
+    /// "Feedback ready". Empty for a session with nothing to say.
+    static func chips(for card: SessionCardModel) -> [SessionChip] {
+        var out: [SessionChip] = []
+        if card.isUploaded {
+            let privacy = card.uploadPrivacy.map { " \u{00B7} " + $0.prefix(1).uppercased() + $0.dropFirst() } ?? ""
+            out.append(.init(id: "yt", text: "On YouTube" + privacy, symbol: "play.rectangle.fill", tone: .amber))
+        } else if card.hasVideo {
+            out.append(.init(id: "share", text: "Not shared", symbol: nil, tone: .amber))
+        }
+        if card.momentCount > 0 {
+            out.append(.init(id: "moments",
+                             text: card.momentCount == 1 ? "1 moment" : "\(card.momentCount) moments",
+                             symbol: "flag", tone: .plain))
+        }
+        if card.isAnalysed {
+            out.append(.init(id: "feedback", text: "Feedback ready", symbol: "sparkles", tone: .green))
+        }
+        return out
+    }
+}
+
+// MARK: - What was said
+
+/// One sentence of a class that matches the search, and when it was said.
+struct TranscriptHit: Identifiable, Hashable {
+    let sessionID: String
+    let seconds: Double
+    /// "0:12:40", as written in transcript.txt.
+    let stamp: String
+    let text: String
+    var id: String { "\(sessionID)@\(stamp)#\(text.hashValue)" }
+
+    /// "12:40", or "1:02:05" past the hour.
+    var clock: String {
+        let t = Int(seconds)
+        return t >= 3600
+            ? String(format: "%d:%02d:%02d", t / 3600, (t % 3600) / 60, t % 60)
+            : String(format: "%d:%02d", t / 60, t % 60)
+    }
+}
+
+enum TranscriptSearch {
+    /// "h:mm:ss" (or "m:ss") to seconds; nil when it is not a time.
+    static func seconds(from stamp: String) -> Double? {
+        let parts = stamp.split(separator: ":").compactMap { Double($0) }
+        guard parts.count == stamp.split(separator: ":").count, (1...3).contains(parts.count) else { return nil }
+        return parts.reduce(0) { $0 * 60 + $1 }
+    }
+
+    /// The lines of one class that contain every word of the query, in the
+    /// order they were said. Case and accents are ignored.
+    static func hits(sessionID: String, lines: [(stamp: String, text: String)], query: String) -> [TranscriptHit] {
+        let words = query.split(whereSeparator: \.isWhitespace).map(String.init)
+        guard !words.isEmpty else { return [] }
+        return lines.compactMap { line in
+            guard words.allSatisfy({ line.text.range(of: $0, options: [.caseInsensitive, .diacriticInsensitive]) != nil }),
+                  let at = seconds(from: line.stamp) else { return nil }
+            return TranscriptHit(sessionID: sessionID, seconds: at, stamp: line.stamp, text: line.text)
+        }
+    }
+}
+
+/// Said once so the pending "open at this time" has one reader. The list
+/// writes it when a transcript result is clicked, then opens the session; the
+/// session's page takes it (once) and seeks.
+@MainActor
+final class SessionsPendingSeek {
+    static let shared = SessionsPendingSeek()
+    private(set) var request: (sessionID: String, seconds: Double)?
+    func set(_ id: String, seconds: Double) { request = (id, seconds) }
+    /// Returns the time for this session and forgets it.
+    func take(for id: String) -> Double? {
+        guard let request, request.sessionID == id else { return nil }
+        self.request = nil
+        return request.seconds
+    }
 }
 
 /// The sidebar's SHOW group: one kind, or all of them.
@@ -131,6 +254,31 @@ enum SessionsFormat {
             : date.formatted(.dateTime.day().month(.abbreviated).year())
     }
 
+    /// "Today" / "Monday 16 November", "Friday" / "13 November", then
+    /// "12 November" / "2025" for anything older than a week.
+    static func dayHeading(_ date: Date, now: Date, calendar: Calendar = .current) -> (title: String, subtitle: String) {
+        let full = date.formatted(.dateTime.weekday(.wide).day().month(.wide))
+        let short = date.formatted(.dateTime.day().month(.wide))
+        if calendar.isDate(date, inSameDayAs: now) { return ("Today", full) }
+        if let y = calendar.date(byAdding: .day, value: -1, to: now), calendar.isDate(date, inSameDayAs: y) {
+            return ("Yesterday", short)
+        }
+        if let days = calendar.dateComponents([.day], from: calendar.startOfDay(for: date),
+                                              to: calendar.startOfDay(for: now)).day, days >= 0, days < 7 {
+            return (date.formatted(.dateTime.weekday(.wide)), short)
+        }
+        let sameYear = calendar.component(.year, from: date) == calendar.component(.year, from: now)
+        return (sameYear ? short : date.formatted(.dateTime.day().month(.wide).year()), date.formatted(.dateTime.weekday(.wide)))
+    }
+
+    /// "42:18", "1:02:05": a length as a clock, for the badge on a picture.
+    static func clock(_ seconds: Double) -> String {
+        let t = Int(seconds.rounded())
+        return t >= 3600
+            ? String(format: "%d:%02d:%02d", t / 3600, (t % 3600) / 60, t % 60)
+            : String(format: "%d:%02d", t / 60, t % 60)
+    }
+
     static func time(_ date: Date) -> String {
         date.formatted(date: .omitted, time: .shortened)
     }
@@ -169,7 +317,11 @@ struct SessionsQuery {
     var cards: [SessionCardModel]
     var show: SessionsShow = .everything
     var status: SessionsStatus?
+    /// The sidebar's NEEDS YOU choice.
+    var need: SessionsNeed?
     var search: String = ""
+    /// Sessions whose transcript matches `search`, by session id.
+    var transcriptHits: [String: [TranscriptHit]] = [:]
     var sort: SessionsSort = .newest
     var now = Date()
     var calendar: Calendar = .current
@@ -178,13 +330,14 @@ struct SessionsQuery {
 
     var isSearching: Bool { !trimmedSearch.isEmpty }
     /// A search or a status is narrowing the grid (the Show choice is not a filter).
-    var isFiltering: Bool { isSearching || status != nil }
+    var isFiltering: Bool { isSearching || status != nil || need != nil }
 
     private func matchesSearch(_ card: SessionCardModel) -> Bool {
         let query = trimmedSearch
         guard !query.isEmpty else { return true }
         return card.title.localizedCaseInsensitiveContains(query)
             || card.kind.label.localizedCaseInsensitiveContains(query)
+            || !(transcriptHits[card.id] ?? []).isEmpty
     }
 
     /// Searched and of the kind being shown, before the status filter: what
@@ -196,13 +349,18 @@ struct SessionsQuery {
     }
 
     var visible: [SessionCardModel] {
-        let filtered = ofKind.filter { status?.matches($0) ?? true }
+        let filtered = ofKind.filter { (status?.matches($0) ?? true) && (need?.matches($0) ?? true) }
         return filtered.sorted { sort == .newest ? $0.date > $1.date : $0.date < $1.date }
     }
 
     /// The sidebar badge: every session of that kind, whatever is searched.
     func count(for option: SessionsShow) -> Int {
         cards.filter { option.kind == nil || $0.kind == option.kind }.count
+    }
+
+    /// The sidebar's Needs you badge: over every session, whatever is searched.
+    func count(for option: SessionsNeed) -> Int {
+        cards.filter(option.matches).count
     }
 
     /// The Status menu count.
@@ -223,10 +381,26 @@ struct SessionsQuery {
         return out.map { ($0.title, $0.cards) }
     }
 
+    /// Visible sessions under a heading per calendar day, in sort order.
+    var dayGroups: [(day: Date, title: String, subtitle: String, cards: [SessionCardModel])] {
+        var out: [(day: Date, title: String, subtitle: String, cards: [SessionCardModel])] = []
+        for card in visible {
+            let start = calendar.startOfDay(for: card.date)
+            if let index = out.firstIndex(where: { $0.day == start }) {
+                out[index].cards.append(card)
+            } else {
+                let h = SessionsFormat.dayHeading(card.date, now: now, calendar: calendar)
+                out.append((start, h.title, h.subtitle, [card]))
+            }
+        }
+        return out
+    }
+
     /// The window subtitle: what the grid shows, and how many.
     var subtitle: String {
         var parts = [show.rawValue]
         if let status { parts.append(status.rawValue) }
+        if let need { parts.append(need.rawValue) }
         let n = visible.count
         parts.append(n == 1 ? "1 session" : "\(n) sessions")
         return parts.joined(separator: " \u{00B7} ")

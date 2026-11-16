@@ -21,6 +21,11 @@ enum SessionMarkStyle {
     static let filler = Color.primary.opacity(0.28)
 }
 
+private struct TrackFrameKey: PreferenceKey {
+    static var defaultValue: CGRect = .zero
+    static func reduce(value: inout CGRect, nextValue: () -> CGRect) { value = nextValue() }
+}
+
 struct SessionTimeline: View {
     /// Fillers and notes from the analysis, in seconds.
     struct Marks {
@@ -36,6 +41,9 @@ struct SessionTimeline: View {
     var marks = Marks()
     var rate: Float = 1
     var skipping = false
+    /// Notes and clips for the lane under the track; no lane when empty.
+    var moments: [SessionMoment] = []
+    var onSeekMoment: (SessionMoment) -> Void = { _ in }
     var onStopSkipping: () -> Void = {}
     var onTogglePlay: () -> Void = {}
     /// Called on a click and continuously while the knob is dragged.
@@ -45,6 +53,8 @@ struct SessionTimeline: View {
     /// Where the knob is while it is held, so the player's own ticks do not
     /// fight the hand.
     @State private var dragFraction: Double?
+    /// The track's frame inside the timeline, so the lane lines up with it.
+    @State private var trackFrame: CGRect = .zero
 
     private let trackHeight: CGFloat = 4
     private let hitHeight: CGFloat = 28
@@ -70,6 +80,11 @@ struct SessionTimeline: View {
                     .frame(minWidth: 40, alignment: .leading)
                 speedMenu
             }
+            if !moments.isEmpty, duration > 0, trackFrame.width > 0 {
+                momentsLane
+                    .frame(width: trackFrame.width, height: 22)
+                    .padding(.leading, trackFrame.minX)
+            }
             if skipping {
                 HStack(spacing: 6) {
                     Text("Playing without fillers")
@@ -80,9 +95,41 @@ struct SessionTimeline: View {
                 .padding(.leading, 40)
             }
         }
+        .coordinateSpace(name: "sessionTimeline")
     }
 
     // MARK: Pieces
+
+    /// A thin strip under the scrubber: one marker per note or clip, at its
+    /// time. A click seeks there.
+    private var momentsLane: some View {
+        GeometryReader { geo in
+            ZStack(alignment: .leading) {
+                Capsule().fill(Color.primary.opacity(0.06)).frame(height: 2)
+                ForEach(moments) { moment in
+                    let x = geo.size.width * SessionDetailRules.fraction(of: moment.at, in: duration)
+                    Button { onSeekMoment(moment) } label: {
+                        Group {
+                            if moment.kind == .clip {
+                                RoundedRectangle(cornerRadius: 2, style: .continuous)
+                                    .fill(SessionMarkStyle.clip)
+                                    .frame(width: 8, height: 10)
+                            } else {
+                                Capsule().fill(SessionMarkStyle.note).frame(width: 3, height: 14)
+                            }
+                        }
+                        .frame(width: 18, height: 22)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .help(moment.label)
+                    .accessibilityLabel(moment.label)
+                    .offset(x: x - 9)
+                }
+            }
+            .frame(height: geo.size.height)
+        }
+    }
 
     private var playButton: some View {
         Button(action: onTogglePlay) {
@@ -182,6 +229,10 @@ struct SessionTimeline: View {
                     .onEnded { _ in dragFraction = nil })
         }
         .frame(height: hitHeight)
+        .background(GeometryReader { proxy in
+            Color.clear.preference(key: TrackFrameKey.self, value: proxy.frame(in: .named("sessionTimeline")))
+        })
+        .onPreferenceChange(TrackFrameKey.self) { trackFrame = $0 }
         .help("Click or drag to jump. Green blocks are clips, tall ticks are notes.")
         .accessibilityElement()
         .accessibilityLabel("Timeline")

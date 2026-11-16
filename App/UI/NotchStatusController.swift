@@ -522,11 +522,11 @@ private struct NotchPillView: View {
         case .working(let progress):
             HStack(spacing: 10) {
                 mark
-                ZStack(alignment: .leading) {
-                    Text(progress.text)
-                        .id(progress.text)
-                        .transition(.opacity)
-                }
+                // Swapped outright, never cross-faded: the start work keeps the
+                // main thread busy, a cross-fade froze halfway, and the old and
+                // new words sat on top of each other (owner, 2026-11-16).
+                Text(progress.text)
+                    .transaction { $0.animation = nil }
                 .font(.system(size: 13, weight: .medium))
                 .lineLimit(1)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -728,22 +728,24 @@ private struct NotchRing: View {
             Circle().trim(from: 0, to: progress.fraction)
                 .stroke(Brand.fill, style: StrokeStyle(lineWidth: 2.5, lineCap: .round))
                 .rotationEffect(.degrees(-90))
-            if ticking {
-                Image(systemName: "checkmark")
-                    .font(.system(size: 10, weight: .bold))
-                    .foregroundStyle(Brand.fill)
-                    .transition(reduceMotion ? .opacity : .scale(scale: 0.4).combined(with: .opacity))
-            } else {
-                Text(progress.counter)
-                    .font(.system(size: 8.5, weight: .semibold).monospacedDigit())
-                    .foregroundStyle(Color.white.opacity(0.85))
-                    .minimumScaleFactor(0.7)
-                    .transition(.opacity)
+            // The tick and the count take turns with no cross-fade, for the
+            // same reason as the words: a fade frozen by a busy main thread
+            // left "1/3" and the tick drawn over each other.
+            Group {
+                if ticking {
+                    Image(systemName: "checkmark")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundStyle(Brand.fill)
+                } else {
+                    Text(progress.counter)
+                        .font(.system(size: 8.5, weight: .semibold).monospacedDigit())
+                        .foregroundStyle(Color.white.opacity(0.85))
+                        .minimumScaleFactor(0.7)
+                }
             }
+            .transaction { $0.animation = nil }
         }
         .frame(width: 30, height: 30)
-        .animation(reduceMotion ? .easeInOut(duration: 0.2) : .spring(response: 0.35, dampingFraction: 0.8),
-                   value: ticking)
         .animation(.easeOut(duration: 0.25), value: progress.fraction)
         .onChange(of: progress.settled) { old, new in
             guard new > old else { return }

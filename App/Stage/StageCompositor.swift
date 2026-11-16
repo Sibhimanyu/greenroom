@@ -196,11 +196,11 @@ final class StageCompositor: StageFrameSource {
     /// What the live capture shows, right now, in global CoreGraphics points
     /// (top-left origin): the whole display, or the followed window's current
     /// frame. Nil when nothing is captured. For the recording border.
-    func capturedScreenFrame() -> CGRect? {
+    func capturedScreenFrame(onThisDesktop: Bool = false) -> CGRect? {
         lock.lock()
         let source = board.activeScreenID.flatMap { screenSources[$0] }
         lock.unlock()
-        return source?.capturedFrame()
+        return source?.capturedFrame(onThisDesktop: onThisDesktop)
     }
 
     /// The live capture follows one window, so drawing is confined to it.

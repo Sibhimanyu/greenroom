@@ -39,7 +39,9 @@ final class RecordingChrome {
         // The border says "this is being recorded", so it is up only while the
         // file is growing: hidden while paused, back on resume.
         if recording, !paused {
-            border.show { [weak coordinator] in coordinator?.capturedScreenFrame() }
+            // Only while what is recorded is on this desktop: the outline is on
+            // every Space, and a window on another one left it framing nothing.
+            border.show { [weak coordinator] in coordinator?.capturedScreenFrame(onThisDesktop: true) }
         } else {
             border.hide()
         }

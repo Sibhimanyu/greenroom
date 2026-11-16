@@ -285,11 +285,8 @@ final class LiveQueueView: NSView {
             let cardsWidth = inner - pad * 2
             let used = assist.place(x: pad, width: cardsWidth, top: box - pad, available: body)
             emptyLine.isHidden = used > 0
-            // Off, the box still stands and says why it is empty.
-            if !state.showsCuesContainer { cuesEyebrow.stringValue = "CUES   off" }
-            emptyLine.stringValue = state.showsCuesContainer
-                ? "Links you mention will show up here."
-                : "Cues is off. Turn it on in Settings \u{2192} Cues for links here."
+            // Only drawn while Cues is on (LiveQueueLayout.sections).
+            emptyLine.stringValue = "Links you mention will show up here."
             if used == 0 {
                 let line: CGFloat = 16
                 emptyLine.frame = NSRect(x: pad, y: ((box - line) / 2).rounded(),

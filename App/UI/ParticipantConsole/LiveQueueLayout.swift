@@ -98,12 +98,14 @@ enum LiveQueueLayout {
         // the teacher was about to use should not vanish because a hand went
         // up - it just stops being first.
         //
-        // Always there, Cues on or off, so the middle of the rail is a
-        // bounded box at every moment of the class rather than a hole that
-        // fills: the panel reads as composed before anything arrives, and
-        // nothing arriving changes its shape.
-        out.append(Section(kind: .cues, eyebrow: "CUES", rows: [], actions: [],
-                           height: cuesHeight(body: cuesBody)))
+        // There whenever Cues is on (or still holds cards), so the middle of
+        // the rail is a bounded box before anything arrives. Off, it is not
+        // drawn at all: a box saying "Cues is off" was a feature the teacher
+        // had turned off still taking up the rail (owner, 2026-11-16).
+        if state.showsCuesContainer {
+            out.append(Section(kind: .cues, eyebrow: "CUES", rows: [], actions: [],
+                               height: cuesHeight(body: cuesBody)))
+        }
         return out
     }
 

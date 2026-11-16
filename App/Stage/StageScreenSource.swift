@@ -177,13 +177,17 @@ final class StageScreenSource: NSObject, SCStreamOutput, SCStreamDelegate {
         return capturedWindowID != nil
     }
 
-    func capturedFrame() -> CGRect? {
+    /// `onThisDesktop`: nil for a followed window that is on another Space (or
+    /// minimised), so an outline drawn here does not frame an empty spot where
+    /// that window would be (owner, 2026-11-16).
+    func capturedFrame(onThisDesktop: Bool = false) -> CGRect? {
         stateLock.lock()
         let windowID = capturedWindowID, display = capturedDisplayFrame
         stateLock.unlock()
         guard let windowID else { return display }
-        guard let info = CGWindowListCopyWindowInfo([.optionIncludingWindow], windowID) as? [[String: Any]],
-              let bounds = info.first?[kCGWindowBounds as String] as? NSDictionary else { return nil }
+        guard let info = (CGWindowListCopyWindowInfo([.optionIncludingWindow], windowID) as? [[String: Any]])?.first,
+              let bounds = info[kCGWindowBounds as String] as? NSDictionary else { return nil }
+        if onThisDesktop, (info[kCGWindowIsOnscreen as String] as? Bool) != true { return nil }
         return CGRect(dictionaryRepresentation: bounds)
     }
 

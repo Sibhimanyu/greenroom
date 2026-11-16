@@ -1999,7 +1999,7 @@ final class CoordinatorController: ObservableObject {
     }
 
     /// What the live capture shows, in global CoreGraphics points. For the border.
-    func capturedScreenFrame() -> CGRect? { stage?.capturedScreenFrame() }
+    func capturedScreenFrame(onThisDesktop: Bool = false) -> CGRect? { stage?.capturedScreenFrame(onThisDesktop: onThisDesktop) }
 
     /// The display being recorded, for the countdown and the control bar to appear on.
     var recordedScreen: NSScreen? {

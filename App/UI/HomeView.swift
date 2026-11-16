@@ -438,7 +438,13 @@ struct HomeView: View {
                 VStack(spacing: 8) {
                     HStack(spacing: 8) { shapeChip; shareChip }
                     HStack(spacing: 8) { cameraChip; micChip }
-                    layoutChip
+                    // Record shares the Layout row, so Edit grows by the same
+                    // three rows in every mode. Record mode has no meeting to
+                    // follow, so the tile is not there and Layout fills the row.
+                    HStack(spacing: 8) {
+                        layoutChip
+                        if mode != .record { recordTile }
+                    }
                 }
             }
         }
@@ -849,6 +855,42 @@ struct HomeView: View {
               : "Where Start puts the meeting, the chat and your apps.")
         .accessibilityLabel("Layout")
         .accessibilityValue(coordinator.layoutChoiceName)
+    }
+
+    /// "Record with the meeting" (Settings → Webcam) where the setup line
+    /// reports it, so the line's "Records with the meeting" can be changed
+    /// from Edit (owner, 2026-11-16).
+    private var recordTile: some View {
+        let on = coordinator.autoRecordOnStart
+        return Toggle(isOn: $coordinator.autoRecordOnStart) {
+            HStack(spacing: 8) {
+                Image(systemName: "record.circle")
+                    .font(.system(size: 15))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 20)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("RECORD")
+                        .font(.system(size: 9.5, weight: .semibold))
+                        .tracking(0.4)
+                        .foregroundStyle(.secondary)
+                    Text(on ? "With the meeting" : "When I press it")
+                        .font(.system(size: 12.5, weight: .medium))
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
+                }
+                Spacer(minLength: 4)
+            }
+        }
+        .toggleStyle(.switch)
+        .controlSize(.mini)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 7)
+        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+        .greenroomTile(role: .choice(selected: false), radius: 10)
+        .disabled(isLive)
+        .help(on ? "Recording starts by itself when the meeting starts. Turn off to start it yourself."
+                 : "Turn on to start recording by itself when the meeting starts.")
+        .accessibilityLabel("Record with the meeting")
     }
 
     /// The Layout page's "Show on screen", through the same call.

@@ -470,7 +470,8 @@ struct HomeView: View {
                             : LookSummary.shareText(share),
             shareGone: gone,
             cameraText: Self.shortDeviceName(camera), cameraMissing: cameras.isEmpty,
-            micText: Self.shortDeviceName(mic), layoutText: coordinator.layoutChoiceName)
+            micText: Self.shortDeviceName(mic), layoutText: coordinator.layoutChoiceName,
+            autoRecord: coordinator.autoRecordOnStart && mode != .record)
     }
 
     private var summaryRow: some View {

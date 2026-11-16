@@ -11,13 +11,13 @@ import Foundation
 
 /// One part of the setup summary line.
 struct SetupSummaryItem: Equatable, Identifiable {
-    enum Kind: String { case look, share, camera, microphone, layout }
+    enum Kind: String { case look, share, camera, microphone, layout, autoRecord }
     let kind: Kind
     let symbol: String
     let text: String
     /// Needs the user's attention: drawn amber.
     var attention: Bool = false
-    /// What to do about it, on hover. Only set when `attention` is.
+    /// More on hover: what to do about a problem, or what a part means.
     var help: String? = nil
 
     var id: String { kind.rawValue }
@@ -30,7 +30,8 @@ enum SetupSummary {
     static func items(cameraOff: Bool, lookSymbol: String, lookText: String,
                       shareSymbol: String, shareText: String, shareGone: Bool,
                       cameraText: String, cameraMissing: Bool,
-                      micText: String, layoutText: String) -> [SetupSummaryItem] {
+                      micText: String, layoutText: String,
+                      autoRecord: Bool = false) -> [SetupSummaryItem] {
         var items: [SetupSummaryItem] = []
         if !cameraOff {
             items.append(SetupSummaryItem(kind: .look, symbol: lookSymbol, text: lookText))
@@ -43,6 +44,13 @@ enum SetupSummary {
                                       help: noCamera ? cameraMissingHelp : nil))
         items.append(SetupSummaryItem(kind: .microphone, symbol: "mic", text: micText))
         items.append(SetupSummaryItem(kind: .layout, symbol: "rectangle.split.2x1", text: layoutText))
+        // Said out loud, so a recording that starts with the meeting is never
+        // a surprise (owner, 2026-11-16: "sometimes the recording is started
+        // on its own").
+        if autoRecord {
+            items.append(SetupSummaryItem(kind: .autoRecord, symbol: "record.circle",
+                                          text: "Records with the meeting", help: autoRecordHelp))
+        }
         return items
     }
 
@@ -83,6 +91,7 @@ extension SetupSummary {
     }
 
     static let shareGoneHelp = "What you picked to share isn\u{2019}t open, so the class would see your whole screen. Open it again, or pick something else under Edit."
+    static let autoRecordHelp = "Recording starts by itself as soon as the meeting is live. Turn it off in Settings \u{2192} Webcam."
     static let cameraMissingHelp = "No camera is connected. Plug one in, or pick No camera under Edit."
 }
 

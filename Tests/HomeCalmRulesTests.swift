@@ -56,6 +56,17 @@ final class HomeCalmRulesTests: XCTestCase {
         XCTAssertTrue(items().allSatisfy { $0.help == nil })
     }
 
+    func testAutoRecordIsSaidOnlyWhenOn() {
+        XCTAssertFalse(items().contains { $0.kind == .autoRecord })
+        let on = SetupSummary.items(cameraOff: false, lookSymbol: "circle", lookText: "Cutout",
+                                    shareSymbol: "display", shareText: "Whole screen", shareGone: false,
+                                    cameraText: "MacBook Pro", cameraMissing: false,
+                                    micText: "MacBook Pro", layoutText: "None", autoRecord: true)
+        XCTAssertEqual(on.last?.kind, .autoRecord)
+        XCTAssertEqual(on.last?.text, "Records with the meeting")
+        XCTAssertNotNil(on.last?.help)
+    }
+
     func testReadinessReduction() {
         let ok = [ReadinessItem(id: "zoom", title: "Zoom", problem: nil),
                   ReadinessItem(id: "mic", title: "Mic", problem: nil)]

@@ -357,7 +357,7 @@ final class MeetingControlsModel: ObservableObject {
         if ParticipantGridWindowController.meetingWindowIsShowing, !coordinator.sessionArranges {
             sidePanel = sidePanel == .chat ? nil : .chat
         } else if ParticipantGridWindowController.meetingWindowIsElsewhere, !coordinator.sessionArranges {
-            // Up on another desktop: there, with the chat open (owner, 2026-11-16).
+            // Up on another desktop: brought to this one, chat open (owner, 2026-11-16).
             coordinator.openMeetingWindow()
             sidePanel = .chat
         } else if ChatWindowController.isOpenHere {
@@ -385,7 +385,7 @@ final class MeetingControlsModel: ObservableObject {
     /// The bar's people count. With the window showing it toggles the panel
     /// like the window's own button; otherwise the list opens as a small window
     /// beside the bar, not the whole meeting (owner, 2026-11-16), and a second
-    /// click closes it. With the window up on another desktop, it goes there,
+    /// click closes it. With the window up on another desktop, it comes here,
     /// People open.
     func showPeople() {
         if ParticipantGridWindowController.meetingWindowIsShowing {

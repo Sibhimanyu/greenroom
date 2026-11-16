@@ -32,6 +32,30 @@ final class MeetingViewPanel: NSPanel {
     override var canBecomeMain: Bool { false }
 }
 
+extension NSWindow {
+    /// Puts this window on the desktop being looked at, a full-screen app's
+    /// included, without switching desktops or activating Greenroom. For an
+    /// explicit open from the Control bar only: a window that is merely being
+    /// re-placed stays where it is.
+    ///
+    /// A window pinned to one desktop (`.managed`) raised from another app
+    /// comes up on its own desktop, which the owner saw as the bar's People and
+    /// Chat opening "in the main window" (2026-11-16). `.moveToActiveSpace`
+    /// makes a window that is ordered front land on the active desktop, and
+    /// `.fullScreenAuxiliary` is what lets it be there over a full-screen app
+    /// (without it macOS jumps to another desktop). It is taken off screen
+    /// first so the move happens on every call, then the window settles back to
+    /// `settled`, so it stays put from then on.
+    func comeToThisDesktop(settledBehavior settled: NSWindow.CollectionBehavior) {
+        if isMiniaturized { deminiaturize(nil) }
+        if isVisible, !isOnActiveSpace { orderOut(nil) }
+        collectionBehavior = [.moveToActiveSpace, .fullScreenAuxiliary]
+        orderFrontRegardless()
+        // After the window has been placed on this desktop (next turn of the run loop).
+        DispatchQueue.main.async { [weak self] in self?.collectionBehavior = settled }
+    }
+}
+
 /// A pop-up that answers the first click: the panel is rarely key.
 private final class FirstClickPopUp: NSPopUpButton {
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
@@ -274,7 +298,14 @@ enum MeetingViewWindows {
         }
         if let existing = controllers[view] {
             if let frame { existing.panel.setFrame(frame, display: true) }
-            if !hiddenTogether { existing.panel.orderFrontRegardless() }
+            if !hiddenTogether {
+                let panel = existing.panel
+                if frame == nil, panel.isVisible, !panel.isOnActiveSpace, !panel.collectionBehavior.contains(.canJoinAllSpaces) {
+                    panel.comeToThisDesktop(settledBehavior: [.managed, .fullScreenAuxiliary])
+                } else {
+                    panel.orderFrontRegardless()
+                }
+            }
             return
         }
         guard !queue.contains(where: { $0.view == view }) else { return }

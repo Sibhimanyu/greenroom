@@ -457,14 +457,20 @@ enum ChatWindowController {
             newWindow.isReleasedWhenClosed = false // ARC + close() below manage its lifetime
             // Opens on the desktop you are on. Without this a chat window left
             // on another Space stayed there, and the bar's Chat button raised
-            // it out of sight (owner, 2026-11-15).
-            newWindow.collectionBehavior = [.moveToActiveSpace]
+            // it out of sight (owner, 2026-11-15). `.fullScreenAuxiliary` lets
+            // it be there over a full-screen app: without it macOS sends you to
+            // another desktop instead (owner, 2026-11-16).
+            newWindow.collectionBehavior = [.moveToActiveSpace, .fullScreenAuxiliary]
             window = newWindow
             targetWindow = newWindow
         }
 
         if let frame { targetWindow.setFrame(frame, display: true) }
 
+        // Left on another desktop: off that one first, so it lands on this one.
+        if MeetingSurfaces.comesHereFirst(visible: targetWindow.isVisible, onActiveSpace: targetWindow.isOnActiveSpace) {
+            targetWindow.orderOut(nil)
+        }
         // Visible without stealing focus - in the session flow the user
         // should end up working in Chrome, with the chat alongside, not
         // yanked into Greenroom.

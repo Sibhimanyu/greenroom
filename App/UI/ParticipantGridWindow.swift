@@ -521,18 +521,17 @@ enum ParticipantGridWindowController {
 
     /// Brings the window back from hidden, closed-to-the-Dock or covered,
     /// without activating the app.
-    /// Up on another desktop, it takes the teacher there: the window is made key
-    /// first, so the activation switches to its desktop and raises it alone, not
-    /// Greenroom's main window over the slides. A layout placing its pieces
+    /// Up on another desktop, it comes to the one the teacher is on, a
+    /// full-screen app's included, with no desktop switch and no activation, so
+    /// Greenroom's main window stays away from the slides (owner, 2026-11-16:
+    /// "They should open where I am"). A layout placing its pieces
     /// (`takingYouThere: false`) only raises it where it is: that can run on a
     /// display change, which no one clicked.
     static func show(takingYouThere: Bool = true) {
         userHidden = false
         guard let panel else { return }
         if takingYouThere, isElsewhere {
-            panel.makeKeyAndOrderFront(nil)
-            NSApp.activate(ignoringOtherApps: true)
-            panel.makeKeyAndOrderFront(nil)
+            panel.comeToThisDesktop(settledBehavior: [.managed, .fullScreenAuxiliary])
             return
         }
         if panel.isMiniaturized { panel.deminiaturize(nil) }

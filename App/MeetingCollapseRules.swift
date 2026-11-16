@@ -97,10 +97,9 @@ enum MeetingSurfaces {
     }
 
     /// The Meeting window is up on another desktop: open there, not shrunk or
-    /// minimised. Then Expand, Chat, People and the island's waiting notice take
-    /// the teacher to that desktop instead of leaving them where they are
-    /// (owner, 2026-11-16). Bringing it here never worked for the window: it
-    /// came back on its own desktop, out of sight.
+    /// minimised. Then Expand, Chat, People and the island's waiting notice bring
+    /// it to the desktop the teacher is on, full-screen apps included, without
+    /// switching desktops (owner, 2026-11-16: "They should open where I am").
     static func meetingWindowElsewhere(visible: Bool, miniaturized: Bool, onActiveSpace: Bool) -> Bool {
         visible && !miniaturized && !onActiveSpace
     }

@@ -86,9 +86,9 @@ struct BarPresentButton: View {
     static let help = "What the class sees, your look and the layout"
 
     var body: some View {
-        BarLabelledButton(symbol: "rectangle.on.rectangle", title: "Share", width: width,
-                          help: Self.help, spoken: "Share. What the class sees, your look and the layout",
-                          action: {})
+        BarIconButton(symbol: "rectangle.on.rectangle", width: width,
+                      help: Self.help, spoken: "Share. What the class sees, your look and the layout",
+                      action: {})
             .overlay { MenuPopUpOverlay(label: "Share. What the class sees, your look and the layout", entries: entries) }
             .help(Self.help)
     }
@@ -159,6 +159,8 @@ struct BarIconButton: View {
     var symbol: String
     var tint: Color = .primary
     var width: CGFloat = MeetingBarLayout.icon
+    /// Lit with the brand tint while it is on (Draw).
+    var on = false
     var help: String
     var spoken: String? = nil
     var action: () -> Void
@@ -169,11 +171,13 @@ struct BarIconButton: View {
                 .font(.system(size: 14))
                 .foregroundStyle(tint)
                 .frame(width: width, height: 32)
+                .background(on ? Brand.green.opacity(0.28) : Color.clear, in: Circle())
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .help(help)
         .accessibilityLabel(spoken ?? help)
+        .accessibilityAddTraits(on ? .isSelected : [])
     }
 }
 
@@ -190,6 +194,8 @@ struct MeetingBarActions {
     var people: () -> Void = {}
     var toggleDraw: () -> Void = {}
     var togglePause: () -> Void = {}
+    /// Record, one click, while nothing is recording.
+    var startRecording: () -> Void = {}
     var end: () -> Void = {}
     /// Built when the menu opens, so each shows the state of that moment.
     var recordMenu: () -> [MenuEntry] = { [] }
@@ -296,6 +302,28 @@ struct MeetingBarContent: View {
     }
 
     private func recordPill(_ pill: MeetingBarModel.RecordPill) -> some View {
+        if pill.isButton { return AnyView(recordButton(pill)) }
+        return AnyView(recordStatus(pill))
+    }
+
+    /// Nothing is recording: a red dot and "Record", one click to start.
+    private func recordButton(_ pill: MeetingBarModel.RecordPill) -> some View {
+        Button(action: a.startRecording) {
+            HStack(spacing: 5) {
+                Circle().fill(Color.red).frame(width: 8, height: 8).accessibilityHidden(true)
+                Text(pill.label)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(Color.primary)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .help(help("Start recording", .toggleRecording))
+        .accessibilityLabel(pill.spoken)
+    }
+
+    private func recordStatus(_ pill: MeetingBarModel.RecordPill) -> some View {
         HStack(spacing: 5) {
             if pill.showsDot { BarRecDot(live: pill.dotIsLive) }
             Text(pill.label)
@@ -323,8 +351,8 @@ struct MeetingBarContent: View {
 
     private var drawButton: some View {
         let name = s.drawing ? "Close Drawing Tools" : "Draw on the Screen"
-        return BarLabelledButton(
-            symbol: "pencil", title: "Draw", width: L.draw, on: s.drawing,
+        return BarIconButton(
+            symbol: "pencil.and.scribble", width: L.draw, on: s.drawing,
             help: help(s.drawing ? "Close the drawing tools"
                                  : "Draw on the screen you share (marks show to the class and in the recording)",
                        .toggleDrawing),

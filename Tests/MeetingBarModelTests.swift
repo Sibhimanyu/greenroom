@@ -26,12 +26,19 @@ final class MeetingBarModelTests: XCTestCase {
         XCTAssertTrue(p.help.contains("1:29") && p.help.contains("1:38"))
     }
 
-    func testNotRecordingPillHasNoTimerAndNoDot() {
+    func testIdlePillIsAOneClickRecordButton() {
         let p = M.recordPill(.idle, classSeconds: 98, recordingSeconds: 0)
-        XCTAssertEqual(p.label, "Not recording")
+        XCTAssertEqual(p.label, "Record")
+        XCTAssertEqual(p.spoken, "Start recording")
         XCTAssertNil(p.time)
-        XCTAssertFalse(p.showsDot)
-        XCTAssertTrue(p.hasMenu)
+        XCTAssertTrue(p.isButton)
+        XCTAssertTrue(p.showsDot)
+        XCTAssertFalse(p.dotIsLive)
+        XCTAssertFalse(p.hasMenu)
+        XCTAssertFalse(p.label.contains("Not recording"))
+        for phase in [MeetingBarRecordPhase.recording, .paused, .countdown, .saving] {
+            XCTAssertFalse(M.recordPill(phase, classSeconds: 1, recordingSeconds: 1).isButton)
+        }
     }
 
     func testSavingPillHasNoMenu() {
@@ -134,12 +141,11 @@ final class MeetingBarModelTests: XCTestCase {
     func testShareCellSitsBesideDrawAndCountsInBothBars() {
         typealias L = MeetingBarLayout
         let cells = L.cells(videoButtons: false)
-        XCTAssertTrue(cells.contains(L.present))
-        let i = cells.firstIndex(of: L.present)!
+        XCTAssertEqual(L.present, L.icon)
+        XCTAssertEqual(L.draw, L.icon)
+        let i = cells.firstIndex(of: L.recCell)! + 2
+        XCTAssertEqual(cells[i], L.present)
         XCTAssertEqual(cells[i + 1], L.draw)
-        let withShare = cells.reduce(0, +) + L.spacing * CGFloat(cells.count - 1)
-        let without = cells.filter { $0 != L.present }.reduce(0, +) + L.spacing * CGFloat(cells.count - 2)
-        XCTAssertEqual(withShare - without, L.present + L.spacing)
         XCTAssertGreaterThan(L.recordOnlyWidth, L.recordOnlyPill + L.pause + L.draw + L.notes + L.present)
     }
 

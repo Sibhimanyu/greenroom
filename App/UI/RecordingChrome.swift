@@ -146,9 +146,9 @@ final class RecordingControlBarController {
 }
 
 /// Same rules as the meeting bar: one timer (the recording's own, there is no
-/// class), Draw has a word, and the one red control is Stop. The dot is the
+/// class), Share and Draw are icons, and the one red control is Stop. The dot is the
 /// recording signal, not a control.
-///   [dot REC 1:29] [pause] | [Share] [pencil Draw] [Notes] | [Stop]
+///   [dot REC 1:29] [pause] | [Share] [pencil] [Notes] | [Stop]
 private struct RecordingControlBarView: View {
     @ObservedObject var coordinator: CoordinatorController
     @ObservedObject private var shortcuts = ShortcutStore.shared
@@ -170,8 +170,8 @@ private struct RecordingControlBarView: View {
             // What is recorded, your look: the same Present menu as the meeting bar's.
             BarPresentButton(width: L.present) { coordinator.presentMenuEntries() }
             // Draw on the screen being recorded (phase 5).
-            BarLabelledButton(
-                symbol: "pencil", title: "Draw", width: L.draw, on: coordinator.isDrawing,
+            BarIconButton(
+                symbol: "pencil.and.scribble", width: L.draw, on: coordinator.isDrawing,
                 help: MeetingBarModel.help(coordinator.isDrawing ? "Close the drawing tools" : "Draw on the screen",
                                            .toggleDrawing, bindings),
                 spoken: coordinator.isDrawing ? "Close drawing tools" : "Draw on the screen") {

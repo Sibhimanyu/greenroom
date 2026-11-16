@@ -85,7 +85,7 @@ enum MeetingBarModel {
 
     /// The REC pill.
     struct RecordPill: Equatable {
-        /// "REC", "Paused", "Not recording", "Starting\u{2026}", "Saving\u{2026}".
+        /// "REC", "Paused", "Record", "Starting\u{2026}", "Saving\u{2026}".
         var label: String
         /// The class time, while a recording runs. Nil otherwise.
         var time: String?
@@ -97,6 +97,8 @@ enum MeetingBarModel {
         var dotIsLive: Bool
         /// A recording can be started or stopped from this pill.
         var hasMenu: Bool
+        /// Nothing is recording: the pill is a plain one-click Record button.
+        var isButton = false
     }
 
     /// The pill carries ONE timer, the class time. The recording's length is in
@@ -127,10 +129,10 @@ enum MeetingBarModel {
                               spoken: "Saving the recording",
                               showsDot: false, dotIsLive: false, hasMenu: false)
         case .idle:
-            return RecordPill(label: "Not recording", time: nil,
-                              help: "Not recording \u{00B7} class \(cls). Open the menu to start.",
-                              spoken: "Not recording. Menu",
-                              showsDot: false, dotIsLive: false, hasMenu: true)
+            return RecordPill(label: "Record", time: nil,
+                              help: "Start recording \u{00B7} class \(cls)",
+                              spoken: "Start recording",
+                              showsDot: true, dotIsLive: false, hasMenu: false, isButton: true)
         }
     }
 
@@ -219,9 +221,9 @@ enum MeetingBarLayout {
     /// The pill and the pause slot beside it: one cell. Not recording, the pill
     /// takes the whole cell, so there is no hole where pause will be.
     static let recCell: CGFloat = recPill + pause
-    static let draw: CGFloat = 70
-    /// Share: glyph and word, like Draw.
-    static let present: CGFloat = 66
+    /// Draw and Share are icon-only, the width of the mic and camera.
+    static let draw: CGFloat = icon
+    static let present: CGFloat = icon
     static let people: CGFloat = 46
     static let end: CGFloat = 52
     /// A hairline and 4pt each side.

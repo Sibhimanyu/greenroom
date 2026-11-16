@@ -868,6 +868,7 @@ private struct MeetingControlBarView: View {
         a.people = model.showPeople
         a.toggleDraw = { coordinator.toggleDrawing() }
         a.togglePause = { coordinator.togglePauseRecording() }
+        a.startRecording = { coordinator.toggleRecording() }
         // Asks first, exactly as the close and quit prompts do.
         a.end = { coordinator.confirmAndStop() }
         a.recordMenu = { [bindings = shortcuts.bindings] in

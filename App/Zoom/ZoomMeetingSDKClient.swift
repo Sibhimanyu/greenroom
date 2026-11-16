@@ -400,6 +400,12 @@ final class ZoomMeetingSDKClient: NSObject, ObservableObject {
     /// A speaker change is a subscription change, and Zoom refuses bursts of
     /// them (code 7). Two people trading a sentence should not flip the stage.
     private var nextStageSwitchAt = Date.distantPast
+    /// The stage asked for someone's stream before their camera was on: it
+    /// asks once more when the camera comes on. The first meeting with the
+    /// stage (2026-11-16) subscribed at a join, the camera started ten seconds
+    /// later, Zoom reported video and the stage stayed black. Every grid tile
+    /// that ever drew had asked a second time like this.
+    private var stageReaskedForVideo = false
 
     func stageView(userID: UInt32, frame: NSRect) -> NSView? {
         guard didUseCustomUI else { return nil }
@@ -414,6 +420,7 @@ final class ZoomMeetingSDKClient: NSObject, ObservableObject {
                 stageUserID = userID
                 nextStageSwitchAt = Date().addingTimeInterval(2)
                 stageSubscribed = false
+                stageReaskedForVideo = false
                 Self.videoLog("stage -> user=\(userID)")
             }
             if !stageSubscribed, element.getVideoView().window?.isVisible == true {
@@ -441,6 +448,7 @@ final class ZoomMeetingSDKClient: NSObject, ObservableObject {
         stageElement = element
         stageUserID = userID
         stageSubscribed = false
+        stageReaskedForVideo = false
         lastStageFrame = frame
         nextStageSwitchAt = Date().addingTimeInterval(2)
         Self.videoLog("stage created user=\(userID) setResolution=\(result.rawValue)")
@@ -1443,6 +1451,14 @@ extension ZoomMeetingSDKClient: ZoomSDKVideoContainerDelegate {
     func onRenderDataTypeChanged(_ element: ZoomSDKVideoElement?, dataType type: VideoRenderDataType) {
         if let element, noteViewVideoDataType(element, type: type) { return }
         Self.videoLog("dataTypeChanged user=\(element?.userid ?? 0) type=\(type.rawValue)")
+        // Not from inside the callback: the next layout pass asks again, on
+        // the same element (see stageReaskedForVideo).
+        if let element, let stage = stageElement, element === stage, type == VideoRenderDataType_Video,
+           stageSubscribed, !stageReaskedForVideo {
+            stageReaskedForVideo = true
+            stageSubscribed = false
+            Self.videoLog("stage: camera came on after the subscription; asking again user=\(stageUserID ?? 0)")
+        }
         // Someone's camera coming back on is the moment a previously refused
         // subscription is most worth retrying: the rate limiter has long since
         // forgotten the start-up burst that caused the refusal, and until the

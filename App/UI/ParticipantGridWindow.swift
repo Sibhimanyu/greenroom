@@ -2523,6 +2523,12 @@ private final class RootView: NSView {
         let head: CGFloat = 44
         sidePanelBacking.frame = sidePanelHost.bounds
         sidePanelDivider.frame = NSRect(x: 0, y: 0, width: 1, height: height)
+        // On top of the panel's contents: the people list and the chat are
+        // opaque and covered it, so the line stopped under the queue (owner,
+        // 2026-11-16: "a proper line should be drawn in between").
+        if sidePanelHost.subviews.last !== sidePanelDivider {
+            sidePanelHost.addSubview(sidePanelDivider, positioned: .above, relativeTo: nil)
+        }
         // Zoom's panel headers: "Participants (N)" and "Chat".
         sidePanelTitle.stringValue = panel == .chat ? "Chat" : "Participants (\(roster.count + 1))"
         sidePanelTitle.sizeToFit()
@@ -2553,11 +2559,12 @@ private final class RootView: NSView {
             // The needs block and Cues sit at the top, taking what they want up
             // to under half the panel and scrolling inside that; the roster has
             // the rest.
-            let wanted = liveQueue.height(for: consoleState, width: width)
+            let state = peoplePanelQueueState
+            let wanted = liveQueue.height(for: state, width: width)
             let queueHeight = wanted == 0 ? 0 : min(wanted, (body.height * 0.45).rounded())
             queueScroll.isHidden = queueHeight <= 0
             queueScroll.frame = NSRect(x: 0, y: body.height - queueHeight, width: width, height: queueHeight)
-            if queueHeight > 0 { placeQueue(height: queueHeight, width: width) }
+            if queueHeight > 0 { placeQueue(height: queueHeight, width: width, state: state) }
             peopleView.frame = NSRect(x: 0, y: 0, width: width, height: max(0, body.height - queueHeight))
             updatePeopleRows()
         }
@@ -3057,6 +3064,20 @@ private final class RootView: NSView {
     /// Sizes and rewrites the queue inside its scroller, keeping the teacher's
     /// place. One copy for the rail and the People panel, which both hold it.
     private func placeQueue(height queueHeight: CGFloat, width: CGFloat) {
+        placeQueue(height: queueHeight, width: width, state: consoleState)
+    }
+
+    /// The People panel lists who is waiting and whose hand is up itself,
+    /// with Admit and Deny on each row, so the queue above it keeps only
+    /// Cues: the same person was shown twice (owner, 2026-11-16).
+    private var peoplePanelQueueState: ParticipantConsoleState {
+        var state = consoleState
+        state.waiting = []
+        state.hands = []
+        return state
+    }
+
+    private func placeQueue(height queueHeight: CGFloat, width: CGFloat, state: ParticipantConsoleState) {
         // Where the teacher had scrolled the queue to, from its top, read
         // BEFORE the view is resized and rewritten below. This runs on
         // every one-second poll, and it used to end by scrolling the
@@ -3073,7 +3094,7 @@ private final class RootView: NSView {
         // below the window edge. Sized to what it has, the block fits whole
         // cards and counts the rest, which is what it was built to do.
         liveQueue.frame = NSRect(x: 0, y: 0, width: width, height: queueHeight)
-        liveQueue.apply(consoleState, width: width)
+        liveQueue.apply(state, width: width)
         // Non-flipped document views scroll to the bottom by default, which
         // would open the queue showing its last row - so the position is
         // put back counted from the top, clamped to what now exists.

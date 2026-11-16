@@ -52,6 +52,9 @@ final class ViewVideoStore {
         var attempts = 0
         var lastFailure = Date.distantPast
         var warnedNoVideo = false
+        /// Asked once more when the camera came on after the subscription
+        /// (the main window's stage stayed black without it, 2026-11-16).
+        var reaskedForVideo = false
 
         init(key: ViewVideoKey, element: ZoomSDKNormalVideoElement, userID: UInt32, tier: VideoTier, frame: NSRect) {
             self.key = key
@@ -129,6 +132,7 @@ extension ZoomMeetingSDKClient {
                 entry.subscribed = false
                 entry.gotVideo = false
                 entry.warnedNoVideo = false
+                entry.reaskedForVideo = false
                 entry.subscribedAt = nil
                 entry.nextSwitchAt = Date().addingTimeInterval(2)   // faster risks code 7
                 Self.viewLog("\(key.text) -> user=\(userID)")
@@ -231,6 +235,13 @@ extension ZoomMeetingSDKClient {
                 Self.viewLog("video arrived after \(Int(Date().timeIntervalSince(at)))s key=\(entry.key.text)")
             }
             entry.gotVideo = true
+            // A camera that came on after this slot subscribed: ask again on
+            // the next pass, once, not from inside the callback.
+            if entry.subscribed, !entry.reaskedForVideo {
+                entry.reaskedForVideo = true
+                entry.subscribed = false
+                Self.viewLog("camera came on after the subscription; asking again key=\(entry.key.text)")
+            }
         }
         return true
     }

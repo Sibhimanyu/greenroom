@@ -389,21 +389,35 @@ enum ParticipantGridWindowController {
             hosting.setFrame(screen.frame, display: true)
         }
 
+        // Hidden, shrunk to the bar, or handed to the Mini: this window must not
+        // hold a stream. A view window (Active speaker / Gallery / Mini) asking
+        // for the same person is the second element on one user, and Zoom
+        // refuses it. Back on screen, the next refresh subscribes normally.
+        let streamsHeld = !(form.isMeeting && !isNewWindow
+            && (userHidden || hosting.isMiniaturized || !hosting.isVisible || MeetingViewWindows.miniIsOpen))
+        if !streamsHeld {
+            if client.holdsMeetingWindowStreams {
+                ZoomMeetingSDKClient.videoLog("meeting window hidden; releasing stage and tiles")
+            }
+            client.releaseStage()
+            client.pruneParticipantViews(keeping: [])
+        }
         root?.update(roster: roster,
                      flags: client.roomFlags(),
                      waiting: client.waitingRoomNames(),
                      session: session,
                      featured: client.speakerToShow(),
                      videoProvider: { id, frame, hero in
-                         client.participantView(userID: id, frame: frame, hero: hero)
+                         guard streamsHeld else { return nil }
+                         return client.participantView(userID: id, frame: frame, hero: hero)
                      },
                      selfProvider: { frame in client.makeRailSelfView(frame: frame) },
-                     stageProvider: { id, frame in client.stageView(userID: id, frame: frame) },
+                     stageProvider: { id, frame in streamsHeld ? client.stageView(userID: id, frame: frame) : nil },
                      releaseStage: { client.releaseStage() })
         // Pruned to the VISIBLE page, not the whole roster, so students on other
         // pages release their streams. The self view is a separate element and
         // is unaffected.
-        client.pruneParticipantViews(keeping: root?.visibleIDs ?? [])
+        if streamsHeld { client.pruneParticipantViews(keeping: root?.visibleIDs ?? []) }
 
         // Raise it only when it is new, or when it has gone away and was not
         // deliberately minimised or hidden. Placement here is CONVERGENT, not

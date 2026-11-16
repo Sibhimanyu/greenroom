@@ -306,6 +306,7 @@ targets:
       - path: App/Zoom/MeetingShareRules.swift
       - path: App/Zoom/MeetingRoomLedgers.swift
       - path: App/Zoom/VideoBudget.swift
+      - path: App/Zoom/SubscribeBackoff.swift
       - path: App/Zoom/RecentSpeakers.swift
       - path: App/Zoom/HandsUpOrdering.swift
       - path: App/UI/MeetingViewsMenu.swift

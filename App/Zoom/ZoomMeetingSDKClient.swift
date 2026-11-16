@@ -190,114 +190,141 @@ final class ZoomMeetingSDKClient: NSObject, ObservableObject {
             .getUserByUserID(userID)?.getUserName()
     }
 
-    /// When a refused user may be re-subscribed, and how many times in a row
-    /// they have been refused.
-    ///
-    /// Rebuilding on the very next poll was the original design, and for
-    /// _HasSubscribeExceededLimit it is sound: the quota frees up as soon as
-    /// another stream closes, so trying again shortly after costs nothing.
-    ///
-    /// For _TooFrequentCall it is exactly backwards, and it was the whole bug.
-    /// That refusal is CAUSED by how often the subscription is asked for, so
-    /// tearing the element down and rebuilding it one second later guarantees
-    /// the next refusal, which schedules the next rebuild. The measured result
-    /// was a loop that climbed from 3 refusals a second to 69 over one session
-    /// (2,565 of them in Greenroom-video.log, every single one code 7) while
-    /// every tile stayed black.
-    ///
-    /// So a refusal now buys silence rather than another attempt: exponential
-    /// backoff, and the existing element is left alone while it runs.
-    private var subscriptionCooldown: [UInt32: Date] = [:]
-    private var subscriptionAttempts: [UInt32: Int] = [:]
-    private var lastSubscriptionFailure: [UInt32: Date] = [:]
-    /// Why a user was last refused. Decides whether a fresh element could
-    /// possibly help - see the cooldown handling in participantView.
-    private var lastFailureReason: [UInt32: ZoomSDKVideoSubscribeFailReason] = [:]
+    // MARK: - One subscribe per element (tiles, stage and view windows)
+    //
+    // Every element here follows ElementRecovery (SubscribeBackoff.swift):
+    // made, put on screen, subscribed ONCE while its window is visible, and
+    // never asked again. A refusal, or video reported with nothing drawn,
+    // retires the element (unsubscribe + cleanVideoElement) and a fresh one
+    // asks after ElementRecovery.freshDelay. The old design asked the same
+    // element again - when its tile came on screen, when the camera came on,
+    // after every backoff - and an element that already holds a subscription
+    // is refused with code 7 every time it asks again (17:05 on 2026-11-16:
+    // the first ask accepted, the camera-on re-ask and all five retries after
+    // it refused, the stage black throughout).
 
-    /// Tiles that have asked for their stream while their view was on screen.
-    ///
-    /// A tile's element is created and subscribed inside this call, BEFORE the
-    /// caller puts its view in the window - and a subscription made then never
-    /// draws. Four classes, every tile: the ones that showed video were exactly
-    /// the ones that asked a second time (a code-7 retry, a second after being
-    /// attached); every one that asked only once stayed blank with its camera
-    /// on, reporting dataType=Video the whole time. The speaker window needs
-    /// the same thing and says so in its header: in a visible window first.
-    private var subscribedOnScreen: Set<UInt32> = []
-    /// One re-ask at a time, half a second apart: several in one breath is the
-    /// burst the SDK refuses with code 7.
-    private var nextResubscribeAt = Date.distantPast
+    /// A short, stable name for an element in the log.
+    static func tag(_ element: ZoomSDKVideoElement) -> String {
+        let bits = UInt(bitPattern: Unmanaged.passUnretained(element).toOpaque())
+        return "el=" + String(bits & 0xFFFFFF, radix: 16)
+    }
 
-    /// A view rendering one participant, reused across layout passes.
+    private static func sublayers(_ element: ZoomSDKVideoElement) -> Int {
+        element.getVideoView().layer?.sublayers?.count ?? -1
+    }
+
+    /// The only "frames started" signal there is: the SDK has no first-frame
+    /// callback (ZoomSDKVideoContainer.h has user, data type and refusal
+    /// only). A bare element's view has one sublayer; one the SDK has wired
+    /// up for rendering has four (the tile probe, 2026-11-13). UNVERIFIED
+    /// that four always means pixels, which is why every change is logged.
+    static func isDrawing(_ element: ZoomSDKVideoElement) -> Bool { sublayers(element) > 1 }
+
+    /// Logs the render probe when it changes, and the moment drawing starts.
+    func noteRender(_ element: ZoomSDKVideoElement, watch: inout ElementWatch, label: String) {
+        let count = Self.sublayers(element)
+        guard count != watch.lastSublayers else { return }
+        watch.lastSublayers = count
+        let type = element.getDataType().rawValue
+        let classes = (element.getVideoView().layer?.sublayers ?? [])
+            .map { String(describing: Swift.type(of: $0)) }.joined(separator: ",")
+        Self.videoLog("\(label) \(Self.tag(element)) render sublayers=\(count) [\(classes)] dataType=\(type)")
+        if count > 1, watch.drawingSince == nil {
+            watch.drawingSince = Date()
+            let after = watch.subscribedAt.map { " \(String(format: "%.1f", Date().timeIntervalSince($0)))s after subscribing" } ?? ""
+            Self.videoLog("\(label) \(Self.tag(element)) FRAMES: render surface wired\(after)")
+        } else if count <= 1 {
+            watch.drawingSince = nil
+        }
+    }
+
+    /// Who else holds an element for this user, for the refusal lines: a
+    /// second element asking for a remote user is refused with code 7.
+    func otherHolders(of userID: UInt32, except element: ZoomSDKVideoElement) -> String {
+        var names: [String] = []
+        if let stage = stageElement, stage !== element, stage.userid == userID { names.append("stage \(Self.tag(stage))") }
+        if let tile = participantElements[userID], tile !== element { names.append("tile \(Self.tag(tile))") }
+        for entry in viewVideo.entries.values where entry.element !== element && entry.userID == userID {
+            names.append("view \(entry.key.text) \(Self.tag(entry.element))")
+        }
+        return names.isEmpty ? "none" : names.joined(separator: "; ")
+    }
+
+    // MARK: - Tiles
+
+    private var tileWatch: [UInt32: ElementWatch] = [:]
+    private var tileBackoff: [UInt32: SubscribeBackoff] = [:]
+    private var tileRebuilds: [UInt32: Int] = [:]
+    private var tileGaveUp: Set<UInt32> = []
+    /// One tile subscribe at a time, half a second apart: three elements
+    /// subscribing in one tick is the burst the SDK refuses with code 7.
+    private var nextTileSubscribeAt = Date.distantPast
+
+    /// A view rendering one participant, reused across layout passes. Made
+    /// here; subscribed on a LATER pass, once the caller has put its view in
+    /// a visible window (a subscription made before that never draws, and
+    /// asking a second time is refused).
     func participantView(userID: UInt32, frame: NSRect, hero: Bool = false) -> NSView? {
         guard didUseCustomUI else { return nil }
-        // A tile whose only subscription was made off screen asks again, on
-        // the SAME element, once its view is in a visible window.
-        if let existing = participantElements[userID],
-           !subscribedOnScreen.contains(userID),
-           subscriptionCooldown[userID] == nil,
-           existing.getVideoView().window?.isVisible == true,
-           Date() >= nextResubscribeAt {
-            let again = existing.subscribeVideo(true)
-            subscribedOnScreen.insert(userID)
-            nextResubscribeAt = Date().addingTimeInterval(0.5)
-            Self.videoLog("user=\(userID) re-subscribed now that its tile is on screen"
-                + " result=\(again.rawValue)")
+        guard let existing = participantElements[userID] else {
+            return makeTile(userID: userID, frame: frame, hero: hero, notBefore: .distantPast)
         }
-        if let readyAt = subscriptionCooldown[userID] {
-            guard Date() >= readyAt else {
-                // Still backing off. Hand back whatever is already there rather
-                // than rebuilding - the rebuild is what causes the refusal.
-                return participantElements[userID]?.getVideoView()
-            }
-            subscriptionCooldown[userID] = nil
-            // Rebuild only for reasons a FRESH element could fix.
-            //
-            // TooFrequentCall is not one of them. The probe shows the existing
-            // element's layer growing from 1 sublayer to 4 after it is
-            // attached, which is the SDK wiring up rendering - so the thing
-            // being destroyed may already be working. And the teardown itself
-            // is a subscribeVideo(false) immediately followed by a
-            // subscribeVideo(true) on the replacement, which is exactly the
-            // burst the SDK is complaining about. Retrying was feeding the
-            // refusal it was reacting to.
-            if lastFailureReason[userID] == ZoomSDKVideoSubscribe_Fail_TooFrequentCall,
-               let existing = participantElements[userID] {
-                // Re-ask on the SAME element, rather than rebuilding it OR
-                // leaving it alone.
-                //
-                // Rebuilding caused the refusal loop. Leaving it alone is just
-                // as broken in the other direction, and was the bug that kept
-                // every tile black: the log showed exactly ONE subscribeVideo
-                // call in a five-minute session, refused asynchronously, and
-                // never repeated. The element then draws the avatar - which
-                // needs no subscription - and goes black the instant the
-                // camera comes on, which is exactly what was reported.
-                //
-                // Re-asking on the retained element carries no teardown burst
-                // and is the only thing that actually reinstates the stream.
-                let again = existing.subscribeVideo(true)
-                if existing.getVideoView().window?.isVisible == true { subscribedOnScreen.insert(userID) }
-                Self.videoLog("user=\(userID) cooldown over, re-subscribed existing element"
-                    + " result=\(again.rawValue)")
-                if again == ZoomSDKError_Success { lastFailureReason[userID] = nil }
-            } else if let dead = participantElements.removeValue(forKey: userID) {
-                _ = dead.subscribeVideo(false)
-                _ = videoContainer?.clean(dead)
-                Self.videoLog("retrying user=\(userID) after backoff")
-            }
+        if lastRequestedFrame[userID] != frame {
+            lastRequestedFrame[userID] = frame
+            _ = existing.resize(frame)
         }
-        if let existing = participantElements[userID] {
-            if lastRequestedFrame[userID] != frame {
-                lastRequestedFrame[userID] = frame
-                _ = existing.resize(frame)
+        let now = Date()
+        var watch = tileWatch[userID] ?? ElementWatch()
+        noteRender(existing, watch: &watch, label: "tile user=\(userID)")
+        let rebuilds = tileRebuilds[userID] ?? 0
+        switch ElementRecovery.decide(drawing: Self.isDrawing(existing), watch: watch, now: now, rebuilds: rebuilds) {
+        case .rebuild:
+            tileRebuilds[userID] = rebuilds + 1
+            let why = watch.refusedUntil != nil ? "refused" : "video reported, nothing drawn for \(Int(ElementRecovery.grace))s"
+            retireTile(userID, why: "\(why); fresh element \(rebuilds + 1) of \(ElementRecovery.maxRebuilds)")
+            return makeTile(userID: userID, frame: frame, hero: hero,
+                            notBefore: now.addingTimeInterval(ElementRecovery.freshDelay))
+        case .giveUp:
+            if tileGaveUp.insert(userID).inserted {
+                Self.videoLog("tile user=\(userID) \(Self.tag(existing)) GIVING UP after \(rebuilds) fresh elements"
+                    + " (others holding this user: \(otherHolders(of: userID, except: existing)));"
+                    + " a camera toggle tries again")
             }
-            return existing.getVideoView()
+        case .fine, .wait:
+            break
         }
+        if ElementRecovery.mayAsk(watch: watch, gaveUp: tileGaveUp.contains(userID), now: now),
+           now >= nextTileSubscribeAt,
+           existing.getVideoView().window?.isVisible == true {
+            nextTileSubscribeAt = now.addingTimeInterval(0.5)
+            let result = existing.subscribeVideo(true)
+            if result == ZoomSDKError_Success {
+                _ = existing.showVideo(true)
+                watch.subscribed = true
+                watch.subscribedAt = now
+                if existing.getDataType() == VideoRenderDataType_Video { watch.expectingVideoSince = now }
+            } else {
+                let step = tileBackoff[userID, default: SubscribeBackoff()].failed(at: now)
+                watch.refusedUntil = now.addingTimeInterval(step.delay)
+                watch.lastRefusalAt = now
+            }
+            Self.videoLog("tile subscribe user=\(userID) \(Self.tag(existing)) result=\(result.rawValue)"
+                + " dataType=\(existing.getDataType().rawValue) sublayers=\(Self.sublayers(existing))"
+                + " others=\(otherHolders(of: userID, except: existing))")
+        }
+        tileWatch[userID] = watch
+        return existing.getVideoView()
+    }
+
+    private func makeTile(userID: UInt32, frame: NSRect, hero: Bool, notBefore: Date) -> NSView? {
         guard let container = ZoomSDK.shared().getMeetingService()?.getVideoContainer() else { return nil }
         adopt(container: container)
         var element = ZoomSDKNormalVideoElement(frame: frame)
-        guard container.createNormalVideoElement(&element) == ZoomSDKError_Success else { return nil }
+        let made = container.createNormalVideoElement(&element)
+        guard made == ZoomSDKError_Success else {
+            Self.videoLog("tile user=\(userID) FAILED createNormalVideoElement code=\(made.rawValue)")
+            return nil
+        }
         element.userid = userID
         // Ask for a tile-sized stream BEFORE subscribing. After subscribing is
         // too late: the quota is spent at subscribe time.
@@ -307,43 +334,49 @@ final class ZoomMeetingSDKClient: NSObject, ObservableObject {
                                     openStreams: participantElements.count,
                                     hero: hero)
         var resolutionResult = element.setResolution(asked)
-        let subscribed = element.subscribeVideo(true)
         // setResolution fails intermittently (ZoomSDKError_Failed) with no
-        // pattern in size, count or order - and every tile it failed on has
-        // rendered black, while same-session tiles where it succeeded drew
-        // fine. Strongest correlation in the whole log history. Whether the
-        // element recovers when asked again after subscribing is exactly what
-        // this measures.
+        // pattern in size, count or order; asked twice.
         if resolutionResult != ZoomSDKError_Success {
             resolutionResult = element.setResolution(asked)
-            Self.videoLog("setResolution retry user=\(userID)"
-                + " result=\(resolutionResult.rawValue)")
+            Self.videoLog("setResolution retry user=\(userID) result=\(resolutionResult.rawValue)")
             if resolutionResult != ZoomSDKError_Success, frame.height >= 720 {
                 // Both asks refused on a tall tile: the SDK will derive the
                 // request from view height, and >=850pt means 1080p - the
-                // entire concurrent budget on one tile. Named in the log
-                // because this is the single most destructive silent state.
+                // entire concurrent budget on one tile.
                 Self.videoLog("WARNING user=\(userID) tall tile with no explicit"
                     + " resolution - height-derived request may consume the whole budget")
             }
         }
-        let shown = element.showVideo(true)
-        let info = ZoomSDK.shared().getMeetingService()?
-            .getMeetingActionController().getUserByUserID(userID)
-        let action = ZoomSDK.shared().getMeetingService()?.getMeetingActionController()
-        Self.videoLog("""
-            tile user=\(userID)             frame=\(Int(frame.width))x\(Int(frame.height))             setResolution=\(resolutionResult.rawValue) asked=\(asked.rawValue)             subscribe=\(subscribed.rawValue)             showVideo=\(shown.rawValue)             view=\(element.getVideoView() == nil ? "nil" : "ok")             theirVideoOn=\(info?.isVideoOn() ?? false)             dataType=\(element.getDataType().rawValue)             incomingVideoStopped=\(action?.isIncomingVideoStopped() ?? false)
-            """.replacingOccurrences(of: "\n", with: ""))
-        guard subscribed == ZoomSDKError_Success else {
-            // Do not cache a failed subscription: keeping it would make every
-            // later pass believe this user is already wired up.
-            _ = videoContainer?.clean(element)
-            return nil
-        }
         participantElements[userID] = element
         lastRequestedFrame[userID] = frame
-        subscribedOnScreen.remove(userID)
+        tileWatch[userID] = ElementWatch(notBefore: notBefore)
+        let info = ZoomSDK.shared().getMeetingService()?
+            .getMeetingActionController().getUserByUserID(userID)
+        Self.videoLog("tile created user=\(userID) \(Self.tag(element))"
+            + " frame=\(Int(frame.width))x\(Int(frame.height))"
+            + " setResolution=\(resolutionResult.rawValue) asked=\(asked.rawValue)"
+            + " theirVideoOn=\(info?.isVideoOn() ?? false) dataType=\(element.getDataType().rawValue)"
+            + " (subscribes once on screen)")
         return element.getVideoView()
+    }
+
+    /// Unsubscribes and destroys one tile's element; its recovery counters stay.
+    private func retireTile(_ userID: UInt32, why: String) {
+        guard let element = participantElements.removeValue(forKey: userID) else { return }
+        _ = element.subscribeVideo(false)
+        _ = videoContainer?.clean(element)
+        element.getVideoView().removeFromSuperview()
+        lastRequestedFrame.removeValue(forKey: userID)
+        tileWatch.removeValue(forKey: userID)
+        Self.videoLog("tile retired user=\(userID) \(Self.tag(element)) - \(why)")
+    }
+
+    /// Everything known about a tile, for when it goes for good.
+    private func forgetTile(_ userID: UInt32) {
+        tileWatch.removeValue(forKey: userID)
+        tileBackoff.removeValue(forKey: userID)
+        tileRebuilds.removeValue(forKey: userID)
+        tileGaveUp.remove(userID)
     }
 
     /// A SECOND self-video element, for the control panel's own self view.
@@ -385,56 +418,88 @@ final class ZoomMeetingSDKClient: NSObject, ObservableObject {
 
     // MARK: - Stage (the meeting window's Speaker view)
 
-    /// ONE element for the stage, whoever is on it. A view has one superview, so
-    /// the filmstrip tile for a person cannot be reused for the big picture; the
-    /// stage gets its own element and `userid` is reassigned when the speaker
-    /// changes, which keeps it to one subscription however often people talk.
+    /// ONE element for the stage at a time. A view has one superview, so the
+    /// filmstrip tile for a person cannot be reused for the big picture.
     /// A normal element, not ZoomSDKActiveVideoElement: the active-video element
     /// only draws with three or more people, and this one works in a 1:1.
+    ///
+    /// Subscribed once, on screen (see ElementRecovery). A new speaker, a
+    /// refusal, or video reported with nothing drawn each get a FRESH element.
     private var stageElement: ZoomSDKNormalVideoElement?
     private var stageUserID: UInt32?
-    /// The subscription is made once the view is in a visible window, the same
-    /// lesson as `subscribedOnScreen`: one made before it never draws.
-    private var stageSubscribed = false
+    private var stageWatch = ElementWatch()
     private var lastStageFrame: NSRect = .zero
     /// A speaker change is a subscription change, and Zoom refuses bursts of
     /// them (code 7). Two people trading a sentence should not flip the stage.
     private var nextStageSwitchAt = Date.distantPast
-    /// The stage asked for someone's stream before their camera was on: it
-    /// asks once more when the camera comes on. The first meeting with the
-    /// stage (2026-11-16) subscribed at a join, the camera started ten seconds
-    /// later, Zoom reported video and the stage stayed black. Every grid tile
-    /// that ever drew had asked a second time like this.
-    private var stageReaskedForVideo = false
+    private var stageBackoff = SubscribeBackoff()
+    private var stageRebuilds = 0
+    private var stageGaveUp = false
+    /// When the last stage element was retired, so its replacement never
+    /// subscribes in the same breath as that unsubscribe.
+    private var stageRetiredAt = Date.distantPast
 
     func stageView(userID: UInt32, frame: NSRect) -> NSView? {
         guard didUseCustomUI else { return nil }
-        if let element = stageElement {
-            if lastStageFrame != frame {
-                lastStageFrame = frame
-                _ = element.resize(frame)
-            }
-            if stageUserID != userID, Date() >= nextStageSwitchAt {
-                _ = element.subscribeVideo(false)
-                element.userid = userID
-                stageUserID = userID
-                nextStageSwitchAt = Date().addingTimeInterval(2)
-                stageSubscribed = false
-                stageReaskedForVideo = false
-                Self.videoLog("stage -> user=\(userID)")
-            }
-            if !stageSubscribed, element.getVideoView().window?.isVisible == true {
-                let subscribed = element.subscribeVideo(true)
-                _ = element.showVideo(true)
-                stageSubscribed = subscribed == ZoomSDKError_Success
-                Self.videoLog("stage subscribe user=\(stageUserID ?? 0) result=\(subscribed.rawValue)")
-            }
-            return element.getVideoView()
+        guard let element = stageElement else { return makeStageElement(userID: userID, frame: frame) }
+        if lastStageFrame != frame {
+            lastStageFrame = frame
+            _ = element.resize(frame)
         }
+        let now = Date()
+        if stageUserID != userID, now >= nextStageSwitchAt {
+            retireStage(why: "speaker changed to user=\(userID)")
+            resetStageRecovery()
+            return makeStageElement(userID: userID, frame: frame)
+        }
+        let label = "stage user=\(stageUserID ?? 0)"
+        noteRender(element, watch: &stageWatch, label: label)
+        switch ElementRecovery.decide(drawing: Self.isDrawing(element), watch: stageWatch, now: now, rebuilds: stageRebuilds) {
+        case .rebuild:
+            stageRebuilds += 1
+            let why = stageWatch.refusedUntil != nil ? "refused" : "video reported, nothing drawn for \(Int(ElementRecovery.grace))s"
+            let person = stageUserID ?? userID
+            retireStage(why: "\(why); fresh element \(stageRebuilds) of \(ElementRecovery.maxRebuilds)")
+            return makeStageElement(userID: person, frame: frame)
+        case .giveUp:
+            if !stageGaveUp {
+                stageGaveUp = true
+                Self.videoLog("\(label) \(Self.tag(element)) GIVING UP after \(stageRebuilds) fresh elements"
+                    + " (others holding this user: \(otherHolders(of: element.userid, except: element)));"
+                    + " a camera toggle or a new speaker tries again")
+            }
+        case .fine, .wait:
+            break
+        }
+        if ElementRecovery.mayAsk(watch: stageWatch, gaveUp: stageGaveUp, now: now),
+           element.getVideoView().window?.isVisible == true {
+            let result = element.subscribeVideo(true)
+            if result == ZoomSDKError_Success {
+                _ = element.showVideo(true)
+                stageWatch.subscribed = true
+                stageWatch.subscribedAt = now
+                if element.getDataType() == VideoRenderDataType_Video { stageWatch.expectingVideoSince = now }
+            } else {
+                let step = stageBackoff.failed(at: now)
+                stageWatch.refusedUntil = now.addingTimeInterval(step.delay)
+                stageWatch.lastRefusalAt = now
+            }
+            Self.videoLog("stage subscribe user=\(stageUserID ?? 0) \(Self.tag(element)) result=\(result.rawValue)"
+                + " dataType=\(element.getDataType().rawValue) sublayers=\(Self.sublayers(element))"
+                + " others=\(otherHolders(of: element.userid, except: element))")
+        }
+        return element.getVideoView()
+    }
+
+    private func makeStageElement(userID: UInt32, frame: NSRect) -> NSView? {
         guard let container = ZoomSDK.shared().getMeetingService()?.getVideoContainer() else { return nil }
         adopt(container: container)
         var element = ZoomSDKNormalVideoElement(frame: frame)
-        guard container.createNormalVideoElement(&element) == ZoomSDKError_Success else { return nil }
+        let made = container.createNormalVideoElement(&element)
+        guard made == ZoomSDKError_Success else {
+            Self.videoLog("stage FAILED createNormalVideoElement code=\(made.rawValue) user=\(userID)")
+            return nil
+        }
         element.userid = userID
         // One 720p slot of Zoom's published budget (1x1080p, 2x720p, 4x360p); the
         // filmstrip tiles are thumbnails.
@@ -447,24 +512,43 @@ final class ZoomMeetingSDKClient: NSObject, ObservableObject {
         if result != ZoomSDKError_Success { result = element.setResolution(asked) }
         stageElement = element
         stageUserID = userID
-        stageSubscribed = false
-        stageReaskedForVideo = false
+        stageWatch = ElementWatch(notBefore: stageRetiredAt.addingTimeInterval(ElementRecovery.freshDelay))
         lastStageFrame = frame
         nextStageSwitchAt = Date().addingTimeInterval(2)
-        Self.videoLog("stage created user=\(userID) setResolution=\(result.rawValue)")
+        Self.videoLog("stage created user=\(userID) \(Self.tag(element)) setResolution=\(result.rawValue)"
+            + " asked=\(asked.rawValue) dataType=\(element.getDataType().rawValue) (subscribes once on screen)")
         return element.getVideoView()
     }
 
-    /// Gallery view, or the window closing: give the stream back.
-    func releaseStage() {
+    /// Unsubscribes and destroys the stage element; recovery counters stay.
+    private func retireStage(why: String) {
         guard let element = stageElement else { return }
         _ = element.subscribeVideo(false)
         _ = videoContainer?.clean(element)
         element.getVideoView().removeFromSuperview()
+        Self.videoLog("stage retired user=\(stageUserID ?? 0) \(Self.tag(element)) - \(why)")
         stageElement = nil
         stageUserID = nil
-        stageSubscribed = false
+        stageWatch = ElementWatch()
+        stageRetiredAt = Date()
         lastStageFrame = .zero
+    }
+
+    private func resetStageRecovery() {
+        stageBackoff.reset()
+        stageRebuilds = 0
+        stageGaveUp = false
+    }
+
+    /// Whether the meeting window currently holds any stream (for the log line
+    /// that says it let go).
+    var holdsMeetingWindowStreams: Bool { stageElement != nil || !participantElements.isEmpty }
+
+    /// Gallery view, the window closing, or the window hidden: give the stream back.
+    func releaseStage() {
+        guard stageElement != nil else { return }
+        retireStage(why: "released")
+        resetStageRecovery()
     }
 
     // MARK: - What the Meeting window holds (for VideoBudget)
@@ -605,8 +689,9 @@ final class ZoomMeetingSDKClient: NSObject, ObservableObject {
                 _ = element.subscribeVideo(false)
                 _ = videoContainer?.clean(element)
                 lastRequestedFrame.removeValue(forKey: id)
-                Self.videoLog("released element for user=\(id) - left the meeting")
+                Self.videoLog("released element for user=\(id) \(Self.tag(element)) - left the meeting")
             }
+            forgetTile(id)
         }
     }
 
@@ -618,6 +703,7 @@ final class ZoomMeetingSDKClient: NSObject, ObservableObject {
             _ = videoContainer?.clean(element)
             participantElements.removeValue(forKey: userID)
             lastRequestedFrame.removeValue(forKey: userID)
+            forgetTile(userID)
         }
     }
 
@@ -642,6 +728,10 @@ final class ZoomMeetingSDKClient: NSObject, ObservableObject {
         }
         participantElements.removeAll()
         lastRequestedFrame.removeAll()
+        tileWatch.removeAll()
+        tileBackoff.removeAll()
+        tileRebuilds.removeAll()
+        tileGaveUp.removeAll()
         lastSelfFrame = .zero
         videoContainer = nil
     }
@@ -1400,75 +1490,112 @@ extension ZoomMeetingSDKClient: ZoomSDKVideoContainerDelegate {
         // A view window's element keeps its own bookkeeping (ViewVideoStore).
         if noteViewVideoFailure(element, code: Int(error.rawValue), reason: reason) { return }
         let now = Date()
-        // The active element FIRST, and return: it shares no user bookkeeping
-        // with the tiles, and falling through armed a cooldown nothing ever
-        // consumed - the refusal was logged UNTRACKED and never retried,
-        // which is why the Speaker window stayed black while the tiles,
-        // refused identically in the same burst, recovered.
-        // A run of refusals is one problem, not many. Anything after a quiet
-        // minute starts the backoff again from the beginning.
-        let continuing = lastSubscriptionFailure[userID]
-            .map { now.timeIntervalSince($0) < 60 } ?? false
-        let attempts = continuing ? (subscriptionAttempts[userID] ?? 0) + 1 : 1
-        subscriptionAttempts[userID] = attempts
-        lastSubscriptionFailure[userID] = now
-        // 2, 4, 8, 16, 32 seconds, then hold there. The poll runs at 1Hz, so
-        // even the first step takes the pressure off the rate limiter.
-        let delay = min(32, pow(2.0, Double(min(attempts, 5))))
-        subscriptionCooldown[userID] = now.addingTimeInterval(delay)
-
-        lastFailureReason[userID] = error
-        // Which element was refused, and how many the container holds.
-        //
-        // Worth keeping: one subscribe reliably produces TWO refusals at the
-        // same instant, and this is what proved they are the same element
-        // refused twice rather than the grid tile and the active-speaker view
-        // fighting over one person. It also shows the start-up burst - three
-        // elements subscribing in one tick - that trips the limiter.
-        let owner: String
-        if let grid = participantElements[userID], grid === element { owner = "gridTile" }
-        else if let rail = railSelfElement, rail === element { owner = "railSelf" }
-        else { owner = "UNTRACKED" }
         let elementCount = videoContainer?.getVideoElementList()?.count ?? -1
-        Self.videoLog("SUBSCRIBE FAIL code=\(error.rawValue) user=\(userID) \(reason)"
-            + " owner=\(owner) containerElements=\(elementCount)"
-            + " \u{2014} backing off \(Int(delay))s (attempt \(attempts))")
-        // Only worth telling the teacher about things they can act on. A
-        // too-frequent refusal is Greenroom's own pacing and recovers itself;
-        // saying so would be noise during a class.
-        if error != ZoomSDKVideoSubscribe_Fail_TooFrequentCall {
-            onVideoSubscribeFailure?("A participant's video could not start \u{2014} \(reason).")
+        let others = otherHolders(of: userID, except: element)
+        let head = "SUBSCRIBE FAIL code=\(error.rawValue) user=\(userID) \(reason)"
+        // The stage and the tiles: a refusal is never answered by asking the
+        // same element again (ElementRecovery). Zoom's refusal arrives AFTER
+        // subscribeVideo returned success.
+        if let stage = stageElement, stage === element {
+            if Self.isDrawing(element) {
+                Self.videoLog(head + " owner=stage \(Self.tag(element)) - ignored, this element is drawing"
+                    + " (sublayers=\(Self.sublayers(element))); others=\(others)")
+                return
+            }
+            if stageWatch.isRepeatRefusal(at: now) {
+                Self.videoLog(head + " owner=stage \(Self.tag(element)) - same refusal again, not counted")
+                return
+            }
+            let step = stageBackoff.failed(at: now)
+            stageWatch.subscribed = false
+            stageWatch.refusedUntil = now.addingTimeInterval(step.delay)
+            stageWatch.lastRefusalAt = now
+            Self.videoLog(head + " owner=stage \(Self.tag(element)) containerElements=\(elementCount) others=\(others)"
+                + " - retiring this element for a fresh one in \(Int(step.delay))s"
+                + " (refusal \(step.attempts), fresh elements so far \(stageRebuilds)/\(ElementRecovery.maxRebuilds))")
+            return
         }
+        if let tile = participantElements[userID], tile === element {
+            var watch = tileWatch[userID] ?? ElementWatch()
+            if Self.isDrawing(element) {
+                Self.videoLog(head + " owner=tile \(Self.tag(element)) - ignored, this element is drawing"
+                    + " (sublayers=\(Self.sublayers(element))); others=\(others)")
+                return
+            }
+            if watch.isRepeatRefusal(at: now) {
+                Self.videoLog(head + " owner=tile \(Self.tag(element)) - same refusal again, not counted")
+                return
+            }
+            let step = tileBackoff[userID, default: SubscribeBackoff()].failed(at: now)
+            watch.subscribed = false
+            watch.refusedUntil = now.addingTimeInterval(step.delay)
+            watch.lastRefusalAt = now
+            tileWatch[userID] = watch
+            Self.videoLog(head + " owner=tile \(Self.tag(element)) containerElements=\(elementCount) others=\(others)"
+                + " - retiring this element for a fresh one in \(Int(step.delay))s"
+                + " (refusal \(step.attempts), fresh elements so far \(tileRebuilds[userID] ?? 0)/\(ElementRecovery.maxRebuilds))")
+            // Only worth telling the teacher about things they can act on. A
+            // too-frequent refusal is Greenroom's own pacing and recovers itself;
+            // saying so would be noise during a class.
+            if error != ZoomSDKVideoSubscribe_Fail_TooFrequentCall {
+                onVideoSubscribeFailure?("A participant's video could not start \u{2014} \(reason).")
+            }
+            return
+        }
+        let owner = (railSelfElement.map { $0 === element } ?? false) ? "railSelf" : "UNTRACKED"
+        Self.videoLog(head + " owner=\(owner) \(Self.tag(element)) containerElements=\(elementCount) others=\(others)")
     }
 
     func onRenderUserChanged(_ element: ZoomSDKVideoElement?, user userid: UInt32) {
-        Self.videoLog("renderUserChanged element=\(element?.userid ?? 0) -> user=\(userid)")
+        Self.videoLog("renderUserChanged \(element.map(Self.tag) ?? "el=nil") element=\(element?.userid ?? 0) -> user=\(userid)")
     }
 
     /// Avatar instead of video is the other way a tile ends up looking blank,
     /// and it is NOT a failure - it is what the SDK draws when someone's camera
     /// is off. Logged so the two are never confused again.
+    ///
+    /// The camera coming on is NOT a reason to subscribe again: a second
+    /// subscribe on an element that holds one is refused (code 7) every time.
+    /// It starts the clock instead: if nothing draws within
+    /// ElementRecovery.grace, the next layout pass makes a fresh element.
     func onRenderDataTypeChanged(_ element: ZoomSDKVideoElement?, dataType type: VideoRenderDataType) {
         if let element, noteViewVideoDataType(element, type: type) { return }
-        Self.videoLog("dataTypeChanged user=\(element?.userid ?? 0) type=\(type.rawValue)")
-        // Not from inside the callback: the next layout pass asks again, on
-        // the same element (see stageReaskedForVideo).
-        if let element, let stage = stageElement, element === stage, type == VideoRenderDataType_Video,
-           stageSubscribed, !stageReaskedForVideo {
-            stageReaskedForVideo = true
-            stageSubscribed = false
-            Self.videoLog("stage: camera came on after the subscription; asking again user=\(stageUserID ?? 0)")
+        let tag = element.map(Self.tag) ?? "el=nil"
+        let isVideo = type == VideoRenderDataType_Video
+        let probe = element.map { " sublayers=\(Self.sublayers($0))" } ?? ""
+        if let element, let stage = stageElement, element === stage {
+            Self.videoLog("dataTypeChanged owner=stage user=\(element.userid) \(tag) type=\(type.rawValue)\(probe)"
+                + (isVideo && stageWatch.subscribed ? " - not asking again; watching for frames" : ""))
+            if isVideo {
+                if stageWatch.subscribed, stageWatch.expectingVideoSince == nil { stageWatch.expectingVideoSince = Date() }
+                if stageGaveUp {
+                    Self.videoLog("stage user=\(element.userid) camera came on after giving up - trying again")
+                    resetStageRecovery()
+                }
+            } else {
+                stageWatch.expectingVideoSince = nil
+            }
+            return
         }
-        // Someone's camera coming back on is the moment a previously refused
-        // subscription is most worth retrying: the rate limiter has long since
-        // forgotten the start-up burst that caused the refusal, and until the
-        // retry happens this tile is the black rectangle the teacher sees.
-        //
-        // Only the cooldown is cleared here. Calling subscribeVideo from
-        // inside an SDK callback is precisely the kind of re-entrant traffic
-        // the limiter counts, so the next layout pass does the real work.
-        guard let userID = element?.userid, type == VideoRenderDataType_Video else { return }
-        if lastFailureReason[userID] != nil { subscriptionCooldown[userID] = Date() }
+        if let element, let tile = participantElements[element.userid], tile === element {
+            let userID = element.userid
+            var watch = tileWatch[userID] ?? ElementWatch()
+            Self.videoLog("dataTypeChanged owner=tile user=\(userID) \(tag) type=\(type.rawValue)\(probe)"
+                + (isVideo && watch.subscribed ? " - not asking again; watching for frames" : ""))
+            if isVideo {
+                if watch.subscribed, watch.expectingVideoSince == nil { watch.expectingVideoSince = Date() }
+                if tileGaveUp.remove(userID) != nil {
+                    Self.videoLog("tile user=\(userID) camera came on after giving up - trying again")
+                    tileRebuilds[userID] = 0
+                    tileBackoff[userID]?.reset()
+                }
+            } else {
+                watch.expectingVideoSince = nil
+            }
+            tileWatch[userID] = watch
+            return
+        }
+        Self.videoLog("dataTypeChanged owner=other user=\(element?.userid ?? 0) \(tag) type=\(type.rawValue)\(probe)")
     }
 }
 

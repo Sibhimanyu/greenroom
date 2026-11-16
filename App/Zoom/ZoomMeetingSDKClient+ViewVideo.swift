@@ -17,10 +17,14 @@
 //      the element is made first and subscribed only once `window.isVisible`;
 //    - setResolution goes in before subscribing, because the quota is spent at
 //      subscribe time, and is asked twice when the SDK refuses it once;
-//    - a switch of person on one element is a subscription change and Zoom
-//      refuses bursts of them (code 7): two seconds apart per element, half a
-//      second apart across elements;
-//    - a refusal buys silence (2, 4, 8, 16, 32 s), then the SAME element asks again.
+//    - an element subscribes ONCE (ElementRecovery, SubscribeBackoff.swift): a
+//      second ask on an element that holds a subscription is refused with code
+//      7 every time, so a new person, a refusal, or video reported with nothing
+//      drawn each get a FRESH element; at most two seconds apart per slot,
+//      half a second apart across slots, and capped;
+//    - a second element asking for a remote user another element already
+//      holds is refused (code 7) too: every such subscription on 2026-11-13
+//      and 2026-11-16 was. The refusal lines name the other holders.
 //
 //  Everything is logged to Greenroom-video.log with a "View window:" prefix.
 //
@@ -44,30 +48,39 @@ final class ViewVideoStore {
         var userID: UInt32
         var tier: VideoTier
         var lastFrame: NSRect
-        var subscribed = false
-        var subscribedAt: Date?
+        var watch: ElementWatch
+        var subscribed: Bool { watch.subscribed }
+        var subscribedAt: Date? { watch.subscribedAt }
         var gotVideo = false
         var nextSwitchAt = Date().addingTimeInterval(2)
-        var cooldownUntil = Date.distantPast
-        var attempts = 0
-        var lastFailure = Date.distantPast
         var warnedNoVideo = false
-        /// Asked once more when the camera came on after the subscription
-        /// (the main window's stage stayed black without it, 2026-11-16).
-        var reaskedForVideo = false
 
-        init(key: ViewVideoKey, element: ZoomSDKNormalVideoElement, userID: UInt32, tier: VideoTier, frame: NSRect) {
+        init(key: ViewVideoKey, element: ZoomSDKNormalVideoElement, userID: UInt32, tier: VideoTier,
+             frame: NSRect, notBefore: Date) {
             self.key = key
             self.element = element
             self.userID = userID
             self.tier = tier
             self.lastFrame = frame
+            self.watch = ElementWatch(notBefore: notBefore)
         }
     }
 
     private(set) var entries: [ViewVideoKey: Entry] = [:]
     /// One subscription at a time across all view elements.
     var nextSubscribeAt = Date.distantPast
+    /// Per slot, across the fresh elements that replace one another.
+    var backoffs: [ViewVideoKey: SubscribeBackoff] = [:]
+    var rebuilds: [ViewVideoKey: Int] = [:]
+    var gaveUp: Set<ViewVideoKey> = []
+    var retiredAt: [ViewVideoKey: Date] = [:]
+
+    func forget(_ key: ViewVideoKey) {
+        backoffs.removeValue(forKey: key)
+        rebuilds.removeValue(forKey: key)
+        gaveUp.remove(key)
+        retiredAt.removeValue(forKey: key)
+    }
 
     func entry(for element: ZoomSDKVideoElement) -> Entry? {
         entries.values.first { $0.element === element }
@@ -120,26 +133,42 @@ extension ZoomMeetingSDKClient {
     /// an element (logged). `tier` comes from VideoBudget.
     func viewVideoView(_ key: ViewVideoKey, userID: UInt32, frame: NSRect, tier: VideoTier) -> NSView? {
         guard didUseCustomUI, frame.width > 0, frame.height > 0 else { return nil }
-        if let entry = viewVideo.entries[key] {
-            if entry.lastFrame != frame {
-                entry.lastFrame = frame
-                _ = entry.element.resize(frame)
-            }
-            if entry.userID != userID, Date() >= entry.nextSwitchAt {
-                _ = entry.element.subscribeVideo(false)
-                entry.element.userid = userID
-                entry.userID = userID
-                entry.subscribed = false
-                entry.gotVideo = false
-                entry.warnedNoVideo = false
-                entry.reaskedForVideo = false
-                entry.subscribedAt = nil
-                entry.nextSwitchAt = Date().addingTimeInterval(2)   // faster risks code 7
-                Self.viewLog("\(key.text) -> user=\(userID)")
-            }
-            subscribeIfReady(entry, tier: tier)
-            return entry.element.getVideoView()
+        guard let entry = viewVideo.entries[key] else { return makeViewElement(key, userID: userID, frame: frame, tier: tier) }
+        if entry.lastFrame != frame {
+            entry.lastFrame = frame
+            _ = entry.element.resize(frame)
         }
+        let now = Date()
+        if entry.userID != userID, now >= entry.nextSwitchAt {
+            // A different person is a fresh element, never a second subscribe.
+            retireViewElement(entry, why: "person changed to user=\(userID)")
+            viewVideo.forget(key)
+            viewVideo.retiredAt[key] = now
+            return makeViewElement(key, userID: userID, frame: frame, tier: tier)
+        }
+        noteRender(entry.element, watch: &entry.watch, label: "View window: \(key.text) user=\(entry.userID)")
+        let rebuilds = viewVideo.rebuilds[key] ?? 0
+        switch ElementRecovery.decide(drawing: Self.isDrawing(entry.element), watch: entry.watch, now: now, rebuilds: rebuilds) {
+        case .rebuild:
+            viewVideo.rebuilds[key] = rebuilds + 1
+            let why = entry.watch.refusedUntil != nil ? "refused" : "video reported, nothing drawn for \(Int(ElementRecovery.grace))s"
+            retireViewElement(entry, why: "\(why); fresh element \(rebuilds + 1) of \(ElementRecovery.maxRebuilds)")
+            viewVideo.retiredAt[key] = now
+            return makeViewElement(key, userID: entry.userID, frame: frame, tier: tier)
+        case .giveUp:
+            if viewVideo.gaveUp.insert(key).inserted {
+                Self.viewLog("GIVING UP key=\(key.text) user=\(entry.userID) \(Self.tag(entry.element))"
+                    + " after \(rebuilds) fresh elements (others holding this user:"
+                    + " \(otherHolders(of: entry.userID, except: entry.element))); a camera toggle tries again")
+            }
+        case .fine, .wait:
+            break
+        }
+        subscribeIfReady(entry, tier: tier)
+        return entry.element.getVideoView()
+    }
+
+    private func makeViewElement(_ key: ViewVideoKey, userID: UInt32, frame: NSRect, tier: VideoTier) -> NSView? {
         guard let container = ZoomSDK.shared().getMeetingService()?.getVideoContainer() else { return nil }
         adopt(container: container)
         var element = ZoomSDKNormalVideoElement(frame: frame)
@@ -149,15 +178,28 @@ extension ZoomMeetingSDKClient {
             return nil
         }
         element.userid = userID
-        let entry = ViewVideoStore.Entry(key: key, element: element, userID: userID, tier: tier, frame: frame)
+        let notBefore = (viewVideo.retiredAt[key] ?? .distantPast).addingTimeInterval(ElementRecovery.freshDelay)
+        let entry = ViewVideoStore.Entry(key: key, element: element, userID: userID, tier: tier,
+                                         frame: frame, notBefore: notBefore)
         viewVideo.set(entry)
-        Self.viewLog("created key=\(key.text) user=\(userID) tier=\(tier.rawValue)p"
+        Self.viewLog("created key=\(key.text) user=\(userID) \(Self.tag(element)) tier=\(tier.rawValue)p"
             + " frame=\(Int(frame.width))x\(Int(frame.height))")
         return element.getVideoView()
     }
 
+    /// Unsubscribes and destroys a slot's element; the slot's counters stay.
+    private func retireViewElement(_ entry: ViewVideoStore.Entry, why: String) {
+        _ = entry.element.subscribeVideo(false)
+        _ = videoContainer?.clean(entry.element)
+        entry.element.getVideoView().removeFromSuperview()
+        viewVideo.remove(entry.key)
+        Self.viewLog("retired key=\(entry.key.text) user=\(entry.userID) \(Self.tag(entry.element)) - \(why)")
+    }
+
     private func subscribeIfReady(_ entry: ViewVideoStore.Entry, tier: VideoTier) {
-        guard !entry.subscribed, Date() >= entry.cooldownUntil, Date() >= viewVideo.nextSubscribeAt,
+        let now = Date()
+        guard ElementRecovery.mayAsk(watch: entry.watch, gaveUp: viewVideo.gaveUp.contains(entry.key), now: now),
+              now >= viewVideo.nextSubscribeAt,
               entry.element.getVideoView().window?.isVisible == true else { return }
         entry.tier = tier
         let asked = Self.sdkResolution(tier)
@@ -167,27 +209,30 @@ extension ZoomMeetingSDKClient {
             set = entry.element.setResolution(asked)
         }
         let sub = entry.element.subscribeVideo(true)
-        viewVideo.nextSubscribeAt = Date().addingTimeInterval(0.5)
+        viewVideo.nextSubscribeAt = now.addingTimeInterval(0.5)
+        let others = otherHolders(of: entry.userID, except: entry.element)
         if sub == ZoomSDKError_Success {
             let shown = entry.element.showVideo(true)
             if shown != ZoomSDKError_Success { Self.viewLog("FAILED step=showVideo code=\(shown.rawValue) key=\(entry.key.text)") }
-            entry.subscribed = true
-            entry.subscribedAt = Date()
+            entry.watch.subscribed = true
+            entry.watch.subscribedAt = now
+            if entry.element.getDataType() == VideoRenderDataType_Video { entry.watch.expectingVideoSince = now }
             entry.gotVideo = false
-            Self.viewLog("subscribed key=\(entry.key.text) user=\(entry.userID) tier=\(tier.rawValue)p"
-                + " setResolution=\(set.rawValue)")
+            Self.viewLog("subscribed key=\(entry.key.text) user=\(entry.userID) \(Self.tag(entry.element))"
+                + " tier=\(tier.rawValue)p setResolution=\(set.rawValue) others=\(others)")
         } else {
             Self.viewLog("FAILED step=subscribeVideo code=\(sub.rawValue) key=\(entry.key.text) user=\(entry.userID)")
-            backOff(entry)
+            backOff(entry, at: now)
         }
     }
 
-    private func backOff(_ entry: ViewVideoStore.Entry) {
-        let now = Date()
-        entry.attempts = now.timeIntervalSince(entry.lastFailure) < 60 ? entry.attempts + 1 : 1
-        entry.lastFailure = now
-        entry.subscribed = false
-        entry.cooldownUntil = now.addingTimeInterval(min(32, pow(2, Double(min(entry.attempts, 5)))))
+    @discardableResult
+    private func backOff(_ entry: ViewVideoStore.Entry, at now: Date) -> (attempts: Int, delay: TimeInterval) {
+        let step = viewVideo.backoffs[entry.key, default: SubscribeBackoff()].failed(at: now)
+        entry.watch.subscribed = false
+        entry.watch.refusedUntil = now.addingTimeInterval(step.delay)
+        entry.watch.lastRefusalAt = now
+        return step
     }
 
     // MARK: Status, for the black-window fallback
@@ -220,28 +265,43 @@ extension ZoomMeetingSDKClient {
 
     func noteViewVideoFailure(_ element: ZoomSDKVideoElement, code: Int, reason: String) -> Bool {
         guard let entry = viewVideo.entry(for: element) else { return false }
-        backOff(entry)
-        Self.viewLog("SUBSCRIBE FAIL key=\(entry.key.text) code=\(code) user=\(entry.userID) \(reason)"
-            + " \u{2014} backing off \(Int(entry.cooldownUntil.timeIntervalSinceNow.rounded()))s (attempt \(entry.attempts))")
+        let now = Date()
+        let head = "SUBSCRIBE FAIL key=\(entry.key.text) code=\(code) user=\(entry.userID) \(Self.tag(element)) \(reason)"
+        let others = otherHolders(of: entry.userID, except: element)
+        if Self.isDrawing(element) {
+            Self.viewLog(head + " - ignored, this element is drawing; others=\(others)")
+            return true
+        }
+        if entry.watch.isRepeatRefusal(at: now) {
+            Self.viewLog(head + " - same refusal again, not counted")
+            return true
+        }
+        let step = backOff(entry, at: now)
+        Self.viewLog(head + " others=\(others) - retiring this element for a fresh one in \(Int(step.delay))s"
+            + " (refusal \(step.attempts), fresh elements so far \(viewVideo.rebuilds[entry.key] ?? 0)/\(ElementRecovery.maxRebuilds))")
         return true
     }
 
     func noteViewVideoDataType(_ element: ZoomSDKVideoElement, type: VideoRenderDataType) -> Bool {
         guard let entry = viewVideo.entry(for: element) else { return false }
         let word = type == VideoRenderDataType_Video ? "video" : type == VideoRenderDataType_Avatar ? "avatar" : "none"
-        Self.viewLog("render data type key=\(entry.key.text) user=\(entry.userID) type=\(word)")
+        Self.viewLog("render data type key=\(entry.key.text) user=\(entry.userID) \(Self.tag(element)) type=\(word)"
+            + " sublayers=\(element.getVideoView().layer?.sublayers?.count ?? -1)")
         if type == VideoRenderDataType_Video {
             if entry.warnedNoVideo, let at = entry.subscribedAt {
                 Self.viewLog("video arrived after \(Int(Date().timeIntervalSince(at)))s key=\(entry.key.text)")
             }
             entry.gotVideo = true
-            // A camera that came on after this slot subscribed: ask again on
-            // the next pass, once, not from inside the callback.
-            if entry.subscribed, !entry.reaskedForVideo {
-                entry.reaskedForVideo = true
-                entry.subscribed = false
-                Self.viewLog("camera came on after the subscription; asking again key=\(entry.key.text)")
+            // Not a reason to subscribe again (refused, code 7): start the
+            // clock; nothing drawn within the grace means a fresh element.
+            if entry.watch.subscribed, entry.watch.expectingVideoSince == nil { entry.watch.expectingVideoSince = Date() }
+            if viewVideo.gaveUp.remove(entry.key) != nil {
+                viewVideo.rebuilds[entry.key] = 0
+                viewVideo.backoffs[entry.key]?.reset()
+                Self.viewLog("camera came on after giving up - trying again key=\(entry.key.text)")
             }
+        } else {
+            entry.watch.expectingVideoSince = nil
         }
         return true
     }
@@ -254,7 +314,8 @@ extension ZoomMeetingSDKClient {
         _ = videoContainer?.clean(entry.element)
         entry.element.getVideoView().removeFromSuperview()
         viewVideo.remove(key)
-        Self.viewLog("released key=\(key.text)")
+        viewVideo.forget(key)
+        Self.viewLog("released key=\(key.text) \(Self.tag(entry.element))")
     }
 
     /// Everything one window holds, or only what is not in `keeping`.

@@ -92,7 +92,9 @@ extension ZoomMeetingSDKClient: ZoomSDKMeetingActionControllerDelegate {
     public func onMeetingLockStatus(_ isLock: Bool) { meetingIsLocked = isLock; roomEvents.changed() }
     public func onRequestLocalRecordingPrivilegeChanged(_ status: ZoomSDKLocalRecordingRequestPrivilegeStatus) {}
     public func onAllowParticipantsRequestCloudRecording(_ allow: Bool) {}
-    public func on(inMeetingUserAvatarPathUpdated userID: UInt32) {}
+    public func on(inMeetingUserAvatarPathUpdated userID: UInt32) {
+        Task { @MainActor in ParticipantAvatarStore.shared.avatarPathUpdated(userID: userID) }
+    }
     public func onAICompanionActiveChangeNotice(_ active: Bool) {}
     public func onParticipantProfilePictureStatusChange(_ hidden: Bool) {}
     public func onVideoAlphaChannelStatusChanged(_ isAlphaModeOn: Bool) {}

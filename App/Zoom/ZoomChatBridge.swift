@@ -91,38 +91,23 @@ struct ChatMessage: Identifiable {
     var privateTo: String?
     /// The message this one replies to, when the SDK reported a thread.
     var threadID: String?
+    /// The sender's Zoom user ID, which keys their profile photo. 0 when the
+    /// SDK did not say.
+    var senderUserID: UInt32 = 0
+    /// For a private message, the person on the other side (the sender when it
+    /// came to you, the receiver when you sent it). A reply goes back to them.
+    var privatePartnerID: UInt32 = 0
 
     var isFile: Bool { attachment != nil }
 
-    /// Zoom's Meeting SDK exposes no profile pictures for participants -
-    /// checked the real headers: the only "avatar" APIs are the 3D
-    /// animated-avatar feature and a video render type, nothing that
-    /// yields a person's photo. So the chat draws initials avatars, which
-    /// is also what a real client falls back to for anyone without a
-    /// picture set.
-    var initials: String {
-        // First LETTER of each word, not first character: class names like
-        // "Sibhi -8A" put a dash-word second, and taking characters rendered
-        // the avatar as "S-". Words with no letter at all are skipped.
-        let words = senderName.split(separator: " ")
-        let letters = words.compactMap { word in
-            word.first(where: { $0.isLetter }).map(String.init)
-        }.prefix(2)
-        if letters.isEmpty {
-            return senderName.first.map { String($0).uppercased() } ?? "?"
-        }
-        return letters.joined().uppercased()
-    }
+    /// The photo, when there is one, comes from `ParticipantAvatarStore`
+    /// (`ZoomSDKUserInfo.getAvatarPath`); these two are the fallback for
+    /// anyone without a picture set, which is also what a real client shows.
+    var initials: String { AvatarStyle.initials(for: senderName) }
 
     /// Stable per-person colour, derived from the name so the same person
     /// always gets the same swatch across sessions.
-    /// SwiftUI-qualified: the ZoomSDK module exports a `Color` of its own,
-    /// so the bare name is ambiguous in this file.
-    var avatarColor: SwiftUI.Color {
-        let palette: [SwiftUI.Color] = [.blue, .purple, .pink, .orange, .green, .teal, .indigo, .red]
-        let hash = senderName.unicodeScalars.reduce(0) { ($0 &* 31 &+ Int($1.value)) & 0xFFFFFF }
-        return palette[hash % palette.count]
-    }
+    var avatarColor: SwiftUI.Color { AvatarStyle.color(for: senderName) }
 }
 
 @MainActor
@@ -166,13 +151,16 @@ final class ZoomChatBridge: NSObject, ObservableObject {
     /// slate instead of the previous meeting's messages.
     func reset() {
         messages.removeAll()
+        Task { @MainActor in ParticipantAvatarStore.shared.reset() }
         pendingReceivers.removeAll()
         lastError = nil
     }
 
     // MARK: Sending
 
-    /// Sends to everyone (`ZoomSDKChatMessageType_To_All`, receiver 0).
+    /// Sends to everyone (`ZoomSDKChatMessageType_To_All`, receiver 0), or to
+    /// one person (`To_Individual`) when `partnerID` is set - used to answer a
+    /// private message privately instead of in front of the class.
     ///
     /// A reply carries two things: the SDK's own thread ID, so Zoom clients
     /// thread it properly, and a quoted first line marked with
@@ -180,7 +168,7 @@ final class ZoomChatBridge: NSObject, ObservableObject {
     /// The quote range is measured in UTF-16 units because that is what the
     /// builder's positions count, and a name with an emoji in it would
     /// otherwise shift every offset after it.
-    func send(_ content: String, replyingTo parent: ChatMessage? = nil) {
+    func send(_ content: String, replyingTo parent: ChatMessage? = nil, privatelyTo partnerID: UInt32 = 0) {
         guard let controller else { return }
         let trimmed = content.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
@@ -197,8 +185,8 @@ final class ZoomChatBridge: NSObject, ObservableObject {
 
         let builder = ZoomSDKChatMsgInfoBuilder()
             .setContent(body)
-            .setReceiver(0)
-            .setMessageType(ZoomSDKChatMessageType_To_All)
+            .setReceiver(partnerID)
+            .setMessageType(partnerID == 0 ? ZoomSDKChatMessageType_To_All : ZoomSDKChatMessageType_To_Individual)
         if let parent { _ = builder.setThreadId(parent.threadID ?? parent.id) }
         if let quoteRange {
             _ = builder.setQuotePosition(quoteRange.start, positionEnd: quoteRange.end)
@@ -324,7 +312,9 @@ extension ZoomChatBridge: ZoomSDKMeetingChatControllerDelegate {
             timestamp: Date(timeIntervalSince1970: TimeInterval(chatInfo.getTimeStamp())),
             quote: parent.map { ChatQuote(sender: $0.senderName, snippet: Self.snippet(of: $0)) },
             privateTo: isPrivate ? chatInfo.getReceiverDisplayName() : nil,
-            threadID: threadID.isEmpty ? nil : threadID
+            threadID: threadID.isEmpty ? nil : threadID,
+            senderUserID: chatInfo.getSenderUserID(),
+            privatePartnerID: isPrivate ? (fromMe ? chatInfo.getReceiverUserID() : chatInfo.getSenderUserID()) : 0
         ))
     }
 
@@ -335,6 +325,11 @@ extension ZoomChatBridge: ZoomSDKMeetingChatControllerDelegate {
         guard let action = ZoomSDK.shared().getMeetingService()?.getMeetingActionController(),
               let info = action.getUserByUserID(userID) else { return false }
         return info.isMySelf()
+    }
+
+    private func mySelfUserID() -> UInt32 {
+        ZoomSDK.shared().getMeetingService()?.getMeetingActionController()
+            .getMyself()?.getUserID() ?? 0
     }
 
     /// A participant's name, for a file transfer - the receiver reports only a
@@ -364,7 +359,8 @@ extension ZoomChatBridge: ZoomSDKMeetingChatControllerDelegate {
             attachment: ChatAttachment(name: info.fileName,
                                        sizeBytes: Int(info.fileSizeBytes),
                                        state: .sending(0)),
-            privateTo: info.isSendToAll ? nil : "one person"
+            privateTo: info.isSendToAll ? nil : "one person",
+            senderUserID: mySelfUserID()
         ))
     }
 
@@ -391,7 +387,9 @@ extension ZoomChatBridge: ZoomSDKMeetingChatControllerDelegate {
             isOutgoing: false,
             timestamp: Date(timeIntervalSince1970: TimeInterval(info.timeStamp)),
             attachment: attachment,
-            privateTo: info.isSendToAll ? nil : "you"
+            privateTo: info.isSendToAll ? nil : "you",
+            senderUserID: receiver.senderUserId,
+            privatePartnerID: info.isSendToAll ? 0 : receiver.senderUserId
         )
         messages.append(message)
         if attachment.isImage, attachment.sizeBytes <= Self.autoDownloadImageLimit {

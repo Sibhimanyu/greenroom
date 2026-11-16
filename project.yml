@@ -333,6 +333,7 @@ targets:
       - path: App/UI/PresentMenuSpec.swift
       - path: App/Zoom/NewMeetingRequest.swift
       - path: App/UI/PreviewOutlineRules.swift
+      - path: App/UI/ChatGrouping.swift
       - path: App/Zoom/ZoomScopes.swift
       - path: App/Zoom/ZoomServerToServerClient.swift
     settings:

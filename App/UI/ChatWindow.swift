@@ -10,9 +10,10 @@
 //  What is here matches what the SDK actually exposes: text, emoji (ordinary
 //  characters, nothing special needed), file transfer both ways, threads and
 //  quoted replies. What Zoom's own client has and this cannot: reactions on a
-//  chat message, message recall, GIF search, read receipts and profile
-//  pictures. None of those exist in ZoomSDKMeetingChatController, so they are
-//  absent rather than faked.
+//  chat message, message recall, GIF search and read receipts. None of those
+//  exist in ZoomSDKMeetingChatController, so they are absent rather than faked.
+//  Profile pictures do exist (`ZoomSDKUserInfo.getAvatarPath`) and are drawn by
+//  ParticipantAvatar; the layout rules live in ChatGrouping.
 //
 import SwiftUI
 import AppKit
@@ -51,8 +52,8 @@ struct ChatWindowView: View {
         .overlay {
             if dropTargeted {
                 RoundedRectangle(cornerRadius: 10)
-                    .strokeBorder(Color.accentColor, style: StrokeStyle(lineWidth: 2, dash: [6]))
-                    .background(Color.accentColor.opacity(0.06))
+                    .strokeBorder(Brand.green, style: StrokeStyle(lineWidth: 2, dash: [6]))
+                    .background(Brand.green.opacity(0.06))
                     .overlay(Label("Drop to share with everyone", systemImage: "paperclip"))
                     .padding(6)
                     .allowsHitTesting(false)
@@ -94,33 +95,23 @@ struct ChatWindowView: View {
 
     @ViewBuilder private var transcript: some View {
         if chat.messages.isEmpty {
-            // Empty state: a blank pane read as "broken or not connected?"
-            // (Codex design audit #16).
-            VStack(spacing: 6) {
-                Image(systemName: "bubble.left.and.bubble.right")
-                    .font(.title2)
-                    .foregroundStyle(.tertiary)
-                Text("Connected \u{2014} no messages yet")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                Text(chat.fileTransferEnabled
-                     ? "Type below, or drag a file in to share it with the class."
-                     : "Type below. File sharing is switched off for this meeting.")
-                    .font(.caption)
-                    .foregroundStyle(.tertiary)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, 24)
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            Text("No messages yet. Say hello to the class.")
+                .font(.system(size: 13))
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 24)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
             ScrollViewReader { proxy in
                 ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 2) {
-                        ForEach(Array(chat.messages.enumerated()), id: \.element.id) { index, message in
+                    let rows = ChatGrouping.rows(chat.messages.map(\.line))
+                    LazyVStack(alignment: .leading, spacing: 0) {
+                        ForEach(Array(zip(chat.messages, rows).enumerated()), id: \.element.0.id) { index, pair in
+                            let (message, row) = pair
                             if let day = daySeparator(at: index) { DayDivider(label: day) }
                             if message.id == firstUnreadID { UnreadDivider() }
                             MessageRow(message: message,
-                                       showsHeader: startsGroup(at: index),
+                                       row: row,
                                        onReply: { replyingTo = message },
                                        onAccept: { chat.accept(message) },
                                        onDecline: { chat.declineFile(message) })
@@ -154,9 +145,9 @@ struct ChatWindowView: View {
     /// what will be quoted before it is sent.
     private func replyBar(_ message: ChatMessage) -> some View {
         HStack(spacing: 8) {
-            Rectangle().fill(Color.accentColor).frame(width: 2)
+            Rectangle().fill(Brand.green).frame(width: 2)
             VStack(alignment: .leading, spacing: 1) {
-                Text("Replying to \(message.senderName)")
+                Text(message.privateTo != nil ? "Replying privately to \(message.senderName)" : "Replying to \(message.senderName)")
                     .font(.caption2.bold())
                     .foregroundStyle(Brand.text)
                 Text(message.isFile ? (message.attachment?.name ?? "") : message.content)
@@ -180,92 +171,62 @@ struct ChatWindowView: View {
 
     // MARK: Composer
 
-    @ViewBuilder private var composer: some View {
-        if zoom { zoomComposer } else { standardComposer }
+    /// Set when the message being answered was private: the answer goes back
+    /// to that one person, never to the class.
+    private var privateRecipient: (id: UInt32, name: String)? {
+        guard let message = replyingTo, message.privateTo != nil, message.privatePartnerID != 0 else { return nil }
+        return (message.privatePartnerID, message.isOutgoing ? (message.privateTo ?? "them") : message.senderName)
     }
 
-    /// Zoom's: "To: Everyone" above a rounded input that says "Type message
-    /// here...". Messages go to everyone only (the SDK builder here sends to
-    /// receiver 0), so To is a statement, not a selector.
-    private var zoomComposer: some View {
+    /// A quiet line of who will see it, then the box: Return sends, Shift-Return
+    /// is a new line.
+    private var composer: some View {
         VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 6) {
-                Text("To:").font(.system(size: 12)).foregroundStyle(MeetingTheme.secondaryText)
-                Text("Everyone")
-                    .font(.system(size: 12, weight: .medium))
-                    .padding(.horizontal, 8).frame(height: 22)
-                    .background(MeetingTheme.raised, in: RoundedRectangle(cornerRadius: MeetingTheme.controlRadius))
-                Spacer()
+            Text(ChatGrouping.audienceNote(privateTo: privateRecipient?.name))
+                .font(.system(size: 11))
+                .foregroundStyle(.tertiary)
+                .padding(.horizontal, 4)
+            HStack(alignment: .bottom, spacing: 8) {
                 Button(action: pickFile) {
-                    Image(systemName: "paperclip").font(.system(size: 13))
+                    Image(systemName: "paperclip").font(.system(size: 15))
                 }
                 .buttonStyle(.plain)
-                .foregroundStyle(chat.fileTransferEnabled ? MeetingTheme.text : MeetingTheme.secondaryText.opacity(0.5))
+                .foregroundStyle(chat.fileTransferEnabled ? AnyShapeStyle(HierarchicalShapeStyle.secondary)
+                                                          : AnyShapeStyle(HierarchicalShapeStyle.quaternary))
                 .disabled(!chat.fileTransferEnabled)
-                .help(chat.fileTransferEnabled ? "Share a file with everyone\u{2026}" : "File sharing is switched off for this meeting")
+                .frame(height: 28)
+                .help(chat.fileTransferEnabled
+                      ? "Share a file with everyone\u{2026}"
+                      : "File sharing is switched off for this meeting")
                 .accessibilityLabel("Share a file")
+
+                ChatMessageField(text: $draft,
+                                 placeholder: ChatGrouping.placeholder(privateTo: privateRecipient?.name,
+                                                                       replying: replyingTo != nil),
+                                 onSend: send,
+                                 onPasteFiles: share)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 4)
+                    .background(zoom ? AnyShapeStyle(MeetingTheme.raised) : AnyShapeStyle(Color.primary.opacity(0.07)),
+                                in: RoundedRectangle(cornerRadius: 10))
+
+                Button(action: send) {
+                    Image(systemName: "arrow.up.circle.fill").font(.system(size: 24))
+                }
+                .buttonStyle(.plain)
+                .frame(height: 28)
+                .help("Send message")
+                .accessibilityLabel("Send message")
+                .disabled(draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                .foregroundStyle(draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                    ? AnyShapeStyle(HierarchicalShapeStyle.tertiary)
+                    : AnyShapeStyle(Brand.green))
             }
-            MessageField(text: $draft,
-                         placeholder: replyingTo == nil ? "Type message here\u{2026}" : "Write your reply",
-                         onSend: send,
-                         onPasteFiles: share)
-                .padding(.horizontal, 10)
-                .padding(.vertical, 8)
-                .background(MeetingTheme.raised, in: RoundedRectangle(cornerRadius: 8))
         }
         .padding(12)
     }
 
-    private var standardComposer: some View {
-        HStack(spacing: 8) {
-            Button(action: pickFile) {
-                Image(systemName: "paperclip").font(.system(size: 15))
-            }
-            .buttonStyle(.plain)
-            .foregroundStyle(chat.fileTransferEnabled ? AnyShapeStyle(HierarchicalShapeStyle.secondary)
-                                                      : AnyShapeStyle(HierarchicalShapeStyle.quaternary))
-            .disabled(!chat.fileTransferEnabled)
-            .help(chat.fileTransferEnabled
-                  ? "Share a file with everyone\u{2026}"
-                  : "File sharing is switched off for this meeting")
-            .accessibilityLabel("Share a file")
-
-            MessageField(text: $draft,
-                         placeholder: replyingTo == nil ? "Message everyone" : "Write your reply",
-                         onSend: send,
-                         onPasteFiles: share)
-                .padding(.horizontal, 10)
-                .padding(.vertical, 7)
-                .greenroomGlass(in: Capsule(), interactive: true)
-
-            Button(action: send) {
-                Image(systemName: "arrow.up.circle.fill").font(.title2)
-            }
-            .buttonStyle(.plain)
-            .help("Send message")
-            .accessibilityLabel("Send message")
-            .disabled(draft.isEmpty)
-            .foregroundStyle(draft.isEmpty
-                ? AnyShapeStyle(HierarchicalShapeStyle.secondary)
-                : AnyShapeStyle(Color.accentColor))
-        }
-        .padding(10)
-    }
-
     // MARK: Behaviour
-
-    /// A message starts a new visual group when it's from a different
-    /// sender than the one before it, or more than 3 minutes later -
-    /// consecutive messages from the same person then read as one block,
-    /// the way real chat clients do it.
-    private func startsGroup(at index: Int) -> Bool {
-        guard index > 0 else { return true }
-        let current = chat.messages[index]
-        let previous = chat.messages[index - 1]
-        if previous.senderName != current.senderName { return true }
-        if current.isFile || previous.isFile { return true }
-        return current.timestamp.timeIntervalSince(previous.timestamp) > 180
-    }
 
     /// "Today", "Yesterday" or a date, on the first message of each day. A
     /// class that runs over two sessions otherwise reads as one long morning.
@@ -290,9 +251,10 @@ struct ChatWindowView: View {
         let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
         let parent = replyingTo
+        let recipient = privateRecipient?.id ?? 0
         draft = ""
         replyingTo = nil
-        DispatchQueue.main.async { chat.send(text, replyingTo: parent) }
+        DispatchQueue.main.async { chat.send(text, replyingTo: parent, privatelyTo: recipient) }
     }
 
     private func share(_ urls: [URL]) {
@@ -340,265 +302,47 @@ private struct DayDivider: View {
 private struct UnreadDivider: View {
     var body: some View {
         HStack(spacing: 8) {
-            Rectangle().fill(Color.accentColor.opacity(0.6)).frame(height: 1)
+            Rectangle().fill(Brand.green.opacity(0.6)).frame(height: 1)
             Text("NEW")
                 .font(.system(size: 9, weight: .bold, design: .monospaced))
                 .foregroundStyle(Brand.text)
-            Rectangle().fill(Color.accentColor.opacity(0.6)).frame(height: 1)
+            Rectangle().fill(Brand.green.opacity(0.6)).frame(height: 1)
         }
         .padding(.vertical, 6)
     }
 }
 
-/// AppKit-backed message field. SwiftUI's TextField on macOS would NOT
-/// reliably push a cleared binding back into the focused field editor -
-/// the sent text visibly stayed in the box (reported twice, including
-/// after an async-clear workaround). Owning the NSTextField lets the
-/// clear be imperative and unconditional:
-/// - Enter is intercepted via insertNewline (not target/action, which
-///   also fires on focus loss and would send when clicking away),
-/// - after sending, `stringValue = ""` resets both the field and its
-///   live field editor, deterministically,
-/// - the send BUTTON path clears through updateNSView, which pushes a
-///   changed binding into the view (and never fights in-progress typing
-///   because it only writes when the values differ).
-///
-/// It also owns paste. ⌘V with a file or an image on the pasteboard shares
-/// it rather than pasting a path string, which is what a teacher copying a
-/// picture actually means - and when the pasteboard holds plain text it
-/// falls straight through to normal pasting.
-private struct MessageField: NSViewRepresentable {
-    @Binding var text: String
-    let placeholder: String
-    let onSend: () -> Void
-    var onPasteFiles: ([URL]) -> Void = { _ in }
-
-    func makeNSView(context: Context) -> NSTextField {
-        let field = PastingTextField()
-        field.onPasteFiles = onPasteFiles
-        field.placeholderString = placeholder
-        field.isBordered = false
-        field.drawsBackground = false
-        // Focus ring stays ON: removing it left keyboard users with no
-        // visible focus state (Codex design audit #3).
-        field.font = .systemFont(ofSize: NSFont.systemFontSize)
-        field.setAccessibilityLabel(placeholder)
-        field.delegate = context.coordinator
-        field.setContentHuggingPriority(.defaultLow, for: .horizontal)
-        return field
-    }
-
-    func updateNSView(_ field: NSTextField, context: Context) {
-        context.coordinator.parent = self
-        (field as? PastingTextField)?.onPasteFiles = onPasteFiles
-        field.placeholderString = placeholder
-        if field.stringValue != text {
-            field.stringValue = text
-        }
-    }
-
-    func makeCoordinator() -> Coordinator { Coordinator(self) }
-
-    final class Coordinator: NSObject, NSTextFieldDelegate {
-        var parent: MessageField
-        init(_ parent: MessageField) { self.parent = parent }
-
-        func controlTextDidChange(_ notification: Notification) {
-            guard let field = notification.object as? NSTextField else { return }
-            parent.text = field.stringValue
-        }
-
-        func control(_ control: NSControl, textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
-            guard commandSelector == #selector(NSResponder.insertNewline(_:)) else { return false }
-            parent.onSend()
-            control.stringValue = "" // the imperative clear - field AND field editor
-            parent.text = ""
-            return true
-        }
-    }
-
-    /// Intercepts ⌘V only when the pasteboard actually holds files or image
-    /// data. Text paste is left completely alone - hijacking it would be a far
-    /// worse bug than the feature is worth.
-    final class PastingTextField: NSTextField {
-        var onPasteFiles: ([URL]) -> Void = { _ in }
-
-        override func performKeyEquivalent(with event: NSEvent) -> Bool {
-            guard event.modifierFlags.contains(.command),
-                  event.charactersIgnoringModifiers?.lowercased() == "v" else {
-                return super.performKeyEquivalent(with: event)
-            }
-            let board = NSPasteboard.general
-            if let urls = board.readObjects(forClasses: [NSURL.self], options: nil) as? [URL],
-               !urls.isEmpty, urls.allSatisfy(\.isFileURL) {
-                onPasteFiles(urls)
-                return true
-            }
-            // An image copied from Preview or a browser has no file behind it,
-            // so it is written out before it can be shared.
-            if let image = NSImage(pasteboard: board), let url = Self.writeTemporary(image) {
-                onPasteFiles([url])
-                return true
-            }
-            return super.performKeyEquivalent(with: event)
-        }
-
-        private static func writeTemporary(_ image: NSImage) -> URL? {
-            guard let tiff = image.tiffRepresentation,
-                  let bitmap = NSBitmapImageRep(data: tiff),
-                  let png = bitmap.representation(using: .png, properties: [:]) else { return nil }
-            let url = FileManager.default.temporaryDirectory
-                .appendingPathComponent("Pasted image.png")
-            try? png.write(to: url, options: .atomic)
-            return url
-        }
-    }
-}
-
-/// One message: initials avatar + name + time on the first message of a
-/// group, then just bubbles for the rest. Outgoing messages sit right,
-/// tinted; incoming sit left, neutral.
+/// One message: the shared layout in ChatMessageRow, with this message's
+/// quote and file card inside the bubble.
 private struct MessageRow: View {
     let message: ChatMessage
-    let showsHeader: Bool
+    let row: ChatGrouping.Row
     let onReply: () -> Void
     let onAccept: () -> Void
     let onDecline: () -> Void
 
-    @State private var hovering = false
-    @Environment(\.meetingZoomChat) private var zoom
-
     var body: some View {
-        if zoom { zoomBody } else { standardBody }
-    }
-
-    /// Zoom's transcript: the sender and the time, then the words, no bubbles;
-    /// your own messages are from "Me".
-    private var zoomBody: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            if showsHeader {
-                HStack(spacing: 6) {
-                    Text(message.isOutgoing ? "Me" : message.senderName).font(.system(size: 12, weight: .semibold))
-                    Text(message.timestamp, style: .time).font(.system(size: 11)).foregroundStyle(MeetingTheme.secondaryText)
-                    if let privateTo = message.privateTo {
-                        Label("to \(privateTo) (direct)", systemImage: "lock.fill")
-                            .font(.system(size: 10, weight: .semibold)).foregroundStyle(MeetingTheme.hand)
-                    }
-                    if hovering {
-                        Button(action: onReply) { Image(systemName: "arrowshape.turn.up.left").font(.system(size: 10)) }
-                            .buttonStyle(.plain).foregroundStyle(MeetingTheme.secondaryText).help("Reply to this message")
-                    }
-                }
-                .padding(.top, 8)
-            }
-            VStack(alignment: .leading, spacing: 6) {
-                if let quote = message.quote { quoteBlock(quote) }
-                if let attachment = message.attachment {
-                    AttachmentView(attachment: attachment, onAccept: onAccept, onDecline: onDecline)
-                }
-                if !message.content.isEmpty {
-                    Text(.init(message.content)).font(.system(size: 13)).textSelection(.enabled)
-                }
-            }
-            .padding(.horizontal, 10).padding(.vertical, 6)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(message.isOutgoing ? MeetingTheme.raised : Color.clear,
-                        in: RoundedRectangle(cornerRadius: 8))
-        }
-        .foregroundStyle(MeetingTheme.text)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .onHover { hovering = $0 }
-    }
-
-    private var standardBody: some View {
-        HStack(alignment: .top, spacing: 8) {
-            if message.isOutgoing { Spacer(minLength: 32) }
-            if !message.isOutgoing {
-                // Invisible placeholder keeps grouped messages aligned
-                // with the avatar above them.
-                avatar.opacity(showsHeader ? 1 : 0)
-            }
-
-            VStack(alignment: message.isOutgoing ? .trailing : .leading, spacing: 2) {
-                if showsHeader { header }
-                bubble
-            }
-
-            if !message.isOutgoing { Spacer(minLength: 32) }
-        }
-        .padding(.top, showsHeader ? 8 : 0)
-        .onHover { hovering = $0 }
-    }
-
-    private var header: some View {
-        HStack(spacing: 6) {
-            Text(message.senderName).font(.caption.bold())
-            Text(message.timestamp, style: .time)
-                .font(.caption2)
-                .foregroundStyle(.tertiary)
-            if let privateTo = message.privateTo {
-                Label("private to \(privateTo)", systemImage: "lock.fill")
-                    .labelStyle(.titleAndIcon)
-                    .font(.system(size: 9, weight: .semibold))
-                    .foregroundStyle(Brand.netText)
-            }
-            if hovering {
-                Button(action: onReply) {
-                    Image(systemName: "arrowshape.turn.up.left")
-                        .font(.system(size: 10))
-                }
-                .buttonStyle(.plain)
-                .foregroundStyle(.secondary)
-                .help("Reply to this message")
-            }
-        }
-    }
-
-    @ViewBuilder private var bubble: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        ChatMessageRow(row: row,
+                       userID: message.senderUserID,
+                       text: message.content,
+                       hasExtra: message.quote != nil || message.attachment != nil,
+                       onReply: onReply) {
             if let quote = message.quote { quoteBlock(quote) }
             if let attachment = message.attachment {
-                AttachmentView(attachment: attachment,
-                               onAccept: onAccept,
-                               onDecline: onDecline)
-            }
-            if !message.content.isEmpty {
-                // Links are made tappable by Text's markdown handling of bare
-                // URLs; selection stays on so a meeting code can be copied.
-                Text(.init(message.content))
-                    .textSelection(.enabled)
+                AttachmentView(attachment: attachment, onAccept: onAccept, onDecline: onDecline)
             }
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 6)
-        .background(
-            message.isOutgoing
-                ? AnyShapeStyle(Color.accentColor.opacity(0.22))
-                : AnyShapeStyle(HierarchicalShapeStyle.quaternary.opacity(0.6)),
-            in: RoundedRectangle(cornerRadius: 12)
-        )
     }
 
     private func quoteBlock(_ quote: ChatQuote) -> some View {
-        HStack(spacing: 6) {
-            Rectangle().fill(Color.accentColor.opacity(0.7)).frame(width: 2)
+        HStack(spacing: 8) {
+            Rectangle().fill(Brand.green.opacity(0.7)).frame(width: 2)
             VStack(alignment: .leading, spacing: 1) {
-                Text(quote.sender).font(.caption2.bold()).foregroundStyle(Brand.text)
+                Text(quote.sender).font(.caption2.bold()).foregroundStyle(.secondary)
                 Text(quote.snippet).font(.caption).foregroundStyle(.secondary).lineLimit(2)
             }
         }
         .fixedSize(horizontal: false, vertical: true)
-    }
-
-    private var avatar: some View {
-        Circle()
-            .fill(message.avatarColor.gradient)
-            .frame(width: 26, height: 26)
-            .overlay(
-                Text(message.initials)
-                    .font(.system(size: 10, weight: .semibold))
-                    .foregroundStyle(.white)
-            )
     }
 }
 
@@ -759,5 +503,19 @@ enum ChatWindowController {
     static func close() {
         window?.close()
         window = nil
+    }
+}
+
+
+private extension ChatMessage {
+    /// What ChatGrouping needs to know.
+    var line: ChatLine {
+        ChatLine(id: id,
+                 senderKey: senderUserID != 0 ? "\(senderUserID)" : senderName,
+                 senderName: senderName,
+                 isOutgoing: isOutgoing,
+                 timestamp: timestamp,
+                 privateTo: privateTo,
+                 isFile: isFile)
     }
 }

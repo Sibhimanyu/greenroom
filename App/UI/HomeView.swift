@@ -100,7 +100,6 @@ struct HomeView: View {
     @State private var cameraAccess = AVCaptureDevice.authorizationStatus(for: .video)
     @State private var micAccess = AVCaptureDevice.authorizationStatus(for: .audio)
     @State private var lastSession: LastSession?
-    @State private var sessionCount = 0
     @State private var pastedHint = false
     @State private var showSavePreset = false
     @State private var presetNameDraft = ""
@@ -1139,16 +1138,10 @@ struct HomeView: View {
                 }
                 .buttonStyle(.plain)
                 .help("Opens that session's page.")
+                // No "All sessions" link: the toolbar's Sessions button is
+                // that, and three ways to the same place was one too many
+                // (owner, 2026-11-16).
                 Spacer(minLength: 0)
-                if sessionCount > 0 {
-                    Button {
-                        coordinator.mainPage = .sessions
-                    } label: {
-                        Text("All sessions (\(sessionCount)) \u{2192}").foregroundStyle(Brand.text)
-                    }
-                    .buttonStyle(.plain)
-                    .help("Opens Sessions.")
-                }
             }
             .font(.callout)
         }
@@ -1160,7 +1153,7 @@ struct HomeView: View {
         Task.detached(priority: .utility) {
             let all = ScreenroomLibrary.presentations()
             guard let newest = all.first else {
-                await MainActor.run { lastSession = nil; sessionCount = 0 }
+                await MainActor.run { lastSession = nil }
                 return
             }
             var length: String?
@@ -1170,7 +1163,7 @@ struct HomeView: View {
                 length = SessionsFormat.length(seconds)
             }
             let found = LastSession(path: newest.folder.path, title: newest.presenter, length: length)
-            await MainActor.run { lastSession = found; sessionCount = all.count }
+            await MainActor.run { lastSession = found }
         }
     }
 

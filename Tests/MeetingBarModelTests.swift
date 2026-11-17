@@ -103,19 +103,19 @@ final class MeetingBarModelTests: XCTestCase {
         let closed = M.notesCell(open: false, none), open = M.notesCell(open: true, none)
         XCTAssertEqual(closed.symbol, "note.text")
         XCTAssertFalse(closed.on)
-        XCTAssertEqual(closed.help, "Show Notes")
+        XCTAssertTrue(closed.help.hasPrefix("Show your notes bar"))
         XCTAssertTrue(open.on)
-        XCTAssertEqual(open.help, "Hide Notes")
+        XCTAssertEqual(open.help, "Hide your notes bar")
         XCTAssertEqual(open.spoken, "Hide notes")
     }
 
     func testIconCellsHelpNameTheBoundKey() {
         var b = ShortcutBindings()
         b.set(KeyCombo.optionCommand(kVK_ANSI_M), for: .action(.toggleMeetingBar))
-        XCTAssertEqual(M.collapseCell(b).help, "Collapse to Small Button (\u{2325}\u{2318}M)")
+        XCTAssertEqual(M.collapseCell(b).help, "Collapse the bar to a small round button (\u{2325}\u{2318}M)")
         XCTAssertEqual(M.collapseCell(none).spoken, "Collapse to the small button")
         XCTAssertNotEqual(M.collapseCell(none).symbol, "arrow.up.left.and.arrow.down.right")
-        XCTAssertEqual(M.viewsCell(none).help, "Meeting Views")
+        XCTAssertTrue(M.viewsCell(none).help.hasPrefix("Meeting views"))
     }
 
     func testViewsSlotFollowsTheMeetingButton() {

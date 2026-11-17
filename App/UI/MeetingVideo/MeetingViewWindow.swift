@@ -88,6 +88,7 @@ final class MeetingViewWindowController: NSObject, NSWindowDelegate {
         let panel = MeetingViewPanel(contentRect: frame, styleMask: style,
                                      backing: .buffered, defer: false, screen: screen)
         self.panel = panel
+        panel.allowsToolTipsWhenApplicationIsInactive = true
         self.content = MeetingViewContentView(view: view, frame: NSRect(origin: .zero, size: frame.size))
         super.init()
         panel.title = view.title

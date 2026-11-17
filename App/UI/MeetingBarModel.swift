@@ -187,20 +187,23 @@ enum MeetingBarModel {
     /// Notes: lit while the notes bar is open.
     static func notesCell(open: Bool, _ bindings: ShortcutBindings) -> IconCell {
         IconCell(symbol: "note.text",
-                 help: help(open ? "Hide Notes" : "Show Notes", .toggleNotes, bindings),
+                 help: help(open ? "Hide your notes bar" : "Show your notes bar: your plan and notes, only you see it",
+                            .toggleNotes, bindings),
                  spoken: open ? "Hide notes" : "Show notes", on: open)
     }
 
     /// Meeting Views: opens the views submenu's entries as a menu of its own.
     static func viewsCell(_ bindings: ShortcutBindings) -> IconCell {
-        IconCell(symbol: "square.grid.2x2", help: "Meeting Views", spoken: "Meeting views. Menu")
+        IconCell(symbol: "square.grid.2x2", help: "Meeting views: open the active speaker, gallery or shared screen in a window of its own",
+                 spoken: "Meeting views. Menu")
     }
 
-    /// Collapse to the small round button. Not the arrows the Meeting button
-    /// uses (they open the Meeting window): a ring in a ring, the puck itself.
+    /// Collapse to the small round button.
     static func collapseCell(_ bindings: ShortcutBindings) -> IconCell {
-        IconCell(symbol: "circle.circle",
-                 help: help("Collapse to Small Button", .toggleMeetingBar, bindings),
+        // The Meeting button's arrows pulled in, in a circle: "shrink to the
+        // small round button" (circle.circle read as a target; owner, 2026-11-17).
+        IconCell(symbol: "arrow.down.right.and.arrow.up.left.circle",
+                 help: help("Collapse the bar to a small round button", .toggleMeetingBar, bindings),
                  spoken: "Collapse to the small button")
     }
 }

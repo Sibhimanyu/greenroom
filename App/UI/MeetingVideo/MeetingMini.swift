@@ -105,6 +105,7 @@ final class ShareBorderOverlay {
         panel = NSPanel(contentRect: parent.frame, styleMask: [.borderless, .nonactivatingPanel],
                         backing: .buffered, defer: false)
         panel.isReleasedWhenClosed = false
+        panel.allowsToolTipsWhenApplicationIsInactive = true
         panel.isOpaque = false
         panel.backgroundColor = .clear
         panel.hasShadow = false

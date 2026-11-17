@@ -2669,7 +2669,9 @@ final class CoordinatorController: ObservableObject {
     /// Confirm), the second stops and saves the recording. No menu in between
     /// (owner, 2026-11-17: "it should not need a menu"; the confirmation stays).
     func confirmStopRecording() {
-        guard isRunning, !recordOnlyActive, isRecording, !isSavingRecording else { return }
+        // `isRunning` is only true while a start is under way; a live class is
+        // `stageLive` (the guard read isRunning alone, and REC did nothing).
+        guard isRunning || stageLive, !recordOnlyActive, isRecording, !isSavingRecording else { return }
         if exitAsk == .stopRecording {
             disarmExit()
             toggleRecording()

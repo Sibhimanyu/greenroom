@@ -1003,6 +1003,9 @@ enum MeetingControlBarController {
                                backing: .buffered, defer: false)
         created.isReleasedWhenClosed = false
         created.hidesOnDeactivate = false
+        // Hover help shows while another app is in front: the bar is used
+        // from over the shared app, and Greenroom is rarely active (owner, 2026-11-17).
+        created.allowsToolTipsWhenApplicationIsInactive = true
         created.level = .floating
         created.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         // The grip and the puck move the panel themselves.

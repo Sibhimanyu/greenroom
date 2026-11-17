@@ -98,6 +98,7 @@ final class RecordingControlBarController {
                                    styleMask: [.borderless, .nonactivatingPanel],
                                    backing: .buffered, defer: false)
             created.isReleasedWhenClosed = false
+            created.allowsToolTipsWhenApplicationIsInactive = true
             created.level = .statusBar
             created.isOpaque = false
             created.backgroundColor = .clear

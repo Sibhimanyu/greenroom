@@ -189,12 +189,11 @@ struct GreenroomApp: App {
             // surface for its cards - when the panel is closed, Cues has
             // its own status item with the same glyph, and the menu bar must
             // never show two.
-            if coordinator.isRecording {
-                HStack(spacing: 3) {
-                    Image(systemName: "record.circle.fill")
-                    Text("REC")
-                }
-            } else if coordinator.cuesListening && coordinator.cuesOnRail {
+            // Recording keeps the mark, as narrow as ever: "● REC" in its
+            // place was wider, and on a Mac with a notch macOS hid it behind
+            // the notch, so Greenroom vanished from the menu bar mid-class
+            // (owner, 2026-11-17). The bar, the island and the menu say REC.
+            if coordinator.cuesListening && coordinator.cuesOnRail {
                 HStack(spacing: 3) {
                     Image(systemName: coordinator.cuesPaused ? "waveform.slash" : "waveform")
                     Image("MenuBarMark").accessibilityLabel("Greenroom")

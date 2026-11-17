@@ -280,7 +280,8 @@ struct MeetingBarContent: View {
         let name = s.muted ? "Unmute" : "Mute"
         return BarIconButton(symbol: s.muted ? "mic.slash.fill" : "mic.fill",
                              tint: s.muted ? .red : .primary,
-                             help: help(name, .toggleMic), spoken: name, action: a.toggleMute)
+                             help: help(s.muted ? "Unmute: the class hears you again" : "Mute your microphone", .toggleMic),
+                             spoken: name, action: a.toggleMute)
             .disabled(!s.inMeeting)
     }
 
@@ -288,7 +289,8 @@ struct MeetingBarContent: View {
         let name = s.cameraOn ? "Stop Video" : "Start Video"
         return BarIconButton(symbol: s.cameraOn ? "video.fill" : "video.slash.fill",
                              tint: s.cameraOn ? .primary : .red,
-                             help: help(name, .toggleCamera), spoken: name, action: a.toggleCamera)
+                             help: help(s.cameraOn ? "Turn your camera off" : "Turn your camera on", .toggleCamera),
+                             spoken: name, action: a.toggleCamera)
             .disabled(!s.inMeeting)
     }
 
@@ -420,7 +422,7 @@ struct MeetingBarContent: View {
 
     private var chatButton: some View {
         BarIconButton(symbol: "bubble.left.fill",
-                      help: help(s.chatOpen ? "Close Chat" : "Open Chat", .toggleChat),
+                      help: help(s.chatOpen ? "Close the meeting chat" : "Open the meeting chat", .toggleChat),
                       spoken: s.chatOpen ? "Close chat" : "Open chat", action: a.toggleChat)
             .overlay(alignment: .topTrailing) { unreadBadge }
     }

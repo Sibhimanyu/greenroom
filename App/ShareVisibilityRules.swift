@@ -64,3 +64,62 @@ enum ShareVisibilityExplainer {
         defaults.set(true, forKey: defaultsKey)
     }
 }
+
+// MARK: - Which windows offer "Show to class", and what the switch says
+
+/// Every kind of window Greenroom opens, and whether it carries the switch.
+/// Hidden from the class by default; the switch lets the person show one, say
+/// to show how they present. Tools and anything private never carry it.
+enum ShareableWindow: CaseIterable {
+    case main, settings, meetingChat, participants, meetingWindow, meetingView, mini
+    // Never offered:
+    /// Credentials are typed here (`sharingType = .none`).
+    case setupGuide
+    /// Tools for the person running the class, not content.
+    case controlBar, island, recordingChrome, annotation, drawingToolbar
+    /// The whiteboard is its own share target (`sharingType = .none`).
+    case whiteboard
+    /// A web page with its tab strip in the title bar; no room, and never asked for.
+    case browser
+
+    var offersSwitch: Bool {
+        switch self {
+        case .main, .settings, .meetingChat, .participants, .meetingWindow, .meetingView, .mini: return true
+        case .setupGuide, .controlBar, .island, .recordingChrome, .annotation, .drawingToolbar,
+             .whiteboard, .browser: return false
+        }
+    }
+
+    /// Why a window is left out, for the record.
+    var exclusionReason: String? {
+        switch self {
+        case .setupGuide: return "Credentials are typed there"
+        case .controlBar, .island, .recordingChrome, .annotation, .drawingToolbar: return "A tool, never content"
+        case .whiteboard: return "The whiteboard is its own share"
+        case .browser: return "Tab strip fills the title bar"
+        default: return nil
+        }
+    }
+}
+
+/// What one window's switch looks and says, from the person's choice and what
+/// is being shared. One place, so every window reads alike.
+struct ShareSwitchState: Equatable {
+    let visibility: ShareVisibility
+    let isEnabled: Bool
+    let help: String
+    let accessibilityLabel: String
+    let accessibilityValue: String
+
+    static let shownHelp = "The class sees this window. Click to hide it."
+    static let hiddenHelp = "Only you: the class can't see this window. Click to show it to the class."
+
+    init(on: Bool, kind: ShowOnShare.ShareKind) {
+        let marked = ShowOnShare.marksWindow(on: on, kind: kind)
+        visibility = ShareVisibility(marked: marked)
+        isEnabled = ShowOnShare.isAvailable(kind)
+        help = isEnabled ? (on ? Self.shownHelp : Self.hiddenHelp) : ShowOnShare.unavailableTip
+        accessibilityLabel = "Show to class"
+        accessibilityValue = visibility.label
+    }
+}

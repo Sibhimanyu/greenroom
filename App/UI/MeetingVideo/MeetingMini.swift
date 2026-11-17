@@ -44,17 +44,18 @@ enum ShowOnShareSwitch {
     /// `showsTitle`: the words "Class sees this" / "Only you" beside the eye (the
     /// title bar has room; the Mini's strip is icon-only and says it on hover).
     static func apply(to button: NSButton, on: Bool, kind: ShowOnShare.ShareKind, pointSize: CGFloat = 13,
-                      showsTitle: Bool = false) {
-        let available = ShowOnShare.isAvailable(kind)
-        let marked = ShowOnShare.marksWindow(on: on, kind: kind)
-        let visibility = ShareVisibility(marked: marked)
+                      showsTitle: Bool = false, idleTint: NSColor = .white,
+                      mutedTint: NSColor = MeetingTheme.secondaryTextNS) {
+        let state = ShareSwitchState(on: on, kind: kind)
+        let visibility = state.visibility
+        let marked = visibility == .classSees
         // An eye, not the Share symbol: it says whether others see this window,
         // and two window-shaped icons side by side read as the same thing.
         button.image = NSImage(systemSymbolName: visibility.symbol, accessibilityDescription: visibility.label)?
             .withSymbolConfiguration(.init(pointSize: pointSize, weight: .semibold))
-        button.isEnabled = available
+        button.isEnabled = state.isEnabled
         button.state = marked ? .on : .off
-        let tint = marked ? MeetingTheme.netNS : (available ? NSColor.white : MeetingTheme.secondaryTextNS)
+        let tint = marked ? MeetingTheme.netNS : (state.isEnabled ? idleTint : mutedTint)
         button.contentTintColor = tint
         if showsTitle {
             button.imagePosition = .imageLeading
@@ -62,10 +63,10 @@ enum ShowOnShareSwitch {
                 .font: NSFont.systemFont(ofSize: 11, weight: .semibold), .foregroundColor: tint,
             ])
         }
-        button.toolTip = ShowOnShare.help(kind: kind, on: on)
-        button.setAccessibilityLabel(ShowOnShare.label)
-        button.setAccessibilityValue(visibility.label)
-        button.setAccessibilityHelp(ShowOnShare.help(kind: kind, on: on))
+        button.toolTip = state.help
+        button.setAccessibilityLabel(state.accessibilityLabel)
+        button.setAccessibilityValue(state.accessibilityValue)
+        button.setAccessibilityHelp(state.help)
     }
 }
 

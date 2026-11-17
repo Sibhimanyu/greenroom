@@ -85,6 +85,8 @@ struct FrostedWindow: NSViewRepresentable {
             guard let window else { return }
             MainActor.assumeIsolated {
                 WindowFrost.install(in: window, material: material, solid: .windowBackgroundColor)
+                // The small eye in the title bar: show this window to the class.
+                WindowShareController.attach(to: window, dark: false)
             }
         }
     }

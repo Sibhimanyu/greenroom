@@ -37,6 +37,7 @@ enum PeoplePopOutController {
             made.setFrame(frame(near: anchor, size: made.frame.size), display: false)
             // Only you see this window: a dark frost behind, opaque rows on top.
             WindowFrost.install(in: made, solid: MeetingTheme.windowNS)
+            WindowShareController.attach(to: made, dark: true)
             window = made
             view = people
         }

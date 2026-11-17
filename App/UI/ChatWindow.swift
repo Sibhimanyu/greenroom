@@ -463,6 +463,7 @@ enum ChatWindowController {
             newWindow.collectionBehavior = [.moveToActiveSpace, .fullScreenAuxiliary]
             // Only you see the chat: a frosted background, opaque messages.
             WindowFrost.install(in: newWindow, solid: .windowBackgroundColor)
+            WindowShareController.attach(to: newWindow, dark: false)
             window = newWindow
             targetWindow = newWindow
         }

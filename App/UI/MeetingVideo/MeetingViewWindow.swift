@@ -75,10 +75,9 @@ final class MeetingViewWindowController: NSObject, NSWindowDelegate {
     var onClosedByUser: ((MeetingView) -> Void)?
 
     // Show on my share (per window, this session only, off until switched on).
-    private(set) var showOnShare = false
-    private var shareBorder: ShareBorderOverlay?
-    private var shareButtons: [NSButton] = []
-    private let shareAnnouncer = ShareVisibilityAnnouncer()
+    // The same mechanism as every other window (WindowShareController).
+    private(set) var share: WindowShareController!
+    var showOnShare: Bool { share.isOn }
 
     init(view: MeetingView, frame: NSRect, screen: NSScreen?) {
         self.view = view
@@ -104,6 +103,7 @@ final class MeetingViewWindowController: NSObject, NSWindowDelegate {
         let title = isMini ? 0 : MeetingViewContentView.titleInset
         panel.minSize = NSSize(width: view.minimumPoints.width, height: view.minimumPoints.height + title)
         panel.delegate = self
+        share = WindowShareController.attach(to: panel, dark: true, accessory: false)
         content.autoresizingMask = [.width, .height]
         panel.contentView = content
         if isMini {
@@ -117,7 +117,7 @@ final class MeetingViewWindowController: NSObject, NSWindowDelegate {
             GreenroomGlassAppKit.prepare(panel)
             if let chrome = content.miniChrome {
                 chrome.onToggleShare = { [weak self] in self?.toggleShare() }
-                shareButtons = [chrome.share]
+                share.addButton(chrome.share, pointSize: 13, showsTitle: false)
             }
         } else {
             addTitleControls()
@@ -126,45 +126,14 @@ final class MeetingViewWindowController: NSObject, NSWindowDelegate {
     }
 
     func windowWillClose(_ notification: Notification) {
-        releaseShare()
         if !closingByCode { onClosedByUser?(view) }
     }
 
-    func windowDidResize(_ notification: Notification) { shareBorder?.sync() }
-    func windowDidMove(_ notification: Notification) { shareBorder?.sync() }
+    // MARK: Show to class (WindowShareController does the work)
 
-    // MARK: Show on my share
-
-    func toggleShare() { setShowOnShare(!showOnShare) }
-
-    func setShowOnShare(_ on: Bool) {
-        guard on != showOnShare else { return }
-        showOnShare = on
-        if on { ShareVisibleWindows.add(panel.windowNumber) } else { ShareVisibleWindows.remove(panel.windowNumber) }
-        refreshShare()
-    }
-
-    /// The switch, the border and the label follow what is being shared right now.
-    func refreshShare() {
-        let kind = ShareVisibleWindows.kind
-        let titled = view != .mini
-        for button in shareButtons {
-            ShowOnShareSwitch.apply(to: button, on: showOnShare, kind: kind, pointSize: titled ? 12 : 13, showsTitle: titled)
-        }
-        let marked = ShowOnShare.marksWindow(on: showOnShare, kind: kind)
-        if marked, shareBorder == nil { shareBorder = ShareBorderOverlay(parent: panel) }
-        shareBorder?.show(marked)
-        WindowFrost.show(ShareVisibility(marked: marked).backdrop, in: panel)
-        shareAnnouncer.update(marked: marked)
-    }
-
-    /// The window is closing: leave the registry, take the border down.
-    private func releaseShare() {
-        if showOnShare { ShareVisibleWindows.remove(panel.windowNumber) }
-        showOnShare = false
-        shareBorder?.close()
-        shareBorder = nil
-    }
+    func toggleShare() { share.toggle() }
+    func setShowOnShare(_ on: Bool) { share.set(on) }
+    func refreshShare() { share.refresh() }
 
     // MARK: The title bar's controls: the picker, and the share switch beside it
 
@@ -183,11 +152,10 @@ final class MeetingViewWindowController: NSObject, NSWindowDelegate {
             host.addSubview(button)
             picker = button
         }
-        let share = ShowOnShareSwitch.make(size: switchSize) { [weak self] in self?.toggleShare() }
-        share.frame = NSRect(x: pickerWidth, y: 2, width: switchWidth, height: switchSize)
-        host.addSubview(share)
-        shareButtons = [share]
-        ShowOnShareSwitch.apply(to: share, on: false, kind: ShareVisibleWindows.kind, pointSize: 12, showsTitle: true)
+        let shareButton = ShowOnShareSwitch.make(size: switchSize) { [weak self] in self?.toggleShare() }
+        shareButton.frame = NSRect(x: pickerWidth, y: 2, width: switchWidth, height: switchSize)
+        host.addSubview(shareButton)
+        share.addButton(shareButton, pointSize: 12, showsTitle: true)
         let controller = NSTitlebarAccessoryViewController()
         controller.view = host
         controller.layoutAttribute = .trailing

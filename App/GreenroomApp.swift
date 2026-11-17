@@ -163,6 +163,7 @@ struct GreenroomApp: App {
             SettingsView()
                 .environmentObject(coordinator)
                 .tint(Brand.green)
+                .background(ShareableWindowAnchor())
         }
 
         // Sessions and the report are not scenes. They were windows, and

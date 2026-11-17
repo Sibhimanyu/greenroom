@@ -374,6 +374,7 @@ enum ParticipantGridWindowController {
             // the faces, text and controls on it stay opaque.
             if form.isMeeting {
                 WindowFrost.install(in: hosting, solid: MeetingTheme.windowNS)
+                WindowShareController.attach(to: hosting, dark: true)
             }
             panel = hosting
             root = view

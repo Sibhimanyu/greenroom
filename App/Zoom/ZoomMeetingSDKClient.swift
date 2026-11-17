@@ -213,14 +213,9 @@ final class ZoomMeetingSDKClient: NSObject, ObservableObject {
         element.getVideoView().layer?.sublayers?.count ?? -1
     }
 
-    /// The only "frames started" signal there is: the SDK has no first-frame
-    /// callback (ZoomSDKVideoContainer.h has user, data type and refusal
-    /// only). A bare element's view has one sublayer; one the SDK has wired
-    /// up for rendering has four (the tile probe, 2026-11-13). UNVERIFIED
-    /// that four always means pixels, which is why every change is logged.
-    static func isDrawing(_ element: ZoomSDKVideoElement) -> Bool { sublayers(element) > 1 }
-
-    /// Logs the render probe when it changes, and the moment drawing starts.
+    /// Logs the view's layer tree when it changes. A log line only: it is NOT
+    /// a drawing signal (four sublayers appear before any subscribe,
+    /// 2026-11-16 17:27:55), and the SDK has no first-frame callback.
     func noteRender(_ element: ZoomSDKVideoElement, watch: inout ElementWatch, label: String) {
         let count = Self.sublayers(element)
         guard count != watch.lastSublayers else { return }
@@ -228,14 +223,9 @@ final class ZoomMeetingSDKClient: NSObject, ObservableObject {
         let type = element.getDataType().rawValue
         let classes = (element.getVideoView().layer?.sublayers ?? [])
             .map { String(describing: Swift.type(of: $0)) }.joined(separator: ",")
-        Self.videoLog("\(label) \(Self.tag(element)) render sublayers=\(count) [\(classes)] dataType=\(type)")
-        if count > 1, watch.drawingSince == nil {
-            watch.drawingSince = Date()
-            let after = watch.subscribedAt.map { " \(String(format: "%.1f", Date().timeIntervalSince($0)))s after subscribing" } ?? ""
-            Self.videoLog("\(label) \(Self.tag(element)) FRAMES: render surface wired\(after)")
-        } else if count <= 1 {
-            watch.drawingSince = nil
-        }
+        let when = watch.subscribedAt.map { " \(String(format: "%.1f", Date().timeIntervalSince($0)))s after subscribing" }
+            ?? " (not subscribed yet)"
+        Self.videoLog("\(label) \(Self.tag(element)) render sublayers=\(count) [\(classes)] dataType=\(type)\(when)")
     }
 
     /// Who else holds an element for this user, for the refusal lines: a
@@ -277,11 +267,10 @@ final class ZoomMeetingSDKClient: NSObject, ObservableObject {
         var watch = tileWatch[userID] ?? ElementWatch()
         noteRender(existing, watch: &watch, label: "tile user=\(userID)")
         let rebuilds = tileRebuilds[userID] ?? 0
-        switch ElementRecovery.decide(drawing: Self.isDrawing(existing), watch: watch, now: now, rebuilds: rebuilds) {
+        switch ElementRecovery.decide(watch: watch, now: now, rebuilds: rebuilds) {
         case .rebuild:
             tileRebuilds[userID] = rebuilds + 1
-            let why = watch.refusedUntil != nil ? "refused" : "video reported, nothing drawn for \(Int(ElementRecovery.grace))s"
-            retireTile(userID, why: "\(why); fresh element \(rebuilds + 1) of \(ElementRecovery.maxRebuilds)")
+            retireTile(userID, why: "refused; fresh element \(rebuilds + 1) of \(ElementRecovery.maxRebuilds)")
             return makeTile(userID: userID, frame: frame, hero: hero,
                             notBefore: now.addingTimeInterval(ElementRecovery.freshDelay))
         case .giveUp:
@@ -297,18 +286,35 @@ final class ZoomMeetingSDKClient: NSObject, ObservableObject {
            now >= nextTileSubscribeAt,
            existing.getVideoView().window?.isVisible == true {
             nextTileSubscribeAt = now.addingTimeInterval(0.5)
+            // Exactly the view windows' order: setResolution (asked twice),
+            // subscribe, then show - all at once, on screen. setResolution at
+            // creation (the old way) was itself a request, and the subscribe
+            // that followed was refused with code 7 on its first ask.
+            let asked = Self.resolution(for: frame,
+                                        openStreams: participantElements.count - 1,
+                                        hero: hero)
+            var set = existing.setResolution(asked)
+            if set != ZoomSDKError_Success {
+                Self.videoLog("tile user=\(userID) setResolution failed code=\(set.rawValue) (asking again)")
+                set = existing.setResolution(asked)
+                if set != ZoomSDKError_Success, frame.height >= 720 {
+                    // >=850pt with no explicit resolution means a 1080p request.
+                    Self.videoLog("WARNING user=\(userID) tall tile with no explicit"
+                        + " resolution - height-derived request may consume the whole budget")
+                }
+            }
             let result = existing.subscribeVideo(true)
             if result == ZoomSDKError_Success {
                 _ = existing.showVideo(true)
                 watch.subscribed = true
                 watch.subscribedAt = now
-                if existing.getDataType() == VideoRenderDataType_Video { watch.expectingVideoSince = now }
             } else {
                 let step = tileBackoff[userID, default: SubscribeBackoff()].failed(at: now)
                 watch.refusedUntil = now.addingTimeInterval(step.delay)
                 watch.lastRefusalAt = now
             }
-            Self.videoLog("tile subscribe user=\(userID) \(Self.tag(existing)) result=\(result.rawValue)"
+            Self.videoLog("tile subscribe user=\(userID) \(Self.tag(existing)) setResolution=\(set.rawValue)"
+                + " asked=\(asked.rawValue) result=\(result.rawValue)"
                 + " dataType=\(existing.getDataType().rawValue) sublayers=\(Self.sublayers(existing))"
                 + " others=\(otherHolders(of: userID, except: existing))")
         }
@@ -326,27 +332,8 @@ final class ZoomMeetingSDKClient: NSObject, ObservableObject {
             return nil
         }
         element.userid = userID
-        // Ask for a tile-sized stream BEFORE subscribing. After subscribing is
-        // too late: the quota is spent at subscribe time.
-        // Every element already in the container is a stream competing for the
-        // same allowance - including this user's own about to be added.
-        let asked = Self.resolution(for: frame,
-                                    openStreams: participantElements.count,
-                                    hero: hero)
-        var resolutionResult = element.setResolution(asked)
-        // setResolution fails intermittently (ZoomSDKError_Failed) with no
-        // pattern in size, count or order; asked twice.
-        if resolutionResult != ZoomSDKError_Success {
-            resolutionResult = element.setResolution(asked)
-            Self.videoLog("setResolution retry user=\(userID) result=\(resolutionResult.rawValue)")
-            if resolutionResult != ZoomSDKError_Success, frame.height >= 720 {
-                // Both asks refused on a tall tile: the SDK will derive the
-                // request from view height, and >=850pt means 1080p - the
-                // entire concurrent budget on one tile.
-                Self.videoLog("WARNING user=\(userID) tall tile with no explicit"
-                    + " resolution - height-derived request may consume the whole budget")
-            }
-        }
+        // Nothing else here: no setResolution, no subscribe, no show. The view
+        // windows make their elements this way and are never refused.
         participantElements[userID] = element
         lastRequestedFrame[userID] = frame
         tileWatch[userID] = ElementWatch(notBefore: notBefore)
@@ -354,7 +341,6 @@ final class ZoomMeetingSDKClient: NSObject, ObservableObject {
             .getMeetingActionController().getUserByUserID(userID)
         Self.videoLog("tile created user=\(userID) \(Self.tag(element))"
             + " frame=\(Int(frame.width))x\(Int(frame.height))"
-            + " setResolution=\(resolutionResult.rawValue) asked=\(asked.rawValue)"
             + " theirVideoOn=\(info?.isVideoOn() ?? false) dataType=\(element.getDataType().rawValue)"
             + " (subscribes once on screen)")
         return element.getVideoView()
@@ -454,12 +440,11 @@ final class ZoomMeetingSDKClient: NSObject, ObservableObject {
         }
         let label = "stage user=\(stageUserID ?? 0)"
         noteRender(element, watch: &stageWatch, label: label)
-        switch ElementRecovery.decide(drawing: Self.isDrawing(element), watch: stageWatch, now: now, rebuilds: stageRebuilds) {
+        switch ElementRecovery.decide(watch: stageWatch, now: now, rebuilds: stageRebuilds) {
         case .rebuild:
             stageRebuilds += 1
-            let why = stageWatch.refusedUntil != nil ? "refused" : "video reported, nothing drawn for \(Int(ElementRecovery.grace))s"
             let person = stageUserID ?? userID
-            retireStage(why: "\(why); fresh element \(stageRebuilds) of \(ElementRecovery.maxRebuilds)")
+            retireStage(why: "refused; fresh element \(stageRebuilds) of \(ElementRecovery.maxRebuilds)")
             return makeStageElement(userID: person, frame: frame)
         case .giveUp:
             if !stageGaveUp {
@@ -473,18 +458,30 @@ final class ZoomMeetingSDKClient: NSObject, ObservableObject {
         }
         if ElementRecovery.mayAsk(watch: stageWatch, gaveUp: stageGaveUp, now: now),
            element.getVideoView().window?.isVisible == true {
+            // Exactly the view windows' order: tier, setResolution (asked
+            // twice), subscribe, then show - all at once, on screen.
+            // 720p unless the view windows already hold both 720p slots (VideoBudget).
+            let tier = VideoBudget.allocate([VideoRequest(key: "stage", priority: 4, wanted: .p720, floor: .p360, current: nil)],
+                                            external: viewVideo.usage)["stage"] ?? .p360
+            stageResolutionHeld = tier ?? .p360
+            let asked = stageResolutionHeld == .p720 ? ZoomSDKVideoRenderResolution_720p : ZoomSDKVideoRenderResolution_360p
+            var set = element.setResolution(asked)
+            if set != ZoomSDKError_Success {
+                Self.videoLog("stage setResolution failed code=\(set.rawValue) (asking again)")
+                set = element.setResolution(asked)
+            }
             let result = element.subscribeVideo(true)
             if result == ZoomSDKError_Success {
                 _ = element.showVideo(true)
                 stageWatch.subscribed = true
                 stageWatch.subscribedAt = now
-                if element.getDataType() == VideoRenderDataType_Video { stageWatch.expectingVideoSince = now }
             } else {
                 let step = stageBackoff.failed(at: now)
                 stageWatch.refusedUntil = now.addingTimeInterval(step.delay)
                 stageWatch.lastRefusalAt = now
             }
-            Self.videoLog("stage subscribe user=\(stageUserID ?? 0) \(Self.tag(element)) result=\(result.rawValue)"
+            Self.videoLog("stage subscribe user=\(stageUserID ?? 0) \(Self.tag(element)) setResolution=\(set.rawValue)"
+                + " asked=\(asked.rawValue) result=\(result.rawValue)"
                 + " dataType=\(element.getDataType().rawValue) sublayers=\(Self.sublayers(element))"
                 + " others=\(otherHolders(of: element.userid, except: element))")
         }
@@ -501,22 +498,19 @@ final class ZoomMeetingSDKClient: NSObject, ObservableObject {
             return nil
         }
         element.userid = userID
-        // One 720p slot of Zoom's published budget (1x1080p, 2x720p, 4x360p); the
-        // filmstrip tiles are thumbnails.
-        // 720p unless the view windows already hold both 720p slots (VideoBudget).
-        let tier = VideoBudget.allocate([VideoRequest(key: "stage", priority: 4, wanted: .p720, floor: .p360, current: nil)],
-                                        external: viewVideo.usage)["stage"] ?? .p360
-        stageResolutionHeld = tier ?? .p360
-        let asked = stageResolutionHeld == .p720 ? ZoomSDKVideoRenderResolution_720p : ZoomSDKVideoRenderResolution_360p
-        var result = element.setResolution(asked)
-        if result != ZoomSDKError_Success { result = element.setResolution(asked) }
+        // Nothing else here: no setResolution, no subscribe, no show. The view
+        // windows make their elements this way and are never refused; the
+        // stage set its resolution here and its first subscribe was refused
+        // (code 7, others=none) every time. The resolution (one 720p slot of
+        // Zoom's budget unless the view windows hold both) is set on screen,
+        // just before the subscribe.
         stageElement = element
         stageUserID = userID
         stageWatch = ElementWatch(notBefore: stageRetiredAt.addingTimeInterval(ElementRecovery.freshDelay))
         lastStageFrame = frame
         nextStageSwitchAt = Date().addingTimeInterval(2)
-        Self.videoLog("stage created user=\(userID) \(Self.tag(element)) setResolution=\(result.rawValue)"
-            + " asked=\(asked.rawValue) dataType=\(element.getDataType().rawValue) (subscribes once on screen)")
+        Self.videoLog("stage created user=\(userID) \(Self.tag(element))"
+            + " dataType=\(element.getDataType().rawValue) (subscribes once on screen)")
         return element.getVideoView()
     }
 
@@ -1497,11 +1491,6 @@ extension ZoomMeetingSDKClient: ZoomSDKVideoContainerDelegate {
         // same element again (ElementRecovery). Zoom's refusal arrives AFTER
         // subscribeVideo returned success.
         if let stage = stageElement, stage === element {
-            if Self.isDrawing(element) {
-                Self.videoLog(head + " owner=stage \(Self.tag(element)) - ignored, this element is drawing"
-                    + " (sublayers=\(Self.sublayers(element))); others=\(others)")
-                return
-            }
             if stageWatch.isRepeatRefusal(at: now) {
                 Self.videoLog(head + " owner=stage \(Self.tag(element)) - same refusal again, not counted")
                 return
@@ -1517,11 +1506,6 @@ extension ZoomMeetingSDKClient: ZoomSDKVideoContainerDelegate {
         }
         if let tile = participantElements[userID], tile === element {
             var watch = tileWatch[userID] ?? ElementWatch()
-            if Self.isDrawing(element) {
-                Self.videoLog(head + " owner=tile \(Self.tag(element)) - ignored, this element is drawing"
-                    + " (sublayers=\(Self.sublayers(element))); others=\(others)")
-                return
-            }
             if watch.isRepeatRefusal(at: now) {
                 Self.videoLog(head + " owner=tile \(Self.tag(element)) - same refusal again, not counted")
                 return
@@ -1556,8 +1540,6 @@ extension ZoomMeetingSDKClient: ZoomSDKVideoContainerDelegate {
     ///
     /// The camera coming on is NOT a reason to subscribe again: a second
     /// subscribe on an element that holds one is refused (code 7) every time.
-    /// It starts the clock instead: if nothing draws within
-    /// ElementRecovery.grace, the next layout pass makes a fresh element.
     func onRenderDataTypeChanged(_ element: ZoomSDKVideoElement?, dataType type: VideoRenderDataType) {
         if let element, noteViewVideoDataType(element, type: type) { return }
         let tag = element.map(Self.tag) ?? "el=nil"
@@ -1565,34 +1547,27 @@ extension ZoomMeetingSDKClient: ZoomSDKVideoContainerDelegate {
         let probe = element.map { " sublayers=\(Self.sublayers($0))" } ?? ""
         if let element, let stage = stageElement, element === stage {
             Self.videoLog("dataTypeChanged owner=stage user=\(element.userid) \(tag) type=\(type.rawValue)\(probe)"
-                + (isVideo && stageWatch.subscribed ? " - not asking again; watching for frames" : ""))
+                + (isVideo && stageWatch.subscribed ? " - not asking again" : ""))
             if isVideo {
-                if stageWatch.subscribed, stageWatch.expectingVideoSince == nil { stageWatch.expectingVideoSince = Date() }
                 if stageGaveUp {
                     Self.videoLog("stage user=\(element.userid) camera came on after giving up - trying again")
                     resetStageRecovery()
                 }
-            } else {
-                stageWatch.expectingVideoSince = nil
             }
             return
         }
         if let element, let tile = participantElements[element.userid], tile === element {
             let userID = element.userid
-            var watch = tileWatch[userID] ?? ElementWatch()
+            let subscribed = tileWatch[userID]?.subscribed ?? false
             Self.videoLog("dataTypeChanged owner=tile user=\(userID) \(tag) type=\(type.rawValue)\(probe)"
-                + (isVideo && watch.subscribed ? " - not asking again; watching for frames" : ""))
+                + (isVideo && subscribed ? " - not asking again" : ""))
             if isVideo {
-                if watch.subscribed, watch.expectingVideoSince == nil { watch.expectingVideoSince = Date() }
                 if tileGaveUp.remove(userID) != nil {
                     Self.videoLog("tile user=\(userID) camera came on after giving up - trying again")
                     tileRebuilds[userID] = 0
                     tileBackoff[userID]?.reset()
                 }
-            } else {
-                watch.expectingVideoSince = nil
             }
-            tileWatch[userID] = watch
             return
         }
         Self.videoLog("dataTypeChanged owner=other user=\(element?.userid ?? 0) \(tag) type=\(type.rawValue)\(probe)")

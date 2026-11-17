@@ -19,8 +19,7 @@
 //      subscribe time, and is asked twice when the SDK refuses it once;
 //    - an element subscribes ONCE (ElementRecovery, SubscribeBackoff.swift): a
 //      second ask on an element that holds a subscription is refused with code
-//      7 every time, so a new person, a refusal, or video reported with nothing
-//      drawn each get a FRESH element; at most two seconds apart per slot,
+//      7 every time, so a new person or a refusal gets a FRESH element; at most two seconds apart per slot,
 //      half a second apart across slots, and capped;
 //    - a second element asking for a remote user another element already
 //      holds is refused (code 7) too: every such subscription on 2026-11-13
@@ -148,11 +147,10 @@ extension ZoomMeetingSDKClient {
         }
         noteRender(entry.element, watch: &entry.watch, label: "View window: \(key.text) user=\(entry.userID)")
         let rebuilds = viewVideo.rebuilds[key] ?? 0
-        switch ElementRecovery.decide(drawing: Self.isDrawing(entry.element), watch: entry.watch, now: now, rebuilds: rebuilds) {
+        switch ElementRecovery.decide(watch: entry.watch, now: now, rebuilds: rebuilds) {
         case .rebuild:
             viewVideo.rebuilds[key] = rebuilds + 1
-            let why = entry.watch.refusedUntil != nil ? "refused" : "video reported, nothing drawn for \(Int(ElementRecovery.grace))s"
-            retireViewElement(entry, why: "\(why); fresh element \(rebuilds + 1) of \(ElementRecovery.maxRebuilds)")
+            retireViewElement(entry, why: "refused; fresh element \(rebuilds + 1) of \(ElementRecovery.maxRebuilds)")
             viewVideo.retiredAt[key] = now
             return makeViewElement(key, userID: entry.userID, frame: frame, tier: tier)
         case .giveUp:
@@ -216,7 +214,6 @@ extension ZoomMeetingSDKClient {
             if shown != ZoomSDKError_Success { Self.viewLog("FAILED step=showVideo code=\(shown.rawValue) key=\(entry.key.text)") }
             entry.watch.subscribed = true
             entry.watch.subscribedAt = now
-            if entry.element.getDataType() == VideoRenderDataType_Video { entry.watch.expectingVideoSince = now }
             entry.gotVideo = false
             Self.viewLog("subscribed key=\(entry.key.text) user=\(entry.userID) \(Self.tag(entry.element))"
                 + " tier=\(tier.rawValue)p setResolution=\(set.rawValue) others=\(others)")
@@ -268,10 +265,6 @@ extension ZoomMeetingSDKClient {
         let now = Date()
         let head = "SUBSCRIBE FAIL key=\(entry.key.text) code=\(code) user=\(entry.userID) \(Self.tag(element)) \(reason)"
         let others = otherHolders(of: entry.userID, except: element)
-        if Self.isDrawing(element) {
-            Self.viewLog(head + " - ignored, this element is drawing; others=\(others)")
-            return true
-        }
         if entry.watch.isRepeatRefusal(at: now) {
             Self.viewLog(head + " - same refusal again, not counted")
             return true
@@ -292,16 +285,12 @@ extension ZoomMeetingSDKClient {
                 Self.viewLog("video arrived after \(Int(Date().timeIntervalSince(at)))s key=\(entry.key.text)")
             }
             entry.gotVideo = true
-            // Not a reason to subscribe again (refused, code 7): start the
-            // clock; nothing drawn within the grace means a fresh element.
-            if entry.watch.subscribed, entry.watch.expectingVideoSince == nil { entry.watch.expectingVideoSince = Date() }
+            // Not a reason to subscribe again (refused, code 7).
             if viewVideo.gaveUp.remove(entry.key) != nil {
                 viewVideo.rebuilds[entry.key] = 0
                 viewVideo.backoffs[entry.key]?.reset()
                 Self.viewLog("camera came on after giving up - trying again key=\(entry.key.text)")
             }
-        } else {
-            entry.watch.expectingVideoSince = nil
         }
         return true
     }

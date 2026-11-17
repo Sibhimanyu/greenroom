@@ -26,13 +26,10 @@ struct ElementWatch {
     /// Refused: the element is retired for a fresh one at this time.
     var refusedUntil: Date?
     var lastRefusalAt: Date?
-    /// The SDK said video (camera on) while this element held the subscription.
-    var expectingVideoSince: Date?
     /// A fresh element waits this long before asking, so it never follows the
     /// unsubscribe of the one it replaced in the same breath.
     var notBefore = Date.distantPast
     var lastSublayers = -2
-    var drawingSince: Date?
 
     /// One subscribe produces two or three refusals at the same instant
     /// (the log, every time). They are one event, not three.
@@ -51,7 +48,7 @@ struct ElementWatch {
 /// therefore a FRESH element, never a second subscribe on the same one.
 enum ElementRecovery {
     enum Action: Equatable {
-        /// Drawing, or nothing to draw yet (camera off, not subscribed).
+        /// Not refused.
         case fine
         /// A problem, but its time has not come.
         case wait
@@ -61,22 +58,17 @@ enum ElementRecovery {
         case giveUp
     }
 
-    /// How long the SDK may report video without anything drawing.
-    static let grace: TimeInterval = 3
     /// Fresh elements per run. A camera toggle or a new person starts a new run.
     static let maxRebuilds = 3
     /// Between retiring an element and its replacement asking.
     static let freshDelay: TimeInterval = 1.5
 
-    static func decide(drawing: Bool, watch: ElementWatch, now: Date, rebuilds: Int) -> Action {
-        if drawing { return .fine }
-        if let until = watch.refusedUntil {
-            guard now >= until else { return .wait }
-        } else if watch.subscribed, let since = watch.expectingVideoSince {
-            guard now.timeIntervalSince(since) >= grace else { return .wait }
-        } else {
-            return .fine
-        }
+    /// Only a refusal retires an element. There is no reliable "drawing"
+    /// signal to judge by: the view's layer tree grows to four sublayers
+    /// before any subscribe (2026-11-16 17:27:55), so it is logged, never used.
+    static func decide(watch: ElementWatch, now: Date, rebuilds: Int) -> Action {
+        guard let until = watch.refusedUntil else { return .fine }
+        guard now >= until else { return .wait }
         return rebuilds >= maxRebuilds ? .giveUp : .rebuild
     }
 

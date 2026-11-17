@@ -31,9 +31,8 @@ final class SubscribeBackoffTests: XCTestCase {
         XCTAssertTrue(ElementRecovery.mayAsk(watch: w, gaveUp: false, now: now))
         w.subscribed = true
         w.subscribedAt = now
-        // The camera coming on is not a reason to subscribe again.
-        w.expectingVideoSince = now
         XCTAssertFalse(ElementRecovery.mayAsk(watch: w, gaveUp: false, now: now.addingTimeInterval(60)))
+        XCTAssertEqual(ElementRecovery.decide(watch: w, now: now.addingTimeInterval(60), rebuilds: 0), .fine)
     }
 
     func testRefusedElementIsRebuiltNotRetried() {
@@ -41,38 +40,15 @@ final class SubscribeBackoffTests: XCTestCase {
         let now = Date()
         w.refusedUntil = now.addingTimeInterval(2)
         XCTAssertFalse(ElementRecovery.mayAsk(watch: w, gaveUp: false, now: now.addingTimeInterval(10)))
-        XCTAssertEqual(ElementRecovery.decide(drawing: false, watch: w, now: now.addingTimeInterval(1), rebuilds: 0), .wait)
-        XCTAssertEqual(ElementRecovery.decide(drawing: false, watch: w, now: now.addingTimeInterval(2), rebuilds: 0), .rebuild)
-    }
-
-    func testRefusalOnADrawingElementIsIgnored() {
-        var w = ElementWatch()
-        let now = Date()
-        w.refusedUntil = now
-        XCTAssertEqual(ElementRecovery.decide(drawing: true, watch: w, now: now.addingTimeInterval(5), rebuilds: 0), .fine)
-    }
-
-    func testVideoReportedButNothingDrawnRebuildsAfterGrace() {
-        var w = ElementWatch()
-        let now = Date()
-        w.subscribed = true
-        w.expectingVideoSince = now
-        XCTAssertEqual(ElementRecovery.decide(drawing: false, watch: w, now: now.addingTimeInterval(1), rebuilds: 0), .wait)
-        XCTAssertEqual(ElementRecovery.decide(drawing: false, watch: w, now: now.addingTimeInterval(ElementRecovery.grace), rebuilds: 0), .rebuild)
-        XCTAssertEqual(ElementRecovery.decide(drawing: true, watch: w, now: now.addingTimeInterval(10), rebuilds: 0), .fine)
-    }
-
-    func testCameraOffIsFine() {
-        var w = ElementWatch()
-        w.subscribed = true
-        XCTAssertEqual(ElementRecovery.decide(drawing: false, watch: w, now: Date(), rebuilds: 0), .fine)
+        XCTAssertEqual(ElementRecovery.decide(watch: w, now: now.addingTimeInterval(1), rebuilds: 0), .wait)
+        XCTAssertEqual(ElementRecovery.decide(watch: w, now: now.addingTimeInterval(2), rebuilds: 0), .rebuild)
     }
 
     func testRebuildsAreCapped() {
         var w = ElementWatch()
         let now = Date()
         w.refusedUntil = now
-        XCTAssertEqual(ElementRecovery.decide(drawing: false, watch: w, now: now, rebuilds: ElementRecovery.maxRebuilds), .giveUp)
+        XCTAssertEqual(ElementRecovery.decide(watch: w, now: now, rebuilds: ElementRecovery.maxRebuilds), .giveUp)
         XCTAssertFalse(ElementRecovery.mayAsk(watch: ElementWatch(), gaveUp: true, now: now))
     }
 

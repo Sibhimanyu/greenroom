@@ -137,7 +137,7 @@ struct GreenroomApp: App {
                 .background(DebugTourBridge(editor: editor))
                 #endif
                 // Once per install, and never over onboarding: on a first
-                // run it waits for the onboarding sheet to close.
+                // run it waits for the setup guide's window to close.
                 .onAppear { if !coordinator.showOnboarding { Heresay.introduce() } }
                 .onChange(of: coordinator.showOnboarding) { _, showing in
                     if !showing { Heresay.introduce() }

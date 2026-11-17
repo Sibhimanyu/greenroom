@@ -221,9 +221,10 @@ struct ContentView: View {
         }
         // The toast, the upload question and the start's progress card, while
         // this window is the one in view (WindowBanner.swift).
-        .sheet(isPresented: $coordinator.showOnboarding) {
-            OnboardingView()
-                .environmentObject(coordinator)
+        // The setup guide is a window of its own, centred on this one, not a
+        // sheet: the sheet was taller than this window and shoved it up.
+        .onChange(of: coordinator.showOnboarding, initial: true) { old, show in
+            OnboardingWindowController.shared.sync(show: show, coordinator: coordinator, atLaunch: old == show)
         }
     }
 

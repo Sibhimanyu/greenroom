@@ -2665,6 +2665,20 @@ final class CoordinatorController: ObservableObject {
                 detail: "Press Confirm to save it. Esc keeps recording.")
     }
 
+    /// The bar's REC pill during a class: one press arms it (it reads
+    /// Confirm), the second stops and saves the recording. No menu in between
+    /// (owner, 2026-11-17: "it should not need a menu"; the confirmation stays).
+    func confirmStopRecording() {
+        guard isRunning, !recordOnlyActive, isRecording, !isSavingRecording else { return }
+        if exitAsk == .stopRecording {
+            disarmExit()
+            toggleRecording()
+            return
+        }
+        armExit(.stopRecording, title: "Stop the recording?",
+                detail: "Press Confirm to save it. Esc keeps recording.")
+    }
+
     // MARK: After a session
 
     /// The card over the main window once a session or a take has ended and
@@ -2700,7 +2714,7 @@ final class CoordinatorController: ObservableObject {
     /// has no buttons). The question sits in a callout right above the
     /// button, not in the island: "I should be asked in the same place I'm
     /// supposed to press" (owner, same day).
-    enum ExitAsk: Equatable { case end, stopTake }
+    enum ExitAsk: Equatable { case end, stopTake, stopRecording }
     @Published private(set) var exitAsk: ExitAsk?
     /// What the armed button's callout says, right above it.
     @Published private(set) var exitAskTitle = ""
@@ -4284,7 +4298,7 @@ final class CoordinatorController: ObservableObject {
     /// What the armed End does, for the buttons' Confirm help.
     var exitConfirmHelp: String {
         switch exitAsk {
-        case .stopTake: return "Stop and save the recording"
+        case .stopTake, .stopRecording: return "Stop and save the recording"
         case .end: return (LiveExit.endPrompt(liveExitState)?.choices.first ?? .endMeetingForAll).title
         case nil: return ""
         }

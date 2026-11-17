@@ -196,6 +196,8 @@ struct MeetingBarActions {
     var togglePause: () -> Void = {}
     /// Record, one click, while nothing is recording.
     var startRecording: () -> Void = {}
+    /// While recording: arms Stop, and the second press stops (Confirm in place).
+    var stopRecording: () -> Void = {}
     var end: () -> Void = {}
     /// Built when the menu opens, so each shows the state of that moment.
     var recordMenu: () -> [MenuEntry] = { [] }
@@ -333,6 +335,52 @@ struct MeetingBarContent: View {
     }
 
     private func recordStatus(_ pill: MeetingBarModel.RecordPill) -> some View {
+        // Recording or paused: the pill is Stop itself, no menu (Pause sits
+        // beside it). Pressed once it reads Confirm, as End does.
+        if s.phase.isRecording { return AnyView(recordStopButton(pill)) }
+        return AnyView(recordStatusLabel(pill))
+    }
+
+    private func recordStopButton(_ pill: MeetingBarModel.RecordPill) -> some View {
+        Button(action: a.stopRecording) {
+            HStack(spacing: 5) {
+                if s.recStopArmed {
+                    Text("Confirm")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(.white)
+                } else {
+                    BarRecDot(live: pill.dotIsLive)
+                    Text(pill.label)
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(Color.primary)
+                    if let time = pill.time {
+                        Text(time)
+                            .font(.system(size: 12, weight: .medium, design: .monospaced))
+                            .foregroundStyle(s.phase == .paused ? Color.secondary : Color.primary)
+                    }
+                    Image(systemName: "stop.fill")
+                        .font(.system(size: 8, weight: .bold))
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(s.recStopArmed ? AnyShapeStyle(Color.red) : AnyShapeStyle(Color.primary.opacity(0.08)),
+                        in: Capsule())
+            .overlay { if s.recStopArmed { Capsule().strokeBorder(Color.white.opacity(0.85), lineWidth: 1.5) } }
+            .contentShape(Capsule())
+            .animation(.snappy(duration: 0.2), value: s.recStopArmed)
+        }
+        .buttonStyle(.plain)
+        .popover(isPresented: Binding(get: { s.recStopArmed && !s.endAskTitle.isEmpty }, set: { _ in }),
+                 arrowEdge: .top) {
+            ConfirmCallout(title: s.endAskTitle, detail: s.endAskDetail)
+        }
+        .help(s.recStopArmed ? "Stop and save the recording. Esc keeps recording."
+                             : help("\(pill.help). Click to stop", .toggleRecording))
+        .accessibilityLabel(s.recStopArmed ? "Confirm: stop and save the recording" : "Stop recording. \(pill.spoken.replacingOccurrences(of: ". Menu", with: ""))")
+    }
+
+    private func recordStatusLabel(_ pill: MeetingBarModel.RecordPill) -> some View {
         HStack(spacing: 5) {
             if pill.showsDot { BarRecDot(live: pill.dotIsLive) }
             Text(pill.label)

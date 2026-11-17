@@ -857,6 +857,7 @@ private struct MeetingControlBarView: View {
         s.endName = coordinator.liveExitState.kind == .host ? LiveExitChoice.endMeetingForAll.title
                                                             : LiveExitChoice.leaveMeeting.title
         s.endArmed = coordinator.exitAsk == .end
+        s.recStopArmed = coordinator.exitAsk == .stopRecording
         s.endAskTitle = coordinator.exitAskTitle
         s.endAskDetail = coordinator.exitAskDetail
         return s
@@ -874,6 +875,7 @@ private struct MeetingControlBarView: View {
         a.toggleDraw = { coordinator.toggleDrawing() }
         a.togglePause = { coordinator.togglePauseRecording() }
         a.startRecording = { coordinator.toggleRecording() }
+        a.stopRecording = { coordinator.confirmStopRecording() }
         // Asks first, exactly as the close and quit prompts do.
         a.end = { coordinator.confirmAndStop() }
         a.recordMenu = { [bindings = shortcuts.bindings] in

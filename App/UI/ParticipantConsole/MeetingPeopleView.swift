@@ -82,7 +82,8 @@ struct MeetingParticipantsPanel: View {
             }
             footer
         }
-        .background(MeetingTheme.window)
+        // Clear: the window's frost (or its solid sheet, while the class
+        // sees it) is the background, as in every other meeting surface.
         .environment(\.colorScheme, .dark)
     }
 

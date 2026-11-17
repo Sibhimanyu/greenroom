@@ -66,6 +66,8 @@ struct MeetingBarSnapshot: Equatable {
     /// End was pressed once and waits for the second press.
     var endArmed = false
     var endAskTitle = ""
+    /// The REC pill was pressed once and waits for Confirm.
+    var recStopArmed = false
     var endAskDetail = ""
 }
 

@@ -660,7 +660,7 @@ private final class RootView: NSView {
     private var hoverChrome: Bool { form.isSlot }
 
     private let topBar = BarView()
-    private let bottomBar = BarView()
+    private let bottomBar = ToolbarFootView()
     private let contextBar = BarView()
     /// The header's three immediate actions and its overflow, rebuilt in place
     /// when their titles change (Record flips to Stop recording, and so on).
@@ -2427,6 +2427,9 @@ private final class RootView: NSView {
         topBar.isHidden = true
         meetingTopBar.isHidden = !chrome
         bottomBar.isHidden = !chrome
+        // The window's frost is the toolbar's background. Only the slot form,
+        // where the toolbar lies over live video, keeps a blur to read against.
+        bottomBar.showsBlur = hoverChrome
         meetingTopBar.frame = NSRect(x: 0, y: height - barHeight, width: width, height: barHeight)
         meetingTopBar.needsLayout = true   // re-lifts its tip above tiles added since
         bottomBar.frame = NSRect(x: 0, y: 0, width: width, height: toolbarHeight)
@@ -4147,6 +4150,25 @@ private final class BarView: NSVisualEffectView {
         material = .hudWindow
         blendingMode = .withinWindow
         state = .active
+    }
+    required init?(coder: NSCoder) { nil }
+}
+
+/// The toolbar's backing. Clear, so the Meeting window's frost (WindowFrost,
+/// which also turns solid while the class can see the window) is what shows
+/// behind it, as behind the rest of the window. A blur sits under it only when
+/// asked, for the slot form's toolbar over video.
+@MainActor
+private final class ToolbarFootView: NSView {
+    private let blur = BarView()
+    var showsBlur = false { didSet { blur.isHidden = !showsBlur } }
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        blur.frame = bounds
+        blur.autoresizingMask = [.width, .height]
+        blur.isHidden = true
+        addSubview(blur)
     }
     required init?(coder: NSCoder) { nil }
 }

@@ -8,9 +8,10 @@
 //  MeetingControls.swift fills those in; the off-screen render fills them with
 //  sample values.
 //
-//  Drawn in Zoom's style (MeetingTheme records why): #1A1A1A with a hairline on
-//  top, Mute and Start Video with their carets on the left, the meeting tools
-//  in the middle (Share's glyph in green), a red End on the right, and a
+//  Drawn in Zoom's style (MeetingTheme records why): no fill of its own (the
+//  window's frost shows through) with a hairline on top, the controls in
+//  groups (you, the class, teaching, recording) centred on the window, the
+//  clock and a red End on the right, and a
 //  lighter rounded wash behind whatever the pointer is over. One style for
 //  every control: a glyph over a short caption, the same size. Menus are popped NSMenus behind a transparent overlay (see
 //  MeetingMenuAppKit.swift), because SwiftUI's Menu turns a custom label into a
@@ -42,6 +43,10 @@ struct MeetingToolbarState {
     var saving = false
     var recordCaption = "Record"
     var notesOn = false
+    /// The drawing tools are open over the shared screen.
+    var drawing = false
+    /// There is a screen to draw on (the bar greys Draw the same way).
+    var canDraw = true
     var clock = "0:00"
     /// What End is called: "End Meeting for All" for the host, "Leave Meeting"
     /// for everyone else (LiveExitChoice's titles, as the bar and island use).
@@ -69,6 +74,7 @@ struct MeetingToolbarActions {
     var toggleRecording: () -> Void = {}
     var togglePause: () -> Void = {}
     var toggleNotes: () -> Void = {}
+    var toggleDraw: () -> Void = {}
     var stopSharing: () -> Void = {}
     var end: () -> Void = {}
 }
@@ -90,31 +96,25 @@ struct MeetingToolbarBar: View {
                 specs: MeetingToolbarLayout.specs(showsSecurity: state.isHost, recording: state.recording),
                 // "End for everyone" is wider than End; make room while it shows.
                 width: geo.size.width - (confirmingEnd ? 112 : 0))
-            let groups = MeetingToolbarLayout.specs(showsSecurity: true).reduce(into: [ToolbarItemID: Int]()) { $0[$1.id] = $1.group }
-            let left = fit.visible.filter { groups[$0] == 0 }
-            let centre = fit.visible.filter { groups[$0] != 0 }
-            // Zoom centres the middle group on the window: the shorter of the
-            // two outer groups is padded to the width of the longer.
-            let leftWidth = CGFloat(left.count) * (MeetingToolbarLayout.cell + MeetingToolbarLayout.caret + MeetingToolbarLayout.gap)
+            // Zoom centres the tools on the window: one pad, as wide as what
+            // sits to the right of them, goes on the left.
             let rightWidth = (fit.showsClock ? MeetingToolbarLayout.clock + MeetingToolbarLayout.gap : 0)
                 + (confirmingEnd ? 190 : MeetingToolbarLayout.end)
             HStack(spacing: MeetingToolbarLayout.gap) {
-                ForEach(Array(left.enumerated()), id: \.offset) { _, id in control(id) }
-                // The pads yield first (layoutPriority) and never count in
+                // The pad yields first (layoutPriority) and never counts in
                 // MeetingToolbarLayout.required, so a tight row loses its
                 // centring before it clips a control.
-                Color.clear.frame(maxWidth: max(0, rightWidth - leftWidth), maxHeight: 1).layoutPriority(-1)
+                Color.clear.frame(maxWidth: rightWidth, maxHeight: 1).layoutPriority(-1)
                 Spacer(minLength: MeetingToolbarLayout.spacer)
-                ForEach(Array(pieces(centre).enumerated()), id: \.offset) { _, piece in
+                ForEach(Array(pieces(fit.visible).enumerated()), id: \.offset) { _, piece in
                     switch piece {
-                    case .divider: Color.clear.frame(width: MeetingToolbarLayout.divider, height: 1)
+                    case .divider: groupDivider
                     case .control(let id): control(id)
                     }
                 }
-                if !centre.isEmpty { Color.clear.frame(width: MeetingToolbarLayout.divider, height: 1) }
+                if !fit.visible.isEmpty { groupDivider }
                 moreCell(overflow: fit.overflow)
                 Spacer(minLength: MeetingToolbarLayout.spacer)
-                Color.clear.frame(maxWidth: max(0, leftWidth - rightWidth), maxHeight: 1).layoutPriority(-1)
                 if fit.showsClock {
                     Text(state.clock)
                         .font(.system(size: 12, design: .monospaced))
@@ -131,6 +131,12 @@ struct MeetingToolbarBar: View {
         // No background of its own: the window's frost shows through.
         .overlay(alignment: .top) { Rectangle().fill(MeetingTheme.hairline).frame(height: 1) }
         .environment(\.colorScheme, .dark)
+    }
+
+    /// The break between groups: a hairline in a gap wider than any inside one.
+    private var groupDivider: some View {
+        Rectangle().fill(MeetingTheme.hairline).frame(width: 1, height: 28)
+            .frame(width: MeetingToolbarLayout.divider)
     }
 
     // MARK: Order
@@ -218,6 +224,13 @@ struct MeetingToolbarBar: View {
                          action: actions.togglePause)
                 }
             }
+        case .draw:
+            cell(symbol: "pencil.and.scribble", caption: "Draw", on: state.drawing,
+                 help: state.drawing ? "Close the drawing tools"
+                                     : "Draw on the screen you share (marks show to the class and in the recording)",
+                 action: actions.toggleDraw)
+                .disabled(!state.canDraw && !state.drawing)
+                .opacity(!state.canDraw && !state.drawing ? 0.4 : 1)
         case .notes:
             cell(symbol: "note.text", caption: "Notes", on: state.notesOn, action: actions.toggleNotes)
         }
@@ -267,6 +280,9 @@ struct MeetingToolbarBar: View {
         case .record:
             return .item(state.recording ? "Stop Recording" : "Record", enabled: !state.saving,
                          actions.toggleRecording)
+        case .draw:
+            return .item(state.drawing ? "Close Drawing Tools" : "Draw on the Screen",
+                         enabled: state.canDraw || state.drawing, checked: state.drawing, actions.toggleDraw)
         case .notes: return .item("Notes", checked: state.notesOn, actions.toggleNotes)
         }
     }

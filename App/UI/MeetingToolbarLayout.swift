@@ -9,9 +9,13 @@
 //
 //  Order, left to right (DESIGN.md: one control style, icon over a caption):
 //
-//      Mute+caret  Stop Video+caret  |  Security  People  Chat  React  Share+caret  |
-//      Record  Notes  |  More  ..........  clock  End
+//      you | the class | teaching | recording | More ...... clock  End
+//      Mute+caret  Stop Video+caret | Security  People  Chat  React |
+//      Share+caret  Draw  Notes | Record  Pause | More
 //
+//  One run, centred on the window: the same gap between any two controls, a
+//  wider one with a hairline between groups, so nothing floats loose. The
+//  groups read like the floating bar's (you, the class, teaching, recording).
 //  Security shows for a host or co-host only. Mute is never dropped; More is
 //  always there, because Meeting info and "Open in the Zoom app" live in it.
 //
@@ -19,7 +23,7 @@ import CoreGraphics
 import Foundation
 
 enum ToolbarItemID: String, CaseIterable {
-    case mute, video, security, people, chat, react, share, record, notes
+    case mute, video, security, people, chat, react, share, draw, notes, record
 }
 
 struct ToolbarItemSpec: Equatable {
@@ -36,33 +40,37 @@ enum MeetingToolbarLayout {
     static let cell: CGFloat = 68
     /// The little chevron beside Mute, Stop Video and Share.
     static let caret: CGFloat = 18
-    static let divider: CGFloat = 13
-    static let gap: CGFloat = 2
+    /// Between groups: the hairline sits in the middle (the gaps either side
+    /// come on top), so a group break is 4 + 17 + 4 = 25pt against 4pt inside one.
+    static let divider: CGFloat = 17
+    /// Between any two controls in a group, and around every divider.
+    static let gap: CGFloat = 4
     static let side: CGFloat = 12
     static let more: CGFloat = 68
     static let clock: CGFloat = 56
     static let end: CGFloat = 60
     /// Air kept between the last control and the clock, so they never touch.
     static let spacer: CGFloat = 8
-    /// The clock sits between Security and Chat in the drop order: it goes
+    /// The clock sits between Draw and Security in the drop order: it goes
     /// before the controls that do something.
-    static let clockKeep = 4
+    static let clockKeep = 5
 
     /// The items in toolbar order. `security` appears for a host or co-host.
     /// While recording, Record is two cells wide: Stop (with the timer) and Pause.
     static func specs(showsSecurity: Bool, recording: Bool = false) -> [ToolbarItemSpec] {
         var out: [ToolbarItemSpec] = [
-            .init(id: .mute, group: 0, width: cell + caret, keep: 10),
-            .init(id: .video, group: 0, width: cell + caret, keep: 9),
+            .init(id: .mute, group: 0, width: cell + caret, keep: 11),
+            .init(id: .video, group: 0, width: cell + caret, keep: 10),
         ]
-        if showsSecurity { out.append(.init(id: .security, group: 1, width: cell, keep: 5)) }
+        if showsSecurity { out.append(.init(id: .security, group: 1, width: cell, keep: 6)) }
         out += [
-            .init(id: .people, group: 1, width: cell, keep: 7),
-            .init(id: .chat, group: 1, width: cell, keep: 6),
+            .init(id: .people, group: 1, width: cell, keep: 8),
+            .init(id: .chat, group: 1, width: cell, keep: 7),
             .init(id: .react, group: 1, width: cell, keep: 3),
-            .init(id: .share, group: 1, width: cell + caret, keep: 8),
-            .init(id: .record, group: 2, width: recording ? cell * 2 + gap : cell, keep: 2),
+            .init(id: .share, group: 2, width: cell + caret, keep: 9),
+            .init(id: .draw, group: 2, width: cell, keep: 4),
             .init(id: .notes, group: 2, width: cell, keep: 1),
+            .init(id: .record, group: 3, width: recording ? cell * 2 + gap : cell, keep: 2),
         ]
         return out
     }
@@ -81,18 +89,17 @@ enum MeetingToolbarLayout {
     /// the longer, to centre the middle) count as nothing: they give way first
     /// when the row is tight, so only the gaps around them count.
     static func required(items: [ToolbarItemSpec], showsClock: Bool) -> CGFloat {
-        let left = items.filter { $0.group == 0 }
-        let centre = items.filter { $0.group != 0 }
         var dividers = 0
         var last: Int?
-        for item in centre { if let last, last != item.group { dividers += 1 }; last = item.group }
-        let trailing = centre.isEmpty ? 0 : 1
-        // Children: left controls, two pads, two spacers, the centre controls
-        // and dividers, the divider before More, More, clock, End.
-        let children = left.count + 2 + 2 + centre.count + dividers + trailing + 1 + (showsClock ? 1 : 0) + 1
+        for item in items { if let last, last != item.group { dividers += 1 }; last = item.group }
+        // The divider before More (More is always there, and is its own group).
+        let beforeMore = items.isEmpty ? 0 : 1
+        // Children: the balancing pad, two spacers, the controls, dividers,
+        // More, the clock, End.
+        let children = 1 + 2 + items.count + dividers + beforeMore + 1 + (showsClock ? 1 : 0) + 1
         var total = side * 2 + end + more + spacer * 2 + gap * CGFloat(children - 1)
-        total += (left + centre).reduce(0) { $0 + $1.width }
-        total += CGFloat(dividers + trailing) * divider
+        total += items.reduce(0) { $0 + $1.width }
+        total += CGFloat(dividers + beforeMore) * divider
         if showsClock { total += clock }
         return total
     }

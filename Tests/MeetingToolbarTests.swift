@@ -10,7 +10,7 @@ final class MeetingToolbarLayoutTests: XCTestCase {
 
     func testEverythingFitsWhenThereIsRoom() {
         let wide = fit(1600)
-        XCTAssertEqual(wide.visible, [.mute, .video, .security, .people, .chat, .react, .share, .record, .notes])
+        XCTAssertEqual(wide.visible, [.mute, .video, .security, .people, .chat, .react, .share, .draw, .notes, .record])
         XCTAssertTrue(wide.overflow.isEmpty)
         XCTAssertTrue(wide.showsClock)
     }
@@ -20,10 +20,30 @@ final class MeetingToolbarLayoutTests: XCTestCase {
         XCTAssertTrue(fit(host: true, 1600).visible.contains(.security))
     }
 
-    func testOrderIsMuteVideoThenMeetingToolsThenRecordNotes() {
+    func testGroupsReadLikeTheBar_you_class_teaching_recording() {
         XCTAssertEqual(L.specs(showsSecurity: true).map(\.id),
-                       [.mute, .video, .security, .people, .chat, .react, .share, .record, .notes])
-        XCTAssertEqual(L.specs(showsSecurity: true).map(\.group), [0, 0, 1, 1, 1, 1, 1, 2, 2])
+                       [.mute, .video, .security, .people, .chat, .react, .share, .draw, .notes, .record])
+        XCTAssertEqual(L.specs(showsSecurity: true).map(\.group), [0, 0, 1, 1, 1, 1, 2, 2, 2, 3])
+    }
+
+    func testDrawIsOnTheToolbarAndGoesBeforeTheClock() {
+        XCTAssertTrue(fit(1600).visible.contains(.draw))
+        let all = L.specs(showsSecurity: true)
+        let core = all.filter { ![.notes, .record, .react].contains($0.id) }
+        XCTAssertTrue(core.contains { $0.id == .draw })
+        // One short of the core: Draw leaves first, the clock still shows.
+        let f = fit(L.required(items: core, showsClock: true) - 1)
+        XCTAssertEqual(f.overflow, [.react, .draw, .notes, .record])
+        XCTAssertTrue(f.showsClock)
+    }
+
+    func testSpacingIsOneGapInAGroupAndAWiderOneBetweenGroups() {
+        XCTAssertGreaterThan(L.divider + 2 * L.gap, 4 * L.gap)
+        // Adding a control to a group costs its width plus one gap, nothing more.
+        let two = L.required(items: Array(L.specs(showsSecurity: true).prefix(2)), showsClock: true)
+        let three = L.required(items: Array(L.specs(showsSecurity: true).prefix(3)), showsClock: true)
+        // The third item is Security, which starts group 1: a divider and a gap more.
+        XCTAssertEqual(three - two, L.specs(showsSecurity: true)[2].width + 2 * L.gap + L.divider)
     }
 
     func testTheWidestFitIsTheExactRequirement() {
@@ -39,17 +59,17 @@ final class MeetingToolbarLayoutTests: XCTestCase {
         let need = L.required(items: all, showsClock: true)
         XCTAssertEqual(fit(need - 1).overflow, [.notes])
         let withoutNotes = all.filter { $0.id != .notes }
-        XCTAssertEqual(fit(L.required(items: withoutNotes, showsClock: true) - 1).overflow, [.record, .notes])
+        XCTAssertEqual(fit(L.required(items: withoutNotes, showsClock: true) - 1).overflow, [.notes, .record])
         let without2 = withoutNotes.filter { $0.id != .record }
-        XCTAssertEqual(fit(L.required(items: without2, showsClock: true) - 1).overflow, [.react, .record, .notes])
+        XCTAssertEqual(fit(L.required(items: without2, showsClock: true) - 1).overflow, [.react, .notes, .record])
     }
 
     func testTheClockGoesBeforeSecurityAndChat() {
         let all = L.specs(showsSecurity: true)
-        let core = all.filter { ![.notes, .record, .react].contains($0.id) }
+        let core = all.filter { ![.notes, .record, .react, .draw].contains($0.id) }
         let narrow = fit(L.required(items: core, showsClock: true) - 1)
         XCTAssertFalse(narrow.showsClock)
-        XCTAssertEqual(narrow.overflow, [.react, .record, .notes])
+        XCTAssertEqual(narrow.overflow, [.react, .draw, .notes, .record])
         XCTAssertTrue(narrow.visible.contains(.security) && narrow.visible.contains(.chat))
     }
 
@@ -63,7 +83,7 @@ final class MeetingToolbarLayoutTests: XCTestCase {
         for width in stride(from: CGFloat(100), through: 1700, by: 7) {
             let f = fit(width)
             XCTAssertEqual(Set(f.visible + f.overflow), Set(L.specs(showsSecurity: true).map(\.id)))
-            XCTAssertEqual(f.visible.count + f.overflow.count, 9)
+            XCTAssertEqual(f.visible.count + f.overflow.count, 10)
         }
     }
 

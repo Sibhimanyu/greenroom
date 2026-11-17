@@ -514,6 +514,8 @@ struct MeetingToolbarView: View {
             ? MeetingControlsModel.clock(seconds: { _ = model.now; return coordinator.recordingElapsed() ?? 0 }())
             : "Record"
         s.notesOn = notes.effectiveEnabled
+        s.drawing = coordinator.isDrawing
+        s.canDraw = coordinator.canDraw
         let host = coordinator.liveExitState.kind == .host
         s.endsForAll = host
         s.endName = host ? LiveExitChoice.endMeetingForAll.title : LiveExitChoice.leaveMeeting.title
@@ -531,6 +533,7 @@ struct MeetingToolbarView: View {
         a.toggleRecording = { coordinator.toggleRecording() }
         a.togglePause = { coordinator.togglePauseRecording() }
         a.toggleNotes = notes.toggle
+        a.toggleDraw = { coordinator.toggleDrawing() }
         a.stopSharing = model.stopShare
         a.end = { coordinator.stop() }
         return a

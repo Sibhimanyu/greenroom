@@ -209,8 +209,8 @@ struct SessionsLayout<CardMenu: View>: View {
     private func untranscribedNote(_ q: SessionsQuery) -> String? {
         let n = q.ofKind.filter { !$0.hasTranscript && $0.kind != .recording }.count
         guard n > 0 else { return nil }
-        return n == 1 ? "1 class has no transcript, so only its title was searched."
-                      : "\(n) classes have no transcript, so only their titles were searched."
+        return n == 1 ? "1 meeting has no transcript, so only its title was searched."
+                      : "\(n) meetings have no transcript, so only their titles were searched."
     }
 
     private func row(_ card: SessionCardModel, order: [String], hits: [TranscriptHit]) -> some View {
@@ -276,7 +276,7 @@ struct SessionsLayout<CardMenu: View>: View {
         } else {
             ContentUnavailableView(show.emptyLine,
                                    systemImage: show.symbol,
-                                   description: Text("Start a class or a recording from the main window. It lands here when it stops."))
+                                   description: Text("Start a meeting or a recording from the main window. It lands here when it stops."))
         }
     }
 }

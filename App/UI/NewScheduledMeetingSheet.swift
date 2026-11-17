@@ -63,7 +63,7 @@ struct NewScheduledMeetingSheet: View {
             Button("Delete", role: .destructive) { delete() }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("Students\u{2019} link will stop working.")
+            Text("The meeting link will stop working.")
         }
     }
 
@@ -89,8 +89,8 @@ struct NewScheduledMeetingSheet: View {
             }
 
             VStack(alignment: .leading, spacing: 8) {
-                Text("When students join").font(.callout).foregroundStyle(.secondary)
-                GreenroomSegmented("When students join",
+                Text("When people join").font(.callout).foregroundStyle(.secondary)
+                GreenroomSegmented("When people join",
                                    selection: Binding(get: { request.studentsJoinDirectly ? Self.straightIn : Self.waitForMe },
                                                       set: { request.studentsJoinDirectly = ($0 == Self.straightIn) }),
                                    options: [Self.straightIn, Self.waitForMe]) { Text($0) }

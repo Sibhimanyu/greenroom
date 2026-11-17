@@ -28,6 +28,14 @@ struct LayoutSettingsTab: View {
     // flips the switch in System Settings.
     private let permissionTick = Timer.publish(every: 1.5, on: .main, in: .common).autoconnect()
 
+    /// The one presence placement, shared with the floating bubble and Home.
+    private var cameraModel: LayoutCameraModel {
+        let layout = coordinator.stageLayout
+        return LayoutCameraModel(box: layout.presenceBox, shape: layout.cameraShape, cameraOff: coordinator.cameraIsOff,
+                                 onStep: { coordinator.previewPlacementStep($0) },
+                                 onCommit: { coordinator.commitPreviewPlacement($0) })
+    }
+
     var body: some View {
         LayoutPageContent(
             library: $coordinator.layoutLibrary,
@@ -50,10 +58,11 @@ struct LayoutSettingsTab: View {
                 AppWindowManager.openAccessibilitySettings()
             },
             showOnScreen: { template, look in
-                LayoutScreenPreview.show(LayoutScreenPreview.items(for: template, look: look))
+                LayoutScreenPreview.show(LayoutScreenPreview.items(for: template, camera: cameraModel, look: look))
             },
             liveLayoutID: coordinator.liveSessionLayoutID,
-            applyNow: { coordinator.applyLayoutNow($0) })
+            applyNow: { coordinator.applyLayoutNow($0) },
+            camera: cameraModel)
         .onAppear {
             apps = AppCatalog.installedAndRunning()
             displays = DisplayResolver.connectedDisplays()
@@ -132,6 +141,8 @@ struct LayoutPageContent: View {
     /// not, so the editor offers "Apply now" for it.
     var liveLayoutID: UUID?
     var applyNow: (UUID) -> Void = { _ in }
+    /// The camera overlay, drawn on the shared (main) display's canvas. Nil: none.
+    var camera: LayoutCameraModel?
     /// Where the editor opens, for the off-screen render (.context/lr). Nil in the app.
     var opensOn: (selection: UUID?, showsTwo: Bool, slot: LayoutSlot)?
     /// Draws the Add panel in place under the row, for the off-screen render.
@@ -185,11 +196,11 @@ struct LayoutPageContent: View {
                 }
             }
 
-            Section("During class") {
+            Section("During the meeting") {
                 Toggle("Open notes when a session starts", isOn: $notesOnStart)
                     .help("Notes are timed to the recording and saved with the session. You can still open or close them during a session.")
                 Toggle("Hide my own tile", isOn: $hideSelfView)
-                    .help("Your own video is left out of the meeting you see. The class still sees you.")
+                    .help("Your own video is left out of the meeting you see. Everyone still sees you.")
             }
 
             Section("Privacy") {
@@ -344,7 +355,7 @@ struct LayoutPageContent: View {
     /// What picking this card does, in a sentence.
     private var caption: String {
         guard let template = library.active else {
-            return "Greenroom starts the class and leaves your windows where they are."
+            return "Greenroom starts the meeting and leaves your windows where they are."
         }
         let pieces = template.oneDisplay + (template.twoDisplays.map { $0.main + $0.second } ?? [])
         var opens: [String] = []
@@ -520,7 +531,9 @@ struct LayoutPageContent: View {
     // MARK: Canvases
 
     private var mainSpace: LayoutDisplaySpace {
-        LayoutDisplaySpace(name: "Main display", size: mainSize)
+        let screen = DisplayResolver.mainDisplayScreen()
+        return LayoutDisplaySpace(name: "Main display", size: mainSize,
+                                  cameraSpace: screen.map { LayoutCameraSpace(frame: $0.frame, visibleFrame: $0.visibleFrame) })
     }
 
     private func secondSpace(_ two: TwoDisplay) -> LayoutDisplaySpace {
@@ -560,7 +573,10 @@ struct LayoutPageContent: View {
                      },
                      onActivate: { activeSlot = slot; showsAddPanel = false },
                      onNotice: { say($0) },
-                     locked: library.active?.isLocked == true)
+                     locked: library.active?.isLocked == true,
+                     // The main display is the one that is shared; a second
+                     // (reference) display gets participants, not the camera.
+                     camera: slot == .second ? nil : camera)
     }
 
     private func secondDisplayRow(_ two: TwoDisplay) -> some View {
@@ -622,7 +638,7 @@ struct LayoutPageContent: View {
                 .help("Outlines where each piece would go, on your real displays, for a moment.")
                 if let live = liveLayoutID, live != template.id {
                     Button("Apply now") { applyNow(template.id) }
-                        .help("A class is running another layout. This moves it to this one now; otherwise this layout starts with the next class.")
+                        .help("A meeting is running another layout. This moves it to this one now; otherwise this layout starts with the next meeting.")
                 }
             }
             if previewsAddPanel, !template.isLocked {
@@ -738,8 +754,9 @@ struct LayoutPageContent: View {
     /// real displays, for a moment. The one action behind the Layout page's
     /// button and Home's Layout tile.
     @MainActor
-    static func showOnScreen(_ template: LayoutTemplate, customUIMode: Bool, canMoveApps: Bool) {
-        LayoutScreenPreview.show(LayoutScreenPreview.items(for: template) {
+    static func showOnScreen(_ template: LayoutTemplate, customUIMode: Bool, canMoveApps: Bool,
+                             camera: LayoutCameraModel? = nil) {
+        LayoutScreenPreview.show(LayoutScreenPreview.items(for: template, camera: camera) {
             look($0, customUIMode: customUIMode, canMoveApps: canMoveApps)
         })
     }
@@ -814,7 +831,7 @@ struct LayoutPageContent: View {
                 case let .meeting(fills, hidden): meetingControls(piece, fills: fills, hidden: hidden, slot: slot, template: template)
                 case let .view(_, hidden): viewControls(piece, view: piece.kind.view ?? .gallery, hidden: hidden)
                 case .chat:
-                    Text("The meeting chat window. It opens in this space when the class starts.")
+                    Text("The meeting chat window. It opens in this space when the meeting starts.")
                         .font(.callout)
                         .foregroundStyle(.secondary)
                 }
@@ -922,7 +939,7 @@ struct LayoutPageContent: View {
             Toggle("Open at Start", isOn: Binding(
                 get: { app.opensAtStart },
                 set: { v in update(piece.id) { p in if var a = p.kind.app { a.opensAtStart = v; p.kind = .app(a) } } }))
-            Toggle("Close when class ends", isOn: Binding(
+            Toggle("Close when the meeting ends", isOn: Binding(
                 get: { app.closesOnStop },
                 set: { v in update(piece.id) { p in if var a = p.kind.app { a.closesOnStop = v; p.kind = .app(a) } } }))
                 .help(isBrowser ? "Only the window Start opened. Your other windows and tabs stay open." : "Quits only what Start opened.")

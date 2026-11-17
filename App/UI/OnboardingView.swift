@@ -55,7 +55,7 @@ struct OnboardingView: View {
         var nextTitle: String {
             switch self {
             case .welcome: "Connect Zoom"
-            case .zoom: "Set up your class"
+            case .zoom: "Set up your meeting"
             case .layout: "Check permissions"
             case .permissions: "Explore optional features"
             case .youtube, .cues: "Continue"
@@ -131,7 +131,7 @@ struct OnboardingView: View {
 
     private var welcomeStep: some View {
         VStack(alignment: .leading, spacing: 24) {
-            stepHeader("A calmer start to class", "Set up your camera, meeting and workspace once. Greenroom brings them together when you press Start.")
+            stepHeader("A calmer start to every meeting", "Set up your camera, meeting and workspace once. Greenroom brings them together when you press Start.")
             VStack(alignment: .leading, spacing: 20) {
                 guideRow("1", "Check the basics", "Install the apps and connect your Zoom account.")
                 guideRow("2", "Make it yours", "Choose your working app, camera shape and permissions.")
@@ -349,7 +349,7 @@ struct OnboardingView: View {
                 .padding(4)
             }
             Divider()
-            Text("Scope checks read Zoom’s granted permissions. Creating, joining and ending a real meeting are still tested when you start a class.")
+            Text("Scope checks read Zoom’s granted permissions. Creating, joining and ending a real meeting are still tested when you start a meeting.")
                 .font(.caption).foregroundStyle(.secondary)
             HStack {
                 if !isTesting {
@@ -470,7 +470,7 @@ struct OnboardingView: View {
     private var setupStep: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
-                stepHeader("How should a class start?", "Choose a layout, how you appear on camera and whether to record. You can change these later in Settings.")
+                stepHeader("How should a meeting start?", "Choose a layout, how you appear on camera and whether to record. You can change these later in Settings.")
 
                 // The same cards and thumbnails as Settings \u{2192} Layout. Picking one
                 // is choosing it for Start: it writes the library's active layout.
@@ -529,7 +529,7 @@ struct OnboardingView: View {
                     .frame(height: 120)
 
                 Divider()
-                Text("When class starts").font(.headline)
+                Text("When the meeting starts").font(.headline)
                 Toggle("Record automatically", isOn: $coordinator.autoRecordOnStart)
             }
             .padding(.horizontal, 8)
@@ -601,10 +601,10 @@ struct OnboardingView: View {
                     Label(failure.detail, systemImage: "exclamationmark.triangle")
                         .font(.callout).foregroundStyle(.red)
                 }
-                summaryRow("Class layout", detail: "\(chosenTemplate?.name ?? "None") \u{00B7} \(coordinator.webcamShape.label)", page: .layout)
+                summaryRow("Meeting layout", detail: "\(chosenTemplate?.name ?? "None") \u{00B7} \(coordinator.webcamShape.label)", page: .layout)
                 summaryRow("Accessibility", detail: ZoomWindowManager.hasAccessibilityPermission ? "Window arrangement allowed" : "Allow window arrangement in System Settings", page: .permissions)
                 Divider()
-                Text("Your first class").font(.headline)
+                Text("Your first meeting").font(.headline)
                 Text("Choose New or Scheduled on the main screen, then press Start Meeting. To record without a meeting, choose Record.")
                 Label("Greenroom sends its own picture into the meeting, so there is no camera to pick in Zoom.", systemImage: "web.camera")
                     .font(.callout).foregroundStyle(.secondary)
@@ -635,7 +635,7 @@ struct OnboardingView: View {
     private var youtubeStep: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
-                stepHeader("Share recordings after class", "Upload recordings to your YouTube channel as unlisted videos. You can leave this for later.")
+                stepHeader("Share recordings after the meeting", "Upload recordings to your YouTube channel as unlisted videos. You can leave this for later.")
                 Picker("After a recording", selection: $coordinator.youtubeUploadMode) {
                     ForEach(YouTubeUploadMode.allCases) { mode in Text(mode.label).tag(mode) }
                 }
@@ -690,7 +690,7 @@ struct OnboardingView: View {
         VStack(alignment: .leading, spacing: 16) {
             stepHeader(CuesAvailability.isReleased ? "Find links while you teach" : "Cues is coming soon",
                        CuesAvailability.isReleased
-                           ? "Cues suggests links for what you mention in class. Turn it on only if you want suggestions; you choose what to share."
+                           ? "Cues suggests links for what you mention in the meeting. Turn it on only if you want suggestions; you choose what to share."
                            : "Link suggestions will arrive in a later release. There is nothing to set up here yet.")
             if !CuesAvailability.isReleased {
                 Form {

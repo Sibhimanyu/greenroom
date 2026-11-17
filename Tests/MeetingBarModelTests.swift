@@ -13,7 +13,7 @@ final class MeetingBarModelTests: XCTestCase {
         let p = M.recordPill(.recording, classSeconds: 98, recordingSeconds: 89)
         XCTAssertEqual(p.label, "REC")
         XCTAssertEqual(p.time, "1:38")
-        XCTAssertEqual(p.help, "Recording 1:29 \u{00B7} class 1:38")
+        XCTAssertEqual(p.help, "Recording 1:29 \u{00B7} meeting 1:38")
         XCTAssertTrue(p.showsDot && p.dotIsLive && p.hasMenu)
     }
 
@@ -118,6 +118,20 @@ final class MeetingBarModelTests: XCTestCase {
         XCTAssertTrue(M.viewsCell(none).help.hasPrefix("Meeting views"))
     }
 
+    func testTheBubbleCellSaysEveryoneStillSeesYou() {
+        let shown = M.bubbleCell(hidden: false)
+        XCTAssertEqual(shown.spoken, "Hide my bubble")
+        XCTAssertTrue(shown.help.contains("Everyone in the meeting still sees you"))
+        XCTAssertFalse(shown.on)
+        let hidden = M.bubbleCell(hidden: true)
+        XCTAssertEqual(hidden.spoken, "Show my bubble")
+        XCTAssertTrue(hidden.on)
+        // Never the eye: that is "Show on my share".
+        XCTAssertFalse(shown.symbol.hasPrefix("eye"))
+        XCTAssertFalse(hidden.symbol.hasPrefix("eye"))
+        XCTAssertNotEqual(shown.symbol, hidden.symbol)
+    }
+
     func testViewsSlotFollowsTheMeetingButton() {
         typealias L = MeetingBarLayout
         XCTAssertEqual(L.cells(videoButtons: true).count - L.cells(videoButtons: false).count, 2)
@@ -147,7 +161,7 @@ final class MeetingBarModelTests: XCTestCase {
         }
         XCTAssertEqual(L.width(videoButtons: true) - L.width(videoButtons: false),
                        L.meeting + L.icon + 2 * L.spacing)  // Meeting, and the Views icon beside it
-        XCTAssertLessThan(L.width(videoButtons: true), 720)
+        XCTAssertLessThan(L.width(videoButtons: true), 740)  // was 720 before the bubble toggle (+34) and without the Meeting chevron (-14)
     }
 
     func testShareCellSitsBesideDrawAndCountsInBothBars() {

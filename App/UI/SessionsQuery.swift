@@ -19,7 +19,7 @@ enum SessionKind: String, CaseIterable, Hashable {
 
     var label: String {
         switch self {
-        case .classSession: return "Class"
+        case .classSession: return "Meeting"
         case .recording: return "Recording"
         case .review: return "Presentation"
         }
@@ -173,7 +173,7 @@ final class SessionsPendingSeek {
 /// The sidebar's SHOW group: one kind, or all of them.
 enum SessionsShow: String, CaseIterable, Identifiable {
     case everything = "Everything"
-    case classes = "Classes"
+    case classes = "Meetings"
     case recordings = "Recordings"
     case reviews = "Presentations"
     var id: String { rawValue }
@@ -199,7 +199,7 @@ enum SessionsShow: String, CaseIterable, Identifiable {
     var emptyLine: String {
         switch self {
         case .everything: return "Nothing recorded yet"
-        case .classes: return "No classes yet"
+        case .classes: return "No meetings yet"
         case .recordings: return "No recordings yet"
         case .reviews: return "No presentations yet"
         }

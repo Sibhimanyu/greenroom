@@ -366,3 +366,20 @@ final class LayoutMigrationTests: XCTestCase {
         XCTAssertFalse(try JSONDecoder().decode(LayoutTemplate.self, from: Data(#"{"name":"Mine"}"#.utf8)).isLocked)
     }
 }
+
+final class LayoutShareSwitchDecodeTests: XCTestCase {
+    func testOldPieceDecodesWithSwitchOff() throws {
+        let json = #"{"id":"6F9619FF-8B86-D011-B42D-00C04FC964FF","kind":{"type":"chat"},"rect":{"x":0,"y":0,"w":0.5,"h":0.5}}"#
+        let piece = try JSONDecoder().decode(LayoutPiece.self, from: Data(json.utf8))
+        XCTAssertFalse(piece.showsToEveryone)
+        XCTAssertTrue(piece.offersShareSwitch)
+    }
+
+    func testSwitchRoundTripsAndAppsNeverOfferIt() throws {
+        var piece = LayoutPiece(kind: .chat, rect: .full)
+        piece.showsToEveryone = true
+        let back = try JSONDecoder().decode(LayoutPiece.self, from: try JSONEncoder().encode(piece))
+        XCTAssertTrue(back.showsToEveryone)
+        XCTAssertFalse(LayoutPiece(kind: .app(AppPiece(bundleID: "com.apple.Safari")), rect: .full).offersShareSwitch)
+    }
+}

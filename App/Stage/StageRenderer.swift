@@ -101,7 +101,7 @@ final class StageRenderer {
     func compose(scene: StageScene, screen: CIImage?, marks: CIImage? = nil, cameras: [Int: StageCameraInput]) -> CIImage {
         let layout = scene.layout
         var out = backdrop                                   // layer 0 (enforceLayerOrder :952)
-        setContentRect(nil)
+        var drawnContent: CGRect?
 
         // Content: above the backdrop, below every camera.
         if layout.showsContent, let screen {
@@ -118,7 +118,7 @@ final class StageRenderer {
                 box = CGRect(x: m, y: m, width: canvas.width - 2 * m, height: canvas.height - 2 * m)
             }
             let placed = place(screen, inside: box)
-            setContentRect(placed.rect)
+            drawnContent = placed.rect
             var contentImage = placed.image
             // Marks drawn on the screen (phase 5): the overlay has the screen's
             // own shape, so it is fitted to exactly the rect the screen took.
@@ -135,6 +135,9 @@ final class StageRenderer {
             out = contentImage.composited(over: out)
         }
 
+        // Published only now: clearing it at the top let a reader on another
+        // thread see nil mid-frame and map the bubble as if the display filled the canvas.
+        setContentRect(drawnContent)
         var drewCamera = false
         var coverage: CIImage?
         // Cameras: non-live first, live last, on top (enforceLayerOrder :962).
@@ -152,7 +155,7 @@ final class StageRenderer {
             }
             for entry in order {
                 guard let input = cameras[entry.slot], let pixels = pixels(of: input, scene: scene),
-                      var layer = cameraLayer(pixels, layout: layout) else { continue }
+                      var layer = cameraLayer(pixels, layout: layout, content: drawnContent) else { continue }
                 if entry.opacity < 0.999 { layer = layer.withOpacity(max(0, entry.opacity)) }
                 out = layer.composited(over: out)
                 if layout.showsContent { coverage = coverage.map { layer.composited(over: $0) } ?? layer }
@@ -175,7 +178,7 @@ final class StageRenderer {
     /// The pixels a camera contributes under the current look, or nil when
     /// the look needs a cutout that has not arrived (one frame at most; an
     /// unremoved frame would flash the room).
-    private func pixels(of input: StageCameraInput, scene: StageScene) -> CIImage? {
+    func pixels(of input: StageCameraInput, scene: StageScene) -> CIImage? {
         guard scene.layout.shape.usesChromaKey else { return input.background ?? input.raw }
         switch scene.removal {
         case .automatic: return input.cutout
@@ -187,7 +190,7 @@ final class StageRenderer {
 
     /// Places one camera per the layout. Returns a canvas-sized-or-smaller
     /// image already in canvas coordinates.
-    private func cameraLayer(_ source: CIImage, layout: StageLayout) -> CIImage? {
+    private func cameraLayer(_ source: CIImage, layout: StageLayout, content: CGRect?) -> CIImage? {
         let image = normalized(source)
         guard image.extent.width > 1, image.extent.height > 1 else { return nil }
         let aspect = image.extent.width / image.extent.height
@@ -204,10 +207,9 @@ final class StageRenderer {
             let h = H * 1.12, w = h * aspect
             return stretch(image, to: CGRect(x: W * 0.24 - w / 2, y: -H * 0.02, width: w, height: h))
         case .cutout:
-            // layoutCutout :1496: flush with the bottom, own height and inset.
-            let h = H * layout.cutoutHeightFraction, w = h * aspect
-            return stretch(image, to: CGRect(x: W - W * layout.cutoutRightInset - w, y: H - h,
-                                             width: w, height: h))
+            // layoutCutout :1496 (maths shared with the presence bubble).
+            let rect = PresenceGeometry.cameraRect(for: layout.presenceBox, aspect: aspect, canvas: canvas, bounds: content)
+            return stretch(image, to: rect)
         case .square, .circle, .roundedRectangle:
             let shape = layout.cameraShape
             var src = image
@@ -218,12 +220,9 @@ final class StageRenderer {
                                              width: side, height: side))
                 src = normalized(src)
             }
-            // positionBubble :1684: the box has the picture's own aspect.
-            let boxW = (W * layout.widthFraction).rounded()
-            let boxH = (boxW * src.extent.height / src.extent.width).rounded()
-            let rect = CGRect(x: (W - W * layout.rightInset - boxW).rounded(),
-                              y: (H - H * layout.bottomInset - boxH).rounded(),
-                              width: boxW, height: boxH)
+            // positionBubble :1684 (maths shared with the presence bubble).
+            let rect = PresenceGeometry.cameraRect(for: layout.presenceBox,
+                                                   aspect: src.extent.width / src.extent.height, canvas: canvas, bounds: content)
             let placed = stretch(src, to: rect)
             switch shape {
             case .circle:

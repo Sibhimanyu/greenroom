@@ -222,7 +222,7 @@ enum ShortcutGroup: String, CaseIterable {
 
     var title: String {
         switch self {
-        case .classGroup: return "Class"
+        case .classGroup: return "Session"
         case .meeting: return "Meeting"
         case .layout: return "Layout"
         case .greenroom: return "Greenroom"
@@ -286,8 +286,8 @@ enum ShortcutAction: String, CaseIterable {
     var title: String {
         if let view = meetingView { return "Open or close \(view.title)" }
         switch self {
-        case .startClass: return "Start class"
-        case .endSession: return "End class"
+        case .startClass: return "Start meeting"
+        case .endSession: return "End meeting"
         case .toggleRecording: return "Start or stop recording"
         case .togglePause: return "Pause or resume recording"
         case .toggleDrawing: return "Draw on the screen"
@@ -301,7 +301,7 @@ enum ShortcutAction: String, CaseIterable {
         case .showMeetingWindow: return "Show the meeting window"
         case .toggleMeetingBar: return "Collapse or expand the meeting bar"
         case .shrinkMeeting: return "Shrink or expand the meeting"
-        case .shrinkToBar: return "Shrink meeting to the Mini"
+        case .shrinkToBar: return "Shrink meeting to the Control bar"
         case .cycleMeetingView: return "Cycle meeting view"
         case .toggleMeeting: return "Hide or show the meeting"
         case .snapBack: return "Snap windows back to the layout"
@@ -315,8 +315,8 @@ enum ShortcutAction: String, CaseIterable {
         if let view = meetingView { return "\(view.blurb): a window of its own. Needs Greenroom\u{2019}s meeting UI." }
         switch self {
         case .startClass: return "Same as the Start button."
-        case .endSession: return "Asks before it ends the class."
-        case .toggleRecording: return "Starts a recording when nothing is live (with the countdown); during a class or a recording it starts or stops the recording."
+        case .endSession: return "Asks before it ends the meeting."
+        case .toggleRecording: return "Starts a recording when nothing is live (with the countdown); during a meeting or a recording it starts or stops the recording."
         case .togglePause: return "Pauses the recording file only. The meeting carries on, and the file picks up with no gap."
         case .toggleDrawing: return "Opens the drawing tools over the screen you share, or closes them. Marks show in the meeting and the recording."
         case .clip1: return "Saves a clip of what just happened, the last minute."
@@ -324,17 +324,17 @@ enum ShortcutAction: String, CaseIterable {
         case .clip5: return "Saves a clip of what just happened, the last 5 minutes."
         case .toggleMic: return "Your microphone in the meeting."
         case .toggleCamera: return "Your camera in the meeting."
-        case .toggleChat: return "Opens or closes the class chat."
+        case .toggleChat: return "Opens or closes the meeting chat."
         case .toggleNotes: return "The notes bar, for this session only."
         case .showMeetingWindow: return "Brings the meeting back without moving your slides."
         case .toggleMeetingBar: return "The floating controls: the full bar, or a small round button."
-        case .shrinkMeeting: return "Shrinks the meeting window to the Mini, and back."
-        case .shrinkToBar: return "In the meeting window: shrinks it one step, to the Mini (then the control bar), the same as its minimise button."
+        case .shrinkMeeting: return "Shrinks the meeting window to the Control bar, and back."
+        case .shrinkToBar: return "In the meeting window: shrinks it to the control bar, the same as its minimise button."
         case .cycleMeetingView: return "In the meeting window: Speaker, Gallery, Multi-speaker, and round again."
         case .toggleMeeting: return "The layout's meeting piece; its neighbour takes the room."
         case .snapBack: return "After you have dragged windows around."
         case .openGreenroom: return "Brings the main window forward."
-        case .openSessions: return "Past classes and recordings."
+        case .openSessions: return "Past meetings and recordings."
         default: return ""
         }
     }
@@ -476,7 +476,7 @@ enum ShortcutSlot: Hashable {
         switch self {
         case .action(let a): return a.detail
         case .layout(nil): return "Arranges nothing at the next Start."
-        case .layout: return "Sets the Start layout, or re-arranges a live class."
+        case .layout: return "Sets the Start layout, or re-arranges a live meeting."
         }
     }
 }

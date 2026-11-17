@@ -16,6 +16,7 @@
 //  on the render queue between ticks. A new share target is started beside
 //  the old one, and only replaces it when its first frame has arrived.
 //
+import AppKit
 import AVFoundation
 import CoreGraphics
 import CoreImage
@@ -147,6 +148,9 @@ final class StageCompositor: StageFrameSource {
     private var screenSources: [UUID: StageScreenSource] = [:]
     private var shareKey: String?
     private var screenGeneration = 0
+    /// Retry/backoff and log decisions for a capture that is lost (under `lock`).
+    private var recovery = ScreenRecovery()
+    private var wakeObservers: [(center: NotificationCenter, token: NSObjectProtocol)] = []
     private var running = false
     /// The screen was wanted but Screen Recording was off. `update` tries again
     /// once it is on, without the caller having to change anything.
@@ -283,6 +287,7 @@ final class StageCompositor: StageFrameSource {
         lock.unlock()
         apply(configuration)
         guard !already else { return }
+        lock.lock(); startWatchingWake(); lock.unlock()
         post { $0.isRunning = true; $0.lastError = nil }
         renderQueue.async { [self] in
             guard timer == nil else { return }
@@ -298,6 +303,29 @@ final class StageCompositor: StageFrameSource {
     /// Nothing here blanks the picture.
     func update(_ configuration: StageConfiguration) { apply(configuration) }
 
+    /// Moves or resizes the camera for the very next frame, without the rest
+    /// of `apply` (no camera reopening, no screen sync). The presence bubble
+    /// calls this on every drag step.
+    func updatePlacement(_ layout: StageLayout) {
+        renderQueue.async { [self] in
+            scene.layout.widthFraction = layout.widthFraction
+            scene.layout.rightInset = layout.rightInset
+            scene.layout.bottomInset = layout.bottomInset
+            scene.layout.cutoutHeightFraction = layout.cutoutHeightFraction
+            scene.layout.cutoutRightInset = layout.cutoutRightInset
+        }
+    }
+
+    /// Called on the render queue with the live camera's processed picture
+    /// (effects and cutout applied, unmirrored) for every frame composed. The
+    /// presence bubble shows it; the handler must return quickly.
+    func setSelfViewHandler(_ handler: ((CIImage) -> Void)?) { selfViewHandler.withLock { $0 = handler } }
+    private let selfViewHandler = LockedBox<((CIImage) -> Void)?>(nil)
+
+    /// Where the display was drawn in the last frame (canvas pixels, top-left
+    /// origin), or nil when no screen was drawn.
+    var lastContentRect: CGRect? { renderer.lastContentRect }
+
     func stop() {
         lock.lock()
         running = false
@@ -305,6 +333,8 @@ final class StageCompositor: StageFrameSource {
         let cams = Array(publishers.values), screens = Array(screenSources.values)
         publishers = [:]; screenSources = [:]; shareKey = nil
         activeCapture.activeUUID = nil
+        recovery.reset()
+        stopWatchingWake()
         lock.unlock()
         cams.forEach { $0.stop() }
         screens.forEach { $0.stop(because: "the picture was stopped") }
@@ -371,7 +401,7 @@ final class StageCompositor: StageFrameSource {
         // "waiting" and each bumped the round: the first capture was started
         // and then stopped as superseded a few dozen milliseconds later.
         if permissionArrived { waitingForPermission = false }
-        if restartScreen { shareKey = key; screenGeneration += 1 }
+        if restartScreen { shareKey = key; screenGeneration += 1; recovery.reset() }
         let generation = screenGeneration
         lock.unlock()
         if restartScreen {
@@ -380,6 +410,42 @@ final class StageCompositor: StageFrameSource {
 
         controlQueue.async { [self] in syncCameras(uids: uids, removal: wantsRemoval, background: background, backgroundImage: cfg.cameraBackgroundImage) }
         if restartScreen { Task.detached { [self] in await syncScreen(cfg, generation: generation) } }
+    }
+
+    // MARK: Wake and unlock
+
+    /// The Mac woke or was unlocked while the capture is lost: try now rather
+    /// than at the next 5 s tick. Does nothing while the capture is fine.
+    private func kickScreen(_ why: String) {
+        lock.lock()
+        let cfg = lastConfiguration, isRunning = running, lost = recovery.inOutage
+        guard isRunning, lost, let cfg, cfg.share.kind.capturesScreen else { lock.unlock(); return }
+        _ = why
+        screenGeneration += 1   // retires the waiting retry; this attempt carries on the loop
+        let generation = screenGeneration
+        lock.unlock()
+        Task.detached { [self] in
+            // Displays are listed a moment after the wake notice.
+            try? await Task.sleep(nanoseconds: 1_000_000_000)
+            guard isCurrent(generation) else { return }
+            await syncScreen(cfg, generation: generation)
+        }
+    }
+
+    private func startWatchingWake() {
+        guard wakeObservers.isEmpty else { return }
+        let ws = NSWorkspace.shared.notificationCenter, dn = DistributedNotificationCenter.default()
+        let wake: (String) -> (Notification) -> Void = { [weak self] why in { _ in self?.kickScreen(why) } }
+        wakeObservers = [
+            (ws, ws.addObserver(forName: NSWorkspace.screensDidWakeNotification, object: nil, queue: nil, using: wake("display woke"))),
+            (ws, ws.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: nil, using: wake("Mac woke"))),
+            (dn, dn.addObserver(forName: Notification.Name("com.apple.screenIsUnlocked"), object: nil, queue: nil, using: wake("screen unlocked"))),
+        ]
+    }
+
+    private func stopWatchingWake() {
+        wakeObservers.forEach { $0.center.removeObserver($0.token) }
+        wakeObservers = []
     }
 
     // MARK: Displays coming and going
@@ -510,6 +576,7 @@ final class StageCompositor: StageFrameSource {
         }
         let source = StageScreenSource(target: target, displayUUID: displayUUID, maxSize: outputSize,
                                        captureAudio: cfg.captureSystemAudio)
+        source.quietFailures = true   // `recovery` logs the first loss and the return, nothing between
         // Only the capture that is on air is heard: while a replacement starts
         // beside the old one, both would otherwise deliver the same sound.
         source.onAudio = { [weak self, weak source] buffer in
@@ -520,6 +587,8 @@ final class StageCompositor: StageFrameSource {
             guard let self, let source else { return }
             if self.board.offerScreen(buffer, wholeDisplay: source.wholeDisplay, from: source.id) {
                 self.retireScreens(except: source.id, because: "replaced by a newer capture that has a picture")
+                self.lock.lock(); let back = self.recovery.recovered(); self.lock.unlock()
+                if let back { StageScreenSource.log(back) }
                 self.post { $0.screenLive = true; $0.lastError = nil }
             }
         }
@@ -535,8 +604,9 @@ final class StageCompositor: StageFrameSource {
         }
         source.onStop = { [weak self, weak source] error in
             guard let self, let source else { return }
-            // macOS ended the stream. The last picture stays up while a
-            // replacement starts, so the class sees a still frame, not black.
+            // macOS ended the stream (display asleep, Mac locked, -3815). The
+            // board keeps the last picture, so the meeting sees a still frame,
+            // not black, while a replacement is tried.
             self.post {
                 $0.screenLive = false
                 $0.lastError = "The screen capture stopped (\(error.localizedDescription)). Restarting it."
@@ -545,8 +615,16 @@ final class StageCompositor: StageFrameSource {
             let again = self.isCurrent(generation)
             source.stop(because: "macOS ended it, \(StageScreenSource.describe(error))")
             guard again else { return }
+            self.lock.lock()
+            let decision = self.recovery.failed(StageScreenSource.describe(error),
+                                                permission: StageScreenSource.isPermissionProblem(error),
+                                                choiceStands: true)
+            self.lock.unlock()
+            if let line = decision.logLine { StageScreenSource.log(line) }
+            guard decision.retryIn != nil else { return }
             Task.detached {
                 try? await Task.sleep(nanoseconds: 2_000_000_000)
+                guard self.isCurrent(generation) else { return }
                 await self.syncScreen(cfg, generation: generation)
             }
         }
@@ -572,6 +650,23 @@ final class StageCompositor: StageFrameSource {
                 return
             }
             post { $0.screenLive = false; $0.lastError = error.localizedDescription }
+            // A Mac whose display is asleep lists no displays at all (2026-11-17:
+            // display off 12:58, on 13:49, Home's preview stayed black). Ask
+            // again every 5 s while this choice stands, and at once on wake or
+            // unlock (`kickScreen`). A permission refusal is not waited out.
+            lock.lock()
+            let decision = recovery.failed(StageScreenSource.describe(error),
+                                           permission: StageScreenSource.isPermissionProblem(error),
+                                           choiceStands: running && generation == screenGeneration)
+            lock.unlock()
+            if let line = decision.logLine { StageScreenSource.log(line) }
+            if let wait = decision.retryIn {
+                Task.detached { [self] in
+                    try? await Task.sleep(nanoseconds: UInt64(wait * 1_000_000_000))
+                    guard current() else { return }
+                    await syncScreen(cfg, generation: generation)
+                }
+            }
             return
         }
         let pixel = await MainActor.run { DisplayMonitor.connectedForCapture().first { $0.uuid == displayUUID }?.pixelSize }
@@ -634,6 +729,10 @@ final class StageCompositor: StageFrameSource {
                 cameras[slot] = StageCameraInput(raw: CIImage(cvPixelBuffer: frame.raw), cutout: frame.cutout,
                                                       background: frame.background)
             }
+        }
+        if let handler = selfViewHandler.withLock({ $0 }), let input = cameras[scene.liveSlot],
+           let picture = renderer.pixels(of: input, scene: scene) {
+            handler(picture)
         }
         let image = renderer.compose(scene: scene,
                                      screen: snap.screen?.image,

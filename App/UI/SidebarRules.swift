@@ -45,3 +45,31 @@ enum SidebarRules {
         sidebarShown ? max(windowMin - sidebarWidth, 0) : windowMin
     }
 }
+
+/// What Home's toolbar needs across, so no item ever folds into the system "»"
+/// chevron (owner rule: Settings never hides). Home has no sidebar, so only the
+/// toolbar's own items count. Measured by arithmetic, not on screen: each figure
+/// is the macOS 26 size rounded UP, and `safety` covers what the sum misses.
+enum HomeToolbarRules {
+    /// Traffic lights and the leading margin; the leading side holds nothing else.
+    static let leading: CGFloat = 78
+    /// "Scheduled" at 13pt semibold is about 66pt; plus 14pt padding each side,
+    /// three equal segments, plus the track's inset.
+    static let switcher: CGFloat = 3 * (66 + 28) + 8
+    /// Sessions (glass button with its margins), the fixed spacer, the Setup guide
+    /// and Settings group, the share eye's title-bar accessory (24 + 12), margins.
+    static let sessions: CGFloat = 48
+    static let spacer: CGFloat = 12
+    static let group: CGFloat = 100
+    static let shareAccessory: CGFloat = 36
+    static let trailingMargin: CGFloat = 20
+    /// The gap the system keeps between the principal item and the sides.
+    static let gap: CGFloat = 16
+    /// Room for a font size or a system release that differs from the above.
+    static let safety: CGFloat = 48
+
+    static var need: CGFloat {
+        leading + gap + switcher + gap + sessions + spacer + group + shareAccessory + trailingMargin
+    }
+    static var minWindowWidth: CGFloat { need + safety }
+}

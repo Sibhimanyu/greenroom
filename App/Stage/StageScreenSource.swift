@@ -133,12 +133,17 @@ final class StageScreenSource: NSObject, SCStreamOutput, SCStreamDelegate {
         return e.domain == SCStreamErrorDomain && e.code == SCStreamError.Code.userDeclined.rawValue
     }
 
-    private static func failure(for error: Error, doing what: String) -> Failure {
-        if isPermissionProblem(error) {
-            log("\(what) refused: \(describe(error)). Screen Recording is not allowed for this launch.")
-            return Failure(errorDescription: permissionMessage)
+    /// Set by the compositor: a failed start that is not a permission refusal
+    /// is not logged here, because the compositor's retry loop logs the first
+    /// one and the recovery, and nothing between (no line per 5 s of sleep).
+    var quietFailures = false
+
+    private func failure(for error: Error, doing what: String) -> Failure {
+        if Self.isPermissionProblem(error) {
+            Self.log("\(what) refused: \(Self.describe(error)). Screen Recording is not allowed for this launch.")
+            return Failure(errorDescription: Self.permissionMessage)
         }
-        log("\(what) failed: \(describe(error)).")
+        if !quietFailures { Self.log("\(what) failed: \(Self.describe(error)).") }
         return Failure(errorDescription: "The screen capture couldn\u{2019}t start: \(error.localizedDescription) (code \((error as NSError).code)).")
     }
 
@@ -225,12 +230,12 @@ final class StageScreenSource: NSObject, SCStreamOutput, SCStreamDelegate {
             // below follows it. Unusable ones are filtered by ScreenWindowRules.
             content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: false)
         } catch {
-            throw Self.failure(for: error, doing: "Listing the screens")
+            throw failure(for: error, doing: "Listing the screens")
         }
         guard let display = content.displays.first(where: {
             LocalDeviceResolver.uuid(for: $0.displayID) == displayUUID
         }) ?? content.displays.first else {
-            Self.log("No display was found among \(content.displays.count).")
+            if !quietFailures { Self.log("No display was found among \(content.displays.count).") }
             throw Failure(errorDescription: "No screen was found to share.")
         }
         stateLock.lock(); capturedDisplayFrame = display.frame; stateLock.unlock()
@@ -284,7 +289,7 @@ final class StageScreenSource: NSObject, SCStreamOutput, SCStreamDelegate {
             if captureAudio { try stream.addStreamOutput(self, type: .audio, sampleHandlerQueue: queue) }
             try await stream.startCapture()
         } catch {
-            throw Self.failure(for: error, doing: "Starting the capture")
+            throw failure(for: error, doing: "Starting the capture")
         }
         // stop() may have come while the stream was starting. It had nothing to
         // stop yet, so it is stopped here rather than left running unseen.

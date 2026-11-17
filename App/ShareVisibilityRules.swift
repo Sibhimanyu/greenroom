@@ -32,7 +32,7 @@ enum ShareVisibility: Equatable {
     init(marked: Bool) { self = marked ? .classSees : .onlyYou }
 
     /// The switch's words and the edge's label.
-    var label: String { self == .classSees ? "Class sees this" : "Only you" }
+    var label: String { self == .classSees ? "Everyone sees this" : "Only you" }
 
     /// An eye open or struck through.
     var symbol: String { self == .classSees ? "eye" : "eye.slash" }
@@ -42,7 +42,7 @@ enum ShareVisibility: Equatable {
 
     /// The one-time island toast: a short sentence for each way round.
     var explanation: String {
-        self == .classSees ? "The class sees this window." : "Hidden from the class. Only you see this window."
+        self == .classSees ? "Everyone in the meeting sees this window." : "Hidden from the meeting. Only you see this window."
     }
 }
 
@@ -65,13 +65,13 @@ enum ShareVisibilityExplainer {
     }
 }
 
-// MARK: - Which windows offer "Show to class", and what the switch says
+// MARK: - Which windows offer "Show to everyone", and what the switch says
 
 /// Every kind of window Greenroom opens, and whether it carries the switch.
 /// Hidden from the class by default; the switch lets the person show one, say
 /// to show how they present. Tools and anything private never carry it.
 enum ShareableWindow: CaseIterable {
-    case main, settings, meetingChat, participants, meetingWindow, meetingView, mini
+    case main, settings, meetingChat, participants, meetingWindow, meetingView
     // Never offered:
     /// Credentials are typed here (`sharingType = .none`).
     case setupGuide
@@ -84,7 +84,7 @@ enum ShareableWindow: CaseIterable {
 
     var offersSwitch: Bool {
         switch self {
-        case .main, .settings, .meetingChat, .participants, .meetingWindow, .meetingView, .mini: return true
+        case .main, .settings, .meetingChat, .participants, .meetingWindow, .meetingView: return true
         case .setupGuide, .controlBar, .island, .recordingChrome, .annotation, .drawingToolbar,
              .whiteboard, .browser: return false
         }
@@ -111,15 +111,15 @@ struct ShareSwitchState: Equatable {
     let accessibilityLabel: String
     let accessibilityValue: String
 
-    static let shownHelp = "The class sees this window. Click to hide it."
-    static let hiddenHelp = "Only you: the class can't see this window. Click to show it to the class."
+    static let shownHelp = "Everyone in the meeting sees this window. Click to hide it."
+    static let hiddenHelp = "Only you: the meeting can't see this window. Click to show it to everyone."
 
     init(on: Bool, kind: ShowOnShare.ShareKind) {
         let marked = ShowOnShare.marksWindow(on: on, kind: kind)
         visibility = ShareVisibility(marked: marked)
         isEnabled = ShowOnShare.isAvailable(kind)
         help = isEnabled ? (on ? Self.shownHelp : Self.hiddenHelp) : ShowOnShare.unavailableTip
-        accessibilityLabel = "Show to class"
+        accessibilityLabel = "Show to everyone"
         accessibilityValue = visibility.label
     }
 }

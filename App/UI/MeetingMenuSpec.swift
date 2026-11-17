@@ -161,11 +161,22 @@ enum MeetingMenus {
 
     /// Greenroom sends its own picture as the camera, so the note says what
     /// choosing another one does.
+    /// `toggleBubble` is the floating camera bubble on your own screen: given
+    /// only while the camera is on, since there is no bubble without it. The
+    /// class and the recording keep seeing you either way.
     static func video(cameras: [Device], selected: String?,
+                      bubble: (hidden: Bool, toggle: () -> Void)? = nil,
                       pick: @escaping (Device) -> Void) -> [MenuEntry] {
         var out: [MenuEntry] = [.header("Camera")]
         out += cameras.map { d in .item(d.name, checked: d.id == selected) { pick(d) } }
         if cameras.isEmpty { out.append(.item("No camera found", enabled: false) {}) }
+        if let bubble {
+            out.append(.separator)
+            out.append(.item(bubble.hidden ? "Show my bubble" : "Hide my bubble",
+                             note: bubble.hidden ? "Your camera bubble comes back on your screen"
+                                                 : "Only on your screen. Everyone in the meeting still sees you",
+                             bubble.toggle))
+        }
         out.append(.separator)
         out.append(.item("Greenroom sends its own picture as your camera", enabled: false) {})
         return out
@@ -281,7 +292,7 @@ enum MeetingMenus {
             info.append(.separator)
             info.append(.item("Copy invite link") { a.copy(facts.joinURL, "Invite link") })
         }
-        if let shrink = a.shrink { out.append(.item("Shrink to the Mini", shrink)) }
+        if let shrink = a.shrink { out.append(.item("Make the meeting smaller", shrink)) }
         out.append(.submenu("Meeting info", enabled: facts.hasInvite, info))
         out.append(.item("Open this meeting in the Zoom app\u{2026}",
                          enabled: facts.hasInvite,

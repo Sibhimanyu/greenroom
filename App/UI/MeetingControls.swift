@@ -193,6 +193,13 @@ final class MeetingControlsModel: ObservableObject {
         refresh()
     }
 
+    /// Hides or shows the floating camera bubble on your own screen. The class
+    /// and the recording keep seeing the camera.
+    func toggleBubble() {
+        coordinator.presenceBubbleHidden.toggle()
+        refresh()
+    }
+
     func joinAudio() {
         act("Joined the meeting's audio", code: "join_audio") { $0.joinAudio() }
     }
@@ -416,19 +423,39 @@ final class MeetingControlsModel: ObservableObject {
     /// is open. Empty without Greenroom's own meeting UI.
     func viewsMenu() -> [MenuEntry] {
         guard coordinator.zoomChatClient.didUseCustomUI else { return [] }
-        return MeetingMenus.views(MeetingViewWindows.menuState,
+        var out = MeetingMenus.views(MeetingViewWindows.menuState,
                                   toggleMeetingWindow: { [weak self] in self?.coordinator.toggleMeetingWindow() },
                                   toggleView: { MeetingViewWindows.toggle($0) })
+        // A layout's content views carry no controls, and the bar is the only
+        // surface when the Meeting window is away: what the window's toolbar
+        // had that the bar's cells do not (devices, hand and reactions,
+        // Security, display share, meeting info, the Zoom app) comes here.
+        if coordinator.sessionArranges, !ParticipantGridWindowController.meetingWindowIsShowing {
+            let m = MeetingToolbarView.menus(for: self)
+            var extras: [MenuEntry] = []
+            extras.append(.submenu("Microphone and speaker", m.audio()))
+            extras.append(.submenu("Camera", m.video()))
+            extras.append(.submenu("Raise hand and react", m.react()))
+            if isHost { extras.append(.submenu("Security", m.security())) }
+            extras.append(.submenu("Share a display", m.share()))
+            let pickers = MeetingViewWindows.pickerMenuEntries()
+            if !pickers.isEmpty { extras += [.separator] + pickers }
+            extras.append(.separator)
+            var a = MeetingMenus.MoreMenuActions()
+            a.copy = copy
+            a.openInZoom = openInZoomApp
+            out += [.separator] + MeetingMenus.more(overflow: extras, facts: meetingFacts, views: [], a)
+        }
+        return out
     }
 
-    /// The bar's Meeting button. The bar is up only while neither the window nor
-    /// the Mini is, so this brings the Meeting window straight back; with Option
-    /// held, the Mini. The chevron beside it offers both by name.
+    /// The bar's Meeting button. The bar is up only while the window is not, so
+    /// this brings the Meeting window straight back.
     func toggleMeetingWindow() {
         if ParticipantGridWindowController.meetingWindowIsShowing {
             coordinator.toggleMeetingWindow()
         } else {
-            coordinator.expandMeetingFromBar(option: NSEvent.modifierFlags.contains(.option))
+            coordinator.expandMeetingFromBar()
         }
         refresh()
     }
@@ -439,23 +466,7 @@ final class MeetingControlsModel: ObservableObject {
         refresh()
     }
 
-    /// The chevron's "Mini window".
-    func expandToMini() {
-        coordinator.moveMeeting(to: .mini)
-        refresh()
-    }
-
-    /// The menu beside the bar's Meeting button: the sizes to come back to.
-    func meetingSizeMenu() -> [MenuEntry] {
-        [.item("Meeting window", note: "The full meeting, everyone and the chat") { [weak self] in self?.expandToMeetingWindow() },
-         .item("Mini window", enabled: coordinator.miniAvailable,
-               note: coordinator.miniAvailable ? "A small floating video with the controls"
-                                               : "Not with this layout: the meeting has a slot of its own") { [weak self] in
-             self?.expandToMini()
-         }]
-    }
-
-    /// The meeting window's Mini button, Minimize and Command-M: one size down.
+    /// The meeting window's Smaller button, Minimize and Command-M: one size down.
     func collapseMeeting() {
         coordinator.collapseMeeting()
         refresh()
@@ -539,8 +550,11 @@ struct MeetingToolbarView: View {
         return a
     }
 
-    private var menus: MeetingToolbarMenus {
-        let model = self.model
+    private var menus: MeetingToolbarMenus { Self.menus(for: model) }
+
+    /// The toolbar's menus, also the Control bar's extras when the bar carries
+    /// the controls of a layout's content views.
+    static func menus(for model: MeetingControlsModel) -> MeetingToolbarMenus {
         var m = MeetingToolbarMenus()
         m.audio = {
             MeetingMenus.audio(hasAudio: model.hasAudio || !model.inMeeting,
@@ -552,9 +566,12 @@ struct MeetingToolbarView: View {
                                pickMic: { model.selectMicrophone(id: $0.id, name: $0.name) },
                                pickSpeaker: { model.selectSpeaker(id: $0.id, name: $0.name) })
         }
-        m.video = {
-            MeetingMenus.video(cameras: model.cameraDevices, selected: model.cameraSelectedID,
-                               pick: model.selectCamera)
+        m.video = { () -> [MenuEntry] in
+            let hidden = model.coordinator.presenceBubbleHidden
+            var bubble: (hidden: Bool, toggle: () -> Void)?
+            if model.cameraOn { bubble = (hidden: hidden, toggle: { model.toggleBubble() }) }
+            return MeetingMenus.video(cameras: model.cameraDevices, selected: model.cameraSelectedID,
+                                      bubble: bubble, pick: { model.selectCamera($0) })
         }
         m.security = {
             var a = SecurityMenuActions()
@@ -565,8 +582,8 @@ struct MeetingToolbarView: View {
             a.setRename = model.setRename
             a.setUnmuteSelf = model.setUnmuteSelf
             a.setStartVideo = model.setStartVideo
-            a.suspend = { [weak coordinator] in
-                ParticipantGridWindowController.confirmSuspend { model.suspendActivities(); _ = coordinator }
+            a.suspend = {
+                ParticipantGridWindowController.confirmSuspend { model.suspendActivities() }
             }
             return MeetingMenus.security(model.security, a,
                                          lastConcurrent: model.coordinator.zoomChatClient.roomEvents.lastConcurrent)
@@ -626,6 +643,9 @@ struct MeetingControlBarRoot: View {
 
     var body: some View {
         let collapsed = state.collapsed
+        // While the meeting comes up the bar says so, and offers Cancel; the
+        // live cells fade in when it is live (StartChoreography.swift).
+        let starting = coordinator.startBarText != nil
         // The content is overlaid, never measured: the capsule is exactly the
         // window however wide the pill inside is, so a half-collapsed window
         // clips the pill instead of stretching the capsule.
@@ -634,19 +654,57 @@ struct MeetingControlBarRoot: View {
             MeetingControlBarView(model: model, coordinator: coordinator)
                 .frame(width: MeetingControlBarController.width(videoButtons: model.videoButtons),
                        height: MeetingControlBarController.height)
-                .opacity(collapsed ? 0 : 1)
-                .allowsHitTesting(!collapsed)
-                .accessibilityHidden(collapsed)
+                .opacity(collapsed || starting ? 0 : 1)
+                .allowsHitTesting(!collapsed && !starting)
+                .accessibilityHidden(collapsed || starting)
             MeetingPuckView(model: model, coordinator: coordinator)
-                .opacity(collapsed ? 1 : 0)
-                .allowsHitTesting(collapsed)
-                .accessibilityHidden(!collapsed)
+                .opacity(collapsed && !starting ? 1 : 0)
+                .allowsHitTesting(collapsed && !starting)
+                .accessibilityHidden(!collapsed || starting)
+            MeetingStartingBarView(text: coordinator.startBarText ?? "Starting\u{2026}",
+                                   cancel: { coordinator.cancelStart() })
+                .frame(width: StartChoreography.startingBarWidth, height: MeetingControlBarController.height)
+                .opacity(starting ? 1 : 0)
+                .allowsHitTesting(starting)
+                .accessibilityHidden(!starting)
         }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .clipShape(Capsule())
         .greenroomGlass(in: Capsule(), interactive: true)
         .animation(Collapse.animation, value: collapsed)
+        .animation(Collapse.animation, value: starting)
+    }
+}
+
+/// The bar while the meeting starts: the grip, a spinner, what is happening in
+/// plain words, and Cancel where End will be. Nothing else works yet, so
+/// nothing else is drawn.
+private struct MeetingStartingBarView: View {
+    var text: String
+    var cancel: () -> Void
+
+    var body: some View {
+        HStack(spacing: 8) {
+            MeetingBarGrip()
+            ProgressView().controlSize(.small).scaleEffect(0.8).frame(width: 16, height: 16)
+            Text(text)
+                .font(.system(size: 13, weight: .medium))
+                .lineLimit(1)
+                .frame(minWidth: 62, alignment: .leading)
+            Spacer(minLength: 0)
+            Button(action: cancel) {
+                Text("Cancel")
+                    .font(.system(size: 12, weight: .medium))
+                    .padding(.horizontal, 10).padding(.vertical, 5)
+                    .background(Capsule().fill(Color.primary.opacity(0.1)))
+            }
+            .buttonStyle(.plain)
+            .help("Cancel starting the meeting")
+            .accessibilityLabel("Cancel starting the meeting")
+            .padding(.trailing, 6)
+        }
+        .accessibilityElement(children: .contain)
     }
 }
 
@@ -840,6 +898,7 @@ private struct MeetingControlBarView: View {
         s.inMeeting = model.inMeeting
         s.muted = model.muted
         s.cameraOn = model.cameraOn
+        s.bubbleHidden = coordinator.presenceBubbleHidden
         s.videoButtons = model.videoButtons
         s.unread = model.unread
         s.participants = model.participantCount
@@ -868,8 +927,8 @@ private struct MeetingControlBarView: View {
         var a = MeetingBarActions()
         a.toggleMute = model.toggleMute
         a.toggleCamera = model.toggleCamera
+        a.toggleBubble = model.toggleBubble
         a.meeting = model.toggleMeetingWindow
-        a.meetingMenu = model.meetingSizeMenu
         a.toggleChat = model.toggleChat
         a.people = model.showPeople
         a.toggleDraw = { coordinator.toggleDrawing() }
@@ -968,6 +1027,13 @@ enum MeetingControlBarController {
     private static var spaceObserver: NSObjectProtocol?
     private static var pending: DispatchWorkItem?
     private static var settleTimer: Timer?
+    /// The bar is in its Starting state: it stays on screen whatever the Meeting
+    /// window does, and keeps the narrow form.
+    private(set) static var isStarting = false
+    /// A fade-out is running; the panel goes when it ends.
+    private static var fading = false
+
+    private static var reduceMotion: Bool { NSWorkspace.shared.accessibilityDisplayShouldReduceMotion }
 
     /// Whether the pill is on screen right now.
     static var isVisible: Bool { panel?.isVisible ?? false }
@@ -979,18 +1045,23 @@ enum MeetingControlBarController {
     }
 
     private static func size(collapsed: Bool) -> CGSize {
-        collapsed ? CGSize(width: puckSize, height: puckSize)
+        if isStarting { return CGSize(width: StartChoreography.startingBarWidth, height: height) }
+        return collapsed ? CGSize(width: puckSize, height: puckSize)
                   : CGSize(width: width(videoButtons: model?.videoButtons ?? false), height: height)
     }
 
     /// Builds the pill for this session and starts watching the meeting window.
     /// It is shown or hidden by `reconcile`, which runs at once the first time.
-    static func install(coordinator: CoordinatorController, model: MeetingControlsModel) {
+    /// `starting` builds it in its Starting state, on screen at once and fading
+    /// in: the first thing a Start click shows.
+    static func install(coordinator: CoordinatorController, model: MeetingControlsModel, starting: Bool = false) {
+        if fading { close() }
         guard panel == nil else { reconcile(immediately: false); return }
         guard NSScreen.main ?? NSScreen.screens.first != nil else { return }
+        isStarting = starting
         self.model = model
         self.coordinator = coordinator
-        let collapsed = UserDefaults.standard.bool(forKey: collapsedKey)
+        let collapsed = !starting && UserDefaults.standard.bool(forKey: collapsedKey)
         let barState = MeetingBarState(collapsed: collapsed)
         state = barState
 
@@ -1051,9 +1122,40 @@ enum MeetingControlBarController {
                                             object: nil, queue: .main) { _ in
             MainActor.assumeIsolated { revalidatePosition() }
         })
+        if starting {
+            // First thing on screen at the click: fades in, no debounce.
+            created.alphaValue = reduceMotion ? 1 : 0
+            reconcile(immediately: true)
+            if !reduceMotion {
+                NSAnimationContext.runAnimationGroup { context in
+                    context.duration = StartChoreography.homeSeconds
+                    context.timingFunction = CAMediaTimingFunction(name: .easeOut)
+                    created.animator().alphaValue = 1
+                }
+            }
+            return
+        }
         // A window opened a moment ago has not reported its occlusion yet, which
         // would flash the pill; let the debounce settle it. With none, show now.
         reconcile(immediately: !ParticipantGridWindowController.meetingWindowIsOpen)
+    }
+
+    /// The meeting is live: the bar grows from the Starting state to the live
+    /// bar (or the puck it was left as), then the usual one-surface rule applies.
+    /// `windowOpening`: the Meeting window has just been opened, so the rule is
+    /// applied at once and the bar does not linger beside it.
+    static func finishStarting(windowOpening: Bool = false) {
+        guard isStarting else { return }
+        isStarting = false
+        guard let panel, let state else { return }
+        let collapsed = UserDefaults.standard.bool(forKey: collapsedKey)
+        let old = panel.frame
+        let area = MeetingBarPlacement.area(for: old, in: screenAreas) ?? mainArea
+        let target = MeetingBarPlacement.resized(from: old, to: size(collapsed: collapsed), in: area)
+        state.collapsed = collapsed
+        move(to: target)
+        avoidBar(target)
+        reconcile(immediately: windowOpening)
     }
 
     /// Shows the pill when nothing else carries the controls, hides it when the
@@ -1066,10 +1168,14 @@ enum MeetingControlBarController {
         let work = DispatchWorkItem {
             MainActor.assumeIsolated {
                 guard let panel, morphTimeline == nil else { return }
-                // One control surface at a time: the window or the Mini carries the
-                // controls when it is up, the bar when neither is.
-                if !MeetingSurfaces.barVisible(windowShowing: ParticipantGridWindowController.meetingWindowIsShowing,
-                                               miniOpen: MeetingViewWindows.miniIsOpen) {
+                // Starting: the bar is the only surface, whatever else is up.
+                if isStarting {
+                    if !panel.isVisible { panel.orderFrontRegardless() }
+                    return
+                }
+                // One control surface at a time: the window carries the controls
+                // when it is up, the bar when it is not.
+                if !MeetingSurfaces.barVisible(windowShowing: ParticipantGridWindowController.meetingWindowIsShowing) {
                     panel.orderOut(nil)
                 } else if !panel.isVisible {
                     // Without activating the app: Zoom or the slides stay in front.
@@ -1091,9 +1197,8 @@ enum MeetingControlBarController {
     /// bar up beside the meeting window, or neither up) because some change
     /// sent no notification, decide again.
     static func healIfNeeded() {
-        guard let panel, morphTimeline == nil else { return }
-        let wanted = MeetingSurfaces.barVisible(windowShowing: ParticipantGridWindowController.meetingWindowIsShowing,
-                                                miniOpen: MeetingViewWindows.miniIsOpen)
+        guard let panel, morphTimeline == nil, !isStarting else { return }
+        let wanted = MeetingSurfaces.barVisible(windowShowing: ParticipantGridWindowController.meetingWindowIsShowing)
         if wanted != panel.isVisible { reconcile(immediately: false) }
     }
 
@@ -1207,7 +1312,7 @@ enum MeetingControlBarController {
 
     /// The shortcut: flips the form, but only while the bar is on screen.
     static func toggleCollapsed() {
-        guard isVisible else { return }
+        guard isVisible, !isStarting else { return }
         setCollapsed(!isCollapsed)
     }
 
@@ -1216,7 +1321,7 @@ enum MeetingControlBarController {
     /// The panel's frame follows a spring (nothing under Reduce Motion) while
     /// the content crossfades inside it.
     static func setCollapsed(_ collapsed: Bool) {
-        guard let panel, let state, state.collapsed != collapsed else { return }
+        guard let panel, let state, state.collapsed != collapsed, !isStarting else { return }
         cancelSettling()
         let old = panel.frame
         saveFrame(old, collapsed: state.collapsed)
@@ -1384,7 +1489,27 @@ enum MeetingControlBarController {
     /// The bar has been built for this meeting.
     static var isInstalled: Bool { panel != nil }
 
+    /// With `fade`, the bar fades out first (a start that failed or was
+    /// cancelled); instant under Reduce Motion.
+    static func close(fade: Bool) {
+        guard fade, !reduceMotion, let panel, panel.isVisible, !fading else { close(); return }
+        fading = true
+        pending?.cancel()
+        NSAnimationContext.runAnimationGroup({ context in
+            context.duration = 0.2
+            context.timingFunction = CAMediaTimingFunction(name: .easeIn)
+            panel.animator().alphaValue = 0
+        }, completionHandler: {
+            MainActor.assumeIsolated {
+                guard fading, Self.panel === panel else { return }
+                close()
+            }
+        })
+    }
+
     static func close() {
+        fading = false
+        isStarting = false
         morphTimer?.invalidate()
         morphTimer = nil
         morphSnapshot?.orderOut(nil)

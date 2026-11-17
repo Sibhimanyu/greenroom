@@ -907,7 +907,7 @@ struct RecordingsView: View {
     @ViewBuilder private func linksDetail(for session: Session) -> some View {
         if session.links.isEmpty {
             SessionTabEmpty(title: "No links", symbol: "link",
-                            message: "Cues was off in this class. With Cues on, the cards you open or send are kept here.") {}
+                            message: "Cues was off in this meeting. With Cues on, the cards you open or send are kept here.") {}
         } else {
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
@@ -1393,8 +1393,8 @@ struct RecordingsView: View {
         guard spaceLevel != .ok, let freeBytes else { return nil }
         let free = ByteCountFormatter.string(fromByteCount: freeBytes, countStyle: .file)
         return (spaceLevel == .critical
-                    ? "Only \(free) left \u{2014} that may not fit a full class. Move or delete a few recordings before your next session."
-                    : "\(free) left \u{2014} room for about two more classes.",
+                    ? "Only \(free) left \u{2014} that may not fit a full meeting. Move or delete a few recordings before your next session."
+                    : "\(free) left \u{2014} room for about two more meetings.",
                 spaceColor)
     }
 

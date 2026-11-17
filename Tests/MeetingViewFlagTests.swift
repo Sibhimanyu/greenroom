@@ -20,7 +20,7 @@ final class MeetingViewFlagTests: XCTestCase {
         XCTAssertEqual(entries.count, 1 + 9)
         XCTAssertEqual(entries.compactMap { $0.kind.view }, MeetingView.allCases)
         XCTAssertEqual(entries.map(\.title), ["Meeting window", "Active speaker", "Gallery", "Multi-speaker", "Speaker + strip",
-                                              "Self view", "People list", "Shared screen", "Spotlight student", "Hands up"])
+                                              "Self view", "People list", "Shared screen", "Spotlight person", "Hands up"])
     }
 
     func testFlagReadsTheOverrideThenTheDefaultWhichIsOn() {

@@ -126,7 +126,7 @@ struct CameraSwitchSection: View {
         let name = aiming.flatMap { uid in cameras.first { $0.id == uid }?.name }
         return CameraReading(degrees: sight.degrees, threshold: threshold,
                              status: Self.status(sight, threshold: threshold, aiming: aiming != nil),
-                             source: coordinator.stageLive ? "In the class" : name)
+                             source: coordinator.stageLive ? "In the meeting" : name)
     }
 
     /// One line per state, and never the wrong one. The first version said
@@ -171,7 +171,7 @@ struct CameraSwitchSection: View {
                         .help("Switching to \(pending.cameraName)")
                 }
             }
-            .help("Lower is more head-on. The class gets whichever camera is clearly lower for the whole delay. \(director.cuts) cut\(director.cuts == 1 ? "" : "s") this session.")
+            .help("Lower is more head-on. Everyone gets whichever camera is clearly lower for the whole delay. \(director.cuts) cut\(director.cuts == 1 ? "" : "s") this session.")
         }
     }
 }
@@ -215,7 +215,7 @@ struct CameraSwitchContent<LiveDetail: View>: View {
 
     var body: some View {
         Toggle("Switch to the camera you\u{2019}re facing", isOn: $enabled.animatedCollapse())
-            .help("For two monitors: put a camera on each, and the class sees whichever one you face instead of the side of your head.")
+            .help("For two monitors: put a camera on each, and everyone sees whichever one you face instead of the side of your head.")
 
         cameraRow
 
@@ -268,7 +268,7 @@ struct CameraSwitchContent<LiveDetail: View>: View {
                     .accessibilityLabel("Switch after")
                     .accessibilityValue(String(format: "%.1f seconds", dwell))
             }
-            .help("How long you must face another camera before the class is cut to it. Glances shorter than this cost nothing.")
+            .help("How long you must face another camera before the view cuts to it. Glances shorter than this cost nothing.")
 
             VStack(alignment: .leading, spacing: 4) {
                 Text("Switch with").font(.callout)

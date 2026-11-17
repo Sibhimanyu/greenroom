@@ -41,6 +41,8 @@ struct HomeView: View {
     /// Whether the card is drawn. It outlives `previewShown` by the window's
     /// shrink, so a collapse reveals nothing but a closing curtain.
     let previewMounted: Bool
+    /// The picture's real aspect, reported up so the window can size the card.
+    @Binding var pictureAspect: CGFloat
 
     /// Height of the open log. Eight lines.
     static let statusLogHeight: CGFloat = 180
@@ -48,13 +50,27 @@ struct HomeView: View {
     /// toolbar fits),
     /// with the 16:9 picture card beside it only when Preview is pressed.
     static let contentWidth: CGFloat = 496
+    /// Space between the window's edge and the content, each side (owner,
+    /// 2026-11-17: no wide dead margins). The column takes whatever width the
+    /// window has beyond its natural one.
+    static let sideMargin: CGFloat = 24
+    /// The window's width with nothing but the content in it.
+    static var naturalCollapsedWidth: CGFloat { contentWidth + sideMargin * 2 }
     /// Space between the column and the card, and the card's width: 16:9 of
     /// the column's height, so the card's top meets the logo and its bottom
     /// meets the Start button.
     static let cardGutter: CGFloat = 24
-    static var cardWidth: CGFloat { (columnHeight * 16 / 9).rounded() }
+    /// The card is sized from its picture: the column's height less the
+    /// eyebrow, times the picture's real aspect, so no width is left over.
+    static func cardWidth(aspect: CGFloat) -> CGFloat {
+        PreviewFrameRules.cardWidth(columnHeight: columnHeight, eyebrow: eyebrowSpace, aspect: aspect)
+    }
     /// What the window gains when the card shows.
-    static var previewExtraWidth: CGFloat { cardGutter + cardWidth }
+    static func previewExtraWidth(aspect: CGFloat) -> CGFloat { cardGutter + cardWidth(aspect: aspect) }
+    /// The aspect assumed until the first frame arrives: the main display's.
+    static var defaultPictureAspect: CGFloat {
+        PreviewFrameRules.defaultAspect(screen: NSScreen.main?.frame.size)
+    }
     /// Fixed heights of the column's parts: brand 42, name 32, summary 32,
     /// the Ready / Preview row 26, button 32, with 16pt between them.
     static let brandHeight: CGFloat = 42
@@ -121,22 +137,30 @@ struct HomeView: View {
             VStack(alignment: .leading, spacing: 0) {
                 HStack(alignment: .top, spacing: Self.cardGutter) {
                     setupColumn
-                        .frame(width: Self.contentWidth)
+                        .frame(minWidth: Self.contentWidth, maxWidth: .infinity)
                     if previewMounted {
                         // Level with the logo at the top and the Start button
                         // at the bottom (the column's height is the card's).
                         pictureCard
-                            .frame(width: Self.cardWidth)
+                            .frame(width: Self.cardWidth(aspect: pictureAspect))
                             .transition(.opacity)
                     }
                 }
                 .fixedSize(horizontal: false, vertical: true)
                 if statusShown {
-                    statusLog.frame(width: blockWidth).padding(.top, 12)
+                    statusLog.frame(maxWidth: .infinity).padding(.top, 12)
                 }
             }
-            .frame(maxWidth: .infinity, alignment: .center)
+            // Side margins come from ContentView (one value, sideMargin).
             Spacer(minLength: 0)
+        }
+        // The window sizes the card from the picture's real shape.
+        .onChange(of: frameAspect) { _, a in
+            // Only a real picture moves it (PreviewFrameRules.heldAspect): leaving for a
+            // page stops the camera, and the default aspect then reset the card wider than
+            // the window Home returns to.
+            let held = PreviewFrameRules.heldAspect(current: pictureAspect, live: liveFrameReady ? a : nil)
+            if held != pictureAspect { pictureAspect = held }
         }
         .onAppear {
             coordinator.loadSecretsIfNeeded()
@@ -186,7 +210,58 @@ struct HomeView: View {
     /// One card: the live picture, with the layout outlined on the screen in
     /// it (owner, 2026-11-16: no Picture / Screen switch).
     private var pictureCard: some View {
-        pictureFace
+        // The label sits above the picture, left-aligned with it; the picture
+        // takes the screen's own shape (no bars) and the pair is centred in
+        // the slot, which is as tall as the column.
+        GeometryReader { geo in
+            let fit = PreviewOutlineRules.fit(
+                frameAspect, in: CGRect(x: 0, y: 0, width: geo.size.width,
+                                        height: max(geo.size.height - Self.eyebrowSpace, 1)))
+            VStack(alignment: .leading, spacing: Self.eyebrowGap) {
+                eyebrow.frame(height: Self.eyebrowHeight)
+                pictureFace(size: fit.size)
+            }
+            .frame(width: fit.width, height: fit.height + Self.eyebrowSpace)
+            .frame(width: geo.size.width, height: geo.size.height, alignment: .topLeading)
+        }
+        .frame(height: Self.columnHeight)
+    }
+
+    static let eyebrowHeight: CGFloat = 14
+    static let eyebrowGap: CGFloat = 6
+    static var eyebrowSpace: CGFloat { eyebrowHeight + eyebrowGap }
+
+    /// DESIGN.md eyebrow: mono, uppercase, .08em, 10pt, in the text green;
+    /// the red dot says it is live. Only while there is a live picture (the
+    /// space is kept either way, so the picture does not jump).
+    @ViewBuilder private var eyebrow: some View {
+        if liveFrameReady {
+            HStack(spacing: 6) {
+                Circle().fill(.red).frame(width: 6, height: 6)
+                Text("LIVE PREVIEW")
+                    .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                    .tracking(0.8)
+                    .foregroundStyle(Brand.text)
+            }
+            .accessibilityElement(children: .combine)
+            .transition(.opacity)
+        } else {
+            Color.clear
+        }
+    }
+
+    /// What of the canvas the picture shows: the shared content when there
+    /// is some, else all of it. Nothing to crop while the sketch is up.
+    private var previewCrop: CGRect {
+        guard liveFrameReady else { return PreviewFrameRules.crop(content: nil, presenter: false) }
+        return PreviewFrameRules.crop(content: coordinator.shapePreview.contentRect,
+                                      presenter: coordinator.stageLayout.cameraShape == .presenterLarge)
+    }
+
+    private var frameAspect: CGFloat {
+        let canvasAspect = coordinator.shapePreviewAspect.map { $0.width / max($0.height, 1) } ?? 16.0 / 9.0
+        return liveFrameReady ? PreviewFrameRules.aspect(canvasAspect: canvasAspect, crop: previewCrop)
+            : Self.defaultPictureAspect
     }
 
     /// The shared screen, when the picture shows one (Whole screen or One app):
@@ -219,10 +294,15 @@ struct HomeView: View {
                 // The picture (a 16:9 canvas) sits fitted in the card, and the
                 // screen sits fitted in the picture, with bars at its sides;
                 // Presenter puts the screen in a box at the right.
+                let crop = previewCrop
+                let cropped = crop.width < 0.999 || crop.height < 0.999
                 let frames = PreviewOutlineRules.frames(
                     card: geo.size, canvasAspect: coordinator.shapePreviewAspect.map { $0.width / max($0.height, 1) },
                     screen: screen.frame.size, presenter: coordinator.stageLayout.cameraShape == .presenterLarge)
-                let canvas = frames.canvas, shown = frames.screen
+                // Cropped to the screen: the whole frame IS the screen.
+                let canvas = cropped ? PreviewFrameRules.canvasRect(frame: CGRect(origin: .zero, size: geo.size), crop: crop)
+                                     : frames.canvas
+                let shown = cropped ? CGRect(origin: .zero, size: geo.size) : frames.screen
                 ZStack {
                 ForEach(outlines, id: \.id) { outline in
                     let box = PreviewOutlineRules.place(outline.rect, in: shown).insetBy(dx: 1.5, dy: 1.5)
@@ -255,15 +335,31 @@ struct HomeView: View {
         }
     }
 
-    private var pictureFace: some View {
+    /// Drag your camera in the picture: it moves for everyone, live.
+    @ViewBuilder private var cameraDragLayer: some View {
+        let layout = coordinator.stageLayout
+        if liveFrameReady, layout.isPresencePlaceable {
+            let crop = previewCrop
+            let cropped = crop.width < 0.999 || crop.height < 0.999
+            PreviewCameraDragLayer(
+                box: layout.presenceBox, shape: layout.cameraShape,
+                aspect: layout.cameraShape.cropsToSquare ? 1 : 16.0 / 9.0,
+                content: cropped ? coordinator.shapePreview.contentRect : nil,
+                onStep: { coordinator.previewPlacementStep($0) },
+                onCommit: { coordinator.commitPreviewPlacement($0) })
+        }
+    }
+
+    private func pictureFace(size: CGSize) -> some View {
         ZStack {
             // The drawing is always underneath, so Show live fades into
             // the same frame it replaces rather than a blank one.
             drawing
             if liveFrameReady {
                 Color.black
-                LiveCompositePicture(feed: coordinator.shapePreview)
+                CroppedLivePicture(feed: coordinator.shapePreview, crop: previewCrop)
                 layoutOverlay
+                cameraDragLayer
             } else if showLive, previewStalled {
                 HStack(spacing: 8) {
                     Text("The preview didn\u{2019}t start")
@@ -296,16 +392,10 @@ struct HomeView: View {
             previewStalled = true
         }
         .onChange(of: liveFrameReady) { _, ready in if ready { previewStalled = false } }
-        .frame(maxWidth: .infinity)
-        .aspectRatio(16.0 / 9.0, contentMode: .fit)
+        .frame(width: size.width, height: size.height)
         .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous)
             .strokeBorder(Color(nsColor: .separatorColor).opacity(0.7), lineWidth: 1))
-        .overlay(alignment: .topLeading) {
-            if liveFrameReady {
-                PictureChip(text: "LIVE PREVIEW", dot: .red).padding(10)
-            }
-        }
         .overlay(alignment: .bottomLeading) {
             if previewShown, !showLive, let problem = cameraProblem {
                 HStack(spacing: 6) {
@@ -563,7 +653,7 @@ struct HomeView: View {
         if let live = coordinator.sessionFolder { return live.lastPathComponent }
         // Not started yet: ask for a name in words. Left empty, the folder is
         // still named by date and time (the help says so).
-        if coordinator.className.isEmpty { return "Class name (optional)" }
+        if coordinator.className.isEmpty { return "Meeting name (optional)" }
         return SessionFolders.sessionFolderName(className: coordinator.className, started: Date(),
                                                 fallback: mode == .record ? "Recording" : "Green")
     }
@@ -723,7 +813,7 @@ struct HomeView: View {
             title: "Share", value: shareValue,
             text: shareGone ? SetupSummary.shareGoneHelp
                 : problem("screen") ? "Greenroom needs Screen Recording permission to share. The line under the dock opens it."
-                : "What the class sees behind you.",
+                : "What everyone sees behind you.",
             warn: shareGone || problem("screen"),
             visual: DockHintVisual.share(coordinator.shareTarget.kind, shape: coordinator.webcamShape,
                                          cameraOff: coordinator.cameraIsOff)))
@@ -763,7 +853,7 @@ struct HomeView: View {
         .dockHint(DockHintContent(
             title: "Camera", value: coordinator.cameraIsOff ? "Off" : name,
             text: cameras.isEmpty && !coordinator.cameraIsOff ? SetupSummary.cameraMissingHelp
-                : coordinator.cameraIsOff ? "No camera: the class sees only what you share."
+                : coordinator.cameraIsOff ? "No camera: everyone sees only what you share."
                 : "Which camera you appear on.",
             warn: problem("camera") || (cameras.isEmpty && !coordinator.cameraIsOff),
             visual: DockHintVisual.camera(off: coordinator.cameraIsOff)))
@@ -793,7 +883,7 @@ struct HomeView: View {
         .dockMenu()
         .dockHint(DockHintContent(
             title: "Microphone", value: name,
-            text: "Which microphone the class hears, and the recording takes.",
+            text: "Which microphone everyone hears, and the recording takes.",
             warn: problem("mic"), visual: DockHintVisual.microphone))
         .accessibilityLabel("Microphone")
         .accessibilityValue(name)
@@ -839,7 +929,7 @@ struct HomeView: View {
             }
             if coordinator.layoutHasApps {
                 Button("Open This Layout\u{2019}s Apps") { coordinator.openMainAppWindow() }
-                    .help("Opens the layout\u{2019}s apps in their places now, without starting a class.")
+                    .help("Opens the layout\u{2019}s apps in their places now, without starting a meeting.")
             }
             Button("More\u{2026}") {
                 openSettings()
@@ -856,7 +946,7 @@ struct HomeView: View {
         .dockHint(DockHintContent(
             title: "Layout", value: coordinator.layoutChoiceName,
             text: coordinator.layoutChoiceLocked
-                ? "A class runs the layout it started with. Pick the next one after it ends."
+                ? "A meeting runs the layout it started with. Pick the next one after it ends."
                 : "Where Start puts the meeting, the chat and your apps.",
             visual: DockHintVisual.layout(coordinator.layoutLibrary.active?.oneDisplay) { [coordinator] piece in
                 LayoutPageContent.look(piece, customUIMode: coordinator.customUIMode,
@@ -1171,11 +1261,6 @@ struct HomeView: View {
             .help("Records exactly what participants see \u{2014} your shared screen with you in it. Saved to Documents/Greenroom when stopped.")
         }
         .controlSize(.extraLarge)
-    }
-
-    /// The width of the whole block: the column, plus the picture when shown.
-    private var blockWidth: CGFloat {
-        Self.contentWidth + (previewMounted ? Self.cardGutter + Self.cardWidth : 0)
     }
 
     // MARK: Status log

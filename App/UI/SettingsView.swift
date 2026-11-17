@@ -96,6 +96,7 @@ struct SettingsView: View {
                 .tag("transfer")
         }
         .frame(width: 760, height: Self.height(for: tab))
+        .settingsTopEdge()
         .animation(.snappy(duration: 0.25), value: tab)
         // ⌘1...⌘8 pick a tab, as in every macOS Settings window. The buttons
         // live in this view, so the shortcuts exist only while Settings is key.
@@ -113,3 +114,21 @@ struct SettingsView: View {
     }
 }
 
+
+extension View {
+    /// The Settings title bar and tab toolbar are part of the window's frost
+    /// (WindowFrost leaves the title bar transparent). Pages scroll UNDER the
+    /// toolbar, so macOS 26's HARD scroll edge effect cuts them off cleanly at
+    /// the toolbar's bottom edge (no fade, no bar: the frost stays the same)
+    /// instead of letting them show through the tab labels. One modifier on
+    /// the TabView: every tab is a grouped Form and inherits it.
+    @ViewBuilder
+    func settingsTopEdge() -> some View {
+        if #available(macOS 26.0, *) {
+            self.scrollEdgeEffectStyle(.hard, for: .top)
+                .toolbarBackgroundVisibility(.hidden, for: .windowToolbar)
+        } else {
+            self
+        }
+    }
+}

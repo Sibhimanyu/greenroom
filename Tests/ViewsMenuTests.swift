@@ -25,7 +25,7 @@ final class ViewsMenuTests: XCTestCase {
                                          toggleMeetingWindow: { meetingToggled += 1 },
                                          toggleView: { toggled.append($0) })
         entries.entry(titled: "Gallery")?.action?()
-        entries.entry(titled: "Spotlight student")?.action?()
+        entries.entry(titled: "Spotlight person")?.action?()
         entries.entry(titled: "Meeting window")?.action?()
         XCTAssertEqual(toggled, [.gallery, .spotlight])
         XCTAssertEqual(meetingToggled, 1)

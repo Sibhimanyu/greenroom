@@ -229,7 +229,7 @@ enum DebugTour {
     ///   live what=stopRecord                          stops the take, no question
     ///   live what=meeting                             a new meeting (Create mode), no one invited
     ///   live what=end                                 ends the session, no question
-    ///   live what=size to=window|mini|bar             moves the live meeting
+    ///   live what=size to=window|bar             moves the live meeting
     private static func putBack(_ c: CoordinatorController) {
         if let savedTarget { c.shareTarget = savedTarget }
         if let savedMode { c.meetingMode = savedMode }
@@ -306,7 +306,6 @@ enum DebugTour {
             "isRunning": c.isRunning, "stageLive": c.stageLive, "isRecording": c.isRecording,
             "recordOnly": c.recordOnlyActive, "meetingSize": c.meetingSize.rawValue,
             "meetingWindowShowing": ParticipantGridWindowController.meetingWindowIsShowing,
-            "miniOpen": MeetingViewWindows.miniIsOpen, "miniVideoFailed": MeetingViewWindows.debugMiniVideoFailed,
             "peoplePopOut": PeoplePopOutController.isOpen, "peopleRows": PeoplePopOutController.debugRowCount,
             "failureOpen": NotchStatusController.shared.debugFailureOpen, "barVisible": MeetingControlBarController.isVisible,
             "island": "\(NotchStatusController.shared.debugContent)",
@@ -564,16 +563,16 @@ extension Notification.Name {
                                   visual: DockHintVisual.look(.circle, cameraOff: false))),
             ("look-presenter", .init(title: "Look", value: "Presenter", text: "How you appear over what you share.",
                                      visual: DockHintVisual.look(.presenterLarge, cameraOff: false))),
-            ("share-window", .init(title: "Share", value: "Keynote", text: "What the class sees behind you.",
+            ("share-window", .init(title: "Share", value: "Keynote", text: "What everyone sees behind you.",
                                    visual: DockHintVisual.share(.window, shape: .roundedRectangle, cameraOff: false))),
-            ("share-display", .init(title: "Share", value: "Whole screen", text: "What the class sees behind you.",
+            ("share-display", .init(title: "Share", value: "Whole screen", text: "What everyone sees behind you.",
                                     visual: DockHintVisual.share(.display, shape: .circle, cameraOff: false))),
-            ("share-whiteboard", .init(title: "Share", value: "Whiteboard", text: "What the class sees behind you.",
+            ("share-whiteboard", .init(title: "Share", value: "Whiteboard", text: "What everyone sees behind you.",
                                        visual: DockHintVisual.share(.whiteboard, shape: .square, cameraOff: false))),
             ("camera", .init(title: "Camera", value: "MacBook Pro Camera", text: "Which camera you appear on.",
                              visual: DockHintVisual.camera(off: false))),
             ("mic", .init(title: "Microphone", value: "MacBook Pro Microphone",
-                          text: "Which microphone the class hears, and the recording takes.",
+                          text: "Which microphone everyone hears, and the recording takes.",
                           visual: DockHintVisual.microphone)),
             ("layout", .init(title: "Layout", value: "Sample", text: "Where Start puts the meeting, the chat and your apps.",
                              visual: DockHintVisual.layout(sampleLayout) {

@@ -191,6 +191,12 @@ final class CoordinatorController: ObservableObject {
         // A failed start is the exception to both guards below: it always needs
         // a card with a way out, wherever the panel is or is not.
         let failed = startReadiness.failure != nil
+        // A meeting start: the Control bar is the one status surface. The island
+        // only carries a failure (StartChoreography.surfaces).
+        if !recordFlowHUD, !failed, startInBar {
+            ReadinessHUDController.close()
+            return
+        }
         // A Record start has no panel and no meeting: the island carries it,
         // its failure and its Try again, always.
         if recordFlowHUD, let screen = DisplayResolver.mainDisplayScreen() ?? NSScreen.main {
@@ -253,12 +259,51 @@ final class CoordinatorController: ObservableObject {
     private func mark(_ step: StartStep, _ state: ParticipantGridWindowController.Readiness.State) {
         guard startReadiness.steps.indices.contains(step.rawValue) else { return }
         startReadiness.steps[step.rawValue].state = state
+        if step == .meeting, state == .active, startBarText != nil {
+            startBarText = StartChoreography.barText(.joining)
+        }
     }
 
     /// Ends the progress display. Clearing the steps makes `isLive` true, which
     /// is what returns the panel to its ordinary behaviour.
     private func finishStartReadiness() {
+        startBarText = nil
+        // Still "in the bar" while the steps clear, so the island does not
+        // flash its Live beat for a start it never showed.
         startReadiness = .init()
+        startInBar = false
+    }
+
+    /// The words in the Control bar while a meeting starts; nil when it is not
+    /// starting (the bar is then the live bar).
+    @Published private(set) var startBarText: String?
+    /// This start opened apps, which is what waiting for quiet screens guards.
+    private var startOpenedApps = false
+    /// The Control bar carries this start, so the island stays shut for it
+    /// (until a failure). Cleared when the steps clear.
+    private var startInBar = false
+
+    /// The click: the Control bar appears in its Starting state and Home steps
+    /// aside toward it. Before resetStartReadiness, so the island never draws.
+    private func beginStartChoreography() {
+        startBarText = StartChoreography.barText(.starting)
+        startInBar = true
+        ensureMeetingControls()
+        if let controls = meetingControls {
+            MeetingControlBarController.install(coordinator: self, model: controls, starting: true)
+        }
+        // Home only steps aside if it was on screen; a start from the hotkey or
+        // the menu bar leaves it alone.
+        if MainWindow.current?.isVisible == true {
+            applyMainWindow(mainWindowVisibility.handle(.startBegan))
+        }
+    }
+
+    /// The bar's Cancel: abandons a start in flight. Home comes back as it was.
+    func cancelStart() {
+        guard startBarText != nil, !isStopping else { return }
+        log("Start cancelled.")
+        stop()
     }
 
     private func failStartReadiness(_ message: String) {
@@ -1092,6 +1137,7 @@ final class CoordinatorController: ObservableObject {
         defer {
             Self.shared = self
             observeDisplays()
+            startPresenceBubble()
         }
         webcamShape = WebcamShape(rawValue: defaults.string(forKey: "webcamShape") ?? "") ?? .circle
         backgroundRemoval = BackgroundRemoval(rawValue: defaults.string(forKey: "backgroundRemoval") ?? "") ?? .automatic
@@ -1269,6 +1315,20 @@ final class CoordinatorController: ObservableObject {
                 rememberedMainFrame = MainWindow.current?.frame
             case .hide:
                 MainWindow.current?.orderOut(nil)
+            case .hideForStart:
+                if let window = MainWindow.current {
+                    MainWindowTransition.hide(window, toward: MeetingControlBarController.currentFrame)
+                }
+            case .showAfterStart:
+                if let window = MainWindow.current {
+                    var frame = window.frame
+                    if let remembered = rememberedMainFrame,
+                       NSScreen.screens.contains(where: { $0.visibleFrame.intersects(remembered) }) {
+                        frame = remembered
+                    }
+                    MainWindowTransition.show(window, from: MeetingControlBarController.currentFrame, to: frame)
+                    showed = true
+                }
             case .restoreFrame:
                 if let window = MainWindow.current, let frame = rememberedMainFrame,
                    NSScreen.screens.contains(where: { $0.visibleFrame.intersects(frame) }),
@@ -1321,7 +1381,20 @@ final class CoordinatorController: ObservableObject {
     /// The one compositor: the picture the meeting sees, the recorder films and
     /// Settings previews. Made when something needs it, dropped (and its
     /// cameras let go) when nothing does.
-    private var stage: StageCompositor?
+    var stage: StageCompositor?
+    /// The camera as a floating bubble on the shared display (CoordinatorController+Presence.swift).
+    let presenceBubble = PresenceBubble()
+    /// "Hide my bubble" in the control bar and the Meeting window: the floating
+    /// camera bubble leaves the presenter's own screen only. The class and the
+    /// recording still see the camera at its last placement. Back to false when
+    /// the stage is torn down (the meeting or recording ends).
+    @Published var presenceBubbleHidden = false
+    var presenceTimer: Timer?
+    /// A refresh is queued (bursts of changes make one); the timer's tick count; whether the stage has the self-view handler.
+    var presenceRefreshPending = false
+    var presenceTicks = 0
+    var presenceFeedInstalled = false
+    var presenceCancellables = Set<AnyCancellable>()
     /// Films the stage. Made with a session; nil outside one.
     private var recorder: SessionRecorder?
     /// Clicks and keys of the running recording; see `wireInputEvents`.
@@ -1382,6 +1455,8 @@ final class CoordinatorController: ObservableObject {
         if previewAttached { stage.removeSink(previewSink); previewAttached = false }
         stage.stop()
         self.stage = nil
+        presenceBubbleHidden = false
+        presenceFeedInstalled = false
         stageObservers.removeAll()
         stageCameraUIDs = nil
         followingSlideShowApp = nil
@@ -1406,7 +1481,7 @@ final class CoordinatorController: ObservableObject {
         defer { lastCameraLive = first }
         guard lastCameraLive != first else { return }
         log(first ? "The camera is sending a picture again."
-                  : "The camera stopped sending a picture \u{2014} the class sees the last one. Check it is plugged in and not in use by another app.")
+                  : "The camera stopped sending a picture \u{2014} everyone sees the last one. Check it is plugged in and not in use by another app.")
     }
 
     /// The Screen Recording pane in System Settings is the only place a
@@ -1420,7 +1495,7 @@ final class CoordinatorController: ObservableObject {
                 guard let self, let stage = self.stage else { return }
                 if StageCompositor.screenRecordingGranted {
                     stage.update(self.makeStageConfiguration())
-                    self.log("Screen Recording is on \u{2014} the class now sees your screen.")
+                    self.log("Screen Recording is on \u{2014} the meeting now sees your screen.")
                     self.permissionWatcher = nil
                     return
                 }
@@ -1482,6 +1557,7 @@ final class CoordinatorController: ObservableObject {
         // The Meeting window opens at Start unless the layout shows the meeting only as views.
         meetingWindowWanted = sessionTemplate.map { !layoutEngine.hasViewsButNoMeeting($0) } ?? true
         MeetingViewWindows.reset()
+        MeetingViewWindows.layoutActive = sessionArranges
         if let template = sessionTemplate, !layoutEngine.viewPieces(template).isEmpty {
             let names = layoutEngine.viewPieces(template).compactMap { $0.piece.kind.view?.title }.joined(separator: ", ")
             log("Layout has view windows: \(names).")
@@ -1506,6 +1582,7 @@ final class CoordinatorController: ObservableObject {
             .layoutPieces: Analytics.layoutPieceKinds(sessionTemplate)
         ])
 
+        beginStartChoreography()
         resetStartReadiness()
         // Before anything else, so the reference display has something on it
         // from the first frame rather than after the meeting connects. Gated on
@@ -1519,17 +1596,15 @@ final class CoordinatorController: ObservableObject {
 
         startTask = Task {
             do {
-                // The island first: its grow is drawn on the main thread, and the
-                // steps below keep it busy, so starting them at once made the
-                // island arrive late and stutter (owner, 2026-11-15).
-                await ReadinessHUDController.letItOpen()
-                try Task.checkCancellation()
+                // No island to wait for: the Control bar is already up (it is the
+                // surface while starting), so the work begins at once.
                 // Perceived speed: the main app doesn't depend on
                 // anything else - open it first so something visibly
                 // happens the instant Start is pressed.
                 let opensApps = sessionTemplate.map { template in
                     layoutEngine.resolve(template).apps.contains { $0.piece.kind.app?.opensAtStart == true }
                 } ?? false
+                startOpenedApps = opensApps
                 mark(.workspace, opensApps ? .active : .skipped)
                 if opensApps, let template = sessionTemplate {
                     layoutEngine.openApps(template, hidden: speakerTileQuickHidden)
@@ -1586,34 +1661,33 @@ final class CoordinatorController: ObservableObject {
 
                 try Task.checkCancellation()
                 mark(.meeting, .done)
-                // Nothing arranged: Greenroom's own meeting window is the first
-                // surface, and the pill is what is left when it is closed,
-                // minimised or covered. With Zoom's own window as the picture
-                // (custom UI off) there is no meeting window, so the pill stays.
-                // Alone in the room, it starts as the bar and the window comes up
-                // when the first person joins. Decided before anything opens: the
-                // window used to open and then shrink away a moment later.
-                let startsAlone = !sessionArranges && zoomChatClient.didUseCustomUI
-                    && zoomChatClient.meetingRoster().allSatisfy(\.isMyself)
+                // The bar has been up since the click, in its Starting state. Now it
+                // goes live. The Meeting window opens only if somebody is already in
+                // the meeting; alone, the bar is the surface and the window comes up
+                // when the first person joins (never opened and then shrunk away).
+                let customUI = zoomChatClient.didUseCustomUI
+                let others = !zoomChatClient.meetingRoster().allSatisfy(\.isMyself)
+                let opensWindow = StartChoreography.opensMeetingWindowOnLive(
+                    arranged: sessionArranges, customUI: customUI, othersPresent: others)
                 if !sessionArranges {
                     ensureMeetingControls()
-                    if startsAlone {
+                    if opensWindow {
+                        openMeetingWindow()
+                    } else if customUI {
                         // The follow loop still runs: it is what notices someone join.
                         meetingWindowWanted = false
                         startCustomUIGridFollow()
-                    } else if zoomChatClient.didUseCustomUI {
-                        openMeetingWindow()
                     }
                 }
                 // The bar is the surface of last resort, so a live meeting always has
-                // one built: Greenroom's own window in a layout can go to the Mini or
-                // the bar too, and every way back must land somewhere. (A layout with
+                // one built: Greenroom's own window in a layout can go to the
+                // bar too, and every way back must land somewhere. (A layout with
                 // Zoom's own window keeps Zoom's controls and gets no bar.)
-                if !sessionArranges || zoomChatClient.didUseCustomUI {
-                    ensureMeetingControls()
-                    if let controls = meetingControls {
-                        MeetingControlBarController.install(coordinator: self, model: controls)
-                    }
+                startBarText = nil
+                if StartChoreography.barKeptAfterLive(arranged: sessionArranges, customUI: customUI) {
+                    MeetingControlBarController.finishStarting(windowOpening: opensWindow)
+                } else {
+                    MeetingControlBarController.close(fade: false)
                 }
                 startSmallWhileAlone()
                 bringInExtraCameras()
@@ -1670,6 +1744,8 @@ final class CoordinatorController: ObservableObject {
                 // the teacher has been watching for the last several seconds,
                 // so it is where the failure belongs, named against the step it
                 // happened on - with Try again and Close on it.
+                // The bar is not where the error lives (it goes away, Home comes
+                // back); the island is, as it always was.
                 failStartReadiness(message)
                 Notifier.post(title: "Greenroom couldn\u{2019}t start", body: message)
                 // And the unwind: a failed start used to leave the cameras, the
@@ -1700,6 +1776,13 @@ final class CoordinatorController: ObservableObject {
             return
         }
         isStopping = true
+        // A start that never went live: the bar goes (fading) and Home comes back
+        // as it was. A failed start has already brought Home back itself.
+        let wasStarting = startBarText != nil
+        startBarText = nil
+        if wasStarting, failure == nil {
+            applyMainWindow(mainWindowVisibility.handle(.startFailed))
+        }
         // Ending some other way (the menu, Zoom, a failure) answers the End question too.
         disarmExit()
         Analytics.track(.sessionEnd, [
@@ -1727,7 +1810,7 @@ final class CoordinatorController: ObservableObject {
             // closed and doesn't double-log.
             layoutFollowTask?.cancel()
                 peopleViewTask?.cancel()
-            MeetingControlBarController.close()
+            MeetingControlBarController.close(fade: wasStarting)
             meetingControls?.stop()
             meetingControls = nil
             PeoplePopOutController.close()
@@ -2207,7 +2290,7 @@ final class CoordinatorController: ObservableObject {
             guard let folder = sessionFolder else {
                 log("Nothing to clip \u{2014} start a session first.")
                 ToastController.show("No session running",
-                                     detail: "Start the class first.", kind: .failure)
+                                     detail: "Start the meeting first.", kind: .failure)
                 return
             }
             // Recording wins when it is available: marking the master costs
@@ -2240,7 +2323,7 @@ final class CoordinatorController: ObservableObject {
             // screen, not at Greenroom, and a mark that gave no sign of landing
             // would be pressed again and again.
             ToastController.show("Clipped the last \(clipped)",
-                                 detail: "Marked in \(folder.lastPathComponent) \u{2014} in Recordings after the class.")
+                                 detail: "Marked in \(folder.lastPathComponent) \u{2014} in Recordings after the meeting.")
         }
     }
 
@@ -2412,7 +2495,7 @@ final class CoordinatorController: ObservableObject {
             case .critical:
                 log("Only \(readable) free \u{2014} that may not last a full class. Recordings live in Documents/Greenroom.")
                 Notifier.post(title: "Low disk space for recording",
-                              body: "Only \(readable) free, which may not fit a full class.")
+                              body: "Only \(readable) free, which may not fit a full meeting.")
             case .low:
                 log("\(readable) free \u{2014} room for roughly two more classes.")
             case .ok:
@@ -2860,6 +2943,7 @@ final class CoordinatorController: ObservableObject {
         recorder?.disarmClipBuffer()
         recorder = nil
         lastCameraLive = nil
+        presenceBubbleHidden = false
         stopStage()
     }
 
@@ -2989,6 +3073,8 @@ final class CoordinatorController: ObservableObject {
     }
 
     private func publishPreviewFrame(_ frame: NSImage?, mask: NSImage? = nil) {
+        let content = frame == nil ? nil : stage?.lastContentRect
+        if shapePreview.contentRect != content { shapePreview.contentRect = content }
         shapePreview.frame = frame
         shapePreview.openMask = mask
         let aspect = frame?.size
@@ -3297,7 +3383,7 @@ final class CoordinatorController: ObservableObject {
             self?.confirmCloseMeetingWindow(window) ?? true
         }
         // Minimise (the yellow light, Command-M) goes one size down while a meeting
-        // is live: the Mini, or the control bar where the Mini would add nothing.
+        // is live: the control bar.
         // With no meeting live, the window minimises as any other does.
         ParticipantGridWindowController.shrinkInsteadOfMinimize = { [weak self] in
             guard let self else { return false }
@@ -3328,7 +3414,6 @@ final class CoordinatorController: ObservableObject {
             },
             copyInvite: { [weak self] in self?.meetingControls?.copyInviteLink() },
             openMeetingWindow: { [weak self] in self?.openMeetingWindow() })
-        MeetingViewWindows.miniActions = miniActions
         let startedAt = sessionStartedAt ?? Date()
         let tick: @MainActor () -> Bool = { [weak self] in
             guard let self else { return false }
@@ -3336,12 +3421,6 @@ final class CoordinatorController: ObservableObject {
             // when it is wanted (a layout of views alone, or one the teacher closed,
             // has none).
             MeetingViewWindows.tick()
-            // One control surface at a time: the Meeting window back on screen
-            // (by any route) retires the Mini.
-            if MeetingViewWindows.miniIsOpen, ParticipantGridWindowController.meetingWindowIsShowing {
-                MeetingViewWindows.closeMini()
-                MeetingControlBarController.reconcile(immediately: false)
-            }
             MeetingControlBarController.healIfNeeded()
             self.meetingControls?.foldPopOutChatIntoWindow()
             self.growIfSomeoneJoined()
@@ -3763,19 +3842,15 @@ final class CoordinatorController: ObservableObject {
         startCustomUIGridFollow()
         if alreadyOpen { ParticipantGridWindowController.show() }
         placeCustomSurfaces()
-        // The Mini hands over to the window, window first so there is no gap. (With
-        // no window yet the follow loop's next tick retires the Mini once it shows.)
-        if ParticipantGridWindowController.meetingWindowIsOpen { MeetingViewWindows.closeMini() }
         MeetingControlBarController.reconcile(immediately: false)
     }
 
-    // MARK: The three sizes
+    // MARK: The two sizes
 
     /// The size the meeting is at now, read from what is on screen. A morph
     /// heading for the window counts as the window; one heading for the bar,
     /// as the bar.
     var meetingSize: MeetingSize {
-        if MeetingViewWindows.miniIsOpen { return .mini }
         if let heading = MeetingControlBarController.morphTarget { return heading == 1 ? .window : .bar }
         let window = ParticipantGridWindowController.meetingWindowIsOpen
             && !ParticipantGridWindowController.meetingWindowIsHidden
@@ -3785,45 +3860,22 @@ final class CoordinatorController: ObservableObject {
     /// What the layout already shows, which changes where a collapse goes.
     private var collapseContext: MeetingCollapseContext {
         MeetingCollapseContext(placedFull: ParticipantGridWindowController.isPlacedFull,
-                               meetingIsSlot: ParticipantGridWindowController.isSlot,
-                               speakerViewOnScreen: MeetingViewWindows.speakerViewOpen)
+                               meetingIsSlot: ParticipantGridWindowController.isSlot)
     }
 
-    /// The Mini's buttons: your mic and camera, the way up to the Meeting window,
-    /// the way down to the bar, and End with the same prompt as the bar's.
-    private var miniActions: MeetingMiniActions {
-        var a = MeetingMiniActions()
-        a.toggleMic = { [weak self] in self?.meetingControls?.toggleMute() }
-        a.toggleCamera = { [weak self] in self?.meetingControls?.toggleCamera() }
-        a.toMeetingWindow = { [weak self] in self?.moveMeeting(to: .window) }
-        a.toBar = { [weak self] in self?.moveMeeting(to: .bar) }
-        a.end = { [weak self] in self?.confirmAndStop() }
-        a.endArmed = { [weak self] in self?.exitAsk == .end }
-        a.endAsk = { [weak self] in (self?.exitAskTitle ?? "", self?.exitAskDetail ?? "") }
-        a.state = { [weak self] in
-            guard let controls = self?.meetingControls else { return (false, true) }
-            return (controls.inMeeting && controls.muted, controls.cameraOn)
-        }
-        return a
-    }
-
-    /// One step down: the yellow light, Command-M, the top bar's Mini button.
-    /// Window to Mini (or to the bar where the Mini would only repeat what is on
-    /// screen), Mini to bar. The bar is the bottom.
+    /// One step down: the yellow light, Command-M, the top bar's Smaller button.
+    /// Window to bar. The bar is the bottom.
     func collapseMeeting() {
         guard zoomChatClient.didUseCustomUI else { return }
         let size = meetingSize
         guard size != .bar else { return }
         MeetingShrinkTip.markDone() // shrunk once, by any route: the tip has done its job
-        let context = collapseContext
-        let target = MeetingCollapse.next(from: size, step: .down, lastCollapsed: MeetingCollapse.lastCollapsed(),
-                                          context: context)
-        move(from: size, to: target, step: .down, context: context)
+        move(from: size, to: MeetingCollapse.next(from: size, step: .down), step: .down, context: collapseContext)
     }
 
     /// The window goes to the control bar by the morph (the choice in the close
     /// prompt, which names the bar). Where the window is not showing, it is already
-    /// the Mini or the bar.
+    /// the bar.
     func shrinkMeetingToBar() {
         guard zoomChatClient.didUseCustomUI else { return }
         let size = meetingSize
@@ -3832,9 +3884,9 @@ final class CoordinatorController: ObservableObject {
         move(from: size, to: .bar, step: .down, context: collapseContext)
     }
 
-    /// The bar's Meeting button: straight back to the Meeting window, or with
-    /// Option held the Mini. A click during a morph turns it round.
-    func expandMeetingFromBar(option: Bool = false) {
+    /// The bar's Meeting button: straight back to the Meeting window. A click
+    /// during a morph turns it round.
+    func expandMeetingFromBar() {
         guard zoomChatClient.didUseCustomUI else { return }
         if MeetingControlBarController.morphTarget != nil {
             if meetingWindowOpen { giveRoomBackToMeeting(); MeetingControlBarController.morph(toward: 1) }
@@ -3843,10 +3895,7 @@ final class CoordinatorController: ObservableObject {
         }
         // The bar shows while the window is merely covered: bring the window up.
         guard meetingSize == .bar else { openMeetingWindow(); return }
-        let context = collapseContext
-        let target = MeetingCollapse.next(from: .bar, step: .up, option: option,
-                                          lastCollapsed: MeetingCollapse.lastCollapsed(), context: context)
-        move(from: .bar, to: target, step: .up, context: context)
+        move(from: .bar, to: MeetingCollapse.next(from: .bar, step: .up), step: .up, context: collapseContext)
     }
 
     /// Set when a meeting started with nobody else in it and went to the bar:
@@ -3877,21 +3926,16 @@ final class CoordinatorController: ObservableObject {
         if meetingSize == .bar { moveMeeting(to: .window) }
     }
 
-    /// Whether the Mini is a size the meeting can take in this layout.
-    var miniAvailable: Bool { !collapseContext.skipsMini }
-
-    /// Goes to a size from wherever the meeting is, for the Mini's own arrows.
+    /// Goes to a size from wherever the meeting is.
     func moveMeeting(to size: MeetingSize) {
         guard zoomChatClient.didUseCustomUI else { return }
         let from = meetingSize
         guard from != size else { return }
-        let context = collapseContext
-        let rank: (MeetingSize) -> Int = { $0 == .window ? 0 : ($0 == .mini ? 1 : 2) }
-        move(from: from, to: size, step: rank(size) > rank(from) ? .down : .up, context: context)
+        move(from: from, to: size, step: size == .bar ? .down : .up, context: collapseContext)
     }
 
     /// The shortcut and the one click: one step the other way from where it is.
-    /// Window goes down; Mini or bar comes up. A click during a morph turns it round.
+    /// Window goes down; the bar comes up. A click during a morph turns it round.
     func toggleMeetingShrunk() {
         guard zoomChatClient.didUseCustomUI else { return }
         if let heading = MeetingControlBarController.morphTarget {
@@ -3900,41 +3944,24 @@ final class CoordinatorController: ObservableObject {
         }
         switch meetingSize {
         case .window: collapseMeeting()
-        case .mini: moveMeeting(to: .window)
         case .bar: expandMeetingFromBar()
         }
     }
 
-    /// Does the move and keeps the rest in step: the neighbour's room, the bar's
-    /// visibility, and which collapsed size is remembered.
+    /// Does the move and keeps the rest in step: the neighbour's room and the
+    /// bar's visibility.
     private func move(from: MeetingSize, to wanted: MeetingSize, step: MeetingCollapse.Step,
                       context: MeetingCollapseContext) {
         growWhenSomeoneJoins = false
         var target = wanted
-        // Where a size cannot be built, the closest one that can.
-        if target == .mini, !MeetingViewWindows.miniAvailable { target = step == .down ? .bar : .window }
-        if target == .bar, !MeetingControlBarController.isInstalled {
-            target = MeetingViewWindows.miniAvailable && from != .mini ? .mini : from
-        }
+        // Where the bar cannot be built, the meeting stays as it is.
+        if target == .bar, !MeetingControlBarController.isInstalled { target = from }
         guard target != from else { return }
 
         switch (from, target) {
-        case (.window, .mini):
-            guard showMini() else { move(from: from, to: .bar, step: step, context: context); return }
-            giveRoomToNeighbourIfPlaced(going: .mini, context: context)
-            ParticipantGridWindowController.hide()
-            MeetingControlBarController.reconcile(immediately: true)
         case (.window, .bar):
             giveRoomToNeighbourIfPlaced(going: .bar, context: context)
             MeetingControlBarController.morph(toward: 0)
-        case (.mini, .bar):
-            MeetingViewWindows.closeMini()
-            MeetingControlBarController.reconcile(immediately: true)
-        case (.bar, .mini):
-            guard showMini() else { openMeetingWindow(); return }
-            MeetingControlBarController.reconcile(immediately: true)
-        case (.mini, .window):
-            openMeetingWindow()
         case (.bar, .window):
             if meetingWindowOpen {
                 giveRoomBackToMeeting()
@@ -3945,19 +3972,6 @@ final class CoordinatorController: ObservableObject {
         default:
             break
         }
-
-        if step == .down {
-            MeetingCollapse.setLastCollapsed(MeetingCollapse.remembered(
-                after: step, from: from, to: target, context: context, current: MeetingCollapse.lastCollapsed()))
-        }
-    }
-
-    /// Opens the Mini on the display the meeting window is on. The follow loop
-    /// feeds it, so it is running first.
-    private func showMini() -> Bool {
-        ensureMeetingControls()
-        startCustomUIGridFollow()
-        return MeetingViewWindows.openMini(on: ParticipantGridWindowController.meetingScreen ?? NSScreen.main)
     }
 
     /// A full-size placed Meeting leaves its slot: the neighbour takes the room,
@@ -4221,7 +4235,6 @@ final class CoordinatorController: ObservableObject {
         s.isLive = hasLiveSession
         s.hasMeetingSurfaces = zoomChatClient.didUseCustomUI && !recordOnlyActive
         s.meetingShrunk = ParticipantGridWindowController.meetingWindowIsHidden
-        s.miniOpen = MeetingViewWindows.miniIsOpen
         return s
     }
 
@@ -4249,23 +4262,10 @@ final class CoordinatorController: ObservableObject {
             } else {
                 openMeetingWindow()
             }
-        case .mini:
-            // Already up: this only brings it to the front.
-            _ = MeetingViewWindows.openMini(on: ParticipantGridWindowController.meetingScreen ?? NSScreen.main)
         case .controlBar:
             // No bar built is a dead end, so fall back to the first surface that
-            // exists: the Meeting window, then the Mini.
-            if !MeetingControlBarController.bringForward() {
-                switch MeetingSurfaces.wayBack(windowExists: meetingWindowOpen,
-                                               miniAvailable: MeetingViewWindows.miniAvailable, barExists: false) {
-                case .mini:
-                    moveMeeting(to: .mini)
-                case .window:
-                    openMeetingWindow()
-                default:
-                    openMeetingWindow()
-                }
-            }
+            // exists: the Meeting window.
+            if !MeetingControlBarController.bringForward() { openMeetingWindow() }
         case .mainWindow:
             return false
         }
@@ -4533,11 +4533,15 @@ final class CoordinatorController: ObservableObject {
         // Not in the middle of a cable being plugged or pulled. A live run
         // that lost its display during this exact step got Zoom error 22 on
         // installing the picture and then a meeting that never connected.
-        let quietStarted = Date()
-        if !(await DisplayMonitor.shared.awaitQuiet()) {
-            log("A display is still changing \u{2014} starting anyway. If this start fails, wait a few seconds after plugging or unplugging a screen, then press Try again.")
-        } else if Date().timeIntervalSince(quietStarted) > 1 {
-            log("Waited for the screens to settle before joining.")
+        // Only a start that opened apps or places windows has windows to protect;
+        // any other start joins without waiting for the screens (up to 6 s).
+        if StartChoreography.needsDisplayQuiet(opensApps: startOpenedApps, arranges: sessionArranges) {
+            let quietStarted = Date()
+            if !(await DisplayMonitor.shared.awaitQuiet()) {
+                log("A display is still changing \u{2014} starting anyway. If this start fails, wait a few seconds after plugging or unplugging a screen, then press Try again.")
+            } else if Date().timeIntervalSince(quietStarted) > 1 {
+                log("Waited for the screens to settle before joining.")
+            }
         }
         let started = Date()
         let idle = await zoomChatClient.awaitMeetingIdle()
@@ -5233,7 +5237,7 @@ final class CoordinatorController: ObservableObject {
         if let reason = status.shareFallback {
             log("\(reason) \u{2014} sharing the whole screen instead. Open it and press Start again, or change what you share in Settings (\u{2318},) \u{2192} Layout.")
             Notifier.post(title: "Sharing the whole screen",
-                          body: "\(reason), so the class sees your whole screen.")
+                          body: "\(reason), so everyone sees your whole screen.")
         } else if let label = status.shareLabel {
             log("Sharing only \u{201C}\(label)\u{201D}.")
         }

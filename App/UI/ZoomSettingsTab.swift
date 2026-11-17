@@ -104,7 +104,7 @@ struct ZoomPageContent: View {
 
             Section("Meeting") {
                 TextField("Display name", text: $displayName)
-                    .help("The name the class sees for you in the meeting.")
+                    .help("The name everyone sees for you in the meeting.")
                 Toggle(isOn: $customUI) {
                     HStack(spacing: 8) {
                         Text("Custom meeting UI")

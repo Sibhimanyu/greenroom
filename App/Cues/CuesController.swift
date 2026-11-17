@@ -295,7 +295,7 @@ final class CuesController: ObservableObject {
 
         configuration.log(configuration.transcriptFile == nil
                           ? "Cues: listening to your microphone. Speech becomes text on this Mac; the text stays in memory."
-                          : "Cues: listening to your microphone. Speech becomes text on this Mac and is saved to this class\u{2019}s folder.")
+                          : "Cues: listening to your microphone. Speech becomes text on this Mac and is saved to this meeting\u{2019}s folder.")
         configuration.log(detector is HeuristicDetector
                           ? "Cues: mentions found by word patterns."
                           : "Cues: mentions found by Apple Intelligence (on-device) \u{2014} more suggestions, more wrong ones.")
@@ -365,7 +365,7 @@ final class CuesController: ObservableObject {
         let ending = configuration.transcriptFile == nil
             ? "Transcript discarded (\(transcript.totalFinalized) sentences, never written)."
             : "Transcript saved (\(transcript.totalFinalized) sentences)."
-        stop(reason: "Cues: stopped for this class. \(ending)")
+        stop(reason: "Cues: stopped for this meeting. \(ending)")
         stoppedForClass = true
     }
 

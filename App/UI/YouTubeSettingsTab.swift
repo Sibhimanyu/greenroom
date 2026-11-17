@@ -169,7 +169,7 @@ private struct UploadFlowPicture: View {
         .overlay(alignment: .topTrailing) {
             if uploading { PictureChip(text: "UPLOADING", dot: Brand.net) }
         }
-        .help("The one place class content leaves the Mac: the recording, over HTTPS, to the connected channel. Progress is in the menu bar; the link is copied when it finishes. The file stays in Documents/Greenroom either way.")
+        .help("The one place meeting content leaves the Mac: the recording, over HTTPS, to the connected channel. Progress is in the menu bar; the link is copied when it finishes. The file stays in Documents/Greenroom either way.")
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(crosses ? "Recordings can be uploaded to YouTube" : "Recordings stay on this Mac")
     }

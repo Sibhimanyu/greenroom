@@ -213,7 +213,7 @@ struct MeetingToolbarBar: View {
                 cell(symbol: state.recording ? "stop.circle.fill" : "record.circle",
                      caption: state.saving ? "Saving\u{2026}" : state.recordCaption,
                      tint: state.recording ? MeetingTheme.red : .white,
-                     help: state.recording ? "Stop recording" : "Record this class",
+                     help: state.recording ? "Stop recording" : "Record this meeting",
                      action: actions.toggleRecording)
                     .disabled(state.saving)
                 if state.recording && !state.saving {
@@ -227,7 +227,7 @@ struct MeetingToolbarBar: View {
         case .draw:
             cell(symbol: "pencil.and.scribble", caption: "Draw", on: state.drawing,
                  help: state.drawing ? "Close the drawing tools"
-                                     : "Draw on the screen you share (marks show to the class and in the recording)",
+                                     : "Draw on the screen you share (marks show to the meeting and in the recording)",
                  action: actions.toggleDraw)
                 .disabled(!state.canDraw && !state.drawing)
                 .opacity(!state.canDraw && !state.drawing ? 0.4 : 1)

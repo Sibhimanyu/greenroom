@@ -47,6 +47,8 @@ struct MeetingBarSnapshot: Equatable {
     var inMeeting = true
     var muted = false
     var cameraOn = true
+    /// The floating camera bubble is hidden from your own screen (the class still sees you).
+    var bubbleHidden = false
     /// Greenroom's own meeting window exists, so there is a "Meeting" button.
     var videoButtons = true
     var unread = 0
@@ -116,13 +118,13 @@ enum MeetingBarModel {
         switch phase {
         case .recording:
             return RecordPill(label: "REC", time: cls,
-                              help: "Recording \(rec) \u{00B7} class \(cls)",
-                              spoken: "Recording. Class time \(cls). Recording length \(rec). Menu",
+                              help: "Recording \(rec) \u{00B7} meeting \(cls)",
+                              spoken: "Recording. Meeting time \(cls). Recording length \(rec). Menu",
                               showsDot: true, dotIsLive: true, hasMenu: true)
         case .paused:
             return RecordPill(label: "Paused", time: cls,
-                              help: "Recording paused at \(rec) \u{00B7} class \(cls)",
-                              spoken: "Recording paused at \(rec). Class time \(cls). Menu",
+                              help: "Recording paused at \(rec) \u{00B7} meeting \(cls)",
+                              spoken: "Recording paused at \(rec). Meeting time \(cls). Menu",
                               showsDot: true, dotIsLive: false, hasMenu: true)
         case .countdown:
             return RecordPill(label: "Starting\u{2026}", time: nil,
@@ -136,7 +138,7 @@ enum MeetingBarModel {
                               showsDot: false, dotIsLive: false, hasMenu: false)
         case .idle:
             return RecordPill(label: "Record", time: nil,
-                              help: "Start recording \u{00B7} class \(cls)",
+                              help: "Start recording \u{00B7} meeting \(cls)",
                               spoken: "Start recording",
                               showsDot: true, dotIsLive: false, hasMenu: false, isButton: true)
         }
@@ -192,6 +194,16 @@ enum MeetingBarModel {
                  spoken: open ? "Hide notes" : "Show notes", on: open)
     }
 
+    /// The camera bubble on your own screen: hide it or bring it back. Only the
+    /// bubble: the class and the recording keep the camera. The symbol is a
+    /// person, never the eye, which belongs to "Show on my share".
+    static func bubbleCell(hidden: Bool) -> IconCell {
+        IconCell(symbol: hidden ? "person.crop.circle.badge.xmark" : "person.crop.circle",
+                 help: hidden ? "Shows your camera bubble on your screen again. Everyone in the meeting sees you either way."
+                              : "Hides your camera bubble from your screen. Everyone in the meeting still sees you.",
+                 spoken: hidden ? "Show my bubble" : "Hide my bubble", on: hidden)
+    }
+
     /// Meeting Views: opens the views submenu's entries as a menu of its own.
     static func viewsCell(_ bindings: ShortcutBindings) -> IconCell {
         IconCell(symbol: "square.grid.2x2", help: "Meeting views: open the active speaker, gallery or shared screen in a window of its own",
@@ -211,7 +223,7 @@ enum MeetingBarModel {
 // MARK: - Width
 
 /// The bar's size, from its cells, so the panel and the content cannot disagree.
-/// Left to right: grip, Collapse, Meeting, Views, | mic, camera, | REC pill and
+/// Left to right: grip, Collapse, Meeting, Views, | mic, camera, bubble, | REC pill and
 /// pause, | Share, Draw, Notes, | chat, people, | End. Share opens the Present menu: what the
 /// class sees, your look, the layout.
 enum MeetingBarLayout {
@@ -220,11 +232,7 @@ enum MeetingBarLayout {
     static let leadingPad: CGFloat = 4
     static let trailingPad: CGFloat = 8
     static let grip: CGFloat = 18
-    /// The Meeting button and the chevron beside it, one cell, as wide as the
-    /// button alone was: the bar stays under its 720pt cap.
-    static let meeting: CGFloat = meetingButton + meetingMenu
-    static let meetingButton: CGFloat = 78
-    static let meetingMenu: CGFloat = 14
+    static let meeting: CGFloat = 78
     static let icon: CGFloat = 32
     /// The REC pill, the same width in every state so the bar never jumps.
     static let recPill: CGFloat = 132
@@ -246,7 +254,7 @@ enum MeetingBarLayout {
     static func cells(videoButtons: Bool) -> [CGFloat] {
         var out: [CGFloat] = [grip, icon]
         if videoButtons { out += [meeting, icon] }
-        out += [divider, icon, icon, divider, recCell, divider, present, draw, icon, divider,
+        out += [divider, icon, icon, icon, divider, recCell, divider, present, draw, icon, divider,
                 icon, people, divider, end]
         return out
     }

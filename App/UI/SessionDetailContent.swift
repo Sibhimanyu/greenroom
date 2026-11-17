@@ -69,7 +69,7 @@ struct SessionDetailToolbar: ToolbarContent {
                     Label("Share\u{2026}", systemImage: "square.and.arrow.up")
                 }
                 .labelStyle(.titleAndIcon)
-                .help("Share this class: YouTube, or post the link to the class")
+                .help("Share this meeting: YouTube, or post the link to the meeting")
                 moreMenu
             }
             Button {
@@ -397,7 +397,7 @@ struct SessionShareCard: View {
             case .noVideo:
                 secondary("Nothing to share: this session has no recording.")
             case .notConnected:
-                secondary("Connect a YouTube channel to share this class.")
+                secondary("Connect a YouTube channel to share this meeting.")
                 Button("Connect YouTube\u{2026}", action: actions.connectYouTube)
                     .controlSize(.regular)
             case .ready(let privacy):
@@ -664,7 +664,7 @@ struct SessionAnalyseButton: View {
                 }
             }
             .labelStyle(.titleAndIcon)
-            .help("Get feedback on how this class went. \(engine).")
+            .help("Get feedback on how this meeting went. \(engine).")
         case .running(let step, let detail, let log):
             Button {
                 showProgress.toggle()
@@ -693,7 +693,7 @@ struct SessionAnalyseButton: View {
                 Label("Report", systemImage: "doc.text.magnifyingglass")
             }
             .labelStyle(.titleAndIcon)
-            .help("Open the report on how this class went")
+            .help("Open the report on how this meeting went")
         }
     }
 

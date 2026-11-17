@@ -439,7 +439,7 @@ final class MeetingMenuSpecTests: XCTestCase {
         let present = PresentMenu.entries(.init(), .init())
         let menu = MeetingMenus.share(.init(displays: [(1, "Display 1")], isHost: true, rule: ShareRule(sdkRaw: 0)),
                                       .init(), present: present)
-        XCTAssertEqual(menu.first?.title, "What the class sees")
+        XCTAssertEqual(menu.first?.title, "What everyone sees")
         XCTAssertEqual(menu[present.count].kind, .separator)
         XCTAssertEqual(menu[present.count + 1].title, "Also share a display on its own")
         let titles = menu.flatTitles

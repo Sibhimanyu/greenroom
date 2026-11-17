@@ -249,6 +249,8 @@ enum ParticipantGridWindowController {
     /// Where the panel currently lives, for alerts that must appear on the
     /// same display the teacher is looking at.
     fileprivate static var panelScreen: NSScreen? { panel?.screen }
+    /// The Meeting window, for the layout's share choice.
+    static var meetingWindow: NSWindow? { panel }
     /// The panel window itself, for the alert runner to step around.
     fileprivate static var panelWindowForAlerts: NSWindow? { panel }
     private static var root: RootView?
@@ -374,7 +376,7 @@ enum ParticipantGridWindowController {
             // the faces, text and controls on it stay opaque.
             if form.isMeeting {
                 WindowFrost.install(in: hosting, solid: MeetingTheme.windowNS)
-                WindowShareController.attach(to: hosting, dark: true)
+                WindowShareController.attach(to: hosting, dark: true).set(LayoutShareChoice.meeting)
             }
             panel = hosting
             root = view
@@ -395,12 +397,12 @@ enum ParticipantGridWindowController {
             hosting.setFrame(screen.frame, display: true)
         }
 
-        // Hidden, shrunk to the bar, or handed to the Mini: this window must not
-        // hold a stream. A view window (Active speaker / Gallery / Mini) asking
+        // Hidden or shrunk to the bar: this window must not
+        // hold a stream. A view window (Active speaker / Gallery) asking
         // for the same person is the second element on one user, and Zoom
         // refuses it. Back on screen, the next refresh subscribes normally.
         let streamsHeld = !(form.isMeeting && !isNewWindow
-            && (userHidden || hosting.isMiniaturized || !hosting.isVisible || MeetingViewWindows.miniIsOpen))
+            && (userHidden || hosting.isMiniaturized || !hosting.isVisible))
         if !streamsHeld {
             if client.holdsMeetingWindowStreams {
                 ZoomMeetingSDKClient.videoLog("meeting window hidden; releasing stage and tiles")
@@ -863,7 +865,7 @@ private final class RootView: NSView {
     /// Hidden before the class is live, and whenever the teacher turns it off.
     private var showsSelfPreview = true
     private var lastMicLevel: Double = 0
-    private let selfViewLabel = NSTextField(labelWithString: "You, as the class sees you")
+    private let selfViewLabel = NSTextField(labelWithString: "You, as everyone sees you")
     private var selfVideo: NSView?
     private var railControls: [NSView] = []
     private let micMeter = LevelMeterView()
@@ -1505,8 +1507,8 @@ private final class RootView: NSView {
         // video call, and a meter alone does not resolve it.
         let speaking = level > 0.12
         micHint.stringValue = muted
-            ? (speaking ? "You are muted \u{2014} the class cannot hear this." : "Muted.")
-            : (speaking ? "The class can hear you." : "Live, but quiet.")
+            ? (speaking ? "You are muted \u{2014} no one can hear this." : "Muted.")
+            : (speaking ? "Everyone can hear you." : "Live, but quiet.")
         micHint.textColor = muted && speaking ? .systemOrange : .secondaryLabelColor
     }
 
@@ -2659,7 +2661,7 @@ private final class RootView: NSView {
     private func updateChromeText() {
         let heads = roster.count
         let people = heads == 1 ? "1 person" : "\(heads) people"
-        titleLabel.stringValue = session.presetName.isEmpty ? (meetingForm ? "Meeting" : "Class") : session.presetName
+        titleLabel.stringValue = session.presetName.isEmpty ? (meetingForm ? "Meeting" : "Meeting") : session.presetName
 
         var facts = [people]
         if !session.meetingNumber.isEmpty { facts.append(session.meetingNumber) }
@@ -2695,7 +2697,7 @@ private final class RootView: NSView {
                 : "\(waiting.count) waiting to be let in.\nOpen Participants to admit them."
         } else {
             emptyState.stringValue = waiting.isEmpty
-                ? "Waiting for students.\nThey will appear here as they join."
+                ? "Waiting for people.\nThey will appear here as they join."
                 : "\(waiting.count) waiting to be let in.\nUse Participants \u{2192} Admit all waiting."
         }
 
@@ -3554,7 +3556,7 @@ private final class RootView: NSView {
             Self.perform(on ? "Renaming allowed" : "Renaming turned off") { $0.setAllowRename(on) }
         }
         toggle("Focus mode", flags.focusModeOn) { on in
-            Self.perform(on ? "Focus mode on \u{2014} students see only you" : "Focus mode off") {
+            Self.perform(on ? "Focus mode on \u{2014} everyone sees only you" : "Focus mode off") {
                 $0.setFocusMode(on)
             }
         }

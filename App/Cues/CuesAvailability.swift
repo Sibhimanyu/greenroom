@@ -65,7 +65,7 @@ struct CuesComingSoonRows: View {
                     .background(Capsule().fill(.quaternary))
                     .accessibilityLabel("Coming soon. This feature is not available in this version.")
             } label: {
-                SettingLabel(title: "Listen during classes and suggest links",
+                SettingLabel(title: "Listen during meetings and suggest links",
                              subtitle: "Cards for the tools, words, quotes, books, videos, topics and people you name.")
             }
             .disabled(true)

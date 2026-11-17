@@ -109,7 +109,7 @@ enum LiveExit {
         case .host:
             return LiveExitPrompt(
                 title: "End the meeting for everyone?",
-                message: join("Your students are dropped from the call, and the camera stops.",
+                message: join("Everyone is dropped from the call, and the camera stops.",
                               s.isRecording ? recordingNote : nil),
                 choices: [.endMeetingForAll, .cancel])
         case .participant:
@@ -132,7 +132,7 @@ enum LiveExit {
         case .host:
             return LiveExitPrompt(
                 title: "Quit Greenroom and end the meeting?",
-                message: join("The meeting ends for everyone and your students are dropped from the call.",
+                message: join("The meeting ends for everyone, and everyone is dropped from the call.",
                               s.isRecording ? recordingNote : nil),
                 choices: [.endMeetingAndQuit, .cancel])
         case .participant:
@@ -184,8 +184,6 @@ enum LiveExit {
     enum ReopenTarget: Equatable {
         /// Greenroom's own meeting window (opened if it was closed).
         case meetingWindow
-        /// The Mini window, the small floating picture, when that is the size it is at.
-        case mini
         /// The floating control bar, shrunk or the only surface left.
         case controlBar
         /// The main window, showing the live state.
@@ -198,13 +196,10 @@ enum LiveExit {
         var hasMeetingSurfaces = false
         /// The meeting window is hidden, shrunk to the bar or minimised.
         var meetingShrunk = false
-        /// The Mini window is up: it is the surface to bring forward.
-        var miniOpen = false
     }
 
     static func reopenTarget(_ s: ReopenState) -> ReopenTarget {
         guard s.isLive, s.hasMeetingSurfaces else { return .mainWindow }
-        if s.miniOpen { return .mini }
         return s.meetingShrunk ? .controlBar : .meetingWindow
     }
 

@@ -19,10 +19,13 @@ import Foundation
 struct MainWindowVisibility: Equatable {
 
     enum Event: Equatable {
+        /// Start was pressed and Home was on screen: it steps aside now, not
+        /// when the meeting is live (StartChoreography.swift).
+        case startBegan
         /// The session's live-ness changed (true: a meeting is joined or a
         /// recording is running; false: it is over).
         case liveChanged(Bool)
-        /// A start failed at some step.
+        /// A start failed at some step, or was cancelled.
         case startFailed
         /// The person brought the main window back on purpose while live
         /// (Sessions, Last, Open Greenroom Window). It stays until the next
@@ -35,6 +38,11 @@ struct MainWindowVisibility: Equatable {
     enum Action: Equatable {
         case rememberFrame
         case hide
+        /// Home steps aside toward the Control bar as a start begins (animated).
+        case hideForStart
+        /// A start ended before it was live: Home comes back where it was, on
+        /// the page it was on (animated).
+        case showAfterStart
         /// Put the window back at the remembered frame.
         case restoreFrame
         /// Back to the Home page.
@@ -47,13 +55,23 @@ struct MainWindowVisibility: Equatable {
     /// We ordered the window out and it has not been brought back since.
     private(set) var hiddenByUs = false
     private(set) var isQuitting = false
+    /// Hidden at the start click, not yet by a live session.
+    private(set) var hiddenForStart = false
 
     mutating func handle(_ event: Event) -> [Action] {
         switch event {
+        case .startBegan:
+            guard !isQuitting, !hiddenByUs, !isLive else { return [] }
+            hiddenByUs = true
+            hiddenForStart = true
+            return [.rememberFrame, .hideForStart]
+
         case .liveChanged(true):
             guard !isLive else { return [] }
             isLive = true
             guard !isQuitting else { return [] }
+            // Already out of the way since the click: nothing more to do.
+            if hiddenForStart { hiddenForStart = false; return [] }
             hiddenByUs = true
             return [.rememberFrame, .hide]
 
@@ -68,6 +86,7 @@ struct MainWindowVisibility: Equatable {
 
         case .openedOnPurpose:
             hiddenByUs = false
+            hiddenForStart = false
             return []
 
         case .quitting:
@@ -81,7 +100,8 @@ struct MainWindowVisibility: Equatable {
     /// just brought forward, where it is, when the person had opened it.
     private mutating func restore() -> [Action] {
         guard !isQuitting else { hiddenByUs = false; return [] }
-        defer { hiddenByUs = false }
+        defer { hiddenByUs = false; hiddenForStart = false }
+        if hiddenForStart { return [.showAfterStart] }
         return hiddenByUs ? [.restoreFrame, .goHome, .show] : [.show]
     }
 }

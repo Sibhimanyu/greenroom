@@ -31,7 +31,7 @@ struct SessionTranscriptView: View {
     @State private var copied = false
     /// Which pass is running. A real class is several model calls, so a bare
     /// spinner would sit there for a minute looking broken.
-    @State private var step = "Reading the class\u{2026}"
+    @State private var step = "Reading the meeting\u{2026}"
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -88,8 +88,8 @@ struct SessionTranscriptView: View {
                     .fixedSize(horizontal: false, vertical: true)
             } else if lines.isEmpty {
                 Text(SessionSummary.hasTranscript(in: folder)
-                     ? "Nothing was said that the speech model could make out: this class's transcript is only room sound."
-                     : "No transcript for this class. Cues writes one only when it was listening and \u{201C}Save the transcript and links with the class\u{201D} is on.")
+                     ? "Nothing was said that the speech model could make out: this meeting's transcript is only room sound."
+                     : "No transcript for this meeting. Cues writes one only when it was listening and \u{201C}Save the transcript and links with the meeting\u{201D} is on.")
                     .font(.system(size: 12))
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -114,7 +114,7 @@ struct SessionTranscriptView: View {
             VStack(spacing: 6) {
                 Text("Nothing was transcribed")
                     .font(.system(size: 13, weight: .medium))
-                Text("A bilingual class transcribes thinly: the speech model finalises only what it can render in English, and there is no Tamil model on this Mac.")
+                Text("A bilingual meeting transcribes thinly: the speech model finalises only what it can render in English, and there is no Tamil model on this Mac.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
@@ -165,7 +165,7 @@ struct SessionTranscriptView: View {
         guard #available(macOS 26.0, *) else { return }
         working = true
         problem = nil
-        step = "Reading the class\u{2026}"
+        step = "Reading the meeting\u{2026}"
         Task {
             let outcome = await SessionSummary.generate(for: folder) { note in
                 Task { @MainActor in step = note }

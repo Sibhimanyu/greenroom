@@ -48,7 +48,7 @@ struct LayoutChoiceLine: View {
         .fixedSize()
         .disabled(locked)
         .help(locked
-              ? "A class runs the layout it started with. Pick the next one after it ends, or use Settings \u{2192} Layout \u{2192} Apply now."
+              ? "A meeting runs the layout it started with. Pick the next one after it ends, or use Settings \u{2192} Layout \u{2192} Apply now."
               : "Where Start puts the meeting, the chat and your apps. Edit layouts in Settings \u{2192} Layout.")
         .accessibilityLabel("Layout")
         .accessibilityValue(coordinator.layoutChoiceName)

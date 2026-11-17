@@ -240,7 +240,7 @@ extension ZoomMeetingSDKClient {
               let at = entry.subscribedAt else { return nil }
         // The SDK only calls onRenderDataTypeChanged when a camera turns on or
         // off, so a window opened while the camera is already on never hears
-        // that video arrived (the Mini window said "Video didn't start" over
+        // that video arrived (a view window said "Video didn't start" over
         // your own picture, 2026-11-16). Ask the element itself.
         if entry.element.getDataType() == VideoRenderDataType_Video {
             entry.gotVideo = true

@@ -2,10 +2,9 @@
 //  MeetingCollapseRules.swift
 //  Greenroom
 //
-//  The pure decisions behind the three sizes of a live meeting: the Meeting
-//  window, the Mini window (a small floating picture of whoever is talking) and
-//  the Control bar. Which size a click, the yellow light or Command-M goes to,
-//  which size is remembered, and when a layout's neighbour takes the room. Also
+//  The pure decisions behind the two sizes of a live meeting: the Meeting
+//  window and the Control bar. Which size a click, the yellow light or
+//  Command-M goes to, and when a layout's neighbour takes the room. Also
 //  the "Show on my share" rule: which of our own windows are let into a display
 //  share. Foundation only, so the test target compiles this file as it is.
 //
@@ -13,81 +12,69 @@ import Foundation
 
 /// How much of the meeting is on screen.
 enum MeetingSize: String, Equatable {
-    case window, mini, bar
+    case window, bar
 }
 
 /// What the layout already shows, which changes where a collapse goes.
 struct MeetingCollapseContext: Equatable {
     /// The layout places the Meeting piece at full size (not a whole display, not compact).
     var placedFull = false
-    /// The layout places the Meeting piece compact: it is already Mini-sized.
+    /// The layout places the Meeting piece compact: it is already small.
     var meetingIsSlot = false
-    /// A speaker view window (Active speaker, Multi-speaker, Speaker + strip,
-    /// Spotlight student) is on screen: the faces are already there.
-    var speakerViewOnScreen = false
-
-    /// The Mini would only repeat what is on screen, so it is skipped.
-    var skipsMini: Bool { meetingIsSlot || speakerViewOnScreen }
 }
 
 enum MeetingCollapse {
     enum Step: Equatable { case down, up }
 
-    static let defaultsKey = "meetingCollapse.last"
-
-    /// Where one step goes. Down: Meeting window, Mini, Control bar. Up is the
-    /// way back, and like Zoom's "exit minimised" it goes all the way: the
-    /// window, from the Mini or the bar. Option from the bar asks for the Mini
-    /// instead, where the Mini makes sense here.
-    /// `lastCollapsed` is the size a collapse from the window lands on (Mini or bar).
-    static func next(from size: MeetingSize, step: Step, option: Bool = false,
-                     lastCollapsed: MeetingSize, context: MeetingCollapseContext = MeetingCollapseContext()) -> MeetingSize {
+    /// Where one step goes. Down: the Control bar. Up: the Meeting window.
+    static func next(from size: MeetingSize, step: Step) -> MeetingSize {
         switch (size, step) {
-        case (.window, .down):
-            if context.skipsMini { return .bar }
-            return lastCollapsed == .bar ? .bar : .mini
-        case (.mini, .down), (.bar, .down):
-            return .bar
-        case (.window, .up), (.mini, .up):
-            return .window
-        case (.bar, .up):
-            return option && !context.skipsMini ? .mini : .window
+        case (_, .down): return .bar
+        case (_, .up): return .window
         }
     }
 
-    /// The size to remember after a move. Only a step down is a choice: a layout
-    /// that forced the bar (no Mini there) or a step back up must not change what
-    /// the teacher last picked.
-    static func remembered(after step: Step, from: MeetingSize, to: MeetingSize,
-                           context: MeetingCollapseContext, current: MeetingSize) -> MeetingSize {
-        guard step == .down, to != .window else { return current }
-        if from == .window, context.skipsMini { return current }
-        return to
-    }
-
     /// Whether the placed Meeting's room goes to its neighbour: the window has
-    /// left its slot (to the Mini or the bar) and the layout placed it at full size.
+    /// left its slot (to the bar) and the layout placed it at full size.
     static func neighbourTakesRoom(going size: MeetingSize, context: MeetingCollapseContext) -> Bool {
         context.placedFull && !context.meetingIsSlot && size != .window
     }
+}
 
-    // MARK: Remembered across launches
+// MARK: - What a meeting surface draws besides its content
 
-    static func lastCollapsed(_ defaults: UserDefaults = .standard) -> MeetingSize {
-        let size = MeetingSize(rawValue: defaults.string(forKey: defaultsKey) ?? "") ?? .mini
-        return size == .bar ? .bar : .mini
-    }
+/// A meeting surface either carries its own controls or shows its content and
+/// nothing else.
+enum MeetingSurfaceChrome: Equatable {
+    case full
+    case contentOnly
+    var showsControls: Bool { self == .full }
+}
 
-    static func setLastCollapsed(_ size: MeetingSize, _ defaults: UserDefaults = .standard) {
-        guard size != .window else { return }
-        defaults.set(size.rawValue, forKey: defaultsKey)
+/// Who carries the controls (owner, 2026-11-17). The main Meeting window is the
+/// control surface: while it is shown it keeps its controls and the Control bar
+/// stays hidden. In every other case the bar is up and holds all the controls,
+/// and the content views a layout places (Active speaker, gallery, Chat...) show
+/// content only. Without a layout the views keep theirs: today's window <-> bar.
+struct MeetingSurfacePlan: Equatable {
+    var barVisible: Bool
+    var mainWindowChrome: MeetingSurfaceChrome
+    var viewsChrome: MeetingSurfaceChrome
+
+    /// `layoutHasMainWindow`: the layout has a Meeting window piece. A window
+    /// that piece placed but that is collapsed or covered is not shown, so the
+    /// bar is up for it: no way to reach a control may depend on a hidden window.
+    static func decide(layoutActive: Bool, layoutHasMainWindow: Bool, mainWindowShown: Bool) -> MeetingSurfacePlan {
+        MeetingSurfacePlan(barVisible: !mainWindowShown,
+                           mainWindowChrome: .full,
+                           viewsChrome: layoutActive ? .contentOnly : .full)
     }
 }
 
 // MARK: - One control surface at a time
 
-/// While a meeting is live exactly one of the Meeting window, the Mini and the
-/// Control bar is on screen, and every way back lands on one that exists.
+/// While a meeting is live exactly one of the Meeting window and the Control
+/// bar is on screen, and every way back lands on one that exists.
 enum MeetingSurfaces {
     /// The small windows that follow the bar (the chat and People pop-outs):
     /// left on another desktop, they are taken off it first, so they come in
@@ -112,29 +99,26 @@ enum MeetingSurfaces {
         windowShowing && popOutOpen && !arranged
     }
 
-    /// The bar is the one that fills in: it shows only when neither the window
-    /// nor the Mini is up.
-    static func barVisible(windowShowing: Bool, miniOpen: Bool) -> Bool {
-        !windowShowing && !miniOpen
+    /// The bar is the one that fills in: it shows only when the window is not up.
+    static func barVisible(windowShowing: Bool) -> Bool {
+        !windowShowing
     }
 
     /// How many control surfaces are on screen. `barExists` is whether the bar
     /// has been installed for this meeting.
-    static func visibleCount(windowShowing: Bool, miniOpen: Bool, barExists: Bool) -> Int {
-        (windowShowing ? 1 : 0) + (miniOpen ? 1 : 0)
-            + (barExists && barVisible(windowShowing: windowShowing, miniOpen: miniOpen) ? 1 : 0)
+    static func visibleCount(windowShowing: Bool, barExists: Bool) -> Int {
+        (windowShowing ? 1 : 0) + (barExists && barVisible(windowShowing: windowShowing) ? 1 : 0)
     }
 
     /// The invariant: one, never none and never two.
-    static func isSound(windowShowing: Bool, miniOpen: Bool, barExists: Bool) -> Bool {
-        visibleCount(windowShowing: windowShowing, miniOpen: miniOpen, barExists: barExists) == 1
+    static func isSound(windowShowing: Bool, barExists: Bool) -> Bool {
+        visibleCount(windowShowing: windowShowing, barExists: barExists) == 1
     }
 
     /// Where a Dock click, a menu choice or the status tracker lands: the first
-    /// of window, Mini, bar that exists. Nil only with nothing built at all.
-    static func wayBack(windowExists: Bool, miniAvailable: Bool, barExists: Bool) -> MeetingSize? {
+    /// of window, bar that exists. Nil only with nothing built at all.
+    static func wayBack(windowExists: Bool, barExists: Bool) -> MeetingSize? {
         if windowExists { return .window }
-        if miniAvailable { return .mini }
         if barExists { return .bar }
         return nil
     }

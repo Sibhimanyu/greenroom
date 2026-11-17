@@ -2,11 +2,11 @@ import XCTest
 
 final class ShareVisibilityRulesTests: XCTestCase {
     func testWordsAndIconsForEachState() {
-        XCTAssertEqual(ShareVisibility.classSees.label, "Class sees this")
+        XCTAssertEqual(ShareVisibility.classSees.label, "Everyone sees this")
         XCTAssertEqual(ShareVisibility.onlyYou.label, "Only you")
         XCTAssertEqual(ShareVisibility.classSees.symbol, "eye")
         XCTAssertEqual(ShareVisibility.onlyYou.symbol, "eye.slash")
-        XCTAssertEqual(ShowOnShare.borderLabel, "Class sees this")
+        XCTAssertEqual(ShowOnShare.borderLabel, "Everyone sees this")
     }
 
     func testMarkedMeansTheClassSees() {
@@ -31,9 +31,9 @@ final class ShareVisibilityRulesTests: XCTestCase {
 
     func testToastOnlyOnAChangeAndOnlyOnce() {
         XCTAssertEqual(ShareVisibilityExplainer.toast(was: .onlyYou, now: .classSees, alreadyExplained: false),
-                       "The class sees this window.")
+                       "Everyone in the meeting sees this window.")
         XCTAssertEqual(ShareVisibilityExplainer.toast(was: .classSees, now: .onlyYou, alreadyExplained: false),
-                       "Hidden from the class. Only you see this window.")
+                       "Hidden from the meeting. Only you see this window.")
         XCTAssertNil(ShareVisibilityExplainer.toast(was: .onlyYou, now: .onlyYou, alreadyExplained: false))
         XCTAssertNil(ShareVisibilityExplainer.toast(was: .onlyYou, now: .classSees, alreadyExplained: true))
     }
@@ -48,7 +48,7 @@ final class ShareVisibilityRulesTests: XCTestCase {
     }
 
     func testWhichWindowsOfferTheSwitch() {
-        let offered: [ShareableWindow] = [.main, .settings, .meetingChat, .participants, .meetingWindow, .meetingView, .mini]
+        let offered: [ShareableWindow] = [.main, .settings, .meetingChat, .participants, .meetingWindow, .meetingView]
         for window in ShareableWindow.allCases {
             XCTAssertEqual(window.offersSwitch, offered.contains(window), "\(window)")
             XCTAssertEqual(window.exclusionReason == nil, window.offersSwitch, "\(window)")
@@ -61,16 +61,16 @@ final class ShareVisibilityRulesTests: XCTestCase {
         let state = ShareSwitchState(on: false, kind: .display)
         XCTAssertEqual(state.visibility, .onlyYou)
         XCTAssertTrue(state.isEnabled)
-        XCTAssertEqual(state.help, "Only you: the class can't see this window. Click to show it to the class.")
+        XCTAssertEqual(state.help, "Only you: the meeting can't see this window. Click to show it to everyone.")
         XCTAssertEqual(state.accessibilityValue, "Only you")
-        XCTAssertEqual(state.accessibilityLabel, "Show to class")
+        XCTAssertEqual(state.accessibilityLabel, "Show to everyone")
     }
 
     func testSwitchStateShownOnADisplayShare() {
         let state = ShareSwitchState(on: true, kind: .display)
         XCTAssertEqual(state.visibility, .classSees)
-        XCTAssertEqual(state.help, "The class sees this window. Click to hide it.")
-        XCTAssertEqual(state.accessibilityValue, "Class sees this")
+        XCTAssertEqual(state.help, "Everyone in the meeting sees this window. Click to hide it.")
+        XCTAssertEqual(state.accessibilityValue, "Everyone sees this")
     }
 
     func testSwitchDisabledUnlessAWholeDisplayIsShared() {

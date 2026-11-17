@@ -25,7 +25,7 @@ struct ContentView: View {
     @State private var heldMinHeight: CGFloat = 0
     /// The same, for width: Home is narrower than the pages, so the minimum
     /// follows the window out and back instead of forcing it open first.
-    @State private var heldMinWidth: CGFloat = ContentView.expandedWindowWidth
+    @State private var heldMinWidth: CGFloat = ContentView.defaultWindowWidth
     /// The frame Home had before a page widened the window, so Back returns
     /// to it rather than to wherever the page left things.
     @State private var homeFrame: NSRect?
@@ -44,6 +44,9 @@ struct ContentView: View {
     /// so the card is drawn until the curtain has closed on it.
     @State private var previewShown = true
     @State private var previewMounted = true
+    /// The picture's aspect, which sizes the card and so the window. The main
+    /// display's until the first frame, so the width does not jump then.
+    @State private var pictureAspect: CGFloat = HomeView.defaultPictureAspect
     /// The frame the window had before the card opened, to give back exactly.
     @State private var previewRestoreFrame: NSRect?
     /// The frame the opening settled at, to tell whether the window was moved.
@@ -186,6 +189,9 @@ struct ContentView: View {
         .onChange(of: statusShown) { _, _ in resizeWindow(animated: true) }
         // Edit grows about the middle, not down from the top (owner, 2026-11-16).
         .onChange(of: previewShown) { _, shown in previewChanged(shown) }
+        // The picture's shape changed (the share target did): the card, and
+        // so the window, follows, the left edge staying put.
+        .onChange(of: pictureAspect) { old, new in aspectChanged(from: old, to: new) }
         #if DEBUG
         .onReceive(NotificationCenter.default.publisher(for: .debugTourHomePreview)) { note in
             HomeView.debugSkipLive = (note.userInfo?["camera"] as? Bool) == false
@@ -270,7 +276,7 @@ struct ContentView: View {
                         Label("Sessions", systemImage: "film.stack")
                             .labelStyle(.iconOnly)  // icon only, so the toolbar balances and the switcher sits centred (owner, 2026-11-14); the footer names Sessions
                     }
-                    .help("Sessions: every past class, its recordings and clips with a player, its YouTube links, and a name you can change.")
+                    .help("Sessions: every past meeting, its recordings and clips with a player, its YouTube links, and a name you can change.")
                 }
                 if #available(macOS 26, *) {
                     ToolbarSpacer(.fixed, placement: .primaryAction)
@@ -333,7 +339,7 @@ struct ContentView: View {
                 homeContent
                 // 24pt at the sides (Home is one column, 2026-11-13); 20pt top and
                 // bottom, which the heights assume.
-                .padding(.horizontal, 24)
+                .padding(.horizontal, HomeView.sideMargin)
                 .padding(.vertical, HomeView.verticalMargin)
                 .frame(minWidth: homeMinWidth, minHeight: homeWindowHeight)
                 .frame(width: homePin?.width, height: homePin?.height)
@@ -501,7 +507,8 @@ struct ContentView: View {
 
     private var homeContent: some View {
         HomeView(statusShown: $statusShown,
-                 previewShown: $previewShown, previewMounted: previewMounted)
+                 previewShown: $previewShown, previewMounted: previewMounted,
+                 pictureAspect: $pictureAspect)
     }
 
     /// The window's height for the current state: the two columns, plus Join's passcode row, plus the
@@ -555,20 +562,29 @@ struct ContentView: View {
     private var floorHeight: CGFloat { onPage ? Self.pageMinHeight : preferredWindowHeight }
     private var floorWidth: CGFloat {
         onPage ? Self.pageMinWidth
-            : previewShown ? Self.expandedWindowWidth : Self.collapsedWindowWidth
+            : previewShown ? expandedWidth : Self.collapsedWindowWidth
     }
 
     /// Home's collapsed width. 592, not column + margins (544): at 508 and 540 the
-    /// toolbar folded Sessions, Help and Settings into an overflow chevron.
+    /// toolbar folded Sessions, Help and Settings into an overflow chevron, and the
+    /// share eye in the title bar then took more: the least is now what the toolbar
+    /// needs (HomeToolbarRules), never below 592.
     private static let titleBarCredit: CGFloat = 52
-    static var collapsedWindowWidth: CGFloat { 592 }
-    /// With the picture card beside the column.
-    static var expandedWindowWidth: CGFloat { collapsedWindowWidth + HomeView.previewExtraWidth }
+    /// The content with its margins, or what the toolbar needs if that is more;
+    /// the column takes any width beyond its natural one, so the floor never
+    /// becomes dead margins (HomeView.sideMargin).
+    static var collapsedWindowWidth: CGFloat { max(HomeView.naturalCollapsedWidth, HomeToolbarRules.minWindowWidth) }
+    /// With the picture card beside the column: the content and margins
+    /// (the toolbar's need is then already met).
+    static func expandedWindowWidth(aspect: CGFloat) -> CGFloat {
+        max(HomeView.naturalCollapsedWidth + HomeView.previewExtraWidth(aspect: aspect), HomeToolbarRules.minWindowWidth)
+    }
+    private var expandedWidth: CGFloat { Self.expandedWindowWidth(aspect: pictureAspect) }
     /// What the window opens at: with the picture card open. The height is
     /// then the content's (homeWindowHeight).
-    static var defaultWindowWidth: CGFloat { expandedWindowWidth }
+    static var defaultWindowWidth: CGFloat { expandedWindowWidth(aspect: HomeView.defaultPictureAspect) }
     /// The least Home may be, for whether the card is open.
-    private var homeMinWidth: CGFloat { previewMounted ? Self.expandedWindowWidth : Self.collapsedWindowWidth }
+    private var homeMinWidth: CGFloat { previewMounted ? expandedWidth : Self.collapsedWindowWidth }
 
     /// Where the window ends up for the current page and state, top edge
     /// anchored and inside the visible frame.
@@ -583,9 +599,10 @@ struct ContentView: View {
             width = animated ? max(content.width, Self.pageWidth) : Self.pageWidth
         } else if previewChange {
             // The card opening or closing moves only the right edge.
-            width = content.width + (previewShown ? HomeView.previewExtraWidth : -HomeView.previewExtraWidth)
+            width = previewShown ? max(content.width, expandedWidth)
+                : max(Self.collapsedWindowWidth, content.width - HomeView.previewExtraWidth(aspect: pictureAspect))
         } else {
-            width = returningHome ? (homeWidth ?? content.width)
+            width = returningHome ? PreviewFrameRules.returnWidth(remembered: homeWidth, current: content.width, floor: floorWidth)
                 : animated ? content.width : Self.defaultWindowWidth
         }
         if let visible { width = min(width, visible.width) }
@@ -697,6 +714,39 @@ struct ContentView: View {
             context.duration = duration
             context.timingFunction = CAMediaTimingFunction(name: .easeOut)
             targets.forEach { $0.animator().alphaValue = alpha }
+        }
+    }
+
+    /// Only the width moves, from the right edge, over `growDuration`
+    /// ease-in-out (instant under Reduce Motion).
+    private func aspectChanged(from old: CGFloat, to new: CGFloat) {
+        guard previewShown, previewMounted, !onPage, let window = Self.window,
+              !window.styleMask.contains(.fullScreen), !window.isZoomed else { return }
+        let delta = HomeView.previewExtraWidth(aspect: new) - HomeView.previewExtraWidth(aspect: old)
+        guard abs(delta) >= 1 else { return }
+        let content = window.contentRect(forFrameRect: window.frame)
+        var width = max(content.width + delta, expandedWidth)
+        if let visible = (window.screen ?? NSScreen.main)?.visibleFrame { width = min(width, visible.width) }
+        var frame = window.frame
+        frame.size.width = window.frameRect(forContentRect: NSRect(x: 0, y: 0, width: width, height: content.height)).width
+        guard abs(frame.width - window.frame.width) >= 1 else { heldMinWidth = floorWidth; return }
+        if previewExpandedFrame != nil { previewExpandedFrame = nil }
+        resizeGeneration += 1
+        let generation = resizeGeneration
+        let settledWidth = floorWidth
+        if settledWidth < heldMinWidth { heldMinWidth = settledWidth }
+        guard !reduceMotion else {
+            window.setFrame(frame, display: true)
+            heldMinWidth = settledWidth
+            return
+        }
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = Self.growDuration
+            context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+            window.animator().setFrame(frame, display: true)
+        } completionHandler: {
+            guard generation == resizeGeneration else { return }
+            heldMinWidth = settledWidth
         }
     }
 

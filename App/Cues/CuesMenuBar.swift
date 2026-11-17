@@ -129,7 +129,7 @@ final class CuesMenuBar: NSObject, NSPopoverDelegate {
             }
             stop.bezelStyle = .rounded
             stop.controlSize = .small
-            stop.title = "Stop listening for this class"
+            stop.title = "Stop listening for this meeting"
             addSubview(stop)
         }
 

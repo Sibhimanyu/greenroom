@@ -94,7 +94,7 @@ final class CueCardView: NSView {
         // cards that happen to have actions.
         for (button, symbol, tip, label) in [
             (openButton, "arrow.up.right", "Open in the main-pane browser", "Open"),
-            (sendButton, "paperplane", "Send the link to the class chat", "Send"),
+            (sendButton, "paperplane", "Send the link to the meeting chat", "Send"),
             (dismissButton, "xmark", "Dismiss this suggestion", "Dismiss")
         ] {
             button.isBordered = false
@@ -187,7 +187,7 @@ final class CueCardView: NSView {
         card = next
         sendButton.isEnabled = canSend
         sendButton.alphaValue = canSend ? 1 : 0.35
-        sendButton.toolTip = canSend ? "Send the link to the class chat" : "Send needs the meeting chat to be connected"
+        sendButton.toolTip = canSend ? "Send the link to the meeting chat" : "Send needs the meeting chat to be connected"
         guard changed else { return }
         // Kind first, source second, separated rather than run together: they
         // answer different questions ("what is this" and "who says so").

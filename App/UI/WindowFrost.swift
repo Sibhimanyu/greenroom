@@ -17,7 +17,7 @@ enum WindowFrost {
     /// One frost for every window only you see, so they all read alike
     /// (owner, 2026-11-16: "a uniform transparency"). The meeting windows are
     /// dark appearance, so the same material draws dark there.
-    static let material: NSVisualEffectView.Material = .underWindowBackground
+    static let material: NSVisualEffectView.Material = .sidebar
 
     private static let frostID = NSUserInterfaceItemIdentifier("greenroom.window.frost")
     private static let solidID = NSUserInterfaceItemIdentifier("greenroom.window.solid")
@@ -27,13 +27,14 @@ enum WindowFrost {
     /// background goes clear, so the content views must not paint a full
     /// background of their own.
     static func install(in window: NSWindow, material: NSVisualEffectView.Material = WindowFrost.material, solid: NSColor,
-                        backdrop: WindowBackdrop = .frosted) {
+                        backdrop: WindowBackdrop = .frosted, transparentTitlebar: Bool = true) {
         guard let frame = window.contentView?.superview,
               frame.subviews.first(where: { $0.identifier == frostID }) == nil else { return }
         window.isOpaque = false
         window.backgroundColor = .clear
         // The title bar is part of the frosted background, not a band on top.
-        window.titlebarAppearsTransparent = true
+        // Windows with a real tab/scroll toolbar (Settings) keep the system title bar backing.
+        if transparentTitlebar { window.titlebarAppearsTransparent = true }
         let frost = NSVisualEffectView(frame: frame.bounds)
         frost.identifier = frostID
         frost.material = material
@@ -76,17 +77,20 @@ import SwiftUI
 /// frost, the SwiftUI content stays opaque on it. The main window is never in
 /// the class's picture.
 struct FrostedWindow: NSViewRepresentable {
-    var material: NSVisualEffectView.Material = .underWindowBackground
+    var material: NSVisualEffectView.Material = .sidebar
+    /// false when the window draws its own eye.
+    var titleAccessory = true
 
     final class Anchor: NSView {
-        var material: NSVisualEffectView.Material = .underWindowBackground
+        var material: NSVisualEffectView.Material = .sidebar
+        var titleAccessory = true
         override func viewDidMoveToWindow() {
             super.viewDidMoveToWindow()
             guard let window else { return }
             MainActor.assumeIsolated {
                 WindowFrost.install(in: window, material: material, solid: .windowBackgroundColor)
                 // The small eye in the title bar: show this window to the class.
-                WindowShareController.attach(to: window, dark: false)
+                WindowShareController.attach(to: window, dark: false, accessory: titleAccessory)
             }
         }
     }
@@ -94,6 +98,7 @@ struct FrostedWindow: NSViewRepresentable {
     func makeNSView(context: Context) -> Anchor {
         let anchor = Anchor()
         anchor.material = material
+        anchor.titleAccessory = titleAccessory
         return anchor
     }
 

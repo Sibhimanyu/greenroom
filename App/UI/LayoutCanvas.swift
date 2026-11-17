@@ -32,6 +32,9 @@ struct LayoutDisplaySpace: Equatable {
     var name: String
     var size: CGSize
     var connected = true
+    /// Where the usable area sits in the whole display (the camera is placed on
+    /// the whole display). Nil: no menu bar or Dock to account for.
+    var cameraSpace: LayoutCameraSpace?
 
     var aspect: CGFloat { min(max(size.width / max(size.height, 1), 1.2), 3.0) }
 }
@@ -60,6 +63,25 @@ extension LayoutPieceLook {
     static func thumbnail(_ piece: LayoutPiece) -> LayoutPieceLook {
         LayoutPieceLook(name: "", icon: piece.kind.app.flatMap { LayoutIcons.icon($0.bundleID) }, symbol: "")
     }
+}
+
+/// The camera as the builder shows it: the one presence placement (the same
+/// numbers the floating bubble and Home's preview edit), drawn over the shared
+/// display. Not part of any template.
+struct LayoutCameraModel {
+    var box: PresenceBox
+    var shape: WebcamShape
+    /// "No camera" is chosen: drawn dimmed, still placeable.
+    var cameraOff = false
+    /// A drag step: the compositor only (no @Published write, no defaults).
+    var onStep: (PresenceBox) -> Void
+    /// The drag ended: persist once.
+    var onCommit: (PresenceBox) -> Void
+}
+
+extension LayoutCameraRules {
+    /// The camera picture's width over height after the shape's crop.
+    static func aspect(for shape: WebcamShape) -> Double { shape.cropsToSquare ? 1 : 16.0 / 9.0 }
 }
 
 /// What travels from a palette chip to a canvas when dragged.
@@ -115,6 +137,9 @@ struct LayoutCanvas: View {
     /// A built-in layout: the pieces are drawn but cannot be selected, moved,
     /// resized, removed or dropped onto.
     var locked = false
+    /// The camera overlay for this display (the shared one); nil on others.
+    /// Drawn above every piece, never saved with the template.
+    var camera: LayoutCameraModel?
 
     @State private var drag: DragState?
     @State private var dropTargeted = false
@@ -210,6 +235,8 @@ struct LayoutCanvas: View {
 
                 guides(canvas)
 
+                ForEach(pieces.filter(\.offersShareSwitch)) { piece in shareSwitch(piece, canvas: canvas) }
+
                 if !locked, let selected = pieces.first(where: { $0.id == selection }), !selected.isFixed {
                     ForEach(LayoutGeometry.Handle.allCases, id: \.self) { handle in
                         handleView(handle, piece: selected, canvas: canvas)
@@ -217,6 +244,8 @@ struct LayoutCanvas: View {
                 }
 
                 if let d = drag, d.moved { readout(d, canvas: canvas) }
+
+                if let camera { cameraOverlay(camera, canvas: canvas) }
 
                 // The canvas's own ring: armed for the keyboard, or a drop is coming.
                 if focused || dropTargeted {
@@ -350,6 +379,66 @@ struct LayoutCanvas: View {
                       y: min(max(box.minY + 16, 12), canvas.height - 12))
             .zIndex(5)
             .allowsHitTesting(false)
+    }
+
+    // MARK: Show to everyone
+
+    /// The quiet eye of the window title bars, in the tile's top-right corner:
+    /// faint when only you see the window, amber when everyone does. A sibling of
+    /// the tile (not inside it) so it answers its own click, not a tile drag.
+    @ViewBuilder
+    private func shareSwitch(_ piece: LayoutPiece, canvas: CGSize) -> some View {
+        let box = frame(of: liveRect(piece), canvas: canvas)
+        if box.width >= 56, box.height >= 40, !piece.isFixed {
+            let on = piece.showsToEveryone
+            Button {
+                if let i = pieces.firstIndex(where: { $0.id == piece.id }) { pieces[i].showsToEveryone.toggle() }
+            } label: {
+                Image(systemName: on ? "eye" : "eye.slash")
+                    .font(.system(size: 11))
+                    .foregroundStyle(on ? Brand.netText : Color.secondary.opacity(locked ? 0.35 : 0.6))
+                    .frame(width: 22, height: 22)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .disabled(locked)
+            .help(locked ? "Built-in layout. Duplicate to change."
+                         : (on ? "Everyone in the meeting sees this window" : "Only you see this window"))
+            .accessibilityLabel("Show to everyone")
+            .accessibilityValue(on ? "On. Everyone in the meeting sees this window" : "Off. Only you see this window")
+            .position(x: box.maxX - 17, y: box.minY + 15)
+            .zIndex(3)
+        }
+    }
+
+    // MARK: Camera
+
+    @ViewBuilder
+    private func cameraOverlay(_ camera: LayoutCameraModel, canvas: CGSize) -> some View {
+        if camera.shape == .presenterLarge {
+            presenterStandIn(camera, canvas: canvas)
+        } else {
+            PreviewCameraDragLayer(
+                box: camera.box, shape: camera.shape, aspect: LayoutCameraRules.aspect(for: camera.shape),
+                content: LayoutCameraRules.content(displayAspect: display.aspect),
+                space: display.cameraSpace,
+                onStep: camera.onStep, onCommit: camera.onCommit,
+                fill: { size in AnyView(CameraStandIn(shape: camera.shape, off: camera.cameraOff, size: size)) })
+                .frame(width: canvas.width, height: canvas.height)
+                .zIndex(6)
+        }
+    }
+
+    /// Presenter is the big, fixed placement (you stand left, the screen sits
+    /// right): shown, not draggable, and click-through so the tiles stay usable.
+    private func presenterStandIn(_ camera: LayoutCameraModel, canvas: CGSize) -> some View {
+        let h = canvas.height, w = min(h * 0.62, canvas.width * 0.3)
+        return CameraStandIn(shape: .presenterLarge, off: camera.cameraOff, size: CGSize(width: w, height: h))
+            .frame(width: w, height: h)
+            .position(x: canvas.width * 0.24, y: canvas.height / 2)
+            .allowsHitTesting(false)
+            .zIndex(6)
+            .accessibilityLabel("Your camera, Presenter look, fixed")
     }
 
     // MARK: Handles
@@ -877,9 +966,6 @@ struct MeetingViewDiagram: Shape {
             p.move(to: CGPoint(x: r.midX - r.height * 0.3, y: r.maxY - r.height * 0.14))
             p.addQuadCurve(to: CGPoint(x: r.midX + r.height * 0.3, y: r.maxY - r.height * 0.14),
                            control: CGPoint(x: r.midX, y: r.midY - r.height * 0.02))
-        case .mini:
-            box(0, 0, 1, 1)
-            box(0.64, 0.08, 0.28, 0.28)
         case .gallery:
             for row in 0..<2 { for col in 0..<3 {
                 box(CGFloat(col) * 0.35, CGFloat(row) * 0.55, 0.3, 0.45)
@@ -937,5 +1023,78 @@ struct MeetingViewDiagram: Shape {
             }
         }
         return p
+    }
+}
+
+
+// MARK: - The camera's stand-in
+
+/// What the camera looks like on the builder: the shape's own outline filled
+/// with a translucent plate so the tiles under it stay readable, a camera icon
+/// and "Your camera". A Cutout is a person standing on the bottom edge.
+private struct CameraStandIn: View {
+    let shape: WebcamShape
+    let off: Bool
+    let size: CGSize
+
+    var body: some View {
+        ZStack {
+            switch shape {
+            case .cutout, .presenterLarge:
+                RoundedRectangle(cornerRadius: 6).fill(Brand.green.opacity(0.10))
+                Image(systemName: "person.fill")
+                    .resizable().scaledToFit()
+                    .foregroundStyle(Brand.green.opacity(0.55))
+                    .padding(.top, size.height * 0.12)
+                    .padding(.horizontal, size.width * 0.12)
+                    .frame(maxHeight: .infinity, alignment: .bottom)
+                    .frame(maxWidth: .infinity)
+                label.padding(.top, 4).frame(maxHeight: .infinity, alignment: .top)
+            default:
+                plate
+                label
+            }
+        }
+        .opacity(off ? 0.5 : 1)
+        .overlay {
+            if shape == .cutout || shape == .presenterLarge {
+                RoundedRectangle(cornerRadius: 6)
+                    .strokeBorder(Brand.green.opacity(0.7), style: StrokeStyle(lineWidth: 1.2, dash: [4, 3]))
+            }
+        }
+        .frame(width: size.width, height: size.height)
+        .clipped()
+        .accessibilityHidden(true)
+    }
+
+    private var clip: AnyShape {
+        switch shape {
+        case .circle: return AnyShape(Circle())
+        case .roundedRectangle:
+            return AnyShape(RoundedRectangle(cornerRadius: min(size.width, size.height) * 0.18, style: .continuous))
+        default: return AnyShape(Rectangle())
+        }
+    }
+
+    private var plate: some View {
+        ZStack {
+            clip.fill(Color(nsColor: .windowBackgroundColor).opacity(0.7))
+            clip.fill(Color.black.opacity(0.10))
+            clip.stroke(Brand.green, lineWidth: 1.5)
+        }
+    }
+
+    private var label: some View {
+        let small = min(size.width, size.height) < 64
+        return VStack(spacing: 2) {
+            Image(systemName: off ? "video.slash.fill" : "video.fill")
+                .font(.system(size: small ? 11 : 15, weight: .medium))
+            if !small && size.width > 84 {
+                Text(off ? "Camera off" : "Your camera")
+                    .font(.system(size: 10, weight: .semibold))
+                    .lineLimit(1)
+            }
+        }
+        .foregroundStyle(.primary)
     }
 }

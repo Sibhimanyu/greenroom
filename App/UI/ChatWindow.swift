@@ -95,7 +95,7 @@ struct ChatWindowView: View {
 
     @ViewBuilder private var transcript: some View {
         if chat.messages.isEmpty {
-            Text("No messages yet. Say hello to the class.")
+            Text("No messages yet. Say hello to the meeting.")
                 .font(.system(size: 13))
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
@@ -426,7 +426,7 @@ private struct AttachmentView: View {
             : "\(attachment.sizeLabel) \u{2014} waiting for you to accept"
         case .receiving:   return "Downloading\u{2026} \(attachment.state.percent)%"
         case .sending:     return "Sending\u{2026} \(attachment.state.percent)%"
-        case .saved:       return "\(attachment.sizeLabel) \u{2014} saved with this class"
+        case .saved:       return "\(attachment.sizeLabel) \u{2014} saved with this meeting"
         case .sent:        return "\(attachment.sizeLabel) \u{2014} sent"
         case .failed(let why): return why
         }
@@ -438,6 +438,7 @@ private struct AttachmentView: View {
 @MainActor
 enum ChatWindowController {
     private static var window: NSWindow?
+    static var currentWindow: NSWindow? { window }
 
     /// `frame` (AppKit coordinates), if given, is where the layout's Chat piece
     /// goes - applied on every call, not just window creation, so it stays in
@@ -463,7 +464,7 @@ enum ChatWindowController {
             newWindow.collectionBehavior = [.moveToActiveSpace, .fullScreenAuxiliary]
             // Only you see the chat: a frosted background, opaque messages.
             WindowFrost.install(in: newWindow, solid: .windowBackgroundColor)
-            WindowShareController.attach(to: newWindow, dark: false)
+            WindowShareController.attach(to: newWindow, dark: false).set(LayoutShareChoice.chat)
             window = newWindow
             targetWindow = newWindow
         }

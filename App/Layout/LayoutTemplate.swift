@@ -114,26 +114,6 @@ enum MeetingView: String, Codable, CaseIterable, Hashable {
     case spotlight
     /// Raised hands in order, with the waiting room on top. No video.
     case handsUp
-    /// The Mini window: the small floating picture a collapsed meeting becomes.
-    /// It runs on the view-window runtime but is never offered to a layout, the
-    /// Views menu or the shortcut list, and never read back from a saved layout.
-    case mini
-
-    /// Every view a person can choose: all but the Mini window.
-    static var allCases: [MeetingView] {
-        [.activeSpeaker, .gallery, .multiSpeaker, .speakerStrip, .selfView, .people, .sharedScreen, .spotlight, .handsUp]
-    }
-
-    /// Saved layouts name a view by its raw value. The Mini window is not a
-    /// layout piece, so a layout that says "mini" is rejected rather than opened.
-    init(from decoder: Decoder) throws {
-        let raw = try decoder.singleValueContainer().decode(String.self)
-        guard let view = MeetingView(rawValue: raw), view != .mini else {
-            throw DecodingError.dataCorrupted(.init(codingPath: decoder.codingPath,
-                                                    debugDescription: "Not a layout view: \(raw)"))
-        }
-        self = view
-    }
 
     var title: String {
         switch self {
@@ -144,9 +124,8 @@ enum MeetingView: String, Codable, CaseIterable, Hashable {
         case .selfView: return "Self view"
         case .people: return "People list"
         case .sharedScreen: return "Shared screen"
-        case .spotlight: return "Spotlight student"
+        case .spotlight: return "Spotlight person"
         case .handsUp: return "Hands up"
-        case .mini: return "Mini window"
         }
     }
 
@@ -160,9 +139,8 @@ enum MeetingView: String, Codable, CaseIterable, Hashable {
         case .selfView: return "Your own picture"
         case .people: return "Participants, with actions"
         case .sharedScreen: return "Only the shared screen"
-        case .spotlight: return "One student you choose, large"
+        case .spotlight: return "One person you choose, large"
         case .handsUp: return "Raised hands and the waiting room"
-        case .mini: return "A small floating picture of whoever is talking"
         }
     }
 
@@ -181,7 +159,6 @@ enum MeetingView: String, Codable, CaseIterable, Hashable {
         case .sharedScreen: return "display"
         case .spotlight: return "person.fill.viewfinder"
         case .handsUp: return "hand.raised.fill"
-        case .mini: return "pip"
         }
     }
 
@@ -197,7 +174,6 @@ enum MeetingView: String, Codable, CaseIterable, Hashable {
         case .sharedScreen: return CGSize(width: 320, height: 200)
         case .spotlight: return CGSize(width: 240, height: 135)
         case .handsUp: return CGSize(width: 240, height: 200)
-        case .mini: return MeetingMiniPlan.minimum
         }
     }
 
@@ -213,7 +189,6 @@ enum MeetingView: String, Codable, CaseIterable, Hashable {
         case .sharedScreen: return (6, 4)
         case .spotlight: return (4, 3)
         case .handsUp: return (3, 5)
-        case .mini: return (3, 2)
         }
     }
 }
@@ -233,14 +208,29 @@ struct LayoutPiece: Codable, Identifiable, Equatable, Hashable {
     var id: UUID
     var kind: Kind
     var rect: UnitRect
+    /// "Show to everyone": Greenroom's own window for this piece (Meeting window,
+    /// Chat, a meeting view) is let into the picture the meeting sees. Off by
+    /// default; ignored for other apps' windows.
+    var showsToEveryone = false
 
-    init(id: UUID = UUID(), kind: Kind, rect: UnitRect) {
+    init(id: UUID = UUID(), kind: Kind, rect: UnitRect, showsToEveryone: Bool = false) {
         self.id = id
         self.kind = kind
         self.rect = rect
+        self.showsToEveryone = showsToEveryone
     }
 
-    private enum CodingKeys: String, CodingKey { case id, kind, rect }
+    /// Whether this piece is one of Greenroom's own windows that can carry the
+    /// switch (ShareableWindow.offersSwitch): the Meeting window, Chat, a view.
+    /// Other apps' windows and the Greenroom Browser never do.
+    var offersShareSwitch: Bool {
+        switch kind {
+        case .meeting, .chat, .view: return true
+        case .app: return false
+        }
+    }
+
+    private enum CodingKeys: String, CodingKey { case id, kind, rect, showsToEveryone }
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -248,7 +238,8 @@ struct LayoutPiece: Codable, Identifiable, Equatable, Hashable {
         let kind = try c.decode(Kind.self, forKey: .kind)
         self.init(id: (try? c.decodeIfPresent(UUID.self, forKey: .id)) ?? UUID(),
                   kind: kind,
-                  rect: (try? c.decodeIfPresent(UnitRect.self, forKey: .rect)) ?? .full)
+                  rect: (try? c.decodeIfPresent(UnitRect.self, forKey: .rect)) ?? .full,
+                  showsToEveryone: (try? c.decodeIfPresent(Bool.self, forKey: .showsToEveryone)) ?? false)
     }
 }
 
@@ -431,7 +422,6 @@ struct LayoutTemplate: Codable, Identifiable, Equatable {
             case .speakerStrip: return !hasMeeting && !views.contains(.activeSpeaker)
             case .activeSpeaker: return !views.contains(.speakerStrip)
             case .multiSpeaker, .selfView, .people, .sharedScreen, .spotlight, .handsUp: return true
-            case .mini: return false
             }
         case .chat: return !existing.contains { $0.kind.isChat }
         case let .app(app):

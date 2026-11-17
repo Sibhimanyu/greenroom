@@ -265,7 +265,7 @@ struct WebcamPageContent<LivePicture: View, ShareDetail: View, Cameras: View, Mi
         .frame(height: previewHeight)
         .help(isAdjustable ? "Drag yourself to move. Drag a corner to resize." : "")
         .accessibilityElement(children: .contain)
-        .accessibilityLabel("Preview of what the class sees")
+        .accessibilityLabel("Preview of what everyone sees")
     }
 
     /// Size and position as pictures: three sizes, and a screen to tap a

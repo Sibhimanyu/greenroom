@@ -52,7 +52,7 @@ final class UpdateGate: NSObject, SPUUpdaterDelegate {
         }
         guard live else { return }
         throw NSError(domain: "Greenroom", code: 30, userInfo: [
-            NSLocalizedDescriptionKey: "A class is running. Greenroom does not check for updates during a session \u{2014} the dialog would land on a shared screen."
+            NSLocalizedDescriptionKey: "A meeting is running. Greenroom does not check for updates during a session \u{2014} the dialog would land on a shared screen."
         ])
     }
 }

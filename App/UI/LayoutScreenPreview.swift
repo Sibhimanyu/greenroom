@@ -30,7 +30,8 @@ enum LayoutScreenPreview {
 
     /// Resolves a template's current variant against the connected displays.
     /// `look` names a piece (the page already knows how).
-    static func items(for template: LayoutTemplate, look: (LayoutPiece) -> LayoutPieceLook) -> [Item] {
+    static func items(for template: LayoutTemplate, camera: LayoutCameraModel? = nil,
+                      look: (LayoutPiece) -> LayoutPieceLook) -> [Item] {
         func resolve(_ pieces: [LayoutPiece], on screen: NSScreen) -> [Item] {
             pieces.map { piece in
                 let frame = LayoutGeometry.nsFrame(for: piece.rect, visibleFrame: screen.visibleFrame)
@@ -41,10 +42,26 @@ enum LayoutScreenPreview {
             }
         }
         guard let main = DisplayResolver.mainDisplayScreen() else { return [] }
+        let cameraItems = cameraItem(camera, on: main).map { [$0] } ?? []
         if let two = template.twoDisplays, let second = secondScreen(uuid: two.secondUUID) {
-            return resolve(two.main, on: main) + resolve(two.second, on: second)
+            return resolve(two.main, on: main) + resolve(two.second, on: second) + cameraItems
         }
-        return resolve(template.oneDisplay, on: main)
+        return resolve(template.oneDisplay, on: main) + cameraItems
+    }
+
+    /// The camera over the shared (main) display, where the floating bubble sits:
+    /// the presence geometry on the whole display, as the bubble uses. Not drawn
+    /// for the Presenter look, which has no placeable box.
+    static func cameraItem(_ camera: LayoutCameraModel?, on screen: NSScreen) -> Item? {
+        guard let camera, camera.shape != .presenterLarge else { return nil }
+        let frame = screen.frame
+        let aspect = LayoutCameraRules.aspect(for: camera.shape)
+        let geometry = LayoutCameraRules.geometry(frame: frame.size, displayAspect: frame.width / max(frame.height, 1))
+        let local = geometry.frame(for: camera.box, aspect: aspect)     // y up, display at the origin
+        let rect = local.offsetBy(dx: frame.minX, dy: frame.minY)
+        return Item(frame: rect, title: camera.cameraOff ? "Camera off" : "Your camera", detail: "",
+                    icon: NSImage(systemSymbolName: camera.cameraOff ? "video.slash.fill" : "video.fill",
+                                  accessibilityDescription: nil))
     }
 
     /// The saved display, else the first one that is not the main (the same rule
@@ -123,8 +140,10 @@ enum LayoutScreenPreview {
                     }
                     Text(item.title)
                         .font(.system(size: 20, weight: .semibold))
-                    Text(item.detail)
-                        .font(.system(size: 13, design: .monospaced))
+                    if !item.detail.isEmpty {
+                        Text(item.detail)
+                            .font(.system(size: 13, design: .monospaced))
+                    }
                 }
                 .foregroundStyle(.white)
                 .padding(.horizontal, 16)

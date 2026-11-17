@@ -55,13 +55,13 @@ struct SessionMomentsList: View {
 
     private var empty: some View {
         HStack(alignment: .firstTextBaseline, spacing: 6) {
-            Text("Nothing marked in this class.")
+            Text("Nothing marked in this meeting.")
                 .font(.callout)
                 .foregroundStyle(.secondary)
             Image(systemName: "info.circle")
                 .font(.system(size: 12))
                 .foregroundStyle(.tertiary)
-                .help("Use the clip shortcuts (Settings \u{2192} Shortcuts) during a class to mark the last 1, 2 or 5 minutes. Marks appear here afterwards. Notes you add below land wherever the picture is.")
+                .help("Use the clip shortcuts (Settings \u{2192} Shortcuts) during a meeting to mark the last 1, 2 or 5 minutes. Marks appear here afterwards. Notes you add below land wherever the picture is.")
             Spacer(minLength: 0)
         }
         .padding(.vertical, 8)

@@ -252,6 +252,6 @@ extension CoordinatorController {
             SessionMetadata.recordLink(in: folder, kind: card.kind.rawValue, title: card.title,
                                        url: card.url.absoluteString, action: "sent")
         }
-        ToastController.show("Sent to the class chat", detail: card.title)
+        ToastController.show("Sent to the meeting chat", detail: card.title)
     }
 }

@@ -210,6 +210,7 @@ final class LayoutEngine {
     /// itself.
     func placeMeetingAndChat(_ template: LayoutTemplate, hidden: Bool) {
         let r = resolve(template, logNotes: true)
+        LayoutShareChoice.record(r)      // "Show to everyone" per piece, before the windows open
         let frames = LayoutResolver.frames(of: r, meetingHidden: hidden)
         if let piece = r.chat, let frame = frames[piece.piece.id]?.ns {
             if ChatWindowController.isOpen { ChatWindowController.setFrame(frame) }

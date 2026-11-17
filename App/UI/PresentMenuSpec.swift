@@ -64,7 +64,7 @@ enum PresentMenu {
     static let noCameraNote = "No camera is picked, so there would be nothing to show."
 
     static func entries(_ s: State, _ a: Actions) -> [MenuEntry] {
-        var out: [MenuEntry] = [.header("What the class sees")]
+        var out: [MenuEntry] = [.header("What everyone sees")]
 
         // Whole screen: a submenu of displays only when there is a choice to make.
         let onScreen = s.kind == .display

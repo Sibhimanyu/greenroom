@@ -83,13 +83,13 @@ struct BarLabelledButton: View {
 struct BarPresentButton: View {
     var width: CGFloat = MeetingBarLayout.present
     var entries: () -> [MenuEntry]
-    static let help = "What the class sees, your look and the layout"
+    static let help = "What everyone sees, your look and the layout"
 
     var body: some View {
         BarIconButton(symbol: "rectangle.on.rectangle", width: width,
-                      help: Self.help, spoken: "Share. What the class sees, your look and the layout",
+                      help: Self.help, spoken: "Share. What everyone sees, your look and the layout",
                       action: {})
-            .overlay { MenuPopUpOverlay(label: "Share. What the class sees, your look and the layout", entries: entries) }
+            .overlay { MenuPopUpOverlay(label: "Share. What everyone sees, your look and the layout", entries: entries) }
             .help(Self.help)
     }
 }
@@ -186,9 +186,9 @@ struct BarIconButton: View {
 struct MeetingBarActions {
     var toggleMute: () -> Void = {}
     var toggleCamera: () -> Void = {}
+    /// Hide or show the floating camera bubble on your own screen.
+    var toggleBubble: () -> Void = {}
     var meeting: () -> Void = {}
-    /// The chevron beside Meeting: the Meeting window or the Mini, by name.
-    var meetingMenu: () -> [MenuEntry] = { [] }
     var toggleChat: () -> Void = {}
     /// The people count: opens the Participants list in a small window beside the bar.
     var people: () -> Void = {}
@@ -231,6 +231,7 @@ struct MeetingBarContent: View {
             BarDivider()
             micButton
             cameraButton
+            bubbleButton
             BarDivider()
             recordCell
             BarDivider()
@@ -257,30 +258,19 @@ struct MeetingBarContent: View {
 
     // MARK: Cells
 
-    /// Brings the Meeting window straight back, as Zoom's "exit minimised" does;
-    /// Option-click, the Mini. The chevron beside it names both sizes.
+    /// Brings the Meeting window straight back, as Zoom's "exit minimised" does.
     private var meetingButton: some View {
-        HStack(spacing: 0) {
-            BarLabelledButton(symbol: "arrow.up.left.and.arrow.down.right", title: "Meeting", width: L.meetingButton,
-                              filled: true,
-                              help: help("Open the Meeting window. Option-click opens the Mini window", .shrinkMeeting),
-                              spoken: "Open the Meeting window. Option-click opens the Mini window", action: a.meeting)
-            Image(systemName: "chevron.down")
-                .font(.system(size: 9, weight: .bold))
-                .foregroundStyle(.secondary)
-                .frame(width: L.meetingMenu, height: 28)
-                .contentShape(Rectangle())
-                .overlay { MenuPopUpOverlay(label: "Meeting size", entries: a.meetingMenu) }
-                .help("Choose the Meeting window or the Mini window")
-                .accessibilityLabel("Meeting size")
-        }
+        BarLabelledButton(symbol: "arrow.up.left.and.arrow.down.right", title: "Meeting", width: L.meeting,
+                          filled: true,
+                          help: help("Open the Meeting window", .shrinkMeeting),
+                          spoken: "Open the Meeting window", action: a.meeting)
     }
 
     private var micButton: some View {
         let name = s.muted ? "Unmute" : "Mute"
         return BarIconButton(symbol: s.muted ? "mic.slash.fill" : "mic.fill",
                              tint: s.muted ? .red : .primary,
-                             help: help(s.muted ? "Unmute: the class hears you again" : "Mute your microphone", .toggleMic),
+                             help: help(s.muted ? "Unmute: everyone hears you again" : "Mute your microphone", .toggleMic),
                              spoken: name, action: a.toggleMute)
             .disabled(!s.inMeeting)
     }
@@ -292,6 +282,18 @@ struct MeetingBarContent: View {
                              help: help(s.cameraOn ? "Turn your camera off" : "Turn your camera on", .toggleCamera),
                              spoken: name, action: a.toggleCamera)
             .disabled(!s.inMeeting)
+    }
+
+    /// Hides the camera bubble on your own screen. It can only exist with the
+    /// camera on, so with the camera off its cell stays (the bar never changes
+    /// width) but is empty and out of the accessibility tree.
+    private var bubbleButton: some View {
+        let cell = MeetingBarModel.bubbleCell(hidden: s.bubbleHidden)
+        return BarIconButton(symbol: cell.symbol, on: cell.on, help: cell.help, spoken: cell.spoken,
+                             action: a.toggleBubble)
+            .opacity(s.cameraOn ? 1 : 0)
+            .allowsHitTesting(s.cameraOn)
+            .accessibilityHidden(!s.cameraOn)
     }
 
     /// The REC pill, and beside it Pause while a recording runs. Not recording,
@@ -413,7 +415,7 @@ struct MeetingBarContent: View {
         return BarIconButton(
             symbol: "pencil.and.scribble", width: L.draw, on: s.drawing,
             help: help(s.drawing ? "Close the drawing tools"
-                                 : "Draw on the screen you share (marks show to the class and in the recording)",
+                                 : "Draw on the screen you share (marks show to the meeting and in the recording)",
                        .toggleDrawing),
             spoken: name, action: a.toggleDraw)
             .disabled(!s.canDraw && !s.drawing)

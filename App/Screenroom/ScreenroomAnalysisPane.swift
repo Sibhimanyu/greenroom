@@ -115,7 +115,7 @@ struct ScreenroomAnalysisPane: View {
             VStack(spacing: 6) {
                 Text("Not analysed yet")
                     .font(.title3.weight(.medium))
-                Text("Transcribes the recording on this Mac, counts pace and filler words, compares the marking against the group, and writes the report. It works on a class as well as a presentation.")
+                Text("Transcribes the recording on this Mac, counts pace and filler words, compares the marking against the group, and writes the report. It works on a meeting as well as a presentation.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)

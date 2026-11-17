@@ -55,4 +55,10 @@ final class SidebarRulesTests: XCTestCase {
     func testCommandBIsReservedFromGlobalHotkeys() {
         XCTAssertNotNil(ReservedShortcuts.reason(for: KeyCombo(keyCode: 11, modifiers: KeyCombo.command)))
     }
+
+    func testHomeMinimumHoldsTheToolbar() {
+        XCTAssertEqual(HomeToolbarRules.need, 616)
+        XCTAssertEqual(HomeToolbarRules.minWindowWidth, 664)
+        XCTAssertGreaterThanOrEqual(HomeToolbarRules.minWindowWidth, HomeToolbarRules.need + HomeToolbarRules.safety)
+    }
 }

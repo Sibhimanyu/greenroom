@@ -43,5 +43,5 @@ extension View {
 #Preview("Page chrome") {
     Text("A page")
         .frame(width: 420, height: 200)
-        .pageToolbar(back: PageBack(label: "Sessions", action: {}), subtitle: "Monday class")
+        .pageToolbar(back: PageBack(label: "Sessions", action: {}), subtitle: "Monday meeting")
 }

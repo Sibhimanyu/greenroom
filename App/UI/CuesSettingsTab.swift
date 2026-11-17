@@ -56,7 +56,7 @@ struct CuesSettingsTab: View {
 struct CuesUnavailableText: View {
     var body: some View {
         StatusBadge(text: "Cues needs macOS 26", tone: .waiting)
-            .help("Cues listens to your microphone during a class and suggests links for what you mention, using Apple\u{2019}s on-device models. Everything else in Greenroom works as before.")
+            .help("Cues listens to your microphone during a meeting and suggests links for what you mention, using Apple\u{2019}s on-device models. Everything else in Greenroom works as before.")
     }
 }
 
@@ -187,7 +187,7 @@ struct CuesSetupContent<WhisperSetup: View, WhisperModel: View>: View {
             Toggle(isOn: $enabled.animatedCollapse()) {
                 Text("Suggest links while I teach")
             }
-            .help("Listens during classes and offers cards for the tools, words, quotes, books, videos, topics and people you name. Off by default.")
+            .help("Listens during meetings and offers cards for the tools, words, quotes, books, videos, topics and people you name. Off by default.")
         } header: { if !compact { Text("Cues") } }
         // On the section, not on a zero-height Color.clear.
         //
@@ -243,7 +243,7 @@ struct CuesSetupContent<WhisperSetup: View, WhisperModel: View>: View {
                 } label: {
                     Label("Speech model", systemImage: "cpu")
                 }
-                .help("Apple\u{2019}s, downloaded once through the system\u{2019}s asset service. Never during a class.")
+                .help("Apple\u{2019}s, downloaded once through the system\u{2019}s asset service. Never during a meeting.")
             }
             HStack(spacing: 8) {
                 ChoiceTile(title: "Named things", selected: !findsEverything, badge: nil) {
@@ -283,7 +283,7 @@ struct CuesSetupContent<WhisperSetup: View, WhisperModel: View>: View {
             Toggle(isOn: $saveTranscript) {
                 Label("Save the transcript", systemImage: "doc.text")
             }
-            .help("transcript.txt for what was said and cues.txt for what was suggested, in the class folder beside the recording. Off keeps both in memory only.")
+            .help("transcript.txt for what was said and cues.txt for what was suggested, in the meeting folder beside the recording. Off keeps both in memory only.")
 
             Toggle(isOn: $videoSearch) {
                 HStack(spacing: 6) {
@@ -299,7 +299,7 @@ struct CuesSetupContent<WhisperSetup: View, WhisperModel: View>: View {
                 }
             }
             .help(youtubeConnected
-                  ? "Top result on your connected Google account, up to 20 a class."
+                  ? "Top result on your connected Google account, up to 20 a meeting."
                   : "No Google account connected \u{2014} video cards are search links until then.")
         } header: { if !compact { Text("More") } }
         }
@@ -332,7 +332,7 @@ struct CuesSetupContent<WhisperSetup: View, WhisperModel: View>: View {
     private var downloadButton: some View {
         Button("Download\u{2026}") { download() }
             .disabled(inClass)
-            .help(inClass ? "Not during a class." : "From Apple, once, through the system\u{2019}s asset service.")
+            .help(inClass ? "Not during a meeting." : "From Apple, once, through the system\u{2019}s asset service.")
     }
 }
 
@@ -421,7 +421,7 @@ struct CuesTryItContent: View {
                     Label("Two minutes, real cards", systemImage: "timer")
                 }
             }
-            .help("Listens for two minutes and shows the cards it would put up in a class. Lookups are real.")
+            .help("Listens for two minutes and shows the cards it would put up in a meeting. Lookups are real.")
 
             if isListening || !heard.isEmpty {
                 CuesHeardText(text: heard, listening: isListening)
@@ -499,7 +499,7 @@ private struct CuesPicture: View {
                 .padding(10)
         }
         .padding(.vertical, 4)
-        .help("Only the short search phrase leaves the Mac \u{2014} to Google Books, Open Library, Wikipedia and, if allowed, YouTube \u{2014} and each one is written to the status log. The audio, the transcript and the names of people in the meeting never leave this Mac; the transcript is saved into the class folder unless you turn that off under More.")
+        .help("Only the short search phrase leaves the Mac \u{2014} to Google Books, Open Library, Wikipedia and, if allowed, YouTube \u{2014} and each one is written to the status log. The audio, the transcript and the names of people in the meeting never leave this Mac; the transcript is saved into the meeting folder unless you turn that off under More.")
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Cues turns what you say into link cards. Audio stays on this Mac; only the search phrase is sent.")
     }
@@ -724,7 +724,7 @@ struct CuesWorkbench: View {
             }
             Toggle(isOn: $asSpeech) {
                 SettingLabel(title: "Typed text arrives as speech",
-                             subtitle: "A word at a time, then the sentence, so detection starts when it would in a class.")
+                             subtitle: "A word at a time, then the sentence, so detection starts when it would in a meeting.")
             }
             if asSpeech {
                 LabeledContent {
@@ -737,7 +737,7 @@ struct CuesWorkbench: View {
             }
 
             HStack {
-                TextField("What a teacher might say", text: $text)
+                TextField("What someone might say", text: $text)
                     .labelsHidden()
                     .onSubmit(say)
                 Button("Say it", action: say)
@@ -751,7 +751,7 @@ struct CuesWorkbench: View {
             if !bench.cards.isEmpty || bench.isListening {
                 HStack(alignment: .top, spacing: 20) {
                     VStack(alignment: .leading, spacing: 6) {
-                        Text("WHAT THE CLASS DISPLAY SHOWS")
+                        Text("WHAT THE DISPLAY SHOWS")
                             .font(.system(size: 10, weight: .semibold, design: .monospaced))
                             .foregroundStyle(.secondary)
                         CuesRailPreview(state: surfaceState)
@@ -767,7 +767,7 @@ struct CuesWorkbench: View {
         } header: {
             Text("Debug \u{00B7} Cues workbench")
         } footer: {
-            Text("Debug builds only. Lookups are real and are sent, exactly as in a class.")
+            Text("Debug builds only. Lookups are real and are sent, exactly as in a meeting.")
         }
         .onAppear {
             bench.tracing = true

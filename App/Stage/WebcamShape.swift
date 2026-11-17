@@ -71,6 +71,9 @@ final class ShapePreviewFeed: ObservableObject {
     /// Opaque where no camera drew, for drawing under the cameras (Home's
     /// layout outlines); nil when no camera covers shared content.
     @Published var openMask: NSImage?
+    /// Where the shared screen or window is drawn in the canvas (canvas px,
+    /// top-left origin); nil when none is. Home's card crops to it.
+    @Published var contentRect: CGRect?
 }
 
 /// How Cutout and Presenter take your background away.

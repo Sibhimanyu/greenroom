@@ -86,7 +86,7 @@ enum SessionSummary {
         switch SystemLanguageModel.default.availability {
         case .available: return nil
         case .unavailable(.appleIntelligenceNotEnabled):
-            return "Turn on Apple Intelligence in System Settings to summarise a class on this Mac."
+            return "Turn on Apple Intelligence in System Settings to summarise a meeting on this Mac."
         case .unavailable(.modelNotReady):
             return "Apple's language model is still downloading. Try again shortly."
         case .unavailable(.deviceNotEligible):
@@ -299,7 +299,7 @@ enum SessionSummary {
             case .exceededContextWindowSize:
                 return .tooLong
             case .guardrailViolation, .refusal:
-                return .failed("Apple's model declined to summarise this class.")
+                return .failed("Apple's model declined to summarise this meeting.")
             default:
                 return .failed("The summary failed: \(error.localizedDescription)")
             }
@@ -321,13 +321,13 @@ enum SessionSummary {
         #if canImport(FoundationModels)
         let spoken = lines(in: folder)
         guard !spoken.isEmpty else {
-            return .problem("Nothing was transcribed for this class, so there is nothing to summarise.")
+            return .problem("Nothing was transcribed for this meeting, so there is nothing to summarise.")
         }
         // A few words is not a lesson. Given one, the model writes a lesson
         // anyway; the instructions tell it not to and it does not listen.
         let wordCount = spoken.reduce(0) { $0 + $1.text.split(separator: " ").count }
         guard wordCount >= minimumWords else {
-            return .problem("Only \(wordCount) word\(wordCount == 1 ? " was" : "s were") heard in this class, which is too little to summarise.")
+            return .problem("Only \(wordCount) word\(wordCount == 1 ? " was" : "s were") heard in this meeting, which is too little to summarise.")
         }
 
         var budget = chunkBudget
@@ -340,7 +340,7 @@ enum SessionSummary {
             // A short class is one pass, which is both faster and better than
             // map-reduce: nothing gets summarised twice.
             if parts.count == 1 {
-                progress("Reading the class\u{2026}")
+                progress("Reading the meeting\u{2026}")
                 switch await ask(instructions, "Transcript:\n\(render(spoken))", limit: 700) {
                 case .ok(let text):   return finish(text, in: folder)
                 case .failed(let m):  return .problem(m)
@@ -366,7 +366,7 @@ enum SessionSummary {
             }
             if overflowed { budget /= 2; continue }
             guard !notes.isEmpty else {
-                return .problem("This class transcribed too thinly to summarise.")
+                return .problem("This meeting transcribed too thinly to summarise.")
             }
 
             // Reduce: notes into one account, folding repeatedly if the notes
@@ -382,7 +382,7 @@ enum SessionSummary {
                     return .problem(m)
                 case .tooLong:
                     rounds += 1
-                    guard rounds <= 3 else { return .problem("This class is too long to summarise on this Mac.") }
+                    guard rounds <= 3 else { return .problem("This meeting is too long to summarise on this Mac.") }
                     progress("Condensing the notes\u{2026}")
                     // Fold the notes in halves until they fit.
                     let folded = chunk(joined.split(separator: "\n").map { Line(stamp: "", text: String($0)) },
@@ -394,15 +394,15 @@ enum SessionSummary {
                                          limit: 300) {
                         case .ok(let text): if !text.isEmpty { next.append(text) }
                         case .failed(let m): return .problem(m)
-                        case .tooLong: return .problem("This class is too long to summarise on this Mac.")
+                        case .tooLong: return .problem("This meeting is too long to summarise on this Mac.")
                         }
                     }
-                    guard !next.isEmpty else { return .problem("This class is too long to summarise on this Mac.") }
+                    guard !next.isEmpty else { return .problem("This meeting is too long to summarise on this Mac.") }
                     joined = next.joined(separator: "\n")
                 }
             }
         }
-        return .problem("This class is too long to summarise on this Mac.")
+        return .problem("This meeting is too long to summarise on this Mac.")
         #else
         return .problem("Summaries need macOS 26.")
         #endif

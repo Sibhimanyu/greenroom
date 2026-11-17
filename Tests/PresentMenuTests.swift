@@ -25,7 +25,7 @@ final class PresentMenuTests: XCTestCase {
 
     func testOrderIsWhatTheClassSeesThenLookThenLayout() {
         let titles = menu(state()).filter { $0.kind != .separator }.map(\.title)
-        XCTAssertEqual(titles, ["What the class sees", "Whole screen", "One window",
+        XCTAssertEqual(titles, ["What everyone sees", "Whole screen", "One window",
                                 "Whiteboard", "Just my camera", "Look", "Layout"])
         XCTAssertEqual(menu(state()).first?.kind, .header)
     }

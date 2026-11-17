@@ -282,7 +282,7 @@ struct MeetingToolbarBar: View {
                          actions.toggleRecording)
         case .draw:
             return .item(state.drawing ? "Close Drawing Tools" : "Draw on the Screen",
-                         enabled: state.canDraw || state.drawing, checked: state.drawing, actions.toggleDraw)
+                         checked: state.drawing, enabled: state.canDraw || state.drawing, actions.toggleDraw)
         case .notes: return .item("Notes", checked: state.notesOn, actions.toggleNotes)
         }
     }

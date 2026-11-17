@@ -23,6 +23,9 @@ extension View {
     func pageToolbar(back: PageBack?, subtitle: String) -> some View {
         self
             .navigationSubtitle(subtitle)
+            // The title bar shows the window's frost too, rather than a band of
+            // its own opaque material over it (owner, 2026-11-16).
+            .toolbarBackground(.hidden, for: .windowToolbar)
             .toolbar {
                 if let back {
                     ToolbarItem(placement: .navigation) {

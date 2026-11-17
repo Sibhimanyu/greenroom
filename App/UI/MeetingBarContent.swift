@@ -218,8 +218,14 @@ struct MeetingBarContent: View {
 
     var body: some View {
         HStack(spacing: L.spacing) {
+            // Grouped by what each control is about (owner, 2026-11-17):
+            // the meeting's windows (smaller, bigger, which views) | you
+            // (mic, camera) | the recording | teaching (share, draw, your
+            // notes) | the class (chat, people) | End.
             grip
+            collapseButton
             if s.videoButtons { meetingButton }
+            if s.videoButtons { viewsButton }
             BarDivider()
             micButton
             cameraButton
@@ -228,12 +234,10 @@ struct MeetingBarContent: View {
             BarDivider()
             BarPresentButton(entries: a.presentMenu)
             drawButton
+            notesButton
             BarDivider()
             chatButton
             peopleCount
-            notesButton
-            if s.videoButtons { viewsButton }
-            collapseButton
             BarDivider()
             BarRedButton(title: "End", width: L.end,
                          help: MeetingBarModel.help(s.endName, .endSession, bindings),

@@ -206,8 +206,8 @@ enum MeetingBarModel {
 // MARK: - Width
 
 /// The bar's size, from its cells, so the panel and the content cannot disagree.
-/// Left to right: grip, Meeting, | mic, camera, | REC pill and pause, | Share,
-/// Draw, | chat, people, Notes, Views, Collapse, | End. Share opens the Present menu: what the
+/// Left to right: grip, Collapse, Meeting, Views, | mic, camera, | REC pill and
+/// pause, | Share, Draw, Notes, | chat, people, | End. Share opens the Present menu: what the
 /// class sees, your look, the layout.
 enum MeetingBarLayout {
     static let height: CGFloat = 44
@@ -239,12 +239,10 @@ enum MeetingBarLayout {
     /// exist), Collapse: three icons where the \u{22EF} menu was. The Views slot
     /// follows `videoButtons`, so the panel's width has one switch, not two.
     static func cells(videoButtons: Bool) -> [CGFloat] {
-        var out: [CGFloat] = [grip]
-        if videoButtons { out.append(meeting) }
-        out += [divider, icon, icon, divider, recCell, divider, present, draw, divider,
-                icon, people, icon]
-        if videoButtons { out.append(icon) }
-        out += [icon, divider, end]
+        var out: [CGFloat] = [grip, icon]
+        if videoButtons { out += [meeting, icon] }
+        out += [divider, icon, icon, divider, recCell, divider, present, draw, icon, divider,
+                icon, people, divider, end]
         return out
     }
 

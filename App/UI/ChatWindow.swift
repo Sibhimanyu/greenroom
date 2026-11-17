@@ -462,7 +462,7 @@ enum ChatWindowController {
             // another desktop instead (owner, 2026-11-16).
             newWindow.collectionBehavior = [.moveToActiveSpace, .fullScreenAuxiliary]
             // Only you see the chat: a frosted background, opaque messages.
-            WindowFrost.install(in: newWindow, material: .underWindowBackground, solid: .windowBackgroundColor)
+            WindowFrost.install(in: newWindow, solid: .windowBackgroundColor)
             window = newWindow
             targetWindow = newWindow
         }

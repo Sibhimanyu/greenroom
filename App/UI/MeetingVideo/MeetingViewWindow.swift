@@ -122,7 +122,7 @@ final class MeetingViewWindowController: NSObject, NSWindowDelegate {
         } else {
             addTitleControls()
         }
-        WindowFrost.install(in: panel, material: .hudWindow, solid: MeetingTheme.windowNS)
+        WindowFrost.install(in: panel, solid: MeetingTheme.windowNS)
     }
 
     func windowWillClose(_ notification: Notification) {

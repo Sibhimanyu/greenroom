@@ -14,6 +14,11 @@ import AppKit
 
 @MainActor
 enum WindowFrost {
+    /// One frost for every window only you see, so they all read alike
+    /// (owner, 2026-11-16: "a uniform transparency"). The meeting windows are
+    /// dark appearance, so the same material draws dark there.
+    static let material: NSVisualEffectView.Material = .underWindowBackground
+
     private static let frostID = NSUserInterfaceItemIdentifier("greenroom.window.frost")
     private static let solidID = NSUserInterfaceItemIdentifier("greenroom.window.solid")
 
@@ -21,12 +26,14 @@ enum WindowFrost {
     /// above it that is invisible until `show(.solid)`. The window's own
     /// background goes clear, so the content views must not paint a full
     /// background of their own.
-    static func install(in window: NSWindow, material: NSVisualEffectView.Material, solid: NSColor,
+    static func install(in window: NSWindow, material: NSVisualEffectView.Material = WindowFrost.material, solid: NSColor,
                         backdrop: WindowBackdrop = .frosted) {
         guard let frame = window.contentView?.superview,
               frame.subviews.first(where: { $0.identifier == frostID }) == nil else { return }
         window.isOpaque = false
         window.backgroundColor = .clear
+        // The title bar is part of the frosted background, not a band on top.
+        window.titlebarAppearsTransparent = true
         let frost = NSVisualEffectView(frame: frame.bounds)
         frost.identifier = frostID
         frost.material = material

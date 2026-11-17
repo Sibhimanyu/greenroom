@@ -36,7 +36,7 @@ enum PeoplePopOutController {
             made.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
             made.setFrame(frame(near: anchor, size: made.frame.size), display: false)
             // Only you see this window: a dark frost behind, opaque rows on top.
-            WindowFrost.install(in: made, material: .hudWindow, solid: MeetingTheme.windowNS)
+            WindowFrost.install(in: made, solid: MeetingTheme.windowNS)
             window = made
             view = people
         }

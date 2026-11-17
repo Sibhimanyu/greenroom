@@ -373,7 +373,7 @@ enum ParticipantGridWindowController {
             // Only you see the Meeting window: its background is a dark frost,
             // the faces, text and controls on it stay opaque.
             if form.isMeeting {
-                WindowFrost.install(in: hosting, material: .hudWindow, solid: MeetingTheme.windowNS)
+                WindowFrost.install(in: hosting, solid: MeetingTheme.windowNS)
             }
             panel = hosting
             root = view

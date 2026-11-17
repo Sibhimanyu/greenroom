@@ -64,8 +64,8 @@ targets:
         PRODUCT_NAME: Greenroom
         PRODUCT_BUNDLE_IDENTIFIER: com.sibhimanyu.greenroom
         # Bump alongside each GitHub release tag (vX.Y.Z).
-        MARKETING_VERSION: "1.5.0"
-        CURRENT_PROJECT_VERSION: "38"
+        MARKETING_VERSION: "1.6.0"
+        CURRENT_PROJECT_VERSION: "39"
         GENERATE_INFOPLIST_FILE: YES
         INFOPLIST_FILE: App/Info.plist
         # Brand mark (App/Assets.xcassets) - regenerate the PNGs with the
@@ -333,9 +333,9 @@ targets:
       - path: App/UI/OnboardingPlacement.swift
       - path: App/UI/MeetingBarModel.swift
       - path: App/UI/PresentMenuSpec.swift
-      - path: App/Zoom/NewMeetingRequest.swift
       - path: App/UI/PreviewOutlineRules.swift
       - path: App/UI/ChatGrouping.swift
+      - path: App/Zoom/NewMeetingRequest.swift
       - path: App/Zoom/ZoomScopes.swift
       - path: App/Zoom/ZoomServerToServerClient.swift
     settings:

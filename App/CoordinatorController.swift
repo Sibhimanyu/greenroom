@@ -2707,6 +2707,8 @@ final class CoordinatorController: ObservableObject {
     @Published private(set) var exitAskDetail = ""
     private var exitAskTimer: Task<Void, Never>?
     private var exitAskMonitors: [Any] = []
+    /// Which arming a click belongs to, so a late check never disarms a newer one.
+    private var exitArmSerial = 0
 
     private func armExit(_ ask: ExitAsk, title: String, detail: String) {
         disarmExit()
@@ -2730,6 +2732,30 @@ final class CoordinatorController: ObservableObject {
                guard event.keyCode == 53 else { return }
                MainActor.assumeIsolated { self?.disarmExit() }
            }) { exitAskMonitors.append(global) }
+
+        // A click anywhere but Confirm puts End back (owner, 2026-11-17). In
+        // another app: at once. In Greenroom: checked just after the click is
+        // handled, so pressing Confirm (which answers and disarms first) is
+        // never mistaken for a click elsewhere. AppKit buttons swallow their
+        // mouse-up while tracking, hence the mouse-down check as well.
+        exitArmSerial += 1
+        let serial = exitArmSerial
+        let disarmIfStill: @MainActor () -> Void = { [weak self] in
+            guard let self, self.exitAsk != nil, self.exitArmSerial == serial else { return }
+            self.disarmExit()
+        }
+        if let local = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown, .leftMouseUp], handler: { event in
+            if event.type == .leftMouseUp {
+                // A beat later: SwiftUI may run a button's action after the event.
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { MainActor.assumeIsolated { disarmIfStill() } }
+            } else {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { MainActor.assumeIsolated { disarmIfStill() } }
+            }
+            return event
+        }) { exitAskMonitors.append(local) }
+        if let global = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown], handler: { _ in
+            MainActor.assumeIsolated { disarmIfStill() }
+        }) { exitAskMonitors.append(global) }
     }
 
     /// Takes the question away: answered, timed out, Esc, or ended some other way.

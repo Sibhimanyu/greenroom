@@ -3,8 +3,8 @@
 //  Greenroom
 //
 //  One-time setup, kept out of the working flow. It is no longer a Settings
-//  tab: AnalysisSetupPanel shows it at the first press of Analyse, and the
-//  "How to analyse" link beside Analyse reopens it.
+//  tab: the Ready popover shows it inline at the first Start, and the
+//  popover's Change link opens AnalysisSetupPanel.
 //
 //  Everything here used to sit beside the report, which made a six-decision
 //  form out of a one-button job: which transcriber, whether to prepare, agent

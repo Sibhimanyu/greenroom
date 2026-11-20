@@ -7,9 +7,8 @@
 //
 //  Whisper (does this Mac hear properly, and which model) and who writes the
 //  feedback (this Mac, or an agent you already run) are decisions about this
-//  Mac, made once. They are asked at the first press of Analyse, because that
-//  is the first moment they mean anything, and are one small control away
-//  after that. Nothing here is a new setting: every key keeps its name and
+//  Mac, made once. The Ready popover shows them inline the first time and as
+//  a summary with a Change link after that; this panel is where Change goes. Nothing here is a new setting: every key keeps its name and
 //  value, so a choice made on the old Settings tab is already in place.
 //
 //  The body is ScreenroomPageContent, the same picture and tiles the old tab
@@ -27,20 +26,16 @@ enum AnalysisSetup {
 }
 
 struct AnalysisSetupPanel: View {
-    /// First time: the button runs the analysis. After that the panel is a
-    /// place to change a choice, and the button just closes it.
-    let runsOnConfirm: Bool
-    let confirm: () -> Void
-    let cancel: () -> Void
+    /// A place to change a choice; Done closes it. It never runs anything:
+    /// Start lives in the Ready popover.
+    let done: () -> Void
 
     var body: some View {
         VStack(spacing: 0) {
             VStack(alignment: .leading, spacing: 4) {
                 Text("How to get feedback")
                     .font(.title3.weight(.semibold))
-                Text(runsOnConfirm
-                     ? "Asked once. You can change it later from the link next to Get feedback."
-                     : "Applies to the next feedback. Feedback already written does not change.")
+                Text("Applies to the next feedback. Feedback already written does not change.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
             }
@@ -54,11 +49,7 @@ struct AnalysisSetupPanel: View {
             Divider()
             HStack {
                 Spacer()
-                Button("Cancel", action: cancel)
-                    .keyboardShortcut(.cancelAction)
-                    .opacity(runsOnConfirm ? 1 : 0)
-                    .disabled(!runsOnConfirm)
-                Button(runsOnConfirm ? "Get feedback" : "Done", action: confirm)
+                Button("Done", action: done)
                     .keyboardShortcut(.defaultAction)
                     .buttonStyle(.borderedProminent)
             }

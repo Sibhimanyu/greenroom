@@ -67,6 +67,56 @@ enum ScreenroomRunRules {
         transcriptOutputs.allSatisfy(existing.contains)
     }
 
+    // MARK: The Ready popover
+
+    /// One line of the Ready list: the step, and whether the folder already
+    /// holds its output so the run will skip it.
+    struct PlanRow: Equatable, Identifiable {
+        var step: ScreenroomRunStep
+        var reused: Bool
+        var id: String { step.id }
+    }
+
+    /// The list the Ready popover shows for THIS folder, in order. A full run
+    /// over a folder with a finished transcription still lists "Transcribing"
+    /// but marks it reused, so the person sees why the run is shorter. A
+    /// Transcribe-only run is its one step, never marked reused (it exists to
+    /// make a transcript).
+    static func plan(transcribeOnly: Bool, hasRecording: Bool, whisper: Bool, agent: Bool,
+                     existing: Set<String>) -> [PlanRow] {
+        if transcribeOnly {
+            return transcribeOnlySteps(whisper: whisper).map { PlanRow(step: $0, reused: false) }
+        }
+        let reuse = hasRecording && canReuseTranscript(existing: existing)
+        let running = steps(hasRecording: hasRecording, whisper: whisper, agent: agent)
+        return running.map { PlanRow(step: $0, reused: reuse && $0.kind == .transcribe) }
+    }
+
+    /// What the one popover shows: Ready until a run exists, then the
+    /// progress. Closing the popover never changes this; only the run does.
+    enum PopoverState: Equatable { case ready, running }
+
+    static func popoverState(isAnalysing: Bool) -> PopoverState { isAnalysing ? .running : .ready }
+
+    /// The first time the choices are shown in full, inline; after the first
+    /// Start they fold to a two-line summary and a Change link.
+    static func showsChoicesInline(setupSeen: Bool) -> Bool { !setupSeen }
+
+    /// Who writes the report, as a short phrase: the agent by name, else
+    /// this Mac.
+    static func writerSummary(agentOn: Bool, command: String, agentName: String) -> String {
+        let usable = agentOn && !command.trimmingCharacters(in: .whitespaces).isEmpty
+        return usable ? agentName : "This Mac"
+    }
+
+    /// The transcriber as a short phrase: whisper with its model, else
+    /// Apple Speech.
+    static func transcriberSummary(whisper: Bool, modelName: String?) -> String {
+        guard whisper else { return "Apple Speech" }
+        if let modelName, !modelName.isEmpty { return "Whisper \u{00B7} \(modelName)" }
+        return "Whisper"
+    }
+
     /// The pill's and popover's heading: "Getting feedback" for the full run,
     /// "Transcribing" for Transcribe, "Stopping" once Stop is pressed.
     static func runTitle(transcribeOnly: Bool, stopping: Bool) -> String {

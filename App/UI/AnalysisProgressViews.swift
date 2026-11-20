@@ -2,8 +2,9 @@
 //  AnalysisProgressViews.swift
 //  Greenroom
 //
-//  What the watch page's Analysing pill shows: a small ring in the pill, and a
-//  popover with the step list, a bar, elapsed time and Stop. Everything is read
+//  What the watch page's Get feedback capsule shows: a small ring while it
+//  runs, and one popover with two states, Ready (steps, choices, Start) and
+//  progress (step list, a bar, elapsed time, tokens and Stop). Everything is read
 //  from ScreenroomReviewController.runProgress; the maths is in
 //  ScreenroomRunRules. Colours come from tokens (Brand.green, semantic styles).
 //
@@ -32,7 +33,8 @@ struct AnalysisRing: View {
     }
 }
 
-/// The popover behind the pill.
+/// The running state of the popover (chrome and width come from
+/// AnalysisRunPopover).
 struct AnalysisProgressPopover: View {
     @ObservedObject var review: ScreenroomReviewController
     let onStop: () -> Void
@@ -93,9 +95,6 @@ struct AnalysisProgressPopover: View {
                     .help("Stops the run and closes whatever it started")
             }
         }
-        .padding(16)
-        .frame(width: 320, alignment: .leading)
-        .greenroomGlass(in: RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 
     private func subtitle(_ progress: ScreenroomReviewController.RunProgress) -> String {
@@ -130,5 +129,154 @@ struct AnalysisProgressPopover: View {
             Spacer(minLength: 0)
         }
         .accessibilityElement(children: .combine)
+    }
+}
+
+/// The one popover behind the Get feedback capsule. Ready until Start, then
+/// the same popover crossfades in place to the progress view. Closing it never
+/// stops the run; clicking the capsule reopens it.
+struct AnalysisRunPopover: View {
+    @ObservedObject var review: ScreenroomReviewController
+    let onStart: () -> Void
+    let onStop: () -> Void
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        let state = ScreenroomRunRules.popoverState(isAnalysing: review.isAnalysing)
+        let inline = state == .ready && !review.popoverTranscribeOnly
+            && ScreenroomRunRules.showsChoicesInline(setupSeen: AnalysisSetup.seen)
+        ZStack(alignment: .top) {
+            switch state {
+            case .ready:
+                AnalysisReadyView(review: review, inlineChoices: inline,
+                                  onStart: onStart, onCancel: { review.runPopoverOpen = false })
+                    .transition(.opacity)
+            case .running:
+                AnalysisProgressPopover(review: review, onStop: onStop)
+                    .transition(.opacity)
+            }
+        }
+        // DESIGN.md Motion: 150-250ms state change, ease-in-out. A crossfade
+        // is already the Reduce Motion form.
+        .animation(.easeInOut(duration: reduceMotion ? 0.15 : 0.2), value: state)
+        .padding(16)
+        .frame(width: inline ? 440 : 320, alignment: .leading)
+        .greenroomGlass(in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+    }
+}
+
+/// Ready: what Start will do for this folder, who does it, and Start.
+struct AnalysisReadyView: View {
+    @ObservedObject var review: ScreenroomReviewController
+    let inlineChoices: Bool
+    let onStart: () -> Void
+    let onCancel: () -> Void
+
+    @State private var rows: [ScreenroomRunRules.PlanRow] = []
+    @State private var agent = ScreenroomAgentSettings.load()
+    @State private var whisper = ScreenroomTranscriberSettings.whisperIsReady
+    @State private var modelName: String?
+
+    private var transcribeOnly: Bool { review.popoverTranscribeOnly }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(transcribeOnly ? "Transcribe" : "Get feedback").font(.headline)
+                Text(transcribeOnly
+                     ? "Writes a transcript. No report."
+                     : "Steps for this meeting")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+            }
+
+            VStack(alignment: .leading, spacing: 6) {
+                ForEach(rows) { row in
+                    HStack(spacing: 8) {
+                        Image(systemName: row.reused ? "checkmark.circle.fill" : "circle")
+                            .foregroundStyle(row.reused ? AnyShapeStyle(Brand.green) : AnyShapeStyle(.tertiary))
+                        Text(row.step.title)
+                            .font(.callout)
+                            .foregroundStyle(row.reused ? .secondary : .primary)
+                        Spacer(minLength: 0)
+                        if row.reused {
+                            Text("Reused").font(.caption).foregroundStyle(.secondary)
+                        }
+                    }
+                    .accessibilityElement(children: .combine)
+                }
+            }
+
+            if inlineChoices {
+                ScreenroomSettingsTab(compact: true)
+                    .frame(height: 300)
+                    .onDisappear(perform: refreshChoices)
+            } else {
+                Divider()
+                VStack(alignment: .leading, spacing: 4) {
+                    if !transcribeOnly {
+                        choiceLine("Report by", ScreenroomRunRules.writerSummary(
+                            agentOn: agent.enabled, command: agent.command, agentName: agent.kind.label))
+                    }
+                    choiceLine("Transcribed by", ScreenroomRunRules.transcriberSummary(
+                        whisper: whisper, modelName: modelName))
+                    HStack(spacing: 8) {
+                        if !transcribeOnly, agent.enabled,
+                           !agent.command.trimmingCharacters(in: .whitespaces).isEmpty {
+                            Text("Leaves this Mac")
+                                .font(.caption)
+                                .foregroundStyle(Brand.netText)
+                        }
+                        Spacer(minLength: 0)
+                        Button("Change\u{2026}") { review.openSetup() }
+                            .buttonStyle(.link)
+                            .font(.callout)
+                            .tint(Brand.text)
+                    }
+                }
+            }
+
+            HStack {
+                Spacer()
+                Button("Cancel", action: onCancel)
+                    .keyboardShortcut(.cancelAction)
+                Button("Start", action: onStart)
+                    .keyboardShortcut(.defaultAction)
+                    .buttonStyle(.borderedProminent)
+                    .tint(Brand.green)
+            }
+        }
+        .onAppear { refreshPlan(); refreshChoices() }
+        .onChange(of: review.showingSetup) { refreshPlan(); refreshChoices() }
+        .onChange(of: review.popoverTranscribeOnly) { refreshPlan() }
+    }
+
+    private func choiceLine(_ label: String, _ value: String) -> some View {
+        HStack(spacing: 6) {
+            Text(label).font(.callout).foregroundStyle(.secondary)
+            Text(value).font(.callout)
+            Spacer(minLength: 0)
+        }
+        .accessibilityElement(children: .combine)
+    }
+
+    private func refreshChoices() {
+        agent = ScreenroomAgentSettings.load()
+        whisper = ScreenroomTranscriberSettings.whisperIsReady
+        modelName = ScreenroomTranscriberSettings.resolvedModel().map {
+            $0.deletingPathExtension().lastPathComponent.replacingOccurrences(of: "ggml-", with: "")
+        }
+        refreshPlan()
+    }
+
+    private func refreshPlan() {
+        guard let folder = review.selected?.folder else { rows = []; return }
+        let existing = Set((try? FileManager.default.contentsOfDirectory(atPath: folder.path)) ?? [])
+        rows = ScreenroomRunRules.plan(
+            transcribeOnly: transcribeOnly,
+            hasRecording: review.selected?.recording != nil,
+            whisper: whisper,
+            agent: agent.enabled && !agent.command.trimmingCharacters(in: .whitespaces).isEmpty,
+            existing: existing)
     }
 }

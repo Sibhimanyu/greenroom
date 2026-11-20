@@ -27,10 +27,24 @@ final class ScreenroomReviewController: ObservableObject {
     @Published private(set) var cohortFindings: [ScreenroomCohort.Finding] = []
 
     @Published private(set) var isAnalysing = false
-    /// The "How to analyse" panel is open (first press, or reopened).
-    @Published var showingSetup = false
-    /// Opened by the first press, so its button runs the analysis.
-    @Published var setupRunsAnalysis = false
+    /// The "How to get feedback" panel is open (the Ready popover's Change link,
+    /// or "Feedback settings" in More). It only changes choices; it runs nothing.
+    /// Closing it brings the Ready popover back when it was opened from there.
+    @Published var showingSetup = false {
+        didSet {
+            guard oldValue, !showingSetup, reopenPopoverAfterSetup else { return }
+            reopenPopoverAfterSetup = false
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { [weak self] in
+                guard let self, !self.isAnalysing else { return }
+                self.runPopoverOpen = true
+            }
+        }
+    }
+    private var reopenPopoverAfterSetup = false
+    /// The one popover behind the Get feedback capsule (Ready, then progress).
+    @Published var runPopoverOpen = false
+    /// Which run the Ready state is for: Transcribe's one step, or the full run.
+    @Published private(set) var popoverTranscribeOnly = false
 
     /// Bumped each time a pass finishes, so the window can open the report
     /// on a NEW analysis without also opening it every time a presentation
@@ -507,38 +521,32 @@ final class ScreenroomReviewController: ObservableObject {
         runTask = nil
     }
 
-    /// What the Transcribe button calls. No setup panel: choosing an engine is
-    /// not a question that stands between a person and a transcript.
-    func requestTranscribe() {
-        guard !isAnalysing else { return }
-        Task { await transcribeOnly() }
+    /// Opens the Ready popover for the selected folder. Nothing runs until
+    /// Start. While a run is going the same popover shows its progress, so
+    /// this just reopens it.
+    func openRunPopover(transcribeOnly: Bool = false) {
+        if !isAnalysing { popoverTranscribeOnly = transcribeOnly }
+        runPopoverOpen = true
     }
 
-    /// What the Analyse buttons call. The first time on this Mac it opens the
-    /// "How to analyse" panel instead; the panel's own button then runs it.
-    /// After that it runs straight away.
-    func requestAnalyse() {
+    /// Ready's Start: the choices have been seen (shown inline the first
+    /// time), so remember that, then run. The popover stays open and
+    /// crossfades to progress.
+    func startFromPopover() {
         guard !isAnalysing else { return }
-        if AnalysisSetup.seen {
-            Task { await analyse() }
-        } else {
-            setupRunsAnalysis = true
-            showingSetup = true
-        }
+        let only = popoverTranscribeOnly
+        // Transcribe never shows the writer choices, so only a full run
+        // counts as having seen them.
+        if !only { AnalysisSetup.markSeen() }
+        Task { if only { await transcribeOnly() } else { await analyse() } }
     }
 
-    /// The small "How to analyse…" control: change a choice, run nothing.
+    /// Change (and "Feedback settings" in More): change a choice, run
+    /// nothing. From the popover it closes first and returns after.
     func openSetup() {
-        setupRunsAnalysis = false
+        reopenPopoverAfterSetup = runPopoverOpen && !isAnalysing
+        runPopoverOpen = false
         showingSetup = true
-    }
-
-    /// The panel's "Analyse" on a first run: remember it was answered, close
-    /// the panel, run.
-    func confirmSetupAndAnalyse() {
-        AnalysisSetup.markSeen()
-        showingSetup = false
-        Task { await analyse() }
     }
 
     /// Stops the run and kills whatever it started.

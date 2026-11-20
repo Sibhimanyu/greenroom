@@ -573,61 +573,68 @@ struct SessionTabEmpty<Actions: View>: View {
     }
 }
 
-/// How it went, as a toolbar button that follows the analysis: Analyse
-/// before it is asked for (the glyph amber when the work leaves this Mac; the
-/// first press opens the setup, which is the one-time ask), a spinner with the
-/// step while it runs (click for the detail and Stop), then Report.
+/// How it went, as a toolbar button that follows the analysis: Get feedback
+/// before it is asked for (the glyph amber when the work leaves this Mac),
+/// a spinner with the step while it runs, then Report. Clicking Get feedback
+/// (or Run again, or Transcribe) opens ONE popover anchored here: Ready with
+/// a Start button, which crossfades to the progress view once started.
 struct SessionAnalyseButton: View {
     let model: SessionInspectorModel
     let actions: SessionInspectorActions
     @ObservedObject private var review = ScreenroomReviewController.shared
-    @State private var showProgress = false
 
     var body: some View {
-        switch model.analyse {
-        case .ready(let engine, let leavesMac):
-            Button(action: actions.analyse) {
-                Label {
-                    Text("Get feedback")
-                } icon: {
-                    Image(systemName: "sparkles")
-                        .foregroundStyle(leavesMac ? AnyShapeStyle(Brand.net) : AnyShapeStyle(.primary))
+        Group {
+            switch model.analyse {
+            case .ready(let engine, let leavesMac):
+                Button(action: actions.analyse) {
+                    Label {
+                        Text("Get feedback")
+                    } icon: {
+                        Image(systemName: "sparkles")
+                            .foregroundStyle(leavesMac ? AnyShapeStyle(Brand.net) : AnyShapeStyle(.primary))
+                    }
                 }
-            }
-            .labelStyle(.titleAndIcon)
-            .help("Get feedback on how this meeting went. \(engine).")
-        case .running(let step, _, _):
-            Button {
-                showProgress.toggle()
-            } label: {
-                HStack(spacing: 6) {
-                    AnalysisRing(progress: review.runProgress)
-                    Text(ScreenroomRunRules.runTitle(transcribeOnly: review.isTranscribeOnly, stopping: review.isStopping))
+                .labelStyle(.titleAndIcon)
+                .help("Get feedback on how this meeting went. \(engine).")
+            case .running(let step, _, _):
+                Button {
+                    review.runPopoverOpen.toggle()
+                } label: {
+                    HStack(spacing: 6) {
+                        AnalysisRing(progress: review.runProgress)
+                        Text(ScreenroomRunRules.runTitle(transcribeOnly: review.isTranscribeOnly, stopping: review.isStopping))
+                    }
                 }
+                .help("\(step). Click for the steps and Stop.")
+            case .busy:
+                Label("Get feedback", systemImage: "sparkles")
+                    .labelStyle(.titleAndIcon)
+                    .foregroundStyle(.tertiary)
+                    .help("Feedback is being written for another session.")
+            case .unavailable(let why):
+                Label("Get feedback", systemImage: "sparkles")
+                    .labelStyle(.titleAndIcon)
+                    .foregroundStyle(.tertiary)
+                    .help(why)
+            case .analysed:
+                Button(action: actions.openReport) {
+                    Label("Report", systemImage: "doc.text.magnifyingglass")
+                }
+                .labelStyle(.titleAndIcon)
+                .help("Open the report on how this meeting went")
             }
-            .help("\(step). Click for the steps and Stop.")
-            .popover(isPresented: $showProgress, arrowEdge: .bottom) {
-                AnalysisProgressPopover(review: review) {
-                    showProgress = false
+        }
+        // One anchor that outlives the button's state changes (Report ->
+        // progress), so Start never dismisses the popover it was pressed in.
+        // A background adds nothing to the toolbar item's width.
+        .background {
+            Color.clear.popover(isPresented: $review.runPopoverOpen, arrowEdge: .bottom) {
+                AnalysisRunPopover(review: review, onStart: actions.start) {
+                    review.runPopoverOpen = false
                     actions.stopAnalysis()
                 }
             }
-        case .busy:
-            Label("Get feedback", systemImage: "sparkles")
-                .labelStyle(.titleAndIcon)
-                .foregroundStyle(.tertiary)
-                .help("Feedback is being written for another session.")
-        case .unavailable(let why):
-            Label("Get feedback", systemImage: "sparkles")
-                .labelStyle(.titleAndIcon)
-                .foregroundStyle(.tertiary)
-                .help(why)
-        case .analysed:
-            Button(action: actions.openReport) {
-                Label("Report", systemImage: "doc.text.magnifyingglass")
-            }
-            .labelStyle(.titleAndIcon)
-            .help("Open the report on how this meeting went")
         }
     }
 }

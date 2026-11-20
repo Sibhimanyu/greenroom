@@ -30,7 +30,8 @@ Record is `MeetingMode.record` (enum in CoordinatorController.swift; Create / Sc
 | UI/PreviewFrameRules.swift / PreviewOutlineRules.swift | Preview crop, camera rules, outline placement (pure) | `PreviewFrameRules`, `LayoutCameraRules`, `PreviewOutlineRules` |
 | UI/LayoutChoiceMenu.swift | "Layout: name" menu under Start, also in menu bar | `LayoutChoiceItems/Line` |
 | UI/NewScheduledMeetingSheet.swift | New scheduled meeting sheet | `NewScheduledMeetingSheet` |
-| UI/AnalysisSetupPanel.swift | "How to get feedback" sheet | `AnalysisSetupPanel` |
+| UI/AnalysisSetupPanel.swift | "How to get feedback" sheet (Change... target, Done only) | `AnalysisSetupPanel` |
+| UI/AnalysisProgressViews.swift | Get feedback popover: Ready (steps, choices, Start) crossfading to progress; ring | `AnalysisRunPopover`, `AnalysisReadyView`, `AnalysisProgressPopover`, `AnalysisRing` |
 
 ### Sessions, watch page, report
 | path | owns | key types |
@@ -103,7 +104,7 @@ Record is `MeetingMode.record` (enum in CoordinatorController.swift; Create / Sc
 - Change sessions grid filters/sort/chips -> `SessionsQuery.swift` (`SessionsShow/Status/Sort`, `SessionChips`), sidebar in `SessionsSidebar`.
 - Change a session row/card -> `SessionsRow.swift`, `SessionsContent.swift`.
 - Watch page keys (Watch mode only; Edit keeps the editor's own monitor): Space play/pause, Left/Right skip 10s, M mute, F full screen (Esc exits full screen; double-click the picture too). One monitor in `SessionDetailContent.SpaceBarPlayback`, same typing/sheet gating as Space; key map in `PlayerControlRules.action`. Full screen keys are `WatchFullScreen`'s own monitor.
-- Watch page toolbar (watching): Get feedback (`SessionAnalyseButton`) is its own glass capsule, then a fixed `ToolbarSpacer`, then Share… / More / side-panel toggle as one capsule; editing has just the one group.
+- Watch page toolbar (watching): Get feedback (`SessionAnalyseButton`, which also anchors the one Ready/progress popover as a `.background`, so no width change) is its own glass capsule, then a fixed `ToolbarSpacer`, then Share… / More / side-panel toggle as one capsule; editing has just the one group.
 - Change watch page layout -> `SessionDetailContent.SessionDetailPage` + `SessionDetailRules` (when the rail drops under the picture).
 - Change the timeline/marks -> `SessionTimeline`, `SessionMarkStyle`.
 - Change a menu bar item -> `MenuBarModel.items` (order/titles/shortcuts), drawn by `MenuBarView`; test `Tests/MenuBarModelTests.swift`.

@@ -158,4 +158,51 @@ final class ScreenroomRunRulesTests: XCTestCase {
         XCTAssertTrue(removed.contains("analysis-transcript.txt"))
         XCTAssertFalse(removed.contains("analysis.json"))
     }
+
+    // MARK: Ready popover
+
+    func testPlanMarksExistingTranscriptReused() {
+        let existing = Set(ScreenroomRunRules.transcriptOutputs)
+        let rows = ScreenroomRunRules.plan(transcribeOnly: false, hasRecording: true, whisper: true,
+                                           agent: true, existing: existing)
+        XCTAssertEqual(rows.map(\.step.kind), [.transcribe, .stills, .watch, .cohort, .write])
+        XCTAssertEqual(rows.map(\.reused), [true, false, false, false, false])
+    }
+
+    func testPlanWithoutTranscriptReusesNothing() {
+        let partial: Set<String> = [ScreenroomTranscriptFile.name]
+        let rows = ScreenroomRunRules.plan(transcribeOnly: false, hasRecording: true, whisper: false,
+                                           agent: false, existing: partial)
+        XCTAssertTrue(rows.allSatisfy { !$0.reused })
+        XCTAssertEqual(rows.count, 5)
+    }
+
+    func testPlanTranscribeOnlyIsOneStepNeverReused() {
+        let rows = ScreenroomRunRules.plan(transcribeOnly: true, hasRecording: true, whisper: true,
+                                           agent: true, existing: Set(ScreenroomRunRules.transcriptOutputs))
+        XCTAssertEqual(rows.count, 1)
+        XCTAssertFalse(rows[0].reused)
+    }
+
+    func testPlanNotesOnlyFolderHasNoTranscribeRow() {
+        let rows = ScreenroomRunRules.plan(transcribeOnly: false, hasRecording: false, whisper: true,
+                                           agent: true, existing: Set(ScreenroomRunRules.transcriptOutputs))
+        XCTAssertEqual(rows.map(\.step.kind), [.cohort, .write])
+    }
+
+    func testPopoverStateAndInlineChoices() {
+        XCTAssertEqual(ScreenroomRunRules.popoverState(isAnalysing: false), .ready)
+        XCTAssertEqual(ScreenroomRunRules.popoverState(isAnalysing: true), .running)
+        XCTAssertTrue(ScreenroomRunRules.showsChoicesInline(setupSeen: false))
+        XCTAssertFalse(ScreenroomRunRules.showsChoicesInline(setupSeen: true))
+    }
+
+    func testChoiceSummaries() {
+        XCTAssertEqual(ScreenroomRunRules.writerSummary(agentOn: true, command: "claude -p", agentName: "Claude Code"), "Claude Code")
+        XCTAssertEqual(ScreenroomRunRules.writerSummary(agentOn: true, command: "  ", agentName: "Codex"), "This Mac")
+        XCTAssertEqual(ScreenroomRunRules.writerSummary(agentOn: false, command: "x", agentName: "Codex"), "This Mac")
+        XCTAssertEqual(ScreenroomRunRules.transcriberSummary(whisper: false, modelName: "base"), "Apple Speech")
+        XCTAssertEqual(ScreenroomRunRules.transcriberSummary(whisper: true, modelName: "ggml-base.en"), "Whisper \u{00B7} ggml-base.en")
+        XCTAssertEqual(ScreenroomRunRules.transcriberSummary(whisper: true, modelName: nil), "Whisper")
+    }
 }

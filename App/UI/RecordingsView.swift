@@ -430,18 +430,7 @@ struct RecordingsView: View {
     var body: some View {
         layers
         .sheet(isPresented: $review.showingSetup) {
-            AnalysisSetupPanel(
-                runsOnConfirm: review.setupRunsAnalysis,
-                confirm: {
-                    if review.setupRunsAnalysis { review.confirmSetupAndAnalyse() }
-                    else { review.showingSetup = false }
-                },
-                cancel: {
-                    // A first press that was backed out of runs nothing, so
-                    // the report does not open for a run that never was.
-                    analysingFolder = nil
-                    review.showingSetup = false
-                })
+            AnalysisSetupPanel(done: { review.showingSetup = false })
         }
         .confirmationDialog("Upload to YouTube?",
                             isPresented: Binding(get: { confirmingUpload != nil },
@@ -718,14 +707,18 @@ struct RecordingsView: View {
             guard let folder = session.folder else { return }
             review.select(folder: folder)
             review.selectedRecording = selection?.url
-            analysingFolder = folder
-            review.requestAnalyse()
+            review.openRunPopover()
         }
         actions.transcribe = {
             guard let folder = session.folder else { return }
             review.select(folder: folder)
             review.selectedRecording = selection?.url
-            review.requestTranscribe()
+            review.openRunPopover(transcribeOnly: true)
+        }
+        actions.start = {
+            // The report opens by itself only for a full run this page started.
+            if !review.popoverTranscribeOnly { analysingFolder = session.folder }
+            review.startFromPopover()
         }
         actions.openAnalysisSetup = { review.openSetup() }
         actions.connectYouTube = {

@@ -463,8 +463,11 @@ struct SessionInspectorActions {
     var openOnYouTube: () -> Void = {}
     var renameOnYouTube: () -> Void = {}
     var deleteFromYouTube: () -> Void = {}
+    /// Opens the Ready popover (Get feedback, Run again). Runs nothing.
     var analyse: () -> Void = {}
-    /// Transcribe only: no report.
+    /// The popover's Start: runs what it was opened for.
+    var start: () -> Void = {}
+    /// Transcribe only: opens the same Ready popover with its one step.
     var transcribe: () -> Void = {}
     var openAnalysisSetup: () -> Void = {}
     var stopAnalysis: () -> Void = {}

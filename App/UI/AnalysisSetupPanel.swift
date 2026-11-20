@@ -2,14 +2,15 @@
 //  AnalysisSetupPanel.swift
 //  Greenroom
 //
-//  "How to analyse": the two choices that used to live in Settings, moved to
+//  "Feedback settings": the two choices that used to live in Settings, moved to
 //  the step they belong to.
 //
 //  Whisper (does this Mac hear properly, and which model) and who writes the
 //  feedback (this Mac, or an agent you already run) are decisions about this
-//  Mac, made once. The Ready popover shows them inline the first time and as
-//  a summary with a Change link after that; this panel is where Change goes. Nothing here is a new setting: every key keeps its name and
-//  value, so a choice made on the old Settings tab is already in place.
+//  Mac, made once. The Ready popover has the two as inline pickers; this
+//  sheet (titled "Feedback settings") is where its "More settings..." link
+//  goes. Nothing here is a new setting: every key keeps its name and value,
+//  so a choice made on the old Settings tab is already in place.
 //
 //  The body is ScreenroomPageContent, the same picture and tiles the old tab
 //  drew; ScreenroomSettingsTab feeds it from the stored settings.
@@ -33,7 +34,7 @@ struct AnalysisSetupPanel: View {
     var body: some View {
         VStack(spacing: 0) {
             VStack(alignment: .leading, spacing: 4) {
-                Text("How to get feedback")
+                Text("Feedback settings")
                     .font(.title3.weight(.semibold))
                 Text("Applies to the next feedback. Feedback already written does not change.")
                     .font(.callout)

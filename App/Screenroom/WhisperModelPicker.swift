@@ -48,7 +48,7 @@ struct WhisperModelPicker: View {
                         .foregroundStyle(.secondary)
                 } label: {
                     SettingLabel(title: "Whisper model",
-                                 subtitle: "The only one on this Mac. Other models can be added under How to get feedback, next to Get feedback in Sessions.")
+                                 subtitle: "The only one on this Mac. Other models can be added under Feedback settings, next to Get feedback in Sessions.")
                 }
             } else {
                 LabeledContent {
@@ -57,7 +57,7 @@ struct WhisperModelPicker: View {
                         .foregroundStyle(.secondary)
                 } label: {
                     SettingLabel(title: "Whisper model",
-                                 subtitle: "No model on this Mac yet \u{2014} How to get feedback, next to Get feedback in Sessions, adds one.")
+                                 subtitle: "No model on this Mac yet \u{2014} Feedback settings, next to Get feedback in Sessions, adds one.")
                 }
             }
         }

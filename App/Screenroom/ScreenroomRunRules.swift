@@ -22,6 +22,20 @@ struct ScreenroomRunStep: Equatable, Identifiable {
     var reportsFraction: Bool
 
     var id: String { kind.rawValue }
+
+    /// The imperative plan ("Pick stills") and the past form ("Picked stills");
+    /// `title` stays the running form ("Picking stills").
+    var planTitle: String?
+    var doneTitle: String?
+
+    /// The step's wording for one state of the run.
+    func title(_ phase: ScreenroomRunRules.StepPhase) -> String {
+        switch phase {
+        case .plan: return planTitle ?? title
+        case .running: return title
+        case .done: return doneTitle ?? title
+        }
+    }
 }
 
 enum ScreenroomRunRules {
@@ -37,10 +51,13 @@ enum ScreenroomRunRules {
         var out: [ScreenroomRunStep] = []
         if hasRecording {
             if !reuseTranscript { out.append(transcribeStep(whisper: whisper)) }
-            out.append(.init(kind: .stills, title: "Taking stills", reportsFraction: true))
-            out.append(.init(kind: .watch, title: "Watching the recording", reportsFraction: true))
+            out.append(.init(kind: .stills, title: "Picking stills", reportsFraction: true,
+                             planTitle: "Pick stills", doneTitle: "Picked stills"))
+            out.append(.init(kind: .watch, title: "Watching the recording", reportsFraction: true,
+                             planTitle: "Watch the recording", doneTitle: "Watched the recording"))
         }
-        out.append(.init(kind: .cohort, title: "Comparing against the group", reportsFraction: true))
+        out.append(.init(kind: .cohort, title: "Comparing against the group", reportsFraction: true,
+                         planTitle: "Compare against the group", doneTitle: "Compared against the group"))
         out.append(writeStep(agent: agent))
         return out
     }
@@ -51,9 +68,26 @@ enum ScreenroomRunRules {
     }
 
     static func transcribeStep(whisper: Bool) -> ScreenroomRunStep {
-        .init(kind: .transcribe,
-              title: whisper ? "Transcribing with whisper" : "Transcribing",
-              reportsFraction: whisper)
+        let by = whisper ? "Whisper" : "Apple Speech"
+        return .init(kind: .transcribe,
+                     title: "Transcribing with \(by)",
+                     reportsFraction: whisper,
+                     planTitle: "Transcribe with \(by)",
+                     doneTitle: "Transcribed with \(by)")
+    }
+
+    /// Which form of a step's wording to show: a plan (imperative) in Ready,
+    /// the "-ing" form only while it runs, the past form once it is done.
+    enum StepPhase: Equatable { case plan, running, done }
+
+    /// The state of a step's row in the progress list as a wording phase:
+    /// waiting rows still read as plans.
+    static func phase(for row: RowState) -> StepPhase {
+        switch row {
+        case .waiting: return .plan
+        case .running: return .running
+        case .done: return .done
+        }
     }
 
     /// The names the transcription step leaves behind. All three must be there
@@ -98,10 +132,6 @@ enum ScreenroomRunRules {
 
     static func popoverState(isAnalysing: Bool) -> PopoverState { isAnalysing ? .running : .ready }
 
-    /// The first time the choices are shown in full, inline; after the first
-    /// Start they fold to a two-line summary and a Change link.
-    static func showsChoicesInline(setupSeen: Bool) -> Bool { !setupSeen }
-
     /// Who writes the report, as a short phrase: the agent by name, else
     /// this Mac.
     static func writerSummary(agentOn: Bool, command: String, agentName: String) -> String {
@@ -127,8 +157,10 @@ enum ScreenroomRunRules {
     /// The last step: the agent when one is set up, otherwise the notes pass.
     static func writeStep(agent: Bool) -> ScreenroomRunStep {
         .init(kind: .write,
-              title: agent ? "Your agent is reading it" : "Reading the notes",
-              reportsFraction: false)
+              title: agent ? "Your agent is writing the report" : "Writing the report",
+              reportsFraction: false,
+              planTitle: agent ? "Write the report with your agent" : "Write the report",
+              doneTitle: "Wrote the report")
     }
 
     // MARK: How far

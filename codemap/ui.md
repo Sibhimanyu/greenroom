@@ -30,7 +30,7 @@ Record is `MeetingMode.record` (enum in CoordinatorController.swift; Create / Sc
 | UI/PreviewFrameRules.swift / PreviewOutlineRules.swift | Preview crop, camera rules, outline placement (pure) | `PreviewFrameRules`, `LayoutCameraRules`, `PreviewOutlineRules` |
 | UI/LayoutChoiceMenu.swift | "Layout: name" menu under Start, also in menu bar | `LayoutChoiceItems/Line` |
 | UI/NewScheduledMeetingSheet.swift | New scheduled meeting sheet | `NewScheduledMeetingSheet` |
-| UI/AnalysisSetupPanel.swift | "How to get feedback" sheet (Change... target, Done only) | `AnalysisSetupPanel` |
+| UI/AnalysisSetupPanel.swift | "Feedback settings" sheet (More settings... target, Done only) | `AnalysisSetupPanel` |
 | UI/AnalysisProgressViews.swift | Get feedback popover: Ready (steps, choices, Start) crossfading to progress; ring | `AnalysisRunPopover`, `AnalysisReadyView`, `AnalysisProgressPopover`, `AnalysisRing` |
 
 ### Sessions, watch page, report

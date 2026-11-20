@@ -713,7 +713,7 @@ struct RecordingsView: View {
             guard let folder = session.folder else { return }
             review.select(folder: folder)
             review.selectedRecording = selection?.url
-            review.openRunPopover(transcribeOnly: true)
+            review.openRunPopover(transcribeOnly: true, anchor: .transcribeButton)
         }
         actions.start = {
             // The report opens by itself only for a full run this page started.
@@ -817,17 +817,15 @@ struct RecordingsView: View {
                     let state = analyseState(session)
                     SessionTabEmpty(title: "No transcript", symbol: "text.alignleft",
                                     message: "Feedback writes one, on this Mac.") {
+                        let actions = inspectorActions(session)
+                        if session.primaryTake != nil {
+                            // Transcribe is the primary action; the full run is
+                            // secondary. Its popover hangs from this button.
+                            TranscribeSlot(state: state, actions: actions)
+                        }
                         switch state {
                         case .ready, .analysed:
-                            let actions = inspectorActions(session)
-                            if session.primaryTake != nil {
-                                // Transcribe is the primary action; the full run is secondary.
-                                Button("Transcribe", action: actions.transcribe)
-                                    .buttonStyle(.borderedProminent)
-                                Button("Get feedback", action: actions.analyse)
-                            } else {
-                                Button("Get feedback", action: actions.analyse)
-                            }
+                            Button("Get feedback", action: actions.analyse)
                         default:
                             EmptyView()
                         }

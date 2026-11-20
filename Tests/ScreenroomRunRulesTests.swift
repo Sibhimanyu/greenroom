@@ -5,16 +5,16 @@ final class ScreenroomRunRulesTests: XCTestCase {
     func testStepsWithRecordingAndAgent() {
         let steps = ScreenroomRunRules.steps(hasRecording: true, whisper: true, agent: true)
         XCTAssertEqual(steps.map(\.kind), [.transcribe, .stills, .watch, .cohort, .write])
-        XCTAssertEqual(steps.first?.title, "Transcribing with whisper")
-        XCTAssertEqual(steps.last?.title, "Your agent is reading it")
+        XCTAssertEqual(steps.first?.title, "Transcribing with Whisper")
+        XCTAssertEqual(steps.last?.title, "Your agent is writing the report")
         XCTAssertEqual(steps.map(\.reportsFraction), [true, true, true, true, false])
     }
 
     func testAppleTranscriptionCannotReportAFraction() {
         let steps = ScreenroomRunRules.steps(hasRecording: true, whisper: false, agent: false)
-        XCTAssertEqual(steps.first?.title, "Transcribing")
+        XCTAssertEqual(steps.first?.title, "Transcribing with Apple Speech")
         XCTAssertEqual(steps.first?.reportsFraction, false)
-        XCTAssertEqual(steps.last?.title, "Reading the notes")
+        XCTAssertEqual(steps.last?.title, "Writing the report")
     }
 
     func testNotesOnlyFolderSkipsTheRecordingSteps() {
@@ -122,10 +122,10 @@ final class ScreenroomRunRulesTests: XCTestCase {
     func testTranscribeOnlyIsJustTheTranscriptionStep() {
         let whisper = ScreenroomRunRules.transcribeOnlySteps(whisper: true)
         XCTAssertEqual(whisper.map(\.kind), [.transcribe])
-        XCTAssertEqual(whisper.first?.title, "Transcribing with whisper")
+        XCTAssertEqual(whisper.first?.title, "Transcribing with Whisper")
         XCTAssertEqual(whisper.first?.reportsFraction, true)
         let apple = ScreenroomRunRules.transcribeOnlySteps(whisper: false)
-        XCTAssertEqual(apple.first?.title, "Transcribing")
+        XCTAssertEqual(apple.first?.title, "Transcribing with Apple Speech")
         XCTAssertEqual(apple.first?.reportsFraction, false)
     }
 
@@ -190,11 +190,9 @@ final class ScreenroomRunRulesTests: XCTestCase {
         XCTAssertEqual(rows.map(\.step.kind), [.cohort, .write])
     }
 
-    func testPopoverStateAndInlineChoices() {
+    func testPopoverState() {
         XCTAssertEqual(ScreenroomRunRules.popoverState(isAnalysing: false), .ready)
         XCTAssertEqual(ScreenroomRunRules.popoverState(isAnalysing: true), .running)
-        XCTAssertTrue(ScreenroomRunRules.showsChoicesInline(setupSeen: false))
-        XCTAssertFalse(ScreenroomRunRules.showsChoicesInline(setupSeen: true))
     }
 
     func testChoiceSummaries() {
@@ -204,5 +202,29 @@ final class ScreenroomRunRulesTests: XCTestCase {
         XCTAssertEqual(ScreenroomRunRules.transcriberSummary(whisper: false, modelName: "base"), "Apple Speech")
         XCTAssertEqual(ScreenroomRunRules.transcriberSummary(whisper: true, modelName: "ggml-base.en"), "Whisper \u{00B7} ggml-base.en")
         XCTAssertEqual(ScreenroomRunRules.transcriberSummary(whisper: true, modelName: nil), "Whisper")
+    }
+
+    func testStepWordingFollowsTheState() {
+        let steps = ScreenroomRunRules.steps(hasRecording: true, whisper: true, agent: false)
+        let plan = steps.map { $0.title(.plan) }
+        XCTAssertEqual(plan, ["Transcribe with Whisper", "Pick stills", "Watch the recording",
+                              "Compare against the group", "Write the report"])
+        XCTAssertEqual(steps.map { $0.title(.running) }, ["Transcribing with Whisper", "Picking stills",
+                       "Watching the recording", "Comparing against the group", "Writing the report"])
+        XCTAssertEqual(steps.map { $0.title(.done) }, ["Transcribed with Whisper", "Picked stills",
+                       "Watched the recording", "Compared against the group", "Wrote the report"])
+    }
+
+    func testWhisperIsCapitalisedAndAppleSpeechIsNamed() {
+        let apple = ScreenroomRunRules.transcribeStep(whisper: false)
+        XCTAssertEqual(apple.title(.plan), "Transcribe with Apple Speech")
+        XCTAssertEqual(ScreenroomRunRules.writeStep(agent: true).title(.plan), "Write the report with your agent")
+        XCTAssertEqual(ScreenroomRunRules.writeStep(agent: true).title(.running), "Your agent is writing the report")
+    }
+
+    func testWaitingRowsReadAsPlans() {
+        XCTAssertEqual(ScreenroomRunRules.phase(for: .waiting), .plan)
+        XCTAssertEqual(ScreenroomRunRules.phase(for: .running), .running)
+        XCTAssertEqual(ScreenroomRunRules.phase(for: .done), .done)
     }
 }

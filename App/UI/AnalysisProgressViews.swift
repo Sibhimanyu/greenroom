@@ -33,6 +33,72 @@ struct AnalysisRing: View {
     }
 }
 
+/// One step in a sequence, Ready or running. Not a control: no button or
+/// toggle traits, no hover state. VoiceOver reads "Step 1 of 5, Transcribe
+/// with Whisper".
+struct StepList: View {
+    struct Item: Identifiable {
+        enum Mark { case number, running, done }
+        let id: String
+        let title: String
+        var mark: Mark
+        var tag: String?
+        var dim = false
+    }
+
+    let items: [Item]
+    private let marker: CGFloat = 18
+    private let gap: CGFloat = 8
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: gap) {
+            ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
+                HStack(spacing: 8) {
+                    markerView(item, number: index + 1)
+                    Text(item.title)
+                        .font(.callout)
+                        .foregroundStyle(item.dim ? .secondary : .primary)
+                    Spacer(minLength: 0)
+                    if let tag = item.tag {
+                        Text(tag).font(.caption).foregroundStyle(.secondary)
+                    }
+                }
+                .frame(minHeight: marker)
+                .overlay(alignment: .topLeading) {
+                    if index < items.count - 1 {
+                        Rectangle().fill(.quaternary)
+                            .frame(width: 1, height: gap)
+                            .offset(x: marker / 2 - 0.5, y: marker)
+                    }
+                }
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel("Step \(index + 1) of \(items.count), \(item.title)"
+                                    + (item.mark == .done ? ", done" : item.mark == .running ? ", in progress" : ""))
+            }
+        }
+    }
+
+    @ViewBuilder private func markerView(_ item: Item, number: Int) -> some View {
+        ZStack {
+            switch item.mark {
+            case .done:
+                Image(systemName: "checkmark.circle.fill")
+                    .resizable().scaledToFit()
+                    .foregroundStyle(Brand.green)
+            case .running:
+                Circle().fill(.quaternary.opacity(0.5))
+                ProgressView().controlSize(.mini).scaleEffect(0.8)
+            case .number:
+                Circle().fill(.quaternary.opacity(0.5))
+                Text("\(number)")
+                    .font(.system(size: 10, weight: .medium).monospacedDigit())
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .frame(width: marker, height: marker)
+    }
+}
+
 /// The running state of the popover (chrome and width come from
 /// AnalysisRunPopover).
 struct AnalysisProgressPopover: View {
@@ -55,11 +121,14 @@ struct AnalysisProgressPopover: View {
             bar(progress)
 
             if !review.plannedSteps.isEmpty {
-                VStack(alignment: .leading, spacing: 6) {
-                    ForEach(Array(review.plannedSteps.enumerated()), id: \.element.id) { row, step in
-                        stepRow(step, state: ScreenroomRunRules.rowState(row: row, stepIndex: review.stepIndex))
-                    }
-                }
+                StepList(items: review.plannedSteps.enumerated().map { row, step in
+                    let state = ScreenroomRunRules.rowState(row: row, stepIndex: review.stepIndex)
+                    return StepList.Item(
+                        id: step.id,
+                        title: step.title(ScreenroomRunRules.phase(for: state)),
+                        mark: state == .done ? .done : state == .running ? .running : .number,
+                        dim: state == .waiting)
+                })
             }
 
             if let last = review.log.split(whereSeparator: \.isNewline).last, !last.isEmpty {
@@ -112,24 +181,6 @@ struct AnalysisProgressPopover: View {
             ProgressView().progressViewStyle(.linear).tint(Brand.green)
         }
     }
-
-    private func stepRow(_ step: ScreenroomRunStep, state: ScreenroomRunRules.RowState) -> some View {
-        HStack(spacing: 8) {
-            switch state {
-            case .done:
-                Image(systemName: "checkmark.circle.fill").foregroundStyle(Brand.green)
-            case .running:
-                Image(systemName: "circle.dotted").foregroundStyle(.primary)
-            case .waiting:
-                Image(systemName: "circle").foregroundStyle(.tertiary)
-            }
-            Text(step.title)
-                .font(.callout)
-                .foregroundStyle(state == .waiting ? .secondary : .primary)
-            Spacer(minLength: 0)
-        }
-        .accessibilityElement(children: .combine)
-    }
 }
 
 /// The one popover behind the Get feedback capsule. Ready until Start, then
@@ -143,12 +194,10 @@ struct AnalysisRunPopover: View {
 
     var body: some View {
         let state = ScreenroomRunRules.popoverState(isAnalysing: review.isAnalysing)
-        let inline = state == .ready && !review.popoverTranscribeOnly
-            && ScreenroomRunRules.showsChoicesInline(setupSeen: AnalysisSetup.seen)
         ZStack(alignment: .top) {
             switch state {
             case .ready:
-                AnalysisReadyView(review: review, inlineChoices: inline,
+                AnalysisReadyView(review: review,
                                   onStart: onStart, onCancel: { review.runPopoverOpen = false })
                     .transition(.opacity)
             case .running:
@@ -160,24 +209,29 @@ struct AnalysisRunPopover: View {
         // is already the Reduce Motion form.
         .animation(.easeInOut(duration: reduceMotion ? 0.15 : 0.2), value: state)
         .padding(16)
-        .frame(width: inline ? 440 : 320, alignment: .leading)
+        .frame(width: 340, alignment: .leading)
         .greenroomGlass(in: RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 }
 
-/// Ready: what Start will do for this folder, who does it, and Start.
+/// Ready: what Start will do for this folder, who does it (inline pickers
+/// that write the same settings Feedback settings does), and Start.
 struct AnalysisReadyView: View {
     @ObservedObject var review: ScreenroomReviewController
-    let inlineChoices: Bool
     let onStart: () -> Void
     let onCancel: () -> Void
 
     @State private var rows: [ScreenroomRunRules.PlanRow] = []
     @State private var agent = ScreenroomAgentSettings.load()
     @State private var whisper = ScreenroomTranscriberSettings.whisperIsReady
-    @State private var modelName: String?
+    @State private var models = ScreenroomWhisper.availableModels()
+    @State private var chosenModel = ScreenroomTranscriberSettings.resolvedModel()?.path ?? ""
 
     private var transcribeOnly: Bool { review.popoverTranscribeOnly }
+
+    private var agentUsable: Bool {
+        agent.enabled && !agent.command.trimmingCharacters(in: .whitespaces).isEmpty
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -190,82 +244,152 @@ struct AnalysisReadyView: View {
                     .foregroundStyle(.secondary)
             }
 
-            VStack(alignment: .leading, spacing: 6) {
-                ForEach(rows) { row in
-                    HStack(spacing: 8) {
-                        Image(systemName: row.reused ? "checkmark.circle.fill" : "circle")
-                            .foregroundStyle(row.reused ? AnyShapeStyle(Brand.green) : AnyShapeStyle(.tertiary))
-                        Text(row.step.title)
-                            .font(.callout)
-                            .foregroundStyle(row.reused ? .secondary : .primary)
-                        Spacer(minLength: 0)
-                        if row.reused {
-                            Text("Reused").font(.caption).foregroundStyle(.secondary)
-                        }
-                    }
-                    .accessibilityElement(children: .combine)
-                }
-            }
+            StepList(items: rows.map {
+                StepList.Item(id: $0.id, title: $0.step.title(.plan),
+                              mark: $0.reused ? .done : .number,
+                              tag: $0.reused ? "Reused" : nil, dim: $0.reused)
+            })
 
-            if inlineChoices {
-                ScreenroomSettingsTab(compact: true)
-                    .frame(height: 300)
-                    .onDisappear(perform: refreshChoices)
-            } else {
-                Divider()
-                VStack(alignment: .leading, spacing: 4) {
-                    if !transcribeOnly {
-                        choiceLine("Report by", ScreenroomRunRules.writerSummary(
-                            agentOn: agent.enabled, command: agent.command, agentName: agent.kind.label))
-                    }
-                    choiceLine("Transcribed by", ScreenroomRunRules.transcriberSummary(
-                        whisper: whisper, modelName: modelName))
-                    HStack(spacing: 8) {
-                        if !transcribeOnly, agent.enabled,
-                           !agent.command.trimmingCharacters(in: .whitespaces).isEmpty {
+            Divider()
+            VStack(alignment: .leading, spacing: 8) {
+                if !transcribeOnly { writerRow }
+                transcriberRow
+                if !transcribeOnly {
+                    HStack {
+                        if agentUsable {
                             Text("Leaves this Mac")
                                 .font(.caption)
                                 .foregroundStyle(Brand.netText)
                         }
                         Spacer(minLength: 0)
-                        Button("Change\u{2026}") { review.openSetup() }
-                            .buttonStyle(.link)
-                            .font(.callout)
-                            .tint(Brand.text)
+                        quietLink("More settings\u{2026}") { review.openSetup() }
                     }
                 }
             }
 
             HStack {
                 Spacer()
-                Button("Cancel", action: onCancel)
-                    .keyboardShortcut(.cancelAction)
+                // A normal secondary button: primary label on the bordered
+                // shape. The root tint would otherwise colour it green.
+                Button(action: onCancel) {
+                    Text("Cancel").foregroundStyle(.primary)
+                }
+                .buttonStyle(.bordered)
+                .keyboardShortcut(.cancelAction)
                 Button("Start", action: onStart)
                     .keyboardShortcut(.defaultAction)
                     .buttonStyle(.borderedProminent)
                     .tint(Brand.green)
             }
         }
-        .onAppear { refreshPlan(); refreshChoices() }
-        .onChange(of: review.showingSetup) { refreshPlan(); refreshChoices() }
+        .onAppear { refreshChoices() }
+        .onChange(of: review.showingSetup) { refreshChoices() }
         .onChange(of: review.popoverTranscribeOnly) { refreshPlan() }
     }
 
-    private func choiceLine(_ label: String, _ value: String) -> some View {
+    // MARK: Report by
+
+    private var writerRow: some View {
+        let local = ScreenroomAnalyst.modelAvailability.available
+        return choiceRow("Report by") {
+            Picker("Report by", selection: Binding(get: { writerTag }, set: setWriter)) {
+                Text(local ? "This Mac" : "This Mac (counts only)").tag(Self.macTag)
+                ForEach(ScreenroomAgentSettings.Kind.allCases.filter {
+                    $0 != .custom || (agent.kind == .custom && agentUsable)
+                }) { kind in
+                    Text(kind.label).tag(kind.rawValue)
+                }
+            }
+            .labelsHidden()
+            .pickerStyle(.menu)
+            .fixedSize()
+        }
+    }
+
+    private static let macTag = "mac"
+
+    private var writerTag: String { agentUsable ? agent.kind.rawValue : Self.macTag }
+
+    private func setWriter(_ tag: String) {
+        // The same writes the Feedback settings tiles make.
+        if let kind = ScreenroomAgentSettings.Kind(rawValue: tag) {
+            agent.enabled = true
+            agent.kind = kind
+            if kind != .custom { agent.command = kind.defaultCommand }
+        } else {
+            agent.enabled = false
+        }
+        agent.save()
+        refreshPlan()
+    }
+
+    // MARK: Transcribed by
+
+    @ViewBuilder private var transcriberRow: some View {
+        if whisper {
+            choiceRow("Transcribed by") {
+                if models.count > 1 {
+                    Picker("Transcribed by", selection: Binding(get: { chosenModel }, set: setModel)) {
+                        ForEach(models) { model in
+                            Text(ScreenroomRunRules.transcriberSummary(whisper: true, modelName: model.name))
+                                .tag(model.url.path)
+                        }
+                    }
+                    .labelsHidden()
+                    .pickerStyle(.menu)
+                    .fixedSize()
+                } else {
+                    Text(ScreenroomRunRules.transcriberSummary(whisper: true, modelName: models.first?.name))
+                        .font(.callout)
+                }
+            }
+        } else {
+            VStack(alignment: .leading, spacing: 4) {
+                choiceRow("Transcribed by") {
+                    Text(ScreenroomRunRules.transcriberSummary(whisper: false, modelName: nil))
+                        .font(.callout)
+                }
+                HStack(spacing: 4) {
+                    Text("Whisper is not set up on this Mac.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    quietLink("Set up Whisper\u{2026}", font: .caption) { review.openSetup() }
+                }
+            }
+        }
+    }
+
+    private func setModel(_ path: String) {
+        chosenModel = path
+        var settings = ScreenroomTranscriberSettings.load()
+        settings.modelPath = path
+        settings.save()
+    }
+
+    // MARK: Pieces
+
+    private func choiceRow<Control: View>(_ label: String, @ViewBuilder control: () -> Control) -> some View {
         HStack(spacing: 6) {
             Text(label).font(.callout).foregroundStyle(.secondary)
-            Text(value).font(.callout)
             Spacer(minLength: 0)
+            control()
         }
-        .accessibilityElement(children: .combine)
+    }
+
+    /// The app's inline link: Brand.text on a plain button, the way
+    /// "Open report" is drawn. `.link` would take the system blue.
+    private func quietLink(_ title: String, font: Font = .callout, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(title).font(font).foregroundStyle(Brand.text)
+        }
+        .buttonStyle(.plain)
     }
 
     private func refreshChoices() {
         agent = ScreenroomAgentSettings.load()
         whisper = ScreenroomTranscriberSettings.whisperIsReady
-        modelName = ScreenroomTranscriberSettings.resolvedModel().map {
-            $0.deletingPathExtension().lastPathComponent.replacingOccurrences(of: "ggml-", with: "")
-        }
+        models = ScreenroomWhisper.availableModels()
+        chosenModel = ScreenroomTranscriberSettings.resolvedModel()?.path ?? ""
         refreshPlan()
     }
 
@@ -276,7 +400,7 @@ struct AnalysisReadyView: View {
             transcribeOnly: transcribeOnly,
             hasRecording: review.selected?.recording != nil,
             whisper: whisper,
-            agent: agent.enabled && !agent.command.trimmingCharacters(in: .whitespaces).isEmpty,
+            agent: agentUsable,
             existing: existing)
     }
 }

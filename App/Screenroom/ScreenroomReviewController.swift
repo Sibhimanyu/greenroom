@@ -14,6 +14,7 @@
 import AVFoundation
 import Combine
 import Foundation
+import SwiftUI
 
 @MainActor
 final class ScreenroomReviewController: ObservableObject {
@@ -27,8 +28,8 @@ final class ScreenroomReviewController: ObservableObject {
     @Published private(set) var cohortFindings: [ScreenroomCohort.Finding] = []
 
     @Published private(set) var isAnalysing = false
-    /// The "How to get feedback" panel is open (the Ready popover's Change link,
-    /// or "Feedback settings" in More). It only changes choices; it runs nothing.
+    /// The "Feedback settings" sheet is open (the Ready popover's More settings
+    /// link, or "Feedback settings" in More). It only changes choices; it runs nothing.
     /// Closing it brings the Ready popover back when it was opened from there.
     @Published var showingSetup = false {
         didSet {
@@ -41,8 +42,20 @@ final class ScreenroomReviewController: ObservableObject {
         }
     }
     private var reopenPopoverAfterSetup = false
-    /// The one popover behind the Get feedback capsule (Ready, then progress).
+    /// Where the one run popover hangs: the toolbar's Get feedback capsule, or
+    /// the Transcript tab's Transcribe button when that is where it began.
+    enum PopoverAnchor: Equatable { case toolbar, transcribeButton }
+    /// The one popover (Ready, then progress). Only the anchor named by
+    /// `popoverAnchor` shows it, so two are never open together.
     @Published var runPopoverOpen = false
+    @Published private(set) var popoverAnchor: PopoverAnchor = .toolbar
+
+    /// Binding for an anchor's `.popover`: true only while the popover is open
+    /// AND belongs to that anchor.
+    func popoverBinding(for anchor: PopoverAnchor) -> Binding<Bool> {
+        Binding(get: { self.runPopoverOpen && self.popoverAnchor == anchor },
+                set: { if !$0, self.popoverAnchor == anchor { self.runPopoverOpen = false } })
+    }
     /// Which run the Ready state is for: Transcribe's one step, or the full run.
     @Published private(set) var popoverTranscribeOnly = false
 
@@ -98,7 +111,7 @@ final class ScreenroomReviewController: ObservableObject {
 
     /// The steps of this run, in order, so the popover can show which are
     /// done, which is running and which are still to come. The last one is
-    /// swapped for "Reading the notes" if the agent fails over.
+    /// swapped for "Writing the report" if the agent fails over.
     @Published private(set) var plannedSteps: [ScreenroomRunStep] = []
 
     /// Stop has been pressed and the run is winding down. The button greys
@@ -524,8 +537,17 @@ final class ScreenroomReviewController: ObservableObject {
     /// Opens the Ready popover for the selected folder. Nothing runs until
     /// Start. While a run is going the same popover shows its progress, so
     /// this just reopens it.
-    func openRunPopover(transcribeOnly: Bool = false) {
+    func openRunPopover(transcribeOnly: Bool = false, anchor: PopoverAnchor = .toolbar) {
         if !isAnalysing { popoverTranscribeOnly = transcribeOnly }
+        popoverAnchor = anchor
+        runPopoverOpen = true
+    }
+
+    /// The toolbar capsule while a run is going: reopens progress there (from
+    /// wherever it hangs), or closes it when it is already open there.
+    func toggleProgressFromToolbar() {
+        if runPopoverOpen && popoverAnchor == .toolbar { runPopoverOpen = false; return }
+        popoverAnchor = .toolbar
         runPopoverOpen = true
     }
 
@@ -756,7 +778,7 @@ final class ScreenroomReviewController: ObservableObject {
         let whisper = ScreenroomTranscriberSettings.whisperIsReady
         // whisper reports how far through the file it is; Apple's recogniser
         // does not until it finishes.
-        begin(whisper ? "Transcribing with whisper" : "Transcribing",
+        begin(whisper ? "Transcribing with Whisper" : "Transcribing with Apple Speech",
               whisper ? .transcribeWhisper : .transcribeApple, determinate: whisper, kind: .transcribe)
         do {
             _ = try await ScreenroomTranscriber.transcribe(
@@ -779,7 +801,7 @@ final class ScreenroomReviewController: ObservableObject {
     }
 
     private func takeStills(_ recording: URL, into folder: URL) async {
-        begin("Taking stills", .stills, determinate: true, kind: .stills)
+        begin("Picking stills", .stills, determinate: true, kind: .stills)
         do {
             let frames = try await ScreenroomFrames.extract(
                 from: recording, into: folder,
@@ -843,7 +865,7 @@ final class ScreenroomReviewController: ObservableObject {
             // An agent reports nothing until it answers, so the bar is not
             // pretended into existence. Elapsed time and its own last line
             // carry the wait instead.
-            begin("Your agent is reading it", .agent(settings.kind.rawValue), determinate: false, kind: .write)
+            begin("Your agent is writing the report", .agent(settings.kind.rawValue), determinate: false, kind: .write)
             let brief = ScreenroomAgent.brief(presenter: presentation.presenter,
                                               notes: notes,
                                               metrics: metrics,
@@ -883,7 +905,7 @@ final class ScreenroomReviewController: ObservableObject {
             }
         }
 
-        begin("Reading the notes", .notes, determinate: false, kind: .write)
+        begin("Writing the report", .notes, determinate: false, kind: .write)
         // A failed agent may have reported some tokens before it died; the
         // notes pass that took over used none.
         writerIsOnDevice = true

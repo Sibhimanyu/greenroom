@@ -599,7 +599,7 @@ struct SessionAnalyseButton: View {
                 .help("Get feedback on how this meeting went. \(engine).")
             case .running(let step, _, _):
                 Button {
-                    review.runPopoverOpen.toggle()
+                    review.toggleProgressFromToolbar()
                 } label: {
                     HStack(spacing: 6) {
                         AnalysisRing(progress: review.runProgress)
@@ -629,7 +629,48 @@ struct SessionAnalyseButton: View {
         // progress), so Start never dismisses the popover it was pressed in.
         // A background adds nothing to the toolbar item's width.
         .background {
-            Color.clear.popover(isPresented: $review.runPopoverOpen, arrowEdge: .bottom) {
+            Color.clear.popover(isPresented: review.popoverBinding(for: .toolbar), arrowEdge: .bottom) {
+                AnalysisRunPopover(review: review, onStart: actions.start) {
+                    review.runPopoverOpen = false
+                    actions.stopAnalysis()
+                }
+            }
+        }
+    }
+}
+
+/// The Transcript tab's Transcribe button, and the anchor of the popover it
+/// opens. The host stays put while the button turns into the running state
+/// ("Transcribing" with its ring), so Start never dismisses the popover it
+/// was pressed in. The toolbar capsule shows the same run and reopens
+/// progress from the toolbar.
+struct TranscribeSlot: View {
+    let state: SessionInspectorModel.Analyse
+    let actions: SessionInspectorActions
+    @ObservedObject private var review = ScreenroomReviewController.shared
+
+    var body: some View {
+        Group {
+            switch state {
+            case .ready, .analysed:
+                Button("Transcribe", action: actions.transcribe)
+                    .buttonStyle(.borderedProminent)
+            case .running where review.isTranscribeOnly:
+                Button {
+                    review.openRunPopover(anchor: .transcribeButton)
+                } label: {
+                    HStack(spacing: 6) {
+                        AnalysisRing(progress: review.runProgress)
+                        Text(ScreenroomRunRules.runTitle(transcribeOnly: true, stopping: review.isStopping))
+                    }
+                }
+                .buttonStyle(.bordered)
+            default:
+                EmptyView()
+            }
+        }
+        .background {
+            Color.clear.popover(isPresented: review.popoverBinding(for: .transcribeButton), arrowEdge: .bottom) {
                 AnalysisRunPopover(review: review, onStart: actions.start) {
                     review.runPopoverOpen = false
                     actions.stopAnalysis()

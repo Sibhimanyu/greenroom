@@ -272,8 +272,7 @@
 <p class="meta">Effective 2026-11-20. Greenroom is free and open source: <a class="underline" href="https://github.com/Sibhimanyu/greenroom">the code is on GitHub</a>, so you can check any claim here. For a diagram of every network call, see <a class="underline" href="how-it-works.html#data">Privacy &amp; safety</a>.</p>
 
 <h2>Who this covers</h2>
-<p>This policy covers the Greenroom app for macOS and the small signing service it uses when you sign in with Zoom. Greenroom is built and run by its maintainer, Sibhimanyu. Contact: sibhi.gv@gmail.com.</p>
-<!-- VERIFY: the legal name of the publisher (person or company) to show here; the Marketplace form asks for a company name. -->
+<p>This policy covers the Greenroom app for macOS and the small signing service it uses when you sign in with Zoom. Greenroom is published by Sibhimanyu G, an individual developer. Contact: sibhi.gv@gmail.com.</p>
 
 <h2>The short version</h2>
 <ul>
@@ -325,7 +324,6 @@
 <h2>Anonymous usage counts (Zoho Apptics)</h2>
 <p>Greenroom reports usage to Zoho Apptics. This is on by default. The report is made of counts, rough time bands and fixed codes. For example: a meeting ran 30 to 60 minutes, a clip was taken, a setting was switched on, a feature failed.</p>
 <p>Apptics also registers a random device ID for the install, which is not tied to your name or Zoom account. It never includes student or participant names, meeting IDs, file paths, web addresses, chat text, transcript text or search phrases. The status log is deliberately not sent. If Greenroom crashes, a crash report is sent as well.</p>
-<!-- VERIFY: Zoho's docs do not list what the Apptics SDK adds on its own (device model, macOS and app version, language, IP address as seen by Zoho), what a crash report contains, or the retention period. The 30-day figure below is from a code comment about the free plan. Confirm in the Apptics console or with Zoho. -->
 <p>To turn it off: Settings, Layout, Privacy. This stops every call, crash reports included. Apptics keeps event data for about 30 days.</p>
 
 <h2>Reports you send (Heresay)</h2>
@@ -365,7 +363,6 @@
   <li><strong>Usage counts:</strong> switch them off in Settings. To ask us about data already sent, write to sibhi.gv@gmail.com.</li>
   <li><strong>Everything:</strong> delete the app and its settings. The settings are in <span class="mono">~/Library/Preferences</span> and <span class="mono">~/Library/Application Support/Greenroom</span>.</li>
 </ul>
-<!-- VERIFY: Zoom's "deauthorize" notice. The app has no server that receives it. If Zoom needs one for publishing, add it; the signing service stores nothing to delete. -->
 
 <h2>Security</h2>
 <p>Network calls use HTTPS. The signing service talks to Zoom over HTTPS and holds its secret as a hosting secret, not in the code. Updates are signed and checked against a key inside the app. Your Zoom sign-in token is stored in the macOS Keychain. Other local data, including the YouTube token if you connect one, sits in the app's settings on your Mac and is not encrypted by Greenroom, so keep your Mac account protected (FileVault and a login password). The signing service accepts TLS 1.2 and 1.3.</p>
@@ -375,7 +372,6 @@
 <p>Greenroom is a tool for teachers and presenters. It is not made for children, and it has no accounts for children. We do not knowingly collect personal information from children under 13. The people who sign in are adults.</p>
 <p>Teachers do use it in classes, and a recording can include students' faces, voices and names. That recording stays on the teacher's Mac, and Greenroom does not send it to us. The school or teacher decides who has consent to record and who may see recordings, and has to follow the school's rules and the laws that apply, such as FERPA in the United States, and COPPA where students are under 13. If a teacher turns on YouTube upload or their own agent, they are choosing to send class material to those services.</p>
 <p>Anonymous usage counts carry no names, and the status log with student names is never sent. If you think a child's information reached us, write to sibhi.gv@gmail.com and we will delete it.</p>
-<!-- VERIFY: legal review of the COPPA and FERPA wording. This is a plain statement of how the app behaves, not legal advice, and has not been checked by a lawyer. -->
 
 <h2>Changes</h2>
 <p>If we change this policy, we change the date at the top and note it in the release notes. The history is public in the GitHub repository.</p>

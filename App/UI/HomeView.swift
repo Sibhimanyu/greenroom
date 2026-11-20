@@ -592,7 +592,7 @@ struct HomeView: View {
             .onAppear {
                 // Pre-fetch so the menu is ready by the time it is opened;
                 // skipped silently when credentials or a scope are missing.
-                if coordinator.scheduledMeetings.isEmpty && !coordinator.s2sAccountID.isEmpty {
+                if coordinator.scheduledMeetings.isEmpty && coordinator.zoomHostingReady {
                     coordinator.refreshScheduledMeetings()
                 }
             }
@@ -956,11 +956,10 @@ struct HomeView: View {
     private var readiness: [ReadinessItem] {
         var items: [ReadinessItem] = []
         if mode != .record {
-            let sdk = coordinator.sdkClientID.isEmpty || coordinator.sdkClientSecret.isEmpty
-            let host = coordinator.s2sAccountID.isEmpty || coordinator.s2sClientID.isEmpty
-                || coordinator.s2sClientSecret.isEmpty
+            let sdk = !coordinator.zoomSDKReady
+            let host = !coordinator.zoomHostingReady
             let missing = mode == .create ? (sdk || host) : sdk
-            items.append(ReadinessItem(id: "zoom", title: "Zoom", problem: missing ? "Zoom: add credentials" : nil))
+            items.append(ReadinessItem(id: "zoom", title: "Zoom", problem: missing ? "Zoom: sign in" : nil))
         }
         if !coordinator.cameraIsOff {
             let blocked = cameraAccess == .denied || cameraAccess == .restricted
@@ -1209,7 +1208,7 @@ struct HomeView: View {
     }
 
     private var hasS2SCredentials: Bool {
-        !coordinator.s2sAccountID.isEmpty && !coordinator.s2sClientID.isEmpty && !coordinator.s2sClientSecret.isEmpty
+        coordinator.zoomHostingReady
     }
 
     /// One full-width picker in the field's own look: calendar symbol, the

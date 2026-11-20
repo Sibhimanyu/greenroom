@@ -185,7 +185,7 @@ struct CuesSetupContent<WhisperSetup: View, WhisperModel: View>: View {
                 CuesPicture(on: enabled)
             }
             Toggle(isOn: $enabled.animatedCollapse()) {
-                Text("Suggest links while I teach")
+                Text("Suggest links during meetings")
             }
             .help("Listens during meetings and offers cards for the tools, words, quotes, books, videos, topics and people you name. Off by default.")
             CuesBetaWarning()
@@ -285,7 +285,7 @@ struct CuesSetupContent<WhisperSetup: View, WhisperModel: View>: View {
             } label: {
                 Label("Language", systemImage: "globe")
             }
-            .help("What you teach in.")
+            .help("The language you speak in meetings.")
             .disabled(inClass)
 
             Toggle(isOn: $saveTranscript) {

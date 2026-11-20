@@ -41,6 +41,9 @@ Record is `MeetingMode.record` (enum in CoordinatorController.swift; Create / Sc
 | UI/SessionsQuery.swift / SessionsIndex.swift | Pure filter/sort/count/chips/transcript search; per-folder extras | `SessionsQuery`, `SessionChips`, `TranscriptSearch`, `SessionsIndex` |
 | UI/SessionSelection.swift | Finder-style multi-select, trash plan | `SessionSelection`, `SessionTrashPlan` |
 | UI/SessionDetailContent.swift / SessionDetailRules.swift | Watch page layout (picture, timeline, rail, cards) and pure rules | `SessionDetailPage`, `SessionDetailToolbar`, `SessionDetailRules` |
+| UI/SessionTimeline.swift | The watch page's one control bar: skip back/forward 10s, play, time, track, duration, mute (volume slider opens on hover), speed, full screen; all with `.help` | `SessionTimeline` |
+| UI/PlayerControlRules.swift | Pure: skip clamping, volume glyph and saved level (`watchPlayerVolume`), key map, full-screen auto-hide (2.5s). Tests: PlayerControlRulesTests | `PlayerControlRules`, `PlayerKeyAction` |
+| UI/FullScreenPlayer.swift | Full screen: a borderless black window over the display sharing the page's AVPlayer, glass control bar, controls and cursor auto-hide; own key and mouse monitors | `WatchFullScreen`, `WatchPlayerState`, `PlayerVolumeStore` |
 | UI/SessionTimeline.swift, SessionMoments.swift, SessionTranscriptView.swift, SessionTitleSuggester.swift | Timeline, moments tab, transcript tab, suggested titles | `SessionTimeline`, `SessionMomentsList`, `SessionTranscriptView`, `SessionTitleSuggester` |
 | UI/SessionNotesBar.swift | Floating notes bar during any session | `SessionNotes.shared`, `SessionNotesBarContent` |
 
@@ -99,6 +102,7 @@ Record is `MeetingMode.record` (enum in CoordinatorController.swift; Create / Sc
 - Change the live preview crop / camera drag -> `PreviewFrameRules`, `PreviewCameraDragLayer`, `PreviewOutlineRules`.
 - Change sessions grid filters/sort/chips -> `SessionsQuery.swift` (`SessionsShow/Status/Sort`, `SessionChips`), sidebar in `SessionsSidebar`.
 - Change a session row/card -> `SessionsRow.swift`, `SessionsContent.swift`.
+- Watch page keys (Watch mode only; Edit keeps the editor's own monitor): Space play/pause, Left/Right skip 10s, M mute, F full screen (Esc exits full screen; double-click the picture too). One monitor in `SessionDetailContent.SpaceBarPlayback`, same typing/sheet gating as Space; key map in `PlayerControlRules.action`. Full screen keys are `WatchFullScreen`'s own monitor.
 - Change watch page layout -> `SessionDetailContent.SessionDetailPage` + `SessionDetailRules` (when the rail drops under the picture).
 - Change the timeline/marks -> `SessionTimeline`, `SessionMarkStyle`.
 - Change a menu bar item -> `MenuBarModel.items` (order/titles/shortcuts), drawn by `MenuBarView`; test `Tests/MenuBarModelTests.swift`.

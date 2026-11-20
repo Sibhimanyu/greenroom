@@ -177,6 +177,8 @@ struct RecordingsView: View {
     @State private var stageAspect: CGFloat = 16.0 / 9.0
     @State private var isPlaying = false
     @State private var rate: Float = 1
+    @State private var volume: Float = PlayerVolumeStore.saved()
+    @State private var muted = false
     @State private var playerWatchers: [AnyCancellable] = []
     @State private var trashError: String?
     @State private var exporting: (done: Int, total: Int)?
@@ -413,6 +415,7 @@ struct RecordingsView: View {
             aspect: stageAspect,
             hasVideo: selection != nil && player != nil,
             onTogglePlay: togglePlay,
+            onPlayerKey: playerKey,
             tabs: Tab.allCases.filter(\.isAvailable).map(\.rawValue),
             tab: $tab,
             stage: { stage(for: session) },
@@ -794,7 +797,13 @@ struct RecordingsView: View {
                             onStopSkipping: stopSkipping,
                             onTogglePlay: togglePlay,
                             onSeek: scrub,
-                            onRate: setRate)
+                            onRate: setRate,
+                            volume: volume,
+                            muted: muted,
+                            onSkip: skip,
+                            onMute: toggleMute,
+                            onVolume: setVolume,
+                            onFullScreen: toggleFullScreen)
         }
     }
 
@@ -966,6 +975,9 @@ struct RecordingsView: View {
         guard let recording else { return }
         let item = AVPlayer(url: recording.url)
         item.defaultRate = rate
+        item.volume = PlayerVolumeStore.saved()
+        volume = item.volume
+        muted = false
         player = item
         timeObserver = item.addPeriodicTimeObserver(
             forInterval: CMTime(seconds: 0.1, preferredTimescale: 600), queue: .main) { time in
@@ -978,6 +990,16 @@ struct RecordingsView: View {
             item.publisher(for: \.timeControlStatus)
                 .receive(on: DispatchQueue.main)
                 .sink { status in isPlaying = status != .paused },
+            // The full-screen bar drives the same player: follow it.
+            item.publisher(for: \.volume)
+                .receive(on: DispatchQueue.main)
+                .sink { volume = $0 },
+            item.publisher(for: \.isMuted)
+                .receive(on: DispatchQueue.main)
+                .sink { muted = $0 },
+            item.publisher(for: \.defaultRate)
+                .receive(on: DispatchQueue.main)
+                .sink { if $0 > 0 { rate = $0 } },
         ]
         if let current = item.currentItem {
             watchers.append(current.publisher(for: \.presentationSize)
@@ -1000,6 +1022,7 @@ struct RecordingsView: View {
     }
 
     private func teardownPlayer() {
+        WatchFullScreen.shared.close()
         stopSkipping()
         if let timeObserver { player?.removeTimeObserver(timeObserver) }
         timeObserver = nil
@@ -1063,6 +1086,34 @@ struct RecordingsView: View {
             player.play()
         } else {
             player.pause()
+        }
+    }
+
+    /// Skip by seconds, kept inside the recording.
+    private func skip(_ delta: Double) {
+        scrub(to: PlayerControlRules.skipTarget(from: playhead, by: delta, duration: duration))
+    }
+
+    private func toggleMute() { player?.isMuted.toggle() }
+
+    private func setVolume(_ new: Float) {
+        guard let player else { return }
+        let level = PlayerControlRules.clampedVolume(Double(new))
+        player.volume = level
+        PlayerVolumeStore.save(level)
+        player.isMuted = PlayerControlRules.mutedAfterSetting(volume: level, muted: player.isMuted)
+    }
+
+    private func toggleFullScreen() { WatchFullScreen.shared.toggle(player: player) }
+
+    /// A key on the watch page (SessionDetailPage's key monitor decides when).
+    private func playerKey(_ action: PlayerKeyAction) {
+        switch action {
+        case .playPause: togglePlay()
+        case .skipBack: skip(-PlayerControlRules.skipSeconds)
+        case .skipForward: skip(PlayerControlRules.skipSeconds)
+        case .toggleMute: toggleMute()
+        case .toggleFullScreen, .exitFullScreen: toggleFullScreen()
         }
     }
 

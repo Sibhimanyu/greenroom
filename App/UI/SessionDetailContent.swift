@@ -135,6 +135,9 @@ struct SessionDetailPage<Stage: View, Timeline: View, Work: View, Transcript: Vi
     var aspect: CGFloat = 16.0 / 9.0
     var hasVideo = true
     var onTogglePlay: () -> Void = {}
+    /// Skip, mute and full-screen keys, Watch mode only (Edit keeps the
+    /// editor's own transport and key monitor).
+    var onPlayerKey: (PlayerKeyAction) -> Void = { _ in }
     let tabs: [String]
     @Binding var tab: String
     @ViewBuilder let stage: () -> Stage
@@ -170,7 +173,7 @@ struct SessionDetailPage<Stage: View, Timeline: View, Work: View, Transcript: Vi
             }
         }
         // Space belongs to the editor's own key monitor while editing.
-        .background(SpaceBarPlayback(active: isActive && hasVideo && !isEditing, onToggle: onTogglePlay))
+        .background(SpaceBarPlayback(active: isActive && hasVideo && !isEditing, onAction: onPlayerKey))
         .popover(isPresented: $showShare, arrowEdge: .top) {
             SessionShareCard(model: model, actions: actions)
                 .padding(16)
@@ -266,6 +269,9 @@ struct SessionDetailPage<Stage: View, Timeline: View, Work: View, Transcript: Vi
                 Color.clear
                     .contentShape(Rectangle())
                     .onTapGesture(perform: onTogglePlay)
+                    // A double click is full screen (the first click has already
+                    // toggled play; the second puts it back).
+                    .simultaneousGesture(TapGesture(count: 2).onEnded { onPlayerKey(.toggleFullScreen) })
             }
         }
         .accessibilityElement(children: .contain)
@@ -452,27 +458,31 @@ struct SessionShareCard: View {
     }
 }
 
-// MARK: - Space bar
+// MARK: - Keys
 
+/// Space, the arrows, M and F drive the player, but only when nothing is being typed.
+///
 /// Space plays and pauses the picture, but only when nothing is being typed.
 /// A local key monitor, not a keyboard shortcut on a button: a shortcut would
 /// take the space out of the note box and every other text field. It checks
 /// the window's first responder every press (SessionDetailRules decides).
 private struct SpaceBarPlayback: NSViewRepresentable {
     let active: Bool
-    let onToggle: () -> Void
+    let onAction: (PlayerKeyAction) -> Void
 
     final class Coordinator {
         var active = false
-        var onToggle: () -> Void = {}
+        var onAction: (PlayerKeyAction) -> Void = { _ in }
         weak var window: NSWindow?
         var monitor: Any?
 
         func install() {
             guard monitor == nil else { return }
             monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
-                guard let self, event.keyCode == 49, let window = self.window,
-                      event.window === window else { return event }
+                guard let self, let window = self.window, event.window === window else { return event }
+                let held = !event.modifierFlags.intersection([.command, .control, .option]).isEmpty
+                guard let action = PlayerControlRules.action(keyCode: event.keyCode, hasModifiers: held,
+                                                             fullScreen: false) else { return event }
                 let responder = window.firstResponder
                 let allow = SessionDetailRules.spaceTogglesPlayback(
                     textInputFocused: responder is NSText || responder is NSTextView,
@@ -481,7 +491,7 @@ private struct SpaceBarPlayback: NSViewRepresentable {
                     sheetUp: window.attachedSheet != nil,
                     pageActive: self.active && window.isKeyWindow)
                 guard allow else { return event }
-                self.onToggle()
+                self.onAction(action)
                 return nil
             }
         }
@@ -516,7 +526,7 @@ private struct SpaceBarPlayback: NSViewRepresentable {
 
     func updateNSView(_ view: Anchor, context: Context) {
         context.coordinator.active = active
-        context.coordinator.onToggle = onToggle
+        context.coordinator.onAction = onAction
     }
 
     static func dismantleNSView(_ view: Anchor, coordinator: Coordinator) {

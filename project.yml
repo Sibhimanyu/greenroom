@@ -294,6 +294,7 @@ targets:
       - path: App/Stage/PresenceVisibility.swift
       - path: App/Stage/ScreenRecovery.swift
       - path: App/UI/WindowFrameRules.swift
+      - path: App/UI/PlayerControlRules.swift
       - path: App/UI/PreviewFrameRules.swift
       - path: App/UI/MainWindow.swift
       - path: App/UI/LayoutAppOrdering.swift

@@ -49,7 +49,17 @@ struct SessionTimeline: View {
     /// Called on a click and continuously while the knob is dragged.
     var onSeek: (Double) -> Void = { _ in }
     var onRate: (Float) -> Void = { _ in }
+    /// Standard video controls: volume 0...1, mute, skip by seconds, full screen.
+    var volume: Float = 1
+    var muted = false
+    var isFullScreen = false
+    var onSkip: (Double) -> Void = { _ in }
+    var onMute: () -> Void = {}
+    var onVolume: (Float) -> Void = { _ in }
+    var onFullScreen: () -> Void = {}
 
+    /// The pointer is over the speaker: its slider is open.
+    @State private var hoveringVolume = false
     /// Where the knob is while it is held, so the player's own ticks do not
     /// fight the hand.
     @State private var dragFraction: Double?
@@ -67,7 +77,11 @@ struct SessionTimeline: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 12) {
-                playButton
+                HStack(spacing: 6) {
+                    skipButton(-PlayerControlRules.skipSeconds)
+                    playButton
+                    skipButton(PlayerControlRules.skipSeconds)
+                }
                 Text(SessionDetailRules.clock(shownFraction * duration))
                     .font(.system(size: 12, design: .monospaced))
                     .monospacedDigit()
@@ -78,7 +92,9 @@ struct SessionTimeline: View {
                     .monospacedDigit()
                     .foregroundStyle(.secondary)
                     .frame(minWidth: 40, alignment: .leading)
+                volumeControl
                 speedMenu
+                fullScreenButton
             }
             if !moments.isEmpty, duration > 0, trackFrame.width > 0 {
                 momentsLane
@@ -142,6 +158,61 @@ struct SessionTimeline: View {
         .buttonStyle(.plain)
         .help(isPlaying ? "Pause (Space)" : "Play (Space)")
         .accessibilityLabel(isPlaying ? "Pause" : "Play")
+    }
+
+    /// The shared look of a round transport button.
+    private func roundGlyph(_ name: String) -> some View {
+        Image(systemName: name)
+            .font(.system(size: 13, weight: .semibold))
+            .frame(width: 28, height: 28)
+            .background(Circle().fill(Color.primary.opacity(0.08)))
+            .contentShape(Circle())
+    }
+
+    private func skipButton(_ delta: Double) -> some View {
+        let back = delta < 0
+        let seconds = Int(abs(delta))
+        return Button { onSkip(delta) } label: {
+            roundGlyph(back ? "gobackward.\(seconds)" : "goforward.\(seconds)")
+        }
+        .buttonStyle(.plain)
+        .help(back ? "Back \(seconds) seconds (\u{2190})" : "Forward \(seconds) seconds (\u{2192})")
+        .accessibilityLabel(back ? "Back \(seconds) seconds" : "Forward \(seconds) seconds")
+    }
+
+    /// Mute on click; the level slider opens beside it while the pointer is
+    /// over the speaker (the track gives up the width, so nothing overflows).
+    private var volumeControl: some View {
+        HStack(spacing: 6) {
+            Button(action: onMute) {
+                roundGlyph(PlayerControlRules.volumeSymbol(volume: volume, muted: muted))
+            }
+            .buttonStyle(.plain)
+            .help(muted ? "Unmute (M)" : "Mute (M)")
+            .accessibilityLabel(muted ? "Unmute" : "Mute")
+            if hoveringVolume {
+                Slider(value: Binding(get: { Double(muted ? 0 : volume) },
+                                      set: { onVolume(Float($0)) }),
+                       in: 0...1)
+                    .controlSize(.mini)
+                    .frame(width: 64)
+                    .help("Volume")
+                    .accessibilityLabel("Volume")
+                    .transition(.opacity)
+            }
+        }
+        .onHover { hoveringVolume = $0 }
+        .animation(.easeOut(duration: 0.2), value: hoveringVolume)
+    }
+
+    private var fullScreenButton: some View {
+        Button(action: onFullScreen) {
+            roundGlyph(isFullScreen ? "arrow.down.right.and.arrow.up.left"
+                                    : "arrow.up.left.and.arrow.down.right")
+        }
+        .buttonStyle(.plain)
+        .help(isFullScreen ? "Exit full screen (F or Esc)" : "Full screen (F)")
+        .accessibilityLabel(isFullScreen ? "Exit full screen" : "Full screen")
     }
 
     private var speedMenu: some View {

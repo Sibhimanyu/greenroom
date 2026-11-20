@@ -340,6 +340,9 @@ final class CutoutPublisher: NSObject {
         if removing || wantsEffect {
             found = (try? sequence.perform([segmentation], on: frame)) != nil
                 ? segmentation.results?.first?.pixelBuffer : nil
+            // Main person only: a static object at the edge of the view is
+            // not part of the picture. Runs before any smoothing.
+            if removing { found = refiner.keepMainPerson(found) }
         }
 
         if removing {

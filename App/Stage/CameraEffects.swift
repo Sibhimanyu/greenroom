@@ -224,10 +224,7 @@ enum CameraEffects {
 /// with the previous one stops the edge flickering.
 final class MaskRefiner {
 
-    // Scratch storage for the connected-component pass. Raw buffers and while
-    // loops, not arrays: per-pixel array access in an unoptimised (Debug)
-    // build took ~140 ms a frame upstream.
-    private let scratch = ComponentScratch()
+    private let selector = MainPersonSelector()
     private var smoothedMaskBuffer: CVPixelBuffer?
     private var maskPool: CVPixelBufferPool?
 
@@ -238,108 +235,26 @@ final class MaskRefiner {
     /// Nil in, nil out. Modifies `raw` in place (it is Vision's own result,
     /// not used for anything else).
     func refine(_ raw: CVPixelBuffer?) -> CVPixelBuffer? {
-        smoothedMask(from: keepDominantRegion(raw))
+        smoothedMask(from: keepMainPerson(raw))
     }
 
     /// Forget the previous frame (the effect was turned off).
     func reset() {
         smoothedMaskBuffer = nil
+        selector.reset()
     }
 
-    /// Runs on the low-res mask, modifying it in place.
-    private func keepDominantRegion(_ buffer: CVPixelBuffer?) -> CVPixelBuffer? {
+    /// Keeps only the main person in the low-res mask, in place (see
+    /// `MainPersonSelector`). Also used by the Cutout path.
+    func keepMainPerson(_ buffer: CVPixelBuffer?) -> CVPixelBuffer? {
         guard let buffer else { return nil }
         CVPixelBufferLockBaseAddress(buffer, [])
         defer { CVPixelBufferUnlockBaseAddress(buffer, []) }
         guard let base = CVPixelBufferGetBaseAddress(buffer) else { return buffer }
-        let width = CVPixelBufferGetWidth(buffer)
-        let height = CVPixelBufferGetHeight(buffer)
-        let bytesPerRow = CVPixelBufferGetBytesPerRow(buffer)
-        let pixels = base.assumingMemoryBound(to: UInt8.self)
-        let threshold: UInt8 = 32
-        let count = width * height
-        scratch.reserve(count)
-        let labels = scratch.labels
-        let parent = scratch.parent
-        let area = scratch.area
-        labels.update(repeating: 0, count: count)
-
-        func find(_ start: Int32) -> Int32 {
-            var x = start
-            while parent[Int(x)] != x {
-                parent[Int(x)] = parent[Int(parent[Int(x)])]
-                x = parent[Int(x)]
-            }
-            return x
-        }
-
-        // Two-pass labeling with union-find (4-connectivity); label 0 is
-        // the background.
-        var next: Int32 = 1
-        var y = 0
-        while y < height {
-            let row = pixels + y * bytesPerRow
-            let line = labels + y * width
-            var x = 0
-            while x < width {
-                if row[x] >= threshold {
-                    let left: Int32 = x > 0 ? line[x - 1] : 0
-                    let up: Int32 = y > 0 ? line[x - width] : 0
-                    if left == 0, up == 0 {
-                        parent[Int(next)] = next
-                        line[x] = next
-                        next += 1
-                    } else if left != 0, up != 0 {
-                        let rootLeft = find(left), rootUp = find(up)
-                        line[x] = rootLeft
-                        if rootLeft != rootUp { parent[Int(rootUp)] = rootLeft }
-                    } else {
-                        line[x] = left != 0 ? left : up
-                    }
-                }
-                x += 1
-            }
-            y += 1
-        }
-        // Area per root; the person is the biggest region.
-        area.update(repeating: 0, count: Int(next))
-        var i = 0
-        while i < count {
-            if labels[i] != 0 { area[Int(find(labels[i]))] += 1 }
-            i += 1
-        }
-        var best: Int32 = 0
-        var bestArea: Int32 = 0
-        var root: Int32 = 1
-        while root < next {
-            if parent[Int(root)] == root, area[Int(root)] > bestArea {
-                best = root
-                bestArea = area[Int(root)]
-            }
-            root += 1
-        }
-        // Which labels belong to the subject (reusing `area`: 1 = keep).
-        var label: Int32 = 1
-        while label < next {
-            area[Int(label)] = find(label) == best ? 1 : 0
-            label += 1
-        }
-        // Erase everything that isn't connected to the main subject
-        // (detached blobs AND their soft sub-threshold halos).
-        y = 0
-        while y < height {
-            let row = pixels + y * bytesPerRow
-            let line = labels + y * width
-            var x = 0
-            while x < width {
-                if row[x] > 0 {
-                    let l = line[x]
-                    if l == 0 || area[Int(l)] == 0 { row[x] = 0 }
-                }
-                x += 1
-            }
-            y += 1
-        }
+        selector.select(base.assumingMemoryBound(to: UInt8.self),
+                        width: CVPixelBufferGetWidth(buffer),
+                        height: CVPixelBufferGetHeight(buffer),
+                        bytesPerRow: CVPixelBufferGetBytesPerRow(buffer))
         return buffer
     }
 
@@ -385,31 +300,4 @@ final class MaskRefiner {
         smoothedMaskBuffer = rendered
         return rendered
     }
-}
-
-/// Reusable raw buffers for the connected-component pass.
-private final class ComponentScratch {
-    private var capacity = 0
-    private(set) var labels = UnsafeMutablePointer<Int32>.allocate(capacity: 1)
-    /// Label -> parent label (union-find).
-    private(set) var parent = UnsafeMutablePointer<Int32>.allocate(capacity: 1)
-    private(set) var area = UnsafeMutablePointer<Int32>.allocate(capacity: 1)
-
-    /// Room for `count` pixels, and as many labels, the most a mask can hold.
-    func reserve(_ count: Int) {
-        guard count + 1 > capacity else { return }
-        free()
-        capacity = count + 1
-        labels = .allocate(capacity: capacity)
-        parent = .allocate(capacity: capacity)
-        area = .allocate(capacity: capacity)
-    }
-
-    private func free() {
-        labels.deallocate()
-        parent.deallocate()
-        area.deallocate()
-    }
-
-    deinit { free() }
 }

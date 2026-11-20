@@ -73,7 +73,7 @@ final class CuesController: ObservableObject {
         /// offers. A class stays quiet; the bench is allowed to be busier.
         /// Twelve, up from six. Six was set when the rail showed whatever the
         /// last lookup produced; the rail now holds three slots and cycles
-        /// eight cards through them, so it has somewhere to put the extra
+        /// the kept cards through them, so it has somewhere to put the extra
         /// results and a thin minute starves it.
         var lookupsPerMinute = 12
         /// Settings -> Cues -> "Also suggest links for things I mention
@@ -105,7 +105,7 @@ final class CuesController: ObservableObject {
     @Published private(set) var isPaused = false
     @Published private(set) var stoppedForClass = false
     @Published private(set) var isResolving = false
-    /// Newest first. Eight kept, five shown.
+    /// Newest first. Twelve kept, three shown at a time.
     @Published private(set) var cards: [CueCard] = []
     @Published private(set) var unseenCount = 0
     /// The Settings "Try it" readout: recent finals plus the live tail.
@@ -147,12 +147,12 @@ final class CuesController: ObservableObject {
     /// the closing log line has always counted.
     @Published private(set) var linksFound = 0
     /// Where the shown window starts in `cards`. The rail has three slots and
-    /// keeps eight, so without this the older five were written to the file
+    /// keeps twelve, so without this the older nine were written to the file
     /// and never seen.
     private var rotationOffset = 0
     private var lastRotation = Date()
-    /// Slow enough to read a card and reach for it, fast enough that eight
-    /// cards come round inside a minute.
+    /// Slow enough to read a card and reach for it, fast enough that the
+    /// cards come round inside a minute or two.
     private let rotateEvery: TimeInterval = 8
 
     /// `cards` rotated to the current window. A new card resets the rotation,
@@ -840,7 +840,7 @@ final class CuesController: ObservableObject {
     }
 
     private func tick() {
-        // Cards that sat untouched for ten minutes are stale by class standards.
+        // Cards that sat untouched for thirty minutes are stale by class standards.
         let cutoff = Date().addingTimeInterval(-cardLifetime)
         cards.removeAll { $0.createdAt < cutoff }
         // Cycle the window when there is more than the rail can show at once.

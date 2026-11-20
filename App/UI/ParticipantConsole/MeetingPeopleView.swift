@@ -330,9 +330,3 @@ final class MeetingPeopleView: NSView {
         host?.frame = bounds
     }
 }
-
-/// The brand fill for chrome drawn in AppKit, read from the asset catalogue like
-/// `Brand.green`, so it is never typed in twice.
-enum ParticipantGridWindowAccent {
-    static var color: NSColor { NSColor(named: "AccentColor") ?? .systemGreen }
-}

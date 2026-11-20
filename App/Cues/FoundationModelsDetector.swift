@@ -121,7 +121,7 @@ final class FoundationModelsDetector: MentionDetector {
                 let response = try await session.respond(
                     to: prompt,
                     generating: GeneratedMentions.self,
-                    options: GenerationOptions(sampling: .greedy, maximumResponseTokens: 256))
+                    options: GenerationOptions(samplingMode: .greedy, maximumResponseTokens: 256))
                 consecutiveErrors = 0
                 if let trace = Self.traceDrop {
                     trace("model offered: " + (response.content.mentions.isEmpty ? "nothing"

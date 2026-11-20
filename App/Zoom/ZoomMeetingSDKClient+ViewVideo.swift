@@ -249,8 +249,6 @@ extension ZoomMeetingSDKClient {
         return Date().timeIntervalSince(at)
     }
 
-    func viewVideoSubscribed(_ key: ViewVideoKey) -> Bool { viewVideo.entries[key]?.subscribed ?? false }
-
     /// Once per slot: the line that says the black window happened.
     func noteViewVideoMissing(_ key: ViewVideoKey) {
         guard let entry = viewVideo.entries[key], !entry.warnedNoVideo else { return }

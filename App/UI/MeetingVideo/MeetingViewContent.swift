@@ -413,8 +413,6 @@ final class MeetingViewContentView: NSView {
         shareVideo = nil
     }
 
-    func resetPage() { page = 0 }
-
     override func layout() {
         super.layout()
         // The runtime re-plans every second; between ticks keep what is there coherent.

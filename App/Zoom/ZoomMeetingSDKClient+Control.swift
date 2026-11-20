@@ -112,8 +112,6 @@ extension ZoomMeetingSDKClient {
         run { on ? $0.pinVideo(toFirstView: userID) : $0.unPinVideo(fromFirstView: userID) }
     }
 
-    func clearAllPins() -> Bool { run { $0.unPinAllVideosFromFirstView() } }
-
     func makeHost(userID: UInt32) -> Bool { run { $0.makeHost(userID) } }
 
     func setCoHost(_ on: Bool, userID: UInt32) -> Bool {
@@ -301,7 +299,6 @@ extension ZoomMeetingSDKClient {
     }
 
     func setAllowChat(_ allow: Bool) -> Bool { run { $0.allowParticipants(toChat: allow) } }
-    func setAllowShare(_ allow: Bool) -> Bool { run { $0.allowParticipants(toShare: allow) } }
     func setAllowRename(_ allow: Bool) -> Bool { run { $0.allowParticipants(toRename: allow) } }
     func setAllowStartVideo(_ allow: Bool) -> Bool { run { $0.allowParticipants(toStartVideo: allow) } }
     func setFocusMode(_ on: Bool) -> Bool { run { $0.turnFocusMode(on: on) } }

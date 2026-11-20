@@ -147,39 +147,6 @@ private struct CredentialState {
     }
 }
 
-/// One Marketplace app: its glyph and name, what it powers, whether it's ready.
-private struct AppCard: View {
-    let title: String
-    let symbol: String
-    let powers: [(symbol: String, name: String)]
-    let state: CredentialState
-
-    var body: some View {
-        HStack(spacing: 12) {
-            Image(systemName: symbol)
-                .font(.system(size: 20))
-                .foregroundStyle(state.missing.isEmpty ? Brand.text : Color.secondary)
-                .frame(width: 28)
-            VStack(alignment: .leading, spacing: 4) {
-                HStack {
-                    Text(title).font(.headline)
-                    Spacer(minLength: 4)
-                    state.badge
-                }
-                Text(powers.map(\.name).joined(separator: " · "))
-                    .font(.caption).foregroundStyle(.secondary)
-            }
-        }
-        .padding(12)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(RoundedRectangle(cornerRadius: 10)
-            .fill(Color(nsColor: .controlBackgroundColor)))
-        .overlay(RoundedRectangle(cornerRadius: 10)
-            .strokeBorder(Color.secondary.opacity(0.25)))
-        .accessibilityElement(children: .combine)
-    }
-}
-
 /// The scopes the Server-to-Server app needs: folded away, one click to
 /// copy, selectable when open.
 private struct ScopeList: View {

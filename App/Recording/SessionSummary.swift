@@ -292,7 +292,7 @@ enum SessionSummary {
         do {
             let response = try await session.respond(
                 to: prompt,
-                options: GenerationOptions(sampling: .greedy, maximumResponseTokens: limit))
+                options: GenerationOptions(samplingMode: .greedy, maximumResponseTokens: limit))
             return .ok(response.content.trimmingCharacters(in: .whitespacesAndNewlines))
         } catch let error as LanguageModelSession.GenerationError {
             switch error {

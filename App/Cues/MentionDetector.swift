@@ -699,12 +699,6 @@ struct HeuristicDetector: MentionDetector {
         return Array(byKey.values.sorted { $0.confidence > $1.confidence }.prefix(5))
     }
 
-    /// Names in the roster that a mention collided with, for the log line.
-    static func rosterCollisions(_ mentions: [Mention], excludedNames: [String]) -> [String] {
-        let kept = Set(filter(mentions, excludedNames: excludedNames).map(\.normalizedKey))
-        return mentions.filter { !kept.contains($0.normalizedKey) && $0.kind == .person }.map(\.query)
-    }
-
     private static func clean(_ text: String) -> String {
         text.replacingOccurrences(of: "\u{2019}", with: "'")
             .split(whereSeparator: \.isWhitespace).joined(separator: " ")

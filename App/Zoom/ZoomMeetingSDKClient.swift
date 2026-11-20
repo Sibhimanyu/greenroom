@@ -2,11 +2,9 @@
 //  ZoomMeetingSDKClient.swift
 //  Greenroom
 //
-//  Wraps the native Zoom Meeting SDK (Vendor/ZoomSDK - see that folder's
-//  README) to join a meeting as a SEPARATE, second connection purely for
-//  chat - not a replacement for the native Zoom app, which is still what
-//  carries your real video/audio. That means this shows up as a second
-//  participant to everyone else in the meeting.
+//  The app's only wrapper around the native Zoom Meeting SDK (Vendor/ZoomSDK -
+//  see that folder's README). It starts the user's own meetings as host, using
+//  the ZAK host key, and handles stage video, sharing and chat for them.
 //
 //  Every type/method/property name below is confirmed directly against
 //  the real framework headers in

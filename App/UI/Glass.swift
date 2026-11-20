@@ -48,21 +48,6 @@ extension View {
     }
 }
 
-/// Groups neighbouring glass pieces so they blend and sample together on
-/// macOS 26; a plain pass-through before that.
-struct GreenroomGlassGroup<Content: View>: View {
-    var spacing: CGFloat? = nil
-    @ViewBuilder let content: Content
-
-    var body: some View {
-        if #available(macOS 26, *) {
-            GlassEffectContainer(spacing: spacing) { content }
-        } else {
-            content
-        }
-    }
-}
-
 enum GreenroomGlassAppKit {
     /// Backing view for a borderless floating panel. The panel must be
     /// non-opaque with a clear background, or the glass has nothing to refract.

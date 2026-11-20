@@ -1076,21 +1076,6 @@ private final class RootView: NSView {
     /// the icons already say.
     private static let railGroupBreak: CGFloat = 8
 
-    /// How to split `items` across rows in a column of `width`.
-    ///
-    /// As few rows as the width allows, then the items spread as evenly as
-    /// possible across them - five in a column that fits six is one row of
-    /// five, not a row of six and a stray. Earlier rows take the remainder,
-    /// so a ragged edge, when one is unavoidable, lands at the bottom where
-    /// the eye is already leaving.
-    private static func controlRows(items: Int, width: CGFloat) -> [Int] {
-        guard items > 0 else { return [] }
-        let perRow = max(1, Int((width + railCellGap) / (railMinControlWidth + railCellGap)))
-        let rows = max(1, Int(ceil(Double(items) / Double(perRow))))
-        let base = items / rows
-        let extra = items % rows
-        return (0..<rows).map { base + ($0 < extra ? 1 : 0) }
-    }
     /// The fixed stack between the picture and the controls: caption, mic
     /// eyebrow, meter row, trailing space. Named because `selfBlockHeight` and
     /// `layoutSelfBlock` both step through it and have to agree.
@@ -2757,63 +2742,6 @@ private final class RootView: NSView {
         headerButtons = [info]
     }
 
-    /// Everything that used to be a permanently visible rail cell but is
-    /// reached a few times a lesson at most.
-    ///
-    /// Phase 3 of the redesign plan: the rail gave routine controls, session
-    /// setup, meeting administration and one irreversible action the same
-    /// visual weight, in a grid that was always on screen. These keep working
-    /// exactly as they did - same closures, same confirmations - from a menu
-    /// that costs one click and no permanent space.
-    private func moreItems() -> [(String, () -> Void)] {
-        var out: [(String, () -> Void)] = []
-        out.append(("Snap windows back", { ParticipantGridWindowController.requestSnapBack() }))
-        out.append(("Greenroom window", { ParticipantGridWindowController.requestShowMainWindow() }))
-        out.append(("Meeting info", { Self.showMeetingInfo() }))
-        return out
-    }
-
-    /// The header's More menu, assembled from the existing item lists so the
-    /// participants, reactions and security controls keep one definition each.
-    private func showMoreMenu(from view: NSView) {
-        let menu = NSMenu()
-        func add(_ label: String, _ action: @escaping () -> Void) {
-            let carrier = BlockMenuItem(title: label, action)
-            let item = NSMenuItem(title: label, action: #selector(BlockMenuItem.fire), keyEquivalent: "")
-            item.target = carrier
-            item.representedObject = carrier
-            menu.addItem(item)
-        }
-        for (label, action) in moreItems() { add(label, action) }
-        menu.addItem(.separator())
-        for (title, items) in [("Participants", participantItems()),
-                               ("Reactions", reactionItems()),
-                               ("Security", securityItems())] {
-            let parent = NSMenuItem(title: title, action: nil, keyEquivalent: "")
-            let submenu = NSMenu()
-            for (label, action) in items {
-                let carrier = BlockMenuItem(title: label, action)
-                let item = NSMenuItem(title: label, action: #selector(BlockMenuItem.fire), keyEquivalent: "")
-                item.target = carrier
-                item.representedObject = carrier
-                submenu.addItem(item)
-            }
-            parent.submenu = submenu
-            menu.addItem(parent)
-        }
-        // Last, after a rule, and it still asks. The plan is explicit that End
-        // session is never one of the immediate controls.
-        menu.addItem(.separator())
-        add("End session\u{2026}") {
-            Self.confirm(title: "End the session?",
-                         message: "Ends the meeting for everyone, finishes any recording, and turns the camera off.",
-                         confirm: "End session") {
-                ParticipantGridWindowController.requestEndSession()
-            }
-        }
-        menu.popUp(positioning: nil, at: NSPoint(x: 0, y: -4), in: view)
-    }
-
     /// Selects the earliest raised hand, which is what "Next" means: the queue
     /// is in raise order, so the first row is the person who has waited longest.
     private func selectFirstRaisedHand() {
@@ -3177,22 +3105,6 @@ private final class RootView: NSView {
     /// How tall the needs block will be, without placing it.
     private func needsBlockHeight(width: CGFloat) -> CGFloat {
         walkNeedsBlock(x: 0, width: width, top: 0, place: false)
-    }
-
-    /// The whole column's height at a width, and Cues's share of it.
-    ///
-    /// The two are one answer, not two: Cues is the only block that sizes
-    /// itself to the room left over, so the room left over has to be worked out
-    /// before its height is known, and both numbers have to come from the same
-    /// arithmetic or the measuring pass and the placing pass disagree - the
-    /// mistake this file has made twice already.
-    ///
-    /// `total` is the DOCUMENT height, so it counts everything; leave anything
-    /// out and the scroll view cannot reach the bottom of its own content.
-    private func railStack(width: CGFloat, available: CGFloat)
-        -> (total: CGFloat, cuesBudget: CGFloat) {
-        let fitting = fittingStackHeight(width: width)
-        return (fitting, 0)
     }
 
     /// The height the column-width decision is allowed to see.
@@ -3706,17 +3618,6 @@ private final class RootView: NSView {
 
     // MARK: Control helpers
 
-    private static func pack(_ controls: [NSView], into bar: NSView, height: CGFloat) {
-        var x: CGFloat = 16
-        for control in controls {
-            if control is NSTextField { control.frame.size = control.fittingSize }
-            else if control.frame.width == 0 { control.frame.size = control.fittingSize }
-            control.frame.origin = NSPoint(x: x, y: (height - control.frame.height) / 2)
-            bar.addSubview(control)
-            x = control.frame.maxX + 8
-        }
-    }
-
     /// A global monitor outlives the view that installed it, so ending a
     /// session with the drawer open would leave one running for the rest of
     /// the app's life, swallowing Escape everywhere.
@@ -3864,38 +3765,6 @@ private final class RootView: NSView {
         button.isBordered = false
         button.font = .systemFont(ofSize: 10)
         button.contentTintColor = destructive || alert ? .systemRed : .labelColor
-        button.sizeToFit()
-        button.frame.size.width = max(button.frame.width + 20, 72)
-        button.frame.size.height = 48
-        return button
-    }
-
-    /// A toolbar button that drops a menu.
-    ///
-    /// Built from an NSMenu popped by hand rather than an NSPopUpButton: a
-    /// pull-down cannot draw icon-above-label, and a popped menu behaves
-    /// predictably inside a non-activating panel, where the stock control's
-    /// tracking could not be confirmed working.
-    private static func toolMenu(_ title: String,
-                                 symbol: String,
-                                 items: [(String, () -> Void)]) -> NSView {
-        let menu = NSMenu()
-        for (label, action) in items {
-            let carrier = BlockMenuItem(title: label, action)
-            let item = NSMenuItem(title: label, action: #selector(BlockMenuItem.fire), keyEquivalent: "")
-            item.target = carrier
-            // NSMenuItem.target is weak, so the carrier needs an owner that is
-            // not - representedObject retains.
-            item.representedObject = carrier
-            menu.addItem(item)
-        }
-        let button = ToolMenuButton(menu: menu)
-        button.title = title
-        button.image = NSImage(systemSymbolName: symbol, accessibilityDescription: title)
-        button.imagePosition = .imageAbove
-        button.isBordered = false
-        button.font = .systemFont(ofSize: 10)
-        button.contentTintColor = .labelColor
         button.sizeToFit()
         button.frame.size.width = max(button.frame.width + 20, 72)
         button.frame.size.height = 48
@@ -5234,14 +5103,6 @@ private final class ToolMenuButton: NSButton {
 
 // ClosureButton lives in App/UI/ClosureButton.swift now - the Cues cards
 // share it. See TileView.acceptsFirstMouse for why it exists.
-
-/// A pop-up that also answers the first click. NSPopUpButton has the same
-/// first-mouse problem as every other control in a non-activating panel, and
-/// no way to opt in without subclassing.
-@MainActor
-private final class FirstClickPopUpButton: NSPopUpButton {
-    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
-}
 
 private final class BlockMenuItem: NSObject {
     private let body: () -> Void

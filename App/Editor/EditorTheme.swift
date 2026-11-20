@@ -44,33 +44,6 @@ extension View {
                             .strokeBorder(Color(nsColor: .separatorColor).opacity(0.5), lineWidth: 0.5)))
     }
 
-    /// Round transport button: a `.glass` circle on macOS 26, the old flat
-    /// circle before.
-    @ViewBuilder
-    func editorRoundControl() -> some View {
-        if #available(macOS 26, *) {
-            self.buttonStyle(.glass).buttonBorderShape(.circle).controlSize(.large)
-        } else {
-            self.buttonStyle(EditorRoundControlButtonStyle())
-        }
-    }
-}
-
-/// Round icon button used for the transport controls.
-struct EditorRoundControlButtonStyle: ButtonStyle {
-    var diameter: CGFloat = 44
-    var tint: Color = .primary.opacity(0.1)
-
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .font(.system(size: diameter * 0.36, weight: .semibold))
-            .foregroundStyle(.primary)
-            .frame(width: diameter, height: diameter)
-            .background(Circle().fill(tint))
-            .overlay(Circle().stroke(Color.primary.opacity(0.12), lineWidth: 1))
-            .scaleEffect(configuration.isPressed ? 0.93 : 1)
-            .animation(.easeOut(duration: 0.12), value: configuration.isPressed)
-    }
 }
 
 /// Section header: uppercase, letter-spaced, in the text green.

@@ -116,7 +116,6 @@ final class MeetingViewWindowController: NSObject, NSWindowDelegate {
     // MARK: Show to class (WindowShareController does the work)
 
     func toggleShare() { share.toggle() }
-    func setShowOnShare(_ on: Bool) { share.set(on) }
     func refreshShare() { share.refresh() }
 
     // MARK: The title bar's controls: the picker, and the share switch beside it

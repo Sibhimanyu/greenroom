@@ -759,30 +759,6 @@ final class StageCompositor: StageFrameSource {
     }
 }
 
-#if DEBUG
-// MARK: Debug still
-
-extension StageCompositor {
-    /// One frame from supplied pictures, through exactly the draw code the
-    /// live clock uses. For off-screen verification: no cameras, no screen
-    /// capture, no app launch.
-    struct StillInputs {
-        var scene = StageScene()
-        var screen: CIImage?
-        var marks: CIImage?
-        var cameras: [Int: StageCameraInput] = [:]
-        var size = CGSize(width: 1920, height: 1080)
-    }
-
-    static func renderStill(inputs: StillInputs) -> CGImage? {
-        let renderer = StageRenderer(canvas: inputs.size)
-        let image = renderer.compose(scene: inputs.scene, screen: inputs.screen, marks: inputs.marks, cameras: inputs.cameras)
-        return renderer.context.createCGImage(image, from: CGRect(origin: .zero, size: inputs.size),
-                                              format: .BGRA8, colorSpace: CGColorSpace(name: CGColorSpace.sRGB))
-    }
-}
-#endif
-
 /// One value behind a lock, for a callback that is set on one thread and read on another.
 final class LockedBox<T>: @unchecked Sendable {
     private let lock = NSLock()

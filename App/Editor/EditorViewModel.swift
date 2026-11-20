@@ -236,10 +236,6 @@ final class EditorViewModel: ObservableObject {
 
     // MARK: selection
 
-    func clearSelection() {
-        selection = nil
-    }
-
     /// Whether Esc has anything to put away before it means Back.
     var hasSomethingToDismiss: Bool {
         selection != nil || selectedCutID != nil || selectedAnnotationID != nil
@@ -375,18 +371,6 @@ final class EditorViewModel: ObservableObject {
 
     func applySpeedToWholeVideo(factor: Double) {
         applySpeed(factor: factor, from: trimStart, to: trimEnd)
-    }
-
-    /// mm:ss (or plain seconds) → seconds.
-    static func parseClock(_ text: String) -> Double? {
-        let parts = text.trimmingCharacters(in: .whitespaces).split(separator: ":")
-        if parts.count == 2, let minutes = Double(parts[0]), let seconds = Double(parts[1]) {
-            return minutes * 60 + seconds
-        }
-        if parts.count == 1, let seconds = Double(parts[0]) {
-            return seconds
-        }
-        return nil
     }
 
     func removeSpeedSegment(id: UUID) {
@@ -593,10 +577,6 @@ final class EditorViewModel: ObservableObject {
         return timelineDuration
     }
 
-    func editedTimeAtPlayhead() -> Double {
-        editedTime(forTimeline: playhead)
-    }
-
     /// Called from the periodic observer: keeps the audio preview at the
     /// right offset/volume, playing only inside its window (silent through
     /// cut regions, exactly like the export).
@@ -669,14 +649,6 @@ final class EditorViewModel: ObservableObject {
     }
 
     // MARK: loading
-
-    func openVideoPanel() {
-        let panel = NSOpenPanel()
-        panel.allowedContentTypes = [.movie, .mpeg4Movie, .quickTimeMovie]
-        panel.allowsMultipleSelection = false
-        guard panel.runModal() == .OK, let url = panel.url else { return }
-        Task { await load(url: url) }
-    }
 
     func load(url: URL) async {
         let mediaURL = url
@@ -929,29 +901,6 @@ final class EditorViewModel: ObservableObject {
             selectedSpeedID = nil
         }
         exitMergePlaybackIfNeeded()
-    }
-
-    /// Fresh start on the same video: wipes cuts, trim, crop and merge clips
-    /// as one undoable step (post-export "Clear Edits").
-    func clearAllEdits() {
-        pushUndo()
-        cuts = []
-        trimStart = 0
-        trimEnd = duration
-        setOverlayAudio(url: nil)
-        cropRect = nil
-        mergeClips = []
-        selectedCutID = nil
-        exitMergePlaybackIfNeeded()
-        lastExportURL = nil
-        exportMessage = nil
-    }
-
-    /// Starts a brand-new edit session on the just-exported file.
-    func editExportedVideo() {
-        guard let url = lastExportURL else { return }
-        lastExportURL = nil
-        Task { await load(url: url) }
     }
 
     /// The merge list changed — indices are no longer valid, go back to main.

@@ -368,24 +368,6 @@ enum RailCardStyle {
     static var fill: Color { Color.primary.opacity(0.05) }
 }
 
-struct RailCard<Content: View>: View {
-    let caption: String
-    @ViewBuilder let content: () -> Content
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text(caption.uppercased())
-                .font(.system(size: 11, weight: .semibold))
-                .tracking(0.6)
-                .foregroundStyle(.tertiary)
-            content()
-        }
-        .padding(16)
-        .frame(maxWidth: .infinity, alignment: .topLeading)
-        .background(RailCardStyle.shape.fill(RailCardStyle.fill))
-    }
-}
-
 /// Share with the class: the one thing that leaves this Mac, said as such.
 struct SessionShareCard: View {
     let model: SessionInspectorModel
@@ -467,77 +449,6 @@ struct SessionShareCard: View {
             .help("Rename or delete the video on YouTube")
         }
         .controlSize(.small)
-    }
-}
-
-/// How it went: the analysis, from asking for it to opening its report.
-struct SessionFeedbackCard: View {
-    let model: SessionInspectorModel
-    let actions: SessionInspectorActions
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            switch model.analyse {
-            case .unavailable(let why):
-                secondary(why)
-            case .ready(let engine, let leavesMac):
-                Button(action: actions.analyse) {
-                    Text("Get feedback").frame(maxWidth: .infinity)
-                }
-                .controlSize(.large)
-                Text(engine)
-                    .font(.system(size: 11))
-                    .foregroundStyle(leavesMac ? AnyShapeStyle(Brand.netText) : AnyShapeStyle(.secondary))
-                    .fixedSize(horizontal: false, vertical: true)
-            case .running(let step, let detail, let log):
-                HStack(alignment: .firstTextBaseline, spacing: 8) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(step).font(.callout).lineLimit(2)
-                        if !detail.isEmpty {
-                            Text(detail).font(.caption).foregroundStyle(.secondary).lineLimit(1)
-                        }
-                    }
-                    Spacer(minLength: 0)
-                    Button("Stop", role: .destructive, action: actions.stopAnalysis)
-                        .controlSize(.small)
-                        .help("Stops the run and closes whatever it started. Nothing is written until it finishes.")
-                }
-                if let last = log?.split(whereSeparator: \.isNewline).last, !last.isEmpty {
-                    Text(String(last))
-                        .font(.system(size: 10, design: .monospaced))
-                        .foregroundStyle(.tertiary)
-                        .lineLimit(1)
-                        .truncationMode(.head)
-                }
-            case .busy:
-                secondary("Another session is being analysed.")
-            case .analysed(let engine, _, _):
-                if let summary = model.summary {
-                    Text("\u{201C}\(summary)\u{201D}")
-                        .font(.callout)
-                        .lineLimit(3)
-                        .fixedSize(horizontal: false, vertical: true)
-                } else {
-                    secondary("Analysed \u{00B7} \(engine)")
-                }
-                if let caveat = model.summaryCaveat {
-                    Text(caveat).font(.caption).foregroundStyle(.secondary)
-                }
-                Button(action: actions.openReport) {
-                    Text("Open report \u{2192}").foregroundStyle(Brand.text)
-                }
-                .buttonStyle(.plain)
-                .font(.callout.weight(.medium))
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
-
-    private func secondary(_ text: String) -> some View {
-        Text(text)
-            .font(.callout)
-            .foregroundStyle(.secondary)
-            .fixedSize(horizontal: false, vertical: true)
     }
 }
 

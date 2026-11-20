@@ -32,7 +32,7 @@ struct WhisperSetupRows: View {
                 }
             }
         }
-        .onChange(of: installer.revision) { _ in onChange() }
+        .onChange(of: installer.revision) { onChange() }
     }
 
     @ViewBuilder private var control: some View {

@@ -31,26 +31,3 @@ struct LayoutChoiceItems: View {
         .labelsHidden()
     }
 }
-
-/// The Home line: small and secondary.
-struct LayoutChoiceLine: View {
-    @EnvironmentObject private var coordinator: CoordinatorController
-
-    var body: some View {
-        let locked = coordinator.layoutChoiceLocked
-        Menu {
-            LayoutChoiceItems()
-        } label: {
-            Text("Layout: \(coordinator.layoutChoiceName)")
-        }
-        .menuStyle(.borderlessButton)
-        .controlSize(.small)
-        .fixedSize()
-        .disabled(locked)
-        .help(locked
-              ? "A meeting runs the layout it started with. Pick the next one after it ends, or use Settings \u{2192} Layout \u{2192} Apply now."
-              : "Where Start puts the meeting, the chat and your apps. Edit layouts in Settings \u{2192} Layout.")
-        .accessibilityLabel("Layout")
-        .accessibilityValue(coordinator.layoutChoiceName)
-    }
-}

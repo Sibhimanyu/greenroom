@@ -178,7 +178,7 @@ enum ScreenroomAnalyst {
             let response = try await session.respond(
                 to: prompt(notes: notes, scoring: scoring, presenter: presenter, measured: measured),
                 generating: GeneratedFeedback.self,
-                options: GenerationOptions(sampling: .greedy, maximumResponseTokens: 700))
+                options: GenerationOptions(samplingMode: .greedy, maximumResponseTokens: 700))
             let content = response.content
             let summary = content.summary.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !summary.isEmpty else { return nil }

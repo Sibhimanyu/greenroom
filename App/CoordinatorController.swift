@@ -423,32 +423,6 @@ final class CoordinatorController: ObservableObject {
         return presets
     }
 
-    /// One-click fill of the Join Existing fields from a saved preset.
-    func applyPreset(_ preset: MeetingPreset) {
-        Analytics.feature("preset")
-        meetingMode = .join
-        meetingNumber = preset.number
-        meetingPassword = preset.password
-        log("Filled \u{201C}\(preset.name)\u{201D} (\(preset.number)).")
-    }
-
-    /// Saves the current Join Existing fields as a named preset. The
-    /// number is stored normalized (digits only); a blank name falls back
-    /// to the number itself.
-    func saveCurrentAsPreset(name: String) {
-        Analytics.feature("preset_save")
-        let digits = meetingNumberDigits
-        guard !digits.isEmpty else { return }
-        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        meetingPresets.append(MeetingPreset(name: trimmed.isEmpty ? digits : trimmed,
-                                            number: digits, password: meetingPassword))
-        log("Saved preset \u{201C}\(meetingPresets.last?.name ?? digits)\u{201D}.")
-    }
-
-    func deletePreset(_ preset: MeetingPreset) {
-        meetingPresets.removeAll { $0.id == preset.id }
-    }
-
     // MARK: First-run onboarding - shown once automatically, reopenable
     // from the main window's ? button.
 
@@ -4723,27 +4697,6 @@ final class CoordinatorController: ObservableObject {
         }
     }
 
-    /// Fills Meeting ID/Passcode from whatever's on the clipboard - a
-    /// pasted zoom.us/zoommtg:// link, or the plain text block Zoom's
-    /// calendar invites use. Beats manually copying two separate fields
-    /// out of an invite by hand.
-    func fillMeetingFromClipboard() {
-        Analytics.feature("paste_link")
-        guard let clipboard = NSPasteboard.general.string(forType: .string),
-              let parsed = ZoomMeetingLinkParser.parse(clipboard) else {
-            // Logged AND surfaced: the status log is collapsed by default,
-            // so on the log alone this button looked like it did nothing at
-            // all when the clipboard held no meeting.
-            log("Clipboard doesn't look like a Zoom meeting link/invite.")
-            Notifier.post(title: "No meeting in the clipboard",
-                          body: "Copy a Zoom invite or meeting link, then try again.")
-            return
-        }
-        meetingNumber = parsed.number
-        meetingPassword = parsed.password
-        log("Filled meeting ID\(parsed.password.isEmpty ? "" : " + passcode") from clipboard.")
-    }
-
     private var layoutFollowTask: Task<Void, Never>?
     private var peopleViewTask: Task<Void, Never>?
     /// The built-in client's PRIMARY meeting window - the one parked as
@@ -4945,10 +4898,6 @@ final class CoordinatorController: ObservableObject {
                 || title.localizedCaseInsensitiveContains("waiting")
                 || className.hasPrefix("ZM") || className.hasPrefix("ZP") || className.hasPrefix("zm")
         }
-    }
-
-    private func hideSDKMeetingWindows() {
-        sdkMeetingWindows().forEach { $0.orderOut(nil) }
     }
 
     /// The windows eligible to be the meeting TILE or the people-view

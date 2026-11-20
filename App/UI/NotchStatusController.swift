@@ -203,23 +203,6 @@ final class NotchStatusController {
         enqueue(.prompt(prompt))
     }
 
-    /// A question the person just asked for (End): shown at once, ahead of
-    /// anything waiting. `onConfirm` runs on the red button only; the other
-    /// button, a timeout and being taken away all run `onDismiss`.
-    func showConfirm(_ prompt: IslandPrompt, onConfirm: @escaping () -> Void, onDismiss: @escaping () -> Void) {
-        prompts[prompt.id] = PromptHandlers(onUpload: onConfirm, onDismiss: onDismiss)
-        queue.enqueueFirst(.prompt(prompt))
-        refresh()
-    }
-
-    /// Takes one prompt away; `answered` false runs its dismiss handler.
-    func hidePrompt(_ id: UUID, answered: Bool) {
-        let gone = queue.remove { $0.id == id }
-        let handler = prompts.removeValue(forKey: id)
-        afterRemoval(gone)
-        if !answered { handler?.onDismiss() }
-    }
-
     /// Takes every upload prompt away. `answered` false runs their dismiss handlers.
     func hidePrompts(answered: Bool) {
         let gone = queue.remove { if case .prompt = $0 { return true } else { return false } }

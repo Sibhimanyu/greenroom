@@ -275,10 +275,6 @@ final class MeetingControlsModel: ObservableObject {
         act("Denied \(person.name)", code: "deny") { $0.denyWaiting(userID: person.id) }
     }
 
-    func sendBack(userID: UInt32, name: String) {
-        act("Sent \(name) back to the waiting room", code: "waiting_room") { $0.putInWaitingRoom(userID: userID) }
-    }
-
     func selectCamera(_ device: MeetingMenus.Device) {
         act("Camera: \(device.name)", code: "select_camera") { $0.selectCamera(id: device.id) }
         refreshDevices()

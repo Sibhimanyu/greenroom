@@ -86,7 +86,7 @@ struct ScreenroomSettingsTab: View {
         // tab sitting in half the pane.
         .onAppear { refresh() }
         // A model downloaded from any of the per-model tiles.
-        .onChange(of: installer.revision) { _ in refresh() }
+        .onChange(of: installer.revision) { refresh() }
     }
 
     /// What happens with no agent depends on the Mac, so the help says

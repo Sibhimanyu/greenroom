@@ -164,7 +164,7 @@ extension CoordinatorController {
             if !cuesMenuBar.isVisible {
                 cuesMenuBar.setVisible(true)
                 cuesMenuBar.onOpen = { [weak self] in
-                    guard let self, #available(macOS 26.0, *) else { return }
+                    guard let self else { return }
                     self.cues?.markSeen()
                     self.syncCuesSurfaces()
                 }
@@ -191,7 +191,7 @@ extension CoordinatorController {
         state.open = { [weak self] card in self?.openCueCard(card) }
         state.send = { [weak self] card in self?.sendCueCard(card) }
         state.dismiss = { [weak self] card in
-            guard let self, #available(macOS 26.0, *) else { return }
+            guard let self else { return }
             self.cues?.dismiss(card)
             self.syncCuesSurfaces()
         }

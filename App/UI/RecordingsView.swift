@@ -214,7 +214,7 @@ struct RecordingsView: View {
         var isAvailable: Bool {
             switch self {
             case .moments: return true
-            // Analyse writes transcript.txt too, so this tab can be filled
+            // Analyse writes analysis-transcript.txt, so this tab can be filled
             // even when Cues is held back.
             case .transcript: return true
             case .links: return CuesAvailability.isReleased

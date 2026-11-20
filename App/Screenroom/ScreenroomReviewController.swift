@@ -207,7 +207,7 @@ final class ScreenroomReviewController: ObservableObject {
     /// the folder's artifacts describe.
     ///
     /// A class folder can hold more than one recording - the tape was
-    /// stopped and restarted - and every artifact in it (transcript.txt,
+    /// stopped and restarted - and every artifact in it (analysis-transcript.txt,
     /// speech.json, notes.jsonl, frames/) is folder-level, so it describes
     /// exactly one of them: whichever ScreenroomLibrary picked, the longest.
     /// Selecting the other one and analysing used to bind the transcript, the
@@ -349,8 +349,7 @@ final class ScreenroomReviewController: ObservableObject {
             .filter { $0.wordCount > 0 }
         peerPresence = others.compactMap { ScreenroomPresence.load(in: $0.folder) }
             .filter { $0.sampleCount > 0 }
-        hasTranscript = FileManager.default.fileExists(
-            atPath: presentation.folder.appendingPathComponent(ScreenroomTranscriber.transcriptFileName).path)
+        hasTranscript = ScreenroomTranscriptFile.url(in: presentation.folder) != nil
         log = ""
 
         if let recording = presentation.recording {

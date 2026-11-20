@@ -34,8 +34,13 @@ enum SessionSummary {
         let text: String
     }
 
+    /// The transcript the Transcript tab shows: Cues' `transcript.txt` when
+    /// it has one, else Analyse's `analysis-transcript.txt` (or an old
+    /// folder's Analyse-format `transcript.txt`). Falls back to the Cues path
+    /// when neither exists.
     static func transcriptURL(in folder: URL) -> URL {
-        folder.appendingPathComponent("transcript.txt")
+        ScreenroomTranscriptFile.displayURL(in: folder)
+            ?? folder.appendingPathComponent(ScreenroomTranscriptFile.cuesName)
     }
     static func summaryURL(in folder: URL) -> URL {
         folder.appendingPathComponent("summary.md")
@@ -60,8 +65,9 @@ enum SessionSummary {
         }
         return raw.split(separator: "\n").compactMap { row -> Line? in
             guard !row.hasPrefix("#") else { return nil }
-            // Two writers share this file: Cues writes "stamp<TAB>text",
-            // Analyse writes "[m:ss] text". Read both, or an analysed meeting
+            // Two writers: Cues writes "stamp<TAB>text" (transcript.txt),
+            // Analyse writes "[m:ss] text" (analysis-transcript.txt, or
+            // transcript.txt in older folders). Read both, or an analysed meeting
             // shows "Nothing was transcribed" beside a finished report.
             let parts = row.split(separator: "\t", maxSplits: 1).map(String.init)
             if parts.count == 2 {

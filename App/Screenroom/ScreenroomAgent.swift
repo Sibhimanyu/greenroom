@@ -185,7 +185,7 @@ enum ScreenroomAgent {
         out.append("## What is here")
         out.append("")
         if hasTranscript {
-            out.append("- `transcript.txt` \u{2014} what was said, with timestamps. Transcribed on the teacher's Mac, so expect recogniser errors, especially on names.")
+            out.append("- `analysis-transcript.txt` \u{2014} what was said, with timestamps. Transcribed on the teacher's Mac, so expect recogniser errors, especially on names.")
         }
         out.append("- `notes.jsonl` \u{2014} notes the teacher typed WHILE watching, one JSON object per line. `atMs` is milliseconds into the recording. These are the most valuable thing here: they are a human in the room deciding what mattered, and nothing in the video recovers them.")
         if metrics != nil {
@@ -288,7 +288,7 @@ enum ScreenroomAgent {
     /// What the agent may read, copied out of the presentation's folder:
     /// the brief and everything it lists, and nothing that is audio or video.
     static let agentReadable: Set<String> = [
-        "BRIEF.md", "transcript.txt", "notes.jsonl", "speech.json", "presence.json",
+        "BRIEF.md", "analysis-transcript.txt", "notes.jsonl", "speech.json", "presence.json",
         "rubric.json", "words.json", "session.json", "frames"
     ]
 
@@ -304,6 +304,11 @@ enum ScreenroomAgent {
             for name in (try files.contentsOfDirectory(atPath: folder.path)) where agentReadable.contains(name) {
                 try files.copyItem(at: folder.appendingPathComponent(name),
                                    to: workspace.appendingPathComponent(name))
+            }
+            // An old folder only has Analyse's transcript under the old name.
+            let staged = workspace.appendingPathComponent(ScreenroomTranscriptFile.name)
+            if !files.fileExists(atPath: staged.path), let old = ScreenroomTranscriptFile.url(in: folder) {
+                try files.copyItem(at: old, to: staged)
             }
             return workspace
         } catch {
@@ -671,7 +676,7 @@ extension ScreenroomAgent {
         /// Whatever the answer turned out to be.
         var result: String { answer ?? raw }
 
-        /// "Reading transcript.txt" rather than "Read" - the file is the
+        /// "Reading analysis-transcript.txt" rather than "Read" - the file is the
         /// interesting half, and it is what tells a watcher the agent has
         /// found the material rather than flailing.
         private func describe(tool: String, input: [String: Any]?) -> String {

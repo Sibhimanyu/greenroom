@@ -55,8 +55,11 @@ final class ScreenroomRunRulesTests: XCTestCase {
                        ["agent-report.md"])
         XCTAssertEqual(ScreenroomRunRules.cleanup(inFlight: .stills, existedBefore: ["frames"]),
                        ["frames.partial"])
-        XCTAssertEqual(ScreenroomRunRules.cleanup(inFlight: .transcribe, existedBefore: ["transcript.txt", "words.json"]),
+        XCTAssertEqual(ScreenroomRunRules.cleanup(inFlight: .transcribe, existedBefore: ["analysis-transcript.txt", "words.json"]),
                        ["audio-for-transcription.json", "audio-for-transcription.wav", "speech.json"])
+        // Cues' transcript is never on the list, even when it is new.
+        XCTAssertFalse(ScreenroomRunRules.cleanup(inFlight: .transcribe, existedBefore: []).contains("transcript.txt"))
+        XCTAssertTrue(ScreenroomRunRules.cleanup(inFlight: .transcribe, existedBefore: []).contains("analysis-transcript.txt"))
         XCTAssertTrue(ScreenroomRunRules.cleanup(inFlight: .cohort, existedBefore: []).isEmpty)
         XCTAssertTrue(ScreenroomRunRules.cleanup(inFlight: nil, existedBefore: []).isEmpty)
     }
@@ -75,7 +78,7 @@ final class ScreenroomRunRulesTests: XCTestCase {
 
     func testProtectedNames() {
         for name in ["2026-11-20 14-06-41.mp4", "presentation.mov", "notes.jsonl", "rubric.json",
-                     "analysis.json", "session.json", "report.md", "Take.M4A"] {
+                     "analysis.json", "session.json", "report.md", "Take.M4A", "transcript.txt", "cues.txt"] {
             XCTAssertTrue(ScreenroomRunRules.isProtected(name), name)
         }
         XCTAssertFalse(ScreenroomRunRules.isProtected("BRIEF.md"))
@@ -89,5 +92,30 @@ final class ScreenroomRunRulesTests: XCTestCase {
         XCTAssertTrue(ScreenroomRunRules.isOverdue(elapsed: 900, limit: ScreenroomRunRules.agentTimeout))
         XCTAssertFalse(ScreenroomRunRules.isOverdue(elapsed: 10, limit: 0))
         XCTAssertEqual(ScreenroomRunRules.limitLabel(900), "15 min")
+    }
+
+    func testTranscriptFormats() {
+        XCTAssertTrue(ScreenroomTranscriptFile.isAnalyseFormat("[0:07] hello there\n"))
+        XCTAssertFalse(ScreenroomTranscriptFile.isAnalyseFormat("# Cues\n0:00:07\thello there\n"))
+        XCTAssertFalse(ScreenroomTranscriptFile.isAnalyseFormat(""))
+    }
+
+    func testTranscriptFileFallbackAndPrecedence() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let old = dir.appendingPathComponent("transcript.txt")
+        try "[0:01] old analysed\n".write(to: old, atomically: true, encoding: .utf8)
+        XCTAssertEqual(ScreenroomTranscriptFile.url(in: dir)?.lastPathComponent, "transcript.txt")
+        // Cues' tab format is not Analyse's: no fallback, but the tab shows it.
+        try "0:00:01\tcues line\n".write(to: old, atomically: true, encoding: .utf8)
+        XCTAssertNil(ScreenroomTranscriptFile.url(in: dir))
+        XCTAssertEqual(ScreenroomTranscriptFile.displayURL(in: dir)?.lastPathComponent, "transcript.txt")
+        let new = dir.appendingPathComponent("analysis-transcript.txt")
+        try "[0:01] new\n".write(to: new, atomically: true, encoding: .utf8)
+        XCTAssertEqual(ScreenroomTranscriptFile.url(in: dir)?.lastPathComponent, "analysis-transcript.txt")
+        XCTAssertEqual(ScreenroomTranscriptFile.displayURL(in: dir)?.lastPathComponent, "transcript.txt")
+        try FileManager.default.removeItem(at: old)
+        XCTAssertEqual(ScreenroomTranscriptFile.displayURL(in: dir)?.lastPathComponent, "analysis-transcript.txt")
     }
 }

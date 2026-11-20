@@ -262,7 +262,7 @@ enum ScreenroomWhisper {
 
         // Sound labels out before anything counts them: "[BLANK_AUDIO]" as a
         // word is a filler count, a pace and a card that nobody said.
-        return WhisperNoise.drop(segments.compactMap { segment in
+        let spoken = WhisperNoise.drop(segments.compactMap { segment in
             guard let raw = segment["text"] as? String,
                   let offsets = segment["offsets"] as? [String: Any],
                   let from = offsets["from"] as? Int else { return nil }
@@ -274,6 +274,10 @@ enum ScreenroomWhisper {
             let to = offsets["to"] as? Int ?? from
             return ScreenroomSpokenWord(text: text, atMs: from, durationMs: max(0, to - from))
         })
+        // Then the loops: whisper repeating one sentence on audio it cannot
+        // hear. The first occurrence keeps its timing.
+        let keep = WhisperLoops.keepMask(spoken.map(\.text))
+        return spoken.enumerated().filter { keep[$0.offset] }.map(\.element)
     }
 
     // MARK: Finding the binary

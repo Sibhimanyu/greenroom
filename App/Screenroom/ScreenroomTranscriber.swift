@@ -145,7 +145,7 @@ enum ScreenroomTranscriber {
         }
     }
 
-    static let transcriptFileName = "transcript.txt"
+    static let transcriptFileName = ScreenroomTranscriptFile.name
     static let wordsFileName = "words.json"
 
     /// Which language the presentations are in. `en_IN` is supported and is
@@ -166,7 +166,7 @@ enum ScreenroomTranscriber {
 
     /// Transcribes the recording and writes both files into the folder.
     ///
-    /// `transcript.txt` is for a person and for an agent to read; `words.json`
+    /// `analysis-transcript.txt` is for a person and for an agent to read; `words.json`
     /// carries the timings that ScreenroomSpeechMetrics needs. Two files rather
     /// than one because the readable one should stay readable - a text file
     /// full of millisecond offsets is neither.

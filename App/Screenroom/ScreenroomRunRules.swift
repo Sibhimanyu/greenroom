@@ -96,7 +96,9 @@ enum ScreenroomRunRules {
            lower != "audio-for-transcription.wav" {
             return true
         }
-        return ["notes.jsonl", "rubric.json", "analysis.json", "session.json", "report.md"].contains(lower)
+        // transcript.txt and cues.txt are Cues' files, never Analyse's.
+        return ["notes.jsonl", "rubric.json", "analysis.json", "session.json", "report.md",
+                "transcript.txt", "cues.txt"].contains(lower)
     }
 
     /// What a Stop removes: files the running step writes, only when this run
@@ -108,7 +110,7 @@ enum ScreenroomRunRules {
         switch kind {
         case .transcribe:
             candidates = ["audio-for-transcription.wav", "audio-for-transcription.json",
-                          "transcript.txt", "words.json", "speech.json"]
+                          ScreenroomTranscriptFile.name, "words.json", "speech.json"]
         case .stills:
             // Stills are cut into a scratch folder and swapped in at the end,
             // so a stop leaves the earlier stills untouched.
@@ -151,5 +153,47 @@ enum ScreenroomRunRules {
     /// "a quarter of an hour" is for code comments; the person reads "15 min".
     static func limitLabel(_ limit: TimeInterval) -> String {
         "\(max(1, Int((limit / 60).rounded()))) min"
+    }
+}
+
+
+/// Where Analyse keeps its transcript, apart from Cues'.
+///
+/// Both used to write `transcript.txt` (Cues: "stamp<TAB>text"; Analyse:
+/// "[m:ss] text"), so analysing a meeting destroyed Cues' copy. Analyse now
+/// writes `analysis-transcript.txt` and never touches `transcript.txt`.
+/// Folders analysed before the split hold only the old name, in Analyse's
+/// format; that one still reads as Analyse's.
+enum ScreenroomTranscriptFile {
+    static let name = "analysis-transcript.txt"
+    static let cuesName = "transcript.txt"
+
+    /// True when the text is Analyse's "[m:ss] text" rows, not Cues' tab rows.
+    static func isAnalyseFormat(_ text: String) -> Bool {
+        for row in text.split(separator: "\n") {
+            if row.hasPrefix("#") || row.allSatisfy({ $0.isWhitespace }) { continue }
+            return row.hasPrefix("[") && !row.contains("\t")
+        }
+        return false
+    }
+
+    /// The file Analyse readers should open, or nil when it has none.
+    static func url(in folder: URL) -> URL? {
+        let files = FileManager.default
+        let new = folder.appendingPathComponent(name)
+        if files.fileExists(atPath: new.path) { return new }
+        let old = folder.appendingPathComponent(cuesName)
+        if let text = try? String(contentsOf: old, encoding: .utf8), isAnalyseFormat(text) { return old }
+        return nil
+    }
+
+    /// The file the Transcript tab shows: Cues' when it has one (it is
+    /// timestamped from the live meeting and was never rewritten), else
+    /// Analyse's.
+    static func displayURL(in folder: URL) -> URL? {
+        let files = FileManager.default
+        let old = folder.appendingPathComponent(cuesName)
+        if let text = try? String(contentsOf: old, encoding: .utf8), !isAnalyseFormat(text) { return old }
+        return url(in: folder)
     }
 }

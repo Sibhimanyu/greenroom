@@ -50,7 +50,9 @@ On disk (root is `~/Documents/Greenroom`, `SessionFolders.recordingsDirectory`):
   Clip <stamp>.mp4                  exported clips, beside the recording (no clips/ subfolder)
   Replay <stamp>.mp4                raw buffer dump, trimmed into a Clip
   session.json                      SessionMetadata
-  transcript.txt summary.md ...     written by Cues/Screenroom (see screenroom.md)
+  transcript.txt cues.txt           written by Cues ("stamp<TAB>text")
+  analysis-transcript.txt           written by Analyse ("[m:ss] text"); see screenroom.md
+  summary.md ...                    other Cues/Screenroom files
 ```
 Edited exports go to a NEW sibling folder `<name> – Edited` (see `editor.md`). Thumbnail JPEG cache: `~/Library/Caches` keyed by path+size+mtime.
 

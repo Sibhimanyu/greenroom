@@ -690,7 +690,7 @@ struct OnboardingView: View {
         VStack(alignment: .leading, spacing: 16) {
             stepHeader(CuesAvailability.isReleased ? "Find links while you teach" : "Cues is coming soon",
                        CuesAvailability.isReleased
-                           ? "Cues suggests links for what you mention in the meeting. Turn it on only if you want suggestions; you choose what to share."
+                           ? "Cues is a beta and very risky: it suggests links for what you mention in the meeting, and they can be wrong. Turn it on only if you want suggestions; you choose what to share."
                            : "Link suggestions will arrive in a later release. There is nothing to set up here yet.")
             if !CuesAvailability.isReleased {
                 Form {

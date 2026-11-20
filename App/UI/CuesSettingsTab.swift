@@ -188,7 +188,15 @@ struct CuesSetupContent<WhisperSetup: View, WhisperModel: View>: View {
                 Text("Suggest links while I teach")
             }
             .help("Listens during meetings and offers cards for the tools, words, quotes, books, videos, topics and people you name. Off by default.")
-        } header: { if !compact { Text("Cues") } }
+            CuesBetaWarning()
+        } header: {
+            if !compact {
+                HStack(spacing: 6) {
+                    Text("Cues")
+                    CuesBetaBadge()
+                }
+            }
+        }
         // On the section, not on a zero-height Color.clear.
         //
         // A grouped Form draws its own container around EVERY top-level
@@ -983,6 +991,37 @@ struct CuesHeardText: View {
                 guard listening else { return }
                 proxy.scrollTo("end", anchor: .bottom)
             }
+        }
+    }
+}
+
+
+// MARK: - Beta
+
+/// Cues is a beta, and a risky one: it can be wrong in front of everyone.
+/// Shown in Settings and in the setup guide, wherever Cues can be turned on.
+struct CuesBetaBadge: View {
+    var body: some View {
+        Text("BETA")
+            .font(.caption2.weight(.bold))
+            .foregroundStyle(Brand.netText)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
+            .overlay(Capsule().strokeBorder(Brand.net, lineWidth: 1))
+            .accessibilityLabel("Beta")
+    }
+}
+
+struct CuesBetaWarning: View {
+    var body: some View {
+        Label {
+            Text("Beta, and very risky. Cues can suggest wrong or unsuitable links, and a card you send goes to everyone in the meeting. Check every card before you open or send it.")
+                .font(.callout)
+                .foregroundStyle(Brand.netText)
+                .fixedSize(horizontal: false, vertical: true)
+        } icon: {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundStyle(Brand.net)
         }
     }
 }

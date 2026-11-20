@@ -1115,7 +1115,7 @@
     </div>
     <div class="caveat">
       <h3>Zoom and YouTube credentials are stored in plain text on your Mac</h3>
-      <p>The Zoom app credentials you enter, and the YouTube sign-in token if you connect a Google account, are saved in Greenroom's local preferences as <strong>plain text — not encrypted</strong>. Greenroom doesn't use the macOS Keychain at all. They never leave your Mac except to Zoom and Google respectively. The risk is purely local: anyone with access to your Mac user account could read them. The YouTube token can manage the account's videos (Greenroom uses it for uploads, title changes, deleting a video you chose to delete and, with Cues, video search), and Disconnect revokes it at Google.</p>
+      <p>The Zoom app credentials you enter, and the YouTube sign-in token if you connect a Google account, are saved in Greenroom's local preferences as <strong>plain text — not encrypted</strong>. The one exception is your Zoom sign-in token, which is kept in the macOS Keychain. They never leave your Mac except to Zoom and Google respectively. The risk is purely local: anyone with access to your Mac user account could read them. The YouTube token can manage the account's videos (Greenroom uses it for uploads, title changes, deleting a video you chose to delete and, with Cues, video search), and Disconnect revokes it at Google.</p>
       <p>In perspective: these are app-level Zoom API keys scoped to running meetings under your account — not your Zoom password — and revocable anytime in the Zoom Marketplace. The optional "export settings" file used to set up a colleague's Mac also contains them in plaintext by design; hand it over directly and delete it after importing.</p>
     </div>
     <div class="caveat" style="margin-top:18px">
@@ -1145,7 +1145,7 @@
 <footer>
   <div class="wrap footer-inner">
     <span>Greenroom — a one-click classroom setup for macOS.</span>
-    <span><a href="index.html">Overview</a> · <a href="guide.html">Guide</a> · <a href="timeline.html">Timeline</a> · <a href="brand.html">Brand</a> · <a href="https://github.com/Sibhimanyu/greenroom">GitHub</a> · <a href="https://github.com/Sibhimanyu/greenroom/releases">Releases</a> · <a href="https://github.com/Sibhimanyu/greenroom#readme">README</a></span>
+    <span><a href="index.html">Overview</a> · <a href="guide.html">Guide</a> · <a href="privacy.html">Privacy policy</a> · <a href="timeline.html">Timeline</a> · <a href="brand.html">Brand</a> · <a href="https://github.com/Sibhimanyu/greenroom">GitHub</a> · <a href="https://github.com/Sibhimanyu/greenroom/releases">Releases</a> · <a href="https://github.com/Sibhimanyu/greenroom#readme">README</a></span>
   </div>
 </footer>
 

@@ -375,18 +375,35 @@ enum YouTubeCallbackPage {
         return out
     }
 
-    static func html(success: Bool, detail: String) -> String {
-        let heading = success ? "Connected to YouTube" : "Sign-in didn\u{2019}t finish"
+    /// The few words that differ between services using this page.
+    struct Words {
+        var title: String
+        var connected: String
+        var success: String
+        var retry: String
+
+        static let youtube = Words(
+            title: "YouTube", connected: "Connected to YouTube",
+            success: "Recordings can now go to your channel. You can close this tab.",
+            retry: "Close this tab and try again from Greenroom \u{2192} Settings \u{2192} YouTube.")
+        static let zoom = Words(
+            title: "Zoom", connected: "Signed in with Zoom",
+            success: "Greenroom can start your meetings now. You can close this tab.",
+            retry: "Close this tab and try again from Greenroom \u{2192} Settings \u{2192} Zoom.")
+    }
+
+    static func html(success: Bool, detail: String, words: Words = .youtube) -> String {
+        let heading = success ? words.connected : "Sign-in didn\u{2019}t finish"
         let icon = success
             ? #"<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M6 12.5l4 4 8-9" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>"#
             : #"<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M12 6.5v7M12 17.4v.1" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/></svg>"#
         let lines: String
         if success {
-            lines = "<p>Recordings can now go to your channel. You can close this tab.</p>"
+            lines = "<p>\(words.success)</p>"
         } else {
             let why = detail.trimmingCharacters(in: .whitespacesAndNewlines)
             lines = (why.isEmpty ? "" : "<p>\(escape(why))</p>")
-                + "<p>Close this tab and try again from Greenroom \u{2192} Settings \u{2192} YouTube.</p>"
+                + "<p>\(words.retry)</p>"
         }
         return #"""
         <!doctype html>
@@ -395,7 +412,7 @@ enum YouTubeCallbackPage {
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta name="color-scheme" content="light dark">
-        <title>Greenroom \#u{00B7} YouTube</title>
+        <title>Greenroom \#u{00B7} \#(words.title)</title>
         <style>
         :root{--ink:#101828;--body:#475467;--line:#EAECF0;--bg:#F9FAFB;--card:#FFFFFF;--brand-deep:#00401C;--brand-green:#2F6118;--accent-lime:#78C000;--mark:#00401C;--badge-bg:#2F6118;--badge-fg:#FFFFFF;--shadow:0 1px 2px rgba(16,24,40,.06),0 12px 32px rgba(16,24,40,.06)}
         @media (prefers-color-scheme:dark){:root{--ink:#F2F4F7;--body:#B6BDC9;--line:#2A3342;--bg:#0C111B;--card:#141B27;--mark:#FFFFFF;--badge-bg:#78C000;--badge-fg:#00401C;--shadow:none}}

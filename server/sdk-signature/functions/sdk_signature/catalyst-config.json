@@ -1,0 +1,11 @@
+{
+  "deployment": {
+    "name": "sdk_signature",
+    "type": "advancedio",
+    "stack": "node20",
+    "env_variables": {}
+  },
+  "execution": {
+    "main": "index.js"
+  }
+}

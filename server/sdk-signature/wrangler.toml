@@ -1,7 +1,0 @@
-name = "greenroom-sdk-signature"
-main = "src/index.js"
-compatibility_date = "2025-01-01"
-
-# No secrets here. Set them with wrangler (see README.md):
-#   wrangler secret put ZOOM_CLIENT_ID
-#   wrangler secret put ZOOM_CLIENT_SECRET

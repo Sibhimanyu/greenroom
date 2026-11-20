@@ -1,0 +1,6 @@
+{
+  "functions": {
+    "folder_path": "functions",
+    "targets": ["sdk_signature"]
+  }
+}

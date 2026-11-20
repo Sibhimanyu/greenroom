@@ -28,8 +28,9 @@ enum ZoomOAuth {
     static let signInTimeout: TimeInterval = 300
 
     /// Where the Meeting SDK's JWT is signed for people who signed in with
-    /// Zoom. Empty until the worker in server/sdk-signature is deployed; the
-    /// owner puts its URL here (for example https://greenroom-sdk-signature.example.workers.dev/signature).
+    /// Zoom: the Catalyst function in server/sdk-signature. Empty until the
+    /// owner deploys it, then
+    /// https://<project>.catalystserverless.com/server/sdk_signature/execute/signature
     static let sdkSignatureEndpoint = ""
 
     static func redirectURI(port: UInt16) -> String { "http://127.0.0.1:\(port)\(callbackPath)" }

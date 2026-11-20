@@ -53,7 +53,7 @@ enum ZoomOAuth {
     /// Zoom: the Catalyst function in server/sdk-signature. Empty until the
     /// owner deploys it, then
     /// https://<project>.catalystserverless.com/server/sdk_signature/execute/signature
-    static let sdkSignatureEndpoint = ""
+    static let sdkSignatureEndpoint = "https://greenroom-60083782173.development.catalystserverless.in/server/sdk_signature/execute/signature"
 
     static func redirectURI(port: UInt16) -> String { "http://127.0.0.1:\(port)\(callbackPath)" }
 }

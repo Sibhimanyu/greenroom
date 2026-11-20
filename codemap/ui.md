@@ -25,6 +25,9 @@ Record is `MeetingMode.record` (enum in CoordinatorController.swift; Create / Sc
 | UI/HomeView.swift (1646 lines) | Picture card left, setup column right: name, dock chips, readiness, Start button, scheduled picker, status log | `HomeView` (`pictureCard`, `setupColumn`, `shareChip`, `cameraChip`, `micChip`, `layoutChip`, `readyRow`, `primaryButton`, `scheduledPicker`) |
 | UI/HomeCalmRules.swift | Pure: one-line setup summary, readiness reduction | `SetupSummary`, `ReadinessSummary`, `ReadinessItem` |
 | UI/LookSummary.swift | "what Start will send" line | `LookSummary`, `LookSummaryLine/Row` |
+| UI/HomeTilePanels.swift | Shared shell for tile popovers: `HomeTilePanel` (header: LABEL, value, one-line summary, optional art; footer "More ... settings..." link), `HomeTileSection`, `HomeTileChoiceRow` (choice tiles), `HomeTileList` + `HomeTileListRow` (devices, trailing detail + check), `HomeTileToggleRow` + `HomeTileDependents` (collapse when off), `.homeTileKeys` (arrows move, Return picks, Esc closes). Popover itself is the system's glass | `HomeTilePanel`, `HomeTileChoiceRow`, `HomeTileListRow` |
+| UI/HomeCameraPanel.swift | Camera tile popover: camera rows (check, cut order number), "No camera", switch-to-facing toggle, Switching (delay, Cut/Crossfade) only with 2+ chosen, footer to Settings -> Webcam | `HomeCameraPanel` |
+| UI/HomeTilePanelRules.swift | Pure: which sections show, camera tap/selection/order rules, header value, arrow-key movement. Tests: HomeTilePanelRulesTests | `CameraPanelRules`, `HomeTileKeyRules` |
 | UI/DockHint.swift | Hover card with mini visual on dock chips | `DockHintPanel`, `DockHintCard`, `.dockHint` |
 | UI/PreviewCameraDrag.swift | Drag layer over live preview (move camera in output) | `PreviewCameraDragLayer`, `CroppedLivePicture` |
 | UI/PreviewFrameRules.swift / PreviewOutlineRules.swift | Preview crop, camera rules, outline placement (pure) | `PreviewFrameRules`, `LayoutCameraRules`, `PreviewOutlineRules` |
@@ -98,6 +101,7 @@ Record is `MeetingMode.record` (enum in CoordinatorController.swift; Create / Sc
 - Add a Settings row -> the tab's `*PageContent` (e.g. `WebcamPageContent`, `ZoomPageContent`, `TransferPageContent`); use `SettingsKit` parts; wrap dependent controls in `Collapsible(hidden:)` with `Binding.animatedCollapse()`.
 - Change Home toolbar items -> `ContentView.body` `.toolbar { }`; then update `HomeToolbarRules` (SidebarRules.swift) widths.
 - Change the Create/Scheduled/Record switcher -> `ContentView.modeSwitcher`, `MeetingMode` in CoordinatorController.swift.
+- Add or change a tile popover (Look, Camera done; Share, Mic, Layout, Auto-rec, More still menus/hover cards) -> build it on `HomeTilePanel` (HomeTilePanels.swift), rules in `HomeTilePanelRules.swift`; once a tile has a panel, drop its `.dockHint(...)` and keep a `.help` (see `lookControl`, `cameraChip`). Hover-card art/text live in `DockHintVisual` (DockHint.swift) and each tile's `DockHintContent` in HomeView.
 - Change Home dock chips (Share/Camera/Mic/Layout) -> `HomeView.shareChip/cameraChip/micChip/layoutChip`; summary wording in `HomeCalmRules.SetupSummary`; readiness pills `HomeView.readyRow`, `ReadinessSummary`.
 - Change Start/Record button -> `HomeView.primaryButton`, `recordControl`, `recordPicker`.
 - Home window size / minimum width -> `HomeView.columnHeight/sideMargin`, `ContentView.homeWindowHeight/minimumWindowWidth/defaultWindowWidth`.

@@ -343,6 +343,7 @@ targets:
       - path: App/Recording/SessionFolderRules.swift
       - path: App/UI/MenuBarModel.swift
       - path: App/UI/SidebarRules.swift
+      - path: App/UI/HomeTilePanelRules.swift
       - path: App/UI/HomeCalmRules.swift
       - path: App/UI/OnboardingPlacement.swift
       - path: App/UI/MeetingBarModel.swift

@@ -117,6 +117,7 @@ struct HomeView: View {
     @State private var cameraAccess = AVCaptureDevice.authorizationStatus(for: .video)
     @State private var micAccess = AVCaptureDevice.authorizationStatus(for: .audio)
     @State private var lookOpen = false
+    @State private var cameraOpen = false
     @State private var recordOpen = false
     /// Only ever started while a session is live, when the microphone is
     /// already in use: see `micMeterLevel`.
@@ -721,49 +722,31 @@ struct HomeView: View {
         .buttonStyle(DockButtonStyle())
         .disabled(coordinator.cameraIsOff)
         .popover(isPresented: $lookOpen, arrowEdge: .bottom) { lookPicker }
-        .dockHint(DockHintContent(
-            title: "Look", value: coordinator.cameraIsOff ? "No camera" : coordinator.webcamShape.label,
-            text: coordinator.cameraIsOff ? "No camera is picked, so there is no look to choose."
-                                          : "How you appear over what you share.",
-            visual: DockHintVisual.look(coordinator.webcamShape, cameraOff: coordinator.cameraIsOff)))
+        // The panel explains itself (header line, value), so no hover card.
+        // To bring a tile's hover card back, add `.dockHint(DockHintContent(...))` here.
+        .help(coordinator.cameraIsOff ? "Look: no camera is picked, so there is no look to choose."
+                                      : "Look: how you appear over what you share.")
         .accessibilityLabel("Look")
         .accessibilityValue(coordinator.webcamShape.label)
     }
 
     private var lookPicker: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("LOOK")
-                .font(.system(size: 10, weight: .semibold)).tracking(0.5)
-                .foregroundStyle(.secondary)
-            HStack(spacing: 6) {
-                ForEach(WebcamShape.allCases) { shape in
-                    let chosen = coordinator.webcamShape == shape
-                    Button {
-                        coordinator.webcamShape = shape
-                        coordinator.requestShapeApply()
-                        lookOpen = false
-                    } label: {
-                        VStack(spacing: 6) {
-                            Image(systemName: Self.symbol(for: shape))
-                                .font(.system(size: 22, weight: .regular))
-                                .frame(width: 58, height: 40)
-                            Text(shape.label)
-                                .font(.system(size: 11, weight: chosen ? .semibold : .regular))
-                                .foregroundStyle(chosen ? .primary : .secondary)
-                        }
-                        .padding(.vertical, 6)
-                        .frame(width: 70)
-                    }
-                    .greenroomTile(role: .choice(selected: chosen), radius: 10)
-                    .help(shape.label)
-                }
+        HomeTilePanel(
+            title: "Look", summary: "How you appear over what you share.", value: coordinator.webcamShape.label,
+            moreTitle: "More look settings\u{2026}", onMore: { lookOpen = false; openWebcamSettings() }
+        ) {
+            HomeTileChoiceRow(
+                choices: WebcamShape.allCases.map {
+                    HomeTileChoice(id: $0.id, title: $0.label, symbol: Self.symbol(for: $0),
+                                   selected: coordinator.webcamShape == $0)
+                },
+                autofocus: true
+            ) { index in
+                coordinator.webcamShape = WebcamShape.allCases[index]
+                coordinator.requestShapeApply()
+                lookOpen = false
             }
-            Button("More look settings\u{2026}") { lookOpen = false; openWebcamSettings() }
-                .buttonStyle(.plain)
-                .font(.system(size: 12, weight: .medium))
-                .foregroundStyle(Brand.text)
         }
-        .padding(14)
     }
 
     /// Share target: the Webcam page's "Behind you". One pick says both what
@@ -833,40 +816,24 @@ struct HomeView: View {
 
     /// Camera: the same list and the same rule as the Webcam page's cards.
     private var cameraChip: some View {
-        let chosen = coordinator.sceneCameraUIDs(limit: 1).first
         let name = LookSummary.cameraText(coordinator, cameras: cameras)
-        return Menu {
-            ForEach(cameras) { camera in
-                choice(camera.name, selected: !coordinator.cameraIsOff && chosen == camera.id) {
-                    var settings = coordinator.cameraDirectorSettings
-                    settings.cameraUIDs = settings.cameraUIDs.filter { $0 != camera.id }
-                    settings.cameraUIDs.insert(camera.id, at: 0)
-                    settings.noCamera = false
-                    coordinator.cameraDirectorSettings = settings
-                    coordinator.previewCamerasChanged()
-                }
-            }
-            Divider()
-            choice("No camera", selected: coordinator.cameraIsOff,
-                   disabled: coordinator.shareTarget.kind == .nothing) {
-                coordinator.cameraDirectorSettings.noCamera = true
-                coordinator.previewCamerasChanged()
-            }
-            Divider()
-            Button("More\u{2026}", action: openWebcamSettings)
-        } label: {
+        let warn = problem("camera") || (cameras.isEmpty && !coordinator.cameraIsOff)
+        return Button { cameraOpen.toggle() } label: {
             dockLabel(symbol: coordinator.cameraIsOff ? "video.slash" : "camera",
                       value: coordinator.cameraIsOff ? "Off" : Self.shortDeviceName(name),
-                      warn: problem("camera") || (cameras.isEmpty && !coordinator.cameraIsOff))
+                      warn: warn)
         }
-        .dockMenu()
-        .dockHint(DockHintContent(
-            title: "Camera", value: coordinator.cameraIsOff ? "Off" : name,
-            text: cameras.isEmpty && !coordinator.cameraIsOff ? SetupSummary.cameraMissingHelp
-                : coordinator.cameraIsOff ? "No camera: everyone sees only what you share."
-                : "Which camera you appear on.",
-            warn: problem("camera") || (cameras.isEmpty && !coordinator.cameraIsOff),
-            visual: DockHintVisual.camera(off: coordinator.cameraIsOff)))
+        .buttonStyle(DockButtonStyle())
+        .popover(isPresented: $cameraOpen, arrowEdge: .bottom) {
+            HomeCameraPanel(coordinator: coordinator, cameras: cameras) {
+                cameraOpen = false
+                openWebcamSettings()
+            }
+        }
+        // The panel explains itself, so no hover card (see lookControl).
+        .help(cameras.isEmpty && !coordinator.cameraIsOff ? SetupSummary.cameraMissingHelp
+              : coordinator.cameraIsOff ? "Camera: off, everyone sees only what you share."
+              : "Camera: \(name). Which camera you appear on.")
         .accessibilityLabel("Camera")
         .accessibilityValue(name)
     }

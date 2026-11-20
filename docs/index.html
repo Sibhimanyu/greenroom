@@ -152,7 +152,8 @@
     .more { grid-template-columns: 1fr 1fr; }
   }
   @media (max-width: 560px) {
-    .seq-start .frames { padding: 0; min-height: 190px; border-radius: 18px; }
+    .seq-start .frames { padding: 0; min-height: 0; border-radius: 18px; }
+    .seq-start .frame:not(.bar) { align-self: center; }
     .seq-tabs .seq-nav button { padding: 12px 15px; font-size: 14px; }
     .hero { padding-top: 40px; } .hero-shot { padding: 0 12px; margin-top: 32px; }
     .seq-nav button { padding: 10px 10px; } .more { grid-template-columns: 1fr; }

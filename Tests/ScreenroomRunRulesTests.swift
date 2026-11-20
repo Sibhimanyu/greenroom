@@ -118,4 +118,44 @@ final class ScreenroomRunRulesTests: XCTestCase {
         try FileManager.default.removeItem(at: old)
         XCTAssertEqual(ScreenroomTranscriptFile.displayURL(in: dir)?.lastPathComponent, "analysis-transcript.txt")
     }
+
+    func testTranscribeOnlyIsJustTheTranscriptionStep() {
+        let whisper = ScreenroomRunRules.transcribeOnlySteps(whisper: true)
+        XCTAssertEqual(whisper.map(\.kind), [.transcribe])
+        XCTAssertEqual(whisper.first?.title, "Transcribing with whisper")
+        XCTAssertEqual(whisper.first?.reportsFraction, true)
+        let apple = ScreenroomRunRules.transcribeOnlySteps(whisper: false)
+        XCTAssertEqual(apple.first?.title, "Transcribing")
+        XCTAssertEqual(apple.first?.reportsFraction, false)
+    }
+
+    func testReusedTranscriptDropsOnlyTheTranscribeStep() {
+        let full = ScreenroomRunRules.steps(hasRecording: true, whisper: true, agent: false)
+        let reused = ScreenroomRunRules.steps(hasRecording: true, whisper: true, agent: false,
+                                              reuseTranscript: true)
+        XCTAssertEqual(full.map(\.kind), [.transcribe, .stills, .watch, .cohort, .write])
+        XCTAssertEqual(reused.map(\.kind), [.stills, .watch, .cohort, .write])
+    }
+
+    func testTranscriptIsReusedOnlyWhenAllThreeOutputsExist() {
+        XCTAssertTrue(ScreenroomRunRules.canReuseTranscript(
+            existing: ["analysis-transcript.txt", "words.json", "speech.json", "notes.jsonl"]))
+        XCTAssertFalse(ScreenroomRunRules.canReuseTranscript(existing: ["analysis-transcript.txt", "words.json"]))
+        XCTAssertFalse(ScreenroomRunRules.canReuseTranscript(existing: ["transcript.txt", "words.json", "speech.json"]))
+        XCTAssertFalse(ScreenroomRunRules.canReuseTranscript(existing: []))
+    }
+
+    func testRunTitleSaysGettingFeedbackTranscribingOrStopping() {
+        XCTAssertEqual(ScreenroomRunRules.runTitle(transcribeOnly: false, stopping: false), "Getting feedback")
+        XCTAssertEqual(ScreenroomRunRules.runTitle(transcribeOnly: true, stopping: false), "Transcribing")
+        XCTAssertEqual(ScreenroomRunRules.runTitle(transcribeOnly: true, stopping: true), "Stopping")
+        XCTAssertEqual(ScreenroomRunRules.runTitle(transcribeOnly: false, stopping: true), "Stopping")
+    }
+
+    func testStopDuringTranscribeOnlyRemovesOnlyNewTranscriptFiles() {
+        let removed = ScreenroomRunRules.cleanup(inFlight: .transcribe, existedBefore: ["words.json"])
+        XCTAssertFalse(removed.contains("words.json"))
+        XCTAssertTrue(removed.contains("analysis-transcript.txt"))
+        XCTAssertFalse(removed.contains("analysis.json"))
+    }
 }

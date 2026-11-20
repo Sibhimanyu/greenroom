@@ -7,7 +7,8 @@
 //  every macOS version. No Liquid Glass here: glass inside the row blurred
 //  the labels, and a crisp readable control beats the morph. Reduce Motion
 //  swaps the slide for a 150ms crossfade. Never use a native tinted Picker
-//  (it jumps) and never hand-build another switcher.
+//  (it jumps) and never hand-build another switcher. The one exception, the
+//  session panel's `GreenroomUnderlineTabs`, is at the end of this file.
 //
 //  VoiceOver hears a real segmented Picker (`accessibilityRepresentation`);
 //  left/right arrows move the selection when the control has focus.
@@ -163,6 +164,101 @@ struct GreenroomSegmented<Value: Hashable, Label: View>: View {
             pill.opacity(on ? 1 : 0)
         } else if on {
             pill.matchedGeometryEffect(id: "selection", in: ns)
+        }
+    }
+}
+
+// MARK: - Underline tabs
+
+/// The session panel's tab row (DESIGN.md, "Segmented switchers", the one
+/// exception): plain labels sharing the panel's full width in equal parts, the
+/// selected one primary and semibold, a 2pt Brand green underline that slides
+/// between tabs (`matchedGeometryEffect`, 250ms ease-in-out; Reduce Motion
+/// crossfades in 150ms) and a hairline under the whole row. Hover lifts a
+/// resting label from secondary to primary. VoiceOver hears the same segmented
+/// Picker as `GreenroomSegmented`; left/right arrows move the selection.
+/// Same call shape as `GreenroomSegmented`. Use it only for a reading pane's
+/// tabs; every other switcher stays `GreenroomSegmented`.
+struct GreenroomUnderlineTabs<Value: Hashable, Label: View>: View {
+    let title: String
+    @Binding var selection: Value
+    let options: [Value]
+    @ViewBuilder let label: (Value) -> Label
+
+    @Namespace private var ns
+    @State private var hovered: Value?
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    init(_ title: String,
+         selection: Binding<Value>,
+         options: [Value],
+         @ViewBuilder label: @escaping (Value) -> Label) {
+        self.title = title
+        self._selection = selection
+        self.options = options
+        self.label = label
+    }
+
+    private var motion: Animation {
+        reduceMotion ? .easeInOut(duration: 0.15) : .easeInOut(duration: 0.25)
+    }
+
+    var body: some View {
+        HStack(spacing: 0) {
+            ForEach(options, id: \.self) { option in tab(option) }
+        }
+        .background(alignment: .bottom) {
+            Rectangle().fill(.separator).frame(height: 1)
+        }
+        .focusable(NSApplication.shared.isFullKeyboardAccessEnabled)
+        .onKeyPress(.leftArrow) { move(-1) }
+        .onKeyPress(.rightArrow) { move(1) }
+        .accessibilityRepresentation {
+            Picker(title, selection: $selection) {
+                ForEach(options, id: \.self) { option in
+                    label(option).tag(option)
+                }
+            }
+            .pickerStyle(.segmented)
+        }
+    }
+
+    private func move(_ delta: Int) -> KeyPress.Result {
+        guard let i = options.firstIndex(of: selection) else { return .ignored }
+        let n = SegmentedMath.step(from: i, by: delta, count: options.count)
+        guard n != i else { return .handled }
+        withAnimation(motion) { selection = options[n] }
+        return .handled
+    }
+
+    private func tab(_ option: Value) -> some View {
+        let on = option == selection
+        return Button {
+            withAnimation(motion) { selection = option }
+        } label: {
+            label(option)
+                .fontWeight(on ? .semibold : .regular)
+                .foregroundStyle(on || hovered == option ? AnyShapeStyle(.primary) : AnyShapeStyle(.secondary))
+                .lineLimit(1)
+                .padding(.horizontal, 8)
+                .frame(maxWidth: .infinity)
+                .frame(height: 30)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { inside in
+            if inside { hovered = option } else if hovered == option { hovered = nil }
+        }
+        .overlay(alignment: .bottom) { underline(on: on) }
+    }
+
+    @ViewBuilder
+    private func underline(on: Bool) -> some View {
+        let bar = Rectangle().fill(Brand.green).frame(height: 2)
+        if reduceMotion {
+            bar.opacity(on ? 1 : 0)
+        } else if on {
+            bar.matchedGeometryEffect(id: "underline", in: ns)
         }
     }
 }

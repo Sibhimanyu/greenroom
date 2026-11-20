@@ -91,9 +91,16 @@ final class ScreenroomReviewController: ObservableObject {
     /// out so a second press does nothing, and the pill says so.
     @Published private(set) var isStopping = false
 
+    /// The running pass is Transcribe, not Get feedback: the pill and popover
+    /// say "Transcribing".
+    @Published private(set) var isTranscribeOnly = false
+
     /// Where the run is, as one value the pill and the popover both read.
     /// `fraction` is the running step's own, nil when it cannot report one.
     struct RunProgress: Equatable {
+        /// "Getting feedback", "Transcribing" or "Stopping": the popover's title.
+        var heading: String
+        /// The running step's own name.
         var title: String
         var stepLine: String?
         var fraction: Double?
@@ -105,6 +112,7 @@ final class ScreenroomReviewController: ObservableObject {
     var runProgress: RunProgress {
         let fraction: Double? = isDeterminate ? progress : nil
         return RunProgress(
+            heading: ScreenroomRunRules.runTitle(transcribeOnly: isTranscribeOnly, stopping: isStopping),
             title: step.isEmpty ? "Working\u{2026}" : step,
             stepLine: ScreenroomRunRules.stepLine(index: stepIndex, count: stepCount),
             fraction: fraction,
@@ -480,10 +488,30 @@ final class ScreenroomReviewController: ObservableObject {
     func analyse() async {
         guard let selected, !isAnalysing else { return }
 
-        let task = Task { await run(selected) }
+        let task = Task { await run(selected, transcribeOnly: false) }
         runTask = task
         await task.value
         runTask = nil
+    }
+
+    /// Only the transcription step of the run: the same engine the full run
+    /// would use, the same files (`analysis-transcript.txt`, `words.json`,
+    /// `speech.json`), and nothing else - no stills, no camera pass, no
+    /// `analysis.json`, no report. A later Get feedback reuses the transcript.
+    func transcribeOnly() async {
+        guard let selected, !isAnalysing, selected.recording != nil else { return }
+
+        let task = Task { await run(selected, transcribeOnly: true) }
+        runTask = task
+        await task.value
+        runTask = nil
+    }
+
+    /// What the Transcribe button calls. No setup panel: choosing an engine is
+    /// not a question that stands between a person and a transcript.
+    func requestTranscribe() {
+        guard !isAnalysing else { return }
+        Task { await transcribeOnly() }
     }
 
     /// What the Analyse buttons call. The first time on this Mac it opens the
@@ -527,7 +555,7 @@ final class ScreenroomReviewController: ObservableObject {
         runTask?.cancel()
         if let child = childProcess { ScreenroomProcessReaper.stop(child) }
         childProcess = nil
-        step = "Stopping\u{2026}"
+        step = "Stopping"
         CoordinatorController.sessionLog("Analyse: stop pressed during \(runningKind?.rawValue ?? "setup")")
     }
 
@@ -542,8 +570,9 @@ final class ScreenroomReviewController: ObservableObject {
         CoordinatorController.sessionLog("Analyse: stopped after \(Int(elapsed))s")
     }
 
-    private func run(_ selected: ScreenroomPresentation) async {
+    private func run(_ selected: ScreenroomPresentation, transcribeOnly: Bool) async {
         isAnalysing = true
+        isTranscribeOnly = transcribeOnly
         isStopping = false
         runUsage = nil
         writerIsOnDevice = false
@@ -556,14 +585,25 @@ final class ScreenroomReviewController: ObservableObject {
         // Counted up front so the readout can say "2 of 4" rather than
         // leaving the length of the wait a mystery.
         let agentSettings = ScreenroomAgentSettings.load()
-        plannedSteps = ScreenroomRunRules.steps(
-            hasRecording: selected.recording != nil,
-            whisper: ScreenroomTranscriberSettings.whisperIsReady,
-            agent: agentSettings.enabled && !agentSettings.command.trimmingCharacters(in: .whitespaces).isEmpty)
+        // A transcript this folder already holds is reused by a full run, not
+        // made again; a transcribe-only run exists to make one.
+        let reuseTranscript = !transcribeOnly && ScreenroomRunRules.canReuseTranscript(existing: existedBefore)
+        let whisperReady = ScreenroomTranscriberSettings.whisperIsReady
+        if transcribeOnly {
+            plannedSteps = ScreenroomRunRules.transcribeOnlySteps(whisper: whisperReady)
+        } else {
+            plannedSteps = ScreenroomRunRules.steps(
+                hasRecording: selected.recording != nil,
+                whisper: whisperReady,
+                agent: agentSettings.enabled && !agentSettings.command.trimmingCharacters(in: .whitespaces).isEmpty,
+                reuseTranscript: reuseTranscript)
+        }
         stepCount = plannedSteps.count
         stepIndex = 0
-        CoordinatorController.sessionLog("Analyse: started, \(stepCount) steps")
-        upcoming = Self.plan(for: selected)
+        CoordinatorController.sessionLog(transcribeOnly
+            ? "Transcribe: started"
+            : "Analyse: started, \(stepCount) steps\(reuseTranscript ? " (transcript reused)" : "")")
+        upcoming = Self.plan(for: selected, transcribeOnly: transcribeOnly, reuseTranscript: reuseTranscript)
         recordingSeconds = 0
         if let recording = selected.recording {
             recordingSeconds = (try? await AVURLAsset(url: recording).load(.duration))?.seconds ?? 0
@@ -571,6 +611,7 @@ final class ScreenroomReviewController: ObservableObject {
         defer {
             CoordinatorController.sessionLog("Analyse: run ended after \(Int(elapsed))s")
             isAnalysing = false
+            isTranscribeOnly = false
             isStopping = false
             plannedSteps = []
             runningKind = nil
@@ -584,9 +625,23 @@ final class ScreenroomReviewController: ObservableObject {
             stopClock()
         }
 
-        if let recording = selected.recording {
+        if transcribeOnly {
+            guard let recording = selected.recording else { return }
             await transcribe(recording, into: selected.folder)
             if Task.isCancelled { finishStopped(in: selected.folder); return }
+            if hasTranscript, ScreenroomRunRules.canReuseTranscript(
+                existing: Set((try? FileManager.default.contentsOfDirectory(atPath: selected.folder.path)) ?? [])) {
+                status = "Transcript written."
+            }
+            refreshSelectedRow()
+            return
+        }
+
+        if let recording = selected.recording {
+            if !reuseTranscript {
+                await transcribe(recording, into: selected.folder)
+                if Task.isCancelled { finishStopped(in: selected.folder); return }
+            }
             await takeStills(recording, into: selected.folder)
             if Task.isCancelled { finishStopped(in: selected.folder); return }
             await watch(recording, into: selected.folder)
@@ -621,11 +676,14 @@ final class ScreenroomReviewController: ObservableObject {
     /// The steps a run over this presentation expects to take, in order.
     /// The agent can still fail over to the notes pass; the estimate simply
     /// follows whichever step actually begins.
-    private static func plan(for selected: ScreenroomPresentation) -> [ScreenroomStage] {
+    private static func plan(for selected: ScreenroomPresentation, transcribeOnly: Bool,
+                             reuseTranscript: Bool) -> [ScreenroomStage] {
+        let transcribe: ScreenroomStage = ScreenroomTranscriberSettings.whisperIsReady
+            ? .transcribeWhisper : .transcribeApple
+        if transcribeOnly { return [transcribe] }
         var stages: [ScreenroomStage] = []
         if selected.recording != nil {
-            stages += [ScreenroomTranscriberSettings.whisperIsReady ? .transcribeWhisper : .transcribeApple,
-                       .stills, .watch]
+            stages += reuseTranscript ? [.stills, .watch] : [transcribe, .stills, .watch]
         }
         stages.append(.cohort)
         let agent = ScreenroomAgentSettings.load()

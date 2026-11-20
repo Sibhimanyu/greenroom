@@ -18,7 +18,7 @@ import SwiftUI
 // MARK: - Toolbar
 
 /// The Watch / Edit switch in the middle; on the right, Undo, Redo and Save
-/// while editing, or Analyse, Share and More while watching; last, the side
+/// while editing, or Get feedback (its own capsule), then Share and More while watching; last, the side
 /// panel's toggle. The take switch is in the header.
 struct SessionDetailToolbar: ToolbarContent {
     let model: SessionInspectorModel
@@ -45,6 +45,16 @@ struct SessionDetailToolbar: ToolbarContent {
                       ? "Watch plays the recording. Edit adds the tools. Saving makes a new recording and leaves this one untouched."
                       : "No recording to edit.")
         }
+        // Get feedback is its own glass capsule, a standard gap before the
+        // Share / More / side panel capsule (owner, 2026-11-20).
+        if !isEditing {
+            ToolbarItem(placement: .primaryAction) {
+                SessionAnalyseButton(model: model, actions: actions)
+            }
+            if #available(macOS 26, *) {
+                ToolbarSpacer(.fixed, placement: .primaryAction)
+            }
+        }
         ToolbarItemGroup(placement: .primaryAction) {
             if isEditing {
                 Button(action: onUndo) { Label("Undo", systemImage: "arrow.uturn.backward") }
@@ -64,7 +74,6 @@ struct SessionDetailToolbar: ToolbarContent {
                         .help("Nothing to save yet")
                 }
             } else {
-                SessionAnalyseButton(model: model, actions: actions)
                 Button(action: onShare) {
                     Label("Share\u{2026}", systemImage: "square.and.arrow.up")
                 }
@@ -93,9 +102,9 @@ struct SessionDetailToolbar: ToolbarContent {
                 .disabled(!model.canRename)
             Button("Show in Finder", action: actions.showInFinder)
             if isAnalysed {
-                Button("Analyse again", action: actions.analyse)
+                Button("Get feedback again", action: actions.analyse)
             }
-            Button("Analysis settings\u{2026}", action: actions.openAnalysisSetup)
+            Button("Feedback settings\u{2026}", action: actions.openAnalysisSetup)
             Divider()
             Button("Move to Trash\u{2026}", role: .destructive, action: actions.trash)
                 .disabled(!model.canTrash)
@@ -104,7 +113,7 @@ struct SessionDetailToolbar: ToolbarContent {
                 .foregroundStyle(Color.primary)
         }
         .menuIndicator(.hidden)
-        .help("Rename, show in Finder, analysis, or move to the Trash")
+        .help("Rename, show in Finder, feedback settings, or move to the Trash")
     }
 }
 
@@ -333,9 +342,9 @@ struct SessionDetailPage<Stage: View, Timeline: View, Work: View, Transcript: Vi
     private var momentsCard: some View {
         VStack(alignment: .leading, spacing: 12) {
             if tabs.count > 1 {
-                GreenroomSegmented("Work", selection: $tab, options: tabs) { Text($0) }
-                    .controlSize(.small)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                GreenroomUnderlineTabs("Work", selection: $tab, options: tabs) { Text($0) }
+                    .font(.system(size: 13))
+                    .frame(maxWidth: .infinity)
             }
             if tab == tabs.first, let summary = model.summary {
                 SessionSummaryNote(summary: summary, caveat: model.summaryCaveat,
@@ -579,7 +588,7 @@ struct SessionAnalyseButton: View {
         case .ready(let engine, let leavesMac):
             Button(action: actions.analyse) {
                 Label {
-                    Text("Analyse")
+                    Text("Get feedback")
                 } icon: {
                     Image(systemName: "sparkles")
                         .foregroundStyle(leavesMac ? AnyShapeStyle(Brand.net) : AnyShapeStyle(.primary))
@@ -593,7 +602,7 @@ struct SessionAnalyseButton: View {
             } label: {
                 HStack(spacing: 6) {
                     AnalysisRing(progress: review.runProgress)
-                    Text(review.isStopping ? "Stopping" : "Analysing")
+                    Text(ScreenroomRunRules.runTitle(transcribeOnly: review.isTranscribeOnly, stopping: review.isStopping))
                 }
             }
             .help("\(step). Click for the steps and Stop.")
@@ -604,12 +613,12 @@ struct SessionAnalyseButton: View {
                 }
             }
         case .busy:
-            Label("Analyse", systemImage: "sparkles")
+            Label("Get feedback", systemImage: "sparkles")
                 .labelStyle(.titleAndIcon)
                 .foregroundStyle(.tertiary)
-                .help("Another session is being analysed.")
+                .help("Feedback is being written for another session.")
         case .unavailable(let why):
-            Label("Analyse", systemImage: "sparkles")
+            Label("Get feedback", systemImage: "sparkles")
                 .labelStyle(.titleAndIcon)
                 .foregroundStyle(.tertiary)
                 .help(why)

@@ -36,11 +36,11 @@ struct AnalysisSetupPanel: View {
     var body: some View {
         VStack(spacing: 0) {
             VStack(alignment: .leading, spacing: 4) {
-                Text("How to analyse")
+                Text("How to get feedback")
                     .font(.title3.weight(.semibold))
                 Text(runsOnConfirm
-                     ? "Asked once. You can change it later from the link next to Analyse."
-                     : "Applies to the next analysis. Nothing already analysed changes.")
+                     ? "Asked once. You can change it later from the link next to Get feedback."
+                     : "Applies to the next feedback. Feedback already written does not change.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
             }
@@ -58,7 +58,7 @@ struct AnalysisSetupPanel: View {
                     .keyboardShortcut(.cancelAction)
                     .opacity(runsOnConfirm ? 1 : 0)
                     .disabled(!runsOnConfirm)
-                Button(runsOnConfirm ? "Analyse" : "Done", action: confirm)
+                Button(runsOnConfirm ? "Get feedback" : "Done", action: confirm)
                     .keyboardShortcut(.defaultAction)
                     .buttonStyle(.borderedProminent)
             }

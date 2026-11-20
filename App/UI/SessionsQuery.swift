@@ -211,7 +211,7 @@ enum SessionsShow: String, CaseIterable, Identifiable {
 enum SessionsStatus: String, CaseIterable, Identifiable {
     case notUploaded = "Not uploaded"
     case onYouTube = "On YouTube"
-    case analysed = "Analysed"
+    case analysed = "Report ready"
     var id: String { rawValue }
 
     func matches(_ card: SessionCardModel) -> Bool {

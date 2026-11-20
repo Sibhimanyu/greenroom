@@ -684,7 +684,7 @@ struct RecordingsView: View {
             return .analysed(engine: analysis.engine, when: analysis.generatedAt, leavesMac: false)
         }
         let hasNotes = FileManager.default.fileExists(atPath: ScreenroomNotesFile.url(in: folder).path)
-        guard session.primaryTake != nil || hasNotes else { return .unavailable("Nothing to analyse") }
+        guard session.primaryTake != nil || hasNotes else { return .unavailable("Nothing to get feedback on") }
         return .ready(engine: engine, leavesMac: leaves)
     }
 
@@ -720,6 +720,12 @@ struct RecordingsView: View {
             review.selectedRecording = selection?.url
             analysingFolder = folder
             review.requestAnalyse()
+        }
+        actions.transcribe = {
+            guard let folder = session.folder else { return }
+            review.select(folder: folder)
+            review.selectedRecording = selection?.url
+            review.requestTranscribe()
         }
         actions.openAnalysisSetup = { review.openSetup() }
         actions.connectYouTube = {
@@ -820,7 +826,15 @@ struct RecordingsView: View {
                                     message: "Feedback writes one, on this Mac.") {
                         switch state {
                         case .ready, .analysed:
-                            Button("Get feedback", action: inspectorActions(session).analyse)
+                            let actions = inspectorActions(session)
+                            if session.primaryTake != nil {
+                                // Transcribe is the primary action; the full run is secondary.
+                                Button("Transcribe", action: actions.transcribe)
+                                    .buttonStyle(.borderedProminent)
+                                Button("Get feedback", action: actions.analyse)
+                            } else {
+                                Button("Get feedback", action: actions.analyse)
+                            }
                         default:
                             EmptyView()
                         }

@@ -150,10 +150,10 @@ enum ScreenroomAgent {
                 return "The agent was still working after \(limit), so it was stopped and the feedback was written without it."
 
             case .noCommand:
-                return "No agent command is set. Open How to analyse next to Analyse."
+                return "No agent command is set. Open How to get feedback next to Get feedback."
             case .notFound(let name):
                 let product = name == "claude" ? "Claude Code" : name == "codex" ? "Codex" : name
-                return "Couldn\u{2019}t find \(product) on this Mac, so the feedback was written without it. Install \(product) and sign in, or pick another agent under How to analyse."
+                return "Couldn\u{2019}t find \(product) on this Mac, so the feedback was written without it. Install \(product) and sign in, or pick another agent under How to get feedback."
             case .failed(let code, let output):
                 let tail = output.split(separator: "\n").suffix(6).joined(separator: "\n")
                 return "The agent exited with code \(code).\n\(tail)"

@@ -30,7 +30,7 @@ Record is `MeetingMode.record` (enum in CoordinatorController.swift; Create / Sc
 | UI/PreviewFrameRules.swift / PreviewOutlineRules.swift | Preview crop, camera rules, outline placement (pure) | `PreviewFrameRules`, `LayoutCameraRules`, `PreviewOutlineRules` |
 | UI/LayoutChoiceMenu.swift | "Layout: name" menu under Start, also in menu bar | `LayoutChoiceItems/Line` |
 | UI/NewScheduledMeetingSheet.swift | New scheduled meeting sheet | `NewScheduledMeetingSheet` |
-| UI/AnalysisSetupPanel.swift | "How to analyse" sheet | `AnalysisSetupPanel` |
+| UI/AnalysisSetupPanel.swift | "How to get feedback" sheet | `AnalysisSetupPanel` |
 
 ### Sessions, watch page, report
 | path | owns | key types |
@@ -79,7 +79,7 @@ Record is `MeetingMode.record` (enum in CoordinatorController.swift; Create / Sc
 |---|---|
 | UI/Glass.swift | `.greenroomGlass(in:interactive:)`, `.greenroomGlassButton`, `GreenroomGlassAppKit.makeBacking/host/prepare` |
 | UI/Tiles.swift + TileAppearance.swift | `.greenroomTile(role:radius:)`, `GreenroomTileStyle`, pure `TileAppearance` |
-| UI/Segmented.swift + SegmentedMath.swift | `GreenroomSegmented` (the only segmented switcher) |
+| UI/Segmented.swift + SegmentedMath.swift | `GreenroomSegmented` (the segmented switcher) and `GreenroomUnderlineTabs` (underline tabs, the watch page side panel only) |
 | UI/Fields.swift | `GreenroomFieldStyle`, `FieldFocusRelease` |
 | UI/ParticipantAvatar.swift | `ParticipantAvatar` |
 | UI/ClosureButton.swift | NSButton with closure, answers first click |
@@ -103,6 +103,7 @@ Record is `MeetingMode.record` (enum in CoordinatorController.swift; Create / Sc
 - Change sessions grid filters/sort/chips -> `SessionsQuery.swift` (`SessionsShow/Status/Sort`, `SessionChips`), sidebar in `SessionsSidebar`.
 - Change a session row/card -> `SessionsRow.swift`, `SessionsContent.swift`.
 - Watch page keys (Watch mode only; Edit keeps the editor's own monitor): Space play/pause, Left/Right skip 10s, M mute, F full screen (Esc exits full screen; double-click the picture too). One monitor in `SessionDetailContent.SpaceBarPlayback`, same typing/sheet gating as Space; key map in `PlayerControlRules.action`. Full screen keys are `WatchFullScreen`'s own monitor.
+- Watch page toolbar (watching): Get feedback (`SessionAnalyseButton`) is its own glass capsule, then a fixed `ToolbarSpacer`, then Share… / More / side-panel toggle as one capsule; editing has just the one group.
 - Change watch page layout -> `SessionDetailContent.SessionDetailPage` + `SessionDetailRules` (when the rail drops under the picture).
 - Change the timeline/marks -> `SessionTimeline`, `SessionMarkStyle`.
 - Change a menu bar item -> `MenuBarModel.items` (order/titles/shortcuts), drawn by `MenuBarView`; test `Tests/MenuBarModelTests.swift`.
@@ -116,6 +117,7 @@ Record is `MeetingMode.record` (enum in CoordinatorController.swift; Create / Sc
 - Edit a layout editor behaviour -> `LayoutCanvas` (drag/resize), `LayoutAddPanel`, `LayoutAppOrdering`, `LayoutSettingsTab.LayoutPageContent`; layout model in App/Layout/.
 - Change onboarding pages -> `OnboardingView.SetupPage` (welcome, zoom, layout, permissions, youtube, cues, ready) and `...Step` builders; window `OnboardingWindowController.sync`; placement `OnboardingPlacement.frame`.
 - Add a floating panel -> use `GreenroomGlassAppKit.makeBacking` + `.prepare`, non-key `NSPanel`, follow `RecordingChrome`/`DockHintPanel`.
+- Wording: the one action is "Get feedback" (button), "Getting feedback" (pill and popover title), "Stopping", "Report" (done); never Analyse/Analysing in user-facing text. The watch page's Transcript empty state offers Transcribe (primary) and Get feedback.
 - Add a segmented switch / tile / text field -> `GreenroomSegmented`, `.greenroomTile`, `.textFieldStyle(.greenroom)` (Fields.swift); never new ones.
 - Make a window "showable to class" -> `WindowShareController` + `ShareableWindowAnchor`; rules in App/ShareVisibilityRules.swift.
 - Brand colours -> `Brand.green/buttonFill/text/name/fill/net/netText` in App/GreenroomApp.swift; accent value in App/Assets.xcassets/AccentColor.colorset.
@@ -135,4 +137,4 @@ Record is `MeetingMode.record` (enum in CoordinatorController.swift; Create / Sc
 - Floating panels are non-activating/never key (Control bar `BarPanel`, island, presence bubble): clicks must not steal focus. Use `acceptsFirstMouse` hosts (`FirstMouseHost`, `ClosureButton`).
 - Main window is a single `Window` scene (not WindowGroup) so dock reopen works; Home is ordered out, not closed, during a start (state preserved).
 - The island replaces alerts and top-centre cards: never show a card inside a Greenroom window for status.
-- Segmented switchers use only `GreenroomSegmented` (spring slide, Brand fill, white label); picture choices use tiles, not segmented.
+- Segmented switchers use only `GreenroomSegmented` (spring slide, Brand fill, white label), except the watch page side panel, which uses `GreenroomUnderlineTabs` (sliding 2pt Brand green underline, hairline); picture choices use tiles, not segmented.

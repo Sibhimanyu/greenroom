@@ -98,7 +98,7 @@ enum ScreenroomAnalyst {
                 }
             }
         }
-        return (false, "Analyse needs macOS 26 for the written pass")
+        return (false, "Get feedback needs macOS 26 for the written pass")
         #else
         return (false, "this build has no on-device model")
         #endif

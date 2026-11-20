@@ -41,7 +41,7 @@ struct AnalysisProgressPopover: View {
         let progress = review.runProgress
         VStack(alignment: .leading, spacing: 12) {
             VStack(alignment: .leading, spacing: 2) {
-                Text(progress.isStopping ? "Stopping\u{2026}" : progress.title)
+                Text(progress.heading)
                     .font(.headline)
                     .fixedSize(horizontal: false, vertical: true)
                 Text(subtitle(progress))

@@ -318,7 +318,7 @@ struct SessionCard: View {
                     if card.isAnalysed {
                         Image(systemName: "sparkles")
                             .foregroundStyle(Brand.text)
-                            .help("Analysed")
+                            .help("Report ready")
                     }
                 }
                 .font(.system(size: 12))
@@ -464,6 +464,8 @@ struct SessionInspectorActions {
     var renameOnYouTube: () -> Void = {}
     var deleteFromYouTube: () -> Void = {}
     var analyse: () -> Void = {}
+    /// Transcribe only: no report.
+    var transcribe: () -> Void = {}
     var openAnalysisSetup: () -> Void = {}
     var stopAnalysis: () -> Void = {}
     var openReport: () -> Void = {}

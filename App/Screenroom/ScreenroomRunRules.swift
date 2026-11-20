@@ -30,18 +30,48 @@ enum ScreenroomRunRules {
 
     /// The steps a run over this meeting has, in order. A notes-only folder
     /// has no recording, so it skips the first three.
-    static func steps(hasRecording: Bool, whisper: Bool, agent: Bool) -> [ScreenroomRunStep] {
+    /// `reuseTranscript` drops the transcription step: the folder already holds
+    /// its output (`canReuseTranscript`), so the run starts at the stills.
+    static func steps(hasRecording: Bool, whisper: Bool, agent: Bool,
+                      reuseTranscript: Bool = false) -> [ScreenroomRunStep] {
         var out: [ScreenroomRunStep] = []
         if hasRecording {
-            out.append(.init(kind: .transcribe,
-                             title: whisper ? "Transcribing with whisper" : "Transcribing",
-                             reportsFraction: whisper))
+            if !reuseTranscript { out.append(transcribeStep(whisper: whisper)) }
             out.append(.init(kind: .stills, title: "Taking stills", reportsFraction: true))
             out.append(.init(kind: .watch, title: "Watching the recording", reportsFraction: true))
         }
         out.append(.init(kind: .cohort, title: "Comparing against the group", reportsFraction: true))
         out.append(writeStep(agent: agent))
         return out
+    }
+
+    /// The one step of a Transcribe-only run.
+    static func transcribeOnlySteps(whisper: Bool) -> [ScreenroomRunStep] {
+        [transcribeStep(whisper: whisper)]
+    }
+
+    static func transcribeStep(whisper: Bool) -> ScreenroomRunStep {
+        .init(kind: .transcribe,
+              title: whisper ? "Transcribing with whisper" : "Transcribing",
+              reportsFraction: whisper)
+    }
+
+    /// The names the transcription step leaves behind. All three must be there
+    /// for a later run to skip the step: `words.json` and `speech.json` feed
+    /// the report's numbers, so a transcript without them is not enough.
+    static let transcriptOutputs = [ScreenroomTranscriptFile.name, "words.json", "speech.json"]
+
+    /// True when a folder (its file names) already holds a finished
+    /// transcription, so Get feedback need not run it again.
+    static func canReuseTranscript(existing: Set<String>) -> Bool {
+        transcriptOutputs.allSatisfy(existing.contains)
+    }
+
+    /// The pill's and popover's heading: "Getting feedback" for the full run,
+    /// "Transcribing" for Transcribe, "Stopping" once Stop is pressed.
+    static func runTitle(transcribeOnly: Bool, stopping: Bool) -> String {
+        if stopping { return "Stopping" }
+        return transcribeOnly ? "Transcribing" : "Getting feedback"
     }
 
     /// The last step: the agent when one is set up, otherwise the notes pass.

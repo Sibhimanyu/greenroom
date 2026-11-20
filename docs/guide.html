@@ -4,11 +4,11 @@
 <meta charset="utf-8">
 <title>Greenroom guide — your first morning</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="description" content="Everything a first-time Greenroom user needs: the first-run setup, the main window, every shortcut, the menu bar, the starter settings, Analyse, and where recordings go.">
+<meta name="description" content="Everything a first-time Greenroom user needs: the first-run setup, the main window, every shortcut, the menu bar, the starter settings, Get feedback, and where recordings go.">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Greenroom">
 <meta property="og:title" content="Greenroom guide — your first morning">
-<meta property="og:description" content="Everything a first-time Greenroom user needs: the first-run setup, the main window, every shortcut, the menu bar, the starter settings, Analyse, and where recordings go.">
+<meta property="og:description" content="Everything a first-time Greenroom user needs: the first-run setup, the main window, every shortcut, the menu bar, the starter settings, Get feedback, and where recordings go.">
 <meta property="og:url" content="https://sibhimanyu.github.io/greenroom/guide.html">
 <meta property="og:image" content="https://sibhimanyu.github.io/greenroom/social-preview.png">
 <meta property="og:image:width" content="1280">
@@ -222,7 +222,7 @@
     </a>
     <div class="nav-links">
       <a href="index.html">Overview</a>
-      <a href="1.0.html">What's new</a>
+      <a href="1.0.html">1.0 launch</a>
       <a href="guide.html" aria-current="page">Guide</a>
       <a href="how-it-works.html">Privacy &amp; safety</a>
       <a href="timeline.html">Timeline</a>
@@ -240,7 +240,7 @@
   <h1>Everything you touch, <span class="accent">and nothing you don't.</span></h1>
   <p class="lede">Greenroom is one button and a handful of settings. This page is the whole of it: what to do
   before the first Start, what the main window and the menu bar offer, every shortcut, the starter settings, where
-  your recordings end up, and Analyse for a transcript, counts and a report on any recording. Read it once; after that the app is the <strong>Start</strong> button.</p>
+  your recordings end up, and Get feedback for a transcript, counts and a report on any recording. Read it once; after that the app is the <strong>Start</strong> button.</p>
   <nav class="contents" aria-label="On this page">
     <a href="#before"><b>01</b>Before the first Start</a>
     <a href="#window"><b>02</b>The main window</a>
@@ -249,7 +249,7 @@
     <a href="#menubar"><b>05</b>The menu bar</a>
     <a href="#settings"><b>06</b>Settings</a>
     <a href="#recordings"><b>07</b>Recordings &amp; clips</a>
-    <a href="#analyse"><b>08</b>Analyse</a>
+    <a href="#feedback"><b>08</b>Get feedback</a>
     <a href="#trouble"><b>09</b>If something looks wrong</a>
   </nav>
 </header>
@@ -260,7 +260,7 @@
     <div class="sec-head">
       <p class="kicker">01 · Before the first Start</p>
       <h2>Fifteen minutes, once</h2>
-      <p>First launch opens a built-in setup guide that tracks each of these live. Reopen it any time from the
+      <p>First launch opens a built-in setup guide that tracks each of these live. It is a seven-page window (Welcome, Zoom, Layout, Access, YouTube, Cues, Finish). Reopen it any time from the
       <strong>?</strong> button in the main window. The short version:</p>
     </div>
     <div class="runlog">
@@ -269,8 +269,8 @@
         <div>
           <h3>Install, and open it once the hard way</h3>
           <p>Greenroom runs on macOS 14 or later. A few features need macOS 26, and each one says so where it is described below.
-          Download the disk image (the Download button), open it, drag <strong>Greenroom.app</strong> into
-          Applications. It updates itself from there, so the image need not be the newest version. The app isn't notarized, so the first open is blocked:
+          Download the zip (the Download button), unzip it, drag <strong>Greenroom.app</strong> into
+          Applications. It updates itself from there, so the download need not be the newest version. The app isn't notarized, so the first open is blocked:
           System Settings → Privacy &amp; Security → <strong>Open Anyway</strong> (macOS 14 and earlier: right-click → Open).
           From then on it updates itself.</p>
         </div>
@@ -298,8 +298,8 @@
         <thead><tr><th>Permission</th><th>When macOS asks</th><th>What it's for</th></tr></thead>
         <tbody>
           <tr><td data-label="Permission"><strong>Camera &amp; Microphone</strong></td><td data-label="When macOS asks">The first meeting connection, or the first Record</td><td data-label="What it&#x27;s for">The built-in meeting client runs inside Greenroom, so your video and mic are opened in its process. Record uses the same two to keep a class on your screen.</td></tr>
-          <tr><td data-label="Permission"><strong>Screen Recording</strong></td><td data-label="When macOS asks">The first Start that shares something, or the first Record</td><td data-label="What it&#x27;s for">Greenroom captures your screen itself and draws it into the picture the class sees. Without it the class sees your camera only. It belongs to the class picture, in a meeting and in Record. Analysing a recording reads a file already on this Mac and needs no screen permission.</td></tr>
-          <tr><td data-label="Permission"><strong>Speech Recognition</strong></td><td data-label="When macOS asks">The first time Analyse transcribes with Apple's recogniser</td><td data-label="What it&#x27;s for">Only when this Mac has no whisper. Either way the audio stays on this Mac: whisper runs locally, and Apple's path is pinned to on-device and refuses to transcribe rather than fall back to Apple's servers.</td></tr>
+          <tr><td data-label="Permission"><strong>Screen Recording</strong></td><td data-label="When macOS asks">The first Start that shares something, or the first Record</td><td data-label="What it&#x27;s for">Greenroom captures your screen itself and draws it into the picture the class sees. Without it the class sees your camera only. It belongs to the class picture, in a meeting and in Record. Getting feedback on a recording reads a file already on this Mac and needs no screen permission.</td></tr>
+          <tr><td data-label="Permission"><strong>Speech Recognition</strong></td><td data-label="When macOS asks">The first time Get feedback transcribes with Apple's recogniser</td><td data-label="What it&#x27;s for">Only when this Mac has no whisper. Either way the audio stays on this Mac: whisper runs locally, and Apple's path is pinned to on-device and refuses to transcribe rather than fall back to Apple's servers.</td></tr>
           <tr><td data-label="Permission"><strong>Accessibility</strong></td><td data-label="When macOS asks">The first time another app's window is tiled</td><td data-label="What it&#x27;s for">Moving windows of apps that have no scripting dictionary. Not needed for the main pane when <strong>Greenroom Browser</strong> is your main app.</td></tr>
           <tr><td data-label="Permission"><strong>Automation</strong></td><td data-label="When macOS asks">The first time an external browser (Chrome, Ulaa…) is tiled</td><td data-label="What it&#x27;s for">Opening and sizing that browser's window through its own dictionary. Greenroom Browser needs none.</td></tr>
         </tbody>
@@ -313,40 +313,53 @@
   <div class="wrap">
     <div class="sec-head">
       <p class="kicker">02 · The main window</p>
-      <h2>Two ways to begin, one button</h2>
+      <h2>Three ways to begin, one button</h2>
     </div>
+    <p class="table-note" style="margin:0 0 18px;max-width:760px">The Home toolbar has a switcher: <strong>New</strong>, <strong>Scheduled</strong> and <strong>Record</strong>. On the left is a live preview of the picture everyone will see; on the right, the meeting name, a row of tiles, a readiness line and one green capsule button.</p>
     <div class="cards">
       <div class="card">
         <span class="tag">Hosting</span>
-        <h3>New Meeting</h3>
+        <h3>New</h3>
         <p>Creates a fresh meeting under the Zoom account in your settings, with you as host. Press
-        <strong>Start Meeting</strong>. End Session ends the class for everyone.</p>
+        <strong>Start Meeting</strong>. <strong>End</strong> ends the meeting for everyone, after one confirming click.</p>
       </div>
       <div class="card">
-        <span class="tag">Joining</span>
-        <h3>Join Existing</h3>
+        <span class="tag">Hosting</span>
+        <h3>Scheduled</h3>
+        <p>Lists the meetings on your Zoom account. Start one, create a new one, or edit one. Greenroom is host-only: there is no guest join, so to join someone else's meeting use the Zoom app.</p>
+      </div>
+      <div class="card">
+        <span class="tag">No meeting</span>
+        <h3>Record</h3>
+        <p>Keeps what is on your screen, with you in it, with no meeting and no Zoom credentials. <strong>Start Recording</strong> builds the picture, counts down on the island, then records; the main window steps aside and a recording bar, with a <strong>Notes</strong> button for timed notes, takes over. Cancel returns Home unchanged. See <a href="#feedback">Get feedback</a> below for what to do with the recording.</p>
+      </div>
+      <div class="card">
+        <span class="tag">Setup</span>
+        <h3>The tiles</h3>
+        <p>Each tile opens a small panel.</p>
         <ul>
-          <li><strong>Paste Link</strong> reads the meeting ID and passcode straight from a copied Zoom link.</li>
-          <li><strong>Scheduled</strong> lists your account's upcoming meetings; recurring ones show their real next time.</li>
-          <li><strong>Presets</strong> save your regular classes (name, ID, passcode) for one-click filling. Presets travel in the settings export.</li>
+          <li><strong>Look</strong>: the bubble's shape and background.</li>
+          <li><strong>Camera</strong>: pick cameras (with their cut order), or none; with two or more, set the switching delay and Cut or Crossfade.</li>
+          <li><strong>Screen</strong>: share the whole screen, a window, the whiteboard, or just you.</li>
+          <li><strong>Mic</strong>: the system default or a device, and whether to record the Mac's sound.</li>
+          <li><strong>Layout</strong>: pick a layout and show it on screen or open its apps; locked while live.</li>
+          <li><strong>Auto-rec</strong>: record with the meeting or only when you press it; the clip buffer; where recordings go.</li>
+          <li><strong>More</strong>: a grid that opens each Settings tab, the Setup guide and all settings.</li>
         </ul>
       </div>
       <div class="card">
         <span class="tag">During</span>
-        <h3>While the class runs</h3>
+        <h3>While the meeting runs</h3>
         <ul>
-          <li><strong>End Session</strong> asks first, because it can end the meeting for the whole class.</li>
-          <li><strong>Sessions</strong> opens its own window with every past class and recording: recordings and clips with a built-in player, the transcript, <strong>Analyse</strong>, the YouTube link once a recording is uploaded, a name you can change, and how much disk is left.</li>
-          <li><strong>Record</strong>, on the home screen beside New Meeting and Join Existing, keeps a class on your screen with no meeting and no Zoom credentials. Turn <strong>Notes</strong> on to type timed notes while it records. See <a href="#analyse">Analyse</a> below for what to do with the recording.</li>
-          <li><strong>Status</strong> (closed by default; the number beside it is how many lines are waiting) says what each step did and why, newest line in view. The window grows downward to show it and nothing above moves.</li>
-          <li><strong>Manual controls</strong>, the pull-down on the same row, runs one piece at a time: just the chat window, just the main-app window, just Zoom.</li>
+          <li><strong>End</strong> asks first, in one click: the bar turns into &ldquo;End the meeting for everyone?&rdquo; with <strong>Keep going</strong> and <strong>End for everyone</strong>. Esc, a click elsewhere or six seconds cancels. Stopping a recording from the REC pill asks the same way.</li>
+          <li><strong>Sessions</strong> (the clock icon in the toolbar) is a page in the main window, with a sidebar, a timeline by day and every past meeting and recording. Open one to <strong>Watch</strong> or <strong>Edit</strong> it; see <a href="#recordings">Recordings &amp; clips</a>.</li>
+          <li><strong>Status</strong>: the log under the button says what each step did and why.</li>
         </ul>
       </div>
       <div class="card">
         <span class="tag">Help</span>
         <h3>The ? button</h3>
-        <p>Reopens the setup guide: credential check with a <strong>Test Zoom Connection</strong> button that names
-        any missing scope, and the permission checklist. The same guide first-run showed.</p>
+        <p>Reopens the setup guide, the same seven pages first-run showed, including the Zoom credential check and the permission checklist.</p>
       </div>
     </div>
   </div>
@@ -360,11 +373,11 @@
       <h2>Five things, in order, in about the time Zoom takes to connect</h2>
     </div>
     <div class="runlog">
-      <div class="run"><div class="n">01</div><div><h3>The picture comes up</h3><p>Greenroom opens your screen and camera and builds the picture the class will see: your screen with you in it. The meeting receives it directly, with no camera to pick in Zoom.</p></div></div>
-      <div class="run"><div class="n">02</div><div><h3>The meeting starts or joins</h3><p>Inside Greenroom's built-in client. A meeting a crash left live on the account is ended first, so the new one can start.</p></div></div>
-      <div class="run"><div class="n">03</div><div><h3>Your main app opens, tiled to its slice</h3><p>The reading doc in the pane you sized in Settings. With Greenroom Browser, yesterday's tabs come back too.</p></div></div>
-      <div class="run"><div class="n">04</div><div><h3>The Zoom tile and chat fill the side column</h3><p>The live speaker above, the class chat below. Both are real windows you can drag; Snap Windows Back returns them.</p></div></div>
-      <div class="run"><div class="n">05</div><div><h3>Greenroom's own window drops to the back</h3><p>Your main app is focused. If Cues is on, it starts listening. If you turned on automatic recording (off by default), recording starts too. Teach. The Greenroom item in the menu bar and the shortcuts below are all you need until the end.</p></div></div>
+      <div class="run"><div class="n">01</div><div><h3>The picture comes up</h3><p>Greenroom opens your screen and camera and builds the picture everyone will see: your screen with you in it. The meeting receives it directly, with no camera to pick in Zoom. Home folds away and the island, a pill under the menu bar (at the notch where there is one), shows the step in words with a progress ring and a Cancel.</p></div></div>
+      <div class="run"><div class="n">02</div><div><h3>The meeting starts</h3><p>Inside Greenroom's built-in client. A meeting a crash left live on the account is ended first, so the new one can start.</p></div></div>
+      <div class="run"><div class="n">03</div><div><h3>Your layout's apps open, placed</h3><p>The windows of the layout you chose are placed on their displays. With Greenroom Browser, yesterday's tabs come back too.</p></div></div>
+      <div class="run"><div class="n">04</div><div><h3>The meeting window opens</h3><p>When others are there, Greenroom's own meeting window opens, with the View windows and the chat. They are real windows you can drag; Snap Windows Back returns them.</p></div></div>
+      <div class="run"><div class="n">05</div><div><h3>The control bar takes over</h3><p>A floating control bar appears once you are live; the island was only for starting. If Cues is on, it starts listening. If you turned on automatic recording (off by default), recording starts too. The bar, the menu bar and the shortcuts below are all you need until the end. If a start fails, the island stays with <strong>Try again</strong> and <strong>Close</strong>.</p></div></div>
     </div>
     <p class="table-note" style="margin-top:18px">The <a href="how-it-works.html#sequence">Privacy &amp; safety page</a> draws the same five steps as every message the app sends, if you want to see exactly what talks to what.</p>
   </div>
@@ -375,23 +388,28 @@
   <div class="wrap">
     <div class="sec-head">
       <p class="kicker">04 · Shortcuts</p>
-      <h2>Eight keys that work from any app</h2>
-      <p>System-wide, so they work while the reading doc or Zoom has focus. All eight are <kbd>⌥⌘</kbd> plus one key;
-      Control is deliberately not in the combination because Control-Option belongs to VoiceOver.</p>
+      <h2>Nine default shortcuts, all yours to change</h2>
+      <p>Eight of the nine are system-wide, so they work while any app has focus; <kbd>⌘M</kbd> works only in the meeting window. Most use <kbd>⌥⌘</kbd> plus one key, and pause and draw use <kbd>⌥⇧</kbd>.
+      Control is deliberately not in the combination because Control-Option belongs to VoiceOver. Every one can be changed in Settings → Shortcuts.</p>
     </div>
     <div class="table-scroll" style="max-width:860px">
       <table class="stack">
         <thead><tr><th>Keys</th><th>Does</th><th>Notes</th></tr></thead>
         <tbody>
-          <tr><td class="keys" data-label="Keys"><kbd>⌥⌘G</kbd></td><td data-label="Does"><strong>Start</strong> the session</td><td data-label="Notes">Same as the Start button; same gating (credentials and a meeting must be set).</td></tr>
-          <tr><td class="keys" data-label="Keys"><kbd>⌥⌘X</kbd></td><td data-label="Does"><strong>End</strong> the session</td><td data-label="Notes">Asks first. Leaves or ends the meeting, closes the chat, finishes any recording, stops the camera and screen capture.</td></tr>
-          <tr><td class="keys" data-label="Keys"><kbd>⌥⌘R</kbd></td><td data-label="Does"><strong>Record</strong> / stop recording</td><td data-label="Notes">Records exactly what the class sees: the composited screen with you in it. The menu bar shows <strong>REC</strong> while it runs.</td></tr>
+          <tr><td class="keys" data-label="Keys"><kbd>⌥⌘G</kbd></td><td data-label="Does"><strong>Start</strong> the meeting</td><td data-label="Notes">Same as the Start button; same gating (credentials and a meeting must be set).</td></tr>
+          <tr><td class="keys" data-label="Keys"><kbd>⌥⌘X</kbd></td><td data-label="Does"><strong>End</strong> the meeting</td><td data-label="Notes">Asks before it ends the meeting. Leaves or ends the meeting, closes the chat, finishes any recording, stops the camera and screen capture.</td></tr>
+          <tr><td class="keys" data-label="Keys"><kbd>⌥⌘R</kbd></td><td data-label="Does"><strong>Record</strong> / stop recording</td><td data-label="Notes">Records exactly what everyone sees: the composited screen with you in it. The menu bar shows <strong>REC</strong> while it runs.</td></tr>
+          <tr><td class="keys" data-label="Keys"><kbd>⌥⇧P</kbd></td><td data-label="Does"><strong>Pause</strong> / resume the recording</td><td data-label="Notes">Pauses the recording file only; the meeting carries on, and the file has no gap. The bar shows &ldquo;Paused&rdquo;.</td></tr>
+          <tr><td class="keys" data-label="Keys"><kbd>⌥⇧D</kbd></td><td data-label="Does"><strong>Draw</strong> on screen</td><td data-label="Notes">Pen, highlighter, arrow and eraser over the shared screen. The marks show in the meeting and in the recording.</td></tr>
           <tr><td class="keys" data-label="Keys"><kbd>⌥⌘S</kbd></td><td data-label="Does"><strong>Snap Windows Back</strong></td><td data-label="Notes">Re-tiles everything to the saved layout after you've dragged windows around. Also hands the picture its settings again.</td></tr>
-          <tr><td class="keys" data-label="Keys"><kbd>⌥⌘Z</kbd></td><td data-label="Does"><strong>Hide / show the speaker tile</strong></td><td data-label="Notes">The chat takes the whole column while the tile is hidden. Needs <em>Quick-hide mode</em> on in Settings → Layout → Meeting view.</td></tr>
-          <tr><td class="keys" data-label="Keys"><kbd>⌥⌘1</kbd> <kbd>⌥⌘2</kbd> <kbd>⌥⌘5</kbd></td><td data-label="Does"><strong>Clip</strong> the last 1, 2 or 5 minutes</td><td data-label="Notes">Works during a session, whether or not you were recording: Greenroom keeps the last 5 minutes in memory. Saved into the class folder, named for the time it happened. A clip holds your screen, your webcam and your mic, not the other participants or Zoom's audio.</td></tr>
+          <tr><td class="keys" data-label="Keys"><kbd>⌥⌘Z</kbd></td><td data-label="Does"><strong>Hide / show the meeting</strong></td><td data-label="Notes">Hides or shows the meeting piece of your layout.</td></tr>
+          <tr><td class="keys" data-label="Keys"><kbd>⌘M</kbd></td><td data-label="Does"><strong>Shrink to the control bar</strong></td><td data-label="Notes">Works only while the meeting window has focus; it is not system-wide.</td></tr>
+          <tr><td class="keys" data-label="Keys"><kbd>⌥⌘1</kbd> <kbd>⌥⌘2</kbd> <kbd>⌥⌘5</kbd></td><td data-label="Does"><strong>Clip</strong> the last 1, 2 or 5 minutes</td><td data-label="Notes">Works during a meeting, whether or not you were recording: Greenroom keeps the last 5 minutes in memory. Saved beside the recording, named for the time it happened. A clip holds your screen, your webcam and your mic, not the other participants or Zoom's audio.</td></tr>
         </tbody>
       </table>
     </div>
+
+    <p class="table-note" style="margin:14px 0 0;max-width:860px">Many more actions have no key until you give them one: mic, camera, chat, notes, show the meeting window, collapse the bar, cycle the view, open Greenroom or Sessions, open or close each View window, and &ldquo;use this layout&rdquo; for each layout. Combinations macOS owns, such as <kbd>⌘Q</kbd>, <kbd>⌘W</kbd> and <kbd>⌘Space</kbd>, are refused.</p>
 
     <h3 style="margin-top:36px">Inside Greenroom Browser</h3>
     <p class="table-note" style="margin:0 0 14px">The built-in browser uses the shortcuts every browser uses. These work when its window has focus.</p>
@@ -420,8 +438,8 @@
     <div class="sec-head">
       <p class="kicker">05 · The menu bar</p>
       <h2>The Greenroom item, for when Greenroom's window is at the back</h2>
-      <p>During a class Greenroom deliberately stays behind your main app. Everything you might need mid-lesson is in the menu bar
-      instead, under the Greenroom mark. While recording, the mark becomes a record glyph and <strong>REC</strong>. With Cues listening, a waveform joins
+      <p>During a meeting Greenroom's main window steps aside. Everything you might need is in the control bar and the menu bar,
+      under the Greenroom mark. While recording, the mark becomes a record glyph and <strong>REC</strong>. With Cues listening, a waveform joins
       it — or, when there is no participants panel to hold the cards, a separate waveform item appears whose popover is where the
       cards live.</p>
     </div>
@@ -429,11 +447,11 @@
       <table>
         <thead><tr><th>Item</th><th>Does</th></tr></thead>
         <tbody>
-          <tr><td><strong>Start Meeting / Join Meeting</strong></td><td>Same as the main window's Start; reads “In Session” while one runs.</td></tr>
-          <tr><td><strong>End Session</strong></td><td>Asks first, then ends everything.</td></tr>
+          <tr><td><strong>Start meeting</strong></td><td>Same as the main window's Start; reads “In Session” while one runs.</td></tr>
+          <tr><td><strong>End meeting</strong></td><td>Asks first, then ends everything.</td></tr>
           <tr><td><strong>Start Recording / Stop Recording</strong></td><td>Same as <kbd>⌥⌘R</kbd>.</td></tr>
           <tr><td><strong>Snap Windows Back</strong></td><td>Same as <kbd>⌥⌘S</kbd>.</td></tr>
-          <tr><td><strong>Hide / Show Speaker Tile</strong></td><td>Same as <kbd>⌥⌘Z</kbd>; enabled by Quick-hide mode.</td></tr>
+          <tr><td><strong>Hide / Show Meeting</strong></td><td>Same as <kbd>⌥⌘Z</kbd>.</td></tr>
           <tr><td><strong>Cues is listening · N links</strong></td><td>Only while Cues is on and a class is live. Reads “paused” while you are muted in Zoom.</td></tr>
           <tr><td><strong>Stop Cues for This Session</strong></td><td>Stops listening for the rest of this class; the setting stays on for the next one.</td></tr>
           <tr><td><strong>Show Greenroom</strong></td><td>Brings the main window forward.</td></tr>
@@ -451,7 +469,7 @@
   <div class="wrap">
     <div class="sec-head">
       <p class="kicker">06 · Settings (⌘,)</p>
-      <h2>Seven tabs. Three you'll actually open.</h2>
+      <h2>Seven tabs, in this order, and ⌘1 to ⌘7 to jump</h2>
       <p>Everything persists immediately and travels in the settings export. The starter settings are listed first in each tab;
       the rest can wait until a morning asks for them.</p>
     </div>
@@ -460,8 +478,8 @@
         <div class="tab">Webcam <span>how you appear</span></div>
         <div>
           <ul>
-            <li><strong>Bubble shape</strong>: square, circle, rounded rectangle, cutout, or presenter. Cutout and presenter key your background away and need a real green screen behind you; presenter shrinks the shared screen into a panel with you standing at full height in front of it.</li>
-            <li><strong>Position and size</strong>: drag the bubble in the live preview. The preview shows the actual picture whenever Greenroom can open your camera; if Screen Recording is off it shows the camera alone.</li>
+            <li><strong>Bubble shape</strong>: square, circle, rounded rectangle, cutout, or presenter. Cutout and presenter take your background away, automatically or with a green screen behind you; cutout keeps only the main person. Presenter shrinks the shared screen into a panel with you standing at full height in front of it.</li>
+            <li><strong>Presence bubble</strong>: a floating camera bubble on your screen decides where your camera sits in the picture. Drag it, resize it, or hover for a strip with shape, background and size. It is mirrored for you and never captured; <strong>Hide my bubble</strong> puts it away. The Home preview and the layout builder show the same placement. A blurred or picture background can sit behind you.</li>
             <li><strong>Keep the last 5 minutes clippable</strong> (on) powers <kbd>⌥⌘1/2/5</kbd>. <strong>Start recording automatically with the meeting</strong> (off) if every class should be kept.</li>
             <li><strong>Cut between cameras as you turn</strong> (off) is for two monitors with a camera on each. Pick two or more cameras; an iPhone can be one of them. During a class every chosen camera is open, and the Mac compares them: the class gets whichever camera sees your face most head-on, once it is clearly better than the live one for the delay you set, 1 second by default. It reads which way your head points, not your eyes, so a camera on top of a monitor works while you look at that screen. Looking down at the floor, or away from every camera, switches nothing. During a class, this section shows each camera's angle side by side. <strong>When it switches</strong> picks a hard cut or a short crossfade. While it waits, a bar fills along the bottom of your self view; the class never sees it. The first camera opens at Start and the others once the meeting is live, so an iPhone is not woken until the class needs it. All of it happens on this Mac. Aiming a camera here does not need OBS running.</li>
           </ul>
@@ -471,12 +489,32 @@
         <div class="tab">Layout <span>the tiled workspace</span></div>
         <div>
           <ul>
-            <li><strong>Main app</strong>: every installed app, with <strong>Greenroom Browser</strong> first. For any browser an <strong>Open website</strong> field appears; that page opens on Start.</li>
-            <li><strong>Main pane width</strong> sets the main app to ½, ⅔ or ¾ of the screen in one click. Or <strong>drag the handles</strong> in the schematic: between the panes for any width, between Zoom and Chat to balance the column. <strong>Main pane side</strong> puts it left or right. Changes re-tile a live session on their own.</li>
-            <li><strong>Side column</strong>: turn the Zoom tile or the chat window off and it simply isn't tiled.</li>
-            <li><strong>Meeting view</strong>: hide your own tile; <strong>Quick-hide mode</strong> starts with the speaker hidden and gives <kbd>⌥⌘Z</kbd> its job.</li>
+            <li><strong>Layout templates</strong>: choose how your windows are placed, per display. Built-in templates are locked; make your own from any of them, or start from none.</li>
+            <li><strong>Layout creator</strong>: a canvas where you place and size each window, including the meeting piece. A layout can also open its apps for you (<strong>Greenroom Browser</strong> is one of them).</li>
+            <li>A layout is locked while you are live. Unplugging or adding a display is handled.</li>
           </ul>
-          <p class="later">Later: <em>Screen to share</em> and the <em>Second display</em> options (participant view on your reference monitor); the Greenroom Browser switches (<em>Reopen last session's tabs</em>, <em>Suggest searches as you type</em>, <em>Close the browser window when the session ends</em>); <em>Send anonymous usage analytics</em>.</p>
+          <p class="later">Also here: a <em>Privacy</em> section with <em>Anonymous usage analytics</em>, and the Greenroom Browser switches.</p>
+        </div>
+      </div>
+      <div class="setting">
+        <div class="tab">Shortcuts <span>every key is yours</span></div>
+        <div>
+          <ul>
+            <li><strong>Nine defaults</strong> (see <a href="#shortcuts">Shortcuts</a>): start, end, record, pause, draw, clip, snap back, hide the meeting and shrink to the control bar.</li>
+            <li><strong>Click an action, press a combination</strong> to change it, or clear it. Actions with no default (mic, camera, chat, notes, open Greenroom or Sessions, each View window, each layout) can be given one here.</li>
+            <li>Combinations macOS owns are refused. Global shortcuts need no permission.</li>
+          </ul>
+        </div>
+      </div>
+      <div class="setting">
+        <div class="tab">Zoom <span>usually already filled</span></div>
+        <div>
+          <ul>
+            <li><strong>Meeting SDK app</strong>: Client ID and Secret. Powers the built-in meeting client and the chat window.</li>
+            <li><strong>Server-to-Server OAuth app</strong>: Account ID, Client ID and Secret. Powers New Meeting and the scheduled list. A second Marketplace app on the same Zoom account &mdash; Zoom does not let one app do both jobs.</li>
+            <li>All five arrive in the settings file; you only type them when setting a school up from scratch.</li>
+            <li><strong>Your display name</strong>: what everyone sees you as.</li>
+          </ul>
         </div>
       </div>
       <div class="setting">
@@ -491,17 +529,17 @@
         </div>
       </div>
       <div class="setting">
-        <div class="tab">Cues <span>off by default · macOS 26</span></div>
+        <div class="tab">Cues <span>Beta · off by default · macOS 26</span></div>
         <div>
           <ul>
-            <li><strong>Listen during classes and suggest links</strong>: while a class is live, what you say becomes text on this Mac and, when you name a book, a video, a topic, a person or a place, a link card appears on the participants panel — or in a waveform menu-bar item when there is no second display. <strong>Open</strong> puts it in your main-pane browser without stealing focus; <strong>Send</strong> drops the link in the class chat; <strong>×</strong> dismisses it for the class.</li>
-            <li><strong>Speech model</strong>: Apple's, downloaded once from here when you turn the switch on, or whisper, the same local model Analyse uses. whisper hears names better. If it is missing, this tab shows only the part that is: <strong>Install</strong> runs Homebrew for the program, and <strong>Download</strong> fetches the model with a progress bar. Either way the speech becomes text on this Mac. Nothing downloads during a class — a Start that finds the model missing carries on without Cues and says so in the status log.</li>
+            <li><strong>Listen during meetings and suggest links</strong>: while a meeting is live, what you say becomes text on this Mac and, when you name a book, a video, a topic, a person or a place, a link card appears on the participants panel — or in a waveform menu-bar item when there is no second display. <strong>Open</strong> puts it in your main-pane browser without stealing focus; <strong>Send</strong> drops the link in the class chat; <strong>×</strong> dismisses it for the class.</li>
+            <li><strong>Speech model</strong>: Apple's, downloaded once from here when you turn the switch on, or whisper, the same local model Get feedback uses. whisper hears names better. If it is missing, this tab shows only the part that is: <strong>Install</strong> runs Homebrew for the program, and <strong>Download</strong> fetches the model with a progress bar. Either way the speech becomes text on this Mac. Nothing downloads during a class — a Start that finds the model missing carries on without Cues and says so in the status log.</li>
             <li><strong>Language</strong> (Indian English by default when that is your system language), and <strong>Video links may use YouTube search</strong> — off, or with no Google account connected, video cards are “search YouTube for…” links that send nothing until opened.</li>
             <li><strong>Also suggest links for things I mention without naming them</strong> (off) hands the listening to Apple&rsquo;s on-device language model instead of the word patterns. It catches things you refer to in passing, without saying &ldquo;it&rsquo;s called&hellip;&rdquo; &mdash; and it interrupts far more often. Tested against a real lesson it found everything and suggested about twenty-five wrong things for every right one, so it is off unless you want that trade.</li>
             <li><strong>Save the transcript with the class</strong> (on) writes everything Cues heard to <code>transcript.txt</code> in the class folder, beside the recording, a line per sentence with its time. Turn it off to keep the text in memory only.</li>
             <li><strong>Try it</strong> listens for two minutes and runs the real thing: the live text, real lookups, and the cards a class would get. Everything it heard stays in a box that scrolls, until the next Try it.</li>
           </ul>
-          <p class="later">What leaves the Mac is the short search phrase only — to Google Books, Open Library, Wikipedia and, if allowed, YouTube — and each one is written to the status log. Never the audio, never the transcript, never a name from the meeting. The <a href="how-it-works.html#Cues">Privacy &amp; safety page</a> draws the whole pipeline. Cues needs macOS 26. Below that the tab is one sentence, nothing listens, and the rest of Greenroom is unchanged.</p>
+          <p class="later">Cues is marked <strong>Beta</strong> and carries a risk warning in the tab. What leaves the Mac is the short search phrase only — to Google Books, Open Library, Wikipedia and, if allowed, YouTube — and each one is written to the status log. Never the audio, never the transcript, never a name from the meeting. The <a href="how-it-works.html#Cues">Privacy &amp; safety page</a> draws the whole pipeline. Cues needs macOS 26. Below that the tab is one sentence, nothing listens, and the rest of Greenroom is unchanged.</p>
         </div>
       </div>
       <div class="setting">
@@ -512,19 +550,7 @@
           </ul>
         </div>
       </div>
-      <div class="setting">
-        <div class="tab">Zoom <span>usually already filled</span></div>
-        <div>
-          <ul>
-            <li><strong>Meeting SDK app</strong>: Client ID and Secret. Powers the built-in meeting client and the chat window.</li>
-            <li><strong>Server-to-Server OAuth app</strong>: Account ID, Client ID and Secret. Powers New Meeting and the scheduled list. A second Marketplace app on the same Zoom account &mdash; Zoom does not let one app do both jobs.</li>
-            <li>All five arrive in the settings file; you only type them when setting a school up from scratch.</li>
-            <li><strong>Your display name</strong>: what the class sees you as.</li>
-          </ul>
-          <p class="later">Later: <em>Custom meeting UI (experimental)</em> turns on Greenroom's own participants panel and speaker window.</p>
-        </div>
-      </div>
-    </div>
+          </div>
     <div class="callout amber">
       <h3>Credentials live in plain text on this Mac</h3>
       <p>Zoom app credentials are kept in Greenroom's local preferences unencrypted and never leave the Mac except to Zoom.
@@ -548,10 +574,10 @@
       you were not recording. It holds what the class saw from you: your screen, your webcam and your mic. It does not hold the
       other participants or Zoom's audio.
       Recordings are written as fragmented MP4, so a crash or power cut loses seconds, not the file.</p>
-      <p>The <strong>Sessions</strong> button in the main window opens its own window. A sidebar shows
-      <strong>Everything</strong>, or only <strong>Classes</strong>, <strong>Recordings</strong> (made with Record) or
-      <strong>Presentations</strong> (folders made by an earlier version, which still open and analyse). It shows every session with a player, shows how much room they take and how
-      much disk is left, and warns before a class if there may not be enough for a full one. Deleting there moves the file to the Trash.
+      <p><strong>Sessions</strong> is a page in the main window, opened from the toolbar (<kbd>⌘[</kbd> goes back). A sidebar (<kbd>⌘B</kbd> hides it) shows
+      <strong>Everything</strong>, or only <strong>Meetings</strong>, <strong>Recordings</strong> (made with Record) or
+      <strong>Presentations</strong> (folders made by an earlier version, which still open). It shows every session as a timeline by day, shows how much room they take and how
+      much disk is left, and warns before a class if there may not be enough for a full one. Select one or several, Finder-style; deleting moves them to the Trash. Opening a session gives you two modes. <strong>Watch</strong> has the player (skip 10 seconds, speed, volume, full screen; Space, ←/→, M and F work) and a side panel with a click-to-seek transcript you can edit, and <strong>Notes</strong>. <strong>Edit</strong> is the editor: trim, cuts, speed, crop, join clips, annotations and effects, saved as a new &ldquo;&hellip; - Edited&rdquo; folder so the original is untouched. After a meeting a <em>Finished</em> card offers Watch, Edit and Upload.
       A class can be renamed there (the pencil next to its name); the folder on disk keeps its date.</p>
       <p>With Settings → YouTube turned on, a recording can go to your channel the moment it stops: unlisted or private, one
       question on a small card if you chose <em>Ask</em>, progress in the menu bar, and the link on your clipboard when it finishes.
@@ -560,7 +586,7 @@
       Moving a recording to the Trash does not touch its copy on YouTube. The file stays in the folder either way.</p>
       <p>With Cues on, the class folder also holds <code>transcript.txt</code> &mdash; what the microphone heard, timed from the start of the session. And the cards you <em>opened or sent</em> are kept with it, in the class's <strong>Links</strong> tab in Sessions, beside Clips and
       Transcript: what kind of link, its title, where it goes, whether you opened it or sent it to chat, when, and Open / Copy. Cards that were only shown are not recorded, and nothing of the transcript ever is.</p>
-      <p>A class with a transcript can be summarised. Open its <strong>Transcript</strong> tab in Sessions and press
+      <p>A class with a transcript can be summarised. Open its transcript in Sessions and press
       <strong>Summarise on this Mac</strong>. Apple's on-device model writes it, with no cloud call, and it is saved as
       <code>summary.md</code> in the class folder. This needs <strong>macOS 26 with Apple Intelligence turned on</strong>, and a
       transcript, which only exists if Cues was on for that class.</p>
@@ -569,19 +595,19 @@
 </section>
 
 <!-- ============ 08 ============ -->
-<section class="soft" id="analyse">
+<section class="soft" id="feedback">
   <div class="wrap">
     <div class="sec-head">
-      <p class="kicker">08 · Analyse</p>
+      <p class="kicker">08 · Get feedback</p>
       <h2>Record first, then get a transcript, counts and a report</h2>
-      <p>Nothing is analysed while you record. Open the session in Sessions and press <strong>Analyse</strong>. It works on a class, a
+      <p>Nothing is processed while you record. Open the session in Sessions and press <strong>Get feedback</strong>. It works on a class, a
       Record session, a meeting recording or an older presentation, needs no meeting and no Zoom credentials, and runs on macOS 14
       or later; only one way of writing the feedback needs macOS 26.</p>
     </div>
     <div class="runlog">
-      <div class="run"><div class="n">01</div><div><h3>Record</h3><p>Press <strong>Record</strong> on the home screen. It saves the same class picture a meeting would send, your screen with you in it, and your voice. No meeting starts.</p></div></div>
-      <div class="run"><div class="n">02</div><div><h3>Mark as it happens (optional)</h3><p>Turn on <strong>Notes</strong> on the home screen and type while it records. Each note is stamped at the moment you started typing it, not when you pressed Return. You can add notes afterwards too, while watching it back in Sessions.</p></div></div>
-      <div class="run"><div class="n">03</div><div><h3>Analyse</h3><p>The first time, a small <strong>How to analyse</strong> panel asks the two things below, once, and then runs. After that <strong>Analyse</strong> runs straight away, and the <strong>How to analyse…</strong> link beside it reopens the panel. The report opens in its own window, with each reading sorted into <em>What to work on</em> and <em>What went well</em>. <strong>Play without fillers</strong> plays the recording with every filler skipped. <strong>Export</strong> saves a PDF, Markdown, the video with the notes on it, or subtitles. In Sessions, each analysed session has <strong>Analysis</strong> and <strong>Notes</strong> tabs, and the filler words and notes show as marks on the scrubber.</p></div></div>
+      <div class="run"><div class="n">01</div><div><h3>Record</h3><p>Choose <strong>Record</strong> on the home screen and press <strong>Start Recording</strong>. It saves the same class picture a meeting would send, your screen with you in it, and your voice. No meeting starts.</p></div></div>
+      <div class="run"><div class="n">02</div><div><h3>Mark as it happens (optional)</h3><p>Use the <strong>Notes</strong> button on the recording bar and type while it records. Each note is stamped at the moment you started typing it, not when you pressed Return. You can add notes afterwards too, while watching it back in Sessions.</p></div></div>
+      <div class="run"><div class="n">03</div><div><h3>Get feedback</h3><p>The first time, a small <strong>Ready</strong> panel asks the two things below, once, and then runs. After that <strong>Get feedback</strong> runs straight away, and the <strong>How to get feedback…</strong> link beside it reopens the panel. The report opens in its own window, with each reading sorted into <em>What to work on</em> and <em>What went well</em>. <strong>Play without fillers</strong> plays the recording with every filler skipped. <strong>Export</strong> saves a PDF, Markdown, the video with the notes on it, or subtitles. In Sessions, each analysed session has <strong>Analysis</strong> and <strong>Notes</strong> tabs, and the filler words and notes show as marks on the scrubber.</p></div></div>
     </div>
     <div class="cards" style="margin-top:22px">
       <div class="card">
@@ -599,14 +625,14 @@
         <span class="tag">Written feedback</span>
         <h3>Three ways, best first</h3>
         <ul>
-          <li><strong>Your agent</strong>, if you chose <em>My agent</em> in How to analyse (off by default).</li>
+          <li><strong>Your agent</strong>, if you chose <em>My agent</em> in How to get feedback (off by default).</li>
           <li><strong>Apple's on-device model</strong>. Needs <strong>macOS 26 with Apple Intelligence turned on</strong>.</li>
           <li><strong>Neither</strong>: you get the counted report and your notes, with no written feedback.</li>
         </ul>
         <p style="margin-top:10px">Whichever writes it also scores each line of your rubric and gives a reason for each score. The report says which one wrote it.</p>
       </div>
       <div class="card">
-        <span class="tag">How to analyse</span>
+        <span class="tag">How to get feedback</span>
         <h3>Two choices, once per Mac</h3>
         <ul>
           <li><strong>Whisper</strong>: one button installs the program (without Homebrew it links to <a href="https://brew.sh">brew.sh</a>) and a model. Whisper is what counts filler words. The model is shared with Cues.</li>
@@ -617,7 +643,7 @@
     </div>
     <div class="callout amber">
       <h3>The agent is the one part that can leave the Mac</h3>
-      <p>With the agent on, Analyse runs Claude Code, Codex or your own command in your login shell. It can read the transcript,
+      <p>With the agent on, Get feedback runs Claude Code, Codex or your own command in your login shell. It can read the transcript,
       your notes, a still every 20 seconds, the counts, the rubric and the student's name, read-only, in a temporary copy of that session's folder that leaves the recording out.
       The audio and video are not given to it. Where it sends what it reads is up to the agent you chose. With the agent off,
       nothing about the session leaves this Mac.</p>
@@ -635,11 +661,11 @@
     <div class="cards">
       <div class="card">
         <h3>Cues shows nothing</h3>
-        <p>Three things to check, in order. It is <strong>off by default</strong> &mdash; turn it on in Settings &rarr; Cues. It needs <strong>macOS 26</strong>; on 14 or 15 the tab says so. And it only listens <strong>while a class is live</strong>, so nothing happens until you press Start.</p>
+        <p>Three things to check, in order. It is <strong>off by default</strong> &mdash; turn it on in Settings &rarr; Cues. It needs <strong>macOS 26</strong>; on 14 or 15 the tab says so. And it only listens <strong>while a meeting is live</strong>, so nothing happens until you press Start.</p>
       </div>
       <div class="card">
-        <h3>Analyse says fillers are "Not counted"</h3>
-        <p>That report was transcribed with Apple's recogniser, which drops filler words. Set up whisper under <strong>How to analyse…</strong> beside Analyse, then press <strong>Analyse again</strong> on that session. No written feedback, only counts? Choose <em>My agent</em> there, or use a Mac on <strong>macOS 26</strong> with Apple Intelligence on.</p>
+        <h3>Get feedback says fillers are "Not counted"</h3>
+        <p>That report was transcribed with Apple's recogniser, which drops filler words. Set up whisper under <strong>How to get feedback…</strong> beside Get feedback, then press <strong>Get feedback</strong> again on that session. No written feedback, only counts? Choose <em>My agent</em> there, or use a Mac on <strong>macOS 26</strong> with Apple Intelligence on.</p>
       </div>
       <div class="card">
         <h3>A window is in the wrong place</h3>
@@ -659,7 +685,7 @@
       </div>
       <div class="card">
         <h3>Something else</h3>
-        <p>Open <strong>Status</strong> at the bottom of the main window: every step writes a plain-language line, and a failure names the step it happened on. Then <a href="https://github.com/Sibhimanyu/greenroom/issues">say what you saw</a>.</p>
+        <p>Open the status log under the Start button on Home: every step writes a plain-language line, and a failure names the step it happened on. Then <a href="https://github.com/Sibhimanyu/greenroom/issues">say what you saw</a>.</p>
       </div>
       <div class="card">
         <h3>Is it up to date?</h3>

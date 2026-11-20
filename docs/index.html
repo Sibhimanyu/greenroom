@@ -2,13 +2,13 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>Greenroom: your morning class, set up in one click</title>
+<title>Greenroom: your whole meeting setup, in one click</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="description" content="Greenroom is a macOS app that sets up a whole morning class in one click: your screen and camera, sent into the Zoom meeting, and every window tiled into place.">
+<meta name="description" content="Greenroom is a macOS app that sets up a whole Zoom meeting in one click: your screen and camera as one picture, the meeting hosted from Greenroom, and every window in place.">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Greenroom">
-<meta property="og:title" content="Greenroom: your morning class, set up in one click">
-<meta property="og:description" content="Greenroom is a macOS app that sets up a whole morning class in one click: your screen and camera, sent into the Zoom meeting, and every window tiled into place.">
+<meta property="og:title" content="Greenroom: your whole meeting setup, in one click">
+<meta property="og:description" content="Greenroom is a macOS app that sets up a whole Zoom meeting in one click: your screen and camera as one picture, the meeting hosted from Greenroom, and every window in place.">
 <meta property="og:url" content="https://sibhimanyu.github.io/greenroom/">
 <meta property="og:image" content="https://sibhimanyu.github.io/greenroom/social-preview.png">
 <meta property="og:image:width" content="1280">
@@ -183,7 +183,7 @@
     letter-spacing: 0.02em;
     margin-bottom: 10px;
   }
-  h2 { font-size: clamp(28px, 3.4vw, 36px); font-weight: 800; letter-spacing: -0.02em; line-height: 1.15; }
+  h2 { font-size: clamp(24px, 3.2vw, 32px); font-weight: 800; letter-spacing: -0.02em; line-height: 1.15; }
   .sec-head p { margin-top: 14px; color: var(--body); font-size: 17px; }
 
   /* ---------- what one press does ---------- */
@@ -205,6 +205,12 @@
   .run h3 { font-size: 17px; font-weight: 700; margin-bottom: 6px; }
   .run p { font-size: 15px; color: var(--body); max-width: 66ch; }
   @media (max-width: 600px) { .run { grid-template-columns: 1fr; gap: 4px; } }
+
+  .feat-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 28px 40px; }
+  @media (max-width: 760px) { .feat-grid { grid-template-columns: 1fr; } }
+  .feat h3 { font-size: 16.5px; font-weight: 700; margin-bottom: 6px; }
+  .feat p { font-size: 14.5px; color: var(--body); }
+  .feat { border-top: 1px solid var(--line); padding-top: 16px; }
 
   /* ---------- steps ---------- */
   .steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 34px; }
@@ -340,7 +346,7 @@
     </a>
     <div class="nav-links">
       <a href="index.html" aria-current="page">Overview</a>
-      <a href="1.0.html">What's new</a>
+      <a href="1.0.html">1.0 launch</a>
       <a href="guide.html">Guide</a>
       <a href="how-it-works.html">Privacy &amp; safety</a>
       <a href="timeline.html">Timeline</a>
@@ -355,12 +361,12 @@
 
 <header class="wrap hero">
   <div class="hero-copy">
-    <a class="announce" href="1.0.html"><span class="announce-chip">New</span>Greenroom 1.0: now it's in the class with you <span class="arrow">→</span></a>
+    <a class="announce" href="timeline.html"><span class="announce-chip">New</span>New in 1.7: camera bubble <span class="arrow">→</span></a>
     <span class="eyebrow">macOS · free · open source</span>
-    <h1>Your whole class setup, in <span class="accent">one click.</span></h1>
-    <p class="lede">Greenroom starts your screen-and-camera picture, opens the Zoom meeting, and puts every
-    window where it belongs: the reading doc, the meeting, the chat. The ten-minute morning
-    ritual becomes a button.</p>
+    <h1>Your whole meeting setup, in <span class="accent">one click.</span></h1>
+    <p class="lede">Greenroom builds your screen-and-camera picture, hosts the Zoom meeting from its own
+    built-in client, and puts every window where it belongs. The ten-minute setup
+    becomes a button.</p>
     <div class="hero-actions">
       <a class="btn" href="https://github.com/Sibhimanyu/greenroom/releases/download/v1.8.0/Greenroom-1.8.0.dmg">Download for Mac</a>
       <a class="textlink" href="https://github.com/Sibhimanyu/greenroom">View on GitHub <span class="arrow">→</span></a>
@@ -368,7 +374,7 @@
   </div>
 
   <figure class="hero-art">
-    <svg viewBox="0 0 560 400" role="img" aria-label="Schematic of the finished workspace after one press of Start: a Mac screen with the reading doc filling the left two thirds, the teacher keyed into a round bubble in its corner, and the right column holding the Zoom speaker tile above the class chat. A Start button on the left points at the screen; three labels mark the main app, Zoom and chat.">
+    <svg viewBox="0 0 560 400" role="img" aria-label="Schematic of the finished workspace after one press of Start: a Mac screen with the main app filling the left two thirds, you keyed into a round bubble in its corner, and the right column holding the Zoom speaker tile above the chat. A Start button on the left points at the screen; three labels mark the main app, Zoom and chat.">
       <defs>
         <marker id="ha" markerWidth="9" markerHeight="9" refX="7" refY="4" orient="auto" markerUnits="userSpaceOnUse"><path d="M0,0 L8,4 L0,8 z" fill="#2f6118"/></marker>
       </defs>
@@ -440,13 +446,13 @@
   <div class="wrap">
     <div class="sec-head">
       <p class="kicker">Watch</p>
-      <h2>Greenroom 1.0, in 55 seconds</h2>
+      <h2>The 1.0 launch film</h2>
+      <p>Made for version 1.0. The app has changed since, so the screens in it are not today's.</p>
     </div>
     <video class="intro-video" controls muted playsinline preload="metadata" poster="greenroom-1.0-poster.jpg">
       <source src="greenroom-1.0-launch.mp4" type="video/mp4">
       Your browser can't play this video. <a href="greenroom-1.0-launch.mp4">Download it instead</a>.
     </video>
-    <p style="margin-top:24px;text-align:center"><a class="textlink" href="1.0.html">Everything new in 1.0 <span class="arrow">→</span></a></p>
   </div>
 </section>
 
@@ -454,189 +460,91 @@
   <div class="wrap">
     <div class="sec-head">
       <p class="kicker">The click</p>
-      <h2>Four things happen, in order</h2>
-      <p>None of it is hard on its own. All of it, every single morning, is the problem.</p>
+      <h2>What happens when you press Start</h2>
+      <p>Press Start, or ⌥⌘G from any app. None of it is hard on its own. All of it, every time, is the problem.</p>
     </div>
     <div class="runlog">
       <div class="run">
         <div class="n">01</div>
         <div>
           <h3>The picture starts</h3>
-          <p>Greenroom builds the picture itself and sends it straight into the meeting: the whole screen, with the teacher
-          keyed into a corner bubble, cut out of the background entirely, or standing at full
-          height in front of the page in <strong>Presenter</strong>. Students see the book
-          <em>and</em> you.</p>
+          <p>Greenroom builds the picture itself and sends it into the meeting as your camera: your screen with you in a corner bubble, cut out of the background, or standing at full height in front of the page in <strong>Presenter</strong>. Everyone sees the page <em>and</em> you.</p>
         </div>
       </div>
       <div class="run">
         <div class="n">02</div>
         <div>
           <h3>The meeting opens</h3>
-          <p>A fresh Zoom meeting is created under your own account and hosted from Greenroom's
-          built-in client, so there is no second app to click through. Joining an existing
-          meeting by link works the same way.</p>
+          <p>A fresh Zoom meeting is created under your own account and hosted from Greenroom's built-in client, so there is no second app to click through.</p>
         </div>
       </div>
       <div class="run">
         <div class="n">03</div>
         <div>
-          <h3>Windows take their places</h3>
-          <p>Any app fills the main pane at whatever width you drag it to; the Zoom tile and chat
-          stack into the rest. Dragged something out of place mid-class? “Snap Windows Back”
-          restores all of it.</p>
+          <h3>The windows take their places</h3>
+          <p>Your layout puts the main app, the meeting and the chat where you set them. Dragged something out of place? “Snap Windows Back” (⌥⌘S) restores all of it.</p>
         </div>
       </div>
       <div class="run">
         <div class="n">04</div>
         <div>
-          <h3>Chat sits beside the book</h3>
-          <p>A standalone chat window in its own tile, so Zoom's chat panel never slides over
-          the page you are reading from.</p>
-        </div>
-      </div>
-      <div class="run">
-        <div class="n">＋</div>
-        <div>
-          <h3>A browser of its own</h3>
-          <p>Pick <strong>Greenroom Browser</strong> as the main app and the reading page opens in a
-          window Greenroom owns: tabs in the title bar, find in page, a history kept on your Mac,
-          and the tabs you had yesterday back on the next Start. It tiles itself, so there is no
-          Accessibility or browser-automation permission to grant. Chrome and friends stay in
-          the list for the days you need an extension.</p>
-        </div>
-      </div>
-      <div class="run">
-        <div class="n">＋</div>
-        <div>
-          <h3>Cues: the link, while you are still talking</h3>
-          <p>Turn it on and Greenroom listens to <em>your</em> microphone during the class. Name a
-          book and its cover appears on your reference display; mention a video you saw, a place,
-          a person, a word worth a picture, and a card is waiting with the link. One click opens it
-          in the reading window without leaving the page; one sends it to the class chat. Speech
-          becomes text on the Mac with Apple's models; only the short search phrase goes out, and
-          every one is written down. It listens with Apple's speech model or with whisper, which
-          hears names better and sets itself up from Settings with one button. The links you used
-          are kept with the class, in a Links tab in Sessions. Off by default; needs macOS 26.</p>
-        </div>
-      </div>
-      <div class="run">
-        <div class="n">＋</div>
-        <div>
-          <h3>It cuts to the camera you face</h3>
-          <p>Pick two or more cameras in Settings → Webcam and turn camera switching on. Turn
-          to the other screen and, once its camera has the better view of your face, Greenroom
-          switches to it in about a second, with no black frame. Looking down at your notes switches nothing.
-          An iPhone works as the second camera. The head-turn check runs on the Mac.</p>
-        </div>
-      </div>
-      <div class="run">
-        <div class="n">＋</div>
-        <div>
-          <h3>Recording, when you want it</h3>
-          <p>One press records exactly what the class saw, the composited screen with you in
-          the corner, straight to a file for anyone who missed the morning. Connect your
-          YouTube channel and it can upload itself when the recording stops, unlisted, with the
-          link copied for you. That needs a Google Cloud client of your own, once; the guide
-          walks through it.</p>
-        </div>
-      </div>
-      <div class="run">
-        <div class="n">＋</div>
-        <div>
-          <h3>Clip the good bits, after they happen</h3>
-          <p>Something great just happened? Press ⌥⌘1, 2 or 5 and the last one, two or five
-          minutes are saved as a clip — recording or not. A rolling five-minute buffer makes it
-          possible while the class is running: held in memory, overwritten as it ages, written to
-          disk only when you ask. It holds what the class saw from you: your screen, your camera,
-          your microphone.
-          Every clip lands in a folder named for the class, never loose in a pile.</p>
-        </div>
-      </div>
-      <div class="run">
-        <div class="n">＋</div>
-        <div>
-          <h3>Every class, filed</h3>
-          <p>The Sessions window keeps each class with its recording, clips, transcript, links
-          and YouTube link, and every Record session beside them, in a card grid you can filter by Classes, Recordings or Presentations. With a Cues transcript, one
-          click writes a summary of the class on this Mac with Apple's on-device model. Summaries
-          need macOS 26 with Apple Intelligence turned on.</p>
-        </div>
-      </div>
-      <div class="run">
-        <div class="n">＋</div>
-        <div>
-          <h3>A class view built for teaching</h3>
-          <p>With the custom meeting UI on, a second display becomes the teacher's console:
-          whoever is speaking held large, every student in a grid below, hands up in the order
-          they were raised, and mute, spotlight and admit one click away.</p>
-        </div>
-      </div>
-      <div class="run">
-        <div class="n">＋</div>
-        <div>
-          <h3>Set up once, hand it on</h3>
-          <p>Every credential and preference exports as a single file. A colleague imports it
-          and their Mac is ready. Nobody else has to touch the Zoom Marketplace.</p>
+          <h3>One island, one bar</h3>
+          <p>Start progress shows on a small island under the menu bar, with Cancel. Once you are live, a floating control bar takes over. End asks once, in the bar: <em>End the meeting for everyone?</em> One click to confirm, Esc to keep going.</p>
         </div>
       </div>
     </div>
   </div>
 </section>
 
-<section id="analyse">
+<section id="more">
   <div class="wrap">
     <div class="sec-head">
-      <p class="kicker">Record &amp; Analyse</p>
-      <h2>Record a class on your screen. Ask for feedback later.</h2>
-      <p>Record is the third option on the home screen, beside New Meeting and Join Existing:
-      the same class picture, with no meeting. Nothing is analysed while it runs; open the
-      session afterwards and press Analyse.</p>
+      <p class="kicker">Everything else</p>
+      <h2>The rest of the stage</h2>
     </div>
-    <div class="runlog">
-      <div class="run">
-        <div class="n">01</div>
-        <div>
-          <h3>Record the class picture</h3>
-          <p>Your screen with you in it, and your voice, straight to a file in the session's
-          folder. No meeting, no Zoom credentials.</p>
-        </div>
+    <div class="feat-grid">
+      <div class="feat">
+        <h3>Camera bubble &amp; looks</h3>
+        <p>A floating bubble on your screen drives where your camera sits in the picture: drag it, resize it, pick square, circle, rounded, cutout or Presenter. It stays out of every capture.</p>
       </div>
-      <div class="run">
-        <div class="n">02</div>
-        <div>
-          <h3>Mark what to improve, as it happens</h3>
-          <p>Turn on Notes and type while it records. Each note is stamped at the moment you
-          started typing it, so it lands on the moment you saw, not the moment you pressed
-          Return.</p>
-        </div>
+      <div class="feat">
+        <h3>Several cameras</h3>
+        <p>Choose two or more, an iPhone included. Greenroom cuts to the one that sees your face best, with a cut or a crossfade. The check runs on the Mac.</p>
       </div>
-      <div class="run">
-        <div class="n">03</div>
-        <div>
-          <h3>Counted on your Mac</h3>
-          <p>Press Analyse in Sessions. Pace in words a minute, filler words, pauses and how
-          much of the talk they faced the room. The recording is transcribed on the Mac and the
-          numbers are counted, not guessed, then sorted into what to work on and what went well.
-          <strong>Play without fillers</strong> plays it back with every “um” skipped. Filler
-          words need whisper; the How to analyse panel, asked once at the first press, installs it
-          and downloads the model for you. It works on any session, including a class or a
-          meeting recording.</p>
-        </div>
+      <div class="feat">
+        <h3>Record</h3>
+        <p>The third tab beside New and Scheduled: the same picture, no meeting, one flow. Pause the file with ⌥⇧P while the meeting carries on, or draw on the screen with ⌥⇧D. A rolling five-minute buffer saves the last 1, 2 or 5 minutes with ⌥⌘1, 2 or 5, recording or not.</p>
       </div>
-      <div class="run">
-        <div class="n">04</div>
-        <div>
-          <h3>Feedback, written by the AI you choose</h3>
-          <p>Hand a session to the agent you already run: Claude Code, Codex, or a
-          command of your own. It reads the transcript, your notes, a few stills and the counts;
-          the audio and video are not sent. That is the one part of Analyse that can leave the
-          Mac, and it is off until you turn it on. Without an agent, Apple's on-device model
-          writes the feedback on macOS 26 with Apple Intelligence; on older macOS the report
-          has the counts and your notes. From an agent, each point of feedback plays from its moment. The
-          report exports as a PDF, or as the video with your notes drawn on it.</p>
-        </div>
+      <div class="feat">
+        <h3>Sessions</h3>
+        <p>A page in the main window that keeps each meeting with its recording, clips, transcript and links. Watch it, or edit it: trim, cuts, speed, effects. Edits save as a new copy; the original is untouched.</p>
+      </div>
+      <div class="feat">
+        <h3>Get feedback</h3>
+        <p>On any session, press <strong>Get feedback</strong>. Pace, filler words, pauses and facing the room are counted on your Mac, then sorted into what to work on and what went well. Written feedback from your own agent is optional and off by default; without one, the Mac's on-device model or your notes do it.</p>
+      </div>
+      <div class="feat">
+        <h3>Cues <span class="soon">Beta</span></h3>
+        <p>Listens to your microphone in a meeting. Name a book or a video and a link card is waiting; open it in the built-in browser or send it to chat. Off by default; needs macOS 26.</p>
+      </div>
+      <div class="feat">
+        <h3>YouTube</h3>
+        <p>After a recording, upload it unlisted or private and get the link copied. Off by default, and it needs a Google Cloud client of your own, once.</p>
+      </div>
+      <div class="feat">
+        <h3>Greenroom Browser</h3>
+        <p>A browser window Greenroom owns, as the main app: tabs, find, history, and yesterday's tabs back on the next Start. No extra permission to grant.</p>
+      </div>
+      <div class="feat">
+        <h3>Scheduled meetings</h3>
+        <p>List, create, edit and start the meetings on your Zoom account. Host only: to join someone else's meeting, use the Zoom app.</p>
+      </div>
+      <div class="feat">
+        <h3>Shortcuts &amp; Transfer</h3>
+        <p>Every shortcut can be changed in Settings. Transfer exports your settings as one file, so a colleague's Mac is ready after an import.</p>
       </div>
     </div>
+    <p style="margin-top:36px"><span class="soon" style="margin-left:0">Coming next</span> Tiles on Home that each open a panel (look, camera, screen, mic, layout), and an easier setup guide with Zoom connection checks.</p>
   </div>
 </section>
 
@@ -645,13 +553,13 @@
     <div class="sec-head">
       <p class="kicker">Getting started</p>
       <h2>On a Mac in three steps</h2>
+      <p>Needs macOS 14 or later. Cues, summaries and written feedback on the Mac need macOS 26.</p>
     </div>
     <div class="steps">
       <div class="step">
         <div class="num">Step 01</div>
-        <h3>Download &amp; drag in</h3>
-        <p>Download the disk image, open it, and drag <strong>Greenroom.app</strong> into Applications.
-        Greenroom updates itself from there, so an older image is fine to start from. Every build is on the
+        <h3>Download &amp; open</h3>
+        <p>Download Greenroom from the button above, unzip it if it came as a zip, and drag <strong>Greenroom.app</strong> into Applications. Greenroom updates itself from there. Every build is on the
         <a href="https://github.com/Sibhimanyu/greenroom/releases">releases page</a>.</p>
       </div>
       <div class="step">
@@ -663,14 +571,15 @@
       </div>
       <div class="step">
         <div class="num">Step 03</div>
-        <h3>Import &amp; go</h3>
-        <p>Import the settings file from whoever set it up, and
-        grant each permission as it appears. Nothing else to install. That is the whole setup, once.</p>
+        <h3>Set up &amp; go</h3>
+        <p>Follow the setup guide, or import the settings file from whoever set it up, and
+        grant each permission as it appears. That is the whole setup, once.</p>
       </div>
     </div>
-    <p style="margin-top:36px"><a class="textlink" href="guide.html">First morning? The guide covers every button, shortcut and setting <span class="arrow">→</span></a></p>
+    <p style="margin-top:36px"><a class="textlink" href="guide.html">First time? The guide covers every button, shortcut and setting <span class="arrow">→</span></a></p>
   </div>
 </section>
+
 
 <section id="story">
   <div class="wrap story-grid">
@@ -703,9 +612,9 @@
 
 <section class="cta-band">
   <div class="wrap">
-    <h2>Mornings are for reading,<br>not window management.</h2>
-    <p>Free and open source. macOS 14+. Cues, class
-    summaries and Analyse's on-Mac feedback need macOS 26.</p>
+    <h2>Meetings are for talking,<br>not window management.</h2>
+    <p>Free and open source. macOS 14+. Cues, summaries
+    and on-Mac written feedback need macOS 26.</p>
     <div class="hero-actions">
       <a class="btn" href="https://github.com/Sibhimanyu/greenroom/releases/download/v1.8.0/Greenroom-1.8.0.dmg">Download for Mac</a>
       <a class="textlink" href="https://github.com/Sibhimanyu/greenroom">View on GitHub <span class="arrow">→</span></a>

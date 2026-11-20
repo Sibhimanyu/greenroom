@@ -4,11 +4,11 @@
 <meta charset="utf-8">
 <title>Greenroom timeline — every release since the first morning</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="description" content="How Greenroom grew, release by release: 20 versions in seven weeks, from a one-click OBS + Zoom script to a classroom console with its own browser, a way onto YouTube, and a room for watching a talk back.">
+<meta name="description" content="How Greenroom grew, release by release: 37 versions in fifteen weeks, from a one-click OBS + Zoom script to a one-window class stage with its own browser, a way onto YouTube, a room for watching a talk back, and no OBS at all.">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Greenroom">
 <meta property="og:title" content="Greenroom timeline — every release since the first morning">
-<meta property="og:description" content="How Greenroom grew, release by release: 20 versions in seven weeks, from a one-click OBS + Zoom script to a classroom console with its own browser, a way onto YouTube, and a room for watching a talk back.">
+<meta property="og:description" content="How Greenroom grew, release by release: 37 versions in fifteen weeks, from a one-click OBS + Zoom script to a one-window class stage with its own browser, a way onto YouTube, a room for watching a talk back, and no OBS at all.">
 <meta property="og:url" content="https://sibhimanyu.github.io/greenroom/timeline.html">
 <meta property="og:image" content="https://sibhimanyu.github.io/greenroom/social-preview.png">
 <meta property="og:image:width" content="1280">
@@ -255,7 +255,7 @@
     </a>
     <div class="nav-links">
       <a href="index.html">Overview</a>
-      <a href="1.0.html">What's new</a>
+      <a href="1.0.html">1.0 launch</a>
       <a href="guide.html">Guide</a>
       <a href="how-it-works.html">Privacy &amp; safety</a>
       <a href="timeline.html" aria-current="page">Timeline</a>
@@ -269,17 +269,17 @@
 </nav>
 
 <header class="wrap page-hero">
-  <span class="eyebrow">Changelog · 20 releases · Aug 6 – Sep 26, 2026</span>
-  <h1>From a script to a stage, in <span class="accent">seven weeks.</span></h1>
+  <span class="eyebrow">Changelog · 37 releases · Aug 6 – Nov 17, 2026</span>
+  <h1>From a script to a stage, in <span class="accent">fifteen weeks.</span></h1>
   <p class="lede">Greenroom started as the one-click version of a teacher's 7:50 ritual. Every version since was
   cut from a real morning class: something broke, something was missing, and the fix shipped before the next one.
   This is the whole record, including the build that never launched.</p>
 
   <div class="stats" aria-label="Totals">
-    <div class="stat"><div class="v">20</div><div class="l">releases</div></div>
-    <div class="stat"><div class="v">51<small>days</small></div><div class="l">first release to latest</div></div>
-    <div class="stat"><div class="v">326</div><div class="l">commits</div></div>
-    <div class="stat"><div class="v">4.3k <small>→</small> 38.6k</div><div class="l">lines of Swift</div></div>
+    <div class="stat"><div class="v">37</div><div class="l">releases</div></div>
+    <div class="stat"><div class="v">103<small>days</small></div><div class="l">first release to latest</div></div>
+    <div class="stat"><div class="v">612</div><div class="l">commits</div></div>
+    <div class="stat"><div class="v">4.3k <small>→</small> 87.2k</div><div class="l">lines of Swift</div></div>
     <div class="stat"><div class="v">1</div><div class="l">build that never launched</div></div>
   </div>
 </header>
@@ -289,99 +289,113 @@
   <div class="wrap">
     <div class="sec-head">
       <p class="kicker">01 · The shape of it</p>
-      <h2>Two bursts, a steady climb, and a second wind that kept going</h2>
+      <h2>Two bursts, a steady climb, a launch weekend, and a rebuild that doubled the app again</h2>
       <p>Lines of Swift in the app at each release, on the day it shipped. The size of the code is a blunt measure, but it
       shows where the work went: a first day that produced most of the app, ten days of hardening in the 0.3 series,
       one Sunday (0.4.0) that doubled it, and two September mornings that gave it a browser and a way onto YouTube. Then the
       two largest releases of all: a console for the class (0.8.0), and Screenroom (0.9.0), which added more code than the
-      whole app had in its first week.</p>
+      whole app had in its first week. After the 1.0 launch the line goes flat for a month, then 1.3.0 deletes OBS and builds the class picture inside Greenroom, and 1.4.1 to 1.5.0 take the app from 61.5k to 82.6k lines: Greenroom's own meeting window, nine View windows, and the editor and session pages.</p>
     </div>
 
     <figure class="viz">
       <div class="frame">
         <div class="tip" id="tip" role="status" aria-live="polite"></div>
         <svg class="svg-wide" viewBox="0 0 960 340" role="img" aria-labelledby="chart-title chart-desc">
-          <title id="chart-title">Lines of Swift per release, August 6 to September 26, 2026</title>
-          <desc id="chart-desc">A step chart. 0.1.0 on August 6 has 4,274 lines. The 0.3 series through August 20 stays between 6,000 and 8,000. 0.4.0 on August 24 jumps to 16,588. 0.6.0 on September 3 reaches 18,781 and 0.7.0 on September 4 reaches 20,290. 0.8.0 on September 18 reaches 27,115 and 0.9.0 on September 26 reaches 38,621. 0.3.0 is marked as the release that never launched. The data table below lists every value.</desc>
+          <title id="chart-title">Lines of Swift per release, August 6 to November 17, 2026</title>
+          <desc id="chart-desc">A step chart. 0.1.0 on August 6 has 4,274 lines. The 0.3 series through August 20 stays between 6,000 and 8,000. 0.4.0 on August 24 jumps to 16,588. 0.6.0 on September 3 reaches 18,781 and 0.7.0 on September 4 reaches 20,290. 0.8.0 on September 18 reaches 27,115 and 0.9.0 on September 26 reaches 38,621. The 1.0 launch weekend adds nine releases (0.9.1 to 1.1.0) and reaches 43,173. 1.3.0 on November 10, which removed OBS, reaches 48,144; 1.5.0 on November 16 reaches 82,597 and 1.7.0 on November 17 reaches 87,179. 0.3.0 is marked as the release that never launched. The data table below lists every value.</desc>
 
           <!-- grid: recessive -->
           <g stroke="#eaecf0" stroke-width="1">
-            <line x1="70" y1="40" x2="920" y2="40"/>
-            <line x1="70" y1="95" x2="920" y2="95"/>
-            <line x1="70" y1="150" x2="920" y2="150"/>
-            <line x1="70" y1="205" x2="920" y2="205"/>
+            <line x1="70" y1="211.1" x2="920" y2="211.1"/>
+            <line x1="70" y1="162.2" x2="920" y2="162.2"/>
+            <line x1="70" y1="113.3" x2="920" y2="113.3"/>
+            <line x1="70" y1="64.4" x2="920" y2="64.4"/>
           </g>
           <line x1="70" y1="260" x2="920" y2="260" stroke="#d0d5dd" stroke-width="1.2"/>
           <g font-size="11" fill="#98a2b3" text-anchor="end">
-            <text x="60" y="44">40k</text>
-            <text x="60" y="99">30k</text>
-            <text x="60" y="154">20k</text>
-            <text x="60" y="209">10k</text>
+            <text x="60" y="68.4">80k</text>
+            <text x="60" y="117.3">60k</text>
+            <text x="60" y="166.2">40k</text>
+            <text x="60" y="215.1">20k</text>
             <text x="60" y="264">0</text>
           </g>
           <g font-size="11" fill="#98a2b3" text-anchor="middle">
-            <text x="70" y="284">Aug 6</text>
-            <text x="184.4" y="284">Aug 13</text>
-            <text x="298.8" y="284">Aug 20</text>
-            <text x="413.3" y="284">Aug 27</text>
-            <text x="527.7" y="284">Sep 3</text>
-            <text x="642.1" y="284">Sep 10</text>
-            <text x="756.5" y="284">Sep 17</text>
-            <text x="871" y="284">Sep 24</text>
+            <text x="70.0" y="284">Aug 6</text>
+            <text x="241.6" y="284">Aug 27</text>
+            <text x="413.3" y="284">Sep 17</text>
+            <text x="584.9" y="284">Oct 8</text>
+            <text x="756.5" y="284">Oct 29</text>
+            <text x="911.8" y="284">Nov 17</text>
           </g>
           <text x="70" y="308" font-size="10.5" font-weight="700" letter-spacing="1.1" fill="#667085">RELEASE DAY →</text>
           <text x="920" y="308" font-size="10.5" font-weight="700" letter-spacing="1.1" fill="#667085" text-anchor="end">LINES OF SWIFT IN App/</text>
 
           <!-- eras -->
           <g font-family="ui-monospace, SF Mono, Menlo, monospace" font-size="10.5" letter-spacing=".08em" fill="#2f6118" font-weight="700">
-            <text x="70" y="24">FOUNDATION</text>
-            <text x="218" y="24" text-anchor="middle">HARDENED IN CLASS</text>
-            <text x="372" y="24" text-anchor="middle">TEACHING SURFACE</text>
-            <text x="544" y="24" text-anchor="middle">BROWSER · YOUTUBE</text>
-            <text x="912" y="24" text-anchor="end">CONSOLE · CUES · SCREENROOM</text>
+            <text x="70" y="24">FOUNDATION · HARDENING</text>
+            <text x="188.6" y="24">TEACHING · BROWSER</text>
+            <text x="398.4" y="24">CONSOLE · CUES · SCREENROOM</text>
+            <text x="920" y="24" text-anchor="end">NO OBS · ONE WINDOW · PRESENCE</text>
           </g>
-          <!-- era rules span the days each era covers -->
           <g stroke="#2f6118" stroke-width="1" opacity=".35">
-            <line x1="70" y1="30" x2="84" y2="30"/>
-            <line x1="88" y1="30" x2="315" y2="30"/>
-            <line x1="364" y1="30" x2="381" y2="30"/>
-            <line x1="528" y1="30" x2="560" y2="30"/>
-            <line x1="773" y1="30" x2="920" y2="30"/>
+            <line x1="70" y1="30" x2="186.6" y2="30"/>
+            <line x1="188.6" y1="30" x2="308.4" y2="30"/>
+            <line x1="398.4" y1="30" x2="490" y2="30"/>
+            <line x1="492.2" y1="30" x2="920" y2="30"/>
           </g>
 
           <!-- the series: one step line, brand green, 2px -->
-          <path d="M70,236.5 H73.9 V236.5 H80.4 V227.1 H81.3 V226.9 H94.8 V226.8 H130.6 V226.8 H138.3 V226.4 H254 V225.6 H271.2 V222.7 H272.3 V221.8 H273.4 V220.4 H283.7 V219.4 H303.3 V215.9 H367.2 V168.8 H367.4 V168.7 H369 V167.6 H535.5 V167.5 H536.4 V156.7 H546.8 V148.4 H774.9 V110.9 H910 V47.6 H920"
+          <path d="M70,249.6 H72 V249.6 H75.2 V245.4 H75.7 V245.3 H82.4 V245.2 H100.3 V245.2 H104.1 V245.1 H162 V244.7 H170.6 V243.4 H171.2 V243 H171.7 V242.4 H176.9 V241.9 H186.6 V240.4 H218.6 V219.5 H218.7 V219.4 H219.5 V218.9 H302.7 V218.9 H303.2 V214.1 H308.4 V210.4 H422.4 V193.7 H490 V165.6 H492.2 V161.8 H497.6 V161 H497.7 V161 H498 V160.8 H498.1 V160.5 H499.5 V160.3 H499.8 V157.7 H500.9 V156.6 H504.5 V154.5 H562.5 V154.2 H735.5 V154.2 H860.6 V142.3 H873.3 V127.2 H881 V109.6 H907 V58.1 H914.2 V52.7 H915.8 V46.9 H920"
                 fill="none" stroke="#2f6118" stroke-width="2" stroke-linejoin="round"/>
 
           <!-- direct labels: only the ones that carry the story -->
-          <text x="86" y="247" font-size="11" fill="#475467">4.3k · 0.1.0</text>
-          <text x="378" y="160" font-size="11" fill="#475467">16.6k · 0.4.0</text>
-          <text x="898" y="51" font-size="11" fill="#475467" text-anchor="end">38.6k · 0.9.0</text>
-          <text x="106" y="210" font-size="10.5" fill="#96600a">0.3.0 · never launched</text>
-          <line x1="94.8" y1="214" x2="94.8" y2="221" stroke="#b9770e" stroke-width="1"/>
+          <text x="84" y="259.6" font-size="11" fill="#475467">4.3k · 0.1.0</text>
+          <text x="228.6" y="211.5" font-size="11" fill="#475467">16.6k · 0.4.0</text>
+          <text x="482" y="155.6" font-size="11" fill="#475467" text-anchor="end">38.6k · 0.9.0</text>
+          <text x="852.6" y="132.3" font-size="11" fill="#475467" text-anchor="end">48.1k · 1.3.0 · OBS removed</text>
+          <text x="905.8" y="34.9" font-size="11" fill="#475467" text-anchor="end">87.2k · 1.7.0</text>
+          <text x="92.4" y="217.2" font-size="10.5" fill="#96600a">0.3.0 · never launched</text>
+          <line x1="82.4" y1="221.2" x2="82.4" y2="237.2" stroke="#b9770e" stroke-width="1"/>
 
           <!-- markers: >= 8px, 2px white ring so the clusters stay legible -->
           <g id="dots" fill="#2f6118" stroke="#fff" stroke-width="2">
-            <g class="dot" tabindex="0" data-v="0.1.0" data-d="Wed Aug 6" data-l="4,274" data-c="1" data-h="First packaged build: virtual camera, Zoom, tiled layout."><circle cx="73.9" cy="236.5" r="4.5"/></g>
-            <g class="dot" tabindex="0" data-v="0.2.0" data-d="Wed Aug 6" data-l="5,989" data-c="39" data-h="Most of the app: scheduled meetings, presenter mode, people view, recordings, shortcuts, warm OBS."><circle cx="80.4" cy="227.1" r="4.5"/></g>
-            <g class="dot" tabindex="0" data-v="0.2.1" data-d="Wed Aug 6" data-l="6,020" data-c="4" data-h="No more “quit unexpectedly” dialog; Greenroom returns to the front when a session ends."><circle cx="81.3" cy="226.9" r="4.5"/></g>
-            <g class="dot" tabindex="0" data-v="0.3.0" data-d="Thu Aug 7" data-l="6,041" data-c="7" data-h="Shipped without the Sparkle framework and could not start. Downloads removed."><circle cx="94.8" cy="226.8" r="4.5" fill="#fff" stroke="#b9770e" stroke-width="2"/></g>
-            <g class="dot" tabindex="0" data-v="0.3.1" data-d="Sat Aug 9" data-l="6,041" data-c="2" data-h="Self-updating app (Sparkle, EdDSA-signed). The last version anyone installs by hand."><circle cx="130.6" cy="226.8" r="4.5"/></g>
-            <g class="dot" tabindex="0" data-v="0.3.2" data-d="Sun Aug 10" data-l="6,108" data-c="4" data-h="Browsers get their own window again; OBS stops crashing on quit."><circle cx="138.3" cy="226.4" r="4.5"/></g>
-            <g class="dot" tabindex="0" data-v="0.3.3" data-d="Sun Aug 17" data-l="6,246" data-c="5" data-h="Meeting presets; the “Is it safe?” page; honest about plaintext credentials."><circle cx="254" cy="225.6" r="4.5"/></g>
-            <g class="dot" tabindex="0" data-v="0.3.4" data-d="Mon Aug 18" data-l="6,781" data-c="11" data-h="No more windows bursting open full-screen; safe quitting; ⌥⌘Z quick-hide; pick the participant display."><circle cx="271.2" cy="222.7" r="4.5"/></g>
-            <g class="dot" tabindex="0" data-v="0.3.5" data-d="Mon Aug 18" data-l="6,947" data-c="9" data-h="Dual display done right: speaker tile on the main screen, grid with controls on the second."><circle cx="272.3" cy="221.8" r="4.5"/></g>
-            <g class="dot" tabindex="0" data-v="0.3.6" data-d="Mon Aug 18" data-l="7,205" data-c="8" data-h="Drag to resize the layout; changes apply live; End Session asks first; fragmented MP4."><circle cx="273.4" cy="220.4" r="4.5"/></g>
-            <g class="dot" tabindex="0" data-v="0.3.7" data-d="Tue Aug 19" data-l="7,385" data-c="19" data-h="Design-system pass: brand green everywhere; the participant grid finally stays put."><circle cx="283.7" cy="219.4" r="4.5"/></g>
-            <g class="dot" tabindex="0" data-v="0.3.8" data-d="Wed Aug 20" data-l="8,018" data-c="9" data-h="OBS quits quietly; windows go to the right display; recording space shown."><circle cx="303.3" cy="215.9" r="4.5"/></g>
-            <g class="dot" tabindex="0" data-v="0.4.0" data-d="Sun Aug 24" data-l="16,588" data-c="52" data-h="Clips after the fact; the participants panel; chat rebuilt. The app doubles in a day."><circle cx="367.2" cy="168.8" r="4.5"/></g>
-            <g class="dot" tabindex="0" data-v="0.4.1" data-d="Sun Aug 24" data-l="16,599" data-c="2" data-h="The meeting tile is identified first, always."><circle cx="367.4" cy="168.7" r="4.5"/></g>
-            <g class="dot" tabindex="0" data-v="0.5.0" data-d="Sun Aug 24" data-l="16,802" data-c="4" data-h="The live speaker window works; participant video is stable; photos preview in chat."><circle cx="369" cy="167.6" r="4.5"/></g>
-            <g class="dot" tabindex="0" data-v="0.5.1" data-d="Wed Sep 3" data-l="16,821" data-c="2" data-h="Recordings have sound: every earlier clip carried a silent track."><circle cx="535.5" cy="167.5" r="4.5"/></g>
-            <g class="dot" tabindex="0" data-v="0.6.0" data-d="Wed Sep 3" data-l="18,781" data-c="7" data-h="Greenroom Browser: a WebKit window of its own, tabs, find, history, and yesterday's tabs back on Start."><circle cx="536.4" cy="156.7" r="4.5"/></g>
-            <g class="dot" tabindex="0" data-v="0.7.0" data-d="Thu Sep 4" data-l="20,290" data-c="19" data-h="Recordings go to YouTube; the Sessions window keeps every class, its links and its name; analytics count features and settings."><circle cx="546.8" cy="148.4" r="4.5"/></g>
-            <g class="dot" tabindex="0" data-v="0.8.0" data-d="Thu Sep 18" data-l="27,115" data-c="51" data-h="The participants panel becomes a classroom console: a header that stays put, a Live Queue, the grid takes the window. Cues is built and held back."><circle cx="774.9" cy="110.9" r="4.5"/></g>
-            <g class="dot" tabindex="0" data-v="0.9.0" data-d="Fri Sep 26" data-l="38,621" data-c="71" data-h="Screenroom records a talk and reports on it; Cues is here; the camera follows where you turn; the new mark."><circle cx="910" cy="47.6" r="4.5"/></g>
+            <g class="dot" tabindex="0" data-v="0.1.0" data-d="Wed Aug 6" data-l="4,274" data-c="1" data-h="First packaged build: virtual camera, Zoom, tiled layout."><circle cx="72" cy="249.6" r="4.5"/></g>
+            <g class="dot" tabindex="0" data-v="0.2.0" data-d="Wed Aug 6" data-l="5,989" data-c="39" data-h="Most of the app: scheduled meetings, presenter mode, people view, recordings, shortcuts, warm OBS."><circle cx="75.2" cy="245.4" r="4.5"/></g>
+            <g class="dot" tabindex="0" data-v="0.2.1" data-d="Wed Aug 6" data-l="6,020" data-c="4" data-h="No more “quit unexpectedly” dialog; Greenroom returns to the front when a session ends."><circle cx="75.7" cy="245.3" r="4.5"/></g>
+            <g class="dot" tabindex="0" data-v="0.3.0" data-d="Thu Aug 7" data-l="6,041" data-c="7" data-h="Shipped without the Sparkle framework and could not start. Downloads removed."><circle cx="82.4" cy="245.2" r="4.5" fill="#fff" stroke="#b9770e" stroke-width="2"/></g>
+            <g class="dot" tabindex="0" data-v="0.3.1" data-d="Sat Aug 9" data-l="6,041" data-c="2" data-h="Self-updating app (Sparkle, EdDSA-signed). The last version anyone installs by hand."><circle cx="100.3" cy="245.2" r="4.5"/></g>
+            <g class="dot" tabindex="0" data-v="0.3.2" data-d="Sun Aug 10" data-l="6,108" data-c="4" data-h="Browsers get their own window again; OBS stops crashing on quit."><circle cx="104.1" cy="245.1" r="4.5"/></g>
+            <g class="dot" tabindex="0" data-v="0.3.3" data-d="Sun Aug 17" data-l="6,246" data-c="5" data-h="Meeting presets; the “Is it safe?” page; honest about plaintext credentials."><circle cx="162" cy="244.7" r="4.5"/></g>
+            <g class="dot" tabindex="0" data-v="0.3.4" data-d="Mon Aug 18" data-l="6,781" data-c="11" data-h="No more windows bursting open full-screen; safe quitting; ⌥⌘Z quick-hide; pick the participant display."><circle cx="170.6" cy="243.4" r="4.5"/></g>
+            <g class="dot" tabindex="0" data-v="0.3.5" data-d="Mon Aug 18" data-l="6,947" data-c="9" data-h="Dual display done right: speaker tile on the main screen, grid with controls on the second."><circle cx="171.2" cy="243" r="4.5"/></g>
+            <g class="dot" tabindex="0" data-v="0.3.6" data-d="Mon Aug 18" data-l="7,205" data-c="8" data-h="Drag to resize the layout; changes apply live; End Session asks first; fragmented MP4."><circle cx="171.7" cy="242.4" r="4.5"/></g>
+            <g class="dot" tabindex="0" data-v="0.3.7" data-d="Tue Aug 19" data-l="7,385" data-c="19" data-h="Design-system pass: brand green everywhere; the participant grid finally stays put."><circle cx="176.9" cy="241.9" r="4.5"/></g>
+            <g class="dot" tabindex="0" data-v="0.3.8" data-d="Wed Aug 20" data-l="8,018" data-c="9" data-h="OBS quits quietly; windows go to the right display; recording space shown."><circle cx="186.6" cy="240.4" r="4.5"/></g>
+            <g class="dot" tabindex="0" data-v="0.4.0" data-d="Sun Aug 24" data-l="16,588" data-c="52" data-h="Clips after the fact; the participants panel; chat rebuilt. The app doubles in a day."><circle cx="218.6" cy="219.5" r="4.5"/></g>
+            <g class="dot" tabindex="0" data-v="0.4.1" data-d="Sun Aug 24" data-l="16,599" data-c="2" data-h="The meeting tile is identified first, always."><circle cx="218.7" cy="219.4" r="4.5"/></g>
+            <g class="dot" tabindex="0" data-v="0.5.0" data-d="Sun Aug 24" data-l="16,802" data-c="4" data-h="The live speaker window works; participant video is stable; photos preview in chat."><circle cx="219.5" cy="218.9" r="4.5"/></g>
+            <g class="dot" tabindex="0" data-v="0.5.1" data-d="Wed Sep 3" data-l="16,821" data-c="2" data-h="Recordings have sound: every earlier clip carried a silent track."><circle cx="302.7" cy="218.9" r="4.5"/></g>
+            <g class="dot" tabindex="0" data-v="0.6.0" data-d="Wed Sep 3" data-l="18,781" data-c="7" data-h="Greenroom Browser: a WebKit window of its own, tabs, find, history, and yesterday's tabs back on Start."><circle cx="303.2" cy="214.1" r="4.5"/></g>
+            <g class="dot" tabindex="0" data-v="0.7.0" data-d="Thu Sep 4" data-l="20,290" data-c="19" data-h="Recordings go to YouTube; the Sessions window keeps every class, its links and its name; analytics count features and settings."><circle cx="308.4" cy="210.4" r="4.5"/></g>
+            <g class="dot" tabindex="0" data-v="0.8.0" data-d="Thu Sep 18" data-l="27,115" data-c="51" data-h="The participants panel becomes a classroom console: a header that stays put, a Live Queue, the grid takes the window. Cues is built and held back."><circle cx="422.4" cy="193.7" r="4.5"/></g>
+            <g class="dot" tabindex="0" data-v="0.9.0" data-d="Fri Sep 26" data-l="38,621" data-c="71" data-h="Screenroom records a talk and reports on it; Cues is here; the camera follows where you turn; the new mark."><circle cx="490" cy="165.6" r="4.5"/></g>
+            <g class="dot" tabindex="0" data-v="0.9.1" data-d="Sat Sep 26" data-l="40,153" data-c="14" data-h="Screenroom feedback comes as points, each anchored to its moment; Cues makes a card per sentence; opening Settings no longer crashes."><circle cx="492.2" cy="161.8" r="4.5"/></g>
+            <g class="dot" tabindex="0" data-v="0.9.2" data-d="Sun Sep 27" data-l="40,484" data-c="3" data-h="Set up whisper from inside Greenroom; Screenroom joins the setup guide."><circle cx="497.6" cy="161" r="4.5"/></g>
+            <g class="dot" tabindex="0" data-v="0.9.3" data-d="Sun Sep 27" data-l="40,506" data-c="2" data-h="Webcam settings line up, whisper is one button, the agent command can be undone."><circle cx="497.7" cy="161" r="4.5"/></g>
+            <g class="dot" tabindex="0" data-v="0.9.4" data-d="Sun Sep 27" data-l="40,587" data-c="4" data-h="Spoken names find their page; every release now gets its disk image."><circle cx="498" cy="160.8" r="4.5"/></g>
+            <g class="dot" tabindex="0" data-v="0.9.5" data-d="Sun Sep 27" data-l="40,713" data-c="4" data-h="Try it keeps everything it heard, class links get their own tab, whisper keeps listening past six seconds."><circle cx="498.1" cy="160.5" r="4.5"/></g>
+            <g class="dot" tabindex="0" data-v="0.9.6" data-d="Sun Sep 27" data-l="40,803" data-c="3" data-h="End Session can close the browser window Start opened; a full-screen browser elsewhere no longer drags Start away."><circle cx="499.5" cy="160.3" r="4.5"/></g>
+            <g class="dot" tabindex="0" data-v="0.9.7" data-d="Sun Sep 27" data-l="41,854" data-c="5" data-h="Every camera open at once and the better view wins; recording uses the hardware encoder; half, two-thirds and three-quarters layouts are one click."><circle cx="499.8" cy="157.7" r="4.5"/></g>
+            <g class="dot" tabindex="0" data-v="1.0.0" data-d="Sun Sep 27" data-l="42,303" data-c="8" data-h="Fixes from the 0.9.7 mega test: whisper noise, Screenroom counts, exports and Cues misses."><circle cx="500.9" cy="156.6" r="4.5"/></g>
+            <g class="dot" tabindex="0" data-v="1.1.0" data-d="Mon Sep 28" data-l="43,173" data-c="11" data-h="Every student’s video shows and End ends the meeting for everyone; delete a YouTube upload from Sessions; Zoom-shaped controls."><circle cx="504.5" cy="154.5" r="4.5"/></g>
+            <g class="dot" tabindex="0" data-v="1.2.0" data-d="Mon Oct 5" data-l="43,291" data-c="8" data-h="Report a Problem under Help (Heresay); whisper can no longer take a class down."><circle cx="562.5" cy="154.2" r="4.5"/></g>
+            <g class="dot" tabindex="0" data-v="1.2.1" data-d="Mon Oct 26" data-l="43,295" data-c="6" data-h="Heresay pointed at its new address; package and agent files refreshed."><circle cx="735.5" cy="154.2" r="4.5"/></g>
+            <g class="dot" tabindex="0" data-v="1.3.0" data-d="Tue Nov 10" data-l="48,144" data-c="65" data-h="OBS is deleted: the class picture is made inside Greenroom. A Record view with live preview, Screenroom folded into Record and Analyse, compact setup and Settings."><circle cx="860.6" cy="142.3" r="4.5"/></g>
+            <g class="dot" tabindex="0" data-v="1.4.0" data-d="Thu Nov 12" data-l="54,327" data-c="10" data-h="One window with a floating meeting bar, Greenroom’s own meeting window, a layout creator in Settings, Raj Mode."><circle cx="873.3" cy="127.2" r="4.5"/></g>
+            <g class="dot" tabindex="0" data-v="1.4.1" data-d="Fri Nov 13" data-l="61,526" data-c="5" data-h="Nine View windows a layout can place, a Zoom-familiar meeting window, others’ shares, custom shortcuts."><circle cx="881" cy="109.6" r="4.5"/></g>
+            <g class="dot" tabindex="0" data-v="1.5.0" data-d="Mon Nov 16" data-l="82,597" data-c="116" data-h="A Watch/Edit page for every session and the editor as a page of the main window; People opens beside the bar; Home becomes a dock."><circle cx="907" cy="58.1" r="4.5"/></g>
+            <g class="dot" tabindex="0" data-v="1.6.0" data-d="Tue Nov 17" data-l="84,820" data-c="20" data-h="Every Greenroom window can be shown to the meeting (hidden by default), with an edge on those that are; REC stops in place with Confirm; a frosted bar."><circle cx="914.2" cy="52.7" r="4.5"/></g>
+            <g class="dot" tabindex="0" data-v="1.7.0" data-d="Tue Nov 17" data-l="87,179" data-c="2" data-h="A camera bubble on your screen drives the picture; one start, one bar."><circle cx="915.8" cy="46.9" r="4.5"/></g>
           </g>
         </svg>
       </div>
@@ -416,6 +430,23 @@
             <tr><td data-label="Version"><span class="mono">0.7.0</span></td><td data-label="Published">Sep 4, 04:06</td><td class="num" data-label="Commits">19</td><td class="num" data-label="Swift lines">20,290</td><td data-label="Headline">YouTube upload, Sessions</td></tr>
             <tr><td data-label="Version"><span class="mono">0.8.0</span></td><td data-label="Published">Sep 18, 02:53</td><td class="num" data-label="Commits">51</td><td class="num" data-label="Swift lines">27,115</td><td data-label="Headline">Classroom console</td></tr>
             <tr><td data-label="Version"><span class="mono">0.9.0</span></td><td data-label="Published">Sep 26, 09:22</td><td class="num" data-label="Commits">71</td><td class="num" data-label="Swift lines">38,621</td><td data-label="Headline">Screenroom, Cues, camera switching</td></tr>
+            <tr><td data-label="Version"><span class="mono">0.9.1</span></td><td data-label="Published">Sep 26, 15:46</td><td class="num" data-label="Commits">14</td><td class="num" data-label="Swift lines">40,153</td><td data-label="Headline">Feedback as points</td></tr>
+            <tr><td data-label="Version"><span class="mono">0.9.2</span></td><td data-label="Published">Sep 27, 07:35</td><td class="num" data-label="Commits">3</td><td class="num" data-label="Swift lines">40,484</td><td data-label="Headline">Whisper set up in-app</td></tr>
+            <tr><td data-label="Version"><span class="mono">0.9.3</span></td><td data-label="Published">Sep 27, 07:53</td><td class="num" data-label="Commits">2</td><td class="num" data-label="Swift lines">40,506</td><td data-label="Headline">Settings tidy-up</td></tr>
+            <tr><td data-label="Version"><span class="mono">0.9.4</span></td><td data-label="Published">Sep 27, 08:54</td><td class="num" data-label="Commits">4</td><td class="num" data-label="Swift lines">40,587</td><td data-label="Headline">Cues finds the page</td></tr>
+            <tr><td data-label="Version"><span class="mono">0.9.5</span></td><td data-label="Published">Sep 27, 09:11</td><td class="num" data-label="Commits">4</td><td class="num" data-label="Swift lines">40,713</td><td data-label="Headline">Cues: Try it keeps everything</td></tr>
+            <tr><td data-label="Version"><span class="mono">0.9.6</span></td><td data-label="Published">Sep 27, 13:18</td><td class="num" data-label="Commits">3</td><td class="num" data-label="Swift lines">40,803</td><td data-label="Headline">End closes the browser</td></tr>
+            <tr><td data-label="Version"><span class="mono">0.9.7</span></td><td data-label="Published">Sep 27, 13:57</td><td class="num" data-label="Commits">5</td><td class="num" data-label="Swift lines">41,854</td><td data-label="Headline">Every camera open at once</td></tr>
+            <tr><td data-label="Version"><span class="mono">1.0.0</span></td><td data-label="Published">Sep 27, 17:17</td><td class="num" data-label="Commits">8</td><td class="num" data-label="Swift lines">42,303</td><td data-label="Headline">The launch</td></tr>
+            <tr><td data-label="Version"><span class="mono">1.1.0</span></td><td data-label="Published">Sep 28, 03:54</td><td class="num" data-label="Commits">11</td><td class="num" data-label="Swift lines">43,173</td><td data-label="Headline">Every student’s video</td></tr>
+            <tr><td data-label="Version"><span class="mono">1.2.0</span></td><td data-label="Published">Oct 5, 06:21</td><td class="num" data-label="Commits">8</td><td class="num" data-label="Swift lines">43,291</td><td data-label="Headline">Heresay feedback</td></tr>
+            <tr><td data-label="Version"><span class="mono">1.2.1</span></td><td data-label="Published">Oct 26, 10:06</td><td class="num" data-label="Commits">6</td><td class="num" data-label="Swift lines">43,295</td><td data-label="Headline">Heresay endpoint</td></tr>
+            <tr><td data-label="Version"><span class="mono">1.3.0</span></td><td data-label="Published">Nov 10, 17:33</td><td class="num" data-label="Commits">65</td><td class="num" data-label="Swift lines">48,144</td><td data-label="Headline">No OBS</td></tr>
+            <tr><td data-label="Version"><span class="mono">1.4.0</span></td><td data-label="Published">Nov 12, 06:46</td><td class="num" data-label="Commits">10</td><td class="num" data-label="Swift lines">54,327</td><td data-label="Headline">One window, layout creator</td></tr>
+            <tr><td data-label="Version"><span class="mono">1.4.1</span></td><td data-label="Published">Nov 13, 05:24</td><td class="num" data-label="Commits">5</td><td class="num" data-label="Swift lines">61,526</td><td data-label="Headline">Nine View windows</td></tr>
+            <tr><td data-label="Version"><span class="mono">1.5.0</span></td><td data-label="Published">Nov 16, 09:41</td><td class="num" data-label="Commits">116</td><td class="num" data-label="Swift lines">82,597</td><td data-label="Headline">Watch/Edit session page</td></tr>
+            <tr><td data-label="Version"><span class="mono">1.6.0</span></td><td data-label="Published">Nov 17, 06:54</td><td class="num" data-label="Commits">20</td><td class="num" data-label="Swift lines">84,820</td><td data-label="Headline">Windows you can show</td></tr>
+            <tr><td data-label="Version"><span class="mono">1.7.0</span></td><td data-label="Published">Nov 17, 11:48</td><td class="num" data-label="Commits">2</td><td class="num" data-label="Swift lines">87,179</td><td data-label="Headline">Presence bubble</td></tr>
           </tbody>
         </table>
       </div>
@@ -790,13 +821,222 @@
         </div>
       </div>
     </div>
+
+    <div class="era">
+      <div class="era-head">
+        <div class="when">Sep 26 – 28 · a weekend</div>
+        <div>
+          <h3>The launch weekend</h3>
+          <p>Nine releases in three days. Most were the morning after a real class: Cues finding the wrong page, a settings screen that misled, a camera that died mid-lesson. Then 1.0.0, and a day later every student’s video.</p>
+        </div>
+        <figure class="era-art">
+          <svg viewBox="0 0 300 170" role="img" aria-label="Launch weekend: a row of nine release markers from 0.9.1 to 1.1.0, the last two larger, with a badge reading 1.0.">
+            <rect x="6" y="10" width="288" height="146" rx="10" fill="#fff" stroke="#98a2b3" stroke-width="1.2"/>
+            <line x1="26" y1="92" x2="274" y2="92" stroke="#d0d5dd" stroke-width="2"/>
+            <g fill="#2f6118" stroke="#fff" stroke-width="2"><circle cx="30" cy="92" r="6"/><circle cx="62" cy="92" r="6"/><circle cx="90" cy="92" r="6"/><circle cx="116" cy="92" r="6"/><circle cx="142" cy="92" r="6"/><circle cx="168" cy="92" r="6"/><circle cx="194" cy="92" r="6"/><circle cx="228" cy="92" r="9" fill="#78c000" stroke="#2f6118" stroke-width="2"/><circle cx="266" cy="92" r="6"/></g>
+            <rect x="204" y="40" width="48" height="18" rx="9" fill="#e8f3df" stroke="#2f6118"/>
+            <text x="228" y="52.5" font-size="9" text-anchor="middle" fill="#2f6118" font-weight="700">1.0</text>
+            <text x="150" y="166" font-size="8.5" text-anchor="middle" fill="#2f6118" font-weight="700" letter-spacing=".08em" font-family="ui-monospace, SF Mono, Menlo, monospace">NINE RELEASES · THREE DAYS</text>
+          </svg>
+        </figure>
+      </div>
+      <div class="rail">
+        <div class="rel">
+          <div class="meta"><div class="ver">0.9.1</div><div class="date">Sat Sep 26 · 15:46</div><div class="size">40,153 lines · 14 commits</div></div>
+          <div class="spine"><span class="node"></span></div>
+          <div class="card">
+            <span class="tag fix">Fixed</span>
+            <h4>Feedback as points</h4>
+            <p>Screenroom feedback comes as points, each anchored to its moment. Cues makes a card per sentence instead of queueing behind the last lookup, and opening Settings no longer crashes the app.</p>
+          </div>
+        </div>
+        <div class="rel">
+          <div class="meta"><div class="ver">0.9.2</div><div class="date">Sun Sep 27 · 07:35</div><div class="size">40,484 lines · 3 commits</div></div>
+          <div class="spine"><span class="node"></span></div>
+          <div class="card">
+            <span class="tag new">New</span>
+            <h4>Whisper set up from inside Greenroom</h4>
+            <p>Whisper is installed from the app, and Screenroom joins the setup guide.</p>
+          </div>
+        </div>
+        <div class="rel">
+          <div class="meta"><div class="ver">0.9.3</div><div class="date">Sun Sep 27 · 07:53</div><div class="size">40,506 lines · 2 commits</div></div>
+          <div class="spine"><span class="node"></span></div>
+          <div class="card">
+            <span class="tag fix">Fixed</span>
+            <h4>Settings tidy-up</h4>
+            <p>Webcam settings line up with the rest, whisper is one button, and the agent command can be undone.</p>
+          </div>
+        </div>
+        <div class="rel">
+          <div class="meta"><div class="ver">0.9.4</div><div class="date">Sun Sep 27 · 08:54</div><div class="size">40,587 lines · 4 commits</div></div>
+          <div class="spine"><span class="node"></span></div>
+          <div class="card">
+            <span class="tag fix">Fixed</span>
+            <h4>Cues finds the page</h4>
+            <p>Spoken names find their page through redirects, hyphens and numbers that must match. Every release now gets its disk image.</p>
+          </div>
+        </div>
+        <div class="rel">
+          <div class="meta"><div class="ver">0.9.5</div><div class="date">Sun Sep 27 · 09:11</div><div class="size">40,713 lines · 4 commits</div></div>
+          <div class="spine"><span class="node"></span></div>
+          <div class="card">
+            <span class="tag new">New</span><span class="tag fix">Fixed</span>
+            <h4>Try it keeps everything</h4>
+            <p>Cues’ Try it keeps everything it heard, class links get their own tab, and whisper keeps listening after the first six seconds.</p>
+          </div>
+        </div>
+        <div class="rel">
+          <div class="meta"><div class="ver">0.9.6</div><div class="date">Sun Sep 27 · 13:18</div><div class="size">40,803 lines · 3 commits</div></div>
+          <div class="spine"><span class="node"></span></div>
+          <div class="card">
+            <span class="tag new">New</span><span class="tag fix">Fixed</span>
+            <h4>End closes the browser</h4>
+            <p>End Session can close the browser window Start opened, and a browser already full screen elsewhere no longer drags Start to its desktop.</p>
+          </div>
+        </div>
+        <div class="rel minor">
+          <div class="meta"><div class="ver">0.9.7</div><div class="date">Sun Sep 27 · 13:57</div><div class="size">41,854 lines · 5 commits</div></div>
+          <div class="spine"><span class="node"></span></div>
+          <div class="card">
+            <span class="tag new">New</span><span class="tag fix">Fixed</span>
+            <h4>Every camera open at once</h4>
+            <p>Every camera opens at once, the better view wins, and you can see it coming. Recording uses the Mac’s hardware encoder, and half, two-thirds and three-quarters layouts are one click again.</p>
+            <div class="feats"><span class="feat">Camera switching</span><span class="feat">Hardware encoder</span><span class="feat">One-click layouts</span></div>
+          </div>
+        </div>
+        <div class="rel minor">
+          <div class="meta"><div class="ver">1.0.0</div><div class="date">Sun Sep 27 · 17:17</div><div class="size">42,303 lines · 8 commits</div></div>
+          <div class="spine"><span class="node"></span></div>
+          <div class="card">
+            <span class="tag fix">Fixed</span>
+            <h4>The launch</h4>
+            <p>Fixes from the 0.9.7 mega test: whisper noise, Screenroom counts, exports and Cues misses. The site gets a 1.0 page, a system map and a launch film.</p>
+          </div>
+        </div>
+        <div class="rel">
+          <div class="meta"><div class="ver">1.1.0</div><div class="date">Mon Sep 28 · 03:54</div><div class="size">43,173 lines · 11 commits</div></div>
+          <div class="spine"><span class="node"></span></div>
+          <div class="card">
+            <span class="tag new">New</span><span class="tag fix">Fixed</span>
+            <h4>Every student’s video</h4>
+            <p>Every student’s video shows, and End ends the meeting for everyone. Zoom-shaped controls sit at the foot of the panel, an upload can be deleted from YouTube in Sessions, and settings under an off switch grey out.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="era">
+      <div class="era-head">
+        <div class="when">Oct 5 – Nov 17 · six weeks</div>
+        <div>
+          <h3>No OBS, one window, a bubble</h3>
+          <p>The big move. Heresay arrives in the app, then 1.3.0 deletes OBS: Greenroom makes the class picture itself. After that the app becomes one window with its own meeting window, session pages and an editor, and a bubble that drives the camera.</p>
+        </div>
+        <figure class="era-art">
+          <svg viewBox="0 0 300 170" role="img" aria-label="The stage by November 17: one window with the session, a floating meeting bar along the bottom, and a round camera bubble in the corner; a badge reads no OBS.">
+            <rect x="6" y="10" width="288" height="146" rx="10" fill="#fff" stroke="#98a2b3" stroke-width="1.2"/>
+            <path d="M6,20 a10,10 0 0 1 10,-10 h268 a10,10 0 0 1 10,10 v8 h-288 z" fill="#f9fafb" stroke="#98a2b3" stroke-width="1.2"/>
+            <rect x="16" y="38" width="176" height="84" rx="5" fill="#fff" stroke="#d0d5dd"/>
+            <g fill="#e4e7ec"><rect x="26" y="50" width="96" height="6" rx="3" fill="#d0d5dd"/><rect x="26" y="64" width="150" height="4" rx="2"/><rect x="26" y="74" width="140" height="4" rx="2"/><rect x="26" y="84" width="146" height="4" rx="2"/><rect x="26" y="98" width="120" height="4" rx="2"/></g>
+            <rect x="200" y="38" width="84" height="84" rx="5" fill="#101828"/><circle cx="242" cy="72" r="11" fill="#475467"/><path d="M233,92 a9,7 0 0 1 18,0" fill="#98a2b3"/>
+            <circle cx="170" cy="104" r="14" fill="#e8f3df" stroke="#2f6118" stroke-width="1.5"/><circle cx="170" cy="100" r="5" fill="#78c000"/><path d="M161,114 a9,7 0 0 1 18,0" fill="#78c000"/>
+            <rect x="60" y="130" width="180" height="18" rx="9" fill="#f2f4f7" stroke="#98a2b3"/>
+            <circle cx="84" cy="139" r="4" fill="#2f6118"/><rect x="98" y="136" width="30" height="6" rx="3" fill="#d0d5dd"/><rect x="134" y="136" width="30" height="6" rx="3" fill="#d0d5dd"/><rect x="200" y="135" width="30" height="8" rx="4" fill="#2f6118"/>
+            <rect x="196" y="2" width="90" height="16" rx="8" fill="#e8f3df" stroke="#2f6118"/>
+            <text x="241" y="13.5" font-size="8.5" text-anchor="middle" fill="#2f6118" font-weight="700">no OBS</text>
+            <text x="150" y="166" font-size="8.5" text-anchor="middle" fill="#2f6118" font-weight="700" letter-spacing=".08em" font-family="ui-monospace, SF Mono, Menlo, monospace">ONE WINDOW · ONE BAR · A BUBBLE</text>
+          </svg>
+        </figure>
+      </div>
+      <div class="rail">
+        <div class="rel">
+          <div class="meta"><div class="ver">1.2.0</div><div class="date">Mon Oct 5 · 06:21</div><div class="size">43,291 lines · 8 commits</div></div>
+          <div class="spine"><span class="node"></span></div>
+          <div class="card">
+            <span class="tag new">New</span><span class="tag fix">Fixed</span>
+            <h4>Heresay feedback</h4>
+            <p>Report a Problem under Help: Greenroom’s in-app feedback. Whisper can no longer take a class down with it, and the setup guide adds the fifth scope needed to end meetings.</p>
+          </div>
+        </div>
+        <div class="rel">
+          <div class="meta"><div class="ver">1.2.1</div><div class="date">Mon Oct 26 · 10:06</div><div class="size">43,295 lines · 6 commits</div></div>
+          <div class="spine"><span class="node"></span></div>
+          <div class="card">
+            <span class="tag fix">Fixed</span>
+            <h4>Heresay endpoint</h4>
+            <p>Heresay is pointed at its new address and its package and agent files are refreshed.</p>
+          </div>
+        </div>
+        <div class="rel minor">
+          <div class="meta"><div class="ver">1.3.0</div><div class="date">Tue Nov 10 · 17:33</div><div class="size">48,144 lines · 65 commits</div></div>
+          <div class="spine"><span class="node"></span></div>
+          <div class="card">
+            <span class="tag new">New</span><span class="tag fix">Fixed</span>
+            <h4>OBS is gone</h4>
+            <p>OBS and the virtual camera are removed: the class picture is made inside Greenroom, and recording no longer goes through OBS. A new Record view has a live preview, name, notes and one Record button, Screenroom folds into Record and Analyse, and setup and Settings are compact and visual.</p>
+            <div class="feats"><span class="feat">No OBS</span><span class="feat">Record view</span><span class="feat">Analyse on demand</span><span class="feat">Share follows a window to another display</span><span class="feat soft">Setup redesign</span></div>
+          </div>
+        </div>
+        <div class="rel minor">
+          <div class="meta"><div class="ver">1.4.0</div><div class="date">Thu Nov 12 · 06:46</div><div class="size">54,327 lines · 10 commits</div></div>
+          <div class="spine"><span class="node"></span></div>
+          <div class="card">
+            <span class="tag new">New</span>
+            <h4>One window, and a layout creator</h4>
+            <p>One window with a quiet class start and a floating meeting bar. Greenroom’s own meeting window arrives, with a layout creator in Settings, Raj Mode, locked built-in layouts and a Sessions sidebar.</p>
+            <div class="feats"><span class="feat">One window</span><span class="feat">Floating meeting bar</span><span class="feat">Meeting window</span><span class="feat">Layout creator</span></div>
+          </div>
+        </div>
+        <div class="rel minor">
+          <div class="meta"><div class="ver">1.4.1</div><div class="date">Fri Nov 13 · 05:24</div><div class="size">61,526 lines · 5 commits</div></div>
+          <div class="spine"><span class="node"></span></div>
+          <div class="card">
+            <span class="tag new">New</span>
+            <h4>Nine View windows</h4>
+            <p>Nine meeting View windows a layout can place, a Zoom-familiar meeting window that shrinks to the control bar, others’ shares, Security and Share menus, waiting room and host tasks, customisable shortcuts, and settings that fold away when off.</p>
+            <div class="feats"><span class="feat">Nine View windows</span><span class="feat">Others’ shares</span><span class="feat">Custom shortcuts</span></div>
+          </div>
+        </div>
+        <div class="rel minor">
+          <div class="meta"><div class="ver">1.5.0</div><div class="date">Mon Nov 16 · 09:41</div><div class="size">82,597 lines · 116 commits</div></div>
+          <div class="spine"><span class="node"></span></div>
+          <div class="card">
+            <span class="tag new">New</span><span class="tag fix">Fixed</span>
+            <h4>Watch and Edit a session</h4>
+            <p>A Watch/Edit page for every session, with a by-day list and suggested titles, and the editor rebuilt as a page of the main window around the timeline. People opens a small Participants window beside the bar, Home becomes a dock, and failures fold to one line in the notch island.</p>
+            <div class="feats"><span class="feat">Watch/Edit page</span><span class="feat">Editor as a page</span><span class="feat">People beside the bar</span><span class="feat">Home dock</span></div>
+          </div>
+        </div>
+        <div class="rel">
+          <div class="meta"><div class="ver">1.6.0</div><div class="date">Tue Nov 17 · 06:54</div><div class="size">84,820 lines · 20 commits</div></div>
+          <div class="spine"><span class="node"></span></div>
+          <div class="card">
+            <span class="tag new">New</span><span class="tag fix">Fixed</span>
+            <h4>Windows you can show</h4>
+            <p>Every Greenroom window can be shown to the meeting (hidden by default), with an edge on the ones the class can see. REC stops in place with Confirm, and the bar and toolbar are one frosted surface.</p>
+            <div class="feats"><span class="feat">Show a window with the eye</span><span class="feat">REC stops in place</span></div>
+          </div>
+        </div>
+        <div class="rel minor">
+          <div class="meta"><div class="ver">1.7.0</div><div class="date">Tue Nov 17 · 11:48</div><div class="size">87,179 lines · 2 commits</div></div>
+          <div class="spine"><span class="node"></span></div>
+          <div class="card">
+            <span class="tag new">New</span>
+            <h4>A bubble that drives the picture</h4>
+            <p>A floating camera bubble on your screen drives where your camera sits in the picture. One start, one bar.</p>
+            <div class="feats"><span class="feat">Presence bubble</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 </section>
 
 <section class="cta-band">
   <div class="wrap">
     <h2>The next morning decides the next version.</h2>
-    <p>Every release above answered something a real class did. If yours does something new, say so.</p>
+    <p>Every one of the 37 releases above answered something a real class did. If yours does something new, say so.</p>
     <div class="cta-actions">
       <a class="btn" href="https://github.com/Sibhimanyu/greenroom/releases">All releases on GitHub</a>
       <a class="textlink" href="https://github.com/Sibhimanyu/greenroom/issues">Report something <span class="arrow">→</span></a>

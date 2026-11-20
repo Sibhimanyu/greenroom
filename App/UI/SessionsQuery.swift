@@ -27,7 +27,7 @@ enum SessionKind: String, CaseIterable, Hashable {
 
     var symbol: String {
         switch self {
-        case .classSession: return "person.3.fill"
+        case .classSession: return "person.2"
         case .recording: return "record.circle"
         case .review: return "list.bullet.rectangle"
         }

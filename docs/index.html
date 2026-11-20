@@ -113,7 +113,7 @@
   .hero-art svg { display: block; width: 100%; height: auto; }
   .hero-art .rise { animation: rise .6s ease-out both; }
   @keyframes rise { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
-  @media (max-width: 700px) { .hero-art .co { display: none; } }
+  @media (max-width: 700px) { .hero-art .co { display: none; } .hero-art .rise { overflow: hidden; } .hero-art svg { width: 148%; max-width: none; margin-left: -24%; } }
   .eyebrow {
     display: block;
     font-family: ui-monospace, "SF Mono", Menlo, monospace;

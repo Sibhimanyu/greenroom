@@ -55,10 +55,13 @@ final class ZoomUserAuth: ObservableObject {
     @Published private(set) var lastError: String?
     /// Required scopes the person's sign-in does not carry (empty when fine or unknown).
     @Published private(set) var missingScopes: [String] = []
+    /// The stored sign-in was made with a different public client than the current one.
+    @Published private(set) var needsRenewal = false
 
     private static let refreshKey = "zoomUserRefreshToken"   // Keychain account; also the old SecretStore key
     private static let profileKey = "zoomUserProfile"
     private static let scopesKey = "zoomUserGrantedScopes"
+    private static let clientIDKey = "zoomUserClientID"
 
     private var tokens: ZoomTokenSet?
     private var signInTask: Task<Void, Error>?
@@ -77,9 +80,20 @@ final class ZoomUserAuth: ObservableObject {
             profile = try? JSONDecoder().decode(ZoomUserProfile.self, from: data)
         }
         refreshMissingScopes()
+        refreshRenewal()
     }
 
     var needsMorePermission: Bool { isSignedIn && !missingScopes.isEmpty }
+    /// Either calm "sign in again" state; Start waits on it.
+    var needsSignInAgain: Bool { needsMorePermission || (isSignedIn && needsRenewal) }
+    var attentionTitle: String { needsRenewal ? ZoomCredentialCheck.promptTitle : ZoomScopeCheck.promptTitle }
+    var attentionDetail: String { needsRenewal ? ZoomCredentialCheck.promptDetail : ZoomScopeCheck.promptDetail }
+
+    private func refreshRenewal() {
+        guard phase == .signedIn || phase == .signingIn, refreshToken != nil else { needsRenewal = false; return }
+        needsRenewal = ZoomCredentialCheck.check(storedClientID: defaults.string(forKey: Self.clientIDKey),
+                                                 currentClientID: ZoomOAuth.publicClientID) == .needsSignIn
+    }
 
     /// Compares what the sign-in carries with `ZoomOAuth.requiredScopes`. Run at
     /// launch and whenever the grant changes, so a new requirement shows up as a
@@ -175,7 +189,9 @@ final class ZoomUserAuth: ObservableObject {
             ZoomKeychain.set(refresh, account: Self.refreshKey)
             if let scope = set.scope { defaults.set(scope, forKey: Self.scopesKey) }
             else { defaults.removeObject(forKey: Self.scopesKey) }
+            defaults.set(ZoomOAuth.publicClientID, forKey: Self.clientIDKey)
             refreshMissingScopes()
+            refreshRenewal()
             listener.reply(success: true, detail: "")
         } catch {
             tokens = previousTokens
@@ -190,7 +206,9 @@ final class ZoomUserAuth: ObservableObject {
         ZoomKeychain.delete(Self.refreshKey)
         defaults.removeObject(forKey: Self.profileKey)
         defaults.removeObject(forKey: Self.scopesKey)
+        defaults.removeObject(forKey: Self.clientIDKey)
         missingScopes = []
+        needsRenewal = false
         tokens = nil
         profile = nil
         phase = .signedOut
@@ -216,6 +234,9 @@ final class ZoomUserAuth: ObservableObject {
     private func refresh() async throws -> ZoomTokenSet {
         if let running = refreshTask { return try await running.value }
         guard let old = refreshToken else { throw ZoomUserAuthError.notSignedIn }
+        // The old client's refresh token would be rejected; wait for a new sign-in.
+        refreshRenewal()
+        if needsRenewal { throw ZoomUserAuthError.signInExpired }
         let task = Task { try await self.tokenRequest(ZoomAuthRequest.refreshForm(refreshToken: old, clientID: ZoomOAuth.publicClientID)) }
         refreshTask = task
         defer { refreshTask = nil }

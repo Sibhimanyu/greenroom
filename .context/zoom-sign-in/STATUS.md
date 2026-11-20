@@ -34,6 +34,7 @@ Then in the Catalyst console (Greenroom -> Functions -> sdk_signature -> Configu
 2. Add it to `ZoomOAuth.requiredScopes` (App/Zoom/ZoomUserAuthRules.swift).
 3. Ship. People signed in before see "Greenroom needs one more Zoom permission" in Settings, Home's pill and the menu bar, with Sign in again; Start waits until they do. The check reads the scopes Zoom returned with their token, so nothing fails mid-meeting.
 Order matters: add it in the Marketplace BEFORE the constant, or Sign in again cannot grant it.
+Switching the client ID (Development to Production) = change `ZoomOAuth.publicClientID`, ship, and people sign in once ("Zoom sign-in needs renewing"; ZoomCredentialCheck).
 
 ## Storage
 The refresh token is a Keychain item (service com.sibhimanyu.greenroom.zoom, after first unlock, this device only); an old copy in preferences is moved once and deleted.

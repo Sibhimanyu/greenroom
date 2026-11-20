@@ -554,7 +554,9 @@ final class CoordinatorController: ObservableObject {
     }
     var zoomSigningIn: Bool { zoomUser.phase == .signingIn }
     /// Signed in, but the app now needs a scope the sign-in does not carry.
-    var zoomNeedsMorePermission: Bool { zoomUser.needsMorePermission }
+    var zoomNeedsMorePermission: Bool { zoomUser.needsSignInAgain }
+    var zoomAttentionTitle: String { zoomUser.attentionTitle }
+    var zoomAttentionDetail: String { zoomUser.attentionDetail }
     var zoomSignInError: String? { zoomUser.lastError }
 
     func signInWithZoom() {
@@ -1612,7 +1614,7 @@ final class CoordinatorController: ObservableObject {
             return
         }
         if meetingMode != .record, zoomNeedsMorePermission {
-            log("\(ZoomScopeCheck.promptTitle). Settings (\u{2318},) \u{2192} Zoom \u{2192} Sign in again, then press Start.")
+            log("\(zoomAttentionTitle). Settings (\u{2318},) \u{2192} Zoom \u{2192} Sign in again, then press Start.")
             return
         }
         switch meetingMode {

@@ -138,4 +138,18 @@ final class ZoomUserAuthRulesTests: XCTestCase {
         XCTAssertEqual(ZoomScopeCheck.check(required: ZoomOAuth.requiredScopes,
                                             granted: ZoomScopeCheck.parse(five + " " + added.joined(separator: " "))), .ok)
     }
+
+    func testCredentialCheckSameIDIsOK() {
+        XCTAssertEqual(ZoomCredentialCheck.check(storedClientID: "abc", currentClientID: "abc"), .ok)
+    }
+
+    func testCredentialCheckDifferentIDNeedsSignIn() {
+        XCTAssertEqual(ZoomCredentialCheck.check(storedClientID: "old", currentClientID: "new"), .needsSignIn)
+    }
+
+    func testCredentialCheckNoIDRecordedIsTheDevelopmentClient() {
+        XCTAssertEqual(ZoomCredentialCheck.check(storedClientID: nil, currentClientID: ZoomOAuth.developmentClientID), .ok)
+        XCTAssertEqual(ZoomCredentialCheck.check(storedClientID: "", currentClientID: ZoomOAuth.developmentClientID), .ok)
+        XCTAssertEqual(ZoomCredentialCheck.check(storedClientID: nil, currentClientID: "production"), .needsSignIn)
+    }
 }

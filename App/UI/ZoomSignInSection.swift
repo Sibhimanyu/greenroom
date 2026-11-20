@@ -26,6 +26,8 @@ struct ZoomSignInSection: View {
     let setupNote: String?
     /// Signed in, but a newly required Zoom permission is missing.
     var needsMorePermission = false
+    var attentionTitle = ZoomScopeCheck.promptTitle
+    var attentionDetail = ZoomScopeCheck.promptDetail
     let onSignIn: () -> Void
     let onCancel: () -> Void
     /// Returns true when Zoom confirmed the revoke, false when only the local copy was removed.
@@ -51,8 +53,8 @@ struct ZoomSignInSection: View {
                 if let setupNote { StatusBadge(text: setupNote, tone: .problem) }
                 if needsMorePermission {
                     VStack(alignment: .leading, spacing: 6) {
-                        StatusBadge(text: ZoomScopeCheck.promptTitle, tone: .waiting)
-                        Text(ZoomScopeCheck.promptDetail).font(.caption).foregroundStyle(.secondary)
+                        StatusBadge(text: attentionTitle, tone: .waiting)
+                        Text(attentionDetail).font(.caption).foregroundStyle(.secondary)
                         Button("Sign in again", action: onSignIn)
                     }
                 }
@@ -92,6 +94,8 @@ extension ZoomSignInSection {
             error: coordinator.zoomSignInError,
             setupNote: coordinator.zoomSDKAuthChoice == .notFinished ? "Sign in with Zoom isn\u{2019}t finished setting up yet." : nil,
             needsMorePermission: coordinator.zoomNeedsMorePermission,
+            attentionTitle: coordinator.zoomAttentionTitle,
+            attentionDetail: coordinator.zoomAttentionDetail,
             onSignIn: { coordinator.signInWithZoom() },
             onCancel: { coordinator.cancelZoomSignIn() },
             onSignOut: { await coordinator.signOutOfZoom() })

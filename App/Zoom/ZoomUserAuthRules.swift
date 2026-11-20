@@ -17,7 +17,12 @@ import Foundation
 
 enum ZoomOAuth {
     /// The public (PKCE, no secret) Client ID of Greenroom's General app.
-    static let publicClientID = "Ug3v8EwRZS4jii6_g8crg"
+    /// To switch to the Production client once Zoom approves the app: change
+    /// this constant, ship; people sign in once (see ZoomCredentialCheck).
+    static let publicClientID = developmentClientID
+    /// The Development public client. A sign-in stored before client IDs were
+    /// recorded is treated as this one.
+    static let developmentClientID = "Ug3v8EwRZS4jii6_g8crg"
     static let authorizeURL = "https://zoom.us/oauth/authorize"
     static let tokenURL = "https://zoom.us/oauth/token"
     static let revokeURL = "https://zoom.us/oauth/revoke"
@@ -233,6 +238,24 @@ enum ZoomScopeCheck {
 
     static let promptTitle = "Greenroom needs one more Zoom permission"
     static let promptDetail = "Sign in again and approve it in your browser. Your meetings and settings stay as they are."
+}
+
+// MARK: - Stored client ID versus current
+
+enum ZoomCredentialCheck {
+    enum Result: Equatable { case ok, needsSignIn }
+
+    /// A refresh token only works for the client that issued it. No ID recorded
+    /// means it predates recording, so it belongs to the Development client.
+    static func check(storedClientID: String?, currentClientID: String,
+                      legacyClientID: String = ZoomOAuth.developmentClientID) -> Result {
+        let trimmed = (storedClientID ?? "").trimmingCharacters(in: .whitespaces)
+        let stored = trimmed.isEmpty ? legacyClientID : trimmed
+        return stored == currentClientID ? .ok : .needsSignIn
+    }
+
+    static let promptTitle = "Zoom sign-in needs renewing"
+    static let promptDetail = "Sign in again in your browser. Your meetings and settings stay as they are."
 }
 
 // MARK: - Where credentials come from

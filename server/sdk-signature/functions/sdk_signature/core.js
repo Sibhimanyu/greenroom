@@ -42,10 +42,15 @@ async function process({ method, path, authorization, body, env, fetchFn = fetch
 
   const token = bearer(authorization);
   if (!token) return reply(401, { error: 'missing bearer token' });
-  if (!env.ZOOM_CLIENT_ID || !env.ZOOM_CLIENT_SECRET) return reply(500, { error: 'server not configured' });
-
   const input = body && typeof body === 'object' ? body : null;
   if (!input) return reply(400, { error: 'body must be JSON' });
+  // Which of the Zoom app's two credential pairs signs. Production is what
+  // 1.8.1+ sends; anything else (1.8.0 sends nothing) is the Development pair,
+  // so older copies keep working while people update.
+  const production = input.env === 'production';
+  const clientID = production ? env.ZOOM_PROD_CLIENT_ID : env.ZOOM_CLIENT_ID;
+  const clientSecret = production ? env.ZOOM_PROD_CLIENT_SECRET : env.ZOOM_CLIENT_SECRET;
+  if (!clientID || !clientSecret) return reply(500, { error: 'server not configured' });
   const role = input.role === undefined ? 1 : input.role;
   if (role !== 0 && role !== 1) return reply(400, { error: 'role must be 0 or 1' });
   let meetingNumber;
@@ -76,8 +81,8 @@ async function process({ method, path, authorization, body, env, fetchFn = fetch
   }
 
   const signature = await makeSignature({
-    clientID: env.ZOOM_CLIENT_ID,
-    clientSecret: env.ZOOM_CLIENT_SECRET,
+    clientID,
+    clientSecret,
     meetingNumber,
     role,
     now,

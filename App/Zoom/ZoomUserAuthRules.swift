@@ -19,7 +19,12 @@ enum ZoomOAuth {
     /// The public (PKCE, no secret) Client ID of Greenroom's General app.
     /// To switch to the Production client once Zoom approves the app: change
     /// this constant, ship; people sign in once (see ZoomCredentialCheck).
-    static let publicClientID = developmentClientID
+    static let publicClientID = productionClientID
+    /// The Production public client (live since Zoom approved beta sharing,
+    /// 2026-11-20). The signing function picks the matching secret from `environment`.
+    static let productionClientID = "S10xESdMTI2yYMScKbkfOw"
+    /// Sent to the signing function so it signs with the matching pair.
+    static var environment: String { publicClientID == productionClientID ? "production" : "development" }
     /// The Development public client. A sign-in stored before client IDs were
     /// recorded is treated as this one.
     static let developmentClientID = "Ug3v8EwRZS4jii6_g8crg"

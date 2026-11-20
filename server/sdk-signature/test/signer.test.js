@@ -105,3 +105,13 @@ test('bad input and wrong routes', async () => {
   assert.equal((await call({}, {}, {}, f)).status, 500);
   assert.equal((await call({}, { path: '/signature' }, env, f)).status, 200);
 });
+
+test('env "production" signs with the Production pair; anything else with Development', async () => {
+  const both = { ...env, ZOOM_PROD_CLIENT_ID: 'PRODKEY', ZOOM_PROD_CLIENT_SECRET: 'PRODSECRET' };
+  const prod = await call({ role: 1, env: 'production' }, {}, both, zoom().fetchFn);
+  assert.equal(decode(prod.body.signature.split('.')[1]).appKey, 'PRODKEY');
+  const old = await call({ role: 1 }, {}, both, zoom().fetchFn);
+  assert.equal(decode(old.body.signature.split('.')[1]).appKey, 'KEY');
+  const missing = await call({ role: 1, env: 'production' }, {}, env, zoom().fetchFn);
+  assert.equal(missing.status, 500);
+});

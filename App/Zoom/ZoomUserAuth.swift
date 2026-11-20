@@ -407,6 +407,7 @@ final class ZoomUserAuth: ObservableObject {
         }
         var payload: [String: Any] = ["role": role]
         if let meetingNumber { payload["meetingNumber"] = meetingNumber }
+        payload["env"] = ZoomOAuth.environment
         func send(_ token: String) async throws -> (Data, Int) {
             var request = URLRequest(url: url)
             request.httpMethod = "POST"

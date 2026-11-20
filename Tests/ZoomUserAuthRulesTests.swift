@@ -25,7 +25,7 @@ final class ZoomUserAuthRulesTests: XCTestCase {
             .queryItems!.map { ($0.name, $0.value ?? "") })
         XCTAssertEqual(url.host, "zoom.us")
         XCTAssertEqual(url.path, "/oauth/authorize")
-        XCTAssertEqual(items["client_id"], "Ug3v8EwRZS4jii6_g8crg")
+        XCTAssertEqual(items["client_id"], ZoomOAuth.publicClientID)
         XCTAssertEqual(items["redirect_uri"], "http://127.0.0.1:53682/callback")
         XCTAssertEqual(items["code_challenge_method"], "S256")
         XCTAssertEqual(items["response_type"], "code")

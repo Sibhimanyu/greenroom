@@ -177,6 +177,9 @@ enum ScreenroomTranscriber {
                            onProgress: (@MainActor (Double) -> Void)? = nil,
                            onStart: ((Process) -> Void)? = nil,
                            onOutput: (@MainActor (String) -> Void)? = nil) async throws -> [ScreenroomSpokenWord] {
+        // Cheap and checked at the start so a Stop pressed during setup does
+        // not begin a long job.
+        try Task.checkCancellation()
         let durationMs = Int(((try? await AVURLAsset(url: recording).load(.duration))?.seconds ?? 0) * 1000)
 
         switch settings.engine {
@@ -192,10 +195,12 @@ enum ScreenroomTranscriber {
             let language = String(settings.language.prefix(2))
             let heard = try await ScreenroomWhisper.transcribe(
                 wav: wav, model: model, language: language,
+                timeout: ScreenroomRunRules.whisperTimeout(recordingSeconds: Double(durationMs) / 1000),
                 onStart: onStart, onOutput: onOutput)
             // whisper's timings, moved onto the audio. Without this a pause is
             // whatever whisper stretched a word across, and the Play buttons
             // land in silence. See SpeechActivity.
+            try Task.checkCancellation()
             let words = alignToSpeech(heard, wav: wav)
             guard !words.isEmpty else { throw ScreenroomWhisper.Failure.noWords }
             try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)

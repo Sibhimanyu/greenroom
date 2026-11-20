@@ -40,6 +40,7 @@ enum ScreenroomWhisper {
         case noModel
         case failed(String)
         case noWords
+        case timedOut(String)
 
         var errorDescription: String? {
             switch self {
@@ -51,6 +52,8 @@ enum ScreenroomWhisper {
                 return "The transcriber produced no words. The recording may have no speech in it."
             case .failed(let reason):
                 return reason
+            case .timedOut(let limit):
+                return "whisper was still working after \(limit), so it was stopped."
             }
         }
     }
@@ -196,6 +199,7 @@ enum ScreenroomWhisper {
     static func transcribe(wav: URL,
                            model: URL,
                            language: String,
+                           timeout: TimeInterval = ScreenroomRunRules.whisperTimeout(recordingSeconds: 0),
                            onStart: ((Process) -> Void)? = nil,
                            onOutput: (@MainActor (String) -> Void)? = nil) async throws -> [ScreenroomSpokenWord] {
         let base = wav.deletingPathExtension()
@@ -219,6 +223,8 @@ enum ScreenroomWhisper {
         process.standardOutput = output
         process.standardError = errors
         try process.run()
+        let watchdog = ScreenroomProcessReaper.Watchdog(process, limit: timeout)
+        defer { watchdog.cancel() }
         onStart?(process)
 
         // Both pipes drained, because whisper is chatty on stderr and a full
@@ -232,6 +238,9 @@ enum ScreenroomWhisper {
         let problems = await err
         process.waitUntilExit()
 
+        // Whatever whisper left half-written is not a transcript.
+        defer { try? FileManager.default.removeItem(at: jsonURL) }
+        if watchdog.fired { throw Failure.timedOut(ScreenroomRunRules.limitLabel(timeout)) }
         guard process.terminationStatus == 0 else {
             throw Failure.failed(problems.split(separator: "\n").suffix(4).joined(separator: "\n"))
         }

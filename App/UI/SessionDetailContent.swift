@@ -571,6 +571,7 @@ struct SessionTabEmpty<Actions: View>: View {
 struct SessionAnalyseButton: View {
     let model: SessionInspectorModel
     let actions: SessionInspectorActions
+    @ObservedObject private var review = ScreenroomReviewController.shared
     @State private var showProgress = false
 
     var body: some View {
@@ -586,18 +587,21 @@ struct SessionAnalyseButton: View {
             }
             .labelStyle(.titleAndIcon)
             .help("Get feedback on how this meeting went. \(engine).")
-        case .running(let step, let detail, let log):
+        case .running(let step, _, _):
             Button {
                 showProgress.toggle()
             } label: {
                 HStack(spacing: 6) {
-                    ProgressView().controlSize(.small)
-                    Text("Analysing")
+                    AnalysisRing(progress: review.runProgress)
+                    Text(review.isStopping ? "Stopping" : "Analysing")
                 }
             }
-            .help(step)
+            .help("\(step). Click for the steps and Stop.")
             .popover(isPresented: $showProgress, arrowEdge: .bottom) {
-                progress(step: step, detail: detail, log: log)
+                AnalysisProgressPopover(review: review) {
+                    showProgress = false
+                    actions.stopAnalysis()
+                }
             }
         case .busy:
             Label("Analyse", systemImage: "sparkles")
@@ -616,32 +620,6 @@ struct SessionAnalyseButton: View {
             .labelStyle(.titleAndIcon)
             .help("Open the report on how this meeting went")
         }
-    }
-
-    private func progress(step: String, detail: String, log: String?) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(step).font(.callout).fixedSize(horizontal: false, vertical: true)
-            if !detail.isEmpty {
-                Text(detail).font(.caption).foregroundStyle(.secondary)
-            }
-            if let last = log?.split(whereSeparator: \.isNewline).last, !last.isEmpty {
-                Text(String(last))
-                    .font(.system(size: 10, design: .monospaced))
-                    .foregroundStyle(.tertiary)
-                    .lineLimit(2)
-                    .truncationMode(.head)
-            }
-            HStack {
-                Spacer(minLength: 0)
-                Button("Stop", role: .destructive) {
-                    showProgress = false
-                    actions.stopAnalysis()
-                }
-                .help("Stops the run and closes whatever it started. Nothing is written until it finishes.")
-            }
-        }
-        .padding(14)
-        .frame(width: 280, alignment: .leading)
     }
 }
 

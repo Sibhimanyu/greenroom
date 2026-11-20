@@ -38,6 +38,9 @@ enum ScreenroomFrames {
     /// read by something with a context window.
     static let longEdge: CGFloat = 960
 
+    /// Where stills are cut before they replace the real folder.
+    static let partialFolderName = "frames.partial"
+
     static func folder(in presentation: URL) -> URL {
         presentation.appendingPathComponent(folderName, isDirectory: true)
     }
@@ -51,9 +54,14 @@ enum ScreenroomFrames {
         let duration = (try? await asset.load(.duration))?.seconds ?? 0
         guard duration > 0 else { return [] }
 
-        let target = folder(in: presentation)
+        // Cut into a scratch folder and swapped in at the end, so a Stop
+        // halfway leaves the earlier stills as they were.
+        let final = folder(in: presentation)
+        let target = presentation.appendingPathComponent(partialFolderName, isDirectory: true)
         try? FileManager.default.removeItem(at: target)
         try FileManager.default.createDirectory(at: target, withIntermediateDirectories: true)
+        var finished = false
+        defer { if !finished { try? FileManager.default.removeItem(at: target) } }
 
         let generator = AVAssetImageGenerator(asset: asset)
         generator.appliesPreferredTrackTransform = true
@@ -72,6 +80,7 @@ enum ScreenroomFrames {
 
         var written: [URL] = []
         for (index, seconds) in times.enumerated() {
+            try Task.checkCancellation()
             if let report = onProgress { await report(index, times.count) }
             let time = CMTime(seconds: seconds, preferredTimescale: 600)
             guard let cg = try? generator.copyCGImage(at: time, actualTime: nil) else { continue }
@@ -86,7 +95,11 @@ enum ScreenroomFrames {
             written.append(file)
         }
         if let report = onProgress { await report(times.count, times.count) }
-        return written
+        try Task.checkCancellation()
+        try? FileManager.default.removeItem(at: final)
+        try FileManager.default.moveItem(at: target, to: final)
+        finished = true
+        return written.map { final.appendingPathComponent($0.lastPathComponent) }
     }
 
     static func existing(in presentation: URL) -> [URL] {

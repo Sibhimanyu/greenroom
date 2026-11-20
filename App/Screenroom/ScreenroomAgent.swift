@@ -142,9 +142,13 @@ enum ScreenroomAgent {
         case noCommand
         case notFound(String)
         case failed(code: Int32, output: String)
+        case timedOut(String)
 
         var errorDescription: String? {
             switch self {
+            case .timedOut(let limit):
+                return "The agent was still working after \(limit), so it was stopped and the feedback was written without it."
+
             case .noCommand:
                 return "No agent command is set. Open How to analyse next to Analyse."
             case .notFound(let name):
@@ -343,6 +347,10 @@ enum ScreenroomAgent {
         process.standardError = errors
 
         try process.run()
+        // An agent that hangs would otherwise hold the run (and the Analysing
+        // pill) open for ever.
+        let watchdog = ScreenroomProcessReaper.Watchdog(process, limit: ScreenroomRunRules.agentTimeout)
+        defer { watchdog.cancel() }
         // Handed out so a stop can reach it. A Task cancellation alone would
         // leave the CLI running, still spending tokens, still holding the
         // folder open.
@@ -367,6 +375,9 @@ enum ScreenroomAgent {
         let errorText = await problems
         process.waitUntilExit()
 
+        if watchdog.fired {
+            throw Failure.timedOut(ScreenroomRunRules.limitLabel(ScreenroomRunRules.agentTimeout))
+        }
         guard process.terminationStatus == 0 else {
             // 127 is the shell saying the program is not there. "The agent
             // exited with code 127" was accurate and meant nothing to a

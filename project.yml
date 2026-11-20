@@ -295,6 +295,7 @@ targets:
       - path: App/Stage/ScreenRecovery.swift
       - path: App/UI/WindowFrameRules.swift
       - path: App/UI/PlayerControlRules.swift
+      - path: App/Screenroom/ScreenroomRunRules.swift
       - path: App/UI/PreviewFrameRules.swift
       - path: App/UI/MainWindow.swift
       - path: App/UI/LayoutAppOrdering.swift

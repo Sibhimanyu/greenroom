@@ -299,6 +299,7 @@ targets:
       - path: App/Screenroom/ScreenroomRunRules.swift
       - path: App/Screenroom/AnalysisUsage.swift
       - path: App/Audio/WhisperLoops.swift
+      - path: App/Editor/TimelineClipMap.swift
       - path: App/UI/PreviewFrameRules.swift
       - path: App/UI/MainWindow.swift
       - path: App/UI/LayoutAppOrdering.swift

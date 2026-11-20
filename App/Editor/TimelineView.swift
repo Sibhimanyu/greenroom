@@ -8,6 +8,7 @@ import SwiftUI
 struct EditorTimelineView: View {
     @EnvironmentObject private var vm: EditorViewModel
     @StateObject private var thumbs = TimelineThumbnails()
+    @StateObject private var clipThumbs = MergeClipThumbnails()
 
     @State private var drag: DragKind?
     @State private var dragMoved = false
@@ -103,6 +104,12 @@ struct EditorTimelineView: View {
             .task(id: thumbKey(width: width)) {
                 await thumbs.prepare(url: vm.sourceURL, duration: vm.duration,
                                      count: thumbCount(width: width))
+            }
+            .task(id: clipThumbKey(width: width)) {
+                clipThumbs.sync(clips: vm.mergeClips.map {
+                    (id: $0.id, url: $0.url, duration: $0.duration,
+                     count: clipThumbCount(for: $0, width: width))
+                })
             }
         }
         .frame(height: height + (vm.timelineZoom > 1 ? 12 : 0))
@@ -211,6 +218,7 @@ struct EditorTimelineView: View {
                 ZStack {
                     RoundedRectangle(cornerRadius: 6, style: .continuous)
                         .fill(Color.primary.opacity(isCurrent ? 0.34 : 0.22))
+                    clipFilmstrip(clip, width: max(3, xEnd - xStart))
                     if xEnd - xStart > 26 {
                         VStack(spacing: 1) {
                             Text("\(index + 1)")
@@ -224,6 +232,7 @@ struct EditorTimelineView: View {
                     }
                 }
                 .frame(width: max(3, xEnd - xStart), height: trackHeight)
+                .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
                 .position(x: (xStart + xEnd) / 2, y: midY)
 
                 // Trimmed-away shading within this clip.
@@ -243,6 +252,30 @@ struct EditorTimelineView: View {
                 mergeHandle(at: leadX, isLead: true)
                 mergeHandle(at: trailX, isLead: false)
             }
+        }
+    }
+
+    /// A joined clip's own filmstrip, same tile size and loading look as the
+    /// main strip (empty tiles over the grey fill until each frame lands).
+    @ViewBuilder
+    private func clipFilmstrip(_ clip: MergeClip, width: CGFloat) -> some View {
+        if let strip = clipThumbs.strips[clip.id], strip.count > 0 {
+            let tileWidth = width / CGFloat(strip.count)
+            HStack(spacing: 0) {
+                ForEach(0..<strip.count, id: \.self) { index in
+                    if let image = strip.images[index] {
+                        Image(decorative: image, scale: 1)
+                            .resizable()
+                            .aspectRatio(contentMode: .fill)
+                            .frame(width: tileWidth, height: trackHeight)
+                            .clipped()
+                    } else {
+                        Color.clear.frame(width: tileWidth, height: trackHeight)
+                    }
+                }
+            }
+            .frame(width: width, height: trackHeight, alignment: .leading)
+            .allowsHitTesting(false)
         }
     }
 
@@ -740,9 +773,17 @@ struct EditorTimelineView: View {
 
     private func thumbCount(width: CGFloat) -> Int {
         let mainWidth = vm.timelineDuration > 0 ? width * CGFloat(vm.duration / vm.timelineDuration) : width
-        let tile = trackHeight * 16 / 9
-        let raw = max(1, Int(ceil(mainWidth / tile)))
-        return min(120, ((raw + 5) / 6) * 6)
+        return TimelineClipMap.tileCount(width: Double(mainWidth), tileWidth: Double(trackHeight * 16 / 9))
+    }
+
+    private func clipThumbCount(for clip: MergeClip, width: CGFloat) -> Int {
+        let clipWidth = vm.timelineDuration > 0 ? width * CGFloat(clip.duration / vm.timelineDuration) : width
+        return TimelineClipMap.tileCount(width: Double(clipWidth), tileWidth: Double(trackHeight * 16 / 9))
+    }
+
+    private func clipThumbKey(width: CGFloat) -> String {
+        vm.mergeClips.map { "\($0.id)|\($0.url.path)|\(clipThumbCount(for: $0, width: width))" }
+            .joined(separator: ";")
     }
 
     private func thumbKey(width: CGFloat) -> String {
@@ -815,6 +856,89 @@ final class TimelineThumbnails: ObservableObject {
         count = wanted
         loadedKey = key
         if Self.cache.count > 6 { Self.cache.removeAll() }
+        Self.cache[key] = result
+    }
+}
+
+
+/// Filmstrips for the joined clips: one per clip, each from that clip's own
+/// file, generated off the main thread, cached per URL plus tile count, and
+/// cancelled when the clip leaves the list.
+@MainActor
+final class MergeClipThumbnails: ObservableObject {
+    struct Strip {
+        var images: [Int: CGImage] = [:]
+        var count = 0
+    }
+
+    @Published private(set) var strips: [UUID: Strip] = [:]
+
+    private static var cache: [String: [Int: CGImage]] = [:]
+    private var tasks: [UUID: Task<Void, Never>] = [:]
+    private var keys: [UUID: String] = [:]
+
+    func sync(clips: [(id: UUID, url: URL, duration: Double, count: Int)]) {
+        let live = Set(clips.map(\.id))
+        for id in tasks.keys where !live.contains(id) {
+            tasks[id]?.cancel()
+            tasks[id] = nil
+        }
+        for id in strips.keys where !live.contains(id) {
+            strips[id] = nil
+            keys[id] = nil
+        }
+        for clip in clips {
+            let key = "\(clip.url.path)|\(clip.count)"
+            guard keys[clip.id] != key else { continue }
+            keys[clip.id] = key
+            tasks[clip.id]?.cancel()
+            if let cached = Self.cache[key] {
+                strips[clip.id] = Strip(images: cached, count: clip.count)
+                continue
+            }
+            // Keep the previous tiles on screen while a resize regenerates.
+            tasks[clip.id] = Task { [weak self] in
+                await self?.generate(id: clip.id, url: clip.url, duration: clip.duration,
+                                     wanted: clip.count, key: key)
+            }
+        }
+    }
+
+    private func generate(id: UUID, url: URL, duration: Double, wanted: Int, key: String) async {
+        try? await Task.sleep(nanoseconds: 150_000_000)
+        if Task.isCancelled { return }
+        let generator = AVAssetImageGenerator(asset: AVURLAsset(url: url))
+        generator.appliesPreferredTrackTransform = true
+        generator.maximumSize = CGSize(width: 320, height: 180)
+        let slack = CMTime(seconds: max(0.05, duration / Double(wanted) / 2), preferredTimescale: 600)
+        generator.requestedTimeToleranceBefore = slack
+        generator.requestedTimeToleranceAfter = slack
+
+        var times: [CMTime] = []
+        var indexByValue: [Int64: Int] = [:]
+        for (index, seconds) in TimelineClipMap.sampleTimes(duration: duration, count: wanted).enumerated() {
+            let time = CMTime(seconds: seconds, preferredTimescale: 600)
+            times.append(time)
+            indexByValue[time.value] = index
+        }
+
+        var result: [Int: CGImage] = [:]
+        var firstBatch = true
+        for await item in generator.images(for: times) {
+            if Task.isCancelled { generator.cancelAllCGImageGeneration(); return }
+            if case .success(let requested, let image, _) = item, let index = indexByValue[requested.value] {
+                result[index] = image
+                if firstBatch, result.count >= 3 {
+                    firstBatch = false
+                    strips[id] = Strip(images: result, count: wanted)
+                } else if !firstBatch, result.count % 4 == 0 {
+                    strips[id] = Strip(images: result, count: wanted)
+                }
+            }
+        }
+        if Task.isCancelled { return }
+        strips[id] = Strip(images: result, count: wanted)
+        if Self.cache.count > 12 { Self.cache.removeAll() }
         Self.cache[key] = result
     }
 }

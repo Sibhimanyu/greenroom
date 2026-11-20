@@ -191,10 +191,20 @@ final class CoordinatorController: ObservableObject {
         // A failed start is the exception to both guards below: it always needs
         // a card with a way out, wherever the panel is or is not.
         let failed = startReadiness.failure != nil
-        // A meeting start: the Control bar is the one status surface. The island
-        // only carries a failure (StartChoreography.surfaces).
+        // A meeting start: the island is the one status surface, with Cancel,
+        // until the meeting is live (StartChoreography.surfaces). A failure falls
+        // through to the cases below, as it always has. Cleared steps (live, or
+        // abandoned) fold the island without a "Live" beat: the bar takes over.
         if !recordFlowHUD, !failed, startInBar {
-            ReadinessHUDController.close()
+            guard !startReadiness.steps.isEmpty,
+                  let screen = DisplayResolver.mainDisplayScreen() ?? NSScreen.main else {
+                ReadinessHUDController.close()
+                return
+            }
+            ReadinessHUDController.show(
+                startReadiness, on: screen,
+                cancellable: StartChoreography.islandShowsCancel(.starting, recordStart: false),
+                onCancel: { [weak self] in self?.cancelStart() })
             return
         }
         // A Record start has no panel and no meeting: the island carries it,
@@ -274,24 +284,22 @@ final class CoordinatorController: ObservableObject {
         startInBar = false
     }
 
-    /// The words in the Control bar while a meeting starts; nil when it is not
-    /// starting (the bar is then the live bar).
+    /// Set while a meeting starts, nil otherwise: the "starting" flag Cancel
+    /// keys off. The words themselves are the island's (NotchStatusRules).
     @Published private(set) var startBarText: String?
     /// This start opened apps, which is what waiting for quiet screens guards.
     private var startOpenedApps = false
-    /// The Control bar carries this start, so the island stays shut for it
-    /// (until a failure). Cleared when the steps clear.
+    /// The island carries this meeting start (steps and Cancel, then a failure
+    /// if one comes). Cleared when the steps clear.
     private var startInBar = false
 
-    /// The click: the Control bar appears in its Starting state and Home steps
-    /// aside toward it. Before resetStartReadiness, so the island never draws.
+    /// The click: Home steps aside and the island takes the start's status. The
+    /// floating bar waits for the meeting to be live. Before resetStartReadiness,
+    /// so the island's first reading already has its steps.
     private func beginStartChoreography() {
         startBarText = StartChoreography.barText(.starting)
         startInBar = true
         ensureMeetingControls()
-        if let controls = meetingControls {
-            MeetingControlBarController.install(coordinator: self, model: controls, starting: true)
-        }
         // Home only steps aside if it was on screen; a start from the hotkey or
         // the menu bar leaves it alone.
         if MainWindow.current?.isVisible == true {
@@ -299,7 +307,17 @@ final class CoordinatorController: ObservableObject {
         }
     }
 
-    /// The bar's Cancel: abandons a start in flight. Home comes back as it was.
+    /// Where Home steps aside toward and comes back from: the bar once it is up,
+    /// else the island's spot under the menu bar (no notch needed).
+    private var startSurfaceFrame: NSRect? {
+        if let bar = MeetingControlBarController.currentFrame { return bar }
+        guard let screen = DisplayResolver.mainDisplayScreen() ?? NSScreen.main else { return nil }
+        let size = NotchGeometry.bodySize(for: .none)
+        return NSRect(x: screen.frame.midX - size.width / 2, y: screen.visibleFrame.maxY - size.height - 6,
+                      width: size.width, height: size.height)
+    }
+
+    /// The island's Cancel: abandons a start in flight. Home comes back as it was.
     func cancelStart() {
         guard startBarText != nil, !isStopping else { return }
         log("Start cancelled.")
@@ -1291,7 +1309,7 @@ final class CoordinatorController: ObservableObject {
                 MainWindow.current?.orderOut(nil)
             case .hideForStart:
                 if let window = MainWindow.current {
-                    MainWindowTransition.hide(window, toward: MeetingControlBarController.currentFrame)
+                    MainWindowTransition.hide(window, toward: startSurfaceFrame)
                 }
             case .showAfterStart:
                 if let window = MainWindow.current {
@@ -1300,7 +1318,7 @@ final class CoordinatorController: ObservableObject {
                        NSScreen.screens.contains(where: { $0.visibleFrame.intersects(remembered) }) {
                         frame = remembered
                     }
-                    MainWindowTransition.show(window, from: MeetingControlBarController.currentFrame, to: frame)
+                    MainWindowTransition.show(window, from: startSurfaceFrame, to: frame)
                     showed = true
                 }
             case .restoreFrame:
@@ -1635,8 +1653,8 @@ final class CoordinatorController: ObservableObject {
 
                 try Task.checkCancellation()
                 mark(.meeting, .done)
-                // The bar has been up since the click, in its Starting state. Now it
-                // goes live. The Meeting window opens only if somebody is already in
+                // The island has carried the start since the click; the floating bar
+                // first appears now, live. The Meeting window opens only if somebody is already in
                 // the meeting; alone, the bar is the surface and the window comes up
                 // when the first person joins (never opened and then shrunk away).
                 let customUI = zoomChatClient.didUseCustomUI
@@ -1659,7 +1677,9 @@ final class CoordinatorController: ObservableObject {
                 // Zoom's own window keeps Zoom's controls and gets no bar.)
                 startBarText = nil
                 if StartChoreography.barKeptAfterLive(arranged: sessionArranges, customUI: customUI) {
-                    MeetingControlBarController.finishStarting(windowOpening: opensWindow)
+                    if let controls = meetingControls {
+                        MeetingControlBarController.install(coordinator: self, model: controls)
+                    }
                 } else {
                     MeetingControlBarController.close(fade: false)
                 }
@@ -2778,6 +2798,12 @@ final class CoordinatorController: ObservableObject {
     /// What the armed button's callout says, right above it.
     @Published private(set) var exitAskTitle = ""
     @Published private(set) var exitAskDetail = ""
+    /// When the armed End started waiting (drives the button's countdown fill),
+    /// and the same wait's length. Nil when nothing is armed.
+    @Published private(set) var exitAskStartedAt: Date?
+    private(set) var exitAskTimeout: TimeInterval = IslandRules.confirmTimeout
+    /// End's own two-step (App/LiveExitRules.swift): idle, confirming, ending.
+    private var endConfirm = EndConfirm()
     private var exitAskTimer: Task<Void, Never>?
     private var exitAskMonitors: [Any] = []
     /// Which arming a click belongs to, so a late check never disarms a newer one.
@@ -2787,9 +2813,12 @@ final class CoordinatorController: ObservableObject {
         disarmExit()
         exitAskTitle = title
         exitAskDetail = detail
+        exitAskTimeout = ask == .end ? EndConfirm.timeout : IslandRules.confirmTimeout
+        exitAskStartedAt = Date()
         exitAsk = ask
+        let wait = exitAskTimeout
         exitAskTimer = Task { @MainActor [weak self] in
-            try? await Task.sleep(nanoseconds: UInt64(IslandRules.confirmTimeout * 1_000_000_000))
+            try? await Task.sleep(nanoseconds: UInt64(wait * 1_000_000_000))
             guard !Task.isCancelled else { return }
             self?.disarmExit()
         }
@@ -2837,6 +2866,8 @@ final class CoordinatorController: ObservableObject {
         exitAskTimer = nil
         for m in exitAskMonitors { NSEvent.removeMonitor(m) }
         exitAskMonitors = []
+        endConfirm.cancel()
+        exitAskStartedAt = nil
         if exitAsk != nil { exitAsk = nil }
     }
 
@@ -4267,9 +4298,11 @@ final class CoordinatorController: ObservableObject {
         // End (the button turns into Confirm), the second ends. No alert (it
         // went to the main window's desktop, which may be empty) and no
         // buttons in the island, which only says what Confirm will do.
-        if exitAsk == .end {
+        if exitAsk == .end, endConfirm.press(now: Date()) == .end {
+            // One click on Confirm ends it, whatever else is on screen.
             disarmExit()
             stop()
+            endConfirm.reset()
             return
         }
         let ask = LiveExit.endPrompt(liveExitState)
@@ -4277,6 +4310,7 @@ final class CoordinatorController: ObservableObject {
         let title = action == .leaveMeeting ? "Leave the meeting?" : "End the meeting for everyone?"
         let again = action == .leaveMeeting ? "Press Confirm to leave." : "Press Confirm to end it."
         armExit(.end, title: title, detail: "\(again) Esc keeps it going.")
+        _ = endConfirm.press(now: exitAskStartedAt ?? Date())
     }
 
     /// What the armed End does, for the buttons' Confirm help.

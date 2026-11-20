@@ -4591,11 +4591,13 @@ enum ReadinessHUDController {
     /// `screen` is unused: the pill goes on the screen the person is working on
     /// (NotchStatusController.swift).
     static func show(_ readiness: ParticipantGridWindowController.Readiness,
-                     on screen: NSScreen) {
+                     on screen: NSScreen, cancellable: Bool = false,
+                     onCancel: (() -> Void)? = nil) {
         let input = NotchInput(
             steps: readiness.steps.map { NotchStep(label: $0.label, state: NotchStepState($0.state)) },
             failure: readiness.failure,
-            detail: readiness.detail)
+            detail: readiness.detail,
+            cancellable: cancellable && readiness.failure == nil)
         // An empty reading is the end of the start: the island says Live and folds.
         let carrying = !readiness.steps.isEmpty || readiness.failure != nil
         if carrying, !isShowing { shownAt = Date() }
@@ -4604,7 +4606,8 @@ enum ReadinessHUDController {
             NotchStatusController.shared.update(
                 input,
                 onAction: { ParticipantGridWindowController.readinessTryAgain?() },
-                onDismiss: { ParticipantGridWindowController.readinessDismiss?() })
+                onDismiss: { ParticipantGridWindowController.readinessDismiss?() },
+                onCancel: onCancel)
         }
     }
 

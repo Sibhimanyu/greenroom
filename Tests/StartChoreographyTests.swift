@@ -2,11 +2,19 @@ import XCTest
 
 final class StartChoreographyTests: XCTestCase {
 
-    func testStartingShowsTheBarAloneAndHidesHome() {
+    func testStartingShowsTheIslandAloneAndHidesHome() {
         let s = StartChoreography.surfaces(.starting)
         XCTAssertFalse(s.home)
-        XCTAssertTrue(s.bar)
-        XCTAssertFalse(s.island, "the bar is the only status surface while starting")
+        XCTAssertFalse(s.bar, "the floating bar waits for the meeting to be live")
+        XCTAssertTrue(s.island, "the island is the only status surface while starting")
+    }
+
+    func testTheIslandOffersCancelOnlyForAMeetingStart() {
+        XCTAssertTrue(StartChoreography.islandShowsCancel(.starting, recordStart: false))
+        XCTAssertFalse(StartChoreography.islandShowsCancel(.starting, recordStart: true))
+        XCTAssertFalse(StartChoreography.islandShowsCancel(.live, recordStart: false))
+        XCTAssertFalse(StartChoreography.islandShowsCancel(.failed, recordStart: false))
+        XCTAssertFalse(StartChoreography.islandShowsCancel(.idle, recordStart: false))
     }
 
     func testAFailureBringsHomeBackAndKeepsTheErrorOnTheIsland() {

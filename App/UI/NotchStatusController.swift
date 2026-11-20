@@ -33,6 +33,8 @@ final class NotchStatusModel: ObservableObject {
     var onAction: (() -> Void)?
     var onDismiss: (() -> Void)?
     var onCancelCountdown: (() -> Void)?
+    /// Cancel on a meeting start in flight (the island is its only surface).
+    var onCancelStart: (() -> Void)?
     var onUpload: ((UUID) -> Void)?
     var onNotNow: ((UUID) -> Void)?
     var onToastTap: ((UUID) -> Void)?
@@ -91,9 +93,11 @@ final class NotchStatusController {
 
     /// Feed the readiness reading. `onAction` is the fix button (Try again),
     /// `onDismiss` the cross.
-    func update(_ input: NotchInput, onAction: @escaping () -> Void, onDismiss: @escaping () -> Void) {
+    func update(_ input: NotchInput, onAction: @escaping () -> Void, onDismiss: @escaping () -> Void,
+                onCancel: (() -> Void)? = nil) {
         model.onAction = onAction
         model.onDismiss = onDismiss
+        model.onCancelStart = onCancel
         let next = NotchStatusRules.next(from: phase, input: input)
         guard next != phase else { return }
         queue.setStatus(next)
@@ -604,6 +608,18 @@ private struct NotchPillView: View {
                 .lineLimit(1)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 NotchRing(progress: progress, reduceMotion: model.reduceMotion)
+                if progress.cancellable {
+                    Button { model.onCancelStart?() } label: {
+                        Text("Cancel")
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundStyle(Color.white)
+                            .padding(.horizontal, 10).padding(.vertical, 4)
+                            .background(Color.white.opacity(0.14), in: Capsule())
+                    }
+                    .buttonStyle(.plain)
+                    .help("Stop starting the meeting")
+                    .accessibilityLabel("Cancel starting the meeting")
+                }
             }
             .help(progress.detail ?? "")
             .accessibilityElement(children: .ignore)

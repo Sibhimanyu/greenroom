@@ -125,12 +125,8 @@ struct BarRedButton: View {
                 .animation(.snappy(duration: 0.2), value: armed)
         }
         .buttonStyle(.plain)
-        // Asked where you press: a callout right above the button, never the
-        // island (owner, 2026-11-16).
-        .popover(isPresented: Binding(get: { armed && !armedTitle.isEmpty }, set: { _ in }),
-                 arrowEdge: .top) {
-            ConfirmCallout(title: armedTitle, detail: armedDetail)
-        }
+        // No popover: it is its own window and ate the first click on Confirm
+        // (owner, 2026-11-20). The question is drawn inside the bar instead.
         .help(armed ? "\(armedHelp). Esc keeps going." : help)
         .accessibilityLabel(armed ? "Confirm: \(armedHelp)" : spoken)
     }
@@ -199,6 +195,8 @@ struct MeetingBarActions {
     /// While recording: arms Stop, and the second press stops (Confirm in place).
     var stopRecording: () -> Void = {}
     var end: () -> Void = {}
+    /// "Keep going" in the confirm state: End goes back to End.
+    var keepGoing: () -> Void = {}
     /// Built when the menu opens, so each shows the state of that moment.
     var recordMenu: () -> [MenuEntry] = { [] }
     /// What the class sees, your look, the layout (PresentMenuSpec.swift).
@@ -219,6 +217,58 @@ struct MeetingBarContent: View {
     private typealias L = MeetingBarLayout
 
     var body: some View {
+        Group {
+            if s.endArmed { endConfirmStrip.transition(.opacity) } else { row.transition(.opacity) }
+        }
+        .animation(.easeOut(duration: 0.15), value: s.endArmed)
+        .frame(width: L.width(videoButtons: s.videoButtons), height: L.height)
+    }
+
+    /// The confirm state: the whole bar becomes the question and its two
+    /// answers, drawn in the bar's own view (no popover, no second window), so
+    /// one click on "End for everyone" is the click.
+    private var endConfirmStrip: some View {
+        HStack(spacing: 8) {
+            Text(s.endAskTitle)
+                .font(.system(size: 13, weight: .semibold))
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+                .padding(.leading, 12)
+            Spacer(minLength: 8)
+            Button(action: a.keepGoing) {
+                Text("Keep going")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(Color.primary)
+                    .padding(.horizontal, 12)
+                    .frame(height: 28)
+                    .background(Color.primary.opacity(0.12), in: RoundedRectangle(cornerRadius: 10))
+                    .contentShape(RoundedRectangle(cornerRadius: 10))
+            }
+            .buttonStyle(.plain)
+            .help("Keep the meeting going. Esc does the same.")
+            Button(action: a.end) {
+                Text(s.endName == LiveExitChoice.leaveMeeting.title ? "Leave" : "End for everyone")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 12)
+                    .frame(height: 28)
+                    .background {
+                        ZStack(alignment: .leading) {
+                            RoundedRectangle(cornerRadius: 10).fill(Color.red.opacity(0.45))
+                            EndCountdownFill(startedAt: s.endAskStartedAt, timeout: s.endAskTimeout)
+                        }
+                    }
+                    .overlay { RoundedRectangle(cornerRadius: 10).strokeBorder(Color.white.opacity(0.85), lineWidth: 1.5) }
+                    .contentShape(RoundedRectangle(cornerRadius: 10))
+            }
+            .buttonStyle(.plain)
+            .help(s.endAskDetail)
+            .accessibilityLabel("Confirm: \(s.endName)")
+        }
+        .padding(.trailing, L.trailingPad)
+    }
+
+    private var row: some View {
         HStack(spacing: L.spacing) {
             // Grouped by what each control is about (owner, 2026-11-17):
             // the meeting's windows (smaller, bigger, which views) | you
@@ -244,12 +294,10 @@ struct MeetingBarContent: View {
             BarDivider()
             BarRedButton(title: "End", width: L.end,
                          help: MeetingBarModel.help(s.endName, .endSession, bindings),
-                         spoken: s.endName, armed: s.endArmed, armedHelp: s.endName,
-                         armedTitle: s.endAskTitle, armedDetail: s.endAskDetail, action: a.end)
+                         spoken: s.endName, action: a.end)
         }
         .padding(.leading, L.leadingPad)
         .padding(.trailing, L.trailingPad)
-        .frame(width: L.width(videoButtons: s.videoButtons), height: L.height)
     }
 
     private func help(_ name: String, _ action: ShortcutAction?) -> String {
@@ -375,10 +423,6 @@ struct MeetingBarContent: View {
             .animation(.snappy(duration: 0.2), value: s.recStopArmed)
         }
         .buttonStyle(.plain)
-        .popover(isPresented: Binding(get: { s.recStopArmed && !s.endAskTitle.isEmpty }, set: { _ in }),
-                 arrowEdge: .top) {
-            ConfirmCallout(title: s.endAskTitle, detail: s.endAskDetail)
-        }
         .help(s.recStopArmed ? "Stop and save the recording. Esc keeps recording."
                              : help("\(pill.help). Click to stop", .toggleRecording))
         .accessibilityLabel(s.recStopArmed ? "Confirm: stop and save the recording" : "Stop recording. \(pill.spoken.replacingOccurrences(of: ". Menu", with: ""))")
@@ -476,5 +520,25 @@ struct MeetingBarContent: View {
     private var collapseButton: some View {
         let c = MeetingBarModel.collapseCell(bindings)
         return BarIconButton(symbol: c.symbol, help: c.help, spoken: c.spoken, action: a.collapse)
+    }
+}
+
+
+/// The red fill that drains over the confirm wait, so the bar never silently
+/// goes back to End. Starts from what is left, not from full, on a redraw.
+struct EndCountdownFill: View {
+    var startedAt: Date?
+    var timeout: TimeInterval
+    @State private var drained = false
+
+    var body: some View {
+        GeometryReader { geo in
+            let left = max(0, timeout - Date().timeIntervalSince(startedAt ?? Date()))
+            let full = left / max(timeout, 0.1)
+            Rectangle().fill(Color.red)
+                .frame(width: geo.size.width * (drained ? 0 : full))
+                .onAppear { withAnimation(.linear(duration: left)) { drained = true } }
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 10))
     }
 }

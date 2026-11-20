@@ -915,6 +915,8 @@ private struct MeetingControlBarView: View {
         s.recStopArmed = coordinator.exitAsk == .stopRecording
         s.endAskTitle = coordinator.exitAskTitle
         s.endAskDetail = coordinator.exitAskDetail
+        s.endAskStartedAt = coordinator.exitAskStartedAt
+        s.endAskTimeout = coordinator.exitAskTimeout
         return s
     }
 
@@ -933,6 +935,7 @@ private struct MeetingControlBarView: View {
         a.stopRecording = { coordinator.confirmStopRecording() }
         // Asks first, exactly as the close and quit prompts do.
         a.end = { coordinator.confirmAndStop() }
+        a.keepGoing = { coordinator.disarmExit() }
         a.recordMenu = { [bindings = shortcuts.bindings] in
             var r = MeetingBarModel.RecordActions()
             r.start = { coordinator.toggleRecording() }

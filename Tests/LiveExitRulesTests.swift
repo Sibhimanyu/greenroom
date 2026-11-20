@@ -104,3 +104,44 @@ final class LiveExitRulesTests: XCTestCase {
         XCTAssertFalse(LiveExit.reopenHandledByMeeting(s))
     }
 }
+
+final class EndConfirmTests: XCTestCase {
+    private let t0 = Date(timeIntervalSince1970: 1_000)
+
+    func testFirstPressArmsSecondEnds() {
+        var c = EndConfirm()
+        XCTAssertEqual(c.press(now: t0), .arm)
+        XCTAssertTrue(c.isConfirming)
+        XCTAssertEqual(c.press(now: t0.addingTimeInterval(0.1)), .end)
+        XCTAssertTrue(c.isEnding)
+        XCTAssertEqual(c.press(now: t0.addingTimeInterval(0.2)), .none)
+    }
+
+    func testCancelReturnsToIdleButNotWhileEnding() {
+        var c = EndConfirm()
+        _ = c.press(now: t0)
+        c.cancel()
+        XCTAssertEqual(c.phase, .idle)
+        _ = c.press(now: t0); _ = c.press(now: t0)
+        c.cancel()
+        XCTAssertTrue(c.isEnding)
+    }
+
+    func testExpiresAfterTimeoutOnly() {
+        var c = EndConfirm()
+        _ = c.press(now: t0)
+        XCTAssertFalse(c.expire(now: t0.addingTimeInterval(EndConfirm.timeout - 0.1)))
+        XCTAssertTrue(c.expire(now: t0.addingTimeInterval(EndConfirm.timeout)))
+        XCTAssertEqual(c.phase, .idle)
+        XCTAssertFalse(c.expire(now: t0.addingTimeInterval(100)))
+    }
+
+    func testCountdownFillRunsFromOneToZero() {
+        var c = EndConfirm()
+        XCTAssertEqual(c.remaining(now: t0), 0)
+        _ = c.press(now: t0)
+        XCTAssertEqual(c.remaining(now: t0), 1, accuracy: 0.001)
+        XCTAssertEqual(c.remaining(now: t0.addingTimeInterval(EndConfirm.timeout / 2)), 0.5, accuracy: 0.001)
+        XCTAssertEqual(c.remaining(now: t0.addingTimeInterval(99)), 0)
+    }
+}

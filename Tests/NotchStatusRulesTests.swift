@@ -10,6 +10,26 @@ final class NotchStatusRulesTests: XCTestCase {
         }
     }
 
+    func testACancellableStartKeepsCancelAndTakesClicks() {
+        let phase = NotchStatusRules.next(from: .hidden,
+            input: NotchInput(steps: steps(done: 1), cancellable: true))
+        XCTAssertTrue(phase.isCancellable)
+        XCTAssertTrue(IslandContent.status(phase).isInteractive)
+    }
+
+    func testAPlainWorkingStartIsNotCancellableOrInteractive() {
+        let phase = NotchStatusRules.next(from: .hidden, input: NotchInput(steps: steps(done: 1)))
+        XCTAssertFalse(phase.isCancellable)
+        XCTAssertFalse(IslandContent.status(phase).isInteractive)
+    }
+
+    func testAFailureDropsCancelForItsOwnActions() {
+        let phase = NotchStatusRules.next(from: .hidden,
+            input: NotchInput(steps: steps(done: 1), failure: "No camera", cancellable: true))
+        XCTAssertFalse(phase.isCancellable)
+        XCTAssertTrue(IslandContent.status(phase).isInteractive)
+    }
+
     func testStepWords() {
         XCTAssertEqual(NotchStatusRules.words(forStep: "Workspace"), "Opening your apps\u{2026}")
         XCTAssertEqual(NotchStatusRules.words(forStep: "Picture"), "Getting your camera and screen ready\u{2026}")

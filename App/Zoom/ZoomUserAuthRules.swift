@@ -41,6 +41,8 @@ enum ZoomOAuth {
     static let requiredScopes = [
         "user:read:user", "user:read:token", "user:read:zak",
         "meeting:read:list_meetings", "meeting:write:meeting",
+        "meeting:read:meeting", "meeting:update:meeting",
+        "meeting:update:status", "meeting:delete:meeting",
     ]
 
     /// Zoom ignores the port for a loopback redirect but not the path.

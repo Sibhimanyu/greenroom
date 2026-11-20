@@ -124,10 +124,18 @@ final class ZoomUserAuthRulesTests: XCTestCase {
         XCTAssertEqual(ZoomScopeCheck.check(required: required + ["c:new"], granted: ["a:read", "b:write"]), .needsMore(["c:new"]))
     }
 
-    func testTodaysRequiredScopesAreTheFiveGranted() {
-        XCTAssertEqual(Set(ZoomOAuth.requiredScopes), ["user:read:user", "user:read:token", "user:read:zak",
-                                                       "meeting:read:list_meetings", "meeting:write:meeting"])
+    func testTodaysRequiredScopesAndTheUpgradeFromFive() {
+        let five = "user:read:user user:read:token user:read:zak meeting:read:list_meetings meeting:write:meeting"
+        let added: Set<String> = ["meeting:read:meeting", "meeting:update:meeting",
+                                  "meeting:update:status", "meeting:delete:meeting"]
+        XCTAssertEqual(Set(ZoomOAuth.requiredScopes), ZoomScopeCheck.parse(five).union(added))
+        // Someone who signed in with the first five is asked for exactly the four new ones.
+        guard case .needsMore(let missing) = ZoomScopeCheck.check(required: ZoomOAuth.requiredScopes,
+                                                                  granted: ZoomScopeCheck.parse(five)) else {
+            return XCTFail("expected needsMore")
+        }
+        XCTAssertEqual(Set(missing), added)
         XCTAssertEqual(ZoomScopeCheck.check(required: ZoomOAuth.requiredScopes,
-                                            granted: ZoomScopeCheck.parse("user:read:user user:read:token user:read:zak meeting:read:list_meetings meeting:write:meeting")), .ok)
+                                            granted: ZoomScopeCheck.parse(five + " " + added.joined(separator: " "))), .ok)
     }
 }

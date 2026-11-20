@@ -259,8 +259,8 @@
   <div class="wrap">
     <div class="sec-head">
       <p class="kicker">01 · Before the first Start</p>
-      <h2>Fifteen minutes, once</h2>
-      <p>First launch opens a built-in setup guide that tracks each of these live. It is a seven-page window (Welcome, Zoom, Layout, Access, YouTube, Cues, Finish). Reopen it any time from the
+      <h2>A few minutes, once</h2>
+      <p>First launch opens a built-in setup guide that tracks each of these live. It is a seven-page window (Welcome, Zoom, Layout, Access, YouTube, Cues, Finish); close it from any page (Esc), your changes save as you go, and the progress dots jump between steps. Reopen it any time from the
       <strong>?</strong> button in the main window. The short version:</p>
     </div>
     <div class="runlog">
@@ -278,14 +278,26 @@
       <div class="run">
         <div class="n">02</div>
         <div>
-          <h3>Import the settings file</h3>
-          <p>Whoever set Greenroom up for your school exports one file (Settings → Transfer → <strong>Export Settings…</strong>)
-          and hands it to you. Import it in the same tab and every Zoom credential and preference is in place. The file
-          holds the credentials in plain text by design, so pass it directly (AirDrop is fine) and delete it after importing.</p>
+          <h3>Sign in with Zoom</h3>
+          <p>Open Settings → Zoom (or the setup guide's Zoom page) and press <strong>Sign in with Zoom</strong>. Your browser opens, you approve Greenroom on your own Zoom account, and you are back. Greenroom never sees your Zoom password. That is the whole Zoom setup: no Marketplace apps to build, nothing to paste.
+          The sign-in asks for nine permissions (read your profile, your hosting key and your meetings; create, edit, end and delete your meetings). If Zoom later needs one more, Greenroom shows <strong>Greenroom needs one more Zoom permission</strong> in Settings, on Home and in the menu bar; press <strong>Sign in again</strong>.
+          One small signing service, run by Greenroom's publisher, vouches for your Zoom sign-in so the built-in meeting client can start. It keeps nothing; the <a href="privacy.html">privacy policy</a> says what it sees.</p>
         </div>
       </div>
       <div class="run">
         <div class="n">03</div>
+        <div>
+          <h3>Only if you would rather use your own Zoom apps: import a settings file, or build the apps</h3>
+          <p>Under <strong>Use your own Zoom apps (advanced)</strong> (folded away in Settings → Zoom and in the setup guide) the older route still works, and is used only while you are not signed in. Either import a settings file from whoever set Greenroom up for your school (Settings → Transfer → <strong>Import Settings…</strong>), or make the two apps in the Zoom Marketplace yourself, on one Zoom account where you may build apps and add admin scopes:</p>
+          <ul>
+            <li><strong>Meeting and chat</strong>: Build App → <strong>General App</strong>; under Features → Embed turn on <strong>Meeting SDK</strong>; copy the Client ID and Secret from Basic Information.</li>
+            <li><strong>Create and host meetings</strong>: Build App → <strong>Server-to-Server OAuth</strong>; copy the Account ID, Client ID and Secret from App Credentials. Under Scopes → Add Scopes, copy one name from the list in the setup guide, paste it in Zoom's search and pick the match, seven times; save. Finish Information, then open Activation and <strong>activate</strong> the app.</li>
+          </ul>
+          <p>Then press <strong>Check Zoom setup</strong> in the setup guide: eleven checks (Meeting SDK credentials, hosting credentials and activation, each of the seven hosting scopes, the scheduled-meetings lookup and the hosting token), shown in a panel with <strong>Check again</strong>. They never create or end a meeting.</p>
+        </div>
+      </div>
+      <div class="run">
+        <div class="n">04</div>
         <div>
           <h3>Say yes to the permission prompts, each once</h3>
           <p>macOS asks for each one the first time it's needed. Approve them all and every later Start is silent.</p>
@@ -331,7 +343,7 @@
       <div class="card">
         <span class="tag">No meeting</span>
         <h3>Record</h3>
-        <p>Keeps what is on your screen, with you in it, with no meeting and no Zoom credentials. <strong>Start Recording</strong> builds the picture, counts down on the island, then records; the main window steps aside and a recording bar, with a <strong>Notes</strong> button for timed notes, takes over. Cancel returns Home unchanged. See <a href="#feedback">Get feedback</a> below for what to do with the recording.</p>
+        <p>Keeps what is on your screen, with you in it, with no meeting and no Zoom account. <strong>Start Recording</strong> builds the picture, counts down on the island, then records; the main window steps aside and a recording bar, with a <strong>Notes</strong> button for timed notes, takes over. Cancel returns Home unchanged. See <a href="#feedback">Get feedback</a> below for what to do with the recording.</p>
       </div>
       <div class="card">
         <span class="tag">Setup</span>
@@ -359,7 +371,7 @@
       <div class="card">
         <span class="tag">Help</span>
         <h3>The ? button</h3>
-        <p>Reopens the setup guide, the same seven pages first-run showed, including the Zoom credential check and the permission checklist.</p>
+        <p>Reopens the setup guide, the same seven pages first-run showed, including Sign in with Zoom, the Zoom setup checks for your own apps and the permission checklist.</p>
       </div>
     </div>
   </div>
@@ -396,7 +408,7 @@
       <table class="stack">
         <thead><tr><th>Keys</th><th>Does</th><th>Notes</th></tr></thead>
         <tbody>
-          <tr><td class="keys" data-label="Keys"><kbd>⌥⌘G</kbd></td><td data-label="Does"><strong>Start</strong> the meeting</td><td data-label="Notes">Same as the Start button; same gating (credentials and a meeting must be set).</td></tr>
+          <tr><td class="keys" data-label="Keys"><kbd>⌥⌘G</kbd></td><td data-label="Does"><strong>Start</strong> the meeting</td><td data-label="Notes">Same as the Start button; same gating (signed in with Zoom, or your own Zoom apps filled in, and a meeting set).</td></tr>
           <tr><td class="keys" data-label="Keys"><kbd>⌥⌘X</kbd></td><td data-label="Does"><strong>End</strong> the meeting</td><td data-label="Notes">Asks before it ends the meeting. Leaves or ends the meeting, closes the chat, finishes any recording, stops the camera and screen capture.</td></tr>
           <tr><td class="keys" data-label="Keys"><kbd>⌥⌘R</kbd></td><td data-label="Does"><strong>Record</strong> / stop recording</td><td data-label="Notes">Records exactly what everyone sees: the composited screen with you in it. The menu bar shows <strong>REC</strong> while it runs.</td></tr>
           <tr><td class="keys" data-label="Keys"><kbd>⌥⇧P</kbd></td><td data-label="Does"><strong>Pause</strong> / resume the recording</td><td data-label="Notes">Pauses the recording file only; the meeting carries on, and the file has no gap. The bar shows &ldquo;Paused&rdquo;.</td></tr>
@@ -507,13 +519,12 @@
         </div>
       </div>
       <div class="setting">
-        <div class="tab">Zoom <span>usually already filled</span></div>
+        <div class="tab">Zoom <span>sign in, then done</span></div>
         <div>
           <ul>
-            <li><strong>Meeting SDK app</strong>: Client ID and Secret. Powers the built-in meeting client and the chat window.</li>
-            <li><strong>Server-to-Server OAuth app</strong>: Account ID, Client ID and Secret. Powers New Meeting and the scheduled list. A second Marketplace app on the same Zoom account &mdash; Zoom does not let one app do both jobs.</li>
-            <li>All five arrive in the settings file; you only type them when setting a school up from scratch.</li>
-            <li><strong>Your display name</strong>: what everyone sees you as.</li>
+            <li><strong>Zoom account → Sign in with Zoom</strong>: opens your browser once. Afterwards it reads <em>Signed in as your name · email</em> with <strong>Sign out</strong>, which asks Zoom to revoke the connection and always forgets it on this Mac. Greenroom then starts, lists, edits and ends meetings as you. Press <strong>Cancel</strong> while it waits for the browser.</li>
+            <li><strong>Use your own Zoom apps (advanced)</strong>, folded away: the <strong>Meeting SDK</strong> app (Client ID and Secret; powers the built-in meeting client and chat) and the <strong>Server-to-Server OAuth</strong> app (Account ID, Client ID and Secret; powers New and the scheduled list; a copyable list of seven scopes). Two Marketplace apps on the same Zoom account, because Zoom does not let one app do both jobs. Used only when you are not signed in. Each shows Ready, Not set up or what is missing.</li>
+            <li><strong>Display name</strong>: what everyone sees you as. <strong>Custom meeting UI</strong> (experimental): Greenroom's own meeting window instead of Zoom's; needs a relaunch.</li>
           </ul>
         </div>
       </div>
@@ -546,15 +557,17 @@
         <div class="tab">Transfer <span>the one file</span></div>
         <div>
           <ul>
-            <li><strong>Import Settings…</strong> is how a new Mac gets everything at once. <strong>Export Settings…</strong> is how you hand it on; it confirms first because the file carries the Zoom credentials in plain text.</li>
+            <li><strong>Import Settings…</strong> is how a new Mac gets everything at once. <strong>Export Settings…</strong> is how you hand it on (it saves <code>Greenroom Settings.json</code>).</li>
+            <li>The file holds your preferences (webcam, layouts, shortcuts, Cues, Get feedback, YouTube choices and the rest) and the secrets you typed: the Zoom Meeting SDK and Server-to-Server credentials and the YouTube client ID and secret, in plain text. Export confirms first (<strong>Export Plaintext File</strong>).</li>
+            <li>It does <strong>not</strong> carry your Zoom sign-in. That stays on your Mac (the refresh token is in the Keychain), so whoever imports the file presses Sign in with Zoom on their own account.</li>
           </ul>
         </div>
       </div>
           </div>
     <div class="callout amber">
-      <h3>Credentials live in plain text on this Mac</h3>
-      <p>Zoom app credentials are kept in Greenroom's local preferences unencrypted and never leave the Mac except to Zoom.
-      They are app-level keys, not your Zoom password, and revocable in the Zoom Marketplace. The <a href="how-it-works.html#caveats">Privacy &amp; safety page</a> says so in full.</p>
+      <h3>Pasted credentials live in plain text; your Zoom sign-in does not</h3>
+      <p>If you use your own Zoom apps, their credentials (and any YouTube client secret) are kept in Greenroom's local preferences unencrypted and never leave the Mac except to Zoom and Google. They are app-level keys, not your Zoom password, and revocable in the Zoom Marketplace.
+      With Sign in with Zoom there is nothing to paste: the refresh token sits in the macOS Keychain (this Mac only, after first unlock) and the short-lived access token stays in memory. The <a href="how-it-works.html#caveats">Privacy &amp; safety page</a> says so in full.</p>
     </div>
   </div>
 </section>
@@ -601,7 +614,7 @@
       <p class="kicker">08 · Get feedback</p>
       <h2>Record first, then get a transcript, counts and a report</h2>
       <p>Nothing is processed while you record. Open the session in Sessions and press <strong>Get feedback</strong>. It works on a class, a
-      Record session, a meeting recording or an older presentation, needs no meeting and no Zoom credentials, and runs on macOS 14
+      Record session, a meeting recording or an older presentation, needs no meeting and no Zoom account, and runs on macOS 14
       or later; only one way of writing the feedback needs macOS 26.</p>
     </div>
     <div class="runlog">
@@ -677,7 +690,7 @@
       </div>
       <div class="card">
         <h3>Start fails to join a meeting</h3>
-        <p>The built-in client can only join meetings hosted under the same Zoom account as your credentials (Zoom's rule, error 63). Greenroom says so and stops; there is no fallback to the Zoom app, because only Greenroom's own client can send your picture. Ask the host to run the meeting from your account, or use New Meeting.</p>
+        <p>The built-in client can only join meetings hosted under the same Zoom account you signed in with, or whose apps you pasted (Zoom's rule, error 63). Greenroom says so and stops; there is no fallback to the Zoom app, because only Greenroom's own client can send your picture. Ask the host to run the meeting from your account, or use New Meeting.</p>
       </div>
       <div class="card">
         <h3>The webcam edges look rough</h3>

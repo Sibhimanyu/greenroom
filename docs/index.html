@@ -69,18 +69,32 @@
 
   .seq { position: relative; }
   .frames { display: grid; place-items: center; }
-  .frame { grid-area: 1 / 1; opacity: 0; visibility: hidden; }
+  .frame { grid-area: 1 / 1; opacity: 0; visibility: hidden; transition: opacity .22s ease; }
   .frame.on { opacity: 1; visibility: visible; }
-  .seq-start .frame[src*="island"] { width: min(100%, 640px); }
+  picture.frame > img { display: block; width: 100%; height: auto; }
   .seq-nav { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 24px; }
   .seq-nav button { font: 600 13.5px/1 var(--mono); color: var(--body); background: #fff; border: 1px solid var(--line); border-radius: 8px; padding: 9px 12px; cursor: pointer; transition: background .2s, color .2s, border-color .2s; }
   .seq-nav button:hover { border-color: var(--faint); }
   .seq-nav button[aria-current="true"] { background: var(--brand-green); border-color: var(--brand-green); color: #fff; }
   .seq-cap { margin-top: 16px; min-height: 3.2em; display: grid; font-size: 17px; color: var(--ink); font-weight: 600; }
-  .seq-cap span { grid-area: 1 / 1; opacity: 0; } .seq-cap span.on { opacity: 1; }
-  .seq-start .frames { padding: 56px 24px; background: #fff; border: 1px solid var(--line); border-radius: 16px; margin-top: 40px; }
+  .seq-cap span { grid-area: 1 / 1; opacity: 0; transition: opacity .2s; } .seq-cap span.on { opacity: 1; }
+
+  /* Start: a wide soft-grey stage. The island hangs from its top edge like the real notch; the bars sit mid-stage. */
+  .seq-start .frames { margin-top: 40px; min-height: 300px; padding: 0 32px; background: linear-gradient(#eceef2, #dfe3e9); border: 1px solid var(--line); border-radius: 24px; overflow: hidden; }
+  .seq-start .frame { width: min(100%, 880px); }
+  .seq-start .frame.bar { width: 100%; }
   .seq-start .seq-nav { justify-content: center; }
-  .seq-start .seq-cap { text-align: center; }
+  .seq-start .seq-cap { text-align: center; font-size: clamp(19px, 2.4vw, 24px); font-weight: 700; letter-spacing: -.01em; margin-top: 22px; }
+  .seq-start .frame:not(.bar) { align-self: start; }
+
+  /* Better: one big screenshot, the others one click away. */
+  .seq-tabs .frames { margin-top: 32px; }
+  .seq-tabs .frame { width: min(100%, 880px); }
+  .seq-tabs .seq-nav { justify-content: center; margin-top: 40px; gap: 8px; }
+  .seq-tabs .seq-nav button { font: 700 15px/1 var(--mono); padding: 13px 20px; border-radius: 999px; }
+  .seq-tabs .seq-cap { text-align: center; margin-top: 22px; font-size: 18px; font-weight: 500; color: var(--body); min-height: 2em; }
+  .seq-look .frame { width: 100%; filter: none; border-radius: 20px; box-shadow: 0 1px 2px rgba(16,24,40,.14), 0 22px 44px rgba(16,24,40,.18); }
+  .seq-look .seq-nav { margin-top: 20px; }
 
   .split { display: grid; grid-template-columns: 4fr 8fr; gap: 56px; align-items: center; }
   .split .head { max-width: none; }
@@ -94,7 +108,6 @@
   .row5 > div + div { padding-left: 20px; border-left: 1px solid var(--line); }
   .row5 p { font-size: 14.5px; color: var(--body); margin-top: 6px; line-height: 1.5; }
 
-  .strip { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; margin-top: 48px; align-items: start; }
   figure { margin: 0; } figcaption { margin-top: 14px; font-size: 14.5px; color: var(--body); }
   figcaption strong { display: block; color: var(--ink); font-size: 15.5px; }
   .reports { display: grid; grid-template-columns: 1fr 1fr; gap: 32px; margin-top: 40px; align-items: start; }
@@ -125,22 +138,26 @@
   /* One small rise, once. Applied by JS only, and only when motion is allowed. */
   .rise { transition: opacity .8s var(--ease), transform .8s var(--ease); }
   .rise.pre { opacity: 0; transform: translateY(28px); }
+  /* A slow float on the big screenshots, so the page breathes without becoming a slideshow. */
+  @keyframes drift { from { transform: translateY(0); } to { transform: translateY(-8px); } }
+  .drift { animation: drift 7s ease-in-out infinite alternate; }
 
   @media (max-width: 900px) {
     .band { padding: 64px 0; } .hero + .band { margin-top: -64px; padding-top: 120px; }
     .split { grid-template-columns: 1fr; gap: 32px; }
     .row5 { grid-template-columns: 1fr 1fr; } .row5 > div { padding: 16px 12px 12px 0; border-bottom: 1px solid var(--line); }
     .row5 > div + div { border-left: 0; padding-left: 0; } .row5 > div:nth-child(even) { padding-left: 16px; border-left: 1px solid var(--line); }
-    .strip, .reports, .lists { grid-template-columns: 1fr; }
+    .reports, .lists { grid-template-columns: 1fr; }
     .reports figure:nth-child(2) { margin-top: 0; }
     .more { grid-template-columns: 1fr 1fr; }
   }
   @media (max-width: 560px) {
+    .seq-start .frames { padding: 0; min-height: 190px; border-radius: 18px; }
+    .seq-tabs .seq-nav button { padding: 12px 15px; font-size: 14px; }
     .hero { padding-top: 40px; } .hero-shot { padding: 0 12px; margin-top: 32px; }
-    .seq-start .frames { padding: 28px 12px; }
     .seq-nav button { padding: 10px 10px; } .more { grid-template-columns: 1fr; }
   }
-  @media (prefers-reduced-motion: reduce) { .btn, .rise, .seq-nav button { transition: none; } .btn:hover { transform: none; } }
+  @media (prefers-reduced-motion: reduce) { .btn, .rise, .seq-nav button, .frame, .seq-cap span { transition: none; } .btn:hover { transform: none; } .drift { animation: none; } }
 </style>
 </head>
 <body>
@@ -178,7 +195,7 @@
   <div class="wrap">
     <div class="head rise"><h2 id="h-start">Start it.</h2>
     <p class="lede">Sign in with Zoom once. No developer apps to set up. End confirms in one click.</p></div>
-    <div class="rise"><div class="seq seq-start" id="seq-start"><div class="frames"><img class="frame" src="img/app/web/start-01-island.png" width="819" height="212" alt="The island at step 1 of 5 while the meeting starts" loading="lazy"><img class="frame" src="img/app/web/start-02-island.png" width="819" height="212" alt="The island at step 3 of 5" loading="lazy"><img class="frame" src="img/app/web/start-03-island.png" width="819" height="212" alt="The island at step 5 of 5" loading="lazy"><img class="frame" src="img/app/web/start-04-island-live.png" width="819" height="212" alt="The island showing Live" loading="lazy"><img class="frame" src="img/app/web/start-05-control-bar.png" width="1470" height="88" alt="The live control bar with Meeting, Record, chat, 18 people and End" loading="lazy"><img class="frame on" src="img/app/web/start-06-end-confirm.png" width="1470" height="88" alt="End pressed: End the meeting for everyone? with Keep going and End for everyone" loading="lazy"></div><div class="seq-nav" role="group" aria-label="Frames"><button type="button" data-i="0">Starting</button><button type="button" data-i="1">Step 3 of 5</button><button type="button" data-i="2">Step 5 of 5</button><button type="button" data-i="3">Live</button><button type="button" data-i="4">Control bar</button><button type="button" data-i="5" aria-current="true">End</button></div><p class="seq-cap" aria-live="polite"><span>The island counts the steps while Greenroom opens the meeting.</span><span>Step 3 of 5.</span><span>Step 5 of 5.</span><span>Live. The meeting is running.</span><span>Your control bar stays out of the way.</span><span class="on">End asks once, for everyone, then it is done.</span></p></div></div>
+    <div class="rise"><div class="seq seq-start" id="seq-start"><div class="frames"><img class="frame" src="img/app/web/start-01-island-crop.png" width="760" height="160" alt="The island at step 1 of 5 while the meeting starts" loading="lazy"><img class="frame" src="img/app/web/start-02-island-crop.png" width="760" height="160" alt="The island at step 3 of 5" loading="lazy"><img class="frame" src="img/app/web/start-03-island-crop.png" width="760" height="160" alt="The island at step 5 of 5" loading="lazy"><img class="frame" src="img/app/web/start-04-island-live-crop.png" width="760" height="160" alt="The island showing Live" loading="lazy"><picture class="frame bar"><source media="(max-width: 560px)" srcset="img/app/web/start-05-control-bar-m.png" width="610" height="88"><img src="img/app/web/start-05-control-bar.png" width="1470" height="88" alt="The live control bar with Meeting, Record, chat, 18 people and End" loading="lazy"></picture><picture class="frame bar on"><source media="(max-width: 560px)" srcset="img/app/web/start-06-end-confirm-m.png" width="510" height="88"><img src="img/app/web/start-06-end-confirm.png" width="1470" height="88" alt="End pressed: End the meeting for everyone? with Keep going and End for everyone" loading="lazy"></picture></div><div class="seq-nav" role="group" aria-label="Frames"><button type="button" data-i="0">Starting</button><button type="button" data-i="1">Step 3 of 5</button><button type="button" data-i="2">Step 5 of 5</button><button type="button" data-i="3">Live</button><button type="button" data-i="4">Control bar</button><button type="button" data-i="5" aria-current="true">End</button></div><p class="seq-cap" aria-live="polite"><span>The island counts the steps while Greenroom opens the meeting.</span><span>Step 3 of 5.</span><span>Step 5 of 5.</span><span>Live. The meeting is running.</span><span>Your control bar stays out of the way.</span><span class="on">End asks once, for everyone, then it is done.</span></p></div></div>
   </div>
 </section>
 
@@ -193,7 +210,7 @@
         <li><strong>No OBS, no virtual camera.</strong></li>
       </ul>
     </div>
-    <div class="rise"><div class="seq seq-look" id="seq-look"><div class="frames"><img class="frame" src="img/app/web/look-01.png" width="1600" height="613" alt="Home preview with the camera as a circle" loading="lazy"><img class="frame" src="img/app/web/look-02.png" width="1600" height="613" alt="Home preview with the camera as a rounded square" loading="lazy"><img class="frame" src="img/app/web/look-03.png" width="1600" height="613" alt="Home preview with the cutout look" loading="lazy"><img class="frame on" src="img/app/web/look-04.png" width="1600" height="578" alt="Home preview with the presenter look" loading="lazy"></div><div class="seq-nav" role="group" aria-label="Frames"><button type="button" data-i="0">Circle</button><button type="button" data-i="1">Rounded</button><button type="button" data-i="2">Cutout</button><button type="button" data-i="3" aria-current="true">Presenter</button></div></div></div>
+    <div class="rise"><div class="seq seq-look drift" id="seq-look"><div class="frames"><img class="frame" src="img/app/web/look-01-card.png" width="700" height="460" alt="Home preview with the camera as a circle" loading="lazy"><img class="frame" src="img/app/web/look-02-card.png" width="700" height="460" alt="Home preview with the camera as a rounded square" loading="lazy"><img class="frame" src="img/app/web/look-03-card.png" width="700" height="460" alt="Home preview with the cutout look" loading="lazy"><img class="frame on" src="img/app/web/look-04-card.png" width="700" height="460" alt="Home preview with the presenter look" loading="lazy"></div><div class="seq-nav" role="group" aria-label="Frames"><button type="button" data-i="0">Circle</button><button type="button" data-i="1">Rounded</button><button type="button" data-i="2">Cutout</button><button type="button" data-i="3" aria-current="true">Presenter</button></div></div></div>
   </div>
 </section>
 
@@ -215,16 +232,12 @@
   <div class="wrap">
     <div class="head rise"><h2 id="h-better">Then get better.</h2>
     <p class="lede">Every meeting lands in Sessions. Watch it, trim it, share it.</p></div>
-    <div class="strip">
-      <figure class="rise"><img class="shot" src="img/app/web/sessions.png" width="1280" height="962" alt="Sessions page with five sample meetings, two marked Feedback ready" loading="lazy"><figcaption><strong>Sessions</strong>Every recording, searchable by what was said.</figcaption></figure>
-      <figure class="rise"><img class="shot" src="img/app/web/session-watch.png" width="1280" height="962" alt="A session Watch page" loading="lazy"><figcaption><strong>Watch</strong>Replay it with the transcript beside it.</figcaption></figure>
-      <figure class="rise"><img class="shot" src="img/app/web/editor.png" width="1280" height="962" alt="The editor with a filmstrip of the recording" loading="lazy"><figcaption><strong>Editor</strong>Cut it down on a filmstrip.</figcaption></figure>
-    </div>
+    <div class="seq seq-tabs" id="seq-tabs" data-manual><div class="frames rise"><img class="frame on drift" src="img/app/web/sessions.png" width="1280" height="962" alt="Sessions page with five sample meetings, two marked Feedback ready" loading="lazy"><img class="frame drift" src="img/app/web/session-watch.png" width="1280" height="962" alt="A session Watch page" loading="lazy"><img class="frame drift" src="img/app/web/editor.png" width="1280" height="962" alt="The editor with a filmstrip of the recording" loading="lazy"></div><div class="seq-nav" role="group" aria-label="Sessions, Watch, Editor"><button type="button" data-i="0" aria-current="true">Sessions</button><button type="button" data-i="1">Watch</button><button type="button" data-i="2">Editor</button></div><p class="seq-cap" aria-live="polite"><span class="on">Sessions: every recording, searchable by what was said.</span><span>Watch: replay it with the transcript beside it.</span><span>Editor: cut it down on a filmstrip.</span></p></div>
     <div class="reports-head rise"><h2>Get feedback.</h2>
     <p class="lede">Counted on your Mac: facing the room, pacing, filler words. An agent can add written notes. It is optional and off by default.</p></div>
     <div class="reports">
-      <figure class="rise"><img class="shot" src="img/app/web/report-facing-pacing.png" width="1280" height="962" alt="Feedback report with Facing the room and the Pacing gauge open" loading="lazy"><figcaption><strong>Facing the room and pacing</strong>Where you looked, and how fast you spoke.</figcaption></figure>
-      <figure class="rise"><img class="shot" src="img/app/web/report-fillers.png" width="1280" height="962" alt="Feedback report with Filler words open and rows for the other measures" loading="lazy"><figcaption><strong>Filler words</strong>Every measure opens to the moments behind it.</figcaption></figure>
+      <figure class="rise"><img class="shot drift" src="img/app/web/report-facing-pacing.png" width="1280" height="962" alt="Feedback report with Facing the room and the Pacing gauge open" loading="lazy"><figcaption><strong>Facing the room and pacing</strong>Where you looked, and how fast you spoke.</figcaption></figure>
+      <figure class="rise"><img class="shot drift" src="img/app/web/report-fillers.png" width="1280" height="962" alt="Feedback report with Filler words open and rows for the other measures" loading="lazy"><figcaption><strong>Filler words</strong>Every measure opens to the moments behind it.</figcaption></figure>
     </div>
   </div>
 </section>
@@ -274,21 +287,26 @@
   </div>
 </footer>
 
+<noscript><style>.seq-tabs .frame{grid-area:auto;opacity:1;visibility:visible;margin-bottom:24px}.seq-tabs .frames{display:block}.seq-tabs .seq-nav,.seq-tabs .seq-cap{display:none}</style></noscript>
 <script src="download-link.js" defer></script>
 <script>
 
 </script>
 <script>
-// Sequences flip on their own once they scroll into view, one frame at a time,
+// Sequences flip on their own once they are mostly in view, one frame at a time,
 // stop on the last frame, and replay on re-entry. Without JS, or with reduced
-// motion, the markup already shows the last frame of each.
+// motion, the markup already shows the last frame of each (tabs show their first).
+// Reveals are decided from real positions on load, scroll and resize, so nothing
+// already on screen can stay hidden waiting for an observer.
 (function () {
   var calm = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   function $$(s, r) { return Array.prototype.slice.call((r || document).querySelectorAll(s)); }
+  var vh = function () { return window.innerHeight || document.documentElement.clientHeight; };
+  var seqs = [];
 
   $$(".seq").forEach(function (seq) {
     var frames = $$(".frame", seq), btns = $$(".seq-nav button", seq), caps = $$(".seq-cap span", seq);
-    var last = frames.length - 1, timer = null, played = false;
+    var last = frames.length - 1, timer = null, played = false, manual = seq.hasAttribute("data-manual");
     function show(i) {
       frames.forEach(function (f, k) { f.classList.toggle("on", k === i); });
       caps.forEach(function (c, k) { c.classList.toggle("on", k === i); });
@@ -296,25 +314,41 @@
     }
     function stop() { clearInterval(timer); timer = null; }
     btns.forEach(function (b, k) { b.addEventListener("click", function () { stop(); show(k); }); });
-    if (calm || !("IntersectionObserver" in window)) return;
+    if (calm || manual) return;
     show(0);
-    new IntersectionObserver(function (entries) {
-      var e = entries[0];
-      if (e.isIntersecting && !played) {
+    seqs.push(function () {
+      var r = seq.getBoundingClientRect(), h = vh();
+      var seen = Math.min(r.bottom, h) - Math.max(r.top, 0);
+      var on = seen >= Math.min(0.6 * r.height, 0.6 * h);
+      if (on && !played) {
         played = true; stop(); var i = 0; show(0);
         timer = setInterval(function () { i++; show(i); if (i >= last) stop(); }, 1100);
-      } else if (!e.isIntersecting) { played = false; stop(); }
-    }, { threshold: 0.6 }).observe(seq);
+      } else if (!on && (r.bottom < 0 || r.top > h)) { played = false; stop(); }
+    });
   });
 
-  if (calm || !("IntersectionObserver" in window)) return;
-  var io = new IntersectionObserver(function (es) {
-    es.forEach(function (e) { if (e.isIntersecting) { e.target.classList.remove("pre"); io.unobserve(e.target); } });
-  }, { rootMargin: "0px 0px -8% 0px" });
+  if (calm) return;
+  var pending = [];
   $$(".rise").forEach(function (el) {
-    if (el.getBoundingClientRect().top < window.innerHeight) return;
-    el.classList.add("pre"); io.observe(el);
+    if (el.getBoundingClientRect().top < vh() * 0.92) return;
+    el.classList.add("pre"); pending.push(el);
   });
+  var queued = false;
+  function check() {
+    queued = false;
+    pending = pending.filter(function (el) {
+      if (el.getBoundingClientRect().top < vh() * 0.92) { el.classList.remove("pre"); return false; }
+      return true;
+    });
+    seqs.forEach(function (f) { f(); });
+  }
+  function queue() { if (!queued) { queued = true; requestAnimationFrame(check); } }
+  addEventListener("scroll", queue, { passive: true });
+  addEventListener("resize", queue);
+  addEventListener("load", queue);
+  addEventListener("hashchange", queue);
+  addEventListener("beforeprint", function () { pending.forEach(function (el) { el.classList.remove("pre"); }); });
+  queue();
 })();
 </script>
 </body>

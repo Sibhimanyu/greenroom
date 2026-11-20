@@ -210,6 +210,23 @@
       letter-spacing: .06em; text-transform: uppercase; color: #475467;
     }
   }
+  /* ---------- real app screenshots ---------- */
+  .shot { margin: 0 0 24px; max-width: 860px; }
+  .shot img { display: block; width: 100%; height: auto; border-radius: 12px; box-shadow: 0 0 0 1px rgba(16,24,40,.10), 0 18px 40px -16px rgba(16,24,40,.28); }
+  .shot figcaption, .shots figcaption { margin-top: 12px; font-size: 13.5px; color: var(--body); }
+  .shots2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; max-width: 1000px; margin-top: 28px; }
+  .shots2 .shot { margin: 0; }
+  @media (max-width: 760px) { .shots2 { grid-template-columns: 1fr; } }
+  .shot.narrow { max-width: 640px; }
+  .shots { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px 14px; max-width: 700px; margin: 0 0 24px; }
+  .shots figure { margin: 0; }
+  .shots img { display: block; width: 100%; height: auto; }
+  .shots figcaption { margin-top: 4px; text-align: center; font-size: 13px; }
+  .bars { max-width: 860px; margin: 0 0 24px; }
+  .bars figure { margin: 0 0 14px; }
+  .bars img { display: block; width: 100%; height: auto; border-radius: 22px; box-shadow: 0 0 0 1px rgba(16,24,40,.10), 0 10px 24px -12px rgba(16,24,40,.28); }
+  .bars figcaption { margin-top: 8px; font-size: 13.5px; color: var(--body); }
+  @media (max-width: 640px) { .bars { overflow-x: auto; -webkit-overflow-scrolling: touch; padding-bottom: 6px; } .bars figure > img { min-width: 600px; } .bars figcaption { position: sticky; left: 0; max-width: calc(100vw - 48px); } }
   /* ---------- figures (DESIGN.md diagram grammar) ---------- */
   .fig { margin: 0 0 24px; max-width: 860px; border: 1px solid var(--line); border-radius: 14px; padding: 18px 20px; background: #fff; }
   .fig svg { display: block; width: 100%; height: auto; }
@@ -353,7 +370,7 @@
       <p class="kicker">02 · The main window</p>
       <h2>Three ways to begin, one button</h2>
     </div>
-    <figure class="fig"><svg viewBox="0 0 640 266" role="img" aria-label="The Home screen: a live preview on the left, then meeting name, six setting tiles plus More, a readiness line and one green Start Meeting button" xmlns="http://www.w3.org/2000/svg"><rect x="2" y="2" width="636" height="262" rx="14" class="frame"/><line x1="2" y1="40" x2="638" y2="40" class="hair"/><circle cx="20" cy="21" r="4.5" class="hair"/><circle cx="36" cy="21" r="4.5" class="hair"/><circle cx="52" cy="21" r="4.5" class="hair"/><rect x="214" y="11" width="212" height="22" rx="11" class="dash"/><rect x="217" y="14" width="46" height="16" rx="8" class="fillg"/><text x="240" y="26" class="w" text-anchor="middle">New</text><text x="312" y="26" class="m" text-anchor="middle">Scheduled</text><text x="392" y="26" class="m" text-anchor="middle">Record</text><text x="572" y="26" class="m">⏱ Sessions</text><text x="602" y="26" class="m" opacity="0">.</text><rect x="22" y="60" width="270" height="170" rx="10" class="dash"/><rect x="38" y="76" width="238" height="120" rx="6" class="solid"/><circle cx="244" cy="164" r="22" class="solid"/><text x="244" y="168" class="g" text-anchor="middle">you</text><text x="157" y="142" class="m" text-anchor="middle">your screen</text><text x="157" y="216" class="m" text-anchor="middle">live preview of what everyone sees</text><text x="316" y="76" class="m" text-anchor="start">Meeting name</text><rect x="316" y="82" width="302" height="26" rx="8" class="solid"/><rect x="316" y="120" width="40" height="44" rx="8" class="dash"/><text x="336" y="146" class="tile" text-anchor="middle">Look</text><rect x="360" y="120" width="40" height="44" rx="8" class="dash"/><text x="380" y="146" class="tile" text-anchor="middle">Camera</text><rect x="404" y="120" width="40" height="44" rx="8" class="dash"/><text x="424" y="146" class="tile" text-anchor="middle">Screen</text><rect x="448" y="120" width="40" height="44" rx="8" class="dash"/><text x="468" y="146" class="tile" text-anchor="middle">Mic</text><rect x="492" y="120" width="40" height="44" rx="8" class="dash"/><text x="512" y="146" class="tile" text-anchor="middle">Layout</text><rect x="536" y="120" width="40" height="44" rx="8" class="dash"/><text x="556" y="146" class="tile" text-anchor="middle">Auto-rec</text><rect x="580" y="120" width="40" height="44" rx="8" class="dash"/><text x="600" y="146" class="tile" text-anchor="middle">More</text><circle cx="324" cy="182" r="4" class="fillg"/><text x="334" y="186" class="m" text-anchor="start">Ready to start</text><rect x="316" y="196" width="302" height="34" rx="17" class="fillg"/><text x="467" y="218" class="w" text-anchor="middle">Start Meeting</text></svg><figcaption>Home. The switcher is <strong>New · Scheduled · Record</strong>; the green capsule is the only button you need.</figcaption></figure>
+    <figure class="shot"><img src="img/guide/home.png" alt="Greenroom Home: New, Scheduled and Record switcher, meeting name, six setting tiles, a Ready to start line, a green Start Meeting button and a live preview of the lesson slide with the presenter in a circle" width="1400" height="536" loading="lazy" decoding="async"><figcaption>Home. Switcher: <strong>New · Scheduled · Record</strong>. The green capsule is the only button you need.</figcaption></figure>
     <div class="cards">
       <div class="card">
         <span class="tag">Hosting</span>
@@ -368,7 +385,7 @@
       <div class="card">
         <span class="tag">No meeting</span>
         <h3>Record</h3>
-        <p>Your screen with you in it, no meeting, no Zoom account. <strong>Start Recording</strong> builds the picture, counts down on the island, records. A recording bar with <strong>Notes</strong> takes over; Cancel returns Home unchanged. Then <a href="#feedback">Get feedback</a>.</p>
+        <p>Your screen with you in it. No meeting, no Zoom account. <strong>Start Recording</strong>, then a bar with <strong>Notes</strong>. Then <a href="#feedback">Get feedback</a>.</p>
       </div>
       <div class="card">
         <span class="tag">Setup</span>
@@ -399,7 +416,7 @@
       </div>
     </div>
     <h3 style="margin:32px 0 12px">The control bar and the one-click End</h3>
-    <figure class="fig"><svg viewBox="0 0 724 92" role="img" aria-label="The floating control bar with an End button, turning into the one-click confirm End the meeting for everyone with Keep going and End for everyone" xmlns="http://www.w3.org/2000/svg"><rect x="2" y="8" width="330" height="44" rx="22" class="frame"/><rect x="16" y="18" width="46" height="24" rx="12" class="dash"/><text x="39" y="34" class="m" text-anchor="middle">Mic</text><rect x="68" y="18" width="46" height="24" rx="12" class="dash"/><text x="91" y="34" class="m" text-anchor="middle">Cam</text><rect x="120" y="18" width="46" height="24" rx="12" class="dash"/><text x="143" y="34" class="m" text-anchor="middle">Chat</text><rect x="172" y="18" width="46" height="24" rx="12" class="dash"/><text x="195" y="34" class="m" text-anchor="middle">Notes</text><rect x="224" y="18" width="46" height="24" rx="12" class="solid"/><text x="247" y="34" class="g" text-anchor="middle">REC</text><rect x="276" y="18" width="48" height="24" rx="12" class="amberbox"/><text x="300" y="34" class="a" text-anchor="middle">End</text><line x1="324" y1="30" x2="372" y2="30" class="arrow" marker-end="url(#ah2)"/><text x="348" y="68" class="m" text-anchor="middle">1 click</text><defs><marker id="ah2" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L8 4L0 8z" fill="#2f6118"/></marker></defs><rect x="380" y="4" width="338" height="52" rx="26" class="frame"/><text x="398" y="26" class="t" text-anchor="start">End the meeting for everyone?</text><rect x="398" y="33" width="86" height="18" rx="9" class="dash"/><text x="441" y="46" class="m" text-anchor="middle">Keep going</text><rect x="492" y="33" width="118" height="18" rx="9" class="fillamber"/><text x="551" y="46" class="w" text-anchor="middle">End for everyone</text><text x="548" y="80" class="m" text-anchor="middle">Esc, a click elsewhere or 6 seconds cancels.</text><text x="170" y="80" class="m" text-anchor="middle">Floating control bar</text></svg><figcaption>Stopping a recording from the REC pill asks the same way.</figcaption></figure>
+    <div class="bars"><figure><img src="img/guide/start-05-control-bar.png" alt="The floating control bar: layout, mic, camera, share, Record, chat, 18 people and a red End button" width="1470" height="88" loading="lazy" decoding="async"><figcaption>The control bar, floating once live.</figcaption></figure><figure><img src="img/guide/start-06-end-confirm.png" alt="The End confirmation: End the meeting for everyone, with Keep going and End for everyone" width="1470" height="88" loading="lazy" decoding="async"><figcaption>One click on End asks this. Esc, a click elsewhere or 6 seconds cancels. Stopping a recording from the REC pill asks the same way.</figcaption></figure></div>
     
   </div>
 </section>
@@ -411,7 +428,7 @@
       <p class="kicker">03 · What Start does</p>
       <h2>Five things, in order, in about the time Zoom takes to connect</h2>
     </div>
-    <figure class="fig"><svg viewBox="0 0 700 190" role="img" aria-label="The Start sequence in five steps: the picture comes up, the meeting starts, layout apps open, the meeting window opens, the control bar takes over" xmlns="http://www.w3.org/2000/svg"><rect x="2" y="2" width="696" height="40" rx="20" class="frame"/><circle cx="30" cy="22" r="9" class="ring"/><text x="50" y="27" class="m" text-anchor="start">Island: step in words, progress ring, Cancel</text><line x1="350" y1="42" x2="350" y2="60" class="hair"/><circle cx="70" cy="86" r="18" class="solid"/><text x="70" y="91" class="g" text-anchor="middle">1</text><text x="70" y="130" class="t" text-anchor="middle">Picture</text><text x="70" y="146" class="t" text-anchor="middle">comes up</text><line x1="92" y1="86" x2="186" y2="86" class="arrow" marker-end="url(#ah)"/><circle cx="210" cy="86" r="18" class="solid"/><text x="210" y="91" class="g" text-anchor="middle">2</text><text x="210" y="130" class="t" text-anchor="middle">Meeting</text><text x="210" y="146" class="t" text-anchor="middle">starts</text><line x1="232" y1="86" x2="326" y2="86" class="arrow" marker-end="url(#ah)"/><circle cx="350" cy="86" r="18" class="solid"/><text x="350" y="91" class="g" text-anchor="middle">3</text><text x="350" y="130" class="t" text-anchor="middle">Layout apps</text><text x="350" y="146" class="t" text-anchor="middle">open, placed</text><line x1="372" y1="86" x2="466" y2="86" class="arrow" marker-end="url(#ah)"/><circle cx="490" cy="86" r="18" class="solid"/><text x="490" y="91" class="g" text-anchor="middle">4</text><text x="490" y="130" class="t" text-anchor="middle">Meeting window</text><text x="490" y="146" class="t" text-anchor="middle">opens</text><line x1="512" y1="86" x2="606" y2="86" class="arrow" marker-end="url(#ah)"/><circle cx="630" cy="86" r="18" class="fillg"/><text x="630" y="91" class="w" text-anchor="middle">5</text><text x="630" y="130" class="t" text-anchor="middle">Control bar</text><text x="630" y="146" class="t" text-anchor="middle">takes over</text><defs><marker id="ah" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L8 4L0 8z" fill="#2f6118"/></marker></defs><text x="350" y="176" class="a" text-anchor="middle">Fails? The island stays with Try again and Close.</text></svg><figcaption>Everything stays on this Mac until the meeting itself.</figcaption></figure>
+    <div class="shots"><figure><img src="img/guide/start-01-island.png" alt="The island at step 1 of 5: Opening your apps" width="819" height="212" loading="lazy" decoding="async"><figcaption>1/5</figcaption></figure><figure><img src="img/guide/start-02-island.png" alt="The island at step 3 of 5: Starting the meeting" width="819" height="212" loading="lazy" decoding="async"><figcaption>3/5</figcaption></figure><figure><img src="img/guide/start-03-island.png" alt="The island at step 5 of 5: Arranging your windows" width="819" height="212" loading="lazy" decoding="async"><figcaption>5/5</figcaption></figure><figure><img src="img/guide/start-04-island-live.png" alt="The island once live: a green dot and Live" width="819" height="212" loading="lazy" decoding="async"><figcaption>Live</figcaption></figure></div><p class="table-note" style="margin:-8px 0 24px">The island shows the step, a ring and Cancel. Fails? It stays with Try again and Close. Everything stays on this Mac until the meeting itself.</p>
     <div class="runlog">
       <div class="run"><div class="n">01</div><div><h3>The picture comes up</h3><p>Screen plus camera become the one picture the meeting receives. Home folds away; the island (under the menu bar, at the notch) shows the step, a ring and Cancel.</p></div></div>
       <div class="run"><div class="n">02</div><div><h3>The meeting starts</h3><p>In the built-in client. A meeting a crash left live is ended first.</p></div></div>
@@ -477,7 +494,7 @@
     <div class="sec-head">
       <p class="kicker">05 · The menu bar</p>
       <h2>The Greenroom item, for when Greenroom's window is at the back</h2>
-      <p>The main window steps aside during a meeting. While recording the mark becomes a record glyph and <strong>REC</strong>. With Cues listening a waveform joins it, or, with no participants panel to hold the cards, a separate waveform item whose popover holds them.</p>
+      <p>The main window steps aside during a meeting. While recording the mark shows <strong>REC</strong>; with Cues listening, a waveform joins it.</p>
     </div>
     <div class="table-scroll" style="max-width:760px">
       <table>
@@ -628,7 +645,7 @@
         </ul>
       </div>
     </div>
-    <figure class="fig"><svg viewBox="0 0 640 234" role="img" aria-label="The Sessions page: a sidebar with Everything, Meetings, Recordings and Presentations, and a timeline by day of session cards, each with Watch and Edit" xmlns="http://www.w3.org/2000/svg"><rect x="2" y="2" width="636" height="230" rx="14" class="frame"/><line x1="150" y1="2" x2="150" y2="232" class="hair"/><rect x="12" y="14" width="126" height="26" rx="8" class="fillg"/><text x="75" y="31" class="w" text-anchor="middle">Everything</text><rect x="12" y="48" width="126" height="26" rx="8" class="dash"/><text x="75" y="65" class="m" text-anchor="middle">Meetings</text><rect x="12" y="82" width="126" height="26" rx="8" class="dash"/><text x="75" y="99" class="m" text-anchor="middle">Recordings</text><rect x="12" y="116" width="126" height="26" rx="8" class="dash"/><text x="75" y="133" class="m" text-anchor="middle">Presentations</text><text x="75" y="196" class="m" text-anchor="middle">⌘B hides sidebar</text><text x="166" y="26" class="mono" text-anchor="start">Today</text><rect x="166" y="34" width="460" height="38" rx="8" class="solid"/><text x="180" y="57" class="t" text-anchor="start">Class session · 9:30 · 48 min</text><rect x="496" y="42" width="54" height="22" rx="11" class="fillg"/><text x="523" y="57" class="w" text-anchor="middle">Watch</text><rect x="558" y="42" width="58" height="22" rx="11" class="dash"/><text x="587" y="57" class="m" text-anchor="middle">Edit</text><text x="166" y="134" class="mono" text-anchor="start">Yesterday</text><rect x="166" y="142" width="460" height="38" rx="8" class="solid"/><text x="180" y="165" class="t" text-anchor="start">Class session · 9:30 · 48 min</text><rect x="496" y="150" width="54" height="22" rx="11" class="fillg"/><text x="523" y="165" class="w" text-anchor="middle">Watch</text><rect x="558" y="150" width="58" height="22" rx="11" class="dash"/><text x="587" y="165" class="m" text-anchor="middle">Edit</text><rect x="166" y="76" width="460" height="38" rx="8" class="solid"/><text x="180" y="99" class="t" text-anchor="start">Record session · 11:05</text><rect x="496" y="84" width="54" height="22" rx="11" class="fillg"/><text x="523" y="99" class="w" text-anchor="middle">Watch</text><rect x="558" y="84" width="58" height="22" rx="11" class="dash"/><text x="587" y="99" class="m" text-anchor="middle">Edit</text><rect x="166" y="180" width="460" height="38" rx="8" class="solid"/><text x="180" y="203" class="t" text-anchor="start">Presentation (earlier version)</text><rect x="496" y="188" width="54" height="22" rx="11" class="fillg"/><text x="523" y="203" class="w" text-anchor="middle">Watch</text><rect x="558" y="188" width="58" height="22" rx="11" class="dash"/><text x="587" y="203" class="m" text-anchor="middle">Edit</text></svg><figcaption>Sessions: opened from the clock icon in the toolbar; <kbd>⌘[</kbd> goes back.</figcaption></figure>
+    <figure class="shot"><img src="img/guide/sessions.png" alt="The Sessions page: a Library sidebar with Everything, Meetings, Recordings and Presentations, search, and a timeline by day of lesson cards with thumbnails, Not shared and Feedback ready tags" width="1400" height="1052" loading="lazy" decoding="async"><figcaption>Sessions: opened from the clock icon in the toolbar; <kbd>⌘[</kbd> goes back.</figcaption></figure>
     <div class="cards">
       <div class="card">
         <span class="tag">Sessions</span>
@@ -658,6 +675,10 @@
         </ul>
       </div>
     </div>
+    <div class="shots2">
+      <figure class="shot"><img src="img/guide/session-watch.png" alt="Watch view: the recording with the presenter in a circle, player controls, and a Notes and Transcript panel with a Report link" width="1400" height="1052" loading="lazy" decoding="async"><figcaption><strong>Watch</strong>: player, notes and transcript.</figcaption></figure>
+      <figure class="shot"><img src="img/guide/editor.png" alt="Edit view: the same recording with Trim, Cut, Crop, Effects, Join Videos and Add Audio tools, a timeline of thumbnails and an Edits panel" width="1400" height="1052" loading="lazy" decoding="async"><figcaption><strong>Edit</strong>: trim, cut, crop, effects. Save makes a new copy.</figcaption></figure>
+    </div>
   </div>
 </section>
 
@@ -679,7 +700,8 @@
           <li><strong>Analysis</strong> and <strong>Notes</strong> tabs; fillers and notes mark the scrubber.</li>
         </ul></div></div>
     </div>
-    <div class="cards" style="margin-top:22px">
+    <figure class="shot narrow" style="margin-top:22px"><img src="img/guide/report-facing-pacing.png" alt="The feedback report: What to work on with Sentence starters and Facing the room at 55 percent, and What went well with Pacing at 143 words a minute on a dial" width="1400" height="1052" loading="lazy" decoding="async"><figcaption>The report: <em>What to work on</em> and <em>What went well</em>, each line opens to its evidence.</figcaption></figure>
+    <div class="cards" style="margin-top:8px">
       <div class="card">
         <span class="tag">On this Mac</span>
         <h3>What is counted</h3>

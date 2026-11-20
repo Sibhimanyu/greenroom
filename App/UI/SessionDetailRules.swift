@@ -85,9 +85,12 @@ enum SessionDetailRules {
         }.map(\.element)
     }
 
-    /// A note's click lands a little before it: it was stamped when the
-    /// evaluator began typing, so what it describes is just behind it.
-    static func noteSeekTime(_ at: Double) -> Double { max(0, at - 4) }
+    /// Whether the Links tab is shown: Cues is released AND this meeting has
+    /// links kept (in session.json) or Cues' own file (cues.txt, written the
+    /// first time Cues finds a link). Otherwise the row is Notes and Transcript.
+    static func showsLinksTab(cuesReleased: Bool, savedLinks: Int, hasCuesFile: Bool) -> Bool {
+        cuesReleased && (savedLinks > 0 || hasCuesFile)
+    }
 
     /// The space bar plays and pauses the picture only when nothing is being
     /// typed: no text input has the keyboard, no modifier is held, no sheet

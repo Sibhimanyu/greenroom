@@ -19,12 +19,153 @@
 //
 import SwiftUI
 
+/// Reads, edits and reverts the transcript file behind the tab.
+///
+/// Edits rewrite ONE raw row of the file the line came from (see
+/// `TranscriptEditRules`), atomically. The untouched file is copied to
+/// "<name>.original.txt" before the first edit. Every write registers with the
+/// window's UndoManager, so Edit > Undo and Command-Z walk the edits back (and
+/// forward again); a restore only applies while the file still holds what the
+/// edit wrote, so a stale entry can never clobber later work.
+@MainActor
+final class TranscriptEditor: ObservableObject {
+    @Published private(set) var lines: [SessionSummary.Line] = []
+    @Published private(set) var hasOriginal = false
+    @Published private(set) var summaryStale = false
+    @Published var problem: String?
+    /// The file text before and after the latest delete, for the inline Undo.
+    private(set) var lastRemoval: (before: String, after: String)?
+    weak var undoManager: UndoManager?
+    private var folder: URL?
+
+    private var url: URL? { folder.map { SessionSummary.transcriptURL(in: $0) } }
+    private var originalURL: URL? {
+        url.map { $0.deletingLastPathComponent()
+            .appendingPathComponent(TranscriptEditRules.originalName(for: $0.lastPathComponent)) }
+    }
+
+    func load(_ folder: URL) {
+        if self.folder != folder { undoManager?.removeAllActions(withTarget: self) }
+        self.folder = folder
+        problem = nil
+        lastRemoval = nil
+        reload()
+    }
+
+    func reload() {
+        guard let folder else { return }
+        lines = SessionSummary.lines(in: folder)
+        hasOriginal = originalURL.map { FileManager.default.fileExists(atPath: $0.path) } ?? false
+        refreshStale()
+    }
+
+    func refreshStale() {
+        guard let folder, let url else { return }
+        func modified(_ u: URL) -> Date? {
+            (try? FileManager.default.attributesOfItem(atPath: u.path))?[.modificationDate] as? Date
+        }
+        let summary = SessionSummary.summaryURL(in: folder)
+        summaryStale = FileManager.default.fileExists(atPath: summary.path)
+            && TranscriptEditRules.summaryIsStale(transcriptModified: modified(url), summaryModified: modified(summary))
+    }
+
+    func forget() { undoManager?.removeAllActions(withTarget: self) }
+
+    /// Saves new text for a line; blank text removes it. Returns whether the
+    /// line was removed.
+    @discardableResult
+    func save(rawIndex: Int, text: String) -> Bool {
+        guard let url, let old = try? String(contentsOf: url, encoding: .utf8),
+              let new = TranscriptEditRules.rewrite(raw: old, rawIndex: rawIndex, newText: text)
+        else { return false }
+        guard new != old else { return false }
+        let removed = TranscriptEditRules.oneLine(text).isEmpty
+        guard keepOriginal(of: old) else { return false }
+        if write(new, replacing: old, name: removed ? "Remove Line" : "Edit Line") {
+            lastRemoval = removed ? (old, new) : nil
+            return removed
+        }
+        return false
+    }
+
+    /// The inline "Undo" after a removal.
+    func undoRemoval() {
+        guard let lastRemoval else { return }
+        _ = restore(lastRemoval.before, expecting: lastRemoval.after, name: "Remove Line")
+        self.lastRemoval = nil
+    }
+
+    func revertToOriginal() {
+        guard let url, let originalURL,
+              let original = try? String(contentsOf: originalURL, encoding: .utf8),
+              let current = try? String(contentsOf: url, encoding: .utf8), original != current else { return }
+        lastRemoval = nil
+        write(original, replacing: current, name: "Revert Transcript")
+    }
+
+    /// Copies the untouched file aside on the first edit. False (and a note)
+    /// when that fails, in which case nothing is edited.
+    private func keepOriginal(of text: String) -> Bool {
+        guard let url, let originalURL else { return false }
+        let files = FileManager.default
+        guard TranscriptEditRules.shouldCopyOriginal(originalExists: files.fileExists(atPath: originalURL.path),
+                                                     sourceExists: files.fileExists(atPath: url.path)) else { return true }
+        do {
+            try files.copyItem(at: url, to: originalURL)
+            return true
+        } catch {
+            problem = "Could not keep a copy of the original, so nothing was changed."
+            return false
+        }
+    }
+
+    @discardableResult
+    private func write(_ new: String, replacing old: String, name: String) -> Bool {
+        guard let url else { return false }
+        do {
+            try new.write(to: url, atomically: true, encoding: .utf8)
+        } catch {
+            problem = "Could not save the transcript: \(error.localizedDescription)"
+            return false
+        }
+        problem = nil
+        registerUndo(restoring: old, expecting: new, name: name)
+        reload()
+        return true
+    }
+
+    private func registerUndo(restoring old: String, expecting new: String, name: String) {
+        guard let undoManager else { return }
+        undoManager.registerUndo(withTarget: self) { target in
+            _ = target.restore(old, expecting: new, name: name)
+        }
+        undoManager.setActionName(name)
+    }
+
+    /// Puts `old` back, only if the file still holds `expecting`.
+    private func restore(_ old: String, expecting new: String, name: String) -> Bool {
+        guard let url, let current = try? String(contentsOf: url, encoding: .utf8), current == new else { return false }
+        do { try old.write(to: url, atomically: true, encoding: .utf8) } catch {
+            problem = "Could not save the transcript: \(error.localizedDescription)"
+            return false
+        }
+        registerUndo(restoring: new, expecting: old, name: name)
+        reload()
+        return true
+    }
+}
+
 struct SessionTranscriptView: View {
     let folder: URL
-    /// Watch mode: a click on a line moves the picture to it.
+    /// Watch mode: a click on a line moves the picture to it (and leaves it
+    /// playing or paused, as it was).
     var onSeek: ((Double) -> Void)?
+    /// The player's time and state, for following along.
+    var playhead: Double = 0
+    var isPlaying = false
 
-    @State private var lines: [SessionSummary.Line] = []
+    @StateObject private var editor = TranscriptEditor()
+    @Environment(\.undoManager) private var undoManager
     @State private var summary: String?
     @State private var problem: String?
     @State private var working = false
@@ -33,13 +174,52 @@ struct SessionTranscriptView: View {
     /// spinner would sit there for a minute looking broken.
     @State private var step = "Reading the meeting\u{2026}"
 
+    @State private var starts: [Double] = []
+    @State private var selected: Int?
+    @State private var editing: Int?
+    @State private var lastManualScroll: Date?
+    @State private var removedNotice = false
+    @State private var noticeTask: Task<Void, Never>?
+    @State private var confirmRevert = false
+    @FocusState private var listFocused: Bool
+
+    private var lines: [SessionSummary.Line] { editor.lines }
+
+    /// The raw index of the line the picture is at.
+    private var currentRaw: Int? {
+        TranscriptEditRules.currentLine(starts: starts, at: playhead).map { lines[$0].rawIndex }
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             summaryCard
             Divider()
             transcriptList
+            notice
         }
-        .task(id: folder) { load() }
+        .task(id: folder) {
+            editor.undoManager = undoManager
+            editor.load(folder)
+            starts = lines.map { TranscriptEditRules.stampSeconds($0.stamp) ?? .infinity }
+            summary = SessionSummary.cached(in: folder)
+            problem = nil
+            copied = false
+            selected = nil
+            editing = nil
+            removedNotice = false
+        }
+        .onChange(of: editor.lines.map(\.rawIndex)) { _, _ in
+            starts = lines.map { TranscriptEditRules.stampSeconds($0.stamp) ?? .infinity }
+        }
+        .onDisappear { editor.forget() }
+        .confirmationDialog("Revert to the original transcript?", isPresented: $confirmRevert) {
+            Button("Revert", role: .destructive) {
+                editor.undoManager = undoManager
+                editor.revertToOriginal()
+            }
+        } message: {
+            Text("Your edits to the transcript are replaced by what was first saved. You can undo this.")
+        }
     }
 
     // MARK: Summary
@@ -71,6 +251,18 @@ struct SessionTranscriptView: View {
                     Button("Summarise on this Mac") { summarise() }
                         .controlSize(.small)
                 }
+                if editor.hasOriginal {
+                    Menu {
+                        Button("Revert to original\u{2026}") { confirmRevert = true }
+                    } label: {
+                        Image(systemName: "ellipsis.circle")
+                    }
+                    .menuStyle(.borderlessButton)
+                    .menuIndicator(.hidden)
+                    .fixedSize()
+                    .help("Transcript options")
+                    .accessibilityLabel("Transcript options")
+                }
             }
 
             if let summary {
@@ -81,6 +273,16 @@ struct SessionTranscriptView: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 .frame(maxHeight: 190)
+                if editor.summaryStale, !working {
+                    HStack(spacing: 8) {
+                        Text("Transcript edited since this summary")
+                            .font(.caption).foregroundStyle(.secondary)
+                        if SessionSummary.unavailableReason == nil {
+                            Button("Summarise again") { summarise() }
+                                .controlSize(.small)
+                        }
+                    }
+                }
             } else if let problem {
                 Text(problem)
                     .font(.system(size: 12))
@@ -122,44 +324,124 @@ struct SessionTranscriptView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: 0) {
-                    ForEach(lines) { line in
-                        HStack(alignment: .firstTextBaseline, spacing: 12) {
-                            // Machine facts in mono, prose in the system face,
-                            // which is the split DESIGN.md asks for. Tabular
-                            // figures so the stamps form a column.
-                            Text(line.stamp)
-                                .font(.system(size: 11, design: .monospaced))
-                                .monospacedDigit()
-                                .foregroundStyle(.tertiary)
-                                .frame(width: 56, alignment: .leading)
-                            Text(line.text)
-                                .font(.system(size: 13))
-                                .textSelection(.enabled)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                        }
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 5)
-                        .contentShape(Rectangle())
-                        .onTapGesture {
-                            if let onSeek, let at = SessionDetailRules.stampSeconds(line.stamp) { onSeek(at) }
+            ScrollViewReader { proxy in
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 0) {
+                        ForEach(lines, id: \.rawIndex) { line in
+                            row(line)
+                                .id(line.rawIndex)
                         }
                     }
+                    .padding(.vertical, 6)
                 }
-                .padding(.vertical, 6)
+                .background(TranscriptScrollProbe { lastManualScroll = Date() })
+                .focusable()
+                .focusEffectDisabled()
+                .focused($listFocused)
+                .onKeyPress(.return) {
+                    guard editing == nil, let selected, lines.contains(where: { $0.rawIndex == selected })
+                    else { return .ignored }
+                    editing = selected
+                    return .handled
+                }
+                .onChange(of: currentRaw) { _, raw in
+                    guard isPlaying, editing == nil, let raw,
+                          TranscriptEditRules.shouldAutoScroll(lastManualScroll: lastManualScroll, now: Date())
+                    else { return }
+                    withAnimation(.easeInOut(duration: 0.25)) { proxy.scrollTo(raw, anchor: .center) }
+                }
             }
         }
     }
 
-    // MARK: Work
-
-    private func load() {
-        lines = SessionSummary.lines(in: folder)
-        summary = SessionSummary.cached(in: folder)
-        problem = nil
-        copied = false
+    private func row(_ line: SessionSummary.Line) -> some View {
+        let isCurrent = currentRaw == line.rawIndex
+        let isSelected = selected == line.rawIndex
+        return HStack(alignment: .firstTextBaseline, spacing: 12) {
+            // Machine facts in mono, prose in the system face, which is the
+            // split DESIGN.md asks for. Tabular figures so the stamps form a
+            // column. The stamp always seeks, even while another line is open.
+            Text(line.stamp)
+                .font(.system(size: 11, design: .monospaced))
+                .monospacedDigit()
+                .foregroundStyle(.tertiary)
+                .frame(width: 56, alignment: .leading)
+                .contentShape(Rectangle())
+                .onTapGesture { seek(line) }
+                .help("Play from this line")
+            if editing == line.rawIndex {
+                TranscriptEditField(text: line.text,
+                                    onCommit: { commit(line, $0) },
+                                    onCancel: { editing = nil; listFocused = true })
+            } else {
+                Text(line.text)
+                    .font(.system(size: 13))
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 5)
+        .background(isCurrent ? Brand.green.opacity(0.14)
+                    : isSelected ? Color.primary.opacity(0.06) : Color.clear)
+        .contentShape(Rectangle())
+        .onTapGesture(count: 2) {
+            selected = line.rawIndex
+            editing = line.rawIndex
+        }
+        .onTapGesture {
+            guard editing != line.rawIndex else { return }
+            selected = line.rawIndex
+            listFocused = true
+            seek(line)
+        }
+        .help("Click to jump here. Double-click, or select and press Return, to edit.")
     }
+
+    private func seek(_ line: SessionSummary.Line) {
+        if let onSeek, let at = TranscriptEditRules.stampSeconds(line.stamp) { onSeek(at) }
+    }
+
+    private func commit(_ line: SessionSummary.Line, _ text: String) {
+        editing = nil
+        listFocused = true
+        guard TranscriptEditRules.oneLine(text) != line.text else { return }
+        editor.undoManager = undoManager
+        if editor.save(rawIndex: line.rawIndex, text: text) { showRemovedNotice() }
+    }
+
+    // MARK: Notice
+
+    @ViewBuilder private var notice: some View {
+        if removedNotice || editor.problem != nil {
+            HStack(spacing: 8) {
+                if let problem = editor.problem {
+                    Text(problem).font(.caption).foregroundStyle(.secondary)
+                } else {
+                    Text("Line removed \u{00B7}").font(.caption).foregroundStyle(.secondary)
+                    Button("Undo") {
+                        editor.undoRemoval()
+                        removedNotice = false
+                    }
+                    .controlSize(.small)
+                }
+                Spacer()
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 8)
+            .background(.quinary)
+        }
+    }
+
+    private func showRemovedNotice() {
+        removedNotice = true
+        noticeTask?.cancel()
+        noticeTask = Task {
+            try? await Task.sleep(nanoseconds: 8_000_000_000)
+            if !Task.isCancelled { await MainActor.run { removedNotice = false } }
+        }
+    }
+
+    // MARK: Work
 
     private func summarise() {
         guard #available(macOS 26.0, *) else { return }
@@ -176,6 +458,7 @@ struct SessionTranscriptView: View {
                 case .summary(let text): summary = text
                 case .problem(let text): problem = text
                 }
+                editor.refreshStale()
             }
         }
     }
@@ -189,6 +472,71 @@ struct SessionTranscriptView: View {
             try? await Task.sleep(nanoseconds: 1_800_000_000)
             await MainActor.run { copied = false }
         }
+    }
+}
+
+// MARK: - Inline editing
+
+/// One line's text as a field. Return saves, Esc cancels, losing focus (a click
+/// anywhere else) saves.
+private struct TranscriptEditField: View {
+    let text: String
+    let onCommit: (String) -> Void
+    let onCancel: () -> Void
+    @State private var draft = ""
+    @State private var done = false
+    @FocusState private var focused: Bool
+
+    var body: some View {
+        TextField("", text: $draft)
+            .textFieldStyle(.plain)
+            .font(.system(size: 13))
+            .focused($focused)
+            .onAppear {
+                draft = text
+                focused = true
+            }
+            .onSubmit { finish { onCommit(draft) } }
+            .onExitCommand { finish { onCancel() } }
+            .onChange(of: focused) { _, now in
+                if !now { finish { onCommit(draft) } }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func finish(_ action: () -> Void) {
+        guard !done else { return }
+        done = true
+        action()
+    }
+}
+
+/// Reports wheel and trackpad scrolling over the transcript, so follow-along
+/// can leave a reader who is looking around alone.
+private struct TranscriptScrollProbe: NSViewRepresentable {
+    let onScroll: () -> Void
+
+    func makeNSView(context: Context) -> NSView { Probe() }
+    func updateNSView(_ view: NSView, context: Context) { (view as? Probe)?.onScroll = onScroll }
+
+    final class Probe: NSView {
+        var onScroll: (() -> Void)?
+        private var monitor: Any?
+
+        override func viewDidMoveToWindow() {
+            if let monitor { NSEvent.removeMonitor(monitor) }
+            monitor = nil
+            guard window != nil else { return }
+            monitor = NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) { [weak self] event in
+                if let self, event.window === self.window,
+                   self.bounds.contains(self.convert(event.locationInWindow, from: nil)) {
+                    self.onScroll?()
+                }
+                return event
+            }
+        }
+
+        deinit { if let monitor { NSEvent.removeMonitor(monitor) } }
     }
 }
 

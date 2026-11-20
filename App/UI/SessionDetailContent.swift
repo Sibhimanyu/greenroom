@@ -4,13 +4,13 @@
 //
 //  A session's page as a drawing: the watch page. A title and one meta line at
 //  the top left, the picture as large as the column allows under them, one
-//  timeline right under the picture, and one side panel on the right (Moments,
+//  timeline right under the picture, and one side panel on the right (Notes,
 //  Transcript, Links) that ⌥⌘I hides. Analyse and Share are toolbar buttons.
 //  Under about 960pt the panel drops under the picture and the page scrolls.
 //
 //  Like SessionsContent.swift this takes plain values and closures, and knows
 //  nothing about the coordinator, the disk or AVKit: RecordingsView hands it
-//  the picture, the timeline and the Moments content as views. DESIGN.md,
+//  the picture, the timeline and the Notes content as views. DESIGN.md,
 //  "A session's page".
 //
 import SwiftUI
@@ -680,7 +680,7 @@ struct TranscribeSlot: View {
     }
 }
 
-/// The analysis in a sentence, at the top of Moments: a note about the
+/// The analysis in a sentence, at the top of Notes: a note about the
 /// class, a click away from the report.
 struct SessionSummaryNote: View {
     let summary: String

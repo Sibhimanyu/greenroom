@@ -117,7 +117,8 @@ final class SessionsIndex: ObservableObject {
         if let raw = try? String(contentsOf: ScreenroomNotesFile.url(in: folder), encoding: .utf8) {
             notes = raw.split(separator: "\n").count
         }
-        e.momentCount = clips + notes
+        // Notes only: the chip says "N notes", and clips are not notes.
+        e.momentCount = notes
         let meta = SessionMetadata.load(in: folder)
         e.uploadPrivacy = meta.uploads.last?.privacy
         e.lines = SessionSummary.lines(in: folder).map { ($0.stamp, $0.text) }

@@ -335,6 +335,9 @@ targets:
       - path: App/UI/SessionsQuery.swift
       - path: App/UI/SessionTitleSuggester.swift
       - path: App/UI/SessionDetailRules.swift
+      - path: App/UI/TranscriptEditRules.swift
+      - path: App/UI/SessionNoteEditRules.swift
+      - path: App/Screenroom/ScreenroomNote.swift
       - path: App/UI/SegmentedMath.swift
       - path: App/UI/NotchStatusRules.swift
       - path: App/Recording/SessionFolderRules.swift

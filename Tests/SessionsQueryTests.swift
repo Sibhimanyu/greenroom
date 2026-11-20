@@ -106,7 +106,7 @@ final class SessionsTimelineTests: XCTestCase {
                                  isUploaded: false, isAnalysed: false)
         XCTAssertTrue(SessionChips.chips(for: c).isEmpty)
         c.hasVideo = true; c.momentCount = 3; c.isAnalysed = true
-        XCTAssertEqual(SessionChips.chips(for: c).map(\.text), ["Not shared", "3 moments", "Feedback ready"])
+        XCTAssertEqual(SessionChips.chips(for: c).map(\.text), ["Not shared", "3 notes", "Feedback ready"])
         c.isUploaded = true; c.uploadPrivacy = "unlisted"
         XCTAssertEqual(SessionChips.chips(for: c).first?.text, "On YouTube \u{00B7} Unlisted")
         XCTAssertFalse(SessionsNeed.notShared.matches(c))

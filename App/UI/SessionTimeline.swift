@@ -11,7 +11,7 @@
 //
 import SwiftUI
 
-/// Colours of the marks, shared by the track and the Moments list so a dot
+/// Colours of the marks, shared by the track and the Notes list so a dot
 /// in the list is the same colour as its tick on the timeline.
 enum SessionMarkStyle {
     /// Clips are the green blocks (a fill, never text).

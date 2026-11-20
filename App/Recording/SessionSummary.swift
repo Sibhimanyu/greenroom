@@ -32,6 +32,8 @@ enum SessionSummary {
         let id = UUID()
         let stamp: String
         let text: String
+        /// Index of this line's row in the raw file's "\n"-split rows.
+        var rawIndex: Int = -1
     }
 
     /// The transcript the Transcript tab shows: Cues' `transcript.txt` when
@@ -63,22 +65,15 @@ enum SessionSummary {
         guard let raw = try? String(contentsOf: transcriptURL(in: folder), encoding: .utf8) else {
             return []
         }
-        return raw.split(separator: "\n").compactMap { row -> Line? in
-            guard !row.hasPrefix("#") else { return nil }
-            // Two writers: Cues writes "stamp<TAB>text" (transcript.txt),
-            // Analyse writes "[m:ss] text" (analysis-transcript.txt, or
-            // transcript.txt in older folders). Read both, or an analysed meeting
-            // shows "Nothing was transcribed" beside a finished report.
-            let parts = row.split(separator: "\t", maxSplits: 1).map(String.init)
-            if parts.count == 2 {
-                guard let text = WhisperNoise.clean(parts[1]) else { return nil }
-                return Line(stamp: parts[0], text: text)
-            }
-            guard row.hasPrefix("["), let close = row.firstIndex(of: "]") else { return nil }
-            let stamp = String(row[row.index(after: row.startIndex)..<close])
-            guard !stamp.isEmpty, stamp.allSatisfy({ $0.isNumber || $0 == ":" || $0 == "." }),
-                  let text = WhisperNoise.clean(String(row[row.index(after: close)...])) else { return nil }
-            return Line(stamp: stamp, text: text)
+        // Two writers: Cues writes "stamp<TAB>text" (transcript.txt), Analyse
+        // writes "[m:ss] text" (analysis-transcript.txt, or transcript.txt in
+        // older folders). TranscriptEditRules reads both, or an analysed meeting
+        // shows "Nothing was transcribed" beside a finished report. Each line
+        // keeps its raw row index so an edit can find its row in the file even
+        // though the noise filter hides some.
+        return TranscriptEditRules.rows(in: raw).compactMap { row -> Line? in
+            guard let text = WhisperNoise.clean(row.text) else { return nil }
+            return Line(stamp: row.stamp, text: text, rawIndex: row.rawIndex)
         }
     }
 

@@ -433,10 +433,9 @@ final class ScreenroomReviewController: ObservableObject {
     }
 
     func seek(to note: ScreenroomNote) {
-        // Lands slightly BEFORE the note for the reason that runs through all
-        // of Screenroom: the note was stamped when the evaluator started
-        // typing, so the moment it describes is just behind it.
-        let target = max(0, note.atMs - 4_000)
+        // Exactly the note's time. A pre-roll lands on the previous note when
+        // two are close together; the stamp is already the first keystroke.
+        let target = max(0, note.atMs)
         if let externalSeek {
             externalSeek(target)
             return
@@ -1012,6 +1011,26 @@ extension ScreenroomReviewController {
         notes = ScreenroomNotesFile.add(
             ScreenroomNote(atMs: ms ?? notePosition, text: trimmed, markedAt: Date()),
             in: folder)
+        refreshSelectedRow()
+    }
+
+    /// Edits one note by id, from what is on disk now, so fields this view
+    /// does not show (id, markedAt, timedFrom) are written back as they were.
+    /// Blank text is ignored. analysis.json is left alone.
+    func updateNote(_ id: UUID, text: String? = nil, atMs: Int? = nil) {
+        guard let folder = selected?.folder else { return }
+        var all = ScreenroomNotesFile.load(in: folder)
+        if let text { guard let next = SessionNoteEditRules.edited(all, id: id, text: text) else { return }; all = next }
+        if let atMs { guard let next = SessionNoteEditRules.retimed(all, id: id, atMs: atMs) else { return }; all = next }
+        ScreenroomNotesFile.replace(all, in: folder)
+        notes = ScreenroomNotesFile.load(in: folder)
+        refreshSelectedRow()
+    }
+
+    func restoreNote(_ note: ScreenroomNote) {
+        guard let folder = selected?.folder else { return }
+        ScreenroomNotesFile.replace(SessionNoteEditRules.restored(ScreenroomNotesFile.load(in: folder), note: note), in: folder)
+        notes = ScreenroomNotesFile.load(in: folder)
         refreshSelectedRow()
     }
 

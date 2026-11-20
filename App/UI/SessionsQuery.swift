@@ -103,7 +103,7 @@ enum SessionChips {
         }
         if card.momentCount > 0 {
             out.append(.init(id: "moments",
-                             text: card.momentCount == 1 ? "1 moment" : "\(card.momentCount) moments",
+                             text: card.momentCount == 1 ? "1 note" : "\(card.momentCount) notes",
                              symbol: "flag", tone: .plain))
         }
         if card.isAnalysed {

@@ -95,6 +95,13 @@ final class SessionDetailRulesTests: XCTestCase {
         XCTAssertEqual(list.map(\.id), ["n1", "c1", "n2"])
     }
 
+    func testLinksTabNeedsCuesAndSomethingKept() {
+        XCTAssertTrue(SessionDetailRules.showsLinksTab(cuesReleased: true, savedLinks: 2, hasCuesFile: false))
+        XCTAssertTrue(SessionDetailRules.showsLinksTab(cuesReleased: true, savedLinks: 0, hasCuesFile: true))
+        XCTAssertFalse(SessionDetailRules.showsLinksTab(cuesReleased: true, savedLinks: 0, hasCuesFile: false))
+        XCTAssertFalse(SessionDetailRules.showsLinksTab(cuesReleased: false, savedLinks: 3, hasCuesFile: true))
+    }
+
     func testEqualTimesPutTheClipFirstAndKeepInputOrder() {
         let list = SessionDetailRules.ordered([
             SessionMoment(id: "n-a", kind: .note, at: 20, label: "a"),
@@ -104,10 +111,6 @@ final class SessionDetailRulesTests: XCTestCase {
         XCTAssertEqual(list.map(\.id), ["c", "n-a", "n-b"])
     }
 
-    func testANoteSeeksJustBeforeItAndNeverBelowZero() {
-        XCTAssertEqual(SessionDetailRules.noteSeekTime(60), 56, accuracy: 0.001)
-        XCTAssertEqual(SessionDetailRules.noteSeekTime(2), 0, accuracy: 0.001)
-    }
 
     // MARK: Space bar
 

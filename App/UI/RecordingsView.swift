@@ -171,6 +171,8 @@ struct RecordingsView: View {
     @ObservedObject private var review = ScreenroomReviewController.shared
     @ObservedObject private var thumbnails = SessionThumbnails.shared
     @State private var playhead: Double = 0
+    /// The note just deleted from the Notes list, for its "Undo".
+    @State private var deletedNote: ScreenroomNote?
     @State private var timeObserver: Any?
     /// The movie's shape, from the player item's presentation size; 16:9
     /// until it is known.
@@ -206,7 +208,7 @@ struct RecordingsView: View {
 
     /// The work in the rail's last card. Clips and notes are one list now.
     enum Tab: String, CaseIterable {
-        case moments = "Moments"
+        case moments = "Notes"
         case transcript = "Transcript"
         /// What Cues offered in the class and the teacher opened or sent.
         case links = "Links"
@@ -416,7 +418,7 @@ struct RecordingsView: View {
             hasVideo: selection != nil && player != nil,
             onTogglePlay: togglePlay,
             onPlayerKey: playerKey,
-            tabs: Tab.allCases.filter(\.isAvailable).map(\.rawValue),
+            tabs: tabs(for: session),
             tab: $tab,
             stage: { stage(for: session) },
             timeline: { timeline(for: session) },
@@ -791,7 +793,7 @@ struct RecordingsView: View {
                             skipping: skipObserver != nil,
                             moments: moments(for: session),
                             onSeekMoment: { moment in
-                                seek(to: moment.kind == .note ? SessionDetailRules.noteSeekTime(moment.at) : moment.at)
+                                seek(to: moment.at)
                             },
                             onStopSkipping: stopSkipping,
                             onTogglePlay: togglePlay,
@@ -806,13 +808,13 @@ struct RecordingsView: View {
         }
     }
 
-    /// The Moments card's content: Moments, Transcript, Links.
+    /// The side card's content: Notes, Transcript, Links.
     @ViewBuilder private func work(for session: Session) -> some View {
         switch Tab(rawValue: tab) ?? .moments {
         case .transcript where Tab.transcript.isAvailable:
             if let folder = session.folder {
                 if FileManager.default.fileExists(atPath: SessionSummary.transcriptURL(in: folder).path) {
-                    SessionTranscriptView(folder: folder, onSeek: seek)
+                    SessionTranscriptView(folder: folder, onSeek: scrub, playhead: playhead, isPlaying: isPlaying)
                 } else {
                     let state = analyseState(session)
                     SessionTabEmpty(title: "No transcript", symbol: "text.alignleft",
@@ -834,7 +836,7 @@ struct RecordingsView: View {
             } else {
                 notInFolder("transcript")
             }
-        case .links where Tab.links.isAvailable:
+        case .links where showsLinks(session):
             linksDetail(for: session)
         default:
             momentsDetail(for: session)
@@ -864,7 +866,7 @@ struct RecordingsView: View {
                         message: "These recordings are not in a session folder, so they have no \(what).") {}
     }
 
-    /// Clips and notes as moments, shared by the Moments list and the lane
+    /// Clips and notes as moments, shared by the Notes list and the lane
     /// under the timeline.
     private func moments(for session: Session) -> [SessionMoment] {
         let clips = selection?.clips ?? []
@@ -895,18 +897,30 @@ struct RecordingsView: View {
             canAddNotes: notesApply,
             disabledReason: session.folder == nil ? "No session folder"
                 : review.selectionMismatch ? "Notes belong to another take" : "Add a note here",
+            playhead: playhead,
             notePosition: { Int(playhead * 1000) },
-            onSeek: { moment in
-                seek(to: moment.kind == .note ? SessionDetailRules.noteSeekTime(moment.at) : moment.at)
-            },
+            onSeek: { moment in seek(to: moment.at) },
             onAddNote: { text, ms in review.addNote(text, at: ms) },
+            onEditNote: { moment, text in
+                guard let id = SessionNoteEditRules.noteID(fromMomentID: moment.id) else { return }
+                review.updateNote(id, text: text)
+            },
+            onRetimeNote: { moment, ms in
+                guard let id = SessionNoteEditRules.noteID(fromMomentID: moment.id) else { return }
+                review.updateNote(id, atMs: ms)
+            },
             onRemove: { moment in
                 if moment.kind == .clip {
                     guard let selection, let clip = clips.first(where: { "c-\($0.id.uuidString)" == moment.id }) else { return }
                     removeClip(clip, from: selection)
                 } else if let note = notes.first(where: { "n-\($0.id.uuidString)" == moment.id }) {
+                    deletedNote = note
                     review.deleteNote(note)
                 }
+            },
+            onUndoRemove: {
+                if let note = deletedNote { review.restoreNote(note) }
+                deletedNote = nil
             },
             onReveal: { moment in
                 guard let selection, let clip = clips.first(where: { "c-\($0.id.uuidString)" == moment.id }) else { return }
@@ -921,7 +935,7 @@ struct RecordingsView: View {
     @ViewBuilder private func linksDetail(for session: Session) -> some View {
         if session.links.isEmpty {
             SessionTabEmpty(title: "No links", symbol: "link",
-                            message: "Cues was off in this meeting. With Cues on, the cards you open or send are kept here.") {}
+                            message: "No cards were opened or sent in this meeting.") {}
         } else {
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
@@ -958,8 +972,21 @@ struct RecordingsView: View {
     /// A card was picked: play its main take, and point Screenroom's state at
     /// its folder so the analysis tile, the notes and the scrubber's marks
     /// all describe this session.
+    private func showsLinks(_ session: Session) -> Bool {
+        let cuesFile = session.folder.map {
+            FileManager.default.fileExists(atPath: $0.appendingPathComponent("cues.txt").path)
+        } ?? false
+        return SessionDetailRules.showsLinksTab(cuesReleased: Tab.links.isAvailable,
+                                                savedLinks: session.links.count, hasCuesFile: cuesFile)
+    }
+
+    private func tabs(for session: Session) -> [String] {
+        Tab.allCases.filter { $0 == .links ? showsLinks(session) : $0.isAvailable }.map(\.rawValue)
+    }
+
     private func didSelect() {
         let session = selectedSession
+        if tab == Tab.links.rawValue, let session, !showsLinks(session) { tab = Tab.moments.rawValue }
         if selection == nil || !(session?.takes.contains(where: { $0.url == selection?.url }) ?? false) {
             selection = session?.primaryTake
         }

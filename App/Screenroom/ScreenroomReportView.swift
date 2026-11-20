@@ -1794,6 +1794,12 @@ struct ScreenroomReportView: View {
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
                 .padding(.top, 4)
+            if let usage = review.analysis?.usage, !usage.isEmpty {
+                Text(usage.reportLine)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
+            }
         }
     }
 

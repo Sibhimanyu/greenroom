@@ -321,7 +321,8 @@ enum ScreenroomAgent {
                     brief: String,
                     in folder: URL,
                     onStart: ((Process) -> Void)? = nil,
-                    onOutput: (@MainActor (String) -> Void)? = nil) async throws -> String {
+                    onOutput: (@MainActor (String) -> Void)? = nil,
+                    onUsage: (@Sendable (AnalysisUsage) -> Void)? = nil) async throws -> String {
         let command = settings.command.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !command.isEmpty else { throw Failure.noCommand }
 
@@ -373,7 +374,8 @@ enum ScreenroomAgent {
         // which says what the agent is doing, and the answer arrives inside
         // it. The first version streamed it straight to the window, which put
         // the report's own sentences on screen a character at a time.
-        async let collected = readStream(output.fileHandleForReading, onOutput: onOutput)
+        async let collected = readStream(output.fileHandleForReading, tool: settings.kind.label,
+                                         onOutput: onOutput, onUsage: onUsage)
         async let problems = drain(errors.fileHandleForReading, onOutput: nil)
 
         let reader = await collected
@@ -403,15 +405,17 @@ enum ScreenroomAgent {
     /// JSON object parses as nothing. The activity is de-duplicated: an agent
     /// reading four files in a row would otherwise flicker "Thinking…"
     /// between each, which reads as noise rather than as progress.
-    private static func readStream(_ handle: FileHandle,
-                                   onOutput: (@MainActor (String) -> Void)?) async -> StreamReader {
+    private static func readStream(_ handle: FileHandle, tool: String,
+                                   onOutput: (@MainActor (String) -> Void)?,
+                                   onUsage: (@Sendable (AnalysisUsage) -> Void)?) async -> StreamReader {
         await withCheckedContinuation { (continuation: CheckedContinuation<StreamReader, Never>) in
             DispatchQueue.global(qos: .userInitiated).async {
-                var reader = StreamReader()
+                var reader = StreamReader(tool: tool)
                 var pending = ""
                 var lastShown = ""
 
                 func flush(_ line: String) {
+                    if reader.consumeUsage(line), let usage = reader.usage { onUsage?(usage) }
                     guard let activity = reader.consume(line), activity != lastShown else { return }
                     lastShown = activity
                     if let onOutput {
@@ -612,6 +616,16 @@ extension ScreenroomAgent {
         /// True once anything parsed, so the fallback knows to stay out.
         private(set) var structured = false
         private(set) var turns = 0
+        private var usageReader: AnalysisUsageReader
+
+        init(tool: String = "") { usageReader = AnalysisUsageReader(tool: tool) }
+
+        /// Token counts the events carried, if any. Nil for a command that
+        /// streams no JSON, and that is fine.
+        var usage: AnalysisUsage? { usageReader.usage }
+
+        /// Feeds the same line to the usage fold; true when the total moved.
+        mutating func consumeUsage(_ line: String) -> Bool { usageReader.consume(line) }
 
         /// Consumes one line and returns something to show, if there is any.
         mutating func consume(_ line: String) -> String? {

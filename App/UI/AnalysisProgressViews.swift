@@ -68,6 +68,14 @@ struct AnalysisProgressPopover: View {
                     .truncationMode(.head)
             }
 
+            if let line = review.usageLine, !progress.isStopping {
+                Text(line)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
             if let eta = review.eta, !progress.isStopping {
                 Text(ScreenroomETA.label(eta))
                     .font(.caption)

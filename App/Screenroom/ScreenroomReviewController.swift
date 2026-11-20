@@ -114,6 +114,18 @@ final class ScreenroomReviewController: ObservableObject {
             isStopping: isStopping)
     }
 
+    /// Tokens the agent has reported so far this run. Nil before the agent
+    /// step, and for a command that streams no JSON.
+    @Published private(set) var runUsage: AnalysisUsage?
+    /// The notes pass is the writer: no cloud tokens, said so in the popover.
+    @Published private(set) var writerIsOnDevice = false
+
+    /// The popover's tokens line, or nil when there is nothing to say.
+    var usageLine: String? {
+        if let runUsage, !runUsage.isEmpty { return runUsage.liveLine }
+        return writerIsOnDevice ? AnalysisUsage.onDeviceLine : nil
+    }
+
     /// The running step, for deciding what a Stop may remove.
     private var runningKind: ScreenroomRunStep.Kind?
     /// What the folder held before this run began.
@@ -533,6 +545,8 @@ final class ScreenroomReviewController: ObservableObject {
     private func run(_ selected: ScreenroomPresentation) async {
         isAnalysing = true
         isStopping = false
+        runUsage = nil
+        writerIsOnDevice = false
         clearLog()
         status = nil
         startClock()
@@ -749,6 +763,14 @@ final class ScreenroomReviewController: ObservableObject {
     /// The engine ladder, walked automatically: the agent when one is set up,
     /// Apple's on-device model when it is not, and arithmetic when neither is
     /// available. Never a question put to the teacher mid-presentation.
+    /// Hands the last usage from the reader thread to the main actor's code.
+    private final class UsageBox: @unchecked Sendable {
+        private let lock = NSLock()
+        private var stored: AnalysisUsage?
+        func set(_ usage: AnalysisUsage) { lock.lock(); stored = usage; lock.unlock() }
+        var value: AnalysisUsage? { lock.lock(); defer { lock.unlock() }; return stored }
+    }
+
     private func write(consistency: [String], for presentation: ScreenroomPresentation) async -> ScreenroomAnalysis? {
         let settings = ScreenroomAgentSettings.load()
         if settings.enabled, !settings.command.trimmingCharacters(in: .whitespaces).isEmpty {
@@ -764,19 +786,28 @@ final class ScreenroomReviewController: ObservableObject {
                                               frameCount: frameCount,
                                               hasTranscript: hasTranscript)
             ScreenroomAgent.writeBrief(brief, in: presentation.folder)
+            let usageBox = UsageBox()
             do {
                 let output = try await ScreenroomAgent.run(
                     settings: settings, brief: brief, in: presentation.folder,
                     onStart: { [weak self] process in
                         Task { @MainActor in self?.childProcess = process }
                     },
-                    onOutput: { [weak self] piece in self?.note(piece) })
+                    onOutput: { [weak self] piece in self?.note(piece) },
+                    onUsage: { [weak self] usage in
+                        usageBox.set(usage)
+                        Task { @MainActor in self?.runUsage = usage }
+                    })
                 finishStage()
                 ScreenroomAgent.writeReport(output, in: presentation.folder)
-                return ScreenroomAgent.analysis(from: output,
-                                                engine: settings.kind.label,
-                                                consistency: consistency)
+                var written = ScreenroomAgent.analysis(from: output,
+                                                       engine: settings.kind.label,
+                                                       consistency: consistency)
                     .agreeing(with: metrics, presence: presence)
+                // Read from the box, not the published value: the main-actor
+                // hop may not have landed yet.
+                if let usage = usageBox.value, !usage.isEmpty { written.usage = usage }
+                return written
             } catch {
                 // Falls through to the on-device pass rather than failing the
                 // run. A missing CLI should cost the extra detail, not the
@@ -787,6 +818,9 @@ final class ScreenroomReviewController: ObservableObject {
         }
 
         begin("Reading the notes", .notes, determinate: false, kind: .write)
+        // A failed agent may have reported some tokens before it died; the
+        // notes pass that took over used none.
+        writerIsOnDevice = true
         let analysis = await ScreenroomAnalyst.analyse(notes: notes,
                                                        scoring: scoring,
                                                        presenter: presentation.presenter,

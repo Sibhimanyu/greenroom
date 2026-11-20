@@ -95,6 +95,11 @@ struct ScreenroomAnalysis: Codable, Hashable {
     /// said in week 3.
     var consistency: [String] = []
 
+    /// Tokens the agent reported for this run. Optional so every analysis.json
+    /// written before it still decodes; nil too for the on-device and counted
+    /// passes and for a command that streams no JSON.
+    var usage: AnalysisUsage?
+
     static let schemaVersion = 1
     static let fileName = "analysis.json"
 

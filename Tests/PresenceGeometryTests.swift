@@ -354,4 +354,11 @@ final class PresenceGeometryTests: XCTestCase {
         for _ in 0..<20 { low = g.stepped(low, aspect: 16.0 / 9, steps: -1) }
         XCTAssertEqual(low.cutoutHeightFraction, 0.3, accuracy: 1e-6)
     }
+
+    func testHitBandIsNeverDrawnAtRest() {
+        XCTAssertFalse(PresenceHitBand.isDrawn(isCutout: true, pointerOverBubble: false, interacting: false))
+        XCTAssertTrue(PresenceHitBand.isDrawn(isCutout: true, pointerOverBubble: true, interacting: false))
+        XCTAssertTrue(PresenceHitBand.isDrawn(isCutout: true, pointerOverBubble: false, interacting: true))
+        XCTAssertFalse(PresenceHitBand.isDrawn(isCutout: false, pointerOverBubble: true, interacting: true))
+    }
 }

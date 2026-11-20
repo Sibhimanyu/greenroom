@@ -196,3 +196,14 @@ struct PresenceGeometry: Equatable {
 
     private static func clamp(_ v: Double, _ r: ClosedRange<Double>) -> Double { min(max(v, r.lowerBound), r.upperBound) }
 }
+
+/// Whether the Cutout's 14pt edge band (a 2% black ring that lets the window
+/// server hand resize cursors to a transparent window) may be drawn. Drawn all
+/// the time it shows as a faint frame around the person on a smooth wallpaper
+/// (owner, 2026-11-20), so it exists only while the pointer is over the bubble,
+/// when the hover outline is on screen anyway. Other shapes never need it.
+enum PresenceHitBand {
+    static func isDrawn(isCutout: Bool, pointerOverBubble: Bool, interacting: Bool) -> Bool {
+        isCutout && (pointerOverBubble || interacting)
+    }
+}

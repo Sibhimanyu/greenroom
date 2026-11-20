@@ -213,6 +213,7 @@ final class PresenceBubble {
     private var repeatTimer: Timer?
     private var settleItem: DispatchWorkItem?
     private var settlePending = false
+    private var pointerMonitor: Any?
 
     var isVisible: Bool { panel?.isVisible ?? false }
 
@@ -237,6 +238,7 @@ final class PresenceBubble {
             programmatic = false
         }
         if !panel.isVisible { panel.orderFrontRegardless() }
+        startPointerWatch()
         updateClipCorners()
         if stripShown { positionStrip() }
     }
@@ -247,6 +249,8 @@ final class PresenceBubble {
         settle()
         hideStrip(animated: false)
         panel?.orderOut(nil)
+        stopPointerWatch()
+        updateHitBand()
     }
 
     /// Bigger (+1) or Smaller (-1) by one step (accessibility, single taps).
@@ -455,6 +459,7 @@ final class PresenceBubble {
         clip.borderWidth = 0
         container.layer?.addSublayer(clip)
         // Hit band first (under the outline), then the hover outline and handles.
+        hitRing.isHidden = true
         hitRing.fillRule = .evenOdd
         hitRing.fillColor = NSColor.black.withAlphaComponent(Self.hitAlpha).cgColor
         container.layer?.addSublayer(hitRing)
@@ -497,9 +502,11 @@ final class PresenceBubble {
             guard let self else { return }
             if begin {
                 interacting = true
+                updateHitBand()
                 hideStrip(animated: false)
             } else {
                 interacting = false
+                updateHitBand()
                 report(final: true)
                 if let geometry { show(layout: layout, geometry: geometry) }
             }
@@ -605,8 +612,33 @@ final class PresenceBubble {
         path.addRect(bounds.insetBy(dx: min(band, bounds.width / 2), dy: min(band, bounds.height / 2)))
         hitRing.frame = bounds
         hitRing.path = path
-        hitRing.isHidden = layout.cameraShape != .cutout
         CATransaction.commit()
+        updateHitBand()
+    }
+
+    /// The edge band is drawn only while the pointer is over the bubble (see
+    /// PresenceHitBand). A global mouse-moved monitor sees the pointer arrive
+    /// even though a transparent window gets no events there.
+    private func updateHitBand() {
+        let over = panel.map { $0.isVisible && $0.frame.contains(NSEvent.mouseLocation) } ?? false
+        let drawn = PresenceHitBand.isDrawn(isCutout: layout.cameraShape == .cutout,
+                                            pointerOverBubble: over, interacting: interacting)
+        guard hitRing.isHidden != !drawn else { return }
+        CATransaction.begin(); CATransaction.setDisableActions(true)
+        hitRing.isHidden = !drawn
+        CATransaction.commit()
+    }
+
+    private func startPointerWatch() {
+        guard pointerMonitor == nil else { return }
+        pointerMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.mouseMoved]) { [weak self] _ in
+            MainActor.assumeIsolated { self?.updateHitBand() }
+        }
+    }
+
+    private func stopPointerWatch() {
+        if let pointerMonitor { NSEvent.removeMonitor(pointerMonitor) }
+        pointerMonitor = nil
     }
 
     private func styleClip(for shape: WebcamShape) {

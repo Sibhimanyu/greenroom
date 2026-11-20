@@ -2,7 +2,8 @@
 //  ZoomSettingsTab.swift
 //  Greenroom
 //
-//  Settings -> Zoom: the two Marketplace apps and how the meeting appears.
+//  Settings -> Zoom: Sign in with Zoom, the two Marketplace apps (advanced,
+//  folded away) and how the meeting appears.
 //
 //  Both Zoom Marketplace apps on one page.
 //
@@ -45,7 +46,8 @@ struct ZoomSettingsTab: View {
             s2sClientSecret: $coordinator.s2sClientSecret,
             displayName: $coordinator.userDisplayName,
             customUI: $coordinator.customUIMode,
-            customUINeedsRelaunch: coordinator.customUIModeNeedsRelaunch)
+            customUINeedsRelaunch: coordinator.customUIModeNeedsRelaunch,
+            signIn: ZoomSignInSection.live(coordinator))
     }
 }
 
@@ -60,6 +62,9 @@ struct ZoomPageContent: View {
     @Binding var displayName: String
     @Binding var customUI: Bool
     let customUINeedsRelaunch: Bool
+    let signIn: ZoomSignInSection
+    /// Starts with "Use your own Zoom apps" open; for the off-screen render only.
+    var ownAppsOpen = false
     /// Starts with the scope list open; for the off-screen render only.
     var scopesOpen = false
 
@@ -77,29 +82,40 @@ struct ZoomPageContent: View {
     var body: some View {
         Form {
             Section {
-                TextField("Client ID", text: $sdkClientID)
-                SecureField("Client Secret", text: $sdkClientSecret)
+                signIn
             } header: {
-                HStack {
-                    Text("Meeting SDK")
-                    Spacer()
-                    sdkState.badge
-                }
-                .help("A General App in the Zoom Marketplace \u{2192} Features \u{2192} Embed \u{2192} Meeting SDK. Powers the built-in meeting client and the chat window. Works only in meetings hosted under this Zoom account.")
+                Text("Zoom account")
+                    .help("Signs in with your own Zoom account. Greenroom starts, lists and ends meetings as you.")
             }
 
             Section {
-                TextField("Account ID", text: $s2sAccountID)
-                TextField("Client ID", text: $s2sClientID)
-                SecureField("Client Secret", text: $s2sClientSecret)
-                ScopeList(scopes: Self.scopes, open: scopesOpen)
-            } header: {
-                HStack {
-                    Text("Server-to-Server")
-                    Spacer()
-                    s2sState.badge
+                AdvancedDisclosure("Use your own Zoom apps (advanced)", open: ownAppsOpen) {
+                    VStack(alignment: .leading, spacing: 16) {
+                        VStack(alignment: .leading, spacing: 8) {
+                            HStack {
+                                Text("Meeting SDK").font(.headline)
+                                Spacer()
+                                sdkState.badge
+                            }
+                            .help("A General App in the Zoom Marketplace \u{2192} Features \u{2192} Embed \u{2192} Meeting SDK. Powers the built-in meeting client and the chat window. Works only in meetings hosted under this Zoom account.")
+                            TextField("Client ID", text: $sdkClientID)
+                            SecureField("Client Secret", text: $sdkClientSecret)
+                        }
+                        Divider()
+                        VStack(alignment: .leading, spacing: 8) {
+                            HStack {
+                                Text("Server-to-Server").font(.headline)
+                                Spacer()
+                                s2sState.badge
+                            }
+                            .help("A Server-to-Server OAuth app on the same Zoom account. Powers New Meeting and the scheduled list. The setup guide (?) walks through it and tests the result. Used only when you are not signed in with Zoom.")
+                            TextField("Account ID", text: $s2sAccountID)
+                            TextField("Client ID", text: $s2sClientID)
+                            SecureField("Client Secret", text: $s2sClientSecret)
+                            ScopeList(scopes: Self.scopes, open: scopesOpen)
+                        }
+                    }
                 }
-                .help("A Server-to-Server OAuth app on the same Zoom account. Powers New Meeting and the scheduled list. The setup guide (?) walks through it and tests the result.")
             }
 
             Section("Meeting") {

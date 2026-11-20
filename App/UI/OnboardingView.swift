@@ -181,7 +181,13 @@ struct OnboardingView: View {
         // Keep native disclosure chevrons and focus rings inside the scroll clip.
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
-                stepHeader("Connect your Zoom account", "Have a settings file from a teammate? Import it to fill in the connection details.")
+                stepHeader("Connect your Zoom account", "Sign in with your Zoom account. Greenroom then starts and hosts your meetings as you.")
+                ZoomSignInSection.live(coordinator)
+                Divider()
+                AdvancedDisclosure("Use your own Zoom apps (advanced)", open: zoomAppsOpen) {
+                  VStack(alignment: .leading, spacing: 20) {
+                Text("Have a settings file from a teammate? Import it to fill in the connection details.")
+                    .font(.callout).foregroundStyle(.secondary)
                 HStack(spacing: 12) {
                     Button("Import settings file…", systemImage: "square.and.arrow.down") { importSettingsFile() }
                         .buttonStyle(.borderedProminent)
@@ -221,11 +227,17 @@ struct OnboardingView: View {
                         .padding(.top, 16)
                         .disabled(isTesting)
                 }
+                  }
+                }
             }
             .padding(.horizontal, 8)
         }
         .id(SetupPage.zoom)
     }
+
+    /// Starts open for people who already pasted their own apps and are not
+    /// signed in, so nothing they set up seems to have vanished.
+    private var zoomAppsOpen: Bool { coordinator.zoomSignedInAs == nil && (chatConfigured || hostingConfigured) }
 
     private func credentialField(_ title: String, text: Binding<String>, secure: Bool = false) -> some View {
         LabeledContent(title) {
@@ -596,7 +608,7 @@ struct OnboardingView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
                 stepHeader("Your setup, at a glance", "You can return to any step below. Everything you changed is already saved.")
-                summaryRow("Zoom", detail: chatConfigured && hostingConfigured ? "Connection details saved" : "Connection details still needed", page: .zoom)
+                summaryRow("Zoom", detail: coordinator.zoomSignedInAs != nil || (chatConfigured && hostingConfigured) ? "Connection details saved" : "Connection details still needed", page: .zoom)
                 if let failure = testResults.first(where: { $0.status == .failed }) {
                     Label(failure.detail, systemImage: "exclamationmark.triangle")
                         .font(.callout).foregroundStyle(.red)

@@ -324,7 +324,7 @@ struct MeetingToolbarBar: View {
     @ViewBuilder private var endControl: some View {
         if confirmingEnd {
             HStack(spacing: 6) {
-                Button("Cancel") { confirmingEnd = false }
+                Button("Keep going") { confirmingEnd = false }
                     .buttonStyle(.plain)
                     .font(.system(size: 12))
                     .foregroundStyle(MeetingTheme.secondaryText)
@@ -343,6 +343,11 @@ struct MeetingToolbarBar: View {
                 .help(state.endsForAll
                     ? "Ends the meeting for everyone, saves any recording and turns the camera off"
                     : "Leaves the meeting, saves any recording and turns the camera off")
+            }
+            // Never silently armed: back to End after the same wait as the bar.
+            .task {
+                try? await Task.sleep(nanoseconds: UInt64(EndConfirm.timeout * 1_000_000_000))
+                if !Task.isCancelled { confirmingEnd = false }
             }
         } else {
             Button { confirmingEnd = true } label: {

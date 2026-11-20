@@ -22,11 +22,14 @@ struct NotchInput: Equatable {
     var steps: [NotchStep] = []
     var failure: String?
     var detail: String?
+    /// A meeting start in flight: the island offers Cancel.
+    var cancellable = false
 }
 
 struct NotchProgress: Equatable {
     var steps: [NotchStep]
     var detail: String?
+    var cancellable = false
 
     /// Steps this start actually takes: a skipped one is not counted, so a
     /// class with no apps and no layout reads "1/3", not "2/5" while it is
@@ -94,6 +97,8 @@ enum NotchPhase: Equatable {
 
     var isFailure: Bool { if case .failed = self { return true } else { return false } }
     var isHidden: Bool { self == .hidden }
+    /// A working phase that offers Cancel (a meeting start).
+    var isCancellable: Bool { if case .working(let p) = self { return p.cancellable } else { return false } }
 }
 
 enum NotchStatusRules {
@@ -141,7 +146,8 @@ enum NotchStatusRules {
             return .failed(NotchFailure(message: failure, detail: input.detail))
         }
         if !input.steps.isEmpty {
-            return .working(NotchProgress(steps: input.steps, detail: input.detail))
+            return .working(NotchProgress(steps: input.steps, detail: input.detail,
+                                         cancellable: input.cancellable))
         }
         switch phase {
         case .working(let progress) where progress.allSettled:
@@ -234,7 +240,7 @@ enum IslandContent: Equatable {
     var isInteractive: Bool {
         switch self {
         case .none: return false
-        case .status(let phase): return phase.isFailure
+        case .status(let phase): return phase.isFailure || phase.isCancellable
         case .countdown(let c): return c != .go
         case .toast(let t): return t.hasAction
         case .prompt: return true

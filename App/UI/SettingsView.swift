@@ -63,35 +63,43 @@ struct SettingsView: View {
         TabView(selection: $tab) {
             #if DEBUG
             AccountSettingsTab()
+                .settingsPageClip()
                 .tabItem { Label("Account", systemImage: "person.crop.circle") }
                 .tag("account")
             #endif
 
             WebcamSettingsTab()
+                .settingsPageClip()
                 .tabItem { Label("Webcam", systemImage: "video.fill") }
                 .tag("webcam")
 
             LayoutSettingsTab()
+                .settingsPageClip()
                 .tabItem { Label("Layout", systemImage: "rectangle.split.2x1") }
                 .tag("layout")
 
             ShortcutsSettingsTab()
+                .settingsPageClip()
                 .tabItem { Label("Shortcuts", systemImage: "command") }
                 .tag("shortcuts")
 
             ZoomSettingsTab()
+                .settingsPageClip()
                 .tabItem { Label("Zoom", systemImage: "video.bubble") }
                 .tag("zoom")
 
             YouTubeSettingsTab()
+                .settingsPageClip()
                 .tabItem { Label("YouTube", systemImage: "play.rectangle.fill") }
                 .tag("youtube")
 
             CuesSettingsTab()
+                .settingsPageClip()
                 .tabItem { Label("Cues", systemImage: "waveform.and.magnifyingglass") }
                 .tag("cues")
 
             TransferSettingsTab()
+                .settingsPageClip()
                 .tabItem { Label("Transfer", systemImage: "square.and.arrow.up.on.square") }
                 .tag("transfer")
         }
@@ -117,11 +125,16 @@ struct SettingsView: View {
 
 extension View {
     /// The Settings title bar and tab toolbar are part of the window's frost
-    /// (WindowFrost leaves the title bar transparent). Pages scroll UNDER the
-    /// toolbar, so macOS 26's HARD scroll edge effect cuts them off cleanly at
-    /// the toolbar's bottom edge (no fade, no bar: the frost stays the same)
-    /// instead of letting them show through the tab labels. One modifier on
-    /// the TabView: every tab is a grouped Form and inherits it.
+    /// (WindowFrost leaves the title bar transparent), and a page's Form
+    /// scrolls under them. Two layers, so a page ends cleanly at the bottom
+    /// edge of the tab bar instead of showing through the tab labels (owner,
+    /// 2026-11-20):
+    /// 1. every OS: `settingsPageClip` (`pageScrollClip`) masks the page to the area below the
+    ///    top safe area (the toolbar). It paints nothing, so the wallpaper
+    ///    tint of the frost is untouched (DESIGN.md, 2026-11-12).
+    /// 2. macOS 26: the HARD scroll edge effect, on the TabView and again on
+    ///    each page's own scroll view, which cannot rely on the TabView's
+    ///    environment reaching it.
     @ViewBuilder
     func settingsTopEdge() -> some View {
         if #available(macOS 26.0, *) {
@@ -130,5 +143,10 @@ extension View {
         } else {
             self
         }
+    }
+
+    /// One Settings tab: the shared `pageScrollClip` (PageChrome.swift).
+    func settingsPageClip() -> some View {
+        pageScrollClip()
     }
 }

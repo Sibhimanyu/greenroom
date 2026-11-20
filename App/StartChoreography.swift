@@ -2,10 +2,11 @@
 //  StartChoreography.swift
 //  Greenroom
 //
-//  Starting a meeting is one smooth movement (owner, 2026-11-17): Home steps
-//  aside toward the Control bar at the click, the bar is the only status
-//  surface while the meeting comes up, and it becomes the live bar (or hands
-//  over to the Meeting window) when the meeting is live. These are the
+//  Starting a meeting is one smooth movement (owner, 2026-11-20): Home steps
+//  aside at the click, the island (the notch status surface) is the only
+//  status surface while the meeting comes up, with its step, progress and
+//  Cancel, and the floating Control bar first appears when the meeting is
+//  live (or the Meeting window takes over). These are the
 //  decisions behind it, with no AppKit, so the test target compiles this file
 //  as it is. The coordinator and the bar turn them into windows.
 //
@@ -20,25 +21,34 @@ enum StartChoreography {
     /// Which surface shows in a phase.
     struct Surfaces: Equatable {
         var home: Bool
-        /// The Control bar, in its Starting state or its live one.
+        /// The floating Control bar. Never while starting: it is the live surface.
         var bar: Bool
-        /// The notch island's readiness card.
+        /// The notch island's start status (steps, Cancel, or a failure).
         var island: Bool
     }
 
-    /// One surface says what is happening, never two. Starting: the bar alone.
-    /// A failure is the exception: the island keeps the message with Try again
-    /// and Close, as it always has, and Home is back.
+    /// One surface says what is happening, never two. Starting: the island
+    /// alone. Live: the bar alone (the island folds without a "Live" beat).
+    /// A failure: the island keeps the message with Try again and Close, and
+    /// Home is back.
     static func surfaces(_ phase: Phase) -> Surfaces {
         switch phase {
         case .idle: return Surfaces(home: true, bar: false, island: false)
-        case .starting: return Surfaces(home: false, bar: true, island: false)
+        case .starting: return Surfaces(home: false, bar: false, island: true)
         case .live: return Surfaces(home: false, bar: true, island: false)
         case .failed: return Surfaces(home: true, bar: false, island: true)
         }
     }
 
-    /// The words in the bar while it starts. Plain, no step names.
+    /// The island offers Cancel while a meeting starts: the one way out of a
+    /// start in flight (the bar is not there yet). A Record start has its own
+    /// countdown Cancel and no meeting to abandon, so it shows none.
+    static func islandShowsCancel(_ phase: Phase, recordStart: Bool) -> Bool {
+        phase == .starting && !recordStart
+    }
+
+    /// The words in the bar while it starts (dormant: the bar no longer shows
+    /// a Starting state; the island says the step). Plain, no step names.
     enum BarStage: Equatable { case starting, joining }
 
     static func barText(_ stage: BarStage) -> String {

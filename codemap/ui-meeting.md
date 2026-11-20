@@ -70,6 +70,7 @@ Greenroom's own meeting UI when Zoom runs in custom-UI mode (the SDK owns no win
 - Change self-view overlay -> `SelfPreviewView`, `RootView.layoutSelfBlock`.
 - Change side-panel behaviour (chat vs people) -> `MeetingControlsModel.toggleChat/togglePeople/showPeople` + `RootView.sidePanelChanged/layoutSidePanel`.
 - Change shrink-to-bar behaviour -> `ControlPanel.miniaturize` -> `ParticipantGridWindowController.shrinkInsteadOfMinimize`, `MeetingControlsModel.collapseMeeting/expandToMeetingWindow`, `MeetingControlBarController.morph`.
+- Change the bar's two-step End -> state machine `EndConfirm` (App/LiveExitRules.swift: idle, confirming, ending; 6 s timeout; tests EndConfirmTests); driven by `CoordinatorController.confirmAndStop/armExit/disarmExit`; drawn by `MeetingBarContent.endConfirmStrip` (the whole bar becomes the question + Keep going + End for everyone, with `EndCountdownFill`). No popover: a popover is its own window and ate the first click on Confirm. The toolbar's End (`MeetingToolbarBar.endControl`) has the same flow in place, auto-reverting after the same wait.
 - Change close confirmation (End/Leave/Shrink sheet) -> `ParticipantGridWindowController.confirmClose` (set by coordinator); rules App/LiveExitRules.swift.
 - Change the Views menu -> `MeetingMenus.ViewsMenuState` (MeetingViewsMenu.swift), `MeetingControlsModel.viewsMenu()`; Tests/ViewsMenuTests.
 - Change the eye (show on share) wording/visibility -> App/ShareVisibilityRules.swift (rules), `WindowShareController` + `ShowOnShareSwitch` (draw).

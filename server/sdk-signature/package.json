@@ -1,0 +1,7 @@
+{
+  "name": "greenroom-sdk-signature",
+  "private": true,
+  "scripts": {
+    "test": "node --test test/*.test.js"
+  }
+}

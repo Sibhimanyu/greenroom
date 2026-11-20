@@ -191,10 +191,20 @@ final class CoordinatorController: ObservableObject {
         // A failed start is the exception to both guards below: it always needs
         // a card with a way out, wherever the panel is or is not.
         let failed = startReadiness.failure != nil
-        // A meeting start: the Control bar is the one status surface. The island
-        // only carries a failure (StartChoreography.surfaces).
+        // A meeting start: the island is the one status surface, with Cancel,
+        // until the meeting is live (StartChoreography.surfaces). A failure falls
+        // through to the cases below, as it always has. Cleared steps (live, or
+        // abandoned) fold the island without a "Live" beat: the bar takes over.
         if !recordFlowHUD, !failed, startInBar {
-            ReadinessHUDController.close()
+            guard !startReadiness.steps.isEmpty,
+                  let screen = DisplayResolver.mainDisplayScreen() ?? NSScreen.main else {
+                ReadinessHUDController.close()
+                return
+            }
+            ReadinessHUDController.show(
+                startReadiness, on: screen,
+                cancellable: StartChoreography.islandShowsCancel(.starting, recordStart: false),
+                onCancel: { [weak self] in self?.cancelStart() })
             return
         }
         // A Record start has no panel and no meeting: the island carries it,
@@ -274,24 +284,22 @@ final class CoordinatorController: ObservableObject {
         startInBar = false
     }
 
-    /// The words in the Control bar while a meeting starts; nil when it is not
-    /// starting (the bar is then the live bar).
+    /// Set while a meeting starts, nil otherwise: the "starting" flag Cancel
+    /// keys off. The words themselves are the island's (NotchStatusRules).
     @Published private(set) var startBarText: String?
     /// This start opened apps, which is what waiting for quiet screens guards.
     private var startOpenedApps = false
-    /// The Control bar carries this start, so the island stays shut for it
-    /// (until a failure). Cleared when the steps clear.
+    /// The island carries this meeting start (steps and Cancel, then a failure
+    /// if one comes). Cleared when the steps clear.
     private var startInBar = false
 
-    /// The click: the Control bar appears in its Starting state and Home steps
-    /// aside toward it. Before resetStartReadiness, so the island never draws.
+    /// The click: Home steps aside and the island takes the start's status. The
+    /// floating bar waits for the meeting to be live. Before resetStartReadiness,
+    /// so the island's first reading already has its steps.
     private func beginStartChoreography() {
         startBarText = StartChoreography.barText(.starting)
         startInBar = true
         ensureMeetingControls()
-        if let controls = meetingControls {
-            MeetingControlBarController.install(coordinator: self, model: controls, starting: true)
-        }
         // Home only steps aside if it was on screen; a start from the hotkey or
         // the menu bar leaves it alone.
         if MainWindow.current?.isVisible == true {
@@ -299,7 +307,17 @@ final class CoordinatorController: ObservableObject {
         }
     }
 
-    /// The bar's Cancel: abandons a start in flight. Home comes back as it was.
+    /// Where Home steps aside toward and comes back from: the bar once it is up,
+    /// else the island's spot under the menu bar (no notch needed).
+    private var startSurfaceFrame: NSRect? {
+        if let bar = MeetingControlBarController.currentFrame { return bar }
+        guard let screen = DisplayResolver.mainDisplayScreen() ?? NSScreen.main else { return nil }
+        let size = NotchGeometry.bodySize(for: .none)
+        return NSRect(x: screen.frame.midX - size.width / 2, y: screen.visibleFrame.maxY - size.height - 6,
+                      width: size.width, height: size.height)
+    }
+
+    /// The island's Cancel: abandons a start in flight. Home comes back as it was.
     func cancelStart() {
         guard startBarText != nil, !isStopping else { return }
         log("Start cancelled.")
@@ -469,6 +487,89 @@ final class CoordinatorController: ObservableObject {
     }
 
     let zoomChatClient = ZoomMeetingSDKClient()
+
+    // MARK: Where Zoom credentials come from. THE one place that decides.
+    // Signed in with Zoom: meetings, host key and the list come from the
+    // person's own Zoom account. Otherwise the pasted Server-to-Server app
+    // (advanced path, unchanged). The Meeting SDK's JWT follows the rules in
+    // ZoomCredentialRules.sdkAuth.
+
+    let zoomUser = ZoomUserAuth()
+
+    private var ownS2SComplete: Bool {
+        !s2sAccountID.isEmpty && !s2sClientID.isEmpty && !s2sClientSecret.isEmpty
+    }
+    private var ownSDKKeysPresent: Bool { !sdkClientID.isEmpty && !sdkClientSecret.isEmpty }
+
+    var zoomRESTSource: ZoomCredentialRules.RESTSource {
+        ZoomCredentialRules.restSource(signedIn: zoomUser.isSignedIn, ownS2SComplete: ownS2SComplete)
+    }
+
+    /// nil when neither a Zoom sign-in nor pasted S2S credentials exist.
+    var zoomAccess: ZoomRESTAccess? {
+        switch zoomRESTSource {
+        case .signedIn: return .signedIn(zoomUser)
+        case .ownApps: return .ownApps(accountID: s2sAccountID, clientID: s2sClientID, clientSecret: s2sClientSecret)
+        case .none: return nil
+        }
+    }
+
+    /// Can Greenroom create, list and host meetings right now?
+    var zoomHostingReady: Bool { zoomRESTSource != .none }
+
+    var zoomSDKAuthChoice: ZoomCredentialRules.SDKAuth {
+        ZoomCredentialRules.sdkAuth(signedIn: zoomUser.isSignedIn,
+                                    endpointSet: !ZoomOAuth.sdkSignatureEndpoint.isEmpty,
+                                    ownKeysPresent: ownSDKKeysPresent)
+    }
+
+    /// Can the Meeting SDK be authorised right now?
+    var zoomSDKReady: Bool { zoomSDKAuthChoice == .worker || zoomSDKAuthChoice == .ownKeys }
+
+    /// How the SDK gets its JWT, or the plain-words reason it can't.
+    func zoomSDKSigner() throws -> ZoomMeetingSDKClient.Signer {
+        switch zoomSDKAuthChoice {
+        case .ownKeys:
+            return .local(clientID: sdkClientID, clientSecret: sdkClientSecret)
+        case .worker:
+            let user = zoomUser
+            let identity = user.profile.map { $0.accountID + "/" + $0.id } ?? "signed-in"
+            return .fetched(identity: identity) {
+                try await user.sdkSignature(endpoint: ZoomOAuth.sdkSignatureEndpoint)
+            }
+        case .notFinished:
+            throw NSError(domain: "Greenroom", code: 25, userInfo: [NSLocalizedDescriptionKey: ZoomCredentialRules.notFinishedText])
+        case .missingKeys:
+            throw NSError(domain: "Greenroom", code: 21, userInfo: [
+                NSLocalizedDescriptionKey: "Sign in with Zoom in Settings (\u{2318},) \u{2192} Zoom. Greenroom sends your screen and camera through its own Zoom client, so it needs your Zoom account."
+            ])
+        }
+    }
+
+    /// Plain-values sign-in state for views (they observe the coordinator).
+    var zoomSignedInAs: (name: String, email: String)? {
+        guard zoomUser.isSignedIn else { return nil }
+        let p = zoomUser.profile
+        return (p?.name ?? "", p?.email ?? "")
+    }
+    var zoomSigningIn: Bool { zoomUser.phase == .signingIn }
+    /// Signed in, but the app now needs a scope the sign-in does not carry.
+    var zoomNeedsMorePermission: Bool { zoomUser.needsSignInAgain }
+    var zoomAttentionTitle: String { zoomUser.attentionTitle }
+    var zoomAttentionDetail: String { zoomUser.attentionDetail }
+    var zoomSignInError: String? { zoomUser.lastError }
+
+    func signInWithZoom() {
+        Task { try? await zoomUser.signIn() }
+    }
+    func cancelZoomSignIn() { zoomUser.cancelSignIn() }
+    /// Returns true when Zoom confirmed the revoke, false when only the local copy was deleted.
+    func signOutOfZoom() async -> Bool {
+        let revoked = await zoomUser.signOut()
+        scheduledMeetings = []
+        prefetchedZAK = nil
+        return revoked
+    }
     let zoomChatBridge = ZoomChatBridge()
     @Published private(set) var isConnectingChat = false
 
@@ -1208,6 +1309,11 @@ final class CoordinatorController: ObservableObject {
             }
             .store(in: &cancellables)
 
+        // Sign in with Zoom changes (signing in, signed in, out) redraw whatever shows the coordinator.
+        zoomUser.objectWillChange
+            .sink { [weak self] _ in self?.objectWillChange.send() }
+            .store(in: &cancellables)
+
         // Countdown, control bar and border follow the recording's state. The
         // values come from the publishers (they fire before the property
         // changes), so they are handed on rather than re-read.
@@ -1291,7 +1397,7 @@ final class CoordinatorController: ObservableObject {
                 MainWindow.current?.orderOut(nil)
             case .hideForStart:
                 if let window = MainWindow.current {
-                    MainWindowTransition.hide(window, toward: MeetingControlBarController.currentFrame)
+                    MainWindowTransition.hide(window, toward: startSurfaceFrame)
                 }
             case .showAfterStart:
                 if let window = MainWindow.current {
@@ -1300,7 +1406,7 @@ final class CoordinatorController: ObservableObject {
                        NSScreen.screens.contains(where: { $0.visibleFrame.intersects(remembered) }) {
                         frame = remembered
                     }
-                    MainWindowTransition.show(window, from: MeetingControlBarController.currentFrame, to: frame)
+                    MainWindowTransition.show(window, from: startSurfaceFrame, to: frame)
                     showed = true
                 }
             case .restoreFrame:
@@ -1500,16 +1606,23 @@ final class CoordinatorController: ObservableObject {
 
         // Greenroom's own Zoom client sends the picture, so it is needed for
         // every meeting, created or joined.
-        if meetingMode != .record, sdkClientID.isEmpty || sdkClientSecret.isEmpty {
-            log("Can't start yet \u{2014} add the Meeting SDK Client ID and Secret in Settings (\u{2318},) \u{2192} Zoom. Greenroom sends your screen and camera through its own Zoom client, so it needs them.")
+        if meetingMode != .record, !zoomSDKReady {
+            let why = zoomSDKAuthChoice == .notFinished
+                ? ZoomCredentialRules.notFinishedText
+                : "Sign in with Zoom in Settings (\u{2318},) \u{2192} Zoom. Greenroom sends your screen and camera through its own Zoom client, so it needs your Zoom account."
+            log("Can't start yet \u{2014} \(why)")
+            return
+        }
+        if meetingMode != .record, zoomNeedsMorePermission {
+            log("\(zoomAttentionTitle). Settings (\u{2318},) \u{2192} Zoom \u{2192} Sign in again, then press Start.")
             return
         }
         switch meetingMode {
         case .record:
             return
         case .create:
-            guard !s2sAccountID.isEmpty, !s2sClientID.isEmpty, !s2sClientSecret.isEmpty else {
-                log("Can't create a meeting yet \u{2014} add the Server-to-Server credentials in Settings (\u{2318},) \u{2192} Zoom.")
+            guard zoomHostingReady else {
+                log("Can't create a meeting yet \u{2014} sign in with Zoom in Settings (\u{2318},) \u{2192} Zoom.")
                 return
             }
         case .join:
@@ -1635,8 +1748,8 @@ final class CoordinatorController: ObservableObject {
 
                 try Task.checkCancellation()
                 mark(.meeting, .done)
-                // The bar has been up since the click, in its Starting state. Now it
-                // goes live. The Meeting window opens only if somebody is already in
+                // The island has carried the start since the click; the floating bar
+                // first appears now, live. The Meeting window opens only if somebody is already in
                 // the meeting; alone, the bar is the surface and the window comes up
                 // when the first person joins (never opened and then shrunk away).
                 let customUI = zoomChatClient.didUseCustomUI
@@ -1659,7 +1772,9 @@ final class CoordinatorController: ObservableObject {
                 // Zoom's own window keeps Zoom's controls and gets no bar.)
                 startBarText = nil
                 if StartChoreography.barKeptAfterLive(arranged: sessionArranges, customUI: customUI) {
-                    MeetingControlBarController.finishStarting(windowOpening: opensWindow)
+                    if let controls = meetingControls {
+                        MeetingControlBarController.install(coordinator: self, model: controls)
+                    }
                 } else {
                     MeetingControlBarController.close(fade: false)
                 }
@@ -1893,16 +2008,14 @@ final class CoordinatorController: ObservableObject {
         Self.sessionLog("End: asked the SDK to \(askedSDKToEnd ? "end the meeting for all" : "leave")")
         guard let number = meetingCreatedHere, let id = Int64(number) else { return }
         meetingCreatedHere = nil
-        guard !s2sAccountID.isEmpty, !s2sClientID.isEmpty, !s2sClientSecret.isEmpty else {
+        guard let access = zoomAccess else {
             if !askedSDKToEnd {
                 log("Zoom may have kept the meeting running without you \u{2014} end it from zoom.us if students are still in it.")
             }
             return
         }
-        let (account, client, secret) = (s2sAccountID, s2sClientID, s2sClientSecret)
         Task {
-            let answer = await ZoomServerToServerClient.endMeetingReporting(
-                id: id, accountID: account, clientID: client, clientSecret: secret)
+            let answer = await access.endMeetingReporting(id: id)
             Self.sessionLog("End: REST end meeting \(id) HTTP \(answer.status) \(answer.ok ? "ended" : "not ended") \(answer.detail)")
             // Zoom's own codes, not the HTTP status: a 400 was read as "already
             // over" until one turned out to be code 4711, the app lacking the
@@ -2778,6 +2891,12 @@ final class CoordinatorController: ObservableObject {
     /// What the armed button's callout says, right above it.
     @Published private(set) var exitAskTitle = ""
     @Published private(set) var exitAskDetail = ""
+    /// When the armed End started waiting (drives the button's countdown fill),
+    /// and the same wait's length. Nil when nothing is armed.
+    @Published private(set) var exitAskStartedAt: Date?
+    private(set) var exitAskTimeout: TimeInterval = IslandRules.confirmTimeout
+    /// End's own two-step (App/LiveExitRules.swift): idle, confirming, ending.
+    private var endConfirm = EndConfirm()
     private var exitAskTimer: Task<Void, Never>?
     private var exitAskMonitors: [Any] = []
     /// Which arming a click belongs to, so a late check never disarms a newer one.
@@ -2787,9 +2906,12 @@ final class CoordinatorController: ObservableObject {
         disarmExit()
         exitAskTitle = title
         exitAskDetail = detail
+        exitAskTimeout = ask == .end ? EndConfirm.timeout : IslandRules.confirmTimeout
+        exitAskStartedAt = Date()
         exitAsk = ask
+        let wait = exitAskTimeout
         exitAskTimer = Task { @MainActor [weak self] in
-            try? await Task.sleep(nanoseconds: UInt64(IslandRules.confirmTimeout * 1_000_000_000))
+            try? await Task.sleep(nanoseconds: UInt64(wait * 1_000_000_000))
             guard !Task.isCancelled else { return }
             self?.disarmExit()
         }
@@ -2837,6 +2959,8 @@ final class CoordinatorController: ObservableObject {
         exitAskTimer = nil
         for m in exitAskMonitors { NSEvent.removeMonitor(m) }
         exitAskMonitors = []
+        endConfirm.cancel()
+        exitAskStartedAt = nil
         if exitAsk != nil { exitAsk = nil }
     }
 
@@ -3144,17 +3268,13 @@ final class CoordinatorController: ObservableObject {
                 NSLocalizedDescriptionKey: "Zoom's create-meeting response had no host key (zak) - can't start the meeting."
             ])
         }
-        guard !sdkClientID.isEmpty, !sdkClientSecret.isEmpty else {
-            throw NSError(domain: "Greenroom", code: 21, userInfo: [
-                NSLocalizedDescriptionKey: "Add the Meeting SDK Client ID and Secret in Settings (\u{2318},) \u{2192} Zoom. Greenroom sends your screen and camera through its own Zoom client, so it needs them."
-            ])
-        }
+        let signer = try zoomSDKSigner()
 
         isConnectingChat = true
         defer { isConnectingChat = false }
 
         log("Starting the meeting in Greenroom's built-in Zoom client\u{2026}")
-        try await zoomChatClient.ensureReady(clientID: sdkClientID, clientSecret: sdkClientSecret)
+        try await zoomChatClient.ensureReady(signer: signer)
         await settleBeforeJoining()
         zoomChatClient.setDualScreenMode(sessionArranges && galleryWindowExists)
 
@@ -3181,16 +3301,12 @@ final class CoordinatorController: ObservableObject {
     /// via the built-in client, camera/mic live, chat as yourself. Never joins
     /// as a guest (the name is kept from when this tab was "Join").
     private func joinAllInOne() async throws {
-        guard !sdkClientID.isEmpty, !sdkClientSecret.isEmpty else {
-            throw NSError(domain: "Greenroom", code: 21, userInfo: [
-                NSLocalizedDescriptionKey: "Add the Meeting SDK Client ID and Secret in Settings (\u{2318},) \u{2192} Zoom. Greenroom sends your screen and camera through its own Zoom client, so it needs them."
-            ])
-        }
+        let signer = try zoomSDKSigner()
         isConnectingChat = true
         defer { isConnectingChat = false }
 
         log("Starting meeting \(meetingNumber) in Greenroom's built-in Zoom client\u{2026}")
-        try await zoomChatClient.ensureReady(clientID: sdkClientID, clientSecret: sdkClientSecret)
+        try await zoomChatClient.ensureReady(signer: signer)
         await settleBeforeJoining()
         zoomChatClient.setDualScreenMode(sessionArranges && galleryWindowExists)
 
@@ -3204,9 +3320,9 @@ final class CoordinatorController: ObservableObject {
         // The SDK authenticates the app, not the Zoom user, so a host start
         // needs a fresh ZAK. There is no guest fallback: Greenroom does not
         // join other people's meetings.
-        guard !s2sAccountID.isEmpty, !s2sClientID.isEmpty, !s2sClientSecret.isEmpty else {
+        guard let access = zoomAccess else {
             throw NSError(domain: "Greenroom", code: 23, userInfo: [
-                NSLocalizedDescriptionKey: "Couldn't start this meeting as host: add your Zoom account (Server-to-Server credentials) in Settings (\u{2318},) \u{2192} Zoom."
+                NSLocalizedDescriptionKey: "Couldn't start this meeting as host: sign in with Zoom in Settings (\u{2318},) \u{2192} Zoom."
             ])
         }
         do {
@@ -3218,10 +3334,9 @@ final class CoordinatorController: ObservableObject {
                 // menu - saves the fetch's network time.
                 zak = prefetched.zak
             } else {
-                let (account, client, secret) = (s2sAccountID, s2sClientID, s2sClientSecret)
                 zak = try await withStartTimeout(20, step: "Getting your host key from Zoom",
                                                  advice: "Check your Zoom account in Settings \u{2192} Zoom.") {
-                    try await ZoomServerToServerClient.fetchZAK(accountID: account, clientID: client, clientSecret: secret)
+                    try await access.fetchZAK()
                 }
             }
             try await zoomChatClient.startAsHost(meetingNumber: meetingNumber, zak: zak, displayName: name, enableMedia: true)
@@ -4094,7 +4209,7 @@ final class CoordinatorController: ObservableObject {
         switch meetingMode {
         // Needs nothing but the camera and screen permissions, which Start checks itself.
         case .record: return false
-        case .create: return s2sAccountID.isEmpty || s2sClientID.isEmpty
+        case .create: return !zoomHostingReady
         // Zoom meeting IDs are 9-11 digits. Gating only on "not empty" let
         // "12345" arm Start, which then ran the whole pipeline - cameras,
         // screen capture - before failing at the join, leaving
@@ -4267,9 +4382,11 @@ final class CoordinatorController: ObservableObject {
         // End (the button turns into Confirm), the second ends. No alert (it
         // went to the main window's desktop, which may be empty) and no
         // buttons in the island, which only says what Confirm will do.
-        if exitAsk == .end {
+        if exitAsk == .end, endConfirm.press(now: Date()) == .end {
+            // One click on Confirm ends it, whatever else is on screen.
             disarmExit()
             stop()
+            endConfirm.reset()
             return
         }
         let ask = LiveExit.endPrompt(liveExitState)
@@ -4277,6 +4394,7 @@ final class CoordinatorController: ObservableObject {
         let title = action == .leaveMeeting ? "Leave the meeting?" : "End the meeting for everyone?"
         let again = action == .leaveMeeting ? "Press Confirm to leave." : "Press Confirm to end it."
         armExit(.end, title: title, detail: "\(again) Esc keeps it going.")
+        _ = endConfirm.press(now: exitAskStartedAt ?? Date())
     }
 
     /// What the armed End does, for the buttons' Confirm help.
@@ -4483,9 +4601,8 @@ final class CoordinatorController: ObservableObject {
     /// much as finding something when the next one goes wrong.
     private func findStaleLiveMeetings() async {
         staleLiveFound = []
-        guard !s2sAccountID.isEmpty, !s2sClientID.isEmpty, !s2sClientSecret.isEmpty else { return }
-        let live = await ZoomServerToServerClient.liveMeetings(
-            accountID: s2sAccountID, clientID: s2sClientID, clientSecret: s2sClientSecret)
+        guard let access = zoomAccess else { return }
+        let live = await access.liveMeetings()
         staleLiveFound = live
     }
 
@@ -4499,8 +4616,7 @@ final class CoordinatorController: ObservableObject {
         log("\(live.count) meeting\(live.count == 1 ? " is" : "s are") still live on your Zoom account "
             + "\u{2014} ending \(live.count == 1 ? "it" : "them") first, or this start would collide.")
         for id in live {
-            let ended = await ZoomServerToServerClient.endMeeting(
-                id: id, accountID: s2sAccountID, clientID: s2sClientID, clientSecret: s2sClientSecret)
+            let ended = await zoomAccess?.endMeetingReporting(id: id).ok ?? false
             Self.sessionLog("Pre-flight: ending stale meeting \(id) \(ended ? "succeeded" : "FAILED")")
         }
     }
@@ -4540,8 +4656,8 @@ final class CoordinatorController: ObservableObject {
     /// ensureReady again (now a no-op on success), and THEIR failure
     /// path carries the real error to the log.
     private func prefetchSDKAuth() async {
-        guard !sdkClientID.isEmpty, !sdkClientSecret.isEmpty else { return }
-        try? await zoomChatClient.ensureReady(clientID: sdkClientID, clientSecret: sdkClientSecret)
+        guard let signer = try? zoomSDKSigner() else { return }
+        try? await zoomChatClient.ensureReady(signer: signer)
     }
 
     /// Quietly gets the two slow, silent parts of Start done while idle: the
@@ -4553,26 +4669,23 @@ final class CoordinatorController: ObservableObject {
     func warmUpForStart() {
         guard !isRunning, !isStopping, !isConnectingChat else { return }
         loadSecretsIfNeeded()
-        let s2s = (s2sAccountID, s2sClientID, s2sClientSecret)
-        let sdk = (sdkClientID, sdkClientSecret)
+        let access = zoomAccess
         Task { [weak self] in
-            if !s2s.0.isEmpty, !s2s.1.isEmpty, !s2s.2.isEmpty {
-                await ZoomServerToServerClient.warmToken(accountID: s2s.0, clientID: s2s.1, clientSecret: s2s.2)
-            }
-            guard let self, !sdk.0.isEmpty, !sdk.1.isEmpty else { return }
+            await access?.warm()
+            guard let self, let signer = try? self.zoomSDKSigner() else { return }
             guard !self.isRunning, !self.isStopping, !self.isConnectingChat else { return }
-            try? await self.zoomChatClient.ensureReady(clientID: sdk.0, clientSecret: sdk.1)
+            try? await self.zoomChatClient.ensureReady(signer: signer)
         }
     }
 
     private func createMeetingViaAPI() async throws -> ZoomServerToServerClient.CreatedMeeting {
         log("Creating a new meeting\u{2026}")
-        let meeting = try await ZoomServerToServerClient.startInstantMeeting(
-            topic: "Greenroom Meeting",
-            accountID: s2sAccountID,
-            clientID: s2sClientID,
-            clientSecret: s2sClientSecret
-        )
+        guard let access = zoomAccess else {
+            throw NSError(domain: "Greenroom", code: 26, userInfo: [
+                NSLocalizedDescriptionKey: "Sign in with Zoom in Settings (\u{2318},) \u{2192} Zoom first."
+            ])
+        }
+        let meeting = try await access.startInstantMeeting(topic: "Greenroom Meeting")
         meetingNumber = meeting.number
         meetingPassword = meeting.password
         meetingCreatedHere = meeting.number
@@ -4591,15 +4704,14 @@ final class CoordinatorController: ObservableObject {
     func refreshScheduledMeetings() {
         loadSecretsIfNeeded()
         guard !isLoadingScheduled else { return }
-        guard !s2sAccountID.isEmpty, !s2sClientID.isEmpty, !s2sClientSecret.isEmpty else {
-            log("Can't list your Zoom meetings \u{2014} add the Server-to-Server credentials in Settings (\u{2318},) \u{2192} Zoom first.")
+        guard let access = zoomAccess else {
+            log("Can't list your Zoom meetings \u{2014} sign in with Zoom in Settings (\u{2318},) \u{2192} Zoom first.")
             return
         }
         isLoadingScheduled = true
         Task {
             do {
-                let result = try await ZoomServerToServerClient.listScheduledMeetings(
-                    accountID: s2sAccountID, clientID: s2sClientID, clientSecret: s2sClientSecret)
+                let result = try await access.listScheduledMeetings()
                 scheduledMeetings = result.meetings
                 if let warning = result.warning { log(warning) }
                 if scheduledMeetings.isEmpty {
@@ -4637,12 +4749,10 @@ final class CoordinatorController: ObservableObject {
     /// the sheet can show it.
     func createScheduledMeeting(_ spec: NewMeetingRequest) async throws {
         loadSecretsIfNeeded()
-        let (account, client, secret) = (s2sAccountID, s2sClientID, s2sClientSecret)
-        let created = try await ZoomServerToServerClient.createScheduledMeeting(
-            spec, accountID: account, clientID: client, clientSecret: secret)
+        let access = try requireZoomAccess()
+        let created = try await access.createScheduledMeeting(spec)
         Analytics.feature("scheduled_create")
-        if let result = try? await ZoomServerToServerClient.listScheduledMeetings(
-            accountID: account, clientID: client, clientSecret: secret) {
+        if let result = try? await access.listScheduledMeetings() {
             scheduledMeetings = result.meetings
         }
         let meeting = scheduledMeetings.first { $0.id == created.id }
@@ -4656,22 +4766,27 @@ final class CoordinatorController: ObservableObject {
         log("Created \(created.topic). Invite link copied.")
     }
 
+    private func requireZoomAccess() throws -> ZoomRESTAccess {
+        guard let access = zoomAccess else {
+            throw NSError(domain: "Greenroom", code: 27, userInfo: [
+                NSLocalizedDescriptionKey: "Sign in with Zoom in Settings (\u{2318},) \u{2192} Zoom first."
+            ])
+        }
+        return access
+    }
+
     /// What the edit sheet pre-fills from.
     func loadMeetingForEdit(id: Int64) async throws -> NewMeetingRequest {
         loadSecretsIfNeeded()
-        let json = try await ZoomServerToServerClient.meetingDetails(
-            id: id, accountID: s2sAccountID, clientID: s2sClientID, clientSecret: s2sClientSecret)
-        return NewMeetingRequest.parse(json)
+        return NewMeetingRequest.parse(try await requireZoomAccess().meetingDetails(id: id))
     }
 
     /// Saves an edit, refreshes the list and keeps the meeting selected.
     func updateScheduledMeeting(id: Int64, _ spec: NewMeetingRequest) async throws {
         loadSecretsIfNeeded()
-        let (account, client, secret) = (s2sAccountID, s2sClientID, s2sClientSecret)
-        try await ZoomServerToServerClient.updateScheduledMeeting(
-            id: id, spec, accountID: account, clientID: client, clientSecret: secret)
-        if let result = try? await ZoomServerToServerClient.listScheduledMeetings(
-            accountID: account, clientID: client, clientSecret: secret) {
+        let access = try requireZoomAccess()
+        try await access.updateScheduledMeeting(id: id, spec)
+        if let result = try? await access.listScheduledMeetings() {
             scheduledMeetings = result.meetings
         }
         if let meeting = scheduledMeetings.first(where: { $0.id == id }) { selectScheduledMeeting(meeting) }
@@ -4681,12 +4796,10 @@ final class CoordinatorController: ObservableObject {
     /// Deletes the meeting, refreshes the list and clears the selection.
     func deleteScheduledMeeting(id: Int64, name: String) async throws {
         loadSecretsIfNeeded()
-        let (account, client, secret) = (s2sAccountID, s2sClientID, s2sClientSecret)
-        try await ZoomServerToServerClient.deleteScheduledMeeting(
-            id: id, accountID: account, clientID: client, clientSecret: secret)
+        let access = try requireZoomAccess()
+        try await access.deleteScheduledMeeting(id: id)
         scheduledMeetings.removeAll { $0.id == id }
-        if let result = try? await ZoomServerToServerClient.listScheduledMeetings(
-            accountID: account, clientID: client, clientSecret: secret) {
+        if let result = try? await access.listScheduledMeetings() {
             scheduledMeetings = result.meetings
         }
         if meetingNumberDigits == String(id) { meetingNumber = ""; meetingPassword = "" }
@@ -4696,10 +4809,9 @@ final class CoordinatorController: ObservableObject {
     private var prefetchedZAK: (meetingNumber: String, zak: String, fetchedAt: Date)?
 
     private func prefetchZAK(for number: String) {
-        guard !s2sAccountID.isEmpty, !s2sClientID.isEmpty, !s2sClientSecret.isEmpty else { return }
+        guard let access = zoomAccess else { return }
         Task {
-            if let zak = try? await ZoomServerToServerClient.fetchZAK(
-                accountID: s2sAccountID, clientID: s2sClientID, clientSecret: s2sClientSecret) {
+            if let zak = try? await access.fetchZAK() {
                 prefetchedZAK = (number, zak, Date())
             }
         }

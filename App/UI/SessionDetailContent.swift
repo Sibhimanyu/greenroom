@@ -229,6 +229,7 @@ struct SessionDetailPage<Stage: View, Timeline: View, Work: View, Transcript: Vi
             .padding(.bottom, gutter)
             .frame(width: size.width, alignment: .topLeading)
         }
+        .pageScrollEdge()
     }
 
     private var editAspect: CGFloat {

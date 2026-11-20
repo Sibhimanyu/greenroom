@@ -337,7 +337,26 @@ enum ZoomServerToServerClient {
         }
 
         let iso = ISO8601DateFormatter()
-        var meetings: [ScheduledMeeting] = items.compactMap { item in
+        var meetings = scheduledMeetings(from: items, iso: iso)
+
+        var warning: String? = nil
+        for index in meetings.indices where meetings[index].isRecurring {
+            do {
+                meetings[index].startTime = try await nextOccurrence(meetingID: meetings[index].id, token: token, iso: iso)
+            } catch {
+                // One scope covers all details calls - if the first one is
+                // rejected the rest will be too, so stop and report once.
+                warning = error.localizedDescription
+                break
+            }
+        }
+        return (meetings, warning)
+    }
+
+    /// Maps the list endpoint's items to `ScheduledMeeting`s (shared with the
+    /// signed-in client, which calls the same endpoint with the user's token).
+    static func scheduledMeetings(from items: [[String: Any]], iso: ISO8601DateFormatter) -> [ScheduledMeeting] {
+        items.compactMap { item in
             guard let id = item["id"] as? Int64,
                   let joinURL = item["join_url"] as? String else { return nil }
             // Zoom meeting types: 2 scheduled, 3 recurring/no fixed time,
@@ -352,19 +371,6 @@ enum ZoomServerToServerClient {
                 joinURL: joinURL
             )
         }
-
-        var warning: String? = nil
-        for index in meetings.indices where meetings[index].isRecurring {
-            do {
-                meetings[index].startTime = try await nextOccurrence(meetingID: meetings[index].id, token: token, iso: iso)
-            } catch {
-                // One scope covers all details calls - if the first one is
-                // rejected the rest will be too, so stop and report once.
-                warning = error.localizedDescription
-                break
-            }
-        }
-        return (meetings, warning)
     }
 
     /// The account owner's ZAK (host key token) - what startMeetingWithZAK
@@ -389,7 +395,7 @@ enum ZoomServerToServerClient {
     /// The next upcoming occurrence of a recurring meeting, from
     /// GET /meetings/{id}'s `occurrences` array (chronological, future
     /// only). nil for "no fixed time" meetings, which have none.
-    private static func nextOccurrence(meetingID: Int64, token: String, iso: ISO8601DateFormatter) async throws -> Date? {
+    static func nextOccurrence(meetingID: Int64, token: String, iso: ISO8601DateFormatter) async throws -> Date? {
         var request = URLRequest(url: URL(string: "https://api.zoom.us/v2/meetings/\(meetingID)")!)
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
 
@@ -455,7 +461,7 @@ enum ZoomServerToServerError: LocalizedError {
     }
 
     /// Zoom's error bodies are JSON with a "message"; show just that.
-    fileprivate static func plainMessage(_ body: String) -> String {
+    static func plainMessage(_ body: String) -> String {
         if let data = body.data(using: .utf8),
            let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
            let message = json["message"] as? String { return message }

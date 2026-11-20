@@ -194,6 +194,7 @@ struct SessionsLayout<CardMenu: View>: View {
             marked.selectAll(order)
             return .handled
         }
+        .pageScrollEdge()
         // A filter or search that hides a picked row un-picks it.
         .onChange(of: order) { _, now in marked.keep(only: now) }
         .overlay(alignment: .bottom) {

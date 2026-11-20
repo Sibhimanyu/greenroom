@@ -209,3 +209,53 @@ enum LiveExit {
         s.isLive && s.hasMeetingSurfaces
     }
 }
+
+// MARK: - The two-step End
+
+/// What the bar's End does between the first press and the meeting ending:
+/// idle, then confirming (End turned into "End for everyone" next to "Keep
+/// going"), then ending. Pure, so the timing is tested rather than watched.
+/// The first press switches at once; Confirm is a single click; Esc, a click
+/// elsewhere, "Keep going" or `timeout` seconds with no action put End back.
+struct EndConfirm: Equatable {
+    enum Phase: Equatable { case idle, confirming(since: Date), ending }
+    enum Effect: Equatable { case none, arm, end }
+
+    /// Long enough to read two buttons, short enough that End never lingers armed.
+    static let timeout: TimeInterval = 6
+
+    private(set) var phase: Phase = .idle
+
+    var isConfirming: Bool { if case .confirming = phase { return true } else { return false } }
+    var isEnding: Bool { phase == .ending }
+
+    /// End or Confirm was pressed. Idle arms; confirming ends; ending ignores.
+    mutating func press(now: Date) -> Effect {
+        switch phase {
+        case .idle: phase = .confirming(since: now); return .arm
+        case .confirming: phase = .ending; return .end
+        case .ending: return .none
+        }
+    }
+
+    /// Esc, Keep going or a click elsewhere. Does nothing once ending has begun.
+    mutating func cancel() {
+        if isConfirming { phase = .idle }
+    }
+
+    /// True (and back to idle) when the wait ran out.
+    mutating func expire(now: Date) -> Bool {
+        guard case .confirming(let since) = phase, now.timeIntervalSince(since) >= Self.timeout else { return false }
+        phase = .idle
+        return true
+    }
+
+    /// The countdown fill: 1 just armed, 0 at timeout. 0 when not confirming.
+    func remaining(now: Date) -> Double {
+        guard case .confirming(let since) = phase else { return 0 }
+        return min(1, max(0, 1 - now.timeIntervalSince(since) / Self.timeout))
+    }
+
+    /// The meeting is over (or never ended): back to idle.
+    mutating func reset() { phase = .idle }
+}

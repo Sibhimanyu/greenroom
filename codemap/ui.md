@@ -25,6 +25,14 @@ Record is `MeetingMode.record` (enum in CoordinatorController.swift; Create / Sc
 | UI/HomeView.swift (1646 lines) | Picture card left, setup column right: name, dock chips, readiness, Start button, scheduled picker, status log | `HomeView` (`pictureCard`, `setupColumn`, `shareChip`, `cameraChip`, `micChip`, `layoutChip`, `readyRow`, `primaryButton`, `scheduledPicker`) |
 | UI/HomeCalmRules.swift | Pure: one-line setup summary, readiness reduction | `SetupSummary`, `ReadinessSummary`, `ReadinessItem` |
 | UI/LookSummary.swift | "what Start will send" line | `LookSummary`, `LookSummaryLine/Row` |
+| UI/HomeTilePanels.swift | Shared shell for tile popovers: `HomeTilePanel` (header: LABEL, value, one-line summary, optional art; footer "More ... settings..." link), `HomeTileSection`, `HomeTileChoiceRow` (choice tiles), `HomeTileList` + `HomeTileListRow` (devices, trailing detail + check), `HomeTileToggleRow` + `HomeTileDependents` (collapse when off), `.homeTileKeys` (arrows move, Return picks, Esc closes). Popover itself is the system's glass | `HomeTilePanel`, `HomeTileChoiceRow`, `HomeTileListRow` |
+| UI/HomeCameraPanel.swift | Camera tile popover: camera rows (check, cut order number), "No camera", switch-to-facing toggle, Switching (delay, Cut/Crossfade) only with 2+ chosen, footer to Settings -> Webcam | `HomeCameraPanel` |
+| UI/HomeScreenPanel.swift | Screen tile popover: SHARE choice tiles (whole screen, a window, whiteboard, just me), DISPLAYS (2+), WINDOWS grouped by app with icons, Follow slide shows, gone/permission notes, footer to Settings -> Webcam | `HomeScreenPanel` |
+| UI/HomeLayoutPanel.swift | Layout tile popover: tiles with `LayoutThumbnail` diagrams (None first), Show on screen / Open this layout's apps, locked-while-live note with choices disabled, footer "Edit layouts..." to Settings -> Layout | `HomeLayoutPanel` |
+| UI/HomeMicPanel.swift | Mic tile popover: microphone rows (System default, devices, "Saved microphone (not connected)"), "Record the Mac's sound" toggle, footer to Settings -> Webcam. No live meter: MicLevelMonitor opens the mic, which Home only does while live | `HomeMicPanel` |
+| UI/HomeRecordPanel.swift | Auto-rec tile popover: With the meeting / When I press it choice tiles, clip-buffer toggle (length folded under it), Documents/Greenroom with Show in Finder, footer to Settings -> Webcam | `HomeRecordPanel` |
+| UI/HomeMorePanel.swift | More tile popover: 4x2 grid of tiles that open each Settings tab (`.showSettingsTab`; Cues wears `CuesBetaBadge`), Help row (Setup guide), footer "All settings..." | `HomeMorePanel` |
+| UI/HomeTilePanelRules.swift | Pure: which sections show, camera tap/selection/order rules, header value, arrow-key movement; mic, record and More-tab rules. Tests: HomeTilePanelRulesTests | `CameraPanelRules`, `ScreenPanelRules`, `LayoutPanelRules`, `MicPanelRules`, `RecordPanelRules`, `MorePanelRules`, `HomeTileKeyRules` |
 | UI/DockHint.swift | Hover card with mini visual on dock chips | `DockHintPanel`, `DockHintCard`, `.dockHint` |
 | UI/PreviewCameraDrag.swift | Drag layer over live preview (move camera in output) | `PreviewCameraDragLayer`, `CroppedLivePicture` |
 | UI/PreviewFrameRules.swift / PreviewOutlineRules.swift | Preview crop, camera rules, outline placement (pure) | `PreviewFrameRules`, `LayoutCameraRules`, `PreviewOutlineRules` |
@@ -56,7 +64,7 @@ Record is `MeetingMode.record` (enum in CoordinatorController.swift; Create / Sc
 | UI/WebcamPage.swift (+ WebcamShapePreview, CameraSwitchSection, MicrophoneSection, ShareTargetSettings) | Webcam tab: `WebcamSettingsTab` feeds `WebcamPageContent`; `BubbleDragLayer`; `CameraSwitchSection` (two-camera cut) |
 | UI/LayoutSettingsTab.swift (+ LayoutCanvas, LayoutAddPanel, LayoutAppOrdering, LayoutScreenPreview) | Layout creator: `LayoutSettingsTab`/`LayoutPageContent`, `LayoutCanvas`, `LayoutPieceTile`, `LayoutAddPanel` |
 | UI/ShortcutsSettingsTab.swift | `ShortcutRecorderField` |
-| UI/ZoomSettingsTab.swift, YouTubeSettingsTab.swift, CuesSettingsTab.swift, TransferSettingsTab.swift | other tabs; `Cues*` rows reused by onboarding |
+| UI/ZoomSettingsTab.swift (Zoom account section, then a folding "Use your own Zoom apps (advanced)" row holding the pasted SDK and Server-to-Server fields), UI/ZoomSignInSection.swift (`ZoomSignInSection`: Sign in with Zoom / Signed in as / Sign out, shared with onboarding; `AdvancedDisclosure`: the animated fold), YouTubeSettingsTab.swift, CuesSettingsTab.swift, TransferSettingsTab.swift | other tabs; `Cues*` rows reused by onboarding |
 | UI/AccountSettingsTab.swift | DEBUG only (mock Thriveni account) |
 | UI/SettingsKit.swift | Shared Settings parts: `Collapsible`, `Collapse`, `ChoiceTile`, `PictureChip`, `StatusBadge` |
 
@@ -64,9 +72,9 @@ Record is `MeetingMode.record` (enum in CoordinatorController.swift; Create / Sc
 | path | owns | key types |
 |---|---|---|
 | UI/MenuBarModel.swift / MenuBarView.swift | Pure menu items from state; SwiftUI `.menu` rendering | `MenuBarModel.items`, `MenuBarState`, `MenuBarView` |
-| UI/NotchStatusController.swift / NotchStatusRules.swift | The island (one pill: failure > countdown > status > FIFO of prompts/toasts) | `NotchStatusController.shared`, `NotchStatusModel`, `IslandQueue`, `IslandRules`, `NotchGeometry` |
+| UI/NotchStatusController.swift / NotchStatusRules.swift | The island (one pill: failure > countdown > status > FIFO of prompts/toasts). It is the only surface while a meeting starts: step words, ring and a Cancel button (`NotchInput.cancellable`, `model.onCancelStart`; clickable, never key); no-notch Macs use the same pill under the menu bar | `NotchStatusController.shared`, `NotchStatusModel`, `IslandQueue`, `IslandRules`, `NotchGeometry` |
 | UI/Toast.swift, UploadPrompt.swift | Facades into island | `ToastController.show`, `UploadPromptCard.show` |
-| UI/MeetingControls.swift | Floating Control bar (pill/puck) panel + `MeetingControlsModel` | `MeetingControlBarController`, `MeetingControlBarRoot` |
+| UI/MeetingControls.swift | Floating Control bar (pill/puck) panel + `MeetingControlsModel`. First installed when the meeting is live (never during start; its Starting state / `finishStarting` is now dormant) | `MeetingControlBarController`, `MeetingControlBarRoot` |
 | UI/MeetingBarModel.swift, MeetingBarContent.swift | Pure bar cell rules; cell views | `MeetingBarModel`, `MeetingBarLayout`, `MeetingBarContent` |
 | UI/RecordingChrome.swift | Record-only bar + border while recording | `RecordingChrome`, `RecordingControlBarController`, `RecordingBorderController` |
 | UI/PresenceBubble.swift, PresenceBubbleInteractionView.swift | Floating camera bubble that drives the picture | `PresenceBubble`, `PresenceFeed`, `PresenceQuickModel` |
@@ -98,6 +106,7 @@ Record is `MeetingMode.record` (enum in CoordinatorController.swift; Create / Sc
 - Add a Settings row -> the tab's `*PageContent` (e.g. `WebcamPageContent`, `ZoomPageContent`, `TransferPageContent`); use `SettingsKit` parts; wrap dependent controls in `Collapsible(hidden:)` with `Binding.animatedCollapse()`.
 - Change Home toolbar items -> `ContentView.body` `.toolbar { }`; then update `HomeToolbarRules` (SidebarRules.swift) widths.
 - Change the Create/Scheduled/Record switcher -> `ContentView.modeSwitcher`, `MeetingMode` in CoordinatorController.swift.
+- Add or change a tile popover (Look, Camera, Screen, Mic, Layout, Auto-rec, More all done) -> build it on `HomeTilePanel` (HomeTilePanels.swift), rules in `HomeTilePanelRules.swift`; once a tile has a panel, drop its `.dockHint(...)` and keep a `.help` (see `lookControl`, `cameraChip`). Hover-card art/text live in `DockHintVisual` (DockHint.swift) and each tile's `DockHintContent` in HomeView.
 - Change Home dock chips (Share/Camera/Mic/Layout) -> `HomeView.shareChip/cameraChip/micChip/layoutChip`; summary wording in `HomeCalmRules.SetupSummary`; readiness pills `HomeView.readyRow`, `ReadinessSummary`.
 - Change Start/Record button -> `HomeView.primaryButton`, `recordControl`, `recordPicker`.
 - Home window size / minimum width -> `HomeView.columnHeight/sideMargin`, `ContentView.homeWindowHeight/minimumWindowWidth/defaultWindowWidth`.
@@ -117,6 +126,7 @@ Record is `MeetingMode.record` (enum in CoordinatorController.swift; Create / Sc
 - Change the camera bubble -> `PresenceBubble` (panel, strip, handles), `PresenceBubbleInteractionView` (resize/cursor), model `PresenceQuickModel`; geometry `PresenceGeometry` (Tests/PresenceGeometryTests).
 - Change recording countdown/border/control bar -> `RecordingChrome.swift`; countdown is island (`NotchStatusController.setCountdown`).
 - Edit a layout editor behaviour -> `LayoutCanvas` (drag/resize), `LayoutAddPanel`, `LayoutAppOrdering`, `LayoutSettingsTab.LayoutPageContent`; layout model in App/Layout/.
+- Change the Sign in with Zoom block or the advanced fold -> `ZoomSignInSection.swift` (`live(_:)` feeds it from the coordinator); the Zoom step of the setup guide is `OnboardingView.credentialsStep`.
 - Change onboarding pages -> `OnboardingView.SetupPage` (welcome, zoom, layout, permissions, youtube, cues, ready) and `...Step` builders; window `OnboardingWindowController.sync`; placement `OnboardingPlacement.frame`.
 - Add a floating panel -> use `GreenroomGlassAppKit.makeBacking` + `.prepare`, non-key `NSPanel`, follow `RecordingChrome`/`DockHintPanel`.
 - Transcript tab (`SessionTranscriptView`): click a line (or its stamp) seeks via `scrub` (play state unchanged); the current line gets a `Brand.green` 14% wash and scrolls into view while playing unless the reader scrolled in the last 3s (`TranscriptScrollProbe`); double-click or Return on the selected line edits inline (Return/click-away saves, Esc cancels, blank deletes with "Line removed - Undo"). `TranscriptEditor` rewrites the one RAW row atomically in the file the line came from, copies `<name>.original.txt` before the first edit, offers Revert in the summary row's ellipsis menu, and registers every write with the window `UndoManager` (Command-Z). `SessionSummary.Line.rawIndex` maps a displayed line to its file row. Rows no longer allow text selection (it ate double-click). A cached summary older than the transcript shows "Transcript edited since this summary" with Summarise again.

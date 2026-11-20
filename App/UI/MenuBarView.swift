@@ -123,11 +123,12 @@ struct MenuBarView: View {
         var out: [MenuBarProblem] = []
         let mode = coordinator.meetingMode
         if mode != .record {
-            let sdk = coordinator.sdkClientID.isEmpty || coordinator.sdkClientSecret.isEmpty
-            let host = coordinator.s2sAccountID.isEmpty || coordinator.s2sClientID.isEmpty
-                || coordinator.s2sClientSecret.isEmpty
+            let sdk = !coordinator.zoomSDKReady
+            let host = !coordinator.zoomHostingReady
             if mode == .create ? (sdk || host) : sdk {
-                out.append(MenuBarProblem(fix: .zoomSettings, text: "Zoom: add credentials"))
+                out.append(MenuBarProblem(fix: .zoomSettings, text: "Zoom: sign in"))
+            } else if coordinator.zoomNeedsMorePermission {
+                out.append(MenuBarProblem(fix: .zoomSettings, text: coordinator.zoomAttentionTitle))
             }
         }
         if !coordinator.cameraIsOff {

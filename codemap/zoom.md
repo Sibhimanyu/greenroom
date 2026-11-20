@@ -1,0 +1,112 @@
+# App/Zoom
+
+Greenroom's whole Zoom surface. Greenroom is the meeting client: it runs the native Zoom **Meeting SDK** in-process (`Vendor/ZoomSDK`, imported as `ZoomSDK`) in *custom UI* mode, signs in with an app JWT, starts the account's own meeting as host with a ZAK, sends Greenroom's composited stage picture as its camera through the SDK's external video source, and renders other people's video and shares into NSViews that the app's own windows host. A separate plain-REST client (Server-to-Server OAuth, a different Marketplace app) creates, lists, edits and ends meetings and fetches the ZAK. Everything that is not the SDK itself (budgets, ledgers, rules, parsers) is pure value code with no SDK import, so it can be unit-tested. The Zoom types are meant to stay behind this layer; outside callers get plain values (`RosterEntry`, `ShareRule`, `Bool` results).
+
+Note: `startAsHost(... enableMedia: true)` is the real meeting client (camera and mic live, user's own name). `join(...)` still exists but the app never joins other people's meetings.
+
+## Files
+
+| Path | What it owns | Key types / functions |
+|---|---|---|
+| `App/Zoom/ZoomMeetingSDKClient.swift` | The SDK wrapper: init, auth, join/start/leave, status delegate, video-container delegate, camera/mic/speaker device pick, tile and stage elements, active-speaker choice, stage-video install | `ZoomMeetingSDKClient` (`@MainActor`, `ObservableObject`), `ensureReady`, `startAsHost`, `join`, `leave`, `shutdown`, `useStageVideo`, `awaitStageVideo`, `participantView`, `stageView`, `speakerToShow`, `releaseCustomUIVideo`, `ZoomMeetingSDKError` |
+| `.../ZoomMeetingSDKClient+Control.swift` | Roster and every host/self action (mute, spotlight, pin, rename, expel, reactions, lock, share-screen start/stop, waiting-room admit) | `RosterEntry`, `meetingRoster()`, `setMuted`, `spotlight`, `pin`, `makeHost`, `expel`, `setMyMute/Video/Hand`, `joinAudio`, `meetingInvite()`, `startShare(displayID:)`, `Reaction`, `muteEveryone`, `setMeetingLocked`, `roomFlags()`, `admitFromWaitingRoom` |
+| `.../ZoomMeetingSDKClient+Room.swift` | Waiting-room and reaction event delegates, security/share/chat rules, camera list | `RoomEvents` (delegate object), `securityState()`, `shareRule()/setShareRule`, `cannotShareReason()`, `setChatWho`, `setWaitingRoomOn`, `denyWaiting`, `putInWaitingRoom`, `cameraDevices()/selectCamera(id:)`, `zoomAppLink()` |
+| `.../ZoomMeetingSDKClient+Share.swift` | Seeing other people's shared screens: ASController + share container + share element | `ShareViewer` (delegate object), `pick`, `stageView(frame:)`, `renderIfReady`, `releaseElement`, `setWindowOwnsShare` |
+| `.../ZoomMeetingSDKClient+ViewVideo.swift` | Render elements for the View windows, keyed by window and slot | `ViewVideoKey`, `ViewVideoStore` (+`Entry`), `viewVideoView`, `stagePerson()`, `releaseViewVideo(_:)`, `releaseAllViewVideo`, `noteViewVideoFailure/DataType/Missing` |
+| `.../ZoomMeetingSDKClient+ActionEvents.swift` | `ZoomSDKMeetingActionControllerDelegate` (51 methods, most no-ops): the live speaker events and join/leave | `onUserActiveAudioChange`, `onActiveSpeakerVideoUserChanged`, `onUserLeft` -> `noteUsersLeft` |
+| `.../ZoomVideoSender.swift` | Our camera: external raw-video source. Keeps newest frame, own timer queue sends I420 at the SDK-suggested rate | `ZoomVideoSender` (`StageFrameSink`, `ZoomSDKVirtualVideoSourceDelegate`), `attach/detach`, `resetPicture`, `onReleased`, `isSending` |
+| `.../I420Converter.swift` | BGRA -> I420 conversion with letterbox; picks the SDK capability | `I420Converter`, `StageVideoSizing.choose(supported:suggested:)` |
+| `.../ZoomChatBridge.swift` | In-meeting chat as an observable model, incl. file transfer | `ZoomChatBridge` (`ObservableObject`, `ZoomSDKMeetingChatControllerDelegate`), `ChatMessage`, `ChatAttachment`, `attach(to:)`, `send`, `sendFile`, `accept/declineFile` |
+| `.../ZoomServerToServerClient.swift` | REST: S2S token (cached, 401-retry), instant/scheduled meetings CRUD, live meetings, end meeting, ZAK | `ZoomServerToServerClient` (all static async), `startInstantMeeting`, `createScheduledMeeting`, `listScheduledMeetings`, `fetchZAK`, `grantedScopes`, `warmToken`, `ZoomServerToServerError` |
+| `.../ZoomMeetingSDKJWT.swift` | HS256 JWT the SDK wants at init | `ZoomMeetingSDKJWT.makeToken(clientID:clientSecret:)` |
+| `.../ZoomScopes.swift` | The one list of S2S scopes (Settings and onboarding both read it) | `ZoomScopes.all`, `missing(in:)`, `isGranted` |
+| `.../NewMeetingRequest.swift` | "New scheduled meeting" choices -> Zoom create-meeting JSON (and back) | `NewMeetingRequest`, `body(now:calendar:)`, `parse`, `nextStart` |
+| `.../ZoomMeetingLinkParser.swift` | Pull meeting number + passcode from pasted link/invite text | `ZoomMeetingLinkParser.parse`, `digits` |
+| `.../VideoBudget.swift` | Pure arithmetic of Zoom's concurrent-stream budget | `VideoTier`, `VideoUsage`, `VideoRequest`, `VideoBudget.allocate`, `galleryPageSize`, `galleryTier`, `ViewSlot` |
+| `.../SubscribeBackoff.swift` | Pure timing for subscribe refusals and per-element recovery | `SubscribeBackoff`, `ElementWatch`, `ElementRecovery.decide/mayAsk` |
+| `.../RecentSpeakers.swift` | Stable "last N speakers" for Multi-speaker | `RecentSpeakers` (1.5 s join, 8 s min stay, 1 change / 2 s) |
+| `.../HandsUpOrdering.swift` | Raised hands in order, waiting room in front | `HandRow`, `HandStamps.ordered` |
+| `.../MeetingRoomLedgers.swift` | Memories the SDK lacks: waiting-room arrival order, live reactions | `WaitingRoomLedger`, `WaitingPerson`, `WaitingRoomWords`, `ReactionLedger`, `ReactionWords` |
+| `.../MeetingShareRules.swift` | Share/chat rules and which share is on stage, SDK-free | `ShareRule`, `WhoCanShare`, `ConcurrentShare`, `ChatWho`, `ShareStageSelection`, `ZoomAppLink.make` |
+| `.../ParticipantAvatarStore.swift` | Profile photos (SDK file path -> NSImage cache, publishes changes) | `ParticipantAvatarStore.shared`, `image(for:)`, `avatarPathUpdated` |
+| `.../SecretStore.swift` | Credentials in plain UserDefaults (NO Keychain, by design) | `SecretStore.set/get` |
+| `.../ZoomWindowManager.swift` | Accessibility grant prompt/check only | `promptForAccessibilityPermission`, `hasAccessibilityPermission` |
+
+## How it fits
+
+**Ownership.** `CoordinatorController` (App/CoordinatorController.swift) owns exactly one `let zoomChatClient = ZoomMeetingSDKClient()` (line ~497) and one `let zoomChatBridge = ZoomChatBridge()` (~498). The client owns three helper objects: `shareViewer` (`ShareViewer`), `viewVideo` (`ViewVideoStore`), `roomEvents` (`RoomEvents`). They are separate objects, not extensions, because they are SDK delegates. AppDelegate calls `zoomChatClient.shutdown()` on quit; `CoordinatorController` also calls `leave()` / `awaitMeetingClosed` on quit and `useStageVideo(nil)` when a session ends.
+
+**SDK wrapper layering** (top = what the rest of the app sees):
+1. `CoordinatorController` flows (`hostAllInOne`, `joinAllInOne`, `ensurePictureInstalled`, `runPipeline`) and UI (`MeetingControls`, `ParticipantGridWindow`, `MeetingViewWindow`, `PeoplePopOut`, `ChatWindow`) call `ZoomMeetingSDKClient` methods.
+2. `ZoomMeetingSDKClient` (+ its extensions) is the only place that talks to `ZoomSDK.shared()` services (`getMeetingService`, `getSettingService`, `getAuthService`, `getRawDataController`).
+3. Delegate objects feed events back: `ZoomSDKAuthDelegate`, `ZoomSDKMeetingServiceDelegate` (status), `ZoomSDKVideoContainerDelegate` (subscribe failures, data-type changes), `ZoomSDKMeetingActionControllerDelegate` (speaker, join/leave), `ShareViewer` (ASController + share container + share element), `RoomEvents` (waiting room + reactions), `ZoomChatBridge` (chat controller), `ZoomVideoSender` (virtual video source).
+4. Pure value types (budget, ledgers, rules) sit beside and are called by the client, with no SDK import.
+Callbacks to the UI are plain closures: `onVideoSubscribeFailure`, `onParticipantCountChanged`, `roomEvents.onChange/onWaitingJoin`, `shareViewer.onChange`. The UI polls once a second for roster/speaker state (`MeetingControls`, `ParticipantGridWindow`) and redraws at once on those closures.
+
+**Auth, join, start flow** (host-only; no guest join):
+1. Launch: `ZoomMeetingSDKClient.migrateCustomUIDefault()` (one-time flip of `customUIMode` to true). Credentials load lazily via `SecretStore` (`zoomSDKClientSecret`, `zoomS2SClientSecret`).
+2. `ensureReady(clientID:clientSecret:)` (idempotent, de-duplicated through `authenticationTask`): `authenticate` runs `initSDK` once per process (`needCustomizedUI = customUIModeEnabled`; sets `didInit`, `didUseCustomUI`), builds the JWT (`ZoomMeetingSDKJWT`), calls `sdkAuth`, and waits on `onZoomSDKAuthReturn` through `authCompletion` (watchdog `armAuthWatchdog`). After sign-in it logs the raw-data licence and calls `applyStageVideo()`.
+3. Coordinator awaits `awaitMeetingIdle()` (only `Idle` is acceptable), `settleBeforeJoining()`, `setDualScreenMode(...)`, then `ensurePictureInstalled()` -> `awaitStageVideo()`; if it fails the start stops with `ZoomMeetingSDKError.videoInstallFailed`.
+4. Host key: `ZoomServerToServerClient.startInstantMeeting` returns `CreatedMeeting.zak`; for scheduled meetings `fetchZAK` (prefetched at pick time, valid < 600 s in the coordinator's `prefetchedZAK`).
+5. `startAsHost(meetingNumber:zak:displayName:enableMedia: true)`: sets `joinCompletion`, arms a 45 s join watchdog, sets `meetingService.delegate = self`, runs `suppressInteractiveJoinUI()` (no preview dialog, auto-join audio, hide-self-view pref, mirror off, spotlight-my-video off, no fullscreen at join, hide Zoom name labels in custom UI), then `startMeeting(withZAK:)`. The continuation resolves in `onMeetingStatusChange` (InMeeting = success; terminal states = `joinRejected(error,status)`).
+6. In `onMeetingStatusChange` at Connecting/InMeeting, with custom UI, `adopt(container:)` claims the `ZoomSDKVideoContainer` (wires the container delegate), sets the action-controller delegate, installs `shareViewer` and `roomEvents` on the meeting service. Do this as early as Connecting so refusals are never unobserved.
+7. Coordinator then `zoomChatBridge.attach(to: zoomChatClient.chatController())`.
+8. `leave()` chooses `LeaveMeetingCmd_End` when `isHosting` or the live `getMyself().isHost()`; returns whether it asked Zoom to end. End: coordinator `endMeetingForEveryone(askedSDKToEnd:)` backs up with REST `endMeeting`. Quit: `shutdown()` -> `unInitSDK()`.
+
+**Our camera (stage video).** `CoordinatorController.runPipeline` calls `useStageVideo(stage)` where `stage` is a `StageFrameSource` (see codemap/stage.md). `ZoomMeetingSDKClient` installs ONE `ZoomVideoSender` as the SDK's external video source after sign-in and keeps it for the SDK's life; sessions only `attach`/`detach` a picture. `ZoomVideoSender.stageDidRender` (called on the compositor's queue) stores the newest `CVPixelBuffer` under `frameLock`; a `DispatchSourceTimer` on queue `greenroom.zoomvideosender` sends the latest frame converted by `I420Converter` at the rate the SDK suggested in `onInitialize/onPropertyChange`. `onReleased` (main queue) marks it uninstalled so the next start reinstalls.
+
+**Video and share subscription.** Custom UI means Zoom draws nothing; every view comes from an element:
+- Elements are `ZoomSDKNormalVideoElement`s made by `videoContainer.createNormalVideoElement`, owned by one NSView host. Three families: tiles (`participantElements[userID]`, `participantView`), the Meeting window's stage (`stageElement`, `stageView`), and View-window elements (`ViewVideoStore.entries[ViewVideoKey(view, slot)]`, `viewVideoView`). Plus `railSelfElement` (own picture, `makeRailSelfView`).
+- Order: make element -> caller puts its view in a VISIBLE window -> a later layout pass subscribes ONCE (`setResolution` first, then `subscribeVideo(true)`). Subscribing before the view is visible never draws.
+- Resolution tier comes from `VideoBudget.allocate` (View windows) or `ZoomMeetingSDKClient.resolution(for:openStreams:hero:)` (Meeting window tiles); `meetingWindowVideoUsage()` reports what the Meeting window holds so the budget sees it as external usage.
+- A refusal arrives in `onSubscribeUserFail` AFTER `subscribeVideo` returned success. Routing: view-window element -> `noteViewVideoFailure`; stage -> `stageBackoff`/`stageWatch`; tile -> `tileBackoff[userID]`/`tileWatch`. The element is retired and replaced by a fresh one after `SubscribeBackoff` (2,4,8,16,32 s) and `ElementRecovery` (max 3 rebuilds, 1.5 s fresh delay, then give up until the camera comes back on via `onRenderDataTypeChanged`).
+- Shares: `ShareViewer` tracks `onSharingStatusChanged` (OtherBegin/End, SelfBegin/End), keeps `selection: ShareStageSelection`, makes a `ZoomSDKShareElement` for one source, hands out its view via `stageView(frame:)`, and calls `ShowShareRender` only once the view is in a visible window (`renderIfReady`). One window can draw a source at a time (`setWindowOwnsShare`).
+- Active speaker: `noteActiveAudio` (audio event) and `noteActiveSpeaker` (Zoom's pick) feed `speakerToShow()`; silence keeps the last speaker. `RecentSpeakers` feeds Multi-speaker places via `multiSpeakerPlaces(roster:)`. `stagePerson()` = spotlighted, else pinned, else `speakerToShow()`.
+
+**Threading.** `ZoomMeetingSDKClient` is `@MainActor`; SDK delegate callbacks are delivered on the main thread and used directly. Exceptions: `nonisolated static` helpers (`statusName`, `errorName`, `logLicenceLine`, which hops to main for `CoordinatorController.sessionLog`); `ZoomVideoSender` is NOT main-actor: `frameLock` guards the shared frame, everything else is touched only on its serial `queue` (`isSending` uses `queue.sync`), and it hops to main for `onReleased`. `ZoomServerToServerClient` is static async, with `tokenLock` (NSLock) around the token cache. `ZoomChatBridge` is a plain (non-actor) NSObject published to SwiftUI and assumes SDK delegate callbacks arrive on the main thread. `ParticipantAvatarStore` is an `ObservableObject` singleton updated from `avatarPathUpdated`.
+
+**Logging.** `ZoomMeetingSDKClient.videoLog` appends to `~/Library/Logs/Greenroom-video.log` (prefixes "View window:", "Share view:", "Room:"); `logLicenceLine` goes to the in-app session log and os_log (subsystem `com.sibhimanyu.greenroom`, category `zoom`), prefix "Meeting video:" for the sender.
+
+## To change X, go to Y
+
+- Change how the SDK is initialised or signed in -> `ZoomMeetingSDKClient.swift`: `ensureReady`, `authenticate`, `armAuthWatchdog`; JWT shape in `ZoomMeetingSDKJWT.makeToken`.
+- Change per-meeting SDK settings asserted at start (audio auto-join, mirror, fullscreen, self view) -> `suppressInteractiveJoinUI()`.
+- Change start/join timeouts or the user-facing failure wording -> `armJoinWatchdog` (45 s), `ZoomMeetingSDKError.joinFailureText`, `errorDescription`.
+- Add a host action (e.g. a new participant control) -> `ZoomMeetingSDKClient+Control.swift` (follow the `run { $0.xxx }` helper pattern, return `Bool`); room/security rules -> `+Room.swift`.
+- Add a state the SDK reports by delegate -> the matching delegate object (`RoomEvents`, `ShareViewer`) or `+ActionEvents.swift` (add the real body to one of the no-ops; the protocol has no optionals).
+- Change who is featured as speaker -> `speakerToShow()`, `noteActiveAudio`, `noteActiveSpeaker` in `ZoomMeetingSDKClient.swift`; Multi-speaker stability constants in `RecentSpeakers.swift`.
+- Change video resolutions or concurrency priority -> `VideoBudget.allocate` / `VideoTier.quota` (pure; tests pin it); Meeting-window tile resolution -> `ZoomMeetingSDKClient.resolution(for:openStreams:hero:)`.
+- Change subscribe retry timing -> `SubscribeBackoff.failed`, `ElementRecovery.maxRebuilds/freshDelay/decide`.
+- Fix a black tile -> read `Greenroom-video.log`, then `onSubscribeUserFail`, `makeTile`, `makeStageElement`, `makeViewElement` (ViewVideo), `noteRender`.
+- Change what a View window subscribes -> `ZoomMeetingSDKClient+ViewVideo.swift` (`viewVideoView`, `releaseViewVideo(of:keeping:)`); the callers are in `App/UI/MeetingVideo/MeetingViewWindow.swift`.
+- Change the shared-screen stage -> `ShareViewer` (`pick`, `stageView`, `renderIfReady`); the rule model -> `MeetingShareRules.swift` (`ShareStageSelection`, `ShareRule`).
+- Change what our camera sends (size, fps, install) -> `ZoomVideoSender` (send timer), `StageVideoSizing.choose` and `I420Converter` (letterbox math), `installStageVideoWithRetry` (3 tries: 0, 1.0, 2.5 s) in `ZoomMeetingSDKClient.swift`.
+- Change chat behaviour (send, reply, private, files) -> `ZoomChatBridge`; where files land -> `saveDirectory`, set by the coordinator.
+- Change create/edit/list/end meeting REST calls or the token cache -> `ZoomServerToServerClient`; request JSON -> `NewMeetingRequest.body`; the scope list -> `ZoomScopes.all`.
+- Change paste-link parsing -> `ZoomMeetingLinkParser.parse`.
+- Change where secrets are stored -> `SecretStore` (and the coordinator's property `didSet`s, lines ~471-520).
+- Change the Hands-up list order or waiting-room order -> `HandStamps.ordered`, `WaitingRoomLedger.ordered`.
+- Change reaction glyphs/labels -> `ReactionWords.glyph(reactionRaw:)`, `label(feedbackRaw:)`; reaction lifetime in `ReactionLedger.lifetime`.
+- Change profile pictures -> `ParticipantAvatarStore` (UI: `App/UI/ParticipantAvatar.swift`).
+
+## Gotchas
+
+- **Custom UI is an init parameter.** `needCustomizedUI` is read once at `initSDK`; changing the `customUIMode` default needs a relaunch. Always check `didUseCustomUI` before returning views (`participantView`, `stageView`, `viewVideoView` return nil otherwise).
+- **Subscribe exactly once per element, and only when visible.** A second `subscribeVideo(true)` on an element holding one is refused with code 7 every time. New person, refusal, or "video but nothing drawn" means a FRESH element. A second element asking for a remote user another element holds is also refused (`otherHolders` names them in the log).
+- **Do not subscribe in bursts.** Tiles are spaced 0.5 s apart (`nextTileSubscribeAt`), stage switches rate-limited (`nextStageSwitchAt`), View slots 2 s apart per slot.
+- **View height can silently become a 1080p request** when `setResolution` is not in effect (>= 850 pt tall). Set resolution before subscribing; the quota is spent at subscribe time. We never ask for 1080p (`VideoTier.p720.quota` counts the shared 1080p/720p slots).
+- **Refusals arrive after success** and come in clusters of 2-3 at the same instant; `ElementWatch.isRepeatRefusal` (< 1 s) treats them as one.
+- **Layer count is not a drawing signal** (four sublayers appear before any subscribe); it is logged only.
+- **Start only from Idle.** `awaitMeetingIdle()` waits for `Idle` (not `Ended`): a late terminal status from the previous meeting otherwise fails the new join ("meeting ended before Greenroom finished joining"). `awaitMeetingClosed` (accepts Ended/Failed) is for quit only.
+- **Install the video source once.** `setExternalVideoSource` can fail with `Malloc_Failed (22)` if called around display changes; it waits on `DisplayMonitor.shared.awaitQuiet` and only clear-and-reinstalls on retry. Never swap/clear the source between meetings; `shutdown()` is the only normal reset (it nils the sender so the next sign-in reinstalls). The SDK holds the source delegate weakly, so `stageVideoSender` must stay referenced.
+- **Container and event delegates must be claimed at Connecting**, not on first tile, or early refusals go unreported.
+- **Shutdown order matters.** Quit must `leave()` + `awaitMeetingClosed` + `shutdown()` (`unInitSDK`); exiting around the SDK's video/audio engines SEGVs in their destructors.
+- **ZoomSDKError etc. are C `typedef enum`s**, so cases are top-level constants (`ZoomSDKError_Success`), not dot-syntax. `errorName` must be extended when new codes matter.
+- **`ZoomSDKMeetingError_None` (101) means "no reason given"**, not a rejection; `joinFailureText` handles it.
+- **Cross-account joins** hit `ZoomSDKMeetingError_UnableToJoinExternalMeeting` (63); `ZoomMeetingSDKError.isCrossAccountRejection` exposes this without importing ZoomSDK elsewhere.
+- **No Keychain, ever.** `SecretStore` is UserDefaults on purpose (no prompts; the secrets already travel in the settings-transfer file). Do not add Keychain calls.
+- **Debug-only:** `startDebugTestPatternIfEnabled` (`GreenroomRawVideoSpike`) feeds a test pattern through the real sender; must stay behind `#if DEBUG`.
+- **Pure files must stay SDK-free** (`VideoBudget`, `SubscribeBackoff`, `RecentSpeakers`, `HandsUpOrdering`, `MeetingRoomLedgers`, `MeetingShareRules`, `NewMeetingRequest`, `I420Converter`, `ZoomScopes`, `ZoomMeetingLinkParser`): the tests and offline tools compile them without `ZoomSDK`.
+- **Tests that pin this area** (Tests/): `VideoBudgetTests`, `SubscribeBackoffTests`, `RecentSpeakersTests`, `HandsUpOrderingTests`, `NewMeetingRequestTests` (also `ZoomScopes`), `MeetingToolbarTests` (`WaitingRoomLedger`, `ReactionLedger`, `ShareRule`, `ShareStageSelection`, `ChatWho`, `ZoomAppLink`), `MeetingViewRulesTests` (`RecentSpeakers`). Not covered: `StageVideoSizing`, `I420Converter`, `ZoomMeetingLinkParser`, the SDK client itself.
+- **Reaction clean-up** uses `DispatchQueue.main.asyncAfter(ReactionLedger.lifetime + 0.1)` in `RoomEvents`; keep `reactions.prune` in step with `pruneReactions(present:)` (called from the toolbar poll).
+- **Stale `callbackGeneration`**: watchdogs compare it; `abandonPendingCallbacks()` bumps it and cancels pending auth/join continuations with `CancellationError`. Any new awaited-callback must follow the same continuation + generation pattern or it will hang the Start flow.

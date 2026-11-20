@@ -1,0 +1,75 @@
+# App/Layout
+
+Where windows go. A **layout** is a named `LayoutTemplate` of pieces (Greenroom's Meeting window, Chat, individual meeting "views", and other apps) stored as fractions (`UnitRect`, 0...1, top-left origin) of a display's usable area, with a one-display version and an optional two-display version. `LayoutLibrary` holds all templates plus the active one (the Start layout; nil = "None", Greenroom moves nothing). At Start, Snap Back, display change or a live edit, `LayoutEngine` resolves the active template against the displays connected right now (`LayoutResolver`, pure) and moves windows: Greenroom's own windows by `setFrame`, other apps through the Accessibility API (`AppWindowManager`) or AppleScript (Chrome, via `ChromeWindowManager`). The folder also holds display-change handling (`DisplayMonitor`, `DisplayPlan`, `DisplayResolver`) and the Start-step time limit (`StartTimeout`). The pure files (`LayoutTemplate`, `LayoutGeometry`, `DisplayPlan`, `StartTimeout`, `WorkspaceLayout`) are Foundation-only so tests and off-screen renders compile them without the app or the Zoom SDK.
+
+## Files
+
+| Path | What it owns | Key types / functions |
+|---|---|---|
+| `App/Layout/LayoutTemplate.swift` | The data model, persistence, starters, migration | `UnitRect`, `AppPiece`, `MeetingView` (enum of view windows; raw values are saved: never rename), `MeetingViewPieces`, `LayoutPiece` (+`Kind`: meeting/chat/app/view), `LayoutSlot`, `TwoDisplay`, `LayoutTemplate`, `LayoutLibrary` (`starters()`, `loadOrMigrate`, `load/save`, `select`, `duplicate`), `LegacyLayoutSettings` |
+| `App/Layout/LayoutGeometry.swift` | Pure maths of the editor and of resolving a template to frames | `LayoutGeometry` (12x12 grid, `snapMove`, `snapResize`, `limitResize`, `largestFreeRect`, `placeNew`, `minimumPoints`, `nsFrame`, `axFrame`), `LayoutScreen`, `LayoutFrames{ns,ax}`, `LayoutResolver` (`resolve`, `frames(of:meetingHidden:)`, `absorbingNeighbour`, `fit(_:aroundActual:planned:)`, `largestAppOnMain`, `isCompactMeeting`) |
+| `App/Layout/LayoutEngine.swift` | AppKit half: apply a template to real screens and windows; the coordinator's layout API | `LayoutEngine` (@MainActor; `resolve`, `apply(_:open:meetingHidden:)`, `openApps`, `repositionApps`, `closeApps`, `placeMeetingAndChat`, `openChat`, `revealChat`, `moveNeighbour`, `fitNeighbour`, `activateLargestApp`, `viewFrame`, `chatFrame`, `placedMeeting`, `startsHidden`, `hasPlacedSurface`, `connectedScreens`) |
+| `App/Layout/MainPaneManager.swift` | Open one App piece and tile it: built-in browser, Chromium AppleScript, or NSWorkspace + AX | `MainPaneManager.openWindow(bundleID:url:frame:)`, `repositionFrontWindow` (return a log sentence or nil) |
+| `App/Layout/AppWindowManager.swift` | Raw Accessibility-API window control for any app; one Accessibility grant for the whole of Greenroom | `AppWindowManager` (`hasAccessibilityPermission`, `windows`, `frontWindow`, `setFrame(_:of:pinTopRight:)`, `placeFrontWindow` -> `PlaceOutcome`, `positionFrontWindow`, `minimize`, `isFullScreen`, `bringForward`) |
+| `App/Layout/AppCatalog.swift` | Installed/running apps for the picker; browser detection; URL cleaning | `AppInfo`, `AppCatalog` (`installedAndRunning`, `isBrowser`, `isBuiltInBrowser`, `builtInBrowser`, `appURL`, `displayName`, `icon`, `normalizedWebURL`, `sanitizedURLText`) |
+| `App/Layout/DisplayMonitor.swift` | One place that hears displays come and go; coalesces a burst into one event; rescues stranded windows | `DisplayMonitor.shared` (`onChange`, `Change`, `settleSeconds` = 1.0, `awaitQuiet`, `reconfiguring`, `connectedUUIDs`, `connectedForCapture`, `describe`, `rescueStrandedWindows`) |
+| `App/Layout/DisplayPlan.swift` | Pure decisions on display change | `DisplayPlan` (`resolve(preferred:connected:main:)`, `decide(capture:connected:displaySetChanged:main:)` -> `.keep`/`.rebuild(reason)`), `WindowRescue.rescuedFrame` |
+| `App/Layout/DisplayResolver.swift` | Connected displays keyed by stable CGDisplay UUID string; NSScreen lookups | `DisplayInfo`, `DisplayResolver` (`connectedDisplays`, `screen(forUUID:)`, `mainDisplayScreen`, `firstSecondaryScreen`, `uuidString(for:)`) |
+| `App/Layout/StartTimeout.swift` | Every wait in Start has a limit and ends as a plain sentence | `withStartTimeout(_:step:advice:_:)`, `StartTimeoutError` |
+| `App/Layout/WorkspaceLayout.swift` | Decode-only legacy shape (pre layout creator main pane + side column) | `WorkspaceLayout` (nothing lays out from it; `LegacyLayoutSettings` reads old JSON itself) |
+
+## How it fits
+
+**State owner.** `CoordinatorController` owns `@Published var layoutLibrary: LayoutLibrary` (loaded with `LayoutLibrary.loadOrMigrate(from: defaults, defaultSiteURL:)`, saved to UserDefaults key `layoutLibrary` from its `didSet`) and `@Published private(set) var sessionTemplate: LayoutTemplate?` (the template running now). It owns `private lazy var layoutEngine = LayoutEngine(chat: zoomChatBridge, log:)`. If the library is edited while a session runs, `sessionTemplate` is refreshed from the library (the live edit path). Settings export/import carries `layoutLibrary` and the legacy shape (`LegacyLayoutSettings`).
+
+**Start-time flow.** `start()` picks `sessionTemplate`, sets `speakerTileQuickHidden = layoutEngine.startsHidden(template)`, `meetingWindowWanted = !layoutEngine.hasViewsButNoMeeting(template)`, opens App pieces (`openApps`, those with `opensAtStart`), joins the meeting (see codemap/zoom.md), then `layoutEngine.openChat(...)`, `presentMeetingSurfaces` -> `placeMeetingAndChat`, `activateLargestApp`. `sessionArranges` (a template is active) also tells `ZoomMeetingSDKClient.arrangesWindows` and `setDualScreenMode(sessionArranges && galleryWindowExists)`.
+
+**Resolution (pure).** `LayoutEngine.resolve(template)` -> `LayoutResolver.resolve(template, screens: connectedScreens(), primaryHeight:)`. It picks the two-display version when the template has one and a second display is connected (`TwoDisplay.secondUUID`, else the first non-main display), otherwise the one-display version on the main display. Each piece gets `LayoutFrames` in both coordinate spaces: `ns` (bottom-left, `NSWindow.setFrame`) and `ax` (top-left of the primary display, Accessibility/AppleScript). `Result.notes` carries fallbacks worth logging (log only when `logNotes: true`; per-second loops pass false). Nothing is cached: displays and Dock/menu-bar usable area change.
+
+**Applying.**
+- Greenroom's own windows: Meeting window via `ParticipantGridWindowController.place(frame:)/show/hide`; Chat via `ChatWindowController.show/setFrame/reveal`; view pieces via `MeetingViewWindows.place(view, frame:hidden:)` and `MeetingViewWindows.setHiddenTogether`; built-in browser via `BrowserWindowController.show`. `LayoutShareChoice.record(result)` runs before windows open ("Show to everyone" per piece; see Stage `ShareVisibleWindows`).
+- Other apps: `MainPaneManager.openWindow` (browsers: Chromium AppleScript route via `ChromeWindowManager` first, then NSWorkspace + AX; `placeFrontWindow` returns the ACTUAL frame, which the app may have clamped) and `repositionFrontWindow` (Snap Back).
+- Hide/show the Meeting (hotkey Opt-Cmd-Z): `LayoutResolver.frames(of:meetingHidden:)` lets the neighbour grow into the gap (`absorbingNeighbour`); `moveNeighbour` applies it, `fitNeighbour(aroundActual:)` reconciles after an app refused a size (`LayoutResolver.fit`, `LayoutGeometry.differs`).
+- Close: `closeApps` at End Session, only windows Greenroom itself opened (browser; Chromium by remembered id); never closes other apps.
+
+**Display changes.** `CoordinatorController` registers `DisplayMonitor.shared.onChange` (~4370) -> `displaysChanged(change)`: logs, `stage?.displaysDidChange(connected: DisplayMonitor.connectedForCapture(), main: LocalDeviceResolver.mainDisplayUUID, ...)` (Stage then uses `DisplayPlan.decide`), `DisplayMonitor.rescueStrandedWindows`, `syncReadinessHUD()`, then either flags `displayChangedDuringStart` (while Start runs) or `snapWindowsBack(userInitiated: false)` when live. `ZoomMeetingSDKClient.installStageVideoWithRetry` waits on `DisplayMonitor.awaitQuiet` before touching the SDK video slot.
+
+**Editor UI.** Layout editing lives in `App/UI` (`LayoutSettingsTab`, `LayoutCanvas`, `LayoutScreenPreview`, `LayoutAddPanel`) and is driven by `LayoutGeometry` (snap, overlap, minimums) and `LayoutTemplate`/`LayoutLibrary` mutators (`canAdd`, swap, duplicate). `LayoutAppOrdering` (picker ordering, in UI) is pinned by `Tests/LayoutAppOrderingTests`. Starters are `LayoutLibrary.starters()`: `teach-browser`, `meeting-chat` and the locked built-in "Raj Mode" (`rajMode` = "raj", `isLocked`).
+
+**Threading.** `LayoutEngine`, `DisplayMonitor` and `withStartTimeout` operations are `@MainActor`; `MainPaneManager`/`AppWindowManager` are static enums with async waits (polling until an app has a window). `DisplayMonitor` registers a CoreGraphics reconfiguration callback and an NSApplication screen-change observer, both funnelled to main via `MainActor.assumeIsolated`.
+
+## To change X, go to Y
+
+- Add or change a piece kind (e.g. a new window type) -> `LayoutPiece.Kind` and its Codable in `LayoutTemplate.swift`; minimums/defaults in `LayoutGeometry.minimumPoints/defaultCells`; placement in `LayoutResolver.resolve.place` and `LayoutEngine.placeMeetingAndChat`.
+- Add a new meeting view window -> `MeetingView` (case + `title`, append only; raw values are stored), `MeetingViewPieces.addEntries`, then the window side in `App/UI/MeetingVideo/` and `LayoutEngine.placeViews`.
+- Change a built-in layout -> `LayoutLibrary.starters()` (new starters need a `knownStarters` entry so `loadOrMigrate` appends them once; see `knownStartersKey`).
+- Change how a stored layout loads or migrates -> `LayoutLibrary.loadOrMigrate`, `firstRun(legacy:)`, `LegacyLayoutSettings.read/asTemplate`; fields decode optionally and via `Lossy<T>` so partial files load.
+- Change snapping, grid or overlap rules in the editor -> `LayoutGeometry` (`stickyLines`, `snapMove`, `snapResize`, `limitResize`, `resolveDrop`).
+- Change which display/variant is used -> `LayoutResolver.resolve` (one vs two displays, `TwoDisplay.secondUUID`).
+- Change what happens when the Meeting hides -> `LayoutResolver.absorbingNeighbour`, `frames(of:meetingHidden:)`, `LayoutEngine.moveNeighbour/fitNeighbour`.
+- Change how another app's window is moved -> `AppWindowManager.setFrame/placeFrontWindow` (AX), `MainPaneManager.openWindow` (open path), `ChromeWindowManager` (AppleScript).
+- Change which apps the picker offers -> `AppCatalog.installedAndRunning`, `isBrowser`; URL field handling -> `AppCatalog.normalizedWebURL/sanitizedURLText`.
+- Change display-change settle time -> `DisplayMonitor.settleSeconds` (1.0) and `awaitQuiet`.
+- Change what a display change does to the shared capture -> `DisplayPlan.decide`; where a stranded window goes -> `WindowRescue.rescuedFrame` and `DisplayMonitor.rescueStrandedWindows`.
+- Look up a display by saved UUID -> `DisplayResolver.screen(forUUID:)`; list for pickers -> `connectedDisplays()`.
+- Add a time limit to a Start step -> wrap it in `withStartTimeout(seconds, step:, advice:)` (see `hostAllInOne` for the pattern); the text IS the user message: say what did not happen and what to do.
+- Change the Accessibility prompt/check -> `AppWindowManager.promptForAccessibilityPermission/hasAccessibilityPermission` (`ZoomWindowManager` just delegates).
+- Change which app is focused after Start -> `LayoutEngine.activateLargestApp`, `LayoutResolver.largestAppOnMain`.
+
+## Gotchas
+
+- **Two coordinate spaces.** `ns` is bottom-left (AppKit); `ax` is top-left of the PRIMARY display (AX and AppleScript). Always carry `LayoutFrames` rather than converting ad hoc (`LayoutGeometry.nsFrame/axFrame`, `primaryHeight`).
+- **Stored as fractions, not pixels.** `UnitRect` is 0...1 of `visibleFrame` (excludes Dock and menu bar), origin top-left. Snapping only happens while editing, so a migrated off-grid layout is preserved exactly until touched.
+- **Saved raw values are API.** `MeetingView` raw values, `LayoutPiece.Kind` coding keys (`type`, `fillsDisplay`, `startsHidden`, `app`, `view`) and `LayoutSlot` are persisted and exported; never rename. Decoding is lenient and drops bad pieces (`Lossy`).
+- **Accessibility, not AppleScript, for most apps.** Without the grant every `AppWindowManager` setter silently does nothing; the grant is for Greenroom as a whole. Apps clamp below their minimum size: use the returned actual frame (`PlaceOutcome`, `fitNeighbour`).
+- **Fullscreen windows ignore `setFrame`.** The meeting windows must be taken out of fullscreen before tiling (`ZoomMeetingSDKClient.exitFullScreen`, and the SDK is told not to auto-fullscreen at join).
+- **Browsers get their own window.** Handing a URL to a running browser opens a tab in the existing window, and the session then tiles someone's tab pile; hence the scripted "make new window" route for every browser first (Ulaa uses Chrome's dictionary).
+- **Never close what we did not open.** `closeApps` only touches the built-in browser and Chromium windows remembered by id.
+- **Resolve every time.** Do not cache `Resolution` across display changes. Per-second loops must call `resolve` with `logNotes: false` or a fallback will be logged forever.
+- **A display event is a burst.** Never act on a raw CG/NSScreen callback; use `DisplayMonitor.onChange` (settled) or `awaitQuiet`. A mirrored display set appears as ONE NSScreen (the mirror set's main), so a mirrored projector is never selectable on its own.
+- **Xcode 27 SDK note:** `CGDisplayCreateUUIDFromDisplayID` moved to ColorSync; `DisplayResolver` gets it through AppKit, `LocalDeviceResolver` (Stage) imports it by name. Do not copy one file's imports into the other.
+- **Raj Mode is locked** (`LayoutTemplate.isLocked`, derived from `starter`); a duplicate drops `starter` which unlocks it. Do not add a stored flag.
+- **Meeting piece forms.** `.meeting(fillsDisplay: true)` is the Participants form: the whole display, opened by the participants window itself; `placeMeetingAndChat` returns early for it.
+- **Views need custom UI** (`MeetingViewPieces.addEntries(customUIMode:viewsEnabled:)`, default key `meetingViews.enabled`, tests set `MeetingViewPieces.override`). In default-UI mode the Meeting piece is titled "Zoom window".
+- **Start timeouts own the failure text.** `StartTimeoutError`'s text (its `errorDescription`) is shown whole; it must name the step, the wait and the way out. `withStartTimeout` deliberately avoids a task group (it cannot return until every child ends).
+- **Tests that pin this area** (Tests/): `LayoutGeometryTests`, `LayoutResolverTests`, `LayoutMigrationTests` (`LayoutLibrary`, `LegacyLayoutSettings`), `LayoutViewPieceTests` (`MeetingView` pieces), `LayoutAppOrderingTests` (UI helper), `MeetingViewFlagTests`, `MeetingCollapseRulesTests`, `ViewsMenuTests`, `ShortcutModelTests` (touch `MeetingView`). Not covered: `LayoutEngine`, `AppWindowManager`, `MainPaneManager`, `DisplayMonitor`, `DisplayPlan` (despite being pure), `StartTimeout`.

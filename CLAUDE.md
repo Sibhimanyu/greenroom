@@ -1,3 +1,9 @@
+# Finding your way
+
+Read `AGENTS.md` first: it is the map of the code (a task router plus
+`codemap/*.md`, one per area). Update the matching codemap when you move,
+add or rename files or change a flow.
+
 # gstack
 
 Use the `/browse` skill from gstack for all web browsing. Never use `mcp__claude-in-chrome__*` tools.

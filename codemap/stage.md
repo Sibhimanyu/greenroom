@@ -1,0 +1,87 @@
+# App/Stage
+
+The in-process "class picture" pipeline (it replaced OBS in 1.3.0). `StageCompositor` captures the shared screen (ScreenCaptureKit via `StageScreenSource`), opens every chosen camera at once (AVFoundation via `CutoutPublisher`, with Vision person segmentation for Cutout, Presenter, Blur and Image backgrounds), draws them with `StageRenderer` (Core Image) at a fixed 30 fps clock into 1920x1080 BGRA IOSurface buffers, and hands each frame to whoever subscribed as a `StageFrameSink`: the meeting (`ZoomVideoSender`), the recorder (`SessionRecorder`), the Settings preview (`StagePreviewSink`) and the Start gate (`StageFrameProbe`). Around it sit `CameraDirector` (auto-cut to the camera that sees the teacher's face head-on), `CameraProbe` (aim a camera before any class runs), the share-target model (`ShareTarget` and the pure rules that pick windows and follow slide shows), and the pure geometry/visibility rules for the on-screen presence bubble. Most files are deliberately pure (no AppKit/SCK) so tests can pin them.
+
+## Files
+
+| Path | What it owns | Key types / functions |
+|---|---|---|
+| `App/Stage/StageCompositor.swift` | The clock, the inputs, the sinks, screen/camera sync, recovery, display-change handling | `StageCompositor` (`StageFrameSource`), `StageInputBoard`, `StageStatus` (@Published, main-thread), `LockedBox<T>`; `start/update/updatePlacement/stop/cut(toSlot:fade:)`, `displaysDidChange`, `videoPosition(ofGlobalPoint:)`, `latestCameraFrame(slot:)`, `setMarksOverlay`, `setWhiteboardPage`, `setSelfViewHandler`, `onSystemAudio` |
+| `App/Stage/StageRenderer.swift` | All drawing: `compose` turns scene + latest inputs into one CIImage; chroma key, masks, crossfades | `StageRenderer.compose/render/pixels(of:scene:)`, `StageScene`, `StageCameraInput`, `lastContentRect`, `lastCameraCoverage`, `fadeCurve` |
+| `App/Stage/StageLayout.swift` | What the compositor is told to draw, with shipped defaults | `StageLayout` (width 0.24, insets, shape, showsContent/showsCamera), `StageConfiguration` (+`normalizedLayout`) |
+| `App/Stage/StageFrames.swift` | The seam between picture and consumers | `StageFrameSink`, `StageFrameSource`, `StageSinkList` (weak), `StageBufferPool`, `StageTestPattern` |
+| `App/Stage/StagePreviewSink.swift` | Throttled small preview image for SwiftUI; "has any frame arrived" probe | `StagePreviewSink`, `StageFrameProbe` |
+| `App/Stage/StageScreenSource.swift` | One SCStream: display, app or window; excludes Greenroom's own windows; permission handling; follow slide show; audio | `StageScreenSource` (`Target`, `Failure`), `start() async`, `stop(because:)`, `askForPermission`, `isPermissionProblem`, `capturedFrame(onThisDesktop:)`, callbacks `onFrame/onAudio/onFollowing/onNoPicture/onStop` |
+| `App/Stage/CutoutPublisher.swift` | One camera open; per-frame Vision segmentation; background blur/image; stand-in camera recovery | `CutoutPublisher` (`Frame{raw,cutout,background}`), `removesBackground`, `setBackground`, `setAllowsStandIn`, `onFrame/onPersonInView/onStandIn` |
+| `App/Stage/CameraEffects.swift` | Blur / picture behind you (ported from Recorditor), mask refine, background library | `CameraBackground`, `CameraBackgroundPreset`, `CameraBackgroundLibrary` (importCustom, `custom*` keys), `CameraEffects.apply/warmUp`, `MaskRefiner` |
+| `App/Stage/CameraDirector.swift` | Multi-camera auto-switching by face angle, with dwell and transition | `CameraDirector` (@MainActor ObservableObject), `CameraDirectorSettings` (Codable, in UserDefaults), `CameraTransition`, `CameraSight`, `Chooser`, `look(at:)`, `offAxis`, `score(yaw:pitch:)` |
+| `App/Stage/CameraProbe.swift` | Preview one camera and read its angle with nothing else running | `CameraProbe` (@MainActor), `start(uid:)`, `stop()` |
+| `App/Stage/ShareTarget.swift` | What is shared: display, app (legacy), window, whiteboard, nothing; persisted by app+title, never window ID | `ShareTarget` (Codable; `Kind`, `resolve(displayUUID:)`, `windows()`, `bestWindow`, `windowKey`, `runningApps`, `followsSlideShow`) |
+| `App/Stage/ScreenAppMatch.swift` | Which SCK windows belong to a picked app (bundle id, pids, ".helper" ids) | `ScreenAppMatch.match`, `ScreenWindowInfo`, `ScreenDisplayInfo` |
+| `App/Stage/ScreenWindowRules.swift` | Which windows are shareable and where they are | `ScreenWindowRules.isCandidate/placement/isCapturable` |
+| `App/Stage/ScreenRecovery.swift` | Retry/log policy for a capture that cannot start or was ended (5 s) | `ScreenRecovery.failed(...)`, `retryInterval`, `Decision` |
+| `App/Stage/SlideShowFollow.swift` | Pure rule: move capture to a new full-screen window of the same app and back | `SlideShowFollow.decide`, `slideShowWindow`, `isFullScreen`, `Move` |
+| `App/Stage/ShareVisibleWindows.swift` | Live list of Greenroom windows let into a display share ("Show on my share") | `ShareVisibleWindows` (@MainActor; `add/remove/setKind`, `effectiveNumbers`, `didChange`) |
+| `App/Stage/LocalDeviceResolver.swift` | Attached displays, cameras, mics as stored IDs (display UUID, camera/mic uniqueID) | `LocalDeviceResolver.activeDisplays/availableCameras/availableMicrophones/resolveCaptureDisplay/physicalCameraUID` |
+| `App/Stage/PresenceGeometry.swift` | Pure maths for the camera bubble: screen points <-> canvas fractions | `PresenceBox`, `PresenceGeometry` (`frame(for:aspect:)`, `layout(applying:to:)`, `stepped`, `slid`, `widthRange`, `cameraRect`) |
+| `App/Stage/PresenceVisibility.swift` | Pure rule: show / hide / hideKeepingPlacement for the bubble | `PresenceVisibility.decide(Inputs)`, `pollInterval` |
+| `App/Stage/WebcamShape.swift` | Bubble outline, background-removal enum, Webcam-page preview feed | `WebcamShape` (square, circle, roundedRectangle, cutout, presenterLarge), `BackgroundRemoval` (automatic, greenScreen), `ShapePreviewFeed` |
+| `App/Stage/AudioOnlyCard.swift` | The "Audio only" card picture (DESIGN.md neutrals) | `AudioOnlyCard.image(size:)` |
+| `App/Stage/Backgrounds/` | Bundled preset photos (`bg-1-studio` ... `bg-5-slate`.jpg) | resource only |
+
+## How it fits
+
+**Owner.** `CoordinatorController` holds `var stage: StageCompositor?` (made by `ensureStage()`), plus `let cameraDirector = CameraDirector()`, `let cameraProbe = CameraProbe()`, `previewSink = StagePreviewSink()`. Its `runPipeline()` -> `buildScene()` builds a `StageConfiguration` from user settings (shape, `ShareTarget`, `screenCaptureDisplayUUID`, cameras in cut order, background, system-audio flag), calls `stage.start`, then `zoomChatClient.useStageVideo(stage)`; later changes call `stage.update(config)`. Start waits on a `StageFrameProbe` sink (CoordinatorController ~5172) so the meeting never starts on no picture.
+
+**Data flow (per tick).**
+1. Inputs arrive on their own queues and drop their newest item into `StageInputBoard` (an NSLock around latest-of-each): `StageScreenSource` (queue `greenroom.stage.screen`) -> `board.offerScreen`; each `CutoutPublisher` (own capture queue) -> `board.setCamera(uid, Frame)`; whiteboard page / marks overlay via `LockedBox`.
+2. `StageCompositor.tick()` runs on `renderQueue` (`greenroom.stage.render`, userInteractive, one `DispatchSourceTimer` at `1/frameRate`). It snapshots the board, builds a `StageScene` (layout, liveSlot, crossfade), calls `StageRenderer.compose(scene:screen:marks:cameras:)`, renders into a `StageBufferPool` buffer, and `sinks.deliver(frame, at: hostClockTime)`.
+3. Sinks: `ZoomVideoSender.stageDidRender` (see codemap/zoom.md), `SessionRecorder` (App/Recording), `StagePreviewSink` (downscaled a few times a second, also feeds Home/Webcam previews via `ShapePreviewFeed`), `StageFrameProbe`. Sinks are held weakly by `StageSinkList`; whoever creates a sink keeps it alive. A sink must not block: retain, hop to own queue, drop frames.
+4. Status for the UI goes through `StageStatus` (@Published), pushed with `post { }` on the main thread, throttled (`pushStatus`).
+
+**Screen sync.** `apply(config)` -> `syncScreen(cfg, generation:)` creates a `StageScreenSource` beside the current one; `board.expectScreen(id)` marks it pending; only its first frame promotes it (`offerScreen` returns true) and then `retireScreens` stops the old one. `screenGeneration` guards stale rounds. Failures go through `ScreenRecovery` (5 s retry while the choice stands, immediately on wake/unlock via `kickScreen`, never for a permission refusal). `DisplayMonitor` events reach it through `CoordinatorController` (~4413) -> `displaysDidChange(connected:main:displaySetChanged:)`; `DisplayPlan` (App/Layout) decides fallback. The display filter excludes Greenroom's own app except windows in `ShareVisibleWindows.effectiveNumbers` (re-read every second); window targets follow a slide show once a second via `SlideShowFollow.decide` when `ShareTarget.followsSlideShow`.
+
+**Cameras and cutting.** `syncCameras` opens every UID in `cameraUIDs` at once (slot = index) and leaves open ones alone. Only `scene.liveSlot` is drawn; hidden ones keep delivering. `CameraDirector` (@MainActor) runs a watch task over `stage.latestCameraFrame(slot:)`, scores yaw/pitch with Vision, applies the dwell (a camera must be clearly better for `dwellSeconds`), then calls `stage.cut(toSlot:fade:)`. With 2+ cameras the director owns which is live, so `CutoutPublisher` never stands in a default camera. Coordinator starts it at ~369/394 and resets to slot 0 (`cut(toSlot: 0, fade: 0)`) at session start/stop.
+
+**Presence bubble.** The on-screen camera bubble (App/UI/PresenceBubble.swift, wiring in `CoordinatorController+Presence.swift`) moves the camera in the picture: drag -> `PresenceGeometry` -> `stage.updatePlacement(layout)` per step (no camera reopen), final -> `applyPresencePlacement`. It shows the processed camera via `stage.setSelfViewHandler` (called on the render queue; must return quickly). `PresenceVisibility.decide` says whether to show it given share kind, meeting state, captured window.
+
+**Other readers of the compositor.** Recording border and input mapping: `capturedScreenFrame`, `capturedWindowID`, `capturedFrontTarget`, `followsWindow`, `videoPosition(ofGlobalPoint:)` (App/Recording/InputEventTracker, ScreenAnnotation, DebugTour). Recorder audio: `onSystemAudio`. Whiteboard: `setWhiteboardPage` (CoordinatorController `pushWhiteboardPage`) and `StageInputBoard.setWhiteboard(mode:)`. Marks: `setMarksOverlay(StageMarksOverlay?)`.
+
+## To change X, go to Y
+
+- Change the picture's size or fps -> `StageCompositor.init(size:frameRate:)` (default 1920x1080 @ 30); downstream consumers adapt (`I420Converter` for the meeting).
+- Change how the camera bubble/cutout/presenter is drawn -> `StageRenderer.compose` / `pixels(of:scene:)`; shape masks live in `WebcamShape` plus the renderer's `masks`; defaults in `StageLayout`.
+- Add a new webcam shape -> `WebcamShape` (case, `label`, `usesChromaKey`), then the renderer's mask code and Webcam page UI.
+- Add a share kind -> `ShareTarget.Kind` (+ `capturesScreen`, `resolve`), `StageScreenSource.Target`, `StageCompositor.syncScreen`, `StageConfiguration.normalizedLayout`.
+- Change which windows can be picked -> `ScreenWindowRules.isCandidate/placement`, `ShareTarget.windows()`; how an app is matched -> `ScreenAppMatch.match`.
+- Change slide-show follow -> `SlideShowFollow.decide` (pure) and `StageScreenSource` follow loop (~line 507).
+- Change what Greenroom hides from / shows in a display share -> `StageScreenSource` filter (~line 259) and `ShareVisibleWindows`; the "Show on my share" rule is `ShowOnShare` in App/ShareVisibilityRules.swift.
+- Change screen-capture retry/backoff -> `ScreenRecovery.retryInterval` / `failed`, `StageCompositor.syncScreen`, `kickScreen`.
+- Handle a display plug/unplug differently -> `StageCompositor.displaysDidChange` and `apply`; the plan -> `DisplayPlan` (codemap/layout.md).
+- Change blur or image backgrounds -> `CameraEffects.apply`, `MaskRefiner`, `CameraBackgroundLibrary`, presets in `App/Stage/Backgrounds/` and `CameraBackgroundPreset`.
+- Change segmentation quality or camera open/recovery -> `CutoutPublisher` (Vision request, `recover`, stand-in rules).
+- Tune auto camera switching -> `CameraDirectorSettings` defaults, `Chooser` (decision), `CameraDirector.score(yaw:pitch:)`, `CameraTransition`.
+- Fix the aim-a-camera readout -> `CameraProbe` (it must stay independent of the compositor).
+- Add a new consumer of frames -> implement `StageFrameSink`, `stage.addSink`, keep a strong reference; follow the rules in `StageFrames.swift`.
+- Change preview refresh rate/size -> `StagePreviewSink`.
+- Change presence-bubble maths (clamp, size steps) -> `PresenceGeometry`; when it shows -> `PresenceVisibility.decide`.
+- List attached cameras/mics/displays by stored ID -> `LocalDeviceResolver`.
+- Change the no-picture card -> `AudioOnlyCard.image(size:)`.
+
+## Gotchas
+
+- **Never draw on the main thread, never block `renderQueue`.** Everything render-side runs on `greenroom.stage.render`. `StageStatus` is mutated on the main thread only (via `post`). `StageRenderer.lastContentRect` / `lastCameraCoverage` are lock-protected and read from any thread; they describe the frame most recently drawn.
+- **Locks, not actors.** `StageCompositor` control state is under `lock`, inputs under the board's lock, handlers under `LockedBox`. `CutoutPublisher.removesBackground` / background are lock-guarded (written on main/control, read on the capture queue). Do not read control state from `tick`.
+- **Live changes must not blank the picture.** New screen capture starts beside the old and replaces it on first frame; a lost capture keeps the last frame (still image, not black); camera changes never reopen cameras (`updatePlacement` skips `apply`).
+- **Stale async rounds.** Anything async after `apply` must check `isCurrent(generation)`; `Task.detached` retries re-check it.
+- **Frame contract.** Frames are BGRA, IOSurface-backed, host-clock timestamps; `StageFrameSource` holds sinks weakly. Do not change the pixel format without updating `ZoomVideoSender`/`I420Converter` and the recorder.
+- **Windows are remembered by app + title, never window ID** (`ShareTarget.windowKey`). A saved `.app` kind is read back as the whole screen (`pickable` omits it but it must still decode).
+- **Own windows are excluded from display shares** (feedback loop) except those in `ShareVisibleWindows`; the window number equals `NSWindow.windowNumber`.
+- **Screen Recording permission.** `StageCompositor.screenRecordingGranted` does not prompt; `requestScreenRecordingAccess` prompts once, then opens System Settings once per launch. Without permission other apps' window titles are empty and `ScreenRecovery` does not retry.
+- **Sleep/lock and -3815** end the SCStream; recovery logs once per outage ("a night of sleep is a counter, not 600 lines").
+- **One camera opener.** CameraDirector reads the compositor's own sessions (`latestCameraFrame`); never open a second AVCaptureSession on the same device. `CameraProbe` is for when nothing is running, and the compositor stops it once the director owns cameras (`cameraProbe.stop()` in `runPipeline`).
+- **Director vs stand-in.** `setAllowsStandIn` is true only with one camera; with several, the director chooses.
+- **Xcode 27 SDK:** `CGDisplayCreateUUIDFromDisplayID` moved to ColorSync; `LocalDeviceResolver` imports it by name (see header comment). Keep that import.
+- **Colours are DESIGN.md neutrals** (`--ink` #101828 backdrop in `StageRenderer`, `AudioOnlyCard`); no hardcoded greens.
+- **Recorditor ports** (`CameraEffects`, `SlideShowFollow`, whiteboard, `AudioOnlyCard`) have a diff log in `docs/recorditor-integration/` (camera-port-log.md, follow-port-log.md); keep it current when changing them.
+- **Tests that pin this area** (Tests/): `PresenceGeometryTests` (also `PreviewFrameRulesTests`), `PresenceVisibilityTests`, `SlideShowFollowTests`, `ScreenRecoveryTests`; `ScreenAnnotationTests` touches `AudioOnlyCard`; `HomeCalmRulesTests` touches `ShareTarget`. Not covered: `StageCompositor`, `StageRenderer`, `CutoutPublisher`, `CameraDirector`, `ScreenAppMatch`, `ScreenWindowRules`, `LocalDeviceResolver`.

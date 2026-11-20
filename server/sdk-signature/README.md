@@ -16,7 +16,7 @@ meeting number when it starts the SDK) and the header
 ```sh
 cd server/sdk-signature
 catalyst login
-catalyst init            # link this folder to your Catalyst project (creates .catalystrc)
+catalyst init --org 60083782173   # link to the Catalyst project "Greenroom" (creates .catalystrc)
 catalyst deploy --only functions:sdk_signature
 ```
 

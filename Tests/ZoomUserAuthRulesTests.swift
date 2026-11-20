@@ -106,4 +106,28 @@ final class ZoomUserAuthRulesTests: XCTestCase {
         XCTAssertEqual(ZoomSignInWords.refusal(error: "access_denied", description: nil), "Sign-in was cancelled in Zoom.")
         XCTAssertTrue(ZoomSignInWords.refusal(error: "invalid_scope", description: "Bad scope").contains("Bad scope"))
     }
+
+    func testScopeParsedFromTokenResponse() throws {
+        let set = try XCTUnwrap(ZoomTokenSet.parse(["access_token": "a", "scope": "user:read:user meeting:write:meeting", "expires_in": 60], now: Date()))
+        XCTAssertEqual(ZoomScopeCheck.parse(set.scope), ["user:read:user", "meeting:write:meeting"])
+        XCTAssertNil(try XCTUnwrap(ZoomTokenSet.parse(["access_token": "a"], now: Date())).scope)
+    }
+
+    func testScopeCheck() {
+        let required = ["a:read", "b:write"]
+        XCTAssertEqual(ZoomScopeCheck.check(required: required, granted: ["a:read", "b:write", "extra"]), .ok)
+        XCTAssertEqual(ZoomScopeCheck.check(required: required, granted: ["a:read"]), .needsMore(["b:write"]))
+        XCTAssertEqual(ZoomScopeCheck.check(required: required, granted: ["a:read:admin", "b:write:admin"]), .ok)
+        XCTAssertEqual(ZoomScopeCheck.check(required: required, granted: nil), .unknown)
+        XCTAssertEqual(ZoomScopeCheck.check(required: required, granted: []), .unknown)
+        // A scope added to the list later is reported until the person signs in again.
+        XCTAssertEqual(ZoomScopeCheck.check(required: required + ["c:new"], granted: ["a:read", "b:write"]), .needsMore(["c:new"]))
+    }
+
+    func testTodaysRequiredScopesAreTheFiveGranted() {
+        XCTAssertEqual(Set(ZoomOAuth.requiredScopes), ["user:read:user", "user:read:token", "user:read:zak",
+                                                       "meeting:read:list_meetings", "meeting:write:meeting"])
+        XCTAssertEqual(ZoomScopeCheck.check(required: ZoomOAuth.requiredScopes,
+                                            granted: ZoomScopeCheck.parse("user:read:user user:read:token user:read:zak meeting:read:list_meetings meeting:write:meeting")), .ok)
+    }
 }

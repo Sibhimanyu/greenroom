@@ -21,6 +21,28 @@ enum ZoomOAuth {
     static let authorizeURL = "https://zoom.us/oauth/authorize"
     static let tokenURL = "https://zoom.us/oauth/token"
     static let revokeURL = "https://zoom.us/oauth/revoke"
+    /// THE list of scopes the signed-in path needs. To change what Greenroom asks
+    /// of Zoom: add the scope to the Marketplace app first, then here, then ship.
+    /// People who signed in before see "Greenroom needs one more Zoom permission"
+    /// with a Sign in again button (see ZoomScopeCheck).
+    ///
+    /// What each call needs (granular names; classic `user:read` style names are
+    /// also accepted when granted):
+    ///   GET  /users/me                      user:read:user
+    ///   GET  /users/me/token?type=zak       user:read:token (user:read:zak also granted)
+    ///   POST /users/me/meetings             meeting:write:meeting
+    ///   GET  /users/me/meetings (list, live) meeting:read:list_meetings
+    /// Calls the app makes that these do NOT cover yet (each fails with a scope
+    /// error, none blocks a start):
+    ///   PUT    /meetings/{id}/status        meeting:update:status
+    ///   GET    /meetings/{id}               meeting:read:meeting
+    ///   PATCH  /meetings/{id}               meeting:update:meeting
+    ///   DELETE /meetings/{id}               meeting:delete:meeting
+    static let requiredScopes = [
+        "user:read:user", "user:read:token", "user:read:zak",
+        "meeting:read:list_meetings", "meeting:write:meeting",
+    ]
+
     /// Zoom ignores the port for a loopback redirect but not the path.
     static let callbackPath = "/callback"
     static let preferredPort: UInt16 = 53682
@@ -148,6 +170,8 @@ struct ZoomTokenSet: Equatable {
     var accessToken: String
     var refreshToken: String?
     var expiresAt: Date
+    /// Space-separated scopes Zoom says the token carries, when it says.
+    var scope: String? = nil
 
     /// Reads Zoom's token response. A refresh grant rotates the refresh token,
     /// so `refreshToken` is nil only when Zoom did not send one.
@@ -155,7 +179,8 @@ struct ZoomTokenSet: Equatable {
         guard let access = json["access_token"] as? String, !access.isEmpty else { return nil }
         let seconds = (json["expires_in"] as? Double) ?? Double(json["expires_in"] as? Int ?? 3600)
         let refresh = (json["refresh_token"] as? String).flatMap { $0.isEmpty ? nil : $0 }
-        return ZoomTokenSet(accessToken: access, refreshToken: refresh, expiresAt: now.addingTimeInterval(seconds))
+        let scope = (json["scope"] as? String).flatMap { $0.trimmingCharacters(in: .whitespaces).isEmpty ? nil : $0 }
+        return ZoomTokenSet(accessToken: access, refreshToken: refresh, expiresAt: now.addingTimeInterval(seconds), scope: scope)
     }
 }
 
@@ -173,6 +198,39 @@ enum ZoomTokenRules {
     /// Zoom rotates the refresh token on each use; keep the new one, or the old
     /// one when none came back.
     static func refreshToStore(old: String, response: ZoomTokenSet) -> String { response.refreshToken ?? old }
+}
+
+// MARK: - Granted scopes versus required
+
+enum ZoomScopeCheck {
+    enum Result: Equatable {
+        case ok
+        /// Zoom never told us what was granted; nothing to compare, so no nagging.
+        case unknown
+        case needsMore([String])
+    }
+
+    static func parse(_ scope: String?) -> Set<String> {
+        Set((scope ?? "").split(whereSeparator: \.isWhitespace).map(String.init))
+    }
+
+    /// A required scope is met by its own name or the same name with ":admin".
+    static func isGranted(_ required: String, in granted: Set<String>) -> Bool {
+        granted.contains(required) || granted.contains(required + ":admin")
+    }
+
+    static func missing(required: [String], granted: Set<String>) -> [String] {
+        required.filter { !isGranted($0, in: granted) }
+    }
+
+    static func check(required: [String], granted: Set<String>?) -> Result {
+        guard let granted, !granted.isEmpty else { return .unknown }
+        let gap = missing(required: required, granted: granted)
+        return gap.isEmpty ? .ok : .needsMore(gap)
+    }
+
+    static let promptTitle = "Greenroom needs one more Zoom permission"
+    static let promptDetail = "Sign in again and approve it in your browser. Your meetings and settings stay as they are."
 }
 
 // MARK: - Where credentials come from

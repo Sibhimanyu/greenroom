@@ -127,6 +127,8 @@ struct MenuBarView: View {
             let host = !coordinator.zoomHostingReady
             if mode == .create ? (sdk || host) : sdk {
                 out.append(MenuBarProblem(fix: .zoomSettings, text: "Zoom: sign in"))
+            } else if coordinator.zoomNeedsMorePermission {
+                out.append(MenuBarProblem(fix: .zoomSettings, text: "Zoom: one more permission"))
             }
         }
         if !coordinator.cameraIsOff {

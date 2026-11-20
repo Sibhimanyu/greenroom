@@ -553,6 +553,8 @@ final class CoordinatorController: ObservableObject {
         return (p?.name ?? "", p?.email ?? "")
     }
     var zoomSigningIn: Bool { zoomUser.phase == .signingIn }
+    /// Signed in, but the app now needs a scope the sign-in does not carry.
+    var zoomNeedsMorePermission: Bool { zoomUser.needsMorePermission }
     var zoomSignInError: String? { zoomUser.lastError }
 
     func signInWithZoom() {
@@ -1607,6 +1609,10 @@ final class CoordinatorController: ObservableObject {
                 ? ZoomCredentialRules.notFinishedText
                 : "Sign in with Zoom in Settings (\u{2318},) \u{2192} Zoom. Greenroom sends your screen and camera through its own Zoom client, so it needs your Zoom account."
             log("Can't start yet \u{2014} \(why)")
+            return
+        }
+        if meetingMode != .record, zoomNeedsMorePermission {
+            log("\(ZoomScopeCheck.promptTitle). Settings (\u{2318},) \u{2192} Zoom \u{2192} Sign in again, then press Start.")
             return
         }
         switch meetingMode {

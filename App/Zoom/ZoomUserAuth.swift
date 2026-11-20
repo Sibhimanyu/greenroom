@@ -8,8 +8,7 @@
 //  ends meetings and fetches the host key (ZAK), the same calls the
 //  Server-to-Server client makes, but as the person.
 //
-//  Tokens: the refresh token lives in SecretStore (plain UserDefaults, like
-//  every other credential here; no Keychain by design). The access token stays
+//  Tokens: the refresh token lives in the Keychain (ZoomKeychain). The access token stays
 //  in memory with its expiry and is renewed a minute early. Zoom rotates the
 //  refresh token on each use, so the new one replaces the old.
 //
@@ -54,9 +53,12 @@ final class ZoomUserAuth: ObservableObject {
     @Published private(set) var profile: ZoomUserProfile?
     /// Plain-words reason the last sign-in did not finish; nil after success.
     @Published private(set) var lastError: String?
+    /// Required scopes the person's sign-in does not carry (empty when fine or unknown).
+    @Published private(set) var missingScopes: [String] = []
 
-    private static let refreshKey = "zoomUserRefreshToken"
+    private static let refreshKey = "zoomUserRefreshToken"   // Keychain account; also the old SecretStore key
     private static let profileKey = "zoomUserProfile"
+    private static let scopesKey = "zoomUserGrantedScopes"
 
     private var tokens: ZoomTokenSet?
     private var signInTask: Task<Void, Error>?
@@ -64,16 +66,42 @@ final class ZoomUserAuth: ObservableObject {
     private let defaults = UserDefaults.standard
 
     init() {
-        let hasRefresh = !(SecretStore.get(Self.refreshKey) ?? "").isEmpty
+        // One-time move out of the plain-preferences slot an earlier build used.
+        if let old = SecretStore.get(Self.refreshKey), !old.isEmpty {
+            if (ZoomKeychain.get(Self.refreshKey) ?? "").isEmpty { ZoomKeychain.set(old, account: Self.refreshKey) }
+            SecretStore.set("", forKey: Self.refreshKey)
+        }
+        let hasRefresh = !(ZoomKeychain.get(Self.refreshKey) ?? "").isEmpty
         phase = hasRefresh ? .signedIn : .signedOut
         if hasRefresh, let data = defaults.data(forKey: Self.profileKey) {
             profile = try? JSONDecoder().decode(ZoomUserProfile.self, from: data)
         }
+        refreshMissingScopes()
+    }
+
+    var needsMorePermission: Bool { isSignedIn && !missingScopes.isEmpty }
+
+    /// Compares what the sign-in carries with `ZoomOAuth.requiredScopes`. Run at
+    /// launch and whenever the grant changes, so a new requirement shows up as a
+    /// calm prompt in Settings and on Home instead of failing mid-meeting.
+    private func refreshMissingScopes() {
+        guard phase == .signedIn || phase == .signingIn, refreshToken != nil else { missingScopes = []; return }
+        let stored = defaults.string(forKey: Self.scopesKey)
+        switch ZoomScopeCheck.check(required: ZoomOAuth.requiredScopes, granted: stored.map(ZoomScopeCheck.parse)) {
+        case .needsMore(let gap): missingScopes = gap
+        case .ok, .unknown: missingScopes = []
+        }
+    }
+
+    private func storeScopes(from set: ZoomTokenSet) {
+        guard let scope = set.scope else { return }
+        defaults.set(scope, forKey: Self.scopesKey)
+        refreshMissingScopes()
     }
 
     var isSignedIn: Bool { phase == .signedIn }
     private var refreshToken: String? {
-        let value = SecretStore.get(Self.refreshKey) ?? ""
+        let value = ZoomKeychain.get(Self.refreshKey) ?? ""
         return value.isEmpty ? nil : value
     }
 
@@ -135,25 +163,34 @@ final class ZoomUserAuth: ObservableObject {
         }
         NSWorkspace.shared.open(url)
         let code = try await listener.waitForCode(expectedState: state, timeout: ZoomOAuth.signInTimeout)
+        // Signing in again while signed in must not sign anyone out if it fails.
+        let previousTokens = tokens, previousProfile = profile
         do {
             let form = ZoomAuthRequest.codeExchangeForm(code: code, verifier: pkce.verifier,
                                                         redirectURI: redirectURI, clientID: ZoomOAuth.publicClientID)
             let set = try await tokenRequest(form)
             guard let refresh = set.refreshToken else { throw ZoomUserAuthError.badResponse }
-            SecretStore.set(refresh, forKey: Self.refreshKey)
             tokens = set
             profile = try await loadProfile()
+            ZoomKeychain.set(refresh, account: Self.refreshKey)
+            if let scope = set.scope { defaults.set(scope, forKey: Self.scopesKey) }
+            else { defaults.removeObject(forKey: Self.scopesKey) }
+            refreshMissingScopes()
             listener.reply(success: true, detail: "")
         } catch {
-            clearLocal()
+            tokens = previousTokens
+            profile = previousProfile
+            if let data = previousProfile.flatMap({ try? JSONEncoder().encode($0) }) { defaults.set(data, forKey: Self.profileKey) }
             listener.reply(success: false, detail: Self.map(error).errorDescription ?? "")
             throw error
         }
     }
 
     private func clearLocal() {
-        SecretStore.set("", forKey: Self.refreshKey)
+        ZoomKeychain.delete(Self.refreshKey)
         defaults.removeObject(forKey: Self.profileKey)
+        defaults.removeObject(forKey: Self.scopesKey)
+        missingScopes = []
         tokens = nil
         profile = nil
         phase = .signedOut
@@ -184,8 +221,9 @@ final class ZoomUserAuth: ObservableObject {
         defer { refreshTask = nil }
         do {
             let set = try await task.value
-            SecretStore.set(ZoomTokenRules.refreshToStore(old: old, response: set), forKey: Self.refreshKey)
+            ZoomKeychain.set(ZoomTokenRules.refreshToStore(old: old, response: set), account: Self.refreshKey)
             tokens = set
+            storeScopes(from: set)
             return set
         } catch ZoomUserAuthError.signInExpired {
             clearLocal()
@@ -218,8 +256,7 @@ final class ZoomUserAuth: ObservableObject {
 
     @discardableResult
     func loadProfile() async throws -> ZoomUserProfile {
-        let (data, _) = try await call("GET", "/users/me")
-        guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] else { throw ZoomUserAuthError.badResponse }
+        let json = try object(try ok(try await call("GET", "/users/me")))
         let first = json["first_name"] as? String ?? ""
         let last = json["last_name"] as? String ?? ""
         let name = (json["display_name"] as? String).flatMap { $0.isEmpty ? nil : $0 }

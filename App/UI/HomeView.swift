@@ -118,7 +118,11 @@ struct HomeView: View {
     @State private var micAccess = AVCaptureDevice.authorizationStatus(for: .audio)
     @State private var lookOpen = false
     @State private var cameraOpen = false
+    @State private var shareOpen = false
+    @State private var layoutOpen = false
     @State private var recordOpen = false
+    @State private var micOpen = false
+    @State private var moreOpen = false
     /// Only ever started while a session is live, when the microphone is
     /// already in use: see `micMeterLevel`.
     @StateObject private var meter = MicLevelMonitor()
@@ -749,67 +753,24 @@ struct HomeView: View {
         }
     }
 
-    /// Share target: the Webcam page's "Behind you". One pick says both what
-    /// kind and which one: "One window" opens the window list itself, so
-    /// choosing a window is the whole job, as in the control bar's Present menu.
+    /// Share target: the Webcam page's "Behind you", as a panel (HomeScreenPanel):
+    /// four choice tiles, displays, windows by app, slide-show follow.
     private var shareChip: some View {
-        let share = coordinator.shareTarget
-        return Menu {
-            // Whole screen: a list of displays only when there is a choice.
-            if displays.count > 1 {
-                Menu {
-                    choice("Automatic (your main display)",
-                           selected: share.kind == .display && coordinator.screenCaptureDisplayUUID.isEmpty) {
-                        pickDisplay("")
-                    }
-                    ForEach(displays) { display in
-                        choice(display.label,
-                               selected: share.kind == .display && coordinator.screenCaptureDisplayUUID == display.id) {
-                            pickDisplay(display.id)
-                        }
-                    }
-                } label: { checkedLabel(ShareTarget.Kind.display.label, share.kind == .display) }
-            } else {
-                choice(ShareTarget.Kind.display.label, selected: share.kind == .display) { pickDisplay("") }
-            }
-            Menu {
-                if windows.isEmpty { Text("No window to share") }
-                ForEach(windows) { window in
-                    choice((window.title.isEmpty ? window.appName : "\(window.appName) \u{2013} \(window.title)")
-                           + window.placement.menuSuffix,
-                           selected: share.kind == .window && share.appBundleID == window.bundleID
-                               && share.windowTitle == window.title) {
-                        coordinator.shareTarget.kind = .window
-                        coordinator.shareTarget.appBundleID = window.bundleID
-                        coordinator.shareTarget.appName = window.appName
-                        coordinator.shareTarget.windowTitle = window.title
-                        coordinator.requestShapeApply(rebuild: true)
-                        coordinator.bringSharedWindowForward(window)
-                    }
-                }
-            } label: { checkedLabel(ShareTarget.Kind.window.label, share.kind == .window) }
-            ForEach([ShareTarget.Kind.whiteboard, .nothing], id: \.self) { kind in
-                choice(kind.label, selected: share.kind == kind,
-                       disabled: kind == .nothing && coordinator.cameraIsOff) {
-                    coordinator.shareTarget.kind = kind
-                    coordinator.requestShapeApply(rebuild: true)
-                }
-            }
-            Divider()
-            Button("More\u{2026}", action: openWebcamSettings)
-        } label: {
+        Button { shareOpen.toggle() } label: {
             dockLabel(symbol: Self.symbol(for: coordinator.shareTarget.kind), value: shareValue,
                       warn: shareGone || problem("screen"))
         }
-        .dockMenu()
-        .dockHint(DockHintContent(
-            title: "Share", value: shareValue,
-            text: shareGone ? SetupSummary.shareGoneHelp
-                : problem("screen") ? "Greenroom needs Screen Recording permission to share. The line under the dock opens it."
-                : "What everyone sees behind you.",
-            warn: shareGone || problem("screen"),
-            visual: DockHintVisual.share(coordinator.shareTarget.kind, shape: coordinator.webcamShape,
-                                         cameraOff: coordinator.cameraIsOff)))
+        .buttonStyle(DockButtonStyle())
+        .popover(isPresented: $shareOpen, arrowEdge: .bottom) {
+            HomeScreenPanel(coordinator: coordinator, displays: displays, windows: windows,
+                            gone: shareGone, permissionMissing: problem("screen"), value: shareValue,
+                            more: { shareOpen = false; openWebcamSettings() },
+                            close: { shareOpen = false })
+        }
+        // The panel explains itself, so no hover card (see lookControl).
+        .help(shareGone ? SetupSummary.shareGoneHelp
+              : problem("screen") ? "Screen: Greenroom needs Screen Recording permission to share. The line under the dock opens it."
+              : "Screen: what everyone sees behind you.")
         .accessibilityLabel("Behind you")
         .accessibilityValue(LookSummary.shareText(coordinator.shareTarget))
     }
@@ -844,24 +805,19 @@ struct HomeView: View {
     private var micChip: some View {
         let name = LookSummary.microphoneText(uid: coordinator.micDeviceUID, microphones: microphones,
                                               system: AVCaptureDevice.default(for: .audio)?.localizedName)
-        return Menu {
-            choice("System default", selected: coordinator.micDeviceUID.isEmpty) { pickMic("") }
-            ForEach(microphones) { mic in
-                choice(mic.name, selected: coordinator.micDeviceUID == mic.id) { pickMic(mic.id) }
-            }
-            if !coordinator.micDeviceUID.isEmpty, !microphones.contains(where: { $0.id == coordinator.micDeviceUID }) {
-                choice("Saved microphone (not connected)", selected: true) {}
-            }
-            Divider()
-            Button("More\u{2026}", action: openWebcamSettings)
-        } label: {
+        return Button { micOpen.toggle() } label: {
             dockLabel(symbol: "mic", value: micCaption(name), warn: problem("mic"), meter: micMeterLevel)
         }
-        .dockMenu()
-        .dockHint(DockHintContent(
-            title: "Microphone", value: name,
-            text: "Which microphone everyone hears, and the recording takes.",
-            warn: problem("mic"), visual: DockHintVisual.microphone))
+        .buttonStyle(DockButtonStyle())
+        .popover(isPresented: $micOpen, arrowEdge: .bottom) {
+            HomeMicPanel(coordinator: coordinator, microphones: microphones,
+                         systemName: AVCaptureDevice.default(for: .audio)?.localizedName) {
+                micOpen = false
+                openWebcamSettings()
+            }
+        }
+        // The panel explains itself, so no hover card (see lookControl).
+        .help("Microphone: \(name). Which microphone everyone hears, and the recording takes.")
         .accessibilityLabel("Microphone")
         .accessibilityValue(name)
     }
@@ -887,48 +843,26 @@ struct HomeView: View {
         return meter.level
     }
 
-    /// Layout: the same picker as the menu bar and Settings, locked mid-class.
-    /// "Show on screen" sits over the tile's trailing edge as its own button
-    /// (`showLayoutButton`), so it is easy to move.
+    /// Layout: tiles with diagrams in a panel (HomeLayoutPanel). The tile
+    /// stays clickable mid-meeting so the panel can say why the choices are off.
     private var layoutChip: some View {
-        Menu {
-            LayoutChoiceItems()
-            Divider()
-            // What the Start button's chevron used to hold, under a heading
-            // ("Manual controls") nobody could read. It belongs to the layout,
-            // so it lives with it, and only when there is something to open.
-            if let template = coordinator.layoutLibrary.active, template.pieceCount > 0 {
-                Button("Show on Screen") {
-                    LayoutPageContent.showOnScreen(template, customUIMode: coordinator.customUIMode,
-                                                   canMoveApps: AppWindowManager.hasAccessibilityPermission)
-                }
-                .help("Preview this layout on your screen")
-            }
-            if coordinator.layoutHasApps {
-                Button("Open This Layout\u{2019}s Apps") { coordinator.openMainAppWindow() }
-                    .help("Opens the layout\u{2019}s apps in their places now, without starting a meeting.")
-            }
-            Button("More\u{2026}") {
+        Button { layoutOpen.toggle() } label: {
+            dockLabel(symbol: "rectangle.split.2x1",
+                      value: coordinator.layoutChoiceName == "None" ? "No layout" : coordinator.layoutChoiceName)
+        }
+        .buttonStyle(DockButtonStyle())
+        .popover(isPresented: $layoutOpen, arrowEdge: .bottom) {
+            HomeLayoutPanel(coordinator: coordinator, more: {
+                layoutOpen = false
                 openSettings()
                 DispatchQueue.main.async {
                     NotificationCenter.default.post(name: .showSettingsTab, object: "layout")
                 }
-            }
-        } label: {
-            dockLabel(symbol: "rectangle.split.2x1",
-                      value: coordinator.layoutChoiceName == "None" ? "No layout" : coordinator.layoutChoiceName)
+            }, close: { layoutOpen = false })
         }
-        .dockMenu()
-        .disabled(coordinator.layoutChoiceLocked)
-        .dockHint(DockHintContent(
-            title: "Layout", value: coordinator.layoutChoiceName,
-            text: coordinator.layoutChoiceLocked
-                ? "A meeting runs the layout it started with. Pick the next one after it ends."
-                : "Where Start puts the meeting, the chat and your apps.",
-            visual: DockHintVisual.layout(coordinator.layoutLibrary.active?.oneDisplay) { [coordinator] piece in
-                LayoutPageContent.look(piece, customUIMode: coordinator.customUIMode,
-                                       canMoveApps: AppWindowManager.hasAccessibilityPermission)
-            }))
+        // The panel explains itself, so no hover card (see lookControl).
+        .help(coordinator.layoutChoiceLocked ? "Layout: \(LayoutPanelRules.lockedNote)"
+              : "Layout: where Start puts the meeting, the chat and your apps.")
         .accessibilityLabel("Layout")
         .accessibilityValue(coordinator.layoutChoiceName)
     }
@@ -943,60 +877,45 @@ struct HomeView: View {
         }
         .buttonStyle(DockButtonStyle())
         .disabled(isLive)
-        .popover(isPresented: $recordOpen, arrowEdge: .bottom) { recordPicker }
-        .dockHint(DockHintContent(
-            title: "Record", value: on ? "Auto-record" : "Manual",
-            text: on ? SetupSummary.autoRecordHelp : "Recording starts when you press Record.",
-            visual: DockHintVisual.record(withMeeting: on)))
+        .popover(isPresented: $recordOpen, arrowEdge: .bottom) {
+            HomeRecordPanel(coordinator: coordinator, isLive: isLive) {
+                recordOpen = false
+                openWebcamSettings()
+            }
+        }
+        // The panel explains itself, so no hover card (see lookControl).
+        .help(on ? SetupSummary.autoRecordHelp : "Recording starts when you press Record.")
         .accessibilityLabel("Record")
         .accessibilityValue(on ? "With the meeting" : "When I press it")
     }
 
     /// More: every other setting, in Settings (owner, 2026-11-16).
     private var moreControl: some View {
-        Button { openSettings() } label: {
+        Button { moreOpen.toggle() } label: {
             dockLabel(symbol: "ellipsis", value: "More")
         }
         .buttonStyle(DockButtonStyle())
-        .dockHint(DockHintContent(
-            title: "More", value: "Settings",
-            text: "Every other setting: webcam, layouts, shortcuts, Zoom, YouTube and more.",
-            visual: DockHintVisual.more))
+        .popover(isPresented: $moreOpen, arrowEdge: .bottom) {
+            HomeMorePanel(
+                openTab: { tab in
+                    moreOpen = false
+                    openSettings()
+                    DispatchQueue.main.async {
+                        NotificationCenter.default.post(name: .showSettingsTab, object: tab)
+                    }
+                },
+                setupGuide: {
+                    moreOpen = false
+                    coordinator.presentOnboarding()
+                },
+                allSettings: {
+                    moreOpen = false
+                    openSettings()
+                })
+        }
+        // The panel explains itself, so no hover card (see lookControl).
+        .help("More: every other setting, webcam, layouts, shortcuts, Zoom, YouTube and more.")
         .accessibilityLabel("More settings")
-    }
-
-    private var recordPicker: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("RECORD")
-                .font(.system(size: 10, weight: .semibold)).tracking(0.5)
-                .foregroundStyle(.secondary)
-            HStack(spacing: 8) {
-                recordChoice(true, symbol: "record.circle.fill", title: "With the meeting",
-                             detail: "Starts by itself")
-                recordChoice(false, symbol: "hand.tap", title: "When I press it",
-                             detail: "You start it")
-            }
-        }
-        .padding(14)
-    }
-
-    private func recordChoice(_ value: Bool, symbol: String, title: String, detail: String) -> some View {
-        let chosen = coordinator.autoRecordOnStart == value
-        return Button {
-            coordinator.autoRecordOnStart = value
-            recordOpen = false
-        } label: {
-            VStack(alignment: .leading, spacing: 4) {
-                Image(systemName: symbol)
-                    .font(.system(size: 18))
-                    .foregroundStyle(value ? Color.red.opacity(0.85) : Color.secondary)
-                Text(title).font(.system(size: 12.5, weight: .semibold))
-                Text(detail).font(.system(size: 11)).foregroundStyle(.secondary)
-            }
-            .padding(10)
-            .frame(width: 140, alignment: .leading)
-        }
-        .greenroomTile(role: .choice(selected: chosen), radius: 10)
     }
 
     private static func symbol(for shape: WebcamShape) -> String {

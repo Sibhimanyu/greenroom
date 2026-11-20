@@ -70,4 +70,74 @@ final class HomeTilePanelRulesTests: XCTestCase {
         XCTAssertEqual(CameraPanelRules.symbol(name: "Sibhi's iPhone Camera", isBuiltIn: false), "iphone")
         XCTAssertEqual(CameraPanelRules.symbol(name: "Logitech", isBuiltIn: false), "web.camera")
     }
+
+    func testMicSavedMissingStaysListed() {
+        XCTAssertTrue(MicPanelRules.showsSavedMissing(selection: "x", available: ["a"]))
+        XCTAssertFalse(MicPanelRules.showsSavedMissing(selection: "a", available: ["a"]))
+        XCTAssertFalse(MicPanelRules.showsSavedMissing(selection: "", available: []))
+        XCTAssertEqual(MicPanelRules.headerValue(name: "Yeti", savedMissing: false), "Yeti")
+        XCTAssertEqual(MicPanelRules.headerValue(name: "Yeti", savedMissing: true), "Saved microphone (not connected)")
+    }
+
+    func testMicSystemAudioHintNeedsShare() {
+        XCTAssertTrue(MicPanelRules.showsNeedsShareHint(recordSystemAudio: true, shareIsNothing: true))
+        XCTAssertFalse(MicPanelRules.showsNeedsShareHint(recordSystemAudio: true, shareIsNothing: false))
+        XCTAssertFalse(MicPanelRules.showsNeedsShareHint(recordSystemAudio: false, shareIsNothing: true))
+    }
+
+    func testRecordSectionsOnlyWhenNotLive() {
+        XCTAssertEqual(RecordPanelRules.sections(isLive: false), [.start, .clipBuffer, .folder])
+        XCTAssertEqual(RecordPanelRules.sections(isLive: true), [])
+        XCTAssertTrue(RecordPanelRules.showsClipLength(clipBufferOn: true))
+        XCTAssertFalse(RecordPanelRules.showsClipLength(clipBufferOn: false))
+        XCTAssertEqual(RecordPanelRules.clipLengthText(seconds: 300), "Keeps the last 5 minutes.")
+        XCTAssertEqual(RecordPanelRules.clipLengthText(seconds: 60), "Keeps the last 1 minute.")
+        XCTAssertEqual(RecordPanelRules.clipLengthText(seconds: 45), "Keeps the last 45 seconds.")
+        XCTAssertEqual(RecordPanelRules.headerValue(autoRecord: true), "Auto-record")
+        XCTAssertEqual(RecordPanelRules.headerValue(autoRecord: false), "Manual")
+    }
+
+    func testMoreTabsAreTheEightSettingsTabsAndOnlyCuesIsBeta() {
+        XCTAssertEqual(MorePanelRules.tabs.map(\.id),
+                       ["account", "webcam", "layout", "shortcuts", "zoom", "youtube", "cues", "transfer"])
+        XCTAssertEqual(MorePanelRules.tabs.filter(\.beta).map(\.id), ["cues"])
+        XCTAssertEqual(Set(MorePanelRules.tabs.map(\.id)).count, MorePanelRules.tabs.count)
+    }
+}
+
+final class ScreenLayoutPanelRulesTests: XCTestCase {
+    func testScreenTilesMapKinds() {
+        XCTAssertEqual(ScreenPanelRules.tile(for: .app), .screen)
+        XCTAssertEqual(ScreenPanelRules.tile(for: .display), .screen)
+        XCTAssertEqual(ScreenPanelRules.tile(for: .nothing), .camera)
+        XCTAssertFalse(ScreenPanelRules.tileEnabled(.camera, cameraOff: true))
+        XCTAssertTrue(ScreenPanelRules.tileEnabled(.window, cameraOff: true))
+    }
+
+    func testScreenSections() {
+        func s(_ k: SetupSummary.ShareKind, d: Int = 1, b: Bool = false, g: Bool = false, p: Bool = false) -> [ScreenPanelRules.Section] {
+            ScreenPanelRules.sections(kind: k, displayCount: d, browsingWindows: b, gone: g, permissionMissing: p)
+        }
+        XCTAssertEqual(s(.display), [.share])
+        XCTAssertEqual(s(.display, d: 2), [.share, .displays])
+        XCTAssertEqual(s(.window), [.share, .windows, .follow])
+        XCTAssertEqual(s(.window, d: 3, g: true), [.share, .gone, .windows, .follow])
+        XCTAssertEqual(s(.display, b: true), [.share, .windows])
+        XCTAssertEqual(s(.whiteboard, d: 2, p: true), [.share])
+        XCTAssertEqual(s(.display, p: true), [.share, .permission])
+    }
+
+    func testWindowGrouping() {
+        let g = ScreenPanelRules.grouped(bundleIDs: ["a", "b", "a", "c", "b"])
+        XCTAssertEqual(g.order, [0, 2, 1, 4, 3])
+        XCTAssertEqual(g.firstOfApp, [true, false, true, false, true])
+    }
+
+    func testLayoutSections() {
+        XCTAssertEqual(LayoutPanelRules.sections(locked: false, activePieceCount: nil, hasApps: false), [.layouts])
+        XCTAssertEqual(LayoutPanelRules.sections(locked: true, activePieceCount: 3, hasApps: false), [.layouts, .locked, .actions])
+        XCTAssertEqual(LayoutPanelRules.sections(locked: false, activePieceCount: 0, hasApps: true), [.layouts, .actions])
+        XCTAssertEqual(LayoutPanelRules.headerValue(name: "None"), "No layout")
+        XCTAssertEqual(LayoutPanelRules.headerValue(name: "Two apps"), "Two apps")
+    }
 }

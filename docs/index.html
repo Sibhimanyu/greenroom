@@ -105,22 +105,15 @@
   }
 
   /* ---------- hero ---------- */
-  .hero {
-    padding: 88px 24px 28px;
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-    gap: 40px;
-    align-items: center;
-  }
-  .hero-copy { min-width: 0; }
+  .hero { padding: 72px 24px 40px; text-align: center; display: flex; flex-direction: column; align-items: center; }
+  .hero-copy { min-width: 0; display: flex; flex-direction: column; align-items: center; }
   /* The stage itself, drawn in the site's diagram grammar: solid = process,
      dashed = configuration, green = stays on the Mac. */
-  .hero-art { margin: 0; min-width: 0; }
+  .hero-art { margin: 44px 0 0; width: 100%; max-width: 860px; min-width: 0; }
   .hero-art svg { display: block; width: 100%; height: auto; }
-  @media (max-width: 860px) {
-    .hero { grid-template-columns: 1fr; gap: 40px; }
-    .hero-art { max-width: 520px; }
-  }
+  .hero-art .rise { animation: rise .6s ease-out both; }
+  @keyframes rise { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+  @media (max-width: 700px) { .hero-art .co { display: none; } }
   .eyebrow {
     display: block;
     font-family: ui-monospace, "SF Mono", Menlo, monospace;
@@ -151,7 +144,7 @@
     line-height: 1.06;
     font-weight: 800;
     letter-spacing: -0.025em;
-    max-width: 20ch;
+    max-width: 16ch;
   }
   h1 .accent { color: var(--green); }
   .lede {
@@ -159,8 +152,9 @@
     font-size: 18px;
     color: var(--body);
     max-width: 54ch;
+    text-align: center;
   }
-  .hero-actions { display: flex; align-items: center; gap: 26px; flex-wrap: wrap; }
+  .hero-actions { display: flex; align-items: center; justify-content: center; gap: 26px; flex-wrap: wrap; }
 
   .intro-video {
     display: block;
@@ -186,31 +180,31 @@
   h2 { font-size: clamp(24px, 3.2vw, 32px); font-weight: 800; letter-spacing: -0.02em; line-height: 1.15; }
   .sec-head p { margin-top: 14px; color: var(--body); font-size: 17px; }
 
-  /* ---------- what one press does ---------- */
-  .runlog { border-top: 1px solid var(--line); }
-  .run {
-    display: grid;
-    grid-template-columns: 52px 1fr;
-    gap: 0 24px;
-    padding: 22px 0;
-    border-bottom: 1px solid var(--line);
-    align-items: baseline;
+  /* ---------- start strip: four frames, arrows between ---------- */
+  .strip { display: grid; grid-template-columns: 1fr auto 1fr auto 1fr auto 1fr; gap: 0 10px; align-items: center; }
+  .frame { margin: 0; min-width: 0; }
+  .frame svg, .ill svg { display: block; width: 100%; height: auto; }
+  .frame figcaption { margin-top: 10px; font-size: 14px; font-weight: 700; text-align: center; }
+  .frame figcaption span { display: block; font-size: 13px; font-weight: 400; color: var(--body); }
+  .strip .arr { width: 28px; flex: none; margin-top: -34px; }
+  .strip-note { margin-top: 28px; font-size: 14.5px; color: var(--body); }
+  @media (max-width: 760px) {
+    .strip { grid-template-columns: 1fr 1fr; gap: 24px 16px; }
+    .strip .arr { display: none; }
   }
-  .run .n {
-    font-family: ui-monospace, "SF Mono", Menlo, monospace;
-    font-size: 12.5px;
-    letter-spacing: 0.06em;
-    color: var(--green);
-  }
-  .run h3 { font-size: 17px; font-weight: 700; margin-bottom: 6px; }
-  .run p { font-size: 15px; color: var(--body); max-width: 66ch; }
-  @media (max-width: 600px) { .run { grid-template-columns: 1fr; gap: 4px; } }
 
+  /* ---------- feature cards, each with its own drawing ---------- */
   .feat-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 28px 40px; }
   @media (max-width: 760px) { .feat-grid { grid-template-columns: 1fr; } }
-  .feat h3 { font-size: 16.5px; font-weight: 700; margin-bottom: 6px; }
-  .feat p { font-size: 14.5px; color: var(--body); }
-  .feat { border-top: 1px solid var(--line); padding-top: 16px; }
+  .feat { border-top: 1px solid var(--line); padding-top: 16px; min-width: 0; }
+  .feat .ill { margin: 0 0 14px; background: var(--bg-soft); border: 1px solid var(--line); border-radius: 12px; padding: 10px; }
+  .feat h3 { font-size: 16.5px; font-weight: 700; margin-bottom: 4px; }
+  .feat p { font-size: 14.5px; color: var(--body); max-width: 44ch; }
+
+  /* ---------- stays vs leaves ---------- */
+  .glance { max-width: 760px; margin: 0 auto; }
+  .glance svg { display: block; width: 100%; height: auto; }
+  .glance-link { margin-top: 24px; text-align: center; }
 
   /* ---------- steps ---------- */
   .steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 34px; }
@@ -299,7 +293,7 @@
   html, body { overflow-x: clip; }
 
   @media (max-width: 700px) {
-    .hero { padding: 56px 24px 48px; }
+    .hero { padding: 48px 24px 32px; }
     section { padding: 60px 0; }
     .sec-head { margin-bottom: 32px; }
     .lede { font-size: 17px; }
@@ -312,7 +306,9 @@
   }
 
   @media (prefers-reduced-motion: reduce) {
+    .hero-art .rise { animation: none; }
     .btn:hover { transform: none; }
+    .hero-art .rise { animation: none; }
     html { scroll-behavior: auto; }
   }
   /* ---------- phones (shared by every page) ---------- */
@@ -350,7 +346,6 @@
       <a href="guide.html">Guide</a>
       <a href="how-it-works.html">Privacy &amp; safety</a>
       <a href="timeline.html">Timeline</a>
-      <a href="brand.html">Brand</a>
     </div>
     <div class="nav-cta">
       <a class="gh" href="https://github.com/Sibhimanyu/greenroom">GitHub</a>
@@ -362,84 +357,52 @@
 <header class="wrap hero">
   <div class="hero-copy">
     <a class="announce" href="timeline.html"><span class="announce-chip">New</span>New in 1.8: sign in with Zoom <span class="arrow">→</span></a>
-    <span class="eyebrow">macOS · free · open source</span>
-    <h1>Your whole meeting setup, in <span class="accent">one click.</span></h1>
-    <p class="lede">Greenroom builds your screen-and-camera picture, hosts the Zoom meeting from its own
-    built-in client, and puts every window where it belongs. The ten-minute setup
-    becomes a button.</p>
+    <h1>Start your whole meeting <span class="accent">in one click.</span></h1>
+    <p class="lede">Picture, meeting and windows, ready at once.</p>
     <div class="hero-actions">
       <a class="btn" href="https://github.com/Sibhimanyu/greenroom/releases/download/v1.8.0/Greenroom-1.8.0.dmg">Download for Mac</a>
       <a class="textlink" href="https://github.com/Sibhimanyu/greenroom">View on GitHub <span class="arrow">→</span></a>
     </div>
   </div>
-
-  <figure class="hero-art">
-    <svg viewBox="0 0 560 400" role="img" aria-label="Schematic of the finished workspace after one press of Start: a Mac screen with the main app filling the left two thirds, you keyed into a round bubble in its corner, and the right column holding the Zoom speaker tile above the chat. A Start button on the left points at the screen; three labels mark the main app, Zoom and chat.">
-      <defs>
-        <marker id="ha" markerWidth="9" markerHeight="9" refX="7" refY="4" orient="auto" markerUnits="userSpaceOnUse"><path d="M0,0 L8,4 L0,8 z" fill="#2f6118"/></marker>
-      </defs>
-
-      <!-- the one process: Start -->
-      <rect x="14" y="176" width="96" height="40" rx="10" fill="#2f6118"/>
-      <text x="62" y="201" font-size="14" font-weight="700" text-anchor="middle" fill="#fff">Start</text>
-      <line x1="110" y1="196" x2="150" y2="196" stroke="#2f6118" stroke-width="2" marker-end="url(#ha)"/>
-      <text x="62" y="234" font-size="10.5" text-anchor="middle" fill="#98a2b3">or ⌥⌘G</text>
-
-      <!-- the screen -->
-      <rect x="152" y="40" width="396" height="272" rx="14" fill="#fff" stroke="#98a2b3" stroke-width="1.5"/>
-      <path d="M152,54 a14,14 0 0 1 14,-14 h368 a14,14 0 0 1 14,14 v14 h-396 z" fill="#f9fafb" stroke="#98a2b3" stroke-width="1.5"/>
-      <circle cx="168" cy="54" r="3.5" fill="#e4e7ec"/><circle cx="180" cy="54" r="3.5" fill="#e4e7ec"/><circle cx="192" cy="54" r="3.5" fill="#e4e7ec"/>
-      <text x="536" y="58" font-size="9.5" text-anchor="end" fill="#98a2b3" font-family="ui-monospace, SF Mono, Menlo, monospace">7:50</text>
-      <!-- stand -->
-      <rect x="318" y="312" width="64" height="18" fill="#f2f4f7"/>
-      <rect x="270" y="330" width="160" height="6" rx="3" fill="#e4e7ec"/>
-
-      <!-- main pane: the reading doc, two thirds -->
-      <rect x="164" y="80" width="244" height="220" rx="8" fill="#fff" stroke="#d0d5dd"/>
-      <g fill="#e4e7ec">
-        <rect x="180" y="100" width="150" height="10" rx="3" fill="#d0d5dd"/>
-        <rect x="180" y="122" width="212" height="6" rx="3"/>
-        <rect x="180" y="136" width="200" height="6" rx="3"/>
-        <rect x="180" y="150" width="208" height="6" rx="3"/>
-        <rect x="180" y="164" width="176" height="6" rx="3"/>
-        <rect x="180" y="186" width="212" height="6" rx="3"/>
-        <rect x="180" y="200" width="196" height="6" rx="3"/>
-        <rect x="180" y="214" width="204" height="6" rx="3"/>
-        <rect x="180" y="228" width="140" height="6" rx="3"/>
+  <figure class="hero-art"><div class="rise">
+    <svg viewBox="0 0 860 470" role="img" aria-label="Illustration of the finished workspace after one press of Start. A status island sits above a Mac screen. The screen shows a reading page with your round camera bubble in its corner, and on the right the Zoom speaker tile above the chat. A green Start button with the keys option command G presses into the screen. Callouts name the camera bubble, the meeting, the layout, and the one-click End.">
+      <defs><marker id="hh" markerWidth="9" markerHeight="9" refX="7" refY="4" orient="auto" markerUnits="userSpaceOnUse"><path d="M0,0 L8,4 L0,8 z" fill="#2f6118"/></marker></defs>
+      <!-- island -->
+      <rect x="320" y="6" width="220" height="34" rx="17" fill="#101828"/>
+      <circle cx="346" cy="23" r="8" fill="none" stroke="#78c000" stroke-width="3"/>
+      <text x="364" y="27" font-size="12" font-weight="700" fill="#fff">Greenroom · live</text>
+      <rect x="480" y="14" width="50" height="18" rx="9" fill="#2f6118"/><text x="505" y="26.5" font-size="10" font-weight="700" text-anchor="middle" fill="#fff">End</text>
+      <!-- screen -->
+      <rect x="150" y="56" width="560" height="340" rx="16" fill="#fff" stroke="#98a2b3" stroke-width="1.8"/>
+      <path d="M150,74 a16,16 0 0 1 16,-16 h528 a16,16 0 0 1 16,16 v14 h-560 z" fill="#f9fafb" stroke="#98a2b3" stroke-width="1.8"/>
+      <circle cx="170" cy="73" r="4" fill="#e4e7ec"/><circle cx="183" cy="73" r="4" fill="#e4e7ec"/><circle cx="196" cy="73" r="4" fill="#e4e7ec"/>
+      <rect x="400" y="396" width="60" height="22" fill="#f2f4f7"/><rect x="340" y="418" width="180" height="7" rx="3.5" fill="#e4e7ec"/>
+      <!-- reading page -->
+      <rect x="166" y="104" width="352" height="280" rx="10" fill="#fff" stroke="#d0d5dd"/>
+      <rect x="188" y="128" width="180" height="12" rx="4" fill="#d0d5dd"/>
+      <g fill="#e4e7ec"><rect x="188" y="158" width="300" height="7" rx="3.5"/><rect x="188" y="175" width="286" height="7" rx="3.5"/><rect x="188" y="192" width="296" height="7" rx="3.5"/><rect x="188" y="209" width="250" height="7" rx="3.5"/><rect x="188" y="236" width="300" height="7" rx="3.5"/><rect x="188" y="253" width="270" height="7" rx="3.5"/></g>
+      <circle cx="458" cy="326" r="40" fill="#e8f3df" stroke="#2f6118" stroke-width="2.5"/><circle cx="458" cy="315" r="13" fill="#78c000"/><path d="M434,352 a24,19 0 0 1 48,0" fill="#78c000"/>
+      <!-- side column -->
+      <rect x="530" y="104" width="164" height="132" rx="10" fill="#101828"/><circle cx="612" cy="158" r="24" fill="#475467"/><circle cx="612" cy="150" r="9" fill="#98a2b3"/><path d="M596,174 a16,12 0 0 1 32,0" fill="#98a2b3"/>
+      <rect x="544" y="212" width="70" height="14" rx="7" fill="#2f6118"/><text x="579" y="222.5" font-size="9" font-weight="700" text-anchor="middle" fill="#fff">SPEAKING</text>
+      <rect x="530" y="246" width="164" height="138" rx="10" fill="#fff" stroke="#d0d5dd"/>
+      <rect x="544" y="260" width="96" height="18" rx="9" fill="#f2f4f7"/><rect x="588" y="286" width="94" height="18" rx="9" fill="#e8f3df"/><rect x="544" y="312" width="74" height="18" rx="9" fill="#f2f4f7"/><rect x="570" y="338" width="112" height="18" rx="9" fill="#e8f3df"/>
+      <!-- Start button pressed in, with key caps -->
+      <rect x="22" y="196" width="104" height="48" rx="12" fill="#2f6118"/><text x="74" y="226" font-size="16" font-weight="700" text-anchor="middle" fill="#fff">Start</text>
+      <line x1="128" y1="220" x2="146" y2="220" stroke="#2f6118" stroke-width="2.4" marker-end="url(#hh)"/>
+      <g font-family="ui-monospace, SF Mono, Menlo, monospace" font-size="11" font-weight="700" fill="#101828"><rect x="22" y="256" width="30" height="24" rx="5" fill="#fff" stroke="#98a2b3"/><text x="37" y="272" text-anchor="middle">⌥</text><rect x="56" y="256" width="30" height="24" rx="5" fill="#fff" stroke="#98a2b3"/><text x="71" y="272" text-anchor="middle">⌘</text><rect x="90" y="256" width="30" height="24" rx="5" fill="#fff" stroke="#98a2b3"/><text x="105" y="272" text-anchor="middle">G</text></g>
+      <!-- callouts: dashed leaders = configuration -->
+      <g class="co" font-family="ui-monospace, SF Mono, Menlo, monospace" font-size="11" font-weight="700" letter-spacing=".06em" fill="#2f6118">
+        <text x="458" y="450" text-anchor="middle">CAMERA BUBBLE</text>
+        <text x="612" y="450" text-anchor="middle">MEETING</text>
+        <text x="258" y="450" text-anchor="middle">LAYOUT</text>
+        <text x="718" y="22">ONE-CLICK END</text>
       </g>
-      <!-- the teacher, keyed into the corner: a fill, so lime is allowed -->
-      <circle cx="368" cy="262" r="28" fill="#e8f3df" stroke="#2f6118" stroke-width="2"/>
-      <circle cx="368" cy="254" r="9" fill="#78c000"/>
-      <path d="M350,282 a18,14 0 0 1 36,0" fill="#78c000"/>
-      <text x="368" y="226" font-size="9.5" text-anchor="middle" fill="#2f6118" font-weight="700">you</text>
-
-      <!-- side column: Zoom tile over chat -->
-      <rect x="416" y="80" width="120" height="98" rx="8" fill="#101828"/>
-      <circle cx="476" cy="122" r="17" fill="#475467"/>
-      <circle cx="476" cy="116" r="6" fill="#98a2b3"/>
-      <path d="M464,133 a12,9 0 0 1 24,0" fill="#98a2b3"/>
-      <rect x="426" y="160" width="58" height="10" rx="5" fill="#2f6118"/>
-      <text x="455" y="167.5" font-size="7.5" font-weight="700" text-anchor="middle" fill="#fff">SPEAKING</text>
-
-      <rect x="416" y="186" width="120" height="114" rx="8" fill="#fff" stroke="#d0d5dd"/>
-      <rect x="426" y="198" width="72" height="14" rx="7" fill="#f2f4f7"/>
-      <rect x="454" y="218" width="72" height="14" rx="7" fill="#e8f3df"/>
-      <rect x="426" y="238" width="56" height="14" rx="7" fill="#f2f4f7"/>
-      <rect x="440" y="258" width="86" height="14" rx="7" fill="#e8f3df"/>
-      <line x1="426" y1="284" x2="526" y2="284" stroke="#e4e7ec" stroke-width="1.2"/>
-      <rect x="426" y="288" width="60" height="6" rx="3" fill="#e4e7ec"/>
-
-      <!-- labels: dashed callouts = configuration, in the mono voice -->
-      <g font-family="ui-monospace, SF Mono, Menlo, monospace" font-size="10.5" letter-spacing=".06em" fill="#2f6118" font-weight="700">
-        <text x="286" y="372" text-anchor="middle">MAIN APP · ⅔</text>
-        <text x="476" y="372" text-anchor="middle">ZOOM · CHAT</text>
-      </g>
-      <g stroke="#2f6118" stroke-width="1.2" stroke-dasharray="3 3" fill="none">
-        <path d="M164,352 v6 h244 v-6"/>
-        <path d="M416,352 v6 h120 v-6"/>
+      <g class="co" stroke="#2f6118" stroke-width="1.3" stroke-dasharray="3 3" fill="none">
+        <path d="M458,372 v62"/><path d="M612,236 v-0 M612,384 v50"/><path d="M258,384 v50"/><path d="M534,23 h178"/>
       </g>
     </svg>
-  </figure>
+  </div></figure>
 </header>
 
 <section id="video">
@@ -459,40 +422,11 @@
 <section class="soft" id="features">
   <div class="wrap">
     <div class="sec-head">
-      <p class="kicker">The click</p>
-      <h2>What happens when you press Start</h2>
-      <p>Press Start, or ⌥⌘G from any app. None of it is hard on its own. All of it, every time, is the problem.</p>
+      <p class="kicker">Start, step by step</p>
+      <h2>One press, four things</h2>
+      <p>Press Start, or ⌥⌘G from any app.</p>
     </div>
-    <div class="runlog">
-      <div class="run">
-        <div class="n">01</div>
-        <div>
-          <h3>The picture starts</h3>
-          <p>Greenroom builds the picture itself and sends it into the meeting as your camera: your screen with you in a corner bubble, cut out of the background, or standing at full height in front of the page in <strong>Presenter</strong>. Everyone sees the page <em>and</em> you.</p>
-        </div>
-      </div>
-      <div class="run">
-        <div class="n">02</div>
-        <div>
-          <h3>The meeting opens</h3>
-          <p>A fresh Zoom meeting is created under your own account and hosted from Greenroom's built-in client, so there is no second app to click through.</p>
-        </div>
-      </div>
-      <div class="run">
-        <div class="n">03</div>
-        <div>
-          <h3>The windows take their places</h3>
-          <p>Your layout puts the main app, the meeting and the chat where you set them. Dragged something out of place? “Snap Windows Back” (⌥⌘S) restores all of it.</p>
-        </div>
-      </div>
-      <div class="run">
-        <div class="n">04</div>
-        <div>
-          <h3>One island, one bar</h3>
-          <p>Start progress shows on a small island under the menu bar, with Cancel. Once you are live, a floating control bar takes over. End asks once, in the bar: <em>End the meeting for everyone?</em> One click to confirm, Esc to keep going.</p>
-        </div>
-      </div>
-    </div>
+    <div class="strip"><figure class="frame"><svg viewBox="0 0 240 130" role="img" aria-label="Frame one: your screen with you in a round corner bubble becomes one picture"><rect x="20" y="14" width="200" height="104" rx="10" fill="#fff" stroke="#98a2b3" stroke-width="1.5"/><rect x="34" y="30" width="110" height="8" rx="3" fill="#d0d5dd"/><rect x="34" y="46" width="140" height="5" rx="2.5" fill="#e4e7ec"/><rect x="34" y="58" width="124" height="5" rx="2.5" fill="#e4e7ec"/><rect x="34" y="70" width="132" height="5" rx="2.5" fill="#e4e7ec"/><circle cx="184" cy="88" r="22" fill="#e8f3df" stroke="#2f6118" stroke-width="2"/><circle cx="184" cy="82" r="7" fill="#78c000"/><path d="M171,101 a13,10 0 0 1 26,0" fill="#78c000"/></svg><figcaption>1 Picture<span>You and your screen, as one.</span></figcaption></figure><span class="arr"><svg viewBox="0 0 28 24" aria-hidden="true"><line x1="2" y1="12" x2="22" y2="12" stroke="#2f6118" stroke-width="2"/><path d="M18,6 L26,12 L18,18" fill="none" stroke="#2f6118" stroke-width="2"/></svg></span><figure class="frame"><svg viewBox="0 0 240 130" role="img" aria-label="Frame two: a fresh Zoom meeting is created under your own account and hosted from Greenroom"><rect x="20" y="14" width="200" height="104" rx="10" fill="#fff" stroke="#98a2b3" stroke-width="1.5"/><rect x="34" y="28" width="82" height="62" rx="6" fill="#101828"/><circle cx="75" cy="52" r="10" fill="#475467"/><path d="M63,72 a12,9 0 0 1 24,0" fill="#98a2b3"/><rect x="124" y="28" width="82" height="28" rx="6" fill="#101828"/><rect x="124" y="62" width="82" height="28" rx="6" fill="#101828"/><rect x="34" y="98" width="172" height="10" rx="5" fill="#e8f3df"/><text x="120" y="106" font-size="7.5" font-weight="700" text-anchor="middle" fill="#2f6118">MEETING LIVE</text></svg><figcaption>2 Meeting<span>Hosted from Greenroom.</span></figcaption></figure><span class="arr"><svg viewBox="0 0 28 24" aria-hidden="true"><line x1="2" y1="12" x2="22" y2="12" stroke="#2f6118" stroke-width="2"/><path d="M18,6 L26,12 L18,18" fill="none" stroke="#2f6118" stroke-width="2"/></svg></span><figure class="frame"><svg viewBox="0 0 240 136" role="img" aria-label="Frame three: the main app, the meeting and the chat snap into their places on the screen"><rect x="20" y="14" width="200" height="104" rx="10" fill="#fff" stroke="#98a2b3" stroke-width="1.5"/><rect x="30" y="24" width="112" height="84" rx="5" fill="#fff" stroke="#d0d5dd"/><rect x="150" y="24" width="60" height="38" rx="5" fill="#101828"/><rect x="150" y="68" width="60" height="40" rx="5" fill="#fff" stroke="#d0d5dd"/><path d="M36,30 h-0" stroke="#2f6118"/><g stroke="#2f6118" stroke-width="1.2" stroke-dasharray="3 3" fill="none"><rect x="26" y="20" width="120" height="92" rx="7"/><rect x="146" y="20" width="68" height="46" rx="7"/><rect x="146" y="64" width="68" height="48" rx="7"/></g><text x="120" y="130" font-size="9.5" text-anchor="middle" fill="#98a2b3" font-weight="700">⌥⌘S snaps back</text></svg><figcaption>3 Windows<span>Each in its place.</span></figcaption></figure><span class="arr"><svg viewBox="0 0 28 24" aria-hidden="true"><line x1="2" y1="12" x2="22" y2="12" stroke="#2f6118" stroke-width="2"/><path d="M18,6 L26,12 L18,18" fill="none" stroke="#2f6118" stroke-width="2"/></svg></span><figure class="frame"><svg viewBox="0 0 240 130" role="img" aria-label="Frame four: a small island under the menu bar shows progress with Cancel, then a floating control bar takes over once you are live"><rect x="20" y="14" width="200" height="30" rx="15" fill="#101828"/><circle cx="44" cy="29" r="8" fill="none" stroke="#78c000" stroke-width="3"/><text x="62" y="33" font-size="10" fill="#fff" font-weight="700">Starting…</text><text x="196" y="33" font-size="9.5" text-anchor="end" fill="#e4e7ec">Cancel</text><rect x="46" y="78" width="148" height="34" rx="17" fill="#fff" stroke="#98a2b3" stroke-width="1.5"/><circle cx="66" cy="95" r="5" fill="#d92d20"/><text x="78" y="99" font-size="10" fill="#101828" font-weight="700">Live</text><rect x="126" y="86" width="56" height="18" rx="9" fill="#2f6118"/><text x="154" y="98.5" font-size="9" font-weight="700" text-anchor="middle" fill="#fff">End</text><path d="M120,50 v18" stroke="#2f6118" stroke-width="2"/><path d="M114,64 l6,8 l6,-8" fill="none" stroke="#2f6118" stroke-width="2"/></svg><figcaption>4 Island, then bar<span>End asks once.</span></figcaption></figure></div>
   </div>
 </section>
 
@@ -504,76 +438,94 @@
     </div>
     <div class="feat-grid">
       <div class="feat">
+        <div class="ill"><svg viewBox="0 0 240 120" role="img" aria-label="A camera bubble on a screen, with arrows to show it can be dragged and four shape options below: square, circle, rounded, cutout"><rect x="14" y="8" width="212" height="72" rx="8" fill="#fff" stroke="#98a2b3" stroke-width="1.5"/><rect x="26" y="20" width="90" height="6" rx="3" fill="#d0d5dd"/><rect x="26" y="32" width="120" height="4" rx="2" fill="#e4e7ec"/><rect x="26" y="42" width="104" height="4" rx="2" fill="#e4e7ec"/><circle cx="190" cy="52" r="17" fill="#e8f3df" stroke="#2f6118" stroke-width="2"/><circle cx="190" cy="48" r="5.5" fill="#78c000"/><path d="M180,61 a10,8 0 0 1 20,0" fill="#78c000"/><path d="M150,52 h14" stroke="#2f6118" stroke-width="1.6" stroke-dasharray="3 3"/><g fill="#e8f3df" stroke="#2f6118" stroke-width="1.6"><rect x="62" y="90" width="22" height="22" rx="2"/><circle cx="108" cy="101" r="11"/><rect x="132" y="90" width="22" height="22" rx="8"/></g><path d="M170,112 v-6 a9,9 0 0 1 18,0 v6 z" fill="#78c000" stroke="#2f6118" stroke-width="1.6"/></svg></div>
         <h3>Camera bubble &amp; looks</h3>
-        <p>A floating bubble on your screen drives where your camera sits in the picture: drag it, resize it, pick square, circle, rounded, cutout or Presenter. It stays out of every capture.</p>
+        <p>Drag it, resize it, pick a shape. It stays out of every capture.</p>
       </div>
       <div class="feat">
+        <div class="ill"><svg viewBox="0 0 240 120" role="img" aria-label="Two camera icons with arrows into a picture; the one facing you is highlighted and the other is grey"><rect x="20" y="18" width="30" height="20" rx="4" fill="#fff" stroke="#98a2b3" stroke-width="1.6"/><circle cx="35" cy="28" r="5" fill="none" stroke="#98a2b3" stroke-width="1.6"/><path d="M50,24 l8,-4 v16 l-8,-4" fill="#98a2b3"/><rect x="20" y="76" width="30" height="20" rx="4" fill="#fff" stroke="#2f6118" stroke-width="1.6"/><circle cx="35" cy="86" r="5" fill="none" stroke="#2f6118" stroke-width="1.6"/><path d="M50,82 l8,-4 v16 l-8,-4" fill="#2f6118"/><text x="30" y="58" font-size="9.5" fill="#98a2b3">away</text><text x="30" y="116" font-size="9.5" fill="#2f6118" font-weight="700" >facing you</text><defs><marker id="m1" markerWidth="9" markerHeight="9" refX="7" refY="4" orient="auto" markerUnits="userSpaceOnUse"><path d="M0,0 L8,4 L0,8 z" fill="#2f6118"/></marker></defs><path d="M72,28 H110" stroke="#d0d5dd" stroke-width="2" stroke-dasharray="3 3" fill="none"/><path d="M72,86 H110 V62 H130" stroke="#2f6118" stroke-width="2" fill="none" marker-end="url(#m1)"/><rect x="134" y="26" width="86" height="64" rx="8" fill="#fff" stroke="#98a2b3" stroke-width="1.5"/><circle cx="177" cy="52" r="9" fill="#78c000"/><path d="M162,78 a15,12 0 0 1 30,0" fill="#78c000"/></svg></div>
         <h3>Several cameras</h3>
-        <p>Choose two or more, an iPhone included. Greenroom cuts to the one that sees your face best, with a cut or a crossfade. The check runs on the Mac.</p>
+        <p>Greenroom cuts to the camera that sees your face.</p>
       </div>
       <div class="feat">
+        <div class="ill"><svg viewBox="0 0 240 120" role="img" aria-label="The Record bar with a red dot and Paused, and key caps: option command G to start, option shift P to pause, option shift D to draw, option command 1, 2 or 5 to save a clip"><rect x="14" y="8" width="212" height="34" rx="17" fill="#fff" stroke="#98a2b3" stroke-width="1.5"/><circle cx="34" cy="25" r="6" fill="#d92d20"/><text x="48" y="29" font-size="11" font-weight="700" fill="#101828">REC</text><rect x="86" y="17" width="3.5" height="16" rx="1" fill="#98a2b3"/><rect x="93" y="17" width="3.5" height="16" rx="1" fill="#98a2b3"/><path d="M130,32 l8,-14 l5,5 z" fill="none" stroke="#475467" stroke-width="1.6"/><rect x="170" y="19" width="42" height="12" rx="6" fill="#e8f3df"/><text x="191" y="28" font-size="8" font-weight="700" text-anchor="middle" fill="#2f6118">clip</text><rect x="14" y="54" width="44" height="22" rx="5" fill="#fff" stroke="#98a2b3"/><text x="36.0" y="69" font-size="11" font-weight="700" text-anchor="middle" fill="#101828" font-family="ui-monospace, SF Mono, Menlo, monospace">⌥⌘G</text><rect x="64" y="54" width="44" height="22" rx="5" fill="#fff" stroke="#98a2b3"/><text x="86.0" y="69" font-size="11" font-weight="700" text-anchor="middle" fill="#101828" font-family="ui-monospace, SF Mono, Menlo, monospace">⌥⇧P</text><rect x="114" y="54" width="44" height="22" rx="5" fill="#fff" stroke="#98a2b3"/><text x="136.0" y="69" font-size="11" font-weight="700" text-anchor="middle" fill="#101828" font-family="ui-monospace, SF Mono, Menlo, monospace">⌥⇧D</text><rect x="14" y="86" width="44" height="22" rx="5" fill="#fff" stroke="#98a2b3"/><text x="36.0" y="101" font-size="11" font-weight="700" text-anchor="middle" fill="#101828" font-family="ui-monospace, SF Mono, Menlo, monospace">⌥⌘1</text><rect x="64" y="86" width="44" height="22" rx="5" fill="#fff" stroke="#98a2b3"/><text x="86.0" y="101" font-size="11" font-weight="700" text-anchor="middle" fill="#101828" font-family="ui-monospace, SF Mono, Menlo, monospace">⌥⌘2</text><rect x="114" y="86" width="44" height="22" rx="5" fill="#fff" stroke="#98a2b3"/><text x="136.0" y="101" font-size="11" font-weight="700" text-anchor="middle" fill="#101828" font-family="ui-monospace, SF Mono, Menlo, monospace">⌥⌘5</text><g font-size="9.5" fill="#475467"><text x="166" y="69">start</text><text x="166" y="81" fill="#475467"></text><text x="166" y="101">last 1, 2, 5 min</text></g></svg></div>
         <h3>Record</h3>
-        <p>The third tab beside New and Scheduled: the same picture, no meeting, one flow. Pause the file with ⌥⇧P while the meeting carries on, or draw on the screen with ⌥⇧D. A rolling five-minute buffer saves the last 1, 2 or 5 minutes with ⌥⌘1, 2 or 5, recording or not.</p>
+        <p>The same picture, no meeting. Pause, draw or save a clip with a key.</p>
       </div>
       <div class="feat">
+        <div class="ill"><svg viewBox="0 0 240 120" role="img" aria-label="A timeline of session cards for different days, one card showing trim handles on its recording"><line x1="20" y1="14" x2="220" y2="14" stroke="#e4e7ec"/><text x="20" y="10" font-size="9" fill="#98a2b3">TODAY</text><rect x="20" y="22" width="62" height="42" rx="6" fill="#fff" stroke="#98a2b3" stroke-width="1.4"/><rect x="26" y="28" width="50" height="20" rx="3" fill="#f2f4f7"/><rect x="26" y="53" width="36" height="5" rx="2.5" fill="#d0d5dd"/><rect x="89" y="22" width="62" height="42" rx="6" fill="#fff" stroke="#98a2b3" stroke-width="1.4"/><rect x="95" y="28" width="50" height="20" rx="3" fill="#f2f4f7"/><rect x="95" y="53" width="30" height="5" rx="2.5" fill="#d0d5dd"/><rect x="158" y="22" width="62" height="42" rx="6" fill="#fff" stroke="#98a2b3" stroke-width="1.4"/><rect x="164" y="28" width="50" height="20" rx="3" fill="#f2f4f7"/><rect x="164" y="53" width="40" height="5" rx="2.5" fill="#d0d5dd"/><rect x="20" y="80" width="200" height="26" rx="5" fill="#f2f4f7"/><rect x="48" y="80" width="130" height="26" fill="#e8f3df" stroke="#2f6118" stroke-width="1.6"/><rect x="42" y="76" width="8" height="34" rx="3" fill="#2f6118"/><rect x="176" y="76" width="8" height="34" rx="3" fill="#2f6118"/></svg></div>
         <h3>Sessions</h3>
-        <p>A page in the main window that keeps each meeting with its recording, clips, transcript and links. Watch it, or edit it: trim, cuts, speed, effects. Edits save as a new copy; the original is untouched.</p>
+        <p>Each meeting kept with its recording. Trim and edit; the original stays untouched.</p>
       </div>
       <div class="feat">
+        <div class="ill"><svg viewBox="0 0 240 120" role="img" aria-label="A feedback report: a pace gauge and bars counting filler words, pauses and facing the room"><path d="M24,70 a40,40 0 0 1 80,0" fill="none" stroke="#e4e7ec" stroke-width="9"/><path d="M24,70 a40,40 0 0 1 56,-28" fill="none" stroke="#2f6118" stroke-width="9"/><line x1="64" y1="70" x2="80" y2="46" stroke="#101828" stroke-width="2"/><circle cx="64" cy="70" r="4" fill="#101828"/><text x="64" y="92" font-size="10" text-anchor="middle" fill="#475467" font-weight="700">PACE</text><g font-size="9.5" fill="#475467" font-weight="700"><text x="128" y="26">FILLERS</text><text x="128" y="62">PAUSES</text><text x="128" y="98">FACING</text></g><rect x="128" y="32" width="84" height="8" rx="4" fill="#f2f4f7"/><rect x="128" y="32" width="30" height="8" rx="4" fill="#2f6118"/><rect x="128" y="68" width="84" height="8" rx="4" fill="#f2f4f7"/><rect x="128" y="68" width="52" height="8" rx="4" fill="#2f6118"/><rect x="128" y="104" width="84" height="8" rx="4" fill="#f2f4f7"/><rect x="128" y="104" width="68" height="8" rx="4" fill="#2f6118"/></svg></div>
         <h3>Get feedback</h3>
-        <p>On any session, press <strong>Get feedback</strong>. Pace, filler words, pauses and facing the room are counted on your Mac, then sorted into what to work on and what went well. Written feedback from your own agent is optional and off by default; without one, the Mac's on-device model or your notes do it.</p>
+        <p>Pace, fillers and pauses are counted on your Mac.</p>
       </div>
       <div class="feat">
+        <div class="ill"><svg viewBox="0 0 240 120" role="img" aria-label="A microphone with an arrow to a link card that pops up with Open and Send buttons"><rect x="26" y="26" width="16" height="30" rx="8" fill="#fff" stroke="#98a2b3" stroke-width="1.6"/><path d="M18,48 a16,16 0 0 0 32,0" fill="none" stroke="#98a2b3" stroke-width="1.6"/><line x1="34" y1="64" x2="34" y2="76" stroke="#98a2b3" stroke-width="1.6"/><path d="M62,42 q6,6 0,12 M70,36 q10,12 0,24" fill="none" stroke="#2f6118" stroke-width="1.6"/><rect x="96" y="14" width="124" height="80" rx="9" fill="#fff" stroke="#98a2b3" stroke-width="1.5"/><rect x="106" y="24" width="30" height="40" rx="3" fill="#e8f3df" stroke="#2f6118" stroke-width="1.4"/><rect x="144" y="26" width="64" height="7" rx="3" fill="#d0d5dd"/><rect x="144" y="40" width="48" height="5" rx="2.5" fill="#e4e7ec"/><rect x="106" y="72" width="44" height="16" rx="8" fill="#2f6118"/><text x="128" y="83.5" font-size="9" font-weight="700" text-anchor="middle" fill="#fff">Open</text><rect x="156" y="72" width="44" height="16" rx="8" fill="#fff" stroke="#98a2b3"/><text x="178" y="83.5" font-size="9" font-weight="700" text-anchor="middle" fill="#101828">Send</text></svg></div>
         <h3>Cues <span class="soon">Beta</span></h3>
-        <p>Listens to your microphone in a meeting. Name a book or a video and a link card is waiting; open it in the built-in browser or send it to chat. Off by default; needs macOS 26.</p>
+        <p>Name a book or video and a link card appears. Off by default; macOS 26.</p>
       </div>
       <div class="feat">
+        <div class="ill"><svg viewBox="0 0 240 120" role="img" aria-label="A recording on your Mac with an amber arrow leaving to YouTube, marked unlisted or private and off by default"><defs><marker id="y1" markerWidth="9" markerHeight="9" refX="7" refY="4" orient="auto" markerUnits="userSpaceOnUse"><path d="M0,0 L8,4 L0,8 z" fill="#B9770E"/></marker></defs><rect x="16" y="24" width="72" height="54" rx="8" fill="#fff" stroke="#2f6118" stroke-width="1.8"/><path d="M44,40 l18,11 l-18,11 z" fill="#78c000" stroke="#2f6118" stroke-width="1.4"/><text x="52" y="96" font-size="9.5" text-anchor="middle" fill="#2f6118" font-weight="700">YOUR MAC</text><line x1="94" y1="51" x2="146" y2="51" stroke="#B9770E" stroke-width="2.2" marker-end="url(#y1)"/><text x="120" y="42" font-size="9.5" text-anchor="middle" fill="#96600A" font-weight="700">off by default</text><rect x="152" y="24" width="72" height="54" rx="8" fill="#fff" stroke="#B9770E" stroke-width="1.8"/><rect x="170" y="40" width="36" height="24" rx="6" fill="#fff" stroke="#B9770E" stroke-width="1.8"/><path d="M183,46 l9,6 l-9,6 z" fill="#B9770E"/><text x="188" y="96" font-size="9.5" text-anchor="middle" fill="#96600A" font-weight="700">UNLISTED / PRIVATE</text></svg></div>
         <h3>YouTube</h3>
-        <p>After a recording, upload it unlisted or private and get the link copied. Off by default, and it needs a Google Cloud client of your own, once.</p>
+        <p>Upload a recording unlisted or private. Off by default.</p>
       </div>
       <div class="feat">
-        <h3>Greenroom Browser</h3>
-        <p>A browser window Greenroom owns, as the main app: tabs, find, history, and yesterday's tabs back on the next Start. No extra permission to grant.</p>
-      </div>
-      <div class="feat">
+        <div class="ill"><svg viewBox="0 0 240 120" role="img" aria-label="A list of scheduled Zoom meetings, one row with a Start button"><rect x="20" y="10" width="200" height="100" rx="9" fill="#fff" stroke="#98a2b3" stroke-width="1.5"/><rect x="32" y="22" width="34" height="14" rx="3" fill="#f2f4f7"/><rect x="74" y="25" width="70" height="7" rx="3" fill="#d0d5dd"/><rect x="170" y="21" width="40" height="16" rx="8" fill="#2f6118"/><text x="190" y="32.5" font-size="9" font-weight="700" text-anchor="middle" fill="#fff">Start</text><line x1="32" y1="46" x2="208" y2="46" stroke="#eaecf0"/><rect x="32" y="54" width="34" height="14" rx="3" fill="#f2f4f7"/><rect x="74" y="57" width="58" height="7" rx="3" fill="#d0d5dd"/><line x1="32" y1="78" x2="208" y2="78" stroke="#eaecf0"/><rect x="32" y="86" width="34" height="14" rx="3" fill="#f2f4f7"/><rect x="74" y="89" width="80" height="7" rx="3" fill="#d0d5dd"/></svg></div>
         <h3>Scheduled meetings</h3>
-        <p>List, create, edit and start the meetings on your Zoom account. Host only: to join someone else's meeting, use the Zoom app.</p>
+        <p>List, create, edit and start your Zoom meetings. Host only.</p>
       </div>
       <div class="feat">
+        <div class="ill"><svg viewBox="0 0 240 120" role="img" aria-label="A browser tick approves the sign-in, an arrow carries a token to your Mac, and the note says no password reaches Greenroom"><defs><marker id="s1" markerWidth="9" markerHeight="9" refX="7" refY="4" orient="auto" markerUnits="userSpaceOnUse"><path d="M0,0 L8,4 L0,8 z" fill="#2f6118"/></marker></defs><rect x="14" y="14" width="88" height="62" rx="8" fill="#fff" stroke="#98a2b3" stroke-width="1.5"/><path d="M14,30 h88" stroke="#98a2b3"/><circle cx="24" cy="22" r="2.5" fill="#e4e7ec"/><circle cx="33" cy="22" r="2.5" fill="#e4e7ec"/><path d="M44,52 l8,8 l16,-18" fill="none" stroke="#2f6118" stroke-width="4"/><line x1="106" y1="45" x2="136" y2="45" stroke="#2f6118" stroke-width="2" stroke-dasharray="4 3" marker-end="url(#s1)"/><rect x="142" y="18" width="84" height="54" rx="7" fill="#fff" stroke="#2f6118" stroke-width="1.8"/><rect x="150" y="26" width="68" height="34" rx="3" fill="#e8f3df"/><rect x="170" y="72" width="28" height="5" fill="#e4e7ec"/><text x="120" y="102" font-size="10" text-anchor="middle" fill="#101828" font-weight="700">No password reaches Greenroom</text><text x="58" y="90" font-size="9" text-anchor="middle" fill="#98a2b3">browser</text><text x="184" y="90" font-size="9" text-anchor="middle" fill="#2f6118" font-weight="700">your Mac</text></svg></div>
+        <h3>Sign in with Zoom</h3>
+        <p>Approve once in your browser. No Zoom developer app to make.</p>
+      </div>
+      <div class="feat">
+        <div class="ill"><svg viewBox="0 0 240 120" role="img" aria-label="One settings file moving from one Mac to another by export and import"><defs><marker id="t1" markerWidth="9" markerHeight="9" refX="7" refY="4" orient="auto" markerUnits="userSpaceOnUse"><path d="M0,0 L8,4 L0,8 z" fill="#2f6118"/></marker></defs><rect x="16" y="22" width="64" height="44" rx="6" fill="#fff" stroke="#98a2b3" stroke-width="1.5"/><rect x="34" y="66" width="28" height="8" fill="#f2f4f7"/><text x="48" y="92" font-size="9.5" text-anchor="middle" fill="#475467" font-weight="700">EXPORT</text><rect x="160" y="22" width="64" height="44" rx="6" fill="#fff" stroke="#98a2b3" stroke-width="1.5"/><rect x="178" y="66" width="28" height="8" fill="#f2f4f7"/><text x="192" y="92" font-size="9.5" text-anchor="middle" fill="#475467" font-weight="700">IMPORT</text><path d="M96,36 h12 l6,6 v22 h-18 z" fill="#e8f3df" stroke="#2f6118" stroke-width="1.6"/><line x1="86" y1="54" x2="92" y2="54" stroke="#2f6118" stroke-width="2"/><line x1="124" y1="54" x2="152" y2="54" stroke="#2f6118" stroke-width="2" marker-end="url(#t1)"/></svg></div>
         <h3>Shortcuts &amp; Transfer</h3>
-        <p>Every shortcut can be changed in Settings. Transfer exports your settings as one file, so a colleague's Mac is ready after an import.</p>
+        <p>Change any shortcut. Export your settings to another Mac.</p>
       </div>
     </div>
-    <p style="margin-top:36px"><span class="soon" style="margin-left:0">Coming next</span> Ending a meeting for everyone through Zoom's web API needs a permission the sign-in does not ask for yet, so for now Greenroom ends it from inside the meeting.</p>
+    <p style="margin-top:36px"><span class="soon" style="margin-left:0">Coming next</span> Ending a meeting for everyone through Zoom's web API. For now Greenroom ends it from inside the meeting.</p>
   </div>
 </section>
 
-<section class="soft" id="how">
+<section class="soft" id="privacy-glance">
+  <div class="wrap">
+    <div class="sec-head">
+      <p class="kicker">At a glance</p>
+      <h2>Stays on your Mac, or leaves it</h2>
+    </div>
+    <div class="glance"><svg viewBox="0 0 520 220" role="img" aria-label="Stays on your Mac versus leaves it. Green arrows inside the Mac: the picture, recording, transcript and feedback counts. Amber arrows out to Zoom, and, only if you switch them on, YouTube and Cues lookups."><defs><marker id="g1" markerWidth="9" markerHeight="9" refX="7" refY="4" orient="auto" markerUnits="userSpaceOnUse"><path d="M0,0 L8,4 L0,8 z" fill="#2f6118"/></marker><marker id="g2" markerWidth="9" markerHeight="9" refX="7" refY="4" orient="auto" markerUnits="userSpaceOnUse"><path d="M0,0 L8,4 L0,8 z" fill="#B9770E"/></marker></defs><rect x="10" y="10" width="300" height="200" rx="14" fill="#f9fafb" stroke="#2f6118" stroke-width="2"/><text x="26" y="32" font-size="11" font-weight="700" fill="#2f6118" font-family="ui-monospace, SF Mono, Menlo, monospace" letter-spacing=".06em">STAYS ON YOUR MAC</text><g font-size="12" font-weight="700" fill="#101828"><rect x="26" y="46" width="110" height="34" rx="8" fill="#fff" stroke="#98a2b3"/><text x="81" y="68" text-anchor="middle">Picture</text><rect x="174" y="46" width="120" height="34" rx="8" fill="#fff" stroke="#98a2b3"/><text x="234" y="68" text-anchor="middle">Recording</text><rect x="26" y="142" width="110" height="34" rx="8" fill="#fff" stroke="#98a2b3"/><text x="81" y="164" text-anchor="middle">Transcript</text><rect x="174" y="142" width="120" height="34" rx="8" fill="#fff" stroke="#98a2b3"/><text x="234" y="164" text-anchor="middle">Feedback</text></g><line x1="138" y1="63" x2="170" y2="63" stroke="#2f6118" stroke-width="2.2" marker-end="url(#g1)"/><line x1="234" y1="82" x2="234" y2="138" stroke="#2f6118" stroke-width="2.2" marker-end="url(#g1)"/><line x1="172" y1="159" x2="140" y2="159" stroke="#2f6118" stroke-width="2.2" marker-end="url(#g1)"/><line x1="312" y1="63" x2="388" y2="63" stroke="#B9770E" stroke-width="2.2" marker-end="url(#g2)"/><line x1="312" y1="110" x2="388" y2="110" stroke="#B9770E" stroke-width="2.2" stroke-dasharray="5 4" marker-end="url(#g2)"/><line x1="312" y1="159" x2="388" y2="159" stroke="#B9770E" stroke-width="2.2" stroke-dasharray="5 4" marker-end="url(#g2)"/><g font-size="12" font-weight="700" fill="#96600A"><rect x="392" y="46" width="118" height="34" rx="8" fill="#fff" stroke="#B9770E" stroke-width="1.8"/><text x="451" y="68" text-anchor="middle">Zoom meeting</text><rect x="392" y="93" width="118" height="34" rx="8" fill="#fff" stroke="#B9770E" stroke-width="1.8" stroke-dasharray="5 4"/><text x="451" y="115" text-anchor="middle">YouTube</text><rect x="392" y="142" width="118" height="34" rx="8" fill="#fff" stroke="#B9770E" stroke-width="1.8" stroke-dasharray="5 4"/><text x="451" y="164" text-anchor="middle">Cues lookups</text></g><text x="450" y="32" font-size="11" font-weight="700" text-anchor="middle" fill="#96600A" font-family="ui-monospace, SF Mono, Menlo, monospace" letter-spacing=".06em">LEAVES IT</text><text x="451" y="198" font-size="11" text-anchor="middle" fill="#96600A">dashed = off by default</text></svg></div>
+    <p class="glance-link"><a class="textlink" href="how-it-works.html">Every channel, in full <span class="arrow">→</span></a></p>
+  </div>
+</section>
+
+<section id="how">
   <div class="wrap">
     <div class="sec-head">
       <p class="kicker">Getting started</p>
       <h2>On a Mac in three steps</h2>
-      <p>Needs macOS 14 or later. Cues, summaries and written feedback on the Mac need macOS 26.</p>
+      <p>Needs macOS 14 or later.</p>
     </div>
     <div class="steps">
       <div class="step">
         <div class="num">Step 01</div>
         <h3>Download &amp; open</h3>
-        <p>Download Greenroom from the button above, unzip it if it came as a zip, and drag <strong>Greenroom.app</strong> into Applications. Greenroom updates itself from there. Every build is on the
+        <p>Drag <strong>Greenroom.app</strong> into Applications. It updates itself. Every build is on the
         <a href="https://github.com/Sibhimanyu/greenroom/releases">releases page</a>.</p>
       </div>
       <div class="step">
         <div class="num">Step 02</div>
         <h3>Open Anyway, once</h3>
-        <p>The app isn't notarized, so macOS balks at the first open. System Settings →
-        Privacy &amp; Security → <strong>Open Anyway</strong>. (macOS 14 and earlier:
-        right-click → Open.)</p>
+        <p>The app isn't notarized. System Settings → Privacy &amp; Security → <strong>Open Anyway</strong>.</p>
       </div>
       <div class="step">
         <div class="num">Step 03</div>
         <h3>Set up &amp; go</h3>
-        <p>Press <strong>Sign in with Zoom</strong> in the setup guide and approve it in your browser. No Zoom
-        developer apps to make. Then grant each permission as it appears. That is the whole setup, once.</p>
+        <p>Press <strong>Sign in with Zoom</strong>, approve it in your browser, then grant each permission as it appears.</p>
       </div>
     </div>
     <p style="margin-top:36px"><a class="textlink" href="guide.html">First time? The guide covers every button, shortcut and setting <span class="arrow">→</span></a></p>
@@ -588,13 +540,8 @@
         <p class="kicker">The story</p>
         <h2>Why Greenroom exists</h2>
       </div>
-      <p>Every morning at Zoho Schools, <strong>Raj San</strong> runs a reading class over
-      Zoom. Done right, it needs real stagecraft: the students should see the <em>book</em>,
-      full screen, with the teacher keyed into a corner of it, not a webcam pointed at a desk.</p>
-      <p>That meant OBS, a virtual camera, a chroma key, a meeting, and three windows dragged
-      into their places. None of it hard. All of it, every single morning, tedious.</p>
-      <p>Greenroom is named for the room performers wait in before going on stage. It gets
-      everything ready, so walking on is the only step left.</p>
+      <p>Every morning, <strong>Raj San</strong> teaches a reading class over Zoom, with himself keyed into a corner of the book.</p>
+      <p>Greenroom is named for the room performers wait in. It gets everything ready, so walking on is the only step left.</p>
     </div>
     <div class="ritual-card">
       <h3>The old 7:50 ritual</h3>
@@ -613,13 +560,12 @@
 <section class="cta-band">
   <div class="wrap">
     <h2>Meetings are for talking,<br>not window management.</h2>
-    <p>Free and open source. macOS 14+. Cues, summaries
-    and on-Mac written feedback need macOS 26.</p>
+    <p>Free and open source. macOS 14+.</p>
     <div class="hero-actions">
       <a class="btn" href="https://github.com/Sibhimanyu/greenroom/releases/download/v1.8.0/Greenroom-1.8.0.dmg">Download for Mac</a>
       <a class="textlink" href="https://github.com/Sibhimanyu/greenroom">View on GitHub <span class="arrow">→</span></a>
     </div>
-    <p class="cta-note">Zoom features need a one-time sign-in with your Zoom account. The full guide is in the README.</p>
+    <p class="cta-note">Zoom features need a one-time sign-in.</p>
   </div>
 </section>
 

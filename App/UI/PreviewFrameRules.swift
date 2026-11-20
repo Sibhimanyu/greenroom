@@ -34,6 +34,16 @@ enum PreviewFrameRules {
         return canvasAspect * crop.width / crop.height
     }
 
+    /// True while a screen share's content rect has not arrived: the first frame
+    /// after the picture opens can come before the compositor knows it, and the
+    /// whole 16:9 canvas is then NOT the picture's shape. The card holds its
+    /// last real shape until the rect is there.
+    static func awaitingContent(capturesScreen: Bool, presenter: Bool, content: CGRect?) -> Bool {
+        guard capturesScreen, !presenter else { return false }
+        guard let c = content else { return true }
+        return !(c.width > 1 && c.height > 1)
+    }
+
     /// Home's card width: the setup column's height less the eyebrow, times the
     /// picture's aspect, so the picture fills the card. The aspect is held to
     /// 1:1...21:9 so an odd share never makes a sliver or a window wider than a screen.

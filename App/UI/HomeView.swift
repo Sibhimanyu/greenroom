@@ -159,8 +159,9 @@ struct HomeView: View {
             // Only a real picture moves it (PreviewFrameRules.heldAspect): leaving for a
             // page stops the camera, and the default aspect then reset the card wider than
             // the window Home returns to.
-            let held = PreviewFrameRules.heldAspect(current: pictureAspect, live: liveFrameReady ? a : nil)
+            let held = PreviewFrameRules.heldAspect(current: pictureAspect, live: aspectKnown ? a : nil)
             if held != pictureAspect { pictureAspect = held }
+            if aspectKnown { coordinator.lastPictureAspect = held }
         }
         .onAppear {
             coordinator.loadSecretsIfNeeded()
@@ -254,14 +255,23 @@ struct HomeView: View {
     /// is some, else all of it. Nothing to crop while the sketch is up.
     private var previewCrop: CGRect {
         guard liveFrameReady else { return PreviewFrameRules.crop(content: nil, presenter: false) }
-        return PreviewFrameRules.crop(content: coordinator.shapePreview.contentRect,
+        return PreviewFrameRules.crop(content: coordinator.shapePreviewContent,
                                       presenter: coordinator.stageLayout.cameraShape == .presenterLarge)
     }
 
     private var frameAspect: CGFloat {
         let canvasAspect = coordinator.shapePreviewAspect.map { $0.width / max($0.height, 1) } ?? 16.0 / 9.0
-        return liveFrameReady ? PreviewFrameRules.aspect(canvasAspect: canvasAspect, crop: previewCrop)
+        return aspectKnown ? PreviewFrameRules.aspect(canvasAspect: canvasAspect, crop: previewCrop)
             : Self.defaultPictureAspect
+    }
+
+    /// A picture whose shape is real: up, and (for a screen share) with its
+    /// content rect known. Until then the card keeps its last shape.
+    private var aspectKnown: Bool {
+        liveFrameReady && !PreviewFrameRules.awaitingContent(
+            capturesScreen: coordinator.shareTarget.kind.capturesScreen,
+            presenter: coordinator.stageLayout.cameraShape == .presenterLarge,
+            content: coordinator.shapePreviewContent)
     }
 
     /// The shared screen, when the picture shows one (Whole screen or One app):

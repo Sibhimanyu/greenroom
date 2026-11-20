@@ -51,6 +51,13 @@ struct ContentView: View {
     @State private var previewRestoreFrame: NSRect?
     /// The frame the opening settled at, to tell whether the window was moved.
     @State private var previewExpandedFrame: NSRect?
+    /// The frame the window had when Hide preview was pressed, and the one the
+    /// hide settled at: Show gives the first back exactly while the second is
+    /// untouched (WindowFrameRules.expandedFrame(restoring:)).
+    @State private var previewFrameBeforeHide: NSRect?
+    @State private var previewHiddenFrame: NSRect?
+    /// The seeded aspect is not a change of shape: no resize for it.
+    @State private var seedingAspect = false
 
     // The window's root is a NavigationSplitView (see body), so the system
     // draws the Sessions sidebar as the full-height floating panel with the
@@ -178,9 +185,16 @@ struct ContentView: View {
         .onAppear {
             SessionNotes.shared.attach(coordinator)
             coordinator.warmUpForStart()
+            // A recreated window knows the picture's shape already: place it
+            // at that width from the start, not at the display's.
+            if let known = coordinator.lastPictureAspect, abs(known - pictureAspect) > 0.001 {
+                seedingAspect = true
+                pictureAspect = known
+            }
             DispatchQueue.main.async {
                 resizeWindow(animated: false)
                 Self.centreWindow()
+                seedingAspect = false
             }
         }
         // The things that change the window's height. All grow it DOWNWARD
@@ -628,7 +642,9 @@ struct ContentView: View {
         }
         if previewChange {
             if previewShown {
-                return WindowFrameRules.expandedFrame(from: window.frame, size: size, in: visible)
+                return WindowFrameRules.expandedFrame(
+                    restoring: previewFrameBeforeHide, hiddenAt: previewHiddenFrame,
+                    from: window.frame, size: size, in: visible)
             }
             return WindowFrameRules.collapsedFrame(
                 restoring: previewRestoreFrame, current: window.frame, size: size,
@@ -664,11 +680,12 @@ struct ContentView: View {
             withAnimation(.easeInOut(duration: animated ? Self.growDuration : Self.crossfade)) { previewMounted = true }
         } else {
             let delay = animated ? Self.growDuration + 0.03 : Self.crossfade
-            withAnimation(.easeInOut(duration: animated ? Self.growDuration : Self.crossfade)) {
-                // Keep the card drawn while the window closes over it; the
-                // crossfade under Reduce Motion fades it at once.
-                if !animated { previewMounted = false }
-            }
+            if let window = Self.window { previewFrameBeforeHide = window.frame }
+            previewHiddenFrame = nil
+            // Keep the card drawn while the window closes over it (a curtain,
+            // so no content reflows at the wrong size); the crossfade under
+            // Reduce Motion fades it at once.
+            if !animated { withAnimation(.easeInOut(duration: Self.crossfade)) { previewMounted = false } }
             DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
                 if !previewShown { withAnimation(nil) { previewMounted = false } }
             }
@@ -717,18 +734,22 @@ struct ContentView: View {
         }
     }
 
-    /// Only the width moves, from the right edge, over `growDuration`
+    /// Only the width moves, about the centre, over `growDuration`
     /// ease-in-out (instant under Reduce Motion).
     private func aspectChanged(from old: CGFloat, to new: CGFloat) {
-        guard previewShown, previewMounted, !onPage, let window = Self.window,
+        guard !seedingAspect, previewShown, previewMounted, !onPage, let window = Self.window,
               !window.styleMask.contains(.fullScreen), !window.isZoomed else { return }
         let delta = HomeView.previewExtraWidth(aspect: new) - HomeView.previewExtraWidth(aspect: old)
         guard abs(delta) >= 1 else { return }
         let content = window.contentRect(forFrameRect: window.frame)
         var width = max(content.width + delta, expandedWidth)
-        if let visible = (window.screen ?? NSScreen.main)?.visibleFrame { width = min(width, visible.width) }
-        var frame = window.frame
-        frame.size.width = window.frameRect(forContentRect: NSRect(x: 0, y: 0, width: width, height: content.height)).width
+        let visible = (window.screen ?? NSScreen.main)?.visibleFrame
+        if let visible { width = min(width, visible.width) }
+        // About the centre, as the preview opening and closing are, so a hide
+        // then a show never leaves the window somewhere else.
+        let size = window.frameRect(forContentRect: NSRect(x: 0, y: 0, width: width, height: content.height)).size
+        let frame = WindowFrameRules.aspectFrame(from: window.frame, size: CGSize(width: size.width, height: window.frame.height),
+                                                 in: visible)
         guard abs(frame.width - window.frame.width) >= 1 else { heldMinWidth = floorWidth; return }
         if previewExpandedFrame != nil { previewExpandedFrame = nil }
         resizeGeneration += 1
@@ -770,6 +791,7 @@ struct ContentView: View {
             window.setFrame(frame, display: true)
             if onPage { pageSettledFrame = window.frame }
             if previewChange && previewShown { previewExpandedFrame = window.frame }
+            if previewChange && !previewShown { previewHiddenFrame = window.frame }
             heldMinHeight = floorHeight
             heldMinWidth = floorWidth
             return
@@ -799,6 +821,7 @@ struct ContentView: View {
             // "the user moved it" compares against the truth.
             if onPage { pageSettledFrame = window.frame }
             if previewChange && previewShown { previewExpandedFrame = window.frame }
+            if previewChange && !previewShown { previewHiddenFrame = window.frame }
             heldMinHeight = settled
             heldMinWidth = settledWidth
         }

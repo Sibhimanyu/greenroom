@@ -2943,6 +2943,13 @@ final class CoordinatorController: ObservableObject {
     let shapePreview = ShapePreviewFeed()
     /// The live picture's size, or nil while the schematic is showing.
     @Published private(set) var shapePreviewAspect: CGSize?
+    /// Where the shared content sits on the canvas (canvas px), or nil. Published
+    /// only when it CHANGES (never per frame) so Home's card re-crops, and the
+    /// window re-sizes, the moment it arrives: `shapePreview` is not observed by Home.
+    @Published private(set) var shapePreviewContent: CGRect?
+    /// The last real picture shape Home sized its card from. Plain, not
+    /// published: it only seeds a recreated window at the right width.
+    var lastPictureAspect: CGFloat?
     /// Who is looking at the preview. Home's card and Settings → Webcam share
     /// one picture; it stops only when the last of them leaves, so closing
     /// Settings no longer blanks Home's card (and the other way round).
@@ -3049,6 +3056,7 @@ final class CoordinatorController: ObservableObject {
     private func publishPreviewFrame(_ frame: NSImage?, mask: NSImage? = nil) {
         let content = frame == nil ? nil : stage?.lastContentRect
         if shapePreview.contentRect != content { shapePreview.contentRect = content }
+        if shapePreviewContent != content { shapePreviewContent = content }
         shapePreview.frame = frame
         shapePreview.openMask = mask
         let aspect = frame?.size

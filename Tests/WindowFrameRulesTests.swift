@@ -152,3 +152,58 @@ final class WindowFrameRulesTests: XCTestCase {
         XCTAssertTrue(WindowFrameRules.moved(from: a, to: a.offsetBy(dx: 30, dy: 0)))
     }
 }
+
+final class PreviewToggleFrameTests: XCTestCase {
+    let screen = NSRect(x: 0, y: 0, width: 1920, height: 1080)
+
+    func testHideThenShowReturnsTheSameFrame() {
+        // An odd width and a frame pushed against the right edge: no rounding or clamp drift.
+        for expanded in [NSRect(x: 411, y: 300, width: 1101, height: 352),
+                         NSRect(x: 1500, y: 300, width: 1101, height: 352)] {
+            let visible = screen
+            let start = WindowFrameRules.clamp(expanded, in: visible)
+            let collapsedSize = CGSize(width: 592, height: start.height)
+            let hidden = WindowFrameRules.collapsedFrame(restoring: nil, current: start, size: collapsedSize,
+                                                         movedSinceExpand: false, in: visible)
+            let shown = WindowFrameRules.expandedFrame(restoring: start, hiddenAt: hidden, from: hidden,
+                                                       size: start.size, in: visible)
+            XCTAssertEqual(shown, start)
+        }
+    }
+
+    func testShowAfterTheWindowMovedGrowsAboutTheCentre() {
+        let start = NSRect(x: 400, y: 300, width: 1100, height: 352)
+        let hidden = NSRect(x: 650, y: 300, width: 600, height: 352)
+        let dragged = hidden.offsetBy(dx: 100, dy: 0)
+        let shown = WindowFrameRules.expandedFrame(restoring: start, hiddenAt: hidden, from: dragged,
+                                                   size: start.size, in: screen)
+        XCTAssertEqual(shown.midX, dragged.midX)
+    }
+
+    func testAspectGrowthAboutTheCentreStaysOnScreen() {
+        let current = NSRect(x: 1400, y: 300, width: 500, height: 352)
+        let grown = WindowFrameRules.aspectFrame(from: current, size: CGSize(width: 900, height: 352), in: screen)
+        XCTAssertLessThanOrEqual(grown.maxX, screen.maxX)
+        XCTAssertGreaterThanOrEqual(grown.minX, screen.minX)
+        let mid = WindowFrameRules.aspectFrame(from: NSRect(x: 700, y: 300, width: 500, height: 352),
+                                               size: CGSize(width: 900, height: 352), in: screen)
+        XCTAssertEqual(mid.midX, 950)
+        XCTAssertEqual(mid.width, 900)
+    }
+
+    func testAspectFromA154ContentRect() {
+        let content = CGRect(x: 221, y: 0, width: 1478, height: 960)   // a ~1.54 Mac screen on the 16:9 canvas
+        let crop = PreviewFrameRules.crop(content: content, presenter: false)
+        let a = PreviewFrameRules.aspect(canvasAspect: 16.0 / 9.0, crop: crop)
+        XCTAssertEqual(a, 1478.0 / 960.0, accuracy: 0.001)
+        XCTAssertEqual(a, 1.54, accuracy: 0.01)
+    }
+
+    func testAwaitingContentOnlyForAScreenShareWithoutARect() {
+        XCTAssertTrue(PreviewFrameRules.awaitingContent(capturesScreen: true, presenter: false, content: nil))
+        XCTAssertFalse(PreviewFrameRules.awaitingContent(capturesScreen: true, presenter: false,
+                                                         content: CGRect(x: 0, y: 0, width: 1478, height: 960)))
+        XCTAssertFalse(PreviewFrameRules.awaitingContent(capturesScreen: false, presenter: false, content: nil))
+        XCTAssertFalse(PreviewFrameRules.awaitingContent(capturesScreen: true, presenter: true, content: nil))
+    }
+}

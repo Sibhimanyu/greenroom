@@ -67,6 +67,27 @@ enum WindowFrameRules {
         centred(on: collapsed, size: size, in: visible)
     }
 
+    /// The preview opening again after a hide. Unmoved since that hide (the
+    /// collapsed frame is still the one the hide left) and the same size as
+    /// the frame it closed from: exactly that frame back, so hide then show is
+    /// the identity. Otherwise the centred growth of `expandedFrame`.
+    static func expandedFrame(restoring savedExpanded: NSRect?, hiddenAt collapsedAfterHide: NSRect?,
+                              from collapsed: NSRect, size: CGSize, in visible: NSRect?) -> NSRect {
+        if let savedExpanded, let collapsedAfterHide,
+           !moved(from: collapsedAfterHide, to: collapsed),
+           abs(savedExpanded.width - size.width) < 1, abs(savedExpanded.height - size.height) < 1 {
+            return clamp(savedExpanded, in: visible)
+        }
+        return expandedFrame(from: collapsed, size: size, in: visible)
+    }
+
+    /// A width change from the picture's shape (the share target changed): about
+    /// the centre, like the preview opening and closing, so the two never
+    /// disagree about where the window is.
+    static func aspectFrame(from current: NSRect, size: CGSize, in visible: NSRect?) -> NSRect {
+        centred(on: current, size: size, in: visible)
+    }
+
     /// The preview closing. Unmoved since it opened, the exact frame it had
     /// before (so a window pushed in from an edge goes back where it was);
     /// moved, the collapsed size about the window's current centre.

@@ -129,7 +129,7 @@ extension View {
     /// scrolls under them. Two layers, so a page ends cleanly at the bottom
     /// edge of the tab bar instead of showing through the tab labels (owner,
     /// 2026-11-20):
-    /// 1. every OS: `settingsPageClip` masks the page to the area below the
+    /// 1. every OS: `settingsPageClip` (`pageScrollClip`) masks the page to the area below the
     ///    top safe area (the toolbar). It paints nothing, so the wallpaper
     ///    tint of the frost is untouched (DESIGN.md, 2026-11-12).
     /// 2. macOS 26: the HARD scroll edge effect, on the TabView and again on
@@ -145,36 +145,8 @@ extension View {
         }
     }
 
-    /// One Settings tab: hard top edge on 26, and clipped below the toolbar.
+    /// One Settings tab: the shared `pageScrollClip` (PageChrome.swift).
     func settingsPageClip() -> some View {
-        modifier(SettingsPageClip())
-    }
-}
-
-/// Masks a page to the region under the top safe area. The GeometryReader
-/// ignores the safe area so it reports the toolbar's height and spans the page
-/// frame; the mask rectangle starts below it. Scrolled content is cut there;
-/// at rest the page's content already starts below the toolbar.
-private struct SettingsPageClip: ViewModifier {
-    func body(content: Content) -> some View {
-        content
-            .settingsPageEdge()
-            .mask {
-                GeometryReader { proxy in
-                    Rectangle().padding(.top, proxy.safeAreaInsets.top)
-                }
-                .ignoresSafeArea()
-            }
-    }
-}
-
-private extension View {
-    @ViewBuilder
-    func settingsPageEdge() -> some View {
-        if #available(macOS 26.0, *) {
-            self.scrollEdgeEffectStyle(.hard, for: .top)
-        } else {
-            self
-        }
+        pageScrollClip()
     }
 }

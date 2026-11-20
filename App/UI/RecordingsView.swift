@@ -264,6 +264,8 @@ struct RecordingsView: View {
         }
         // Grid, session, report: a short crossfade, not a hard swap. These
         // layers share the window's size, so nothing resizes.
+        // Scrolled content stops at the toolbar's bottom edge (PageChrome).
+        .pageScrollClip()
         .animation(.easeInOut(duration: 0.15), value: coordinator.mainPage)
         .onAppear(perform: reload)
         .onChange(of: sidebarSnapshot, initial: true) { _, snapshot in sidebar.snapshot = snapshot }

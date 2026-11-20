@@ -90,6 +90,7 @@ struct ScreenroomReportView: View {
             // mainPage == .report and goes back to the session), so only
             // Export is added here.
             ScrollView { page }
+                .pageScrollEdge()
                 .tint(Brand.green)
                 .toolbar { exportItem }
         } else {

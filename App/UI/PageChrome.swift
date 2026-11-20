@@ -40,6 +40,46 @@ extension View {
     }
 }
 
+extension View {
+    /// Scrolled content ends at the bottom edge of the toolbar instead of
+    /// showing through its buttons (owner, 2026-11-20). The title bar is
+    /// transparent (WindowFrost) and the toolbar background hidden, so the
+    /// frost stays and nothing is painted: the page is masked to the area
+    /// below the top safe area, and on macOS 26 the system's hard top scroll
+    /// edge effect is set too. At rest a page's content already starts below
+    /// the toolbar, so nothing moves. Every scrolling page of the main window
+    /// and every Settings tab uses this.
+    func pageScrollClip() -> some View {
+        modifier(PageScrollClip())
+    }
+
+    /// Only the hard top scroll edge, for a ScrollView or List that cannot
+    /// rely on the container's environment reaching it.
+    @ViewBuilder
+    func pageScrollEdge() -> some View {
+        if #available(macOS 26.0, *) {
+            self.scrollEdgeEffectStyle(.hard, for: .top)
+        } else {
+            self
+        }
+    }
+}
+
+/// The GeometryReader ignores the safe area so it reports the toolbar's height
+/// and spans the page frame; the mask rectangle starts below it.
+private struct PageScrollClip: ViewModifier {
+    func body(content: Content) -> some View {
+        content
+            .pageScrollEdge()
+            .mask {
+                GeometryReader { proxy in
+                    Rectangle().padding(.top, proxy.safeAreaInsets.top)
+                }
+                .ignoresSafeArea()
+            }
+    }
+}
+
 #Preview("Page chrome") {
     Text("A page")
         .frame(width: 420, height: 200)

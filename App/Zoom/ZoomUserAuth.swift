@@ -390,7 +390,7 @@ final class ZoomUserAuth: ObservableObject {
             var request = URLRequest(url: url)
             request.httpMethod = "POST"
             request.timeoutInterval = 15
-            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "X-Zoom-Authorization")
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
             request.httpBody = try JSONSerialization.data(withJSONObject: payload)
             let (data, response) = try await URLSession.shared.data(for: request)

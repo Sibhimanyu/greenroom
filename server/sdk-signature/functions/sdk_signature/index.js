@@ -1,7 +1,7 @@
 'use strict';
 // Catalyst Advanced I/O function (Node 20, raw http template):
 //   POST <function URL>/execute/signature   { meetingNumber?, role? }
-//   Authorization: Bearer <the person's Zoom access token>
+//   X-Zoom-Authorization: Bearer <the person's Zoom access token> (Catalyst keeps Authorization)
 // answers { signature }, a Meeting SDK JWT signed with ZOOM_CLIENT_ID and
 // ZOOM_CLIENT_SECRET from the function's environment variables.
 //
@@ -38,7 +38,9 @@ module.exports = async (req, res) => {
     const result = await decide({
       method: req.method,
       path,
-      authorization: req.headers.authorization,
+      // Catalyst's gateway takes Authorization for its own OAuth and refuses a
+      // Zoom token there ("invalid oauth token"), so the app sends it here.
+      authorization: req.headers['x-zoom-authorization'] || req.headers.authorization,
       body,
       env: process.env,
     });

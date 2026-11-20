@@ -60,9 +60,19 @@ enum SessionSummary {
         }
         return raw.split(separator: "\n").compactMap { row -> Line? in
             guard !row.hasPrefix("#") else { return nil }
+            // Two writers share this file: Cues writes "stamp<TAB>text",
+            // Analyse writes "[m:ss] text". Read both, or an analysed meeting
+            // shows "Nothing was transcribed" beside a finished report.
             let parts = row.split(separator: "\t", maxSplits: 1).map(String.init)
-            guard parts.count == 2, let text = WhisperNoise.clean(parts[1]) else { return nil }
-            return Line(stamp: parts[0], text: text)
+            if parts.count == 2 {
+                guard let text = WhisperNoise.clean(parts[1]) else { return nil }
+                return Line(stamp: parts[0], text: text)
+            }
+            guard row.hasPrefix("["), let close = row.firstIndex(of: "]") else { return nil }
+            let stamp = String(row[row.index(after: row.startIndex)..<close])
+            guard !stamp.isEmpty, stamp.allSatisfy({ $0.isNumber || $0 == ":" || $0 == "." }),
+                  let text = WhisperNoise.clean(String(row[row.index(after: close)...])) else { return nil }
+            return Line(stamp: stamp, text: text)
         }
     }
 

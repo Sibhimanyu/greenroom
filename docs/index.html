@@ -21,148 +21,126 @@
   :root {
     --ink: #101828; --body: #475467; --faint: #98a2b3; --line: #eaecf0; --bg-soft: #f9fafb;
     --brand-deep: #00401c; --brand-green: #2f6118; --accent-lime: #78c000;
-    --net: #b9770e; --net-text: #96600a;
-    --green-soft: #e8f3df;
+    --net: #b9770e; --net-text: #96600a; --green-soft: #e8f3df;
     --mono: ui-monospace, "SF Mono", Menlo, monospace;
-    --nav-h: 64px;
+    --nav-h: 64px; --ease: cubic-bezier(.16,1,.3,1);
   }
   * { box-sizing: border-box; }
   body { margin: 0; background: #fff; color: var(--ink); font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, Helvetica, Arial, sans-serif; font-size: 16px; line-height: 1.6; -webkit-font-smoothing: antialiased; }
-  @media (prefers-reduced-motion: no-preference) { html { scroll-behavior: smooth; } }
   html, body { overflow-x: clip; }
   .wrap { max-width: 1120px; margin: 0 auto; padding: 0 24px; }
   a { color: var(--brand-green); text-decoration: none; }
   :focus-visible { outline: 2px solid var(--brand-green); outline-offset: 3px; border-radius: 4px; }
   h1, h2, h3, p { margin: 0; } h1, h2, h3 { text-wrap: balance; }
-  h1 { font-size: clamp(30px, 4.6vw, 46px); font-weight: 800; letter-spacing: -.025em; line-height: 1.1; }
-  h2 { font-size: clamp(24px, 3.2vw, 32px); font-weight: 800; letter-spacing: -.02em; line-height: 1.15; }
+  h1 { font-size: clamp(34px, 5.4vw, 58px); font-weight: 800; letter-spacing: -.025em; line-height: 1.08; max-width: 18ch; }
+  h2 { font-size: clamp(26px, 3.4vw, 38px); font-weight: 800; letter-spacing: -.02em; line-height: 1.12; }
   h3 { font-size: 16.5px; font-weight: 700; line-height: 1.3; }
-  .lede { font-size: 17.5px; color: var(--body); max-width: 44ch; margin-top: 16px; }
-  .eyebrow { font-family: var(--mono); font-size: 12.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--brand-green); font-weight: 600; margin-bottom: 12px; }
-  .key { font-family: var(--mono); font-size: 13.5px; border: 1px solid var(--line); background: var(--bg-soft); border-radius: 6px; padding: 1px 7px; color: var(--ink); white-space: nowrap; }
-  .btn { display: inline-flex; align-items: center; gap: 8px; background: var(--brand-green); color: #fff; font-weight: 600; font-size: 15px; padding: 12px 22px; border-radius: 10px; transition: background .2s, transform .15s; }
-  .btn:hover { background: var(--brand-deep); transform: translateY(-1px); }
+  .lede { font-size: 18px; color: var(--body); max-width: 46ch; margin-top: 14px; }
+  .btn { display: inline-flex; align-items: center; background: var(--brand-green); color: #fff; font-weight: 600; font-size: 15px; padding: 12px 22px; border-radius: 10px; transition: background .2s, transform .15s; white-space: nowrap; }
+  .btn:hover { background: var(--brand-deep); transform: translateY(-1px); } .btn:active { transform: scale(.98); }
   .textlink { font-weight: 600; font-size: 15px; color: var(--ink); } .textlink:hover { color: var(--brand-green); }
-  .actions { display: flex; align-items: center; gap: 22px; flex-wrap: wrap; margin-top: 28px; }
-  .fine { font-size: 14.5px; color: var(--body); }
+  .actions { display: flex; align-items: center; gap: 22px; flex-wrap: wrap; margin-top: 26px; }
 
-  /* nav */
   nav { position: sticky; top: 0; background: rgba(255,255,255,.94); backdrop-filter: blur(10px); border-bottom: 1px solid var(--line); z-index: 50; }
   .nav-inner { display: flex; align-items: center; height: var(--nav-h); gap: 32px; }
   .brand { display: flex; align-items: center; gap: 6px; font-weight: 700; font-size: 19px; color: var(--brand-deep); }
   .nav-links { display: flex; gap: 26px; margin: 0 auto; }
-  .nav-links a { color: var(--body); font-size: 14.5px; font-weight: 500; }
+  .nav-links a { color: var(--body); font-size: 14.5px; font-weight: 500; white-space: nowrap; }
   .nav-links a:hover, .nav-links a[aria-current] { color: var(--ink); } .nav-links a[aria-current] { font-weight: 600; }
   .nav-cta { display: flex; align-items: center; gap: 18px; }
   .nav-cta .btn { padding: 9px 18px; font-size: 14px; }
   .nav-cta .gh { color: var(--body); font-size: 14.5px; font-weight: 500; } .nav-cta .gh:hover { color: var(--ink); }
   @media (max-width: 760px) {
-    .nav-inner { flex-wrap: wrap; height: auto; padding: 10px 24px 12px; row-gap: 8px; gap: 16px; }
-    .nav-links { order: 3; width: calc(100% + 48px); margin: 0 -24px; padding: 0 16px; gap: 0; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
-    .nav-links::-webkit-scrollbar { display: none; }
-    .nav-links a { flex: none; padding: 10px 8px; white-space: nowrap; }
-    .nav-cta { margin-left: auto; gap: 12px; } .nav-cta .gh { display: none; }
+    .nav-inner { flex-wrap: wrap; height: auto; padding: 10px 24px 12px; gap: 8px 16px; }
+    .nav-links { order: 3; width: 100%; margin: 0; gap: 18px; overflow-x: auto; }
+    .nav-cta { margin-left: auto; }
   }
 
-  /* stage: scenes 0 to 3 share one Mac. Static layout first (no JS, phones,
-     reduced motion): hero copy, the built Mac, then one block per scene. */
-  .stage { display: flex; flex-direction: column; align-items: center; padding: 56px 24px 24px; max-width: 1120px; margin: 0 auto; }
-  .caps { display: contents; }
-  .cap { max-width: 640px; width: 100%; }
-  #c0 { order: 1; text-align: center; display: flex; flex-direction: column; align-items: center; }
-  #c0 .actions { justify-content: center; }
-  .mac { order: 2; width: 100%; max-width: 860px; margin: 40px 0 8px; }
-  #c1, #c2, #c3 { order: 3; padding: 40px 0 0; }
-  .mac svg { display: block; width: 100%; height: auto; }
-  .cap .lede { font-size: 17px; }
-  .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 20px; }
-  .chip { font-family: var(--mono); font-size: 13px; border: 1px solid var(--line); border-radius: 999px; padding: 3px 12px; background: #fff; color: var(--ink); }
-  .chip.k { border-radius: 6px; }
+  /* The PNGs carry their own window corners and alpha, so the shadow follows the shape. */
+  .shot, .frame { display: block; width: 100%; height: auto; filter: drop-shadow(0 1px 1px rgba(16,24,40,.14)) drop-shadow(0 18px 32px rgba(16,24,40,.16)); }
+  .band { padding: 96px 0; }
+  .band.soft { background: var(--bg-soft); border-block: 1px solid var(--line); }
+  .head { max-width: 640px; } .head .lede { margin-top: 12px; }
 
-  /* pinned (desktop, motion allowed): JS adds .pin */
-  .stage.pin { height: calc(100svh - var(--nav-h)); max-width: none; padding: 0 clamp(16px, 2.5vw, 40px) 0 max(24px, calc((100vw - 1120px) / 2 + 24px)); display: grid; grid-template-columns: minmax(0, 400px) minmax(0, 1fr); gap: 24px; align-items: center; }
-  .stage.pin .caps { display: block; position: relative; height: 360px; }
-  .stage.pin .cap { position: absolute; left: 0; top: 0; height: 100%; display: flex; flex-direction: column; justify-content: center; padding: 0; text-align: left; align-items: flex-start; }
-  .stage.pin #c0 { align-items: flex-start; text-align: left; }
-  .stage.pin #c0 .actions { justify-content: flex-start; }
-  .stage.pin h1 { font-size: clamp(32px, 3.5vw, 46px); }
-  .stage.pin .mac { margin: 0; max-width: none; }
-  .stage.pin .mac svg { max-height: calc(100svh - var(--nav-h) - 32px); }
+  .hero { padding: 64px 0 0; position: relative; z-index: 1; }
+  .hero-shot { max-width: 1240px; margin: 48px auto 0; padding: 0 24px; position: relative; z-index: 2; }
+  .hero-shot .shot { filter: drop-shadow(0 1px 2px rgba(16,24,40,.16)) drop-shadow(0 28px 48px rgba(16,24,40,.22)); }
+  .hero + .band { margin-top: -140px; padding-top: 236px; }
 
-  /* svg drawing vocabulary: solid = process, dashed = configuration, green = stays */
-  .frame { fill: #fff; stroke: var(--ink); stroke-width: 2.5; }
-  .screen { fill: var(--bg-soft); stroke: var(--line); stroke-width: 1; }
-  .panel { fill: #fff; stroke: var(--ink); stroke-width: 1.8; filter: drop-shadow(0 2px 5px rgba(16,24,40,.10)); }
-  #signin .panel { filter: drop-shadow(0 8px 18px rgba(16,24,40,.22)); }
-  .hair { fill: var(--line); }
-  .dash { stroke-dasharray: 5 4; }
-  .t { font: 700 14px -apple-system, "SF Pro Text", Helvetica, Arial, sans-serif; fill: var(--ink); }
-  .t.m { font-family: var(--mono); font-weight: 600; font-size: 13px; }
-  .t.w { fill: #fff; }
-  .t.g { fill: var(--brand-green); }
-  .lime { fill: var(--accent-lime); }
-  .deep { fill: var(--brand-deep); }
-  .gstroke { fill: none; stroke: var(--brand-green); stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
-  .inkline { fill: none; stroke: var(--ink); stroke-width: 1.8; stroke-linecap: round; }
+  .seq { position: relative; }
+  .frames { display: grid; place-items: center; }
+  .frame { grid-area: 1 / 1; opacity: 0; visibility: hidden; }
+  .frame.on { opacity: 1; visibility: visible; }
+  .seq-start .frame[src*="island"] { width: min(100%, 640px); }
+  .seq-nav { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 24px; }
+  .seq-nav button { font: 600 13.5px/1 var(--mono); color: var(--body); background: #fff; border: 1px solid var(--line); border-radius: 8px; padding: 9px 12px; cursor: pointer; transition: background .2s, color .2s, border-color .2s; }
+  .seq-nav button:hover { border-color: var(--faint); }
+  .seq-nav button[aria-current="true"] { background: var(--brand-green); border-color: var(--brand-green); color: #fff; }
+  .seq-cap { margin-top: 16px; min-height: 3.2em; display: grid; font-size: 17px; color: var(--ink); font-weight: 600; }
+  .seq-cap span { grid-area: 1 / 1; opacity: 0; } .seq-cap span.on { opacity: 1; }
+  .seq-start .frames { padding: 56px 24px; background: #fff; border: 1px solid var(--line); border-radius: 16px; margin-top: 40px; }
+  .seq-start .seq-nav { justify-content: center; }
+  .seq-start .seq-cap { text-align: center; }
 
-  /* scene 4 */
-  .better { padding: 72px 0 56px; background: var(--bg-soft); border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
-  .better-in { display: flex; flex-direction: column; gap: 28px; }
-  .better-head { max-width: 560px; }
-  .better-fig { background: #fff; border: 1px solid var(--line); border-radius: 14px; padding: 18px; }
-  .better-fig svg { display: block; width: 100%; height: auto; }
-  .steps { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(3, 1fr); gap: 32px; }
-  .steps h3 { margin-bottom: 4px; } .steps p { font-size: 14.5px; color: var(--body); line-height: 1.5; }
-  .better.pin { height: calc(100svh - var(--nav-h)); padding: 24px 0; display: flex; align-items: center; }
-  .better.pin .better-in { gap: 16px; }
-  .better.pin .better-fig svg { max-height: 50svh; }
+  .split { display: grid; grid-template-columns: 4fr 8fr; gap: 56px; align-items: center; }
+  .split .head { max-width: none; }
+  .split .seq { min-width: 0; }
+  .points { margin: 22px 0 0; padding: 0; list-style: none; display: grid; gap: 10px; font-size: 15.5px; color: var(--body); }
+  .points li { padding-left: 14px; border-left: 2px solid var(--accent-lime); }
+  .points strong { color: var(--ink); }
 
-  /* scene 5 */
-  .private { padding: 88px 0; }
-  .private-in { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr); gap: 56px; align-items: center; }
-  .private .lede { max-width: 40ch; }
-  .lists { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 28px; }
-  .lists h3 { font-size: 13px; font-family: var(--mono); letter-spacing: .06em; text-transform: uppercase; margin-bottom: 8px; }
-  .lists .out h3 { color: var(--net-text); } .lists .opt h3 { color: var(--net-text); }
-  .lists ul { list-style: none; margin: 0; padding: 0; font-size: 15px; color: var(--body); line-height: 1.7; }
-  .glance { border: 1px solid var(--line); border-radius: 14px; padding: 20px; background: #fff; }
-  .glance svg { display: block; width: 100%; height: auto; }
+  .row5 { display: grid; grid-template-columns: repeat(5, 1fr); margin-top: 40px; border-top: 1px solid var(--ink); }
+  .row5 > div { padding: 20px 20px 4px 0; }
+  .row5 > div + div { padding-left: 20px; border-left: 1px solid var(--line); }
+  .row5 p { font-size: 14.5px; color: var(--body); margin-top: 6px; line-height: 1.5; }
 
-  /* scene 6 */
-  .band { padding: 56px 0; border-top: 1px solid var(--line); background: var(--bg-soft); }
-  .band-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 0; margin-top: 28px; }
-  .band-grid > div { padding: 4px 20px; border-left: 1px solid var(--line); } .band-grid > div:first-child { border-left: 0; padding-left: 0; }
-  .band-grid h3 { font-size: 15.5px; } .band-grid p { font-size: 14.5px; color: var(--body); line-height: 1.5; margin-top: 4px; }
-  .tag { display: inline-block; font-family: var(--mono); font-size: 11.5px; letter-spacing: .04em; border: 1px solid var(--line); background: #fff; border-radius: 999px; padding: 0 8px; margin-left: 6px; color: var(--body); vertical-align: 2px; }
+  .strip { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; margin-top: 48px; align-items: start; }
+  figure { margin: 0; } figcaption { margin-top: 14px; font-size: 14.5px; color: var(--body); }
+  figcaption strong { display: block; color: var(--ink); font-size: 15.5px; }
+  .reports { display: grid; grid-template-columns: 1fr 1fr; gap: 32px; margin-top: 40px; align-items: start; }
+  .reports figure:nth-child(2) { margin-top: 56px; }
+  .reports-head { margin-top: 88px; max-width: 640px; }
 
-  /* scene 7 */
-  .cta { padding: 88px 0 72px; text-align: center; }
+  .lists { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 40px; }
+  .list { border: 1px solid var(--line); border-radius: 12px; padding: 24px 24px 20px; background: #fff; }
+  .list.local { border-top: 3px solid var(--brand-green); } .list.net { border-top: 3px solid var(--net); }
+  .list h3 { margin-bottom: 10px; }
+  .list ul { margin: 0; padding: 0; list-style: none; display: grid; gap: 8px; font-size: 15px; color: var(--body); }
+  .list li strong { color: var(--ink); }
+  .list .sub { font-family: var(--mono); font-size: 12.5px; color: var(--net-text); margin: 16px 0 8px; font-weight: 600; letter-spacing: .04em; }
+
+  .more { display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; margin-top: 40px; font-size: 14.5px; color: var(--body); }
+  .more h3 { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; margin-bottom: 4px; color: var(--ink); }
+  .tag { font-family: var(--mono); font-size: 12.5px; font-weight: 600; color: var(--brand-green); border: 1px solid var(--line); border-radius: 6px; padding: 1px 6px; background: #fff; }
+
+  .cta { text-align: center; }
   .cta .actions { justify-content: center; }
-  .reqs { list-style: none; margin: 40px auto 0; padding: 0; max-width: 620px; text-align: left; font-size: 15px; color: var(--body); display: grid; gap: 10px; }
-  .reqs li { padding-left: 16px; border-left: 2px solid var(--line); }
-  .reqs strong { color: var(--ink); }
+  .reqs { list-style: none; margin: 36px auto 0; padding: 0; max-width: 620px; text-align: left; font-size: 15px; color: var(--body); display: grid; gap: 10px; }
+  .reqs li { padding-left: 16px; border-left: 2px solid var(--line); } .reqs strong { color: var(--ink); }
 
   footer { border-top: 1px solid var(--line); padding: 32px 0 40px; font-size: 14px; color: var(--faint); }
   footer a { color: var(--body); display: inline-block; padding: 4px 2px; } footer a:hover { color: var(--ink); }
   .footer-inner { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; flex-wrap: wrap; }
 
-  @media (max-width: 860px) {
-    .private-in { grid-template-columns: 1fr; gap: 32px; }
-    .band-grid { grid-template-columns: 1fr 1fr; row-gap: 24px; }
-    .band-grid > div:nth-child(odd) { border-left: 0; padding-left: 0; }
+  /* One small rise, once. Applied by JS only, and only when motion is allowed. */
+  .rise { transition: opacity .8s var(--ease), transform .8s var(--ease); }
+  .rise.pre { opacity: 0; transform: translateY(28px); }
+
+  @media (max-width: 900px) {
+    .band { padding: 64px 0; } .hero + .band { margin-top: -64px; padding-top: 120px; }
+    .split { grid-template-columns: 1fr; gap: 32px; }
+    .row5 { grid-template-columns: 1fr 1fr; } .row5 > div { padding: 16px 12px 12px 0; border-bottom: 1px solid var(--line); }
+    .row5 > div + div { border-left: 0; padding-left: 0; } .row5 > div:nth-child(even) { padding-left: 16px; border-left: 1px solid var(--line); }
+    .strip, .reports, .lists { grid-template-columns: 1fr; }
+    .reports figure:nth-child(2) { margin-top: 0; }
+    .more { grid-template-columns: 1fr 1fr; }
   }
-  @media (max-width: 760px) {
-    .steps { grid-template-columns: 1fr; gap: 20px; }
-    .better-fig { display: none; }
-    .stage { padding-top: 40px; }
-    .glance { display: none; }
-    .lists { grid-template-columns: 1fr; gap: 16px; }
-    .band-grid { grid-template-columns: 1fr; }
-    .band-grid > div { border-left: 0; padding-left: 0; }
-    .mac .lbl { display: none; }
-    .private, .cta { padding: 56px 0; }
+  @media (max-width: 560px) {
+    .hero { padding-top: 40px; } .hero-shot { padding: 0 12px; margin-top: 32px; }
+    .seq-start .frames { padding: 28px 12px; }
+    .seq-nav button { padding: 10px 10px; } .more { grid-template-columns: 1fr; }
   }
-  @media (prefers-reduced-motion: reduce) { .btn { transition: none; } .btn:hover { transform: none; } }
+  @media (prefers-reduced-motion: reduce) { .btn, .rise, .seq-nav button { transition: none; } .btn:hover { transform: none; } }
 </style>
 </head>
 <body>
@@ -184,217 +162,107 @@
 </nav>
 
 <main>
-<!-- Scenes 0 to 3: one Mac that builds itself as you scroll -->
-<section class="stage" id="stage" aria-label="Greenroom overview">
-  <div class="caps">
-    <div class="cap" id="c0">
-      <h1>Host your meeting, record it, get better.</h1>
-      <p class="lede">The whole loop, on one Mac.</p>
-      <div class="actions">
-        <a class="btn" href="https://github.com/Sibhimanyu/greenroom/releases/download/v1.8.1/Greenroom-1.8.1.dmg">Download for Mac</a>
-        <a class="textlink" href="guide.html">Read the guide</a>
-      </div>
-    </div>
-    <div class="cap" id="c1">
-      <h2>You, on your screen.</h2>
-      <p class="lede">Your screen and camera become one picture. Drag the bubble anywhere. No OBS, no virtual camera.</p>
-      <div class="chips" aria-label="Bubble shapes">
-        <span class="chip" data-chip>Circle</span><span class="chip" data-chip>Square</span><span class="chip" data-chip>Rounded</span><span class="chip" data-chip>Cutout</span><span class="chip" data-chip>Presenter</span>
-      </div>
-    </div>
-    <div class="cap" id="c2">
-      <h2>One click to live.</h2>
-      <p class="lede">Sign in with Zoom once, in your browser. No password reaches Greenroom, and you make no Zoom developer apps.</p>
-      <div class="chips"><span class="key">Start</span><span class="key">&#8997;&#8984;G</span><span class="chip k">End asks once</span></div>
-    </div>
-    <div class="cap" id="c3">
-      <h2>Run it your way.</h2>
-      <p class="lede">Nine views in your own meeting window. Draw on screen, pause the recording, save the last few minutes.</p>
-      <div class="chips"><span class="key">&#8997;&#8679;D draw</span><span class="key">&#8997;&#8679;P pause</span><span class="key">&#8997;&#8984;1</span><span class="key">&#8997;&#8984;2</span><span class="key">&#8997;&#8984;5</span></div>
-    </div>
-  </div>
-
-  <figure class="mac" style="margin-left:0;margin-right:0">
-<svg id="mac" viewBox="0 0 640 420" role="img" aria-label="A drawing of a Mac screen that builds up as you scroll. A document with your camera bubble on it, then a Zoom meeting and chat tiles, a status island, a control bar, a nine-view meeting window, pen marks, and a rolling five-minute clip buffer.">
-  <defs><clipPath id="bclip"><rect class="bub-c" x="-36" y="-36" width="72" height="72" rx="36"/></clipPath>
-  <clipPath id="bufclip"><rect x="20" y="368" width="600" height="30" rx="6"/></clipPath></defs>
-
-  <g id="frame">
-    <rect class="frame" x="20" y="10" width="600" height="340" rx="16"/>
-    <rect class="screen" x="34" y="24" width="572" height="312" rx="6"/>
-    <rect x="34" y="24" width="572" height="20" rx="6" fill="#fff" stroke="var(--line)"/>
-    <path d="M250 350h140v10a4 4 0 0 1-4 4H254a4 4 0 0 1-4-4z" fill="#fff" stroke="var(--ink)" stroke-width="1.8"/>
-  </g>
-  <g id="menubar"><circle cx="48" cy="34" r="4" class="deep"/><rect x="62" y="31" width="34" height="6" rx="3" class="hair"/><rect x="104" y="31" width="26" height="6" rx="3" class="hair"/><rect x="520" y="31" width="30" height="6" rx="3" class="hair"/><rect x="558" y="31" width="34" height="6" rx="3" class="hair"/></g>
-
-  <g id="desk">
-    <g id="t-doc"><rect class="panel" x="48" y="60" width="330" height="230" rx="10"/><circle cx="62" cy="73" r="3.5" fill="var(--line)"/><circle cx="74" cy="73" r="3.5" fill="var(--line)"/><circle cx="86" cy="73" r="3.5" fill="var(--line)"/><path d="M60 84H366" stroke="var(--line)"/>
-      <rect x="66" y="96" width="132" height="12" rx="3" fill="var(--ink)"/><rect class="hair" x="66" y="116" width="84" height="7" rx="3.5"/>
-      <rect class="hair" x="66" y="138" width="248" height="7" rx="3.5"/><rect x="62" y="154" width="226" height="15" rx="4" fill="var(--green-soft)"/><rect class="hair" x="66" y="158" width="210" height="7" rx="3.5" fill="#cfe3c0"/><rect class="hair" x="66" y="178" width="240" height="7" rx="3.5"/><rect class="hair" x="66" y="196" width="190" height="7" rx="3.5"/><rect class="hair" x="66" y="214" width="228" height="7" rx="3.5"/>
-      <rect x="66" y="270" width="26" height="6" rx="3" class="hair"/></g>
-    <g id="t-meet"><rect class="panel" x="392" y="60" width="200" height="120" rx="10"/>
-      <rect x="402" y="72" width="86" height="46" rx="6" fill="var(--bg-soft)" stroke="var(--brand-green)" stroke-width="2"/><rect x="496" y="72" width="86" height="46" rx="6" fill="var(--bg-soft)" stroke="var(--line)"/><rect x="402" y="124" width="86" height="46" rx="6" fill="var(--bg-soft)" stroke="var(--line)"/><rect x="496" y="124" width="86" height="46" rx="6" fill="var(--bg-soft)" stroke="var(--line)"/>
-      <g class="lime"><circle cx="445" cy="90" r="7"/><circle cx="539" cy="90" r="7"/><circle cx="445" cy="142" r="7"/><circle cx="539" cy="142" r="7"/></g>
-      <g class="deep"><path d="M431 118v-4q0-8 14-8t14 8v4z"/><path d="M525 118v-4q0-8 14-8t14 8v4z"/><path d="M431 170v-4q0-8 14-8t14 8v4z"/><path d="M525 170v-4q0-8 14-8t14 8v4z"/></g></g>
-    <g id="t-chat"><rect class="panel" x="392" y="192" width="200" height="98" rx="10"/><text class="t lbl" x="406" y="212" style="font-size:12px">Chat</text>
-      <circle cx="410" cy="232" r="6" fill="var(--line)"/><rect x="422" y="224" width="110" height="16" rx="8" class="hair"/><circle cx="410" cy="256" r="6" fill="var(--line)"/><rect x="422" y="248" width="76" height="16" rx="8" class="hair"/>
-      <rect x="470" y="268" width="108" height="16" rx="8" fill="var(--green-soft)" stroke="var(--brand-green)"/></g>
-  </g>
-
-  <g id="merge" opacity="0"><rect class="gstroke dash" x="42" y="54" width="342" height="242" rx="12" stroke-width="2"/><text class="t m g lbl" x="52" y="316">screen + camera = one picture</text></g>
-
-  <g transform="translate(318 248)"><g id="bubble">
-    <rect class="bub" x="-36" y="-36" width="72" height="72" rx="36" fill="#fff" stroke="var(--ink)" stroke-width="2"/>
-    <g clip-path="url(#bclip)"><circle class="lime" cx="0" cy="-8" r="11"/><path class="deep" d="M-24 36v-8q0-20 24-20t24 20v8z"/></g>
-    <g id="cursor" opacity="0"><path d="M18 18l0 18 5-5 4 9 4-2-4-9 7 0z" fill="var(--ink)" stroke="#fff" stroke-width="1.5"/></g>
-  </g></g>
-
-  <g id="cams" opacity="0">
-    <rect class="panel" x="400" y="62" width="88" height="64" rx="8"/><rect class="panel" x="502" y="62" width="88" height="64" rx="8"/>
-    <ellipse class="lime" cx="432" cy="90" rx="6" ry="9"/><path class="deep" d="M414 126v-6q0-14 20-14t20 14v6z"/>
-    <circle class="lime" cx="546" cy="90" r="10"/><path class="deep" d="M524 126v-6q0-14 22-14t22 14v6z"/>
-    <rect id="camring" class="gstroke" x="396" y="58" width="96" height="72" rx="11"/>
-    <text class="t m lbl" x="400" y="150">turned away</text><text class="t m g lbl" x="502" y="150">facing you</text>
-  </g>
-
-  <g id="signin" opacity="0">
-    <rect class="panel" x="150" y="84" width="340" height="170" rx="10"/><rect x="151" y="85" width="338" height="26" rx="9" fill="var(--bg-soft)"/>
-    <circle cx="166" cy="98" r="3.5" fill="var(--line)"/><circle cx="178" cy="98" r="3.5" fill="var(--line)"/><circle cx="190" cy="98" r="3.5" fill="var(--line)"/><text class="t m lbl" x="214" y="102">zoom.us</text>
-    <text class="t lbl" x="320" y="160" text-anchor="middle" style="font-size:19px">Sign in with Zoom</text>
-    <circle cx="320" cy="206" r="22" fill="#fff" stroke="var(--brand-green)" stroke-width="2.5"/><path id="tick" class="gstroke" d="M309 207l8 8 15-17" pathLength="1"/>
-  </g>
-  <g id="start" opacity="0"><rect id="startbtn" x="228" y="290" width="130" height="36" rx="18" fill="var(--brand-green)"/><text class="t w" x="293" y="313" text-anchor="middle" style="font-size:16px">Start</text>
-    <rect id="startkey" x="372" y="293" width="62" height="30" rx="6" fill="#fff" stroke="var(--ink)" stroke-width="1.5"/><text class="t m" x="403" y="313" text-anchor="middle" style="font-size:14px">&#8997;&#8984;G</text></g>
-
-  <g id="grid" opacity="0"><rect class="panel" x="96" y="56" width="448" height="234" rx="10"/>
-    <g id="cells" fill="var(--bg-soft)" stroke="var(--line)">
-      <rect x="108" y="68" width="132" height="62" rx="6"/><rect x="254" y="68" width="132" height="62" rx="6"/><rect x="400" y="68" width="132" height="62" rx="6"/>
-      <rect x="108" y="138" width="132" height="62" rx="6"/><rect x="254" y="138" width="132" height="62" rx="6"/><rect x="400" y="138" width="132" height="62" rx="6"/>
-      <rect x="108" y="208" width="132" height="62" rx="6"/><rect x="254" y="208" width="132" height="62" rx="6"/><rect x="400" y="208" width="132" height="62" rx="6"/></g>
-    <g class="lime"><circle cx="174" cy="99" r="9"/><circle cx="320" cy="99" r="9"/><circle cx="466" cy="99" r="9"/><circle cx="174" cy="169" r="9"/><circle cx="320" cy="169" r="9"/><circle cx="466" cy="169" r="9"/><circle cx="174" cy="239" r="9"/><circle cx="320" cy="239" r="9"/><circle cx="466" cy="239" r="9"/></g>
-  </g>
-  <path id="pen" class="gstroke" opacity="0" stroke-width="4.5" pathLength="1" d="M300 78C380 62 452 92 440 132C428 170 330 176 296 148C278 130 284 94 300 78Z"/>
-  <g id="penkey" opacity="0"><rect x="452" y="72" width="76" height="26" rx="6" fill="#fff" stroke="var(--ink)" stroke-width="1.5"/><text class="t m" x="490" y="90" text-anchor="middle">&#8997;&#8679;D</text></g>
-
-  <g id="island" opacity="0"><rect x="226" y="48" width="188" height="28" rx="14" fill="var(--ink)"/>
-    <circle cx="244" cy="62" r="7" fill="none" stroke="#475467" stroke-width="2.5"/><circle id="ring" cx="244" cy="62" r="7" fill="none" stroke="#fff" stroke-width="2.5" pathLength="1" stroke-dasharray="1" stroke-dashoffset="0" transform="rotate(-90 244 62)"/>
-    <text class="t m w isl" x="262" y="66">Camera</text><text class="t m w isl" x="262" y="66" opacity="0">Zoom</text><text class="t m w isl" x="262" y="66" opacity="0">Layout</text></g>
-
-  <g id="bar"><rect class="panel" x="170" y="296" width="300" height="34" rx="17"/>
-    <circle cx="192" cy="313" r="5" fill="var(--ink)"/><text id="rec" class="t m" x="204" y="317">REC</text><text id="paused" class="t m" x="204" y="317" opacity="0">Paused</text>
-    <circle cx="290" cy="313" r="8" fill="none" stroke="var(--faint)" stroke-width="1.8"/><circle cx="318" cy="313" r="8" fill="none" stroke="var(--faint)" stroke-width="1.8"/><circle cx="346" cy="313" r="8" fill="none" stroke="var(--faint)" stroke-width="1.8"/>
-    <rect x="400" y="302" width="56" height="22" rx="11" fill="var(--ink)"/><text class="t m w" x="428" y="317" text-anchor="middle" style="font-size:12px">End</text></g>
-  <g id="confirm" opacity="0"><rect x="150" y="294" width="340" height="38" rx="19" fill="#fff" stroke="var(--ink)" stroke-width="1.8"/>
-    <text class="t" x="168" y="318" style="font-size:13.5px">End for everyone?</text><rect x="304" y="300" width="78" height="26" rx="13" fill="#fff" stroke="var(--ink)" stroke-width="1.5"/><text class="t" x="343" y="318" text-anchor="middle" style="font-size:12.5px">Keep going</text>
-    <rect x="390" y="300" width="92" height="26" rx="13" fill="var(--ink)"/><text class="t w" x="436" y="318" text-anchor="middle" style="font-size:12.5px">End for everyone</text></g>
-  <g id="pausekey" opacity="0"><rect x="476" y="299" width="72" height="26" rx="6" fill="#fff" stroke="var(--ink)" stroke-width="1.5"/><text class="t m" x="512" y="317" text-anchor="middle">&#8997;&#8679;P</text></g>
-
-  <g id="buffer">
-    <rect x="20" y="368" width="600" height="30" rx="6" fill="#fff" stroke="var(--brand-green)" stroke-width="1.8" stroke-dasharray="5 4"/>
-    <g clip-path="url(#bufclip)"><g id="segs" fill="var(--green-soft)" stroke="var(--brand-green)" stroke-width="1"></g>
-      <rect id="hl" x="500" y="368" width="120" height="30" fill="var(--accent-lime)" opacity="0"/></g>
-    <text class="t m lbl" x="20" y="414">last 1, 2 or 5 minutes</text>
-    <g class="t m lbl"><text class="t m" x="500" y="414" text-anchor="middle" id="l1">&#8997;&#8984;1</text><text class="t m" x="560" y="414" text-anchor="middle" id="l2">&#8997;&#8984;2</text><text class="t m" x="600" y="414" text-anchor="middle" id="l5">&#8997;&#8984;5</text></g>
-  </g>
-</svg>
-  </figure>
-</section>
-
-<!-- Scene 4: get better -->
-<section class="better" id="better" aria-label="Get better">
-  <div class="wrap better-in">
-    <div class="better-head">
-      <h2>Then get better.</h2>
-      <p class="lede">Record, edit in Sessions, then get a report. Pace, fillers, pauses and facing the room are counted on your Mac.</p>
-    </div>
-    <div class="better-fig">
-<svg id="bsvg" viewBox="0 0 960 340" role="img" aria-label="Three panels left to right. Record: a recording bar over the live picture. Sessions: a page with a sidebar, a day timeline of recordings, Watch and Edit tabs, and a filmstrip with trim handles. Get feedback: a report with a pace gauge, filler word bars, pauses, facing the room, what to work on and what went well, all counted on the Mac.">
-  <g id="b1"><rect class="panel" x="6" y="8" width="296" height="324" rx="12"/>
-    <rect class="hair" x="22" y="26" width="264" height="206" rx="8" fill="var(--bg-soft)"/>
-    <rect x="38" y="42" width="170" height="150" rx="8" fill="#fff" stroke="var(--line)"/><rect x="50" y="56" width="70" height="9" rx="3" fill="var(--ink)"/><rect class="hair" x="50" y="76" width="140" height="6" rx="3"/><rect class="hair" x="50" y="92" width="120" height="6" rx="3"/><rect class="hair" x="50" y="108" width="136" height="6" rx="3"/>
-    <circle cx="226" cy="156" r="30" fill="#fff" stroke="var(--ink)" stroke-width="2"/><circle class="lime" cx="226" cy="150" r="9"/><path class="deep" d="M206 182v-4q0-14 20-14t20 14v4a30 30 0 0 1-40 0z"/>
-    <rect id="recbar" x="56" y="196" width="188" height="30" rx="15" fill="#fff" stroke="var(--ink)" stroke-width="1.8"/><circle cx="76" cy="211" r="5" fill="var(--ink)"/><text class="t m" x="88" y="215" style="font-size:13px">REC</text><rect x="146" y="204" width="4" height="14" rx="2" fill="var(--ink)"/><rect x="154" y="204" width="4" height="14" rx="2" fill="var(--ink)"/><rect x="214" y="205" width="12" height="12" rx="3" fill="var(--ink)"/>
-    <text class="t" x="22" y="262" style="font-size:16px">Record</text></g>
-  <g id="a1"><path class="gstroke" d="M308 170H326" stroke-width="2.5"/><path d="M324 163l9 7-9 7z" fill="var(--brand-green)"/></g>
-  <g id="b2"><rect class="panel" x="332" y="8" width="296" height="324" rx="12"/>
-    <rect x="332" y="8" width="64" height="324" rx="12" fill="var(--bg-soft)" stroke="var(--ink)" stroke-width="1.8"/><rect x="380" y="9" width="16" height="322" fill="var(--bg-soft)"/><path d="M396 9V331" stroke="var(--line)"/>
-    <rect x="342" y="30" width="44" height="8" rx="4" class="hair"/><rect x="342" y="48" width="44" height="14" rx="5" fill="var(--green-soft)" stroke="var(--brand-green)"/><rect x="342" y="72" width="44" height="8" rx="4" class="hair"/><rect x="342" y="90" width="44" height="8" rx="4" class="hair"/>
-    <text class="t" x="410" y="32" style="font-size:14px">Sessions</text>
-    <rect x="410" y="44" width="68" height="46" rx="8" fill="#fff" stroke="var(--ink)" stroke-width="1.5"/><rect x="416" y="50" width="56" height="22" rx="4" class="hair"/><rect x="416" y="78" width="38" height="5" rx="2.5" class="hair"/>
-    <rect x="486" y="44" width="68" height="46" rx="8" fill="#fff" stroke="var(--brand-green)" stroke-width="2.2"/><rect x="492" y="50" width="56" height="22" rx="4" fill="var(--green-soft)"/><rect x="492" y="78" width="38" height="5" rx="2.5" class="hair"/>
-    <rect x="562" y="44" width="56" height="46" rx="8" fill="#fff" stroke="var(--line)"/><rect x="568" y="50" width="44" height="22" rx="4" class="hair"/>
-    <rect x="410" y="108" width="208" height="34" rx="17" fill="var(--bg-soft)" stroke="var(--line)"/><rect x="414" y="112" width="100" height="26" rx="13" fill="#fff" stroke="var(--ink)" stroke-width="1.5"/><text class="t" x="464" y="130" text-anchor="middle" style="font-size:13px">Watch</text><text class="t g" x="566" y="130" text-anchor="middle" style="font-size:13px">Edit</text>
-    <rect class="hair" x="410" y="156" width="208" height="62" rx="8" fill="var(--bg-soft)"/>
-    <g id="film" fill="#fff" stroke="var(--line)"><rect x="414" y="162" width="32" height="50" rx="3"/><rect x="450" y="162" width="32" height="50" rx="3"/><rect x="486" y="162" width="32" height="50" rx="3"/><rect x="522" y="162" width="32" height="50" rx="3"/><rect x="558" y="162" width="32" height="50" rx="3"/><rect x="594" y="162" width="20" height="50" rx="3"/></g>
-    <rect id="trim" x="436" y="156" width="134" height="62" rx="6" fill="none" stroke="var(--brand-green)" stroke-width="3"/><rect id="th1" x="432" y="170" width="8" height="34" rx="3" fill="var(--brand-green)"/><rect id="th2" x="566" y="170" width="8" height="34" rx="3" fill="var(--brand-green)"/>
-    <text class="t" x="410" y="262" style="font-size:16px">Watch or edit</text></g>
-  <g id="a2"><path class="gstroke" d="M634 170H652" stroke-width="2.5"/><path d="M650 163l9 7-9 7z" fill="var(--brand-green)"/></g>
-  <g id="b3"><rect class="panel" x="658" y="8" width="296" height="324" rx="12" style="stroke:var(--brand-green);stroke-width:2.2"/>
-    <text class="t g" x="676" y="34" style="font-size:15px">Get feedback</text>
-    <path d="M684 120A38 38 0 0 1 760 120" fill="none" stroke="var(--line)" stroke-width="10" stroke-linecap="round"/><path d="M696 94A38 38 0 0 1 748 94" fill="none" stroke="var(--accent-lime)" stroke-width="10" stroke-linecap="round"/>
-    <line id="needle" x1="722" y1="120" x2="722" y2="88" stroke="var(--brand-deep)" stroke-width="3.5" stroke-linecap="round"/><circle cx="722" cy="120" r="5" fill="var(--brand-deep)"/><text class="t" x="722" y="146" text-anchor="middle" style="font-size:13px">Pace</text>
-    <text class="t" x="786" y="66" style="font-size:13px">Filler words</text><g class="bars"><rect x="786" y="74" width="140" height="8" rx="4" fill="var(--brand-green)"/></g>
-    <text class="t" x="786" y="104" style="font-size:13px">Pauses</text><g class="bars"><rect x="786" y="112" width="84" height="8" rx="4" fill="var(--brand-green)"/></g>
-    <text class="t" x="786" y="142" style="font-size:13px">Facing the room</text><g class="bars"><rect x="786" y="150" width="110" height="8" rx="4" fill="var(--brand-green)"/></g>
-    <path d="M676 176H936" stroke="var(--line)"/>
-    <path d="M678 192v16M678 192h13l-3 5 3 5h-13" fill="var(--net)" stroke="var(--ink)" stroke-width="1.5"/><text class="t" x="700" y="204" style="font-size:13px">What to work on</text><rect class="hair" x="700" y="214" width="200" height="6" rx="3"/>
-    <circle cx="684" cy="244" r="7" fill="var(--brand-green)"/><path d="M680 244l3 3 5-6" stroke="#fff" stroke-width="1.8" fill="none"/><text class="t" x="700" y="248" style="font-size:13px">What went well</text><rect class="hair" x="700" y="258" width="170" height="6" rx="3"/>
-    <text class="t m g" id="m1" x="676" y="306" style="font-size:12.5px">All counted on your Mac.</text></g>
-</svg>
-    </div>
-    <ol class="steps">
-      <li><h3>Record</h3><p>Start recording, no meeting needed.</p></li>
-      <li><h3>Watch or edit</h3><p>Trim and cut in Sessions.</p></li>
-      <li><h3>Get feedback</h3><p>A report, counted on your Mac. A written summary from your own agent is optional and off by default.</p></li>
-    </ol>
-  </div>
-</section>
-
-<!-- Scene 5: private -->
-<section class="private" id="private" aria-label="Private by design">
-  <div class="wrap private-in">
-    <div class="fade">
-      <h2>Private by design.</h2>
-      <p class="lede">Your picture, recording and counts stay on your Mac. Only these things leave it.</p>
-      <div class="lists">
-        <div class="out"><h3>Leaves your Mac</h3><ul><li>Zoom, for the meeting</li><li>The update check</li><li>The Report button</li><li>Anonymous analytics</li></ul></div>
-        <div class="opt"><h3>Only if you switch it on</h3><ul><li>YouTube upload</li><li>Cues lookups</li><li>Your own agent</li></ul></div>
-      </div>
-      <p class="actions" style="margin-top:24px"><a class="textlink" href="how-it-works.html">How it works &rarr;</a></p>
-    </div>
-    <div class="glance fade"><svg id="glance" viewBox="0 0 520 220" role="img" aria-label="Stays on your Mac versus leaves it. Green arrows inside the Mac: the picture, recording, transcript and feedback counts. Amber arrows out to Zoom, and, only if you switch them on, YouTube and Cues lookups."><defs><marker id="g1" markerWidth="9" markerHeight="9" refX="7" refY="4" orient="auto" markerUnits="userSpaceOnUse"><path d="M0,0 L8,4 L0,8 z" fill="#2f6118"/></marker><marker id="g2" markerWidth="9" markerHeight="9" refX="7" refY="4" orient="auto" markerUnits="userSpaceOnUse"><path d="M0,0 L8,4 L0,8 z" fill="#B9770E"/></marker></defs><rect x="10" y="10" width="300" height="200" rx="14" fill="#f9fafb" stroke="#2f6118" stroke-width="2"/><text x="26" y="32" font-size="11" font-weight="700" fill="#2f6118" font-family="ui-monospace, SF Mono, Menlo, monospace" letter-spacing=".06em">STAYS ON YOUR MAC</text><g font-size="12" font-weight="700" fill="#101828"><rect x="26" y="46" width="110" height="34" rx="8" fill="#fff" stroke="#98a2b3"/><text x="81" y="68" text-anchor="middle">Picture</text><rect x="174" y="46" width="120" height="34" rx="8" fill="#fff" stroke="#98a2b3"/><text x="234" y="68" text-anchor="middle">Recording</text><rect x="26" y="142" width="110" height="34" rx="8" fill="#fff" stroke="#98a2b3"/><text x="81" y="164" text-anchor="middle">Transcript</text><rect x="174" y="142" width="120" height="34" rx="8" fill="#fff" stroke="#98a2b3"/><text x="234" y="164" text-anchor="middle">Feedback</text></g><line x1="138" y1="63" x2="170" y2="63" stroke="#2f6118" stroke-width="2.2" marker-end="url(#g1)"/><line x1="234" y1="82" x2="234" y2="138" stroke="#2f6118" stroke-width="2.2" marker-end="url(#g1)"/><line x1="172" y1="159" x2="140" y2="159" stroke="#2f6118" stroke-width="2.2" marker-end="url(#g1)"/><line x1="312" y1="63" x2="388" y2="63" stroke="#B9770E" stroke-width="2.2" marker-end="url(#g2)"/><line x1="312" y1="110" x2="388" y2="110" stroke="#B9770E" stroke-width="2.2" stroke-dasharray="5 4" marker-end="url(#g2)"/><line x1="312" y1="159" x2="388" y2="159" stroke="#B9770E" stroke-width="2.2" stroke-dasharray="5 4" marker-end="url(#g2)"/><g font-size="12" font-weight="700" fill="#96600A"><rect x="392" y="46" width="118" height="34" rx="8" fill="#fff" stroke="#B9770E" stroke-width="1.8"/><text x="451" y="68" text-anchor="middle">Zoom meeting</text><rect x="392" y="93" width="118" height="34" rx="8" fill="#fff" stroke="#B9770E" stroke-width="1.8" stroke-dasharray="5 4"/><text x="451" y="115" text-anchor="middle">YouTube</text><rect x="392" y="142" width="118" height="34" rx="8" fill="#fff" stroke="#B9770E" stroke-width="1.8" stroke-dasharray="5 4"/><text x="451" y="164" text-anchor="middle">Cues lookups</text></g><text x="450" y="32" font-size="11" font-weight="700" text-anchor="middle" fill="#96600A" font-family="ui-monospace, SF Mono, Menlo, monospace" letter-spacing=".06em">LEAVES IT</text><text x="451" y="198" font-size="11" text-anchor="middle" fill="#96600A">dashed = off by default</text></svg></div>
-  </div>
-</section>
-
-<!-- Scene 6: small band -->
-<section class="band" aria-label="More">
+<section class="hero" aria-label="Greenroom overview">
   <div class="wrap">
-    <h2 class="fade" style="font-size:clamp(20px,2.4vw,24px)">And the small things.</h2>
-    <div class="band-grid">
-      <div class="fade"><h3>Cues <span class="tag">Beta</span></h3><p>Finds the book or quote someone mentions. Needs macOS 26.</p></div>
-      <div class="fade"><h3>YouTube</h3><p>Upload a recording, unlisted or private. Off by default.</p></div>
-      <div class="fade"><h3>Scheduled meetings</h3><p>Start, create and edit yours. Host only.</p></div>
-      <div class="fade"><h3>Transfer settings</h3><p>Export one settings file, import it on another Mac.</p></div>
-      <div class="fade"><h3>Your shortcuts</h3><p>Rebind any of them in Settings.</p></div>
+    <h1>Host your meeting, record it, get better.</h1>
+    <p class="lede">One Mac app for the whole loop: start the Zoom meeting, put your screen and camera in one picture, then learn from the recording.</p>
+    <div class="actions">
+      <a class="btn" href="https://github.com/Sibhimanyu/greenroom/releases/download/v1.8.1/Greenroom-1.8.1.dmg">Download for Mac</a>
+      <a class="textlink" href="guide.html">Read the guide</a>
+    </div>
+  </div>
+  <div class="hero-shot"><img class="shot" src="img/app/web/look-03.png" width="1600" height="613" alt="Greenroom home window: Start Meeting, with a live preview of the slide and the presenter cut out in the corner"></div>
+</section>
+
+<section class="band soft" id="start" aria-labelledby="h-start">
+  <div class="wrap">
+    <div class="head rise"><h2 id="h-start">Start it.</h2>
+    <p class="lede">Sign in with Zoom once. No developer apps to set up. End confirms in one click.</p></div>
+    <div class="rise"><div class="seq seq-start" id="seq-start"><div class="frames"><img class="frame" src="img/app/web/start-01-island.png" width="819" height="212" alt="The island at step 1 of 5 while the meeting starts" loading="lazy"><img class="frame" src="img/app/web/start-02-island.png" width="819" height="212" alt="The island at step 3 of 5" loading="lazy"><img class="frame" src="img/app/web/start-03-island.png" width="819" height="212" alt="The island at step 5 of 5" loading="lazy"><img class="frame" src="img/app/web/start-04-island-live.png" width="819" height="212" alt="The island showing Live" loading="lazy"><img class="frame" src="img/app/web/start-05-control-bar.png" width="1470" height="88" alt="The live control bar with Meeting, Record, chat, 18 people and End" loading="lazy"><img class="frame on" src="img/app/web/start-06-end-confirm.png" width="1470" height="88" alt="End pressed: End the meeting for everyone? with Keep going and End for everyone" loading="lazy"></div><div class="seq-nav" role="group" aria-label="Frames"><button type="button" data-i="0">Starting</button><button type="button" data-i="1">Step 3 of 5</button><button type="button" data-i="2">Step 5 of 5</button><button type="button" data-i="3">Live</button><button type="button" data-i="4">Control bar</button><button type="button" data-i="5" aria-current="true">End</button></div><p class="seq-cap" aria-live="polite"><span>The island counts the steps while Greenroom opens the meeting.</span><span>Step 3 of 5.</span><span>Step 5 of 5.</span><span>Live. The meeting is running.</span><span>Your control bar stays out of the way.</span><span class="on">End asks once, for everyone, then it is done.</span></p></div></div>
+  </div>
+</section>
+
+<section class="band" id="look" aria-labelledby="h-look">
+  <div class="wrap split">
+    <div class="head rise">
+      <h2 id="h-look">Look right.</h2>
+      <p class="lede">Your screen and camera become one picture. Pick the shape of you.</p>
+      <ul class="points">
+        <li><strong>A draggable bubble.</strong> Cutout and presenter put you in front of the slide.</li>
+        <li><strong>Switch to the camera you face.</strong> The picture follows.</li>
+        <li><strong>No OBS, no virtual camera.</strong></li>
+      </ul>
+    </div>
+    <div class="rise"><div class="seq seq-look" id="seq-look"><div class="frames"><img class="frame" src="img/app/web/look-01.png" width="1600" height="613" alt="Home preview with the camera as a circle" loading="lazy"><img class="frame" src="img/app/web/look-02.png" width="1600" height="613" alt="Home preview with the camera as a rounded square" loading="lazy"><img class="frame" src="img/app/web/look-03.png" width="1600" height="613" alt="Home preview with the cutout look" loading="lazy"><img class="frame on" src="img/app/web/look-04.png" width="1600" height="578" alt="Home preview with the presenter look" loading="lazy"></div><div class="seq-nav" role="group" aria-label="Frames"><button type="button" data-i="0">Circle</button><button type="button" data-i="1">Rounded</button><button type="button" data-i="2">Cutout</button><button type="button" data-i="3" aria-current="true">Presenter</button></div></div></div>
+  </div>
+</section>
+
+<section class="band soft" id="run" aria-labelledby="h-run">
+  <div class="wrap">
+    <div class="head rise"><h2 id="h-run">Run it.</h2>
+    <p class="lede">Everything you need mid-meeting, in a bar that stays out of the picture.</p></div>
+    <div class="row5 rise">
+      <div><h3>Its own meeting window</h3><p>Chat and people live beside your slides.</p></div>
+      <div><h3>Nine views</h3><p>Change what everyone sees in a click.</p></div>
+      <div><h3>Draw on screen</h3><p>Point at what matters, then wipe it clean.</p></div>
+      <div><h3>Pause</h3><p>Stop the recording without ending the meeting.</p></div>
+      <div><h3>Clips</h3><p>Mark a moment while it is happening.</p></div>
     </div>
   </div>
 </section>
 
-<!-- Scene 7: download -->
-<section class="cta" id="download" aria-label="Download">
+<section class="band" id="better" aria-labelledby="h-better">
   <div class="wrap">
-    <h2 class="fade">Host it. Record it. Get better.</h2>
-    <p class="lede fade" style="margin-left:auto;margin-right:auto">Free and open source.</p>
-    <div class="actions fade">
+    <div class="head rise"><h2 id="h-better">Then get better.</h2>
+    <p class="lede">Every meeting lands in Sessions. Watch it, trim it, share it.</p></div>
+    <div class="strip">
+      <figure class="rise"><img class="shot" src="img/app/web/sessions.png" width="1280" height="962" alt="Sessions page with five sample meetings, two marked Feedback ready" loading="lazy"><figcaption><strong>Sessions</strong>Every recording, searchable by what was said.</figcaption></figure>
+      <figure class="rise"><img class="shot" src="img/app/web/session-watch.png" width="1280" height="962" alt="A session Watch page" loading="lazy"><figcaption><strong>Watch</strong>Replay it with the transcript beside it.</figcaption></figure>
+      <figure class="rise"><img class="shot" src="img/app/web/editor.png" width="1280" height="962" alt="The editor with a filmstrip of the recording" loading="lazy"><figcaption><strong>Editor</strong>Cut it down on a filmstrip.</figcaption></figure>
+    </div>
+    <div class="reports-head rise"><h2>Get feedback.</h2>
+    <p class="lede">Counted on your Mac: facing the room, pacing, filler words. An agent can add written notes. It is optional and off by default.</p></div>
+    <div class="reports">
+      <figure class="rise"><img class="shot" src="img/app/web/report-facing-pacing.png" width="1280" height="962" alt="Feedback report with Facing the room and the Pacing gauge open" loading="lazy"><figcaption><strong>Facing the room and pacing</strong>Where you looked, and how fast you spoke.</figcaption></figure>
+      <figure class="rise"><img class="shot" src="img/app/web/report-fillers.png" width="1280" height="962" alt="Feedback report with Filler words open and rows for the other measures" loading="lazy"><figcaption><strong>Filler words</strong>Every measure opens to the moments behind it.</figcaption></figure>
+    </div>
+  </div>
+</section>
+
+<section class="band soft" id="private" aria-labelledby="h-private">
+  <div class="wrap">
+    <div class="head rise"><h2 id="h-private">Private by design.</h2>
+    <p class="lede">Recordings and feedback stay on your Mac. A short list of things can leave it.</p></div>
+    <div class="lists rise">
+      <div class="list local"><h3>Stays on your Mac</h3>
+        <ul><li><strong>Recordings and transcripts.</strong></li><li><strong>Feedback numbers,</strong> counted on your Mac.</li><li><strong>Your camera and screen,</strong> composed locally.</li></ul></div>
+      <div class="list net"><h3>Leaves it</h3>
+        <ul><li><strong>Zoom,</strong> for the meeting itself.</li><li><strong>The update check.</strong></li><li><strong>The Report button,</strong> when you press it.</li><li><strong>Anonymous analytics.</strong></li></ul>
+        <p class="sub">ONLY IF YOU TURN IT ON</p>
+        <ul><li><strong>YouTube upload.</strong></li><li><strong>Cues lookups.</strong></li><li><strong>Your own agent.</strong></li></ul></div>
+    </div>
+    <p class="actions rise"><a class="textlink" href="how-it-works.html">How it works &rarr;</a></p>
+    <div class="more rise">
+      <div><h3>Cues <span class="tag">Beta</span><span class="tag">macOS 26</span></h3>Find the moment you said it.</div>
+      <div><h3>YouTube</h3>Upload a session when you choose to.</div>
+      <div><h3>Scheduled <span class="tag">host-only</span></h3>Start your scheduled meetings from Greenroom.</div>
+      <div><h3>Transfer</h3>Move your sessions to another Mac.</div>
+    </div>
+  </div>
+</section>
+
+<section class="band cta" id="download" aria-label="Download">
+  <div class="wrap">
+    <h2 class="rise">Host it. Record it. Get better.</h2>
+    <p class="lede rise" style="margin-left:auto;margin-right:auto">Free and open source.</p>
+    <div class="actions rise">
       <a class="btn" href="https://github.com/Sibhimanyu/greenroom/releases/download/v1.8.1/Greenroom-1.8.1.dmg">Download for Mac</a>
       <a class="textlink" href="https://github.com/Sibhimanyu/greenroom/releases">All releases &rarr;</a>
     </div>
-    <ul class="reqs fade">
+    <ul class="reqs rise">
       <li><strong>macOS 14 or later.</strong> Cues, summaries and on-Mac written feedback need macOS 26.</li>
       <li>Greenroom is not notarized yet. The first time, open it with <strong>Open Anyway</strong> in System Settings, Privacy &amp; Security.</li>
-      <li>Releases are zip files, with a disk image when one exists.</li>
     </ul>
-    <p class="fine fade" style="margin-top:24px">Looking for the launch film? <a href="1.0.html">Greenroom 1.0</a></p>
   </div>
 </section>
 </main>
@@ -402,153 +270,50 @@
 <footer>
   <div class="wrap footer-inner">
     <span>Greenroom. Built for the morning readers at Zoho Schools.</span>
-    <span><a href="guide.html">Guide</a> · <a href="how-it-works.html">Privacy &amp; safety</a> · <a href="privacy.html">Privacy policy</a> · <a href="1.0.html">1.0 launch</a> · <a href="timeline.html">Timeline</a> · <a href="brand.html">Brand</a> · <a href="https://github.com/Sibhimanyu/greenroom">GitHub</a> · <a href="https://github.com/Sibhimanyu/greenroom/releases">Releases</a> · <a href="https://github.com/Sibhimanyu/greenroom#readme">README</a></span>
+    <span><a href="brand.html">Brand</a> &nbsp; <a href="privacy.html">Privacy policy</a> &nbsp; <a href="timeline.html">Timeline</a> &nbsp; <a href="guide.html">Guide</a> &nbsp; <a href="https://github.com/Sibhimanyu/greenroom">GitHub</a> &nbsp; <a href="https://github.com/Sibhimanyu/greenroom/releases">Releases</a> &nbsp; <a href="1.0.html">1.0</a></span>
   </div>
 </footer>
 
-<script src="vendor/gsap/gsap.min.js"></script>
-<script src="vendor/gsap/ScrollTrigger.min.js"></script>
 <script src="download-link.js" defer></script>
 <script>
+
+</script>
+<script>
+// Sequences flip on their own once they scroll into view, one frame at a time,
+// stop on the last frame, and replay on re-entry. Without JS, or with reduced
+// motion, the markup already shows the last frame of each.
 (function () {
-  // Build the rolling buffer segments (static markup stays the end state).
-  var segs = document.getElementById("segs"), NS = "http://www.w3.org/2000/svg";
-  for (var i = 0; i < 34; i++) {
-    var r = document.createElementNS(NS, "rect");
-    r.setAttribute("x", 20 + i * 25); r.setAttribute("y", 372); r.setAttribute("width", 21); r.setAttribute("height", 22); r.setAttribute("rx", 3);
-    segs.appendChild(r);
-  }
-  // Phone nav starts at the current page.
-  var cur = document.querySelector(".nav-links [aria-current]");
-  if (cur) { var row = cur.parentElement; if (row.scrollWidth > row.clientWidth) row.scrollLeft = cur.offsetLeft - (row.clientWidth - cur.offsetWidth) / 2; }
+  var calm = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  function $$(s, r) { return Array.prototype.slice.call((r || document).querySelectorAll(s)); }
 
-  // Animation is an enhancement. No GSAP, or reduced motion: the page stays
-  // as written, fully built.
-  if (!window.gsap || !window.ScrollTrigger) return;
-  gsap.registerPlugin(ScrollTrigger);
-  var $ = function (s) { return document.querySelector(s); };
-  var $$ = function (s) { return gsap.utils.toArray(s); };
-  var mm = gsap.matchMedia();
+  $$(".seq").forEach(function (seq) {
+    var frames = $$(".frame", seq), btns = $$(".seq-nav button", seq), caps = $$(".seq-cap span", seq);
+    var last = frames.length - 1, timer = null, played = false;
+    function show(i) {
+      frames.forEach(function (f, k) { f.classList.toggle("on", k === i); });
+      caps.forEach(function (c, k) { c.classList.toggle("on", k === i); });
+      btns.forEach(function (b, k) { if (k === i) b.setAttribute("aria-current", "true"); else b.removeAttribute("aria-current"); });
+    }
+    function stop() { clearInterval(timer); timer = null; }
+    btns.forEach(function (b, k) { b.addEventListener("click", function () { stop(); show(k); }); });
+    if (calm || !("IntersectionObserver" in window)) return;
+    show(0);
+    new IntersectionObserver(function (entries) {
+      var e = entries[0];
+      if (e.isIntersecting && !played) {
+        played = true; stop(); var i = 0; show(0);
+        timer = setInterval(function () { i++; show(i); if (i >= last) stop(); }, 1100);
+      } else if (!e.isIntersecting) { played = false; stop(); }
+    }, { threshold: 0.6 }).observe(seq);
+  });
 
-  function fades(sel) {
-    gsap.set(sel, { autoAlpha: 0, y: 24 });
-    ScrollTrigger.batch(sel, { start: "top 90%", once: true, onEnter: function (els) {
-      gsap.to(els, { autoAlpha: 1, y: 0, duration: .7, ease: "power2.out", stagger: .1, overwrite: true });
-    } });
-  }
-
-  mm.add({ desk: "(min-width: 761px) and (prefers-reduced-motion: no-preference)", phone: "(max-width: 760px) and (prefers-reduced-motion: no-preference)" }, function (ctx) {
-    var c = ctx.conditions;
-    if (c.phone) { fades(".cap:not(#c0), .fade"); return; }
-
-    var stage = $("#stage"), better = $("#better");
-    stage.classList.add("pin"); better.classList.add("pin");
-
-    // ---- Stage: one Mac, scenes 0 to 3 ----
-    var chips = $$("[data-chip]");
-    var swap = function (tl, out, inn, at) {
-      tl.to(out, { autoAlpha: 0, y: -16, duration: .5, ease: "power2.in" }, at)
-        .fromTo(inn, { autoAlpha: 0, y: 20 }, { autoAlpha: 1, y: 0, duration: .6, ease: "power2.out" }, at + .4);
-    };
-    var tl = gsap.timeline({ defaults: { ease: "power2.inOut" }, scrollTrigger: {
-      trigger: stage, start: "top " + getComputedStyle(document.documentElement).getPropertyValue("--nav-h").trim(),
-      end: function () { return "+=" + Math.round(window.innerHeight * 7.5); }, pin: true, scrub: .8, anticipatePin: 1, invalidateOnRefresh: true } });
-
-    // 0 hero: opens half-built (page, bubble, meeting, chat already there)
-    tl.set(chips, { opacity: .4 }, 0).set(chips[0], { opacity: 1 }, 0)
-      .to("#t-doc", { y: 0, duration: 1 }, 0);
-    // 1 you on your screen
-    swap(tl, "#c0", "#c1", 3.2);
-    tl.to("#t-meet, #t-chat", { autoAlpha: 0, x: 260, duration: 1, stagger: .15 }, 3.4)
-      .to("#merge", { opacity: 1, duration: 1 }, 4.2)
-      .to("#cursor", { opacity: 1, duration: .4 }, 5.2)
-      .to("#bubble", { x: -190, y: -140, duration: 1.8 }, 5.6)
-      .to("#bubble", { x: 0, y: 0, duration: 1.3 }, 7.5)
-      .to("#cursor", { opacity: 0, duration: .4 }, 8.7)
-      .to("#merge", { opacity: 0, duration: .6 }, 8.7)
-      .to(".bub, .bub-c", { attr: { rx: 0 }, duration: .6 }, 9)
-      .to(chips[0], { opacity: .4, duration: .3 }, 9).to(chips[1], { opacity: 1, duration: .3 }, 9)
-      .to(".bub, .bub-c", { attr: { rx: 14 }, duration: .6 }, 10)
-      .to(chips[1], { opacity: .4, duration: .3 }, 10).to(chips[2], { opacity: 1, duration: .3 }, 10)
-      .to(".bub", { opacity: 0, duration: .5 }, 11)
-      .to(".bub-c", { attr: { x: -40, y: -40, width: 80, height: 76, rx: 0 }, duration: .5 }, 11)
-      .to(chips[2], { opacity: .4, duration: .3 }, 11).to(chips[3], { opacity: 1, duration: .3 }, 11)
-      .to("#t-doc", { scale: .6, svgOrigin: "48 60", duration: 1.2 }, 12)
-      .to("#bubble", { x: 182, y: -12, scale: 2.4, duration: 1.2 }, 12)
-      .to(chips[3], { opacity: .4, duration: .3 }, 12).to(chips[4], { opacity: 1, duration: .3 }, 12)
-      .to("#t-doc", { scale: 1, duration: 1 }, 14).to("#bubble", { x: 0, y: 0, scale: 1, duration: 1 }, 14)
-      .to(".bub", { opacity: 1, duration: .5 }, 14.5)
-      .to(".bub-c", { attr: { x: -36, y: -36, width: 72, height: 72, rx: 36 }, duration: .5 }, 14.5)
-      .to(".bub", { attr: { rx: 36 }, duration: .5 }, 14.5)
-      .to(chips, { opacity: 1, duration: .4 }, 15.2)
-      .to("#cams", { opacity: 1, duration: .6 }, 15.2)
-      .fromTo("#camring", { x: 0 }, { x: 102, duration: .6 }, 16.2)
-      .to("#cams", { opacity: 0, duration: .6 }, 17.4);
-    // 2 one click to live
-    swap(tl, "#c1", "#c2", 17.2);
-    tl.to("#desk, #bubble", { opacity: .08, duration: .6 }, 17.8)
-      .to("#signin", { opacity: 1, duration: .6 }, 18)
-      .fromTo("#tick", { strokeDasharray: 1, strokeDashoffset: 1 }, { strokeDashoffset: 0, duration: .8 }, 18.6)
-      .to("#signin", { opacity: 0, duration: .6 }, 19.8)
-      .to("#start", { opacity: 1, duration: .6 }, 20.2)
-      .to("#startbtn", { scale: .93, svgOrigin: "293 308", duration: .3, ease: "power2.out" }, 21)
-      .to("#startbtn", { scale: 1, svgOrigin: "293 308", duration: .3 }, 21.3)
-      .to("#start", { opacity: 0, duration: .5 }, 21.8)
-      .to("#desk, #bubble", { opacity: 1, duration: .6 }, 21.8)
-      .fromTo("#t-meet", { autoAlpha: 0, x: 260 }, { autoAlpha: 1, x: 0, duration: 1.2, immediateRender: false }, 22)
-      .fromTo("#t-chat", { autoAlpha: 0, x: 260, y: 60 }, { autoAlpha: 1, x: 0, y: 0, duration: 1.2, immediateRender: false }, 22.4)
-      .to("#island", { opacity: 1, duration: .5 }, 21.8)
-      .fromTo("#ring", { strokeDashoffset: 1 }, { strokeDashoffset: 0, duration: 2.4 }, 22)
-      .to($$(".isl")[0], { opacity: 0, duration: .3 }, 22.6).to($$(".isl")[1], { opacity: 1, duration: .3 }, 22.8)
-      .to($$(".isl")[1], { opacity: 0, duration: .3 }, 23.6).to($$(".isl")[2], { opacity: 1, duration: .3 }, 23.8)
-      .to("#island", { opacity: 0, duration: .5 }, 24.6)
-      .fromTo("#bar", { autoAlpha: 0, y: 14 }, { autoAlpha: 1, y: 0, duration: .7 }, 24.8)
-      .to("#bar", { opacity: 0, duration: .3 }, 26).to("#confirm", { opacity: 1, duration: .3 }, 26)
-      .to("#confirm", { opacity: 0, duration: .3 }, 27.2).to("#bar", { opacity: 1, duration: .3 }, 27.2);
-    // 3 run it your way
-    swap(tl, "#c2", "#c3", 27.6);
-    tl.to("#t-doc, #t-meet, #t-chat, #bubble", { opacity: .1, duration: .8 }, 28.2)
-      .to("#grid", { opacity: 1, duration: .8 }, 28.2)
-      .fromTo("#cells rect", { scale: .9, transformOrigin: "50% 50%" }, { scale: 1, duration: .8, stagger: .05 }, 28.4)
-      .to("#pen", { opacity: 1, duration: .1 }, 29.8)
-      .fromTo("#pen", { strokeDasharray: 1, strokeDashoffset: 1 }, { strokeDashoffset: 0, duration: 1.2 }, 29.8)
-      .to("#penkey", { opacity: 1, duration: .4 }, 29.8).to("#penkey", { opacity: 0, duration: .4 }, 31.4)
-      .to("#rec", { opacity: 0, duration: .3 }, 31.6).to("#paused", { opacity: 1, duration: .3 }, 31.6)
-      .to("#pausekey", { opacity: 1, duration: .4 }, 31.6).to("#pausekey", { opacity: 0, duration: .4 }, 33)
-      .fromTo("#segs", { x: 0 }, { x: -250, duration: 3.6, ease: "power1.inOut" }, 31.6)
-      .fromTo("#buffer text", { opacity: 0 }, { opacity: 1, duration: .4, stagger: .2 }, 31.8)
-      .to("#hl", { opacity: .4, attr: { x: 580, width: 40 }, duration: .1 }, 32.4)
-      .to("#hl", { attr: { x: 500, width: 120 }, duration: .7 }, 32.5)
-      .to("#hl", { attr: { x: 380, width: 240 }, duration: .7 }, 33.4)
-      .to("#hl", { attr: { x: 20, width: 600 }, duration: .8 }, 34.3)
-      .to({}, { duration: 1 }, 35.2);
-
-    // ---- Scene 4: record, edit, get feedback ----
-    var bt = gsap.timeline({ defaults: { ease: "power2.inOut" }, scrollTrigger: {
-      trigger: better, start: "top " + getComputedStyle(document.documentElement).getPropertyValue("--nav-h").trim(),
-      end: function () { return "+=" + Math.round(window.innerHeight * 2.4); }, pin: true, scrub: .8, anticipatePin: 1, invalidateOnRefresh: true } });
-    bt.fromTo("#b1", { autoAlpha: 0, y: 24 }, { autoAlpha: 1, y: 0, duration: 1 }, 0)
-      .fromTo("#recbar", { y: 14, autoAlpha: 0 }, { y: 0, autoAlpha: 1, duration: .8 }, .6)
-      .fromTo("#a1", { autoAlpha: 0 }, { autoAlpha: 1, duration: .5 }, 1.8)
-      .fromTo("#b2", { autoAlpha: 0, y: 24 }, { autoAlpha: 1, y: 0, duration: 1 }, 2.4)
-      .fromTo("#trim, #th1, #th2", { x: 0 }, { x: 0, duration: 0 }, 3)
-      .fromTo("#trim", { attr: { x: 414, width: 200 } }, { attr: { x: 436, width: 134 }, duration: 1.2 }, 3.2)
-      .fromTo("#th1", { attr: { x: 410 } }, { attr: { x: 432 }, duration: 1.2 }, 3.2)
-      .fromTo("#th2", { attr: { x: 606 } }, { attr: { x: 566 }, duration: 1.2 }, 3.2)
-      .fromTo("#a2", { autoAlpha: 0 }, { autoAlpha: 1, duration: .5 }, 4.6)
-      .fromTo("#b3", { autoAlpha: 0, y: 24 }, { autoAlpha: 1, y: 0, duration: 1 }, 5.2)
-      .fromTo("#needle", { rotation: -80, svgOrigin: "722 120" }, { rotation: 18, svgOrigin: "722 120", duration: 1.6, ease: "power3.out" }, 6)
-      .fromTo(".bars rect", { scaleX: 0, transformOrigin: "0% 50%" }, { scaleX: 1, duration: .9, stagger: .25 }, 6.4)
-      .fromTo("#m1", { autoAlpha: 0 }, { autoAlpha: 1, duration: .6 }, 7.6)
-      .to({}, { duration: .8 }, 8);
-    var gsteps = $$(".steps li");
-    bt.fromTo(gsteps, { autoAlpha: 0, y: 16 }, { autoAlpha: 1, y: 0, duration: .8, stagger: 2.6 }, .2);
-
-    // ---- Scenes 5 to 7 ----
-    fades(".fade");
-    gsap.from("#glance line", { opacity: 0, duration: .6, stagger: .2, scrollTrigger: { trigger: "#glance", start: "top 75%", once: true } });
-
-    return function () { stage.classList.remove("pin"); better.classList.remove("pin"); };
+  if (calm || !("IntersectionObserver" in window)) return;
+  var io = new IntersectionObserver(function (es) {
+    es.forEach(function (e) { if (e.isIntersecting) { e.target.classList.remove("pre"); io.unobserve(e.target); } });
+  }, { rootMargin: "0px 0px -8% 0px" });
+  $$(".rise").forEach(function (el) {
+    if (el.getBoundingClientRect().top < window.innerHeight) return;
+    el.classList.add("pre"); io.observe(el);
   });
 })();
 </script>

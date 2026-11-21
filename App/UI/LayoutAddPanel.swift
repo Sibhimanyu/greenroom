@@ -36,7 +36,6 @@ struct LayoutAddPanel: View {
     @State private var query = ""
     @FocusState private var focus: String?
     @FocusState private var searchFocused: Bool
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private static let columns = 4
     private static let tileWidth: CGFloat = 84

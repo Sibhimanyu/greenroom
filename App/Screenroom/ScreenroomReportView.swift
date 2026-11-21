@@ -176,37 +176,6 @@ struct ScreenroomReportView: View {
         }
     }
 
-    /// A number with a name, in the same shape as the reading cards at the
-    /// top: the name first in plain words, then the number and what it is
-    /// out of. It used to be a mono number over a lime capitals label, a
-    /// second visual language for the same kind of fact.
-    private func tile(_ value: String, _ label: String, note: String? = nil) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(label)
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(.secondary)
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Text(value)
-                    .font(.system(size: 26, weight: .semibold))
-                    .monospacedDigit()
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.6)
-                if let note {
-                    Text(note)
-                        .font(.system(size: 13))
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(16)
-        .background(RoundedRectangle(cornerRadius: 10)
-            .fill(Color(nsColor: .controlBackgroundColor)))
-        .overlay(RoundedRectangle(cornerRadius: 10)
-            .strokeBorder(Color(nsColor: .separatorColor).opacity(0.5), lineWidth: 1))
-    }
-
     // MARK: Prose
 
     /// Headed like every other section, and held to a reading measure. At

@@ -115,8 +115,6 @@ struct AnnotationPreviewOverlay: View {
     @State private var editingTextID: UUID?
     @FocusState private var textFocused: UUID?
 
-    private let gold = Color(red: 0.98, green: 0.75, blue: 0.14)
-
     var body: some View {
         let display = videoDisplayRect(container: containerSize, video: vm.displayVideoSize)
         ZStack {

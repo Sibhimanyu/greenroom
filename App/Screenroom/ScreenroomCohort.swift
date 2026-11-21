@@ -175,5 +175,4 @@ struct ScreenroomCohort {
 
     private static func percent(_ value: Double) -> String { "\(Int((value * 100).rounded()))%" }
     private static func oneDecimal(_ value: Double) -> String { String(format: "%.1f", value) }
-    private static func twoDecimals(_ value: Double) -> String { String(format: "%.2f", value) }
 }

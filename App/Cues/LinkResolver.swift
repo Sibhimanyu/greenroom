@@ -581,10 +581,6 @@ actor LinkResolver {
         return words.contains { lowered.range(of: "\\b\($0)", options: .regularExpression) != nil }
     }
 
-    /// How long a preferred source may keep the teacher waiting once a valid
-    /// fallback is already in hand.
-    private static let fastPathSeconds: Double = 1.5
-
     private enum Race {
         case finished(CueCard?)
         /// This leg was cancelled because the other one won.

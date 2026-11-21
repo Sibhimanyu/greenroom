@@ -157,7 +157,6 @@ struct SessionDetailPage<Stage: View, Timeline: View, Work: View, Transcript: Vi
 
     private let gutter: CGFloat = 24
     private let headerHeight: CGFloat = 52
-    private let toolsHeight: CGFloat = 36
     private let gap: CGFloat = 16
 
     var body: some View {

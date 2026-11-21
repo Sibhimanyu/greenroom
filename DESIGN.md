@@ -433,13 +433,15 @@ Ranked by user-visible impact. None of these block anything today.
 2. The DMG background (`Branding/dmg-background.tiff`, drawn by
    `scripts/dmg-background.py`) still sets the retired two-tone lime name.
    Redraw it for the new mark before the next DMG.
-3. Amber diagram labels under 14px move from `--net` to `--net-text` (they
-   currently fail AA body contrast).
+3. ~~Amber diagram labels under 14px move from `--net` to `--net-text`.~~
+   Done: every amber text rule on the site uses `--net-text`; `--net` remains
+   only as a border or fill.
 4. `docs/index.html` h2 scale differs from `docs/how-it-works.html`. Adopt the
    canonical scale above.
 5. Border radii collapse to the four tokens.
 6. Off-scale gaps round to the 4px scale.
-7. `docs/index.html` brand logo links to `href="#"`. Point it at `index.html`.
+7. ~~`docs/index.html` brand logo links to `href="#"`.~~ Done: every page's
+   brand link points at `index.html`.
 
 ## Decisions Log
 

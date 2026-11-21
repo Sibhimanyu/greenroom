@@ -103,6 +103,12 @@ final class HomeTilePanelRulesTests: XCTestCase {
         XCTAssertEqual(MorePanelRules.tabs.filter(\.beta).map(\.id), ["cues"])
         XCTAssertEqual(Set(MorePanelRules.tabs.map(\.id)).count, MorePanelRules.tabs.count)
     }
+
+    func testMoreTabsLeaveOutAccountWhenTheBuildHasNone() {
+        let release = MorePanelRules.tabs(includingAccount: false).map(\.id)
+        XCTAssertEqual(release, ["webcam", "layout", "shortcuts", "zoom", "youtube", "cues", "transfer"])
+        XCTAssertEqual(MorePanelRules.tabs(includingAccount: true).map(\.id).first, "account")
+    }
 }
 
 final class ScreenLayoutPanelRulesTests: XCTestCase {

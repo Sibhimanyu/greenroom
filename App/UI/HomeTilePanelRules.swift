@@ -153,8 +153,21 @@ enum MorePanelRules {
         var beta = false
     }
 
-    static let tabs: [Tab] = [
-        Tab(id: "account", title: "Account", symbol: "person.crop.circle"),
+    /// The Account tab is a mock that only exists in Debug (SettingsView), so
+    /// a Release More panel must not list it.
+    #if DEBUG
+    static let tabs: [Tab] = tabs(includingAccount: true)
+    #else
+    static let tabs: [Tab] = tabs(includingAccount: false)
+    #endif
+
+    static func tabs(includingAccount: Bool) -> [Tab] {
+        (includingAccount ? [account] : []) + common
+    }
+
+    private static let account = Tab(id: "account", title: "Account", symbol: "person.crop.circle")
+
+    private static let common: [Tab] = [
         Tab(id: "webcam", title: "Webcam", symbol: "video.fill"),
         Tab(id: "layout", title: "Layout", symbol: "rectangle.split.2x1"),
         Tab(id: "shortcuts", title: "Shortcuts", symbol: "command"),

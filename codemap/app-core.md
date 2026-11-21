@@ -77,7 +77,7 @@ Chrome-family browsers, DEBUG-only UI tour/film hooks, YouTube upload, and a pla
 
 ## To change X, go to Y
 
-- Change the global hotkey defaults -> `App/ShortcutModel.swift` `ShortcutAction.defaultCombo` (defaults today: start G, end X, record R, pause Opt-Shift-P, draw Opt-Shift-D, snap S, hide meeting Z, clips 1/2/5, shrink-to-bar Cmd-M in-window only).
+- Change the global hotkey defaults -> `App/ShortcutModel.swift` `ShortcutAction.defaultCombo` (defaults today, Option-Command plus: start G, end X, record R, pause Opt-Shift-P, draw Opt-Shift-D, snap S, hide meeting Z, clips 1/2/5, shrink-to-bar Cmd-M in-window only).
 - Add a new shortcut action -> add a case to `ShortcutAction` (never change existing raw values), set its `scope`/`group`/`title` in `ShortcutModel.swift`, then handle it in `ShortcutRuntime.perform(_:)`.
 - Refuse a key combo as reserved -> `ShortcutModel.swift` `ReservedShortcuts.entries`.
 - Change what is asked on End/Close/Quit while live -> `App/LiveExitRules.swift` `LiveExit.closePrompt/endPrompt/quitPrompt`; Dock-click behaviour -> `LiveExit.reopenTarget`.

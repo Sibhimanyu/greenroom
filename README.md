@@ -90,9 +90,11 @@ anytime from the **?** button in the main window. The short version:
      credentials in **plaintext by design** (it's meant for direct
      hand-off between trusted people, e.g. AirDrop) — delete it after
      importing.
-   - **You're setting up from scratch:** you need two free Zoom
-     Marketplace apps (one for the chat/meeting client, one for creating
-     meetings). Step-by-step instructions live in
+   - **You're setting up from scratch:** press **Sign in with Zoom**
+     (Settings → Zoom, or the setup guide). That is all most people need.
+     The advanced route is two free Zoom Marketplace apps of your own (one
+     for the meeting client, one for creating meetings), pasted under
+     *Use your own Zoom apps (advanced)*. Step-by-step instructions live in
      [`Vendor/README.md`](Vendor/README.md).
 2. **Grant permissions as macOS asks for them** (the guide tracks each):
 
@@ -123,12 +125,13 @@ anytime from the **?** button in the main window. The short version:
    (with no agent) the written feedback — runs on your Mac.
    See the [how-it-works page](https://sibhimanyu.github.io/greenroom/how-it-works.html#Analyse).
 
-   **Credential storage note:** the Zoom app credentials are kept in
+   **Credential storage note:** the Sign in with Zoom refresh token is the
+   one secret kept in the macOS Keychain (this device only). Pasted Zoom
+   app credentials and the YouTube client secret and token are kept in
    Greenroom's local preferences (`UserDefaults`) in **plain text** — not
-   encrypted (see `App/Zoom/SecretStore.swift`). Greenroom does not use
-   the macOS Keychain at all. They never leave your Mac except to Zoom
-   itself; the risk is purely local (someone with access to your user
-   account could read them).
+   encrypted (see `App/Zoom/SecretStore.swift`). They never leave your Mac
+   except to Zoom or Google itself; the risk is purely local (someone with
+   access to your user account could read them).
    See the [how-it-works / safety page](https://sibhimanyu.github.io/greenroom/how-it-works.html).
 
 ---
@@ -254,19 +257,37 @@ every other app can only be moved via the Accessibility API. The warning
 has an *Open Settings…* button and clears itself once you flip the
 switch.
 
+### Shortcuts
+Every action with its key, grouped as Session, Meeting, Layout and
+Greenroom. Defaults are ⌥⌘ plus a letter (start G, end X, record R, snap S,
+hide meeting Z, clips 1/2/5), ⌥⇧P to pause and ⌥⇧D to draw; the rest start
+empty. Click a row to record a key, or clear it. Combinations macOS or
+common apps own are refused.
+
 ### Zoom
 
-#### Meeting SDK app
-Client ID + Secret of the Meeting SDK Marketplace app (General App →
-Features → Embed → Meeting SDK). Powers the built-in meeting client and
-the chat window. **Only works in meetings hosted under the same Zoom
-account as these credentials** — see limitations below.
+#### Sign in with Zoom
+Signs you in as yourself in the browser (PKCE, no secret in the app). It
+lists and creates your meetings and fetches the host key. Sign out removes
+the token from the Keychain.
 
-#### Server-to-Server OAuth app
-Account ID / Client ID / Secret of the Server-to-Server OAuth Marketplace
-app — powers "New Meeting". Also here:
+#### Use your own Zoom apps (advanced)
+A fold holding the two Marketplace apps, for when Sign in with Zoom is not
+available to you:
 
+- **Meeting SDK app** — Client ID + Secret of a General App (Features →
+  Embed → Meeting SDK). Powers the built-in meeting client. **Only works in
+  meetings hosted under the same Zoom account as these credentials** — see
+  limitations below.
+- **Server-to-Server OAuth app** — Account ID / Client ID / Secret; powers
+  "New Meeting" and the scheduled list.
+
+#### Meeting
 - **Your display name** — what you appear as in the built-in client.
+- **Use Zoom's own meeting window** (experimental, off by default) —
+  Greenroom's own meeting window, with Gallery and Speaker views, people,
+  chat and controls, is the default. Turning this on lets Zoom draw its own
+  window instead. Takes effect after a relaunch.
 
 ### YouTube
 Off by default. **After a recording**: Do nothing · Ask whether to upload
@@ -279,7 +300,7 @@ Client ID / Secret, press **Connect Google account…** (browser sign-in,
 PKCE + loopback redirect), done. Scope is `youtube.force-ssl` (upload and
 edit own videos; used for uploads and the Sessions window's Rename and
 Delete from YouTube); the
-refresh token lives in `SecretStore` like the Zoom credentials and is
+refresh token lives in `SecretStore` (plain preferences, like the pasted Zoom credentials) and is
 revoked at Google on **Disconnect**. The Sessions window (formerly
 Recordings) keeps each class's YouTube links in its folder's
 `session.json`, lets you rename a class (display name; the dated folder
@@ -314,7 +335,7 @@ precision, so it is off by default.
 Before any request: the phrase must have actually been spoken, a lone word
 that is in the Mac's dictionary is dropped unless it was said as a name
 (so `Tahoma`, `monospace` and `BookFusion` pass while `roads`, `explain`
-and `scarves` do not), and no more than six lookups leave per minute. Mentions matching anyone in the meeting (roster, waiting
+and `scarves` do not), and no more than twelve lookups leave per minute. Mentions matching anyone in the meeting (roster, waiting
 room, you) are dropped and logged as skipped. The surviving phrase is looked up, using a fuller search query the model
 builds from the surrounding sentence (`monospace` → `monospace font`,
 which is the difference between finding nothing and finding the right
@@ -334,8 +355,8 @@ sentence is finalised (a line per sentence, timed from the session start),
 beside the recording and the clips — **Save the transcript with the class**
 turns that off, in which case it lives only in the 90-second matching
 window and is discarded at End Session. Either way it never leaves the Mac;
-the closing log line names the file or the count discarded. Caps: 30
-lookups a class, 20 YouTube, 5 cards shown / 8 kept, 10-minute card
+the closing log line names the file or the count discarded. Caps: 80
+lookups a session, 20 YouTube, 5 cards shown / 12 kept, 30-minute card
 lifetime. **Language** picks the transcription locale (`en_IN` is
 supported; Tamil is not, as of macOS 26). **Try it** listens for two
 minutes and runs the real pipeline: live text, real lookups, real cards. Cards you Open or Send are
@@ -450,9 +471,10 @@ Non-obvious build/runtime notes, learned the hard way:
 
 - **Signing identity must stay stable** across rebuilds (hence the team ID
   in `project.yml`): ad-hoc signing gave every build a fresh identity, so
-  Gatekeeper treats each rebuild as a different app. (Credentials are kept
-  in plain `UserDefaults` via `App/Zoom/SecretStore.swift` — the app uses
-  no Keychain, so there's no keychain prompt to worry about either way.)
+  Gatekeeper treats each rebuild as a different app. (Pasted credentials are
+  kept in plain `UserDefaults` via `App/Zoom/SecretStore.swift`; only the
+  Sign in with Zoom refresh token is a Keychain item, set to the
+  after-first-unlock class so there is no prompt.)
 - **The Zoom SDK's real API names differ from its docs** in several places
   (`ZoomSDK.shared()` not `.sharedSDK()`, chat on
   `ZoomSDKMeetingChatController`, mute flags `isNoVideo`/`isNoAudio`, …)
@@ -466,10 +488,10 @@ Non-obvious build/runtime notes, learned the hard way:
 
 ## Cutting a release
 
-The setup and compact Settings improvements are included on `main` for the
-next release. Its draft notes are in [docs/release/next.md](docs/release/next.md).
-Verify the Release build and pass the completed notes file to
-`scripts/release.sh <version> <notes-file>` when cutting the release.
+Write the release notes in a file and pass it to
+`scripts/release.sh <version> <notes-file>` from `main`; the script builds,
+verifies, writes the appcast and publishes (see `codemap/build-test-release.md`).
+The manual steps below are the same thing by hand.
 
 ```sh
 xcodebuild -project Greenroom.xcodeproj -scheme Greenroom -configuration Release build

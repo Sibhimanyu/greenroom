@@ -34,7 +34,7 @@ Note: `startAsHost(... enableMedia: true)` is the real meeting client (camera an
 | `.../MeetingRoomLedgers.swift` | Memories the SDK lacks: waiting-room arrival order, live reactions | `WaitingRoomLedger`, `WaitingPerson`, `WaitingRoomWords`, `ReactionLedger`, `ReactionWords` |
 | `.../MeetingShareRules.swift` | Share/chat rules and which share is on stage, SDK-free | `ShareRule`, `WhoCanShare`, `ConcurrentShare`, `ChatWho`, `ShareStageSelection`, `ZoomAppLink.make` |
 | `.../ParticipantAvatarStore.swift` | Profile photos (SDK file path -> NSImage cache, publishes changes) | `ParticipantAvatarStore.shared`, `image(for:)`, `avatarPathUpdated` |
-| `.../SecretStore.swift` | Credentials in plain UserDefaults (NO Keychain, by design) | `SecretStore.set/get` |
+| `.../SecretStore.swift` | Pasted credentials and the YouTube token in plain UserDefaults (the Zoom refresh token is the one Keychain item, see `ZoomKeychain`) | `SecretStore.set/get` |
 | `.../ZoomWindowManager.swift` | Accessibility grant prompt/check only | `promptForAccessibilityPermission`, `hasAccessibilityPermission` |
 
 ## How it fits

@@ -2,8 +2,8 @@
 
 The real Zoom **Meeting SDK for macOS** (v7.1.5.84750), already in place -
 copied in from a zip downloaded via your own Zoom Marketplace account,
-proprietary so it isn't committed to version control history in spirit
-(this repo just isn't a git repo at all right now).
+proprietary, so it is gitignored (`Vendor/ZoomSDK`, no trailing slash so a
+worktree symlink is ignored too) and never committed.
 
 ## What's here
 
@@ -22,12 +22,18 @@ own Embed Frameworks step). Any stray non-SDK file dropped in this folder
 `Vendor/README.md`) gets swept into the app bundle and can break the
 final codesign step.
 
-## Still needed: your own app credentials (two Marketplace apps)
+## Credentials: Sign in with Zoom, or your own apps
 
-The framework being here is necessary but not sufficient. Zoom-facing
-features run off TWO Marketplace apps:
+Most people use **Sign in with Zoom** (Settings -> Zoom): a public PKCE
+client with no secret in the app, the refresh token kept in the Keychain,
+and the SDK JWT fetched from a small server function. See `codemap/zoom.md`.
+Everything below is the advanced path (Settings -> Zoom -> "Use your own
+Zoom apps"), where you paste your own app credentials.
 
-**App 1 - General App with Meeting SDK (powers the chat window):**
+The framework being here is necessary but not sufficient for that path.
+It runs off TWO Marketplace apps:
+
+**App 1 - General App with Meeting SDK (the in-process meeting client):**
 
 1. Go to <https://marketplace.zoom.us> and sign in.
 2. Build App -> **General App** (Meeting SDK is enabled as a toggle
@@ -36,8 +42,8 @@ features run off TWO Marketplace apps:
 4. From **App Credentials**, copy the **Client ID** and **Client Secret**
    into Greenroom's Settings -> Zoom tab (both are stored in
    local app preferences / UserDefaults in plaintext - see
-   `App/Zoom/SecretStore.swift`; the app uses no Keychain - never put
-   either in this repo).
+   `App/Zoom/SecretStore.swift`; only the Sign in with Zoom refresh token
+   is in the Keychain - never put either in this repo).
 
 **App 2 - Server-to-Server OAuth (powers "Start New Meeting", the
 Scheduled-meetings list, and hosting your own meetings):**
@@ -58,17 +64,14 @@ Scheduled-meetings list, and hosting your own meetings):**
 4. Verify with the setup guide's "Test Zoom Connection" button (? on
    the main window -> credentials step).
 
-**Why two apps?** Zoom's headless `account_credentials` token grant is
-exclusive to the S2S app type, and the Meeting SDK embed is exclusive to
-the General App type. A one-app consolidation via browser-consent OAuth +
-PKCE was fully built (Aug 2026) and then deliberately reverted: Zoom
-rejects `localhost` redirect URLs outright, only permits loopback-IP
-redirects for PKCE public-client apps, and even with the public-client
-toggle + PKCE in place the authorize endpoint kept rejecting the
-registered redirect (their own dev forum documents allow-list entries
-silently failing to save). Not worth it for a personal tool - the second
-app is a one-time 5-minute setup. If ever revisited, the working PKCE
-client implementation is in this project's conversation history.
+**Why two apps (on this path)?** Zoom's headless `account_credentials`
+token grant is exclusive to the S2S app type, and the Meeting SDK embed is
+exclusive to the General App type. A first browser-consent attempt (Aug
+2026) was reverted over redirect rules (Zoom rejects `localhost`, and only
+allows loopback-IP redirects for PKCE public clients). Sign in with Zoom
+(`ZoomUserAuth`, redirect `http://127.0.0.1:53682/callback`) later shipped
+on a public client and is now the default; the two-app setup stays as the
+advanced route.
 
 ## Confirmed limitation: same-account meetings only
 
@@ -82,7 +85,7 @@ the abandoned OAuth consolidation above - `ZoomMeetingSDKClient.join`
 still accepts an `onBehalfToken` parameter should that ever be revisited,
 but nothing feeds it.
 
-Practical rule: **the chat window works in meetings hosted under the
+Practical rule: **Greenroom works in meetings hosted under the
 account that owns the Meeting SDK app** - which includes every meeting
 "Start New Meeting" creates, as long as the S2S app belongs to that same
 Zoom account.

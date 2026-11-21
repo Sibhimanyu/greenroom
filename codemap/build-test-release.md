@@ -11,14 +11,14 @@ website (GitHub Pages) and the home of plan/design `.md` files.
 
 | Path | What it owns | Key contents |
 |---|---|---|
-| `project.yml` | XcodeGen spec: targets, SPM packages, build phases, version | `MARKETING_VERSION` (1.7.0), `CURRENT_PROJECT_VERSION` (40), packages `Sparkle` (>=2.6.0), `Apptics` (exact 3.3.17, product `AppticsAnalyticscoreWithKSCrash`), `Heresay` (>=0.2.14); `DEVELOPMENT_TEAM`; `XCODE_EMBEDS` list; pre/post build scripts |
+| `project.yml` | XcodeGen spec: targets, SPM packages, build phases, version | `MARKETING_VERSION` (1.8.1), `CURRENT_PROJECT_VERSION` (42), packages `Sparkle` (>=2.6.0), `Apptics` (exact 3.3.17, product `AppticsAnalyticscoreWithKSCrash`), `Heresay` (>=0.2.14); `DEVELOPMENT_TEAM`; `XCODE_EMBEDS` list; pre/post build scripts |
 | `Greenroom.xcodeproj/` | GENERATED, gitignored. Never edit or commit | recreate with `xcodegen generate` |
 | `Vendor/ZoomSDK/` | Proprietary Zoom Meeting SDK 7.1.5.84750 (~600 MB, gitignored, a SYMLINK in worktrees) | `ZoomSDK.framework` + ~80 siblings |
 | `Vendor/README.md` | How to obtain the SDK; the two Marketplace apps (General/Meeting SDK + Server-to-Server OAuth) and 7 S2S scopes; same-account-only limitation | |
 | `Vendor/Apptics/` | Verbatim Apptics 3.3.17 helper scripts (`scripts/run`, `dsym_upload`, `sdk_info`...) run as a pre-build phase | `README.md` explains why vendored |
 | `apptics-config.plist` | LIVE Apptics API key, gitignored, rewritten by builds (`APP_VERSION_META`) | template: `apptics-config.plist.example` |
 | `Bench/` | `CuesBench` tool sources | `main.swift` (detector + resolver scoring), `Console.swift` (participant-window priority-ladder checks), `Resolver.swift`, `fixtures/detector.json` |
-| `Tests/` | 49 XCTest files (~6.7k lines), `GreenroomTests` target | see "Tests" below |
+| `Tests/` | 59 XCTest files (~7.9k lines), `GreenroomTests` target | see "Tests" below |
 | `scripts/release.sh` | Whole release ritual | `release.sh <version> <notes-file>` |
 | `scripts/make-dmg.sh` | Drag-to-install DMG (plain by default; `GREENROOM_DMG_STYLE=styled` needs create-dmg + Pillow) | geometry paired with `scripts/dmg-background.py` |
 | `scripts/dmg-background.py` | Renders `Branding/dmg-background.tiff` (620x400, 1x+2x) | `python3 scripts/dmg-background.py Branding/dmg-background.tiff` |

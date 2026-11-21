@@ -1,0 +1,329 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Greenroom terms of use</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="The plain terms for using Greenroom, the free open-source macOS app. Effective 21 November 2026.">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Greenroom">
+<meta property="og:title" content="Greenroom terms of use">
+<meta property="og:description" content="The plain terms for using Greenroom.">
+<meta property="og:url" content="https://sibhimanyu.github.io/greenroom/terms.html">
+<meta property="og:image" content="https://sibhimanyu.github.io/greenroom/social-preview.png">
+<meta property="og:image:width" content="1280">
+<meta property="og:image:height" content="640">
+<meta property="og:image:alt" content="The Greenroom logo">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" type="image/png" href="favicon.png?v=4">
+<link rel="apple-touch-icon" href="apple-touch-icon.png?v=4">
+<style>
+  :root {
+    --ink: #101828;
+    --body: #475467;
+    --faint: #98a2b3;
+    --line: #eaecf0;
+    --bg-soft: #f9fafb;
+    --green: #2f6118;       /* --brand-green (DESIGN.md); #3d7a22 retired */
+    --green-hover: #00401c; /* --brand-deep */
+    --green-soft: #e8f3df;
+    --net: #b9770e;
+    --net-text: #96600a; /* AA-safe amber for text <14px (--net measures 3.68) */
+    --net-soft: #fdf4e3;
+    --danger: #b42318;
+    --danger-soft: #fef3f2;
+  }
+
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  html, body { overflow-x: clip; }
+  body {
+    margin: 0; background: #fff; color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    font-size: 16px; line-height: 1.6; -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 1120px; margin: 0 auto; padding: 0 24px; }
+  .narrow { max-width: 760px; }
+  a { color: var(--green); text-decoration: none; }
+  a.underline { text-decoration: underline; text-underline-offset: 2px; }
+  :focus-visible { outline: 2px solid var(--green); outline-offset: 3px; border-radius: 4px; }
+  h1, h2, h3 { text-wrap: balance; margin: 0; }
+  p { margin: 0; }
+  .mono { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 13px; }
+
+  .btn {
+    display: inline-flex; align-items: center; gap: 8px;
+    background: var(--green); color: #fff; font-weight: 600; font-size: 15px;
+    padding: 12px 22px; border-radius: 10px; transition: background .2s, transform .15s;
+  }
+  .btn:hover { background: var(--green-hover); transform: translateY(-1px); }
+  .textlink { font-weight: 600; font-size: 15px; color: var(--ink); }
+  .textlink:hover { color: var(--green); }
+  .textlink .arrow { display: inline-block; transition: transform .2s; }
+  .textlink:hover .arrow { transform: translateX(3px); }
+
+  /* ---------- nav ---------- */
+  nav {
+    position: sticky; top: 0; background: rgba(255,255,255,.92);
+    backdrop-filter: blur(10px); border-bottom: 1px solid var(--line); z-index: 50;
+  }
+  .nav-inner { display: flex; align-items: center; height: 64px; gap: 32px; }
+  .brand { display: flex; align-items: center; gap: 6px; font-weight: 700; font-size: 19px; color: var(--green-hover); } /* the lockup: gap x, name in --brand-deep (Branding/greenroom-mark) */
+  .brand img { display: block; }
+  .nav-links { display: flex; gap: 26px; margin: 0 auto; }
+  .nav-links a { color: var(--body); font-size: 14.5px; font-weight: 500; }
+  .nav-links a:hover, .nav-links a[aria-current] { color: var(--ink); }
+  .nav-links a[aria-current] { font-weight: 600; }
+  .nav-cta { display: flex; align-items: center; gap: 18px; }
+  .nav-cta .btn { padding: 9px 18px; font-size: 14px; }
+  .nav-cta .gh { color: var(--body); font-size: 14.5px; font-weight: 500; }
+  .nav-cta .gh:hover { color: var(--ink); }
+  @media (max-width: 760px) {
+    .nav-inner { flex-wrap: wrap; height: auto; padding: 10px 24px 12px; row-gap: 8px; }
+    .nav-links { order: 3; width: calc(100% + 48px); margin: 0 -24px; padding: 0 16px; gap: 0; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+    .nav-links::-webkit-scrollbar { display: none; }
+    .nav-links a { flex: none; padding: 10px 8px; white-space: nowrap; }
+    .nav-cta .gh { display: none; }
+  }
+
+  /* ---------- on this page ---------- */
+  .contents { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px 8px; margin: 26px auto 0; max-width: 820px; }
+  .contents a {
+    font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 12px; letter-spacing: .02em;
+    color: var(--body); border: 1px solid var(--line); border-radius: 999px; padding: 5px 11px; background: #fff;
+  }
+  .contents a:hover { color: var(--green); border-color: var(--green); }
+  .contents a b { color: var(--green); font-weight: 700; margin-right: 6px; }
+
+  /* ---------- hero ---------- */
+  .page-hero { padding: 60px 0 4px; text-align: center; }
+  .eyebrow {
+    display: inline-flex; align-items: center; gap: 8px;
+    background: var(--green-soft); color: var(--green);
+    font-size: 13px; font-weight: 600; padding: 5px 12px; border-radius: 999px; margin-bottom: 20px;
+  }
+  h1 { font-size: clamp(30px, 4.6vw, 46px); line-height: 1.1; font-weight: 800; letter-spacing: -.025em; max-width: 20ch; margin: 0 auto; }
+  h1 .accent { color: var(--green); }
+  .page-hero .lede { margin: 18px auto 0; font-size: 17.5px; color: var(--body); max-width: 56ch; }
+
+  /* ---------- sections ---------- */
+  section { padding: 56px 0; }
+  section.soft { background: var(--bg-soft); border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+  .sec-head { max-width: 720px; margin-bottom: 28px; }
+  .sec-head.center { margin-left: auto; margin-right: auto; text-align: center; }
+  .kicker { color: var(--green); font-size: 13.5px; font-weight: 700; letter-spacing: .02em; margin-bottom: 8px; }
+  h2 { font-size: clamp(24px, 3.2vw, 32px); font-weight: 800; letter-spacing: -.02em; line-height: 1.15; }
+  .sec-head p { margin-top: 12px; color: var(--body); font-size: 16.5px; }
+
+  /* ---------- diagram frame ---------- */
+  .viz { margin: 0; }
+  .viz .frame {
+    border: 1px solid var(--line); border-radius: 14px; background: #fff;
+    box-shadow: 0 1px 2px rgba(16,24,40,.04); padding: 18px; overflow-x: auto;
+  }
+  section.soft .viz .frame { background: #fff; }
+  .viz svg { display: block; width: 100%; height: auto; }
+  .viz figcaption { margin-top: 12px; font-size: 14.5px; color: var(--body); max-width: 76ch; }
+  .viz figcaption code, figcaption code {
+    font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 12.5px;
+    background: var(--bg-soft); border: 1px solid var(--line); border-radius: 5px; padding: 1px 5px;
+  }
+  .svg-wide { min-width: 680px; }
+  .svg-mid { min-width: 560px; }
+
+  /* ---------- chip rows ---------- */
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 20px; }
+  .chip {
+    display: inline-flex; align-items: center; gap: 7px;
+    border: 1px solid var(--line); background: #fff; border-radius: 999px;
+    padding: 7px 14px 7px 10px; font-size: 13.5px; font-weight: 600; color: var(--ink);
+  }
+  .chip .x { color: var(--danger); font-weight: 800; }
+  .chip .t { color: var(--green); font-weight: 800; }
+
+  /* ---------- permission scope bars ---------- */
+  .scopes { display: flex; flex-direction: column; gap: 18px; max-width: 880px; }
+  .scope { display: grid; grid-template-columns: 176px 1fr; gap: 6px 22px; align-items: start; }
+  @media (max-width: 700px) { .scope { grid-template-columns: 1fr; } }
+  .scope .who { font-weight: 700; font-size: 15px; }
+  .scope .who span { display: block; font-weight: 500; font-size: 12.5px; color: var(--faint); margin-top: 1px; }
+  .bar-labels { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; margin-bottom: 5px; }
+  .bar-labels .u { font-size: 12.5px; font-weight: 700; color: var(--green); }
+  .bar-labels .u.none { color: var(--body); }
+  .bar-labels .r { font-size: 12.5px; color: var(--faint); text-align: right; }
+  .bar { position: relative; height: 12px; border-radius: 6px; background: #eef0f3; border: 1px solid var(--line); overflow: hidden; }
+  .bar .used { position: absolute; inset: 0 auto 0 0; background: var(--green); border-radius: 6px 0 0 6px; }
+  .scope .note { grid-column: 2; font-size: 13.5px; color: var(--body); }
+  @media (max-width: 700px) { .scope .note { grid-column: 1; } }
+
+  /* ---------- endpoints ---------- */
+  .eps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+  @media (max-width: 820px) { .eps { grid-template-columns: minmax(0, 1fr); } }
+  /* Hostnames and paths are long unbroken strings; let them wrap on a phone. */
+  .ep { min-width: 0; }
+  .ep h3, .ep .mono { overflow-wrap: anywhere; }
+  .ep { border: 1px solid var(--line); border-radius: 12px; padding: 18px; background: #fff; }
+  .ep .tag {
+    display: inline-block; font-size: 11px; font-weight: 800; letter-spacing: .05em;
+    text-transform: uppercase; padding: 3px 8px; border-radius: 999px; margin-bottom: 10px;
+  }
+  .ep .tag.out { background: var(--net-soft); color: var(--net-text); }
+  .ep .tag.local { background: var(--green-soft); color: var(--green); }
+  .ep h3 { font-size: 14px; font-weight: 700; margin-bottom: 6px; font-family: ui-monospace, Menlo, monospace; }
+  .ep p { font-size: 13.5px; color: var(--body); }
+
+  /* ---------- appendix ---------- */
+  .appendix { max-width: 940px; }
+  .appendix table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+  .appendix th, .appendix td { text-align: left; vertical-align: top; padding: 11px 14px; border-bottom: 1px solid var(--line); }
+  .appendix th { font-size: 11.5px; text-transform: uppercase; letter-spacing: .04em; color: var(--faint); font-weight: 700; }
+  .appendix td { color: var(--body); }
+  .appendix td strong { color: var(--ink); }
+  .table-scroll { overflow-x: auto; border: 1px solid var(--line); border-radius: 12px; background: #fff; }
+  .files { list-style: none; margin: 22px 0 0; padding: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 8px 20px; }
+  @media (max-width: 640px) { .files { grid-template-columns: 1fr; } }
+  .files li { font-size: 13.5px; }
+  .files a { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 12.5px; }
+  .files span { color: var(--faint); }
+
+  /* ---------- caveat ---------- */
+  .caveat {
+    background: #fff; border: 1px solid var(--line); border-left: 3px solid var(--net);
+    border-radius: 12px; padding: 20px 22px; max-width: 860px;
+  }
+  .caveat h3 { font-size: 15.5px; font-weight: 700; margin-bottom: 8px; }
+  .caveat p { font-size: 14.5px; color: var(--body); margin-bottom: 10px; }
+  .caveat p:last-child { margin-bottom: 0; }
+
+  /* ---------- cta / footer ---------- */
+  .cta-band { text-align: center; }
+  .cta-band h2 { margin-bottom: 12px; }
+  .cta-band p { color: var(--body); font-size: 16.5px; max-width: 46ch; margin: 0 auto 26px; text-wrap: balance; }
+  .cta-actions { display: flex; align-items: center; justify-content: center; gap: 22px; flex-wrap: wrap; }
+  footer { border-top: 1px solid var(--line); padding: 30px 0 38px; font-size: 14px; color: var(--faint); }
+  footer a { color: var(--body); }
+  footer a:hover { color: var(--ink); }
+  .footer-inner { width: 100%; display: flex; justify-content: space-between; align-items: baseline; gap: 16px; flex-wrap: wrap; }
+  @media (max-width: 700px) { .footer-inner { justify-content: center; text-align: center; } }
+  /* ---------- phones (shared by every page) ---------- */
+  footer a { display: inline-block; padding: 6px 2px; }
+  .film:fullscreen, .intro-video:fullscreen { border: 0; border-radius: 0; box-shadow: none; background: #000; }
+  .film:-webkit-full-screen, .intro-video:-webkit-full-screen { border: 0; border-radius: 0; box-shadow: none; background: #000; }
+  /* A table of three or more columns becomes one card per row on a phone:
+     the first cell is the title, each other cell is labelled with its column. */
+  @media (max-width: 640px) {
+    table.stack thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+    table.stack, table.stack tbody, table.stack tr, table.stack td { display: block; width: auto; }
+    table.stack tr { padding: 12px 16px; border-bottom: 1px solid #eaecf0; }
+    table.stack tr:last-child { border-bottom: 0; }
+    table.stack td { padding: 2px 0; border: 0; white-space: normal; text-align: left; }
+    table.stack td:first-child { color: #101828; font-weight: 600; padding-bottom: 4px; }
+    table.stack td + td[data-label]::before {
+      content: attr(data-label); display: block; margin-top: 8px;
+      font: 700 11px/1.4 ui-monospace, "SF Mono", Menlo, monospace;
+      letter-spacing: .06em; text-transform: uppercase; color: #475467;
+    }
+  }
+  .policy h2 { font-size: 24px; line-height: 1.2; letter-spacing: -.015em; margin: 40px 0 12px; }
+  .policy h2:first-child { margin-top: 0; }
+  .policy p { margin: 0 0 14px; }
+  .policy ul { margin: 0 0 14px; padding-left: 22px; }
+  .policy li { margin: 0 0 8px; }
+  .policy .meta { color: var(--faint); font-size: 14px; }
+  .policy table { width: 100%; border-collapse: collapse; margin: 6px 0 18px; font-size: 14.5px; }
+  .policy th, .policy td { text-align: left; vertical-align: top; padding: 10px 12px; border-top: 1px solid var(--line); }
+  .policy th { color: var(--ink); font-weight: 600; background: var(--bg-soft); }
+  .policy td:first-child { font-weight: 600; color: var(--ink); white-space: nowrap; }
+  @media (max-width: 700px) { .policy td:first-child { white-space: normal; } }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="wrap nav-inner">
+    <a class="brand" href="index.html">
+      <img src="logo-mark.png" width="25" height="26" alt="">
+      <span>Greenroom</span>
+    </a>
+    <div class="nav-links">
+      <a href="index.html">Overview</a>
+      <a href="1.0.html">What's new</a>
+      <a href="guide.html">Guide</a>
+      <a href="how-it-works.html">Privacy &amp; safety</a>
+      <a href="timeline.html">Timeline</a>
+      <a href="brand.html">Brand</a>
+    </div>
+    <div class="nav-cta">
+      <a class="gh" href="https://github.com/Sibhimanyu/greenroom">GitHub</a>
+      <a class="btn" href="https://github.com/Sibhimanyu/greenroom/releases/download/v1.8.0/Greenroom-1.8.0.dmg">Download</a>
+    </div>
+  </div>
+</nav>
+
+<header class="wrap page-hero">
+  <span class="eyebrow">Terms of use</span>
+  <h1>The plain terms for using Greenroom.</h1>
+  <p class="lede">Greenroom is a free tool. Use it well, check your own meetings, and know where it stops. This page says so in short.</p>
+</header>
+
+<section>
+<div class="wrap narrow policy">
+
+<p class="meta">Effective 21 November 2026. These terms sit beside the <a class="underline" href="privacy.html">privacy policy</a>. Where they overlap, the privacy policy is the one that describes data.</p>
+
+<h2>Who this covers</h2>
+<p>These terms cover the Greenroom app for macOS and the small signing service it uses when you sign in with Zoom. Greenroom is published by Sibhimanyu G, an individual developer ("we", "us"). Contact: sibhi.gv@gmail.com.</p>
+
+<h2>What Greenroom is</h2>
+<p>Greenroom is a free macOS app for people who host Zoom meetings, such as teachers and presenters. It starts and controls your Zoom meeting through Zoom's Meeting SDK, arranges your camera and screen into one picture, records the session on your Mac, and shows feedback about it. It is not a Zoom product and Zoom does not endorse it.</p>
+<p>The source code is public on <a class="underline" href="https://github.com/Sibhimanyu/greenroom">GitHub</a>, so you can read how it works.</p>
+
+<h2>Using it</h2>
+<ul>
+  <li>You may use Greenroom for free, for your own meetings, on Macs you control.</li>
+  <li>You need a Zoom account to host a meeting. Zoom's own terms and privacy statement apply to your meetings, your account and everything that goes through Zoom. Greenroom does not change them.</li>
+  <li>You are responsible for your meetings: who joins, what is said, what is shown, and what you record.</li>
+</ul>
+
+<h2>Recording and consent</h2>
+<p>Greenroom can record a session, including your screen, your voice and other people's faces and voices. Before you record, make sure you have the consent the law, your school or your employer requires. Tell the people in the meeting. A recording stays on your Mac, and what you do with it after that is up to you.</p>
+
+<h2>What you must not do</h2>
+<ul>
+  <li>Do not use Greenroom to break the law or to record or watch people without the consent that applies.</li>
+  <li>Do not use it to harass, impersonate or deceive anyone.</li>
+  <li>Do not try to break, overload or get around the signing service, or use it for anything but signing in to Greenroom.</li>
+  <li>Do not break Zoom's terms, or use Greenroom in a way that does.</li>
+  <li>Do not present Greenroom, or a changed copy of it, as an official Zoom product.</li>
+</ul>
+<p>If you do, we may stop the signing service from working for you.</p>
+
+<h2>No warranty</h2>
+<p>Greenroom is given as it is, with no promise that it works, keeps working, or fits your purpose. It depends on Zoom, macOS and other services we do not control, and any of them can change. Feedback such as pace and facing the room is measured by simple rules on your Mac and is a guide, not a judgement. Keep your own backups of recordings you care about.</p>
+
+<h2>Limit of liability</h2>
+<p>As far as the law allows, we are not liable for lost recordings, missed or failed meetings, or any indirect or consequential loss from using Greenroom. Nothing here limits a liability that the law does not let us limit.</p>
+
+<h2>Your data</h2>
+<p>What Greenroom handles, where it goes, and how to delete it is in the <a class="underline" href="privacy.html">privacy policy</a>. In short: recordings stay on your Mac unless you turn on an upload, and we do not sell data.</p>
+
+<h2>Stopping</h2>
+<p>You can stop at any time. In Greenroom, choose Settings, Zoom, Sign out. To remove the app's access in Zoom, sign in to the Zoom Marketplace, click My Library in the bottom-left corner, find Greenroom, click the More icon under Actions, then click Remove and confirm (<a class="underline" href="https://support.zoom.com/hc/en/article?id=zm_kb&amp;sysparm_article=KB0062865">Zoom's own steps</a>). The steps are the same in the Zoom Workplace app under its Marketplace tab. Then delete the app and its folders as described in the privacy policy. We may end or change the app or the signing service. We will note it on the <a class="underline" href="index.html">site</a> and in the release notes.</p>
+
+<h2>Changes to these terms</h2>
+<p>If we change these terms, we change the date at the top and note it in the release notes. The history is public in the GitHub repository. Using Greenroom after a change means you accept it.</p>
+
+<h2>Contact</h2>
+<p>Questions: sibhi.gv@gmail.com. Help and support are on the <a class="underline" href="support.html">support page</a>. Problems and ideas: <a class="underline" href="https://github.com/Sibhimanyu/greenroom/issues">GitHub issues</a>.</p>
+
+</div>
+</section>
+
+<footer>
+  <div class="wrap footer-inner">
+    <span>Greenroom — a one-click classroom setup for macOS.</span>
+    <span><a href="index.html">Overview</a> · <a href="how-it-works.html">Privacy &amp; safety</a> · <a href="privacy.html">Privacy policy</a> · <a href="terms.html">Terms of use</a> · <a href="guide.html">Guide</a> · <a href="timeline.html">Timeline</a> · <a href="brand.html">Brand</a> · <a href="https://github.com/Sibhimanyu/greenroom">GitHub</a> · <a href="https://github.com/Sibhimanyu/greenroom/releases">Releases</a> · <a href="https://github.com/Sibhimanyu/greenroom#readme">README</a></span>
+  </div>
+</footer>
+</body>
+</html>

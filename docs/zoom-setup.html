@@ -1,0 +1,403 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Zoom setup with your own apps — Greenroom</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Connect Greenroom to your own Zoom Marketplace apps: a Meeting SDK app and a Server-to-Server OAuth app, with every scope to copy, and how to check the result.">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Greenroom">
+<meta property="og:title" content="Zoom setup with your own apps — Greenroom">
+<meta property="og:url" content="https://sibhimanyu.github.io/greenroom/zoom-setup.html">
+<meta property="og:image" content="https://sibhimanyu.github.io/greenroom/social-preview.png">
+<link rel="icon" type="image/png" href="favicon.png?v=4">
+<link rel="apple-touch-icon" href="apple-touch-icon.png?v=4">
+<style>
+  :root {
+    --ink: #101828;
+    --body: #475467;
+    --faint: #98a2b3;
+    --line: #eaecf0;
+    --bg-soft: #f9fafb;
+    --green: #2f6118;
+    --green-hover: #00401c;
+    --green-soft: #e8f3df;
+    --net: #b9770e;
+    --net-text: #96600a;
+    --net-soft: #fdf4e3;
+  }
+
+
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  html, body { overflow-x: clip; }
+  body {
+    margin: 0; background: #fff; color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    font-size: 16px; line-height: 1.6; -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 1120px; margin: 0 auto; padding: 0 24px; }
+  .narrow { max-width: 760px; }
+  a { color: var(--green); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  :focus-visible { outline: 2px solid var(--green); outline-offset: 3px; border-radius: 4px; }
+  h1, h2, h3 { text-wrap: balance; margin: 0; }
+  p { margin: 0; }
+  .mono, code { font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+  code { font-size: 12.5px; background: var(--bg-soft); border: 1px solid var(--line); border-radius: 5px; padding: 1px 5px; }
+  .btn {
+    display: inline-flex; align-items: center; gap: 8px;
+    background: var(--green); color: #fff; font-weight: 600; font-size: 15px;
+    padding: 12px 22px; border-radius: 10px; transition: background .2s, transform .15s;
+  }
+  .btn:hover { background: var(--green-hover); transform: translateY(-1px); text-decoration: none; }
+
+  nav.top { position: sticky; top: 0; background: rgba(255,255,255,.92); backdrop-filter: blur(10px); border-bottom: 1px solid var(--line); z-index: 50; }
+  .nav-inner { display: flex; align-items: center; height: 64px; gap: 32px; }
+  .brand { display: flex; align-items: center; gap: 6px; font-weight: 700; font-size: 19px; color: var(--green-hover); }
+  .brand img { display: block; }
+  .nav-links { display: flex; gap: 26px; margin: 0 auto; }
+  .nav-links a { color: var(--body); font-size: 14.5px; font-weight: 500; }
+  .nav-links a:hover { color: var(--ink); text-decoration: none; }
+  .nav-cta { display: flex; align-items: center; gap: 18px; }
+  .nav-cta .btn { padding: 9px 18px; font-size: 14px; }
+  .nav-cta .gh { color: var(--body); font-size: 14.5px; font-weight: 500; }
+  @media (max-width: 760px) {
+    .nav-inner { flex-wrap: wrap; height: auto; padding: 10px 24px 12px; row-gap: 8px; }
+    .nav-links { order: 3; width: calc(100% + 48px); margin: 0 -24px; padding: 0 16px; gap: 0; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
+    .nav-links::-webkit-scrollbar { display: none; }
+    .nav-links a { flex: none; padding: 10px 8px; white-space: nowrap; }
+    .nav-cta { margin-left: auto; }
+    .nav-cta .gh { display: none; }
+  }
+
+  .page-hero { padding: 56px 0 8px; text-align: center; }
+  .eyebrow { display: inline-flex; background: var(--green-soft); color: var(--green); font-size: 13px; font-weight: 600; padding: 5px 12px; border-radius: 999px; margin-bottom: 20px; }
+  h1 { font-size: clamp(30px, 4.6vw, 44px); line-height: 1.1; font-weight: 800; letter-spacing: -.025em; margin: 0 auto; max-width: 22ch; }
+  .lede { margin: 16px auto 0; font-size: 17.5px; color: var(--body); max-width: 56ch; }
+  section { padding: 44px 0 8px; }
+  .kicker { font-family: ui-monospace, "SF Mono", Menlo, monospace; text-transform: uppercase; letter-spacing: .08em; color: var(--green); font-size: 12.5px; font-weight: 700; margin-bottom: 6px; }
+  h2 { font-size: clamp(23px, 3vw, 30px); font-weight: 800; letter-spacing: -.02em; line-height: 1.15; }
+  h3 { font-size: 16.5px; font-weight: 700; margin: 22px 0 6px; }
+  .sec-p { margin-top: 10px; color: var(--body); font-size: 16px; max-width: 62ch; }
+  .steps { list-style: none; margin: 18px 0 0; padding: 0; counter-reset: s; display: grid; gap: 12px; }
+  .steps > li { counter-increment: s; border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px 14px 52px; position: relative; background: #fff; }
+  .steps > li::before { content: counter(s); position: absolute; left: 16px; top: 14px; width: 24px; height: 24px; border-radius: 50%; background: var(--green-soft); color: var(--green); font-weight: 700; font-size: 13px; display: grid; place-items: center; }
+  .steps p { font-size: 15px; color: var(--body); }
+  .steps strong { color: var(--ink); font-weight: 600; }
+  .go { display: inline-flex; align-items: center; min-height: 32px; font-weight: 600; font-size: 14.5px; margin-bottom: 4px; }
+  .go::after { content: " \2197"; margin-left: 4px; }
+  .note { margin-top: 10px; font-size: 13.5px; color: var(--net-text); }
+  .callout { background: var(--net-soft); border-radius: 12px; padding: 14px 18px; margin-top: 18px; }
+  .callout p { font-size: 14.5px; color: var(--body); }
+  .callout strong { color: var(--ink); }
+
+  .scopes-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-top: 18px; }
+  .progress { font-size: 14px; color: var(--body); font-weight: 600; }
+  .scopes { list-style: none; margin: 12px 0 0; padding: 0; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+  .scope { display: flex; align-items: center; gap: 14px; padding: 12px 14px; border-bottom: 1px solid var(--line); }
+  .scope:last-child { border-bottom: 0; }
+  .scope.done .sc-name { text-decoration: line-through; color: var(--body); }
+  .tick { flex: none; display: grid; place-items: center; width: 44px; height: 44px; cursor: pointer; margin: -8px -6px -8px -10px; }
+  .tick input { width: 20px; height: 20px; accent-color: var(--green); cursor: pointer; }
+  .tick span { display: none; }
+  .sc-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+  .sc-name { font-size: 13.5px; user-select: all; word-break: break-all; width: fit-content; max-width: 100%; }
+  .sc-for { font-size: 13.5px; color: var(--body); }
+  .copy { flex: none; min-width: 84px; min-height: 44px; padding: 0 16px; border-radius: 10px; border: 1px solid var(--green); background: #fff; color: var(--green); font: 600 14px inherit; font-family: inherit; cursor: pointer; transition: background .15s; }
+  .copy:hover { background: var(--green-soft); }
+  .copy.ok { background: var(--green); color: #fff; }
+  .copy.all { background: var(--green); color: #fff; }
+  .copy.all:hover { background: var(--green-hover); }
+  .copy.all.ok { background: var(--green-hover); }
+  @media (max-width: 560px) {
+    .scope { flex-wrap: wrap; row-gap: 8px; }
+    .sc-text { flex: 1 1 calc(100% - 50px); }
+    .scope .copy { flex: 1 1 100%; margin-left: 0; }
+    .scopes-head .copy { flex: 1 1 100%; }
+  }
+  .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+  .table-scroll { overflow-x: auto; border: 1px solid var(--line); border-radius: 12px; margin-top: 16px; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th, td { text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { font-size: 11.5px; text-transform: uppercase; letter-spacing: .04em; color: var(--body); font-weight: 700; background: var(--bg-soft); }
+  tr:last-child td { border-bottom: 0; }
+  td:first-child { font-weight: 600; color: var(--ink); width: 34%; }
+  td { color: var(--body); }
+  @media (max-width: 560px) {
+    thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+    table, tbody, tr, td { display: block; width: auto; }
+    td:first-child { width: auto; padding-bottom: 2px; }
+    tr { border-bottom: 1px solid var(--line); padding: 8px 0; }
+    tr:last-child { border-bottom: 0; }
+    td { border: 0; padding: 2px 14px; }
+  }
+  ul.plain { margin: 14px 0 0; padding-left: 20px; color: var(--body); font-size: 15px; }
+  ul.plain li { margin-bottom: 8px; max-width: 66ch; }
+  ul.plain strong { color: var(--ink); font-weight: 600; }
+
+  footer { border-top: 1px solid var(--line); padding: 30px 0 38px; margin-top: 56px; font-size: 14px; color: var(--faint); }
+  footer a { color: var(--body); }
+  .footer-inner { width: 100%; display: flex; justify-content: space-between; align-items: baseline; gap: 16px; flex-wrap: wrap; }
+  @media (max-width: 700px) { .footer-inner { justify-content: center; text-align: center; } }
+</style>
+</head>
+<body>
+
+<nav class="top">
+  <div class="wrap nav-inner">
+    <a class="brand" href="index.html">
+      <img src="logo-mark.png" width="25" height="26" alt="">
+      <span>Greenroom</span>
+    </a>
+    <div class="nav-links">
+      <a href="index.html">Overview</a>
+      <a href="1.0.html">1.0 launch</a>
+      <a href="guide.html">Guide</a>
+      <a href="how-it-works.html">Privacy &amp; safety</a>
+      <a href="timeline.html">Timeline</a>
+    </div>
+    <div class="nav-cta">
+      <a class="gh" href="https://github.com/Sibhimanyu/greenroom">GitHub</a>
+      <a class="btn" href="https://github.com/Sibhimanyu/greenroom/releases/download/v1.8.1/Greenroom-1.8.1.dmg">Download</a>
+    </div>
+  </div>
+</nav>
+
+<header class="wrap page-hero">
+  <span class="eyebrow">Advanced · your own Zoom apps</span>
+  <h1>Connect Greenroom to your own Zoom apps</h1>
+  <p class="lede">Most people just use Sign in with Zoom. Follow this page only if you want your own Marketplace apps instead.</p>
+</header>
+
+<main class="wrap narrow">
+
+<section id="who">
+  <div class="kicker">Before you start</div>
+  <h2>Who needs this</h2>
+  <ul class="plain">
+    <li>The default is <strong>Sign in with Zoom</strong> (Settings → Zoom). It needs no apps and nothing to paste.</li>
+    <li>Use your own apps if you cannot sign in that way, or want your own Client IDs.</li>
+    <li>You need a Zoom account that may build apps and add admin scopes. Ask your Zoom admin if those options are missing.</li>
+    <li>Both apps must belong to the <strong>same Zoom account</strong>. About ten minutes.</li>
+    <li>Own apps are used only while you are signed out of Sign in with Zoom.</li>
+  </ul>
+  <p class="note">Official Zoom docs: <a href="https://developers.zoom.us/docs/meeting-sdk/get-credentials/" target="_blank" rel="noopener noreferrer">Meeting SDK credentials</a> · <a href="https://developers.zoom.us/docs/internal-apps/s2s-oauth/" target="_blank" rel="noopener noreferrer">Server-to-Server OAuth</a>. Zoom may rename its screens.</p>
+</section>
+
+<section id="sdk">
+  <div class="kicker">App 1 of 2</div>
+  <h2>Meeting SDK app</h2>
+  <p class="sec-p">Powers Greenroom's built-in meeting client and the chat window.</p>
+  <ol class="steps">
+    <li>
+      <a class="go" href="https://marketplace.zoom.us/user/build" target="_blank" rel="noopener noreferrer">Open Zoom App Marketplace → Build App</a>
+      <p>Sign in. Choose <strong>Build App</strong>, then <strong>General App</strong>.</p>
+    </li>
+    <li>
+      <a class="go" href="https://marketplace.zoom.us/user/build" target="_blank" rel="noopener noreferrer">Open your app (Build App page)</a>
+      <p>Zoom's deep links need your app's ID, which exists only after you create it. Open your new app from this page.</p>
+      <p>Go to <strong>Features → Embed</strong>. Turn on <strong>Meeting SDK</strong>.</p>
+    </li>
+    <li>
+      <a class="go" href="https://developers.zoom.us/docs/meeting-sdk/get-credentials/" target="_blank" rel="noopener noreferrer">Zoom docs: Meeting SDK credentials</a>
+      <p>Open the app's credentials. Copy the <strong>Client ID</strong> and <strong>Client Secret</strong>.</p>
+    </li>
+    <li>
+      <p>In Greenroom, open <strong>Settings → Zoom → Use your own Zoom apps (advanced) → Meeting SDK</strong>. Paste both values.</p>
+      <p>The setup guide's Zoom step (the ? on the main window) has the same fields under <strong>Meeting and chat</strong>.</p>
+    </li>
+  </ol>
+  <div class="callout"><p><strong>Same account only.</strong> This app works only in meetings hosted under the Zoom account that owns it. A meeting from another account fails to join. Meetings Greenroom starts for you count as same-account.</p></div>
+</section>
+
+<section id="s2s">
+  <div class="kicker">App 2 of 2</div>
+  <h2>Server-to-Server OAuth app</h2>
+  <p class="sec-p">Powers New meeting, the scheduled list and hosting your own meetings.</p>
+  <ol class="steps">
+    <li>
+      <a class="go" href="https://marketplace.zoom.us/user/build" target="_blank" rel="noopener noreferrer">Open Zoom App Marketplace → Build App</a>
+      <p>Choose <strong>Server-to-Server OAuth</strong>. Name it, then create it.</p>
+      <p><a href="https://developers.zoom.us/docs/internal-apps/s2s-oauth/" target="_blank" rel="noopener noreferrer">Zoom docs: Server-to-Server OAuth</a></p>
+    </li>
+    <li>
+      <a class="go" href="https://marketplace.zoom.us/user/build" target="_blank" rel="noopener noreferrer">Open your app (Build App page)</a>
+      <p>Deep links need your app's ID, so open the new app from this page.</p>
+      <p>On <strong>App Credentials</strong>, copy the <strong>Account ID</strong>, <strong>Client ID</strong> and <strong>Client Secret</strong>.</p>
+    </li>
+    <li>
+      <p>In Greenroom, open <strong>Settings → Zoom → Use your own Zoom apps (advanced) → Server-to-Server</strong>. Paste all three.</p>
+      <p>The setup guide has them under <strong>Create and host meetings</strong>.</p>
+    </li>
+    <li>
+      <a class="go" href="https://marketplace.zoom.us/user/build" target="_blank" rel="noopener noreferrer">Open your app's Scopes tab (via the Build App page)</a>
+      <p>Add all 7 scopes below, then save. See the next section.</p>
+    </li>
+    <li>
+      <a class="go" href="https://marketplace.zoom.us/user/build" target="_blank" rel="noopener noreferrer">Open your app's Activation tab (via the Build App page)</a>
+      <p>Finish the <strong>Information</strong> page. Then open <strong>Activation</strong> and activate the app.</p>
+    </li>
+  </ol>
+</section>
+
+<section id="scopes">
+  <div class="kicker">Scopes</div>
+  <h2>The 7 scopes to add</h2>
+  <p class="sec-p">Zoom's scope picker searches one name at a time. Copy a scope, paste it into the search, pick the match.</p>
+  <div class="scopes-head">
+    <span class="progress" id="progress">0 of 7 added</span>
+    <button type="button" class="copy all" id="copy-all" data-copy="meeting:write:meeting:admin&#10;meeting:read:list_meetings:admin&#10;meeting:read:meeting:admin&#10;meeting:update:meeting:admin&#10;meeting:delete:meeting:admin&#10;user:read:token:admin&#10;meeting:update:status:admin" aria-label="Copy all 7 scopes, one per line">Copy all</button>
+  </div>
+  <ul class="scopes" id="scope-list">
+        <li class="scope">
+          <label class="tick"><input type="checkbox" aria-label="Done: meeting:write:meeting:admin"><span></span></label>
+          <div class="sc-text"><code class="sc-name">meeting:write:meeting:admin</code><span class="sc-for">Create meetings</span></div>
+          <button type="button" class="copy" data-copy="meeting:write:meeting:admin" aria-label="Copy meeting:write:meeting:admin">Copy</button>
+        </li>
+        <li class="scope">
+          <label class="tick"><input type="checkbox" aria-label="Done: meeting:read:list_meetings:admin"><span></span></label>
+          <div class="sc-text"><code class="sc-name">meeting:read:list_meetings:admin</code><span class="sc-for">List scheduled meetings</span></div>
+          <button type="button" class="copy" data-copy="meeting:read:list_meetings:admin" aria-label="Copy meeting:read:list_meetings:admin">Copy</button>
+        </li>
+        <li class="scope">
+          <label class="tick"><input type="checkbox" aria-label="Done: meeting:read:meeting:admin"><span></span></label>
+          <div class="sc-text"><code class="sc-name">meeting:read:meeting:admin</code><span class="sc-for">Read meeting details</span></div>
+          <button type="button" class="copy" data-copy="meeting:read:meeting:admin" aria-label="Copy meeting:read:meeting:admin">Copy</button>
+        </li>
+        <li class="scope">
+          <label class="tick"><input type="checkbox" aria-label="Done: meeting:update:meeting:admin"><span></span></label>
+          <div class="sc-text"><code class="sc-name">meeting:update:meeting:admin</code><span class="sc-for">Edit scheduled meetings</span></div>
+          <button type="button" class="copy" data-copy="meeting:update:meeting:admin" aria-label="Copy meeting:update:meeting:admin">Copy</button>
+        </li>
+        <li class="scope">
+          <label class="tick"><input type="checkbox" aria-label="Done: meeting:delete:meeting:admin"><span></span></label>
+          <div class="sc-text"><code class="sc-name">meeting:delete:meeting:admin</code><span class="sc-for">Delete scheduled meetings</span></div>
+          <button type="button" class="copy" data-copy="meeting:delete:meeting:admin" aria-label="Copy meeting:delete:meeting:admin">Copy</button>
+        </li>
+        <li class="scope">
+          <label class="tick"><input type="checkbox" aria-label="Done: user:read:token:admin"><span></span></label>
+          <div class="sc-text"><code class="sc-name">user:read:token:admin</code><span class="sc-for">Get your hosting token</span></div>
+          <button type="button" class="copy" data-copy="user:read:token:admin" aria-label="Copy user:read:token:admin">Copy</button>
+        </li>
+        <li class="scope">
+          <label class="tick"><input type="checkbox" aria-label="Done: meeting:update:status:admin"><span></span></label>
+          <div class="sc-text"><code class="sc-name">meeting:update:status:admin</code><span class="sc-for">End meetings for everyone</span></div>
+          <button type="button" class="copy" data-copy="meeting:update:status:admin" aria-label="Copy meeting:update:status:admin">Copy</button>
+        </li>
+  </ul>
+  <p class="note">Ticks are for your own tracking. They live on this page only and are gone when you leave it.</p>
+  <p class="note" style="color:var(--body)">Zoom's older classic apps grant older names instead. Greenroom accepts those too.</p>
+  <div class="sr" role="status" aria-live="polite" id="live"></div>
+</section>
+
+<section id="check">
+  <div class="kicker">Connect</div>
+  <h2>Check Zoom setup</h2>
+  <ol class="steps">
+    <li><p>Paste the credentials in <strong>Settings → Zoom</strong>, or in the setup guide's credentials step (the ? on the main window).</p></li>
+    <li><p>In the setup guide, press <strong>Check Zoom setup</strong>. End any running session first.</p></li>
+    <li><p>Read the results. Press <strong>Check again</strong> after each fix.</p></li>
+  </ol>
+  <p class="sec-p">Eleven checks run. The permission checks only read what Zoom granted. No meeting is created, joined or ended.</p>
+  <div class="table-scroll">
+    <table>
+      <thead><tr><th>Check</th><th>If it fails</th></tr></thead>
+      <tbody>
+        <tr><td>Meeting and chat credentials</td><td>Client ID or Secret missing or wrong, or Meeting SDK is not turned on in the General App.</td></tr>
+        <tr><td>Hosting credentials and app activation</td><td>Account ID, Client ID or Secret missing or wrong, or the app is not activated. Zoom refused a token. Every check below it is skipped.</td></tr>
+        <tr><td>Permission to create meetings</td><td>Scope missing: <code>meeting:write:meeting:admin</code>. Add it, save, check again.</td></tr>
+        <tr><td>Permission to list meetings</td><td>Scope missing: <code>meeting:read:list_meetings:admin</code>.</td></tr>
+        <tr><td>Permission to read meeting details</td><td>Scope missing: <code>meeting:read:meeting:admin</code>.</td></tr>
+        <tr><td>Permission to edit scheduled meetings</td><td>Scope missing: <code>meeting:update:meeting:admin</code>.</td></tr>
+        <tr><td>Permission to delete scheduled meetings</td><td>Scope missing: <code>meeting:delete:meeting:admin</code>.</td></tr>
+        <tr><td>Permission to get the hosting token</td><td>Scope missing: <code>user:read:token:admin</code>.</td></tr>
+        <tr><td>Permission to end meetings</td><td>Scope missing: <code>meeting:update:status:admin</code>.</td></tr>
+        <tr><td>Scheduled meetings API</td><td>Zoom would not list your meetings. Usually a list scope or the wrong account.</td></tr>
+        <tr><td>Hosting token API</td><td>Zoom returned no hosting token. Check the token scope and that the app is activated.</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section id="trouble">
+  <div class="kicker">If something fails</div>
+  <h2>Troubleshooting</h2>
+  <ul class="plain">
+    <li><strong>A scope is missing.</strong> Add it on the app's Scopes page, save, then press Check again. Greenroom's error names the scope.</li>
+    <li><strong>App not activated.</strong> Finish Information, open Activation, activate. The hosting check passes only then.</li>
+    <li><strong>Wrong account.</strong> Both apps must sit under the Zoom account that hosts your meetings. Otherwise joins fail.</li>
+    <li><strong>Secret changed or expired.</strong> If you regenerated a secret or deactivated the app, hosting fails. Paste the new value.</li>
+    <li><strong>"Zoom details changed during the check."</strong> You edited a field mid-check. Press Check again.</li>
+    <li><strong>Check button is disabled.</strong> A session is running. End it first.</li>
+    <li><strong>Sign in with Zoom is on.</strong> It wins over your apps. Sign out to use your own.</li>
+  </ul>
+</section>
+
+<section id="local">
+  <div class="kicker">On your Mac</div>
+  <h2>What stays on your Mac</h2>
+  <ul class="plain">
+    <li>Your Client IDs, secrets and Account ID are saved in Greenroom's local preferences. Not the macOS Keychain.</li>
+    <li>They are <strong>not encrypted</strong>. Someone using your Mac account could read them.</li>
+    <li>They go only to Zoom, to sign in and call its API.</li>
+    <li>An exported settings file (Settings → Transfer → Export) carries these secrets in plain text. Greenroom asks before it writes one. Share it carefully.</li>
+    <li>Sign in with Zoom is different. Its refresh token sits in the Keychain, and no secret is pasted. See the <a href="privacy.html">privacy policy</a>.</li>
+  </ul>
+</section>
+
+</main>
+
+<footer>
+  <div class="wrap footer-inner">
+    <span>Greenroom. Built for the morning readers at Zoho Schools.</span>
+    <span><a href="index.html">Overview</a> · <a href="guide.html">Guide</a> · <a href="zoom-setup.html">Zoom setup</a> · <a href="how-it-works.html">Privacy &amp; safety</a> · <a href="privacy.html">Privacy policy</a> · <a href="timeline.html">Timeline</a> · <a href="https://github.com/Sibhimanyu/greenroom">GitHub</a></span>
+  </div>
+</footer>
+
+<script src="download-link.js" defer></script>
+<script>
+(function () {
+  var live = document.getElementById("live");
+  function copyText(text) {
+    if (navigator.clipboard && window.isSecureContext) {
+      return navigator.clipboard.writeText(text).catch(function () { return fallback(text); });
+    }
+    return fallback(text);
+  }
+  function fallback(text) {
+    return new Promise(function (resolve, reject) {
+      var t = document.createElement("textarea");
+      t.value = text; t.setAttribute("readonly", "");
+      t.style.cssText = "position:fixed;top:0;left:0;opacity:0";
+      document.body.appendChild(t); t.select();
+      var ok = false;
+      try { ok = document.execCommand("copy"); } catch (e) {}
+      document.body.removeChild(t);
+      ok ? resolve() : reject();
+    });
+  }
+  document.querySelectorAll("button.copy").forEach(function (b) {
+    var label = b.textContent, timer;
+    b.addEventListener("click", function () {
+      copyText(b.getAttribute("data-copy")).then(function () {
+        b.textContent = "Copied"; b.classList.add("ok");
+        live.textContent = b.id === "copy-all" ? "Copied all scopes" : "Copied " + b.getAttribute("data-copy");
+        clearTimeout(timer);
+        timer = setTimeout(function () { b.textContent = label; b.classList.remove("ok"); live.textContent = ""; }, 1500);
+      }, function () { live.textContent = "Could not copy. Select the text and copy it."; });
+    });
+  });
+  var boxes = document.querySelectorAll("#scope-list input"), prog = document.getElementById("progress");
+  function update() {
+    var n = 0;
+    boxes.forEach(function (c) { c.closest(".scope").classList.toggle("done", c.checked); if (c.checked) n++; });
+    prog.textContent = n + " of " + boxes.length + " added";
+  }
+  boxes.forEach(function (c) { c.addEventListener("change", update); });
+  // Without JS the buttons do nothing, so hide them rather than mislead.
+})();
+</script>
+</body>
+</html>

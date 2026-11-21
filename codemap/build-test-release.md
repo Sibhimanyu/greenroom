@@ -33,7 +33,7 @@ website (GitHub Pages) and the home of plan/design `.md` files.
 | `docs/release/next.md` | Draft notes for the next release (+ screenshots `docs/release/*.jpg`) | pass a finished notes file to `release.sh` |
 | `docs/*-plan.md`, `dead-ends-audit.md` | Design/plan docs: `cues-search-improvement-plan`, `drop-obs-plan`, `glass-redesign-plan`, `participant-window-redesign-plan`, `presence-bubble-plan`, `screenroom-plan`, `stage-and-looks-plan`, `dead-ends-audit` | read the plan before touching its area |
 | `docs/recorditor-integration/` | Phased feature port log from Recorditor: `README.md` plus `events/camera/controls/drawing/editor/follow-port-log.md` | keep current |
-| `docs/brand/`, `docs/vendor/shaders` | Site brand assets (SVG/PNG), site shaders | |
+| `docs/brand/` | Site brand assets (SVG/PNG) | |
 | `Branding/` | Logo sources: `greenroom-logo{,-dark}.{svg,png}`, `greenroom-mark.{svg,png}`, `greenroom-mark/` (final mark + guidelines), `dmg-background.tiff`, `brand-sheet.png`, `github-social-preview.png` | regenerate app-icon PNGs from the vector if the logo changes |
 | `DESIGN.md` | Design system for BOTH the site (`docs/`) and the SwiftUI app (`App/UI/`): fonts, colours, spacing, motion, "macOS App Mapping", "Open drift to fix", "Decisions Log" | read before any visual change |
 | `TODOS.md` | Open items, newest first (mostly "verify live" checklists per feature) | |

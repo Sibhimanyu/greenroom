@@ -99,6 +99,7 @@ Callbacks to the UI are plain closures: `onVideoSubscribeFailure`, `onParticipan
 
 ## Gotchas
 
+- **Custom UI is the default; Zoom's own window is the experimental option.** Settings > Zoom shows it as "Use Zoom's own meeting window" (an inverted binding over `customUIMode`, stored key unchanged).
 - **Custom UI is an init parameter.** `needCustomizedUI` is read once at `initSDK`; changing the `customUIMode` default needs a relaunch. Always check `didUseCustomUI` before returning views (`participantView`, `stageView`, `viewVideoView` return nil otherwise).
 - **Subscribe exactly once per element, and only when visible.** A second `subscribeVideo(true)` on an element holding one is refused with code 7 every time. New person, refusal, or "video but nothing drawn" means a FRESH element. A second element asking for a remote user another element holds is also refused (`otherHolders` names them in the log).
 - **Do not subscribe in bursts.** Tiles are spaced 0.5 s apart (`nextTileSubscribeAt`), stage switches rate-limited (`nextStageSwitchAt`), View slots 2 s apart per slot.

@@ -848,7 +848,7 @@ struct LayoutPieceTile: View {
     private var caption: String {
         if look.missing { return "Not on this Mac" }
         if look.comingLater { return "Views are turned off" }
-        if look.needsCustomUI { return "Needs custom UI" }
+        if look.needsCustomUI { return "Needs Greenroom\u{2019}s window" }
         if piece.isFixed { return "Fills this display" }
         return "\(columns) of 12 \u{00B7} \(pointSize.w)\u{00D7}\(pointSize.h)"
     }

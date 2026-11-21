@@ -679,7 +679,7 @@ struct LayoutPageContent: View {
     private func blockReason(_ kind: LayoutPiece.Kind, template: LayoutTemplate, slot: LayoutSlot) -> String? {
         let version = template.piecesInVersion(of: slot)
         if case .view = kind, !MeetingViewPieces.enabled { return "Views are turned off on this Mac" }
-        if case .view = kind, !customUIMode { return "Needs Greenroom\u{2019}s meeting UI (Settings \u{2192} Zoom)" }
+        if case .view = kind, !customUIMode { return "Needs Greenroom\u{2019}s meeting UI (Settings \u{2192} Zoom, turn off Zoom\u{2019}s own window)" }
         if template.canAdd(kind, to: slot) { return nil }
         let views = Set(version.compactMap { $0.kind.view })
         switch kind {
@@ -973,7 +973,7 @@ struct LayoutPageContent: View {
             }
         } else if !customUIMode {
             HStack {
-                StatusBadge(text: "Needs custom UI", tone: .problem)
+                StatusBadge(text: "Needs Greenroom\u{2019}s window", tone: .problem)
                 Text("It is skipped at Start. Turn on Greenroom\u{2019}s meeting UI in Settings \u{2192} Zoom.")
                     .font(.callout).foregroundStyle(.secondary)
             }
@@ -1006,7 +1006,7 @@ struct LayoutPageContent: View {
             Spacer()
         }
         if !customUIMode {
-            Text("Custom meeting UI is off, so this is Zoom\u{2019}s own window, moved into this space.")
+            Text("Zoom\u{2019}s own meeting window is on (experimental), so this is Zoom\u{2019}s window, moved into this space.")
                 .font(.callout)
                 .foregroundStyle(.secondary)
         }

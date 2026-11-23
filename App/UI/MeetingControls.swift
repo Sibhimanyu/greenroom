@@ -1112,10 +1112,7 @@ enum MeetingControlBarController {
         // desktop switch changes the answer without the window changing at all.
         spaceObserver = NSWorkspace.shared.notificationCenter.addObserver(
             forName: NSWorkspace.activeSpaceDidChangeNotification, object: nil, queue: .main) { _ in
-            MainActor.assumeIsolated {
-                reconcile(immediately: false)
-                settleAfterSpaceChange()
-            }
+            MainActor.assumeIsolated { reconcile(immediately: false) }
         }
         // A display unplugged, or the Dock or menu bar moved: a spot that is now
         // off screen goes back to the default, one that is merely close to an
@@ -1191,37 +1188,6 @@ enum MeetingControlBarController {
             work.perform()
         } else {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5, execute: work)
-        }
-    }
-
-    /// A desktop swipe can leave the bar drawn but deaf: a window ordered in
-    /// while the Space slides can keep stale window-server state. Once the
-    /// switch has settled (past the reconcile debounce), say what the bar is
-    /// in the session log, then put it back as the mouse expects it: opaque,
-    /// taking clicks, and ordered in again if it is meant to be up.
-    private static func settleAfterSpaceChange() {
-        func state(_ p: NSPanel) -> String {
-            "visible \(p.isVisible), alpha \(p.alphaValue), ignoresMouse \(p.ignoresMouseEvents), "
-                + "onActiveSpace \(p.isOnActiveSpace), morph \(morphTimeline != nil)"
-        }
-        if let panel { CoordinatorController.sessionLog("Bar: desktop changed (\(state(panel)))") }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) {
-            MainActor.assumeIsolated {
-                guard let panel else { return }
-                // A morph whose timer died would hold the bar at alpha 0 for good.
-                if morphTimeline != nil, morphTimer?.isValid != true {
-                    morphSnapshot?.orderOut(nil)
-                    morphSnapshot = nil
-                    morphTimeline = nil
-                }
-                guard morphTimeline == nil else { return }
-                panel.ignoresMouseEvents = false
-                if !isStarting { panel.alphaValue = 1 }
-                if MeetingSurfaces.barVisible(windowShowing: ParticipantGridWindowController.meetingWindowIsShowing) {
-                    panel.orderFrontRegardless()
-                }
-                CoordinatorController.sessionLog("Bar: desktop settled (\(state(panel)))")
-            }
         }
     }
 

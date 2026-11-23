@@ -91,7 +91,31 @@ enum MeetingMenuBuilder {
         // `below` opens it downward instead, for a control at the top of the window.
         let y: CGFloat = below ? (view.isFlipped ? view.bounds.maxY + 4 : -4)
                                : (view.isFlipped ? -4 : view.bounds.maxY + height + 4)
-        built.popUp(positioning: nil, at: NSPoint(x: 0, y: y), in: view)
+        let began = CACurrentMediaTime()
+        let wasActive = NSApp.isActive
+        if let window = view.window {
+            // `popUp(positioning:at:in:)` shows nothing when the app is not the
+            // active one (after a desktop swipe another app is in front), and
+            // activating Greenroom would drag its other windows forward. A
+            // context menu popped for a real-looking click shows without it.
+            // Its top-left is the click point, so the point is the menu's top.
+            let local = NSPoint(x: 0, y: y)
+            let inWindow = view.convert(local, to: nil)
+            if let click = NSEvent.mouseEvent(with: .leftMouseDown, location: inWindow, modifierFlags: [],
+                                              timestamp: ProcessInfo.processInfo.systemUptime,
+                                              windowNumber: window.windowNumber, context: nil,
+                                              eventNumber: 0, clickCount: 1, pressure: 1) {
+                NSMenu.popUpContextMenu(built, with: click, for: view)
+                CoordinatorController.sessionLog(String(format:
+                    "Bar: menu popUpContextMenu returned after %.2fs (app active before: %@)",
+                    CACurrentMediaTime() - began, wasActive ? "yes" : "no"))
+                return
+            }
+        }
+        let shown = built.popUp(positioning: nil, at: NSPoint(x: 0, y: y), in: view)
+        CoordinatorController.sessionLog(String(format:
+            "Bar: menu popUp returned %@ after %.2fs (app active before: %@)",
+            shown ? "true" : "false", CACurrentMediaTime() - began, wasActive ? "yes" : "no"))
     }
 }
 

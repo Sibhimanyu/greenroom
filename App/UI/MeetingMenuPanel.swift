@@ -34,6 +34,19 @@ final class MeetingMenuPanel {
         open(entries, anchor: anchor, view: view, window: window, below: below)
     }
 
+    /// Hangs the entries below a status bar button. Pressing the same button
+    /// again closes it. Returns false (and shows nothing) when the button has
+    /// no window to measure from, so the caller can log why.
+    @discardableResult
+    static func show(_ entries: [MenuEntry], belowStatusButton button: NSView) -> Bool {
+        if let current = anchorView, current === button, !chain.isEmpty { closeAll(); return true }
+        closeAll()
+        guard !entries.isEmpty, let window = button.window else { return false }
+        let anchor = window.convertToScreen(button.convert(button.bounds, to: nil))
+        open(entries, anchor: anchor, view: button, window: window, below: true)
+        return true
+    }
+
     /// A right-click: the menu hangs from the mouse point, as a context menu does.
     static func show(_ entries: [MenuEntry], for event: NSEvent) {
         guard let window = event.window else { return }

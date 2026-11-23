@@ -2,17 +2,23 @@
 //  MenuBarStatusItem.swift
 //  Greenroom
 //
-//  The menu bar icon and its menu, as a plain AppKit NSStatusItem + NSMenu.
+//  The menu bar icon and its menu: a plain AppKit NSStatusItem whose menu is
+//  drawn by MeetingMenuPanel, not by NSMenu.
 //
 //  Why not SwiftUI's MenuBarExtra: its status item is owned by SwiftUI and stops
 //  answering clicks after the user switches Spaces while the app is inactive,
-//  and Greenroom is almost always inactive. A status item we own has no such
-//  problem (Cues's item, CuesMenuBar, is the same pattern).
+//  and Greenroom is almost always inactive. Why not `item.menu` either: on this
+//  macOS an NSMenu shows nothing while Greenroom is not the active app after a
+//  desktop swipe (the same fault as the meeting bar's menus, see
+//  MeetingMenuPanel), and activating Greenroom would drag its windows forward.
+//  So the button has a target/action; a click builds the entries and
+//  MeetingMenuPanel hangs them below the button as a floating non-activating panel.
 //
 //  The list itself is MenuBarModel (pure, tested); this file gathers the state
-//  it needs, turns the items into NSMenuItems when the menu opens
-//  (`menuNeedsUpdate`) and runs the actions. The shortcut hints are only hints:
-//  the hotkeys are global (ShortcutRuntime) and swallow the key first.
+//  it needs, turns the items into MenuEntry rows when the icon is clicked and
+//  runs the actions. The shortcut hints are only hints: the hotkeys are global
+//  (ShortcutRuntime) and swallow the key first. Clicks and Space changes are
+//  logged to ~/Library/Logs/Greenroom-menubar.log.
 //
 import AppKit
 import AVFoundation
@@ -53,7 +59,7 @@ struct MenuBarActionBridge: Commands {
 }
 
 @MainActor
-final class MenuBarStatusItem: NSObject, NSMenuDelegate {
+final class MenuBarStatusItem: NSObject {
 
     private static var shared: MenuBarStatusItem?
 
@@ -70,7 +76,6 @@ final class MenuBarStatusItem: NSObject, NSMenuDelegate {
 
     private let coordinator: CoordinatorController
     private let item: NSStatusItem
-    private let menu = NSMenu()
     private let notes = SessionNotes.shared
     private let shortcuts = ShortcutStore.shared
     private var lastSession: MenuBarLastSession?
@@ -80,10 +85,14 @@ final class MenuBarStatusItem: NSObject, NSMenuDelegate {
         self.coordinator = coordinator
         item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         super.init()
-        menu.autoenablesItems = false
-        menu.delegate = self
-        item.menu = menu
         item.button?.setAccessibilityLabel("Greenroom")
+        item.button?.target = self
+        item.button?.action = #selector(clicked)
+        item.button?.sendAction(on: [.leftMouseDown, .rightMouseDown])
+        NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.activeSpaceDidChangeNotification, object: nil, queue: .main) { _ in
+            MenuBarLog.write("Space changed (app active \(NSApp.isActive ? "yes" : "no"))")
+        }
         renderLabel()
         loadLastSession()
 
@@ -209,127 +218,56 @@ final class MenuBarStatusItem: NSObject, NSMenuDelegate {
         }
     }
 
-    // MARK: NSMenuDelegate
+    // MARK: Click
 
-    func menuNeedsUpdate(_ menu: NSMenu) {
-        guard menu === self.menu else { return }
-        menu.removeAllItems()
-        let items = MenuBarModel.items(state: state(), problems: problems(),
-                                       lastSession: lastSession, shortcuts: shortcuts.bindings)
-        for entry in items { menu.addItem(menuItem(for: entry)) }
+    @objc private func clicked() {
+        MenuBarLog.write("Icon clicked (app active \(NSApp.isActive ? "yes" : "no"))")
+        guard let button = item.button else {
+            MenuBarLog.write("Panel failed: the status item has no button")
+            return
+        }
+        let entries = menuEntries()
+        if MeetingMenuPanel.show(entries, belowStatusButton: button) {
+            MenuBarLog.write("Panel shown or toggled (\(entries.count) entries)")
+        } else {
+            MenuBarLog.write("Panel failed: the button has no window")
+        }
         loadLastSession()
     }
 
-    // MARK: Drawing one item
+    // MARK: Items as entries
 
-    private func menuItem(for item: MenuBarItem) -> NSMenuItem {
+    private func menuEntries() -> [MenuEntry] {
+        MenuBarModel.items(state: state(), problems: problems(),
+                           lastSession: lastSession, shortcuts: shortcuts.bindings)
+            .map(entry(for:))
+    }
+
+    private func entry(for item: MenuBarItem) -> MenuEntry {
         switch item.kind {
         case .separator:
-            return .separator()
+            return .separator
         case .status:
-            let row = NSMenuItem(title: item.title, action: nil, keyEquivalent: "")
-            row.isEnabled = false
-            if let symbol = item.symbol {
-                row.image = Self.symbol(symbol, tint: item.attention ? NSColor(Brand.net) : nil)
-            }
-            if item.attention {
-                row.attributedTitle = NSAttributedString(
-                    string: item.title, attributes: [.foregroundColor: NSColor(Brand.net)])
-            }
-            return row
+            return .header(item.title)
         case .layoutMenu:
-            let row = NSMenuItem(title: item.title, action: nil, keyEquivalent: "")
-            row.image = Self.symbol(item.symbol ?? "rectangle.3.group")
-            row.submenu = layoutSubmenu()
-            return row
-        case .presentMenu:
-            let row = NSMenuItem(title: item.title, action: nil, keyEquivalent: "")
-            row.image = Self.symbol(item.symbol ?? "rectangle.on.rectangle")
-            // Built each time the menu opens, so the app and window lists are current.
-            row.submenu = submenu(for: coordinator.presentMenuEntries())
-            return row
-        case .action(let action):
-            let row = ActionItem(title: item.title) { [weak self] in self?.run(action) }
-            row.image = item.symbol.flatMap { Self.symbol($0) }
-            applyHint(item.shortcut, to: row)
-            return row
-        }
-    }
-
-    private func layoutSubmenu() -> NSMenu {
-        let sub = NSMenu()
-        sub.autoenablesItems = false
-        let library = coordinator.layoutLibrary
-        let none = ActionItem(title: "None") { [weak self] in self?.coordinator.layoutLibrary.select(nil) }
-        none.state = library.activeID == nil ? .on : .off
-        sub.addItem(none)
-        for template in library.templates {
-            let id = template.id
-            let row = ActionItem(title: template.name) { [weak self] in self?.coordinator.layoutLibrary.select(id) }
-            row.state = library.activeID == id ? .on : .off
-            sub.addItem(row)
-        }
-        return sub
-    }
-
-    /// A `[MenuEntry]` as an NSMenu (the control bar pops the same list in its own panel).
-    private func submenu(for entries: [MenuEntry]) -> NSMenu {
-        let sub = NSMenu()
-        sub.autoenablesItems = false
-        for entry in entries {
-            switch entry.kind {
-            case .separator:
-                sub.addItem(.separator())
-            case .header:
-                let row = NSMenuItem(title: entry.title, action: nil, keyEquivalent: "")
-                row.isEnabled = false
-                sub.addItem(row)
-            case .item:
-                let row = ActionItem(title: entry.title) { entry.action?() }
-                row.state = entry.checked ? .on : .off
-                row.isEnabled = entry.enabled
-                applyHint(entry.shortcut, to: row)
-                sub.addItem(row)
-            case .submenu:
-                let row = NSMenuItem(title: entry.title, action: nil, keyEquivalent: "")
-                row.state = entry.checked ? .on : .off
-                row.isEnabled = entry.enabled
-                row.submenu = submenu(for: entry.children)
-                sub.addItem(row)
+            let library = coordinator.layoutLibrary
+            var rows: [MenuEntry] = [
+                .item("None", checked: library.activeID == nil) { [weak self] in
+                    self?.coordinator.layoutLibrary.select(nil)
+                }]
+            for template in library.templates {
+                let id = template.id
+                rows.append(.item(template.name, checked: library.activeID == id) { [weak self] in
+                    self?.coordinator.layoutLibrary.select(id)
+                })
             }
+            return .submenu(item.title, rows)
+        case .presentMenu:
+            // Built each time the menu opens, so the app and window lists are current.
+            return .submenu(item.title, coordinator.presentMenuEntries())
+        case .action(let action):
+            return .item(item.title, shortcut: item.shortcut) { [weak self] in self?.run(action) }
         }
-        return sub
-    }
-
-    private static func symbol(_ name: String, tint: NSColor? = nil) -> NSImage? {
-        let image = NSImage(systemSymbolName: name, accessibilityDescription: nil)
-        guard let tint else { return image }
-        return image?.withSymbolConfiguration(.init(paletteColors: [tint]))
-    }
-
-    /// Draws a shortcut from a binding. Nil, or a key a menu cannot draw
-    /// (function keys, the keypad), draws nothing; the hotkey still works.
-    private func applyHint(_ combo: KeyCombo?, to row: NSMenuItem) {
-        guard let combo, let name = combo.menuKey else { return }
-        let key: String
-        switch name {
-        case "space": key = " "
-        case "return": key = "\r"
-        case "tab": key = "\t"
-        case "escape": key = "\u{1B}"
-        case "left": key = String(UnicodeScalar(NSLeftArrowFunctionKey)!)
-        case "right": key = String(UnicodeScalar(NSRightArrowFunctionKey)!)
-        case "up": key = String(UnicodeScalar(NSUpArrowFunctionKey)!)
-        case "down": key = String(UnicodeScalar(NSDownArrowFunctionKey)!)
-        default: key = name
-        }
-        row.keyEquivalent = key
-        var mask: NSEvent.ModifierFlags = []
-        if combo.modifiers & KeyCombo.command != 0 { mask.insert(.command) }
-        if combo.modifiers & KeyCombo.option != 0 { mask.insert(.option) }
-        if combo.modifiers & KeyCombo.control != 0 { mask.insert(.control) }
-        if combo.modifiers & KeyCombo.shift != 0 { mask.insert(.shift) }
-        row.keyEquivalentModifierMask = mask
     }
 
     // MARK: Actions out
@@ -415,17 +353,19 @@ final class MenuBarStatusItem: NSObject, NSMenuDelegate {
     }
 }
 
-/// A menu item that runs a closure. Its own target, so it needs no responder chain.
-private final class ActionItem: NSMenuItem {
-    private let handler: () -> Void
-
-    init(title: String, handler: @escaping () -> Void) {
-        self.handler = handler
-        super.init(title: title, action: #selector(fire), keyEquivalent: "")
-        target = self
+/// ~/Library/Logs/Greenroom-menubar.log, one ISO-time line per event, appended.
+enum MenuBarLog {
+    static func write(_ line: String) {
+        let url = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Library/Logs/Greenroom-menubar.log")
+        let text = "\(ISO8601DateFormatter().string(from: Date())) \(line)\n"
+        guard let data = text.data(using: .utf8) else { return }
+        if let handle = try? FileHandle(forWritingTo: url) {
+            defer { try? handle.close() }
+            _ = try? handle.seekToEnd()
+            try? handle.write(contentsOf: data)
+        } else {
+            try? data.write(to: url)
+        }
     }
-
-    required init(coder: NSCoder) { fatalError("not used") }
-
-    @objc private func fire() { handler() }
 }

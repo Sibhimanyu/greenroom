@@ -71,7 +71,7 @@ Record is `MeetingMode.record` (enum in CoordinatorController.swift; Create / Sc
 ### Menu bar, island, floating surfaces, onboarding, chat
 | path | owns | key types |
 |---|---|---|
-| UI/MenuBarModel.swift / MenuBarStatusItem.swift | Pure menu items from state; AppKit `NSStatusItem` + `NSMenu` (rebuilt in `menuNeedsUpdate`), label, action handling, `SwiftUIActions` bridge | `MenuBarModel.items`, `MenuBarState`, `MenuBarStatusItem`, `MenuBarActionBridge` |
+| UI/MenuBarModel.swift / MenuBarStatusItem.swift | Pure menu items from state; AppKit `NSStatusItem` whose click builds `[MenuEntry]` and shows them in `MeetingMenuPanel` below the button (NSMenu is invisible while inactive after a desktop switch), label, action handling, `MenuBarLog` (~/Library/Logs/Greenroom-menubar.log), `SwiftUIActions` bridge | `MenuBarModel.items`, `MenuBarState`, `MenuBarStatusItem`, `MenuBarActionBridge` |
 | UI/NotchStatusController.swift / NotchStatusRules.swift | The island (one pill: failure > countdown > status > FIFO of prompts/toasts). It is the only surface while a meeting starts: step words, ring and a Cancel button (`NotchInput.cancellable`, `model.onCancelStart`; clickable, never key); no-notch Macs use the same pill under the menu bar | `NotchStatusController.shared`, `NotchStatusModel`, `IslandQueue`, `IslandRules`, `NotchGeometry` |
 | UI/Toast.swift, UploadPrompt.swift | Facades into island | `ToastController.show`, `UploadPromptCard.show` |
 | UI/MeetingControls.swift | Floating Control bar (pill/puck) panel + `MeetingControlsModel`. First installed when the meeting is live (never during start; its Starting state / `finishStarting` is now dormant) | `MeetingControlBarController`, `MeetingControlBarRoot` |

@@ -23,11 +23,24 @@ final class MeetingMenuPanel {
     private static var anchorView: NSView?
     private static var monitors: [Any] = []
     private static var observers: [NSObjectProtocol] = []
+    /// The anchor whose menu an outside click just closed. While Greenroom is
+    /// inactive, a press on the anchor itself (the bar cell, the menu-bar icon)
+    /// reaches the global monitor first and closes the menu, and then its
+    /// button action would open it again. Within a moment, that press is the toggle.
+    private static weak var dismissedAnchor: NSView?
+    private static var dismissedAt = Date.distantPast
+
+    /// True (and forgotten) when `view`'s menu was closed by this same press.
+    private static func justDismissed(_ view: NSView) -> Bool {
+        defer { dismissedAnchor = nil }
+        return dismissedAnchor === view && Date().timeIntervalSince(dismissedAt) < 0.5
+    }
 
     /// Opens the entries above the view (or below it), aligned to its left
     /// edge. Pressing the same cell again closes it.
     static func show(_ entries: [MenuEntry], above view: NSView, below: Bool = false) {
         if let current = anchorView, current === view, !chain.isEmpty { closeAll(); return }
+        if justDismissed(view) { return }
         closeAll()
         guard !entries.isEmpty, let window = view.window else { return }
         let anchor = window.convertToScreen(view.convert(view.bounds, to: nil))
@@ -40,6 +53,7 @@ final class MeetingMenuPanel {
     @discardableResult
     static func show(_ entries: [MenuEntry], belowStatusButton button: NSView) -> Bool {
         if let current = anchorView, current === button, !chain.isEmpty { closeAll(); return true }
+        if justDismissed(button) { return true }
         closeAll()
         guard !entries.isEmpty, let window = button.window else { return false }
         let anchor = window.convertToScreen(button.convert(button.bounds, to: nil))
@@ -105,7 +119,11 @@ final class MeetingMenuPanel {
     private static func watch(_ window: NSWindow) {
         let clicks: NSEvent.EventTypeMask = [.leftMouseDown, .rightMouseDown]
         if let global = NSEvent.addGlobalMonitorForEvents(matching: clicks, handler: { _ in
-            MainActor.assumeIsolated { closeAll() }
+            MainActor.assumeIsolated {
+                dismissedAnchor = anchorView
+                dismissedAt = Date()
+                closeAll()
+            }
         }) { monitors.append(global) }
         if let local = NSEvent.addLocalMonitorForEvents(matching: clicks, handler: { event in
             MainActor.assumeIsolated {

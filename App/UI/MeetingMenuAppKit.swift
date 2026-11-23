@@ -80,42 +80,13 @@ enum MeetingMenuBuilder {
         item.attributedTitle = text
     }
 
-    /// Pops the menu so it opens upward from `view`'s top edge: the toolbar sits
-    /// at the foot of the window, where the default (downward) would leave it.
+    /// Opens the menu (our own floating panel, see MeetingMenuPanel) upward from
+    /// `view`'s top edge: the toolbar sits at the foot of the window, where the
+    /// default (downward) would leave it. NSMenu shows nothing while the app is
+    /// inactive, which is where the bar is used from.
     static func popUp(_ entries: [MenuEntry], above view: NSView, below: Bool = false) {
         guard !entries.isEmpty else { return }
-        let built = menu(entries)
-        // The meeting window is dark whatever the system is (MeetingTheme).
-        built.appearance = NSAppearance(named: .darkAqua)
-        let height = built.size.height
-        // `below` opens it downward instead, for a control at the top of the window.
-        let y: CGFloat = below ? (view.isFlipped ? view.bounds.maxY + 4 : -4)
-                               : (view.isFlipped ? -4 : view.bounds.maxY + height + 4)
-        let began = CACurrentMediaTime()
-        let wasActive = NSApp.isActive
-        if let window = view.window {
-            // `popUp(positioning:at:in:)` shows nothing when the app is not the
-            // active one (after a desktop swipe another app is in front), and
-            // activating Greenroom would drag its other windows forward. A
-            // context menu popped for a real-looking click shows without it.
-            // Its top-left is the click point, so the point is the menu's top.
-            let local = NSPoint(x: 0, y: y)
-            let inWindow = view.convert(local, to: nil)
-            if let click = NSEvent.mouseEvent(with: .leftMouseDown, location: inWindow, modifierFlags: [],
-                                              timestamp: ProcessInfo.processInfo.systemUptime,
-                                              windowNumber: window.windowNumber, context: nil,
-                                              eventNumber: 0, clickCount: 1, pressure: 1) {
-                NSMenu.popUpContextMenu(built, with: click, for: view)
-                CoordinatorController.sessionLog(String(format:
-                    "Bar: menu popUpContextMenu returned after %.2fs (app active before: %@)",
-                    CACurrentMediaTime() - began, wasActive ? "yes" : "no"))
-                return
-            }
-        }
-        let shown = built.popUp(positioning: nil, at: NSPoint(x: 0, y: y), in: view)
-        CoordinatorController.sessionLog(String(format:
-            "Bar: menu popUp returned %@ after %.2fs (app active before: %@)",
-            shown ? "true" : "false", CACurrentMediaTime() - began, wasActive ? "yes" : "no"))
+        MeetingMenuPanel.show(entries, above: view, below: below)
     }
 }
 

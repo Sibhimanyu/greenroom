@@ -38,9 +38,10 @@ struct NotchProgress: Equatable {
     var total: Int { counted.count }
     var settled: Int { steps.filter { $0.state == .done || $0.state == .skipped }.count }
     var allSettled: Bool { !steps.isEmpty && settled == steps.count }
-    /// 0...1, for the ring: the counted steps that are done.
+    /// 0...1, for the ring: the same step as the counter, so "2/3" fills two
+    /// thirds (owner, 2026-11-23: it filled only the finished steps, one third).
     var fraction: Double {
-        total == 0 ? 0 : Double(counted.filter { $0.state == .done }.count) / Double(total)
+        total == 0 ? 0 : Double(position) / Double(total)
     }
     /// The step being worked on: the active one, else the first not yet settled.
     var currentIndex: Int? {
@@ -48,9 +49,11 @@ struct NotchProgress: Equatable {
             ?? steps.firstIndex { $0.state == .pending }
     }
     /// "3/5": the step in hand out of all of them.
-    var counter: String {
+    var counter: String { "\(position)/\(total)" }
+    /// The number the counter shows: the step in hand, 1-based.
+    private var position: Int {
         let n = currentIndex.map { i in steps[..<i].filter { $0.state != .skipped }.count + 1 } ?? total
-        return "\(min(n, max(total, 1)))/\(total)"
+        return min(n, max(total, 1))
     }
     var text: String {
         guard let i = currentIndex else { return "Almost there\u{2026}" }

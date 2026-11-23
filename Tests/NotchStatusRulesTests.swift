@@ -46,7 +46,7 @@ final class NotchStatusRulesTests: XCTestCase {
         XCTAssertEqual(p.counter, "3/5")
         XCTAssertEqual(p.text, "Starting the meeting\u{2026}")
         XCTAssertEqual(p.settled, 2)
-        XCTAssertEqual(p.fraction, 0.4, accuracy: 0.0001)
+        XCTAssertEqual(p.fraction, 0.6, accuracy: 0.0001)
     }
 
     func testSkippedStepsAreNotCounted() {
@@ -61,7 +61,7 @@ final class NotchStatusRulesTests: XCTestCase {
             return XCTFail("expected working")
         }
         XCTAssertEqual(p.counter, "1/2")
-        XCTAssertEqual(p.fraction, 0, accuracy: 0.0001)
+        XCTAssertEqual(p.fraction, 0.5, accuracy: 0.0001)
         XCTAssertFalse(p.allSettled)
     }
 

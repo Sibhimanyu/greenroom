@@ -122,7 +122,7 @@ enum AppCatalog {
     /// Control characters are stripped, not just trimmed, and that is the whole
     /// point. A saved address ending in U+001A - which is Ctrl-Z, and reaches the
     /// field far too easily given the app registers a global
-    /// Control-Option-Command-Z - survived `trimmingCharacters(in:
+    /// Control-Option-Command-H - survived `trimmingCharacters(in:
     /// .whitespacesAndNewlines)` untouched, because a control character is
     /// neither whitespace nor a newline. `URL(string:)` then returned nil, the
     /// caller quietly fell back to launching the browser with no URL, and the

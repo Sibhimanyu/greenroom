@@ -11,14 +11,14 @@ final class ShortcutModelTests: XCTestCase {
 
     func testDefaultsAreTodaysHotkeys() {
         let b = ShortcutBindings()
-        XCTAssertEqual(b.combo(for: g), .optionCommand(kVK_ANSI_G))
-        XCTAssertEqual(b.combo(for: .action(.endSession)), .optionCommand(kVK_ANSI_X))
-        XCTAssertEqual(b.combo(for: .action(.toggleRecording)), .optionCommand(kVK_ANSI_R))
-        XCTAssertEqual(b.combo(for: .action(.snapBack)), .optionCommand(kVK_ANSI_S))
-        XCTAssertEqual(b.combo(for: hide), .optionCommand(kVK_ANSI_Z))
-        XCTAssertEqual(b.combo(for: .action(.clip1)), .optionCommand(kVK_ANSI_1))
-        XCTAssertEqual(b.combo(for: .action(.clip2)), .optionCommand(kVK_ANSI_2))
-        XCTAssertEqual(b.combo(for: .action(.clip5)), .optionCommand(kVK_ANSI_5))
+        XCTAssertEqual(b.combo(for: g), .controlOptionCommand(kVK_ANSI_G))
+        XCTAssertEqual(b.combo(for: .action(.endSession)), .controlOptionCommand(kVK_ANSI_E))
+        XCTAssertEqual(b.combo(for: .action(.toggleRecording)), .controlOptionCommand(kVK_ANSI_R))
+        XCTAssertEqual(b.combo(for: .action(.snapBack)), .controlOptionCommand(kVK_ANSI_S))
+        XCTAssertEqual(b.combo(for: hide), .controlOptionCommand(kVK_ANSI_H))
+        XCTAssertEqual(b.combo(for: .action(.clip1)), .controlOptionCommand(kVK_ANSI_1))
+        XCTAssertEqual(b.combo(for: .action(.clip2)), .controlOptionCommand(kVK_ANSI_2))
+        XCTAssertEqual(b.combo(for: .action(.clip5)), .controlOptionCommand(kVK_ANSI_5))
         XCTAssertNil(b.combo(for: mic), "new actions ship unbound")
         XCTAssertNil(b.combo(for: .layout(nil)))
     }
@@ -34,7 +34,7 @@ final class ShortcutModelTests: XCTestCase {
         XCTAssertEqual(back.combo(for: mic), combo)
         XCTAssertNil(back.combo(for: g), "cleared stays cleared, it does not fall back to the default")
         XCTAssertTrue(back.isCustomised(g))
-        XCTAssertEqual(back.combo(for: hide), .optionCommand(kVK_ANSI_Z), "missing means the default")
+        XCTAssertEqual(back.combo(for: hide), .controlOptionCommand(kVK_ANSI_H), "missing means the default")
     }
 
     func testJSONShape() throws {
@@ -49,25 +49,25 @@ final class ShortcutModelTests: XCTestCase {
 
     func testSettingTheDefaultStoresNothing() {
         var b = ShortcutBindings()
-        b.set(.optionCommand(kVK_ANSI_G), for: g)
+        b.set(.controlOptionCommand(kVK_ANSI_G), for: g)
         XCTAssertTrue(b.entries.isEmpty)
         b.clear(mic)                     // unbound by default: nothing to switch off
         XCTAssertTrue(b.entries.isEmpty)
     }
 
     func testDamagedEntryFallsBackToDefault() throws {
-        let json = #"{"version":1,"entries":{"start":{"nonsense":1},"mic":{"keyCode":46,"modifiers":2304}}}"#
+        let json = #"{"version":1,"entries":{"start":{"nonsense":1},"mic":{"keyCode":46,"modifiers":6400}}}"#
         let b = try XCTUnwrap(ShortcutBindings.from(jsonData: Data(json.utf8)))
-        XCTAssertEqual(b.combo(for: g), .optionCommand(kVK_ANSI_G))
-        XCTAssertEqual(b.combo(for: mic), .optionCommand(kVK_ANSI_M))
+        XCTAssertEqual(b.combo(for: g), .controlOptionCommand(kVK_ANSI_G))
+        XCTAssertEqual(b.combo(for: mic), .controlOptionCommand(kVK_ANSI_M))
     }
 
     func testResetAndResetAll() {
         var b = ShortcutBindings()
         b.clear(g)
-        b.set(.optionCommand(kVK_ANSI_M), for: mic)
+        b.set(.controlOptionCommand(kVK_ANSI_M), for: mic)
         b.reset(g)
-        XCTAssertEqual(b.combo(for: g), .optionCommand(kVK_ANSI_G))
+        XCTAssertEqual(b.combo(for: g), .controlOptionCommand(kVK_ANSI_G))
         b.resetAll()
         XCTAssertNil(b.combo(for: mic))
     }
@@ -95,6 +95,31 @@ final class ShortcutModelTests: XCTestCase {
         }
     }
 
+    func testKnownAppClashesAreRefused() {
+        let cmd = KeyCombo.command, opt = KeyCombo.option
+        for key in [kVK_ANSI_R, kVK_ANSI_S, kVK_ANSI_I, kVK_ANSI_J, kVK_ANSI_F, kVK_ANSI_N] {
+            let combo = KeyCombo(keyCode: UInt32(key), modifiers: cmd | opt)
+            XCTAssertNotNil(ReservedShortcuts.reason(for: combo), combo.glyphs)
+        }
+    }
+
+    func testDefaultsUseControlOptionCommandAreUniqueAndNotRefused() {
+        let all = KeyCombo.control | KeyCombo.option | KeyCombo.command
+        var seen = Set<KeyCombo>()
+        for action in ShortcutAction.allCases {
+            guard let d = action.defaultCombo else { continue }
+            if action != .shrinkToBar {
+                XCTAssertEqual(d.modifiers, all, "\(action) should use exactly control, option and command")
+            }
+            XCTAssertTrue(seen.insert(d).inserted, "\(action) repeats \(d.glyphs)")
+            // Window-scoped defaults are never registered system-wide, so may be a system key.
+            if action.scope == .global {
+                XCTAssertNil(ReservedShortcuts.reason(for: d), "\(action) default \(d.glyphs) is refused")
+            }
+        }
+        XCTAssertEqual(seen.count, 11)
+    }
+
     func testRecorderRules() {
         let g = UInt32(kVK_ANSI_G)
         XCTAssertEqual(ShortcutCapture.interpret(keyCode: UInt32(kVK_Escape), carbonModifiers: 0), .cancel)
@@ -115,23 +140,23 @@ final class ShortcutModelTests: XCTestCase {
         let slots = ShortcutCatalog.slots(layouts: layouts)
         var b = ShortcutBindings()
         // The default of "hide meeting" is taken by it, so mic cannot have it.
-        XCTAssertEqual(b.conflict(for: .optionCommand(kVK_ANSI_Z), besides: mic, among: slots), hide)
+        XCTAssertEqual(b.conflict(for: .controlOptionCommand(kVK_ANSI_H), besides: mic, among: slots), hide)
         // A row does not conflict with itself.
-        XCTAssertNil(b.conflict(for: .optionCommand(kVK_ANSI_Z), besides: hide, among: slots))
+        XCTAssertNil(b.conflict(for: .controlOptionCommand(kVK_ANSI_H), besides: hide, among: slots))
         // Free combination.
-        XCTAssertNil(b.conflict(for: .optionCommand(kVK_ANSI_M), besides: mic, among: slots))
+        XCTAssertNil(b.conflict(for: .controlOptionCommand(kVK_ANSI_M), besides: mic, among: slots))
         // Once the other row is cleared, the key is free.
         b.clear(hide)
-        XCTAssertNil(b.conflict(for: .optionCommand(kVK_ANSI_Z), besides: mic, among: slots))
+        XCTAssertNil(b.conflict(for: .controlOptionCommand(kVK_ANSI_H), besides: mic, among: slots))
     }
 
     func testResolvedNeverDoubleClaims() {
         var b = ShortcutBindings()
-        b.set(.optionCommand(kVK_ANSI_G), for: mic)     // same as Start
+        b.set(.controlOptionCommand(kVK_ANSI_G), for: mic)     // same as Start
         let resolved = b.resolved(among: ShortcutCatalog.slots(layouts: []))
         let keys = resolved.map(\.combo)
         XCTAssertEqual(keys.count, Set(keys).count)
-        XCTAssertEqual(resolved.first { $0.combo == .optionCommand(kVK_ANSI_G) }?.slot, g, "first in list order keeps it")
+        XCTAssertEqual(resolved.first { $0.combo == .controlOptionCommand(kVK_ANSI_G) }?.slot, g, "first in list order keeps it")
     }
 
     // MARK: Dynamic layout actions
@@ -216,11 +241,11 @@ final class ShortcutModelTests: XCTestCase {
         let all = KeyCombo(keyCode: UInt32(kVK_ANSI_G),
                            modifiers: KeyCombo.command | KeyCombo.shift | KeyCombo.option | KeyCombo.control)
         XCTAssertEqual(all.glyphs, "\u{2303}\u{2325}\u{21E7}\u{2318}G")
-        XCTAssertEqual(KeyCombo.optionCommand(kVK_ANSI_G).glyphs, "\u{2325}\u{2318}G")
-        XCTAssertEqual(KeyCombo.optionCommand(kVK_ANSI_G).spokenName, "Option Command G")
+        XCTAssertEqual(KeyCombo.controlOptionCommand(kVK_ANSI_G).glyphs, "\u{2303}\u{2325}\u{2318}G")
+        XCTAssertEqual(KeyCombo.controlOptionCommand(kVK_ANSI_G).spokenName, "Control Option Command G")
         XCTAssertEqual(all.spokenName, "Control Option Shift Command G")
         XCTAssertEqual(KeyCombo(keyCode: UInt32(kVK_Space), modifiers: KeyCombo.command | KeyCombo.control).glyphs, "\u{2303}\u{2318}Space")
         XCTAssertEqual(KeyCombo(keyCode: UInt32(kVK_LeftArrow), modifiers: KeyCombo.option).glyphs, "\u{2325}\u{2190}")
-        XCTAssertEqual(KeyCombo.optionCommand(kVK_ANSI_5).menuKey, "5")
+        XCTAssertEqual(KeyCombo.controlOptionCommand(kVK_ANSI_5).menuKey, "5")
     }
 }

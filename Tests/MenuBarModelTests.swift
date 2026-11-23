@@ -56,7 +56,7 @@ final class MenuBarModelTests: XCTestCase {
     }
 
     func testShortcutsComeFromCustomBindings() {
-        let custom = KeyCombo.optionCommand(0)
+        let custom = KeyCombo.controlOptionCommand(0)
         var b = ShortcutBindings()
         b.set(custom, for: .action(.startClass))
         XCTAssertEqual(build(bindings: b).first { $0.action == .newMeeting }?.shortcut, custom)

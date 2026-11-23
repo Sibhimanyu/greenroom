@@ -37,7 +37,7 @@ enum YouTubeUploadMode: String, CaseIterable, Identifiable {
 
 extension CoordinatorController {
 
-    /// Every recording ends here - the ⌥⌘R stop and End Session's stop both
+    /// Every recording ends here - the ⌃⌥⌘R stop and End Session's stop both
     /// call it with the final path the recorder reported. Never blocks the
     /// caller. Once nothing is live, the after-session card shows (it holds
     /// the Upload button that used to be the island's question); a recording

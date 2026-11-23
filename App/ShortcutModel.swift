@@ -34,9 +34,13 @@ struct KeyCombo: Codable, Hashable {
         self.modifiers = modifiers & Self.mask
     }
 
-    /// Option + Command + a key: the family every default uses.
-    static func optionCommand(_ keyCode: Int) -> KeyCombo {
-        KeyCombo(keyCode: UInt32(keyCode), modifiers: command | option)
+    /// Control + Option + Command + a key: the family every default uses.
+    /// Option + Command and Option + Shift clash with apps (Safari's reload,
+    /// Save All, editors) and with typing (Option + Shift + P types a character),
+    /// and a global hotkey swallows the key before the app sees it. Adding
+    /// Control leaves almost nothing for another app to own.
+    static func controlOptionCommand(_ keyCode: Int) -> KeyCombo {
+        KeyCombo(keyCode: UInt32(keyCode), modifiers: control | option | command)
     }
 
     /// NSEvent.ModifierFlags.rawValue to Carbon's mask, without importing AppKit
@@ -163,6 +167,13 @@ enum ReservedShortcuts {
         Entry(keyCode: kVK_ANSI_Z, modifiers: cmd, reason: "\u{2318}Z is Undo in every app."),
         Entry(keyCode: kVK_ANSI_Z, modifiers: cmd | shift, reason: "\u{21E7}\u{2318}Z is Redo in every app."),
         Entry(keyCode: kVK_ANSI_S, modifiers: cmd, reason: "\u{2318}S is Save in every app."),
+        // Known clashes with other apps, refused so they cannot be recorded by accident.
+        Entry(keyCode: kVK_ANSI_R, modifiers: cmd | opt, reason: "\u{2325}\u{2318}R makes Safari reload the page from the server."),
+        Entry(keyCode: kVK_ANSI_S, modifiers: cmd | opt, reason: "\u{2325}\u{2318}S is Save All in many apps."),
+        Entry(keyCode: kVK_ANSI_I, modifiers: cmd | opt, reason: "\u{2325}\u{2318}I opens the web inspector in Safari and Chrome."),
+        Entry(keyCode: kVK_ANSI_J, modifiers: cmd | opt, reason: "\u{2325}\u{2318}J opens Chrome's JavaScript console."),
+        Entry(keyCode: kVK_ANSI_F, modifiers: cmd | opt, reason: "\u{2325}\u{2318}F is Find and Replace in many apps."),
+        Entry(keyCode: kVK_ANSI_N, modifiers: cmd | opt, reason: "\u{2325}\u{2318}N is New Smart Folder or a new window in many apps."),
         // Greenroom's own View menu command, which a global hotkey would swallow.
         Entry(keyCode: kVK_ANSI_B, modifiers: cmd, reason: "\u{2318}B shows and hides Greenroom's Sessions sidebar."),
     ]
@@ -369,41 +380,37 @@ enum ShortcutAction: String, CaseIterable {
     /// action that should only answer inside Greenroom; there is none today.)
     var scope: ShortcutScope { self == .shrinkToBar ? .meetingWindow : .global }
 
-    /// Option + Command, not Control + Option + Command.
+    /// Control + Option + Command + a letter or digit.
     ///
-    /// Three modifiers was chosen for collision safety and is genuinely hard to
-    /// hit one-handed. Option and Command are adjacent at the bottom left, so one
-    /// thumb covers both. Control is the one dropped, deliberately: Control +
-    /// Option is VoiceOver's own modifier, so those combinations are swallowed
-    /// whenever VoiceOver is running. Option + Command has no such owner, and
-    /// none of the letters used here collide with the system's Option + Command
-    /// shortcuts (H Hide Others, D Dock, M Minimise All, Space Spotlight in
-    /// Finder, Escape Force Quit - all refused by `ReservedShortcuts`).
+    /// Option + Command and Option + Shift were the first defaults and they
+    /// clashed: Option + Command + R reloads from origin in Safari, + S is Save
+    /// All in many apps, + Z/1/2/5 are used by editors, and Option + Shift + P/D
+    /// type characters in every app. As a global hotkey each one stole the key
+    /// from whatever was in front. All three modifiers together is a chord no
+    /// mainstream app claims. The cost is a bigger reach, which is acceptable for
+    /// actions used mid-meeting from a keyboard-heavy hand.
     ///
     /// The clip digits ARE the minutes. Digits rather than letters because the
-    /// mapping is the mnemonic, and Option + Command digits are unclaimed.
+    /// mapping is the mnemonic.
     ///
     /// The new actions ship unbound: a default is only worth taking when it is
     /// clearly safe, and none of them is clearly safe to guess.
     var defaultCombo: KeyCombo? {
         if meetingView != nil { return nil }
         switch self {
-        case .startClass: return .optionCommand(kVK_ANSI_G)
-        case .endSession: return .optionCommand(kVK_ANSI_X)
-        case .toggleRecording: return .optionCommand(kVK_ANSI_R)
-        // Recorditor's own Pause key. Free here: no other default uses Shift.
-        case .togglePause: return KeyCombo(keyCode: UInt32(kVK_ANSI_P), modifiers: KeyCombo.option | KeyCombo.shift)
-        // Draw: Option-Shift-D. Free (Pause is the only other Shift default),
-        // and not a system shortcut.
-        case .toggleDrawing: return KeyCombo(keyCode: UInt32(kVK_ANSI_D), modifiers: KeyCombo.option | KeyCombo.shift)
-        case .snapBack: return .optionCommand(kVK_ANSI_S)
+        case .startClass: return .controlOptionCommand(kVK_ANSI_G)
+        case .endSession: return .controlOptionCommand(kVK_ANSI_E)
+        case .toggleRecording: return .controlOptionCommand(kVK_ANSI_R)
+        case .togglePause: return .controlOptionCommand(kVK_ANSI_P)
+        case .toggleDrawing: return .controlOptionCommand(kVK_ANSI_D)
+        case .snapBack: return .controlOptionCommand(kVK_ANSI_S)
         // The yellow traffic light's key, in the meeting window only (scope
         // .meetingWindow): no global hotkey, so no other app loses Command-M.
         case .shrinkToBar: return KeyCombo(keyCode: UInt32(kVK_ANSI_M), modifiers: KeyCombo.command)
-        case .toggleMeeting: return .optionCommand(kVK_ANSI_Z)
-        case .clip1: return .optionCommand(kVK_ANSI_1)
-        case .clip2: return .optionCommand(kVK_ANSI_2)
-        case .clip5: return .optionCommand(kVK_ANSI_5)
+        case .toggleMeeting: return .controlOptionCommand(kVK_ANSI_H)
+        case .clip1: return .controlOptionCommand(kVK_ANSI_1)
+        case .clip2: return .controlOptionCommand(kVK_ANSI_2)
+        case .clip5: return .controlOptionCommand(kVK_ANSI_5)
         case .toggleMic, .toggleCamera, .toggleChat, .toggleNotes, .showMeetingWindow,
              .toggleMeetingBar, .shrinkMeeting, .cycleMeetingView, .openGreenroom, .openSessions: return nil
         default: return nil

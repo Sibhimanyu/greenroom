@@ -87,7 +87,7 @@ enum MeetingBarModel {
         return h > 0 ? String(format: "%d:%02d:%02d", h, m, s) : String(format: "%d:%02d", m, s)
     }
 
-    /// "Mute (⌥⌘M)": the control's name, and the key the person has bound to it
+    /// "Mute (⌃⌥⌘M)": the control's name, and the key the person has bound to it
     /// (never a hardcoded one). With no key bound, just the name.
     static func help(_ name: String, _ action: ShortcutAction?, _ bindings: ShortcutBindings) -> String {
         guard let action, let combo = bindings.combo(for: .action(action)) else { return name }

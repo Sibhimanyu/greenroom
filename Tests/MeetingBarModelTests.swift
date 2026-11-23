@@ -111,8 +111,8 @@ final class MeetingBarModelTests: XCTestCase {
 
     func testIconCellsHelpNameTheBoundKey() {
         var b = ShortcutBindings()
-        b.set(KeyCombo.optionCommand(kVK_ANSI_M), for: .action(.toggleMeetingBar))
-        XCTAssertEqual(M.collapseCell(b).help, "Collapse the bar to a small round button (\u{2325}\u{2318}M)")
+        b.set(KeyCombo.controlOptionCommand(kVK_ANSI_M), for: .action(.toggleMeetingBar))
+        XCTAssertEqual(M.collapseCell(b).help, "Collapse the bar to a small round button (\u{2303}\u{2325}\u{2318}M)")
         XCTAssertEqual(M.collapseCell(none).spoken, "Collapse to the small button")
         XCTAssertNotEqual(M.collapseCell(none).symbol, "arrow.up.left.and.arrow.down.right")
         XCTAssertTrue(M.viewsCell(none).help.hasPrefix("Meeting views"))
@@ -142,11 +142,11 @@ final class MeetingBarModelTests: XCTestCase {
     func testHelpNamesTheBoundKeyNeverAHardcodedOne() {
         XCTAssertEqual(M.help("Mute", .toggleMic, none), "Mute")  // unbound by default
         var b = ShortcutBindings()
-        b.set(KeyCombo.optionCommand(kVK_ANSI_M), for: .action(.toggleMic))
-        XCTAssertEqual(M.help("Mute", .toggleMic, b), "Mute (\u{2325}\u{2318}M)")
+        b.set(KeyCombo.controlOptionCommand(kVK_ANSI_M), for: .action(.toggleMic))
+        XCTAssertEqual(M.help("Mute", .toggleMic, b), "Mute (\u{2303}\u{2325}\u{2318}M)")
         b.set(KeyCombo(keyCode: UInt32(kVK_ANSI_J), modifiers: KeyCombo.command | KeyCombo.shift), for: .action(.toggleMic))
         XCTAssertEqual(M.help("Mute", .toggleMic, b), "Mute (\u{21E7}\u{2318}J)")
-        XCTAssertEqual(M.help("End", .endSession, none), "End (\u{2325}\u{2318}X)")
+        XCTAssertEqual(M.help("End", .endSession, none), "End (\u{2303}\u{2325}\u{2318}E)")
         XCTAssertEqual(M.help("People", nil, none), "People")
     }
 

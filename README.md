@@ -141,7 +141,7 @@ anytime from the **?** button in the main window. The short version:
 1. Pick **New Meeting** (creates a fresh meeting under your Zoom account,
    you host) or **Join Existing** (paste a link with the **Paste Link**
    button, or type the meeting ID/passcode).
-2. Press **Start** (or ⌥⌘G). In order: the picture comes up (screen and camera)
+2. Press **Start** (or ⌃⌥⌘G). In order: the picture comes up (screen and camera)
    → the meeting starts/joins → your main app opens tiled to
    its slice → the Zoom tile and chat window fill the side column →
    Greenroom's own window drops to the back and your main app is focused.
@@ -158,8 +158,8 @@ Also available:
   into the class folder in `Documents/Greenroom`. Auto-record on Start is
   off by default.
 - **Clips** — while a session runs, Greenroom keeps the last 5 minutes in
-  memory (on by default: *Keep the last 5 minutes clippable*). **⌥⌘1**,
-  **⌥⌘2** or **⌥⌘5** saves the last 1, 2 or 5 minutes into the class
+  memory (on by default: *Keep the last 5 minutes clippable*). **⌃⌥⌘1**,
+  **⌃⌥⌘2** or **⌃⌥⌘5** saves the last 1, 2 or 5 minutes into the class
   folder, whether you are recording or not. A clip holds what the class
   saw from you: your composited screen, your webcam and your mic. Not other
   participants, not Zoom audio.
@@ -259,9 +259,9 @@ switch.
 
 ### Shortcuts
 Every action with its key, grouped as Session, Meeting, Layout and
-Greenroom. Defaults are ⌥⌘ plus a letter (start G, end X, record R, snap S,
-hide meeting Z, clips 1/2/5), ⌥⇧P to pause and ⌥⇧D to draw; the rest start
-empty. Click a row to record a key, or clear it. Combinations macOS or
+Greenroom. Defaults are ⌃⌥⌘ plus a key (start G, end E, record R, pause P, draw D,
+snap S, hide meeting H, clips 1/2/5); the rest start empty. Control is
+included so no default takes a key from Safari, an editor or your typing. Click a row to record a key, or clear it. Combinations macOS or
 common apps own are refused.
 
 ### Zoom
@@ -291,7 +291,7 @@ available to you:
 
 ### YouTube
 Off by default. **After a recording**: Do nothing · Ask whether to upload
-· Upload automatically. When on, a finished recording (⌥⌘R stop or End
+· Upload automatically. When on, a finished recording (⌃⌥⌘R stop or End
 Session) is uploaded to the connected Google account's channel as
 **unlisted** or **private**, resumable in 32 MiB chunks, and the link is
 copied to the clipboard. Setup: a Google Cloud project with the YouTube

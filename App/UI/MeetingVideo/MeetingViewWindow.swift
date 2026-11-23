@@ -256,7 +256,7 @@ enum MeetingViewWindows {
     private static var handStamps = HandStamps()
     /// Set by "Use the meeting window": the views are off for the rest of the session.
     private(set) static var meetingWindowOnly = false
-    /// ⌥⌘Z hid the views (none of them is brought forward until it shows them).
+    /// ⌃⌥⌘H hid the views (none of them is brought forward until it shows them).
     private(set) static var hiddenTogether = false
     /// Tells the Views menu to redraw.
     static var onChanged: (() -> Void)?
@@ -387,7 +387,7 @@ enum MeetingViewWindows {
     }
 
     /// The layout wants this view in this rectangle: (re)place it, open it if it is
-    /// not open. Hidden together (⌥⌘Z, or "Starts hidden"), it stays away.
+    /// not open. Hidden together (⌃⌥⌘H, or "Starts hidden"), it stays away.
     static func place(_ view: MeetingView, frame: NSRect, hidden: Bool) {
         if hidden {
             hide(view)
@@ -410,7 +410,7 @@ enum MeetingViewWindows {
         controllers[view]?.panel.orderOut(nil)
     }
 
-    /// ⌥⌘Z: every view goes out, or comes back, with the Meeting window.
+    /// ⌃⌥⌘H: every view goes out, or comes back, with the Meeting window.
     static func setHiddenTogether(_ hidden: Bool) {
         hiddenTogether = hidden
         for controller in controllers.values {

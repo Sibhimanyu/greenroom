@@ -122,6 +122,8 @@ struct MenuPopUpOverlay: NSViewRepresentable {
         override func accessibilityPerformPress() -> Bool { open(); return true }
 
         private func open() {
+            let w = window
+            CoordinatorController.sessionLog("Bar: menu cell pressed (\(accessibilityLabel() ?? "no label"); window visible \(w?.isVisible ?? false), onActiveSpace \(w?.isOnActiveSpace ?? false), alpha \(w?.alphaValue ?? -1))")
             guard let entries = entries?() else { return }
             MeetingMenuBuilder.popUp(entries, above: self)
         }

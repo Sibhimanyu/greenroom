@@ -76,6 +76,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // bindings are Settings -> Shortcuts. ShortcutRuntime registers them
             // and keeps them registered as they change.
             ShortcutRuntime.shared.start()
+            // The menu bar icon: AppKit, not MenuBarExtra (Spaces). Held by itself.
+            MenuBarStatusItem.install()
             #if DEBUG
             DebugTour.start()
             #endif

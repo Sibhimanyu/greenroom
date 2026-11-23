@@ -40,7 +40,7 @@ Recording analysis and the report, folded into the Sessions/Record flow. Despite
 UI entry points (all in `App/UI/`):
 - `RecordingsView.swift` holds `@ObservedObject review = ScreenroomReviewController.shared`. The session inspector's "Get feedback" button calls `review.openRunPopover()` (via `inspectorActions(session).analyse`); the popover's Start is `actions.start` -> `review.startFromPopover()`; `analyseState(session)` decides ready / analysed / unavailable. When `coordinator.mainPage == .report(id)` it renders `ScreenroomReportView(onBack:)`. `.sheet(isPresented: $review.showingSetup)` shows `AnalysisSetupPanel` (`App/UI/AnalysisSetupPanel.swift`, embeds `ScreenroomSettingsTab`, Done only, never runs anything); it opens from the Ready popover's Change link or More > Feedback settings, and closing it from the popover reopens the popover. Selecting a take sets `review.selectedRecording`.
 - `SessionNotesBar.swift` / `RecordingsView` pass `onAddNote` -> `review.addNote(text, at:)`.
-- `MenuBarView.swift` uses `ScreenroomLibrary.presentations().first`.
+- `MenuBarStatusItem.swift` uses `ScreenroomLibrary.presentations().first`.
 - `CoordinatorController.swift` (~5532-5640) reads/writes `ScreenroomAgentSettings` and `ScreenroomTranscriberSettings` for the synced settings payload.
 - `App/Cues/CuesWhisperTranscriber.swift` reuses `ScreenroomTranscriberSettings.resolvedModel()` (whisper is a property of the Mac, shared with Cues). `App/UI/CuesSettingsTab.swift` shows `WhisperInstaller` / `WhisperModelPicker`.
 - `App/Recording/SessionFolders.recordingsDirectory` is the library root; `SessionMetadata.title` becomes `ScreenroomPresentation.presenter`.

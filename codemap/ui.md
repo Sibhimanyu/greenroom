@@ -7,7 +7,7 @@ Everything the person sees outside a live meeting's video windows lives in `App/
 ### Main window shell
 | path | owns | key types |
 |---|---|---|
-| App/GreenroomApp.swift (outside UI) | Scenes, `Brand` tokens | `Window("Greenroom", id:"main")`, `Settings{}`, `MenuBarExtra`, `enum Brand` |
+| App/GreenroomApp.swift (outside UI) | Scenes, `Brand` tokens | `Window("Greenroom", id:"main")`, `Settings{}`, `enum Brand` |
 | UI/ContentView.swift | Root `NavigationSplitView`; Home<->page transition, window sizing, main toolbar | `ContentView`, `modeSwitcher`, `pageLayers`, `changePage` |
 | UI/MainWindow.swift | Find main window by scene id (not title) | `MainWindow.current/matches` |
 | UI/MainWindowTransition.swift | Home steps toward Control bar on Start | `MainWindowTransition.hide/show` |
@@ -71,7 +71,7 @@ Record is `MeetingMode.record` (enum in CoordinatorController.swift; Create / Sc
 ### Menu bar, island, floating surfaces, onboarding, chat
 | path | owns | key types |
 |---|---|---|
-| UI/MenuBarModel.swift / MenuBarView.swift | Pure menu items from state; SwiftUI `.menu` rendering | `MenuBarModel.items`, `MenuBarState`, `MenuBarView` |
+| UI/MenuBarModel.swift / MenuBarStatusItem.swift | Pure menu items from state; AppKit `NSStatusItem` + `NSMenu` (rebuilt in `menuNeedsUpdate`), label, action handling, `SwiftUIActions` bridge | `MenuBarModel.items`, `MenuBarState`, `MenuBarStatusItem`, `MenuBarActionBridge` |
 | UI/NotchStatusController.swift / NotchStatusRules.swift | The island (one pill: failure > countdown > status > FIFO of prompts/toasts). It is the only surface while a meeting starts: step words, ring and a Cancel button (`NotchInput.cancellable`, `model.onCancelStart`; clickable, never key); no-notch Macs use the same pill under the menu bar | `NotchStatusController.shared`, `NotchStatusModel`, `IslandQueue`, `IslandRules`, `NotchGeometry` |
 | UI/Toast.swift, UploadPrompt.swift | Facades into island | `ToastController.show`, `UploadPromptCard.show` |
 | UI/MeetingControls.swift | Floating Control bar (pill/puck) panel + `MeetingControlsModel`. First installed when the meeting is live (never during start; its Starting state / `finishStarting` is now dormant) | `MeetingControlBarController`, `MeetingControlBarRoot` |
@@ -95,7 +95,7 @@ Record is `MeetingMode.record` (enum in CoordinatorController.swift; Create / Sc
 | UI/ClosureButton.swift | NSButton with closure, answers first click |
 
 ## How it fits
-- Scenes (GreenroomApp.swift): main `Window("Greenroom", id:"main")` hosts `ContentView` with `.tint(Brand.green)`, `LaunchSplashCover`, `FrostedWindow`; `Settings { SettingsView }`; `MenuBarExtra { MenuBarView }` (label = `MenuBarMark` image, `.menuBarExtraStyle(.menu)`). Everything else is an AppKit controller (below). Sessions/report/editor are NOT scenes: they are pages (`CoordinatorController.MainPage`: home, sessions, detail(id), report(id), editor(id)) rendered by `ContentView.pageLayers` (`HomeView` and `RecordingsView` overlaid, crossfaded by `changePage`).
+- Scenes (GreenroomApp.swift): main `Window("Greenroom", id:"main")` hosts `ContentView` with `.tint(Brand.green)`, `LaunchSplashCover`, `FrostedWindow`; `Settings { SettingsView }`; the menu bar icon is an AppKit `NSStatusItem` (`MenuBarStatusItem`), not a scene, because `MenuBarExtra` stopped opening after Space switches. Everything else is an AppKit controller (below). Sessions/report/editor are NOT scenes: they are pages (`CoordinatorController.MainPage`: home, sessions, detail(id), report(id), editor(id)) rendered by `ContentView.pageLayers` (`HomeView` and `RecordingsView` overlaid, crossfaded by `changePage`).
 - Main toolbar (ContentView `.toolbar`): on Home: `modeSwitcherItem` (principal `GreenroomSegmented` bound to `coordinator.meetingMode`), Sessions icon, fixed `ToolbarSpacer`, Setup guide + Settings group. On pages: `.pageToolbar` Back + subtitle.
 - State: `CoordinatorController` (App/CoordinatorController.swift, `@EnvironmentObject`) feeds all views; pure `*Rules`/`*Model` files are called by the views and by Tests/.
 - AppKit windows opened by static controllers: island (`NotchStatusController.shared`, non-activating panel over menu bar), Control bar (`MeetingControlBarController.install`), onboarding (`OnboardingWindowController.sync`, called from ContentView on `coordinator.showOnboarding`), chat (`ChatWindowController.show`), whiteboard, recording chrome, presence bubble (driven from App/CoordinatorController+Presence.swift: `startPresenceBubble`, `refreshPresenceBubble`), dock hint (`DockHintPanel`).
@@ -117,8 +117,8 @@ Record is `MeetingMode.record` (enum in CoordinatorController.swift; Create / Sc
 - Watch page toolbar (watching): Get feedback (`SessionAnalyseButton`, which also anchors the one Ready/progress popover as a `.background`, so no width change) is its own glass capsule, then a fixed `ToolbarSpacer`, then Share… / More / side-panel toggle as one capsule; editing has just the one group.
 - Change watch page layout -> `SessionDetailContent.SessionDetailPage` + `SessionDetailRules` (when the rail drops under the picture).
 - Change the timeline/marks -> `SessionTimeline`, `SessionMarkStyle`.
-- Change a menu bar item -> `MenuBarModel.items` (order/titles/shortcuts), drawn by `MenuBarView`; test `Tests/MenuBarModelTests.swift`.
-- Change menu bar icon/REC label -> `GreenroomApp.swift` `MenuBarExtra` label.
+- Change a menu bar item -> `MenuBarModel.items` (order/titles/shortcuts), drawn by `MenuBarStatusItem`; test `Tests/MenuBarModelTests.swift`.
+- Change menu bar icon/REC label -> `MenuBarStatusItem.renderLabel()`.
 - Add an island message / change sizes -> `NotchStatusRules.swift` (`IslandMessage`, `IslandContent`, `NotchGeometry`), drawing in `NotchStatusController` (`statusRow/failureLine/countdownRow/toastRow/promptRow`).
 - Show a toast / ask an upload question -> `ToastController.show`, `UploadPromptCard.show`.
 - Change the floating bar's cells/widths -> `MeetingBarModel.swift` (`IconCell`, `MeetingBarLayout`), `MeetingBarContent`, panel/morph in `MeetingControlBarController` (MeetingControls.swift); placement maths App/MeetingBarPlacement.swift.

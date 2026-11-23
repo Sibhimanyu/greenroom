@@ -150,11 +150,8 @@ struct GreenroomApp: App {
         // through the Home <-> Sessions motion.
         .windowToolbarStyle(.unified)
         .commands {
-            CommandGroup(after: .appInfo) {
-                Button("Check for Updates\u{2026}") {
-                    updaterController.checkForUpdates(nil)
-                }
-            }
+            // Also hands openWindow/openSettings to the AppKit menu bar item.
+            MenuBarActionBridge(checkForUpdates: { updaterController.checkForUpdates(nil) })
             SidebarCommands(coordinator: coordinator)
             HeresayCommands()
         }
@@ -172,36 +169,7 @@ struct GreenroomApp: App {
         // editor too), which
         // grows to hold them and gives its size back on Back.
 
-        // The mark, as a one-colour template image (MenuBarMark, a vector
-        // PDF 16pt tall), in place of the old "GR". The old mark was tried
-        // here once and reverted because its gradient cascade read worse
-        // than text at 16pt; the flat mark keeps its G, head and arm at
-        // that size. While recording, the label flips to a record glyph +
-        // REC - the menu bar renders extras monochrome, so the SHAPE change
-        // is the indicator, not color.
-        MenuBarExtra {
-            MenuBarView(checkForUpdates: { updaterController.checkForUpdates(nil) })
-                .environmentObject(coordinator)
-                .tint(Brand.green)
-        } label: {
-            // REC keeps precedence. The waveform says Cues is listening,
-            // and it appears HERE only while the participants panel is the
-            // surface for its cards - when the panel is closed, Cues has
-            // its own status item with the same glyph, and the menu bar must
-            // never show two.
-            // Recording keeps the mark, as narrow as ever: "● REC" in its
-            // place was wider, and on a Mac with a notch macOS hid it behind
-            // the notch, so Greenroom vanished from the menu bar mid-class
-            // (owner, 2026-11-17). The bar, the island and the menu say REC.
-            if coordinator.cuesListening && coordinator.cuesOnRail {
-                HStack(spacing: 3) {
-                    Image(systemName: coordinator.cuesPaused ? "waveform.slash" : "waveform")
-                    Image("MenuBarMark").accessibilityLabel("Greenroom")
-                }
-            } else {
-                Image("MenuBarMark").accessibilityLabel("Greenroom")
-            }
-        }
-        .menuBarExtraStyle(.menu)
+        // The menu bar icon is not a scene: MenuBarStatusItem (AppKit), so it keeps
+        // answering after a Space switch.
     }
 }

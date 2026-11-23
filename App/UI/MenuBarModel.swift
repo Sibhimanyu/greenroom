@@ -6,7 +6,7 @@
 //  shortcuts) in, an ordered list of items out. No SwiftUI, no AppKit, no
 //  coordinator, so the test target compiles this file as it is and a
 //  hidden-or-shown mistake is a failing test rather than something found by
-//  clicking. MenuBarView.swift draws the list and runs the actions.
+//  clicking. MenuBarStatusItem.swift draws the list and runs the actions.
 //
 //  "A native menu that follows state" (DESIGN.md, 2026-11-13): idle it looks
 //  like Home's modes, live it holds the session's controls, and an item that

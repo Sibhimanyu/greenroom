@@ -45,7 +45,7 @@ Read `DESIGN.md` before any visual change.
 | Home, Record view, Sessions pages | ui | `App/UI/ContentView.swift`, `HomeView`, `RecordingsView` |
 | Settings tabs and rows | ui | `App/UI/SettingsView.swift`, `SettingsKit.swift` |
 | Meeting window toolbar, meeting window layout | ui-meeting | `MeetingToolbarLayout`, `MeetingControls.swift`, `ParticipantGridWindow.swift` |
-| Menu bar menu, notch island, floating bar | ui | `MenuBarView`, `NotchStatusController`, `MeetingControlBarController` |
+| Menu bar menu, notch island, floating bar | ui | `MenuBarStatusItem`, `NotchStatusController`, `MeetingControlBarController` |
 | Colours, glass, fonts | ui + `DESIGN.md` | `Brand` in `App/GreenroomApp.swift`, `App/UI/Glass.swift` |
 | Building, tests, adding a testable file | build-test-release | `project.yml` (`GreenroomTests.sources`) |
 | Releasing, appcast, website | build-test-release | `scripts/release.sh`, `docs/` |

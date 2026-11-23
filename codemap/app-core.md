@@ -13,7 +13,7 @@ Chrome-family browsers, DEBUG-only UI tour/film hooks, YouTube upload, and a pla
 
 | Path | What it owns | Key types / functions |
 |---|---|---|
-| `App/GreenroomApp.swift` | `@main`; scenes; Heresay config; Sparkle updater; brand tokens; link constants | `GreenroomApp` (Window id `"main"`, `Settings`, `MenuBarExtra`), `Brand` (`green`, `buttonFill`, `text`, `name`, `fill`, `net`, `netText`), `AppLinks` |
+| `App/GreenroomApp.swift` | `@main`; scenes; Heresay config; Sparkle updater; brand tokens; link constants | `GreenroomApp` (Window id `"main"`, `Settings`; `MenuBarActionBridge` in `.commands`), `Brand` (`green`, `buttonFill`, `text`, `name`, `fill`, `net`, `netText`), `AppLinks` |
 | `App/AppDelegate.swift` | Launch + termination hygiene | `AppDelegate`: `applicationWillFinishLaunching` (Apptics init), `applicationDidFinishLaunching` (FieldFocusRelease, whisper resolve, `ShortcutRuntime.shared.start()`, `DebugTour.start()`), `applicationShouldHandleReopen`, `applicationShouldTerminate` (confirm quit, `windDownForQuit`), `applicationWillTerminate` (`_exit(0)`) |
 | `App/CoordinatorController.swift` | Orchestrator: `@MainActor ObservableObject` with ~85 `@Published` fields; start/end session, stage, recording, layout, presets, Cues, scheduled meetings, main-window step-aside, quit wind-down, settings export/import | `CoordinatorController` (`static weak var shared`), `StartStep`, `start()` (~l.1515), `startRecordingFlow()` (~l.2606), `prepareForTermination()`, `windDownForQuit()`, `confirmQuitWhileLive`, `bringLiveSessionForward`, `applyMainWindow`, `applyPreset`, `useLayout`, `loadSecretsIfNeeded`; `// MARK:` sections list the areas (Onboarding, Start-a-meeting S2S, Defaults, Cues, YouTube, main window steps aside, The stage, Pause/countdown, Drawing, Record mode, After a session, Asking before End/Stop, Live shape preview, Meeting window, Two sizes, Displays coming and going, Scheduled meetings, Settings transfer) |
 | `App/CoordinatorController+Presence.swift` | Wires the presence bubble panel (`App/UI/PresenceBubble.swift`) to the stage | `startPresenceBubble`, `schedulePresenceRefresh`, `refreshPresenceBubble`, `previewPlacementStep`, `commitPreviewPlacement`, `applyPresencePlacement` |
@@ -53,11 +53,15 @@ Chrome-family browsers, DEBUG-only UI tour/film hooks, YouTube upload, and a pla
 
 - **Entry.** `GreenroomApp` creates `@StateObject coordinator = CoordinatorController()` and `EditorViewModel`,
   injects both as environment objects into `ContentView` (`App/UI/ContentView.swift`) and the coordinator
-  into `SettingsView` and `MenuBarView`. `CoordinatorController.shared` (weak static, set in init) is the
+  into `SettingsView`; `MenuBarStatusItem` reads `CoordinatorController.shared`. `CoordinatorController.shared` (weak static, set in init) is the
   back door for non-SwiftUI callers: `AppDelegate`, `ShortcutRuntime`, `UpdateGate`.
 - **Scenes.** One `Window("Greenroom", id: "main")` (not WindowGroup, so reopen can recreate it), `Settings`,
-  and `MenuBarExtra` styled `.menu` whose label is the `MenuBarMark` image (waveform prefix only while Cues
-  listens on the rail). Sessions, report and editor are pages of the main window (`CoordinatorController.MainPage`), not scenes.
+  the menu bar icon is NOT a scene: `App/UI/MenuBarStatusItem.swift` is an AppKit `NSStatusItem` + `NSMenu`
+  (installed from `AppDelegate.applicationDidFinishLaunching`), because SwiftUI's `MenuBarExtra` stopped opening
+  after a Space switch while the app was inactive. Its label is the `MenuBarMark` image (waveform prefix only
+  while Cues listens on the rail; never wider while recording, the notch hides a wider label).
+  `openWindow`/`openSettings` are SwiftUI-only, so `MenuBarActionBridge` (a `Commands` in `.commands`, alive for
+  the app's life) stores them in `SwiftUIActions`, which the status item calls; fallback is `showMainWindow()`. Sessions, report and editor are pages of the main window (`CoordinatorController.MainPage`), not scenes.
 - **Sparkle.** `SPUStandardUpdaterController` lives in `GreenroomApp`; delegate is `UpdateGate.shared`
   (held strongly because Sparkle holds delegates weakly). Feed is `docs/appcast.xml` on GitHub Pages.
 - **Heresay.** `Heresay.configure(...)` in `GreenroomApp.init`; `.heresay()` on the main window; `Heresay.introduce()` fires once, after onboarding.
@@ -88,7 +92,7 @@ Chrome-family browsers, DEBUG-only UI tour/film hooks, YouTube upload, and a pla
 - Change the window <-> bar morph curve/length -> `App/MeetingMorph.swift` (`duration`, `ease`, `keyframe`).
 - Change the shrink/collapse ladder or the "show on my share" switch -> `App/MeetingCollapseRules.swift` (`MeetingCollapse`, `ShowOnShare`), `App/MeetingShrinkRules.swift`, `App/ShareVisibilityRules.swift`.
 - Change brand colours -> never hardcode: `App/Assets.xcassets/AccentColor.colorset` (global accent) and `Brand` in `App/GreenroomApp.swift` (read DESIGN.md first; list of open drift is in DESIGN.md).
-- Add/rename a menu-bar item or Window command -> `App/GreenroomApp.swift` `.commands { ... }` (app menu) or `App/UI/MenuBarView.swift` (menu-bar extra; model in `UI/MenuBarModel.swift`).
+- Add/rename a menu-bar item or Window command -> `App/GreenroomApp.swift` `.commands { ... }` (app menu) or `App/UI/MenuBarStatusItem.swift` (menu-bar item; model in `UI/MenuBarModel.swift`).
 - Change update-check cadence -> `App/Info.plist` `SUScheduledCheckInterval` (6h); when checks may run -> `App/UpdateGate.swift`.
 - Add an analytics event/property -> `App/Analytics/Analytics.swift` `Event`/`Key` (property names are capped at 100 per app for life; reuse keys). Never pass names, meeting ids, URLs, transcript text or `localizedDescription`.
 - Change quit behaviour/latency -> `CoordinatorController.windDownForQuit` (+ `boundedStop`, `boundedWait`); measure with `scripts/measure-quit.sh`; log at `~/Library/Logs/Greenroom-quit.log`.

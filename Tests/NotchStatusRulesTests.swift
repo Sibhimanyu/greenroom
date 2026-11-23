@@ -33,7 +33,8 @@ final class NotchStatusRulesTests: XCTestCase {
     func testStepWords() {
         XCTAssertEqual(NotchStatusRules.words(forStep: "Workspace"), "Opening your apps\u{2026}")
         XCTAssertEqual(NotchStatusRules.words(forStep: "Picture"), "Getting your camera and screen ready\u{2026}")
-        XCTAssertEqual(NotchStatusRules.words(forStep: "Meeting"), "Starting the meeting\u{2026}")
+        XCTAssertEqual(NotchStatusRules.words(forStep: "Creating meeting"), "Creating the meeting on Zoom\u{2026}")
+        XCTAssertEqual(NotchStatusRules.words(forStep: "Meeting"), "Connecting to Zoom\u{2026}")
         XCTAssertEqual(NotchStatusRules.words(forStep: "Joining meeting"), "Joining the meeting\u{2026}")
         XCTAssertEqual(NotchStatusRules.words(forStep: "Recording"), "Starting the recording\u{2026}")
         XCTAssertEqual(NotchStatusRules.words(forStep: "Tiling windows"), "Arranging your windows\u{2026}")
@@ -44,7 +45,7 @@ final class NotchStatusRulesTests: XCTestCase {
             return XCTFail("expected working")
         }
         XCTAssertEqual(p.counter, "3/5")
-        XCTAssertEqual(p.text, "Starting the meeting\u{2026}")
+        XCTAssertEqual(p.text, "Connecting to Zoom\u{2026}")
         XCTAssertEqual(p.settled, 2)
         XCTAssertEqual(p.fraction, 0.6, accuracy: 0.0001)
     }
@@ -63,6 +64,35 @@ final class NotchStatusRulesTests: XCTestCase {
         XCTAssertEqual(p.counter, "1/2")
         XCTAssertEqual(p.fraction, 0.5, accuracy: 0.0001)
         XCTAssertFalse(p.allSettled)
+    }
+
+    private func startSteps(creating: NotchStepState, meeting: NotchStepState) -> NotchInput {
+        NotchInput(steps: [
+            NotchStep(label: "Workspace", state: .skipped),
+            NotchStep(label: "Picture", state: .done),
+            NotchStep(label: "Creating meeting", state: creating),
+            NotchStep(label: "Meeting", state: meeting),
+            NotchStep(label: "Recording", state: .skipped),
+            NotchStep(label: "Tiling windows", state: .skipped),
+        ])
+    }
+
+    func testCreateStepIsCountedWhenItRuns() {
+        guard case .working(let p) = NotchStatusRules.next(from: .hidden,
+                input: startSteps(creating: .active, meeting: .pending)) else { return XCTFail("expected working") }
+        XCTAssertEqual(p.counter, "2/3")
+        XCTAssertEqual(p.text, "Creating the meeting on Zoom\u{2026}")
+        guard case .working(let q) = NotchStatusRules.next(from: .hidden,
+                input: startSteps(creating: .done, meeting: .active)) else { return XCTFail("expected working") }
+        XCTAssertEqual(q.counter, "3/3")
+        XCTAssertEqual(q.text, "Connecting to Zoom\u{2026}")
+    }
+
+    func testCreateStepIsNotCountedWhenSkipped() {
+        guard case .working(let p) = NotchStatusRules.next(from: .hidden,
+                input: startSteps(creating: .skipped, meeting: .active)) else { return XCTFail("expected working") }
+        XCTAssertEqual(p.counter, "2/2")
+        XCTAssertEqual(p.text, "Connecting to Zoom\u{2026}")
     }
 
     func testFinishedStartBecomesLive() {

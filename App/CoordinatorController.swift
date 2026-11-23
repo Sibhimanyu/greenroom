@@ -238,12 +238,13 @@ final class CoordinatorController: ObservableObject {
     /// sequence, because the meeting cannot COMPLETE before the picture is live and
     /// that dependency is the one the teacher is actually waiting on.
     enum StartStep: Int, CaseIterable {
-        case workspace, camera, meeting, recording, tiling
+        case workspace, camera, creating, meeting, recording, tiling
 
         var label: String {
             switch self {
             case .workspace: return "Workspace"
             case .camera: return "Picture"
+            case .creating: return "Creating meeting"
             case .meeting: return "Meeting"
             case .recording: return "Recording"
             case .tiling: return "Tiling windows"
@@ -261,7 +262,11 @@ final class CoordinatorController: ObservableObject {
         // what it will really do ("1/2", not "2/5").
         startReadiness = .init(steps: StartStep.allCases.map { step in
             let label = step.label
+            // Creating meeting is the one network wait before the SDK connects: the
+            // REST create (instant start) or the host-key fetch (scheduled start).
+            // A scheduled start with a warm host key has nothing to wait for.
             let skipped = (step == .tiling && !sessionArranges) || (step == .recording && !autoRecordOnStart)
+                || (step == .creating && meetingMode == .join && validPrefetchedZAK() != nil)
             return .init(label: label, state: skipped ? .skipped : .pending)
         })
     }
@@ -1728,7 +1733,10 @@ final class CoordinatorController: ObservableObject {
                 // aren't cancellation-aware; between-steps is enough.
                 try Task.checkCancellation()
 
-                mark(.meeting, .active)
+                // Instant start: the REST create has been running beside the
+                // picture; wait for it under its own island step. A scheduled
+                // start marks Creating meeting and Meeting inside joinAllInOne.
+                if meetingMode == .create { mark(.creating, .active) }
                 switch meetingMode {
                 case .create:
                     // The SDK IS the meeting client: one participant (you),
@@ -1739,6 +1747,8 @@ final class CoordinatorController: ObservableObject {
                             NSLocalizedDescriptionKey: "Internal: the meeting wasn't prepared."
                         ])
                     }
+                    mark(.creating, .done)
+                    mark(.meeting, .active)
                     try await hostAllInOne(meeting: meeting)
                 case .join:
                     try await joinAllInOne()
@@ -3329,17 +3339,19 @@ final class CoordinatorController: ObservableObject {
         do {
             log("Starting your scheduled meeting as host\u{2026}")
             let zak: String
-            if let prefetched = prefetchedZAK, prefetched.meetingNumber == meetingNumberDigits,
-               Date().timeIntervalSince(prefetched.fetchedAt) < 600 {
+            if let prefetched = validPrefetchedZAK() {
                 // Warmed when the meeting was picked from the Scheduled
-                // menu - saves the fetch's network time.
-                zak = prefetched.zak
+                // menu - saves the fetch's network time (step stays skipped).
+                zak = prefetched
             } else {
+                mark(.creating, .active)
                 zak = try await withStartTimeout(20, step: "Getting your host key from Zoom",
                                                  advice: "Check your Zoom account in Settings \u{2192} Zoom.") {
                     try await access.fetchZAK()
                 }
+                mark(.creating, .done)
             }
+            mark(.meeting, .active)
             try await zoomChatClient.startAsHost(meetingNumber: meetingNumber, zak: zak, displayName: name, enableMedia: true)
         } catch {
             throw NSError(domain: "Greenroom", code: 24, userInfo: [
@@ -4832,6 +4844,13 @@ final class CoordinatorController: ObservableObject {
     }
 
     private var prefetchedZAK: (meetingNumber: String, zak: String, fetchedAt: Date)?
+
+    /// The warmed host key for the chosen scheduled meeting, if it is still fresh.
+    private func validPrefetchedZAK() -> String? {
+        guard let p = prefetchedZAK, p.meetingNumber == meetingNumberDigits,
+              Date().timeIntervalSince(p.fetchedAt) < 600 else { return nil }
+        return p.zak
+    }
 
     private func prefetchZAK(for number: String) {
         guard let access = zoomAccess else { return }

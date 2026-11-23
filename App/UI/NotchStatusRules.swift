@@ -125,7 +125,8 @@ enum NotchStatusRules {
         // picture" meant nothing to anyone (owner, 2026-11-15).
         case "Workspace": return "Opening your apps\u{2026}"
         case "Picture": return "Getting your camera and screen ready\u{2026}"
-        case "Meeting": return "Starting the meeting\u{2026}"
+        case "Creating meeting": return "Creating the meeting on Zoom\u{2026}"
+        case "Meeting": return "Connecting to Zoom\u{2026}"
         case "Joining meeting": return "Joining the meeting\u{2026}"
         case "Recording": return "Starting the recording\u{2026}"
         case "Tiling windows": return "Arranging your windows\u{2026}"

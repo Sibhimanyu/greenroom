@@ -194,14 +194,14 @@ enum DebugTour {
     private static func status(_ info: [String: String]) -> [String: Any] {
         let pill = NotchStatusController.shared
         let fold: () -> Void = { NotchStatusController.shared.clear() }
-        let labels = ["Workspace", "Picture", "Meeting", "Recording", "Tiling windows"]
+        let labels = ["Workspace", "Picture", "Creating meeting", "Meeting", "Recording", "Tiling windows"]
         func put(_ input: NotchInput) { pill.update(input, onAction: fold, onDismiss: fold) }
         if info["clear"] != nil {
             pill.clear()
             return [:]
         }
         if let message = info["fail"] {
-            let n = max(1, min(5, Int(info["step"] ?? "") ?? 2))
+            let n = max(1, min(labels.count, Int(info["step"] ?? "") ?? 2))
             var steps = labels.enumerated().map { NotchStep(label: $1, state: $0 < n - 1 ? .done : .pending) }
             steps[n - 1].state = .failed
             put(NotchInput(steps: steps, failure: message, detail: "Sample failure from the debug tour"))
@@ -216,7 +216,7 @@ enum DebugTour {
             put(NotchInput())
             return [:]
         }
-        let n = max(1, min(5, Int(info["step"] ?? "") ?? 1))
+        let n = max(1, min(labels.count, Int(info["step"] ?? "") ?? 1))
         put(NotchInput(steps: labels.enumerated().map {
             NotchStep(label: $1, state: $0 < n - 1 ? .done : ($0 == n - 1 ? .active : .pending))
         }, detail: "Sample status from the debug tour"))

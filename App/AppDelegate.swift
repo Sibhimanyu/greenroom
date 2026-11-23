@@ -61,6 +61,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// System-wide shortcuts (see HotkeyManager and ShortcutRuntime - they work
     /// while OTHER apps are focused, which is the whole point mid-class).
+    /// Greenroom lives in the menu bar: closing the main window (or a meeting
+    /// ending) must not quit it. The SwiftUI MenuBarExtra used to imply this;
+    /// the AppKit status item does not, so it is said here.
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         // A click on anything that is not text lets go of a text field.
         FieldFocusRelease.install()

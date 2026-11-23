@@ -63,6 +63,21 @@ final class SubscribeBackoffTests: XCTestCase {
         XCTAssertEqual(ElementRecovery.decide(watch: w, now: now, rebuilds: 0), .fine)
     }
 
+    /// `rendering` is "data type is not None": an avatar (camera off) counts,
+    /// so a refusal there is never retried or rebuilt, even once the grace has
+    /// passed. Only a non-rendering element goes on to retry and rebuild.
+    func testAvatarCountsAsRenderingSoRefusalNeverRetriesOrRebuilds() {
+        var w = ElementWatch()
+        let now = Date()
+        w.refusedUntil = now
+        let later = now.addingTimeInterval(60)
+        XCTAssertEqual(ElementRecovery.decide(watch: w, now: later, rebuilds: 0, rendering: true), .recovered)
+        XCTAssertEqual(ElementRecovery.decide(watch: w, now: later, rebuilds: 0, rendering: false), .retry)
+        w.retried = true
+        XCTAssertEqual(ElementRecovery.decide(watch: w, now: later, rebuilds: 0, rendering: false), .rebuild)
+        XCTAssertEqual(ElementRecovery.decide(watch: w, now: later, rebuilds: 0, rendering: true), .recovered)
+    }
+
     func testRefusalIsWaitedOutAtLeastTheGrace() {
         XCTAssertEqual(ElementRecovery.refusalWait(2), ElementRecovery.refusalGrace)
         XCTAssertEqual(ElementRecovery.refusalWait(32), 32)

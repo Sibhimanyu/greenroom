@@ -17,9 +17,10 @@
 //      the element is made first and subscribed only once `window.isVisible`;
 //    - setResolution goes in before subscribing, because the quota is spent at
 //      subscribe time, and is asked twice when the SDK refuses it once;
-//    - an element subscribes ONCE (ElementRecovery, SubscribeBackoff.swift): a
-//      second ask on an element that holds a subscription is refused with code
-//      7 every time, so a new person or a refusal gets a FRESH element; at most two seconds apart per slot,
+//    - setting `userid` already subscribes (ElementRecovery, SubscribeBackoff.swift):
+//      an explicit subscribeVideo(true) on such an element is refused with code
+//      7 (88 of 88 on 2026-11-23), so it is made only while dataType is None.
+//      A new person gets a FRESH element; at most two seconds apart per slot,
 //      half a second apart across slots, and capped;
 //    - a second element asking for a remote user another element already
 //      holds is refused (code 7) too: every such subscription on 2026-11-13
@@ -205,7 +206,7 @@ extension ZoomMeetingSDKClient {
               entry.element.getVideoView().window?.isVisible == true else { return }
         entry.tier = tier
         let asked = Self.sdkResolution(tier)
-        guard let (setCode, sub) = paceSubscribe(entry.element, watch: &entry.watch, asked: asked,
+        guard let (setCode, sub, implicit) = paceSubscribe(entry.element, watch: &entry.watch, asked: asked,
                                                  label: "View window: \(entry.key.text)") else { return }
         let others = otherHolders(of: entry.userID, except: entry.element)
         if sub == ZoomSDKError_Success {
@@ -214,7 +215,8 @@ extension ZoomMeetingSDKClient {
             entry.watch.subscribed = true
             entry.watch.subscribedAt = now
             entry.gotVideo = false
-            Self.viewLog("subscribed key=\(entry.key.text) user=\(entry.userID) \(Self.tag(entry.element))"
+            Self.viewLog((implicit ? "subscribed by userid (no explicit ask) key=" : "subscribed key=")
+                + "\(entry.key.text) user=\(entry.userID) \(Self.tag(entry.element))"
                 + " tier=\(tier.rawValue)p setResolution=\(setCode) others=\(others)")
         } else {
             Self.viewLog("FAILED step=subscribeVideo code=\(sub.rawValue) key=\(entry.key.text) user=\(entry.userID)")

@@ -76,14 +76,15 @@ struct ElementWatch {
     }
 }
 
-/// The rule the 2026-11-16 logs taught: a normal video element is subscribed
-/// exactly ONCE. Asking an element that already holds a subscription again
-/// (the camera-came-on re-ask, the on-screen re-ask, a retry on the same
-/// element after a refusal) is refused with code 7 TooFrequentCall every
-/// time, however far apart: 6 in a row from 2s to 32s apart at 17:05. So is a
-/// second element asking for a remote user another element already holds
-/// (every view-window subscription on 2026-11-13 and 08:12 today). Recovery is
-/// therefore a FRESH element, never a second subscribe on the same one.
+/// The rule the logs taught. On macOS, setting `userid` on a normal video
+/// element already subscribes it. An explicit subscribeVideo(true) on top is a
+/// second ask and is refused with code 7 TooFrequentCall: 88 of 88 remote-user
+/// asks on 2026-11-23, each with getDataType() already Video or Avatar (the
+/// 2026-11-16 17:05 retries on the same element were refused the same way).
+/// So the caller subscribes explicitly only while the data type is None. A
+/// second element asking for a remote user another element holds is refused
+/// too (view windows on 2026-11-13). Recovery for an element still at None is
+/// a FRESH element, never a second subscribe on the same one.
 enum ElementRecovery {
     enum Action: Equatable {
         /// Not refused.
@@ -111,8 +112,9 @@ enum ElementRecovery {
     ///
     /// Code 7 means "slow down", not "broken": the 2026-11-23 06:19 log shows
     /// video rendering one second after a code-7 refusal, and the old rule
-    /// retired that working feed, blanking it and starting the next burst. An
-    /// element whose render type is video is NEVER retired. One that is not
+    /// retired four working elements. `rendering` is true for any data type but
+    /// None (video, or avatar: the camera is off and a fresh element would show
+    /// the same). Such an element is NEVER retried or retired. One still at None
     /// gets one patient retry on the same element, and only then a fresh one.
     static func decide(watch: ElementWatch, now: Date, rebuilds: Int, rendering: Bool = false) -> Action {
         guard let until = watch.refusedUntil else { return .fine }

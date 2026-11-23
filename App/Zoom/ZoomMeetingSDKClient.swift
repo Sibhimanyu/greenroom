@@ -191,15 +191,15 @@ final class ZoomMeetingSDKClient: NSObject, ObservableObject {
     // MARK: - One subscribe per element (tiles, stage and view windows)
     //
     // Every element here follows ElementRecovery (SubscribeBackoff.swift):
-    // made, put on screen, subscribed ONCE while its window is visible, and
-    // never asked again. A refusal, or video reported with nothing drawn,
-    // retires the element (unsubscribe + cleanVideoElement) and a fresh one
-    // asks after ElementRecovery.freshDelay. The old design asked the same
-    // element again - when its tile came on screen, when the camera came on,
-    // after every backoff - and an element that already holds a subscription
-    // is refused with code 7 every time it asks again (17:05 on 2026-11-16:
-    // the first ask accepted, the camera-on re-ask and all five retries after
-    // it refused, the stage black throughout).
+    // made (setting `userid` already subscribes it on macOS), put on screen,
+    // resolution set and view shown while its window is visible. We call
+    // subscribeVideo(true) only if getDataType() is still None. Asking an
+    // element that already holds a subscription is refused with code 7:
+    // 2026-11-23, 88 of 88 explicit asks for a remote user, each with the
+    // data type already Video (1) or Avatar (2). A refusal on an element that
+    // reports Video or Avatar is ignored (an avatar means the camera is off,
+    // and a fresh element will not change that); only an element still at
+    // None after the grace is retried, then rebuilt.
 
     /// A short, stable name for an element in the log.
     static func tag(_ element: ZoomSDKVideoElement) -> String {
@@ -253,10 +253,14 @@ final class ZoomMeetingSDKClient: NSObject, ObservableObject {
     /// One paced step toward subscribing `element`. Each call makes at most one
     /// SDK call and then waits for the next slot, so setResolution, its retry
     /// and the subscribe are never in the same breath. Returns the subscribe
-    /// result and the setResolution code once the subscribe was made; nil while
-    /// it is still pacing or setting the resolution.
+    /// result and the setResolution code once the subscribe step was reached;
+    /// nil while it is still pacing or setting the resolution.
+    /// `implicit` is true when the data type was not None: setting `userid`
+    /// already subscribed the element, so no subscribeVideo(true) was made and
+    /// `result` is a success the callers treat like an accepted ask.
     func paceSubscribe(_ element: ZoomSDKNormalVideoElement, watch: inout ElementWatch,
-                       asked: ZoomSDKVideoRenderResolution, label: String) -> (set: Int, result: ZoomSDKError)? {
+                       asked: ZoomSDKVideoRenderResolution, label: String)
+        -> (set: Int, result: ZoomSDKError, implicit: Bool)? {
         guard subscribeThrottle.claim(at: Date()) else { return nil }
         if !watch.resolutionSet {
             let set = element.setResolution(asked)
@@ -269,14 +273,20 @@ final class ZoomMeetingSDKClient: NSObject, ObservableObject {
             watch.resolutionSet = true
             return nil
         }
-        return (watch.resolutionCode, element.subscribeVideo(true))
+        if element.getDataType() != VideoRenderDataType_None {
+            Self.videoLog("\(label) \(Self.tag(element)) already subscribed by userid"
+                + " (dataType=\(element.getDataType().rawValue)); not asking again")
+            return (watch.resolutionCode, ZoomSDKError_Success, true)
+        }
+        return (watch.resolutionCode, element.subscribeVideo(true), false)
     }
 
-    /// The decision for an element, with the "is it already showing video"
-    /// answer that keeps a working feed from being retired.
+    /// The decision for an element. "Rendering" is any data type but None
+    /// (video, or avatar for a camera that is off): such an element is never
+    /// retried or rebuilt, a fresh one would show the same.
     func recoveryAction(_ element: ZoomSDKNormalVideoElement, watch: ElementWatch, now: Date, rebuilds: Int) -> ElementRecovery.Action {
         ElementRecovery.decide(watch: watch, now: now, rebuilds: rebuilds,
-                               rendering: element.getDataType() == VideoRenderDataType_Video)
+                               rendering: element.getDataType() != VideoRenderDataType_None)
     }
 
     /// A view rendering one participant, reused across layout passes. Made
@@ -322,7 +332,7 @@ final class ZoomMeetingSDKClient: NSObject, ObservableObject {
             let asked = Self.resolution(for: frame,
                                         openStreams: participantElements.count - 1,
                                         hero: hero)
-            if let (setCode, result) = paceSubscribe(existing, watch: &watch, asked: asked, label: "tile user=\(userID)") {
+            if let (setCode, result, implicit) = paceSubscribe(existing, watch: &watch, asked: asked, label: "tile user=\(userID)") {
                 if result == ZoomSDKError_Success {
                     _ = existing.showVideo(true)
                     watch.subscribed = true
@@ -332,7 +342,7 @@ final class ZoomMeetingSDKClient: NSObject, ObservableObject {
                     watch.refusedUntil = now.addingTimeInterval(ElementRecovery.refusalWait(step.delay))
                     watch.lastRefusalAt = now
                 }
-                Self.videoLog("tile subscribe user=\(userID) \(Self.tag(existing)) setResolution=\(setCode)"
+                Self.videoLog("tile \(implicit ? "implicit subscribe" : "subscribe") user=\(userID) \(Self.tag(existing)) setResolution=\(setCode)"
                     + " asked=\(asked.rawValue) result=\(result.rawValue)"
                     + " dataType=\(existing.getDataType().rawValue) sublayers=\(Self.sublayers(existing))"
                     + " others=\(otherHolders(of: userID, except: existing))")
@@ -352,8 +362,9 @@ final class ZoomMeetingSDKClient: NSObject, ObservableObject {
             return nil
         }
         element.userid = userID
-        // Nothing else here: no setResolution, no subscribe, no show. The view
-        // windows make their elements this way and are never refused.
+        // Nothing else here: no setResolution, no subscribe, no show. Setting
+        // userid already subscribes on macOS; a later pass sets the resolution,
+        // shows the view, and calls subscribeVideo only if dataType is None.
         participantElements[userID] = element
         lastRequestedFrame[userID] = frame
         tileWatch[userID] = ElementWatch(notBefore: notBefore)
@@ -429,8 +440,9 @@ final class ZoomMeetingSDKClient: NSObject, ObservableObject {
     /// A normal element, not ZoomSDKActiveVideoElement: the active-video element
     /// only draws with three or more people, and this one works in a 1:1.
     ///
-    /// Subscribed once, on screen (see ElementRecovery). A new speaker, a
-    /// refusal, or video reported with nothing drawn each get a FRESH element.
+    /// Subscribed by `userid` (see ElementRecovery); on screen we set the
+    /// resolution, show it, and ask explicitly only if dataType is None. A new
+    /// speaker, or a refusal on an element still at None, gets a FRESH element.
     private var stageElement: ZoomSDKNormalVideoElement?
     private var stageUserID: UInt32?
     private var stageWatch = ElementWatch()
@@ -492,7 +504,7 @@ final class ZoomMeetingSDKClient: NSObject, ObservableObject {
                                             external: viewVideo.usage)["stage"] ?? .p360
             stageResolutionHeld = tier ?? .p360
             let asked = stageResolutionHeld == .p720 ? ZoomSDKVideoRenderResolution_720p : ZoomSDKVideoRenderResolution_360p
-            if let (setCode, result) = paceSubscribe(element, watch: &stageWatch, asked: asked, label: "stage") {
+            if let (setCode, result, implicit) = paceSubscribe(element, watch: &stageWatch, asked: asked, label: "stage") {
                 if result == ZoomSDKError_Success {
                     _ = element.showVideo(true)
                     stageWatch.subscribed = true
@@ -502,7 +514,7 @@ final class ZoomMeetingSDKClient: NSObject, ObservableObject {
                     stageWatch.refusedUntil = now.addingTimeInterval(ElementRecovery.refusalWait(step.delay))
                     stageWatch.lastRefusalAt = now
                 }
-                Self.videoLog("stage subscribe user=\(stageUserID ?? 0) \(Self.tag(element)) setResolution=\(setCode)"
+                Self.videoLog("stage \(implicit ? "implicit subscribe" : "subscribe") user=\(stageUserID ?? 0) \(Self.tag(element)) setResolution=\(setCode)"
                     + " asked=\(asked.rawValue) result=\(result.rawValue)"
                     + " dataType=\(element.getDataType().rawValue) sublayers=\(Self.sublayers(element))"
                     + " others=\(otherHolders(of: element.userid, except: element))")

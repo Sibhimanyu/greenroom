@@ -64,6 +64,10 @@ final class NotchStatusController {
     /// How long "Live" holds. The debug tour lengthens it to take a picture.
     var liveHold: TimeInterval = NotchStatusRules.liveHold
     private var holdTask: Task<Void, Never>?
+    /// What the start really says; the island shows `pacer.shown` instead.
+    private var realPhase: NotchPhase = .hidden
+    private var pacer = StepPacer()
+    private var paceTask: Task<Void, Never>?
     private var teardownTask: Task<Void, Never>?
     private var messageTask: Task<Void, Never>?
     private var timerFor: UUID?
@@ -98,27 +102,52 @@ final class NotchStatusController {
         model.onAction = onAction
         model.onDismiss = onDismiss
         model.onCancelStart = onCancel
-        let next = NotchStatusRules.next(from: phase, input: input)
-        guard next != phase else { return }
-        queue.setStatus(next)
-        holdTask?.cancel()
-        holdTask = nil
-        if case .live = next {
-            holdTask = Task { @MainActor [weak self] in
-                guard let self else { return }
-                try? await Task.sleep(nanoseconds: UInt64(self.liveHold * 1_000_000_000))
-                guard !Task.isCancelled else { return }
-                self.queue.setStatus(.hidden)
-                self.refresh()
+        let next = NotchStatusRules.next(from: realPhase, input: input)
+        guard next != realPhase else { return }
+        realPhase = next
+        show(pacer.feed(next, at: ProcessInfo.processInfo.systemUptime))
+    }
+
+    /// Put the paced phase on the island and arm the timer for its next step.
+    private func show(_ displayed: NotchPhase) {
+        paceTask?.cancel()
+        paceTask = nil
+        if displayed != queue.status {
+            queue.setStatus(displayed)
+            holdTask?.cancel()
+            holdTask = nil
+            if case .live = displayed {
+                holdTask = Task { @MainActor [weak self] in
+                    guard let self else { return }
+                    try? await Task.sleep(nanoseconds: UInt64(self.liveHold * 1_000_000_000))
+                    guard !Task.isCancelled else { return }
+                    self.realPhase = .hidden
+                    self.pacer.reset()
+                    self.queue.setStatus(.hidden)
+                    self.refresh()
+                }
+            }
+            refresh()
+        }
+        if let deadline = pacer.nextDeadline {
+            let wait = max(0, deadline - ProcessInfo.processInfo.systemUptime)
+            paceTask = Task { @MainActor [weak self] in
+                try? await Task.sleep(nanoseconds: UInt64(wait * 1_000_000_000))
+                guard !Task.isCancelled, let self else { return }
+                self.paceTask = nil
+                self.show(self.pacer.tick(at: ProcessInfo.processInfo.systemUptime))
             }
         }
-        refresh()
     }
 
     /// Fold the start's status away now, whatever it was showing.
     func clear() {
         holdTask?.cancel()
         holdTask = nil
+        paceTask?.cancel()
+        paceTask = nil
+        realPhase = .hidden
+        pacer.reset()
         guard !queue.status.isHidden else { return }
         queue.setStatus(.hidden)
         refresh()

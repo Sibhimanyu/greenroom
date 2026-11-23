@@ -318,4 +318,85 @@ final class NotchStatusRulesTests: XCTestCase {
                        NotchGeometry.bodyHeight, "only a failure opens")
         XCTAssertLessThanOrEqual(NotchGeometry.failureOpenHeight, NotchGeometry.panelBodyHeight)
     }
+
+    // MARK: StepPacer
+
+    private func start3(done: Int, active: Bool = true) -> NotchPhase {
+        let labels = ["Workspace", "Picture", "Meeting"]
+        return .working(NotchProgress(steps: (0..<3).map { i in
+            NotchStep(label: labels[i], state: i < done ? .done : (i == done && active ? .active : .pending))
+        }))
+    }
+    private func counter(_ p: NotchPhase) -> String? {
+        if case .working(let pr) = p { return pr.counter } else { return nil }
+    }
+
+    func testFastStartShowsEveryStepThenLiveInOrder() {
+        var pacer = StepPacer()
+        // Everything done within 0.1 s, and the real start already live.
+        XCTAssertEqual(counter(pacer.feed(start3(done: 2), at: 0)), "1/3")
+        XCTAssertEqual(counter(pacer.feed(start3(done: 3, active: false), at: 0.05)), "1/3")
+        XCTAssertEqual(pacer.feed(.live(recording: false), at: 0.1), pacer.shown)
+        XCTAssertEqual(counter(pacer.shown), "1/3")
+        XCTAssertEqual(pacer.nextDeadline!, 0.35 + 0.7, accuracy: 0.001)
+        XCTAssertEqual(counter(pacer.tick(at: 1.0)), "1/3")          // still holding
+        XCTAssertEqual(counter(pacer.tick(at: 1.05)), "2/3")
+        XCTAssertEqual(counter(pacer.tick(at: 1.5)), "2/3")
+        XCTAssertEqual(counter(pacer.tick(at: 1.75)), "3/3")
+        if case .working(let p) = pacer.shown { XCTAssertEqual(p.fraction, 1) }
+        XCTAssertEqual(pacer.tick(at: 2.4), pacer.shown)
+        XCTAssertEqual(pacer.tick(at: 2.45), .live(recording: false))
+        XCTAssertNil(pacer.nextDeadline)
+    }
+
+    func testEachDisplayedStepUsesItsOwnWords() {
+        var pacer = StepPacer()
+        pacer.feed(start3(done: 2), at: 0)
+        guard case .working(let one) = pacer.shown else { return XCTFail() }
+        XCTAssertEqual(one.text, NotchStatusRules.words(forStep: "Workspace"))
+        pacer.tick(at: 1.05)
+        guard case .working(let two) = pacer.shown else { return XCTFail() }
+        XCTAssertEqual(two.text, NotchStatusRules.words(forStep: "Picture"))
+    }
+
+    func testASlowStartNeverRunsAheadOfReality() {
+        var pacer = StepPacer()
+        pacer.feed(start3(done: 0), at: 0)
+        XCTAssertNil(pacer.nextDeadline)                              // nowhere to go yet
+        XCTAssertEqual(counter(pacer.tick(at: 5)), "1/3")
+        XCTAssertEqual(counter(pacer.feed(start3(done: 1), at: 5)), "2/3")   // hold long over: at once
+        XCTAssertEqual(counter(pacer.tick(at: 9)), "2/3")
+        XCTAssertEqual(counter(pacer.feed(start3(done: 2), at: 9)), "3/3")
+        XCTAssertEqual(pacer.tick(at: 20), pacer.shown)               // waits for Live
+        XCTAssertEqual(pacer.feed(.live(recording: true), at: 20), .live(recording: true))
+    }
+
+    func testAFailureMidwayShowsAtOnceAndResets() {
+        var pacer = StepPacer()
+        pacer.feed(start3(done: 1), at: 0)
+        let failed = NotchPhase.failed(NotchFailure(message: "No camera"))
+        XCTAssertEqual(pacer.feed(failed, at: 0.1), failed)
+        XCTAssertNil(pacer.nextDeadline)
+        XCTAssertEqual(pacer.feed(.hidden, at: 0.2), .hidden)
+        XCTAssertEqual(counter(pacer.feed(start3(done: 2), at: 3)), "1/3")   // a new start begins again
+    }
+
+    func testACancelHidesAtOnce() {
+        var pacer = StepPacer()
+        pacer.feed(start3(done: 1), at: 0)
+        XCTAssertEqual(pacer.feed(.hidden, at: 0.1), .hidden)
+    }
+
+    func testSkippedStepsAreNotShown() {
+        var pacer = StepPacer()
+        let phase = NotchPhase.working(NotchProgress(steps: [
+            NotchStep(label: "Workspace", state: .skipped),
+            NotchStep(label: "Picture", state: .done),
+            NotchStep(label: "Meeting", state: .done),
+        ]))
+        XCTAssertEqual(counter(pacer.feed(phase, at: 0)), "1/2")
+        XCTAssertEqual(counter(pacer.tick(at: 1.05)), "2/2")
+        XCTAssertEqual(pacer.feed(.live(recording: false), at: 1.1), pacer.shown)
+        XCTAssertEqual(pacer.tick(at: 1.75), .live(recording: false))
+    }
 }

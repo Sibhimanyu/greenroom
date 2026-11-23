@@ -51,7 +51,7 @@ struct NotchProgress: Equatable {
     /// "3/5": the step in hand out of all of them.
     var counter: String { "\(position)/\(total)" }
     /// The number the counter shows: the step in hand, 1-based.
-    private var position: Int {
+    var position: Int {
         let n = currentIndex.map { i in steps[..<i].filter { $0.state != .skipped }.count + 1 } ?? total
         return min(n, max(total, 1))
     }
@@ -160,6 +160,110 @@ enum NotchStatusRules {
         default:
             return .hidden
         }
+    }
+}
+
+// MARK: - Pacing the start
+
+/// Decides what the island DISPLAYS while a start runs, so each step is seen.
+/// The real steps can all finish in a tenth of a second; the island opens on
+/// "1/N", holds every step `stepHold`, advances one at a time (never skipping,
+/// never ahead of the real start), shows "N/N" with a full ring for one hold
+/// once the start has finished, and only then shows Live. A failure, a cancel
+/// or a hide passes through at once. Pure: time comes in as a parameter.
+struct StepPacer {
+    /// How long each displayed step stays up (owner, 2026-11-23).
+    static let stepHold: TimeInterval = 0.7
+    /// The island's own expand animation, which the first step waits out.
+    static let openDelay: TimeInterval = 0.35
+
+    var stepHold: TimeInterval = StepPacer.stepHold
+    var openDelay: TimeInterval = StepPacer.openDelay
+
+    private(set) var shown: NotchPhase = .hidden
+    private var real: NotchPhase = .hidden
+    private var template: NotchProgress?
+    /// The displayed step, 1-based among the counted ones; 0 when idle.
+    private var step = 0
+    private var shownAt: TimeInterval = 0
+
+    /// Forget everything: the next start begins again at its first step.
+    mutating func reset() {
+        shown = .hidden; real = .hidden; template = nil; step = 0
+    }
+
+    /// The latest real phase; returns what to display.
+    @discardableResult
+    mutating func feed(_ phase: NotchPhase, at now: TimeInterval) -> NotchPhase {
+        real = phase
+        switch phase {
+        case .hidden, .failed:
+            reset()
+            real = phase
+            shown = phase
+        case .working(let progress):
+            template = progress
+            if step == 0 {
+                step = 1
+                shownAt = now + openDelay
+            }
+            advance(at: now)
+            rebuild()
+        case .live:
+            if step == 0 { shown = phase } else { advance(at: now); rebuild() }
+        }
+        return shown
+    }
+
+    /// A hold may have run out: returns what to display now.
+    @discardableResult
+    mutating func tick(at now: TimeInterval) -> NotchPhase {
+        advance(at: now)
+        rebuild()
+        return shown
+    }
+
+    /// When the display next changes by itself; nil while it waits on reality.
+    var nextDeadline: TimeInterval? {
+        guard step > 0, canAdvance else { return nil }
+        return shownAt + stepHold
+    }
+
+    private var total: Int { max(template?.total ?? 1, 1) }
+
+    /// Another step (or Live) is due once the hold is over.
+    private var canAdvance: Bool {
+        switch real {
+        case .working(let p): return step < min(p.position, total)
+        case .live: return true
+        default: return false
+        }
+    }
+
+    private mutating func advance(at now: TimeInterval) {
+        guard step > 0, canAdvance, now >= shownAt + stepHold else { return }
+        if step < total {
+            step += 1
+            shownAt = now
+        } else if case .live(let recording) = real {
+            step = 0
+            shown = .live(recording: recording)
+        }
+    }
+
+    /// The displayed working phase: the real steps as they stood at `step`.
+    private mutating func rebuild() {
+        guard step > 0, let template else { return }
+        var counted = 0
+        let steps = template.steps.map { s -> NotchStep in
+            if s.state == .skipped { return s }
+            counted += 1
+            var out = s
+            out.state = counted < step ? .done : (counted == step ? .active : .pending)
+            return out
+        }
+        shown = .working(NotchProgress(steps: steps, detail: template.detail,
+                                       cancellable: template.cancellable))
     }
 }
 

@@ -436,7 +436,9 @@ enum ParticipantGridWindowController {
         // and then had it jump back on top a second later - a tug-of-war with
         // the person using the Mac. A window that is merely BEHIND another is
         // still `isVisible`, so this leaves it where the user put it.
-        if isNewWindow || (!hosting.isVisible && !hosting.isMiniaturized && !userHidden) {
+        if isNewWindow, form.isMeeting {
+            hosting.comeToThisDesktop(settledBehavior: [.managed, .fullScreenAuxiliary])
+        } else if isNewWindow || (!hosting.isVisible && !hosting.isMiniaturized && !userHidden) {
             hosting.orderFrontRegardless()
         }
     }

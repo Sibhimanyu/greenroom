@@ -23,17 +23,19 @@ enum PeoplePopOutController {
             container.wantsLayer = true
             container.layer?.backgroundColor = NSColor.clear.cgColor
             container.addSubview(people)
-            let made = NSWindow(contentRect: NSRect(origin: .zero, size: size),
-                                styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
+            // A non-activating panel, or it cannot be over a full-screen app.
+            let made = KeyablePanel(contentRect: NSRect(origin: .zero, size: size),
+                                    styleMask: [.titled, .closable, .resizable, .nonactivatingPanel],
+                                    backing: .buffered, defer: false)
             made.title = "Participants"
             made.contentView = container
             made.appearance = NSAppearance(named: .darkAqua)
             made.minSize = NSSize(width: 260, height: 260)
             made.isReleasedWhenClosed = false
-            // On every desktop, full-screen ones too, like the bar it opens
-            // from: `.moveToActiveSpace` left it on the desktop of Greenroom's
-            // main window, out of sight (2026-11-16).
-            made.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+            made.hidesOnDeactivate = false
+            // Lands on the desktop in view, full-screen ones too, then stays
+            // there (comeToThisDesktop settles it).
+            made.collectionBehavior = [.managed, .fullScreenAuxiliary]
             made.setFrame(frame(near: anchor, size: made.frame.size), display: false)
             // Only you see this window: a dark frost behind, opaque rows on top.
             WindowFrost.install(in: made, solid: MeetingTheme.windowNS)
@@ -41,7 +43,7 @@ enum PeoplePopOutController {
             window = made
             view = people
         }
-        window?.orderFrontRegardless()
+        window?.comeToThisDesktop(settledBehavior: [.managed, .fullScreenAuxiliary])
         ParticipantGridWindowController.refreshNow() // rows now, not on the next tick
     }
 
@@ -51,10 +53,7 @@ enum PeoplePopOutController {
     /// Left on another desktop, it comes to this one.
     static func reveal() {
         guard let window else { return }
-        if MeetingSurfaces.comesHereFirst(visible: window.isVisible, onActiveSpace: window.isOnActiveSpace) {
-            window.orderOut(nil)
-        }
-        window.orderFrontRegardless()
+        window.comeToThisDesktop(settledBehavior: [.managed, .fullScreenAuxiliary])
     }
 
     static func close() {

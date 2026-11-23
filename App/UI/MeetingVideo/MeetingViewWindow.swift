@@ -32,27 +32,42 @@ final class MeetingViewPanel: NSPanel {
     override var canBecomeMain: Bool { false }
 }
 
+/// A small panel for the windows the Control bar opens (Chat, People). It must
+/// be an NSPanel with `.nonactivatingPanel` from its first moment: macOS puts a
+/// window of an inactive app over another app's full-screen desktop only then,
+/// and a plain NSWindow goes to an ordinary desktop instead (owner, 2026-11-23).
+/// It still takes keys when clicked, so the chat field types; it never becomes
+/// the main window, so it does not pull Greenroom in front of the slides.
+final class KeyablePanel: NSPanel {
+    override var canBecomeKey: Bool { true }
+    override var canBecomeMain: Bool { false }
+}
+
 extension NSWindow {
     /// Puts this window on the desktop being looked at, a full-screen app's
-    /// included, without switching desktops or activating Greenroom. For an
-    /// explicit open from the Control bar only: a window that is merely being
-    /// re-placed stays where it is.
+    /// included, without switching desktops or activating Greenroom. Every
+    /// open from the Control bar goes through here, new windows too; a window
+    /// that is merely being re-placed stays where it is.
     ///
-    /// A window pinned to one desktop (`.managed`) raised from another app
-    /// comes up on its own desktop, which the owner saw as the bar's People and
-    /// Chat opening "in the main window" (2026-11-16). `.moveToActiveSpace`
-    /// makes a window that is ordered front land on the active desktop, and
-    /// `.fullScreenAuxiliary` is what lets it be there over a full-screen app
-    /// (without it macOS jumps to another desktop). It is taken off screen
-    /// first so the move happens on every call, then the window settles back to
-    /// `settled`, so it stays put from then on.
+    /// Why a window ended up "on another desktop" (owner, 2026-11-23): a window
+    /// pinned to one desktop (`.managed`) and ordered front from an inactive
+    /// app comes up on its own desktop, and a plain NSWindow cannot join a
+    /// full-screen desktop at all (it must be a `.nonactivatingPanel`, see
+    /// KeyablePanel). `.moveToActiveSpace` makes a window that is ordered front
+    /// land on the active desktop, and `.fullScreenAuxiliary` lets it be there
+    /// over a full-screen app. It is taken off screen first so the move happens
+    /// on every call, then, once the window server has placed it, the window
+    /// settles back to `settled`, so it stays put from then on. The settling
+    /// waits a moment: switching to `.managed` on the very next turn of the run
+    /// loop can beat the window server, and the window goes home to its old desktop.
     func comeToThisDesktop(settledBehavior settled: NSWindow.CollectionBehavior) {
         if isMiniaturized { deminiaturize(nil) }
         if isVisible, !isOnActiveSpace { orderOut(nil) }
         collectionBehavior = [.moveToActiveSpace, .fullScreenAuxiliary]
         orderFrontRegardless()
-        // After the window has been placed on this desktop (next turn of the run loop).
-        DispatchQueue.main.async { [weak self] in self?.collectionBehavior = settled }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self] in
+            self?.collectionBehavior = settled
+        }
     }
 }
 
@@ -267,7 +282,7 @@ enum MeetingViewWindows {
             if let frame { existing.panel.setFrame(frame, display: true) }
             if !hiddenTogether {
                 let panel = existing.panel
-                if frame == nil, panel.isVisible, !panel.isOnActiveSpace, !panel.collectionBehavior.contains(.canJoinAllSpaces) {
+                if frame == nil {
                     panel.comeToThisDesktop(settledBehavior: [.managed, .fullScreenAuxiliary])
                 } else {
                     panel.orderFrontRegardless()
@@ -307,7 +322,9 @@ enum MeetingViewWindows {
             panel.setFrame(frame, display: false)
         }
         // Render order: show it and lay it out FIRST; the tick creates the elements after.
-        panel.orderFrontRegardless()
+        // A new window opens on the desktop in view too, a full-screen one included.
+        if explicit == nil { panel.comeToThisDesktop(settledBehavior: [.managed, .fullScreenAuxiliary]) }
+        else { panel.orderFrontRegardless() }
         controller.content.layoutSubtreeIfNeeded()
         ZoomMeetingSDKClient.viewLog("opened '\(view.title)' frame=\(Int(panel.frame.width))x\(Int(panel.frame.height))")
         onChanged?()

@@ -3290,6 +3290,7 @@ final class CoordinatorController: ObservableObject {
         }
         if let template = sessionTemplate { layoutEngine.openChat(template, meetingHidden: speakerTileQuickHidden) }
         log("Meeting is live \u{2014} you're hosting from Greenroom.")
+        copyInviteWhenReady()
 
         if sessionArranges {
             presentMeetingSurfaces(resetQuickHideToDefault: true) // session start = the mode's default state
@@ -3351,6 +3352,7 @@ final class CoordinatorController: ObservableObject {
         }
         if let template = sessionTemplate { layoutEngine.openChat(template, meetingHidden: speakerTileQuickHidden) }
         log("Meeting is live \u{2014} you're hosting from Greenroom.")
+        copyInviteWhenReady()
 
         if sessionArranges {
             presentMeetingSurfaces(resetQuickHideToDefault: true) // session start = the mode's default state
@@ -3908,6 +3910,29 @@ final class CoordinatorController: ObservableObject {
     /// One set of controls per session, read by the meeting window's toolbar and
     /// by the floating pill. Made when the meeting is live, dropped with it.
     private(set) var meetingControls: MeetingControlsModel?
+
+    /// Settings key: the invite link goes on the clipboard as the meeting goes live.
+    static let copyInviteOnStartKey = "copyInviteOnStart"
+
+    /// Puts the invite link on the clipboard once the meeting is live, so it can be
+    /// pasted straight into a message. On unless turned off in Settings. The link
+    /// arrives a moment after the meeting starts, so it waits for it (up to 10s)
+    /// rather than copying nothing. Runs once per start, never on a reconnect.
+    func copyInviteWhenReady() {
+        guard UserDefaults.standard.object(forKey: Self.copyInviteOnStartKey) as? Bool ?? true else { return }
+        Task { @MainActor [weak self] in
+            for _ in 0..<20 {
+                guard let self else { return }
+                if let controls = self.meetingControls, !controls.meetingFacts.joinURL.isEmpty {
+                    controls.copyInviteLink()
+                    self.log("Invite link copied as the meeting went live (Settings turns this off).")
+                    return
+                }
+                try? await Task.sleep(nanoseconds: 500_000_000)
+            }
+            self?.log("The invite link was not ready within 10 seconds, so it was not copied. Copy it from the meeting's info menu.")
+        }
+    }
 
     private func ensureMeetingControls() {
         if meetingControls == nil { meetingControls = MeetingControlsModel(coordinator: self) }

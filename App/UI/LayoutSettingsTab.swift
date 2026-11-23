@@ -160,6 +160,7 @@ struct LayoutPageContent: View {
     @State private var showsAddPanel = false
     @FocusState private var focus: LayoutFocus?
     @AppStorage(SessionNotes.enabledKey) private var notesOnStart = false
+    @AppStorage(CoordinatorController.copyInviteOnStartKey) private var copyInviteOnStart = true
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     // MARK: Body
@@ -197,6 +198,8 @@ struct LayoutPageContent: View {
             }
 
             Section("During the meeting") {
+                Toggle("Copy the invite link when a meeting starts", isOn: $copyInviteOnStart)
+                    .help("The link goes on the clipboard as the meeting goes live, ready to paste into a message.")
                 Toggle("Open notes when a session starts", isOn: $notesOnStart)
                     .help("Notes are timed to the recording and saved with the session. You can still open or close them during a session.")
                 Toggle("Hide my own tile", isOn: $hideSelfView)

@@ -397,10 +397,9 @@ enum ParticipantGridWindowController {
             hosting.setFrame(screen.frame, display: true)
         }
 
-        // Hidden or shrunk to the bar: this window must not
-        // hold a stream. A view window (Active speaker / Gallery) asking
-        // for the same person is the second element on one user, and Zoom
-        // refuses it. Back on screen, the next refresh subscribes normally.
+        // Hidden or shrunk to the bar: give the stage and tiles back to save
+        // Zoom's stream budget (it caps concurrent streams). Duplicate holders
+        // of one user are fine. Back on screen, the next refresh subscribes.
         let streamsHeld = !(form.isMeeting && !isNewWindow
             && (userHidden || hosting.isMiniaturized || !hosting.isVisible))
         if !streamsHeld {

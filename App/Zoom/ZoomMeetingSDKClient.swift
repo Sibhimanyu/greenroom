@@ -262,6 +262,18 @@ final class ZoomMeetingSDKClient: NSObject, ObservableObject {
                        asked: ZoomSDKVideoRenderResolution, label: String)
         -> (set: Int, result: ZoomSDKError, implicit: Bool)? {
         guard subscribeThrottle.claim(at: Date()) else { return nil }
+        if element.getDataType() != VideoRenderDataType_None {
+            // Already subscribed by userid: neither setResolution nor showVideo
+            // is a subscribe call, so they share this one slot.
+            if !watch.resolutionSet {
+                let set = element.setResolution(asked)
+                watch.resolutionCode = Int(set.rawValue)
+                watch.resolutionSet = true
+            }
+            Self.videoLog("\(label) \(Self.tag(element)) already subscribed by userid"
+                + " (dataType=\(element.getDataType().rawValue)); not asking again")
+            return (watch.resolutionCode, ZoomSDKError_Success, true)
+        }
         if !watch.resolutionSet {
             let set = element.setResolution(asked)
             watch.resolutionCode = Int(set.rawValue)
@@ -272,11 +284,6 @@ final class ZoomMeetingSDKClient: NSObject, ObservableObject {
             }
             watch.resolutionSet = true
             return nil
-        }
-        if element.getDataType() != VideoRenderDataType_None {
-            Self.videoLog("\(label) \(Self.tag(element)) already subscribed by userid"
-                + " (dataType=\(element.getDataType().rawValue)); not asking again")
-            return (watch.resolutionCode, ZoomSDKError_Success, true)
         }
         return (watch.resolutionCode, element.subscribeVideo(true), false)
     }
@@ -424,7 +431,9 @@ final class ZoomMeetingSDKClient: NSObject, ObservableObject {
         // monitor of our own outgoing composite, and letting it claim 720p was
         // starving the students' tiles of the subscription quota.
         _ = element.setResolution(ZoomSDKVideoRenderResolution_360p)
-        guard element.subscribeVideo(true) == ZoomSDKError_Success else {
+        // Setting userid subscribed it already; ask only if nothing is there.
+        if element.getDataType() == VideoRenderDataType_None,
+           element.subscribeVideo(true) != ZoomSDKError_Success {
             _ = container.clean(element)
             return nil
         }
@@ -466,9 +475,18 @@ final class ZoomMeetingSDKClient: NSObject, ObservableObject {
         }
         let now = Date()
         if stageUserID != userID, now >= nextStageSwitchAt {
-            retireStage(why: "speaker changed to user=\(userID)")
+            // Same element, new userid: that re-subscribes it, with no blank
+            // gap while a fresh element waits out its grace.
+            let old = stageUserID ?? 0
+            element.userid = userID
+            stageUserID = userID
+            var fresh = ElementWatch()
+            fresh.resolutionSet = true
+            stageWatch = fresh
             resetStageRecovery()
-            return makeStageElement(userID: userID, frame: frame)
+            nextStageSwitchAt = now.addingTimeInterval(2)
+            Self.videoLog("stage \(Self.tag(element)) switched user \(old) -> \(userID) on same element")
+            return element.getVideoView()
         }
         let label = "stage user=\(stageUserID ?? 0)"
         noteRender(element, watch: &stageWatch, label: label)
@@ -717,6 +735,7 @@ final class ZoomMeetingSDKClient: NSObject, ObservableObject {
             if let element = participantElements.removeValue(forKey: id) {
                 _ = element.subscribeVideo(false)
                 _ = videoContainer?.clean(element)
+                element.getVideoView().removeFromSuperview()
                 lastRequestedFrame.removeValue(forKey: id)
                 Self.videoLog("released element for user=\(id) \(Self.tag(element)) - left the meeting")
             }
@@ -730,6 +749,7 @@ final class ZoomMeetingSDKClient: NSObject, ObservableObject {
         for (userID, element) in participantElements where !keep.contains(userID) {
             _ = element.subscribeVideo(false)
             _ = videoContainer?.clean(element)
+            element.getVideoView().removeFromSuperview()
             participantElements.removeValue(forKey: userID)
             lastRequestedFrame.removeValue(forKey: userID)
             forgetTile(userID)
@@ -745,6 +765,7 @@ final class ZoomMeetingSDKClient: NSObject, ObservableObject {
         roomEvents.reset()
         if let element = railSelfElement {
             _ = videoContainer?.clean(element)
+            element.getVideoView().removeFromSuperview()
             railSelfElement = nil
         }
         lastKnownSpeaker = nil
@@ -754,6 +775,7 @@ final class ZoomMeetingSDKClient: NSObject, ObservableObject {
         for (_, element) in participantElements {
             _ = element.subscribeVideo(false)
             _ = videoContainer?.clean(element)
+            element.getVideoView().removeFromSuperview()
         }
         participantElements.removeAll()
         lastRequestedFrame.removeAll()

@@ -20,7 +20,7 @@
 //    - setting `userid` already subscribes (ElementRecovery, SubscribeBackoff.swift):
 //      an explicit subscribeVideo(true) on such an element is refused with code
 //      7 (88 of 88 on 2026-11-23), so it is made only while dataType is None.
-//      A new person gets a FRESH element; at most two seconds apart per slot,
+//      A new person is the same element with a new userid; at most two seconds apart per slot,
 //      half a second apart across slots, and capped;
 //    - a second element asking for a remote user another element already
 //      holds is refused (code 7) too: every such subscription on 2026-11-13
@@ -138,11 +138,20 @@ extension ZoomMeetingSDKClient {
         }
         let now = Date()
         if entry.userID != userID, now >= entry.nextSwitchAt {
-            // A different person is a fresh element, never a second subscribe.
-            retireViewElement(entry, why: "person changed to user=\(userID)")
+            // A different person: same element, new userid (that re-subscribes
+            // it). No fresh element, so no blank gap. The resolution stays.
+            let old = entry.userID
+            entry.element.userid = userID
+            entry.userID = userID
+            var fresh = ElementWatch()
+            fresh.resolutionSet = true
+            entry.watch = fresh
+            entry.gotVideo = false
+            entry.warnedNoVideo = false
+            entry.nextSwitchAt = now.addingTimeInterval(2)
             viewVideo.forget(key)
-            viewVideo.retiredAt[key] = now
-            return makeViewElement(key, userID: userID, frame: frame, tier: tier)
+            Self.viewLog("switched user \(old) -> \(userID) on same element key=\(key.text) \(Self.tag(entry.element))")
+            return entry.element.getVideoView()
         }
         noteRender(entry.element, watch: &entry.watch, label: "View window: \(key.text) user=\(entry.userID)")
         let rebuilds = viewVideo.rebuilds[key] ?? 0

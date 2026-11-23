@@ -15,7 +15,7 @@
 //    - render order (the lesson of 028a189): show the panel, lay it out, create
 //      the elements, subscribe once the window is visible;
 //    - windows open half a second apart;
-//    - a window hidden, closed or covered for 3 s or more gives its elements back,
+//    - a window hidden, minimised or closed for 3 s or more gives its elements back,
 //      and a window that comes back makes new ones;
 //    - the black-window fallback: 6 s with the camera on and no video, and the
 //      window says so and offers "Use the meeting window" (logged "View window:");
@@ -102,7 +102,7 @@ final class MeetingViewWindowController: NSObject, NSWindowDelegate {
     let view: MeetingView
     let panel: MeetingViewPanel
     let content: MeetingViewContentView
-    /// Since when the window has not been on screen (hidden, covered, minimised).
+    /// Since when the window has not been on screen (hidden or minimised; covered or on another Space still counts as on screen).
     var coveredSince: Date?
     var videoReleased = false
     var closingByCode = false
@@ -505,10 +505,14 @@ enum MeetingViewWindows {
         for controller in controllers.values { controller.refreshShare() }
 
         // Who is on screen, who has been away long enough to give its video back.
+        // Only a miniaturized or hidden (ordered out) window gives it back.
+        // Occlusion and Space are NOT used: a window on a second display or
+        // another Space, or one partly covered, reads as not visible, and
+        // releasing then rebuilding it flapped and showed frozen or black video.
         var live: [MeetingViewWindowController] = []
         for controller in controllers.values.sorted(by: { order($0.view) < order($1.view) }) {
             let panel = controller.panel
-            let onScreen = panel.isVisible && !panel.isMiniaturized && panel.occlusionState.contains(.visible)
+            let onScreen = panel.isVisible && !panel.isMiniaturized
             if onScreen {
                 controller.coveredSince = nil
                 if controller.videoReleased {
@@ -520,7 +524,7 @@ enum MeetingViewWindows {
                 if !controller.videoReleased, now.timeIntervalSince(controller.coveredSince ?? now) >= coverRelease {
                     controller.videoReleased = true
                     teardown(controller)
-                    ZoomMeetingSDKClient.viewLog("'\(controller.view.title)' covered or hidden for \(Int(coverRelease))s: elements released")
+                    ZoomMeetingSDKClient.viewLog("'\(controller.view.title)' hidden or minimised for \(Int(coverRelease))s: elements released")
                 }
             }
             if !controller.videoReleased { live.append(controller) }

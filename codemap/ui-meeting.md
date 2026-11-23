@@ -51,6 +51,7 @@ Greenroom's own meeting UI when Zoom runs in custom-UI mode (the SDK owns no win
 - View windows: `MeetingViewWindows.configure(client:log:frameFor:copyInvite:openMeetingWindow:)` is called by CoordinatorController; the layout runtime opens each view piece at its frame; windows open 0.5 s apart; each owns a `WindowShareController` (eye, off per launch).
 - Readiness: before connect, the reference/meeting window shows `ReadinessView` (start steps `NotchStep`), or `ReadinessHUDController` floating card; island (NotchStatusController) carries it too.
 - `PeoplePopOutController` is the Participants panel in its own window; folds into the window's People panel when the Meeting window is back in view (like chat pop-out).
+- Every bar-opened window (views, Meeting window, Chat, People) goes through `NSWindow.comeToThisDesktop(settledBehavior:)` (MeetingViewWindow.swift), new windows too, so it lands on the desktop in view, a full-screen one included. Chat and People are `KeyablePanel`s (`.nonactivatingPanel` from init, `canBecomeKey` true): a plain NSWindow of an inactive app cannot join a full-screen desktop.
 
 ## To change X, go to Y
 - Change foot toolbar items/order -> `MeetingToolbarLayout.specs` (ids, group, width, `keep` drop order) + `MeetingToolbarBar` (drawing) + `MeetingToolbarState/Actions` + wiring in `MeetingToolbarView.state/actions` (MeetingControls.swift). Update Tests/MeetingToolbarTests.swift.

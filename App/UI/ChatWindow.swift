@@ -450,18 +450,21 @@ enum ChatWindowController {
             targetWindow = window
         } else {
             let hosting = NSHostingController(rootView: ChatWindowView(chat: chat).tint(Brand.green))
-            let newWindow = NSWindow(contentViewController: hosting)
+            // A non-activating panel from the start (the style cannot be added
+            // later): the only kind of window of an inactive app that can be
+            // over a full-screen app. It still takes keys when clicked.
+            let newWindow = KeyablePanel(contentRect: NSRect(x: 0, y: 0, width: 340, height: 460),
+                                         styleMask: [.titled, .closable, .miniaturizable, .resizable, .nonactivatingPanel],
+                                         backing: .buffered, defer: false)
+            newWindow.contentViewController = hosting
             newWindow.title = "Meeting Chat"
             newWindow.setContentSize(NSSize(width: 340, height: 460))
             newWindow.center() // opened on demand with no layout, it must not land in a corner
-            newWindow.styleMask = [.titled, .closable, .miniaturizable, .resizable]
             newWindow.isReleasedWhenClosed = false // ARC + close() below manage its lifetime
-            // Opens on the desktop you are on. Without this a chat window left
-            // on another Space stayed there, and the bar's Chat button raised
-            // it out of sight (owner, 2026-11-15). `.fullScreenAuxiliary` lets
-            // it be there over a full-screen app: without it macOS sends you to
-            // another desktop instead (owner, 2026-11-16).
-            newWindow.collectionBehavior = [.moveToActiveSpace, .fullScreenAuxiliary]
+            newWindow.hidesOnDeactivate = false
+            // Lands on the desktop in view, then stays there: comeToThisDesktop
+            // opens it with `.moveToActiveSpace` and settles it on `.managed`.
+            newWindow.collectionBehavior = [.managed, .fullScreenAuxiliary]
             // Only you see the chat: a frosted background, opaque messages.
             WindowFrost.install(in: newWindow, solid: .windowBackgroundColor)
             WindowShareController.attach(to: newWindow, dark: false).set(LayoutShareChoice.chat)
@@ -471,14 +474,10 @@ enum ChatWindowController {
 
         if let frame { targetWindow.setFrame(frame, display: true) }
 
-        // Left on another desktop: off that one first, so it lands on this one.
-        if MeetingSurfaces.comesHereFirst(visible: targetWindow.isVisible, onActiveSpace: targetWindow.isOnActiveSpace) {
-            targetWindow.orderOut(nil)
-        }
-        // Visible without stealing focus - in the session flow the user
-        // should end up working in Chrome, with the chat alongside, not
+        // On the desktop in view, without stealing focus - in the session flow
+        // the user should end up working in Chrome, with the chat alongside, not
         // yanked into Greenroom.
-        targetWindow.orderFrontRegardless()
+        targetWindow.comeToThisDesktop(settledBehavior: [.managed, .fullScreenAuxiliary])
     }
 
     static var isOpen: Bool { window?.isVisible ?? false }
@@ -498,11 +497,7 @@ enum ChatWindowController {
     /// panel inside the meeting view.
     static func reveal() {
         guard let window else { return }
-        // Left on another desktop: off that one first, so it lands on this one.
-        if MeetingSurfaces.comesHereFirst(visible: window.isVisible, onActiveSpace: window.isOnActiveSpace) {
-            window.orderOut(nil)
-        }
-        window.orderFrontRegardless()
+        window.comeToThisDesktop(settledBehavior: [.managed, .fullScreenAuxiliary])
     }
 
     /// Moves the open chat window; no-op when it is closed.

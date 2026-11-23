@@ -4,8 +4,13 @@ import CoreGraphics
 final class MeetingToolbarLayoutTests: XCTestCase {
     private typealias L = MeetingToolbarLayout
 
+    /// The specs without the bubble, which is its own story (see the last tests).
+    private func specs(host: Bool) -> [ToolbarItemSpec] {
+        L.specs(showsSecurity: host).filter { $0.id != .bubble }
+    }
+
     private func fit(host: Bool = true, _ width: CGFloat) -> L.Fit {
-        L.fit(specs: L.specs(showsSecurity: host), width: width)
+        L.fit(specs: specs(host: host), width: width)
     }
 
     func testEverythingFitsWhenThereIsRoom() {
@@ -21,14 +26,14 @@ final class MeetingToolbarLayoutTests: XCTestCase {
     }
 
     func testGroupsReadLikeTheBar_you_class_teaching_recording() {
-        XCTAssertEqual(L.specs(showsSecurity: true).map(\.id),
+        XCTAssertEqual(specs(host: true).map(\.id),
                        [.mute, .video, .security, .people, .chat, .react, .share, .draw, .notes, .record])
-        XCTAssertEqual(L.specs(showsSecurity: true).map(\.group), [0, 0, 1, 1, 1, 1, 2, 2, 2, 3])
+        XCTAssertEqual(specs(host: true).map(\.group), [0, 0, 1, 1, 1, 1, 2, 2, 2, 3])
     }
 
     func testDrawIsOnTheToolbarAndGoesBeforeTheClock() {
         XCTAssertTrue(fit(1600).visible.contains(.draw))
-        let all = L.specs(showsSecurity: true)
+        let all = specs(host: true)
         let core = all.filter { ![.notes, .record, .react].contains($0.id) }
         XCTAssertTrue(core.contains { $0.id == .draw })
         // One short of the core: Draw leaves first, the clock still shows.
@@ -40,14 +45,14 @@ final class MeetingToolbarLayoutTests: XCTestCase {
     func testSpacingIsOneGapInAGroupAndAWiderOneBetweenGroups() {
         XCTAssertGreaterThan(L.divider + 2 * L.gap, 4 * L.gap)
         // Adding a control to a group costs its width plus one gap, nothing more.
-        let two = L.required(items: Array(L.specs(showsSecurity: true).prefix(2)), showsClock: true)
-        let three = L.required(items: Array(L.specs(showsSecurity: true).prefix(3)), showsClock: true)
+        let two = L.required(items: Array(specs(host: true).prefix(2)), showsClock: true)
+        let three = L.required(items: Array(specs(host: true).prefix(3)), showsClock: true)
         // The third item is Security, which starts group 1: a divider and a gap more.
-        XCTAssertEqual(three - two, L.specs(showsSecurity: true)[2].width + 2 * L.gap + L.divider)
+        XCTAssertEqual(three - two, specs(host: true)[2].width + 2 * L.gap + L.divider)
     }
 
     func testTheWidestFitIsTheExactRequirement() {
-        let all = L.specs(showsSecurity: true)
+        let all = specs(host: true)
         let need = L.required(items: all, showsClock: true)
         XCTAssertTrue(fit(need).overflow.isEmpty)
         XCTAssertFalse(fit(need - 1).overflow.isEmpty && fit(need - 1).showsClock,
@@ -55,7 +60,7 @@ final class MeetingToolbarLayoutTests: XCTestCase {
     }
 
     func testNotesGoFirstThenRecordThenReact() {
-        let all = L.specs(showsSecurity: true)
+        let all = specs(host: true)
         let need = L.required(items: all, showsClock: true)
         XCTAssertEqual(fit(need - 1).overflow, [.notes])
         let withoutNotes = all.filter { $0.id != .notes }
@@ -65,7 +70,7 @@ final class MeetingToolbarLayoutTests: XCTestCase {
     }
 
     func testTheClockGoesBeforeSecurityAndChat() {
-        let all = L.specs(showsSecurity: true)
+        let all = specs(host: true)
         let core = all.filter { ![.notes, .record, .react, .draw].contains($0.id) }
         let narrow = fit(L.required(items: core, showsClock: true) - 1)
         XCTAssertFalse(narrow.showsClock)
@@ -82,7 +87,7 @@ final class MeetingToolbarLayoutTests: XCTestCase {
     func testVisiblePlusOverflowIsAlwaysEverything() {
         for width in stride(from: CGFloat(100), through: 1700, by: 7) {
             let f = fit(width)
-            XCTAssertEqual(Set(f.visible + f.overflow), Set(L.specs(showsSecurity: true).map(\.id)))
+            XCTAssertEqual(Set(f.visible + f.overflow), Set(specs(host: true).map(\.id)))
             XCTAssertEqual(f.visible.count + f.overflow.count, 10)
         }
     }
@@ -101,8 +106,8 @@ final class MeetingToolbarLayoutTests: XCTestCase {
         // keeps Mute and End from clipping before a cell moves into More.
         for host in [true, false] {
             for width in stride(from: CGFloat(700), through: 1600, by: 4) {
-                let f = L.fit(specs: L.specs(showsSecurity: host), width: width)
-                let kept = L.specs(showsSecurity: host).filter { f.visible.contains($0.id) }
+                let f = L.fit(specs: specs(host: host), width: width)
+                let kept = specs(host: host).filter { f.visible.contains($0.id) }
                 XCTAssertLessThanOrEqual(L.required(items: kept, showsClock: f.showsClock), width,
                                          "overflows at \(width), host \(host)")
             }
@@ -114,6 +119,15 @@ final class MeetingToolbarLayoutTests: XCTestCase {
         let f = fit(760)
         XCTAssertTrue(f.visible.starts(with: [.mute, .video]))
         XCTAssertTrue(f.visible.contains(.people) && f.visible.contains(.chat) && f.visible.contains(.share))
+    }
+
+    func testTheBubbleSitsAfterCameraAndGoesIntoMoreFirst() {
+        let all = L.specs(showsSecurity: true)
+        XCTAssertEqual(all.prefix(3).map(\.id), [.mute, .video, .bubble])
+        XCTAssertEqual(all.prefix(3).map(\.group), [0, 0, 0])
+        let need = L.required(items: all, showsClock: true)
+        XCTAssertTrue(L.fit(specs: all, width: need).overflow.isEmpty)
+        XCTAssertEqual(L.fit(specs: all, width: need - 1).overflow, [.bubble])
     }
 }
 

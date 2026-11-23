@@ -506,6 +506,7 @@ struct MeetingToolbarView: View {
         s.muted = model.muted
         s.hasAudio = model.hasAudio
         s.cameraOn = model.cameraOn
+        s.bubbleHidden = coordinator.presenceBubbleHidden
         s.isHost = model.isHost
         s.participants = model.participantCount
         s.waiting = model.waitingCount
@@ -535,6 +536,7 @@ struct MeetingToolbarView: View {
         a.toggleMute = model.toggleMute
         a.joinAudio = model.joinAudio
         a.toggleVideo = model.toggleCamera
+        a.toggleBubble = model.toggleBubble
         a.togglePeople = model.togglePeople
         a.toggleChat = model.toggleChat
         a.toggleRecording = { coordinator.toggleRecording() }

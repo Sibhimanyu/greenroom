@@ -10,7 +10,7 @@
 //  Order, left to right (DESIGN.md: one control style, icon over a caption):
 //
 //      you | the class | teaching | recording | More ...... clock  End
-//      Mute+caret  Stop Video+caret | Security  People  Chat  React |
+//      Mute+caret  Stop Video+caret  Bubble | Security  People  Chat  React |
 //      Share+caret  Draw  Notes | Record  Pause | More
 //
 //  One run, centred on the window: the same gap between any two controls, a
@@ -23,7 +23,7 @@ import CoreGraphics
 import Foundation
 
 enum ToolbarItemID: String, CaseIterable {
-    case mute, video, security, people, chat, react, share, draw, notes, record
+    case mute, video, bubble, security, people, chat, react, share, draw, notes, record
 }
 
 struct ToolbarItemSpec: Equatable {
@@ -61,6 +61,9 @@ enum MeetingToolbarLayout {
         var out: [ToolbarItemSpec] = [
             .init(id: .mute, group: 0, width: cell + caret, keep: 11),
             .init(id: .video, group: 0, width: cell + caret, keep: 10),
+            // The camera bubble on your own screen, as on the floating bar. The
+            // first to go into More when the row is tight: the camera menu has it too.
+            .init(id: .bubble, group: 0, width: cell, keep: 0),
         ]
         if showsSecurity { out.append(.init(id: .security, group: 1, width: cell, keep: 6)) }
         out += [

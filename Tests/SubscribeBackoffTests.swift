@@ -35,19 +35,56 @@ final class SubscribeBackoffTests: XCTestCase {
         XCTAssertEqual(ElementRecovery.decide(watch: w, now: now.addingTimeInterval(60), rebuilds: 0), .fine)
     }
 
-    func testRefusedElementIsRebuiltNotRetried() {
+    func testRefusedElementWaitsThenRetriesOnceThenIsRebuilt() {
         var w = ElementWatch()
         let now = Date()
-        w.refusedUntil = now.addingTimeInterval(2)
+        w.refusedUntil = now.addingTimeInterval(8)
         XCTAssertFalse(ElementRecovery.mayAsk(watch: w, gaveUp: false, now: now.addingTimeInterval(10)))
         XCTAssertEqual(ElementRecovery.decide(watch: w, now: now.addingTimeInterval(1), rebuilds: 0), .wait)
-        XCTAssertEqual(ElementRecovery.decide(watch: w, now: now.addingTimeInterval(2), rebuilds: 0), .rebuild)
+        XCTAssertEqual(ElementRecovery.decide(watch: w, now: now.addingTimeInterval(8), rebuilds: 0), .retry)
+        w.readyToRetry()
+        XCTAssertTrue(ElementRecovery.mayAsk(watch: w, gaveUp: false, now: now.addingTimeInterval(8)))
+        w.subscribed = false
+        w.refusedUntil = now.addingTimeInterval(20)
+        XCTAssertEqual(ElementRecovery.decide(watch: w, now: now.addingTimeInterval(20), rebuilds: 0), .rebuild)
+    }
+
+    func testRenderingElementIsNeverRetired() {
+        var w = ElementWatch()
+        let now = Date()
+        w.refusedUntil = now
+        w.retried = true
+        for rebuilds in 0...ElementRecovery.maxRebuilds {
+            XCTAssertEqual(ElementRecovery.decide(watch: w, now: now.addingTimeInterval(60), rebuilds: rebuilds, rendering: true),
+                           .recovered)
+        }
+        w.recoveredByVideo()
+        XCTAssertNil(w.refusedUntil)
+        XCTAssertEqual(ElementRecovery.decide(watch: w, now: now, rebuilds: 0), .fine)
+    }
+
+    func testRefusalIsWaitedOutAtLeastTheGrace() {
+        XCTAssertEqual(ElementRecovery.refusalWait(2), ElementRecovery.refusalGrace)
+        XCTAssertEqual(ElementRecovery.refusalWait(32), 32)
+    }
+
+    // MARK: SubscribeThrottle
+
+    func testThrottleAdmitsOneCallPerSpacing() {
+        var t = SubscribeThrottle()
+        let now = Date()
+        XCTAssertTrue(t.claim(at: now))
+        XCTAssertFalse(t.claim(at: now))
+        XCTAssertFalse(t.claim(at: now.addingTimeInterval(SubscribeThrottle.spacing - 0.01)))
+        XCTAssertTrue(t.claim(at: now.addingTimeInterval(SubscribeThrottle.spacing)))
+        XCTAssertFalse(t.claim(at: now.addingTimeInterval(SubscribeThrottle.spacing)))
     }
 
     func testRebuildsAreCapped() {
         var w = ElementWatch()
         let now = Date()
         w.refusedUntil = now
+        w.retried = true
         XCTAssertEqual(ElementRecovery.decide(watch: w, now: now, rebuilds: ElementRecovery.maxRebuilds), .giveUp)
         XCTAssertFalse(ElementRecovery.mayAsk(watch: ElementWatch(), gaveUp: true, now: now))
     }

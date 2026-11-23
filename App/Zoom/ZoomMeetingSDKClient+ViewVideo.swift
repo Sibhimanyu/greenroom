@@ -66,8 +66,6 @@ final class ViewVideoStore {
     }
 
     private(set) var entries: [ViewVideoKey: Entry] = [:]
-    /// One subscription at a time across all view elements.
-    var nextSubscribeAt = Date.distantPast
     /// Per slot, across the fresh elements that replace one another.
     var backoffs: [ViewVideoKey: SubscribeBackoff] = [:]
     var rebuilds: [ViewVideoKey: Int] = [:]
@@ -147,7 +145,14 @@ extension ZoomMeetingSDKClient {
         }
         noteRender(entry.element, watch: &entry.watch, label: "View window: \(key.text) user=\(entry.userID)")
         let rebuilds = viewVideo.rebuilds[key] ?? 0
-        switch ElementRecovery.decide(watch: entry.watch, now: now, rebuilds: rebuilds) {
+        switch recoveryAction(entry.element, watch: entry.watch, now: now, rebuilds: rebuilds) {
+        case .recovered:
+            entry.watch.recoveredByVideo()
+            viewVideo.backoffs[key]?.reset()
+            Self.viewLog("video is showing despite the refusal - keeping this element key=\(key.text) \(Self.tag(entry.element))")
+        case .retry:
+            entry.watch.readyToRetry()
+            Self.viewLog("no video after the wait - one more ask on the same element key=\(key.text) \(Self.tag(entry.element))")
         case .rebuild:
             viewVideo.rebuilds[key] = rebuilds + 1
             retireViewElement(entry, why: "refused; fresh element \(rebuilds + 1) of \(ElementRecovery.maxRebuilds)")
@@ -197,17 +202,11 @@ extension ZoomMeetingSDKClient {
     private func subscribeIfReady(_ entry: ViewVideoStore.Entry, tier: VideoTier) {
         let now = Date()
         guard ElementRecovery.mayAsk(watch: entry.watch, gaveUp: viewVideo.gaveUp.contains(entry.key), now: now),
-              now >= viewVideo.nextSubscribeAt,
               entry.element.getVideoView().window?.isVisible == true else { return }
         entry.tier = tier
         let asked = Self.sdkResolution(tier)
-        var set = entry.element.setResolution(asked)
-        if set != ZoomSDKError_Success {
-            Self.viewLog("FAILED step=setResolution code=\(set.rawValue) key=\(entry.key.text) (asking again)")
-            set = entry.element.setResolution(asked)
-        }
-        let sub = entry.element.subscribeVideo(true)
-        viewVideo.nextSubscribeAt = now.addingTimeInterval(0.5)
+        guard let (setCode, sub) = paceSubscribe(entry.element, watch: &entry.watch, asked: asked,
+                                                 label: "View window: \(entry.key.text)") else { return }
         let others = otherHolders(of: entry.userID, except: entry.element)
         if sub == ZoomSDKError_Success {
             let shown = entry.element.showVideo(true)
@@ -216,7 +215,7 @@ extension ZoomMeetingSDKClient {
             entry.watch.subscribedAt = now
             entry.gotVideo = false
             Self.viewLog("subscribed key=\(entry.key.text) user=\(entry.userID) \(Self.tag(entry.element))"
-                + " tier=\(tier.rawValue)p setResolution=\(set.rawValue) others=\(others)")
+                + " tier=\(tier.rawValue)p setResolution=\(setCode) others=\(others)")
         } else {
             Self.viewLog("FAILED step=subscribeVideo code=\(sub.rawValue) key=\(entry.key.text) user=\(entry.userID)")
             backOff(entry, at: now)
@@ -227,7 +226,7 @@ extension ZoomMeetingSDKClient {
     private func backOff(_ entry: ViewVideoStore.Entry, at now: Date) -> (attempts: Int, delay: TimeInterval) {
         let step = viewVideo.backoffs[entry.key, default: SubscribeBackoff()].failed(at: now)
         entry.watch.subscribed = false
-        entry.watch.refusedUntil = now.addingTimeInterval(step.delay)
+        entry.watch.refusedUntil = now.addingTimeInterval(ElementRecovery.refusalWait(step.delay))
         entry.watch.lastRefusalAt = now
         return step
     }
@@ -268,7 +267,7 @@ extension ZoomMeetingSDKClient {
             return true
         }
         let step = backOff(entry, at: now)
-        Self.viewLog(head + " others=\(others) - retiring this element for a fresh one in \(Int(step.delay))s"
+        Self.viewLog(head + " others=\(others) - code 7 means slow down: waiting \(Int(ElementRecovery.refusalWait(step.delay)))s for video before doing anything to this element"
             + " (refusal \(step.attempts), fresh elements so far \(viewVideo.rebuilds[entry.key] ?? 0)/\(ElementRecovery.maxRebuilds))")
         return true
     }

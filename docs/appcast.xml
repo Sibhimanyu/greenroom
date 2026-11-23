@@ -3,6 +3,14 @@
     <channel>
         <title>Greenroom</title>
         <item>
+            <title>1.8.4</title>
+            <pubDate>Mon, 23 Nov 2026 12:13:10 +0530</pubDate>
+            <sparkle:version>45</sparkle:version>
+            <sparkle:shortVersionString>1.8.4</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <enclosure url="https://github.com/Sibhimanyu/greenroom/releases/download/v1.8.4/Greenroom-1.8.4.zip" length="305333411" type="application/octet-stream" sparkle:edSignature="dvafP9+ftn1Zt2UbX/xr3VC1H3nnj70qigjKum/Rg7q6xwO1GNbVf0W8yGC8Nx5DLKDGDSUuEXv7OVYtL7eIAg=="/>
+        </item>
+        <item>
             <title>1.8.3</title>
             <pubDate>Mon, 23 Nov 2026 11:49:19 +0530</pubDate>
             <sparkle:version>44</sparkle:version>
@@ -17,14 +25,6 @@
             <sparkle:shortVersionString>1.8.2</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
             <enclosure url="https://github.com/Sibhimanyu/greenroom/releases/download/v1.8.2/Greenroom-1.8.2.zip" length="305264871" type="application/octet-stream" sparkle:edSignature="VanzyZrC84oTKp2mVEDCHwqHjxPIWC3l4y6U3c2VounhN38nOWKuKDKcMojPXiH/vBqn0dfeA7dF0dLmx7yZDQ=="/>
-        </item>
-        <item>
-            <title>1.8.1</title>
-            <pubDate>Fri, 20 Nov 2026 21:01:18 +0530</pubDate>
-            <sparkle:version>42</sparkle:version>
-            <sparkle:shortVersionString>1.8.1</sparkle:shortVersionString>
-            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
-            <enclosure url="https://github.com/Sibhimanyu/greenroom/releases/download/v1.8.1/Greenroom-1.8.1.zip" length="305264696" type="application/octet-stream" sparkle:edSignature="FmZkf8PAsFKRGqWDyooSO37O1GzrIk9UmQC3KusfZb+gOfUCNVcc1pMs/ecJ2xE4F/sFc8XaovukqgOYYOs8Bg=="/>
         </item>
     </channel>
 </rss>

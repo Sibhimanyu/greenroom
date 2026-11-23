@@ -2,83 +2,21 @@
 //  MeetingMenuAppKit.swift
 //  Greenroom
 //
-//  Turns a `[MenuEntry]` into an NSMenu and pops it above a control.
+//  Opens a `[MenuEntry]` as a MeetingMenuPanel above a control. No NSMenu: it
+//  shows nothing while Greenroom is not the active app, which is where the bar
+//  and the meeting's panels are used from.
 //
 //  Why not SwiftUI's Menu: on macOS a Menu flattens a custom label to an inline
 //  image-and-title, so Share, React and Host tools drew as small text buttons
 //  next to the icon-over-caption cells (the owner's screenshot). A control that
-//  pops a hand-built NSMenu keeps the cell exactly as drawn, and the project
-//  already pops menus this way from its non-activating panels (ToolMenuButton in
-//  ParticipantGridWindow.swift), so no click brings Greenroom's windows forward.
+//  pops a panel of its own keeps the cell exactly as drawn, and no click brings
+//  Greenroom's windows forward.
 //
 import AppKit
 import SwiftUI
 
 @MainActor
 enum MeetingMenuBuilder {
-
-    /// A menu item that owns its closure. NSMenuItem.target is weak, and the
-    /// item is its own target.
-    final class Item: NSMenuItem {
-        private let handler: () -> Void
-        init(_ title: String, handler: @escaping () -> Void) {
-            self.handler = handler
-            super.init(title: title, action: #selector(fire), keyEquivalent: "")
-            target = self
-        }
-        required init(coder: NSCoder) { fatalError("not used") }
-        @objc private func fire() { handler() }
-    }
-
-    static func menu(_ entries: [MenuEntry]) -> NSMenu {
-        let menu = NSMenu()
-        menu.autoenablesItems = false
-        for entry in entries { menu.addItem(item(for: entry)) }
-        return menu
-    }
-
-    private static func item(for entry: MenuEntry) -> NSMenuItem {
-        switch entry.kind {
-        case .separator:
-            return .separator()
-        case .header:
-            return NSMenuItem.sectionHeader(title: entry.title)
-        case .item:
-            let item = Item(entry.title, handler: entry.action ?? {})
-            item.isEnabled = entry.enabled
-            item.state = entry.checked ? .on : .off
-            if let combo = entry.shortcut, let key = combo.menuKey, key.count == 1 {
-                item.keyEquivalent = key
-                var mask: NSEvent.ModifierFlags = []
-                if combo.modifiers & KeyCombo.command != 0 { mask.insert(.command) }
-                if combo.modifiers & KeyCombo.option != 0 { mask.insert(.option) }
-                if combo.modifiers & KeyCombo.control != 0 { mask.insert(.control) }
-                if combo.modifiers & KeyCombo.shift != 0 { mask.insert(.shift) }
-                item.keyEquivalentModifierMask = mask
-            }
-            applyNote(entry, to: item)
-            return item
-        case .submenu:
-            let item = NSMenuItem(title: entry.title, action: nil, keyEquivalent: "")
-            item.isEnabled = entry.enabled
-            item.state = entry.checked ? .on : .off
-            applyNote(entry, to: item)
-            item.submenu = menu(entry.children)
-            return item
-        }
-    }
-
-    /// A second, quieter line under the title.
-    private static func applyNote(_ entry: MenuEntry, to item: NSMenuItem) {
-        guard let note = entry.note, !note.isEmpty else { return }
-        let text = NSMutableAttributedString(
-            string: entry.title, attributes: [.font: NSFont.menuFont(ofSize: 0)])
-        text.append(NSAttributedString(
-            string: "\n" + note,
-            attributes: [.font: NSFont.menuFont(ofSize: 11),
-                         .foregroundColor: NSColor.secondaryLabelColor]))
-        item.attributedTitle = text
-    }
 
     /// Opens the menu (our own floating panel, see MeetingMenuPanel) upward from
     /// `view`'s top edge: the toolbar sits at the foot of the window, where the

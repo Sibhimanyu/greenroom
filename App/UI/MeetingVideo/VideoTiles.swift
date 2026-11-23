@@ -90,15 +90,11 @@ final class MeetingVideoTile: NSView {
     override func hitTest(_ point: NSPoint) -> NSView? { frame.contains(point) ? self : nil }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
-    override func menu(for event: NSEvent) -> NSMenu? {
-        guard let person, !person.isMe, onSpotlight != nil else { return nil }
-        let menu = NSMenu()
-        menu.autoenablesItems = false
-        menu.appearance = NSAppearance(named: .darkAqua)
-        let item = MeetingMenuBuilder.Item("Spotlight in window") { [weak self] in
+    /// Right-click: our own panel, since an NSMenu shows nothing while Greenroom is inactive.
+    override func rightMouseDown(with event: NSEvent) {
+        guard let person, !person.isMe, onSpotlight != nil else { return }
+        MeetingMenuPanel.show([.item("Spotlight in window") { [weak self] in
             if let person = self?.person { self?.onSpotlight?(person) }
-        }
-        menu.addItem(item)
-        return menu
+        }], for: event)
     }
 }

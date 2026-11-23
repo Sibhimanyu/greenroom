@@ -27,10 +27,33 @@ final class MeetingMenuPanel {
     /// Opens the entries above the view (or below it), aligned to its left
     /// edge. Pressing the same cell again closes it.
     static func show(_ entries: [MenuEntry], above view: NSView, below: Bool = false) {
-        if let open = anchorView, open === view, !chain.isEmpty { closeAll(); return }
+        if let current = anchorView, current === view, !chain.isEmpty { closeAll(); return }
         closeAll()
         guard !entries.isEmpty, let window = view.window else { return }
         let anchor = window.convertToScreen(view.convert(view.bounds, to: nil))
+        open(entries, anchor: anchor, view: view, window: window, below: below)
+    }
+
+    /// A right-click: the menu hangs from the mouse point, as a context menu does.
+    static func show(_ entries: [MenuEntry], for event: NSEvent) {
+        guard let window = event.window else { return }
+        show(entries, atWindowPoint: event.locationInWindow, in: window)
+    }
+
+    /// The menu hangs from a point in `view` (its own coordinates).
+    static func show(_ entries: [MenuEntry], at point: NSPoint, in view: NSView) {
+        guard let window = view.window else { return }
+        show(entries, atWindowPoint: view.convert(point, to: nil), in: window)
+    }
+
+    private static func show(_ entries: [MenuEntry], atWindowPoint point: NSPoint, in window: NSWindow) {
+        closeAll()
+        guard !entries.isEmpty else { return }
+        let screenPoint = window.convertPoint(toScreen: point)
+        open(entries, anchor: CGRect(origin: screenPoint, size: .zero), view: nil, window: window, below: true)
+    }
+
+    private static func open(_ entries: [MenuEntry], anchor: CGRect, view: NSView?, window: NSWindow, below: Bool) {
         let menu = MeetingMenuPanel(entries: entries)
         let size = menu.size
         let area = (NSScreen.screens.first { screen in

@@ -71,9 +71,30 @@ extension NSWindow {
     }
 }
 
-/// A pop-up that answers the first click: the panel is rarely key.
-private final class FirstClickPopUp: NSPopUpButton {
+/// The title bar's picker: a pop-up that answers the first click (the panel is
+/// rarely key) and opens a MeetingMenuPanel, since an NSMenu shows nothing while
+/// Greenroom is not the active app.
+private final class TitlePicker: NSButton {
+    var entries: [MenuEntry] = []
+
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        bezelStyle = .rounded
+        controlSize = .small
+        font = .systemFont(ofSize: 12)
+        alignment = .left
+        imagePosition = .imageTrailing
+        image = NSImage(systemSymbolName: "chevron.up.chevron.down", accessibilityDescription: nil)?
+            .withSymbolConfiguration(.init(pointSize: 9, weight: .semibold))
+        lineBreakMode = .byTruncatingTail
+        target = self
+        action = #selector(pop)
+    }
+    required init?(coder: NSCoder) { nil }
+
+    @objc private func pop() { MeetingMenuBuilder.popUp(entries, above: self, below: true) }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+    override func accessibilityPerformPress() -> Bool { pop(); return true }
 }
 
 @MainActor
@@ -85,7 +106,7 @@ final class MeetingViewWindowController: NSObject, NSWindowDelegate {
     var coveredSince: Date?
     var videoReleased = false
     var closingByCode = false
-    private(set) var picker: NSPopUpButton?
+    private(set) var picker: NSButton?
     private var pickerSignature = ""
     var onClosedByUser: ((MeetingView) -> Void)?
 
@@ -143,9 +164,7 @@ final class MeetingViewWindowController: NSObject, NSWindowDelegate {
         let pickerWidth: CGFloat = hasPicker ? 196 : 0
         let host = NSView(frame: NSRect(x: 0, y: 0, width: pickerWidth + switchWidth + 12, height: 28))
         if hasPicker {
-            let button = FirstClickPopUp(frame: NSRect(x: 0, y: 3, width: 190, height: 22), pullsDown: false)
-            button.controlSize = .small
-            button.font = .systemFont(ofSize: 12)
+            let button = TitlePicker(frame: NSRect(x: 0, y: 3, width: 190, height: 22))
             button.setAccessibilityLabel(view == .spotlight ? "Choose a person" : "Choose whose screen")
             host.addSubview(button)
             picker = button
@@ -162,26 +181,18 @@ final class MeetingViewWindowController: NSObject, NSWindowDelegate {
 
     /// Rebuilt only when the choices change.
     func setPicker(signature: String, items: [(title: String, selected: Bool, action: () -> Void)], placeholder: String) {
-        guard let picker, signature != pickerSignature else { return }
+        guard let picker = picker as? TitlePicker, signature != pickerSignature else { return }
         pickerSignature = signature
-        picker.removeAllItems()
         if items.isEmpty {
-            picker.addItem(withTitle: placeholder)
+            picker.title = placeholder
+            picker.entries = []
             picker.isEnabled = false
             return
         }
         picker.isEnabled = true
-        for entry in items {
-            let item = MeetingMenuBuilder.Item(entry.title, handler: entry.action)
-            item.state = entry.selected ? .on : .off
-            picker.menu?.addItem(item)
-        }
-        if let chosen = items.firstIndex(where: \.selected) {
-            picker.selectItem(at: chosen)
-        } else {
-            picker.menu?.insertItem(NSMenuItem(title: placeholder, action: nil, keyEquivalent: ""), at: 0)
-            picker.selectItem(at: 0)
-        }
+        picker.entries = items.map { entry in .item(entry.title, checked: entry.selected, entry.action) }
+        // The button shows the choice, as a pop-up did; the placeholder until one is made.
+        picker.title = items.first(where: \.selected)?.title ?? placeholder
     }
 
     func showPicker(_ show: Bool) { picker?.isHidden = !show }

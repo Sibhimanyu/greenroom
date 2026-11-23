@@ -799,7 +799,7 @@ private struct MeetingBarPointerSurface: NSViewRepresentable {
     let label: String
     let value: String?
     let onClick: (() -> Void)?
-    let menu: (() -> NSMenu)?
+    let menu: (() -> [MenuEntry])?
 
     func makeNSView(context: Context) -> SurfaceView { SurfaceView() }
 
@@ -816,7 +816,7 @@ private struct MeetingBarPointerSurface: NSViewRepresentable {
     final class SurfaceView: NSView {
         var kind: Kind = .grip
         var onClick: (() -> Void)?
-        var menuProvider: (() -> NSMenu)?
+        var menuProvider: (() -> [MenuEntry])?
         private var startMouse = NSPoint.zero
         private var startOrigin = NSPoint.zero
         private var dragging = false
@@ -857,7 +857,11 @@ private struct MeetingBarPointerSurface: NSViewRepresentable {
             }
         }
 
-        override func menu(for event: NSEvent) -> NSMenu? { menuProvider?() }
+        // Right-click: expand, mute, stop recording, end. Our own panel, since an
+        // NSMenu shows nothing while Greenroom is not the active app.
+        override func rightMouseDown(with event: NSEvent) {
+            if let entries = menuProvider?() { MeetingMenuPanel.show(entries, for: event) }
+        }
 
         // VoiceOver: press expands; the menu's items are offered as actions.
         override func accessibilityPerformPress() -> Bool {
@@ -867,10 +871,10 @@ private struct MeetingBarPointerSurface: NSViewRepresentable {
         }
 
         override func accessibilityCustomActions() -> [NSAccessibilityCustomAction]? {
-            guard kind == .puck, let items = menuProvider?().items else { return nil }
-            return items.compactMap { item -> NSAccessibilityCustomAction? in
-                guard let item = item as? MeetingControlBarController.MenuItem, item.isEnabled else { return nil }
-                return NSAccessibilityCustomAction(name: item.title) { item.perform(); return true }
+            guard kind == .puck, let entries = menuProvider?() else { return nil }
+            return entries.compactMap { entry -> NSAccessibilityCustomAction? in
+                guard entry.kind == .item, entry.enabled, let action = entry.action else { return nil }
+                return NSAccessibilityCustomAction(name: entry.title) { action(); return true }
             }
         }
     }
@@ -1420,57 +1424,39 @@ enum MeetingControlBarController {
 
     // MARK: The puck's menu
 
-    /// A menu item that runs a closure, and can be offered to VoiceOver as one.
-    final class MenuItem: NSMenuItem {
-        private let handler: () -> Void
-        init(_ title: String, enabled: Bool = true, _ handler: @escaping () -> Void) {
-            self.handler = handler
-            super.init(title: title, action: #selector(fire), keyEquivalent: "")
-            target = self
-            isEnabled = enabled
-        }
-        required init(coder: NSCoder) { fatalError("not used") }
-        @objc private func fire() { handler() }
-        func perform() { handler() }
-    }
-
     /// Right-click on the puck: expand, mute, stop recording, end.
-    static func puckMenu() -> NSMenu {
-        let menu = NSMenu()
-        menu.autoenablesItems = false
+    static func puckMenu() -> [MenuEntry] {
         let model = self.model, coordinator = self.coordinator
-        menu.addItem(MenuItem("Expand") { setCollapsed(false) })
+        var menu: [MenuEntry] = [.item("Expand") { setCollapsed(false) }]
         if model?.videoButtons ?? false {
-            menu.addItem(MenuItem("Expand to meeting window") { model?.expandToMeetingWindow() })
+            menu.append(.item("Expand to meeting window") { model?.expandToMeetingWindow() })
         }
         if let views = model?.viewsMenu(), !views.isEmpty {
-            let item = NSMenuItem(title: "Views", action: nil, keyEquivalent: "")
-            item.submenu = MeetingMenuBuilder.menu(views)
-            menu.addItem(item)
+            menu.append(.submenu("Views", views))
         }
         let inMeeting = model?.inMeeting ?? false
-        menu.addItem(MenuItem((model?.muted ?? false) ? "Unmute" : "Mute", enabled: inMeeting) {
+        menu.append(.item((model?.muted ?? false) ? "Unmute" : "Mute", enabled: inMeeting) {
             model?.toggleMute()
         })
         // The pill has no room for Share or Security (it is already 532pt wide), so
         // the one share control that matters when the window is away is here.
         if model?.sharing ?? false {
-            menu.addItem(MenuItem("Stop Share") { model?.stopShare() })
+            menu.append(.item("Stop Share") { model?.stopShare() })
         }
         let recording = coordinator?.isRecording ?? false
         if recording {
-            menu.addItem(MenuItem((coordinator?.isRecordingPaused ?? false) ? "Resume recording" : "Pause recording",
-                                  enabled: !(coordinator?.isSavingRecording ?? false)) {
+            menu.append(.item((coordinator?.isRecordingPaused ?? false) ? "Resume recording" : "Pause recording",
+                              enabled: !(coordinator?.isSavingRecording ?? false)) {
                 coordinator?.togglePauseRecording()
             })
         }
-        menu.addItem(MenuItem("Stop Recording",
-                              enabled: recording && !(coordinator?.isSavingRecording ?? false)) {
+        menu.append(.item("Stop Recording",
+                          enabled: recording && !(coordinator?.isSavingRecording ?? false)) {
             coordinator?.toggleRecording()
         })
-        menu.addItem(.separator())
+        menu.append(.separator)
         // Asks first, exactly as the pill's End does.
-        menu.addItem(MenuItem("End\u{2026}") { coordinator?.confirmAndStop() })
+        menu.append(.item("End\u{2026}") { coordinator?.confirmAndStop() })
         return menu
     }
 

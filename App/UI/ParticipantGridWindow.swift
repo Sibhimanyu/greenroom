@@ -2755,17 +2755,8 @@ private final class RootView: NSView {
     /// Opens the existing participant-management menu rather than inventing a
     /// second list of the same people.
     private func showParticipantsMenu() {
-        let menu = NSMenu()
-        for (label, action) in participantItems() {
-            let carrier = BlockMenuItem(title: label, action)
-            let item = NSMenuItem(title: label, action: #selector(BlockMenuItem.fire), keyEquivalent: "")
-            item.target = carrier
-            item.representedObject = carrier
-            menu.addItem(item)
-        }
-        menu.popUp(positioning: nil,
-                   at: NSPoint(x: liveQueue.frame.minX, y: liveQueue.frame.maxY),
-                   in: self)
+        let entries = participantItems().map { label, action in MenuEntry.item(label, action) }
+        MeetingMenuPanel.show(entries, at: NSPoint(x: liveQueue.frame.minX, y: liveQueue.frame.maxY), in: self)
     }
 
     /// Everything the window shows, as one value.
@@ -3724,19 +3715,12 @@ private final class RootView: NSView {
                                     symbol: String,
                                     badge: String? = nil,
                                     items: [(String, () -> Void)]) -> NSView {
-        let menu = NSMenu()
-        for (label, action) in items {
-            let carrier = BlockMenuItem(title: label, action)
-            let item = NSMenuItem(title: label, action: #selector(BlockMenuItem.fire), keyEquivalent: "")
-            item.target = carrier
-            item.representedObject = carrier   // NSMenuItem.target is weak
-            menu.addItem(item)
-        }
+        let entries = items.map { label, action in MenuEntry.item(label, action) }
         // An icon cell that pops the menu, so a menu and an action look and
         // behave alike in the grid.
         let button = IconCellButton(symbol: symbol, caption: title, tint: .labelColor) {}
         button.badge = badge
-        button.attachedMenu = menu
+        button.attachedMenu = entries
         return button
     }
 
@@ -4341,14 +4325,11 @@ private final class TileView: NSView {
 
     override func mouseDown(with event: NSEvent) { onSelect?(userID) }
 
-    override func menu(for event: NSEvent) -> NSMenu? {
-        guard let onSpotlightInWindow, MeetingViewPieces.enabled else { return nil }
-        let menu = NSMenu()
-        menu.autoenablesItems = false
-        menu.appearance = NSAppearance(named: .darkAqua)
+    /// Right-click: our own panel, since an NSMenu shows nothing while Greenroom is inactive.
+    override func rightMouseDown(with event: NSEvent) {
+        guard let onSpotlightInWindow, MeetingViewPieces.enabled else { return }
         let id = userID
-        menu.addItem(MeetingMenuBuilder.Item("Spotlight in window") { onSpotlightInWindow(id) })
-        return menu
+        MeetingMenuPanel.show([.item("Spotlight in window") { onSpotlightInWindow(id) }], for: event)
     }
 }
 
@@ -4375,7 +4356,7 @@ private final class IconCellButton: NSButton {
     }
     private var tint: NSColor = .labelColor
     /// Set instead of an action when this cell opens a menu.
-    var attachedMenu: NSMenu?
+    var attachedMenu: [MenuEntry]?
 
     /// Filled in the tint with the glyph and caption knocked out in white:
     /// Zoom's End. A different kind of object from a borderless icon, which is
@@ -4449,7 +4430,7 @@ private final class IconCellButton: NSButton {
         if let attachedMenu {
             // Above the cell: the rail is tall and a menu dropping downward off
             // the bottom would be clipped.
-            attachedMenu.popUp(positioning: nil, at: NSPoint(x: 0, y: bounds.height + 4), in: self)
+            MeetingMenuBuilder.popUp(attachedMenu, above: self)
             return
         }
         body()
@@ -5082,42 +5063,8 @@ private final class SwitchCountdownView: NSView {
 
 // MARK: - Target carriers
 
-/// A button that owns its own action.
-///
-/// AppKit targets are unowned and these controls are rebuilt on every refresh,
-/// so a separate target object would have to be kept alive by something. Having
-/// the button be its own target removes the question.
-/// A toolbar button that owns and pops its own menu.
-@MainActor
-private final class ToolMenuButton: NSButton {
-    private let owned: NSMenu
-    init(menu: NSMenu) {
-        self.owned = menu
-        super.init(frame: .zero)
-        target = self
-        action = #selector(pop)
-    }
-    required init?(coder: NSCoder) { nil }
-    @objc private func pop() {
-        // Above the button, since the toolbar sits at the bottom of the screen.
-        owned.popUp(positioning: nil, at: NSPoint(x: 0, y: bounds.height + 4), in: self)
-    }
-    /// See TileView.acceptsFirstMouse - the panel is rarely key.
-    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
-}
-
 // ClosureButton lives in App/UI/ClosureButton.swift now - the Cues cards
 // share it. See TileView.acceptsFirstMouse for why it exists.
-
-private final class BlockMenuItem: NSObject {
-    private let body: () -> Void
-    let title: String
-    init(title: String, _ body: @escaping () -> Void) {
-        self.title = title
-        self.body = body
-    }
-    @objc func fire() { body() }
-}
 
 private extension CGFloat {
     /// Small helper so the self-view sizing reads as one expression.

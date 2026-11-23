@@ -179,16 +179,16 @@ struct MeetingParticipantsPanel: View {
                 footerButton("Invite", action: actions.invite)
                 if content.isHost {
                     footerButton("Mute All", action: actions.muteAll)
-                    Menu {
-                        Button("Ask All to Unmute", action: actions.askAllToUnmute)
-                    } label: {
-                        Text("\u{2026}").font(.system(size: 14, weight: .semibold)).foregroundStyle(.white)
-                            .frame(width: 34, height: 28)
-                            .background(MeetingTheme.raised, in: RoundedRectangle(cornerRadius: MeetingTheme.controlRadius))
-                    }
-                    .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
-                    .meetingHoverWash()
-                    .accessibilityLabel("More")
+                    // Our own panel, not a SwiftUI Menu: an NSMenu shows nothing while Greenroom is inactive.
+                    Text("\u{2026}").font(.system(size: 14, weight: .semibold)).foregroundStyle(.white)
+                        .frame(width: 34, height: 28)
+                        .background(MeetingTheme.raised, in: RoundedRectangle(cornerRadius: MeetingTheme.controlRadius))
+                        .overlay {
+                            MenuPopUpOverlay(label: "More", entries: {
+                                [.item("Ask All to Unmute", actions.askAllToUnmute)]
+                            })
+                        }
+                        .meetingHoverWash()
                 }
                 Spacer(minLength: 0)
             }

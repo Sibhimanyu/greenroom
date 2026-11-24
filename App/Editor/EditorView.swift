@@ -816,6 +816,12 @@ struct EditsPanel: View {
                     }
                     .toggleStyle(.switch)
                     .controlSize(.small)
+                } else if vm.hasVideo {
+                    panelSection("RECORDED CLICKS AND KEYS") {
+                        Text("Only screen recordings have clicks and keys.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
                 }
 
                 Text(infoLine)

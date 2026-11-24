@@ -128,6 +128,33 @@ enum EffectsRenderer {
         return composition
     }
 
+    /// Live-preview twin of `handlerComposition`: the player item plays the
+    /// SOURCE (cuts skipped and speed applied live), so `compositionTime` is
+    /// source time and `timeMap` converts it to the final timeline the
+    /// effects were built on. `cropPixels` (CoreImage space, bottom-left
+    /// origin) is cut out first, like the export's transform pass.
+    static func previewComposition(for asset: AVAsset, effects: EditedEffects,
+                                   renderSize: CGSize, cropPixels: CGRect?,
+                                   timeMap: @escaping @Sendable (Double) -> Double?)
+        -> AVMutableVideoComposition {
+        let compositor = Compositor(effects: effects, size: renderSize)
+        let composition = AVMutableVideoComposition(asset: asset) { request in
+            var image = request.sourceImage
+            if let cropPixels {
+                image = image.cropped(to: cropPixels)
+                    .transformed(by: CGAffineTransform(translationX: -cropPixels.minX,
+                                                       y: -cropPixels.minY))
+            }
+            // A frame inside a cut (momentary, while seeking) stays plain.
+            if let finalT = timeMap(request.compositionTime.seconds) {
+                image = compositor.compose(image, at: finalT)
+            }
+            request.finish(with: image, context: nil)
+        }
+        composition.renderSize = renderSize
+        return composition
+    }
+
     static func render(input: URL, output: URL, effects: EditedEffects,
                        hevc: Bool, fileType: AVFileType,
                        onProgress: @escaping (Double) -> Void) async throws {

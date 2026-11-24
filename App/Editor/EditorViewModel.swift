@@ -57,13 +57,21 @@ final class EditorViewModel: ObservableObject {
     @Published var timelineZoom: Double = 1
     /// ContentView's Back button asks; EditorView answers (it knows about edits).
     @Published var backRequests = 0
-    @Published var cuts: [CutRegion] = []
-    @Published var trimStart: Double = 0
-    @Published var trimEnd: Double = 0
+    @Published var cuts: [CutRegion] = [] {
+        didSet { schedulePreviewComposition() }
+    }
+    @Published var trimStart: Double = 0 {
+        didSet { schedulePreviewComposition() }
+    }
+    @Published var trimEnd: Double = 0 {
+        didSet { schedulePreviewComposition() }
+    }
     @Published var cropRect: CGRect? {  // normalized 0…1, origin top-left of the video
         didSet { applyCropPreview() }
     }
-    @Published var mergeClips: [MergeClip] = []
+    @Published var mergeClips: [MergeClip] = [] {
+        didSet { schedulePreviewComposition() }
+    }
     @Published var selectedCutID: UUID?
     @Published var isCropping = false {
         didSet { applyCropPreview() }
@@ -151,10 +159,18 @@ final class EditorViewModel: ObservableObject {
     // timeline like cuts, and are mapped through cuts + speed at export)
 
     /// Clicks/keystrokes captured with the recording (nil = no sidecar).
-    @Published private(set) var recordingEvents: RecordingEvents?
-    @Published var showClickRipples = false
-    @Published var showKeystrokes = false
-    @Published var autoZoom = false
+    @Published private(set) var recordingEvents: RecordingEvents? {
+        didSet { schedulePreviewComposition() }
+    }
+    @Published var showClickRipples = false {
+        didSet { schedulePreviewComposition() }
+    }
+    @Published var showKeystrokes = false {
+        didSet { schedulePreviewComposition() }
+    }
+    @Published var autoZoom = false {
+        didSet { schedulePreviewComposition() }
+    }
 
     struct EditorAnnotation: Identifiable, Equatable {
         let id: UUID
@@ -177,7 +193,9 @@ final class EditorViewModel: ObservableObject {
         var end: Double
         var factor: Double
     }
-    @Published var speedSegments: [SpeedSegment] = []
+    @Published var speedSegments: [SpeedSegment] = [] {
+        didSet { schedulePreviewComposition() }
+    }
     /// What the preview is ACTUALLY playing at right now (drives the badge).
     @Published var activePreviewRate: Double = 1
 
@@ -427,43 +445,82 @@ final class EditorViewModel: ObservableObject {
         return finalTime(fromEdited: edited, ranges: ranges)
     }
 
+    /// Source time -> final exported time, from a snapshot of the cuts and
+    /// speed ranges (nil when the instant is cut away). Safe to call from the
+    /// preview's render thread. `identity` is the preview with "preview edits"
+    /// off: the player shows the whole source at 1x, so times pass through.
+    private func sourceToFinalMap(identity: Bool = false) -> @Sendable (Double) -> Double? {
+        if identity { return { $0 } }
+        let kept = keptRanges()
+        let ranges = editedSpeedRanges()
+        return { t in
+            var edited: Double?
+            var acc: Double = 0
+            for (start, end) in kept {
+                if t >= end {
+                    acc += end - start
+                } else if t >= start {
+                    edited = acc + (t - start)
+                    break
+                } else {
+                    break
+                }
+            }
+            guard let edited else { return nil }
+            var result = edited
+            for range in ranges {
+                let squeeze = 1 - 1 / range.factor
+                if edited > range.end {
+                    result -= (range.end - range.start) * squeeze
+                } else if edited > range.start {
+                    result -= (edited - range.start) * squeeze
+                }
+            }
+            return max(0, result)
+        }
+    }
+
     /// Everything the effects pass draws, mapped to the final timeline.
     private func builtEffects() -> EditedEffects? {
-        let ranges = editedSpeedRanges()
+        builtEffects(map: sourceToFinalMap(), includeAnnotations: true)
+    }
+
+    /// The recorded-input effects only (annotations stay with the preview
+    /// overlay), mapped to the final timeline via `map`.
+    private func builtEffects(map: (Double) -> Double?, includeAnnotations: Bool) -> EditedEffects? {
         var effects = EditedEffects()
 
         if let events = recordingEvents {
             if showClickRipples {
                 effects.ripples = events.clicks.compactMap { click in
-                    finalTimeIfKept(click.t, ranges: ranges).map {
-                        EditedEffects.Ripple(t: $0, x: click.x, y: click.y)
-                    }
+                    map(click.t).map { EditedEffects.Ripple(t: $0, x: click.x, y: click.y) }
                 }
             }
             if showKeystrokes {
                 effects.keyChips = events.keys.compactMap { key in
-                    finalTimeIfKept(key.t, ranges: ranges).map {
-                        EditedEffects.KeyChip(t: $0, text: key.text)
-                    }
+                    map(key.t).map { EditedEffects.KeyChip(t: $0, text: key.text) }
                 }
             }
             if autoZoom {
                 let clicks = events.clicks.compactMap { click -> (Double, Double, Double)? in
-                    finalTimeIfKept(click.t, ranges: ranges).map { ($0, click.x, click.y) }
+                    map(click.t).map { ($0, click.x, click.y) }
                 }
                 effects.zoomKeyframes = Self.zoomKeyframes(fromFinalClicks: clicks)
             }
         }
-        effects.annotations = annotations.compactMap { annotation in
-            let start = editedTime(forTimeline: max(annotation.start, trimStart))
-            let end = editedTime(forTimeline: min(annotation.end, trimEnd))
-            guard end - start > 0.1 else { return nil }
-            return EditedEffects.Annotation(
-                kind: annotation.kind, rect: annotation.rect,
-                start: finalTime(fromEdited: start, ranges: ranges),
-                end: finalTime(fromEdited: end, ranges: ranges),
-                text: annotation.text,
-                color: annotation.color)
+        if includeAnnotations {
+            let ranges = editedSpeedRanges()
+            effects.annotations = annotations.compactMap { annotation in
+                let start = editedTime(forTimeline: max(annotation.start, trimStart))
+                let end = editedTime(forTimeline: min(annotation.end, trimEnd))
+                guard end - start > 0.1 else { return nil }
+                return EditedEffects.Annotation(
+                    kind: annotation.kind, rect: annotation.rect,
+                    start: finalTime(fromEdited: start, ranges: ranges),
+                    end: finalTime(fromEdited: end, ranges: ranges),
+                    text: annotation.text,
+                    color: annotation.color)
+            }
         }
         return effects.isEmpty ? nil : effects
     }
@@ -700,6 +757,7 @@ final class EditorViewModel: ObservableObject {
             let item = AVPlayerItem(asset: asset)
             item.audioTimePitchAlgorithm = .spectral
             player.replaceCurrentItem(with: item)
+            applyCropPreview()
             attachTimeObserverIfNeeded()
         } catch {
             errorMessage = "Could not load video: \(error.localizedDescription)"
@@ -946,18 +1004,50 @@ final class EditorViewModel: ObservableObject {
         return size
     }
 
-    /// Applies (or clears) the live crop on the player item — the same
-    /// transform the exporter bakes in, so the preview IS the output.
+    private var previewCompositionTask: Task<Void, Never>?
+
+    /// Rebuilds the preview composition ~150 ms after the last change to
+    /// anything it depends on (toggles, events, cuts, trim, speed, merge).
+    private func schedulePreviewComposition() {
+        previewCompositionTask?.cancel()
+        previewCompositionTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: 150_000_000)
+            guard !Task.isCancelled else { return }
+            self?.applyCropPreview()
+        }
+    }
+
+    /// Applies (or clears) the preview composition on the player item: the
+    /// live crop (the same transform the exporter bakes in) and, when a
+    /// recorded-input toggle is on, the click ripples / key chips / auto-zoom
+    /// drawn by the export's own compositor. Swapping a composition on the
+    /// item keeps the playhead and play state. Annotations are NOT drawn here:
+    /// `AnnotationPreviewOverlay` already shows them.
     private func applyCropPreview() {
         guard let item = player.currentItem else { return }
-        guard cropPreviewActive, let crop = cropRect,
-              let track = sourceVideoTrack, videoSize != .zero else {
-            if item.videoComposition != nil { item.videoComposition = nil }
+        let crop = cropPreviewActive ? cropRect : nil
+        let renderSize = crop.map { Self.croppedRenderSize($0, of: videoSize) } ?? videoSize
+        let validCrop = crop != nil && renderSize.width >= 16 && renderSize.height >= 16
+
+        // Recorded-input effects on the main video only (never while
+        // cropping or on a merged clip).
+        if hasRecordedEvents, playingMergeIndex == nil, !isCropping,
+           videoSize != .zero, renderSize.width >= 16, renderSize.height >= 16,
+           let effects = builtEffects(map: sourceToFinalMap(identity: !previewEdits),
+                                      includeAnnotations: false) {
+            let cropPixels: CGRect? = validCrop ? crop.map {
+                CGRect(x: ($0.origin.x * videoSize.width).rounded(),
+                       y: ((1 - $0.origin.y - $0.height) * videoSize.height).rounded(),
+                       width: renderSize.width, height: renderSize.height)
+            } : nil
+            item.videoComposition = EffectsRenderer.previewComposition(
+                for: item.asset, effects: effects, renderSize: renderSize,
+                cropPixels: cropPixels, timeMap: sourceToFinalMap(identity: !previewEdits))
             return
         }
-        let renderSize = Self.croppedRenderSize(crop, of: videoSize)
-        guard renderSize.width >= 16, renderSize.height >= 16 else {
-            item.videoComposition = nil
+
+        guard validCrop, let crop, let track = sourceVideoTrack else {
+            if item.videoComposition != nil { item.videoComposition = nil }
             return
         }
         let composition = AVMutableVideoComposition()

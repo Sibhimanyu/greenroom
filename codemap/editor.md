@@ -57,10 +57,13 @@ Spectral audio pitch correction is used only when speed ranges exist.
 - Keyboard shortcuts in editing: `EditorKeyMonitor.handle` (installed by `EditorSupport.onAppear`).
 - Back / discard-edits / saved-popup flow: `EditorSupport.handleBack`, `EditorChrome`, `EditorSavedPopup`.
 - Colours, buttons, panel headers: `EditorTheme.swift` (use DESIGN.md tokens: `Brand.green` fills, `Brand.text` for green text).
+- Live preview of ripples / key chips / auto-zoom: `EditorViewModel.applyCropPreview()` (debounced 150 ms via `schedulePreviewComposition()`, fired from didSets of toggles, events, cuts, trim, speed, merge) sets `item.videoComposition` to `EffectsRenderer.previewComposition` (crop + the export's own `Compositor`); no composition when no toggle is on.
 - Playback and preview-with-edits (skipping cuts, rate on speed segments): `EditorViewModel.togglePlay`, `previewEdits`, `activePreviewRate`, `playingMergeIndex`.
 - Edit-mode page layout (what sits where): `App/UI/SessionDetailContent.swift`, not this folder.
 
 ## Gotchas
+
+- Preview time domain: the preview item plays the SOURCE (cuts skipped by seeking, speed by player rate), so its `compositionTime` is source time. `previewComposition` maps it to the final timeline with `sourceToFinalMap()` (snapshot of cuts/speed; identity when `previewEdits` is off) and the preview effects are built with `builtEffects(map:includeAnnotations: false)` on that same final timeline as the export. Annotations are left to `AnnotationPreviewOverlay`, so they do not zoom with auto-zoom in the preview. No composition on merge clips or while cropping.
 
 - One shared `EditorViewModel` for the whole app. Always call `closeVideo()` when leaving the editor page (RecordingsView does) or state leaks into the next session; `load(url:)` resets edits but callers should confirm first when `hasUnsavedEdits`.
 - The edited export is a NEW folder, never an in-place overwrite. If you add export paths, remove the new folder on cancel/failure as `exportPanelAndRun` does, and keep `EditorConfig.writeMetadata` so Recordings shows the right title.

@@ -45,7 +45,6 @@ struct LayoutAddPanel: View {
     private static let topPad: CGFloat = 12
     /// Room inside the scroller so a 2pt focus ring is never cut at its edges.
     private static let ringInset: CGFloat = 3
-    private static let maxHeight: CGFloat = 520
     private static let captionHeight: CGFloat = 30
     /// Four tiles, three gaps and the 14pt padding either side.
     private static let panelWidth: CGFloat = 4 * 84 + 3 * 8 + 28
@@ -179,26 +178,7 @@ struct LayoutAddPanel: View {
         }
     }
 
-    /// Height left for the app scroller under the 520pt ceiling, after everything pinned.
-    private func scrollHeight(_ v: Visible) -> CGFloat {
-        let pinnedTop = Self.topPad + 14 + 4 + Self.gridHeight(v.top.count)
-        let appsChrome: CGFloat = 8 + 14 + 4 + 28 + 4 + 6       // gap, heading, gap, search, gap, bottom pad
-        let footer: CGFloat = 1 + 6 + Self.captionHeight + 6
-        // At the cap, at least three full tile rows stay visible.
-        let threeRows = Self.gridHeight(3 * Self.columns) + 2 * Self.ringInset
-        let room = max(threeRows, Self.maxHeight - pinnedTop - appsChrome - footer)
-        var content: CGFloat = 2 * Self.ringInset
-        if v.rest.isEmpty && v.suggested.isEmpty {
-            content += 24
-        } else {
-            if !v.suggested.isEmpty { content += 14 + 4 + Self.gridHeight(v.suggested.count) }
-            if !v.suggested.isEmpty && !v.rest.isEmpty { content += 8 }
-            if !v.rest.isEmpty { content += (v.searching ? 0 : 14 + 4) + Self.gridHeight(v.rest.count) }
-        }
-        return min(content, room)
-    }
-
-    /// The only scrolling region: its own frame, clipped, so nothing draws outside it.
+    /// The apps; the popup's own scroll view is the only one.
     private func appsSection(_ v: Visible) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             heading("Apps")
@@ -208,32 +188,21 @@ struct LayoutAddPanel: View {
                     .foregroundStyle(.secondary)
             } else {
                 searchField(v)
-                ScrollViewReader { proxy in
-                    ScrollView(.vertical) {
-                        VStack(alignment: .leading, spacing: 8) {
-                            if v.scrolled.isEmpty {
-                                Text("No app matches \u{2018}\(query.trimmingCharacters(in: .whitespaces))\u{2019}")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                                    .padding(.vertical, 4)
-                            }
-                            if !v.suggested.isEmpty {
-                                appGroup("Suggested", v.suggested, labelled: !v.searching)
-                            }
-                            if !v.rest.isEmpty {
-                                appGroup("All apps", v.rest, labelled: !v.searching)
-                            }
-                        }
-                        .padding(Self.ringInset)
+                VStack(alignment: .leading, spacing: 8) {
+                    if v.scrolled.isEmpty {
+                        Text("No app matches \u{2018}\(query.trimmingCharacters(in: .whitespaces))\u{2019}")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .padding(.vertical, 4)
                     }
-                    .frame(width: Self.panelWidth - 2 * Self.sidePad + 2 * Self.ringInset,
-                           height: scrollHeight(v))
-                    .clipped()
-                    .padding(.horizontal, -Self.ringInset)
-                    .onChange(of: focus) { _, id in
-                        if let id, v.scrolled.contains(where: { $0.id == id }) { proxy.scrollTo(id) }
+                    if !v.suggested.isEmpty {
+                        appGroup("Suggested", v.suggested, labelled: !v.searching)
+                    }
+                    if !v.rest.isEmpty {
+                        appGroup("All apps", v.rest, labelled: !v.searching)
                     }
                 }
+                .padding(Self.ringInset)
             }
         }
     }

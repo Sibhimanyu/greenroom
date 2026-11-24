@@ -21,7 +21,6 @@ struct HomeLayoutPanel: View {
 
     @State private var index = 0
     @State private var keyed = false
-    @State private var gridHeight: CGFloat?
 
     private struct Choice: Identifiable {
         var id: String
@@ -87,8 +86,7 @@ struct HomeLayoutPanel: View {
 
     private var grid: some View {
         let rows = choices
-        return ScrollView {
-            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 6), count: 3), spacing: 6) {
+        return LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 6), count: 3), spacing: 6) {
                 ForEach(Array(rows.enumerated()), id: \.element.id) { offset, choice in
                     Button { pick(offset) } label: { tile(choice) }
                         .greenroomTile(role: .choice(selected: isSelected(choice)), radius: 10)
@@ -99,14 +97,7 @@ struct HomeLayoutPanel: View {
                         .accessibilityAddTraits(isSelected(choice) ? .isSelected : [])
                 }
             }
-            .padding(1)
-            .background(GeometryReader { proxy in
-                Color.clear.onAppear { gridHeight = proxy.size.height }
-                    .onChange(of: proxy.size.height) { gridHeight = $0 }
-            })
-        }
-        // Explicit height: a ScrollView with only a maximum collapses in a popover.
-        .frame(height: min(230, gridHeight ?? 230))
+        .padding(1)
         .opacity(locked ? 0.6 : 1)
         .homeTileKeys(axis: .horizontal, count: rows.count, index: $index, keyed: $keyed,
                       selected: rows.firstIndex(where: isSelected), autofocus: true) { if !locked { pick($0) } }

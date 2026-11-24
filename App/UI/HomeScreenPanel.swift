@@ -129,25 +129,18 @@ struct HomeScreenPanel: View {
             let grouped = ScreenPanelRules.grouped(bundleIDs: windows.map(\.bundleID))
             let ordered = grouped.order.map { windows[$0] }
             let firsts = Dictionary(uniqueKeysWithValues: zip(grouped.order.map { windows[$0].id }, grouped.firstOfApp))
-            ScrollView {
-                HomeTileList(rows: ordered, selected: windowSelected, pick: { pickWindow(ordered[$0]) }) { window, keyed in
-                    VStack(alignment: .leading, spacing: 2) {
-                        if firsts[window.id] == true {
-                            Text(window.appName)
-                                .font(.system(size: 10, weight: .semibold)).foregroundStyle(.secondary)
-                                .padding(.horizontal, 8).padding(.top, 4)
-                        }
-                        ScreenWindowRow(window: window, selected: windowSelected(window), keyFocused: keyed) {
-                            pickWindow(window)
-                        }
+            HomeTileList(rows: ordered, selected: windowSelected, pick: { pickWindow(ordered[$0]) }) { window, keyed in
+                VStack(alignment: .leading, spacing: 2) {
+                    if firsts[window.id] == true {
+                        Text(window.appName)
+                            .font(.system(size: 10, weight: .semibold)).foregroundStyle(.secondary)
+                            .padding(.horizontal, 8).padding(.top, 4)
+                    }
+                    ScreenWindowRow(window: window, selected: windowSelected(window), keyFocused: keyed) {
+                        pickWindow(window)
                     }
                 }
             }
-            // A ScrollView with only a maximum collapses to zero height in a
-            // popover: "Windows" showed with nothing under it (owner,
-            // 2026-11-24). Ask for the rows' own height, capped.
-            .frame(height: min(190, CGFloat(ordered.count) * 34
-                               + CGFloat(grouped.firstOfApp.filter { $0 }.count) * 18))
         }
     }
 

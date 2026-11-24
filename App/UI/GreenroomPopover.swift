@@ -209,28 +209,23 @@ private final class PopoverController {
     private func layout() {
         guard let panel, let anchor, let window = anchor.window else { return }
         let target = window.convertToScreen(anchor.convert(anchor.bounds, to: nil))
-        let screen = NSScreen.screens.first { $0.frame.contains(CGPoint(x: target.midX, y: target.midY)) }
-            ?? window.screen ?? NSScreen.main
+        // The screen the anchor's window is on (visibleFrame: no Dock, no menu bar).
+        let screen = window.screen
+            ?? NSScreen.screens.first { $0.frame.contains(CGPoint(x: target.midX, y: target.midY)) }
+            ?? NSScreen.main
         guard let area = screen?.visibleFrame else { return }
-        let margin = Self.margin, arrow = Self.arrowHeight
-
-        let top = target.minY - Self.gap
-        let maxBody = max(80, top - area.minY - margin - arrow)
         let ideal = model.ideal
         let ready = ideal.width > 0 && ideal.height > 0
-        let width = min(ready ? ideal.width : 320, area.width - 2 * margin)
-        let body = min(ready ? ideal.height : 200, maxBody)
-        let x = min(max(target.midX - width / 2, area.minX + margin), max(area.minX + margin, area.maxX - margin - width))
-        let edge = Self.radius + Self.arrowWidth / 2 + 2
-        let arrowX = min(max(target.midX - x, edge), max(edge, width - edge))
+        let placed = PopoverPlacement.frame(
+            anchor: target, contentSize: ideal, visible: area,
+            gap: Self.gap, margin: Self.margin, arrowHeight: Self.arrowHeight,
+            arrowEdge: Self.radius + Self.arrowWidth / 2 + 2, shadowPad: Self.shadowPad)
 
         // Publish only real changes: every assignment re-renders the root, and
         // a re-render while the owner scrolls must not touch the scroll view.
-        let bodySize = CGSize(width: width, height: body)
-        if model.bodySize != bodySize { model.bodySize = bodySize }
-        if abs(model.arrowX - arrowX) > 0.5 { model.arrowX = arrowX }
-        let pad = Self.shadowPad
-        let frame = CGRect(x: x - pad, y: top - body - arrow - pad, width: width + 2 * pad, height: body + arrow + pad)
+        if model.bodySize != placed.bodySize { model.bodySize = placed.bodySize }
+        if abs(model.arrowX - placed.arrowX) > 0.5 { model.arrowX = placed.arrowX }
+        let frame = placed.panelFrame
         if abs(panel.frame.minX - frame.minX) > 0.5 || abs(panel.frame.minY - frame.minY) > 0.5
             || abs(panel.frame.width - frame.width) > 0.5 || abs(panel.frame.height - frame.height) > 0.5 {
             panel.setFrame(frame, display: true)
@@ -296,9 +291,12 @@ private final class PopoverController {
                 }
             }))
         }
-        observers.append((center, center.addObserver(forName: NSWindow.didResizeNotification, object: window, queue: .main) {
-            [weak self] _ in MainActor.assumeIsolated { self?.layout() }
-        }))
+        for name in [NSWindow.didResizeNotification, NSWindow.didMoveNotification,
+                     NSWindow.didChangeScreenNotification] {
+            observers.append((center, center.addObserver(forName: name, object: window, queue: .main) {
+                [weak self] _ in MainActor.assumeIsolated { self?.layout() }
+            }))
+        }
     }
 }
 

@@ -84,6 +84,8 @@ private final class PopoverController {
     private static let gap: CGFloat = 8
     private static let margin: CGFloat = 12
     static let radius: CGFloat = 16
+    /// Transparent room round the glass (sides, bottom) for its drawn shadow.
+    static let shadowPad: CGFloat = 14
 
     private final class Panel: NSPanel {
         override var canBecomeKey: Bool { true }
@@ -138,6 +140,13 @@ private final class PopoverController {
         model.onIdealChange = { [weak self] in self?.layout() }
 
         let host = Host(rootView: PopoverRoot(model: model, content: content))
+        // The hosting view must not size or constrain the window from its
+        // content: it grew the panel past the room below, so the scroll view
+        // thought everything fitted. `layout()` is the only thing that sizes.
+        host.sizingOptions = []
+        host.wantsLayer = true
+        host.layer?.backgroundColor = NSColor.clear.cgColor
+        host.layer?.isOpaque = false
         host.setAccessibilityRole(.popover)
         let panel = Panel(contentRect: CGRect(x: 0, y: 0, width: 320, height: 240),
                           styleMask: [.borderless], backing: .buffered, defer: false)
@@ -147,7 +156,7 @@ private final class PopoverController {
         panel.collectionBehavior = [.fullScreenAuxiliary, .ignoresCycle]
         panel.backgroundColor = .clear
         panel.isOpaque = false
-        panel.hasShadow = true
+        panel.hasShadow = false  // the shadow is drawn in SwiftUI, following the shape
         panel.appearance = window.effectiveAppearance
         panel.contentView = host
         panel.alphaValue = 0
@@ -215,10 +224,15 @@ private final class PopoverController {
         let edge = Self.radius + Self.arrowWidth / 2 + 2
         let arrowX = min(max(target.midX - x, edge), max(edge, width - edge))
 
-        model.bodySize = CGSize(width: width, height: body)
-        model.arrowX = arrowX
-        let frame = CGRect(x: x, y: top - body - arrow, width: width, height: body + arrow)
-        if panel.frame != frame {
+        // Publish only real changes: every assignment re-renders the root, and
+        // a re-render while the owner scrolls must not touch the scroll view.
+        let bodySize = CGSize(width: width, height: body)
+        if model.bodySize != bodySize { model.bodySize = bodySize }
+        if abs(model.arrowX - arrowX) > 0.5 { model.arrowX = arrowX }
+        let pad = Self.shadowPad
+        let frame = CGRect(x: x - pad, y: top - body - arrow - pad, width: width + 2 * pad, height: body + arrow + pad)
+        if abs(panel.frame.minX - frame.minX) > 0.5 || abs(panel.frame.minY - frame.minY) > 0.5
+            || abs(panel.frame.width - frame.width) > 0.5 || abs(panel.frame.height - frame.height) > 0.5 {
             panel.setFrame(frame, display: true)
             panel.invalidateShadow()
         }
@@ -325,10 +339,15 @@ private struct PopoverRoot: View {
                 .onGeometryChange(for: CGSize.self) { $0.size } action: { model.measured($0) }
         }
         .scrollBounceBehavior(.basedOnSize)
+        .scrollContentBackground(.hidden)
         .frame(width: model.bodySize.width, height: model.bodySize.height)
         .clipShape(RoundedRectangle(cornerRadius: PopoverController.radius, style: .continuous))
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+        .frame(width: model.bodySize.width, height: model.bodySize.height + PopoverShape.arrowHeight, alignment: .bottom)
         .greenroomGlass(in: shape)
+        .shadow(color: .black.opacity(0.22), radius: 9, y: 3)
+        .padding(.horizontal, PopoverController.shadowPad)
+        .padding(.bottom, PopoverController.shadowPad)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .tint(Brand.green)
         .scaleEffect(model.appeared || model.reduceMotion ? 1 : 0.98, anchor: .top)
         .animation(model.reduceMotion ? nil : .easeOut(duration: 0.14), value: model.appeared)

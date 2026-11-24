@@ -139,6 +139,8 @@ struct HomeTileChoiceRow: View {
                             // made that tile taller than the rest (owner, 2026-11-24).
                             .lineLimit(1)
                             .minimumScaleFactor(0.75)
+                            // A width to scale into, or the label never shrinks.
+                            .frame(maxWidth: tileWidth - 8)
                     }
                     .padding(.vertical, 6)
                     .frame(width: tileWidth)

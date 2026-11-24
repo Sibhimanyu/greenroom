@@ -4,16 +4,16 @@ import AppKit
 /// Clicks and keystrokes captured alongside a recording — the raw material
 /// for the editor's click ripples, keystroke overlay and auto-zoom. Stored
 /// as a small JSON sidecar next to the video (same name, .events.json).
-struct RecordingEvents: Codable {
+struct RecordingEvents: Codable, Equatable {
     /// t = seconds into the finished video; x/y normalized 0…1, top-left
     /// origin, in the recorded display's space.
-    struct Click: Codable {
+    struct Click: Codable, Equatable {
         let t: Double
         let x: Double
         let y: Double
     }
 
-    struct Key: Codable {
+    struct Key: Codable, Equatable {
         let t: Double
         let text: String
     }

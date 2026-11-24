@@ -20,6 +20,12 @@ struct MergeClip: Identifiable, Equatable {
     var trimStart: Double = 0
     var trimEnd: Double
 
+    /// The clip's picture size once its own orientation is applied (zero
+    /// until known; only the effects mapping needs it).
+    var size: CGSize = .zero
+    /// Clicks and keys recorded with this clip (its own sidecar), if any.
+    var events: RecordingEvents?
+
     var trimmedDuration: Double { max(0, trimEnd - trimStart) }
     var isTrimmed: Bool { trimStart > 0.05 || trimEnd < duration - 0.05 }
 }
@@ -28,8 +34,12 @@ struct MergeClip: Identifiable, Equatable {
 final class EditorViewModel: ObservableObject {
 
     // MARK: source
-    @Published private(set) var sourceURL: URL?
-    @Published private(set) var duration: Double = 0
+    @Published private(set) var sourceURL: URL? {
+        didSet { rebuildTimeline() }
+    }
+    @Published private(set) var duration: Double = 0 {
+        didSet { rebuildTimeline() }
+    }
     @Published private(set) var videoSize: CGSize = .zero
     /// What the player is actually SHOWING: the cropped frame while the
     /// crop preview is live, the full frame otherwise. Overlays position
@@ -41,10 +51,9 @@ final class EditorViewModel: ObservableObject {
 
     /// iPhone-Photos behavior: once cropping is confirmed, the preview
     /// plays the cropped frame (while adjusting, the full frame shows
-    /// under the crop rectangle). Merge-clip playback is never cropped —
-    /// the exporter crops only the main clip.
+    /// under the crop rectangle). The one crop covers every clip.
     var cropPreviewActive: Bool {
-        cropRect != nil && !isCropping && previewEdits && playingMergeIndex == nil
+        cropRect != nil && !isCropping && previewEdits
     }
     @Published private(set) var fileSizeText = "—"
 
@@ -58,19 +67,24 @@ final class EditorViewModel: ObservableObject {
     /// ContentView's Back button asks; EditorView answers (it knows about edits).
     @Published var backRequests = 0
     @Published var cuts: [CutRegion] = [] {
-        didSet { schedulePreviewComposition() }
+        didSet { timelineInputsChanged() }
     }
+    /// The ORIGINAL's trim (each joined clip carries its own).
     @Published var trimStart: Double = 0 {
-        didSet { schedulePreviewComposition() }
+        didSet { timelineInputsChanged() }
     }
     @Published var trimEnd: Double = 0 {
-        didSet { schedulePreviewComposition() }
+        didSet { timelineInputsChanged() }
     }
     @Published var cropRect: CGRect? {  // normalized 0…1, origin top-left of the video
         didSet { applyCropPreview() }
     }
     @Published var mergeClips: [MergeClip] = [] {
-        didSet { schedulePreviewComposition() }
+        didSet {
+            timelineInputsChanged()
+            if playhead > timelineDuration { playhead = timelineDuration }
+            rebuildPreviewItemIfNeeded()
+        }
     }
     @Published var selectedCutID: UUID?
     @Published var isCropping = false {
@@ -84,13 +98,43 @@ final class EditorViewModel: ObservableObject {
     let player = AVPlayer()
     @Published var playhead: Double = 0
     @Published var isPlaying = false
-    /// nil = the main video is loaded in the player; otherwise the index of
-    /// the merge clip currently playing. The timeline is virtual: merge clips
-    /// live after the main video at `duration + prefix(durations)`.
-    @Published private(set) var playingMergeIndex: Int?
-    private var sourceAsset: AVURLAsset?
-    private var sourceVideoTrack: AVAssetTrack?
-    private var sourceTransform = CGAffineTransform.identity
+    /// nil = the playhead is on the original; otherwise the index of the
+    /// joined clip it is in. One player item holds everything: the timeline
+    /// is the item's own time.
+    var playingMergeIndex: Int? {
+        guard !mergeClips.isEmpty, let located = sequence.locate(timeline: playhead),
+              located.index > 0 else { return nil }
+        return located.index - 1
+    }
+
+    // MARK: the one timeline
+    private static let mainSegmentID = UUID()
+    /// The original plus every joined clip, with their trims.
+    private(set) var sequence = EditSequence(segments: [])
+    /// The sequence after cuts and speed: every time map goes through this.
+    private(set) var timeline = EditTimeline(sequence: EditSequence(segments: []),
+                                             pieces: [], speed: [])
+
+    private func rebuildTimeline() {
+        var segments: [EditSegment] = []
+        if let sourceURL {
+            segments.append(EditSegment(id: Self.mainSegmentID, url: sourceURL, fileDuration: duration,
+                                        srcStart: trimStart, srcEnd: max(trimStart, trimEnd)))
+        }
+        for clip in mergeClips {
+            segments.append(EditSegment(id: clip.id, url: clip.url, fileDuration: clip.duration,
+                                        srcStart: clip.trimStart, srcEnd: max(clip.trimStart, clip.trimEnd)))
+        }
+        sequence = EditSequence(segments: segments)
+        timeline = sequence.timeline(
+            cuts: cuts.map { (start: $0.start, end: $0.end) },
+            speed: speedSegments.map { EditSpeedSpan(start: $0.start, end: $0.end, factor: $0.factor) })
+    }
+
+    private func timelineInputsChanged() {
+        rebuildTimeline()
+        schedulePreviewComposition()
+    }
 
     /// Full timeline length: main video + all merge clips.
     var timelineDuration: Double {
@@ -194,7 +238,7 @@ final class EditorViewModel: ObservableObject {
         var factor: Double
     }
     @Published var speedSegments: [SpeedSegment] = [] {
-        didSet { schedulePreviewComposition() }
+        didSet { timelineInputsChanged() }
     }
     /// What the preview is ACTUALLY playing at right now (drives the badge).
     @Published var activePreviewRate: Double = 1
@@ -217,12 +261,12 @@ final class EditorViewModel: ObservableObject {
         let start: Double
         let end: Double
         if let selection {
-            // The selected stretch is the span.
-            start = min(max(selection.lowerBound, trimStart), max(trimEnd - 0.5, trimStart))
-            end = min(selection.upperBound, trimEnd)
+            // The selected stretch is the span (anywhere on the timeline).
+            start = sequence.clampTimeline(selection.lowerBound)
+            end = sequence.clampTimeline(selection.upperBound)
         } else {
-            start = min(max(playhead, trimStart), max(trimEnd - 0.5, trimStart))
-            end = min(start + 4, trimEnd)
+            start = min(max(playhead, 0), max(timelineDuration - 0.5, 0))
+            end = min(start + 4, timelineDuration)
         }
         pushUndo()
         let annotation = EditorAnnotation(
@@ -246,10 +290,9 @@ final class EditorViewModel: ObservableObject {
     /// at the start of the drag.
     func setAnnotationRange(id: UUID, start: Double, end: Double) {
         guard let index = annotations.firstIndex(where: { $0.id == id }) else { return }
-        let s = min(max(0, start), max(0, duration - 0.5))
-        let e = min(max(end, s + 0.5), duration)
-        annotations[index].start = s
-        annotations[index].end = e
+        let span = sequence.clampTimeline(start: start, end: end, minLength: 0.5)
+        annotations[index].start = span.start
+        annotations[index].end = span.end
     }
 
     // MARK: selection
@@ -271,29 +314,46 @@ final class EditorViewModel: ObservableObject {
 
     /// I and O: set one end of the selection to the playhead.
     func setSelectionStart(to t: Double) {
-        let limit = trimEnd
-        let lo = min(max(t, trimStart), limit)
+        let limit = timelineDuration
+        let lo = min(max(t, 0), limit)
         let hi = selection?.upperBound ?? limit
         selection = lo...max(hi, min(lo + 0.5, limit))
     }
 
     func setSelectionEnd(to t: Double) {
-        let hi = min(max(t, trimStart), trimEnd)
-        let lo = selection?.lowerBound ?? trimStart
-        selection = min(lo, max(hi - 0.5, trimStart))...hi
+        let hi = min(max(t, 0), timelineDuration)
+        let lo = selection?.lowerBound ?? 0
+        selection = min(lo, max(hi - 0.5, 0))...hi
     }
 
-    /// [ and ]: trim the video's ends to the playhead.
+    /// [ and ]: trim the start or the end of the clip under the playhead
+    /// (the original, or a joined clip) to the playhead.
     func setTrimStartToPlayhead() {
-        guard playingMergeIndex == nil, playhead < trimEnd - 0.2 else { return }
-        pushUndo()
-        trimStart = max(0, playhead)
+        guard let located = sequence.locate(timeline: playhead) else { return }
+        if located.index == 0 {
+            guard located.source < trimEnd - 0.2 else { return }
+            pushUndo()
+            trimStart = max(0, located.source)
+        } else if mergeClips.indices.contains(located.index - 1) {
+            let clip = mergeClips[located.index - 1]
+            guard located.source < clip.trimEnd - 0.2 else { return }
+            pushUndo()
+            setMergeTrimStart(index: located.index - 1, to: located.source)
+        }
     }
 
     func setTrimEndToPlayhead() {
-        guard playingMergeIndex == nil, playhead > trimStart + 0.2 else { return }
-        pushUndo()
-        trimEnd = min(duration, playhead)
+        guard let located = sequence.locate(timeline: playhead) else { return }
+        if located.index == 0 {
+            guard located.source > trimStart + 0.2 else { return }
+            pushUndo()
+            trimEnd = min(duration, located.source)
+        } else if mergeClips.indices.contains(located.index - 1) {
+            let clip = mergeClips[located.index - 1]
+            guard located.source > clip.trimStart + 0.2 else { return }
+            pushUndo()
+            setMergeTrimEnd(index: located.index - 1, to: located.source)
+        }
     }
 
     /// Takes the selected stretch out of the video (a removed stretch).
@@ -306,8 +366,8 @@ final class EditorViewModel: ObservableObject {
     /// The span a tool acts on: the selection, else from the playhead.
     func toolSpan(defaultLength: Double) -> (Double, Double) {
         if let selection { return (selection.lowerBound, selection.upperBound) }
-        let start = min(max(playhead, trimStart), trimEnd)
-        return (start, min(start + defaultLength, trimEnd))
+        let start = sequence.clampTimeline(playhead)
+        return (start, min(start + defaultLength, timelineDuration))
     }
 
     func applySpeedToSelection(factor: Double) {
@@ -319,22 +379,24 @@ final class EditorViewModel: ObservableObject {
     /// Moves or resizes a speed segment (undo pushed once at drag start).
     func setSpeedRange(id: UUID, start: Double, end: Double) {
         guard let index = speedSegments.firstIndex(where: { $0.id == id }) else { return }
-        let s = min(max(trimStart, start), trimEnd - 0.3)
-        let e = min(max(end, s + 0.3), trimEnd)
-        speedSegments[index].start = s
-        speedSegments[index].end = e
+        let span = sequence.clampTimeline(start: start, end: end, minLength: 0.3)
+        speedSegments[index].start = span.start
+        speedSegments[index].end = span.end
     }
 
     /// Moves or resizes a removed stretch (undo pushed once at drag start).
     func setCutRange(id: UUID, start: Double, end: Double) {
         guard let index = cuts.firstIndex(where: { $0.id == id }) else { return }
-        let s = min(max(0, start), duration - 0.15)
-        let e = min(max(end, s + 0.15), duration)
-        cuts[index].start = s
-        cuts[index].end = e
+        let span = sequence.clampTimeline(start: start, end: end, minLength: 0.15)
+        cuts[index].start = span.start
+        cuts[index].end = span.end
     }
 
-    var hasRecordedEvents: Bool { recordingEvents.map { !$0.isEmpty } ?? false }
+    /// Any segment, the original or a joined clip, has recorded clicks or keys.
+    var hasRecordedEvents: Bool {
+        (recordingEvents.map { !$0.isEmpty } ?? false)
+            || mergeClips.contains { $0.events.map { !$0.isEmpty } ?? false }
+    }
 
     var trimIsSet: Bool { trimStart > 0.05 || trimEnd < duration - 0.05 }
 
@@ -350,12 +412,11 @@ final class EditorViewModel: ObservableObject {
 
     /// Applies a speed to [from, to], REPLACING whatever overlaps — a second
     /// apply always wins over stale segments instead of silently no-opping.
-    /// Speed and merge clips still don't combine (exporter limitation).
+    /// Works anywhere on the timeline, across joined clips too.
     func applySpeed(factor: Double, from rawFrom: Double, to rawTo: Double) {
-        guard mergeClips.isEmpty else { return }
         let factor = min(max(factor, 0.25), 8)
-        let from = min(max(rawFrom, trimStart), trimEnd)
-        let to = min(max(rawTo, trimStart), trimEnd)
+        let from = sequence.clampTimeline(rawFrom)
+        let to = sequence.clampTimeline(rawTo)
         guard to - from > 0.3 else {
             errorMessage = "That stretch is too short for a speed change. Select a longer one."
             return
@@ -388,7 +449,7 @@ final class EditorViewModel: ObservableObject {
     }
 
     func applySpeedToWholeVideo(factor: Double) {
-        applySpeed(factor: factor, from: trimStart, to: trimEnd)
+        applySpeed(factor: factor, from: 0, to: timelineDuration)
     }
 
     func removeSpeedSegment(id: UUID) {
@@ -398,126 +459,80 @@ final class EditorViewModel: ObservableObject {
         if selectedSpeedID == id { selectedSpeedID = nil }
     }
 
-    // MARK: source → edited → final time mapping
+    // MARK: timeline → edited → final time mapping
 
-    /// Edited time only when the source instant survives the cuts, else nil.
-    private func editedTimeIfKept(_ t: Double) -> Double? {
-        var edited: Double = 0
-        for (start, end) in keptRanges() {
-            if t >= end {
-                edited += end - start
-            } else if t >= start {
-                return edited + (t - start)
-            } else {
-                return nil
-            }
-        }
-        return nil
-    }
+    /// Speed ranges on the EDITED domain, for the exporter.
+    private func editedSpeedRanges() -> [ExportRecipe.SpeedRange] { timeline.speedRanges }
 
-    /// Speed ranges on the EDITED timeline, for the exporter.
-    private func editedSpeedRanges() -> [ExportRecipe.SpeedRange] {
-        guard mergeClips.isEmpty else { return [] }
-        return speedSegments.compactMap { segment in
-            let start = editedTime(forTimeline: max(segment.start, trimStart))
-            let end = editedTime(forTimeline: min(segment.end, trimEnd))
-            guard end - start > 0.15 else { return nil }
-            return ExportRecipe.SpeedRange(start: start, end: end, factor: segment.factor)
-        }
-    }
-
-    /// Edited time → final exported time (compressed by speed segments).
-    private func finalTime(fromEdited t: Double, ranges: [ExportRecipe.SpeedRange]) -> Double {
-        var result = t
-        for range in ranges {
-            let squeeze = 1 - 1 / range.factor
-            if t > range.end {
-                result -= (range.end - range.start) * squeeze
-            } else if t > range.start {
-                result -= (t - range.start) * squeeze
-            }
-        }
-        return max(0, result)
-    }
-
-    private func finalTimeIfKept(_ sourceT: Double, ranges: [ExportRecipe.SpeedRange]) -> Double? {
-        guard let edited = editedTimeIfKept(sourceT) else { return nil }
-        return finalTime(fromEdited: edited, ranges: ranges)
-    }
-
-    /// Source time -> final exported time, from a snapshot of the cuts and
-    /// speed ranges (nil when the instant is cut away). Safe to call from the
-    /// preview's render thread. `identity` is the preview with "preview edits"
-    /// off: the player shows the whole source at 1x, so times pass through.
-    private func sourceToFinalMap(identity: Bool = false) -> @Sendable (Double) -> Double? {
+    /// Timeline time -> final exported time, from a snapshot of the cuts and
+    /// speed (nil when the instant is cut or trimmed away). Safe to call from
+    /// the preview's render thread. `identity` is the preview with "preview
+    /// edits" off: the player shows everything at 1x, so times pass through.
+    private func timelineToFinalMap(identity: Bool = false) -> @Sendable (Double) -> Double? {
         if identity { return { $0 } }
-        let kept = keptRanges()
-        let ranges = editedSpeedRanges()
-        return { t in
-            var edited: Double?
-            var acc: Double = 0
-            for (start, end) in kept {
-                if t >= end {
-                    acc += end - start
-                } else if t >= start {
-                    edited = acc + (t - start)
-                    break
-                } else {
-                    break
-                }
-            }
-            guard let edited else { return nil }
-            var result = edited
-            for range in ranges {
-                let squeeze = 1 - 1 / range.factor
-                if edited > range.end {
-                    result -= (range.end - range.start) * squeeze
-                } else if edited > range.start {
-                    result -= (edited - range.start) * squeeze
-                }
-            }
-            return max(0, result)
-        }
+        let timeline = self.timeline
+        return { timeline.finalTime(forTimeline: $0) }
     }
 
     /// Everything the effects pass draws, mapped to the final timeline.
     private func builtEffects() -> EditedEffects? {
-        builtEffects(map: sourceToFinalMap(), includeAnnotations: true)
+        builtEffects(map: timelineToFinalMap(), crop: cropRect, includeAnnotations: true)
     }
 
-    /// The recorded-input effects only (annotations stay with the preview
-    /// overlay), mapped to the final timeline via `map`.
-    private func builtEffects(map: (Double) -> Double?, includeAnnotations: Bool) -> EditedEffects? {
+    /// The recorded-input effects of EVERY segment (annotations stay with the
+    /// preview overlay unless asked for), mapped to the final timeline via
+    /// `map`. Each segment's events sit at its place on the timeline, and
+    /// their positions follow its picture onto the render (fit, then crop).
+    private func builtEffects(map: (Double) -> Double?, crop: CGRect?,
+                              includeAnnotations: Bool) -> EditedEffects? {
         var effects = EditedEffects()
 
-        if let events = recordingEvents {
-            if showClickRipples {
-                effects.ripples = events.clicks.compactMap { click in
-                    map(click.t).map { EditedEffects.Ripple(t: $0, x: click.x, y: click.y) }
+        let geometry = EditComposition.geometry(canvas: videoSize, crop: crop)
+        var ripplePoints: [(t: Double, x: Double, y: Double)] = []
+        var keyChips: [EditedEffects.KeyChip] = []
+        for (index, segment) in sequence.segments.enumerated() {
+            let events = index == 0 ? recordingEvents : mergeClips[index - 1].events
+            guard let events else { continue }
+            let offset = sequence.timelineOffset(of: index)
+            let size = index == 0 ? videoSize : mergeClips[index - 1].size
+            func place(_ x: Double, _ y: Double) -> (x: Double, y: Double) {
+                guard geometry.isValid, size.width > 0, size.height > 0 else { return (x, y) }
+                return EditSequence.renderPoint(x: x, y: y, source: size, canvas: geometry.canvas,
+                                                cropOrigin: geometry.cropOrigin,
+                                                renderSize: geometry.renderSize)
+            }
+            if showClickRipples || autoZoom {
+                for click in events.clicks {
+                    guard let t = map(offset + click.t) else { continue }
+                    let spot = place(click.x, click.y)
+                    ripplePoints.append((t, spot.x, spot.y))
                 }
             }
             if showKeystrokes {
-                effects.keyChips = events.keys.compactMap { key in
-                    map(key.t).map { EditedEffects.KeyChip(t: $0, text: key.text) }
+                for key in events.keys {
+                    guard let t = map(offset + key.t) else { continue }
+                    keyChips.append(EditedEffects.KeyChip(t: t, text: key.text))
                 }
             }
-            if autoZoom {
-                let clicks = events.clicks.compactMap { click -> (Double, Double, Double)? in
-                    map(click.t).map { ($0, click.x, click.y) }
-                }
-                effects.zoomKeyframes = Self.zoomKeyframes(fromFinalClicks: clicks)
-            }
+            _ = segment
+        }
+        ripplePoints.sort { $0.t < $1.t }
+        if showClickRipples {
+            effects.ripples = ripplePoints.map { EditedEffects.Ripple(t: $0.t, x: $0.x, y: $0.y) }
+        }
+        if showKeystrokes {
+            effects.keyChips = keyChips.sorted { $0.t < $1.t }
+        }
+        if autoZoom {
+            effects.zoomKeyframes = Self.zoomKeyframes(fromFinalClicks: ripplePoints)
         }
         if includeAnnotations {
-            let ranges = editedSpeedRanges()
             effects.annotations = annotations.compactMap { annotation in
-                let start = editedTime(forTimeline: max(annotation.start, trimStart))
-                let end = editedTime(forTimeline: min(annotation.end, trimEnd))
-                guard end - start > 0.1 else { return nil }
+                guard let span = timeline.finalSpan(timelineStart: annotation.start,
+                                                    timelineEnd: annotation.end) else { return nil }
                 return EditedEffects.Annotation(
                     kind: annotation.kind, rect: annotation.rect,
-                    start: finalTime(fromEdited: start, ranges: ranges),
-                    end: finalTime(fromEdited: end, ranges: ranges),
+                    start: span.start, end: span.end,
                     text: annotation.text,
                     color: annotation.color)
             }
@@ -585,53 +600,18 @@ final class EditorViewModel: ObservableObject {
         }
     }
 
-    /// Total length of the exported video (kept main ranges + trimmed clips).
-    var totalEditedDuration: Double {
-        keptRanges().reduce(0) { $0 + ($1.1 - $1.0) }
-            + mergeClips.reduce(0) { $0 + $1.trimmedDuration }
-    }
+    /// What is kept, before any speed change: trims and cuts applied, across
+    /// the original and every joined clip.
+    var totalEditedDuration: Double { timeline.editedDuration }
 
-    /// Timeline (source) time → edited (exported) time, across cuts, trim
-    /// and merge clips.
+    /// Timeline time -> edited time (flat across a cut or a trimmed-away stretch).
     func editedTime(forTimeline t: Double) -> Double {
-        var edited: Double = 0
-        for (start, end) in keptRanges() {
-            if t >= end {
-                edited += end - start
-            } else if t > start {
-                return edited + (t - start)
-            } else {
-                return edited
-            }
-        }
-        for (index, clip) in mergeClips.enumerated() {
-            let base = mergeOffset(upTo: index)
-            let local = t - base
-            if local >= clip.trimEnd {
-                edited += clip.trimmedDuration
-            } else if local > clip.trimStart {
-                return edited + (local - clip.trimStart)
-            } else {
-                return edited
-            }
-        }
-        return edited
+        timeline.editedTime(forTimeline: t)
     }
 
-    /// Inverse: edited time → timeline time (for drawing on the timeline).
+    /// Inverse: edited time -> timeline time (for drawing on the timeline).
     func timelineTime(forEdited editedTarget: Double) -> Double {
-        var remaining = editedTarget
-        for (start, end) in keptRanges() {
-            let length = end - start
-            if remaining <= length { return start + remaining }
-            remaining -= length
-        }
-        for (index, clip) in mergeClips.enumerated() {
-            let base = mergeOffset(upTo: index)
-            if remaining <= clip.trimmedDuration { return base + clip.trimStart + remaining }
-            remaining -= clip.trimmedDuration
-        }
-        return timelineDuration
+        timeline.timelineTime(forEdited: editedTarget)
     }
 
     /// Called from the periodic observer: keeps the audio preview at the
@@ -685,10 +665,8 @@ final class EditorViewModel: ObservableObject {
 
     var hasVideo: Bool { sourceURL != nil && duration > 0 }
 
-    /// Duration of the final edited video (kept ranges + trimmed merge clips).
-    var editedDuration: Double {
-        keptRanges().reduce(0) { $0 + ($1.1 - $1.0) } + mergeClips.reduce(0) { $0 + $1.trimmedDuration }
-    }
+    /// Duration of the final exported video: kept pieces of every clip, speed applied.
+    var editedDuration: Double { timeline.finalDuration }
 
     private struct Snapshot {
         var cuts: [CutRegion]
@@ -750,14 +728,9 @@ final class EditorViewModel: ObservableObject {
             selectedAnnotationID = nil
             speedSegments = []
 
-            sourceAsset = asset
-            sourceVideoTrack = track
-            sourceTransform = transform
-            playingMergeIndex = nil
-            let item = AVPlayerItem(asset: asset)
-            item.audioTimePitchAlgorithm = .spectral
-            player.replaceCurrentItem(with: item)
-            applyCropPreview()
+            previewSignature = []
+            previewBuildTask?.cancel()
+            await buildPreviewItem()
             attachTimeObserverIfNeeded()
         } catch {
             errorMessage = "Could not load video: \(error.localizedDescription)"
@@ -769,6 +742,60 @@ final class EditorViewModel: ObservableObject {
         return ByteCountFormatter.string(fromByteCount: size, countStyle: .file)
     }
 
+    // MARK: the preview item
+
+    /// What the current preview composition was built from (file list and
+    /// lengths); trims, cuts and speed do not change it.
+    private var previewSignature: [String] = []
+    private var previewBuilt: EditComposition.Built?
+    private var previewBuildTask: Task<Void, Never>?
+
+    private func currentPreviewSignature() -> [String] {
+        sequence.segments.map { "\($0.url.path)|\($0.fileDuration)" }
+    }
+
+    /// The file list changed (a clip joined, removed or moved): build the one
+    /// composition again, off the main flow.
+    private func rebuildPreviewItemIfNeeded() {
+        guard hasVideo, currentPreviewSignature() != previewSignature else { return }
+        previewBuildTask?.cancel()
+        previewBuildTask = Task { @MainActor [weak self] in
+            await self?.buildPreviewItem()
+        }
+    }
+
+    /// ONE AVPlayerItem for the original and every clip, each whole, end to
+    /// end. Its time is the timeline's time, so a clip boundary is invisible
+    /// to the player; cuts are skipped and speed is applied by the observer.
+    private func buildPreviewItem() async {
+        let signature = currentPreviewSignature()
+        previewSignature = signature
+        let segments = sequence.segments
+        do {
+            let built = try await EditComposition.build(
+                urls: segments.map(\.url),
+                pieces: EditComposition.wholeFilePieces(fileDurations: segments.map(\.fileDuration)))
+            guard !Task.isCancelled, signature == currentPreviewSignature() else { return }
+            previewBuilt = built
+            let wasPlaying = player.timeControlStatus == .playing
+            let item = AVPlayerItem(asset: built.composition)
+            item.audioTimePitchAlgorithm = .spectral
+            player.replaceCurrentItem(with: item)
+            applyCropPreview()
+            playhead = min(max(playhead, 0), timelineDuration)
+            player.seek(to: CMTime(seconds: playhead, preferredTimescale: 600),
+                        toleranceBefore: .zero, toleranceAfter: .zero, completionHandler: { _ in })
+            if wasPlaying { player.play() }
+        } catch {
+            if signature == currentPreviewSignature() {
+                previewSignature = []
+                errorMessage = "Could not show the video: \(error.localizedDescription)"
+            }
+        }
+    }
+
+    private var lastSkip: (target: Double, at: Date)?
+
     private func attachTimeObserverIfNeeded() {
         guard timeObserver == nil else { return }
         let interval = CMTime(value: 1, timescale: 30)
@@ -777,94 +804,58 @@ final class EditorViewModel: ObservableObject {
                 guard let self else { return }
                 self.isPlaying = self.player.timeControlStatus == .playing
                 defer { self.syncOverlayPreview() }
+                guard self.previewBuilt != nil else { return }
 
-                // Live speed-segment preview: the player runs faster inside
-                // a segment (pitch preserved via the item's algorithm).
-                if self.isPlaying, self.playingMergeIndex == nil, self.previewEdits {
-                    let factor = self.speedSegments.first(where: {
-                        self.playhead >= $0.start && self.playhead < $0.end
-                    })?.factor ?? 1
-                    self.activePreviewRate = factor
-                    if abs(Double(self.player.rate) - factor) > 0.01 {
-                        // defaultRate too, so play()/resume keeps the speed
-                        // instead of snapping back to 1x.
-                        self.player.defaultRate = Float(factor)
-                        self.player.rate = Float(factor)
-                    }
-                } else if !self.isPlaying {
+                // The item's time IS the timeline's time.
+                self.playhead = min(max(time.seconds, 0), self.timelineDuration)
+                guard self.isPlaying else {
                     self.activePreviewRate = 1
+                    return
+                }
+                guard self.previewEdits else {
+                    if abs(Double(self.player.rate) - 1) > 0.01 {
+                        self.player.defaultRate = 1
+                        self.player.rate = 1
+                    }
+                    self.activePreviewRate = 1
+                    return
                 }
 
-                // Inside a merge clip: map to timeline coords, chain to the next.
-                if let index = self.playingMergeIndex {
-                    guard self.mergeClips.indices.contains(index) else {
-                        self.returnToMain(at: self.trimStart)
+                // Live speed preview: the player runs faster inside a speed
+                // span (pitch preserved via the item's algorithm).
+                let playhead = self.playhead
+                let factor = self.speedSegments.first(where: {
+                    playhead >= $0.start && playhead < $0.end
+                })?.factor ?? 1
+                self.activePreviewRate = factor
+                if abs(Double(self.player.rate) - factor) > 0.01 {
+                    // defaultRate too, so play()/resume keeps the speed
+                    // instead of snapping back to 1x.
+                    self.player.defaultRate = Float(factor)
+                    self.player.rate = Float(factor)
+                }
+
+                // Past the last kept frame: stop. In a cut or a trimmed-away
+                // stretch: jump to where the video picks up again.
+                let timeline = self.timeline
+                guard let end = timeline.lastKeptEnd else {
+                    self.player.pause()
+                    return
+                }
+                if playhead >= end - 0.03 {
+                    self.player.pause()
+                    self.playhead = end
+                    return
+                }
+                if let target = timeline.nextKeptStart(from: playhead), target > playhead + 0.02 {
+                    if let last = self.lastSkip, last.target == target, Date().timeIntervalSince(last.at) < 0.4 {
                         return
                     }
-                    let clip = self.mergeClips[index]
-                    self.playhead = self.mergeOffset(upTo: index) + time.seconds
-                    let clipEnd = self.previewEdits ? clip.trimEnd : clip.duration
-                    if self.isPlaying, time.seconds >= clipEnd - 0.05 {
-                        if self.mergeClips.indices.contains(index + 1) {
-                            let next = self.mergeClips[index + 1]
-                            self.switchToMerge(index + 1, at: self.previewEdits ? next.trimStart : 0)
-                            self.player.play()
-                        } else {
-                            self.player.pause()
-                        }
-                    }
-                    return
-                }
-
-                self.playhead = time.seconds
-                guard self.isPlaying else { return }
-                // End of the main video: flow into the merge clips.
-                let mainEnd = self.previewEdits ? self.trimEnd : self.duration
-                if self.playhead >= mainEnd - 0.05 {
-                    if self.mergeClips.isEmpty {
-                        self.player.pause()
-                    } else {
-                        let first = self.mergeClips[0]
-                        self.switchToMerge(0, at: self.previewEdits ? first.trimStart : 0)
-                        self.player.play()
-                    }
-                    return
-                }
-                guard self.previewEdits else { return }
-                if let cut = self.cuts.first(where: { self.playhead >= $0.start && self.playhead < $0.end - 0.05 }) {
-                    self.seek(to: cut.end)
+                    self.lastSkip = (target, Date())
+                    self.seek(to: target)
                 }
             }
         }
-    }
-
-    private func switchToMerge(_ index: Int, at localSeconds: Double) {
-        guard mergeClips.indices.contains(index) else { return }
-        if playingMergeIndex != index {
-            playingMergeIndex = index
-            player.replaceCurrentItem(with: AVPlayerItem(url: mergeClips[index].url))
-        }
-        playhead = mergeOffset(upTo: index) + localSeconds
-        player.currentItem?.cancelPendingSeeks()
-        player.seek(to: CMTime(seconds: localSeconds, preferredTimescale: 600),
-                    toleranceBefore: .zero, toleranceAfter: .zero)
-    }
-
-    private func returnToMain(at seconds: Double) {
-        if playingMergeIndex != nil {
-            playingMergeIndex = nil
-            if let sourceAsset {
-                player.replaceCurrentItem(with: AVPlayerItem(asset: sourceAsset))
-                applyCropPreview()
-            }
-        }
-        let clamped = min(max(seconds, 0), duration)
-        playhead = clamped
-        // Drop any still-running earlier seek first: queued precise seeks on
-        // long-GOP files each decode seconds of video, compounding the lag.
-        player.currentItem?.cancelPendingSeeks()
-        player.seek(to: CMTime(seconds: clamped, preferredTimescale: 600),
-                    toleranceBefore: .zero, toleranceAfter: .zero)
     }
 
     // MARK: playback controls
@@ -875,46 +866,32 @@ final class EditorViewModel: ObservableObject {
             player.pause()
             return
         }
-        if isAtEffectiveEnd || playhead >= timelineDuration - 0.05 {
-            // Finished everything — restart from the beginning.
-            seek(to: previewEdits ? trimStart : 0)
-        } else if playingMergeIndex == nil, previewEdits, playhead < trimStart {
-            seek(to: trimStart)
+        if isAtEffectiveEnd {
+            // Finished everything: restart from the beginning.
+            seek(to: previewEdits ? (timeline.firstKeptStart ?? 0) : 0)
+        } else if previewEdits, let first = timeline.firstKeptStart, playhead < first {
+            seek(to: first)
         }
         player.play()
     }
 
     /// True when playback stopped at the end of the last thing that would
-    /// play — the trim-out of the final merge clip, or of the main video when
-    /// there are no merge clips. Restart from the top instead of resuming
-    /// into a trimmed-away region.
+    /// play (the last kept frame, whichever clip it is in). Restart from the
+    /// top instead of resuming into a trimmed-away or cut stretch.
     private var isAtEffectiveEnd: Bool {
-        if let index = playingMergeIndex {
-            guard mergeClips.indices.contains(index) else { return true }
-            guard index == mergeClips.count - 1 else { return false }
-            let clip = mergeClips[index]
-            let local = playhead - mergeOffset(upTo: index)
-            return local >= (previewEdits ? clip.trimEnd : clip.duration) - 0.1
-        }
-        guard mergeClips.isEmpty else { return false }
-        return playhead >= (previewEdits ? trimEnd : duration) - 0.1
+        let end = previewEdits ? (timeline.lastKeptEnd ?? timelineDuration) : timelineDuration
+        return playhead >= end - 0.1
     }
 
-    /// Seeks in timeline coordinates — main video first, merge clips after.
+    /// Seeks in timeline coordinates: the original first, joined clips after.
     func seek(to seconds: Double) {
         let clamped = min(max(seconds, 0), timelineDuration)
-        if clamped <= duration || mergeClips.isEmpty {
-            returnToMain(at: clamped)
-            return
-        }
-        var offset = duration
-        for (index, clip) in mergeClips.enumerated() {
-            if clamped <= offset + clip.duration || index == mergeClips.count - 1 {
-                switchToMerge(index, at: min(max(clamped - offset, 0), clip.duration))
-                return
-            }
-            offset += clip.duration
-        }
+        playhead = clamped
+        // Drop any still-running earlier seek first: queued precise seeks on
+        // long-GOP files each decode seconds of video, compounding the lag.
+        player.currentItem?.cancelPendingSeeks()
+        player.seek(to: CMTime(seconds: clamped, preferredTimescale: 600),
+                    toleranceBefore: .zero, toleranceAfter: .zero)
     }
 
     func step(by seconds: Double) {
@@ -958,20 +935,11 @@ final class EditorViewModel: ObservableObject {
         if let selected = selectedSpeedID, !speedSegments.contains(where: { $0.id == selected }) {
             selectedSpeedID = nil
         }
-        exitMergePlaybackIfNeeded()
-    }
-
-    /// The merge list changed — indices are no longer valid, go back to main.
-    private func exitMergePlaybackIfNeeded() {
-        if playingMergeIndex != nil {
-            player.pause()
-            returnToMain(at: min(trimEnd, duration))
-        }
     }
 
     func addCut(start: Double, end: Double) {
-        let s = min(max(start, 0), duration)
-        let e = min(max(end, 0), duration)
+        let s = sequence.clampTimeline(start)
+        let e = sequence.clampTimeline(end)
         guard e - s >= 0.15 else { return }
         pushUndo()
         let cut = CutRegion(id: UUID(), start: s, end: e)
@@ -1017,54 +985,35 @@ final class EditorViewModel: ObservableObject {
         }
     }
 
-    /// Applies (or clears) the preview composition on the player item: the
-    /// live crop (the same transform the exporter bakes in) and, when a
+    /// Applies (or clears) the video composition on the player item: the
+    /// scale-to-fit of every clip after the first plus the live crop (the same
+    /// transform the exporter bakes in, over the whole sequence) and, when a
     /// recorded-input toggle is on, the click ripples / key chips / auto-zoom
     /// drawn by the export's own compositor. Swapping a composition on the
     /// item keeps the playhead and play state. Annotations are NOT drawn here:
     /// `AnnotationPreviewOverlay` already shows them.
     private func applyCropPreview() {
-        guard let item = player.currentItem else { return }
+        guard let item = player.currentItem, let built = previewBuilt else { return }
         let crop = cropPreviewActive ? cropRect : nil
-        let renderSize = crop.map { Self.croppedRenderSize($0, of: videoSize) } ?? videoSize
-        let validCrop = crop != nil && renderSize.width >= 16 && renderSize.height >= 16
+        let geometry = EditComposition.geometry(canvas: videoSize, crop: crop)
+        let validCrop = crop != nil && geometry.isValid
 
-        // Recorded-input effects on the main video only (never while
-        // cropping or on a merged clip).
-        if hasRecordedEvents, playingMergeIndex == nil, !isCropping,
-           videoSize != .zero, renderSize.width >= 16, renderSize.height >= 16,
-           let effects = builtEffects(map: sourceToFinalMap(identity: !previewEdits),
-                                      includeAnnotations: false) {
-            let cropPixels: CGRect? = validCrop ? crop.map {
-                CGRect(x: ($0.origin.x * videoSize.width).rounded(),
-                       y: ((1 - $0.origin.y - $0.height) * videoSize.height).rounded(),
-                       width: renderSize.width, height: renderSize.height)
-            } : nil
-            item.videoComposition = EffectsRenderer.previewComposition(
-                for: item.asset, effects: effects, renderSize: renderSize,
-                cropPixels: cropPixels, timeMap: sourceToFinalMap(identity: !previewEdits))
-            return
+        // Recorded-input effects (never while cropping).
+        if hasRecordedEvents, !isCropping, videoSize != .zero, geometry.isValid {
+            let map = timelineToFinalMap(identity: !previewEdits)
+            if let effects = builtEffects(map: map, crop: crop, includeAnnotations: false) {
+                item.videoComposition = EffectsRenderer.previewComposition(
+                    for: item.asset, effects: effects, geometry: geometry,
+                    infos: built.infos, placements: built.placements, timeMap: map)
+                return
+            }
         }
 
-        guard validCrop, let crop, let track = sourceVideoTrack else {
+        guard validCrop || built.infos.count > 1 else {
             if item.videoComposition != nil { item.videoComposition = nil }
             return
         }
-        let composition = AVMutableVideoComposition()
-        composition.renderSize = renderSize
-        composition.frameDuration = CMTime(value: 1, timescale: 60)
-        let instruction = AVMutableVideoCompositionInstruction()
-        instruction.timeRange = CMTimeRange(
-            start: .zero,
-            duration: CMTime(seconds: max(duration + 1, 1), preferredTimescale: 600))
-        let layer = AVMutableVideoCompositionLayerInstruction(assetTrack: track)
-        let cropOrigin = CGPoint(x: (crop.origin.x * videoSize.width).rounded(),
-                                 y: (crop.origin.y * videoSize.height).rounded())
-        layer.setTransform(sourceTransform.concatenating(
-            CGAffineTransform(translationX: -cropOrigin.x, y: -cropOrigin.y)), at: .zero)
-        instruction.layerInstructions = [layer]
-        composition.instructions = [instruction]
-        item.videoComposition = composition
+        item.videoComposition = EditComposition.videoComposition(for: built, crop: validCrop ? crop : nil)
     }
 
     func addMergeClipPanel() {
@@ -1081,8 +1030,15 @@ final class EditorViewModel: ObservableObject {
             var clips: [MergeClip] = []
             for url in urls {
                 let asset = AVURLAsset(url: url)
-                guard let time = try? await asset.load(.duration) else { continue }
-                clips.append(MergeClip(id: UUID(), url: url, duration: time.seconds, trimEnd: time.seconds))
+                guard let time = try? await asset.load(.duration),
+                      let track = try? await asset.loadTracks(withMediaType: .video).first,
+                      let (natural, transform) = try? await track.load(.naturalSize, .preferredTransform)
+                else { continue }
+                let oriented = natural.applying(transform)
+                var clip = MergeClip(id: UUID(), url: url, duration: time.seconds, trimEnd: time.seconds)
+                clip.size = CGSize(width: abs(oriented.width), height: abs(oriented.height))
+                clip.events = RecordingEvents.load(for: url)
+                clips.append(clip)
             }
             guard !clips.isEmpty else { return }
             pushUndo()
@@ -1094,7 +1050,6 @@ final class EditorViewModel: ObservableObject {
         guard mergeClips.contains(where: { $0.id == id }) else { return }
         pushUndo()
         mergeClips.removeAll { $0.id == id }
-        exitMergePlaybackIfNeeded()
     }
 
     /// Reorder a merge clip one position up or down — clips are appended
@@ -1105,7 +1060,6 @@ final class EditorViewModel: ObservableObject {
         guard mergeClips.indices.contains(target) else { return }
         pushUndo()
         mergeClips.swapAt(index, target)
-        exitMergePlaybackIfNeeded()
     }
 
     // Per-clip trim adjustments (undo is pushed once at drag start by the timeline).
@@ -1118,40 +1072,18 @@ final class EditorViewModel: ObservableObject {
         guard mergeClips.indices.contains(index) else { return }
         mergeClips[index].trimEnd = max(min(mergeClips[index].duration, value), mergeClips[index].trimStart + 0.1)
     }
-
-    /// Ranges of the source that survive trim + cuts, in order.
-    func keptRanges() -> [(Double, Double)] {
-        var ranges: [(Double, Double)] = []
-        var cursor = trimStart
-        for cut in cuts.sorted(by: { $0.start < $1.start }) {
-            let s = max(cut.start, trimStart)
-            let e = min(cut.end, trimEnd)
-            guard e > cursor else { continue }
-            if s > cursor {
-                ranges.append((cursor, s))
-            }
-            cursor = max(cursor, e)
-        }
-        if cursor < trimEnd {
-            ranges.append((cursor, trimEnd))
-        }
-        return ranges.filter { $0.1 - $0.0 > 0.05 }
-    }
-
     // MARK: export
 
     private func currentRecipe() -> ExportRecipe? {
-        guard let sourceURL else { return nil }
+        guard sourceURL != nil else { return nil }
         return ExportRecipe(
-            sourceURL: sourceURL,
-            keptRanges: keptRanges(),
+            segmentURLs: sequence.segments.map(\.url),
+            pieces: timeline.pieces,
             cropRectNormalized: cropRect,
-            mergeSegments: mergeClips.map {
-                ExportRecipe.MergeSegment(url: $0.url, start: $0.trimStart, end: $0.trimEnd)
-            },
             overlayAudio: overlayAudioURL.map {
+                // Placed where its picture is in the exported (sped-up) video.
                 ExportRecipe.OverlayAudio(url: $0, volume: Float(overlayAudioVolume),
-                                          start: overlayAudioStart,
+                                          start: timeline.finalTime(fromEdited: overlayAudioStart),
                                           clipStart: overlayAudioClipStart,
                                           clipEnd: overlayAudioClipEnd,
                                           loops: overlayAudioLoops,
@@ -1247,7 +1179,9 @@ final class EditorViewModel: ObservableObject {
         player.pause()
         player.replaceCurrentItem(with: nil)
         sourceURL = nil
-        sourceAsset = nil
+        previewBuildTask?.cancel()
+        previewBuilt = nil
+        previewSignature = []
         duration = 0
         videoSize = .zero
         fileSizeText = "—"
@@ -1264,7 +1198,6 @@ final class EditorViewModel: ObservableObject {
         undoStack = []
         redoStack = []
         playhead = 0
-        playingMergeIndex = nil
         isCropping = false
         errorMessage = nil
         exportMessage = nil

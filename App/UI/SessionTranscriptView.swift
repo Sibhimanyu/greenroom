@@ -544,12 +544,26 @@ private struct TranscriptScrollProbe: NSViewRepresentable {
 
 /// The transcript as a way to cut: a click on a sentence marks that stretch as
 /// removed (shift-click extends to a second sentence), a click on a struck
-/// sentence puts it back, and the stamp moves the picture there.
+/// sentence puts it back, and the stamp moves the picture there. The original
+/// and every joined clip that has a transcript of its own sit on the one
+/// timeline, so a sentence of any of them can be cut.
 struct SessionEditTranscript: View {
     let folder: URL
     @EnvironmentObject private var vm: EditorViewModel
-    @State private var lines: [SessionSummary.Line] = []
-    @State private var starts: [Double] = []
+
+    /// One transcript sentence, placed on the editor's timeline.
+    private struct Entry: Identifiable {
+        let id: Int
+        let line: SessionSummary.Line
+        /// 0 = the original, n = the n-th joined clip.
+        let segment: Int
+        /// Where it starts on the timeline.
+        let start: Double
+        /// The stretch cutting it removes, on the timeline.
+        let span: ClosedRange<Double>?
+    }
+
+    @State private var entries: [Entry] = []
     @State private var anchor: Int?
 
     var body: some View {
@@ -561,7 +575,7 @@ struct SessionEditTranscript: View {
                 .padding(.horizontal, 14)
                 .padding(.top, 14)
                 .padding(.bottom, 6)
-            if lines.isEmpty {
+            if entries.isEmpty {
                 Text("No transcript to click on. Get feedback writes one, on this Mac.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
@@ -571,8 +585,16 @@ struct SessionEditTranscript: View {
             } else {
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 0) {
-                        ForEach(Array(lines.enumerated()), id: \.element.id) { index, line in
-                            row(index, line)
+                        ForEach(Array(entries.enumerated()), id: \.element.id) { index, entry in
+                            if entry.segment > 0, index == 0 || entries[index - 1].segment != entry.segment {
+                                Text("Clip \(entry.segment)")
+                                    .font(.system(size: 11, weight: .semibold))
+                                    .foregroundStyle(.secondary)
+                                    .padding(.horizontal, 14)
+                                    .padding(.top, 10)
+                                    .padding(.bottom, 2)
+                            }
+                            row(index, entry)
                         }
                     }
                     .padding(.bottom, 8)
@@ -584,32 +606,66 @@ struct SessionEditTranscript: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
-        .task(id: folder) {
-            lines = SessionSummary.lines(in: folder)
-            starts = lines.map { SessionDetailRules.stampSeconds($0.stamp) ?? 0 }
-        }
+        .task(id: loadKey) { entries = loadEntries() }
     }
 
-    private var current: Int? { SessionDetailRules.currentLine(starts: starts, at: vm.playhead) }
+    /// Reload when the folder, or the files on the timeline, change.
+    private var loadKey: String {
+        folder.path + "|" + vm.sequence.segments.map { "\($0.url.path)|\($0.fileDuration)" }.joined(separator: ";")
+    }
+
+    private func loadEntries() -> [Entry] {
+        var result: [Entry] = []
+        for (index, segment) in vm.sequence.segments.enumerated() {
+            let source: URL
+            if index == 0 {
+                source = folder
+            } else {
+                // A joined clip brings its own transcript only when it is the
+                // recording of a session of its own.
+                let clipFolder = segment.url.deletingLastPathComponent()
+                guard clipFolder.standardizedFileURL != folder.standardizedFileURL,
+                      let recording = ScreenroomLibrary.recording(in: clipFolder),
+                      recording.standardizedFileURL == segment.url.standardizedFileURL
+                else { continue }
+                source = clipFolder
+            }
+            let lines = SessionSummary.lines(in: source)
+            let starts = lines.map { SessionDetailRules.stampSeconds($0.stamp) ?? 0 }
+            let offset = vm.sequence.timelineOffset(of: index)
+            for (j, line) in lines.enumerated() {
+                let span = SessionDetailRules.transcriptSpan(starts: starts, from: j,
+                                                             duration: segment.fileDuration)
+                    .map { ($0.lowerBound + offset)...($0.upperBound + offset) }
+                result.append(Entry(id: result.count, line: line, segment: index,
+                                    start: offset + starts[j], span: span))
+            }
+        }
+        return result
+    }
+
+    private var current: Int? {
+        let segment = vm.sequence.locate(timeline: vm.playhead)?.index
+        return entries.lastIndex { $0.segment == segment && $0.start <= vm.playhead + 0.05 }
+    }
 
     private func cut(covering index: Int) -> CutRegion? {
-        guard let span = SessionDetailRules.transcriptSpan(starts: starts, from: index, duration: vm.duration)
-        else { return nil }
+        guard let span = entries[index].span else { return nil }
         let mid = (span.lowerBound + span.upperBound) / 2
         return vm.cuts.first { $0.start <= mid && mid <= $0.end }
     }
 
-    private func row(_ index: Int, _ line: SessionSummary.Line) -> some View {
+    private func row(_ index: Int, _ entry: Entry) -> some View {
         let struck = cut(covering: index) != nil
         let isCurrent = current == index
         return HStack(alignment: .firstTextBaseline, spacing: 8) {
-            Text(line.stamp)
+            Text(entry.line.stamp)
                 .font(.system(size: 11, design: .monospaced))
                 .monospacedDigit()
                 .foregroundStyle(.tertiary)
                 .frame(width: 50, alignment: .leading)
-                .onTapGesture { vm.seek(to: starts[index]) }
-            Text(line.text)
+                .onTapGesture { vm.seek(to: entry.start) }
+            Text(entry.line.text)
                 .font(.system(size: 13))
                 .strikethrough(struck)
                 .foregroundStyle(struck ? Color.secondary : Color.primary)
@@ -630,13 +686,13 @@ struct SessionEditTranscript: View {
             return
         }
         let shift = NSEvent.modifierFlags.contains(.shift)
-        if shift, let first = anchor {
+        if shift, let first = anchor, entries.indices.contains(first) {
             let lo = min(first, index), hi = max(first, index)
-            if let span = SessionDetailRules.transcriptSpan(starts: starts, from: lo, to: hi, duration: vm.duration) {
-                vm.addCut(start: span.lowerBound, end: span.upperBound)
+            if let from = entries[lo].span, let to = entries[hi].span {
+                vm.addCut(start: from.lowerBound, end: to.upperBound)
             }
             anchor = nil
-        } else if let span = SessionDetailRules.transcriptSpan(starts: starts, from: index, duration: vm.duration) {
+        } else if let span = entries[index].span {
             vm.addCut(start: span.lowerBound, end: span.upperBound)
             anchor = index
         }

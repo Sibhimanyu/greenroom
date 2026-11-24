@@ -518,7 +518,7 @@ struct EditorTimelineView: View {
                         onSelect()
                         guard let base = laneBase else { return }
                         var delta = Double(value.translation.width) * secondsPerPoint
-                        delta = max(-base.start, min(delta, vm.duration - base.end))
+                        delta = max(-base.start, min(delta, vm.timelineDuration - base.end))
                         onChange(base.start + delta, base.end + delta)
                     }
                     .onEnded { _ in laneBase = nil }
@@ -648,7 +648,7 @@ struct EditorTimelineView: View {
                     vm.seek(to: t)
                 case .select(let anchor):
                     guard dragMoved else { return }
-                    let clamped = min(max(t, 0), vm.duration)
+                    let clamped = min(max(t, 0), vm.timelineDuration)
                     vm.selection = min(anchor, clamped)...max(anchor, clamped)
                     vm.selectedCutID = nil
                 // Handle drags scrub the picture to the frame the handle is
@@ -675,7 +675,7 @@ struct EditorTimelineView: View {
                     }
                 case .cutEdge(let id, let isLead):
                     if let cut = vm.cuts.first(where: { $0.id == id }) {
-                        let clamped = min(max(t, 0), vm.duration)
+                        let clamped = min(max(t, 0), vm.timelineDuration)
                         if isLead {
                             let start = min(clamped, cut.end - 0.15)
                             vm.setCutRange(id: id, start: start, end: cut.end)
@@ -742,9 +742,8 @@ struct EditorTimelineView: View {
             return best.kind
         }
         let anchor = time(at: startX, width: width)
-        // Selecting only applies within the main video; dragging over a merge
-        // segment just seeks.
-        return anchor < vm.duration ? .select(anchor: anchor) : .scrub
+        // Selecting works anywhere on the one timeline, across clip boundaries.
+        return .select(anchor: anchor)
     }
 
     // MARK: mapping

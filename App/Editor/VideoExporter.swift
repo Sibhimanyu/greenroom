@@ -3,16 +3,10 @@ import AVFoundation
 import Foundation
 
 struct ExportRecipe {
-    struct MergeSegment {
-        let url: URL
-        let start: Double
-        let end: Double
-    }
-
     struct OverlayAudio {
         let url: URL
         let volume: Float
-        /// Where the audio begins on the EDITED (exported) timeline, seconds.
+        /// Where the audio begins on the exported timeline, seconds.
         let start: Double
         /// The part of the audio FILE to use, seconds.
         let clipStart: Double
@@ -24,20 +18,22 @@ struct ExportRecipe {
     }
 
     /// A stretch of the EDITED timeline retimed: >1 speeds up, <1 slows down.
-    struct SpeedRange {
-        let start: Double
-        let end: Double
-        let factor: Double
-    }
+    typealias SpeedRange = EditSpeedRange
 
-    let sourceURL: URL
-    let keptRanges: [(Double, Double)]
+    /// The original (first) and every joined clip, by segment index.
+    let segmentURLs: [URL]
+    /// What is kept, in order, across all of them (trims and cuts applied).
+    let pieces: [EditSequence.Piece]
     let cropRectNormalized: CGRect?
-    let mergeSegments: [MergeSegment]
     let overlayAudio: OverlayAudio?
     var speedRanges: [SpeedRange] = []
     /// Visual effects, all times on the FINAL exported timeline.
     var effects: EditedEffects?
+
+    /// A crop, or any clip after the first, needs a transform composition.
+    var needsTransformComposition: Bool {
+        cropRectNormalized != nil || pieces.contains { $0.segmentIndex != 0 }
+    }
 }
 
 enum VideoExporter {
@@ -62,7 +58,6 @@ enum VideoExporter {
         let effects = (recipe.effects?.isEmpty ?? true) ? nil : recipe.effects
         let hevc = preset.contains("HEVC")
         let (composition, videoComposition) = try await buildComposition(recipe: recipe)
-        applySpeedRanges(recipe.speedRanges, to: composition, videoComposition: videoComposition)
         let audioMix = try await overlayAudioMix(recipe: recipe, composition: composition)
         try? FileManager.default.removeItem(at: outputURL)
 
@@ -71,8 +66,7 @@ enum VideoExporter {
         // Spectral pitch correction is expensive; only speed changes need it.
         let audioPitch: AVAudioTimePitchAlgorithm =
             recipe.speedRanges.isEmpty ? .timeDomain : .spectral
-        let needsTransformComposition = recipe.cropRectNormalized != nil
-            || !recipe.mergeSegments.isEmpty
+        let needsTransformComposition = recipe.needsTransformComposition
 
         // Single pass: either the effects handler composition, the crop/merge
         // transform composition, or no composition at all (plain cuts/trim).
@@ -117,26 +111,6 @@ enum VideoExporter {
             onProgress(0.6 + fraction * 0.4)
         }
         onProgress(1.0)
-    }
-
-    /// Compresses the given edited-timeline stretches (latest first, so
-    /// earlier ranges stay valid while scaling) and re-stretches the video
-    /// composition instruction over the new, shorter duration.
-    private static func applySpeedRanges(_ ranges: [ExportRecipe.SpeedRange],
-                                         to composition: AVMutableComposition,
-                                         videoComposition: AVMutableVideoComposition) {
-        guard !ranges.isEmpty else { return }
-        for range in ranges.sorted(by: { $0.start > $1.start }) where abs(range.factor - 1) > 0.01 {
-            let start = CMTime(seconds: range.start, preferredTimescale: 600)
-            let duration = CMTime(seconds: range.end - range.start, preferredTimescale: 600)
-            guard duration.seconds > 0.1 else { continue }
-            composition.scaleTimeRange(CMTimeRange(start: start, duration: duration),
-                                       toDuration: CMTime(seconds: duration.seconds / range.factor,
-                                                          preferredTimescale: 600))
-        }
-        if let instruction = videoComposition.instructions.first as? AVMutableVideoCompositionInstruction {
-            instruction.timeRange = CMTimeRange(start: .zero, duration: composition.duration)
-        }
     }
 
     /// Predicted output size for the chosen preset/container — shown in the
@@ -197,107 +171,16 @@ enum VideoExporter {
         return mix
     }
 
-    private static func buildComposition(recipe: ExportRecipe) async throws -> (AVMutableComposition, AVMutableVideoComposition) {
-        guard !recipe.keptRanges.isEmpty || !recipe.mergeSegments.isEmpty else {
-            throw ExportError.nothingToExport
-        }
-
-        let composition = AVMutableComposition()
-        guard let compVideo = composition.addMutableTrack(withMediaType: .video, preferredTrackID: kCMPersistentTrackID_Invalid),
-              let compAudio = composition.addMutableTrack(withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid) else {
-            throw ExportError.sessionFailed
-        }
-
-        // ---- main clip
-        let mainAsset = AVURLAsset(url: recipe.sourceURL)
-        guard let mainVideoTrack = try await mainAsset.loadTracks(withMediaType: .video).first else {
-            throw ExportError.noVideoTrack(recipe.sourceURL.lastPathComponent)
-        }
-        let mainAudioTrack = try await mainAsset.loadTracks(withMediaType: .audio).first
-        let (mainNaturalSize, mainTransform) = try await mainVideoTrack.load(.naturalSize, .preferredTransform)
-        let orientedMain = mainNaturalSize.applying(mainTransform)
-        let mainSize = CGSize(width: abs(orientedMain.width), height: abs(orientedMain.height))
-
-        var cursor = CMTime.zero
-        for (start, end) in recipe.keptRanges {
-            let range = CMTimeRange(
-                start: CMTime(seconds: start, preferredTimescale: 600),
-                duration: CMTime(seconds: end - start, preferredTimescale: 600))
-            try compVideo.insertTimeRange(range, of: mainVideoTrack, at: cursor)
-            if let mainAudioTrack {
-                try compAudio.insertTimeRange(range, of: mainAudioTrack, at: cursor)
-            } else {
-                compAudio.insertEmptyTimeRange(CMTimeRange(start: cursor, duration: range.duration))
-            }
-            cursor = CMTimeAdd(cursor, range.duration)
-        }
-        let mainEnd = cursor
-
-        // ---- render size (crop applies to the main clip's coordinates)
-        var renderSize = mainSize
-        var cropOriginPixels = CGPoint.zero
-        if let crop = recipe.cropRectNormalized {
-            cropOriginPixels = CGPoint(x: (crop.origin.x * mainSize.width).rounded(),
-                                       y: (crop.origin.y * mainSize.height).rounded())
-            renderSize = CGSize(width: (crop.width * mainSize.width).rounded(),
-                                height: (crop.height * mainSize.height).rounded())
-        }
-        renderSize.width -= renderSize.width.truncatingRemainder(dividingBy: 2)
-        renderSize.height -= renderSize.height.truncatingRemainder(dividingBy: 2)
-        guard renderSize.width >= 16, renderSize.height >= 16 else {
-            throw ExportError.nothingToExport
-        }
-
-        let layerInstruction = AVMutableVideoCompositionLayerInstruction(assetTrack: compVideo)
-        let mainFinalTransform = mainTransform.concatenating(
-            CGAffineTransform(translationX: -cropOriginPixels.x, y: -cropOriginPixels.y))
-        layerInstruction.setTransform(mainFinalTransform, at: .zero)
-
-        // ---- merge clips appended after the main clip (each clip's own trim
-        // range only), scaled to fit
-        for segment in recipe.mergeSegments {
-            let asset = AVURLAsset(url: segment.url)
-            guard let videoTrack = try await asset.loadTracks(withMediaType: .video).first else {
-                throw ExportError.noVideoTrack(segment.url.lastPathComponent)
-            }
-            let audioTrack = try await asset.loadTracks(withMediaType: .audio).first
-            let assetDuration = try await asset.load(.duration)
-            let (naturalSize, transform) = try await videoTrack.load(.naturalSize, .preferredTransform)
-            let oriented = naturalSize.applying(transform)
-            let size = CGSize(width: abs(oriented.width), height: abs(oriented.height))
-
-            let start = CMTime(seconds: max(0, segment.start), preferredTimescale: 600)
-            let requested = CMTime(seconds: max(0.05, segment.end - segment.start), preferredTimescale: 600)
-            let range = CMTimeRange(start: start, duration: CMTimeMinimum(requested, CMTimeSubtract(assetDuration, start)))
-            try compVideo.insertTimeRange(range, of: videoTrack, at: cursor)
-            if let audioTrack {
-                try compAudio.insertTimeRange(range, of: audioTrack, at: cursor)
-            } else {
-                compAudio.insertEmptyTimeRange(CMTimeRange(start: cursor, duration: range.duration))
-            }
-
-            let scale = min(renderSize.width / size.width, renderSize.height / size.height)
-            let tx = (renderSize.width - size.width * scale) / 2
-            let ty = (renderSize.height - size.height * scale) / 2
-            let clipTransform = transform
-                .concatenating(CGAffineTransform(scaleX: scale, y: scale))
-                .concatenating(CGAffineTransform(translationX: tx, y: ty))
-            layerInstruction.setTransform(clipTransform, at: cursor)
-
-            cursor = CMTimeAdd(cursor, range.duration)
-        }
-        _ = mainEnd
-
-        let instruction = AVMutableVideoCompositionInstruction()
-        instruction.timeRange = CMTimeRange(start: .zero, duration: cursor)
-        instruction.layerInstructions = [layerInstruction]
-
-        let videoComposition = AVMutableVideoComposition()
-        videoComposition.renderSize = renderSize
-        videoComposition.frameDuration = CMTime(value: 1, timescale: 60)
-        videoComposition.instructions = [instruction]
-
-        return (composition, videoComposition)
+    /// The whole edit as one composition (kept pieces of every segment, speed
+    /// baked in) and the layer-instruction composition that places each clip.
+    private static func buildComposition(recipe: ExportRecipe) async throws
+        -> (AVMutableComposition, AVMutableVideoComposition) {
+        let built = try await EditComposition.build(urls: recipe.segmentURLs, pieces: recipe.pieces,
+                                                    speed: recipe.speedRanges)
+        guard let videoComposition = EditComposition.videoComposition(for: built,
+                                                                      crop: recipe.cropRectNormalized)
+        else { throw ExportError.nothingToExport }
+        return (built.composition, videoComposition)
     }
 }
 

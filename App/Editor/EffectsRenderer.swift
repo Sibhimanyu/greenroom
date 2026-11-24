@@ -128,30 +128,43 @@ enum EffectsRenderer {
         return composition
     }
 
-    /// Live-preview twin of `handlerComposition`: the player item plays the
-    /// SOURCE (cuts skipped and speed applied live), so `compositionTime` is
-    /// source time and `timeMap` converts it to the final timeline the
-    /// effects were built on. `cropPixels` (CoreImage space, bottom-left
-    /// origin) is cut out first, like the export's transform pass.
+    /// Live-preview twin of `handlerComposition`. The preview item is the
+    /// combined composition of every file whole, so `compositionTime` is
+    /// TIMELINE time and `timeMap` converts it to the final timeline the
+    /// effects were built on (nil inside a cut). This handler also does the
+    /// geometry the export's transform pass does: each clip is scaled to fit
+    /// the first clip's canvas and centred, then the crop is cut out.
+    /// (Assumes unrotated clips, as recordings are.)
     static func previewComposition(for asset: AVAsset, effects: EditedEffects,
-                                   renderSize: CGSize, cropPixels: CGRect?,
+                                   geometry: EditComposition.Geometry,
+                                   infos: [EditComposition.SegmentInfo],
+                                   placements: [EditComposition.Placement],
                                    timeMap: @escaping @Sendable (Double) -> Double?)
         -> AVMutableVideoComposition {
-        let compositor = Compositor(effects: effects, size: renderSize)
+        let compositor = Compositor(effects: effects, size: geometry.renderSize)
+        let rect = CGRect(origin: .zero, size: geometry.renderSize)
+        let black = CIImage(color: .black).cropped(to: rect)
         let composition = AVMutableVideoComposition(asset: asset) { request in
+            let t = request.compositionTime.seconds
+            let index = EditComposition.Built.segmentIndex(at: t, in: placements)
+            let source = infos.indices.contains(index) ? infos[index].size : geometry.canvas
+            let f = EditSequence.fit(source: source, canvas: geometry.canvas)
+            // CoreImage is bottom-left origin; the canvas maths is top-left.
+            let bottom = geometry.canvas.height - f.ty - source.height * f.scale
+            let cropBottom = geometry.canvas.height - geometry.cropOrigin.y - geometry.renderSize.height
             var image = request.sourceImage
-            if let cropPixels {
-                image = image.cropped(to: cropPixels)
-                    .transformed(by: CGAffineTransform(translationX: -cropPixels.minX,
-                                                       y: -cropPixels.minY))
-            }
+                .transformed(by: CGAffineTransform(scaleX: f.scale, y: f.scale))
+                .transformed(by: CGAffineTransform(translationX: f.tx - geometry.cropOrigin.x,
+                                                   y: bottom - cropBottom))
+                .composited(over: black)
+                .cropped(to: rect)
             // A frame inside a cut (momentary, while seeking) stays plain.
-            if let finalT = timeMap(request.compositionTime.seconds) {
+            if let finalT = timeMap(t) {
                 image = compositor.compose(image, at: finalT)
             }
             request.finish(with: image, context: nil)
         }
-        composition.renderSize = renderSize
+        composition.renderSize = geometry.renderSize
         return composition
     }
 

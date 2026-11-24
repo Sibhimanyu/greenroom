@@ -3,8 +3,8 @@ import Foundation
 /// Pure timeline arithmetic for the editor's bar: which clip a timeline time
 /// falls in, and how many filmstrip tiles a stretch of the bar gets. The bar
 /// lays the main video first and the joined clips after it, each at its FULL
-/// duration (trim only shades it); speed changes are dropped while clips are
-/// joined, so nothing here needs a speed factor.
+/// duration (trim only shades it). The same layout is the editor's stored
+/// timeline domain (`EditSequence`).
 enum TimelineClipMap {
 
     struct Location: Equatable {

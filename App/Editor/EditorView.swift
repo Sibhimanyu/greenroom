@@ -1042,7 +1042,7 @@ struct SpeedPopover: View {
                 Spacer()
                 Text("8×").font(.caption2).foregroundStyle(.secondary)
             }
-            if vm.mergeClips.isEmpty {
+            do {
                 let span = vm.toolSpan(defaultLength: 10)
                 Text(vm.selection == nil
                      ? "From the playhead, \(TimeFormatting.clock(span.0)) to \(TimeFormatting.clock(span.1)). Select a stretch first to choose your own."
@@ -1068,11 +1068,6 @@ struct SpeedPopover: View {
                 }
                 Text("Below 1× is slow motion. The saved video is shortened or stretched to match.")
                     .font(.caption2)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            } else {
-                Text("Speed can't be combined with extra clips. Take the extra clips out first.")
-                    .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }

@@ -134,6 +134,11 @@ struct HomeTileChoiceRow: View {
                         Text(choice.title)
                             .font(.system(size: 11, weight: choice.selected ? .semibold : .regular))
                             .foregroundStyle(choice.selected ? .primary : .secondary)
+                            // One line, always: the selected label's bolder
+                            // weight wrapped "Whole screen" to two lines and
+                            // made that tile taller than the rest (owner, 2026-11-24).
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.75)
                     }
                     .padding(.vertical, 6)
                     .frame(width: tileWidth)

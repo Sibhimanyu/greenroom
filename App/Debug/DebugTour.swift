@@ -170,6 +170,7 @@ enum DebugTour {
                 case "status": extra = status(info)
                 case "resetMeetingTip": MeetingShrinkTip.reset()
                 case "tree": tree(dir: dir)
+                case "scroll": try scroll(info)
                 case "live": extra = try live(info)
                 case "probe": extra = probe()
                 default: throw TourError("unknown cmd \(cmd)")
@@ -404,6 +405,21 @@ enum DebugTour {
         f.origin.y += f.height - CGFloat(height)    // keep the top edge
         f.size = NSSize(width: width, height: height)
         w.setFrame(f, display: true, animate: false)
+    }
+
+    /// `scroll y=<points>`: scrolls the biggest NSScrollView of the topmost visible
+    /// non-main window (the Settings page) to y points from its top. No events.
+    private static func scroll(_ info: [String: String]) throws {
+        guard let y = info["y"].flatMap(Double.init) else { throw TourError("y required") }
+        func scrollViews(_ v: NSView) -> [NSScrollView] {
+            ((v as? NSScrollView).map { [$0] } ?? []) + v.subviews.flatMap(scrollViews)
+        }
+        let candidates = NSApp.windows.filter { $0.isVisible && !MainWindow.matches($0) }
+            .compactMap { $0.contentView }.flatMap(scrollViews)
+        guard let sv = candidates.max(by: { $0.frame.width * $0.frame.height < $1.frame.width * $1.frame.height }),
+              let clip = Optional(sv.contentView) else { throw TourError("no scroll view") }
+        clip.scroll(to: NSPoint(x: 0, y: clip.documentRect.minY + CGFloat(y)))
+        sv.reflectScrolledClipView(clip)
     }
 
     /// Writes the main window's NSView tree (class and frame) to <dir>/tree.txt.

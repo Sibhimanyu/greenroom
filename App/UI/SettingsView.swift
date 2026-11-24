@@ -9,6 +9,7 @@
 //  .environmentObject in GreenroomApp.swift), so changes take effect
 //  immediately.
 //
+import AppKit
 import CoreGraphics
 import SwiftUI
 import UniformTypeIdentifiers
@@ -105,6 +106,7 @@ struct SettingsView: View {
         }
         .frame(width: 760, height: Self.height(for: tab))
         .settingsTopEdge()
+        .background(SettingsContentClip())
         .animation(.snappy(duration: 0.25), value: tab)
         // ⌘1...⌘8 pick a tab, as in every macOS Settings window. The buttons
         // live in this view, so the shortcuts exist only while Settings is key.
@@ -145,8 +147,36 @@ extension View {
         }
     }
 
-    /// One Settings tab: the shared `pageScrollClip` (PageChrome.swift).
+    /// One Settings tab: the hard top scroll edge; the cut itself is `SettingsContentClip`.
     func settingsPageClip() -> some View {
-        pageScrollClip()
+        pageScrollEdge()
     }
+}
+
+/// Cuts the Settings window's whole content view at the bottom edge of the
+/// toolbar (the tab row). A page's ScrollView is laid out under the transparent
+/// title bar, so a SwiftUI mask on the page never held once it scrolled (the
+/// page's own frame sits where the safe area says, but its scroll content
+/// still draws above it). The toolbar is a sibling of the content view, not
+/// inside it, so masking the content view to `contentLayoutRect` hides only
+/// scrolled-up content; the frost behind it stays. Paints nothing, takes no clicks.
+private struct SettingsContentClip: NSViewRepresentable {
+    final class Probe: NSView {
+        private let maskLayer = CALayer()
+        override func hitTest(_ point: NSPoint) -> NSView? { nil }
+        override func viewDidMoveToWindow() { super.viewDidMoveToWindow(); apply() }
+        override func layout() { super.layout(); apply() }
+
+        func apply() {
+            guard let content = window?.contentView else { return }
+            content.wantsLayer = true
+            let rect = content.convert(window?.contentLayoutRect ?? .zero, from: nil)
+            maskLayer.backgroundColor = NSColor.black.cgColor
+            maskLayer.frame = rect
+            if content.layer?.mask !== maskLayer { content.layer?.mask = maskLayer }
+        }
+    }
+
+    func makeNSView(context: Context) -> Probe { Probe() }
+    func updateNSView(_ probe: Probe, context: Context) { probe.apply() }
 }

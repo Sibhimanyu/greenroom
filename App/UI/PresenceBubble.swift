@@ -12,8 +12,14 @@
 //     presenter put it (as StageLayout fractions, via PresenceGeometry).
 //   - It is kept out of every capture. StageScreenSource excludes the whole
 //     app and lets back in only the windows ShareVisibleWindows lists; this
-//     panel is never registered there. `sharingType = .none` is the belt for
-//     captures that are not ours (a native Zoom share, other recorders).
+//     panel is never registered there. Whether OTHER apps' captures (QuickTime,
+//     Loom, OBS, a native Zoom share) see it is `sharingType`, set from
+//     Settings -> Webcam -> "Show my camera bubble in other apps' recordings"
+//     (PresenceRecorderRules): `.readOnly` by default, `.none` when off. Those
+//     apps do not read our filter, so they need the bubble to be a real picture:
+//     unmirrored, sharp at its on-screen pixel size, and with its hover chrome
+//     shown only while it is being grabbed. Greenroom's own picture never has
+//     the bubble twice: the filter keeps it out whatever sharingType says.
 //   - The picture it shows is the compositor's own camera picture (effects and
 //     cutout applied), handed over per frame; it opens no camera session.
 //
@@ -36,12 +42,22 @@ final class PresenceFeed: @unchecked Sendable {
     /// Everyone in the meeting and the recording get the unmirrored picture
     /// whatever this says. Read per frame, so flipping it shows at once.
     static let mirrorKey = "camera.mirrorSelfView"
-    static var mirrorsSelfView: Bool {
+    static var userMirrors: Bool {
         (UserDefaults.standard.object(forKey: mirrorKey) as? Bool) ?? true
+    }
+    /// What is really drawn: never mirrored while other apps can record the bubble.
+    static var mirrorsSelfView: Bool {
+        PresenceRecorderRules.effectiveMirror(userMirror: userMirrors,
+                                              visibleToRecorders: PresenceRecorderRules.storedVisibleToRecorders)
+    }
+    /// Pixel width cap of the shown picture (PresenceRecorderRules.feedWidth).
+    var maxWidth: CGFloat {
+        get { lock.withLock { _maxWidth } }
+        set { lock.withLock { _maxWidth = max(newValue, 1) } }
     }
 
     private let framesPerSecond = 30.0
-    private let maxWidth: CGFloat = 640
+    private var _maxWidth: CGFloat = PresenceRecorderRules.cheapFeedWidth
     private let queue = DispatchQueue(label: "greenroom.presence.feed", qos: .utility)
     private let context = CIContext(options: [.cacheIntermediates: false])
     private let lock = NSLock()
@@ -56,6 +72,7 @@ final class PresenceFeed: @unchecked Sendable {
         let due = !busy && Double(now &- lastTaken) / 1e9 >= 1 / framesPerSecond
         if due { busy = true; lastTaken = now }
         let square = _square
+        let maxWidth = _maxWidth
         lock.unlock()
         guard due else { return }
         queue.async { [self] in
@@ -217,6 +234,9 @@ final class PresenceBubble {
     private var settleItem: DispatchWorkItem?
     private var settlePending = false
     private var pointerMonitor: Any?
+    private var fadeItem: DispatchWorkItem?
+    private var appliedVisible: Bool?
+    private var defaultsObserver: NSObjectProtocol?
 
     var isVisible: Bool { panel?.isVisible ?? false }
 
@@ -427,6 +447,29 @@ final class PresenceBubble {
         }
     }
 
+    // MARK: Visible to other apps' recordings
+
+    private static func sharingType() -> NSWindow.SharingType {
+        PresenceRecorderRules.sharing(visibleToRecorders: PresenceRecorderRules.storedVisibleToRecorders) == .readOnly
+            ? .readOnly : .none
+    }
+
+    private var visibleToRecorders: Bool { PresenceRecorderRules.storedVisibleToRecorders }
+
+    /// Applies the setting to the panel and the feed; called on every change.
+    private func applyRecorderSetting() {
+        guard let panel else { return }
+        let visible = visibleToRecorders
+        guard visible != appliedVisible else { return }
+        appliedVisible = visible
+        panel.sharingType = Self.sharingType()
+        feed.maxWidth = PresenceRecorderRules.feedWidth(
+            visibleToRecorders: visible, bubbleWidthPoints: panel.frame.width,
+            backingScale: panel.backingScaleFactor)
+        if !visible || !interacting { fadeItem?.cancel(); setAffordance(visible: PresenceRecorderRules.showsChrome(
+            visibleToRecorders: visible, hovering: hoverBubble, interacting: interacting)) }
+    }
+
     // MARK: Panel
 
     /// A circle is square; everything else follows the camera.
@@ -450,9 +493,9 @@ final class PresenceBubble {
         created.hidesOnDeactivate = false
         created.allowsToolTipsWhenApplicationIsInactive = true
         created.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
-        // Never in any capture but our own compositor, which does not read this
-        // window at all (see the file header).
-        created.sharingType = .none
+        // Other apps' recordings see it unless the setting is off. Our own
+        // capture never does (the filter excludes the app; file header).
+        created.sharingType = Self.sharingType()
 
         let container = NSView(frame: created.contentRect(forFrameRect: created.frame))
         container.wantsLayer = true
@@ -505,10 +548,13 @@ final class PresenceBubble {
             guard let self else { return }
             if begin {
                 interacting = true
+                fadeItem?.cancel()
+                if visibleToRecorders { setAffordance(visible: true) }
                 updateHitBand()
                 hideStrip(animated: false)
             } else {
                 interacting = false
+                if visibleToRecorders { fadeChromeAfterInteraction() }
                 updateHitBand()
                 report(final: true)
                 if let geometry { show(layout: layout, geometry: geometry) }
@@ -520,7 +566,9 @@ final class PresenceBubble {
             hoverBubble = inside
             updateStrip()
             // The accent outline and handles say "grab me"; idle stays clean.
-            setAffordance(visible: inside)
+            // Visible to recorders: not on hover (they would record it).
+            setAffordance(visible: PresenceRecorderRules.showsChrome(
+                visibleToRecorders: visibleToRecorders, hovering: inside, interacting: interacting))
         }
         container.addSubview(interaction)
         created.contentView = container
@@ -553,7 +601,12 @@ final class PresenceBubble {
                 if !self.interacting { self.report(final: true) }
             }
         })
+        defaultsObserver = NotificationCenter.default.addObserver(
+            forName: UserDefaults.didChangeNotification, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.applyRecorderSetting() }
+        }
         panel = created
+        applyRecorderSetting()
         return created
     }
 
@@ -563,6 +616,10 @@ final class PresenceBubble {
         clip.frame = bounds
         CATransaction.commit()
         updateClipCorners()
+        // Sharp at the real on-screen size while recorders can see it.
+        feed.maxWidth = PresenceRecorderRules.feedWidth(
+            visibleToRecorders: visibleToRecorders, bubbleWidthPoints: bounds.width,
+            backingScale: panel.backingScaleFactor)
     }
 
     private static let hitAlpha: CGFloat = 0.02
@@ -577,6 +634,19 @@ final class PresenceBubble {
             handle.backgroundColor = NSColor.controlBackgroundColor.cgColor
         }
         CATransaction.commit()
+    }
+
+    /// Recorded bubble: the chrome lingers for the fade after the pointer lets
+    /// go (unless it is still hovering a visible-to-nobody bubble), then goes.
+    private func fadeChromeAfterInteraction() {
+        fadeItem?.cancel()
+        let item = DispatchWorkItem { [weak self] in
+            guard let self else { return }
+            setAffordance(visible: PresenceRecorderRules.showsChrome(
+                visibleToRecorders: visibleToRecorders, hovering: hoverBubble, interacting: interacting))
+        }
+        fadeItem = item
+        DispatchQueue.main.asyncAfter(deadline: .now() + PresenceRecorderRules.chromeFade, execute: item)
     }
 
     private func setAffordance(visible: Bool) {

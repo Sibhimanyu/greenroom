@@ -217,6 +217,7 @@ struct WebcamPageContent<LivePicture: View, ShareDetail: View, Cameras: View, Mi
             Section("Camera") {
                 cameras()
                 MirrorMyCameraRow()
+                VisibleToRecordersRow()
             }
             Section("Microphone") { microphone() }
             Section("Recording") { recording() }
@@ -781,14 +782,33 @@ struct ShapeGlyph: View {
 
 /// "Mirror my camera": only the presenter's own camera bubble follows it.
 /// The picture in the meeting, the recording and the previews on this page
-/// and on Home (all the composite) are never mirrored.
+/// and on Home (all the composite) are never mirrored. Off (and greyed) while
+/// other apps can record the bubble: they would capture a reversed picture.
 private struct MirrorMyCameraRow: View {
     @AppStorage(PresenceFeed.mirrorKey) private var mirror = true
+    @AppStorage(PresenceRecorderRules.key) private var visibleToRecorders = true
 
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
             Toggle("Mirror my camera", isOn: $mirror)
-            Text("Only you see yourself mirrored. Everyone in the meeting and the recording see the true picture.")
+                .disabled(!PresenceRecorderRules.mirrorSettingEnabled(visibleToRecorders: visibleToRecorders))
+            Text(visibleToRecorders
+                 ? PresenceRecorderRules.mirrorDisabledNote
+                 : "Only you see yourself mirrored. Everyone in the meeting and the recording see the true picture.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+}
+
+/// "Show my camera bubble in other apps' recordings" (PresenceRecorderRules).
+private struct VisibleToRecordersRow: View {
+    @AppStorage(PresenceRecorderRules.key) private var visible = true
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Toggle("Show my camera bubble in other apps\u{2019} recordings", isOn: $visible)
+            Text(PresenceRecorderRules.settingNote)
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }

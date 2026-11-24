@@ -78,7 +78,7 @@ Record is `MeetingMode.record` (enum in CoordinatorController.swift; Create / Sc
 | UI/MeetingControls.swift | Floating Control bar (pill/puck) panel + `MeetingControlsModel`. First installed when the meeting is live (never during start; its Starting state / `finishStarting` is now dormant) | `MeetingControlBarController`, `MeetingControlBarRoot` |
 | UI/MeetingBarModel.swift, MeetingBarContent.swift | Pure bar cell rules; cell views | `MeetingBarModel`, `MeetingBarLayout`, `MeetingBarContent` |
 | UI/RecordingChrome.swift | Record-only bar + border while recording | `RecordingChrome`, `RecordingControlBarController`, `RecordingBorderController` |
-| UI/PresenceBubble.swift, PresenceBubbleInteractionView.swift | Floating camera bubble that drives the picture | `PresenceBubble`, `PresenceFeed`, `PresenceQuickModel` |
+| UI/PresenceBubble.swift, PresenceBubbleInteractionView.swift | Floating camera bubble that drives the picture | `PresenceBubble`, `PresenceFeed`, `PresenceQuickModel`; panel `sharingType` follows Settings -> Webcam "Show my camera bubble in other apps' recordings"; Mirror my camera is greyed while that is on (WebcamPage, HomeCameraPanel) |
 | UI/OnboardingView.swift, OnboardingWindow.swift, OnboardingPlacement.swift | Setup guide: own window, 7 pages | `OnboardingView`, `OnboardingWindowController.shared` |
 | UI/ChatWindow.swift (+ChatGrouping, ChatMessageRow, ChatMessageField) | Chat window | `ChatWindowController`, `ChatWindowView`, `ChatGrouping` |
 | UI/WhiteboardViews.swift, AnnotationToolbar.swift | Whiteboard/annotation (Recorditor port) | `WhiteboardWindowController`, `AnnotationToolbarView` |
@@ -126,7 +126,7 @@ Record is `MeetingMode.record` (enum in CoordinatorController.swift; Create / Sc
 - Show a toast / ask an upload question -> `ToastController.show`, `UploadPromptCard.show`.
 - Change the floating bar's cells/widths -> `MeetingBarModel.swift` (`IconCell`, `MeetingBarLayout`), `MeetingBarContent`, panel/morph in `MeetingControlBarController` (MeetingControls.swift); placement maths App/MeetingBarPlacement.swift.
 - Change the Present/Share menu -> `PresentMenuSpec.swift` (data), `PresentMenuLive.swift` (wiring), `MeetingMenus.ShareMenuState` in MeetingMenuSpec.swift.
-- Change the camera bubble -> `PresenceBubble` (panel, strip, handles), `PresenceBubbleInteractionView` (resize/cursor), model `PresenceQuickModel`; geometry `PresenceGeometry` (Tests/PresenceGeometryTests).
+- Change the camera bubble -> `PresenceBubble` (panel, strip, handles), `PresenceBubbleInteractionView` (resize/cursor), model `PresenceQuickModel`; whether other apps' recordings capture it (`sharingType`), its mirror, feed size and chrome -> `PresenceRecorderRules` (Tests/PresenceRecorderRulesTests; Greenroom's own capture excludes it by filter regardless, see stage.md); geometry `PresenceGeometry` (Tests/PresenceGeometryTests).
 - Change recording countdown/border/control bar -> `RecordingChrome.swift`; countdown is island (`NotchStatusController.setCountdown`).
 - Edit a layout editor behaviour -> `LayoutCanvas` (drag/resize), `LayoutAddPanel`, `LayoutAppOrdering`, `LayoutSettingsTab.LayoutPageContent`; layout model in App/Layout/.
 - Change the Sign in with Zoom block or the advanced fold -> `ZoomSignInSection.swift` (`live(_:)` feeds it from the coordinator); the Zoom step of the setup guide is `OnboardingView.credentialsStep`.

@@ -6,6 +6,7 @@
 Greenroom.xcodeproj/
 xcuserdata/
 DerivedData/
+.dd/
 build/
 
 # Proprietary Zoom Meeting SDK (~600 MB) - not redistributable; download

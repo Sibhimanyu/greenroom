@@ -293,6 +293,7 @@ targets:
       - path: App/Stage/MainPersonSelector.swift
       - path: App/Stage/PresenceGeometry.swift
       - path: App/Stage/PresenceVisibility.swift
+      - path: App/Stage/PresenceRecorderRules.swift
       - path: App/Stage/ScreenRecovery.swift
       - path: App/Stage/CameraAimRules.swift
       - path: App/UI/WindowFrameRules.swift

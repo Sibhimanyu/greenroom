@@ -256,6 +256,9 @@ struct SessionsLayout<CardMenu: View>: View {
             Button("Move to Trash\u{2026}", role: .destructive) {
                 onTrashMany(marked.ordered(order))
             }
+            // Finder's key for Move to Trash; it still asks first.
+            .keyboardShortcut(.delete, modifiers: .command)
+            .help("Move to Trash (\u{2318}\u{232B})")
             Button("Deselect") { marked.clear() }
         }
         .greenroomGlassButton()

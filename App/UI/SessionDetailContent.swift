@@ -625,6 +625,9 @@ struct SessionAnalyseButton: View {
                 .help("Open the report on how this meeting went")
             }
         }
+        // The toolbar's glass capsule hugs a label tightly; give the glyph and
+        // the words room from its ends (owner, 2026-11-24).
+        .padding(.horizontal, 6)
         // One anchor that outlives the button's state changes (Report ->
         // progress), so Start never dismisses the popover it was pressed in.
         // A background adds nothing to the toolbar item's width.

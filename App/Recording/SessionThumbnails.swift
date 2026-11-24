@@ -25,26 +25,36 @@ final class SessionThumbnails: ObservableObject {
 
     @Published private(set) var images: [URL: NSImage] = [:]
     @Published private(set) var durations: [URL: Double] = [:]
-    private var pending: Set<URL> = []
+    /// What each URL was asked for: its size and date then. A file asked for
+    /// while it was still being written (an export finishing) read as nothing,
+    /// and was never asked again, so the edit showed no picture or length
+    /// (owner, 2026-11-24). A changed file is asked again.
+    private var asked: [URL: String] = [:]
+
+    private static func signature(_ url: URL) -> String {
+        let values = try? url.resourceValues(forKeys: [.contentModificationDateKey, .fileSizeKey])
+        return "\(values?.fileSize ?? -1)|\(values?.contentModificationDate?.timeIntervalSince1970 ?? 0)"
+    }
 
     /// The picture for a recording, asking for it if it is not known yet.
     /// Nil until it arrives, and forever for a file nothing can decode - the
     /// card draws its kind's glyph instead.
     func image(for url: URL) -> NSImage? {
-        if let image = images[url] { return image }
+        if let image = images[url], asked[url] == Self.signature(url) { return image }
         request(url)
-        return nil
+        return images[url]
     }
 
     func duration(for url: URL) -> Double? {
-        if let duration = durations[url] { return duration }
+        if let duration = durations[url], duration > 0 || asked[url] == Self.signature(url) { return duration }
         request(url)
-        return nil
+        return durations[url].flatMap { $0 > 0 ? $0 : nil }
     }
 
     private func request(_ url: URL) {
-        guard !pending.contains(url) else { return }
-        pending.insert(url)
+        let signature = Self.signature(url)
+        guard asked[url] != signature else { return }
+        asked[url] = signature
         Task.detached(priority: .utility) {
             let made = await Self.make(url)
             await MainActor.run {

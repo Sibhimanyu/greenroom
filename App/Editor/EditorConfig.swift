@@ -58,6 +58,9 @@ enum EditorConfig {
                                  : source.deletingPathExtension().lastPathComponent
         var metadata = SessionMetadata()
         metadata.title = "\(original) \(editedSuffix)"
+        // The edit is the same kind of session: a Recording stays a Recording
+        // (it showed as "Meeting" when kind was left out, owner 2026-11-24).
+        if inSession { metadata.kind = SessionMetadata.load(in: parent).kind }
         metadata.save(in: folder)
     }
 }

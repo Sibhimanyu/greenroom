@@ -354,6 +354,7 @@ targets:
       - path: App/UI/MeetingBarModel.swift
       - path: App/UI/PresentMenuSpec.swift
       - path: App/UI/PreviewOutlineRules.swift
+      - path: App/UI/PreviewSecondDisplayRules.swift
       - path: App/UI/ChatGrouping.swift
       - path: App/Zoom/NewMeetingRequest.swift
       - path: App/Zoom/ZoomScopes.swift

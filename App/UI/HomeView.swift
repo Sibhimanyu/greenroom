@@ -301,6 +301,16 @@ struct HomeView: View {
         }
     }
 
+    /// Set when the layout in effect (the same resolver Start uses, against
+    /// the displays connected now) has pieces on a second display.
+    private var secondDisplayNote: String? {
+        guard let template = coordinator.layoutLibrary.active, template.twoDisplays != nil else { return nil }
+        let result = LayoutResolver.resolve(
+            template, screens: LayoutEngine.connectedScreens(),
+            primaryHeight: DisplayResolver.mainDisplayScreen()?.frame.height ?? 0)
+        return PreviewSecondDisplayRules.note(for: result)
+    }
+
     /// Green outlines over the screen in the picture, where each window goes.
     @ViewBuilder private var layoutOverlay: some View {
         if liveFrameReady, let screen = sharedScreen {
@@ -343,6 +353,21 @@ struct HomeView: View {
                 // compositor's own camera alpha (your cutout, the bubble) is
                 // cut out of them, frame by frame.
                 .mask { CameraOpenMask(feed: coordinator.shapePreview, canvas: canvas) }
+                // The picture is one display; say so when Start would put
+                // pieces (the Meeting window) on the second one.
+                if let note = secondDisplayNote {
+                    HStack(spacing: 5) {
+                        Image(systemName: "display")
+                        Text(note).lineLimit(1)
+                    }
+                    .font(.system(size: 10.5, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 6).padding(.vertical, 3)
+                    .background(RoundedRectangle(cornerRadius: 4, style: .continuous).fill(.black.opacity(0.72)))
+                    .padding(6)
+                    .frame(width: shown.width, height: shown.height, alignment: .bottomLeading)
+                    .position(x: shown.midX, y: shown.midY)
+                }
             }
             .allowsHitTesting(false)
             .transition(.opacity)

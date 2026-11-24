@@ -41,7 +41,7 @@ jobs:
           path: 'docs'
       - name: Deploy to GitHub Pages
         id: deployment
-        uses: actions/deploy-pages@v5
+        uses: actions/deploy-pages@v4
         with:
           # The site ships a 9MB intro video; Pages takes >10min to
           # process that artifact, and the default timeout made runs

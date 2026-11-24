@@ -64,6 +64,11 @@ Read `DESIGN.md` before any visual change.
   surfaces; debug-only UI behind `#if DEBUG`; the toolbar must never overflow into "»";
   Settings controls that depend on a toggle collapse when it is off; UI text says
   "meeting"/"everyone", never "class".
+- Shortcuts never overlap another app or macOS. Global defaults use Control-Option-Command
+  (⌃⌥⌘) only. Never Option-Command + a key (⌥⌘R is Safari's Reload From Origin, ⌥⌘S Save All,
+  ⌥⌘I/J the web inspector and console) and never Option-Shift + a letter (it types characters
+  like ∏ in every app). Known clashes go in `ReservedShortcuts.entries`; `ShortcutModelTests`
+  fails if a default leaves ⌃⌥⌘ or two defaults share a key.
 - `docs/` is the public GitHub Pages site. Don't put agent notes there; scratch goes in `.context/`.
 - Keep the codemaps current: when you add, move or rename a file or change a flow, update
   the matching `codemap/*.md` in the same commit.

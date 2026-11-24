@@ -257,7 +257,7 @@ struct HomeView: View {
     }
 
     /// What of the canvas the picture shows: the shared content when there
-    /// is some, else all of it. Nothing to crop while the sketch is up.
+    /// is some, else all of it. Nothing to crop until the picture is up.
     private var previewCrop: CGRect {
         guard liveFrameReady else { return PreviewFrameRules.crop(content: nil, presenter: false) }
         return PreviewFrameRules.crop(content: coordinator.shapePreviewContent,
@@ -367,11 +367,11 @@ struct HomeView: View {
 
     private func pictureFace(size: CGSize) -> some View {
         ZStack {
-            // The drawing is always underneath, so Show live fades into
-            // the same frame it replaces rather than a blank one.
-            drawing
+            // Plain black fills the whole card in every state, so the picture
+            // fades in from it on show and out to it on hide or quit, and
+            // nothing else ever flashes between (owner, 2026-11-24).
+            Color.black
             if liveFrameReady {
-                Color.black
                 CroppedLivePicture(feed: coordinator.shapePreview, crop: previewCrop)
                 layoutOverlay
                 cameraDragLayer
@@ -437,31 +437,6 @@ struct HomeView: View {
         [coordinator.cameraIsOff ? nil : coordinator.webcamShape.label,
          LookSummary.shareText(coordinator.shareTarget)]
             .compactMap { $0 }.joined(separator: ", ")
-    }
-
-    @ViewBuilder private var drawing: some View {
-        if coordinator.shareTarget.kind == .nothing || coordinator.cameraIsOff {
-            HalfSketch(showsCamera: !coordinator.cameraIsOff)
-        } else {
-            WebcamShapePreview(shape: coordinator.webcamShape,
-                               geometry: .constant(geometry), mode: dragMode, aspect: 16.0 / 9.0)
-        }
-    }
-
-    /// The Webcam page's mapping from the coordinator's fractions: a cutout
-    /// keeps the camera's aspect and stands on the bottom edge.
-    private var geometry: BubbleDragLayer.Geometry {
-        coordinator.webcamShape == .cutout
-            ? .init(size: coordinator.cutoutHeightFraction, rightInset: coordinator.cutoutRightInset, bottomInset: 0)
-            : .init(size: coordinator.bubbleWidthFraction, rightInset: coordinator.bubbleRightInset,
-                    bottomInset: coordinator.bubbleBottomInset)
-    }
-
-    private var dragMode: BubbleDragLayer.Mode {
-        let camera = 16.0 / 9.0
-        return coordinator.webcamShape == .cutout
-            ? .cutout(aspect: camera)
-            : .bubble(aspect: coordinator.webcamShape.cropsToSquare ? 1 : camera)
     }
 
     /// A quiet glass capsule in the Ready row that grows the window to the
@@ -725,7 +700,7 @@ struct HomeView: View {
         }
         .buttonStyle(DockButtonStyle())
         .disabled(coordinator.cameraIsOff)
-        .popover(isPresented: $lookOpen, arrowEdge: .bottom) { lookPicker }
+        .greenroomPopover(isPresented: $lookOpen) { lookPicker }
         // The panel explains itself (header line, value), so no hover card.
         // To bring a tile's hover card back, add `.dockHint(DockHintContent(...))` here.
         .help(coordinator.cameraIsOff ? "Look: no camera is picked, so there is no look to choose."
@@ -761,7 +736,7 @@ struct HomeView: View {
                       warn: shareGone || problem("screen"))
         }
         .buttonStyle(DockButtonStyle())
-        .popover(isPresented: $shareOpen, arrowEdge: .bottom) {
+        .greenroomPopover(isPresented: $shareOpen) {
             HomeScreenPanel(coordinator: coordinator, displays: displays, windows: windows,
                             gone: shareGone, permissionMissing: problem("screen"), value: shareValue,
                             more: { shareOpen = false; openWebcamSettings() },
@@ -785,7 +760,7 @@ struct HomeView: View {
                       warn: warn)
         }
         .buttonStyle(DockButtonStyle())
-        .popover(isPresented: $cameraOpen, arrowEdge: .bottom) {
+        .greenroomPopover(isPresented: $cameraOpen) {
             HomeCameraPanel(coordinator: coordinator, cameras: cameras) {
                 cameraOpen = false
                 openWebcamSettings()
@@ -809,7 +784,7 @@ struct HomeView: View {
             dockLabel(symbol: "mic", value: micCaption(name), warn: problem("mic"), meter: micMeterLevel)
         }
         .buttonStyle(DockButtonStyle())
-        .popover(isPresented: $micOpen, arrowEdge: .bottom) {
+        .greenroomPopover(isPresented: $micOpen) {
             HomeMicPanel(coordinator: coordinator, microphones: microphones,
                          systemName: AVCaptureDevice.default(for: .audio)?.localizedName) {
                 micOpen = false
@@ -851,7 +826,7 @@ struct HomeView: View {
                       value: coordinator.layoutChoiceName == "None" ? "No layout" : coordinator.layoutChoiceName)
         }
         .buttonStyle(DockButtonStyle())
-        .popover(isPresented: $layoutOpen, arrowEdge: .bottom) {
+        .greenroomPopover(isPresented: $layoutOpen) {
             HomeLayoutPanel(coordinator: coordinator, more: {
                 layoutOpen = false
                 openSettings()
@@ -877,7 +852,7 @@ struct HomeView: View {
         }
         .buttonStyle(DockButtonStyle())
         .disabled(isLive)
-        .popover(isPresented: $recordOpen, arrowEdge: .bottom) {
+        .greenroomPopover(isPresented: $recordOpen) {
             HomeRecordPanel(coordinator: coordinator, isLive: isLive) {
                 recordOpen = false
                 openWebcamSettings()
@@ -895,7 +870,7 @@ struct HomeView: View {
             dockLabel(symbol: "ellipsis", value: "More")
         }
         .buttonStyle(DockButtonStyle())
-        .popover(isPresented: $moreOpen, arrowEdge: .bottom) {
+        .greenroomPopover(isPresented: $moreOpen) {
             HomeMorePanel(
                 openTab: { tab in
                     moreOpen = false

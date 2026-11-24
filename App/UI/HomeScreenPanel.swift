@@ -143,7 +143,11 @@ struct HomeScreenPanel: View {
                     }
                 }
             }
-            .frame(maxHeight: 190)
+            // A ScrollView with only a maximum collapses to zero height in a
+            // popover: "Windows" showed with nothing under it (owner,
+            // 2026-11-24). Ask for the rows' own height, capped.
+            .frame(height: min(190, CGFloat(ordered.count) * 34
+                               + CGFloat(grouped.firstOfApp.filter { $0 }.count) * 18))
         }
     }
 

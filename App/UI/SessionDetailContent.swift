@@ -629,7 +629,7 @@ struct SessionAnalyseButton: View {
         // progress), so Start never dismisses the popover it was pressed in.
         // A background adds nothing to the toolbar item's width.
         .background {
-            Color.clear.popover(isPresented: review.popoverBinding(for: .toolbar), arrowEdge: .bottom) {
+            Color.clear.greenroomPopover(isPresented: review.popoverBinding(for: .toolbar)) {
                 AnalysisRunPopover(review: review, onStart: actions.start) {
                     review.runPopoverOpen = false
                     actions.stopAnalysis()
@@ -670,7 +670,7 @@ struct TranscribeSlot: View {
             }
         }
         .background {
-            Color.clear.popover(isPresented: review.popoverBinding(for: .transcribeButton), arrowEdge: .bottom) {
+            Color.clear.greenroomPopover(isPresented: review.popoverBinding(for: .transcribeButton)) {
                 AnalysisRunPopover(review: review, onStart: actions.start) {
                     review.runPopoverOpen = false
                     actions.stopAnalysis()

@@ -624,7 +624,7 @@ struct LayoutPageContent: View {
                     }
                     .help(MeetingViewPieces.enabled ? "Add the meeting, a view of it, chat or an app" : "Add the meeting, chat or an app")
                     .accessibilityLabel("Add to layout")
-                    .popover(isPresented: $showsAddPanel, arrowEdge: .bottom) {
+                    .greenroomPopover(isPresented: $showsAddPanel) {
                         addPanel(slot: slot, template: template)
                     }
                 }

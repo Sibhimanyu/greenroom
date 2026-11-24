@@ -21,6 +21,7 @@ struct HomeLayoutPanel: View {
 
     @State private var index = 0
     @State private var keyed = false
+    @State private var gridHeight: CGFloat?
 
     private struct Choice: Identifiable {
         var id: String
@@ -99,8 +100,13 @@ struct HomeLayoutPanel: View {
                 }
             }
             .padding(1)
+            .background(GeometryReader { proxy in
+                Color.clear.onAppear { gridHeight = proxy.size.height }
+                    .onChange(of: proxy.size.height) { gridHeight = $0 }
+            })
         }
-        .frame(maxHeight: 230)
+        // Explicit height: a ScrollView with only a maximum collapses in a popover.
+        .frame(height: min(230, gridHeight ?? 230))
         .opacity(locked ? 0.6 : 1)
         .homeTileKeys(axis: .horizontal, count: rows.count, index: $index, keyed: $keyed,
                       selected: rows.firstIndex(where: isSelected), autofocus: true) { if !locked { pick($0) } }

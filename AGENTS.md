@@ -63,7 +63,8 @@ Read `DESIGN.md` before any visual change.
 - UI: tokens only (`Brand.green`, never a hardcoded green); `.greenroomGlass` on floating
   surfaces; debug-only UI behind `#if DEBUG`; the toolbar must never overflow into "»";
   Settings controls that depend on a toggle collapse when it is off; UI text says
-  "meeting"/"everyone", never "class".
+  "meeting"/"everyone", never "class"; popovers open below their button via
+  `greenroomPopover`, never a bare `.popover`.
 - Shortcuts never overlap another app or macOS. Global defaults use Control-Option-Command
   (⌃⌥⌘) only. Never Option-Command + a key (⌥⌘R is Safari's Reload From Origin, ⌥⌘S Save All,
   ⌥⌘I/J the web inspector and console) and never Option-Shift + a letter (it types characters

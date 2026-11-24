@@ -87,6 +87,7 @@ Record is `MeetingMode.record` (enum in CoordinatorController.swift; Create / Sc
 ### Shared components / tokens
 | path | owns |
 |---|---|
+| UI/GreenroomPopover.swift | `.greenroomPopover(isPresented:content:)`: the one popover. Always opens below its button; measures the room under the anchor (window frame to screen `visibleFrame.minY`, 12 pt margin) and scrolls tall content inside instead of AppKit flipping it to the side | `greenroomPopover` |
 | UI/Glass.swift | `.greenroomGlass(in:interactive:)`, `.greenroomGlassButton`, `GreenroomGlassAppKit.makeBacking/host/prepare` |
 | UI/Tiles.swift + TileAppearance.swift | `.greenroomTile(role:radius:)`, `GreenroomTileStyle`, pure `TileAppearance` |
 | UI/Segmented.swift + SegmentedMath.swift | `GreenroomSegmented` (the segmented switcher) and `GreenroomUnderlineTabs` (underline tabs, the watch page side panel only) |
@@ -106,6 +107,7 @@ Record is `MeetingMode.record` (enum in CoordinatorController.swift; Create / Sc
 - Add a Settings row -> the tab's `*PageContent` (e.g. `WebcamPageContent`, `ZoomPageContent`, `TransferPageContent`); use `SettingsKit` parts; wrap dependent controls in `Collapsible(hidden:)` with `Binding.animatedCollapse()`.
 - Change Home toolbar items -> `ContentView.body` `.toolbar { }`; then update `HomeToolbarRules` (SidebarRules.swift) widths.
 - Change the Create/Scheduled/Record switcher -> `ContentView.modeSwitcher`, `MeetingMode` in CoordinatorController.swift.
+- Popovers: always below their button, scroll when tall; use `greenroomPopover`, never a bare `.popover` (SessionDetailContent share card is the one `.top` exception: anchored to the whole page).
 - Add or change a tile popover (Look, Camera, Screen, Mic, Layout, Auto-rec, More all done) -> build it on `HomeTilePanel` (HomeTilePanels.swift), rules in `HomeTilePanelRules.swift`; once a tile has a panel, drop its `.dockHint(...)` and keep a `.help` (see `lookControl`, `cameraChip`). Hover-card art/text live in `DockHintVisual` (DockHint.swift) and each tile's `DockHintContent` in HomeView.
 - Change Home dock chips (Share/Camera/Mic/Layout) -> `HomeView.shareChip/cameraChip/micChip/layoutChip`; summary wording in `HomeCalmRules.SetupSummary`; readiness pills `HomeView.readyRow`, `ReadinessSummary`.
 - Change Start/Record button -> `HomeView.primaryButton`, `recordControl`, `recordPicker`.

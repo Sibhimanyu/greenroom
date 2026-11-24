@@ -1280,6 +1280,13 @@ struct RecordingsView: View {
         // themselves DO count: a session whose recording was deleted but whose
         // clips were kept is still a session worth having.
         let meaningful = remaining.filter { url in
+            // A session.json with no uploads or links only names the folder;
+            // keeping it left a pictureless "No recording here any more" card
+            // behind every deleted edit (owner, 2026-11-24).
+            if url.lastPathComponent == SessionMetadata.fileName {
+                let metadata = SessionMetadata.load(in: folder)
+                return !metadata.uploads.isEmpty || !metadata.links.isEmpty
+            }
             if url.lastPathComponent == "clips" {
                 let inner = (try? FileManager.default.contentsOfDirectory(
                     at: url, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles])) ?? []

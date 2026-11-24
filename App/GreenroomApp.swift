@@ -112,6 +112,8 @@ struct GreenroomApp: App {
         Heresay.configure(
             key: "pk_Bt1i6kv0DKI4Wcm-AzYdlYu2",
             url: URL(string: "https://heresay-sibhi.web.app")!,
+            // Steps: "What's going on?" rows, then the text (owner's pick, 2026-11-24).
+            style: HeresayStyle(layout: .steps),
             nudge: .all
         )
     }

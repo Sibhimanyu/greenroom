@@ -214,7 +214,10 @@ struct WebcamPageContent<LivePicture: View, ShareDetail: View, Cameras: View, Mi
                 shareDetail()
             }
 
-            Section("Camera") { cameras() }
+            Section("Camera") {
+                cameras()
+                MirrorMyCameraRow()
+            }
             Section("Microphone") { microphone() }
             Section("Recording") { recording() }
         }
@@ -771,6 +774,23 @@ struct ShapeGlyph: View {
                 .foregroundStyle(person)
                 .frame(height: h * 0.6)
                 .position(x: w * 0.78, y: h - h * 0.3)
+        }
+    }
+}
+
+
+/// "Mirror my camera": only the presenter's own camera bubble follows it.
+/// The picture in the meeting, the recording and the previews on this page
+/// and on Home (all the composite) are never mirrored.
+private struct MirrorMyCameraRow: View {
+    @AppStorage(PresenceFeed.mirrorKey) private var mirror = true
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Toggle("Mirror my camera", isOn: $mirror)
+            Text("Only you see yourself mirrored. Everyone in the meeting and the recording see the true picture.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
     }
 }

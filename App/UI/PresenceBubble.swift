@@ -31,11 +31,14 @@ final class PresenceFeed: @unchecked Sendable {
         get { lock.withLock { _square } }
         set { lock.withLock { _square = newValue } }
     }
-    /// Mirrored, like Recorditor and every self-view: the presenter sees
-    /// themselves as in a mirror. Everyone in the meeting and the recording
-    /// get the unmirrored picture (owner decision, 2026-11-17, reversed later
-    /// the same day).
-    static let mirrorsSelfView = true
+    /// Settings -> Webcam -> "Mirror my camera" (default on, like Recorditor and
+    /// Zoom's "Mirror my video"): the presenter sees themselves as in a mirror.
+    /// Everyone in the meeting and the recording get the unmirrored picture
+    /// whatever this says. Read per frame, so flipping it shows at once.
+    static let mirrorKey = "camera.mirrorSelfView"
+    static var mirrorsSelfView: Bool {
+        (UserDefaults.standard.object(forKey: mirrorKey) as? Bool) ?? true
+    }
 
     private let framesPerSecond = 30.0
     private let maxWidth: CGFloat = 640

@@ -328,16 +328,40 @@ private final class PopoverModel: ObservableObject {
 private struct PopoverRoot: View {
     @ObservedObject var model: PopoverModel
     let content: AnyView
+    @State private var fadeTop = false
+    @State private var fadeBottom = false
+    /// Room above and below the scrolling content, and the height of the edge fade.
+    private static let scrollInset: CGFloat = 8
+    private static let fadeHeight: CGFloat = 12
+
+    private var edgeFade: some View {
+        VStack(spacing: 0) {
+            LinearGradient(colors: [.black.opacity(fadeTop ? 0 : 1), .black], startPoint: .top, endPoint: .bottom)
+                .frame(height: Self.fadeHeight)
+            Rectangle()
+            LinearGradient(colors: [.black, .black.opacity(fadeBottom ? 0 : 1)], startPoint: .top, endPoint: .bottom)
+                .frame(height: Self.fadeHeight)
+        }
+        .animation(.easeOut(duration: 0.12), value: fadeTop)
+        .animation(.easeOut(duration: 0.12), value: fadeBottom)
+    }
 
     var body: some View {
         let shape = PopoverShape(arrowX: model.arrowX)
         ScrollView {
             content
                 .fixedSize()
-                .onGeometryChange(for: CGSize.self) { $0.size } action: { model.measured($0) }
+                .onGeometryChange(for: CGSize.self) { $0.size } action: {
+                    // Local size of the content: it does not change while scrolling.
+                    model.measured(CGSize(width: $0.width, height: $0.height + 2 * Self.scrollInset))
+                }
         }
+        .contentMargins(.vertical, Self.scrollInset, for: .scrollContent)
         .scrollBounceBehavior(.basedOnSize)
         .scrollContentBackground(.hidden)
+        // A half row fades out at a cut edge instead of being sliced; no fade at rest.
+        .modifier(EdgeTracking(fadeTop: $fadeTop, fadeBottom: $fadeBottom))
+        .mask(edgeFade)
         .frame(width: model.bodySize.width, height: model.bodySize.height)
         .clipShape(RoundedRectangle(cornerRadius: PopoverController.radius, style: .continuous))
         .frame(width: model.bodySize.width, height: model.bodySize.height + PopoverShape.arrowHeight, alignment: .bottom)
@@ -349,6 +373,23 @@ private struct PopoverRoot: View {
         .tint(Brand.green)
         .scaleEffect(model.appeared || model.reduceMotion ? 1 : 0.98, anchor: .top)
         .animation(model.reduceMotion ? nil : .easeOut(duration: 0.14), value: model.appeared)
+    }
+}
+
+private struct EdgeTracking: ViewModifier {
+    @Binding var fadeTop: Bool
+    @Binding var fadeBottom: Bool
+
+    func body(content: Content) -> some View {
+        if #available(macOS 15, *) {
+            content
+                .onScrollGeometryChange(for: Bool.self) { $0.contentOffset.y > 1 } action: { _, now in fadeTop = now }
+                .onScrollGeometryChange(for: Bool.self) {
+                    $0.contentSize.height - ($0.contentOffset.y + $0.containerSize.height) > 1
+                } action: { _, now in fadeBottom = now }
+        } else {
+            content
+        }
     }
 }
 

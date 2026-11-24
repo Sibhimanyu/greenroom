@@ -100,7 +100,7 @@ Chrome-family browsers, DEBUG-only UI tour/film hooks, YouTube upload, and a pla
 - Add a built-in-browser feature (tab, shortcut, omnibox) -> `App/Browser/BrowserWindow.swift` (`BrowserModel` for state, `BrowserWindowView` for UI, `BrowserWindowController` for window/key monitor); history storage -> `BrowserHistory.swift`.
 - Tile an external Chromium browser -> `App/Chrome/ChromeWindowManager.swift` (needs `NSAppleEventsUsageDescription` in `Info.plist`).
 - Change YouTube privacy/upload mode defaults -> `CoordinatorController` `youtubeUploadMode` / `youtubePrivacy` (defaults keys `youtubeUploadMode`, `youtubePrivacy`); the post-recording flow -> `CoordinatorController+YouTube.swift`; OAuth scope -> `YouTubeAuth.scope`.
-- Add a DEBUG tour command -> `App/Debug/DebugTour.swift` `handle(_:)` switch (`goto`, `appearance`, `shot`, `film`, `status`, `tree`, `live`, `popup name=`, `popupScroll y=`, `showHere`, ...). `shot` also writes `<name>-popup.png`: the open popup composited with the main window and both window shadows.
+- Add a DEBUG tour command -> `App/Debug/DebugTour.swift` `handle(_:)` switch (`goto`, `appearance`, `shot`, `film`, `status`, `tree`, `live`, `popup name=`, `popupScroll y=`, `cameraSwitch on=`, `showHere`, ...). `shot` also writes `<name>-popup.png`: the open popup composited with the main window and both window shadows.
 - Change which mic-level/whisper silence rules apply -> `App/Audio/SpeechActivity.swift`.
 - Add a camera/mic/permission entitlement -> `App/App.entitlements` plus matching `NS*UsageDescription` in `App/Info.plist`.
 

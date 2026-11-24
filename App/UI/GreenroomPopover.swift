@@ -140,6 +140,9 @@ private final class PopoverController {
     private var scroll: Scroll?
     /// The content's ideal size plus the vertical insets; zero until measured.
     private var ideal = CGSize.zero
+    /// The content's own size as SwiftUI last reported it (changes only when
+    /// the content does, never while scrolling).
+    private var reported = CGSize.zero
     private var measurePending = false
     private var monitors: [Any] = []
     private var observers: [(center: NotificationCenter, token: NSObjectProtocol)] = []
@@ -157,15 +160,15 @@ private final class PopoverController {
         return dismissedAnchor === view && Date().timeIntervalSince(dismissedAt) < 0.5
     }
 
-    private static func root(_ content: AnyView) -> AnyView {
-        AnyView(PopoverRoot(content: content))
+    private func root(_ content: AnyView) -> AnyView {
+        AnyView(PopoverRoot(content: content) { [weak self] size in self?.contentSized(size) })
     }
 
     // MARK: Present, update, dismiss
 
     func present(anchor view: AnchorView, content: AnyView) {
         if anchor === view, panel != nil {
-            host?.rootView = Self.root(content)
+            host?.rootView = root(content)
             return
         }
         guard let window = view.window, view.bounds.width > 0 else { return }
@@ -180,8 +183,9 @@ private final class PopoverController {
         anchorWindow = window
         shown = false
         ideal = .zero
+        reported = .zero
 
-        let host = Host(rootView: Self.root(content))
+        let host = Host(rootView: root(content))
         // The hosting view never sizes the window or itself: `measure()` and
         // `layout()` do, so the scroll view knows what does not fit.
         host.sizingOptions = [.intrinsicContentSize]
@@ -293,9 +297,18 @@ private final class PopoverController {
         }
     }
 
+    /// SwiftUI reported the content's natural size (PopoverRoot).
+    private func contentSized(_ size: CGSize) {
+        guard size.width > 0, size.height > 0 else { return }
+        reported = size
+        scheduleMeasure()
+    }
+
     private func measure() {
         guard let host else { return }
-        let fit = host.fittingSize
+        // The reported size first: `fittingSize` can answer with the host's
+        // current frame once it has one, so it misses content that grew.
+        let fit = reported.width > 0 ? reported : host.fittingSize
         let size = CGSize(width: ceil(fit.width), height: ceil(fit.height) + 2 * Self.inset)
         if abs(size.width - ideal.width) > 0.5 || abs(size.height - ideal.height) > 0.5 {
             ideal = size
@@ -327,6 +340,7 @@ private final class PopoverController {
             panel.setFrame(frame, display: true)
             panel.invalidateShadow()
         }
+        keepScrollInRange(scroll, top: !shown)
         if ready, !shown {
             shown = true
             panel.invalidateShadow()
@@ -338,6 +352,21 @@ private final class PopoverController {
                 // The shadow is taken from what is drawn: take it again once opaque.
                 MainActor.assumeIsolated { panel?.invalidateShadow() }
             }
+        }
+    }
+
+    /// After a resize the clip's origin may sit outside the new range (or the
+    /// popup is just opening): clamp it, so the very top (-inset) and the very
+    /// bottom row are both reachable. Growth keeps the top where it was.
+    private func keepScrollInRange(_ scroll: NSScrollView, top: Bool) {
+        let clip = scroll.contentView
+        guard let document = scroll.documentView else { return }
+        let minY = -Self.inset
+        let maxY = max(minY, document.frame.height + Self.inset - clip.bounds.height)
+        let y = top ? minY : min(max(clip.bounds.origin.y, minY), maxY)
+        if abs(y - clip.bounds.origin.y) > 0.5 || top {
+            clip.scroll(to: NSPoint(x: 0, y: y))
+            scroll.reflectScrolledClipView(clip)
         }
     }
 
@@ -400,14 +429,19 @@ private final class PopoverController {
     }
 }
 
-/// The content at its ideal size on both axes, drawn from the top left.
+/// The content at its ideal size on both axes, drawn from the top left; it
+/// reports that size to the controller.
 private struct PopoverRoot: View {
     let content: AnyView
+    let onSize: (CGSize) -> Void
     var body: some View {
         #if DEBUG
         let _ = PopoverDebug.bodyPasses += 1
         #endif
         content.fixedSize()
+            // The content's own size, read before the filling frame: it
+            // changes when the content grows or shrinks, never on scroll.
+            .onGeometryChange(for: CGSize.self) { $0.size } action: { onSize($0) }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             .tint(Brand.green)
     }

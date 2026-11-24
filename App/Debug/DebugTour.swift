@@ -30,6 +30,9 @@
 //                 from the top in `steps` runloop-spaced steps; returns the
 //                 popup content's hosting-view layout passes (and ms) and root
 //                 body passes during the scroll.
+//    cameraSwitch on=true|false  the Camera popup's "Switch to the camera you're
+//                 facing" (its content grows); `restore` puts the setting back.
+//                 Use `shareKind kind=window` to grow the open Share popup.
 //    showHere on|off  lets the main window join the Space the owner is on (a
 //                 full-screen app's too) and orders it front WITHOUT activating,
 //                 so ScreenCaptureKit can read it (it fails, -3811, for windows on
@@ -193,6 +196,12 @@ enum DebugTour {
                         extra["panelFrame"] = [p.frame.minX, p.frame.minY, p.frame.width, p.frame.height]
                     }
                 case "popupScroll": extra = try await popupScroll(info)
+                case "cameraSwitch":
+                    // on=true|false: "Switch to the camera you're facing", so the
+                    // Camera popup grows while open. `restore` puts it back.
+                    guard let c = CoordinatorController.shared else { throw TourError("no coordinator") }
+                    if savedCameraSettings == nil { savedCameraSettings = c.cameraDirectorSettings }
+                    c.cameraDirectorSettings.enabled = info["on"] != "false"
                 case "showHere":
                     guard let w = MainWindow.current else { throw TourError("no main window") }
                     if info["on"] != "false" && info["mode"] != "off" {
@@ -494,9 +503,11 @@ enum DebugTour {
         if let k = savedShareKind { c.shareTarget.kind = k; savedShareKind = nil }
         NotificationCenter.default.post(name: .debugTourPopup, object: nil, userInfo: ["name": "none"])
         if let b = savedBehavior { MainWindow.current?.collectionBehavior = b; savedBehavior = nil }
+        if let cs = savedCameraSettings { c.cameraDirectorSettings = cs; savedCameraSettings = nil }
         try? await Task.sleep(nanoseconds: 300_000_000)
     }
     private static var savedBehavior: NSWindow.CollectionBehavior?
+    private static var savedCameraSettings: CameraDirectorSettings?
 
     /// The open greenroomPopover panel: a visible child panel of the main window.
     private static func popupPanel() -> NSWindow? {
@@ -529,6 +540,7 @@ enum DebugTour {
         }
         try? await Task.sleep(nanoseconds: 200_000_000)
         return ["layoutPassesDuringScroll": PopoverDebug.layoutPasses - before, "steps": steps,
+                "minY": -sv.contentInsets.top, "maxY": maxY,
                 "layoutMillisDuringScroll": (PopoverDebug.layoutTime - beforeTime) * 1000,
                 "rootBodyPassesDuringScroll": PopoverDebug.bodyPasses - beforeBodies,
                 "clipY": clip.bounds.minY, "documentHeight": clip.documentRect.height,
@@ -566,6 +578,17 @@ enum DebugTour {
                 try? data.write(to: URL(fileURLWithPath: dir).appendingPathComponent("\(name)-popup.json"))
             }
         }
+        // The CoreGraphics composite first: it draws the window shadows (the
+        // thing under review) on a transparent backdrop, reads windows on
+        // another Space, and needs no SCDisplay (absent while the screen sleeps).
+        if let ids, let cg = legacyComposite(ids: [ids.panel, ids.main],
+                                             rect: CGRect(x: ids.rect.minX, y: ids.screenH - ids.rect.maxY,
+                                                          width: ids.rect.width, height: ids.rect.height)),
+           let png = NSBitmapImageRep(cgImage: cg).representation(using: .png, properties: [:]) {
+            let file = "\(name)-popup.png"
+            try png.write(to: URL(fileURLWithPath: dir).appendingPathComponent(file))
+            return file
+        }
         guard let ids,
               let scPanel = content.windows.first(where: { Int($0.windowID) == ids.panel }),
               let scMain = content.windows.first(where: { Int($0.windowID) == ids.main }),
@@ -583,17 +606,7 @@ enum DebugTour {
         cfg.captureResolution = .best
         cfg.ignoreShadowsDisplay = false
         cfg.backgroundColor = .white
-        // The CoreGraphics composite first: it draws the window shadows (the
-        // thing under review) on a transparent backdrop, and it reads windows
-        // on another Space. ScreenCaptureKit's display capture drops shadows.
-        let image: CGImage
-        if let cg = legacyComposite(ids: [ids.panel, ids.main],
-                                    rect: CGRect(x: ids.rect.minX, y: ids.screenH - ids.rect.maxY,
-                                                 width: ids.rect.width, height: ids.rect.height)) {
-            image = cg
-        } else {
-            image = try await SCScreenshotManager.captureImage(contentFilter: filter, configuration: cfg)
-        }
+        let image = try await SCScreenshotManager.captureImage(contentFilter: filter, configuration: cfg)
         guard let png = NSBitmapImageRep(cgImage: image).representation(using: .png, properties: [:]) else { return nil }
         let file = "\(name)-popup.png"
         try png.write(to: URL(fileURLWithPath: dir).appendingPathComponent(file))

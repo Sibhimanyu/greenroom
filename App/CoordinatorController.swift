@@ -1351,16 +1351,6 @@ final class CoordinatorController: ObservableObject {
             }
             .store(in: &cancellables)
 
-        // The switch countdown over the self view. Pushed rather than polled:
-        // it changes three times a second while counting and not at all
-        // otherwise.
-        cameraDirector.$pendingSwitch
-            .removeDuplicates()
-            .sink { pending in
-                Task { @MainActor in ParticipantGridWindowController.applyCameraSwitch(pending) }
-            }
-            .store(in: &cancellables)
-
         // Sign in with Zoom changes (signing in, signed in, out) redraw whatever shows the coordinator.
         zoomUser.objectWillChange
             .sink { [weak self] _ in self?.objectWillChange.send() }
@@ -3533,16 +3523,7 @@ final class CoordinatorController: ObservableObject {
             client: zoomChatClient,
             chat: zoomChatBridge,
             controls: meetingControls,
-            log: { [weak self] message in self?.log(message) },
-            endSession: { [weak self] in self?.stop() },
-            showChat: { [weak self] in
-                guard let self else { return }
-                self.layoutEngine.revealChat(self.sessionArranges ? self.sessionTemplate : nil,
-                                             hidden: self.speakerTileQuickHidden)
-            },
-            toggleRecording: { [weak self] in self?.toggleRecording() },
-            snapBack: { [weak self] in self?.snapWindowsBack() },
-            showMainWindow: { [weak self] in self?.showMainWindow() })
+            log: { [weak self] message in self?.log(message) })
         // The window the teacher closes by hand: stop feeding it, and let the pill
         // (or the slot) take over. After the close that triggered this has finished.
         ParticipantGridWindowController.onUserClosed = { [weak self] in
@@ -3596,13 +3577,8 @@ final class CoordinatorController: ObservableObject {
             self.growIfSomeoneJoined()
             guard self.meetingWindowWanted || ParticipantGridWindowController.isOpen else { return true }
             guard let target = self.meetingSurfaceTarget() else { return false }
-            if target.form.isMeeting {
-                // A display plugged in mid-class can turn the full panel into a
-                // meeting window, which needs the controls the panel was
-                // configured without.
-                self.ensureMeetingControls()
-                ParticipantGridWindowController.controls = self.meetingControls
-            }
+            self.ensureMeetingControls()
+            ParticipantGridWindowController.controls = self.meetingControls
             let digits = self.meetingNumberDigits
             let session = ParticipantGridWindowController.SessionInfo(
                 meetingNumber: digits,
@@ -3614,10 +3590,10 @@ final class CoordinatorController: ObservableObject {
             ParticipantGridWindowController.refresh(on: target.screen, session: session, form: target.form)
             return true
         }
-        if let target = meetingSurfaceTarget() {
+        if meetingSurfaceTarget() != nil {
             Analytics.track(.surfaceShown, [
                 .surface: "participants",
-                .placement: target.form.isMeeting ? "main_window" : "reference_display"
+                .placement: "main_window"
             ])
         }
         // Once now, so the window exists by the time the caller places it.

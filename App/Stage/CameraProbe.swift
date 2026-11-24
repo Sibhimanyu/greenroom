@@ -38,6 +38,19 @@ final class CameraProbe: NSObject, ObservableObject {
     /// Which camera this is looking through, by uniqueID.
     @Published private(set) var cameraUID: String?
 
+    /// Aim is a measurement with an end, not a stream: it measures, settles on
+    /// an answer (or on "no picture"), lets the camera go and stays finished
+    /// until Aim is pressed again. See AimMeter.
+    enum Phase: Equatable { case idle, measuring, finished }
+    @Published private(set) var phase: Phase = .idle
+
+    private var meter = AimMeter()
+    private var clock: Task<Void, Never>?
+    /// The picture comes from CameraDirector (it already holds the camera);
+    /// this opens nothing and only keeps the meter.
+    private var external = false
+    private static let tickSeconds = 0.25
+
     private let session = AVCaptureSession()
     private let output = AVCaptureVideoDataOutput()
     private let queue = DispatchQueue(label: "greenroom.camera-probe")
@@ -64,14 +77,16 @@ final class CameraProbe: NSObject, ObservableObject {
             center.addObserver(forName: AVCaptureDevice.wasDisconnectedNotification, object: nil, queue: .main) { [weak self] note in
                 MainActor.assumeIsolated {
                     guard let self, let device = note.object as? AVCaptureDevice,
-                          device.uniqueID == self.cameraUID else { return }
-                    self.sight = .noPicture("\(device.localizedName) was unplugged.")
+                          device.uniqueID == self.cameraUID, self.phase == .measuring else { return }
+                    self.fail("\(device.localizedName) was unplugged.")
                 }
             },
             center.addObserver(forName: AVCaptureDevice.wasConnectedNotification, object: nil, queue: .main) { [weak self] note in
                 MainActor.assumeIsolated {
                     guard let self, let device = note.object as? AVCaptureDevice,
                           device.uniqueID == self.cameraUID else { return }
+                    // A finished Aim does not reopen a camera on its own.
+                    guard self.phase == .measuring, !self.external else { return }
                     let uid = device.uniqueID
                     self.stop()
                     self.start(uid: uid)
@@ -88,10 +103,12 @@ final class CameraProbe: NSObject, ObservableObject {
     /// so a settings view rebuilding does not restart the hardware.
     func start(uid: String) {
         watchDevices()
-        guard cameraUID != uid else { return }
+        if cameraUID == uid, phase == .measuring { return }
         stop()
         cameraUID = uid
         sight = .idle
+        phase = .measuring
+        meter = AimMeter()
 
         switch AVCaptureDevice.authorizationStatus(for: .video) {
         case .authorized:
@@ -101,17 +118,39 @@ final class CameraProbe: NSObject, ObservableObject {
                 Task { @MainActor in
                     guard let self, self.cameraUID == uid else { return }
                     granted ? self.open(uid: uid)
-                            : (self.sight = .noPicture("Greenroom needs camera access. System Settings \u{2192} Privacy & Security \u{2192} Camera."))
+                            : self.fail("Greenroom needs camera access. System Settings \u{2192} Privacy & Security \u{2192} Camera.")
                 }
             }
         default:
-            sight = .noPicture("Camera access is off for Greenroom. System Settings \u{2192} Privacy & Security \u{2192} Camera.")
+            fail("Camera access is off for Greenroom. System Settings \u{2192} Privacy & Security \u{2192} Camera.")
         }
     }
 
+    /// Aims a camera somebody else already holds open (the director, in the
+    /// idle preview): same measurement, nothing opened here.
+    func startExternal(uid: String) {
+        stop()
+        cameraUID = uid
+        sight = .idle
+        phase = .measuring
+        meter = AimMeter()
+        external = true
+        beginClock(uid: uid)
+    }
+
+    var isExternal: Bool { external && phase == .measuring }
+
     func stop() {
+        clock?.cancel()
+        clock = nil
+        external = false
         cameraUID = nil
         sight = .idle
+        phase = .idle
+        closeCapture()
+    }
+
+    private func closeCapture() {
         guard session.isRunning || !session.inputs.isEmpty else { return }
         session.stopRunning()
         session.beginConfiguration()
@@ -120,22 +159,74 @@ final class CameraProbe: NSObject, ObservableObject {
         session.commitConfiguration()
     }
 
+    /// The measurement is over: keep the answer, let the camera go.
+    private func finish(_ answer: CameraSight) {
+        clock?.cancel()
+        clock = nil
+        sight = answer
+        phase = .finished
+        external = false
+        closeCapture()
+    }
+
+    private func fail(_ why: String) { finish(.noPicture(why)) }
+
+    /// The clock starts once the camera is open: a Continuity Camera waking
+    /// up can take a while to say anything, and that is not "no picture".
+    private func beginClock(uid: String) {
+        guard cameraUID == uid, phase == .measuring else { return }
+        clock?.cancel()
+        clock = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: UInt64(Self.tickSeconds * 1_000_000_000))
+                guard let self, !Task.isCancelled else { return }
+                self.apply(self.meter.advance(by: Self.tickSeconds))
+            }
+        }
+    }
+
+    private func apply(_ outcome: AimMeter.Outcome) {
+        switch outcome {
+        case .measuring: break
+        case .angle(let degrees): finish(.seen(degrees))
+        case .noFace: finish(.noFace)
+        case .noAngle: finish(.noAngle)
+        case .noPicture:
+            fail("No picture from this camera. Something else may be using it, or it is asleep.")
+        }
+    }
+
+    /// A reading from whichever source is looking.
+    func feed(_ reading: CameraSight) {
+        guard phase == .measuring else { return }
+        switch reading {
+        case .seen(let degrees): meter.note(.angle(degrees))
+        case .noFace: meter.note(.noFace)
+        case .noAngle: meter.note(.noAngle)
+        case .idle, .noPicture: return
+        }
+        sight = reading
+        apply(meter.outcome)
+    }
+
     private func open(uid: String) {
         guard let device = AVCaptureDevice(uniqueID: uid) else {
-            sight = .noPicture("That camera isn't plugged in.")
+            fail("That camera isn't plugged in.")
             return
         }
         guard let input = try? AVCaptureDeviceInput(device: device) else {
-            sight = .noPicture("Couldn't open \(device.localizedName). Something else may have it.")
+            fail("Couldn't open \(device.localizedName). Something else may have it.")
             return
         }
         session.beginConfiguration()
         // Low. This measures the angle of a head; it is never shown to
         // anybody, and a 4K frame would cost real power to look at.
-        session.sessionPreset = .low
+        // Medium, not low: a head's yaw read off a 192-pixel picture is
+        // noise, and a Continuity Camera crops that picture harder still.
+        session.sessionPreset = .medium
         guard session.canAddInput(input) else {
             session.commitConfiguration()
-            sight = .noPicture("Couldn't open \(device.localizedName).")
+            fail("Couldn't open \(device.localizedName).")
             return
         }
         session.addInput(input)
@@ -146,7 +237,10 @@ final class CameraProbe: NSObject, ObservableObject {
         // startRunning blocks until the device is open, which on a Continuity
         // camera waking up is not instant.
         let capture = session
-        Task.detached { capture.startRunning() }
+        Task.detached { [weak self] in
+            capture.startRunning()
+            await MainActor.run { self?.beginClock(uid: uid) }
+        }
     }
 }
 
@@ -167,9 +261,10 @@ extension CameraProbe: AVCaptureVideoDataOutputSampleBufferDelegate {
     private func consider(_ frame: CGImage) {
         frameNumber += 1
         guard frameNumber % Self.everyNthFrame == 0, !busy else { return }
+        guard phase == .measuring else { return }
         busy = true
         defer { busy = false }
-        sight = CameraDirector.look(at: frame)
+        feed(CameraDirector.look(at: frame))
     }
 
     /// One, reused. Building a CIContext per frame is the classic way to make

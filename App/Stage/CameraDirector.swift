@@ -261,6 +261,10 @@ final class CameraDirector: ObservableObject {
     /// window can show both numbers side by side instead of only the live one.
     @Published private(set) var angles: [Double?] = []
 
+    /// What each camera saw on the last look, unsmoothed, by slot. Aim reads
+    /// the camera it is aiming from here when the director already holds it.
+    @Published private(set) var slotSights: [CameraSight] = []
+
     /// The camera names, by slot, for showing `angles` against.
     var cameraNamesInOrder: [String] { cameraNames }
 
@@ -376,6 +380,7 @@ final class CameraDirector: ObservableObject {
         awaySeconds = 0
         pendingSwitch = nil
         angles = []
+        slotSights = []
     }
 
     var isRunning: Bool { task != nil }
@@ -436,6 +441,7 @@ final class CameraDirector: ObservableObject {
             frames.map { frame in frame.map(CameraDirector.look(at:)) ?? .noPicture("") }
         }.value
 
+        slotSights = sights
         if case .noPicture = sights[live] {
             sight = .noPicture("The camera isn't sending a picture.")
         } else {
@@ -719,20 +725,20 @@ final class CameraDirector: ObservableObject {
 
     /// The same measurement, saying which of the three ways it failed.
     nonisolated static func look(at frame: CGImage) -> CameraSight {
-        let request = VNDetectFaceRectanglesRequest()
-        // Yaw needs revision 3, and pitch needs it too. Without asking, the
-        // OS picks, and a revision without them reports nil - which would
-        // read as "perfectly centred" and never cut at all.
-        if VNDetectFaceRectanglesRequest.supportedRevisions.contains(VNDetectFaceRectanglesRequestRevision3) {
-            request.revision = VNDetectFaceRectanglesRequestRevision3
+        // The picture as it came first. Most cameras send it upright and that
+        // is the only look needed. A Continuity Camera iPhone can send it on
+        // its side; yaw read off a sideways head is not the turn of the head
+        // (it read 44 degrees on somebody facing the lens), so when the face
+        // is rolled or missing, look again with the picture turned each way
+        // and keep the look where the head is most upright.
+        var face = nearestFace(in: frame, orientation: .up)
+        if face == nil || FaceUpright.isSideways(rollDegrees: (face?.roll?.doubleValue ?? 0) * 180 / .pi) {
+            let others: [CGImagePropertyOrientation] = [.right, .left, .down]
+            let looks = [face] + others.map { nearestFace(in: frame, orientation: $0) }
+            let rolls = looks.map { $0.map { abs($0.roll?.doubleValue ?? 0) * 180 / .pi } }
+            if let index = FaceUpright.mostUpright(rolls) { face = looks[index] }
         }
-        try? VNImageRequestHandler(cgImage: frame, orientation: .up).perform([request])
-        // The nearest face, on the assumption the presenter is the one
-        // closest to the camera.
-        guard let face = (request.results ?? []).max(by: { left, right in
-            left.boundingBox.width * left.boundingBox.height
-                < right.boundingBox.width * right.boundingBox.height
-        }) else { return .noFace }
+        guard let face else { return .noFace }
 
         // A face with no yaw at all is not evidence of anything. Reporting it
         // as zero would say "looking straight at you" on the strength of a
@@ -742,6 +748,24 @@ final class CameraDirector: ObservableObject {
         let yawDegrees = yaw * 180 / .pi
         let pitchDegrees = pitch * 180 / .pi
         return .seen(score(yaw: yawDegrees, pitch: pitchDegrees))
+    }
+
+    /// The nearest face, on the assumption the presenter is the one closest
+    /// to the camera, with the picture taken to be turned as `orientation`.
+    private nonisolated static func nearestFace(in frame: CGImage,
+                                                orientation: CGImagePropertyOrientation) -> VNFaceObservation? {
+        let request = VNDetectFaceRectanglesRequest()
+        // Yaw needs revision 3, and pitch needs it too. Without asking, the
+        // OS picks, and a revision without them reports nil - which would
+        // read as "perfectly centred" and never cut at all.
+        if VNDetectFaceRectanglesRequest.supportedRevisions.contains(VNDetectFaceRectanglesRequestRevision3) {
+            request.revision = VNDetectFaceRectanglesRequestRevision3
+        }
+        try? VNImageRequestHandler(cgImage: frame, orientation: orientation).perform([request])
+        return (request.results ?? []).max(by: { left, right in
+            left.boundingBox.width * left.boundingBox.height
+                < right.boundingBox.width * right.boundingBox.height
+        })
     }
 
     /// How far off a camera a head is pointed, in degrees, from its yaw and

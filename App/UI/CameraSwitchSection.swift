@@ -37,8 +37,18 @@ private struct LiveReadings<Content: View>: View {
 struct CameraSwitchSection: View {
     @EnvironmentObject private var coordinator: CoordinatorController
     @State private var cameras: [LocalDeviceResolver.Camera] = []
-    /// Which camera the angle readout is currently on.
-    @State private var aiming: String?
+    /// The camera being measured right now. Aim ends by itself (see
+    /// CameraProbe.Phase), so this is read from the probe, not remembered here:
+    /// a remembered flag that only Settings closing cleared was the
+    /// "Looking..." that never finished.
+    private var aiming: String? {
+        coordinator.cameraProbe.phase == .measuring ? coordinator.cameraProbe.cameraUID : nil
+    }
+
+    /// The camera whose finished measurement is on the gauge.
+    private var aimed: String? {
+        coordinator.cameraProbe.phase == .finished ? coordinator.cameraProbe.cameraUID : nil
+    }
 
     private var settings: Binding<CameraDirectorSettings> { $coordinator.cameraDirectorSettings }
 
@@ -51,16 +61,15 @@ struct CameraSwitchSection: View {
                 single: coordinator.sceneCameraUIDs(limit: 1).first,
                 liveCameraName: coordinator.cameraDirector.liveCameraName,
                 aiming: aiming,
+                aimed: aimed,
+                aimedResult: aimedResult,
                 canAim: !coordinator.stageLive,
                 dwell: settings.dwellSeconds,
                 transition: settings.transition,
                 reading: reading,
                 toggle: toggle,
                 pick: pick,
-                aim: { uid in
-                    aiming = uid
-                    coordinator.aimCamera(uid: uid)
-                },
+                aim: { uid in coordinator.aimCamera(uid: uid) },
                 refresh: { cameras = LocalDeviceResolver.availableCameras() },
                 noCamera: coordinator.cameraIsOff,
                 noCameraAllowed: coordinator.shareTarget.kind != .nothing,
@@ -73,15 +82,19 @@ struct CameraSwitchSection: View {
             // camera open (and its light on) for a reading nobody can see.
             if !on {
                 coordinator.stopAiming()
-                aiming = nil
             }
         }
         .onDisappear {
             // A settings window left open would otherwise hold a camera - and
             // its light on - for as long as the app ran.
             coordinator.stopAiming()
-            aiming = nil
         }
+    }
+
+    /// What the finished Aim found, for the card: the angle, or nothing when
+    /// the answer is a sentence (the gauge says it).
+    private var aimedResult: String? {
+        coordinator.cameraProbe.sight.degrees.map { "\(Int($0.rounded()))\u{00B0}" }
     }
 
     /// Ticking a camera appends it, so the order follows the order they were
@@ -123,7 +136,7 @@ struct CameraSwitchSection: View {
     private var reading: CameraReading {
         let sight = coordinator.stageLive ? coordinator.cameraDirector.sight : coordinator.cameraProbe.sight
         let threshold = coordinator.cameraDirectorSettings.awayDegrees
-        let name = aiming.flatMap { uid in cameras.first { $0.id == uid }?.name }
+        let name = (aiming ?? aimed).flatMap { uid in cameras.first { $0.id == uid }?.name }
         return CameraReading(degrees: sight.degrees, threshold: threshold,
                              status: Self.status(sight, threshold: threshold, aiming: aiming != nil),
                              source: coordinator.stageLive ? "In the meeting" : name)
@@ -198,6 +211,9 @@ struct CameraSwitchContent<LiveDetail: View>: View {
     let single: String?
     let liveCameraName: String?
     let aiming: String?
+    /// The camera whose finished Aim is on the gauge, and what it read.
+    var aimed: String? = nil
+    var aimedResult: String? = nil
     let canAim: Bool
     @Binding var dwell: Double
     @Binding var transition: CameraTransition
@@ -296,7 +312,10 @@ struct CameraSwitchContent<LiveDetail: View>: View {
                            position: enabled ? position : nil,
                            chosen: enabled ? position != nil : !noCamera && single == camera.id,
                            isLive: liveCameraName == camera.name,
-                           isAiming: aiming == camera.id, canAim: canAim && enabled,
+                           isAiming: aiming == camera.id,
+                           aimDone: aimed == camera.id,
+                           aimResult: aimed == camera.id ? aimedResult : nil,
+                           canAim: canAim && enabled,
                            toggle: { enabled ? toggle(camera.id, position == nil) : pick(camera.id) },
                            aim: { aim(camera.id) })
             }
@@ -321,6 +340,9 @@ private struct CameraCard: View {
     let chosen: Bool
     let isLive: Bool
     let isAiming: Bool
+    /// Aim has finished on this camera, and the angle it found (if any).
+    var aimDone = false
+    var aimResult: String? = nil
     let canAim: Bool
     let toggle: () -> Void
     let aim: () -> Void
@@ -352,10 +374,15 @@ private struct CameraCard: View {
             Collapsible(hidden: !canAim && !isLive) {
                 HStack(spacing: 8) {
                     Collapsible(hidden: !canAim) {
-                        Button(isAiming ? "Looking…" : "Aim") { aim() }
+                        Button(isAiming ? "Looking…" : (aimDone ? "Aim again" : "Aim")) { aim() }
                             .controlSize(.small)
                             .disabled(isAiming)
-                            .help("Measure the angle this camera reads you at")
+                            .help("Face this camera and press Aim: it measures for a few seconds, shows the angle it reads you at, then lets the camera go")
+                        if let aimResult {
+                            Text(aimResult)
+                                .font(.system(size: 12, weight: .semibold, design: .monospaced))
+                                .foregroundStyle(.secondary)
+                        }
                     }
                     if isLive { PictureChip(text: "LIVE", dot: Brand.green) }
                 }

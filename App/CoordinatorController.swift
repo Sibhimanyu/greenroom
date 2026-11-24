@@ -360,6 +360,9 @@ final class CoordinatorController: ObservableObject {
             // have to end the session to get it.
             if sceneInUse, stage != nil {
                 applyCameraDirectorLive(from: oldValue)
+            } else if !isRunning {
+                // The idle preview follows the same settings.
+                syncIdleDirector(restart: sessionCameraUIDs(oldValue) != sessionCameraUIDs(cameraDirectorSettings))
             }
         }
     }
@@ -415,6 +418,44 @@ final class CoordinatorController: ObservableObject {
         // Only if the cameras did not change again meanwhile.
         guard sceneInUse, sessionCameraUIDs(cameraDirectorSettings) == after else { return }
         cameraDirector.start(stage: stage, settings: cameraDirectorSettings)
+    }
+
+    /// The Settings/Home preview, with switching on and two cameras chosen,
+    /// is a small class of its own: the stage holds every chosen camera and the
+    /// director cuts between them, so the preview is where switching is tested.
+    /// The stage is the only opener of those cameras (the probe never opens one
+    /// the stage holds; Aim then reads the director's sights). Nothing here
+    /// runs while a session owns the picture; a session starts and stops the
+    /// director itself.
+    private func syncIdleDirector(restart: Bool) {
+        guard !sceneInUse, !isRunning else { return }
+        let uids = sessionCameraUIDs(cameraDirectorSettings)
+        guard let stage, previewAttached, uids.count > 1 else {
+            if cameraDirector.isRunning {
+                cameraDirector.stop()
+                if let stage, previewAttached {
+                    stage.update(makeStageConfiguration())
+                    stage.cut(toSlot: 0, fade: 0)
+                }
+            }
+            return
+        }
+        stage.update(makeStageConfiguration())
+        if restart || !cameraDirector.isRunning {
+            stage.cut(toSlot: 0, fade: 0)
+            cameraDirector.start(stage: stage, settings: cameraDirectorSettings)
+        } else {
+            cameraDirector.retune(cameraDirectorSettings)
+        }
+    }
+
+    /// Aim ended on the camera it was measuring: hand the director's reading of
+    /// that camera to the probe's meter.
+    private func feedAim(from sights: [CameraSight]) {
+        guard cameraProbe.isExternal, let uid = cameraProbe.cameraUID,
+              let slot = sessionCameraUIDs(cameraDirectorSettings).firstIndex(of: uid),
+              sights.indices.contains(slot) else { return }
+        cameraProbe.feed(sights[slot])
     }
 
     @Published var meetingNumber = ""
@@ -1304,6 +1345,12 @@ final class CoordinatorController: ObservableObject {
             }
             .store(in: &cancellables)
 
+        cameraDirector.$slotSights
+            .sink { [weak self] sights in
+                Task { @MainActor in self?.feedAim(from: sights) }
+            }
+            .store(in: &cancellables)
+
         // The switch countdown over the self view. Pushed rather than polled:
         // it changes three times a second while counting and not at all
         // otherwise.
@@ -1500,7 +1547,11 @@ final class CoordinatorController: ObservableObject {
                            backgroundRemoval: backgroundRemoval,
                            cameraBackground: cameraBackground,
                            cameraBackgroundImage: cameraBackgroundImage,
-                           cameraUIDs: stageCameraUIDs ?? sceneCameraUIDs(limit: 1),
+                           // nil is the idle preview: every chosen camera when
+                           // switching is on (the director cuts between them),
+                           // otherwise the one.
+                           cameraUIDs: stageCameraUIDs
+                               ?? sceneCameraUIDs(limit: sceneInUse || isRunning ? 1 : nil),
                            captureSystemAudio: recordSystemAudio)
     }
 
@@ -1536,6 +1587,7 @@ final class CoordinatorController: ObservableObject {
         permissionWatcher?.cancel()
         permissionWatcher = nil
         endDrawingTools()
+        cameraDirector.stop()
         guard let stage else { return }
         if previewAttached { stage.removeSink(previewSink); previewAttached = false }
         stage.stop()
@@ -3129,6 +3181,7 @@ final class CoordinatorController: ObservableObject {
         previewSink.coverage = { [weak stage] in stage?.lastCameraCoverage }
         stage.addSink(previewSink)
         previewAttached = true
+        syncIdleDirector(restart: true)
     }
 
     /// After a session ends, a Settings window still open gets its preview back.
@@ -3163,7 +3216,13 @@ final class CoordinatorController: ObservableObject {
     /// stage's own frames and this would be a second opener of the camera.
     func aimCamera(uid: String) {
         guard !sceneInUse else { return }
-        cameraProbe.start(uid: uid)
+        // The preview's director already holds every chosen camera open: read
+        // from it rather than open a second time.
+        if cameraDirector.isRunning, sessionCameraUIDs(cameraDirectorSettings).contains(uid) {
+            cameraProbe.startExternal(uid: uid)
+        } else {
+            cameraProbe.start(uid: uid)
+        }
     }
 
     func stopAiming() { cameraProbe.stop() }
@@ -5260,6 +5319,9 @@ final class CoordinatorController: ObservableObject {
         }
         // The first camera only. The rest join once the meeting is live -
         // see bringInExtraCameras.
+        // A preview's director holds the extra cameras; a session brings its
+        // own in once the meeting is live.
+        cameraDirector.stop()
         stageCameraUIDs = sceneCameraUIDs(limit: 1)
         let configuration = makeStageConfiguration()
         let wantsScreen = configuration.share.kind.capturesScreen

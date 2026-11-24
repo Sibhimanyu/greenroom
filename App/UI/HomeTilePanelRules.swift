@@ -249,5 +249,13 @@ enum LayoutPanelRules {
     /// The header value: the layout's name, or "No layout".
     static func headerValue(name: String) -> String { name == "None" ? "No layout" : name }
 
+    /// The header hint for a layout with a two-display version: nil without one.
+    static func twoDisplayNote(hasTwoDisplays: Bool, secondConnected: Bool) -> String? {
+        guard hasTwoDisplays else { return nil }
+        return secondConnected ? "Using two displays" : "Two displays when connected"
+    }
+
+    static let twoDisplayBadgeHelp = "Has a two-display version"
+
     static let lockedNote = "A meeting runs the layout it started with. Pick the next one after it ends."
 }

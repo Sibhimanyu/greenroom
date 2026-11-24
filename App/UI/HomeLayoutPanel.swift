@@ -44,6 +44,10 @@ struct HomeLayoutPanel: View {
         HomeTilePanel(
             title: "Layout", summary: "Where Start puts the meeting, the chat and your apps.",
             value: LayoutPanelRules.headerValue(name: coordinator.layoutChoiceName),
+            note: LayoutPanelRules.twoDisplayNote(
+                hasTwoDisplays: active?.twoDisplays != nil,
+                secondConnected: active?.twoDisplays.map { LayoutScreenPreview.secondScreen(uuid: $0.secondUUID) != nil } ?? false
+            ).map { (symbol: "rectangle.on.rectangle", text: $0) },
             art: DockHintVisual.layout(active?.oneDisplay) { [coordinator] piece in
                 LayoutPageContent.look(piece, customUIMode: coordinator.customUIMode,
                                        canMoveApps: AppWindowManager.hasAccessibilityPermission)
@@ -92,7 +96,7 @@ struct HomeLayoutPanel: View {
                         .greenroomTile(role: .choice(selected: isSelected(choice)), radius: 10)
                         .overlay { HomeTileKeyRing(show: keyed && index == offset, radius: 10) }
                         .disabled(locked)
-                        .help(choice.name)
+                        .help(choice.template?.twoDisplays != nil ? "\(choice.name). \(LayoutPanelRules.twoDisplayBadgeHelp)" : choice.name)
                         .accessibilityLabel(choice.name)
                         .accessibilityAddTraits(isSelected(choice) ? .isSelected : [])
                 }
@@ -125,6 +129,14 @@ struct HomeLayoutPanel: View {
         }
         .padding(.horizontal, 6).padding(.vertical, 6)
         .frame(maxWidth: .infinity)
+        .overlay(alignment: .topTrailing) {
+            if choice.template?.twoDisplays != nil {
+                Image(systemName: "rectangle.on.rectangle")
+                    .font(.system(size: 9)).foregroundStyle(.secondary)
+                    .padding(4)
+                    .help(LayoutPanelRules.twoDisplayBadgeHelp)
+            }
+        }
     }
 
     private func pick(_ offset: Int) {

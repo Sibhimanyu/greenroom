@@ -22,6 +22,8 @@ struct HomeTilePanel<Content: View>: View {
     var summary: String?
     /// The current value, trailing on the title line.
     var value: String?
+    /// An optional extra line under the summary, with an SF Symbol.
+    var note: (symbol: String, text: String)?
     /// Small art at the header's leading edge (the old hover card's schematic).
     var art: AnyView?
     /// Footer link ("More look settings…"); nil hides the footer.
@@ -75,6 +77,11 @@ struct HomeTilePanel<Content: View>: View {
                 Text(summary)
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            if let note {
+                Label(note.text, systemImage: note.symbol)
+                    .font(.system(size: 11)).foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
         }

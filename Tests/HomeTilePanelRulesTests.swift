@@ -145,5 +145,8 @@ final class ScreenLayoutPanelRulesTests: XCTestCase {
         XCTAssertEqual(LayoutPanelRules.sections(locked: false, activePieceCount: 0, hasApps: true), [.layouts, .actions])
         XCTAssertEqual(LayoutPanelRules.headerValue(name: "None"), "No layout")
         XCTAssertEqual(LayoutPanelRules.headerValue(name: "Two apps"), "Two apps")
+        XCTAssertNil(LayoutPanelRules.twoDisplayNote(hasTwoDisplays: false, secondConnected: true))
+        XCTAssertEqual(LayoutPanelRules.twoDisplayNote(hasTwoDisplays: true, secondConnected: false), "Two displays when connected")
+        XCTAssertEqual(LayoutPanelRules.twoDisplayNote(hasTwoDisplays: true, secondConnected: true), "Using two displays")
     }
 }

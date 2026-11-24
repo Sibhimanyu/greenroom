@@ -10,6 +10,7 @@
 //  silently break resize, show-window and ordering. C10 switches those callers
 //  to `MainWindow.current`; only then may a page set a title.
 //
+import AppKit
 import SwiftUI
 
 struct PageBack {
@@ -65,18 +66,57 @@ extension View {
     }
 }
 
-/// The GeometryReader ignores the safe area so it reports the toolbar's height
-/// and spans the page frame; the mask rectangle starts below it.
+/// The mask starts below the toolbar. Two measurements, the larger wins: the
+/// SwiftUI top safe area, and the window's own `contentLayoutRect` (how far
+/// this page reaches above the layout area under the title bar and tab row).
+/// In a Settings `TabView` the safe area can read 0 while the page still
+/// scrolls under the tabs, so the AppKit measure is the one that holds.
 private struct PageScrollClip: ViewModifier {
+    @State private var overhang: CGFloat = 0
+
     func body(content: Content) -> some View {
         content
             .pageScrollEdge()
+            .background(ToolbarOverhangProbe(overhang: $overhang))
             .mask {
                 GeometryReader { proxy in
-                    Rectangle().padding(.top, proxy.safeAreaInsets.top)
+                    Rectangle().padding(.top, max(proxy.safeAreaInsets.top, overhang))
                 }
                 .ignoresSafeArea()
             }
+    }
+}
+
+/// Reports how many points of this view sit above the window's content layout
+/// rect (the toolbar and title bar band). Paints nothing, takes no clicks.
+private struct ToolbarOverhangProbe: NSViewRepresentable {
+    @Binding var overhang: CGFloat
+
+    final class Probe: NSView {
+        var onChange: (CGFloat) -> Void = { _ in }
+        override func hitTest(_ point: NSPoint) -> NSView? { nil }
+        override func layout() { super.layout(); measure() }
+        override func viewDidMoveToWindow() { super.viewDidMoveToWindow(); measure() }
+        override func viewDidEndLiveResize() { super.viewDidEndLiveResize(); measure() }
+
+        func measure() {
+            guard let window else { return }
+            let inWindow = convert(bounds, to: nil)
+            let top = window.contentLayoutRect.maxY
+            let value = max(0, ceil(inWindow.maxY - top))
+            DispatchQueue.main.async { [onChange] in onChange(value) }
+        }
+    }
+
+    func makeNSView(context: Context) -> Probe {
+        let probe = Probe()
+        probe.onChange = { value in if overhang != value { overhang = value } }
+        return probe
+    }
+
+    func updateNSView(_ probe: Probe, context: Context) {
+        probe.onChange = { value in if overhang != value { overhang = value } }
+        probe.measure()
     }
 }
 

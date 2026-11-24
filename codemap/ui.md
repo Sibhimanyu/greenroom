@@ -61,6 +61,7 @@ Record is `MeetingMode.record` (enum in CoordinatorController.swift; Create / Sc
 | path | owns |
 |---|---|
 | UI/SettingsView.swift | `TabView`, tab order/heights, Cmd-1..8, notifications `.showWebcamSettings` / `.showSettingsTab` |
+| (rule) Settings pages clip below the toolbar | Every Settings tab goes through `.settingsPageClip()` -> `pageScrollClip()` (PageChrome.swift): hard top scroll edge plus a mask that starts below the larger of the SwiftUI top safe area and the window's `contentLayoutRect` (AppKit probe). New tabs must use it; never a bare ScrollView/Form under the tab row | `pageScrollClip`, `ToolbarOverhangProbe` |
 | UI/WebcamPage.swift (+ WebcamShapePreview, CameraSwitchSection, MicrophoneSection, ShareTargetSettings) | Webcam tab: `WebcamSettingsTab` feeds `WebcamPageContent`; `BubbleDragLayer`; `CameraSwitchSection` (two-camera cut) |
 | UI/LayoutSettingsTab.swift (+ LayoutCanvas, LayoutAddPanel, LayoutAppOrdering, LayoutScreenPreview) | Layout creator: `LayoutSettingsTab`/`LayoutPageContent`, `LayoutCanvas`, `LayoutPieceTile`, `LayoutAddPanel` |
 | UI/ShortcutsSettingsTab.swift | `ShortcutRecorderField` |

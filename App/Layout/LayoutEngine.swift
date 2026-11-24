@@ -106,7 +106,10 @@ final class LayoutEngine {
     /// layout has no Meeting piece: the caller opens the free window.
     func meetingTarget(_ template: LayoutTemplate) -> (screen: NSScreen, form: ParticipantGridWindowController.Form)? {
         guard let meeting = resolve(template).meeting, let screen = screen(of: meeting) else { return nil }
-        return (screen, meeting.fillsDisplay ? .reference : .placed(meeting.frames.ns))
+        // A Meeting that fills a display is the Zoom-style meeting window filling
+        // that display's visible area, not the old reference panel with the rail
+        // (owner, 2026-11-24: "the true Zoom UI we made").
+        return (screen, .placed(meeting.fillsDisplay ? screen.visibleFrame : meeting.frames.ns))
     }
 
     /// The Chat piece's frame now (grown into the gap while the Meeting is hidden).

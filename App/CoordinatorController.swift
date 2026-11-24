@@ -3484,8 +3484,8 @@ final class CoordinatorController: ObservableObject {
     ///
     /// No layout: a window the teacher owns, filling the reference display the
     /// first time if there is one, else centred on the main display. Arranged: the
-    /// layout's Meeting piece - a Meeting that fills a display is the full panel
-    /// there (`.reference`), one in a rectangle is `.placed(rect)` (Speaker view
+    /// layout's Meeting piece - a Meeting that fills a display is the meeting
+    /// window filling it (`.placed(visibleFrame)`), one in a rectangle is `.placed(rect)` (Speaker view
     /// with the toolbar on hover when under 760x520, else the full meeting form),
     /// and a layout without one is the free window. Never borderless but for the
     /// full panel. Worked out every tick, so a display plugged in mid-class moves it.

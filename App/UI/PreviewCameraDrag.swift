@@ -26,6 +26,10 @@ struct PreviewCameraDragLayer: View {
     var space: LayoutCameraSpace?
     var onStep: (PresenceBox) -> Void
     var onCommit: (PresenceBox) -> Void
+    /// The builder: the camera is the selected thing (outline stays on).
+    var selected = false
+    /// The builder: a click or the start of a drag selects the camera.
+    var onSelect: (() -> Void)?
     /// Drawn inside the camera's rect (it follows the drag). Nil on Home, where
     /// the picture underneath already shows the camera; the layout builder draws
     /// its own stand-in here.
@@ -44,7 +48,7 @@ struct PreviewCameraDragLayer: View {
             let frame = geo.size
             let current = draft ?? box
             let rect = rect(of: current, frame: frame)
-            let active = hovering || start != nil
+            let active = hovering || start != nil || selected
             ZStack(alignment: .topLeading) {
                 // Hover tracking over the camera and a little beyond, so the
                 // corner handles (half outside the rect) keep it alive.
@@ -67,6 +71,7 @@ struct PreviewCameraDragLayer: View {
                     .contentShape(Rectangle())
                     .onHover { inside in (inside ? NSCursor.openHand : NSCursor.arrow).set(); hovering = inside || hovering }
                     .gesture(move(frame: frame))
+                    .simultaneousGesture(TapGesture().onEnded { onSelect?() })
                     .offset(x: rect.minX, y: rect.minY)
                     .help("Drag to move your camera. It moves for everyone.")
 
@@ -164,6 +169,7 @@ struct PreviewCameraDragLayer: View {
         let s = (box: draft ?? box,
                  rect: rect(of: draft ?? box, frame: frame))
         start = s
+        onSelect?()
         NSCursor.closedHand.set()
         return s
     }

@@ -33,7 +33,15 @@ struct LayoutSettingsTab: View {
         let layout = coordinator.stageLayout
         return LayoutCameraModel(box: layout.presenceBox, shape: layout.cameraShape, cameraOff: coordinator.cameraIsOff,
                                  onStep: { coordinator.previewPlacementStep($0) },
-                                 onCommit: { coordinator.commitPreviewPlacement($0) })
+                                 onCommit: { coordinator.commitPreviewPlacement($0) },
+                                 canHide: !coordinator.cameraDirectorSettings.enabled && coordinator.shareTarget.kind != .nothing,
+                                 setShown: { on in
+                                     coordinator.cameraDirectorSettings.noCamera = !on
+                                     coordinator.previewCamerasChanged()
+                                 },
+                                 adjust: {
+                                     NotificationCenter.default.post(name: .showWebcamSettings, object: nil)
+                                 })
     }
 
     var body: some View {
@@ -827,7 +835,9 @@ struct LayoutPageContent: View {
 
     private func inspector(_ template: LayoutTemplate) -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            if let (slot, piece) = selected(in: template) {
+            if selection == LayoutCameraModel.selectionID, let camera {
+                cameraInspector(camera)
+            } else if let (slot, piece) = selected(in: template) {
                 inspectorHeader(piece, slot: slot, template: template)
                 switch piece.kind {
                 case let .app(app): appControls(piece, app: app, slot: slot, template: template)
@@ -842,7 +852,7 @@ struct LayoutPageContent: View {
                 HStack(spacing: 8) {
                     Image(systemName: "cursorarrow.click.2")
                         .foregroundStyle(.secondary)
-                    Text("Select a piece to change what it does. Arrows move it, \u{21E7}-arrows resize it, \u{232B} removes it.")
+                    Text("Select a piece (or your camera) to change what it does. Arrows move it, \u{21E7}-arrows resize it, \u{232B} removes it.")
                         .font(.callout)
                         .foregroundStyle(.secondary)
                 }
@@ -852,6 +862,48 @@ struct LayoutPageContent: View {
         .frame(maxWidth: .infinity, minHeight: 52, alignment: .leading)
         .background(RoundedRectangle(cornerRadius: 10).fill(Color.secondary.opacity(0.06)))
         .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Color.secondary.opacity(0.2)))
+    }
+
+    /// The camera overlay's card: whether it shows, and the way to its look.
+    @ViewBuilder
+    private func cameraInspector(_ camera: LayoutCameraModel) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: camera.cameraOff ? "video.slash" : "video")
+                .foregroundStyle(.secondary)
+                .frame(width: 20, height: 20)
+                .accessibilityHidden(true)
+            Text("Your camera")
+                .font(.callout.weight(.semibold))
+            Text(cameraReadout(camera))
+                .font(.system(size: 11, design: .monospaced))
+                .foregroundStyle(.secondary)
+            Spacer()
+            Button { camera.adjust() } label: {
+                Label("Adjust webcam\u{2026}", systemImage: "slider.horizontal.3")
+            }
+            .controlSize(.small)
+            .help("Opens Settings \u{2192} Webcam: shape, size, background, mirror.")
+        }
+        HStack(spacing: 24) {
+            Toggle("Show my camera", isOn: Binding(get: { !camera.cameraOff }, set: { camera.setShown($0) }))
+                .disabled(!camera.cameraOff && !camera.canHide)
+                .help(camera.canHide || camera.cameraOff
+                      ? "Whether your camera is in the picture everyone sees."
+                      : "Camera switching is on, or nothing is shared. Change that on the Webcam page first.")
+            Spacer()
+        }
+        Text("This is your camera setting for every layout, not just this one. Drag it on the canvas to move it, drag a corner to resize it.")
+            .font(.callout)
+            .foregroundStyle(.secondary)
+    }
+
+    private func cameraReadout(_ camera: LayoutCameraModel) -> String {
+        let name = camera.shape.label
+        guard camera.shape != .presenterLarge, camera.shape != .cutout,
+              let frame = DisplayResolver.mainDisplayScreen()?.frame.size else { return name }
+        let w = Int((camera.box.widthFraction * Double(frame.width)).rounded())
+        let h = Int((Double(w) / LayoutCameraRules.aspect(for: camera.shape)).rounded())
+        return "\(name) \u{00B7} \(w)\u{00D7}\(h)"
     }
 
     private func inspectorHeader(_ piece: LayoutPiece, slot: LayoutSlot, template: LayoutTemplate) -> some View {

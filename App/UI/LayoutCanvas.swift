@@ -77,6 +77,18 @@ struct LayoutCameraModel {
     var onStep: (PresenceBox) -> Void
     /// The drag ended: persist once.
     var onCommit: (PresenceBox) -> Void
+    /// Whether the camera can be turned off from here (not while switching is on,
+    /// and not with nothing shared). Turning it on is always allowed.
+    var canHide = true
+    /// Show (true) or hide (false) the camera. It is the camera setting for
+    /// every layout, not a per-layout flag.
+    var setShown: (Bool) -> Void = { _ in }
+    /// Opens Settings \u{2192} Webcam.
+    var adjust: () -> Void = {}
+
+    /// The camera is selected in the editor by this id, in the same `selection`
+    /// the pieces use, so selecting one deselects the other. Never a piece's id.
+    static let selectionID = UUID(uuidString: "00000000-0000-0000-0000-00000000CA3E")!
 }
 
 extension LayoutCameraRules {
@@ -423,6 +435,8 @@ struct LayoutCanvas: View {
                 content: LayoutCameraRules.content(displayAspect: display.aspect),
                 space: display.cameraSpace,
                 onStep: camera.onStep, onCommit: camera.onCommit,
+                selected: selection == LayoutCameraModel.selectionID,
+                onSelect: locked ? nil : { selection = LayoutCameraModel.selectionID; focused = true; onActivate() },
                 fill: { size in AnyView(CameraStandIn(shape: camera.shape, off: camera.cameraOff, size: size)) })
                 .frame(width: canvas.width, height: canvas.height)
                 .zIndex(6)
@@ -590,6 +604,8 @@ struct LayoutCanvas: View {
             return .handled
         case .delete, .deleteForward:
             guard let id = selection else { return .ignored }
+            // The camera is not a piece: Delete does nothing (Hide is in its card).
+            if id == LayoutCameraModel.selectionID { return .handled }
             remove(id)
             return .handled
         case .leftArrow, .rightArrow, .upArrow, .downArrow:

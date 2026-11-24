@@ -1,14 +1,32 @@
 //
 //  GreenroomPopover.swift
 //
-//  Greenroom's one popover, drawn by us. It always hangs below its button and
-//  never changes side. A SwiftUI `.popover` is an NSPopover, and NSPopover
-//  re-places itself whenever its content size changes and no longer fits, so
-//  a popup that grows (a toggle that reveals a slider) jumped above its
-//  button. This is a child panel of the anchor's window instead: its top is
-//  fixed under the anchor, its height is the content's ideal height capped to
-//  the room below (the content scrolls past that), and it only ever grows
-//  downward. Never use a bare `.popover` for a button.
+//  Greenroom's one popover, built the way AppKit builds its own. It always
+//  hangs below its button and never changes side. A SwiftUI `.popover` is an
+//  NSPopover, and NSPopover re-places itself whenever its content size changes
+//  and no longer fits, so a popup that grows (a toggle that reveals a slider)
+//  jumped above its button. Never use a bare `.popover` for a button.
+//
+//  Structure (the panel frame is exactly the visible rounded body):
+//    Panel           borderless NSPanel, child of the anchor's window; clear and
+//                    non-opaque, `hasShadow` on: the WINDOW shadow, which macOS
+//                    derives from the drawn pixels, so it follows the rounded
+//                    shape. `invalidateShadow()` after every resize.
+//      Container     layer-backed, continuous corner radius, masksToBounds
+//        Glass       `GreenroomGlassAppKit.makeBacking` (NSGlassEffectView on 26)
+//          Scroll    NSScrollView: overlay scroller, elastic, 8 pt insets
+//            Document flipped view holding the NSHostingView of the content
+//  Scrolling is pure AppKit: moving the clip view never touches SwiftUI. The
+//  content is measured (the hosting view's fitting size) only when SwiftUI
+//  says its ideal size changed, on the next run-loop turn; panel height =
+//  min(content + insets, room below), from `PopoverPlacement`.
+//
+//  Key window: the panel takes key (so Escape and the first scroll go to it)
+//  only when Greenroom is already active and the anchor's window is key, the
+//  normal case of a click in our own window. It never activates the app: an
+//  activation over another app's full-screen desktop drags windows or jumps
+//  Spaces (1.8.3, MeetingMenuPanel). Closing hands key back to the anchor's
+//  window.
 //
 //  Environment: the content is a closure, so what it captures comes along
 //  (objects, bindings). Nothing here forwards the call site's
@@ -79,28 +97,50 @@ final class AnchorView: NSView {
 private final class PopoverController {
     static let shared = PopoverController()
 
-    private static let arrowHeight: CGFloat = 7
-    private static let arrowWidth: CGFloat = 16
     private static let gap: CGFloat = 8
     private static let margin: CGFloat = 12
-    static let radius: CGFloat = 16
-    /// Transparent room round the glass (sides, bottom) for its drawn shadow.
-    static let shadowPad: CGFloat = 14
+    private static let radius: CGFloat = 16
+    /// Room above and below the scrolling content (scroll view content insets).
+    private static let inset: CGFloat = 8
 
     private final class Panel: NSPanel {
         override var canBecomeKey: Bool { true }
         override var canBecomeMain: Bool { false }
     }
 
-    private final class Host: NSHostingView<PopoverRoot> {
+    /// The hosting view tells us when SwiftUI's ideal size changes; that is
+    /// the only time the panel is measured again.
+    private final class Host: NSHostingView<AnyView> {
+        var onIdealChange: () -> Void = {}
         override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+        override func invalidateIntrinsicContentSize() {
+            super.invalidateIntrinsicContentSize()
+            onIdealChange()
+        }
+        #if DEBUG
+        override func layout() {
+            PopoverDebug.layoutPasses += 1
+            let t = CACurrentMediaTime(); super.layout(); PopoverDebug.layoutTime += CACurrentMediaTime() - t
+        }
+        #endif
+    }
+
+    private final class Scroll: NSScrollView {
+        override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+    }
+
+    private final class Document: NSView {
+        override var isFlipped: Bool { true }
     }
 
     private weak var anchor: AnchorView?
     private weak var anchorWindow: NSWindow?
     private var panel: Panel?
     private var host: Host?
-    private let model = PopoverModel()
+    private var scroll: Scroll?
+    /// The content's ideal size plus the vertical insets; zero until measured.
+    private var ideal = CGSize.zero
+    private var measurePending = false
     private var monitors: [Any] = []
     private var observers: [(center: NotificationCenter, token: NSObjectProtocol)] = []
     private var shown = false
@@ -117,11 +157,15 @@ private final class PopoverController {
         return dismissedAnchor === view && Date().timeIntervalSince(dismissedAt) < 0.5
     }
 
+    private static func root(_ content: AnyView) -> AnyView {
+        AnyView(PopoverRoot(content: content))
+    }
+
     // MARK: Present, update, dismiss
 
     func present(anchor view: AnchorView, content: AnyView) {
         if anchor === view, panel != nil {
-            host?.rootView = PopoverRoot(model: model, content: content)
+            host?.rootView = Self.root(content)
             return
         }
         guard let window = view.window, view.bounds.width > 0 else { return }
@@ -135,37 +179,69 @@ private final class PopoverController {
         anchor = view
         anchorWindow = window
         shown = false
-        model.reset()
-        model.reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
-        model.onIdealChange = { [weak self] in self?.layout() }
+        ideal = .zero
 
-        let host = Host(rootView: PopoverRoot(model: model, content: content))
-        // The hosting view must not size or constrain the window from its
-        // content: it grew the panel past the room below, so the scroll view
-        // thought everything fitted. `layout()` is the only thing that sizes.
-        host.sizingOptions = []
-        host.wantsLayer = true
-        host.layer?.backgroundColor = NSColor.clear.cgColor
-        host.layer?.isOpaque = false
+        let host = Host(rootView: Self.root(content))
+        // The hosting view never sizes the window or itself: `measure()` and
+        // `layout()` do, so the scroll view knows what does not fit.
+        host.sizingOptions = [.intrinsicContentSize]
+        // No safe area: with one, every scroll step re-derived it against the
+        // window and laid the content out again (measured: 4x the passes).
+        host.safeAreaRegions = []
+        host.translatesAutoresizingMaskIntoConstraints = true
         host.setAccessibilityRole(.popover)
-        let panel = Panel(contentRect: CGRect(x: 0, y: 0, width: 320, height: 240),
-                          styleMask: [.borderless], backing: .buffered, defer: false)
+        host.onIdealChange = { [weak self] in self?.scheduleMeasure() }
+
+        let document = Document()
+        document.addSubview(host)
+
+        let scroll = Scroll()
+        scroll.drawsBackground = false
+        scroll.hasVerticalScroller = true
+        scroll.hasHorizontalScroller = false
+        scroll.scrollerStyle = .overlay
+        scroll.autohidesScrollers = true
+        scroll.verticalScrollElasticity = .allowed
+        scroll.horizontalScrollElasticity = .none
+        scroll.automaticallyAdjustsContentInsets = false
+        scroll.contentInsets = NSEdgeInsets(top: Self.inset, left: 0, bottom: Self.inset, right: 0)
+        scroll.contentView.drawsBackground = false
+        scroll.documentView = document
+
+        let container = NSView()
+        container.wantsLayer = true
+        container.layer?.cornerRadius = Self.radius
+        container.layer?.cornerCurve = .continuous
+        container.layer?.masksToBounds = true
+        let glass = GreenroomGlassAppKit.makeBacking(cornerRadius: Self.radius, content: scroll)
+        glass.frame = container.bounds
+        glass.autoresizingMask = [.width, .height]
+        container.addSubview(glass)
+
+        let panel = Panel(contentRect: CGRect(x: 0, y: 0, width: 320, height: 200),
+                          styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
         panel.isReleasedWhenClosed = false
         panel.hidesOnDeactivate = false
         panel.level = NSWindow.Level(rawValue: window.level.rawValue + 1)
+        // Stays on the anchor window's Space as its child; never joins all Spaces.
         panel.collectionBehavior = [.fullScreenAuxiliary, .ignoresCycle]
-        panel.backgroundColor = .clear
-        panel.isOpaque = false
-        panel.hasShadow = false  // the shadow is drawn in SwiftUI, following the shape
+        GreenroomGlassAppKit.prepare(panel)
+        panel.hasShadow = true
         panel.appearance = window.effectiveAppearance
-        panel.contentView = host
+        panel.contentView = container
         panel.alphaValue = 0
         self.host = host
+        self.scroll = scroll
         self.panel = panel
 
-        layout()
+        measure()
         window.addChildWindow(panel, ordered: .above)
-        panel.makeKeyAndOrderFront(nil)
+        panel.orderFront(nil)
+        if NSApp.isActive && window.isKeyWindow { panel.makeKey() }
+        #if DEBUG
+        NSLog("greenroomPopover: shown, panel.isKeyWindow=%@ (app active %@)",
+              "\(panel.isKeyWindow)", "\(NSApp.isActive)")
+        #endif
         watch(window)
     }
 
@@ -189,6 +265,7 @@ private final class PopoverController {
         panel.contentView = nil
         self.panel = nil
         host = nil
+        scroll = nil
         anchor = nil
         shown = false
         if reason != .binding, let anchorView {
@@ -204,28 +281,47 @@ private final class PopoverController {
         layout()
     }
 
+    // MARK: Measure (only when the content's ideal size changes)
+
+    private func scheduleMeasure() {
+        guard !measurePending else { return }
+        measurePending = true
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.measurePending = false
+            self.measure()
+        }
+    }
+
+    private func measure() {
+        guard let host else { return }
+        let fit = host.fittingSize
+        let size = CGSize(width: ceil(fit.width), height: ceil(fit.height) + 2 * Self.inset)
+        if abs(size.width - ideal.width) > 0.5 || abs(size.height - ideal.height) > 0.5 {
+            ideal = size
+        }
+        layout()
+    }
+
     // MARK: Geometry (the top never moves; only the height and width change)
 
     private func layout() {
-        guard let panel, let anchor, let window = anchor.window else { return }
+        guard let panel, let host, let scroll, let anchor, let window = anchor.window else { return }
         let target = window.convertToScreen(anchor.convert(anchor.bounds, to: nil))
         // The screen the anchor's window is on (visibleFrame: no Dock, no menu bar).
         let screen = window.screen
             ?? NSScreen.screens.first { $0.frame.contains(CGPoint(x: target.midX, y: target.midY)) }
             ?? NSScreen.main
         guard let area = screen?.visibleFrame else { return }
-        let ideal = model.ideal
         let ready = ideal.width > 0 && ideal.height > 0
-        let placed = PopoverPlacement.frame(
-            anchor: target, contentSize: ideal, visible: area,
-            gap: Self.gap, margin: Self.margin, arrowHeight: Self.arrowHeight,
-            arrowEdge: Self.radius + Self.arrowWidth / 2 + 2, shadowPad: Self.shadowPad)
+        let frame = PopoverPlacement.frame(anchor: target, contentSize: ideal, visible: area,
+                                           gap: Self.gap, margin: Self.margin).panelFrame
 
-        // Publish only real changes: every assignment re-renders the root, and
-        // a re-render while the owner scrolls must not touch the scroll view.
-        if model.bodySize != placed.bodySize { model.bodySize = placed.bodySize }
-        if abs(model.arrowX - placed.arrowX) > 0.5 { model.arrowX = placed.arrowX }
-        let frame = placed.panelFrame
+        let docSize = CGSize(width: frame.width, height: max(0, ideal.height - 2 * Self.inset))
+        if host.frame.size != docSize {
+            host.frame = CGRect(origin: .zero, size: docSize)
+            scroll.documentView?.frame = host.frame
+        }
         if abs(panel.frame.minX - frame.minX) > 0.5 || abs(panel.frame.minY - frame.minY) > 0.5
             || abs(panel.frame.width - frame.width) > 0.5 || abs(panel.frame.height - frame.height) > 0.5 {
             panel.setFrame(frame, display: true)
@@ -233,10 +329,14 @@ private final class PopoverController {
         }
         if ready, !shown {
             shown = true
-            model.appeared = true
+            panel.invalidateShadow()
+            let reduce = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
             NSAnimationContext.runAnimationGroup { context in
-                context.duration = model.reduceMotion ? 0.001 : 0.14
+                context.duration = reduce ? 0.001 : 0.14
                 panel.animator().alphaValue = 1
+            } completionHandler: { [weak panel] in
+                // The shadow is taken from what is drawn: take it again once opaque.
+                MainActor.assumeIsolated { panel?.invalidateShadow() }
             }
         }
     }
@@ -300,124 +400,25 @@ private final class PopoverController {
     }
 }
 
-// MARK: - SwiftUI side
-
-@MainActor
-private final class PopoverModel: ObservableObject {
-    /// The content's own ideal size, measured live.
-    @Published var ideal = CGSize.zero
-    /// The visible body after the room cap (height) and screen clamp (width).
-    @Published var bodySize = CGSize(width: 320, height: 200)
-    @Published var arrowX: CGFloat = 40
-    @Published var appeared = false
-    var reduceMotion = false
-    var onIdealChange: () -> Void = {}
-
-    func reset() {
-        ideal = .zero
-        appeared = false
-    }
-
-    func measured(_ size: CGSize) {
-        guard abs(size.width - ideal.width) > 0.5 || abs(size.height - ideal.height) > 0.5 else { return }
-        ideal = size
-        onIdealChange()
-    }
-}
-
+/// The content at its ideal size on both axes, drawn from the top left.
 private struct PopoverRoot: View {
-    @ObservedObject var model: PopoverModel
     let content: AnyView
-    @State private var fadeTop = false
-    @State private var fadeBottom = false
-    /// Room above and below the scrolling content, and the height of the edge fade.
-    private static let scrollInset: CGFloat = 8
-    private static let fadeHeight: CGFloat = 12
-
-    private var edgeFade: some View {
-        VStack(spacing: 0) {
-            LinearGradient(colors: [.black.opacity(fadeTop ? 0 : 1), .black], startPoint: .top, endPoint: .bottom)
-                .frame(height: Self.fadeHeight)
-            Rectangle()
-            LinearGradient(colors: [.black, .black.opacity(fadeBottom ? 0 : 1)], startPoint: .top, endPoint: .bottom)
-                .frame(height: Self.fadeHeight)
-        }
-        .animation(.easeOut(duration: 0.12), value: fadeTop)
-        .animation(.easeOut(duration: 0.12), value: fadeBottom)
-    }
-
     var body: some View {
-        let shape = PopoverShape(arrowX: model.arrowX)
-        ScrollView {
-            content
-                .fixedSize()
-                .onGeometryChange(for: CGSize.self) { $0.size } action: {
-                    // Local size of the content: it does not change while scrolling.
-                    model.measured(CGSize(width: $0.width, height: $0.height + 2 * Self.scrollInset))
-                }
-        }
-        .contentMargins(.vertical, Self.scrollInset, for: .scrollContent)
-        .scrollBounceBehavior(.basedOnSize)
-        .scrollContentBackground(.hidden)
-        // A half row fades out at a cut edge instead of being sliced; no fade at rest.
-        .modifier(EdgeTracking(fadeTop: $fadeTop, fadeBottom: $fadeBottom))
-        .mask(edgeFade)
-        .frame(width: model.bodySize.width, height: model.bodySize.height)
-        .clipShape(RoundedRectangle(cornerRadius: PopoverController.radius, style: .continuous))
-        .frame(width: model.bodySize.width, height: model.bodySize.height + PopoverShape.arrowHeight, alignment: .bottom)
-        .greenroomGlass(in: shape)
-        .shadow(color: .black.opacity(0.22), radius: 9, y: 3)
-        .padding(.horizontal, PopoverController.shadowPad)
-        .padding(.bottom, PopoverController.shadowPad)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .tint(Brand.green)
-        .scaleEffect(model.appeared || model.reduceMotion ? 1 : 0.98, anchor: .top)
-        .animation(model.reduceMotion ? nil : .easeOut(duration: 0.14), value: model.appeared)
+        #if DEBUG
+        let _ = PopoverDebug.bodyPasses += 1
+        #endif
+        content.fixedSize()
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .tint(Brand.green)
     }
 }
 
-private struct EdgeTracking: ViewModifier {
-    @Binding var fadeTop: Bool
-    @Binding var fadeBottom: Bool
-
-    func body(content: Content) -> some View {
-        if #available(macOS 15, *) {
-            content
-                .onScrollGeometryChange(for: Bool.self) { $0.contentOffset.y > 1 } action: { _, now in fadeTop = now }
-                .onScrollGeometryChange(for: Bool.self) {
-                    $0.contentSize.height - ($0.contentOffset.y + $0.containerSize.height) > 1
-                } action: { _, now in fadeBottom = now }
-        } else {
-            content
-        }
-    }
+#if DEBUG
+/// Work the open popup's SwiftUI content does, for the tour's `popupScroll`:
+/// hosting-view layout passes (and their time) and root body evaluations.
+@MainActor enum PopoverDebug {
+    static var layoutPasses = 0
+    static var layoutTime: Double = 0
+    static var bodyPasses = 0
 }
-
-/// A rounded body with a small notch on top pointing up at the anchor.
-private struct PopoverShape: InsettableShape {
-    var arrowX: CGFloat
-    var insetAmount: CGFloat = 0
-    static let arrowHeight: CGFloat = 7
-    static let arrowWidth: CGFloat = 16
-
-    func inset(by amount: CGFloat) -> PopoverShape {
-        var copy = self
-        copy.insetAmount += amount
-        return copy
-    }
-
-    func path(in rect: CGRect) -> Path {
-        let body = CGRect(x: rect.minX, y: rect.minY + Self.arrowHeight,
-                          width: rect.width, height: rect.height - Self.arrowHeight)
-            .insetBy(dx: insetAmount, dy: insetAmount)
-        var path = RoundedRectangle(cornerRadius: PopoverController.radius, style: .continuous).path(in: body)
-        var arrow = Path()
-        let half = Self.arrowWidth / 2
-        arrow.move(to: CGPoint(x: arrowX - half, y: body.minY + 1))
-        arrow.addLine(to: CGPoint(x: arrowX, y: rect.minY + insetAmount))
-        arrow.addLine(to: CGPoint(x: arrowX + half, y: body.minY + 1))
-        arrow.closeSubpath()
-        path = path.union(arrow)
-        return path
-    }
-}
+#endif

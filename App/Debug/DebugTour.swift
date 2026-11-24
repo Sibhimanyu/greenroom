@@ -24,6 +24,19 @@
 //                 drives the notch status pill with sample data only; nothing starts.
 //    film page=home|sessions [secs=1]  films the page change (DebugFilm.swift).
 //    tree         dump the main window's view tree to <dir>/tree.txt.
+//    popup name=look|camera|share|layout|record|mic|more|none  opens that Home dock
+//                 popup (the same @State its button toggles); `none` closes it.
+//    popupScroll y=<points> [steps=20]  scrolls the open popup's NSScrollView to y
+//                 from the top in `steps` runloop-spaced steps; returns the
+//                 popup content's hosting-view layout passes (and ms) and root
+//                 body passes during the scroll.
+//    showHere on|off  lets the main window join the Space the owner is on (a
+//                 full-screen app's too) and orders it front WITHOUT activating,
+//                 so ScreenCaptureKit can read it (it fails, -3811, for windows on
+//                 another Space). `off` and `restore` put the behaviour back.
+//    shot also writes <name>-popup.png (the popup with its parent window,
+//                 composited with their window shadows on a transparent
+//                 backdrop) while a popup is open.
 //    restore      Home, original appearance and frame, tour windows closed.
 //  Every command writes <dir>/last.json ({"ok":..,"cmd":..,"error":..,"seq":..}).
 //
@@ -170,6 +183,24 @@ enum DebugTour {
                 case "status": extra = status(info)
                 case "resetMeetingTip": MeetingShrinkTip.reset()
                 case "tree": tree(dir: dir)
+                case "popup":
+                    NotificationCenter.default.post(name: .debugTourPopup, object: nil,
+                                                    userInfo: ["name": info["name"] ?? "none"])
+                    try? await Task.sleep(nanoseconds: 700_000_000)
+                    if info["name"] != "none" {
+                        guard let p = popupPanel() else { throw TourError("no popup panel opened") }
+                        extra["panelIsKey"] = p.isKeyWindow
+                        extra["panelFrame"] = [p.frame.minX, p.frame.minY, p.frame.width, p.frame.height]
+                    }
+                case "popupScroll": extra = try await popupScroll(info)
+                case "showHere":
+                    guard let w = MainWindow.current else { throw TourError("no main window") }
+                    if info["on"] != "false" && info["mode"] != "off" {
+                        if savedBehavior == nil { savedBehavior = w.collectionBehavior }
+                        w.collectionBehavior.insert([.canJoinAllSpaces, .fullScreenAuxiliary])
+                        w.orderFront(nil)
+                    } else if let b = savedBehavior { w.collectionBehavior = b; savedBehavior = nil }
+                    extra["onActiveSpace"] = w.isOnActiveSpace
                 case "scroll": try scroll(info)
                 case "live": extra = try live(info)
                 case "probe": extra = probe()
@@ -461,7 +492,112 @@ enum DebugTour {
         }
         original = nil
         if let k = savedShareKind { c.shareTarget.kind = k; savedShareKind = nil }
+        NotificationCenter.default.post(name: .debugTourPopup, object: nil, userInfo: ["name": "none"])
+        if let b = savedBehavior { MainWindow.current?.collectionBehavior = b; savedBehavior = nil }
         try? await Task.sleep(nanoseconds: 300_000_000)
+    }
+    private static var savedBehavior: NSWindow.CollectionBehavior?
+
+    /// The open greenroomPopover panel: a visible child panel of the main window.
+    private static func popupPanel() -> NSWindow? {
+        MainWindow.current?.childWindows?.first { $0 is NSPanel && $0.isVisible }
+    }
+
+    private static func popupScroll(_ info: [String: String]) async throws -> [String: Any] {
+        guard let y = info["y"].flatMap(Double.init) else { throw TourError("y required") }
+        guard let panel = popupPanel(), let root = panel.contentView else { throw TourError("no popup open") }
+        func scrollViews(_ v: NSView) -> [NSScrollView] {
+            ((v as? NSScrollView).map { [$0] } ?? []) + v.subviews.flatMap(scrollViews)
+        }
+        guard let sv = scrollViews(root).max(by: { $0.frame.height < $1.frame.height }) else {
+            throw TourError("no scroll view in popup")
+        }
+        let clip = sv.contentView
+        let steps = max(1, Int(info["steps"] ?? "") ?? 20)
+        let start = clip.bounds.minY
+        // Clamped to the real scroll range, as a wheel would leave it.
+        let maxY = max(-sv.contentInsets.top, clip.documentRect.height + sv.contentInsets.bottom - clip.bounds.height)
+        let target = min(max(-sv.contentInsets.top, CGFloat(y) - sv.contentInsets.top), maxY)
+        let before = PopoverDebug.layoutPasses
+        let beforeTime = PopoverDebug.layoutTime
+        let beforeBodies = PopoverDebug.bodyPasses
+        for i in 1...steps {
+            let t = start + (target - start) * CGFloat(i) / CGFloat(steps)
+            clip.scroll(to: NSPoint(x: clip.bounds.minX, y: t))
+            sv.reflectScrolledClipView(clip)
+            try? await Task.sleep(nanoseconds: 16_000_000)
+        }
+        try? await Task.sleep(nanoseconds: 200_000_000)
+        return ["layoutPassesDuringScroll": PopoverDebug.layoutPasses - before, "steps": steps,
+                "layoutMillisDuringScroll": (PopoverDebug.layoutTime - beforeTime) * 1000,
+                "rootBodyPassesDuringScroll": PopoverDebug.bodyPasses - beforeBodies,
+                "clipY": clip.bounds.minY, "documentHeight": clip.documentRect.height,
+                "visibleHeight": clip.bounds.height]
+    }
+
+    /// CGWindowListCreateImageFromArray, which the macOS 15 SDK marks
+    /// unavailable to Swift, looked up at run time. Global display space,
+    /// top-left origin. Front-to-back order of `ids`.
+    private static func legacyComposite(ids: [Int], rect: CGRect) -> CGImage? {
+        typealias Fn = @convention(c) (CGRect, CFArray, UInt32) -> Unmanaged<CGImage>?
+        guard let sym = dlsym(UnsafeMutableRawPointer(bitPattern: -2), "CGWindowListCreateImageFromArray") else { return nil }
+        let fn = unsafeBitCast(sym, to: Fn.self)
+        var pointers = ids.map { UnsafeRawPointer(bitPattern: $0) }
+        guard let array = CFArrayCreate(nil, &pointers, pointers.count, nil) else { return nil }
+        // kCGWindowImageBestResolution (1 << 3); shadows are included by default.
+        return fn(rect, array, 1 << 3)?.takeRetainedValue()
+    }
+
+    /// The popup and its parent window, composited from the display with only
+    /// those two windows included, so the popup's window shadow shows.
+    private static func popupShot(name: String, dir: String, content: SCShareableContent) async throws -> String? {
+        let ids: (panel: Int, main: Int, rect: CGRect, screenH: CGFloat)? = await MainActor.run {
+            guard let p = popupPanel(), let m = MainWindow.current, let screen = m.screen else { return nil }
+            let r = p.frame.union(m.frame).insetBy(dx: -40, dy: -40)
+            return (p.windowNumber, m.windowNumber, r, screen.frame.maxY)
+        }
+        if let ids {
+            let d: [String: Any] = ["rect": [ids.rect.minX, ids.rect.minY, ids.rect.width, ids.rect.height],
+                                    "screenH": ids.screenH,
+                                    "scWindows": content.windows.filter { [ids.panel, ids.main].contains(Int($0.windowID)) }
+                                        .map { ["id": Int($0.windowID), "frame": [$0.frame.minX, $0.frame.minY, $0.frame.width, $0.frame.height], "layer": $0.windowLayer] },
+                                    "displays": content.displays.map { [$0.frame.minX, $0.frame.minY, $0.frame.width, $0.frame.height] }]
+            if let data = try? JSONSerialization.data(withJSONObject: d, options: [.prettyPrinted]) {
+                try? data.write(to: URL(fileURLWithPath: dir).appendingPathComponent("\(name)-popup.json"))
+            }
+        }
+        guard let ids,
+              let scPanel = content.windows.first(where: { Int($0.windowID) == ids.panel }),
+              let scMain = content.windows.first(where: { Int($0.windowID) == ids.main }),
+              let display = content.displays.first(where: { $0.frame.contains(CGPoint(x: scMain.frame.midX, y: scMain.frame.midY)) })
+        else { return nil }
+        let filter = SCContentFilter(display: display, including: [scMain, scPanel])
+        let cfg = SCStreamConfiguration()
+        // sourceRect is in display points, top-left origin.
+        let top = ids.screenH - ids.rect.maxY
+        cfg.sourceRect = CGRect(x: ids.rect.minX - display.frame.minX, y: top - display.frame.minY,
+                                width: ids.rect.width, height: ids.rect.height)
+        cfg.width = Int(ids.rect.width * 2)
+        cfg.height = Int(ids.rect.height * 2)
+        cfg.showsCursor = false
+        cfg.captureResolution = .best
+        cfg.ignoreShadowsDisplay = false
+        cfg.backgroundColor = .white
+        // The CoreGraphics composite first: it draws the window shadows (the
+        // thing under review) on a transparent backdrop, and it reads windows
+        // on another Space. ScreenCaptureKit's display capture drops shadows.
+        let image: CGImage
+        if let cg = legacyComposite(ids: [ids.panel, ids.main],
+                                    rect: CGRect(x: ids.rect.minX, y: ids.screenH - ids.rect.maxY,
+                                                 width: ids.rect.width, height: ids.rect.height)) {
+            image = cg
+        } else {
+            image = try await SCScreenshotManager.captureImage(contentFilter: filter, configuration: cfg)
+        }
+        guard let png = NSBitmapImageRep(cgImage: image).representation(using: .png, properties: [:]) else { return nil }
+        let file = "\(name)-popup.png"
+        try png.write(to: URL(fileURLWithPath: dir).appendingPathComponent(file))
+        return file
     }
 
     // MARK: Capture
@@ -548,6 +684,11 @@ enum DebugTour {
             entries.append(entry)
         }
         if windows.isEmpty { errors.append("no Greenroom windows found") }
+        do {
+            if let file = try await popupShot(name: name, dir: dir, content: content) {
+                entries.append(["title": "popup", "file": file])
+            }
+        } catch { errors.append("popup: \(error)") }
         let manifest: [String: Any] = ["name": name, "windows": entries, "errors": errors]
         if let data = try? JSONSerialization.data(withJSONObject: manifest, options: [.prettyPrinted]) {
             try? data.write(to: URL(fileURLWithPath: dir).appendingPathComponent("\(name).json"))
@@ -567,6 +708,7 @@ enum DebugTour {
 extension Notification.Name {
     static let debugTourHomePreview = Notification.Name("com.greenroom.debug.tour.homePreview")
     static let debugTourHomeCard = Notification.Name("com.greenroom.debug.tour.homeCard")
+    static let debugTourPopup = Notification.Name("com.greenroom.debug.tour.popup")
 }
 
 

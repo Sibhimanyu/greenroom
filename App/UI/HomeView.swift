@@ -207,6 +207,15 @@ struct HomeView: View {
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didChangeScreenParametersNotification)) { _ in
             displays = DisplayResolver.connectedDisplays()
         }
+        #if DEBUG
+        // DebugTour `popup name=`: opens one dock popup, as its button does.
+        .onReceive(NotificationCenter.default.publisher(for: .debugTourPopup)) { note in
+            let name = note.userInfo?["name"] as? String ?? ""
+            lookOpen = name == "look"; cameraOpen = name == "camera"; shareOpen = name == "share"
+            layoutOpen = name == "layout"; recordOpen = name == "record"; micOpen = name == "mic"
+            moreOpen = name == "more"
+        }
+        #endif
     }
 
     // MARK: Left: the picture

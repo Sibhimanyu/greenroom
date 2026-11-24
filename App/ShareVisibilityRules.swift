@@ -69,15 +69,18 @@ enum ShareVisibilityExplainer {
 
 /// Every kind of window Greenroom opens, and whether it carries the switch.
 /// Hidden from the class by default; the switch lets the person show one, say
-/// to show how they present. Tools and anything private never carry it.
+/// to show how they present. (This is Greenroom's OWN capture; what other
+/// apps' recorders see is `sharingType`, decided by PresenceRecorderRules.) Tools and anything private never carry it.
 enum ShareableWindow: CaseIterable {
     case main, settings, meetingChat, participants, meetingWindow, meetingView
     // Never offered:
-    /// Credentials are typed here (`sharingType = .none`).
+    /// Credentials are typed here (always `sharingType = .none` for other apps,
+    /// via RecorderVisibility; our own capture excludes it by filter).
     case setupGuide
     /// Tools for the person running the class, not content.
     case controlBar, island, recordingChrome, annotation, drawingToolbar
-    /// The whiteboard is its own share target (`sharingType = .none`).
+    /// The whiteboard is its own share target (our own capture excludes it by
+    /// filter; other apps may record it, per PresenceRecorderRules).
     case whiteboard
     /// A web page with its tab strip in the title bar; no room, and never asked for.
     case browser

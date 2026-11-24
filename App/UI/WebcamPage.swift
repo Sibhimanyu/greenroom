@@ -217,8 +217,8 @@ struct WebcamPageContent<LivePicture: View, ShareDetail: View, Cameras: View, Mi
             Section("Camera") {
                 cameras()
                 MirrorMyCameraRow()
-                VisibleToRecordersRow()
             }
+            Section("Other apps") { VisibleToRecordersRow() }
             Section("Microphone") { microphone() }
             Section("Recording") { recording() }
         }
@@ -783,7 +783,7 @@ struct ShapeGlyph: View {
 /// "Mirror my camera": only the presenter's own camera bubble follows it.
 /// The picture in the meeting, the recording and the previews on this page
 /// and on Home (all the composite) are never mirrored. Off (and greyed) while
-/// other apps can record the bubble: they would capture a reversed picture.
+/// other apps can record Greenroom's windows: they would capture a reversed picture.
 private struct MirrorMyCameraRow: View {
     @AppStorage(PresenceFeed.mirrorKey) private var mirror = true
     @AppStorage(PresenceRecorderRules.key) private var visibleToRecorders = true
@@ -801,13 +801,13 @@ private struct MirrorMyCameraRow: View {
     }
 }
 
-/// "Show my camera bubble in other apps' recordings" (PresenceRecorderRules).
+/// "Show Greenroom on screen in other apps' recordings" (PresenceRecorderRules).
 private struct VisibleToRecordersRow: View {
     @AppStorage(PresenceRecorderRules.key) private var visible = true
 
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
-            Toggle("Show my camera bubble in other apps\u{2019} recordings", isOn: $visible)
+            Toggle(PresenceRecorderRules.settingTitle, isOn: $visible)
             Text(PresenceRecorderRules.settingNote)
                 .font(.caption)
                 .foregroundStyle(.secondary)

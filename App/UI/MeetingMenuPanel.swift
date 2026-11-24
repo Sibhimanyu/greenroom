@@ -191,7 +191,9 @@ final class MeetingMenuPanel {
         panel.hidesOnDeactivate = false
         panel.level = .popUpMenu
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .ignoresCycle, .transient]
-        panel.sharingType = .none
+        // Other apps record menus as shown; Greenroom's own capture excludes the
+        // panel through the app-wide filter (RecorderVisibility).
+        RecorderVisibility.track(panel, as: .menuPanel)
         panel.backgroundColor = .clear
         panel.isOpaque = false
         panel.hasShadow = true

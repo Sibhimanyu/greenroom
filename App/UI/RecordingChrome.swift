@@ -106,9 +106,10 @@ final class RecordingControlBarController {
             created.hidesOnDeactivate = false
             created.isMovableByWindowBackground = true
             created.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
-            // A belt: some macOS versions honour it for capture. The real
-            // exclusion is the capture filter (see the file header).
-            created.sharingType = .none
+            // Other apps' recordings follow the switch (RecorderVisibility).
+            // Greenroom's own capture still excludes the bar: the app-wide
+            // filter, not sharingType (see the file header).
+            RecorderVisibility.track(created, as: .recordingControlBar)
             let host = FirstMouseHost(rootView: RecordingControlBarView(coordinator: coordinator).tint(Brand.green))
             host.frame = NSRect(origin: .zero, size: Self.size)
             created.contentView = host
@@ -321,7 +322,8 @@ final class RecordingBorderController {
         created.ignoresMouseEvents = true
         created.hidesOnDeactivate = false
         created.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .ignoresCycle]
-        created.sharingType = .none
+        // Follows the switch for other apps; our own capture excludes it by filter.
+        RecorderVisibility.track(created, as: .recordingBorder)
         created.contentView = NSHostingView(rootView: RecordingBorderView(rounded: rounded, dashed: dashed))
         panel = created
         return created

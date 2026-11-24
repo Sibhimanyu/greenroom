@@ -350,7 +350,9 @@ final class WhiteboardWindowController: NSObject, NSWindowDelegate {
             created.contentAspectRatio = NSSize(width: 16, height: 9)
             created.contentMinSize = NSSize(width: 480, height: 270)
             created.delegate = self
-            created.sharingType = .none
+            // Other apps record it per the switch; our own capture excludes the
+            // window through the app-wide filter (it is its own share target).
+            RecorderVisibility.track(created, as: .whiteboard)
             created.contentView = NSHostingView(rootView: WhiteboardWindowView(board: board, onDone: onDone))
             created.center()
             window = created

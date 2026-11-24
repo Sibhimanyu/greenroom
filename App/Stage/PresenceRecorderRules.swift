@@ -3,17 +3,24 @@
 //  Greenroom
 //
 //  Whether other apps' screen recordings (QuickTime, Loom, OBS, a native Zoom
-//  share) may capture the on-screen camera bubble, and what follows from it.
-//  One place for the decisions: the window's sharingType, the mirror the
+//  share) may capture Greenroom's on-screen windows, and what follows from it.
+//  One switch ("Show Greenroom on screen in other apps' recordings", Settings
+//  -> Webcam, default on) and one place for the decisions: each window kind's
+//  sharingType (`sharing(for:visibleToRecorders:)`), the mirror the camera
 //  bubble really draws, how sharp its picture is, and when its hover chrome
-//  shows. Greenroom's own capture is unaffected either way: StageScreenSource
-//  excludes the whole app and the bubble is never listed in ShareVisibleWindows,
-//  and the compositor draws the camera itself. Foundation only (tests compile it).
+//  shows. The rule: other apps record Greenroom as the person sees it, except
+//  windows that hold credentials, which are never recordable.
+//  Greenroom's own capture is unaffected either way: StageScreenSource
+//  excludes the whole app and lets back in only ShareVisibleWindows, and the
+//  compositor draws the camera and drawings itself. `sharingType` only
+//  controls OTHER apps. Foundation only (tests compile it).
 //
 import Foundation
 
 enum PresenceRecorderRules {
-    /// Settings -> Webcam -> Camera. Default on.
+    /// Settings -> Webcam -> "Show Greenroom on screen in other apps' recordings".
+    /// Default on. The key predates the generalisation (it began as the camera
+    /// bubble's switch in 1.9.1), so existing users keep their choice.
     static let key = "presence.visibleToRecorders"
 
     static var storedVisibleToRecorders: Bool {
@@ -26,6 +33,24 @@ enum PresenceRecorderRules {
     enum Sharing: Equatable { case readOnly, none }
     static func sharing(visibleToRecorders: Bool) -> Sharing { visibleToRecorders ? .readOnly : .none }
 
+    /// Every Greenroom window whose sharingType this switch decides, plus the
+    /// ones it never does. The meeting bar, notch island, Home, Settings and
+    /// the other ordinary windows set no sharingType and stay as they are.
+    enum WindowKind: CaseIterable {
+        case annotationCanvas, annotationToolbar, annotationChrome
+        case menuPanel, recordingControlBar, recordingBorder
+        case whiteboard, cameraBubble, cameraBubbleStrip
+        /// Credentials are typed here: always hidden.
+        case setupGuide
+
+        /// Windows that hold secrets ignore the switch.
+        var alwaysHidden: Bool { self == .setupGuide }
+    }
+
+    static func sharing(for kind: WindowKind, visibleToRecorders: Bool) -> Sharing {
+        kind.alwaysHidden ? .none : sharing(visibleToRecorders: visibleToRecorders)
+    }
+
     /// The mirror the bubble draws. Others would record a reversed picture, so
     /// a bubble they can record is never mirrored.
     static func effectiveMirror(userMirror: Bool, visibleToRecorders: Bool) -> Bool {
@@ -34,8 +59,9 @@ enum PresenceRecorderRules {
 
     /// "Mirror my camera" can be changed only while nobody can record the bubble.
     static func mirrorSettingEnabled(visibleToRecorders: Bool) -> Bool { !visibleToRecorders }
-    static let mirrorDisabledNote = "Off while other apps can record your bubble."
-    static let settingNote = "Screen recorders like QuickTime and Loom capture your bubble. Greenroom\u{2019}s own picture never includes it twice."
+    static let mirrorDisabledNote = "Off while other apps can record Greenroom\u{2019}s windows."
+    static let settingTitle = "Show Greenroom on screen in other apps\u{2019} recordings"
+    static let settingNote = "Screen recorders like QuickTime and Loom see Greenroom as you do: your camera bubble, drawings, menus, bars and the whiteboard. Greenroom\u{2019}s own picture is unchanged."
 
     /// The camera size the compositor works at; the feed never exceeds it.
     static let compositorCameraWidth: CGFloat = 1920

@@ -14,8 +14,9 @@
 //     app and lets back in only the windows ShareVisibleWindows lists; this
 //     panel is never registered there. Whether OTHER apps' captures (QuickTime,
 //     Loom, OBS, a native Zoom share) see it is `sharingType`, set from
-//     Settings -> Webcam -> "Show my camera bubble in other apps' recordings"
-//     (PresenceRecorderRules): `.readOnly` by default, `.none` when off. Those
+//     Settings -> Webcam -> "Show Greenroom on screen in other apps' recordings"
+//     (PresenceRecorderRules, applied by RecorderVisibility, which covers every
+//     recordable Greenroom window): `.readOnly` by default, `.none` when off. Those
 //     apps do not read our filter, so they need the bubble to be a real picture:
 //     unmirrored, sharp at its on-screen pixel size, and with its hover chrome
 //     shown only while it is being grabbed. Greenroom's own picture never has
@@ -363,7 +364,9 @@ final class PresenceBubble {
         created.hidesOnDeactivate = false
         created.allowsToolTipsWhenApplicationIsInactive = true
         created.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
-        created.sharingType = .none
+        // Follows the switch like the bubble (RecorderVisibility); its fade keeps
+        // it invisible unless the pointer is near.
+        RecorderVisibility.track(created, as: .cameraBubbleStrip)
         created.contentView = host
         created.alphaValue = 0
         strip = created
@@ -449,11 +452,6 @@ final class PresenceBubble {
 
     // MARK: Visible to other apps' recordings
 
-    private static func sharingType() -> NSWindow.SharingType {
-        PresenceRecorderRules.sharing(visibleToRecorders: PresenceRecorderRules.storedVisibleToRecorders) == .readOnly
-            ? .readOnly : .none
-    }
-
     private var visibleToRecorders: Bool { PresenceRecorderRules.storedVisibleToRecorders }
 
     /// Applies the setting to the panel and the feed; called on every change.
@@ -462,7 +460,6 @@ final class PresenceBubble {
         let visible = visibleToRecorders
         guard visible != appliedVisible else { return }
         appliedVisible = visible
-        panel.sharingType = Self.sharingType()
         feed.maxWidth = PresenceRecorderRules.feedWidth(
             visibleToRecorders: visible, bubbleWidthPoints: panel.frame.width,
             backingScale: panel.backingScaleFactor)
@@ -493,9 +490,9 @@ final class PresenceBubble {
         created.hidesOnDeactivate = false
         created.allowsToolTipsWhenApplicationIsInactive = true
         created.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
-        // Other apps' recordings see it unless the setting is off. Our own
-        // capture never does (the filter excludes the app; file header).
-        created.sharingType = Self.sharingType()
+        // Other apps' recordings see it unless the setting is off (kept live by
+        // RecorderVisibility). Our own capture never does (file header).
+        RecorderVisibility.track(created, as: .cameraBubble)
 
         let container = NSView(frame: created.contentRect(forFrameRect: created.frame))
         container.wantsLayer = true

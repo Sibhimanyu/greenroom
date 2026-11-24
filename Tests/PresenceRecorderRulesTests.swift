@@ -3,6 +3,21 @@ import XCTest
 final class PresenceRecorderRulesTests: XCTestCase {
     typealias R = PresenceRecorderRules
 
+    func testEveryWindowKindFollowsTheSwitchExceptCredentials() {
+        for kind in R.WindowKind.allCases {
+            if kind == .setupGuide {
+                XCTAssertTrue(kind.alwaysHidden)
+                XCTAssertEqual(R.sharing(for: kind, visibleToRecorders: true), .none, "\(kind)")
+                XCTAssertEqual(R.sharing(for: kind, visibleToRecorders: false), .none, "\(kind)")
+            } else {
+                XCTAssertFalse(kind.alwaysHidden)
+                XCTAssertEqual(R.sharing(for: kind, visibleToRecorders: true), .readOnly, "\(kind)")
+                XCTAssertEqual(R.sharing(for: kind, visibleToRecorders: false), .none, "\(kind)")
+            }
+        }
+        XCTAssertEqual(R.WindowKind.allCases.count, 10)
+    }
+
     func testDefaultIsOn() {
         XCTAssertTrue(R.visibleToRecorders(stored: nil))
         XCTAssertFalse(R.visibleToRecorders(stored: false))

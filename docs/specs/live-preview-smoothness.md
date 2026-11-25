@@ -28,8 +28,8 @@ Why 8: it was the first default in `daec004` (the sink's introduction), written 
 `PreviewRate.framesPerSecond(meetingLive:)` is 30 outside a live meeting and 15 while one is live (the meeting, the recorder and the preview then share the render machine). `StagePreviewSink` takes its rate from it. The sink cannot see the session, so it has `meetingLive`, set by the coordinator.
 
 Acceptance: pure rule tested (30 / 15); sink default is 30 with `meetingLive == false`; the coordinator sets `previewSink.meetingLive` where the phase changes (needs one line in `CoordinatorController.swift`, owned by another change; until it lands the rate is 30 always).
-Tests: `PreviewRateTests` in `Tests/PreviewFrameRulesTests.swift`.
-Status: open.
+Tests: `PreviewRateTests` in `Tests/PreviewFrameRulesTests.swift` (red: `PreviewRate` missing; green after).
+Status: built (sink and rule); the coordinator line is pending.
 
 ### R2. Preview queue at user-interactive QoS
 

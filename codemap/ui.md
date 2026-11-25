@@ -60,9 +60,9 @@ Record is `MeetingMode.record` (enum in CoordinatorController.swift; Create / Sc
 ### Settings window (9 tabs, 10 in Debug with Account; SettingsView.swift)
 | path | owns |
 |---|---|
-| UI/SettingsView.swift | `TabView`, tab order/heights, Cmd-1..9 (then Cmd-0), notifications `.showWebcamSettings` / `.showSettingsTab` |
+| UI/SettingsView.swift | `TabView`, tab order/heights, Cmd-1..9 (then Cmd-0), notification `.showSettingsTab` (ids go through `SettingsTabs.destination(for:)`; the old "webcam" id opens Layouts with the camera selected); no Webcam tab |
 | (rule) Settings pages clip below the toolbar | `SettingsContentClip` (SettingsView.swift) masks the Settings window's whole contentView to `contentLayoutRect` (the toolbar is a sibling view, so only scrolled-up content is cut; the frost stays). A SwiftUI mask per page did NOT hold once scrolled. Each tab only adds `.settingsPageClip()` (= hard top scroll edge). DEBUG tour `scroll y=<pt>` scrolls the Settings page to check | `SettingsContentClip`, `DebugTour.scroll` |
-| UI/WebcamPage.swift (+ WebcamShapePreview, ShareTargetSettings) | Webcam tab (camera look and camera piece only; merges into Layouts in P8): `WebcamSettingsTab` feeds `WebcamPageContent`; `BubbleDragLayer` |
+| UI/CameraLookControls.swift | The camera look in the Layouts camera inspector: `CameraLookGroup` (folded), `CameraBackgroundControl`, `MirrorMyCameraRow`, `CameraLookModel`. Pure part: `CameraLookRules` (App/Layout/LayoutCamera.swift). The Webcam tab (WebcamPage.swift) is gone; WebcamShapePreview/ShareTargetSettings remain for Onboarding and the share panels |
 | UI/DevicesSettingsTab.swift (+ CameraSwitchSection, MicrophoneSection) | Devices tab (`devices`): camera cards and the two-camera cut, microphone, the four Recording toggles, "Other apps" recordings (`VisibleToRecordersRow`). Home's Camera, Microphone and Record panels' "More" open it via `.showSettingsTab` "devices" |
 | UI/GeneralSettingsTab.swift | General tab (`general`): Privacy, anonymous usage analytics (`analyticsEnabled`) |
 | `SettingsTabs` (in UI/HomeTilePanelRules.swift, pure) | Tab order for Settings and the Home More panel, `shortcutKey(at:)` (Cmd-1..9, Cmd-0) |
@@ -105,11 +105,11 @@ Record is `MeetingMode.record` (enum in CoordinatorController.swift; Create / Sc
 - Main toolbar (ContentView `.toolbar`): on Home: `modeSwitcherItem` (principal `GreenroomSegmented` bound to `coordinator.meetingMode`), Sessions icon, fixed `ToolbarSpacer`, Setup guide + Settings group. On pages: `.pageToolbar` Back + subtitle.
 - State: `CoordinatorController` (App/CoordinatorController.swift, `@EnvironmentObject`) feeds all views; pure `*Rules`/`*Model` files are called by the views and by Tests/.
 - AppKit windows opened by static controllers: island (`NotchStatusController.shared`, non-activating panel over menu bar), Control bar (`MeetingControlBarController.install`), onboarding (`OnboardingWindowController.sync`, called from ContentView on `coordinator.showOnboarding`), chat (`ChatWindowController.show`), whiteboard, recording chrome, presence bubble (driven from App/CoordinatorController+Presence.swift: `startPresenceBubble`, `refreshPresenceBubble`), dock hint (`DockHintPanel`).
-- Pages meant to render off-screen take plain values/bindings (`WebcamPageContent`, `LayoutPageContent`, `CuesSetupContent`, `MeetingBarContent`, toolbar) and have thin coordinator-fed wrappers (`WebcamSettingsTab`, ...).
+- Pages meant to render off-screen take plain values/bindings (`LayoutPageContent`, `CuesSetupContent`, `MeetingBarContent`, toolbar) and have thin coordinator-fed wrappers (`LayoutSettingsTab`, ...).
 
 ## To change X, go to Y
 - Add a Settings tab -> `MorePanelRules.common` (the one list; `SettingsTabs.order` and `SettingsTabs.order` derive from it), `TabView` item + `.tag`, `height(for:)`; update Cmd-N hint (count) and `.showSettingsTab` users.
-- Add a Settings row -> the tab's `*PageContent` (e.g. `WebcamPageContent`, `ZoomPageContent`, `TransferPageContent`); use `SettingsKit` parts; wrap dependent controls in `Collapsible(hidden:)` with `Binding.animatedCollapse()`.
+- Add a Settings row -> the tab's `*PageContent` (e.g. `LayoutPageContent`, `ZoomPageContent`, `TransferPageContent`); use `SettingsKit` parts; wrap dependent controls in `Collapsible(hidden:)` with `Binding.animatedCollapse()`.
 - Change Home toolbar items -> `ContentView.body` `.toolbar { }`; then update `HomeToolbarRules` (SidebarRules.swift) widths.
 - Change the Create/Scheduled/Record switcher -> `ContentView.modeSwitcher`, `MeetingMode` in CoordinatorController.swift.
 - Popovers: always below their button, one scroll per popup (never a ScrollView inside the content), scroll when tall; use `greenroomPopover`, never a bare `.popover` (SessionDetailContent share card is the one `.top` exception: anchored to the whole page).

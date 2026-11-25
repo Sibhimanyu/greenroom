@@ -581,7 +581,7 @@ struct OnboardingView: View {
                 }
                 DisclosureGroup("What will macOS ask me later?", isExpanded: $permissionDetailsExpanded) {
                     VStack(alignment: .leading, spacing: 16) {
-                        guideRow("rectangle.dashed.badge.record", "Screen recording", "Asked the first time your screen goes behind you, on Start or in Settings → Webcam. Quit and reopen Greenroom after allowing it.", symbol: true)
+                        guideRow("rectangle.dashed.badge.record", "Screen recording", "Asked the first time your screen goes behind you, on Start or in Settings → Layouts. Quit and reopen Greenroom after allowing it.", symbol: true)
                         guideRow("camera", "Camera and microphone", "Asked when you first connect to a meeting. You join muted, with the camera off.", symbol: true)
                         guideRow("globe", "Browser automation", "Asked when Greenroom first arranges your browser window.", symbol: true)
                     }

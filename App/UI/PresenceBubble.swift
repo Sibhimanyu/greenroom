@@ -750,22 +750,3 @@ final class PresenceBubble {
     }
 }
 
-extension StageLayout {
-    var presenceBox: PresenceBox {
-        PresenceBox(widthFraction: widthFraction, rightInset: rightInset, bottomInset: bottomInset,
-                    cutoutHeightFraction: cutoutHeightFraction, cutoutRightInset: cutoutRightInset,
-                    isCutout: cameraShape == .cutout)
-    }
-
-    mutating func apply(_ box: PresenceBox) {
-        widthFraction = box.widthFraction
-        rightInset = box.rightInset
-        bottomInset = box.bottomInset
-        cutoutHeightFraction = box.cutoutHeightFraction
-        cutoutRightInset = box.cutoutRightInset
-    }
-
-    /// The look has a box the presenter can move. Presenter and the full-frame
-    /// talking head have a fixed picture, so nothing is placed.
-    var isPresencePlaceable: Bool { showsContent && showsCamera && cameraShape != .presenterLarge }
-}

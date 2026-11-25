@@ -180,6 +180,18 @@ enum Visibility {
 
     static func cameraOnMyScreen(state: CameraState) -> Badge { state.iSee ? .on : .off }
 
+    /// Only me: a mirror. The camera runs for the owner's bubble while the Stage leaves it out of
+    /// everyone's picture (R6.4). Asked of the same two answers above, never of the state itself.
+    static func cameraMirrorOnly(state: CameraState, target: Target) -> Bool {
+        !cameraEveryoneSees(state: state, target: target).isOn && cameraOnMyScreen(state: state).isOn
+    }
+
+    /// Does the camera need to be open at all? For everyone's picture, or for the owner's mirror.
+    /// Only Off closes it.
+    static func cameraRuns(state: CameraState, target: Target) -> Bool {
+        cameraEveryoneSees(state: state, target: target).isOn || cameraMirrorOnly(state: state, target: target)
+    }
+
     // MARK: Flipping a badge
 
     enum Side { case me, everyone }

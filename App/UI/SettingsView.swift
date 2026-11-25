@@ -15,10 +15,9 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 extension Notification.Name {
-    /// Home's "Change..." beside the picture summary: Settings, on Webcam (the camera look).
-    static let showWebcamSettings = Notification.Name("GreenroomShowWebcamSettings")
     /// Home's Layout chip and Zoom readiness pill: Settings, on the tab named
-    /// by the notification's object ("layout", "devices", "zoom", ...; `SettingsTabs`).
+    /// by the notification's object ("layout", "devices", "zoom", ...; `SettingsTabs`). The old
+    /// "webcam" id and `SettingsTabs.cameraLookID` open Layouts with the camera piece selected.
     static let showSettingsTab = Notification.Name("GreenroomShowSettingsTab")
 }
 
@@ -56,7 +55,7 @@ struct SettingsView: View {
     @EnvironmentObject private var coordinator: CoordinatorController
     /// Home and the other windows choose a tab from outside by its tag; the other tags are there so
     /// the TabView can track which tab is showing.
-    @State private var tab = "webcam"
+    @State private var tab = "layout"
 
     var body: some View {
         TabView(selection: $tab) {
@@ -67,14 +66,9 @@ struct SettingsView: View {
                 .tag("account")
             #endif
 
-            WebcamSettingsTab()
-                .settingsPageClip()
-                .tabItem { Label("Webcam", systemImage: "video.fill") }
-                .tag("webcam")
-
             LayoutSettingsTab()
                 .settingsPageClip()
-                .tabItem { Label("Layout", systemImage: "rectangle.split.2x1") }
+                .tabItem { Label("Layouts", systemImage: "rectangle.split.2x1") }
                 .tag("layout")
 
             DevicesSettingsTab()
@@ -122,9 +116,12 @@ struct SettingsView: View {
         // Secrets are loaded lazily (see loadSecretsIfNeeded) - opening
         // Settings is the first moment the fields actually need them.
         .onAppear { coordinator.loadSecretsIfNeeded() }
-        .onReceive(NotificationCenter.default.publisher(for: .showWebcamSettings)) { _ in tab = "webcam" }
         .onReceive(NotificationCenter.default.publisher(for: .showSettingsTab)) { note in
-            if let tag = note.object as? String, Self.tabOrder.contains(tag) { tab = tag }
+            guard let id = note.object as? String else { return }
+            let destination = SettingsTabs.destination(for: id)
+            guard Self.tabOrder.contains(destination.tab) else { return }
+            if destination.selectsCamera { coordinator.layoutsCameraRequested = true }
+            tab = destination.tab
         }
         #if DEBUG
         .onReceive(NotificationCenter.default.publisher(for: .debugTourSettingsTab)) { tab = ($0.object as? String) ?? tab }

@@ -128,12 +128,30 @@ extension LayoutLibrary {
     }
 }
 
-/// Who is changing the camera piece or what is shared. Only the Layouts tab (and the Webcam
-/// tab, until P8 removes it) write the saved layout; everything else changes the running meeting.
-enum LayoutEditSource: Equatable {
-    case settingsLayouts, webcamTab, home, bar, meeting
+/// The camera look in the camera piece's inspector (R11). The look is one setting for every
+/// layout; the shape, size and spot beside it are per layout.
+enum CameraLookRules {
+    static let sameInEveryLayout = "Same in every layout"
 
-    var writesSavedLayout: Bool { self == .settingsLayouts || self == .webcamTab }
+    /// Normal / Blur / Image are for the bubble shapes. Cutout and Presenter take the background away themselves.
+    static func showsBackground(shape: WebcamShape) -> Bool { !shape.usesChromaKey }
+    static func showsRemoval(shape: WebcamShape) -> Bool { shape.usesChromaKey }
+
+    /// The folded group's one line, so a closed group still says what is set.
+    static func summary(shape: WebcamShape, backgroundName: String, removal: BackgroundRemoval, mirror: Bool) -> String {
+        let first = showsRemoval(shape: shape)
+            ? (removal == .automatic ? "Automatic removal" : "Green screen")
+            : backgroundName
+        return "\(first) \u{00B7} \(mirror ? "Mirror on" : "Mirror off")"
+    }
+}
+
+/// Who is changing the camera piece or what is shared. Only the Layouts tab (and the Webcam
+/// tab, gone in P8) write the saved layout; everything else changes the running meeting.
+enum LayoutEditSource: Equatable, CaseIterable {
+    case settingsLayouts, home, bar, meeting
+
+    var writesSavedLayout: Bool { self == .settingsLayouts }
 }
 
 extension LayoutLibrary {

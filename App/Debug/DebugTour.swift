@@ -405,7 +405,7 @@ enum DebugTour {
             guard let open = openSettingsWindow else { throw TourError("bridge not ready") }
             open()
             try? await Task.sleep(nanoseconds: 300_000_000)
-            NotificationCenter.default.post(name: .debugTourSettingsTab, object: info["tab"] ?? "webcam")
+            NotificationCenter.default.post(name: .debugTourSettingsTab, object: info["tab"] ?? "layout")
         case "onboarding":
             c.presentOnboarding()               // the Setup guide button's call
         case "chat":

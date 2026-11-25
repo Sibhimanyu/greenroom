@@ -143,15 +143,16 @@ final class LayoutCameraTests: XCTestCase {
     // MARK: Who may write the saved layout
 
     // R4.3, R6.2: Home, the bar and a drag in the meeting change the running meeting only.
-    func testOnlySettingsAndTheWebcamTabWriteTheSavedLayout() {
+    // R11: with the Webcam tab gone, Settings -> Layouts is the only writer.
+    func testOnlySettingsLayoutsWritesTheSavedLayout() {
+        XCTAssertEqual(LayoutEditSource.allCases.filter(\.writesSavedLayout), [.settingsLayouts])
         XCTAssertTrue(LayoutEditSource.settingsLayouts.writesSavedLayout)
-        XCTAssertTrue(LayoutEditSource.webcamTab.writesSavedLayout)   // until P8 removes the tab
         XCTAssertFalse(LayoutEditSource.home.writesSavedLayout)
         XCTAssertFalse(LayoutEditSource.bar.writesSavedLayout)
         XCTAssertFalse(LayoutEditSource.meeting.writesSavedLayout)
     }
 
-    // R5.1: the Webcam tab's edits land in the active layout and nowhere else.
+    // R5.1: the Layouts tab's edits land in the active layout and nowhere else.
     func testWritingTheActiveLayoutTouchesOnlyIt() {
         var lib = library()
         lib.select(lib.templates[1].id)

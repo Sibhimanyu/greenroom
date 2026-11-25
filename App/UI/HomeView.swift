@@ -1100,7 +1100,7 @@ struct HomeView: View {
         case .join:
             return "Starts your screen and camera picture, starts the chosen meeting with you as host, and tiles your windows."
         case .record:
-            return "Brings up the picture set in Settings \u{2192} Webcam, counts down on the notch, then records. The recording bar controls it. No meeting, no windows moved."
+            return "Brings up the picture set in Settings \u{2192} Layouts, counts down on the notch, then records. The recording bar controls it. No meeting, no windows moved."
         }
     }
 
@@ -1397,14 +1397,8 @@ struct HomeView: View {
         }
     }
 
-    private func openWebcamSettings() {
-        openSettings()
-        // After the window exists: a Settings window opened just now starts on
-        // Webcam anyway, and one already open needs telling.
-        DispatchQueue.main.async {
-            NotificationCenter.default.post(name: .showWebcamSettings, object: nil)
-        }
-    }
+    /// The camera look lives in Layouts now: the camera piece, selected.
+    private func openWebcamSettings() { openSettingsTab(SettingsTabs.cameraLookID) }
 
     /// Settings on the named tab (`SettingsTabs`), e.g. "devices".
     private func openSettingsTab(_ tab: String) {

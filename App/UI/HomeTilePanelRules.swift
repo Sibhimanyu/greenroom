@@ -205,6 +205,15 @@ enum SettingsTabs {
         MorePanelRules.tabs(includingAccount: includingAccount).map(\.id)
     }
 
+    /// Home's "Look" and "Share" More…: the camera piece in Layouts, where the look now lives.
+    static let cameraLookID = "camera"
+
+    /// Where a deep link lands. The Webcam tab is gone (R11): its old id, and `cameraLookID`, open
+    /// Layouts with the camera piece selected. Any other id is its own tab and selects nothing.
+    static func destination(for id: String) -> (tab: String, selectsCamera: Bool) {
+        id == "webcam" || id == cameraLookID ? ("layout", true) : (id, false)
+    }
+
     /// ⌘1...⌘9, then ⌘0; nothing past ten. (`Character("10")` would trap.)
     static func shortcutKey(at index: Int) -> Character? {
         switch index {
@@ -240,8 +249,7 @@ enum MorePanelRules {
 
     /// The one list of tabs: `SettingsTabs.order` is derived from it.
     private static let common: [Tab] = [
-        Tab(id: "webcam", title: "Webcam", symbol: "video.fill"),
-        Tab(id: "layout", title: "Layout", symbol: "rectangle.split.2x1"),
+        Tab(id: "layout", title: "Layouts", symbol: "rectangle.split.2x1"),
         Tab(id: "devices", title: "Devices", symbol: "headphones"),
         Tab(id: "general", title: "General", symbol: "gearshape"),
         Tab(id: "shortcuts", title: "Shortcuts", symbol: "command"),

@@ -83,8 +83,8 @@ struct LayoutCameraModel {
     /// state"). One setting for every layout, not a per-layout flag.
     var state = CameraState.everyoneAndMe
     var setState: (CameraState) -> Void = { _ in }
-    /// Opens Settings \u{2192} Webcam.
-    var adjust: () -> Void = {}
+    /// The camera look (background, removal, mirror), the same in every layout. Nil: not shown.
+    var look: CameraLookModel?
 
     /// The camera is selected in the editor by this id, in the same `selection`
     /// the pieces use, so selecting one deselects the other. Never a piece's id.

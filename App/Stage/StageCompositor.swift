@@ -373,13 +373,13 @@ final class StageCompositor: StageFrameSource {
 
     private func apply(_ cfg: StageConfiguration) {
         let layout = cfg.normalizedLayout
-        let wantsRemoval = layout.shape.usesChromaKey && layout.showsCamera && cfg.backgroundRemoval == .automatic
+        let wantsRemoval = layout.shape.usesChromaKey && layout.opensCamera && cfg.backgroundRemoval == .automatic
         // Blur and Image are for the bubble shapes; Cutout and Presenter
         // remove the background themselves.
         let background = layout.shape.usesChromaKey ? CameraBackground.normal : cfg.cameraBackground
 
         // Cameras wanted: none when "No camera" was chosen.
-        let uids = layout.showsCamera ? cfg.cameraUIDs : []
+        let uids = layout.opensCamera ? cfg.cameraUIDs : []
         board.setSlots(uids)
         board.setWhiteboard(mode: cfg.share.kind == .whiteboard)
 

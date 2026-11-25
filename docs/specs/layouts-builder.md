@@ -89,13 +89,13 @@ different order; this table is the authority.
 | R2 | Two badges per piece | P1 | built |
 | R3 | Preview: My screen / Everyone | P1, P5 | built |
 | R4 | Each layout owns its camera piece | P3 | built; new layouts own a camera from creation |
-| R5 | Each layout owns what's shared and its shared display | P3 | built; the Webcam tab writes the active layout until P8 |
-| R6 | Four-way camera state everywhere | P2 | built; "Only me" is not a true mirror yet (known gap) |
+| R5 | Each layout owns what's shared and its shared display | P3 | built; Layouts is the only writer (Webcam tab gone in P8) |
+| R6 | Four-way camera state everywhere | P2 | built; "Only me" is a mirror (P8, needs a live check) |
 | R7 | Other apps' 📡 and 👁 | P4 | built; existing app pieces migrated to 📡 on once |
 | R8 | Direction A canvas | P5 | built |
 | R9 | Mac editor basics | P6 | built (R9.1 to R9.7) |
 | R10 | Devices and General tabs | P7 | built |
-| R11 | Camera look in Layouts; Webcam tab gone | P8 | planned |
+| R11 | Camera look in Layouts; Webcam tab gone | P8 | built (needs a live check) |
 | R12 | Six built-in layouts, one always active | P9 | planned |
 | R13 | Restore original and Reset all | P9 | planned |
 | R14 | Built-ins on existing installs | P9 | planned |
@@ -149,7 +149,9 @@ different order; this table is the authority.
   camera switching included. The one exception is Just my camera (share
   Nothing): the camera is then the whole picture and stays in.
   `Visibility.cameraEveryoneSees` is the only place that decides it.
-- Known gap: "Only me" isn't a true mirror yet (see Known gaps).
+- R6.5 Only me keeps the camera open for the owner's bubble while the Stage leaves it out
+  of everyone's picture (`Visibility.cameraMirrorOnly`, `cameraRuns`; `StageLayout.mirrorsCamera`).
+  Only Off closes the camera. Needs a live check (item 10 below).
 - The Devices tab holds devices only: it has no "No camera" card.
 
 **R7. Other apps' 📡 and 👁.** (Q25, Q26)
@@ -255,15 +257,16 @@ different order; this table is the authority.
 | P5 Direction A canvas | R3, R8 | built | 3f6a68c |
 | P6 Basics | R9 | built | |
 | P7 Settings reshuffle | R10 | built | f5d4b97 |
-| P8 Camera look into Layouts | R11 | planned | |
+| P8 Camera look into Layouts | R11 | built | |
 | P9 Built-ins, Leave my windows alone, Restore original | R12, R13, R14, R16 | planned | |
 | P10 Room + laptop | R15 | planned | |
 
 ## Known gaps
 
-- **"Only me" isn't a true mirror yet.** It is stored as `noCamera` on plus
-  shown on my screen, and `noCamera` also drives the camera director, so the
-  owner may not get a live mirror. It needs its own path.
+- **"Only me" is built as a mirror, unverified live (P8).** It is still stored as
+  `noCamera` on plus shown on my screen, but the camera now stays open for the
+  owner's bubble (`StageLayout.mirrorsCamera`). Camera switching with Only me
+  and Zoom's own video-off state are the parts to watch.
 - **Restore original waits for P9.** The ⋯ menu can offer it, but there are no
   restorable built-ins until P9. Reset all in the ⋯ menu is also P9.
 - **The header fit at 760pt is unverified** (R8.5). Check the shared canvas
@@ -294,6 +297,14 @@ what everyone sees. Record the date and the R numbers against each line.
    the recording and the Room screen; a new Safari window is missing too. (R7)
 9. Share Second in a two-display layout: the camera sits on Second in the
    picture. (R4.4)
+
+10. Only me: the other person sees no camera, you still see your bubble with live
+    video (mirrored if Mirror is on). Switch to Off: the bubble goes. Switch back
+    to Everyone and me: the camera returns without a reopen gap. (R6.4, R6.5)
+11. Settings > Layouts, camera piece > Camera look: Background, Remove automatically
+    / Green screen (with Cutout or Presenter) and Mirror change the picture for
+    every layout. Home's Look or Share "More..." opens Layouts with the camera
+    selected and the look open. (R11)
 
 ## Contradictions found while merging
 

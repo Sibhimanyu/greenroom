@@ -39,9 +39,11 @@ struct LayoutSettingsTab: View {
                                  onCommit: { coordinator.commitPreviewPlacement($0, source: .settingsLayouts) },
                                  state: coordinator.savedCameraState,
                                  setState: { coordinator.setSavedCameraState($0) },
-                                 adjust: {
-                                     NotificationCenter.default.post(name: .showWebcamSettings, object: nil)
-                                 })
+                                 look: CameraLookModel(
+                                     background: $coordinator.cameraBackground,
+                                     backgroundImage: $coordinator.cameraBackgroundImage,
+                                     removal: $coordinator.backgroundRemoval,
+                                     chooseImage: { coordinator.chooseCameraBackgroundImage() }))
     }
 
     /// Running: the live target decides what the capture shows. Not running: the layout's own.
@@ -76,7 +78,8 @@ struct LayoutSettingsTab: View {
             applyNow: { coordinator.applyLayoutNow($0) },
             camera: cameraModel,
             share: shownTarget,
-            fallbackShare: coordinator.shareTarget)
+            fallbackShare: coordinator.shareTarget,
+            selectCamera: $coordinator.layoutsCameraRequested)
         .onAppear {
             apps = AppCatalog.installedAndRunning()
             displays = DisplayResolver.connectedDisplays()
@@ -162,6 +165,11 @@ struct LayoutPageContent: View {
     var opensOn: (selection: UUID?, showsTwo: Bool, slot: LayoutSlot)?
     /// Draws the Add panel in place under the row, for the off-screen render.
     var previewsAddPanel = false
+    /// A deep link asked for the camera piece with its look open (Settings sets it, this clears it).
+    var selectCamera: Binding<Bool> = .constant(false)
+    /// The camera look group starts open, for the off-screen render.
+    var opensLookGroup = false
+    @State private var lookOpen = false
 
     @State private var selection: UUID?
     @State private var showsTwo = false
@@ -239,7 +247,10 @@ struct LayoutPageContent: View {
                                           nameOf: { look($0).name })
             focus = nil
             if let o = opensOn { selection = o.selection; showsTwo = o.showsTwo; activeSlot = o.slot }
+            lookOpen = opensLookGroup
+            openCameraIfRequested()
         }
+        .onChange(of: selectCamera.wrappedValue) { _, _ in openCameraIfRequested() }
         .onChange(of: library.activeID) { _, _ in resetEditorState() }
         .onChange(of: library) { _, new in
             recorder?.undoManager = undoManager
@@ -1028,6 +1039,14 @@ struct LayoutPageContent: View {
         return nil
     }
 
+    /// Home's Look / Share "More...", "Adjust webcam..." and the old Webcam deep links: the camera
+    /// piece selected, its look open.
+    private func openCameraIfRequested() {
+        guard selectCamera.wrappedValue, camera != nil else { return }
+        withAnimation(anim) { selection = LayoutCameraModel.selectionID; lookOpen = true }
+        selectCamera.wrappedValue = false
+    }
+
     private func update(_ id: UUID, _ change: (inout LayoutPiece) -> Void) {
         guard let i = activeIndex else { return }
         for slot in [LayoutSlot.one, .main, .second] {
@@ -1103,11 +1122,6 @@ struct LayoutPageContent: View {
                 .font(.system(size: 11, design: .monospaced))
                 .foregroundStyle(.secondary)
             Spacer()
-            Button { camera.adjust() } label: {
-                Label("Adjust webcam\u{2026}", systemImage: "slider.horizontal.3")
-            }
-            .controlSize(.small)
-            .help("Opens Settings \u{2192} Webcam: shape, size, background, mirror.")
         }
         HStack(spacing: 24) {
             Text("Who sees my camera")
@@ -1137,7 +1151,10 @@ struct LayoutPageContent: View {
                 Spacer()
             }
         }
-        Text("The spot, size and shape are saved with this layout. The look (background, removal, mirror) is the same for every layout. Who sees it is where it starts each meeting; the bar and Home change it for one meeting only. Drag the camera on the canvas to move it, drag a corner to resize it.")
+        if let look = camera.look {
+            CameraLookGroup(look: look, shape: camera.shape, isOpen: $lookOpen)
+        }
+        Text("The spot, size and shape are saved with this layout. Who sees it is where it starts each meeting; the bar and Home change it for one meeting only. Drag the camera on the canvas to move it, drag a corner to resize it.")
             .font(.callout)
             .foregroundStyle(.secondary)
     }

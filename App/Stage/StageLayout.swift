@@ -17,39 +17,36 @@ struct StageLayout: Equatable {
     /// Shared content on, camera on. Both on is shared content with you in it. Content off is a talking head; camera off is the shared content alone.
     var showsContent = true
     var showsCamera = true
+    /// Only me: the camera is open for the owner's bubble but is not drawn into the picture
+    /// (`Visibility.cameraMirrorOnly`). Never set with `showsCamera`.
+    var mirrorsCamera = false
 
     /// With nothing shared the camera IS the picture, so bubble shapes give
     /// way to the full frame; Cutout and Presenter keep their removal.
     var cameraShape: WebcamShape {
         showsContent || shape.usesChromaKey ? shape : .square
     }
+
+    /// The camera must be open: drawn for everyone, or mirrored for the owner.
+    var opensCamera: Bool { showsCamera || mirrorsCamera }
 }
 
-/// Everything the compositor needs to know that can change mid-class.
-struct StageConfiguration: Equatable {
-    var layout = StageLayout()
-    var share = ShareTarget()
-    /// `screenCaptureDisplayUUID`. Empty means the main display.
-    var displayUUID = ""
-    var backgroundRemoval: BackgroundRemoval = .automatic
-    /// Blur or a picture behind you in the bubble shapes. Ignored by Cutout
-    /// and Presenter, which remove the background instead.
-    var cameraBackground: CameraBackground = .normal
-    /// Which picture, for `.image`: a `CameraBackgroundPreset` raw value or
-    /// `custom-<stamp>` (see CameraBackgroundLibrary).
-    var cameraBackgroundImage = CameraBackgroundPreset.defaultChoice
-    /// Camera uniqueIDs in cut order. Slot = index. All are opened at once.
-    var cameraUIDs: [String] = []
-    /// Also capture the sound of what is shared (the Mac's sound), for the
-    /// recorder to mix in. Changing it restarts the screen capture.
-    var captureSystemAudio = false
-
-    /// The share target has the last word on content, and there is always
-    /// something to show .
-    var normalizedLayout: StageLayout {
-        var l = layout
-        if share.sharesNothing { l.showsContent = false }
-        if !l.showsContent { l.showsCamera = true }
-        return l
+extension StageLayout {
+    var presenceBox: PresenceBox {
+        PresenceBox(widthFraction: widthFraction, rightInset: rightInset, bottomInset: bottomInset,
+                    cutoutHeightFraction: cutoutHeightFraction, cutoutRightInset: cutoutRightInset,
+                    isCutout: cameraShape == .cutout)
     }
+
+    mutating func apply(_ box: PresenceBox) {
+        widthFraction = box.widthFraction
+        rightInset = box.rightInset
+        bottomInset = box.bottomInset
+        cutoutHeightFraction = box.cutoutHeightFraction
+        cutoutRightInset = box.cutoutRightInset
+    }
+
+    /// The look has a box the presenter can move. Presenter and the full-frame
+    /// talking head have a fixed picture, so nothing is placed.
+    var isPresencePlaceable: Bool { showsContent && opensCamera && cameraShape != .presenterLarge }
 }

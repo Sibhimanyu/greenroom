@@ -131,7 +131,7 @@ struct LookSummaryRow: View {
                 .buttonStyle(.plain)
                 .font(.callout)
                 .foregroundStyle(Brand.text)
-                .help("Opens Settings \u{2192} Webcam, where the picture is set for all three modes.")
+                .help("Opens Settings \u{2192} Layouts, where the picture is set for all three modes.")
             Spacer(minLength: 0)
         }
         .accessibilityElement(children: .contain)

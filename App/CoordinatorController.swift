@@ -707,7 +707,7 @@ final class CoordinatorController: ObservableObject {
     private func applyCameraStateLive() {
         presenceBubbleHidden = PresenceVisibility.bubbleStartsHidden(state: cameraState)
         if stage != nil, sceneInUse || isRunning {
-            if !cameraIsOff {
+            if cameraRuns {
                 stageCameraUIDs = sceneCameraUIDs(limit: sessionCameraUIDs(cameraDirectorSettings).count > 1 ? nil : 1)
             }
             stage?.update(makeStageConfiguration())
@@ -842,7 +842,18 @@ final class CoordinatorController: ObservableObject {
                     shape: webcamShape,
                     // The whiteboard is content too (a page behind the camera).
                     showsContent: !shareTarget.sharesNothing,
-                    showsCamera: !cameraIsOff)
+                    showsCamera: !cameraIsOff,
+                    // Only me: open for the bubble, not drawn for everyone (R6.4).
+                    mirrorsCamera: cameraIsMirrorOnly)
+    }
+
+    /// Only me: a mirror for the owner's bubble. The camera runs, the picture leaves it out.
+    var cameraIsMirrorOnly: Bool {
+        Visibility.cameraMirrorOnly(state: cameraState, target: Visibility.Target(shareTarget))
+    }
+    /// Off is the only state that closes the camera (`Visibility.cameraRuns`).
+    var cameraRuns: Bool {
+        Visibility.cameraRuns(state: cameraState, target: Visibility.Target(shareTarget))
     }
 
     /// The camera is not in everyone's picture: Off or Only me, whatever else is set
@@ -915,8 +926,8 @@ final class CoordinatorController: ObservableObject {
     /// serves both - if it is plugged in; otherwise whatever the resolver
     /// likes best, as before there was a choice.
     func sceneCameraUIDs(limit: Int? = nil) -> [String] {
-        // No camera means none opened.
-        if cameraIsOff { return [] }
+        // Off means none opened. Only me opens it: the bubble mirrors it.
+        if !cameraRuns { return [] }
         let listed = sessionCameraUIDs(cameraDirectorSettings)
         let available = Set(LocalDeviceResolver.availableCameras().map(\.id))
         let picked = cameraDirectorSettings.cameraUIDs.first { available.contains($0) }
@@ -1054,6 +1065,9 @@ final class CoordinatorController: ObservableObject {
     /// Start captures `layoutLibrary.active` as `sessionTemplate`. The old
     /// workspaceLayout / mainApp* / peopleView* keys are no longer written; they are
     /// read once, to build "Your previous layout", and by a settings import.
+    /// A deep link to the camera look (the old Webcam tab's id, Home's Look and Share More...) asks
+    /// Layouts to select the camera piece and open its look group. The editor clears it once it has.
+    @Published var layoutsCameraRequested = false
     @Published var layoutLibrary: LayoutLibrary {
         didSet {
             guard layoutLibrary != oldValue else { return }
@@ -1980,7 +1994,7 @@ final class CoordinatorController: ObservableObject {
                 // finish-the-file step still applies.
                 mark(.recording, autoRecordOnStart && !isRecording ? .active : .skipped)
                 if autoRecordOnStart && !isRecording {
-                    log("Starting the recording automatically (Settings \u{2192} Webcam).")
+                    log("Starting the recording automatically (Settings \u{2192} Devices).")
                     toggleRecording(withCountdown: false)
                     mark(.recording, .done)
                 }
@@ -2647,7 +2661,7 @@ final class CoordinatorController: ObservableObject {
     /// no master to cut from later, so the file has to exist now.
     private func clipFromBuffer(minutes: Int, into folder: URL) async {
         guard clipBufferEnabled else {
-            log("Nothing to clip \u{2014} the clip buffer is off (Settings \u{2192} Webcam) and nothing is recording.")
+            log("Nothing to clip \u{2014} the clip buffer is off (Settings \u{2192} Devices) and nothing is recording.")
             ToastController.show("Nothing to clip",
                                  detail: "Turn on the clip buffer in Settings, or press Record.", kind: .failure)
             return
@@ -3304,9 +3318,9 @@ final class CoordinatorController: ObservableObject {
     /// the old one goes, and with one shared `.home` the old one's leaving
     /// turned off the new one's camera.
     enum PreviewViewer: Hashable, CustomStringConvertible {
-        case home(UUID), webcamSettings
+        case home(UUID)
         var description: String {
-            switch self { case .home: return "home"; case .webcamSettings: return "webcamSettings" }
+            switch self { case .home: return "home" }
         }
     }
     private var previewViewers: Set<PreviewViewer> = []
@@ -4799,7 +4813,7 @@ final class CoordinatorController: ObservableObject {
         // when they are going to be. A source that has not come by then is
         // reported below and the start carries on: a class can begin on
         // the camera alone, but not on a silent failure.
-        let wantsCamera = configuration.normalizedLayout.showsCamera && !configuration.cameraUIDs.isEmpty
+        let wantsCamera = configuration.normalizedLayout.opensCamera && !configuration.cameraUIDs.isEmpty
         let screenExpected = wantsScreen && StageCompositor.screenRecordingGranted
         let began = Date()
         while Date().timeIntervalSince(began) < 8 {
@@ -4839,8 +4853,8 @@ final class CoordinatorController: ObservableObject {
 
     private func reportStageStart(_ status: StageStatus, configuration: StageConfiguration,
                                   wantsScreen: Bool, wantsCamera: Bool) {
-        if configuration.cameraUIDs.isEmpty, cameraIsOff {
-            log("No camera, as set in Settings \u{2192} Webcam \u{2014} the picture is what you share.")
+        if configuration.cameraUIDs.isEmpty, !cameraRuns {
+            log("No camera, as set in Settings \u{2192} Layouts \u{2014} the picture is what you share.")
         } else if configuration.cameraUIDs.isEmpty {
             log("No webcam connected \u{2014} running screen-only. Plug a camera in and press Start to bring your video back.")
         } else if wantsCamera, status.camerasLive.first != true {
@@ -4848,7 +4862,7 @@ final class CoordinatorController: ObservableObject {
             log("\u{201C}\(name)\u{201D} hasn\u{2019}t sent a picture yet. It may be unplugged, or in use by another app. The class sees the screen until it does.")
         }
         if shareTarget.sharesNothing {
-            log("Nothing shared, as set in Settings \u{2192} Webcam \u{2014} your camera fills the picture.")
+            log("Nothing shared, as set in Settings \u{2192} Layouts \u{2014} your camera fills the picture.")
         }
         if shareTarget.kind == .whiteboard {
             log("Sharing the whiteboard \u{2014} what you draw on the page is the picture.")

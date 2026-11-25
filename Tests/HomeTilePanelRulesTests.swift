@@ -97,9 +97,10 @@ final class HomeTilePanelRulesTests: XCTestCase {
         XCTAssertEqual(RecordPanelRules.headerValue(autoRecord: false), "Manual")
     }
 
+    // R11: the Webcam tab is gone from the toolbar, the shortcuts and the More panel.
     func testMoreTabsAreTheSettingsTabsAndOnlyCuesIsBeta() {
         XCTAssertEqual(MorePanelRules.tabs.map(\.id),
-                       ["account", "webcam", "layout", "devices", "general", "shortcuts", "zoom", "youtube", "cues", "transfer"])
+                       ["account", "layout", "devices", "general", "shortcuts", "zoom", "youtube", "cues", "transfer"])
         XCTAssertEqual(MorePanelRules.tabs.map(\.id), SettingsTabs.order(includingAccount: true))
         XCTAssertEqual(MorePanelRules.tabs.filter(\.beta).map(\.id), ["cues"])
         XCTAssertEqual(Set(MorePanelRules.tabs.map(\.id)).count, MorePanelRules.tabs.count)
@@ -107,7 +108,7 @@ final class HomeTilePanelRulesTests: XCTestCase {
 
     func testMoreTabsLeaveOutAccountWhenTheBuildHasNone() {
         let release = MorePanelRules.tabs(includingAccount: false).map(\.id)
-        XCTAssertEqual(release, ["webcam", "layout", "devices", "general", "shortcuts", "zoom", "youtube", "cues", "transfer"])
+        XCTAssertEqual(release, ["layout", "devices", "general", "shortcuts", "zoom", "youtube", "cues", "transfer"])
         XCTAssertEqual(release, SettingsTabs.order(includingAccount: false))
         XCTAssertEqual(MorePanelRules.tabs(includingAccount: true).map(\.id).first, "account")
     }
@@ -119,6 +120,23 @@ final class SettingsTabsTests: XCTestCase {
         XCTAssertTrue(tabs.contains("devices"))
         XCTAssertTrue(tabs.contains("general"))
         XCTAssertEqual(Set(tabs).count, tabs.count)
+    }
+
+    // R11: every old deep link to Webcam lands on Layouts with the camera piece selected.
+    func testEveryDeepLinkToWebcamGoesToLayoutsWithTheCameraSelected() {
+        for id in ["webcam", SettingsTabs.cameraLookID] {
+            let d = SettingsTabs.destination(for: id)
+            XCTAssertEqual(d.tab, "layout", id)
+            XCTAssertTrue(d.selectsCamera, id)
+        }
+    }
+
+    // R11: other ids go where they said, and select nothing.
+    func testOtherDeepLinksAreUntouched() {
+        let d = SettingsTabs.destination(for: "devices")
+        XCTAssertEqual(d.tab, "devices")
+        XCTAssertFalse(d.selectsCamera)
+        XCTAssertFalse(SettingsTabs.destination(for: "layout").selectsCamera)
     }
 
     func testEveryTabUpToTenHasAShortcutAndNoneTraps() {

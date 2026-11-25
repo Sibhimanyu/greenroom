@@ -21,9 +21,12 @@
 //  Health goes to os_log (category RoomScreen) every 5 s while open.
 //
 //  Out of Greenroom's own share and recordings: the display capture excludes the
-//  whole of Greenroom. Other apps' captures may see it (default sharingType). No chrome, no glass:
-//  the picture on black. A piece that fills the display covers screen.frame at
-//  .screenSaver level (above the menu bar); the picture is aspect fit on black.
+//  whole of Greenroom. Other apps' captures may see it (default sharingType). No glass:
+//  the picture on black, aspect fit. A real macOS window (R46): title bar see-through
+//  over the picture, drag and resize like any window; a piece that fills the display
+//  goes into native full screen on it (title bar on hover, the green button and ⌃⌘F
+//  leave it). Once the owner moves, resizes or changes its full screen by hand,
+//  `place` leaves it where they put it (`RoomScreenRules.Ownership`).
 //
 import AppKit
 import CoreMedia
@@ -59,9 +62,28 @@ final class RoomScreenView: NSView {
 
 // MARK: - The window and its controller
 
+/// Reports the window's moves, resizes and full-screen changes to `RoomScreen.ownership`.
+@MainActor
+private final class RoomWindowWatcher: NSObject, NSWindowDelegate {
+    func windowDidMove(_ notification: Notification) { RoomScreen.ownership.windowChanged(.moveOrResize) }
+    func windowDidResize(_ notification: Notification) { RoomScreen.ownership.windowChanged(.moveOrResize) }
+    func windowWillEnterFullScreen(_ notification: Notification) { RoomScreen.ownership.windowChanged(.fullScreenWillChange) }
+    func windowWillExitFullScreen(_ notification: Notification) { RoomScreen.ownership.windowChanged(.fullScreenWillChange) }
+    func windowDidEnterFullScreen(_ notification: Notification) { RoomScreen.ownership.windowChanged(.fullScreenDidChange) }
+    func windowDidExitFullScreen(_ notification: Notification) {
+        RoomScreen.ownership.windowChanged(.fullScreenDidChange)
+        RoomScreen.applyFrameAfterFullScreen()
+    }
+}
+
 @MainActor
 enum RoomScreen {
-    private static var window: MeetingViewPanel?
+    private static var window: NSWindow?
+    private static var watcher: RoomWindowWatcher?
+    /// The owner's changes vs ours (R46); a fresh window starts as Greenroom's again.
+    fileprivate static var ownership = RoomScreenRules.Ownership()
+    /// A frame to set once our own exit from full screen ends (it is ignored mid-animation).
+    fileprivate static var frameAfterFullScreen: NSRect?
     private static var feeder: RoomFrameFeeder?
     private static var roomScreenID = ""
     private static var hidden = false
@@ -84,21 +106,30 @@ enum RoomScreen {
 
     // MARK: Coordinator and engine API
 
-    /// Opens the window at `frame` on the display `screenID`, or moves it there.
-    /// A piece that fills the display (`rect` is full) covers `screen.frame`, above the menu bar and
-    /// Dock of that display; any other piece stays a normal-level window at `frame`.
+    /// Opens the window at `frame` on the display `screenID`, or places it there: native full screen
+    /// on that display when the piece fills it, else a window at `frame`
+    /// (`RoomScreenRules.placeSteps`). Nothing moves once the owner has moved it by hand.
     static func place(frame: NSRect, rect: UnitRect, screenID: String, hidden: Bool) {
-        guard let screen = DisplayResolver.screen(forUUID: screenID) else { close(); return }
+        guard DisplayResolver.screen(forUUID: screenID) != nil else { close(); return }
         roomScreenID = screenID
-        let panel = window ?? makeWindow()
-        let full = RoomScreenRules.isFullDisplay(rect)
-        let frame = RoomScreenRules.windowFrame(pieceFrame: frame, rect: rect, screenFrame: screen.frame)
-        // .screenSaver sits above .mainMenu; the window only covers the room display, so the owner's
-        // main-display menu bar is untouched.
-        let level: NSWindow.Level = full ? .screenSaver : .normal
-        if panel.level != level { panel.level = level }
-        if panel.frame != frame { panel.setFrame(frame, display: false) }
+        let win = window ?? makeWindow()
+        let fullScreen = win.styleMask.contains(.fullScreen)
+        let steps = RoomScreenRules.placeSteps(rect: rect, pieceFrame: frame, currentFrame: win.frame,
+                                               isFullScreen: fullScreen, ownerTookOver: ownership.ownerTookOver)
+        // In full screen a frame waits until our exit from it ends (`frameAfterFullScreen`).
+        if !fullScreen, case .setFrame(let target)? = steps.first {
+            ownership.placing { _ in win.setFrame(target, display: false) }
+        }
         setHidden(hidden)
+        if steps.contains(.enterFullScreen), !hidden, win.isVisible {
+            ownership.expectOurFullScreenChange()
+            win.toggleFullScreen(nil)
+        }
+        if steps.contains(.leaveFullScreen) {
+            if case .setFrame(let target)? = steps.last { frameAfterFullScreen = target }
+            ownership.expectOurFullScreenChange()
+            win.toggleFullScreen(nil)
+        }
         watchDisplays()
     }
 
@@ -132,6 +163,10 @@ enum RoomScreen {
         guard let panel = window else { return }
         window = nil
         feeder = nil
+        panel.delegate = nil
+        watcher = nil
+        ownership = RoomScreenRules.Ownership()
+        frameAfterFullScreen = nil
         panel.orderOut(nil)
         panel.close()
         log("closed.")
@@ -139,18 +174,25 @@ enum RoomScreen {
 
     // MARK: Window
 
-    private static func makeWindow() -> MeetingViewPanel {
-        let panel = MeetingViewPanel(contentRect: NSRect(x: 0, y: 0, width: 640, height: 360),
-                                     styleMask: [.borderless, .nonactivatingPanel],
-                                     backing: .buffered, defer: false)
+    private static func makeWindow() -> NSWindow {
+        // Titled so it is a real window: native full screen, drag, resize, ⌃⌘F. Not closable: the
+        // layout opens and closes it with the meeting.
+        let panel = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 640, height: 360),
+                             styleMask: [.titled, .miniaturizable, .resizable, .fullSizeContentView],
+                             backing: .buffered, defer: false)
+        panel.title = RoomScreenRules.title
+        panel.titleVisibility = .hidden
+        panel.titlebarAppearsTransparent = true
+        panel.isMovableByWindowBackground = true
         panel.level = .normal
         panel.isOpaque = true
         panel.backgroundColor = .black
-        panel.hasShadow = false
         panel.hidesOnDeactivate = false
         panel.isReleasedWhenClosed = false
-        panel.ignoresMouseEvents = true
-        panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
+        panel.collectionBehavior = [.fullScreenPrimary, .managed]
+        let watch = RoomWindowWatcher()
+        panel.delegate = watch
+        watcher = watch
         // Default sharingType (it never sets sharingType; Greenroom's own capture leaves it out through `Visibility.roomScreenReason`): other apps' captures may see it.
         // Greenroom's own capture excludes the whole app, so it never films itself.
         let view = RoomScreenView(frame: NSRect(x: 0, y: 0, width: 640, height: 360))
@@ -195,6 +237,13 @@ enum RoomScreen {
                 if DisplayResolver.screen(forUUID: roomScreenID) == nil { close() }
             }
         }
+    }
+
+    /// Our own exit from full screen ended: the frame the layout asked for.
+    fileprivate static func applyFrameAfterFullScreen() {
+        guard let target = frameAfterFullScreen, let win = window else { return }
+        frameAfterFullScreen = nil
+        ownership.placing { _ in win.setFrame(target, display: false) }
     }
 
     // MARK: Sources

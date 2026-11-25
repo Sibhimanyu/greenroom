@@ -131,6 +131,7 @@ different order; this table is the authority.
 | R43 | Rounded camera by default (Raj San Mode: Cutout) | P15 | built |
 | R44 | Camera state names and canvas captions | P15 | built (rendered off screen) |
 | R45 | Bug list: a layout places windows once; only Snap re-places; never steals focus | bug list | built; rules tested, not driven live |
+| R46 | The Room screen is a real macOS window, native full screen included | owner, 2026-11-26 | built; rules tested (needs a live check on the room display) |
 
 **R38. Bug list: the solid backdrop follows light / dark.** (`SolidSheet`, App/UI/SolidSheet.swift)
 - R38.1 The solid sheet under a window the class sees re-resolves its dynamic colour (`windowBackgroundColor`)
@@ -346,6 +347,18 @@ different order; this table is the authority.
 **R24. Room screen true full screen.** (owner, fb70689)
 - R24.1 A Room screen piece set to fill the display covers the display's whole frame, above the
   menu bar and Dock, picture aspect fit on black. A smaller piece stays a normal window at its rect.
+  Replaced by R46: the full piece now uses native full screen.
+
+**R46. The Room screen is a real macOS window.** (owner, 2026-11-26)
+- R46.1 It is a normal titled window (title bar see-through over the picture): it can be dragged,
+  resized and moved to another display during the meeting.
+- R46.2 A piece that fills the display goes into macOS full screen on that display: the title bar
+  shows on hover, the green button and ⌃⌘F leave full screen. A smaller piece is a window at its rect
+  (`RoomScreenRules.placeSteps`).
+- R46.3 Once the owner moves, resizes or changes its full screen by hand, Greenroom leaves it where
+  they put it for the rest of the meeting (`RoomScreenRules.Ownership`).
+- R46.4 Other apps' captures still see it (default sharingType); Greenroom's own share and recordings
+  still leave it out with the whole app.
 
 **R17. One icon language.** (Q28 to Q33)
 - R17.1 The eye means "everyone sees it" and nothing else: `eye` amber (`Brand.netText` / `MeetingTheme.netNS`)

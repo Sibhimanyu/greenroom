@@ -67,16 +67,61 @@ enum RoomScreenRules {
     }
 
     /// True when the piece fills the whole display (the layout builder's "full" rectangle, a hair of
-    /// rounding allowed): the window then covers the display's entire frame, above the menu bar.
+    /// rounding allowed): the window then goes into native full screen on that display.
     static func isFullDisplay(_ rect: UnitRect) -> Bool {
         let t = 0.005
         return rect.x <= t && rect.y <= t && rect.maxX >= 1 - t && rect.maxY >= 1 - t
     }
 
-    /// The window's frame: the display's whole frame (menu bar and Dock strips included) for a full
-    /// piece, else the piece's own frame inside the usable area.
-    static func windowFrame(pieceFrame: CGRect, rect: UnitRect, screenFrame: CGRect) -> CGRect {
-        isFullDisplay(rect) ? screenFrame : pieceFrame
+    /// One thing `RoomScreen.place` does to the window.
+    enum PlaceStep: Equatable {
+        case setFrame(CGRect)
+        case enterFullScreen
+        case leaveFullScreen
+    }
+
+    /// What placing the piece does to the window (R46). It is a real window: a full piece goes into
+    /// macOS full screen on its display (framed there first, so leaving full screen lands on that
+    /// display), a smaller piece is a window at its rect. Once the owner has moved, resized or
+    /// changed its full screen by hand, nothing: Greenroom leaves it where they put it.
+    static func placeSteps(rect: UnitRect, pieceFrame: CGRect, currentFrame: CGRect?,
+                           isFullScreen: Bool, ownerTookOver: Bool) -> [PlaceStep] {
+        if ownerTookOver { return [] }
+        let frame: [PlaceStep] = currentFrame == pieceFrame ? [] : [.setFrame(pieceFrame)]
+        if isFullDisplay(rect) { return isFullScreen ? [] : frame + [.enterFullScreen] }
+        return (isFullScreen ? [.leaveFullScreen] : []) + (isFullScreen ? [.setFrame(pieceFrame)] : frame)
+    }
+
+    /// Tells the owner's changes to the window from Greenroom's own. Our `setFrame` calls run
+    /// inside `placing`; full screen animates, so a change we asked for is expected until it ends.
+    struct Ownership {
+        enum Change { case moveOrResize, fullScreenWillChange, fullScreenDidChange }
+
+        private(set) var ownerTookOver = false
+        private var placingNow = false
+        private var oursExpected = false
+        private var inTransition = false
+
+        mutating func placing(_ body: (inout Ownership) -> Void) {
+            placingNow = true
+            body(&self)
+            placingNow = false
+        }
+
+        mutating func expectOurFullScreenChange() { oursExpected = true }
+
+        mutating func windowChanged(_ change: Change) {
+            switch change {
+            case .moveOrResize:
+                if !placingNow && !inTransition { ownerTookOver = true }
+            case .fullScreenWillChange:
+                if !oursExpected { ownerTookOver = true }
+                inTransition = true
+            case .fullScreenDidChange:
+                inTransition = false
+                oursExpected = false
+            }
+        }
     }
 
     /// The capture's largest size: the room display's pixels.

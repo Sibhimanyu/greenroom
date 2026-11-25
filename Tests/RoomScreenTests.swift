@@ -150,16 +150,64 @@ final class RoomScreenTests: XCTestCase {
         XCTAssertFalse(RoomScreenRules.isFullDisplay(UnitRect(x: 0, y: 0, w: 1, h: 0.9)))
         XCTAssertFalse(RoomScreenRules.isFullDisplay(UnitRect(x: 0.1, y: 0.1, w: 0.5, h: 0.5)))
     }
+}
 
-    func testFullPieceTakesTheWholeScreenFrameNotTheVisibleFrame() {
-        let screen = CGRect(x: 1440, y: 0, width: 1920, height: 1080)
-        let visible = CGRect(x: 1440, y: 0, width: 1920, height: 1055)   // menu bar strip left out
-        XCTAssertEqual(RoomScreenRules.windowFrame(pieceFrame: visible, rect: .full, screenFrame: screen), screen)
+/// R46: the Room screen is a real macOS window, native full screen included, and once the owner
+/// moves, resizes or changes its full screen by hand, Greenroom leaves it there.
+final class RoomScreenWindowControlTests: XCTestCase {
+    private let piece = CGRect(x: 1500, y: 100, width: 800, height: 450)
+    private let visible = CGRect(x: 1440, y: 0, width: 1920, height: 1055)
+    private let small = UnitRect(x: 0.1, y: 0.1, w: 0.4, h: 0.4)
+
+    func testAFullPieceGoesNativeFullScreenOnItsDisplay() {
+        XCTAssertEqual(RoomScreenRules.placeSteps(rect: .full, pieceFrame: visible, currentFrame: piece,
+                                                  isFullScreen: false, ownerTookOver: false),
+                       [.setFrame(visible), .enterFullScreen])
     }
 
-    func testSmallerPieceKeepsItsOwnFrame() {
-        let screen = CGRect(x: 1440, y: 0, width: 1920, height: 1080)
-        let piece = CGRect(x: 1500, y: 100, width: 800, height: 450)
-        XCTAssertEqual(RoomScreenRules.windowFrame(pieceFrame: piece, rect: UnitRect(x: 0.1, y: 0.1, w: 0.4, h: 0.4), screenFrame: screen), piece)
+    func testAlreadyFullScreenIsLeftAlone() {
+        XCTAssertEqual(RoomScreenRules.placeSteps(rect: .full, pieceFrame: visible, currentFrame: visible,
+                                                  isFullScreen: true, ownerTookOver: false), [])
+    }
+
+    func testASmallerPieceIsAWindowAtItsRect() {
+        XCTAssertEqual(RoomScreenRules.placeSteps(rect: small, pieceFrame: piece, currentFrame: visible,
+                                                  isFullScreen: false, ownerTookOver: false), [.setFrame(piece)])
+        XCTAssertEqual(RoomScreenRules.placeSteps(rect: small, pieceFrame: piece, currentFrame: piece,
+                                                  isFullScreen: false, ownerTookOver: false), [])
+        XCTAssertEqual(RoomScreenRules.placeSteps(rect: small, pieceFrame: piece, currentFrame: visible,
+                                                  isFullScreen: true, ownerTookOver: false),
+                       [.leaveFullScreen, .setFrame(piece)])
+    }
+
+    func testOnceTheOwnerTookOverNothingMovesIt() {
+        for full in [true, false] {
+            XCTAssertEqual(RoomScreenRules.placeSteps(rect: full ? .full : small, pieceFrame: piece, currentFrame: visible,
+                                                      isFullScreen: !full, ownerTookOver: true), [])
+        }
+    }
+
+    func testOurOwnMovesAndFullScreenAreNotTheOwners() {
+        var o = RoomScreenRules.Ownership()
+        o.placing { $0.windowChanged(.moveOrResize) }
+        XCTAssertFalse(o.ownerTookOver)
+        o.expectOurFullScreenChange()
+        o.windowChanged(.fullScreenWillChange)
+        o.windowChanged(.moveOrResize)                      // the animation resizes it
+        o.windowChanged(.fullScreenDidChange)
+        XCTAssertFalse(o.ownerTookOver)
+    }
+
+    func testTheOwnersDragOrGreenButtonIsTheOwners() {
+        var drag = RoomScreenRules.Ownership()
+        drag.windowChanged(.moveOrResize)
+        XCTAssertTrue(drag.ownerTookOver)
+
+        var green = RoomScreenRules.Ownership()
+        green.expectOurFullScreenChange()
+        green.windowChanged(.fullScreenWillChange)
+        green.windowChanged(.fullScreenDidChange)         // ours, done
+        green.windowChanged(.fullScreenWillChange)        // then the owner leaves full screen (⌃⌘F)
+        XCTAssertTrue(green.ownerTookOver)
     }
 }

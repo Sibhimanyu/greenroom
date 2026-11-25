@@ -15,6 +15,7 @@ extension VisibilitySymbol.Tint {
         case .net: return Brand.netText
         case .neutral: return Color.secondary
         case .primary: return Color.primary
+        case .stopped: return MeetingTheme.red
         }
     }
 
@@ -23,6 +24,7 @@ extension VisibilitySymbol.Tint {
         case .net: return MeetingTheme.netNS
         case .neutral: return .secondaryLabelColor
         case .primary: return .labelColor
+        case .stopped: return MeetingTheme.redNS
         }
     }
 }

@@ -422,7 +422,8 @@ Never spell these SF Symbol names elsewhere.
 
 - Eye: `eye` in amber (`Brand.netText`, `MeetingTheme.netNS` in the meeting) means everyone sees it; `eye.slash`, neutral, means only you. It means nothing else.
 - Starts hidden on my screen: a dashed outline (same dashes as the camera's Only everyone), never an icon.
-- Camera: `video.fill` on, `video.slash` off, Only me wears an `eye.slash` badge, no device is `video` with a `?` badge.
+- Camera: `video.fill` on, `video.slash` off (quiet tint, never red), Only me wears an `eye.slash` badge, no device is `video` with a `?` badge.
+- Stop video (Zoom's full video off, not a camera state): `video.slash.fill` in Zoom's red (`MeetingTheme.red`). Red means the meeting gets nothing from you, like a muted mic.
 - Share `rectangle.on.rectangle`, Show on screen `rectangle.dashed`, Blur `aqi.medium`, hide meeting window `rectangle.slash`.
 - Can't see you (the camera finds nobody) `person.fill.questionmark`, two displays `display.2`, an empty layout `rectangle.dashed` (same dashed rectangle as Show on screen: a placeholder, "Nothing moves").
 - Words: "Everyone sees this", "Only you", "Starts hidden on your screen". Never "class".
@@ -459,6 +460,7 @@ Ranked by user-visible impact. None of these block anything today.
 
 | Date | Decision | Rationale |
 |------|----------|-----------|
+| 2026-11-26 | Stop video gets Zoom's red filled video.slash; camera state Off becomes the quiet outline | Off was red video.slash, the same look Zoom uses for stopped video, yet Off still sends the shared screen. Stop video (spec R49) needed Zoom's own mark, so Off took the neutral tint its icon language already gave it. The two now differ in shape and in colour, so colour never carries the meaning alone. |
 | 2026-08-18 | Codified the shipped system instead of proposing a new one | Two live pages and a shipped app already share a coherent language. A rebrand would orphan all three with no budget to redo them. |
 | 2026-08-18 | Brand greens become a two-role pair from the logo | Four unrelated greens existed across site, app and logo. The logo already pairs a deep green with a lime highlight, and splitting by role also fixes link contrast. |
 | 2026-08-18 | `--accent-lime` barred from text | Measured 2.25 contrast on white, failing AA at every size. Safe as a fill and as the macOS tint. |

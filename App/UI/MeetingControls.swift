@@ -194,16 +194,33 @@ final class MeetingControlsModel: ObservableObject {
         refresh()
     }
 
-    /// The four camera states as a menu, for this meeting only (never the saved default).
-    func cameraStateMenu() -> [MenuEntry] {
-        MeetingBarModel.cameraStateMenu(
+    /// The one camera button's click (bar, toolbar, the "You" tile): while video is stopped it starts
+    /// it again (R49); otherwise the camera state's click. The shortcut keeps `toggleCameraState`.
+    func pressCameraButton() {
+        coordinator.pressCameraButton()
+        refresh()
+    }
+
+    /// Stop video / Start video, the camera menu's last row (R49).
+    func toggleStopVideo() {
+        coordinator.toggleStopVideo()
+        refresh()
+    }
+
+    /// The camera button's arrow menu, for this meeting only (never the saved default): the four
+    /// states, then `cameras` (the toolbar's), then a divider and Stop video (R49).
+    func cameraMenu(cameras: [MenuEntry] = []) -> [MenuEntry] {
+        MeetingBarModel.cameraMenu(
             current: coordinator.cameraState,
-            noCameraAllowed: CameraPanelRules.noCameraEnabled(shareIsNothing: coordinator.shareTarget.sharesNothing)
-        ) { [weak self] state in
-            guard let self else { return }
-            self.coordinator.setLiveCameraState(state)
-            self.refresh()
-        }
+            noCameraAllowed: CameraPanelRules.noCameraEnabled(shareIsNothing: coordinator.shareTarget.sharesNothing),
+            videoStopped: coordinator.videoStopped,
+            cameras: cameras,
+            pick: { [weak self] state in
+                guard let self else { return }
+                self.coordinator.setLiveCameraState(state)
+                self.refresh()
+            },
+            toggleVideo: { [weak self] in self?.toggleStopVideo() })
     }
 
     func joinAudio() {
@@ -513,6 +530,7 @@ struct MeetingToolbarView: View {
         s.hasAudio = model.hasAudio
         s.cameraOn = model.cameraOn
         s.cameraState = coordinator.cameraState
+        s.videoStopped = coordinator.videoStopped
         s.isHost = model.isHost
         s.participants = model.participantCount
         s.waiting = model.waitingCount
@@ -541,7 +559,7 @@ struct MeetingToolbarView: View {
         var a = MeetingToolbarActions()
         a.toggleMute = model.toggleMute
         a.joinAudio = model.joinAudio
-        a.toggleVideo = model.toggleCameraState
+        a.toggleVideo = model.pressCameraButton
         a.togglePeople = model.togglePeople
         a.toggleChat = model.toggleChat
         a.toggleRecording = { coordinator.toggleRecording() }
@@ -569,11 +587,11 @@ struct MeetingToolbarView: View {
                                pickMic: { model.selectMicrophone(id: $0.id, name: $0.name) },
                                pickSpeaker: { model.selectSpeaker(id: $0.id, name: $0.name) })
         }
-        // The camera button's arrow: the four states, then which camera (nothing is lost from the old menu).
+        // The camera button's arrow: the four states, then which camera (nothing is lost from the old menu),
+        // then Stop video, last (R49).
         m.video = { () -> [MenuEntry] in
-            model.cameraStateMenu() + [.separator]
-                + MeetingMenus.video(cameras: model.cameraDevices, selected: model.cameraSelectedID,
-                                     pick: { model.selectCamera($0) })
+            model.cameraMenu(cameras: MeetingMenus.video(cameras: model.cameraDevices, selected: model.cameraSelectedID,
+                                                         pick: { model.selectCamera($0) }))
         }
         m.security = {
             var a = SecurityMenuActions()
@@ -907,6 +925,7 @@ private struct MeetingControlBarView: View {
         s.muted = model.muted
         s.cameraOn = model.cameraOn
         s.cameraState = coordinator.cameraState
+        s.videoStopped = coordinator.videoStopped
         s.videoButtons = model.videoButtons
         s.unread = model.unread
         s.participants = model.participantCount
@@ -936,8 +955,8 @@ private struct MeetingControlBarView: View {
         let model = self.model, coordinator = self.coordinator, notes = self.notes
         var a = MeetingBarActions()
         a.toggleMute = model.toggleMute
-        a.toggleCamera = model.toggleCameraState
-        a.cameraStateMenu = { model.cameraStateMenu() }
+        a.toggleCamera = model.pressCameraButton
+        a.cameraStateMenu = { model.cameraMenu() }
         a.meeting = model.toggleMeetingWindow
         a.toggleChat = model.toggleChat
         a.people = model.showPeople

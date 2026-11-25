@@ -29,6 +29,8 @@ struct MeetingToolbarState {
     var hasAudio = true
     var cameraOn = true
     var cameraState = CameraState.everyoneAndMe
+    /// Stop video (R49): Zoom's own video is off; nothing goes to the meeting.
+    var videoStopped = false
     /// Host or co-host: Security appears.
     var isHost = false
     var participants = 0
@@ -93,6 +95,17 @@ struct MeetingToolbarBar: View {
 
     static let height: CGFloat = 64
     fileprivate static let cellHeight: CGFloat = 52
+
+    /// A glyph's colour token on the dark toolbar: Stop video is Zoom's red, camera state Off the quiet
+    /// white, everything else white (R49, R17.3).
+    static func tint(_ tint: VisibilitySymbol.Tint) -> Color {
+        switch tint {
+        case .stopped: return MeetingTheme.red
+        case .neutral: return MeetingTheme.secondaryText
+        case .net: return Color(nsColor: MeetingTheme.netNS)
+        case .primary: return .white
+        }
+    }
 
     var body: some View {
         GeometryReader { geo in
@@ -179,11 +192,12 @@ struct MeetingToolbarBar: View {
             }
         case .video:
             // One camera control: the icon is the state, a click turns it off or back on, the arrow
-            // opens the four states (and the camera choice). The bar's cell says the words.
-            let cam = MeetingBarModel.cameraStateCell(state.cameraState)
+            // opens the four states (and the camera choice), then Stop video. While video is stopped
+            // the icon is Zoom's red video.slash, the caption "Start video", and a click starts it (R49).
+            let cam = StopVideoRules.cell(state: state.cameraState, videoStopped: state.videoStopped)
             withCaret(menus.video, label: "Who sees my camera") {
-                cell(symbol: cam.symbol, caption: state.cameraState.name,
-                     tint: state.cameraState == .off ? MeetingTheme.red : .white, on: cam.on,
+                cell(symbol: cam.symbol, caption: StopVideoRules.caption(state: state.cameraState, videoStopped: state.videoStopped),
+                     tint: Self.tint(cam.tint), on: cam.on,
                      symbolBadge: cam.symbolBadge, help: cam.help, action: actions.toggleVideo)
                     .accessibilityLabel(cam.spoken)
                     .disabled(!state.inMeeting)

@@ -113,6 +113,24 @@ struct HomeCameraPanel: View {
             // The same setting as the Camera look in Settings > Layouts, one click from Start.
             HomeTileToggleRow(title: CameraLookRules.mirrorTitle, isOn: $mirrorSelfView,
                               help: CameraLookRules.mirrorHelp)
+
+            // Stop video (R49), last and after a divider, as in the bar's and the toolbar's camera menus.
+            // Only while live: there is no Zoom video to stop before Start.
+            if coordinator.zoomChatClient.myUserID != nil {
+                Divider()
+                let stopped = coordinator.videoStopped
+                let note = stopped ? StopVideoRules.startNote : StopVideoRules.stopNote
+                VStack(alignment: .leading, spacing: 2) {
+                    HomeTileListRow(symbol: stopped ? VisibilitySymbol.cameraOn.name : VisibilitySymbol.videoStopped.name,
+                                    title: stopped ? StopVideoRules.startTitle : StopVideoRules.stopTitle,
+                                    selected: false) { coordinator.toggleStopVideo() }
+                        .help(note)
+                    Text(note)
+                        .font(.system(size: 11)).foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.leading, 8)
+                }
+            }
         }
     }
 

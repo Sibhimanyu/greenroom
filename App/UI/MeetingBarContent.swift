@@ -183,9 +183,10 @@ struct BarIconButton: View {
 
 struct MeetingBarActions {
     var toggleMute: () -> Void = {}
-    /// The camera button's click: Off <-> the last on state, for everyone (this meeting only).
+    /// The camera button's click: Off <-> the last on state, for everyone (this meeting only); while
+    /// video is stopped, Start video (R49).
     var toggleCamera: () -> Void = {}
-    /// The four camera states, built when the menu opens (this meeting only).
+    /// The four camera states and Stop video, built when the menu opens (this meeting only).
     var cameraStateMenu: () -> [MenuEntry] = { [] }
     var meeting: () -> Void = {}
     var toggleChat: () -> Void = {}
@@ -326,11 +327,12 @@ struct MeetingBarContent: View {
     }
 
     /// The one camera button: its icon is the state (a click turns the camera off for everyone, or
-    /// back on as it was), and the small arrow opens the four states. For this meeting only.
+    /// back on as it was), and the small arrow opens the four states and Stop video. While video is
+    /// stopped it wears Zoom's red video.slash and a click starts it again (R49). For this meeting only.
     private var cameraButton: some View {
-        let cell = MeetingBarModel.cameraStateCell(s.cameraState)
+        let cell = StopVideoRules.cell(state: s.cameraState, videoStopped: s.videoStopped)
         return HStack(spacing: 0) {
-            BarIconButton(symbol: cell.symbol, tint: s.cameraState == .off ? .red : .primary, on: cell.on,
+            BarIconButton(symbol: cell.symbol, tint: cell.tint.color, on: cell.on,
                           symbolBadge: cell.symbolBadge, help: cell.help, spoken: cell.spoken, action: a.toggleCamera)
             Image(systemName: "chevron.down")
                 .font(.system(size: 8, weight: .semibold))
@@ -339,7 +341,7 @@ struct MeetingBarContent: View {
                 .contentShape(Rectangle())
                 // `.disabled` does not stop an AppKit overlay: outside a meeting it is not there at all.
                 .overlay { if s.inMeeting { MenuPopUpOverlay(label: "Who sees my camera", entries: a.cameraStateMenu) } }
-                .help("Who sees my camera: Everyone & me, Only the meeting, Only me, Off")
+                .help("Who sees my camera: Everyone & me, Only the meeting, Only me, Off. Or stop video")
         }
         .frame(width: MeetingBarLayout.camera)
         .disabled(!s.inMeeting)

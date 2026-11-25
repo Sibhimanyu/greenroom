@@ -92,6 +92,73 @@ final class CameraMatrixTests: XCTestCase {
         }
     }
 
+    // MARK: the videoStopped dimension (R49)
+
+    // Every state x video stopped. Stopped changes only what the button, the menu row, Home's chip, the
+    // "You" tile and the own People row say; everything local (the stage, so the recording, the Room
+    // screen and the bubble rule) and the shortcut's toast stay the camera state's own.
+    func testEveryCellWithVideoStopped() {
+        for r in rows {
+            for stopped in [false, true] {
+                let s = r.state, what = "\(s.name), video stopped \(stopped)"
+                // The one camera button (bar, toolbar, You tile hover).
+                let cell = StopVideoRules.cell(state: s, videoStopped: stopped)
+                XCTAssertEqual(cell.symbol, stopped ? "video.slash.fill" : r.symbol, "button icon, \(what)")
+                XCTAssertEqual(cell.symbolBadge, stopped ? nil : r.badge, "button badge, \(what)")
+                XCTAssertEqual(cell.tint == .stopped, stopped, "button red only while stopped, \(what)")
+                XCTAssertEqual(StopVideoRules.press(state: s, lastOn: .everyoneAndMe, noCameraAllowed: true, videoStopped: stopped),
+                               stopped ? .startVideo : .cameraState(s == .off ? .everyoneAndMe : .off), "click, \(what)")
+                // The menu: the four states unchanged and still ticked, then a divider and the row, last.
+                let menu = M.cameraMenu(current: s, noCameraAllowed: true, videoStopped: stopped, pick: { _ in }, toggleVideo: {})
+                XCTAssertEqual(menu.filter(\.checked).map(\.title), [s.name], "menu tick, \(what)")
+                XCTAssertEqual(menu.suffix(2).map(\.kind), [.separator, .item], "divider then the row, \(what)")
+                XCTAssertEqual(menu.last?.title, stopped ? "Start video" : "Stop video", "menu row, \(what)")
+                // The toolbar's menu: the cameras between the states and the row, which stays last.
+                let toolbar = M.cameraMenu(current: s, noCameraAllowed: true, videoStopped: stopped,
+                                           cameras: [.header("Camera"), .item("FaceTime HD") {}], pick: { _ in }, toggleVideo: {})
+                XCTAssertEqual(toolbar.last?.title, menu.last?.title, "toolbar menu row, \(what)")
+                XCTAssertTrue(toolbar.flatTitles.contains("FaceTime HD"), what)
+                // Home's chip.
+                XCTAssertEqual(CameraTileRules.chipValue(state: s, cameraInPicture: inPicture(s), deviceName: "FaceTime HD",
+                                                         videoStopped: stopped),
+                               stopped ? "Video stopped" : r.homeValue, "Home chip value, \(what)")
+                XCTAssertEqual(CameraTileRules.chipMeaning(state: s, noDevice: false, videoStopped: stopped),
+                               stopped ? .videoStopped : .camera(s), "Home chip icon, \(what)")
+                // The shortcut is unchanged: it still names the camera state.
+                XCTAssertEqual(M.cameraShortcutToast(s), r.toast, "shortcut toast, \(what)")
+                // Local things keep going: they read the camera state only.
+                XCTAssertEqual(inPicture(s), r.stageDrawsCamera, "stage and recording, \(what)")
+                XCTAssertEqual(roomDrawsCamera(s, showsMyCamera: true), r.roomOn, "Room screen, \(what)")
+                XCTAssertEqual(Visibility.cameraOnMyScreen(state: s).isOn, r.bubble, "bubble rule, \(what)")
+                // The You tile: Zoom's video-off look (the name) with a "Video stopped" corner mark.
+                let mark = SelfViewRules.mark(state: s, cameraInPicture: inPicture(s), videoStopped: stopped)
+                XCTAssertEqual(mark?.symbol.name, stopped ? "video.slash.fill" : r.selfMark, "You tile mark, \(what)")
+                if stopped { XCTAssertEqual(mark?.label, "Video stopped") }
+                XCTAssertEqual(SelfViewRules.content(cameraInPicture: inPicture(s), videoStopped: stopped),
+                               stopped ? .placeholder : .everyoneSees, "You tile content, \(what)")
+                // The own People row follows Zoom: struck while stopped.
+                XCTAssertEqual(SelfViewRules.ownRowCameraOff(cameraInPicture: inPicture(s), zoomVideoOn: !stopped),
+                               stopped || !r.stageDrawsCamera, "own People row, \(what)")
+            }
+        }
+    }
+
+    // A camera-state change while stopped never starts the video, and Start video returns to the state.
+    func testACameraStateChangeWhileStoppedKeepsItStopped() {
+        var session = CameraStateSession(saved: .everyoneAndMe)
+        var stopped = true
+        for s in CameraState.allCases {
+            session.setLive(s)
+            // The session holds no video flag; the only inputs that clear it are Zoom's status and Start/end.
+            stopped = StopVideoRules.videoStopped(after: CameraStateSession.Moment.layoutSwitch, was: stopped)
+            XCTAssertTrue(stopped, s.name)
+        }
+        session.setLive(.onlyEveryone)
+        XCTAssertEqual(StopVideoRules.press(state: session.current, lastOn: session.lastOn, noCameraAllowed: true,
+                                            videoStopped: stopped), .startVideo)
+        XCTAssertEqual(session.current, .onlyEveryone, "Start video comes back as the state that was active")
+    }
+
     // Just my camera: the camera is the whole picture, so it stays in whatever the state says (R6.4),
     // and no surface claims it is out.
     func testJustMyCameraKeepsTheCameraInAndNothingSaysItIsOut() {

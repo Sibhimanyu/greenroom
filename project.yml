@@ -415,6 +415,7 @@ targets:
       - path: App/UI/HomeCalmRules.swift
       - path: App/UI/OnboardingPlacement.swift
       - path: App/UI/MeetingBarModel.swift
+      - path: App/UI/StopVideoRules.swift
       - path: App/UI/PresentMenuSpec.swift
       - path: App/UI/PreviewOutlineRules.swift
       - path: App/UI/PreviewSecondDisplayRules.swift

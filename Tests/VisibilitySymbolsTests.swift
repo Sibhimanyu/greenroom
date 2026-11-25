@@ -35,6 +35,18 @@ final class VisibilitySymbolsTests: XCTestCase {
         }
     }
 
+    // R49, R17.3: Stop video is Zoom's red, filled video.slash; camera state Off keeps the outline
+    // video.slash in the quiet tint. Two meanings, two shapes and two colours, so colour is never alone.
+    func testStopVideoHasItsOwnMarkApartFromOff() {
+        XCTAssertEqual(VisibilitySymbol.videoStopped.symbol, "video.slash.fill")
+        XCTAssertEqual(VisibilitySymbol.videoStopped.tint, .stopped)
+        XCTAssertEqual(VisibilitySymbol.videoStopped.words, "Video stopped")
+        XCTAssertNil(VisibilitySymbol.videoStopped.badge)
+        XCTAssertNotEqual(VisibilitySymbol.videoStopped.symbol, VisibilitySymbol.camera(.off).symbol)
+        XCTAssertEqual(VisibilitySymbol.camera(.off).tint, .neutral)
+        for s in CameraState.allCases { XCTAssertNotEqual(VisibilitySymbol.camera(s).tint, .stopped, s.name) }
+    }
+
     // R17.3
     func testCameraOnOffAndNoDevice() {
         XCTAssertEqual(VisibilitySymbol.cameraOn.symbol, "video.fill")

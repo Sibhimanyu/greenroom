@@ -134,6 +134,7 @@ different order; this table is the authority.
 | R46 | The Room screen is a real macOS window, native full screen included | owner, 2026-11-26 | built; rules tested (needs a live check on the room display) |
 | R47 | Show my camera, per Room screen | owner, 2026-11-26 | built; rules and codec tested (needs a live look) |
 | R48 | A meeting starts on the Bar unless the layout places a Meeting window piece | owner, 2026-11-26 | built; model tested (needs a live start) |
+| R49 | Stop video: Zoom's own full video off, apart from the camera state | owner, 2026-11-26, option A | built; rules and matrix tested, rendered off screen (needs a live check: the name tile, Start video) |
 
 **R38. Bug list: the solid backdrop follows light / dark.** (`SolidSheet`, App/UI/SolidSheet.swift)
 - R38.1 The solid sheet under a window the class sees re-resolves its dynamic colour (`windowBackgroundColor`)
@@ -233,7 +234,7 @@ different order; this table is the authority.
   uses the visible frame of the whiteboard's display, else the main display.
 - R6.8 (2026-11-26) Every control that turns the owner's camera on or off goes through the camera state: the bar and
   toolbar button, Home, the camera shortcut (its toast names the state: "Camera: Off") and the "You" tile's hover button.
-  Zoom's own video mute for the owner (`setMyVideo`) is not called anywhere (a source scan fails on it). Home's camera
+  Zoom's own video mute for the owner (`setMyVideo`) is called only by Stop video (R49; a source scan allows that one call). Home's camera
   chip names the state when the camera is out of the picture ("Only me", not "Off"). The owner's own People row is
   struck when the camera is out of the picture (`SelfViewRules.ownRowCameraOff`). A layout switch mid-meeting keeps the
   live camera state (the state is not part of a layout; owner confirmed, 2026-11-26, option A); Start, Snap Back and the end drop it (R6.3).
@@ -402,6 +403,40 @@ control bar is what should be the default, unless the Zoom-like UI was set in th
   windows alone has none, so it starts on the Bar; a layout of apps or views alone starts on the Bar too.
 - R48.2 A layout with a Meeting piece opens the Meeting window where the piece says (rectangle or full display).
 - R48.3 Someone joining does not open the window. The Bar's Meeting button and ⌃⌥⌘H open it on demand.
+
+**R49. Stop video.** (owner, 2026-11-26, option A: "nothing goes to the meeting, not even the screen"; amends R6.6, R6.8, R17.3)
+(`StopVideoRules`, App/UI/StopVideoRules.swift; `CoordinatorController+StopVideo.swift`)
+- R49.1 Camera state Off still only takes the camera out of the picture; everyone keeps the shared screen. The four
+  camera states stay exactly as they are and keep working while video is stopped. Stop video is separate: Zoom's own
+  video mute for the owner (`setMyVideo`), so nothing is sent and everyone sees the owner's name or avatar.
+- R49.2 "Stop video" is its own row at the bottom of the camera menu, after a divider, everywhere the menu appears:
+  the floating bar's camera arrow, the Meeting toolbar's camera caret (after the cameras) and, while live, Home's
+  camera tile. Its note: "Everyone sees your name. Nothing is sent, not even your screen." While stopped it reads
+  "Start video" ("Everyone sees your picture again."). `MeetingBarModel.cameraMenu`, `StopVideoRules.menuRow`.
+- R49.3 While stopped, the camera button wears Zoom's red, filled `video.slash.fill` (`VisibilitySymbol.videoStopped`,
+  tint `.stopped`); the Meeting toolbar's caption reads "Start video". Camera state Off now wears the quiet outline
+  `video.slash` (tint `.neutral`, as R17.3 always said), no longer red: red means "the meeting gets nothing from you"
+  (a muted microphone, stopped video), and Off still sends the screen. Shape and colour both differ, so colour is
+  never the only sign. Home's chip says "Video stopped" with the same mark.
+- R49.4 A press on the camera button while stopped starts the video again, back as the camera state that is active;
+  it is not a camera-state change. Otherwise the click keeps R6.6. The camera shortcut is unchanged (it still changes
+  the camera state). `StopVideoRules.press`, `CoordinatorController.pressCameraButton`.
+- R49.5 Zoom's own state is the truth: `videoStopped` is written only from the SDK's video-status callback for the
+  owner (`onVideoStatusChange` -> `OwnVideoStatus`), so a stop by a co-host or by Zoom shows correctly. If the SDK
+  refuses, a session-log line ("Stop video: Zoom refused. Nothing changed.") and the UI stays as it was.
+- R49.6 What keeps running while video is stopped: the local stage, the recording and the Room screen, because they
+  are local and never go through Zoom. The camera bubble follows Zoom's video as before (`PresenceVisibility`'s
+  `cameraOn`), so it hides while video is stopped.
+- R49.7 The Meeting window's "You" tile shows Zoom's video-off look: the owner's name centred on the tile colour
+  (`SelfViewRules.content` -> `.placeholder`, drawn by `SelfPreviewView`, as `MeetingTileChrome` draws others), with
+  the R6.9 corner mark in Stop video's icon and "Video stopped" as tooltip and VoiceOver label. The owner's own People
+  row is struck (it follows Zoom's flag, `SelfViewRules.ownRowCameraOff`).
+- R49.8 A layout switch, Snap Back or a camera-state change never starts the video by itself. Start begins with video
+  on, as today; the end of the meeting clears it (`StopVideoRules.videoStopped(after: Moment)`).
+- R49.9 `SourceScanTests` allows exactly one `.setMyVideo(` call, in `CoordinatorController+StopVideo.swift`, with its
+  reason. Every other control still goes through the camera state (R6.8).
+- Tests: `Tests/StopVideoRulesTests.swift` (state x stopped table), `Tests/CameraMatrixTests.swift` (videoStopped
+  dimension). Render: `scripts/render/stop-video.sh`.
 
 **R17. One icon language.** (Q28 to Q33)
 - R17.1 The eye means "everyone sees it" and nothing else: `eye` amber (`Brand.netText` / `MeetingTheme.netNS`)
@@ -735,6 +770,10 @@ what everyone sees. Record the date and the R numbers against each line.
     / Green screen (with Cutout or Presenter) and Mirror change the picture for
     every layout. Home's Look or Share "More..." opens Layouts with the camera
     selected and the look open. (R11)
+12. Stop video from the bar's camera menu: the other person sees your name tile, not
+    the screen; the button turns red, the "You" tile shows your name with the mark.
+    Press the button: your picture comes back in the camera state you had. Have a
+    co-host stop your video: the button shows stopped too. (R49)
 
 ## Contradictions found while merging
 

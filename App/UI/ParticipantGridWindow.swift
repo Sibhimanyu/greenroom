@@ -901,9 +901,9 @@ private final class RootView: NSView {
                 let muted = sdk.iAmMuted
                 Self.perform(muted ? "Unmuted yourself" : "Muted yourself") { $0.setMyMute(!muted) }
             },
-            // The camera button's click (R6.6), never Zoom's own video mute.
+            // The camera button's click (R6.6); while video is stopped, Start video (R49).
             toggleVideo: { [weak self] in
-                self?.controls?.toggleCameraState()
+                self?.controls?.pressCameraButton()
                 ParticipantGridWindowController.refreshNow()
             })
         addSubview(selfPreview)
@@ -1604,8 +1604,10 @@ private final class RootView: NSView {
     private func updateMeetingChrome() {
         if let sdk = ParticipantGridWindowController.sdk {
             let coordinator = controls?.coordinator
+            let stopped = coordinator?.videoStopped ?? false
             selfPreview.apply(muted: sdk.iAmMuted, camera: coordinator?.cameraState ?? .everyoneAndMe,
-                              mark: coordinator?.selfViewMark, level: lastMicLevel)
+                              videoStopped: stopped, content: coordinator?.selfViewContent ?? .everyoneSees,
+                              name: sdk.myName ?? "You", mark: coordinator?.selfViewMark, level: lastMicLevel)
         }
         if shareBeside, let now = sharedNow {
             shareChrome.apply(MeetingTileModel(name: "\(now.name)\u{2019}s screen"))

@@ -37,6 +37,11 @@ final class SelfPreviewView: NSView {
     private let markIcon = NSImageView()
     private let markCorner = NSImageView()
     private var mark: SelfViewRules.Mark?
+    /// Zoom's video-off look while video is stopped (R49): the owner's name, centred on the tile
+    /// colour, as every other video-off tile in the window (MeetingTileChrome's cover) and as everyone
+    /// in the meeting sees the owner.
+    private let offCover = NSView()
+    private let offName = NSTextField(labelWithString: "")
     private lazy var muteButton = ClosureButton { [weak self] in self?.actions.toggleMute() }
     private lazy var videoButton = ClosureButton { [weak self] in self?.actions.toggleVideo() }
     private var hovering = false
@@ -61,6 +66,15 @@ final class SelfPreviewView: NSView {
             shadow.shadowBlurRadius = 3
             return shadow
         }()
+        offCover.wantsLayer = true
+        offCover.layer?.backgroundColor = MeetingTheme.tileNS.cgColor
+        offName.textColor = .white
+        offName.alignment = .center
+        offName.lineBreakMode = .byTruncatingTail
+        offCover.addSubview(offName)
+        offCover.isHidden = true
+        addSubview(offCover)
+
         addSubview(caption)
 
         addSubview(meter)
@@ -98,20 +112,27 @@ final class SelfPreviewView: NSView {
 
     /// Titles and tints follow the live state, so the glyph says what pressing
     /// it will do rather than what is currently true.
-    func apply(muted: Bool, camera: CameraState, mark: SelfViewRules.Mark?, level: Double) {
+    /// `content` is SelfViewRules.content: `.placeholder` (video stopped) draws the name over the video.
+    func apply(muted: Bool, camera: CameraState, videoStopped: Bool = false, content: SelfViewContent = .everyoneSees,
+               name: String = "You", mark: SelfViewRules.Mark?, level: Double) {
         applyMark(mark)
-        let videoOn = camera != .off
+        let covered = content == .placeholder
+        if offCover.isHidden == covered || offName.stringValue != name {
+            offCover.isHidden = !covered
+            offName.stringValue = name
+            needsLayout = true
+        }
         muteButton.image = NSImage(systemSymbolName: muted ? "mic.slash.fill" : "mic.fill",
                                    accessibilityDescription: muted ? "Unmute me" : "Mute me")?
             .withSymbolConfiguration(.init(pointSize: 12, weight: .semibold))
         muteButton.contentTintColor = muted ? .systemRed : .white
         muteButton.toolTip = muted ? "Unmute me" : "Mute me"
         // The camera button's own icon and words (R6.6, R17.3): a click turns the camera off, or back
-        // to the last on state.
-        let cell = MeetingBarModel.cameraStateCell(camera)
+        // to the last on state; while video is stopped, starts it again (R49).
+        let cell = StopVideoRules.cell(state: camera, videoStopped: videoStopped)
         videoButton.image = NSImage(systemSymbolName: cell.symbol, accessibilityDescription: cell.spoken)?
             .withSymbolConfiguration(.init(pointSize: 12, weight: .semibold))
-        videoButton.contentTintColor = videoOn ? .white : .systemRed
+        videoButton.contentTintColor = Self.tint(cell.tint)
         videoButton.toolTip = cell.help
         videoButton.setAccessibilityLabel(cell.spoken)
         meter.level = level
@@ -123,6 +144,16 @@ final class SelfPreviewView: NSView {
         videoButton.isHidden = !hovering
     }
 
+    /// A colour token on the tile's dark picture.
+    static func tint(_ tint: VisibilitySymbol.Tint) -> NSColor {
+        switch tint {
+        case .stopped: return MeetingTheme.redNS
+        case .neutral: return MeetingTheme.secondaryTextNS
+        case .net: return MeetingTheme.netNS
+        case .primary: return .white
+        }
+    }
+
     private func applyMark(_ next: SelfViewRules.Mark?) {
         guard next != mark else { return }
         mark = next
@@ -131,6 +162,8 @@ final class SelfPreviewView: NSView {
         let config = NSImage.SymbolConfiguration(pointSize: 10, weight: .semibold)
         markIcon.image = NSImage(systemSymbolName: next.symbol.name, accessibilityDescription: nil)?
             .withSymbolConfiguration(config)
+        // Stop video's mark keeps Zoom's red; the camera states' marks stay white.
+        markIcon.contentTintColor = next.symbol.tint == .stopped ? MeetingTheme.redNS : .white
         markCorner.image = next.symbol.badge.flatMap {
             NSImage(systemSymbolName: $0, accessibilityDescription: nil)?
                 .withSymbolConfiguration(.init(pointSize: 7, weight: .bold))
@@ -160,6 +193,11 @@ final class SelfPreviewView: NSView {
         super.layout()
         videoHost.frame = bounds
         for subview in videoHost.subviews { subview.frame = videoHost.bounds }
+        offCover.frame = bounds
+        offName.font = .systemFont(ofSize: bounds.height < 150 ? 15 : 18, weight: .medium)
+        offName.sizeToFit()
+        offName.frame = NSRect(x: 12, y: (bounds.height - offName.frame.height) / 2,
+                               width: max(0, bounds.width - 24), height: offName.frame.height)
         caption.sizeToFit()
         caption.frame = NSRect(x: 8, y: 6, width: caption.frame.width, height: caption.frame.height)
         // A thin level strip along the very bottom: present enough to read at a

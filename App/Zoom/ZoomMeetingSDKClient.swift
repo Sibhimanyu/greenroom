@@ -78,6 +78,9 @@ final class ZoomMeetingSDKClient: NSObject, ObservableObject {
     /// joins, leaves - so the meeting window can redraw at once rather than at
     /// its next one-second poll.
     var onParticipantCountChanged: (() -> Void)?
+    /// Zoom's word on the owner's own video (Stop video, R49), from `onVideoStatusChange`: the truth
+    /// for "video stopped", whoever stopped it (Greenroom, a co-host, Zoom). Set once by the coordinator.
+    var onMyVideoStatus: ((OwnVideoStatus) -> Void)?
     /// The lock state Zoom last reported; there is no getter, only the event.
     var meetingIsLocked = false
 

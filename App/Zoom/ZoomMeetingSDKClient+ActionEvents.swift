@@ -44,6 +44,21 @@ extension ZoomMeetingSDKClient: ZoomSDKMeetingActionControllerDelegate {
         noteActiveSpeaker(userID)
     }
 
+    /// Someone's video went on or off. Only the owner's own is passed on: it is what Stop video
+    /// (R49) shows, so a stop by a co-host or by Zoom itself reads correctly too.
+    public func onVideoStatusChange(_ videoStatus: ZoomSDKVideoStatus, userID: UInt32) {
+        guard userID == myUserID else { return }
+        let status: OwnVideoStatus
+        switch videoStatus {
+        case ZoomSDKVideoStatus_On: status = .on
+        case ZoomSDKVideoStatus_Off: status = .off
+        case ZoomSDKVideoStatus_MutedByHost: status = .stoppedByHost
+        default: status = .unknown
+        }
+        Self.videoLog("event my video status -> \(status)")
+        onMyVideoStatus?(status)
+    }
+
     // MARK: Deliberate no-ops (protocol has no @optional)
 
     public func onUserAudioStatusChange(_ userAudioStatusArray: [Any]!) {}
@@ -66,7 +81,6 @@ extension ZoomMeetingSDKClient: ZoomSDKMeetingActionControllerDelegate {
     public func onVirtualNameTagRosterInfoUpdated(_ userID: UInt32) {}
     public func onMeetingCoHostChanged(_ userID: UInt32, isCoHost: Bool) { roomEvents.changed() }
     public func onSpotlightVideoUserChange(_ spotlightedUserList: [Any]?) {}
-    public func onVideoStatusChange(_ videoStatus: ZoomSDKVideoStatus, userID: UInt32) {}
     /// A hand goes up or down: the People panel and the toolbar's count redraw
     /// now, not at the next one-second poll.
     public func onLowOrRaiseHandStatusChange(_ raise: Bool, userID: UInt32) { roomEvents.changed() }

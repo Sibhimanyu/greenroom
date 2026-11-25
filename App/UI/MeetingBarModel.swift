@@ -49,6 +49,8 @@ struct MeetingBarSnapshot: Equatable {
     var cameraOn = true
     /// Who sees the camera right now (this meeting's state).
     var cameraState = CameraState.everyoneAndMe
+    /// Stop video (R49): Zoom's own video is off; nothing goes to the meeting.
+    var videoStopped = false
     /// Greenroom's own meeting window exists, so there is a "Meeting" button.
     var videoButtons = true
     var unread = 0
@@ -189,6 +191,9 @@ enum MeetingBarModel {
         var on = false
         /// The corner badge of the symbol (Only me: the struck eye).
         var symbolBadge: String? = nil
+        /// The glyph's colour token: camera state Off is quiet (`.neutral`), Stop video is Zoom's red
+        /// (`.stopped`, R49). Views map it onto their own colours (VisibilityIcon.swift, MeetingTheme).
+        var tint: VisibilitySymbol.Tint = .primary
     }
 
     /// Notes: lit while the notes bar is open.
@@ -209,7 +214,8 @@ enum MeetingBarModel {
                  help: "Camera: \(state.name). \(state.detail) Click to turn it \(state == .off ? "on" : "off"); the arrow chooses who sees it.",
                  spoken: "Camera: \(state.name). Click to turn it \(state == .off ? "on" : "off")",
                  on: state != .everyoneAndMe && state != .off,
-                 symbolBadge: VisibilitySymbol.camera(state).badge)
+                 symbolBadge: VisibilitySymbol.camera(state).badge,
+                 tint: VisibilitySymbol.camera(state).tint)
     }
 
     /// What a click on the camera button does: any "on" state goes Off; Off comes back as the last
@@ -230,6 +236,18 @@ enum MeetingBarModel {
             .item(state.name, checked: state == current, enabled: noCameraAllowed || !state.noCamera,
                   note: state.detail) { pick(state) }
         }
+    }
+
+    /// The camera button's arrow menu, everywhere it appears: the four states, then (the toolbar's)
+    /// the cameras, then a divider and Stop video, always last (R49). Stop video is not a fifth state:
+    /// the states stay ticked and work while it is on, and choosing one never starts the video.
+    static func cameraMenu(current: CameraState, noCameraAllowed: Bool, videoStopped: Bool,
+                           cameras: [MenuEntry] = [],
+                           pick: @escaping (CameraState) -> Void,
+                           toggleVideo: @escaping () -> Void) -> [MenuEntry] {
+        var out = cameraStateMenu(current: current, noCameraAllowed: noCameraAllowed, pick: pick)
+        if !cameras.isEmpty { out += [.separator] + cameras }
+        return out + StopVideoRules.menuRow(videoStopped: videoStopped, toggle: toggleVideo)
     }
 
     /// Meeting Views: opens the views submenu's entries as a menu of its own.

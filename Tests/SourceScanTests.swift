@@ -90,9 +90,27 @@ final class SourceScanTests: XCTestCase {
     /// One camera button (R6.6): every control that turns the owner's camera on or off goes through
     /// the camera state (`CoordinatorController.setLiveCameraState`). Zoom's own video mute for the
     /// owner (`setMyVideo`) left the state saying one thing and the meeting seeing another.
+    ///
+    /// R49 (owner, 2026-11-26, option A): exactly one call is allowed, Stop video's own path. Stop video
+    /// is not a camera state: it is Zoom's full video off (nothing is sent, not even the screen), and
+    /// the UI reads it back from Zoom's video-status callback, so the state and the meeting cannot
+    /// disagree. Every other control still goes through the camera state.
     func testOwnVideoIsNeverMutedBehindTheCameraState() throws {
         let rule = try NSRegularExpression(pattern: #"\.setMyVideo\("#)
-        try check(under: "App", rule: rule, allowed: [], what: "Zoom's own video mute; use the camera state") { $0.codeLines }
+        let allowed: [Allowance] = [
+            Allowance("App/CoordinatorController+StopVideo.swift", "zoomChatClient.setMyVideo(on:",
+                      "Stop video (R49): Zoom's own video mute, read back from its video-status callback"),
+        ]
+        try check(under: "App", rule: rule, allowed: allowed, what: "Zoom's own video mute; use the camera state") { $0.codeLines }
+        // Exactly one call site, not one file of them.
+        var hits: [String] = []
+        for (path, lexed) in try sources(under: "App") {
+            for (line, chunk) in lexed.codeLines
+            where rule.firstMatch(in: chunk, range: NSRange(chunk.startIndex..., in: chunk)) != nil {
+                hits.append("\(path):\(line)")
+            }
+        }
+        XCTAssertEqual(hits.count, 1, "one Stop video call site, found: \(hits)")
     }
 
     // MARK: The lexer, tested on its own

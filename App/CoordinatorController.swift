@@ -681,6 +681,10 @@ final class CoordinatorController: ObservableObject {
     /// Back drop it (`resetPresenceBubbleToLayoutDefault`).
     @Published private(set) var cameraSession = CameraStateSession(saved: .everyoneAndMe)
     var cameraState: CameraState { cameraSession.current }
+    /// Stop video (R49): Zoom's own video is off, so nothing goes to the meeting, not even the screen.
+    /// Not a camera state. Written only from Zoom's video-status callback (`noteOwnVideoStatus`) and at
+    /// Start and the end (`resetPresenceBubbleToLayoutDefault`): CoordinatorController+StopVideo.swift.
+    @Published var videoStopped = false
     var savedCameraState: CameraState {
         CameraState(noCamera: cameraDirectorSettings.noCamera, shownOnMyScreen: cameraShownOnMyScreen)
     }
@@ -874,7 +878,12 @@ final class CoordinatorController: ObservableObject {
 
     /// The "You" tile's corner mark: the state's icon and name while the camera is out of the picture.
     var selfViewMark: SelfViewRules.Mark? {
-        SelfViewRules.mark(state: cameraState, cameraInPicture: !cameraIsOff)
+        SelfViewRules.mark(state: cameraState, cameraInPicture: !cameraIsOff, videoStopped: videoStopped)
+    }
+
+    /// What the "You" tile draws: what everyone sees, or the name while video is stopped (R49).
+    var selfViewContent: SelfViewContent {
+        SelfViewRules.content(cameraInPicture: !cameraIsOff, videoStopped: videoStopped)
     }
 
     /// The preview's picture is in use by a session - a meeting, or a
@@ -1366,6 +1375,7 @@ final class CoordinatorController: ObservableObject {
     init() {
         defer {
             Self.shared = self
+            installStopVideoHooks()
             observeDisplays()
             startPresenceBubble()
             adoptLayoutPieces(LayoutPieceAdoption.atStart(layoutLibrary.active))
@@ -1633,6 +1643,9 @@ final class CoordinatorController: ObservableObject {
     /// (`CameraStateSession.dropsLiveChange`).
     func resetPresenceBubbleToLayoutDefault(at moment: CameraStateSession.Moment) {
         let hadLiveChange = cameraSession.reset(at: moment)
+        // Stop video is not part of the camera state: only Start and the end clear it (R49).
+        let stopped = StopVideoRules.videoStopped(after: moment, was: videoStopped)
+        if stopped != videoStopped { videoStopped = stopped }
         presenceBubbleHidden = PresenceVisibility.bubbleStartsHidden(state: cameraState)
         // A live "Off" or "Only me" put the picture back to the default along with it.
         if hadLiveChange, stage != nil { applyCameraStateLive() }

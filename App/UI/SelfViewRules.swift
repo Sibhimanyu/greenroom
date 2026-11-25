@@ -38,15 +38,19 @@ enum SelfViewRules {
 
     /// `cameraInPicture` is `!CoordinatorController.cameraIsOff`: whether the meeting's picture
     /// draws the camera (`Visibility.cameraEveryoneSees`; Just my camera keeps it in whatever the state).
-    static func mark(state: CameraState, cameraInPicture: Bool) -> Mark? {
+    /// While video is stopped (R49) the mark is Stop video's own ("Video stopped"), whatever the state.
+    static func mark(state: CameraState, cameraInPicture: Bool, videoStopped: Bool = false) -> Mark? {
+        if videoStopped { return Mark(symbol: .videoStopped, label: VisibilitySymbol.videoStopped.words) }
         guard !cameraInPicture else { return nil }
         return Mark(symbol: .camera(state), label: "Camera: \(state.name)")
     }
 
-    /// What the tile draws in this state.
-    static func content(cameraInPicture: Bool,
+    /// What the tile draws in this state. While video is stopped everyone sees the owner's name, so
+    /// the tile does too: Zoom's video-off look (R49), whatever the placeholder switch says.
+    static func content(cameraInPicture: Bool, videoStopped: Bool = false,
                         placeholderWhenOut: Bool = showsPlaceholderWhenCameraIsOut) -> SelfViewContent {
-        placeholderWhenOut && !cameraInPicture ? .placeholder : .everyoneSees
+        if videoStopped { return .placeholder }
+        return placeholderWhenOut && !cameraInPicture ? .placeholder : .everyoneSees
     }
 
     /// The owner's own row in People and in view windows: the camera icon is struck when the camera

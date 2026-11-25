@@ -19,6 +19,9 @@ enum VisibilitySymbol: Equatable {
     /// The camera's four states, in Zoom's icons.
     case camera(CameraState)
     case cameraOn, cameraOff
+    /// Stop video (R49): Zoom's own video off, nothing sent to the meeting, not even the screen.
+    /// Not a camera state: camera state Off still sends the shared picture.
+    case videoStopped
     /// "No camera connected": a camera with a question badge.
     case noCameraDevice
     case share, stopShare
@@ -43,6 +46,9 @@ enum VisibilitySymbol: Equatable {
         case neutral
         /// Ordinary control colour.
         case primary
+        /// Zoom's red for stopped video (`MeetingTheme.redNS`): the meeting gets nothing from you.
+        /// The same red as a muted microphone; never a "who sees it" colour.
+        case stopped
     }
 
     /// The SF Symbol. Nil only for `startsHidden`, which is drawn as a dashed outline.
@@ -53,6 +59,8 @@ enum VisibilitySymbol: Equatable {
         case let .camera(state): return state == .off ? "video.slash" : "video.fill"
         case .cameraOn: return "video.fill"
         case .cameraOff: return "video.slash"
+        // Filled and red where Off is an outline in the quiet tint: shape and colour both differ.
+        case .videoStopped: return "video.slash.fill"
         case .noCameraDevice: return "video"
         case .share: return "rectangle.on.rectangle"
         case .stopShare: return "rectangle.on.rectangle.slash"
@@ -98,6 +106,7 @@ enum VisibilitySymbol: Equatable {
         case .everyoneSees(true): return .net
         case .everyoneSees(false), .cameraOff, .noCameraDevice, .startsHidden, .nobodyInCamera: return .neutral
         case let .camera(state): return state == .off ? .neutral : .primary
+        case .videoStopped: return .stopped
         default: return .primary
         }
     }
@@ -110,6 +119,7 @@ enum VisibilitySymbol: Equatable {
         case let .camera(state): return state.name
         case .cameraOn: return "Camera on"
         case .cameraOff: return "Camera off"
+        case .videoStopped: return "Video stopped"
         case .noCameraDevice: return "No camera connected"
         case .share: return "Share"
         case .stopShare: return "Stop sharing"

@@ -847,7 +847,8 @@ struct HomeView: View {
     /// Camera: the same list and the same rule as Settings -> Devices' cards.
     /// The tile's icon: no camera connected, else the camera state's own (R17.3).
     private var chipMeaning: VisibilitySymbol {
-        cameras.isEmpty && !coordinator.cameraIsOff ? .noCameraDevice : .camera(coordinator.cameraState)
+        CameraTileRules.chipMeaning(state: coordinator.cameraState, noDevice: cameras.isEmpty && !coordinator.cameraIsOff,
+                                    videoStopped: coordinator.videoStopped)
     }
 
     private var cameraChip: some View {
@@ -856,7 +857,8 @@ struct HomeView: View {
         return Button { cameraOpen.toggle() } label: {
             dockLabel(symbol: chipMeaning.name, symbolBadge: chipMeaning.badge,
                       value: CameraTileRules.chipValue(state: coordinator.cameraState, cameraInPicture: !coordinator.cameraIsOff,
-                                                       deviceName: Self.shortDeviceName(name)),
+                                                       deviceName: Self.shortDeviceName(name),
+                                                       videoStopped: coordinator.videoStopped),
                       warn: warn)
         }
         .buttonStyle(DockButtonStyle())
@@ -867,12 +869,13 @@ struct HomeView: View {
             }
         }
         // The panel explains itself, so no hover card (see lookControl).
-        .help(cameras.isEmpty && !coordinator.cameraIsOff ? SetupSummary.cameraMissingHelp
+        .help(coordinator.videoStopped ? "\(StopVideoRules.stoppedWords). \(StopVideoRules.stopNote)"
+              : cameras.isEmpty && !coordinator.cameraIsOff ? SetupSummary.cameraMissingHelp
               : coordinator.cameraIsOff ? "Camera: \(coordinator.cameraState.name). \(coordinator.cameraState.detail)"
               : "Camera: \(name). Which camera you appear on.")
         .accessibilityLabel("Camera")
         .accessibilityValue(CameraTileRules.chipValue(state: coordinator.cameraState, cameraInPicture: !coordinator.cameraIsOff,
-                                                      deviceName: name))
+                                                      deviceName: name, videoStopped: coordinator.videoStopped))
     }
 
     /// Microphone: system default or one pinned device, as Settings -> Devices.

@@ -147,9 +147,18 @@ enum CameraTileRules {
     }
 
     /// Home's camera chip value: the camera's name while it is in the meeting's picture, else the
-    /// state's own name (Only me is not "Off").
-    static func chipValue(state: CameraState, cameraInPicture: Bool, deviceName: String) -> String {
-        cameraInPicture ? deviceName : state.name
+    /// state's own name (Only me is not "Off"). While video is stopped (R49), "Video stopped".
+    static func chipValue(state: CameraState, cameraInPicture: Bool, deviceName: String,
+                          videoStopped: Bool = false) -> String {
+        if videoStopped { return VisibilitySymbol.videoStopped.words }
+        return cameraInPicture ? deviceName : state.name
+    }
+
+    /// Home's camera chip icon: Stop video's own mark while stopped, else no camera connected, else
+    /// the camera state's own (R17.3).
+    static func chipMeaning(state: CameraState, noDevice: Bool, videoStopped: Bool) -> VisibilitySymbol {
+        if videoStopped { return .videoStopped }
+        return noDevice ? .noCameraDevice : .camera(state)
     }
 
     /// A tap turns the camera on only from the off-by-setting state.

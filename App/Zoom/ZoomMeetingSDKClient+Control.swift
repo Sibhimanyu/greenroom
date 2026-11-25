@@ -145,6 +145,8 @@ extension ZoomMeetingSDKClient {
     }
 
     var myVideoIsOn: Bool { actionController?.getMyself()?.isVideoOn() ?? false }
+    /// The owner's name as the meeting shows it (the "You" tile's video-off look while video is stopped).
+    var myName: String? { actionController?.getMyself()?.getUserName() }
     var myHandIsRaised: Bool { actionController?.getMyself()?.isRaisingHand() ?? false }
 
     func setMyMute(_ muted: Bool) -> Bool {
@@ -152,6 +154,8 @@ extension ZoomMeetingSDKClient {
         return setMuted(muted, userID: me)
     }
 
+    /// Zoom's own video mute for the owner. Called from one place only, Stop video
+    /// (CoordinatorController+StopVideo.swift, R49); every other control goes through the camera state.
     func setMyVideo(on: Bool) -> Bool {
         guard let me = myUserID else { return false }
         return setVideoMuted(!on, userID: me)

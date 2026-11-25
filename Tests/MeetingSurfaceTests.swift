@@ -4,13 +4,13 @@ import XCTest
 final class MeetingSurfaceTests: XCTestCase {
     typealias M = MeetingSurface
 
-    private func model(_ events: M.Event..., small: Bool = true, grow: Bool = true) -> M {
-        var m = M(startSmallWhileAlone: small, growIfSomeoneJoined: grow)
+    private func model(_ events: M.Event...) -> M {
+        var m = M()
         for e in events { m.apply(e) }
         return m
     }
     /// Live with the window up, no morph or settle pending.
-    private func liveWindow() -> M { model(.startBegan, .wentLiveWithOthers, .morphFinished, .settleElapsed) }
+    private func liveWindow() -> M { model(.startBegan, .wentLiveOnWindow, .morphFinished, .settleElapsed) }
 
     // R1
     func testFreshModelShowsNothing() {
@@ -21,7 +21,7 @@ final class MeetingSurfaceTests: XCTestCase {
         XCTAssertNil(m.reopenTarget)
     }
     func testEnvironmentEventsAreIgnoredWhileIdle() {
-        for e in M.Event.allCases where e != .startBegan && e != .wentLiveAlone && e != .wentLiveWithOthers {
+        for e in M.Event.allCases where e != .startBegan && e != .wentLiveOnBar && e != .wentLiveOnWindow {
             var m = M(); m.apply(e)
             XCTAssertEqual(m, M(), "\(e)")
         }
@@ -37,28 +37,22 @@ final class MeetingSurfaceTests: XCTestCase {
     func testStartingShowsTheBar() {
         XCTAssertEqual(model(.startBegan).surface, .bar)
     }
-    // R3
-    func testGoLiveAloneStartsSmall() {
-        XCTAssertEqual(model(.startBegan, .wentLiveAlone).surface, .bar)
+    // R3 (owner, 2026-11-26): the Bar unless the layout places a Meeting window piece.
+    func testStartIsTheBarUnlessTheLayoutPlacesTheMeeting() {
+        XCTAssertEqual(M.wentLive(layoutPlacesMeeting: false), .wentLiveOnBar)
+        XCTAssertEqual(M.wentLive(layoutPlacesMeeting: true), .wentLiveOnWindow)
+        XCTAssertEqual(model(.startBegan, M.wentLive(layoutPlacesMeeting: false)).surface, .bar)
+        XCTAssertEqual(model(.startBegan, M.wentLive(layoutPlacesMeeting: true)).surface, .window)
     }
-    func testGoLiveWithOthersShowsWindow() {
-        XCTAssertEqual(model(.startBegan, .wentLiveWithOthers).surface, .window)
-    }
-    func testGoLiveAloneWithStartSmallOffShowsWindow() {
-        XCTAssertEqual(model(.startBegan, .wentLiveAlone, small: false).surface, .window)
-    }
-    func testSomeoneJoiningGrowsAnAutoSmallBarWithAMorph() {
-        let m = model(.startBegan, .wentLiveAlone, .morphFinished, .someoneJoined)
+    func testABarStartStaysTheBarUntilThePersonAsks() {
+        var m = model(.startBegan, .wentLiveOnBar, .morphFinished)
+        XCTAssertEqual(m.visible, [.bar])
+        XCTAssertFalse(m.isMorphing, "starting and live are both the Bar: no morph")
+        XCTAssertEqual(m.reopenTarget, .bar)
+        XCTAssertFalse(m.layoutMayRaiseWindow)
+        // The bar's Meeting button and the shortcut send expand.
+        m.apply(.expand)
         XCTAssertEqual(m.surface, .window)
-        XCTAssertTrue(m.isMorphing)
-        XCTAssertEqual(m.visible, [.bar, .window])
-    }
-    func testGrowOffKeepsTheBar() {
-        XCTAssertEqual(model(.startBegan, .wentLiveAlone, .someoneJoined, grow: false).surface, .bar)
-    }
-    func testUserCollapseBeforeJoinStopsTheGrow() {
-        XCTAssertEqual(model(.startBegan, .wentLiveAlone, .expand, .collapse, .someoneJoined).surface, .bar)
-        XCTAssertEqual(model(.startBegan, .wentLiveAlone, .toggle, .toggle, .someoneJoined).surface, .bar)
     }
     // R5
     func testCollapseExpandToggle() {
@@ -174,10 +168,10 @@ final class MeetingSurfaceTests: XCTestCase {
             for e in events { m.apply(e) }
             XCTAssertEqual(m.reopenTarget, .bar, "\(events)")
         }
-        var alone = model(.startBegan, .wentLiveAlone, .morphFinished)
-        XCTAssertEqual(alone.reopenTarget, .bar)
-        alone.apply(.covered)
-        XCTAssertEqual(alone.reopenTarget, .bar)
+        var barStart = model(.startBegan, .wentLiveOnBar, .morphFinished)
+        XCTAssertEqual(barStart.reopenTarget, .bar)
+        barStart.apply(.covered)
+        XCTAssertEqual(barStart.reopenTarget, .bar)
     }
     func testReopenBringsTheWindowForwardAndClearsWhatCoveredIt() {
         var m = liveWindow()
@@ -203,14 +197,6 @@ final class MeetingSurfaceTests: XCTestCase {
         n.apply(.windowClosedByCode); n.apply(.collapse)
         XCTAssertEqual(n.reopenTarget, .bar)
     }
-    func testWaitingForSomeoneOnlyWhileAnAutoSmallBarCouldGrow() {
-        XCTAssertFalse(M().isWaitingForSomeone)
-        XCTAssertTrue(model(.startBegan, .wentLiveAlone).isWaitingForSomeone)
-        XCTAssertFalse(model(.startBegan, .wentLiveAlone, .collapse).isWaitingForSomeone)
-        XCTAssertFalse(model(.startBegan, .wentLiveAlone, .someoneJoined).isWaitingForSomeone)
-        XCTAssertFalse(model(.startBegan, .wentLiveAlone, grow: false).isWaitingForSomeone)
-        XCTAssertFalse(model(.startBegan, .wentLiveWithOthers).isWaitingForSomeone)
-    }
     func testTheEnvironmentFlagsAreReadable() {
         var m = liveWindow()
         m.apply(.covered); m.apply(.movedToOtherDesktop); m.apply(.minimised)
@@ -228,7 +214,7 @@ final class MeetingSurfaceTests: XCTestCase {
             for e in events { m.apply(e) }
             XCTAssertFalse(m.layoutMayRaiseWindow, "\(events)")
         }
-        XCTAssertFalse(model(.startBegan, .wentLiveAlone).layoutMayRaiseWindow)
+        XCTAssertFalse(model(.startBegan, .wentLiveOnBar).layoutMayRaiseWindow)
     }
     func testReopenOfTheBarChangesNothing() {
         var m = liveWindow()

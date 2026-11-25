@@ -43,13 +43,6 @@ final class StartChoreographyTests: XCTestCase {
         XCTAssertTrue(StartChoreography.needsDisplayQuiet(opensApps: false, arranges: true))
     }
 
-    func testMeetingWindowOpensOnLiveOnlyWithOthersPresent() {
-        XCTAssertFalse(StartChoreography.opensMeetingWindowOnLive(arranged: false, othersPresent: false))
-        XCTAssertTrue(StartChoreography.opensMeetingWindowOnLive(arranged: false, othersPresent: true))
-        // A layout places the Meeting itself.
-        XCTAssertFalse(StartChoreography.opensMeetingWindowOnLive(arranged: true, othersPresent: true))
-    }
-
     func testHomeExitsSmallerAndPartWayToTheBar() {
         let home = CGRect(x: 100, y: 300, width: 800, height: 600)
         let bar = CGRect(x: 400, y: 20, width: 228, height: 44)

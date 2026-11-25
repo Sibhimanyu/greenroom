@@ -42,9 +42,9 @@ Acceptance: after `startBegan` the surface is Bar.
 Status: built.
 
 ### R3. Going live
-`wentLive(alone: true)` with start-small on stays on the Bar; with others present, or with start-small off, the Meeting window shows. `someoneJoined` grows the Bar to the window (a morph) only when the model started small by itself, grow-on-join is on, and the user has not touched collapse, expand or toggle since.
-Acceptance: the four combinations behave as listed; a user collapse before someone joins stops the grow.
-Status: built.
+Amended (owner, 2026-11-26: "The control bar is what should be the default, unless the Zoom-like UI was set in the layout settings"; layouts-builder R48). The meeting goes live on the Bar (`wentLiveOnBar`) unless the active layout places a Meeting window piece (`wentLiveOnWindow`): `MeetingSurface.wentLive(layoutPlacesMeeting:)` decides, the coordinator asks `LayoutEngine.placesMeeting`. Who is already in the meeting does not matter, and someone joining does not grow the Bar (the old `someoneJoined` grow and the start-small/grow-on-join switches are gone). A start on the Bar counts as the person's Bar for reopen (R10). The Bar's Meeting button and ⌃⌥⌘H (`expand`) bring the window up on demand.
+Acceptance: no Meeting piece gives the Bar, with no morph, reopen to the Bar; a Meeting piece gives the Window; `expand` from a Bar start gives the Window.
+Status: built (model tested; not verified live).
 
 ### R4. Never zero, exactly one outside settle or morph
 At every reachable state while live, the surface is Window or Bar, never nil, and the visible set has one member, except during a settle or a morph, when it is the old and the new surface (one or two members).
@@ -76,7 +76,7 @@ Acceptance: after `closeRequested` the surface is unchanged and `closePromptUp` 
 Status: built.
 
 ### R10. Reopen brings the window forward unless you chose the Bar
-`reopenTarget` is the Bar when the person chose it (collapse, close then shrink, toggle to the Bar, the speaker-tile hide, or started small while alone), else the Window: a Bar showing only because the window is covered, on another desktop, minimised, or closed by code (or never opened) still reopens to the Window, as the Dock always did. It is nil only when not live (while starting it is the Bar). The `reopen` event, when the target is the Window, brings it forward: it clears covered, other-desktop, minimised and the code close (the surface becomes the Window at once). When the target is the Bar it changes nothing.
+`reopenTarget` is the Bar when the person chose it (collapse, close then shrink, toggle to the Bar, the speaker-tile hide, or a start on the Bar), else the Window: a Bar showing only because the window is covered, on another desktop, minimised, or closed by code (or never opened) still reopens to the Window, as the Dock always did. It is nil only when not live (while starting it is the Bar). The `reopen` event, when the target is the Window, brings it forward: it clears covered, other-desktop, minimised and the code close (the surface becomes the Window at once). When the target is the Bar it changes nothing.
 Acceptance: covered, other desktop and minimised each reopen to the Window; each chosen way reopens to the Bar; `reopen` from a covered Bar gives the Window surface; `reopen` of a chosen Bar changes nothing.
 Status: built.
 
@@ -106,7 +106,7 @@ Calls into the model (each is one `apply`, then draw `visible`):
 - `ParticipantGridWindowController` occlusion, minimise/restore, will-close, screen change, desktop switch handlers and the speaker-tile hide: send `covered`/`uncovered`, `minimised`/`restored`, `closeRequested`/`windowClosedByCode`, `movedToOtherDesktop`/`backOnDesktop`, `tileHidden`/`tileShown`.
 - `ParticipantGridWindowController.meetingWindowIsShowing` / `meetingWindowIsHidden`: replaced by `surface == .window`.
 - `LiveExit.reopenTarget` callers (`bringLiveSessionForward`, Dock click): use `reopenTarget`.
-- `CoordinatorController` start, `startSmallWhileAlone`, `growIfSomeoneJoined`, stop: `startBegan`, `wentLive`, `someoneJoined`, `sessionEnded`.
+- `CoordinatorController` start, go-live, stop: `startBegan`, `wentLiveOnBar`/`wentLiveOnWindow` (from `MeetingSurface.wentLive(layoutPlacesMeeting:)`), `sessionEnded`.
 - The close sheet answers (`LiveExitChoice`): `closeAnswered`.
 - `MeetingControls` collapse/expand/toggle: the three events; `morph` completion: `morphFinished`; the 0.5 s debounce timer: `settleElapsed`.
 
@@ -120,7 +120,8 @@ Deleted when wired:
 
 Run the Debug build from DerivedData (after wiring) and try:
 
-- [ ] Start a meeting alone: a Bar. Someone joins: it grows to the window. Collapse first, then someone joins: it stays a Bar.
+- [ ] Start a meeting with Leave my windows alone, alone and with people already waiting: a Bar each time. Someone joins: it stays a Bar. The Bar's Meeting button and ⌃⌥⌘H open the window.
+- [ ] Start with a layout that places a Meeting piece: the Meeting window opens where the piece says.
 - [ ] Cover the Meeting window fully with another app: after half a second the Bar shows; uncover: the window returns.
 - [ ] Move the window to another desktop and switch: the Bar shows on yours; switch back: the window.
 - [ ] Hide the window with the speaker tile: the Bar shows at once; show it: the window returns.

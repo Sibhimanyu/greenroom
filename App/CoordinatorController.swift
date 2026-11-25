@@ -1856,8 +1856,9 @@ final class CoordinatorController: ObservableObject {
         sessionArranges = sessionTemplate?.movesWindows ?? false
         if !sessionArranges { LayoutShareChoice.reset() }
         speakerTileQuickHidden = sessionTemplate.map { layoutEngine.startsHidden($0) } ?? false
-        // The Meeting window opens at Start unless the layout shows the meeting only as views.
-        meetingWindowWanted = sessionTemplate.map { !layoutEngine.hasViewsButNoMeeting($0) } ?? true
+        // The Meeting window opens at Start only where the layout places a Meeting
+        // piece; otherwise the Bar is the surface (MeetingSurface.wentLive).
+        meetingWindowWanted = layoutPlacesMeeting
         MeetingViewWindows.reset()
         MeetingViewWindows.layoutActive = sessionArranges
         if let template = sessionTemplate, !layoutEngine.viewPieces(template).isEmpty {
@@ -1964,24 +1965,15 @@ final class CoordinatorController: ObservableObject {
                 try Task.checkCancellation()
                 mark(.meeting, .done)
                 // The island has carried the start since the click; the floating bar
-                // first appears now, live. The Meeting window opens only if somebody is already in
-                // the meeting; alone, the bar is the surface and the window comes up
-                // when the first person joins (never opened and then shrunk away).
-                let others = !zoomChatClient.meetingRoster().allSatisfy(\.isMyself)
-                let opensWindow = StartChoreography.opensMeetingWindowOnLive(
-                    arranged: sessionArranges, othersPresent: others)
-                // The model hears it first: alone with nothing arranged starts as the
-                // bar; anything else starts as the window.
-                MeetingSurfaceOwner.send(!sessionArranges && !others ? .wentLiveAlone : .wentLiveWithOthers)
+                // first appears now, live. It is the surface unless the layout places a
+                // Meeting window piece (owner, 2026-11-26), whoever is already in the
+                // meeting; the Bar's Meeting button and \u{2303}\u{2325}\u{2318}H open the window on demand.
+                MeetingSurfaceOwner.send(MeetingSurface.wentLive(layoutPlacesMeeting: layoutPlacesMeeting))
                 if !sessionArranges {
                     ensureMeetingControls()
-                    if opensWindow {
-                        openMeetingWindow()
-                    } else {
-                        // The follow loop still runs: it is what notices someone join.
-                        meetingWindowWanted = false
-                        startCustomUIGridFollow()
-                    }
+                    // The follow loop still runs: it feeds the window once it is asked for.
+                    meetingWindowWanted = false
+                    startCustomUIGridFollow()
                 }
                 // The bar is the surface of last resort, so a live meeting always has
                 // one built: Greenroom's own window in a layout can go to the
@@ -1994,7 +1986,7 @@ final class CoordinatorController: ObservableObject {
                     MeetingControlBarController.install(coordinator: self, model: controls)
                 }
                 MeetingSurfaceOwner.syncWindowFacts()
-                startSmallWhileAlone()
+                bringSharedForwardOnABarStart()
                 bringInExtraCameras()
 
                 // Only now, with the meeting live: Cues never listens
@@ -3767,7 +3759,6 @@ final class CoordinatorController: ObservableObject {
             MeetingViewWindows.tick()
             self.ensureMeetingBar()
             self.meetingControls?.foldPopOutChatIntoWindow()
-            self.growIfSomeoneJoined()
             guard self.meetingWindowWanted || ParticipantGridWindowController.isOpen else { return true }
             guard let target = self.meetingSurfaceTarget() else { return false }
             self.ensureMeetingControls()
@@ -3953,26 +3944,19 @@ final class CoordinatorController: ObservableObject {
         move(from: .bar, to: MeetingCollapse.next(from: .bar, step: .up), step: .up, context: collapseContext)
     }
 
-    /// A meeting nobody has joined yet is an empty window over the very thing
-    /// being shared. So it starts as the Control bar (the model was told it went
-    /// live alone, and only when nothing is arranged: a layout places the Meeting
-    /// where it wants it), and what is shared comes to the front.
-    private func startSmallWhileAlone() {
-        guard MeetingSurfaceOwner.model.isWaitingForSomeone, zoomChatClient.didInit,
-              MeetingControlBarController.isInstalled,
-              zoomChatClient.meetingRoster().allSatisfy(\.isMyself) else { return }
-        bringRecordedForward()
+    /// The active layout places a Meeting window piece (on a display that is
+    /// connected). Leave my windows alone never does. Read at Start and at go-live.
+    private var layoutPlacesMeeting: Bool {
+        guard sessionArranges, let template = sessionTemplate else { return false }
+        return layoutEngine.placesMeeting(template)
     }
 
-    /// From the follow loop: the first person in brings the window up. The model
-    /// holds the "started small by itself" mark; any size change by hand clears it,
-    /// and so does the end of the meeting.
-    private func growIfSomeoneJoined() {
-        guard MeetingSurfaceOwner.model.isWaitingForSomeone else { return }
-        guard zoomChatClient.meetingRoster().contains(where: { !$0.isMyself }) else { return }
-        let from = meetingSize
-        MeetingSurfaceOwner.send(.someoneJoined)
-        if from == .bar { showWindowFromBar() }
+    /// A start on the Bar with nothing arranged: what is shared comes to the front
+    /// (a layout hands focus over itself, in finalizeLayout).
+    private func bringSharedForwardOnABarStart() {
+        guard !sessionArranges, MeetingSurfaceOwner.model.surface == .bar, zoomChatClient.didInit,
+              MeetingControlBarController.isInstalled else { return }
+        bringRecordedForward()
     }
 
     /// Goes to a size from wherever the meeting is.

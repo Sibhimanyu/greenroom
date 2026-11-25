@@ -135,16 +135,15 @@ final class LayoutEngine {
         return placedMeeting(template) != nil || !r.views.isEmpty
     }
 
+    /// The layout places a Meeting window piece (in a rectangle or filling a display):
+    /// the meeting goes live on the Meeting window there, not on the Bar.
+    func placesMeeting(_ template: LayoutTemplate) -> Bool {
+        resolve(template).meeting != nil
+    }
+
     /// View pieces are placed and drawn: the layout has some, and they are switched on.
     func viewPieces(_ template: LayoutTemplate) -> [Placed] {
         MeetingViewPieces.enabled ? resolve(template).views : []
-    }
-
-    /// The layout has view pieces but no Meeting window of its own: Start does not
-    /// open the Meeting window then, and the control bar shows.
-    func hasViewsButNoMeeting(_ template: LayoutTemplate) -> Bool {
-        let r = resolve(template)
-        return r.meeting == nil && !viewPieces(template).isEmpty
     }
 
     /// Where the layout puts one view right now (grown into a gap while the

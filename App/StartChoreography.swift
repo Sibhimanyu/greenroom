@@ -65,13 +65,6 @@ enum StartChoreography {
         opensApps || arranges
     }
 
-    /// On live, the Meeting window opens only when somebody else is already in
-    /// the meeting. Alone, the bar is the surface and the window comes up when
-    /// the first person joins. A layout places the Meeting itself.
-    static func opensMeetingWindowOnLive(arranged: Bool, othersPresent: Bool) -> Bool {
-        !arranged && othersPresent
-    }
-
     // MARK: Geometry
 
     /// How long Home takes to step aside, and to come back.

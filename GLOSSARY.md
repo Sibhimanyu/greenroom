@@ -82,7 +82,8 @@ While a meeting is live, the controls are in exactly one place. Code:
   carries its own controls (`ParticipantGridWindowController`).
 - **Bar**: the floating control bar (`MeetingControlBarController`) that holds
   all the controls when the Meeting window is not up. It can fold to a puck; that
-  is not a surface change.
+  is not a surface change. A meeting starts on the Bar unless its layout places
+  a Meeting window piece.
 - **Surface**: one of those two. A live meeting always has exactly one that is
   the answer to "where are the controls" (`MeetingSurface.surface`), never none.
   Both are on screen only during a settle or a morph.

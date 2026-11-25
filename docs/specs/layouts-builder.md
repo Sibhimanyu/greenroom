@@ -133,6 +133,7 @@ different order; this table is the authority.
 | R45 | Bug list: a layout places windows once; only Snap re-places; never steals focus | bug list | built; rules tested, not driven live |
 | R46 | The Room screen is a real macOS window, native full screen included | owner, 2026-11-26 | built; rules tested (needs a live check on the room display) |
 | R47 | Show my camera, per Room screen | owner, 2026-11-26 | built; rules and codec tested (needs a live look) |
+| R48 | A meeting starts on the Bar unless the layout places a Meeting window piece | owner, 2026-11-26 | built; model tested (needs a live start) |
 
 **R38. Bug list: the solid backdrop follows light / dark.** (`SolidSheet`, App/UI/SolidSheet.swift)
 - R38.1 The solid sheet under a window the class sees re-resolves its dynamic colour (`windowBackgroundColor`)
@@ -383,6 +384,14 @@ different order; this table is the authority.
   that second picture only while such a Room screen is attached and a camera is drawn: one more
   compose and 1920x1080 render per frame, after the meeting's frame. Without a camera it is the same
   frame. Without a running compositor the Room screen's own capture never has the camera.
+
+**R48. A meeting starts on the Bar unless the layout places a Meeting window piece.** (owner, 2026-11-26: "The
+control bar is what should be the default, unless the Zoom-like UI was set in the layout settings"; meeting-surface R3)
+- R48.1 At go-live the surface is the Bar, whoever is in the meeting, unless the active layout resolves a Meeting
+  window piece (`LayoutEngine.placesMeeting`, decided by `MeetingSurface.wentLive(layoutPlacesMeeting:)`). Leave my
+  windows alone has none, so it starts on the Bar; a layout of apps or views alone starts on the Bar too.
+- R48.2 A layout with a Meeting piece opens the Meeting window where the piece says (rectangle or full display).
+- R48.3 Someone joining does not open the window. The Bar's Meeting button and ⌃⌥⌘H open it on demand.
 
 **R17. One icon language.** (Q28 to Q33)
 - R17.1 The eye means "everyone sees it" and nothing else: `eye` amber (`Brand.netText` / `MeetingTheme.netNS`)

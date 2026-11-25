@@ -25,8 +25,8 @@ struct MeetingSurface: Hashable {
     enum Event: Hashable, CaseIterable {
         // Lifecycle
         case startBegan
-        case wentLiveAlone, wentLiveWithOthers
-        case someoneJoined
+        /// Live on the Bar (the default) or on the Meeting window (the layout places one).
+        case wentLiveOnBar, wentLiveOnWindow
         case sessionEnded
         // The person's choices
         case collapse, expand, toggle
@@ -51,13 +51,8 @@ struct MeetingSurface: Hashable {
 
     private enum Phase: Hashable { case idle, starting, live }
 
-    private let startSmallWhileAlone: Bool
-    private let growIfSomeoneJoined: Bool
-
     private var phase = Phase.idle
-    /// We started on the Bar only because the meeting was empty (not the person's choice).
-    private var startedSmallByItself = false
-    /// The person (or a code close) put the window away.
+    /// The person (or a code close, or a start on the Bar) put the window away.
     private var collapsed = false
     /// The window was closed by code (or never opened): the Bar stands in, but it is
     /// not the person's choice, so a reopen brings the window back.
@@ -72,9 +67,14 @@ struct MeetingSurface: Hashable {
     /// The surface that was settled on screen before the pending change.
     private var from: Surface?
 
-    init(startSmallWhileAlone: Bool = true, growIfSomeoneJoined: Bool = true) {
-        self.startSmallWhileAlone = startSmallWhileAlone
-        self.growIfSomeoneJoined = growIfSomeoneJoined
+    init() {}
+
+    /// Where a meeting goes live (owner, 2026-11-26): the Bar, unless the active
+    /// layout places a Meeting window piece. Leave my windows alone has none, so it
+    /// starts on the Bar. Nobody joining changes it; the Bar's Meeting button and
+    /// the shortcut (`expand`) bring the window up on demand.
+    static func wentLive(layoutPlacesMeeting: Bool) -> Event {
+        layoutPlacesMeeting ? .wentLiveOnWindow : .wentLiveOnBar
     }
 
     // MARK: Answers
@@ -106,13 +106,10 @@ struct MeetingSurface: Hashable {
     var isMorphing: Bool { morphing }
     var isSettling: Bool { settling }
     var closePromptUp: Bool { askingToClose }
-    /// The Bar is up only because the meeting is empty, and the first person to join
-    /// grows it to the window.
-    var isWaitingForSomeone: Bool { phase == .live && startedSmallByItself && growIfSomeoneJoined }
 
     /// What a Dock click or menu choice brings forward. The window, unless the
     /// person chose the Bar (collapse, close then shrink, toggle, the speaker
-    /// tile, or started small while alone): a window that is only covered, on
+    /// tile, or a start on the Bar): a window that is only covered, on
     /// another desktop or minimised comes forward. Nil only when not live or starting.
     var reopenTarget: Surface? {
         switch phase {
@@ -136,11 +133,11 @@ struct MeetingSurface: Hashable {
 
     mutating func apply(_ event: Event) {
         if event == .sessionEnded || event == .closeEnd || event == .closeLeave {
-            self = MeetingSurface(startSmallWhileAlone: startSmallWhileAlone, growIfSomeoneJoined: growIfSomeoneJoined)
+            self = MeetingSurface()
             return
         }
         if event == .startBegan {
-            self = MeetingSurface(startSmallWhileAlone: startSmallWhileAlone, growIfSomeoneJoined: growIfSomeoneJoined)
+            self = MeetingSurface()
             phase = .starting
             from = .bar
             return
@@ -151,22 +148,14 @@ struct MeetingSurface: Hashable {
         var kind = Change.immediate
 
         switch event {
-        case .wentLiveAlone, .wentLiveWithOthers:
+        case .wentLiveOnBar, .wentLiveOnWindow:
             guard phase == .starting else { return }
             phase = .live
-            let small = event == .wentLiveAlone && startSmallWhileAlone
-            collapsed = small
+            collapsed = event == .wentLiveOnBar
             closedByCode = false
-            startedSmallByItself = small
-            kind = .morph
-        case .someoneJoined:
-            guard phase == .live, startedSmallByItself, growIfSomeoneJoined else { return }
-            startedSmallByItself = false
-            collapsed = false
             kind = .morph
         case .collapse:
             guard phase == .live else { return }
-            startedSmallByItself = false
             collapsed = true
             closedByCode = false
             kind = .morph
@@ -176,7 +165,7 @@ struct MeetingSurface: Hashable {
             kind = .morph
         case .toggle:
             guard phase == .live else { return }
-            if windowIsUp { startedSmallByItself = false; collapsed = true; closedByCode = false } else { expandAll() }
+            if windowIsUp { collapsed = true; closedByCode = false } else { expandAll() }
             kind = .morph
         case .closeRequested:
             guard phase == .live else { return }
@@ -188,7 +177,6 @@ struct MeetingSurface: Hashable {
         case .closeShrink:
             askingToClose = false
             guard phase == .live else { return }
-            startedSmallByItself = false
             collapsed = true
             closedByCode = false
             kind = .morph
@@ -199,8 +187,8 @@ struct MeetingSurface: Hashable {
         case .uncovered: isCovered = false; kind = .settle
         case .movedToOtherDesktop: onOtherDesktop = true; kind = .settle
         case .backOnDesktop: onOtherDesktop = false; kind = .settle
-        case .minimised: isMinimised = true; startedSmallByItself = false; kind = .morph
-        case .restored: isMinimised = false; startedSmallByItself = false; kind = .morph
+        case .minimised: isMinimised = true; kind = .morph
+        case .restored: isMinimised = false; kind = .morph
         case .tileHidden: hiddenByTile = true
         case .tileShown: hiddenByTile = false
         case .reopen:
@@ -237,7 +225,6 @@ struct MeetingSurface: Hashable {
 
     /// Expand brings the window to where the person is and in front.
     private mutating func expandAll() {
-        startedSmallByItself = false
         collapsed = false
         closedByCode = false
         isMinimised = false

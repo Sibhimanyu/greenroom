@@ -691,8 +691,8 @@ extension LayoutLibrary {
     /// One time, with its own key, set only after `save` worked (ADR 0002, R27): `oneDisplay` is the main
     /// arrangement and `twoDisplays.second` the second. Where an old two-display main differed from
     /// `oneDisplay` in pieces or their settings, it is kept as the owner's own layout "<name> (old
-    /// two-display)" just after the original, with that main plus the same second. Raj San Mode exactly as
-    /// the last build shipped it simply becomes the new one (camera, share and display choice are kept).
+    /// two-display)" just after the original, with that main plus the same second. Raj exactly as an
+    /// earlier build shipped it simply becomes the new one (camera, share and display choice are kept).
     /// Returns whether it ran and saved.
     @discardableResult
     mutating func migrateOneArrangement(defaults: UserDefaults, save: (LayoutLibrary) -> Bool) -> Bool {
@@ -735,18 +735,26 @@ extension LayoutLibrary {
         }
     }
 
-    /// Raj San Mode as the build before ADR 0002 shipped it: three pieces on the laptop, browser and
-    /// Chat on the main display of the pair, a full-display Meeting on the second.
+    /// Raj as a build before ADR 0002 shipped it: three pieces on the laptop, browser and Chat on the main
+    /// display of the pair, a full-display Meeting on the second. Top right on the laptop is a Meeting window
+    /// (origin/main, a2a8e99, the released shape) or the Active speaker view (the build in between).
+    /// Eyes are not compared: origin/main wrote them off and locked Raj, and later builds flipped them on
+    /// by migration, so no owner chose them; only pieces and rectangles tell an edit.
     private static func isOldShippedRaj(main: [LayoutPiece], twoDisplayMain: [LayoutPiece], second: [LayoutPiece]) -> Bool {
+        func sameArrangement(_ a: [LayoutPiece], _ b: [LayoutPiece]) -> Bool {
+            a.count == b.count && zip(a, b).allSatisfy { $0.kind == $1.kind && $0.rect.isClose(to: $1.rect) }
+        }
         let third = 1.0 / 12
         func browser() -> LayoutPiece {
             LayoutPiece(kind: .app(AppPiece(bundleID: builtInBrowserBundleID)), rect: UnitRect(x: 0, y: 0, w: 9 * third, h: 1))
         }
-        let speaker = LayoutPiece(kind: .view(.activeSpeaker, startsHidden: false), rect: UnitRect(x: 9 * third, y: 0, w: 3 * third, h: 5 * third))
+        let topRight = UnitRect(x: 9 * third, y: 0, w: 3 * third, h: 5 * third)
+        let middles = [LayoutPiece(kind: .meeting(fillsDisplay: false, startsHidden: false), rect: topRight),
+                       LayoutPiece(kind: .view(.activeSpeaker, startsHidden: false), rect: topRight)]
         let chatBelow = LayoutPiece(kind: .chat, rect: UnitRect(x: 9 * third, y: 5 * third, w: 3 * third, h: 7 * third))
         let chatFull = LayoutPiece(kind: .chat, rect: UnitRect(x: 9 * third, y: 0, w: 3 * third, h: 1))
         let meeting = LayoutPiece(kind: .meeting(fillsDisplay: true, startsHidden: false), rect: .full)
-        return sameArrangement(main, [browser(), speaker, chatBelow])
+        return middles.contains { sameArrangement(main, [browser(), $0, chatBelow]) }
             && sameArrangement(twoDisplayMain, [browser(), chatFull])
             && sameArrangement(second, [meeting])
     }

@@ -109,16 +109,40 @@ final class OneArrangementMigrationTests: XCTestCase {
         XCTAssertTrue(d.bool(forKey: LayoutLibrary.oneArrangementMigratedKey))
     }
 
-    // R27.4: Raj San Mode exactly as the last build shipped it becomes the new one in place.
+    // R27.4: Raj exactly as an earlier build shipped it becomes the new one in place: main's Meeting window
+    // piece (origin/main) or the Active speaker view (the build in between).
     func testAnUntouchedOldRajSanModeIsReplacedInPlaceWithNoCopy() throws {
-        let raj = oldShippedRaj()
-        let d = install([(raj.template, oldMain: raj.oldMain)])
+        for middle in [OldRajMiddle.meetingWindow, .activeSpeaker] {
+            let raj = oldShippedRaj(middle)
+            let d = install([(raj.template, oldMain: raj.oldMain)])
+            let lib = load(d)
+            XCTAssertEqual(lib.templates.count, 1, "\(middle)")
+            XCTAssertEqual(lib.templates[0].id, raj.template.id)
+            var asShipped = lib.templates[0]
+            asShipped.name = "Raj San Mode"   // the rename is its own migration, done already here
+            asShipped.camera = LayoutLibrary.shipped(LayoutLibrary.rajMode)?.camera   // the owner's own camera shape is kept (R43)
+            XCTAssertTrue(asShipped.isAsShipped, "the pieces are the new Raj San Mode (\(middle))")
+        }
+    }
+
+    // R27.4 on a real upgrade: the library exactly as origin/main wrote it. The untouched Raj Mode becomes the
+    // new Raj San Mode with no extra layout; the owner's own edited layouts keep their old two-display copies.
+    func testALibraryAsOriginMainWroteItMigratesRajWithNoExtraLayout() throws {
+        let suite = "one-arrangement-origin-main-\(UUID().uuidString)"
+        let d = OriginMainLibraryFixture.install(suite: suite)
+        defer { d.removePersistentDomain(forName: suite) }
         let lib = load(d)
-        XCTAssertEqual(lib.templates.count, 1)
-        XCTAssertEqual(lib.templates[0].id, raj.template.id)
-        var asShipped = lib.templates[0]
-        asShipped.camera = LayoutLibrary.shipped(LayoutLibrary.rajMode)?.camera   // the owner's own camera shape is kept (R43)
-        XCTAssertTrue(asShipped.isAsShipped, "the pieces are the new Raj San Mode")
+        XCTAssertEqual(lib.templates.map(\.name), [
+            "Leave my windows alone", "Raj San Mode", "Room + laptop",
+            "My teaching", "My teaching (old two-display)", "Mine two", "Mine two (old two-display)", "Just meeting",
+        ])
+        let raj = try XCTUnwrap(lib.templates.first { $0.starter == LayoutLibrary.rajMode })
+        XCTAssertEqual(raj.id, UUID(uuidString: "6DE73CCD-5DDF-4E08-AEAD-3869B2BBC49B"), "replaced in place")
+        let fresh = try XCTUnwrap(LayoutLibrary.shipped(LayoutLibrary.rajMode))
+        func shown(_ p: [LayoutPiece]) -> [LayoutPiece] { p.map { var q = $0; q.showsToEveryone = true; return q } }
+        XCTAssertTrue(LayoutLibrary.sameArrangement(shown(raj.pieces(for: .main)), shown(fresh.oneDisplay)), "the new Raj San Mode's main")
+        XCTAssertTrue(LayoutLibrary.sameArrangement(shown(raj.pieces(for: .second)), shown(fresh.twoDisplays?.second ?? [])))
+        XCTAssertEqual(lib.activeID, UUID(uuidString: "E629DAD6-93AE-4234-BD4A-5F0246FEB5AB"), "the active layout is kept")
     }
 
     // R27.4, R28.1: an edited Raj San Mode keeps its main, and its old two-display main is kept as a copy.
@@ -126,7 +150,7 @@ final class OneArrangementMigrationTests: XCTestCase {
         var raj = oldShippedRaj()
         raj.template.setPieces([raj.template.oneDisplay[0]], for: .main)
         let lib = load(install([(raj.template, oldMain: raj.oldMain)]))
-        XCTAssertEqual(lib.templates.map(\.name), ["Raj San Mode", "Raj San Mode (old two-display)"])
+        XCTAssertEqual(lib.templates.map(\.name), ["Raj Mode", "Raj Mode (old two-display)"])
         XCTAssertEqual(lib.templates[0].starter, LayoutLibrary.rajMode)
         XCTAssertNil(lib.templates[1].starter)
         XCTAssertEqual(lib.templates[0].pieces(for: .main).count, 1)
@@ -153,7 +177,7 @@ final class OneArrangementMigrationTests: XCTestCase {
         let lib = load(install([(raj.template, oldMain: raj.oldMain),
                                 (room, oldMain: room.oneDisplay),
                                 (mine, oldMain: [browser, chat])]))
-        XCTAssertEqual(lib.templates.map(\.name), ["Raj San Mode", "Room + laptop", "Class", "Class (old two-display)"])
+        XCTAssertEqual(lib.templates.map(\.name), ["Raj Mode", "Room + laptop", "Class", "Class (old two-display)"])
         XCTAssertTrue(lib.templates[1].isAsShipped, "Room + laptop's main was the same")
         let kept = lib.templates[3]
         XCTAssertEqual(kept.pieces(for: .main).map(\.kind), [browser.kind, chat.kind])
@@ -170,18 +194,27 @@ final class OneArrangementMigrationTests: XCTestCase {
         XCTAssertFalse(lib.templates.contains { $0.name.contains("old two-display") })
     }
 
-    /// Raj San Mode as the build before this one shipped it: the literal values its builder wrote
-    /// (5.0 / 12 for the speaker's height and Chat's top), not the detector's own arithmetic.
-    private func oldShippedRaj() -> (template: LayoutTemplate, oldMain: [LayoutPiece]) {
+    /// What sat top right on main in an old shipped Raj: origin/main's Meeting window, or the Active speaker
+    /// view of the build in between.
+    private enum OldRajMiddle { case meetingWindow, activeSpeaker }
+
+    /// Raj Mode as origin/main (a2a8e99) shipped it, with the literal values its builder wrote (5 / 12 for the
+    /// top right piece's height and Chat's top, every eye off), not the detector's own arithmetic.
+    private func oldShippedRaj(_ middle: OldRajMiddle = .meetingWindow) -> (template: LayoutTemplate, oldMain: [LayoutPiece]) {
         let third = 1.0 / 12
         let b = LayoutPiece(kind: .app(AppPiece(bundleID: LayoutLibrary.builtInBrowserBundleID)), rect: UnitRect(x: 0, y: 0, w: 9 * third, h: 1))
-        let s = LayoutPiece(kind: .view(.activeSpeaker, startsHidden: false), rect: UnitRect(x: 9 * third, y: 0, w: 3 * third, h: 5.0 / 12))
-        let c = LayoutPiece(kind: .chat, rect: UnitRect(x: 9 * third, y: 5.0 / 12, w: 3 * third, h: 1 - 5.0 / 12))
-        var t = LayoutTemplate(name: "Raj San Mode", starter: LayoutLibrary.rajMode, oneDisplay: [b, s, c],
+        let kind: LayoutPiece.Kind = middle == .meetingWindow
+            ? .meeting(fillsDisplay: false, startsHidden: false) : .view(.activeSpeaker, startsHidden: false)
+        let s = LayoutPiece(kind: kind, rect: UnitRect(x: 9 * third, y: 0, w: 3 * third, h: 5 * third))
+        let c = LayoutPiece(kind: .chat, rect: UnitRect(x: 9 * third, y: 5 * third, w: 3 * third, h: 7 * third))
+        var t = LayoutTemplate(name: "Raj Mode", starter: LayoutLibrary.rajMode, oneDisplay: [b, s, c],
                                camera: LayoutCamera(), share: ShareTarget())
         t.addSecondDisplay()
         t.setPieces([LayoutPiece(kind: .meeting(fillsDisplay: true, startsHidden: false), rect: .full)], for: .second)
         let oldMain = [b, LayoutPiece(kind: .chat, rect: UnitRect(x: 9 * third, y: 0, w: 3 * third, h: 1))]
-        return (t, oldMain)
+        func off(_ p: [LayoutPiece]) -> [LayoutPiece] { p.map { var q = $0; q.showsToEveryone = false; return q } }
+        t.oneDisplay = off(t.oneDisplay)
+        t.setPieces(off(t.pieces(for: .second)), for: .second)
+        return (t, off(oldMain))
     }
 }

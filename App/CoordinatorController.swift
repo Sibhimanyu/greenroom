@@ -86,7 +86,7 @@ final class CoordinatorController: ObservableObject {
                 Notifier.post(title: "Recording saved",
                               body: "\(url.lastPathComponent) \u{2014} in Documents/Greenroom.")
             }
-            isRecording = false
+            apply(.takeDroppedAtQuit)
         } else if let saving = savingTask {
             // End Session stopped the tape in the background; Quit still
             // gives the file the same bounded wait.
@@ -368,6 +368,32 @@ final class CoordinatorController: ObservableObject {
     }
     @Published private(set) var isStopping = false
     private var startTask: Task<Void, Never>?
+
+    /// The single source of truth for the eight session and take flags below
+    /// (SessionPhase.swift). Events go in through `apply`; the flags are only
+    /// ever assigned by `syncFlags`, so they cannot disagree with each other.
+    private var phase = SessionPhase()
+
+    /// Reports what happened. Each flag is assigned only when it changes, in
+    /// the order the old hand-written assignments used.
+    private func apply(_ event: SessionPhase.Event) {
+        phase.apply(event)
+        // End Session's teardown sets "recording" off before "saving" on, and
+        // every other take ending the other way round.
+        syncFlags(recordingFirst: event == .takeFinishingAtMeetingEnd)
+    }
+
+    private func syncFlags(recordingFirst: Bool) {
+        if stageLive != phase.stageLive { stageLive = phase.stageLive }
+        if isRunning != phase.isRunning { isRunning = phase.isRunning }
+        if isStopping != phase.isStopping { isStopping = phase.isStopping }
+        if recordOnlyActive != phase.recordOnlyActive { recordOnlyActive = phase.recordOnlyActive }
+        if startingRecordOnly != phase.startingRecordOnly { startingRecordOnly = phase.startingRecordOnly }
+        if isRecordingPaused != phase.isRecordingPaused { isRecordingPaused = phase.isRecordingPaused }
+        if recordingFirst, isRecording != phase.isRecording { isRecording = phase.isRecording }
+        if isSavingRecording != phase.isSavingRecording { isSavingRecording = phase.isSavingRecording }
+        if isRecording != phase.isRecording { isRecording = phase.isRecording }
+    }
 
     /// The cameras the scene should hold for these settings: the director's
     /// list when it can run, otherwise none, which ensureConfigured reads as
@@ -1679,8 +1705,7 @@ final class CoordinatorController: ObservableObject {
             }
         }
 
-        isRunning = true
-        stageLive = false
+        apply(.meetingStartRequested)
         statusLines = []
         // The layout this class runs: the card chosen in Settings right now, held for
         // the whole class. None (nil) arranges nothing.
@@ -1875,7 +1900,7 @@ final class CoordinatorController: ObservableObject {
                     // other error (a cancelled request). Not a failure.
                     log("Start cancelled.")
                     finishStartReadiness()
-                    isRunning = false
+                    apply(.meetingStartTaskFinished)
                     return
                 }
                 let message = error.localizedDescription
@@ -1896,7 +1921,7 @@ final class CoordinatorController: ObservableObject {
                 mainWindowStartFailed()
                 stop(failure: message)
             }
-            isRunning = false
+            apply(.meetingStartTaskFinished)
         }
     }
 
@@ -1916,7 +1941,7 @@ final class CoordinatorController: ObservableObject {
             stopRecordingSession()
             return
         }
-        isStopping = true
+        apply(.stopRequested)
         // A start that never went live: the bar goes (fading) and Home comes back
         // as it was. A failed start has already brought Home back itself.
         let wasStarting = startBarText != nil
@@ -1993,8 +2018,7 @@ final class CoordinatorController: ObservableObject {
             // the cameras can go away at once; waiting for the writer here
             // once held "Ending\u{2026}" up for a minute. Quit still waits for it.
             if isRecording, let rec = recorder {
-                isRecording = false
-                isSavingRecording = true
+                apply(.takeFinishingAtMeetingEnd)
                 savingTask = Task { [weak self] in
                     let url = await rec.stop()
                     guard let self else { return url?.path }
@@ -2011,15 +2035,13 @@ final class CoordinatorController: ObservableObject {
                     } else {
                         self.log("Recording stopped, but no picture was written \u{2014} nothing was saved.")
                     }
-                    self.isSavingRecording = false
+                    self.apply(.takeSaved)
                     return saved
                 }
             }
             await tearDownStage()
             log("Session ended \u{2014} the camera and screen capture are off.")
-            stageLive = false
-            isRunning = false
-            isStopping = false
+            apply(.meetingTornDown)
             warmUpForStart()
             sessionTemplate = nil
             speakerTileQuickHidden = false
@@ -2190,11 +2212,11 @@ final class CoordinatorController: ObservableObject {
         guard isRecording, !isSavingRecording, let recorder else { return }
         if isRecordingPaused {
             guard recorder.resume() else { return }
-            isRecordingPaused = false
+            apply(.takeResumed)
             log("Recording resumed.")
         } else {
             guard recorder.pause() else { return }
-            isRecordingPaused = true
+            apply(.takePaused)
             log("Recording paused \u{2014} nothing is being saved until you resume.")
         }
     }
@@ -2584,10 +2606,9 @@ final class CoordinatorController: ObservableObject {
         Task {
             do {
                 if isRecording {
-                    isSavingRecording = true
-                    isRecording = false
+                    apply(.takeFinishing)
                     let url = await recorder?.stop()
-                    isSavingRecording = false
+                    apply(.takeSaved)
                     Analytics.track(.recordingEnd, [
                         .durationBand: Analytics.band(seconds: recordingStartedAt.map { Date().timeIntervalSince($0) } ?? 0)
                     ])
@@ -2612,7 +2633,7 @@ final class CoordinatorController: ObservableObject {
                     try await beginRecording()
                 }
             } catch {
-                isSavingRecording = false
+                apply(.takeSaved)
                 log("Recording failed: \(error.localizedDescription) \u{2014} press Start first if the session isn't running.")
                 Analytics.failure("record")
             }
@@ -2660,8 +2681,7 @@ final class CoordinatorController: ObservableObject {
         recorder.microphoneUID = micDeviceUID
         recorder.recordsSystemAudio = recordSystemAudio
         try recorder.start(in: folder)
-        isRecordingPaused = false
-        isRecording = true
+        apply(.takeBegan)
         recordingStartedAt = Date()
         Analytics.track(.recordingStart)
         log("Recording\u{2026} (screen + webcam composite)")
@@ -2744,8 +2764,7 @@ final class CoordinatorController: ObservableObject {
     /// about to roll.
     func startRecordingFlow() {
         guard !isRunning, !sceneInUse, !isStopping else { return }
-        isRunning = true
-        startingRecordOnly = true
+        apply(.recordStartRequested)
         studioPreviewOn = true
         lastStartWasRecordFlow = true
         recordFlowHUD = true
@@ -2769,7 +2788,7 @@ final class CoordinatorController: ObservableObject {
                         startReadiness.steps[0].state = .active
                         try await buildScene()
                         try Task.checkCancellation()
-                        recordOnlyActive = true
+                        apply(.recordPictureUp)
                         // A second camera, if switching is on, and the director
                         // to cut to it - the same as a meeting.
                         bringInExtraCameras()
@@ -2813,8 +2832,7 @@ final class CoordinatorController: ObservableObject {
                     mainWindowStartFailed()
                 }
             }
-            isRunning = false
-            startingRecordOnly = false
+            apply(.recordStartTaskFinished)
         }
     }
 
@@ -2825,7 +2843,7 @@ final class CoordinatorController: ObservableObject {
         sessionFolder = nil
         sessionStartedAt = nil
         await tearDownRecordingScene()
-        recordOnlyActive = false
+        apply(.recordPictureDown)
         revivePreviewIfStalled()
     }
 
@@ -3021,10 +3039,9 @@ final class CoordinatorController: ObservableObject {
     private func finishTake() async -> String? {
         var saved: String?
         if isRecording {
-            isSavingRecording = true
-            isRecording = false
+            apply(.takeFinishing)
             let stopped = await recorder?.stop()
-            isSavingRecording = false
+            apply(.takeSaved)
             if let url = stopped {
                 let path = url.path
                 let marks = adoptPendingClips(recordedAt: path)
@@ -3063,7 +3080,7 @@ final class CoordinatorController: ObservableObject {
         // Stopping some other way answers the Stop question too.
         disarmExit()
         cancelRecordingCountdown()
-        isStopping = true
+        apply(.stopRequested)
         let pending = startTask
         pending?.cancel()
         Task {
@@ -3072,11 +3089,11 @@ final class CoordinatorController: ObservableObject {
             let saved = await finishTake()
             // A start that failed has already torn down; this one has not.
             if recordOnlyActive { await tearDownRecordingScene() }
-            recordOnlyActive = false
+            apply(.recordPictureDown)
             // The teardown tried to bring the preview back while the take
             // still counted as running, so it could not start the camera.
             revivePreviewIfStalled()
-            isStopping = false
+            apply(.recordStopFinished)
             reconcileMainWindow()
             // Last, as after a class: the upload question waits for
             // everything else to have finished.
@@ -5250,7 +5267,7 @@ final class CoordinatorController: ObservableObject {
         // Installed before the meeting opens: it applies at once if the SDK is
         // already signed in, and right after sign-in if it is not.
         zoomChatClient.useStageVideo(stage)
-        stageLive = true
+        apply(.meetingPictureUp)
 
         if cameraDirectorSettings.isUsable {
             // Nothing else may hold a camera once the director owns them.
@@ -5417,7 +5434,7 @@ final class CoordinatorController: ObservableObject {
     /// would, and says so.
     private func recorderStoppedItself(_ message: String) {
         guard isRecording else { return }
-        isRecording = false
+        apply(.recorderStoppedItself)
         Analytics.track(.recordingEnd, [
             .durationBand: Analytics.band(seconds: recordingStartedAt.map { Date().timeIntervalSince($0) } ?? 0)
         ])

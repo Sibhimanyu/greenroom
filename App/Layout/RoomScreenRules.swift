@@ -104,7 +104,7 @@ enum RoomScreenRules {
     }
 
     /// Tells the owner's changes to the window from Greenroom's own. Our `setFrame` calls run
-    /// inside `placing`; full screen animates, so a change we asked for is expected until it ends.
+    /// between `beginPlacing` and `endPlacing`; full screen animates, so a change we asked for is expected until it ends.
     struct Ownership {
         enum Change { case moveOrResize, fullScreenWillChange, fullScreenDidChange }
 
@@ -113,11 +113,11 @@ enum RoomScreenRules {
         private var oursExpected = false
         private var inTransition = false
 
-        mutating func placing(_ body: (inout Ownership) -> Void) {
-            placingNow = true
-            body(&self)
-            placingNow = false
-        }
+        /// Around our own `setFrame`. Two calls, not a closure: the window reports the resize through the
+        /// same shared value while `setFrame` runs, and a mutating closure would hold it open (exclusivity
+        /// crash at Start, 2026-11-26).
+        mutating func beginPlacing() { placingNow = true }
+        mutating func endPlacing() { placingNow = false }
 
         mutating func expectOurFullScreenChange() { oursExpected = true }
 

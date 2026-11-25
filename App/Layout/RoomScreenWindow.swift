@@ -121,7 +121,7 @@ enum RoomScreen {
                                                isFullScreen: fullScreen, ownerTookOver: ownership.ownerTookOver)
         // In full screen a frame waits until our exit from it ends (`frameAfterFullScreen`).
         if !fullScreen, case .setFrame(let target)? = steps.first {
-            ownership.placing { _ in win.setFrame(target, display: false) }
+            ownership.beginPlacing(); win.setFrame(target, display: false); ownership.endPlacing()
         }
         setHidden(hidden)
         if steps.contains(.enterFullScreen), !hidden, win.isVisible {
@@ -246,7 +246,7 @@ enum RoomScreen {
     fileprivate static func applyFrameAfterFullScreen() {
         guard let target = frameAfterFullScreen, let win = window else { return }
         frameAfterFullScreen = nil
-        ownership.placing { _ in win.setFrame(target, display: false) }
+        ownership.beginPlacing(); win.setFrame(target, display: false); ownership.endPlacing()
     }
 
     // MARK: Sources

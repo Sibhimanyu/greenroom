@@ -219,13 +219,26 @@ final class RoomScreenWindowControlTests: XCTestCase {
 
     func testOurOwnMovesAndFullScreenAreNotTheOwners() {
         var o = RoomScreenRules.Ownership()
-        o.placing { $0.windowChanged(.moveOrResize) }
+        o.beginPlacing(); o.windowChanged(.moveOrResize); o.endPlacing()
         XCTAssertFalse(o.ownerTookOver)
         o.expectOurFullScreenChange()
         o.windowChanged(.fullScreenWillChange)
         o.windowChanged(.moveOrResize)                      // the animation resizes it
         o.windowChanged(.fullScreenDidChange)
         XCTAssertFalse(o.ownerTookOver)
+    }
+
+    /// The real window reports its resize through one shared value while we are placing it (setFrame posts
+    /// windowDidResize synchronously). Placing must not hold that value open across the resize: it crashed at
+    /// Start (exclusivity conflict, 2026-11-26).
+    func testOurResizeReportedThroughTheSharedValueIsNotTheOwners() {
+        SharedOwnership.value = RoomScreenRules.Ownership()
+        SharedOwnership.value.beginPlacing()
+        SharedOwnership.value.windowChanged(.moveOrResize)  // what windowDidResize does mid-setFrame
+        SharedOwnership.value.endPlacing()
+        XCTAssertFalse(SharedOwnership.value.ownerTookOver)
+        SharedOwnership.value.windowChanged(.moveOrResize)  // after placing: the owner's
+        XCTAssertTrue(SharedOwnership.value.ownerTookOver)
     }
 
     func testTheOwnersDragOrGreenButtonIsTheOwners() {
@@ -241,3 +254,5 @@ final class RoomScreenWindowControlTests: XCTestCase {
         XCTAssertTrue(green.ownerTookOver)
     }
 }
+
+private enum SharedOwnership { static var value = RoomScreenRules.Ownership() }

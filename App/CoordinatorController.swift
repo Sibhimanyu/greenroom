@@ -1940,7 +1940,7 @@ final class CoordinatorController: ObservableObject {
     /// is left on screen for the person to read, with Try again and Close.
     func stop(failure: String? = nil) {
         guard !isStopping else { return }
-        if failure == nil, recordOnlyActive || (isRunning && startingRecordOnly) {
+        if failure == nil, phase.isRecordMode {
             stopRecordingSession()
             return
         }
@@ -4372,7 +4372,7 @@ final class CoordinatorController: ObservableObject {
     var liveExitState: LiveExitState {
         var s = LiveExitState()
         guard hasLiveSession else { return s }
-        if recordOnlyActive || startingRecordOnly {
+        if phase.isRecordMode {
             s.kind = .recordOnly
         } else {
             s.kind = meetingMode == .create ? .host : .participant
@@ -4466,7 +4466,7 @@ final class CoordinatorController: ObservableObject {
         // A take that is rolling asks first, the way End does (owner,
         // 2026-11-15). One still starting or counting down has nothing to
         // lose yet, so it stops at once.
-        if recordOnlyActive || (isRunning && startingRecordOnly) {
+        if phase.isRecordMode {
             if recordOnlyActive, isRecording { confirmStopTake() } else { stopRecordingSession() }
             return
         }

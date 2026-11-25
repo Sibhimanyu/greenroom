@@ -41,3 +41,6 @@ every change to a question is a change to a flag, and the coordinator is its
   Record), the Record shortcut and `startActionDisabled` ask it. The
   toggle-recording check "nothing live, nothing starting" is the other variant:
   it ignores `isStopping` and counts a take, so it reads `!hasSessionOrTakeOnScreen`.
+- `isRecordMode`: `recordOnlyActive || startingRecordOnly` (the old
+  `recordOnlyActive || (isRunning && startingRecordOnly)` is the same value).
+  Picks the Record stop over the meeting stop, and the Record exit prompt.

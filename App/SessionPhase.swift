@@ -254,4 +254,11 @@ struct SessionPhase: Equatable {
 
     /// Start may begin: nothing running, no picture up, not stopping.
     var canStart: Bool { !isRunning && !sceneInUse && !isStopping }
+
+    /// This is a Record session (starting or up), not a meeting: decides which
+    /// Stop to run and which exit prompt to show. Replaces both
+    /// `recordOnlyActive || (isRunning && startingRecordOnly)` and
+    /// `recordOnlyActive || startingRecordOnly` (equal in every state, because a
+    /// Record start task is a running start task).
+    var isRecordMode: Bool { recordOnlyActive || startingRecordOnly }
 }

@@ -42,8 +42,8 @@ Status: built.
 
 The mask is built at preview size: the cameras' alpha is scaled first, then cut out of a white image of the small extent, instead of cutting at canvas size and scaling after. When no camera draws over shared content `coverage` is nil and no mask is made (already so). Same shape as before.
 
-Acceptance: output size and orientation equal the picture's; mask logic reads as scale, then composite.
-Status: open.
+Acceptance: output size and orientation equal the picture's; mask logic reads as scale, then composite. Not unit-tested (Core Image on live frames); owner checks the outlines still pass behind the cutout.
+Status: built. Not done: skipping the mask when Home's outlines are not on screen, since the sink cannot tell; that needs a coordinator flag.
 
 ### R4. No window-list walk on the main thread
 

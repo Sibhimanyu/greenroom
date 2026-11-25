@@ -63,14 +63,17 @@ final class StagePreviewSink: StageFrameSink {
             let small = image.transformed(by: CGAffineTransform(scaleX: scale, y: scale))
             guard let cg = context.createCGImage(small, from: small.extent) else { return }
             let picture = NSImage(cgImage: cg, size: NSSize(width: cg.width, height: cg.height))
-            // Everything but the cameras: white, with the cameras' alpha cut out.
+            // Everything but the cameras: white, with the cameras' alpha cut
+            // out. Built at the picture's size (scale first, then cut), so the
+            // cutout chain is not run at canvas size for every frame.
             var mask: NSImage?
             if let cameras {
-                let all = CIImage(color: .white).cropped(to: image.extent)
+                let area = small.extent
+                let all = CIImage(color: .white).cropped(to: area)
                 let open = all.applyingFilter("CISourceOutCompositing",
-                                              parameters: [kCIInputBackgroundImageKey: cameras])
-                    .transformed(by: CGAffineTransform(scaleX: scale, y: scale))
-                if let m = context.createCGImage(open, from: small.extent) {
+                                              parameters: [kCIInputBackgroundImageKey:
+                                                            cameras.transformed(by: CGAffineTransform(scaleX: scale, y: scale))])
+                if let m = context.createCGImage(open, from: area) {
                     mask = NSImage(cgImage: m, size: picture.size)
                 }
             }

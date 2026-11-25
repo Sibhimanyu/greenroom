@@ -87,4 +87,108 @@ final class SettingsTransferTests: XCTestCase {
         let t = try JSONDecoder().decode(SettingsTransfer.self, from: Data(json.utf8))
         XCTAssertEqual(t.webcamShape, "circle")
     }
+
+    // MARK: R8, a file exported before the D1 settings existed
+
+    /// What the app wrote today (before settings-transfer): sorted keys, no D1
+    /// keys, legacy layout keys from an older era, and one key from the future.
+    private static let todaysExport = """
+    {
+      "autoRecordOnStart" : true,
+      "backgroundRemoval" : "automatic",
+      "browserRestoresTabs" : true,
+      "browserSearchSuggestions" : true,
+      "bubbleBottomInset" : 0.04,
+      "bubbleRightInset" : 0.02,
+      "bubbleWidthFraction" : 0.28,
+      "cameraDirector" : {
+        "awayDegrees" : 25,
+        "cameraUIDs" : ["cam-a", "cam-b"],
+        "dwellSeconds" : 1,
+        "enabled" : true,
+        "noCamera" : false,
+        "transition" : "cut"
+      },
+      "chromeLayout" : "split",
+      "chromeOnStart" : true,
+      "chromeURL" : "https://example.org",
+      "clipBufferEnabled" : true,
+      "cuesUseWhisper" : false,
+      "customUIMode" : true,
+      "cutoutHeightFraction" : 0.8,
+      "cutoutRightInset" : 0.01,
+      "hideSelfView" : false,
+      "layoutLibrary" : { "templates" : [], "version" : 1 },
+      "meetingPresets" : [
+        { "id" : "11111111-1111-1111-1111-111111111111", "name" : "Maths", "number" : "123456789", "password" : "pw" }
+      ],
+      "prompterEnabled" : false,
+      "prompterLocaleIdentifier" : "en_GB",
+      "recordSystemAudio" : false,
+      "recordingCountdownSeconds" : 3,
+      "s2sAccountID" : "acct",
+      "s2sClientID" : "s2s-id",
+      "s2sClientSecret" : "s2s-secret",
+      "screenroomLanguage" : "en-GB",
+      "sdkClientID" : "sdk-id",
+      "sdkClientSecret" : "sdk-secret",
+      "shareTarget" : { "kind" : "display" },
+      "speakerTileShortcutEnabled" : true,
+      "userDisplayName" : "Ms Rao",
+      "webcamShape" : "circle",
+      "workspaceLayout" : { "mainFraction" : 0.6, "mainOnLeft" : true },
+      "youtubePrivacy" : "unlisted",
+      "youtubeUploadMode" : "off",
+      "aKeyFromTheFuture" : [1, 2, 3]
+    }
+    """
+
+    // R8
+    func testTodaysExportFixtureStillDecodes() throws {
+        let t = try JSONDecoder().decode(SettingsTransfer.self, from: Data(Self.todaysExport.utf8))
+        XCTAssertEqual(t.sdkClientID, "sdk-id")
+        XCTAssertEqual(t.s2sClientSecret, "s2s-secret")
+        XCTAssertEqual(t.webcamShape, "circle")
+        XCTAssertEqual(t.recordingCountdownSeconds, 3)
+        XCTAssertEqual(t.meetingPresets?.first?.name, "Maths")
+        XCTAssertEqual(t.cameraDirector?.cameraUIDs, ["cam-a", "cam-b"])
+        XCTAssertEqual(t.shareTarget?.kind, .display)
+        XCTAssertEqual(t.layoutLibrary?.templates.count, 0)
+        XCTAssertEqual(t.screenroomLanguage, "en-GB")
+    }
+
+    // R8: nothing the new settings add is invented for an old file.
+    func testOldFileLeavesEveryNewSettingAlone() throws {
+        let t = try JSONDecoder().decode(SettingsTransfer.self, from: Data(Self.todaysExport.utf8))
+        let result = SettingsImportRules.sanitized(t, in: SettingsImportEnvironment())
+        XCTAssertTrue(result.notes.isEmpty)
+        for value in [result.transfer.cameraBackground, result.transfer.cameraBackgroundImage,
+                      result.transfer.className, result.transfer.meetingMode, result.transfer.micDeviceUID,
+                      result.transfer.meetingWindowView, result.transfer.meetingWindowShareLayout] {
+            XCTAssertNil(value)
+        }
+        XCTAssertNil(result.transfer.copyInviteOnStart)
+        XCTAssertNil(result.transfer.meetingWindowShareSplit)
+        XCTAssertNil(result.transfer.meetingViewsEnabled)
+    }
+
+    // R8
+    func testLegacyOnlyKeysStillDecode() throws {
+        let t = try JSONDecoder().decode(SettingsTransfer.self, from: Data(Self.todaysExport.utf8))
+        XCTAssertEqual(t.chromeLayout, "split")
+        XCTAssertEqual(t.chromeURL, "https://example.org")
+        XCTAssertEqual(t.chromeOnStart, true)
+        XCTAssertEqual(t.workspaceLayout?.mainFraction, 0.6)
+        XCTAssertEqual(t.speakerTileShortcutEnabled, true)
+    }
+
+    // R8: a file written now carries the D1 keys, and the old keys are unchanged.
+    func testNewKeysAreAdditiveOnly() throws {
+        var t = todaysFields()
+        t.cameraBackground = "Blur"; t.className = "Year 9"
+        let object = try JSONSerialization.jsonObject(with: try encoded(t)) as? [String: Any]
+        let keys = Set(object?.keys ?? [:].keys)
+        XCTAssertTrue(Self.todaysKeys.isSubset(of: keys))
+        XCTAssertEqual(keys.subtracting(Self.todaysKeys), ["cameraBackground", "className"])
+    }
 }

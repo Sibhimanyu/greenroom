@@ -221,6 +221,9 @@ final class SessionNotes: ObservableObject {
     private func show() {
         if panel == nil { panel = makePanel() }
         guard let panel, !panel.isVisible else { return }
+        // Where it was left on this display, or its default: displays may have
+        // changed since the last session.
+        panel.setFrame(restingFrame(), display: false)
         // Once, at the start of the session. orderFrontRegardless puts it up
         // without activating the app or taking key - see the file note.
         panel.orderFrontRegardless()
@@ -256,17 +259,47 @@ final class SessionNotes: ObservableObject {
         panel?.orderOut(nil)
     }
 
-    private func makePanel() -> NotesPanel {
+    // MARK: Remembered position
+
+    private static func displayKey(_ screen: NSScreen) -> String? {
+        guard let id = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? CGDirectDisplayID
+        else { return nil }
+        return LocalDeviceResolver.uuid(for: id)
+    }
+
+    /// Called when a drag of the bar ends: keeps it fully on the display it was
+    /// dropped on, and remembers that spot for that display.
+    func dropped(_ window: NSWindow) {
+        let screens = NSScreen.screens
+        let areas = screens.map(\.visibleFrame)
+        guard let area = MeetingBarPlacement.area(for: window.frame, in: areas),
+              let screen = screens.first(where: { $0.visibleFrame == area }) else { return }
+        let frame = MeetingBarPlacement.clamp(window.frame, to: area)
+        window.setFrame(frame, display: true, animate: false)
+        guard let key = Self.displayKey(screen) else { return }
+        var all = UserDefaults.standard.dictionary(forKey: NotesBarPlacement.defaultsKey) as? [String: String] ?? [:]
+        NotesBarPlacement.save(NotesBarPlacement.offset(of: frame, in: area), for: key, into: &all)
+        UserDefaults.standard.set(all, forKey: NotesBarPlacement.defaultsKey)
+    }
+
+    /// The bar's frame now: the saved spot on the main display, clamped, or the
+    /// default.
+    private func restingFrame() -> NSRect {
         let screen = NSScreen.main ?? NSScreen.screens.first
         let area = screen?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
+        let all = UserDefaults.standard.dictionary(forKey: NotesBarPlacement.defaultsKey) as? [String: String] ?? [:]
+        let saved = screen.flatMap(Self.displayKey).flatMap { NotesBarPlacement.saved(for: $0, in: all) }
+        return NotesBarPlacement.frame(savedOffset: saved, size: Self.barSize, in: area,
+                                       defaultY: MeetingControlBarController.notesBarRestingY(in: area))
+    }
+
+    private func makePanel() -> NotesPanel {
         // Low and centred, under where a toast appears (Toast.swift sits at
         // 14% up). Not a corner: the layout tiles a side column flush to the
         // bottom and right, and a corner lands on it. Above the control bar's
         // row (MeetingControls.swift: 16 up, 44 tall) so the two never touch,
         // or back at its own default when the control bar has been moved away.
-        let frame = NSRect(x: (area.midX - Self.barSize.width / 2).rounded(),
-                           y: area.minY + MeetingControlBarController.notesBarRestingY(in: area),
-                           width: Self.barSize.width, height: Self.barSize.height)
+        let frame = restingFrame()
         let created = NotesPanel(contentRect: frame,
                                  styleMask: [.borderless, .nonactivatingPanel],
                                  backing: .buffered, defer: false)
@@ -276,14 +309,12 @@ final class SessionNotes: ObservableObject {
         // nothing higher, so a sheet or an alert still comes over it.
         created.level = .floating
         created.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
-        created.isMovableByWindowBackground = true
+        // The bar's background view moves the panel itself (NotesBarDragSurface).
+        created.isMovableByWindowBackground = false
         created.backgroundColor = .clear
         created.isOpaque = false
         created.hasShadow = true
-        // Moved once, stays moved: the teacher knows where their slides are
-        // and the bar does not. (.v2: a frame saved at the old height would
-        // sit on the control bar.)
-        created.setFrameAutosaveName("SessionNotesBar.v2")
+        // Moved once, stays moved, per display (dropped(_:), NotesBarPlacement).
         let host = NSHostingView(rootView: SessionNotesBar(notes: self))
         host.frame = NSRect(origin: .zero, size: Self.barSize)
         created.contentView = host
@@ -356,7 +387,8 @@ struct SessionNotesBarContent: View {
             Text(last.map { "Saved: \($0)" }
                  ?? (timingRecording ? "Timed to the recording" : "Timed from the start of the session"))
                 .font(.system(size: 11))
-                .foregroundStyle(.tertiary)
+                // Secondary, not tertiary: tertiary all but vanishes on glass.
+                .foregroundStyle(.secondary)
                 .lineLimit(1)
                 .truncationMode(.tail)
                 .padding(.leading, 60)
@@ -364,9 +396,54 @@ struct SessionNotesBarContent: View {
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
         .frame(width: SessionNotes.barSize.width, height: SessionNotes.barSize.height)
-        .background(RoundedRectangle(cornerRadius: 14)
-            .fill(Color(nsColor: .windowBackgroundColor)))
-        .overlay(RoundedRectangle(cornerRadius: 14)
-            .strokeBorder(Color(nsColor: .separatorColor)))
+        // Anywhere that is not the field or a button drags the bar. Under the
+        // content, so the field and the close button still get their clicks.
+        .background(NotesBarDragSurface())
+        // Liquid Glass like every floating surface (Glass.swift, DESIGN.md).
+        .greenroomGlass(in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+    }
+}
+
+/// The bar's background, as an AppKit view that moves the panel itself.
+/// `isMovableByWindowBackground` does not work here: the hosting view does not
+/// let a press on its background move the window (the owner could not move the
+/// bar, 2026-11-25). Same approach as the meeting bar's grip: the press is
+/// followed by hand, and on release the spot is saved for this display.
+private struct NotesBarDragSurface: NSViewRepresentable {
+    func makeNSView(context: Context) -> SurfaceView { SurfaceView() }
+    func updateNSView(_ view: SurfaceView, context: Context) {}
+
+    final class SurfaceView: NSView {
+        private var startMouse = NSPoint.zero
+        private var startOrigin = NSPoint.zero
+        private var dragging = false
+
+        override var mouseDownCanMoveWindow: Bool { false }
+        override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+        override func resetCursorRects() { addCursorRect(bounds, cursor: .openHand) }
+
+        override func mouseDown(with event: NSEvent) {
+            guard let window else { return }
+            startMouse = NSEvent.mouseLocation
+            startOrigin = window.frame.origin
+            dragging = false
+        }
+
+        override func mouseDragged(with event: NSEvent) {
+            guard let window else { return }
+            let now = NSEvent.mouseLocation
+            let dx = now.x - startMouse.x, dy = now.y - startMouse.y
+            if !dragging {
+                guard hypot(dx, dy) > MeetingBarPlacement.dragThreshold else { return }
+                dragging = true
+            }
+            window.setFrameOrigin(NSPoint(x: startOrigin.x + dx, y: startOrigin.y + dy))
+        }
+
+        override func mouseUp(with event: NSEvent) {
+            guard dragging, let window else { return }
+            dragging = false
+            SessionNotes.shared.dropped(window)
+        }
     }
 }

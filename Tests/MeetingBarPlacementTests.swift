@@ -195,4 +195,37 @@ final class MeetingBarPlacementTests: XCTestCase {
         XCTAssertEqual(m.minX, 50)
         XCTAssertEqual(m.width, (pill.width + puck.width) / 2)
     }
+
+    // MARK: Notes bar's remembered spot (per display)
+
+
+    func testNotesBarWithNothingSavedOpensAtItsDefault() {
+        let f = NotesBarPlacement.frame(savedOffset: nil, size: notes, in: main, defaultY: 16)
+        XCTAssertEqual(f, CGRect(x: 460, y: 41, width: 520, height: 64))
+    }
+
+    func testNotesBarOffsetRoundTripsAndIsRelativeToTheDisplay() {
+        let dropped = frame(1440 + 300, 200, notes)
+        let off = NotesBarPlacement.offset(of: dropped, in: right)
+        XCTAssertEqual(off, CGPoint(x: 300, y: 200))
+        XCTAssertEqual(NotesBarPlacement.frame(savedOffset: off, size: notes, in: right, defaultY: 16), dropped)
+    }
+
+    func testNotesBarSavedSpotIsClampedWhenTheDisplayShrank() {
+        let f = NotesBarPlacement.frame(savedOffset: CGPoint(x: 3000, y: 2000), size: notes, in: main, defaultY: 16)
+        XCTAssertEqual(f, frame(920, 811, notes))
+        let g = NotesBarPlacement.frame(savedOffset: CGPoint(x: -400, y: -400), size: notes, in: main, defaultY: 16)
+        XCTAssertEqual(g.origin, CGPoint(x: 0, y: 25))
+    }
+
+    func testNotesBarDisplayKeysAreSeparate() {
+        var all: [String: String] = [:]
+        NotesBarPlacement.save(CGPoint(x: 10, y: 20), for: "A", into: &all)
+        NotesBarPlacement.save(CGPoint(x: 30, y: 40), for: "B", into: &all)
+        XCTAssertEqual(NotesBarPlacement.saved(for: "A", in: all), CGPoint(x: 10, y: 20))
+        XCTAssertEqual(NotesBarPlacement.saved(for: "B", in: all), CGPoint(x: 30, y: 40))
+        XCTAssertNil(NotesBarPlacement.saved(for: "C", in: all))
+        all["A"] = "garbage"
+        XCTAssertNil(NotesBarPlacement.saved(for: "A", in: all))
+    }
 }

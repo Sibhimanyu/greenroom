@@ -185,3 +185,38 @@ enum PeoplePopOutPlacement {
         return CGRect(x: x, y: y, width: size.width, height: size.height)
     }
 }
+
+/// Where the floating notes bar rests, remembered per display. The spot is
+/// stored as an offset from the display's visible-area corner, so rearranging
+/// displays does not lose it, and clamped on the way back in so a smaller
+/// display cannot strand the bar off screen. Pure, for the tests.
+enum NotesBarPlacement {
+    /// UserDefaults key: [display UUID: "x,y"].
+    static let defaultsKey = "sessionNotesBarSpots"
+
+    static func offset(of frame: CGRect, in area: CGRect) -> CGPoint {
+        CGPoint(x: frame.minX - area.minX, y: frame.minY - area.minY)
+    }
+
+    /// The saved spot, clamped; with none, centred `defaultY` above the area's bottom.
+    static func frame(savedOffset: CGPoint?, size: CGSize, in area: CGRect, defaultY: CGFloat) -> CGRect {
+        guard let savedOffset else {
+            return CGRect(x: (area.midX - size.width / 2).rounded(), y: area.minY + defaultY,
+                          width: size.width, height: size.height)
+        }
+        let f = CGRect(x: area.minX + savedOffset.x, y: area.minY + savedOffset.y,
+                       width: size.width, height: size.height)
+        return MeetingBarPlacement.clamp(f, to: area)
+    }
+
+    static func saved(for display: String, in all: [String: String]) -> CGPoint? {
+        guard let text = all[display] else { return nil }
+        let parts = text.split(separator: ",").compactMap { Double($0) }
+        guard parts.count == 2 else { return nil }
+        return CGPoint(x: parts[0], y: parts[1])
+    }
+
+    static func save(_ offset: CGPoint, for display: String, into all: inout [String: String]) {
+        all[display] = "\(Double(offset.x)),\(Double(offset.y))"
+    }
+}

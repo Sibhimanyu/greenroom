@@ -46,7 +46,7 @@ final class SettingsImportRulesTests: XCTestCase {
 
     // R3
     func testSecondDisplayClearedWhenNotConnected() {
-        let two = TwoDisplay(main: [], second: [], secondUUID: "elsewhere")
+        let two = TwoDisplay(second: [], secondUUID: "elsewhere")
         let template = LayoutTemplate(name: "T", twoDisplays: two)
         let gone = SettingsImportRules.withLocalDisplays(template, connected: ["here"])
         XCTAssertEqual(gone.twoDisplays?.secondUUID, "")
@@ -58,7 +58,7 @@ final class SettingsImportRulesTests: XCTestCase {
     func testImportedLibraryGetsLocalDisplays() {
         var t = SettingsTransfer()
         t.layoutLibrary = LayoutLibrary(templates: [
-            LayoutTemplate(name: "T", twoDisplays: TwoDisplay(main: [], second: [], secondUUID: "elsewhere"))])
+            LayoutTemplate(name: "T", twoDisplays: TwoDisplay(second: [], secondUUID: "elsewhere"))])
         var env = SettingsImportEnvironment(); env.connectedDisplayUUIDs = ["here"]
         XCTAssertEqual(clean(t, env).layoutLibrary?.templates.first?.twoDisplays?.secondUUID, "")
     }

@@ -123,7 +123,6 @@ enum SettingsCatalog {
         travels("recordingCountdownSeconds", .int(3)),
         travels("recordSystemAudio", .bool(false)),
         travels("clipBufferEnabled", .bool(true)),
-        travels("customUIMode", .bool(true)),
         travels("browserRestoresTabs", .bool(true)),
         travels("browserSearchSuggestions", .bool(true)),
         travels("prompterEnabled", .bool(false)),
@@ -202,7 +201,6 @@ enum SettingsCatalog {
         excluded("zoomUserClientID", .unset, "An account: each Mac signs in itself."),
         excluded("account.mock.preset", .unset, "Debug account mock."),
         excluded("account.mock.signedIn", .unset, "Debug account mock."),
-        excluded("customUIMode.migratedV2", .bool(false), "A migration marker for this Mac."),
         excluded("GreenroomRawVideoSpike", .bool(false), "A debug switch."),
         excluded("secret_*", .unset, "Keychain items are named at run time; the secrets that travel are listed above."),
     ]
@@ -211,6 +209,7 @@ enum SettingsCatalog {
     /// still reads, then ignored.
     static let retiredTransferFields: [String: String] = [
         "participantPanelOnMainDisplay": "The setting was removed; old files still carry the key.",
+        "customUIMode": "Zoom's own meeting window was removed (2026-11-25); Greenroom's meeting window is the only mode. Old files carry the key; it is decoded and ignored, and nothing writes it.",
     ]
 
     /// Every key a file may contain, for the guard test.

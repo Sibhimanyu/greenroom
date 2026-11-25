@@ -68,14 +68,8 @@ enum StartChoreography {
     /// On live, the Meeting window opens only when somebody else is already in
     /// the meeting. Alone, the bar is the surface and the window comes up when
     /// the first person joins. A layout places the Meeting itself.
-    static func opensMeetingWindowOnLive(arranged: Bool, customUI: Bool, othersPresent: Bool) -> Bool {
-        !arranged && customUI && othersPresent
-    }
-
-    /// The bar outlives the start unless a layout runs on Zoom's own window,
-    /// which keeps Zoom's controls.
-    static func barKeptAfterLive(arranged: Bool, customUI: Bool) -> Bool {
-        !arranged || customUI
+    static func opensMeetingWindowOnLive(arranged: Bool, othersPresent: Bool) -> Bool {
+        !arranged && othersPresent
     }
 
     // MARK: Geometry

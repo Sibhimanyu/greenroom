@@ -78,6 +78,7 @@ struct SettingsTransfer: Codable, Equatable {
     // file got a Mac configured most of the way and no sign of which part was
     // missing, which is the worst shape a transfer can take.
     var userDisplayName: String?
+    /// Retired: decoded so an old file reads, then ignored (SettingsCatalog.retiredTransferFields).
     var customUIMode: Bool?
     var clipBufferEnabled: Bool?
     var participantPanelOnMainDisplay: Bool?

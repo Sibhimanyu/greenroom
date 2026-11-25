@@ -15,7 +15,6 @@ import SwiftUI
 import AppKit
 
 struct LayoutAddPanel: View {
-    let customUIMode: Bool
     let apps: [AppInfo]
     /// Why this cannot be added right now; nil when it can.
     let reason: (LayoutPiece.Kind) -> String?
@@ -86,7 +85,7 @@ struct LayoutAddPanel: View {
     }
 
     private var visible: Visible {
-        let meeting = MeetingViewPieces.addEntries(customUIMode: customUIMode, viewsEnabled: viewsEnabled).map { entry -> Item in
+        let meeting = MeetingViewPieces.addEntries(viewsEnabled: viewsEnabled).map { entry -> Item in
             let view = entry.kind.view
             return item(entry.id, entry.title, entry.kind, symbol: view?.symbol ?? "video.fill", view: view)
         }

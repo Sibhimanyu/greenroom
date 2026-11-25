@@ -306,8 +306,7 @@ struct HomeView: View {
         guard let screen = sharedScreen, let template = coordinator.layoutLibrary.active else { return [] }
         let s = screen.frame
         let items = LayoutScreenPreview.items(for: template) {
-            LayoutPageContent.look($0, customUIMode: coordinator.customUIMode,
-                                   canMoveApps: AppWindowManager.hasAccessibilityPermission)
+            LayoutPageContent.look($0, canMoveApps: AppWindowManager.hasAccessibilityPermission)
         }
         return items.enumerated().compactMap { index, item in
             PreviewOutlineRules.fraction(of: item.frame, on: s).map { (index, $0, item.title) }

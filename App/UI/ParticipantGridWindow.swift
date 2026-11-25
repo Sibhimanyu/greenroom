@@ -66,8 +66,8 @@ enum ParticipantGridWindowController {
         var detail: String?
 
         /// True once there is nothing left to wait for. An empty list counts as
-        /// live so that anything not driving readiness - the default Zoom-UI
-        /// path, a panel reopened mid-session - behaves exactly as before.
+        /// live so that anything not driving readiness - a panel
+        /// reopened mid-session - behaves exactly as before.
         var isLive: Bool {
             failure == nil && steps.allSatisfy { $0.state == .done || $0.state == .skipped }
         }

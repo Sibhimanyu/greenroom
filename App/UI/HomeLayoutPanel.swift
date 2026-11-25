@@ -49,8 +49,7 @@ struct HomeLayoutPanel: View {
                 secondConnected: active?.twoDisplays.map { LayoutScreenPreview.secondScreen(uuid: $0.secondUUID) != nil } ?? false
             ).map { (symbol: "rectangle.on.rectangle", text: $0) },
             art: DockHintVisual.layout(active?.oneDisplay) { [coordinator] piece in
-                LayoutPageContent.look(piece, customUIMode: coordinator.customUIMode,
-                                       canMoveApps: AppWindowManager.hasAccessibilityPermission)
+                LayoutPageContent.look(piece, canMoveApps: AppWindowManager.hasAccessibilityPermission)
             },
             moreTitle: "Edit layouts\u{2026}", onMore: more
         ) {
@@ -67,8 +66,7 @@ struct HomeLayoutPanel: View {
                         if let active, LayoutPanelRules.showsShowOnScreen(activePieceCount: active.pieceCount) {
                             actionRow("Show on screen", symbol: "rectangle.on.rectangle",
                                       help: "Preview this layout on your screen") {
-                                LayoutPageContent.showOnScreen(active, customUIMode: coordinator.customUIMode,
-                                                               canMoveApps: AppWindowManager.hasAccessibilityPermission)
+                                LayoutPageContent.showOnScreen(active, canMoveApps: AppWindowManager.hasAccessibilityPermission)
                                 close()
                             }
                         }
@@ -113,8 +111,7 @@ struct HomeLayoutPanel: View {
             Group {
                 if let template = choice.template, !template.oneDisplay.isEmpty {
                     LayoutThumbnail(pieces: template.oneDisplay, aspect: 1.6) { [coordinator] piece in
-                        LayoutPageContent.look(piece, customUIMode: coordinator.customUIMode,
-                                               canMoveApps: AppWindowManager.hasAccessibilityPermission)
+                        LayoutPageContent.look(piece, canMoveApps: AppWindowManager.hasAccessibilityPermission)
                     }
                 } else {
                     Image(systemName: choice.template == nil ? "rectangle.dashed" : "rectangle.split.2x1")

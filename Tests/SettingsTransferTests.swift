@@ -172,6 +172,17 @@ final class SettingsTransferTests: XCTestCase {
         XCTAssertNil(result.transfer.meetingViewsEnabled)
     }
 
+    // remove-zoom-window-mode R3: the retired key decodes, imports as nothing, raises no note.
+    func testRetiredCustomUIModeImportsAsNothing() throws {
+        let json = #"{"customUIMode":false,"userDisplayName":"Ms Rao"}"#
+        let t = try JSONDecoder().decode(SettingsTransfer.self, from: Data(json.utf8))
+        XCTAssertEqual(t.customUIMode, false)
+        let result = SettingsImportRules.sanitized(t, in: SettingsImportEnvironment())
+        XCTAssertTrue(result.notes.isEmpty)
+        XCTAssertEqual(result.transfer.userDisplayName, "Ms Rao")
+        XCTAssertNotNil(SettingsCatalog.retiredTransferFields["customUIMode"])
+    }
+
     // R8
     func testLegacyOnlyKeysStillDecode() throws {
         let t = try JSONDecoder().decode(SettingsTransfer.self, from: Data(Self.todaysExport.utf8))

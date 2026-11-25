@@ -146,40 +146,6 @@ final class LayoutResolverTests: XCTestCase {
         XCTAssertEqual(LayoutResolver.frames(of: r, meetingHidden: true), LayoutResolver.frames(of: r, meetingHidden: false))
     }
 
-    // MARK: Zoom's own window
-
-    func testChatFitsBelowAZoomWindowThatCameOutTaller() {
-        let planned = CGRect(x: 1000, y: 500, width: 440, height: 375)
-        let chat = CGRect(x: 1000, y: 0, width: 440, height: 500)
-        let actual = CGRect(x: 1000, y: 380, width: 440, height: 495)   // Zoom refused 375, took 495
-        let fitted = LayoutResolver.fit(chat, aroundActual: actual, planned: planned)
-        XCTAssertEqual(fitted.minY, 0)
-        XCTAssertEqual(fitted.maxY, 380, accuracy: 1e-6)
-    }
-
-    func testFitNeverGrowsTheNeighbourAndKeepsAFloor() {
-        let planned = CGRect(x: 1000, y: 500, width: 440, height: 375)
-        let chat = CGRect(x: 1000, y: 0, width: 440, height: 500)
-        let same = LayoutResolver.fit(chat, aroundActual: planned, planned: planned)
-        XCTAssertEqual(same, chat)
-        let huge = CGRect(x: 1000, y: 10, width: 440, height: 865)
-        XCTAssertEqual(LayoutResolver.fit(chat, aroundActual: huge, planned: planned).height, 200)
-    }
-
-    func testFitAboveAndBesideTheMeeting() {
-        let planned = CGRect(x: 0, y: 0, width: 400, height: 300)
-        let above = CGRect(x: 0, y: 300, width: 400, height: 500)
-        let actual = CGRect(x: 0, y: 0, width: 400, height: 350)
-        let a = LayoutResolver.fit(above, aroundActual: actual, planned: planned)
-        XCTAssertEqual(a.minY, 350, accuracy: 1e-6)
-        XCTAssertEqual(a.maxY, 800, accuracy: 1e-6)
-        let right = CGRect(x: 400, y: 0, width: 600, height: 300)
-        let wide = CGRect(x: 0, y: 0, width: 450, height: 300)
-        let b = LayoutResolver.fit(right, aroundActual: wide, planned: planned)
-        XCTAssertEqual(b.minX, 450, accuracy: 1e-6)
-        XCTAssertEqual(b.maxX, 1000, accuracy: 1e-6)
-    }
-
     // MARK: Small decisions
 
     func testCompactMeetingBelowTheFullForm() {
@@ -212,9 +178,7 @@ final class LayoutResolverTests: XCTestCase {
         XCTAssertEqual(t.meetingStartsHidden, false)
         t.setMeetingStartsHidden(true)
         XCTAssertEqual(t.meetingStartsHidden, true)
-        XCTAssertTrue(t.hasFillsDisplayMeeting)
         let noMeeting = LayoutTemplate(name: "X", oneDisplay: [LayoutPiece(kind: .chat, rect: .full)])
         XCTAssertNil(noMeeting.meetingStartsHidden)
-        XCTAssertFalse(noMeeting.hasFillsDisplayMeeting)
     }
 }

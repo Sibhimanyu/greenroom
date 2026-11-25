@@ -4,9 +4,8 @@
 //
 //  The roster, and every action a host can take on it.
 //
-//  None of this exists in default Zoom-UI mode: there, Zoom's own participants
-//  panel reads the roster and offers the actions. Custom UI hands us bare video
-//  views and nothing else, so the reference display has to ask for both.
+//  Custom UI hands us bare video views and nothing else, so Greenroom's own
+//  windows have to ask the SDK for both the roster and the actions.
 //
 //  Worth recording, because the header layout hides it: participant mute is NOT
 //  a named method. There is no `muteUser:`. It is reached through the generic

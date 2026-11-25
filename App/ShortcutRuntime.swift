@@ -158,7 +158,7 @@ final class ShortcutRuntime {
                 c.bringMainWindowForward()
             default:
                 // The nine view windows: open it, or close it if it is open.
-                guard let view = action.meetingView, c.zoomChatClient.didUseCustomUI,
+                guard let view = action.meetingView, c.zoomChatClient.didInit,
                       c.phase.isInMeeting else { return }
                 MeetingViewWindows.toggle(view)
             }

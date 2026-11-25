@@ -92,10 +92,10 @@ enum MeetingViewPieces {
 
     /// The Meeting group's tiles, as (id, title, kind): the window, then every
     /// view when they are enabled.
-    static func addEntries(customUIMode: Bool, viewsEnabled: Bool)
+    static func addEntries(viewsEnabled: Bool)
         -> [(id: String, title: String, kind: LayoutPiece.Kind)] {
         var entries: [(id: String, title: String, kind: LayoutPiece.Kind)] = [
-            ("meeting", customUIMode ? "Meeting window" : "Zoom window",
+            ("meeting", "Meeting window",
              .meeting(fillsDisplay: false, startsHidden: false))]
         if viewsEnabled {
             entries += MeetingView.allCases.map { ("view:\($0.rawValue)", $0.title, .view($0, startsHidden: false)) }
@@ -195,7 +195,7 @@ enum MeetingView: String, Codable, CaseIterable, Hashable {
 
 struct LayoutPiece: Codable, Identifiable, Equatable, Hashable {
     enum Kind: Equatable, Hashable {
-        /// Greenroom's meeting window (Zoom's own with custom UI off): the full
+        /// Greenroom's meeting window: the full
         /// window with toolbar and side panels, shown as "Meeting window".
         /// `fillsDisplay` is the Participants form: the whole display.
         case meeting(fillsDisplay: Bool, startsHidden: Bool)

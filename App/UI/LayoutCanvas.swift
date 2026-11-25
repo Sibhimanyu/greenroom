@@ -52,7 +52,6 @@ struct LayoutPieceLook {
     /// A meeting view, which gets a small diagram of itself on the canvas.
     var meetingView: MeetingView?
     /// A view piece while custom UI is off: drawn dashed, skipped at Start.
-    var needsCustomUI = false
     /// A view piece while the views are switched off: drawn dashed, skipped at Start.
     var comingLater = false
 }
@@ -864,7 +863,6 @@ struct LayoutPieceTile: View {
     private var caption: String {
         if look.missing { return "Not on this Mac" }
         if look.comingLater { return "Views are turned off" }
-        if look.needsCustomUI { return "Needs Greenroom\u{2019}s window" }
         if piece.isFixed { return "Fills this display" }
         return "\(columns) of 12 \u{00B7} \(pointSize.w)\u{00D7}\(pointSize.h)"
     }
@@ -896,7 +894,7 @@ struct LayoutPieceTile: View {
                 .padding(Self.inset)
             RoundedRectangle(cornerRadius: 6)
                 .strokeBorder(border, style: StrokeStyle(lineWidth: selected ? 2 : 1,
-                                                         dash: (look.missing || look.needsCustomUI || look.comingLater || invalid) ? [4, 3] : []))
+                                                         dash: (look.missing || look.comingLater || invalid) ? [4, 3] : []))
         }
         .overlay(alignment: .topTrailing) {
             if look.warning != nil {
@@ -942,8 +940,7 @@ struct LayoutThumbnail: View {
                                                        : Color(nsColor: .controlBackgroundColor))
                         RoundedRectangle(cornerRadius: 2)
                             .strokeBorder(Color.secondary.opacity(0.35),
-                                          style: StrokeStyle(lineWidth: 0.5,
-                                                             dash: look(piece).needsCustomUI ? [2, 1.5] : []))
+                                          style: StrokeStyle(lineWidth: 0.5))
                         if let icon = look(piece).icon, piece.kind.app != nil,
                            min(box.width, box.height) > 16 {
                             Image(nsImage: icon).resizable()

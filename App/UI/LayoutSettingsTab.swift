@@ -55,7 +55,6 @@ struct LayoutSettingsTab: View {
             displays: displays,
             mainSize: DisplayResolver.mainDisplayScreen()?.visibleFrame.size ?? CGSize(width: 1440, height: 875),
             secondSize: { LayoutScreenPreview.secondScreen(uuid: $0)?.visibleFrame.size },
-            customUIMode: coordinator.customUIMode,
             // Browsers are driven through the Chromium AppleScript dictionary
             // (per-app Automation permission, prompted on first use) - only
             // non-browser apps need the system-wide Accessibility grant to be
@@ -139,7 +138,6 @@ struct LayoutPageContent: View {
     /// when none is connected.
     let secondSize: (String) -> CGSize?
     /// Greenroom's own meeting window rather than Zoom's.
-    let customUIMode: Bool
     /// Accessibility is granted: non-browser apps can be moved.
     let canMoveApps: Bool
     let openAccessibilitySettings: () -> Void
@@ -376,7 +374,7 @@ struct LayoutPageContent: View {
         let places = [
             pieces.contains { $0.kind.isMeeting } ? meetingWord : nil,
             pieces.contains { $0.kind.isChat } ? "chat" : nil,
-        ].compactMap { $0 } + (customUIMode && MeetingViewPieces.enabled ? pieces.compactMap { $0.kind.view?.title.lowercased() } : [])
+        ].compactMap { $0 } + (MeetingViewPieces.enabled ? pieces.compactMap { $0.kind.view?.title.lowercased() } : [])
         var sentence: String
         // Raj Mode as shipped: the compact Meeting window is the active speaker.
         if isRajAsShipped(template), let browser = opens.first {
@@ -411,7 +409,7 @@ struct LayoutPageContent: View {
         return true
     }
 
-    private var meetingWord: String { customUIMode ? "meeting window" : "Zoom window" }
+    private var meetingWord: String { "meeting window" }
 
     private func list(_ items: [String]) -> String {
         switch items.count {
@@ -579,7 +577,7 @@ struct LayoutPageContent: View {
         LayoutCanvas(pieces: binding(for: slot), selection: $selection, display: space,
                      look: look,
                      accepts: { kind in
-                        if case .view = kind, !customUIMode || !MeetingViewPieces.enabled { return false }
+                        if case .view = kind, !MeetingViewPieces.enabled { return false }
                         return library.active?.canAdd(kind, to: slot) ?? false
                      },
                      onActivate: { activeSlot = slot; showsAddPanel = false },
@@ -674,7 +672,7 @@ struct LayoutPageContent: View {
     private func addPanel(slot: LayoutSlot, template: LayoutTemplate, note: String? = nil) -> LayoutAddPanel {
         let version = template.piecesInVersion(of: slot)
         return LayoutAddPanel(
-            customUIMode: customUIMode, apps: apps,
+            apps: apps,
             reason: { blockReason($0, template: template, slot: slot) },
             isPlaced: { kind in version.contains { sameKind($0.kind, kind) } },
             add: { kind in
@@ -690,7 +688,6 @@ struct LayoutPageContent: View {
     private func blockReason(_ kind: LayoutPiece.Kind, template: LayoutTemplate, slot: LayoutSlot) -> String? {
         let version = template.piecesInVersion(of: slot)
         if case .view = kind, !MeetingViewPieces.enabled { return "Views are turned off on this Mac" }
-        if case .view = kind, !customUIMode { return "Needs Greenroom\u{2019}s meeting UI (Settings \u{2192} Zoom, turn off Zoom\u{2019}s own window)" }
         if template.canAdd(kind, to: slot) { return nil }
         let views = Set(version.compactMap { $0.kind.view })
         switch kind {
@@ -758,28 +755,27 @@ struct LayoutPageContent: View {
 
     /// Greenroom Browser, Safari and so on as the canvas should draw them.
     func look(_ piece: LayoutPiece) -> LayoutPieceLook {
-        Self.look(piece, customUIMode: customUIMode, canMoveApps: canMoveApps)
+        Self.look(piece, canMoveApps: canMoveApps)
     }
 
     /// "Show on screen": outlines where each piece of `template` would go, on the
     /// real displays, for a moment. The one action behind the Layout page's
     /// button and Home's Layout tile.
     @MainActor
-    static func showOnScreen(_ template: LayoutTemplate, customUIMode: Bool, canMoveApps: Bool,
+    static func showOnScreen(_ template: LayoutTemplate, canMoveApps: Bool,
                              camera: LayoutCameraModel? = nil) {
         LayoutScreenPreview.show(LayoutScreenPreview.items(for: template, camera: camera) {
-            look($0, customUIMode: customUIMode, canMoveApps: canMoveApps)
+            look($0, canMoveApps: canMoveApps)
         })
     }
 
-    static func look(_ piece: LayoutPiece, customUIMode: Bool, canMoveApps: Bool) -> LayoutPieceLook {
+    static func look(_ piece: LayoutPiece, canMoveApps: Bool) -> LayoutPieceLook {
         switch piece.kind {
         case .meeting:
-            return LayoutPieceLook(name: customUIMode ? "Meeting window" : "Zoom window", icon: nil, symbol: "video.fill")
+            return LayoutPieceLook(name: "Meeting window", icon: nil, symbol: "video.fill")
         case let .view(view, _):
             return LayoutPieceLook(name: view.title, icon: nil, symbol: view.symbol,
                                    meetingView: view,
-                                   needsCustomUI: MeetingViewPieces.enabled && !customUIMode,
                                    comingLater: !MeetingViewPieces.enabled)
         case .chat:
             return LayoutPieceLook(name: "Chat", icon: nil, symbol: "bubble.left.and.bubble.right.fill")
@@ -1026,12 +1022,6 @@ struct LayoutPageContent: View {
                 Text("It is skipped at Start. Views are switched off by the meetingViews.enabled default.")
                     .font(.callout).foregroundStyle(.secondary)
             }
-        } else if !customUIMode {
-            HStack {
-                StatusBadge(text: "Needs Greenroom\u{2019}s window", tone: .problem)
-                Text("It is skipped at Start. Turn on Greenroom\u{2019}s meeting UI in Settings \u{2192} Zoom.")
-                    .font(.callout).foregroundStyle(.secondary)
-            }
         }
     }
 
@@ -1059,11 +1049,6 @@ struct LayoutPageContent: View {
                 set: { v in update(piece.id) { $0.kind = .meeting(fillsDisplay: fills, startsHidden: v) } }))
                 .help("The meeting starts out of the way. \(ShortcutStore.phrase(.toggleMeeting)) shows it.")
             Spacer()
-        }
-        if !customUIMode {
-            Text("Zoom\u{2019}s own meeting window is on (experimental), so this is Zoom\u{2019}s window, moved into this space.")
-                .font(.callout)
-                .foregroundStyle(.secondary)
         }
     }
 }

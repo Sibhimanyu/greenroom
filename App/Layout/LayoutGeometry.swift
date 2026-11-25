@@ -542,38 +542,6 @@ enum LayoutResolver {
         return out
     }
 
-    // MARK: Zoom's own window
-
-    /// `neighbour` (AppKit frame) fitted around the frame the meeting window was
-    /// ACTUALLY given. Zoom clamps a resize to its minimum window size, so the
-    /// planned rect and reality can differ; the neighbour yields along the edge
-    /// it shares with the planned rect and keeps its far edge. Only ever
-    /// smaller. Used for the Meeting only: no other app's size is ever
-    /// compensated for.
-    static func fit(_ neighbour: CGRect, aroundActual actual: CGRect, planned: CGRect,
-                    minimum: CGFloat = 200) -> CGRect {
-        let tolerance: CGFloat = 2
-        var r = neighbour
-        if neighbour.maxY <= planned.minY + tolerance {            // below the meeting
-            let top = Swift.min(neighbour.maxY, actual.minY)
-            r.size.height = Swift.max(top - neighbour.minY, Swift.min(minimum, neighbour.height))
-        } else if neighbour.minY >= planned.maxY - tolerance {     // above it
-            let bottom = Swift.max(neighbour.minY, actual.maxY)
-            let height = Swift.max(neighbour.maxY - bottom, Swift.min(minimum, neighbour.height))
-            r.origin.y = neighbour.maxY - height
-            r.size.height = height
-        } else if neighbour.maxX <= planned.minX + tolerance {     // left of it
-            let right = Swift.min(neighbour.maxX, actual.minX)
-            r.size.width = Swift.max(right - neighbour.minX, Swift.min(minimum, neighbour.width))
-        } else if neighbour.minX >= planned.maxX - tolerance {     // right of it
-            let left = Swift.max(neighbour.minX, actual.maxX)
-            let width = Swift.max(neighbour.maxX - left, Swift.min(minimum, neighbour.width))
-            r.origin.x = neighbour.maxX - width
-            r.size.width = width
-        }
-        return r
-    }
-
     // MARK: Small decisions
 
     /// Smaller than this, the placed meeting window is the Speaker view with its
@@ -633,15 +601,6 @@ extension LayoutTemplate {
             two.main = apply(two.main)
             two.second = apply(two.second)
             twoDisplays = two
-        }
-    }
-
-    /// A Meeting piece that fills a whole display: the participants form.
-    var hasFillsDisplayMeeting: Bool {
-        (twoDisplays.map { $0.main + $0.second } ?? []).contains {
-            if case .meeting(true, _) = $0.kind { return true } else { return false }
-        } || oneDisplay.contains {
-            if case .meeting(true, _) = $0.kind { return true } else { return false }
         }
     }
 }

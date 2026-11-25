@@ -64,7 +64,7 @@ final class MeetingControlsModel: ObservableObject {
 
     /// The meeting window (and so the Meeting window toggle) exists only when
     /// the SDK really started in custom UI: Zoom then opens no windows.
-    var videoButtons: Bool { coordinator.zoomChatClient.didUseCustomUI }
+    var videoButtons: Bool { coordinator.zoomChatClient.didInit }
 
     let coordinator: CoordinatorController
     private var timer: Timer?
@@ -93,7 +93,7 @@ final class MeetingControlsModel: ObservableObject {
             // A click on the island opens the Meeting window on People, wherever
             // it is, to admit them (owner, 2026-11-16). Only with Greenroom's own
             // meeting window; the Zoom app's own windows are Zoom's.
-            let open: (() -> Void)? = client.didUseCustomUI ? { self?.openPeopleInWindow() } : nil
+            let open: (() -> Void)? = client.didInit ? { self?.openPeopleInWindow() } : nil
             ToastController.show(words.title, detail: words.detail, kind: .working, dismissAfter: 6, action: open)
             coordinator.log(words.title + ".")
         }
@@ -344,7 +344,7 @@ final class MeetingControlsModel: ObservableObject {
             sidePanel = .people
             refresh()
         }
-        guard coordinator.zoomChatClient.didUseCustomUI,
+        guard coordinator.zoomChatClient.didInit,
               MeetingSurfaces.foldsPopOutChat(windowShowing: ParticipantGridWindowController.meetingWindowIsShowing,
                                               popOutOpen: ChatWindowController.isOpen,
                                               arranged: coordinator.sessionArranges) else { return }
@@ -418,7 +418,7 @@ final class MeetingControlsModel: ObservableObject {
     /// The Views menu: the Meeting window and every view, a checkmark on each that
     /// is open. Empty without Greenroom's own meeting UI.
     func viewsMenu() -> [MenuEntry] {
-        guard coordinator.zoomChatClient.didUseCustomUI else { return [] }
+        guard coordinator.zoomChatClient.didInit else { return [] }
         var out = MeetingMenus.views(MeetingViewWindows.menuState,
                                   toggleMeetingWindow: { [weak self] in self?.coordinator.toggleMeetingWindow() },
                                   toggleView: { MeetingViewWindows.toggle($0) })
@@ -965,8 +965,7 @@ private struct MeetingControlBarView: View {
 
 /// The pill's window. It exists for the whole session but is on screen only
 /// while there is no meeting window to carry the controls: closed, minimised or
-/// fully covered. With Zoom's own window as the picture (custom UI off) there
-/// is never a meeting window, so it simply stays up.
+/// fully covered.
 ///
 /// It is either the full pill or a 44pt puck, remembered across launches, and
 /// it can be dragged by its grip (or anywhere on the puck). Where it sits, for

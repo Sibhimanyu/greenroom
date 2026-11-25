@@ -279,27 +279,6 @@ final class LayoutEngine {
         }
     }
 
-    // MARK: Zoom's own window
-
-    /// Zoom clamps its meeting window to a minimum size, so what it ends up with
-    /// can be bigger than the Meeting piece. The neighbour that sits against it
-    /// steps back to fit around the ACTUAL frame (AppKit coordinates). The one
-    /// place a neighbour is compensated for; an App that refuses a size never is.
-    func fitNeighbour(_ template: LayoutTemplate, aroundActual actual: CGRect) {
-        let r = resolve(template)
-        guard let meeting = r.meeting, !meeting.fillsDisplay,
-              LayoutResolver.differs(actual, from: meeting.frames.ns) else { return }
-        let neighbours = r.placed
-            .filter { $0.piece.id != meeting.piece.id && $0.screen.id == meeting.screen.id && !$0.fillsDisplay
-                      && !$0.piece.kind.isView }
-        guard let absorber = LayoutResolver.absorbingNeighbour(
-            of: meeting.piece.rect, among: neighbours.map { (id: $0.piece.id, rect: $0.piece.rect) }),
-              let placed = neighbours.first(where: { $0.piece.id == absorber.id }) else { return }
-        let fitted = LayoutResolver.fit(placed.frames.ns, aroundActual: actual, planned: meeting.frames.ns)
-        let ax = CGRect(x: fitted.minX, y: r.primaryHeight - fitted.maxY, width: fitted.width, height: fitted.height)
-        move(placed, to: LayoutFrames(ns: fitted, ax: ax))
-    }
-
     // MARK: Moving one piece
 
     private func move(_ placed: Placed, to frames: LayoutFrames) {

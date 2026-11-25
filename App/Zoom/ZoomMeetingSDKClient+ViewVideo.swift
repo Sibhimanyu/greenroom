@@ -130,7 +130,7 @@ extension ZoomMeetingSDKClient {
     /// subscribed once it is in a visible window. nil when the SDK would not make
     /// an element (logged). `tier` comes from VideoBudget.
     func viewVideoView(_ key: ViewVideoKey, userID: UInt32, frame: NSRect, tier: VideoTier) -> NSView? {
-        guard didUseCustomUI, frame.width > 0, frame.height > 0 else { return nil }
+        guard didInit, frame.width > 0, frame.height > 0 else { return nil }
         guard let entry = viewVideo.entries[key] else { return makeViewElement(key, userID: userID, frame: frame, tier: tier) }
         if entry.lastFrame != frame {
             entry.lastFrame = frame

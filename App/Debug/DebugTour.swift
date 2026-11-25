@@ -747,7 +747,7 @@ extension Notification.Name {
                           visual: DockHintVisual.microphone)),
             ("layout", .init(title: "Layout", value: "Sample", text: "Where Start puts the meeting, the chat and your apps.",
                              visual: DockHintVisual.layout(sampleLayout) {
-                                 LayoutPageContent.look($0, customUIMode: false, canMoveApps: true)
+                                 LayoutPageContent.look($0, canMoveApps: true)
                              })),
             ("layout-none", .init(title: "Layout", value: "None", text: "Where Start puts the meeting, the chat and your apps.",
                                   visual: DockHintVisual.layout(nil) { _ in fatalError() })),

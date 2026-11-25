@@ -8,14 +8,13 @@ final class MeetingViewFlagTests: XCTestCase {
     }
 
     func testKillSwitchOffOffersOnlyTheMeetingWindow() {
-        let entries = MeetingViewPieces.addEntries(customUIMode: true, viewsEnabled: false)
+        let entries = MeetingViewPieces.addEntries(viewsEnabled: false)
         XCTAssertEqual(entries.map(\.id), ["meeting"])
         XCTAssertEqual(entries.first?.title, "Meeting window")
-        XCTAssertEqual(MeetingViewPieces.addEntries(customUIMode: false, viewsEnabled: false).first?.title, "Zoom window")
     }
 
     func testOnOffersTheWindowAndAllNineViews() {
-        let entries = MeetingViewPieces.addEntries(customUIMode: true, viewsEnabled: true)
+        let entries = MeetingViewPieces.addEntries(viewsEnabled: true)
         XCTAssertEqual(MeetingView.allCases.count, 9)
         XCTAssertEqual(entries.count, 1 + 9)
         XCTAssertEqual(entries.compactMap { $0.kind.view }, MeetingView.allCases)

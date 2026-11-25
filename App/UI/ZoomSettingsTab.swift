@@ -45,8 +45,6 @@ struct ZoomSettingsTab: View {
             s2sClientID: $coordinator.s2sClientID,
             s2sClientSecret: $coordinator.s2sClientSecret,
             displayName: $coordinator.userDisplayName,
-            customUI: $coordinator.customUIMode,
-            customUINeedsRelaunch: coordinator.customUIModeNeedsRelaunch,
             signIn: ZoomSignInSection.live(coordinator))
     }
 }
@@ -60,8 +58,6 @@ struct ZoomPageContent: View {
     @Binding var s2sClientID: String
     @Binding var s2sClientSecret: String
     @Binding var displayName: String
-    @Binding var customUI: Bool
-    let customUINeedsRelaunch: Bool
     let signIn: ZoomSignInSection
     /// Starts with "Use your own Zoom apps" open; for the off-screen render only.
     var ownAppsOpen = false
@@ -121,22 +117,6 @@ struct ZoomPageContent: View {
             Section("Meeting") {
                 TextField("Display name", text: $displayName)
                     .help("The name everyone sees for you in the meeting.")
-                Toggle(isOn: Binding(get: { !customUI }, set: { customUI = !$0 })) {
-                    HStack(spacing: 8) {
-                        Text("Use Zoom\u{2019}s own meeting window")
-                        Text("EXPERIMENTAL")
-                            .font(.system(size: 9, weight: .semibold, design: .monospaced))
-                            .foregroundStyle(.secondary)
-                            .padding(.horizontal, 4)
-                            .padding(.vertical, 2)
-                            .overlay(RoundedRectangle(cornerRadius: 6)
-                                .strokeBorder(Color.secondary.opacity(0.4)))
-                    }
-                }
-                .help("Off (recommended): Greenroom shows the meeting in its own meeting window, with Gallery and Speaker views, people, chat and the meeting controls. On: Zoom opens its own meeting window, which Greenroom can only move, not control the same way. Greenroom\u{2019}s views, its people console, the bar\u{2019}s video controls and other people\u{2019}s video in Greenroom windows are not available, and Zoom\u{2019}s own controls stay in charge. Takes effect after a relaunch.")
-                if customUINeedsRelaunch {
-                    StatusBadge(text: "Quit and reopen Greenroom to apply", tone: .problem)
-                }
             }
         }
         .formStyle(.grouped)

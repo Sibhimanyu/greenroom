@@ -44,17 +44,10 @@ final class StartChoreographyTests: XCTestCase {
     }
 
     func testMeetingWindowOpensOnLiveOnlyWithOthersPresent() {
-        XCTAssertFalse(StartChoreography.opensMeetingWindowOnLive(arranged: false, customUI: true, othersPresent: false))
-        XCTAssertTrue(StartChoreography.opensMeetingWindowOnLive(arranged: false, customUI: true, othersPresent: true))
-        // A layout places the Meeting itself; Zoom's own window has none of ours.
-        XCTAssertFalse(StartChoreography.opensMeetingWindowOnLive(arranged: true, customUI: true, othersPresent: true))
-        XCTAssertFalse(StartChoreography.opensMeetingWindowOnLive(arranged: false, customUI: false, othersPresent: true))
-    }
-
-    func testBarOutlivesTheStartExceptForALayoutOnZoomsOwnWindow() {
-        XCTAssertTrue(StartChoreography.barKeptAfterLive(arranged: false, customUI: false))
-        XCTAssertTrue(StartChoreography.barKeptAfterLive(arranged: true, customUI: true))
-        XCTAssertFalse(StartChoreography.barKeptAfterLive(arranged: true, customUI: false))
+        XCTAssertFalse(StartChoreography.opensMeetingWindowOnLive(arranged: false, othersPresent: false))
+        XCTAssertTrue(StartChoreography.opensMeetingWindowOnLive(arranged: false, othersPresent: true))
+        // A layout places the Meeting itself.
+        XCTAssertFalse(StartChoreography.opensMeetingWindowOnLive(arranged: true, othersPresent: true))
     }
 
     func testHomeExitsSmallerAndPartWayToTheBar() {

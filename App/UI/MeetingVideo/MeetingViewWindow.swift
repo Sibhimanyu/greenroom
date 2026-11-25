@@ -265,7 +265,7 @@ enum MeetingViewWindows {
     static let noVideoAfter: TimeInterval = 6
     static let openSpacing: UInt64 = 500_000_000
 
-    static var isEnabled: Bool { MeetingViewPieces.enabled && (client?.didUseCustomUI ?? false) && !meetingWindowOnly }
+    static var isEnabled: Bool { MeetingViewPieces.enabled && (client?.didInit ?? false) && !meetingWindowOnly }
     static var openViews: Set<MeetingView> { Set(controllers.keys) }
     static func isOpen(_ view: MeetingView) -> Bool { controllers[view] != nil }
     static var anyOpen: Bool { !controllers.isEmpty }
@@ -276,7 +276,7 @@ enum MeetingViewWindows {
         MeetingMenus.ViewsMenuState(meetingWindowOpen: ParticipantGridWindowController.meetingWindowIsOpen,
                                     openViews: openViews,
                                     viewsAvailable: MeetingViewPieces.enabled && !meetingWindowOnly
-                                        && (client?.didUseCustomUI ?? true))
+                                        && (client?.didInit ?? true))
     }
 
     // MARK: Opening and closing
@@ -284,7 +284,7 @@ enum MeetingViewWindows {
     /// Opens a view at `frame` (the layout's rectangle), else where it was last
     /// left, else a first place. Windows open half a second apart.
     static func open(_ view: MeetingView, at frame: NSRect? = nil) {
-        guard MeetingViewPieces.enabled, client?.didUseCustomUI == true else { return }
+        guard MeetingViewPieces.enabled, client?.didInit == true else { return }
         if meetingWindowOnly, view.drawsVideo {
             log("View window: \(view.title) is off for this session. The meeting window shows the video.")
             return

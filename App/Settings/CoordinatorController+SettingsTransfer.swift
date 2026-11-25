@@ -40,7 +40,6 @@ extension CoordinatorController {
             layoutLibrary: layoutLibrary,
             shortcutBindings: ShortcutStore.shared.bindings,
             userDisplayName: userDisplayName,
-            customUIMode: customUIMode,
             clipBufferEnabled: clipBufferEnabled,
             cameraDirector: cameraDirectorSettings,
             bubbleWidthFraction: bubbleWidthFraction,
@@ -137,7 +136,6 @@ extension CoordinatorController {
         if let value = transfer.recordingCountdownSeconds { recordingCountdownSeconds = value }
         if let value = transfer.recordSystemAudio { recordSystemAudio = value }
         if let value = transfer.userDisplayName { userDisplayName = value }
-        if let value = transfer.customUIMode { customUIMode = value }
         if let value = transfer.clipBufferEnabled { clipBufferEnabled = value }
         if let value = transfer.cameraDirector { cameraDirectorSettings = value }
         if let value = transfer.bubbleWidthFraction { bubbleWidthFraction = value }

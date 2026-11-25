@@ -34,38 +34,10 @@ final class ZoomMeetingSDKClient: NSObject, ObservableObject {
     /// the meeting for everyone.
     private(set) var isHosting = false
 
-    /// True once initSDK has run in this process. `needCustomizedUI` is an init
-    /// parameter, so after this point the UI mode cannot change until relaunch -
-    /// which Settings needs to know so it can say so rather than letting the
-    /// toggle look broken.
+    /// True once initSDK has run in this process. The SDK always starts in
+    /// custom-UI mode, so Greenroom's own meeting window is what shows the
+    /// meeting; callers that need that window check this first.
     private(set) var didInit = false
-
-    /// Whether this process initialised the SDK in custom-UI mode. Recorded at
-    /// init because the flag could be flipped in defaults afterwards, and what
-    /// matters downstream is the mode the SDK is actually RUNNING in.
-    private(set) var didUseCustomUI = false
-
-    /// Whether this class runs a layout (a template is active), set by the
-    /// coordinator at Start. Read when a meeting is joined: an arranged class
-    /// parks Zoom's window as a tile, so it drops the thumbnail and info button.
-    var arrangesWindows = false
-
-    /// On unless the teacher turned it off (2026-11-11: Greenroom's own meeting
-    /// window runs every meeting). App-restart-scoped: `needCustomizedUI` is an
-    /// initSDK parameter, so it cannot change while the process lives.
-    static var customUIModeEnabled: Bool {
-        (UserDefaults.standard.object(forKey: "customUIMode") as? Bool) ?? true
-    }
-
-    /// One-time flip for Macs that already stored `customUIMode = false` from
-    /// the days it defaulted off: they get the new default once, after which
-    /// the setting is theirs again. Runs at launch, before anything reads it.
-    static func migrateCustomUIDefault() {
-        let defaults = UserDefaults.standard
-        guard !defaults.bool(forKey: "customUIMode.migratedV2") else { return }
-        defaults.set(true, forKey: "customUIMode")
-        defaults.set(true, forKey: "customUIMode.migratedV2")
-    }
 
     /// Held for the meeting's lifetime. The SDK renders into views owned by
     /// these objects, so dropping them would drop the video.
@@ -301,7 +273,6 @@ final class ZoomMeetingSDKClient: NSObject, ObservableObject {
     /// a visible window (a subscription made before that never draws, and
     /// asking a second time is refused).
     func participantView(userID: UInt32, frame: NSRect, hero: Bool = false) -> NSView? {
-        guard didUseCustomUI else { return nil }
         guard let existing = participantElements[userID] else {
             return makeTile(userID: userID, frame: frame, hero: hero, notBefore: .distantPast)
         }
@@ -412,7 +383,6 @@ final class ZoomMeetingSDKClient: NSObject, ObservableObject {
     private var railSelfElement: ZoomSDKNormalVideoElement?
 
     func makeRailSelfView(frame: NSRect) -> NSView? {
-        guard didUseCustomUI else { return nil }
         if let existing = railSelfElement {
             if lastSelfFrame != frame {
                 lastSelfFrame = frame
@@ -467,7 +437,6 @@ final class ZoomMeetingSDKClient: NSObject, ObservableObject {
     private var stageRetiredAt = Date.distantPast
 
     func stageView(userID: UInt32, frame: NSRect) -> NSView? {
-        guard didUseCustomUI else { return nil }
         guard let element = stageElement else { return makeStageElement(userID: userID, frame: frame) }
         if lastStageFrame != frame {
             lastStageFrame = frame
@@ -917,12 +886,8 @@ final class ZoomMeetingSDKClient: NSObject, ObservableObject {
             params.zoomDomain = "zoom.us"
             // Custom UI: the SDK stops creating its own meeting windows and
             // hands us NSViews to render video into instead (see
-            // makeActiveSpeakerView). This is an INIT param, not a runtime
-            // property, and the SDK initialises once per process - so
-            // switching modes needs an app restart, which is why it is read
-            // from defaults rather than passed in.
-            params.needCustomizedUI = Self.customUIModeEnabled
-            didUseCustomUI = Self.customUIModeEnabled
+            // participantView). An INIT param: the SDK initialises once per process.
+            params.needCustomizedUI = true
             let result = ZoomSDK.shared().initSDK(with: params)
             guard result == ZoomSDKError_Success else {
                 throw ZoomMeetingSDKError.initFailed(result)
@@ -1253,15 +1218,6 @@ final class ZoomMeetingSDKClient: NSObject, ObservableObject {
         // all and nothing on screen saying why; the toolbar's "Join audio" is
         // the way back if it still does not.
         _ = ZoomSDK.shared().getSettingService()?.getAudioSetting()?.enableAutoJoinVoip(true)
-        let configuration = meetingService.getMeetingConfiguration()
-        // Both were meant for the parked tile of an ARRANGED session. When
-        // nothing is arranged and Zoom draws its own UI, its window is the main
-        // one, so it keeps its thumbnail and info button. In custom UI there is
-        // no Zoom window at all, so the setting is moot either way.
-        // Assigned both ways: the configuration outlives a session.
-        let hidesForTile = arrangesWindows
-        configuration.hideThumbnailVideoWindow = hidesForTile
-        configuration.hideMeetingInfoButtonOnVideo = hidesForTile
         // Zoom's "Hide Self View" - a USER PREFERENCE, not hardcoded:
         // hidden (the default) keeps the speaker tile and gallery to just
         // the others; shown puts your tile among them like anyone else's.
@@ -1290,9 +1246,7 @@ final class ZoomMeetingSDKClient: NSObject, ObservableObject {
         // labels, "Sibhimanyu V" and "Sibhimanyu V (you) - host".
         // Local rendering only; it does not touch what the class sees or what
         // is recorded.
-        if didUseCustomUI {
-            _ = ZoomSDK.shared().getSettingService()?.getVideoSetting()?.displayUserName(onVideo: false)
-        }
+        _ = ZoomSDK.shared().getSettingService()?.getVideoSetting()?.displayUserName(onVideo: false)
         // PERSISTED setting, asserted off before every connect (same
         // never-trust doctrine as DualScreenMode below): when it sticks
         // on, the SDK fullscreens its meeting windows at join - and a
@@ -1314,48 +1268,6 @@ final class ZoomMeetingSDKClient: NSObject, ObservableObject {
     func setHideSelfView(_ hide: Bool) {
         hideSelfViewPreference = hide
         ZoomSDK.shared().getSettingService()?.getVideoSetting()?.enableHideSelfView(hide)
-    }
-
-    /// Kicks BOTH meeting views (primary + dual-screen gallery) out of
-    /// fullscreen via the SDK's own control (ZoomSDKMeetingUIController.h
-    /// enterFullScreen:firstMonitor:DualMonitor:). The window parker calls
-    /// this before tiling: a window in a fullscreen Space ignores
-    /// setFrame, so nothing can be positioned until this has run.
-    func exitFullScreen() {
-        ZoomSDK.shared().getMeetingService()?.getMeetingUIController()
-            .enterFullScreen(false, firstMonitor: true, dualMonitor: true)
-    }
-
-    /// Switches the built-in client's meeting window to the plain
-    /// current-speaker layout (confirmed against
-    /// ZoomSDKMeetingUIController.h: switchToActiveSpeakerView, the
-    /// counterpart of switchToVideoWallView). Only meaningful once the
-    /// meeting window actually exists, i.e. after InMeeting - callers
-    /// invoke it when parking the window, not at connect time.
-    func simplifyMeetingView() {
-        ZoomSDK.shared().getMeetingService()?.getMeetingUIController().switchToActiveSpeakerView()
-    }
-
-    /// Switches the PRIMARY meeting view to the gallery/video-wall grid -
-    /// used in dual-screen sessions, where the primary window (the one
-    /// carrying Zoom's meeting controls) lives full-screen on the
-    /// extended display: grid + controls there, while the SECONDARY
-    /// video-only window shows Zoom's complementary clean active-speaker
-    /// view and makes the parked tile.
-    func showGalleryOnPrimaryView() {
-        ZoomSDK.shared().getMeetingService()?.getMeetingUIController().switchToVideoWallView()
-    }
-
-    /// Dual-screen mode: the SDK opens a SECOND meeting window (the
-    /// gallery/"people view", same as the Zoom client's dual-monitor
-    /// option) alongside the primary one. The SDK persists this setting
-    /// across sessions, so it's asserted - or explicitly cleared - before
-    /// every connect rather than trusted. Confirmed against
-    /// ZoomSDKSettingGeneralController.h (enableMeetingSetting:SettingCmd:)
-    /// and MeetingSettingCmd_DualScreenMode in ZoomSDKErrors.h.
-    func setDualScreenMode(_ enabled: Bool) {
-        ZoomSDK.shared().getSettingService()?.getGeneralSetting()?
-            .enableMeetingSetting(enabled, settingCmd: MeetingSettingCmd_DualScreenMode)
     }
 
     /// Joins as a second, muted/camera-off participant purely for chat -
@@ -1798,7 +1710,7 @@ extension ZoomMeetingSDKClient: ZoomSDKMeetingServiceDelegate {
         // subscription refusal went unreported - the exact blindness that made
         // the first black-tile hunt so slow.
         if state == ZoomSDKMeetingStatus_Connecting || state == ZoomSDKMeetingStatus_InMeeting,
-           videoContainer == nil, didUseCustomUI,
+           videoContainer == nil,
            let container = ZoomSDK.shared().getMeetingService()?.getVideoContainer() {
             adopt(container: container)
             Self.videoLog("video container adopted at status=\(state.rawValue)")

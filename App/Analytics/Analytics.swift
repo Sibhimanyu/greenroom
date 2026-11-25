@@ -79,7 +79,6 @@ enum Analytics {
     /// deliberately short - see the 100-key note above.
     enum Key: String {
         case mode                          // "start" | "join"
-        case customUI      = "custom_ui"
         case displays                      // how many screens were attached
         case durationBand = "duration_band"
         case endedBy      = "ended_by"

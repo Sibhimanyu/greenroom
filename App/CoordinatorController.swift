@@ -29,8 +29,6 @@ final class CoordinatorController: ObservableObject {
         // A deliberate quit: the main window is not shown again on the way out.
         applyMainWindow(mainWindowVisibility.handle(.quitting))
         stopCues()
-        layoutFollowTask?.cancel()
-        peopleViewTask?.cancel()
         for viewer in previewViewers { stopShapePreview(for: viewer) }
         ChatWindowController.close()
         PeoplePopOutController.close()
@@ -182,12 +180,8 @@ final class CoordinatorController: ObservableObject {
     /// tiling step is about to bury. Either way, nothing on that screen is
     /// telling the teacher what is happening, which is what the HUD is for.
     private func syncReadinessHUD() {
-        // Custom UI only (and a start that arranges nothing, which leaves
-        // Greenroom's window frontmost for the card to ride in). Readiness exists
-        // because custom UI replaces Zoom's windows with Greenroom's own, so there
-        // is genuinely nothing on screen during a start. In default Zoom-UI mode the teacher already has Zoom's
-        // interface coming up in front of them and did not ask for another
-        // floating surface on top of it.
+        // Greenroom's own windows replace Zoom's, so there is nothing on screen
+        // during a start unless the card shows it.
         // A failed start is the exception to both guards below: it always needs
         // a card with a way out, wherever the panel is or is not.
         let failed = startReadiness.failure != nil
@@ -211,10 +205,6 @@ final class CoordinatorController: ObservableObject {
         // its failure and its Try again, always.
         if recordFlowHUD, let screen = DisplayResolver.mainDisplayScreen() ?? NSScreen.main {
             ReadinessHUDController.show(startReadiness, on: screen)
-            return
-        }
-        guard customUIMode || !sessionArranges || failed else {
-            ReadinessHUDController.close()
             return
         }
         // Arranged: a panel on the reference display carries the card, so the
@@ -722,48 +712,20 @@ final class CoordinatorController: ObservableObject {
         let meeting = layoutEngine.placedMeeting(template)
         Analytics.track(.quickHide)
         let hide = !speakerTileQuickHidden
-        // Custom UI: the meeting window is ours, so hiding it is just ordering
-        // it out - no SDK window to find, and no risk of the toggle pointing at
-        // a panel that got mistaken for the tile.
-        if zoomChatClient.didUseCustomUI {
-            speakerTileQuickHidden = hide
-            // The Meeting window and every view go together; the neighbours take the room.
-            MeetingViewWindows.setHiddenTogether(hide)
-            if hide {
-                ParticipantGridWindowController.hide()
-            } else if meeting != nil {
-                openMeetingWindow()
-            } else {
-                placeCustomSurfaces()
-            }
-            layoutEngine.moveNeighbour(template, meetingHidden: hide)
-            log(hide ? "Meeting hidden \u{2014} \(ShortcutStore.phrase(.toggleMeeting)) shows it."
-                     : "Meeting shown \u{2014} \(ShortcutStore.phrase(.toggleMeeting)) hides it again.")
-            return
-        }
-        guard let meeting, let window = builtInMeetingWindow else {
-            // Surfaced, not just logged: the status log is collapsed by
-            // default, so pressing the shortcut before the tile exists looked
-            // like the shortcut was simply broken.
-            log("No speaker tile to toggle yet \u{2014} waiting for Zoom's meeting window.")
-            Notifier.post(title: "Speaker tile isn't ready yet",
-                          body: "Zoom's meeting window is still coming up. Try \(ShortcutStore.phrase(.toggleMeeting)) again in a moment.")
-            return
-        }
+        // The meeting window is ours, so hiding it is just ordering it out.
         speakerTileQuickHidden = hide
+        // The Meeting window and every view go together; the neighbours take the room.
+        MeetingViewWindows.setHiddenTogether(hide)
         if hide {
-            window.orderOut(nil)
-            log("Speaker tile hidden \u{2014} \(ShortcutStore.phrase(.toggleMeeting)) shows it.")
+            ParticipantGridWindowController.hide()
+        } else if meeting != nil {
+            openMeetingWindow()
         } else {
-            window.level = .normal
-            window.setFrame(meeting.frames.ns, display: true)
-            window.orderFrontRegardless()
-            log("Speaker tile shown \u{2014} \(ShortcutStore.phrase(.toggleMeeting)) hides it again.")
+            placeCustomSurfaces()
         }
         layoutEngine.moveNeighbour(template, meetingHidden: hide)
-        // Zoom may have kept a bigger window than the rect: the neighbour fits
-        // around what it actually got.
-        if !hide { layoutEngine.fitNeighbour(template, aroundActual: window.frame) }
+        log(hide ? "Meeting hidden \u{2014} \(ShortcutStore.phrase(.toggleMeeting)) shows it."
+                 : "Meeting shown \u{2014} \(ShortcutStore.phrase(.toggleMeeting)) hides it again.")
     }
 
     // MARK: Defaults - persisted so Start reproduces the whole setup every time
@@ -1214,26 +1176,6 @@ final class CoordinatorController: ObservableObject {
     /// Which display the screen capture shares. Empty means "the main one",
     /// which is what almost everyone wants and what this always did. Stored by
     /// display UUID so the choice survives unplugging and reconnecting.
-    /// Custom-UI mode. Read by the SDK client at initSDK, which happens once
-    /// per process - so changing this only takes effect after a restart, and
-    /// the Settings copy says so.
-    @Published var customUIMode: Bool {
-        didSet {
-            defaults.set(customUIMode, forKey: "customUIMode")
-            Analytics.setting("custom_ui", on: customUIMode)
-        }
-    }
-    /// True when the toggle no longer matches the mode actually running.
-    ///
-    /// `needCustomizedUI` is an initSDK parameter and the SDK initialises once
-    /// per process, at the first session start. Change the toggle after that and
-    /// nothing happens until relaunch - which looked exactly like a broken
-    /// switch until Settings started saying so.
-    var customUIModeNeedsRelaunch: Bool {
-        zoomChatClient.didInit
-            && zoomChatClient.didUseCustomUI != customUIMode
-    }
-
     @Published var screenCaptureDisplayUUID: String {
         didSet { defaults.set(screenCaptureDisplayUUID, forKey: "screenCaptureDisplayUUID") }
     }
@@ -1338,8 +1280,6 @@ final class CoordinatorController: ObservableObject {
         shareTarget = savedShare
         // On unless the teacher turned it off; Macs that stored the old default
         // (off) are flipped once, so the new default actually reaches them.
-        ZoomMeetingSDKClient.migrateCustomUIDefault()
-        customUIMode = (defaults.object(forKey: "customUIMode") as? Bool) ?? true
         autoRecordOnStart = defaults.bool(forKey: "autoRecordOnStart")
         meetingMode = MeetingMode(rawValue: defaults.string(forKey: "meetingMode") ?? "") ?? .create
         meetingPresets = Self.loadPresets(from: defaults)
@@ -1497,8 +1437,6 @@ final class CoordinatorController: ObservableObject {
     }
 
     private func chatSessionDidEnd() {
-        layoutFollowTask?.cancel()
-        peopleViewTask?.cancel()
         MeetingControlBarController.close()
         if !sessionArranges { closeMeetingWindow() }
         meetingControls?.stop()
@@ -1716,7 +1654,6 @@ final class CoordinatorController: ObservableObject {
         // the whole class. None (nil) arranges nothing.
         sessionTemplate = layoutLibrary.active
         sessionArranges = sessionTemplate != nil
-        zoomChatClient.arrangesWindows = sessionArranges
         speakerTileQuickHidden = sessionTemplate.map { layoutEngine.startsHidden($0) } ?? false
         // The Meeting window opens at Start unless the layout shows the meeting only as views.
         meetingWindowWanted = sessionTemplate.map { !layoutEngine.hasViewsButNoMeeting($0) } ?? true
@@ -1737,7 +1674,6 @@ final class CoordinatorController: ObservableObject {
         // Shape only. No meeting number, no preset name - see Analytics.swift.
         Analytics.track(.sessionStart, [
             .mode: meetingMode == .join ? "join" : "start",
-            .customUI: customUIMode ? "yes" : "no",
             .displays: String(NSScreen.screens.count),
             .mainApp: sessionTemplate.flatMap { template in
                 layoutEngine.resolve(template).apps.first?.piece.kind.app.map { Analytics.mainAppKind(bundleID: $0.bundleID) }
@@ -1749,14 +1685,10 @@ final class CoordinatorController: ObservableObject {
         beginStartChoreography()
         resetStartReadiness()
         // Before anything else, so the reference display has something on it
-        // from the first frame rather than after the meeting connects. Gated on
-        // the SETTING rather than on zoomChatClient.didUseCustomUI, which is not
-        // known until the SDK has initialised - by which point the blank this
-        // exists to fill is already over. presentMeetingSurfaces closes the
-        // panel again if custom UI turns out not to have happened.
+        // from the first frame rather than after the meeting connects.
         // (Only the reference-display panel opens this early: the meeting window
         // needs a meeting, and a single-display class has the floating card.)
-        if customUIMode && sessionArranges && peopleViewWanted { startCustomUIGridFollow() }
+        if sessionArranges && peopleViewWanted { startCustomUIGridFollow() }
 
         startTask = Task {
             do {
@@ -1834,15 +1766,14 @@ final class CoordinatorController: ObservableObject {
                 // first appears now, live. The Meeting window opens only if somebody is already in
                 // the meeting; alone, the bar is the surface and the window comes up
                 // when the first person joins (never opened and then shrunk away).
-                let customUI = zoomChatClient.didUseCustomUI
                 let others = !zoomChatClient.meetingRoster().allSatisfy(\.isMyself)
                 let opensWindow = StartChoreography.opensMeetingWindowOnLive(
-                    arranged: sessionArranges, customUI: customUI, othersPresent: others)
+                    arranged: sessionArranges, othersPresent: others)
                 if !sessionArranges {
                     ensureMeetingControls()
                     if opensWindow {
                         openMeetingWindow()
-                    } else if customUI {
+                    } else {
                         // The follow loop still runs: it is what notices someone join.
                         meetingWindowWanted = false
                         startCustomUIGridFollow()
@@ -1850,15 +1781,10 @@ final class CoordinatorController: ObservableObject {
                 }
                 // The bar is the surface of last resort, so a live meeting always has
                 // one built: Greenroom's own window in a layout can go to the
-                // bar too, and every way back must land somewhere. (A layout with
-                // Zoom's own window keeps Zoom's controls and gets no bar.)
+                // bar too, and every way back must land somewhere.
                 startBarText = nil
-                if StartChoreography.barKeptAfterLive(arranged: sessionArranges, customUI: customUI) {
-                    if let controls = meetingControls {
-                        MeetingControlBarController.install(coordinator: self, model: controls)
-                    }
-                } else {
-                    MeetingControlBarController.close(fade: false)
+                if let controls = meetingControls {
+                    MeetingControlBarController.install(coordinator: self, model: controls)
                 }
                 startSmallWhileAlone()
                 bringInExtraCameras()
@@ -1957,8 +1883,7 @@ final class CoordinatorController: ObservableObject {
         // Ending some other way (the menu, Zoom, a failure) answers the End question too.
         disarmExit()
         Analytics.track(.sessionEnd, [
-            .durationBand: Analytics.band(seconds: sessionStartedAt.map { Date().timeIntervalSince($0) } ?? 0),
-            .customUI: customUIMode ? "yes" : "no"
+            .durationBand: Analytics.band(seconds: sessionStartedAt.map { Date().timeIntervalSince($0) } ?? 0)
         ])
         sessionStartedAt = nil
         discardEmptySessionFolder()
@@ -1979,8 +1904,6 @@ final class CoordinatorController: ObservableObject {
             // Chat teardown first: close the window before leave() flips
             // isJoined, so the meeting-ended observer sees it already
             // closed and doesn't double-log.
-            layoutFollowTask?.cancel()
-                peopleViewTask?.cancel()
             MeetingControlBarController.close(fade: wasStarting)
             meetingControls?.stop()
             meetingControls = nil
@@ -3358,7 +3281,6 @@ final class CoordinatorController: ObservableObject {
         log("Starting the meeting in Greenroom's built-in Zoom client\u{2026}")
         try await zoomChatClient.ensureReady(signer: signer)
         await settleBeforeJoining()
-        zoomChatClient.setDualScreenMode(sessionArranges && galleryWindowExists)
 
         try await ensurePictureInstalled()
         reportMeetingVideo()
@@ -3375,7 +3297,7 @@ final class CoordinatorController: ObservableObject {
         copyInviteWhenReady()
 
         if sessionArranges {
-            presentMeetingSurfaces(resetQuickHideToDefault: true) // session start = the mode's default state
+            presentMeetingSurfaces()
             finalizeLayout()
         }
     }
@@ -3391,7 +3313,6 @@ final class CoordinatorController: ObservableObject {
         log("Starting meeting \(meetingNumber) in Greenroom's built-in Zoom client\u{2026}")
         try await zoomChatClient.ensureReady(signer: signer)
         await settleBeforeJoining()
-        zoomChatClient.setDualScreenMode(sessionArranges && galleryWindowExists)
 
         try await ensurePictureInstalled()
         reportMeetingVideo()
@@ -3439,44 +3360,15 @@ final class CoordinatorController: ObservableObject {
         copyInviteWhenReady()
 
         if sessionArranges {
-            presentMeetingSurfaces(resetQuickHideToDefault: true) // session start = the mode's default state
+            presentMeetingSurfaces()
             finalizeLayout()
         }
     }
 
 
-    /// Parks the built-in client's meeting window into the side column's
-    /// top slot and keeps the chat aligned below it - all plain NSWindow
-    /// work, since the window belongs to this process. Skipped entirely
-    /// when the Zoom tile is toggled out of the side column: the meeting
-    /// window then stays wherever it is.
-    /// Puts the meeting on screen. Two very different mechanisms behind one
-    /// call, so the session flows do not have to know which mode they are in.
-    ///
-    /// Default Zoom UI: the SDK owns its meeting windows, so Greenroom hunts
-    /// for them, parks one in the side column and pins the other to the
-    /// extended display. That machinery is the source of the tug-of-war, the
-    /// gallery landing on the wrong display, and the info popup being adopted
-    /// as the tile.
-    ///
-    /// Custom UI: there are no SDK windows at all. The SDK renders into a view
-    /// we own, so there is nothing to hunt, park, pin or defend against. The
-    /// participant gallery is not built for this mode yet - the speaker tile is.
-    private func presentMeetingSurfaces(resetQuickHideToDefault: Bool) {
-        guard zoomChatClient.didUseCustomUI else {
-            // The panel is opened optimistically on the first frame of a start,
-            // from the customUIMode SETTING, because didUseCustomUI is not known
-            // until the SDK has initialised - long after the blank it exists to
-            // fill. If the SDK went the other way, take it back down: in default
-            // Zoom-UI mode the SDK owns its own gallery and ours would be a
-            // second, stale one.
-            customUIGridTask?.cancel()
-            customUIGridTask = nil
-            ParticipantGridWindowController.close()
-            parkBuiltInMeetingWindow(resetQuickHideToDefault: resetQuickHideToDefault)
-            placePeopleViewWindow()
-            return
-        }
+    /// Puts Greenroom's meeting window and the chat where the session wants them.
+    /// The SDK renders into views we own, so there are no SDK windows to find.
+    private func presentMeetingSurfaces() {
         ensureMeetingControls()
         startCustomUIGridFollow()
         placeCustomSurfaces()
@@ -3562,7 +3454,7 @@ final class CoordinatorController: ObservableObject {
         ParticipantGridWindowController.shrinkInsteadOfMinimize = { [weak self] in
             guard let self else { return false }
             let live = self.phase.isInMeeting
-            let canShrink = self.zoomChatClient.didUseCustomUI && self.meetingWindowOpen
+            let canShrink = self.zoomChatClient.didInit && self.meetingWindowOpen
             guard MeetingMinimize.outcome(meetingLive: live, canShrink: canShrink) == .shrinkToControlBar else { return false }
             self.collapseMeeting()
             return true
@@ -3629,330 +3521,6 @@ final class CoordinatorController: ObservableObject {
         }
     }
 
-    private func parkBuiltInMeetingWindow(resetQuickHideToDefault: Bool = false) {
-        // The follow loop is what arranges the chat and the tile; a session
-        // that arranges nothing never starts it, even for an on-demand chat.
-        guard sessionArranges else { return }
-        layoutFollowTask?.cancel()
-        layoutFollowTask = Task {
-            var parked = false
-            var quickHideAnnounced = false
-            var lastFrame = CGRect.null
-            // True while the tile in use is only a stand-in, adopted because
-            // the ideal window had not appeared yet. Drives the handoff below.
-            var tileIsFallback = false
-            demotedStrayWindowNumbers.removeAll() // fresh session, fresh logs
-            rejectedVideoCandidateNumbers.removeAll()
-            // The quick-hide MODE's default state: enabled means sessions
-            // begin with the tile hidden and the chat full-height;
-            // \u{2325}\u{2318}Z brings the speaker up on demand.
-            // Only SESSION STARTS reset to the default - a live layout
-            // re-apply or snap-back must not undo a mid-class toggle.
-            if resetQuickHideToDefault {
-                speakerTileQuickHidden = sessionTemplate.map { layoutEngine.startsHidden($0) } ?? false
-            }
-            // SDK-level first: both meeting views out of fullscreen. A
-            // window in a fullscreen Space ignores setFrame, so nothing
-            // below works until this has taken effect.
-            zoomChatClient.exitFullScreen()
-            var waitedTicks = 0
-            gridCorrectionStreak = 0
-            gridCorrectionHoldUntilTick = 0
-            // Runs for as long as the arranged class does. (It used to ride on the
-            // chat window being open; a layout need not have a Chat piece.)
-            while !Task.isCancelled, sessionArranges, phase.isInMeeting {
-                // The layout is read again every tick: an edit or a display change
-                // moves the Meeting piece, and the loop follows it.
-                let planned = sessionTemplate.flatMap { layoutEngine.placedMeeting($0) }
-                let tileWanted = planned != nil
-                // Ref death (the SDK recreates its windows on activation -
-                // a CLICK does it) leaves `parked` stale-true, so the
-                // recreated tile would never re-park and camps wherever
-                // the SDK put it - usually over the main screen's capture.
-                if builtInMeetingWindow == nil { parked = false }
-                // Hand off from a stand-in to the real thing. `tile` below
-                // short-circuits on builtInMeetingWindow, so without this a
-                // stand-in adopted at the 4s mark would stay the tile for the
-                // whole session.
-                if tileIsFallback, tileWanted,
-                   let preferred = preferredTileWindow(), preferred !== builtInMeetingWindow {
-                    let wasStandingIn = builtInMeetingWindow != nil
-                    builtInMeetingWindow = preferred
-                    tileIsFallback = false
-                    parked = false
-                    // Only a real swap is worth announcing; reaching here with
-                    // nothing adopted yet is just a first pick.
-                    if wasStandingIn {
-                        log("Speaker tile switched to Zoom's clean speaker view.")
-                    }
-                }
-                // The stray guard below must run even with the Zoom tile
-                // toggled off - that's when the primary window has no slot
-                // and is most likely to sit fullscreen over the capture.
-                var tile: NSWindow? = tileWanted
-                    ? builtInMeetingWindow ?? tileWindowCandidate(waitedTicks: waitedTicks)
-                    : nil
-                // Geometry sanity: a "tile" living on the people-view
-                // display IS the participant grid - stale identity after
-                // the SDK recreated its windows, or the SDK swapped roles.
-                // Parking/hiding it from here while the pinning loop drags
-                // it back was the visible 2s tug-of-war (reported live
-                // twice; the identity-only exclusion in
-                // tileWindowCandidate dies with the weak ref, this check
-                // doesn't).
-                if peopleViewWanted, let candidate = tile, windowIsOnPeopleViewTarget(candidate) {
-                    if candidate === builtInMeetingWindow {
-                        builtInMeetingWindow = nil
-                        parked = false
-                    }
-                    tile = nil
-                }
-                if tile != nil, builtInMeetingWindow == nil {
-                    tileIsFallback = preferredTileWindow() == nil
-                }
-                if let window = tile {
-                    if window.styleMask.contains(.fullScreen) {
-                        // Still fullscreen (the exit animates out over ~1s,
-                        // or the SDK re-entered it) - kick again, park on a
-                        // later tick once it can actually be framed.
-                        window.toggleFullScreen(nil)
-                        parked = false
-                    } else if speakerTileQuickHidden {
-                        // Quick-hide mode: the tile stays identified (so
-                        // \u{2325}\u{2318}Z can summon it) but
-                        // HIDDEN, with the chat owning the full column.
-                        // Re-asserts every tick, so the SDK re-showing
-                        // the window (state changes do that) gets undone.
-                        if builtInMeetingWindow == nil {
-                            builtInMeetingWindow = window
-                            if !galleryWindowExists { zoomChatClient.simplifyMeetingView() }
-                        }
-                        if window.isVisible {
-                            window.orderOut(nil)
-                            if let template = sessionTemplate { layoutEngine.moveNeighbour(template, meetingHidden: true) }
-                            if !quickHideAnnounced {
-                                quickHideAnnounced = true
-                                log("Speaker tile starts hidden \u{2014} what sat beside it has its room; \(ShortcutStore.phrase(.toggleMeeting)) shows the speaker.")
-                            }
-                        }
-                        parked = false
-                    } else if !parked, let slot = planned?.frames.ns {
-                        window.level = .normal // clear any stale floating level
-                        if !window.isVisible { window.orderFront(nil) } // e.g. mode just turned off
-                        window.setFrame(slot, display: true)
-                        // Single-window sessions: strip the tile down to a
-                        // plain current-speaker view (needs the window to
-                        // exist, hence here and not at connect). DUAL-SCREEN
-                        // sessions must NOT do this - the primary view is
-                        // switched to the gallery grid by the people-view
-                        // placer, and switching to speaker here would flip
-                        // it back; the tile (the secondary window) already
-                        // shows Zoom's complementary clean speaker view.
-                        if !galleryWindowExists {
-                            zoomChatClient.simplifyMeetingView()
-                        }
-                        // Remembered so the people-view placer knows which
-                        // window is the tile and which goes to the extended
-                        // display.
-                        builtInMeetingWindow = window
-                        parked = true
-                    }
-                    let frame = window.frame
-                    // Chat-follow only when the tile is actually shown -
-                    // in quick-hide the chat owns the full column and must
-                    // not be re-snapped under a hidden tile's frame.
-                    // Tolerant compare, for the same reason the grid's is:
-                    // an exact != on a frame the SDK reports back with
-                    // sub-point jitter would re-snap the chat every tick
-                    // forever.
-                    let tileMoved = abs(frame.origin.x - lastFrame.origin.x) > 2
-                        || abs(frame.origin.y - lastFrame.origin.y) > 2
-                        || abs(frame.width - lastFrame.width) > 2
-                        || abs(frame.height - lastFrame.height) > 2
-                    if !speakerTileQuickHidden, tileMoved, let template = sessionTemplate {
-                        lastFrame = frame
-                        layoutEngine.fitNeighbour(template, aroundActual: frame)
-                    }
-                }
-                demoteStrayMeetingWindows()
-                maintainPeopleViewPlacement(tick: waitedTicks)
-                waitedTicks += 1
-                try? await Task.sleep(nanoseconds: 2_000_000_000)
-            }
-        }
-    }
-
-    /// Placement is not one-shot: the SDK re-positions its windows on
-    /// meeting state changes, which intermittently dumped the placed
-    /// participant gallery back onto the MAIN display over the workspace
-    /// (reported live: "stuck on the main app window") - and the stray
-    /// guard deliberately ignores the tracked gallery, so nothing fixed
-    /// it. Every follow-loop tick: re-frame the gallery whenever it has
-    /// drifted off its target display, eject it from fullscreen, and if
-    /// its window vanished entirely (SDK recreated it), re-run the placer
-    /// every ~30s.
-    private func maintainPeopleViewPlacement(tick: Int) {
-        guard galleryWindowExists else { return }
-        guard let target = peopleViewTargetScreen() else {
-            keepBackgroundGalleryBehind()
-            return
-        }
-        if let gallery = peopleViewWindow {
-            // Above the menu bar and the Dock, re-asserted every tick because
-            // the SDK resets the level whenever it recreates the window. At
-            // .normal the grid covers the display's bounds but the menu bar
-            // and Dock still draw over it, which is not what "full screen on
-            // the reference display" means.
-            if windowIsOnPeopleViewTarget(gallery) { gallery.level = .statusBar }
-            // The grid STAYS on its display, focused or not (explicit
-            // requirement) - clicking it must not strand it wherever the
-            // SDK re-homed it. The only interaction respected is an
-            // active mouse-drag on the window itself; everything else
-            // gets corrected immediately.
-            if gallery.isKeyWindow && NSEvent.pressedMouseButtons != 0 { return }
-            if tick < gridCorrectionHoldUntilTick { return } // standing down (see below)
-            if gallery.styleMask.contains(.fullScreen) {
-                gallery.toggleFullScreen(nil) // re-framed on a later tick
-            } else if peopleViewHasDrifted(gallery) {
-                gridCorrectionStreak += 1
-                if gridCorrectionStreak >= 6 {
-                    // Corrected 6 consecutive ticks and something moved it
-                    // right back each time.
-                    //
-                    // History worth keeping: this backstop used to fire in
-                    // EVERY session about 12s in, and the cause was not an
-                    // external mover at all - the drift test compared the
-                    // window against the display's full frame, which AppKit
-                    // will never grant a titled window (it reserves the
-                    // menu-bar strip), so every tick read as drift. That is
-                    // fixed; see peopleViewGrantedFrame. Reaching six here
-                    // now means a real mover, most likely the SDK's own
-                    // dual-monitor manager, which exposes no placement API
-                    // to override (ZoomSDKMeetingConfiguration.monitorID is
-                    // a screen-share knob, checked).
-                    //
-                    // Endless correction is a visible bounce - worse than
-                    // either stable state. Stand down, retry in ~2 minutes;
-                    // Snap Windows Back restarts the loop and re-arms.
-                    gridCorrectionHoldUntilTick = tick + 60
-                    gridCorrectionStreak = 0
-                    log("Something keeps re-placing the participant grid within seconds \u{2014} pausing the tug-of-war for 2 minutes. Snap Windows Back (\(ShortcutStore.phrase(.snapBack))) re-places it now.")
-                } else if gridCorrectionStreak == 3 {
-                    // Raw re-framing isn't sticking: the SDK likely lost or
-                    // changed its dual-screen state when it recreated the
-                    // window. Re-run the FULL placement once - it re-frames
-                    // AND re-asserts gallery-on-primary via the SDK's own
-                    // API, resyncing its bookkeeping instead of fighting it.
-                    placePeopleViewWindow()
-                } else {
-                    gallery.setFrame(target.frame, display: true)
-                    // Record what we actually GOT, not what we asked for -
-                    // see peopleViewGrantedFrame. Only trust the readback if
-                    // the window really landed on the target display: if
-                    // something yanked it away inside this same tick,
-                    // adopting that frame as "correct" would make the loop
-                    // stop correcting a genuinely misplaced grid.
-                    if windowIsOnPeopleViewTarget(gallery) {
-                        peopleViewGrantedFrame = gallery.frame
-                    }
-                    // orderFront only when actually hidden: ordering an SDK
-                    // window front on every correction can itself provoke
-                    // the SDK's re-layout, feeding the very loop this fixes.
-                    if !gallery.isVisible { gallery.orderFront(nil) }
-                    log("Participant grid drifted \u{2014} moved back to \u{201C}\(target.localizedName)\u{201D}.")
-                }
-            } else {
-                gridCorrectionStreak = 0 // stable tick - not a fight
-            }
-        } else if tick > 0, tick % 15 == 0 {
-            placePeopleViewWindow() // window gone (SDK recreated it) - re-hunt
-        }
-    }
-
-    /// Which SDK window becomes the parked side-column tile.
-    /// Single-screen sessions: the primary (only) meeting window.
-    /// Dual-screen (people view) sessions: the SECONDARY window - Zoom
-    /// puts the meeting controls/toolbar on the PRIMARY, so the primary
-    /// belongs full-screen on the extended display (gallery grid +
-    /// controls) and the clean video-only secondary makes the tile.
-    /// (Parking the primary put a control-cluttered tile on the main
-    /// display and the clean speaker view on the extended one - exactly
-    /// backwards, reported live.) Falls back to the primary if the
-    /// secondary hasn't appeared after ~20s, so the tile never stays
-    /// unparked.
-    private func tileWindowCandidate(waitedTicks: Int) -> NSWindow? {
-        // NEVER the placed participant grid. Two filters, because identity
-        // alone failed live: `!== peopleViewWindow` dies the moment the SDK
-        // recreates its windows (a click on the grid does exactly that),
-        // and the recreated grid then got seized as the tile and parked on
-        // the main screen while the pinning loop dragged it back - the 2s
-        // tug-of-war, twice reported. Geometry survives recreation: a
-        // window living on the people-view display is the grid's, never
-        // the tile's, no matter what our weak refs say.
-        if let preferred = preferredTileWindow() { return preferred }
-        // Nothing ideal yet. Fall back to whatever video window we have after
-        // ~4s (2 ticks) rather than the old ~20s.
-        //
-        // The old wait left the feature DEAD for 20s of every multi-display
-        // session: no tile identified means builtInMeetingWindow stays nil,
-        // so toggleSpeakerTile bailed out and the column was never parked -
-        // about a minute from launch, counting the pipeline. Shortening it is
-        // only safe because the follow loop now hands off to the ideal window
-        // if it shows up later (see tileIsFallback); without that handoff a
-        // short wait would lock the WRONG window in permanently, which is the
-        // control-cluttered-tile bug this wait was originally added to avoid.
-        return waitedTicks >= 2 ? tileCandidates().first : nil
-    }
-
-    /// Video windows that could serve as the tile, newest last. Never the
-    /// placed participant grid: identity alone failed live (the weak ref dies
-    /// when the SDK recreates its windows, which a click does), so geometry
-    /// backs it up - a window on the people-view display is the grid's.
-    private func tileCandidates() -> [NSWindow] {
-        meetingVideoWindowCandidates().filter {
-            $0 !== peopleViewWindow && !(peopleViewWanted && windowIsOnPeopleViewTarget($0))
-        }
-    }
-
-    /// The window we actually WANT as the tile, or nil if it does not exist
-    /// yet. Single-screen: the only meeting window. Dual-screen: the SECONDARY
-    /// one, because Zoom puts the meeting controls on the primary and the
-    /// clean video-only view on the secondary - taking the primary put a
-    /// control-cluttered tile on the main display and the clean speaker view
-    /// on the extended one, exactly backwards, reported live.
-    private func preferredTileWindow() -> NSWindow? {
-        let candidates = tileCandidates()
-        guard galleryWindowExists else { return candidates.first }
-        return candidates.count >= 2 ? candidates.last : nil
-    }
-
-    /// Keeps the no-second-display gallery behind the workspace.
-    ///
-    /// The SDK raises its own windows on state changes - waiting room, share
-    /// start - so one
-    /// orderBack at placement time does not hold. Pushed back only when it has
-    /// floated to the FRONT without being focused: a teacher who deliberately
-    /// clicks into the grid keeps it, and it settles back on its own once they
-    /// click away.
-    private func keepBackgroundGalleryBehind() {
-        guard let gallery = peopleViewWindow, gallery.isVisible else { return }
-        guard !gallery.isKeyWindow, gallery.orderedIndex == 0 else { return }
-        gallery.orderBack(nil)
-    }
-
-    /// Whether a window currently lives on the people-view target display,
-    /// judged by its frame's center. This is the recreation-proof role
-    /// test: weak identity dies whenever the SDK rebuilds its windows -
-    /// which is exactly when roles need re-deriving - but a recreated
-    /// window reappears at its old frame, so geometry still knows which
-    /// job it had. Both the tile picker and the gallery picker derive
-    /// roles from THIS same rule, so they can no longer claim the same
-    /// window for opposite placements.
-    private func windowIsOnPeopleViewTarget(_ window: NSWindow) -> Bool {
-        guard let target = peopleViewTargetScreen() else { return false }
-        return target.frame.contains(CGPoint(x: window.frame.midX, y: window.frame.midY))
-    }
-
     /// Consecutive pinning corrections with no stable tick in between -
     /// the fight detector for maintainPeopleViewPlacement. Reset whenever
     /// the follow loop (re)starts: session start, layout re-apply, Snap
@@ -4015,7 +3583,7 @@ final class CoordinatorController: ObservableObject {
     /// without activating the app: the teacher's slides stay in front of
     /// Greenroom's own main window.
     func openMeetingWindow() {
-        guard zoomChatClient.didUseCustomUI else { return }
+        guard zoomChatClient.didInit else { return }
         ensureMeetingControls()
         // The chat is a panel inside the window now; a loose chat window would
         // be a second copy of it. (An arranged session keeps its column.)
@@ -4058,7 +3626,7 @@ final class CoordinatorController: ObservableObject {
     /// One step down: the yellow light, Command-M, the top bar's Smaller button.
     /// Window to bar. The bar is the bottom.
     func collapseMeeting() {
-        guard zoomChatClient.didUseCustomUI else { return }
+        guard zoomChatClient.didInit else { return }
         let size = meetingSize
         guard size != .bar else { return }
         MeetingShrinkTip.markDone() // shrunk once, by any route: the tip has done its job
@@ -4069,7 +3637,7 @@ final class CoordinatorController: ObservableObject {
     /// prompt, which names the bar). Where the window is not showing, it is already
     /// the bar.
     func shrinkMeetingToBar() {
-        guard zoomChatClient.didUseCustomUI else { return }
+        guard zoomChatClient.didInit else { return }
         let size = meetingSize
         guard size != .bar else { return }
         MeetingShrinkTip.markDone()
@@ -4079,7 +3647,7 @@ final class CoordinatorController: ObservableObject {
     /// The bar's Meeting button: straight back to the Meeting window. A click
     /// during a morph turns it round.
     func expandMeetingFromBar() {
-        guard zoomChatClient.didUseCustomUI else { return }
+        guard zoomChatClient.didInit else { return }
         if MeetingControlBarController.morphTarget != nil {
             if meetingWindowOpen { giveRoomBackToMeeting(); MeetingControlBarController.morph(toward: 1) }
             else { openMeetingWindow() }
@@ -4101,7 +3669,7 @@ final class CoordinatorController: ObservableObject {
     /// the Meeting where it wants it.
     private func startSmallWhileAlone() {
         growWhenSomeoneJoins = false
-        guard !sessionArranges, zoomChatClient.didUseCustomUI,
+        guard !sessionArranges, zoomChatClient.didInit,
               MeetingControlBarController.isInstalled,
               zoomChatClient.meetingRoster().allSatisfy(\.isMyself) else { return }
         if meetingSize == .window { MeetingControlBarController.morph(toward: 0) }
@@ -4120,7 +3688,7 @@ final class CoordinatorController: ObservableObject {
 
     /// Goes to a size from wherever the meeting is.
     func moveMeeting(to size: MeetingSize) {
-        guard zoomChatClient.didUseCustomUI else { return }
+        guard zoomChatClient.didInit else { return }
         let from = meetingSize
         guard from != size else { return }
         move(from: from, to: size, step: size == .bar ? .down : .up, context: collapseContext)
@@ -4129,7 +3697,7 @@ final class CoordinatorController: ObservableObject {
     /// The shortcut and the one click: one step the other way from where it is.
     /// Window goes down; the bar comes up. A click during a morph turns it round.
     func toggleMeetingShrunk() {
-        guard zoomChatClient.didUseCustomUI else { return }
+        guard zoomChatClient.didInit else { return }
         if let heading = MeetingControlBarController.morphTarget {
             heading == 0 ? expandMeetingFromBar() : shrinkMeetingToBar()
             return
@@ -4217,80 +3785,11 @@ final class CoordinatorController: ObservableObject {
     /// The pill's Meeting window button, and People when no window is up. With
     /// the window on screen it closes it; otherwise it brings it forward.
     func toggleMeetingWindow() {
-        guard zoomChatClient.didUseCustomUI else { return }
+        guard zoomChatClient.didInit else { return }
         if ParticipantGridWindowController.meetingWindowIsShowing {
             closeMeetingWindow()
         } else {
             openMeetingWindow()
-        }
-    }
-
-    private var gridCorrectionStreak = 0
-    private var gridCorrectionHoldUntilTick = 0
-
-    /// The frame the window server actually GRANTED the grid, which is not
-    /// the frame we asked for. AppKit's constrainFrameRect keeps a titled
-    /// window out of the menu-bar strip, so requesting a display's full
-    /// frame comes back shorter - measured on this 1920x1080 display: asked
-    /// for 1920x1080 at the origin, got 1920x1050 inset 30pt from the top.
-    ///
-    /// The maintain loop compares against THIS. It used to compare against
-    /// the requested `screen.frame`, which therefore NEVER matched: every
-    /// tick read as drift, "corrected" a window already sitting where it
-    /// was allowed to sit, and tripped the six-strike backstop about 12s
-    /// into every session. No external mover was needed to produce that:
-    /// the loop did it alone.
-    ///
-    /// This was one of two self-inflicted halves; the other was the target
-    /// display itself flipping with focus (see
-    /// DisplayResolver.mainDisplayScreen). With both fixed, a backstop
-    /// firing is evidence of a REAL mover - which has not been ruled out.
-    private var peopleViewGrantedFrame: NSRect?
-
-    /// Drift worth correcting: the grid left the display it belongs on, or
-    /// it moved measurably away from the frame the window server granted
-    /// it. Deliberately tolerant - a sub-point difference or the menu-bar
-    /// clamp is not drift, and treating it as drift is what made this loop
-    /// fight itself.
-    private func peopleViewHasDrifted(_ window: NSWindow) -> Bool {
-        let f = window.frame
-        guard windowIsOnPeopleViewTarget(window) else {
-            logGridDrift("left-display", found: f)
-            return true
-        }
-        guard let granted = peopleViewGrantedFrame else { return false }
-        let tolerance: CGFloat = 2
-        let moved = abs(f.origin.x - granted.origin.x) > tolerance
-            || abs(f.origin.y - granted.origin.y) > tolerance
-            || abs(f.width - granted.width) > tolerance
-            || abs(f.height - granted.height) > tolerance
-        if moved { logGridDrift("reframed", found: f) }
-        return moved
-    }
-
-    /// Diagnostic for the grid fight, to a FILE rather than the status log:
-    /// the status log is user-facing and this is per-tick detail. Records
-    /// where the grid was FOUND, which is the one thing the old logging
-    /// never captured - it reported only where the grid was moved TO, so a
-    /// persisting fight could not be attributed to anything.
-    private func logGridDrift(_ kind: String, found: NSRect) {
-        let granted = peopleViewGrantedFrame
-        let line = "\(Self.quitLogStamp.string(from: Date())) grid-drift \(kind)"
-            + " found=\(Int(found.origin.x)),\(Int(found.origin.y))"
-            + " \(Int(found.width))x\(Int(found.height))"
-            + " granted=" + (granted.map {
-                "\(Int($0.origin.x)),\(Int($0.origin.y)) \(Int($0.width))x\(Int($0.height))"
-            } ?? "none")
-            + " target=\(peopleViewTargetScreen()?.localizedName ?? "none")"
-            + " streak=\(gridCorrectionStreak)\n"
-        let url = FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent("Library/Logs/Greenroom-quit.log")
-        if let handle = try? FileHandle(forWritingTo: url) {
-            handle.seekToEndOfFile()
-            try? handle.write(contentsOf: Data(line.utf8))
-            try? handle.close()
-        } else {
-            try? Data(line.utf8).write(to: url)
         }
     }
 
@@ -4312,6 +3811,7 @@ final class CoordinatorController: ObservableObject {
         case .join: return meetingNumberDigits.count < 9
         }
     }
+
 
     /// Confirmation gate in front of stop() for every user-facing trigger
     /// (End Session button, menu bar item, \u{2325}\u{2318}X):
@@ -4380,7 +3880,7 @@ final class CoordinatorController: ObservableObject {
             s.kind = meetingMode == .create ? .host : .participant
         }
         s.isRecording = isRecording
-        s.canShrink = zoomChatClient.didUseCustomUI && meetingWindowOpen
+        s.canShrink = zoomChatClient.didInit && meetingWindowOpen
         return s
     }
 
@@ -4425,7 +3925,7 @@ final class CoordinatorController: ObservableObject {
     private var reopenState: LiveExit.ReopenState {
         var s = LiveExit.ReopenState()
         s.isLive = hasLiveSession
-        s.hasMeetingSurfaces = zoomChatClient.didUseCustomUI && !recordOnlyActive
+        s.hasMeetingSurfaces = zoomChatClient.didInit && !recordOnlyActive
         s.meetingShrunk = ParticipantGridWindowController.meetingWindowIsHidden
         return s
     }
@@ -4535,7 +4035,6 @@ final class CoordinatorController: ObservableObject {
             // (or take it away): nothing is hidden then.
             speakerTileQuickHidden = false
         }
-        builtInMeetingWindow?.level = .normal
         let hidden = speakerTileQuickHidden
         Task {
             await layoutEngine.apply(template, open: openApps, meetingHidden: hidden)
@@ -4545,13 +4044,8 @@ final class CoordinatorController: ObservableObject {
         applyShapeForPreview()
         // The meeting's own windows exist only while a class does.
         guard phase.isInMeeting else { return }
-        if zoomChatClient.didUseCustomUI {
-            // Our own windows: re-place them rather than hunting for the SDK's.
-            presentMeetingSurfaces(resetQuickHideToDefault: false)
-        } else if !sdkMeetingWindows().isEmpty {
-            parkBuiltInMeetingWindow()
-            placePeopleViewWindow()
-        }
+        // Our own windows: re-place them.
+        presentMeetingSurfaces()
     }
 
     // MARK: Displays coming and going
@@ -4919,27 +4413,10 @@ final class CoordinatorController: ObservableObject {
         }
     }
 
-    private var layoutFollowTask: Task<Void, Never>?
-    private var peopleViewTask: Task<Void, Never>?
-    /// The built-in client's PRIMARY meeting window - the one parked as
-    /// the side-column tile. Weak: the SDK owns its windows.
-    private weak var builtInMeetingWindow: NSWindow?
-
-    /// The dual-screen gallery window the people-view placer positioned,
-    /// so the stray-window guard knows it's accounted for. Weak: the SDK
-    /// owns it.
-    private weak var peopleViewWindow: NSWindow?
-
-    /// The display the participant gallery should open on: the chosen one
-    /// if it's connected, otherwise the first non-main display. nil when
-    /// there's nowhere but the main screen to put it (the main screen -
-    /// and any class mirror of it - is already showing the tiled
-    /// workspace, so the gallery must not land there).
-    ///
-    /// Arranged, that is the display the layout's Meeting piece fills (the
-    /// layout's own second-display rule, resolved now); nil when the layout has no
-    /// such piece or the display is not connected. A class that arranges nothing
-    /// uses the first other display, if there is one.
+    /// The reference display: the one the layout's Meeting piece fills (the
+    /// layout's own second-display rule, resolved now), nil when the layout has
+    /// no such piece or the display is not connected. A session that arranges
+    /// nothing uses the first other display, if there is one.
     private func peopleViewTargetScreen() -> NSScreen? {
         if sessionArranges, let template = sessionTemplate {
             return layoutEngine.referenceScreen(template)
@@ -4947,309 +4424,11 @@ final class CoordinatorController: ObservableObject {
         return DisplayResolver.firstSecondaryScreen()
     }
 
-    /// The saved display UUID the gallery was asked to go to ("" = automatic).
-    private var peopleViewChosenUUID: String {
-        sessionArranges ? (sessionTemplate?.twoDisplays?.secondUUID ?? "") : ""
-    }
-
     /// Whether this session should put the gallery on another display: the layout
     /// has a Meeting that fills one AND that display exists right now. A class that
     /// arranges nothing never does.
     private var peopleViewWanted: Bool {
         sessionArranges && sessionTemplate != nil && peopleViewTargetScreen() != nil
-    }
-
-    /// Whether the SDK runs with TWO meeting windows this session.
-    ///
-    /// Deliberately separate from `peopleViewWanted`, which asks the narrower
-    /// question of whether one of them goes to another DISPLAY. With the
-    /// a filling Meeting and no reference monitor connected the gallery still opens -
-    /// it just lives behind the workspace instead of on a second screen. The
-    /// two were conflated, which is why a single-display session used to get
-    /// no participant view at all: dual-screen mode was never enabled, so the
-    /// SDK never created the window there was nowhere to put.
-    ///
-    /// Every window-ROLE decision keys off this (which window is the tile,
-    /// whether to simplify the tile's view, what the stray sweep may demote).
-    /// Only the placement decisions still key off `peopleViewWanted`.
-    private var galleryWindowExists: Bool {
-        guard sessionArranges, let template = sessionTemplate else { return false }
-        return template.hasFillsDisplayMeeting
-    }
-
-    /// Sends the built-in client's dual-screen gallery window full-screen
-    /// onto the chosen (or default secondary) display. Polls for it
-    /// because the SDK creates it a beat after the primary meeting window.
-    /// The primary is identified by `builtInMeetingWindow` (set when the
-    /// tile parks); the gallery is any other SDK meeting window.
-    private func placePeopleViewWindow() {
-        guard galleryWindowExists else { return }
-        guard let target = peopleViewTargetScreen() else {
-            // Used to give up here. The window is worth having even with
-            // nowhere special to put it - it just goes behind the workspace
-            // rather than covering it.
-            placePeopleViewBehindWorkspace()
-            return
-        }
-        let onChosen = !peopleViewChosenUUID.isEmpty && DisplayResolver.screen(forUUID: peopleViewChosenUUID) != nil
-        peopleViewTask?.cancel()
-        peopleViewTask = Task {
-            for _ in 0..<30 {
-                if Task.isCancelled { return }
-                // The extended display gets the PRIMARY meeting window -
-                // the oldest candidate, the one carrying Zoom's meeting
-                // controls - switched to the gallery grid below. The
-                // secondary (newest) window is the clean video-only view
-                // and becomes the tile (tileWindowCandidate). Placing the
-                // secondary here instead put the clean speaker view on
-                // the extended display and the control clutter in the
-                // tile - exactly backwards, reported live.
-                let candidates = meetingVideoWindowCandidates().filter { $0 !== builtInMeetingWindow }
-                // A candidate ALREADY on the target display is the grid -
-                // the SDK recreated it in place (weak ref died, frame
-                // survived). Preferring it keeps the re-hunt from grabbing
-                // the tile by creation order and pinning THAT to the
-                // extended display while the parking loop drags it back.
-                let gallery = candidates.first(where: windowIsOnPeopleViewTarget)
-                    ?? (builtInMeetingWindow != nil
-                        ? candidates.first
-                        : (candidates.count > 1 ? candidates.first : nil))
-                if let gallery {
-                    if gallery.styleMask.contains(.fullScreen) {
-                        // Can't be framed while in a fullscreen Space -
-                        // kick it out and place on a later tick.
-                        gallery.toggleFullScreen(nil)
-                    } else {
-                        gallery.setFrame(target.frame, display: true)
-                        // What we GOT, not what we asked for, and only when
-                        // it actually landed on the target (see the same
-                        // guard in maintainPeopleViewPlacement).
-                        if windowIsOnPeopleViewTarget(gallery) {
-                            peopleViewGrantedFrame = gallery.frame
-                            // Over the menu bar and Dock - see the same
-                            // assert in maintainPeopleViewPlacement.
-                            gallery.level = .statusBar
-                        }
-                        gallery.orderFront(nil)
-                        peopleViewWindow = gallery
-                        // Grid on the extended display; the secondary tile
-                        // then shows Zoom's complementary clean speaker
-                        // view (its dual-monitor pairing).
-                        zoomChatClient.showGalleryOnPrimaryView()
-                        log(onChosen
-                            ? "Participant grid (with the meeting controls) is on \u{201C}\(target.localizedName)\u{201D}."
-                            : "Participant grid is on \(target.localizedName) (the secondary display). Pick a specific one in Settings \u{2192} Layout if this isn't your reference monitor.")
-                        return
-                    }
-                }
-                try? await Task.sleep(nanoseconds: 1_000_000_000)
-            }
-            log("People view: the gallery window never appeared \u{2014} is dual-screen mode supported on this meeting?")
-        }
-    }
-
-    /// The single-display form of `placePeopleViewWindow`: the gallery opens
-    /// behind the workspace instead of onto a reference monitor.
-    ///
-    /// Same hunt as the placer above - the SDK creates the gallery a beat
-    /// after the primary window - but the only placement is "not in the way".
-    /// It is left at whatever size the SDK chose and simply sent to the back,
-    /// so the tiled workspace is untouched and the roster is one Mission
-    /// Control (or \u{2318}`) away.
-    private func placePeopleViewBehindWorkspace() {
-        peopleViewTask?.cancel()
-        peopleViewTask = Task {
-            for _ in 0..<30 {
-                if Task.isCancelled { return }
-                // The tile MUST be parked first. Before it is,
-                // builtInMeetingWindow is nil and "the first window that is
-                // not the tile" matches the ONLY meeting window - this loop
-                // then adopted it as the gallery and pushed it behind the
-                // workspace, the tile hunt excluded it by identity and found
-                // nothing, and \u{2325}\u{2318}Z reported "no speaker tile"
-                // for the whole session. Waiting costs one tick; the tile
-                // parks within two or three.
-                guard let tileWindow = builtInMeetingWindow else {
-                    try? await Task.sleep(nanoseconds: 1_000_000_000)
-                    continue
-                }
-                let gallery = meetingVideoWindowCandidates()
-                    .first { $0 !== tileWindow }
-                if let gallery {
-                    if gallery.styleMask.contains(.fullScreen) {
-                        // A window in a Space cannot be ordered back - eject
-                        // it and finish on a later tick.
-                        gallery.toggleFullScreen(nil)
-                    } else {
-                        gallery.level = .normal
-                        gallery.orderBack(nil)
-                        peopleViewWindow = gallery
-                        // Same call the dual-display path makes: without it
-                        // the second window shows another speaker view rather
-                        // than the roster this exists to provide.
-                        zoomChatClient.showGalleryOnPrimaryView()
-                        log("Participant grid is open behind the workspace \u{2014} no second display to give it. Mission Control or \u{2318}` brings it forward; connect a reference display to have it full-screen there.")
-                        return
-                    }
-                }
-                try? await Task.sleep(nanoseconds: 1_000_000_000)
-            }
-            log("People view: the gallery window never appeared \u{2014} is dual-screen mode supported on this meeting?")
-        }
-    }
-
-    /// The SDK's in-process windows - identified by title ("Zoom Meeting",
-    /// waiting-room text) or by their class living in Zoom's frameworks
-    /// (ZM/ZP prefixes) when title-less. Everything known-ours is
-    /// excluded first (the chat window's own title contains "Meeting").
-    /// The first one is parked top-right as the actual meeting window.
-    private func sdkMeetingWindows() -> [NSWindow] {
-        NSApp.windows.filter { window in
-            guard window.isVisible, !window.isSheet else { return false }
-            if ChatWindowController.owns(window) { return false } // "Meeting Chat" - ours
-            if PeoplePopOutController.owns(window) { return false } // the bar's People list - ours
-            if ParticipantGridWindowController.owns(window) { return false } // custom-UI gallery - ours
-            if BrowserWindowController.owns(window) { return false } // built-in browser - title is the page's
-            if MainWindow.matches(window) { return false } // main window
-            if window.title.localizedCaseInsensitiveContains("settings") { return false }
-
-            let className = String(describing: type(of: window))
-            let title = window.title
-            return title.localizedCaseInsensitiveContains("zoom")
-                || title.localizedCaseInsensitiveContains("meeting")
-                || title.localizedCaseInsensitiveContains("waiting")
-                || className.hasPrefix("ZM") || className.hasPrefix("ZP") || className.hasPrefix("zm")
-        }
-    }
-
-    /// The windows eligible to be the meeting TILE or the people-view
-    /// GALLERY: SDK meeting windows minus side panels the SDK pops open
-    /// alongside (its own chat window, etc. - anything "chat"-titled).
-    /// Sorted by windowNumber, i.e. creation order: the primary meeting
-    /// window is created at join, the dual-screen gallery after it - so
-    /// the primary sorts first, deterministically, instead of trusting
-    /// NSApp.windows' arbitrary order (which shuffled the tile, gallery
-    /// and chat into random slots when several appeared together).
-    private func meetingVideoWindowCandidates() -> [NSWindow] {
-        sdkMeetingWindows()
-            .filter { !$0.title.localizedCaseInsensitiveContains("chat") }
-            .filter(isPlausibleVideoWindow)
-            .sorted { $0.windowNumber < $1.windowNumber }
-    }
-
-    /// Whether an SDK window is plausibly one of Zoom's VIDEO windows, as
-    /// opposed to a panel it popped up.
-    ///
-    /// This gate exists because a panel must never be adopted as the speaker
-    /// tile or pinned to the people-view display. Reported live: clicking the
-    /// info "i" on the tile made the SDK recreate its windows, which killed
-    /// the tile's weak reference; the re-hunt then took the newest candidate -
-    /// the just-opened popup - parked it in the side column, and the follow
-    /// loop re-asserted that every two seconds. A stuck window that also stole
-    /// the quick-hide shortcut, since it had become `builtInMeetingWindow`.
-    ///
-    /// Geometry is the discriminator on purpose: it survives the window
-    /// recreation that destroys identity, the same reason the gallery is
-    /// excluded geometrically rather than by reference.
-    ///
-    /// The floor is a HEURISTIC, and an honest one - Zoom's panel sizes are
-    /// not documented and this machine could not open one to measure. It sits
-    /// under any real video window (the side-column tile measured 505x351)
-    /// while excluding small panels. `logRejectedVideoCandidate` records what
-    /// it turns away with title and size, so the first time this is wrong the
-    /// log says so and the rule can be tightened from a measurement instead of
-    /// another guess.
-    private func isPlausibleVideoWindow(_ window: NSWindow) -> Bool {
-        // Panels are never the meeting video window. Zoom's popups - the
-        // tile's info "i", tooltips, notification bubbles - are NSPanel
-        // subclasses (ZMTipPanel observed live), while the real video windows
-        // are ordinary NSWindows: they have to be, to support fullscreen.
-        // This is the class-level backstop for popups that dodge the title
-        // list below by having no title, and dodge the size floor by being
-        // big - the info popup is both.
-        if window is NSPanel {
-            logRejectedVideoCandidate(window, reason: "panels are never the meeting video window")
-            return false
-        }
-        let className = String(describing: type(of: window))
-        for marker in ["Tip", "Popover", "Toast", "Notification", "Tooltip"]
-        where className.contains(marker) {
-            logRejectedVideoCandidate(window, reason: "class \(className) is a popup, not a video window")
-            return false
-        }
-        let title = window.title
-        for panel in ["information", "participant", "invite", "security", "keypad", "poll", "breakout", "meeting info"]
-        where title.localizedCaseInsensitiveContains(panel) {
-            logRejectedVideoCandidate(window, reason: "title looks like the \(panel) panel")
-            return false
-        }
-        let size = window.frame.size
-        if size.width < 300 || size.height < 220 {
-            logRejectedVideoCandidate(window, reason: "too small for a video window")
-            return false
-        }
-        return true
-    }
-
-    /// Logged once per window, to a file rather than the status log: this runs
-    /// on every follow-loop tick, so the user-facing log would drown.
-    private func logRejectedVideoCandidate(_ window: NSWindow, reason: String) {
-        guard rejectedVideoCandidateNumbers.insert(window.windowNumber).inserted else { return }
-        let size = window.frame.size
-        let line = "\(Self.quitLogStamp.string(from: Date())) ignored-sdk-window"
-            + " title=\"\(window.title)\""
-            + " \(Int(size.width))x\(Int(size.height))"
-            + " class=\(String(describing: type(of: window)))"
-            + " reason=\(reason)\n"
-        let url = FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent("Library/Logs/Greenroom-quit.log")
-        if let handle = try? FileHandle(forWritingTo: url) {
-            handle.seekToEndOfFile()
-            try? handle.write(contentsOf: Data(line.utf8))
-            try? handle.close()
-        } else {
-            try? Data(line.utf8).write(to: url)
-        }
-    }
-
-    private var rejectedVideoCandidateNumbers = Set<Int>()
-
-    /// Windows already demoted, so each is logged (and re-shrunk) once.
-    private var demotedStrayWindowNumbers = Set<Int>()
-
-    /// Anything the SDK opens beyond the tracked tile + gallery must never
-    /// blanket the MAIN display: the screen capture films that display,
-    /// so a meeting-video window sitting there feeds the meeting back into
-    /// itself - the recursive "cascading" camera feed seen live. Strays in
-    /// native fullscreen are kicked out of it; strays covering most of the
-    /// main screen are miniaturized (recoverable from the Dock). Small
-    /// windows (dialogs like "Claim Host") are left alone.
-    private func demoteStrayMeetingWindows() {
-        guard let main = DisplayResolver.mainDisplayScreen() else { return }
-        // While the people-view placer is still hunting for the gallery,
-        // don't demote any tile/gallery candidate out from under it -
-        // only obvious side panels (e.g. the SDK's chat window).
-        let placerHunting = galleryWindowExists && peopleViewWindow == nil
-        let protected = placerHunting ? Set(meetingVideoWindowCandidates().map(\.windowNumber)) : []
-        let mainArea = main.frame.width * main.frame.height
-        for window in sdkMeetingWindows() {
-            if window === builtInMeetingWindow || window === peopleViewWindow { continue }
-            if protected.contains(window.windowNumber) { continue }
-            if window.styleMask.contains(.fullScreen) {
-                window.toggleFullScreen(nil)
-                continue
-            }
-            let overlap = window.frame.intersection(main.frame)
-            guard !overlap.isNull, mainArea > 0 else { continue }
-            let coverage = (overlap.width * overlap.height) / mainArea
-            if coverage > 0.6 {
-                window.miniaturize(nil)
-                if demotedStrayWindowNumbers.insert(window.windowNumber).inserted {
-                    let name = window.title.isEmpty ? "an extra meeting window" : "\u{201C}\(window.title)\u{201D}"
-                    log("Tucked \(name) into the Dock \u{2014} it was covering the shared screen.")
-                }
-            }
-        }
     }
 
     /// The z-order finale: Zoom reduced to just the parked meeting tile,

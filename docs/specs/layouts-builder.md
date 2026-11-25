@@ -130,10 +130,25 @@ different order; this table is the authority.
 | R42 | The card strip fades at a scrolling edge and keeps the chosen card in view | P15 | built (rendered off screen) |
 | R43 | Rounded camera by default (Raj San Mode: Cutout) | P15 | built |
 | R44 | Camera state names and canvas captions | P15 | built (rendered off screen) |
+| R45 | Bug list: a layout places windows once; only Snap re-places; never steals focus | bug list | built; rules tested, not driven live |
 
 **R38. Bug list: the solid backdrop follows light / dark.** (`SolidSheet`, App/UI/SolidSheet.swift)
 - R38.1 The solid sheet under a window the class sees re-resolves its dynamic colour (`windowBackgroundColor`)
   whenever its appearance changes, so a light/dark switch never leaves white text on a white sheet.
+
+**R45. Bug list: placed once, only Snap re-places, never steals focus.** (`LayoutPlacementRules`, App/Layout/LayoutPlacementRules.swift; owner, 2026-11-26: "it should only snap back into place when I tell it to ... It should not play tug of war and suddenly change window focus")
+- R45.1 A layout places windows at Start, when the owner switches layouts (Apply now, a Use-layout shortcut, the
+  Present menu) and when the owner asks (the Snap shortcut, the menu bar's Snap Windows Back). Those passes put
+  every window back, one the owner moved included.
+- R45.2 Nothing else moves a window that is up: not an edit to the running layout (kept for the next Snap Back),
+  not the Meeting coming back from the bar or the speaker-tile shortcut, not the one-second loop, not a
+  resolution, arrangement or Dock change. A window that appears later (an app that launched late, a view that
+  never opened) is placed once, when it first appears.
+- R45.3 The neighbour that grows into the Meeting's gap stays where the owner put it if they moved it.
+- R45.4 Placing never activates an app or takes keyboard focus. The one hand-off is the end of Start (the largest
+  app on the main display). Only a pass the owner asked for orders placed windows front.
+- R45.5 A display plugged in or pulled out keeps today's behaviour: everything is placed again and ordered front
+  (no app is activated).
 
 **R1. One rule for who sees what.** (Q1, Q14)
 - R1.1 `Visibility.everyoneSees` and `Visibility.onMyScreen` are the only place

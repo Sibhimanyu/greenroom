@@ -1621,8 +1621,11 @@ enum BrowserWindowController {
     /// `frame` (AppKit coordinates) is where the layout puts it; nil leaves the
     /// window wherever it is. Returns false when the window is in a full-screen
     /// Space, which ignores a frame, so it was left alone.
+    /// `focus` false (a layout placing it, R45) brings it up without activating
+    /// Greenroom or taking key: the end of Start hands focus over once
+    /// (`LayoutEngine.activateLargestApp`), nothing else does.
     @discardableResult
-    static func show(urlString: String, frame: NSRect?) -> Bool {
+    static func show(urlString: String, frame: NSRect?, focus: Bool = true) -> Bool {
         let model = self.model ?? BrowserModel()
         self.model = model
 
@@ -1681,9 +1684,14 @@ enum BrowserWindowController {
             }
         }
         // Unlike the chat, this IS the window the teacher works in - so it
-        // takes focus.
-        targetWindow.makeKeyAndOrderFront(nil)
-        NSApp.activate(ignoringOtherApps: true)
+        // takes focus, unless a layout is placing it (R45: placing never
+        // activates; Start's end hands focus over once).
+        if focus {
+            targetWindow.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
+        } else {
+            targetWindow.orderFront(nil)
+        }
         // Keyboard focus goes to the PAGE, as in every browser. Left alone,
         // AppKit hands a fresh window's first responder to its only text
         // field, and the address bar opened with its dropdown showing.
@@ -1777,6 +1785,7 @@ enum BrowserWindowController {
     /// `NSRunningApplication.activate()`, ours comes to the front.
     static func activate() {
         guard let window, window.isVisible else { return }
+        // A layout-placed window was only ordered front; the hand-off makes it key.
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
     }
@@ -1784,5 +1793,12 @@ enum BrowserWindowController {
     static func close() {
         SuggestionPanel.shared.hide()
         window?.close()
+    }
+
+    /// The window's frame (AppKit coordinates) while it is on screen, for the
+    /// layout's record of where it placed it (R45).
+    static var visibleFrame: NSRect? {
+        guard let window, window.isVisible else { return nil }
+        return window.frame
     }
 }

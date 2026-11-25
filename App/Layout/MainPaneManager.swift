@@ -26,9 +26,15 @@ enum MainPaneManager {
     /// line for the status log otherwise (an app that is not installed, a
     /// missing Accessibility grant, a full-screen window, an app that kept its
     /// own size - none of them stops the rest of the layout).
-    static func openWindow(bundleID: String, url urlString: String, frame: LayoutFrames) async -> String? {
+    ///
+    /// `activates` false is a layout placing it (R45): the app opens behind what
+    /// the owner is using and is never brought to the front. Only the owner's
+    /// own "Open This Layout's Apps" activates; Start hands focus over once, at
+    /// its end (`LayoutEngine.activateLargestApp`).
+    static func openWindow(bundleID: String, url urlString: String, frame: LayoutFrames,
+                           activates: Bool = false) async -> String? {
         if AppCatalog.isBuiltInBrowser(bundleID) {
-            let framed = BrowserWindowController.show(urlString: urlString, frame: frame.ns)
+            let framed = BrowserWindowController.show(urlString: urlString, frame: frame.ns, focus: activates)
             let typed = urlString.trimmingCharacters(in: .whitespacesAndNewlines)
             if !typed.isEmpty, AppCatalog.normalizedWebURL(from: urlString) == nil {
                 return "Opened \(AppCatalog.builtInBrowser.name) without a page \u{2014} \u{201C}\(urlString)\u{201D} is not a usable address. Retype it in Settings (\u{2318},)."
@@ -50,7 +56,8 @@ enum MainPaneManager {
         // ships Chrome's dictionary verbatim; non-Chromium browsers fall
         // through to the generic path below.
         if AppCatalog.isBrowser(bundleID) {
-            let scriptError = await ChromeWindowManager.openWindow(bundleID: bundleID, occupying: frame.ax, urlString: urlString)
+            let scriptError = await ChromeWindowManager.openWindow(bundleID: bundleID, occupying: frame.ax,
+                                                                   urlString: urlString, activate: activates)
             guard let scriptError else { return nil }
             if scriptError.contains("isn't authorized") {
                 return scriptError // fixable permission problem - surface, don't fall back
@@ -60,7 +67,7 @@ enum MainPaneManager {
         }
 
         let configuration = NSWorkspace.OpenConfiguration()
-        configuration.activates = true
+        configuration.activates = activates
         do {
             if AppCatalog.isBrowser(bundleID), let url = AppCatalog.normalizedWebURL(from: urlString) {
                 try await NSWorkspace.shared.open([url], withApplicationAt: appURL, configuration: configuration)

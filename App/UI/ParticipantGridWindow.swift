@@ -296,8 +296,20 @@ enum ParticipantGridWindowController {
     /// by join/leave callbacks because a brand-new participant's video element
     /// is not renderable the instant the callback fires, and a poll converges
     /// whether or not any single event was missed.
-    static func refresh(on screen: NSScreen, session: SessionInfo, form: Form) {
+    static func refresh(on screen: NSScreen, session: SessionInfo, form wanted: Form) {
         guard let client else { return }
+        // R45: a window that is up keeps its form (and so its frame) on the
+        // one-second pass. Only a placing pass the owner asked for (Start, a
+        // switch, Snap Back, a display coming or going) lets the layout's form
+        // through, which rebuilds the window when its size class changed.
+        let form: Form
+        if panel != nil, let current = currentForm,
+           !LayoutPlacementRules.shouldPlace(pendingPlacement ?? .tick, .placed) {
+            form = current
+        } else {
+            form = wanted
+        }
+        pendingPlacement = nil
 
         // Self is never in the grid. The corner preview carries it, and an NSView has one superview - having both would
         // mean two hosts fighting over one SDK render element.
@@ -381,6 +393,10 @@ enum ParticipantGridWindowController {
     }
 
     private static var currentForm: Form?
+    /// The placing pass that ran since the last refresh
+    /// (`CoordinatorController.placeCustomSurfaces`), if any. One the owner asked
+    /// for lets the next refresh take the layout's form. Cleared by that refresh.
+    static var pendingPlacement: PlacementTrigger?
     /// The last inputs to `refresh`, so a control can redraw the panel the
     /// instant it acts instead of waiting for the next poll tick.
     private static var lastScreen: NSScreen?
@@ -403,7 +419,10 @@ enum ParticipantGridWindowController {
             .flatMap { id in NSScreen.screens.first { DisplayResolver.displayID(of: $0) == id } }
             ?? DisplayResolver.mainDisplayScreen()
         guard let screen else { return }
+        // A redraw, not a placing pass: a pending layout form waits for the loop.
+        let pending = pendingPlacement
         refresh(on: screen, session: lastSession, form: form)
+        pendingPlacement = pending
     }
 
     static var isOpen: Bool { panel != nil }

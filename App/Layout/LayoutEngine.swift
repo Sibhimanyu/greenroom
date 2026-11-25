@@ -3,10 +3,10 @@
 //  Greenroom
 //
 //  Applies a LayoutTemplate: the one place that knows how a piece (Meeting,
-//  Chat, an App) gets onto a screen. Start, Snap Back (\u{2325}\u{2318}S), a display
-//  plugged in or pulled out, and a layout edited mid-class all come through
-//  here, so there is exactly one set of rules (.context/layout-creator-plan.md
-//  section 3).
+//  Chat, an App) gets onto a screen. Start, Snap Back, Apply now and a display
+//  plugged in or pulled out all come through here, so there is exactly one set
+//  of rules (.context/layout-creator-plan.md section 3). A layout edited
+//  mid-meeting no longer re-tiles by itself (R45): Snap Back places it.
 //
 //  The arithmetic - which variant, frames in both coordinate spaces, who grows
 //  into the gap when the Meeting hides, how a neighbour fits around a window
@@ -15,6 +15,12 @@
 //
 //  Nothing is cached. Every call resolves the template against the displays as
 //  they are at that moment.
+//
+//  When a window may move at all is LayoutPlacementRules' (R45): placed once,
+//  re-placed only by Start, a layout switch, Snap Back or a display coming or
+//  going; a window the owner moved stays put; placing never activates an app.
+//  The engine keeps a record of the frame it last put each piece at
+//  (`placedFrames`) so it can tell a window the owner moved from one it placed.
 //
 import AppKit
 
@@ -30,6 +36,46 @@ final class LayoutEngine {
     init(chat: ZoomChatBridge, log: @escaping (String) -> Void) {
         self.chat = chat
         self.log = log
+    }
+
+    // MARK: Where each piece was put (R45)
+
+    /// The frame each piece's window had right after Greenroom last placed it,
+    /// read back from the window (an app may clamp what it was asked for). Apps
+    /// in Accessibility coordinates, Greenroom's own windows in AppKit ones; each
+    /// piece is always read the same way (`currentFrame`).
+    private var placedFrames: [UUID: CGRect] = [:]
+
+    /// The piece's window frame now, or nil when there is none to read (not
+    /// running, no Accessibility grant, closed).
+    private func currentFrame(_ piece: LayoutPiece) -> CGRect? {
+        switch piece.kind {
+        case .chat:
+            guard ChatWindowController.isOpen else { return nil }
+            return ChatWindowController.currentWindow?.frame
+        case .app(let app):
+            if AppCatalog.isBuiltInBrowser(app.bundleID) { return BrowserWindowController.visibleFrame }
+            guard AppWindowManager.hasAccessibilityPermission,
+                  let window = AppWindowManager.frontWindow(ofAppWithBundleID: app.bundleID) else { return nil }
+            return AppWindowManager.frame(of: window)
+        case .meeting, .view, .roomScreen:
+            return nil
+        }
+    }
+
+    private func pieceName(_ piece: LayoutPiece) -> String {
+        if case .app(let app) = piece.kind { return AppCatalog.displayName(forBundleID: app.bundleID) ?? app.bundleID }
+        return "The chat"
+    }
+
+    private func recordPlacement(_ piece: LayoutPiece) {
+        placedFrames[piece.id] = currentFrame(piece)
+    }
+
+    /// Where this piece's window stands: never placed, still placed, or moved by hand.
+    private func placementState(_ piece: LayoutPiece) -> PlacedWindowState {
+        let current = currentFrame(piece)
+        return LayoutPlacementRules.state(windowExists: current != nil, current: current, placed: placedFrames[piece.id])
     }
 
     // MARK: Resolving
@@ -134,7 +180,10 @@ final class LayoutEngine {
 
     /// Start: one task per App piece that opens at start. `all` is the manual
     /// "open the layout's apps" - every piece, whatever its Open at Start says.
-    func openApps(_ template: LayoutTemplate, hidden: Bool = false, all: Bool = false) {
+    /// Each app is placed once, when its window first appears (however late), and
+    /// is not activated (R45) unless `activates` (the owner's own "Open This
+    /// Layout's Apps"); Start hands focus over once, at its end.
+    func openApps(_ template: LayoutTemplate, hidden: Bool = false, all: Bool = false, activates: Bool = false) {
         let r = resolve(template, logNotes: true)
         let frames = LayoutResolver.frames(of: r, meetingHidden: hidden)
         for placed in r.apps {
@@ -144,9 +193,11 @@ final class LayoutEngine {
             let minimised = Visibility.opensMinimised(piece: placed.piece)
             log("Opening \(name)\u{2026}")
             Task {
-                if let line = await MainPaneManager.openWindow(bundleID: app.bundleID, url: app.url, frame: frame) {
+                if let line = await MainPaneManager.openWindow(bundleID: app.bundleID, url: app.url, frame: frame,
+                                                               activates: activates) {
                     log(line)
                 }
+                recordPlacement(placed.piece)
                 // The eye badge off: placed, then out of the way.
                 if minimised { await MainPaneManager.minimiseFrontWindow(bundleID: app.bundleID) }
             }
@@ -163,6 +214,7 @@ final class LayoutEngine {
             if let line = await MainPaneManager.repositionFrontWindow(bundleID: app.bundleID, frame: frame) {
                 log(line)
             }
+            recordPlacement(placed.piece)
         }
     }
 
@@ -178,6 +230,7 @@ final class LayoutEngine {
         }
         if ChatWindowController.isOpen, let frame = chatFrame(template, meetingHidden: meetingHidden) {
             ChatWindowController.setFrame(frame)
+            if let chat = resolve(template).chat { recordPlacement(chat.piece) }
         }
     }
 
@@ -202,9 +255,11 @@ final class LayoutEngine {
     }
 
     /// The end of a start: the largest App piece on the main display is what the
-    /// teacher works in, so it takes focus.
-    func activateLargestApp(_ template: LayoutTemplate) {
-        guard let largest = LayoutResolver.largestAppOnMain(resolve(template)),
+    /// teacher works in, so it takes focus. The one focus hand-off a layout makes
+    /// (R45): no other trigger gets here.
+    func activateLargestApp(_ template: LayoutTemplate, after trigger: PlacementTrigger) {
+        guard LayoutPlacementRules.handsFocusToMainApp(trigger),
+              let largest = LayoutResolver.largestAppOnMain(resolve(template)),
               let bundleID = largest.piece.kind.app?.bundleID,
               !Visibility.opensMinimised(piece: largest.piece) else { return }
         if AppCatalog.isBuiltInBrowser(bundleID) {
@@ -221,15 +276,29 @@ final class LayoutEngine {
     /// teacher closed is not brought back. The Meeting piece that fills a display
     /// needs no placing here: the participants window opens on that display by
     /// itself.
-    func placeMeetingAndChat(_ template: LayoutTemplate, hidden: Bool) {
-        let r = resolve(template, logNotes: true)
+    ///
+    /// `trigger` (R45): Start, a switch, Snap Back and a display coming or going
+    /// place everything; the Meeting coming back (`.meetingShown`) only opens a
+    /// view that never opened, and moves or raises nothing already up.
+    func placeMeetingAndChat(_ template: LayoutTemplate, hidden: Bool, trigger: PlacementTrigger) {
+        let r = resolve(template, logNotes: LayoutPlacementRules.isExplicit(trigger))
         LayoutShareChoice.record(r)      // "Show to everyone" per piece, before the windows open
         let frames = LayoutResolver.frames(of: r, meetingHidden: hidden)
-        if let piece = r.chat, let frame = frames[piece.piece.id]?.ns {
-            if ChatWindowController.isOpen { ChatWindowController.setFrame(frame) }
+        if let piece = r.chat, let frame = frames[piece.piece.id]?.ns, ChatWindowController.isOpen,
+           LayoutPlacementRules.shouldPlace(trigger, placementState(piece.piece)) {
+            ChatWindowController.setFrame(frame)
+            recordPlacement(piece.piece)
         }
-        placeViews(r, frames: frames, hidden: hidden)
-        placeRoomScreen(r, frames: frames, layoutHidden: hidden)
+        placeViews(r, frames: frames, hidden: hidden, trigger: trigger)
+        let roomState: PlacedWindowState = RoomScreen.isOpen ? .placed : .neverPlaced
+        if LayoutPlacementRules.shouldPlace(trigger, roomState) {
+            placeRoomScreen(r, frames: frames, layoutHidden: hidden)
+        }
+        // The Meeting window: a placing pass the owner asked for puts it back. Any
+        // other pass leaves it; one that is not there yet is made at its rectangle
+        // by the follow loop (ParticipantGridWindowController.refresh).
+        let meetingState: PlacedWindowState = ParticipantGridWindowController.meetingWindowIsOpen ? .placed : .neverPlaced
+        guard LayoutPlacementRules.shouldPlace(trigger, meetingState) else { return }
         guard let meeting = r.meeting, !meeting.fillsDisplay else { return }
         if hidden {
             ParticipantGridWindowController.hide()
@@ -242,7 +311,7 @@ final class LayoutEngine {
 
     /// The view pieces: each opens at its rectangle, or is re-placed there. Hidden
     /// (\u{2325}\u{2318}Z, "Starts hidden"), they stay away, together with the Meeting window.
-    private func placeViews(_ r: Resolution, frames: [UUID: LayoutFrames], hidden: Bool) {
+    private func placeViews(_ r: Resolution, frames: [UUID: LayoutFrames], hidden: Bool, trigger: PlacementTrigger) {
         guard MeetingViewPieces.enabled else { return }
         MeetingViewWindows.setHiddenTogether(hidden)
         for placed in r.views {
@@ -251,7 +320,11 @@ final class LayoutEngine {
             if view == .selfView, case .view(_, let startsHidden) = placed.piece.kind {
                 away = SelfViewVisibility.hidden(startsHidden: startsHidden, hiddenTogether: hidden)
             }
-            MeetingViewWindows.place(view, frame: frame, hidden: away)
+            // Hiding is not placing: a view that should be away goes, whatever the pass.
+            if away { MeetingViewWindows.hide(view); continue }
+            let state: PlacedWindowState = MeetingViewWindows.isOpen(view) ? .placed : .neverPlaced
+            guard LayoutPlacementRules.shouldPlace(trigger, state) else { continue }
+            MeetingViewWindows.place(view, frame: frame, hidden: false)
         }
     }
 
@@ -267,6 +340,7 @@ final class LayoutEngine {
     func openChat(_ template: LayoutTemplate, meetingHidden: Bool) {
         guard let frame = chatFrame(template, meetingHidden: meetingHidden) else { return }
         ChatWindowController.show(chat: chat, frame: frame)
+        if let piece = resolve(template).chat { recordPlacement(piece.piece) }
     }
 
     /// The chat button on the meeting window: the layout's chat if there is one,
@@ -276,6 +350,7 @@ final class LayoutEngine {
             ChatWindowController.reveal()
         } else {
             ChatWindowController.show(chat: chat, frame: template.flatMap { chatFrame($0, meetingHidden: hidden) })
+            if let piece = template.flatMap({ resolve($0).chat }) { recordPlacement(piece.piece) }
         }
     }
 
@@ -283,7 +358,8 @@ final class LayoutEngine {
 
     /// The neighbour that joins the Meeting into a rectangle grows into its gap
     /// when it hides, and shrinks back when it returns. The Meeting's own window
-    /// is the caller's.
+    /// is the caller's. A neighbour the owner moved or resized is left where it
+    /// is (R45); Snap Back puts it back.
     func moveNeighbour(_ template: LayoutTemplate, meetingHidden: Bool) {
         let r = resolve(template)
         let shown = LayoutResolver.frames(of: r, meetingHidden: false)
@@ -305,14 +381,22 @@ final class LayoutEngine {
     // MARK: Moving one piece
 
     private func move(_ placed: Placed, to frames: LayoutFrames) {
+        guard LayoutPlacementRules.shouldPlace(.neighbourMakesRoom, placementState(placed.piece)) else {
+            log("\(pieceName(placed.piece)) stays where you put it. Snap Windows Back puts it back in the layout.")
+            return
+        }
         switch placed.piece.kind {
         case .chat:
-            if ChatWindowController.isOpen { ChatWindowController.setFrame(frames.ns) }
+            if ChatWindowController.isOpen {
+                ChatWindowController.setFrame(frames.ns)
+                recordPlacement(placed.piece)
+            }
         case .app(let app):
             Task {
                 if let line = await MainPaneManager.repositionFrontWindow(bundleID: app.bundleID, frame: frames) {
                     log(line)
                 }
+                recordPlacement(placed.piece)
             }
         case .meeting, .view, .roomScreen:
             break

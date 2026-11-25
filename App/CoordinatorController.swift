@@ -774,7 +774,9 @@ final class CoordinatorController: ObservableObject {
         } else if meeting != nil {
             openMeetingWindow()
         } else {
-            placeCustomSurfaces()
+            // The views come back where they were (setHiddenTogether above); one
+            // that never opened opens at its rectangle (R45).
+            placeCustomSurfaces(trigger: .meetingShown)
         }
         layoutEngine.moveNeighbour(template, meetingHidden: hide)
         log(hide ? "Meeting hidden \u{2014} \(ShortcutStore.phrase(.toggleMeeting)) shows it."
@@ -1079,11 +1081,12 @@ final class CoordinatorController: ObservableObject {
             adoptLayoutPieces(LayoutPieceAdoption.forLibraryEdit(old: oldValue, new: layoutLibrary,
                                                                  locked: layoutChoiceLocked, running: sessionTemplate))
             // R32.2: the shared display is not live-edited; only Apply now changes it (`adoptingEdit`).
+            // R45: the edit is kept for the next Snap Back; no window moves now.
             if let running = sessionTemplate, let edited = layoutLibrary.template(id: running.id) {
                 let adopted = running.adoptingEdit(edited)
                 if adopted != running {
                     sessionTemplate = adopted
-                    scheduleLiveLayoutApply()
+                    noteLiveLayoutEdit()
                 }
             }
             refreshCaptureDisplay()
@@ -1110,21 +1113,19 @@ final class CoordinatorController: ObservableObject {
 
     private lazy var layoutEngine = LayoutEngine(chat: zoomChatBridge, log: { [weak self] in self?.log($0) })
 
-    private var layoutApplyTask: Task<Void, Never>?
+    /// The running layout has an edit no Snap Back has placed yet. Only for the log.
+    private var liveEditWaitingForSnap = false
 
-    /// A layout edit made mid-class (dragging a piece in Settings) applies to
-    /// the LIVE windows by itself - no Snap Windows Back needed. Debounced: a drag
-    /// emits dozens of changes a second, and re-tiling real windows
-    /// (AppleScript/AX calls) at that rate would thrash; 400ms after the last
-    /// change, everything re-tiles once. Fires only for the session's own layout.
-    private func scheduleLiveLayoutApply() {
-        guard sessionArranges, sessionTemplate != nil, phase.isInMeeting else { return }
-        layoutApplyTask?.cancel()
-        layoutApplyTask = Task {
-            try? await Task.sleep(nanoseconds: 400_000_000)
-            if Task.isCancelled { return }
-            reapplyLayout(userInitiated: false, openApps: false)
-        }
+    /// A layout edit made mid-meeting (dragging a piece in Settings) moves no
+    /// window (R45, owner 2026-11-26: "it should only snap back into place when I
+    /// tell it to"). It used to re-tile everything 400ms after the drag, which
+    /// raised the meeting windows over Settings and pulled back windows the owner
+    /// had moved. The edit is in `sessionTemplate`; Snap Back places it. Said once
+    /// per run of edits.
+    private func noteLiveLayoutEdit() {
+        guard sessionArranges, phase.isInMeeting, !liveEditWaitingForSnap else { return }
+        liveEditWaitingForSnap = true
+        log("Layout edited. Your windows stay where they are; \(ShortcutStore.phrase(.snapBack)) or Snap Windows Back places the new layout.")
     }
 
     /// Settings' "Apply now": make this layout the one the live class runs and
@@ -1139,7 +1140,7 @@ final class CoordinatorController: ObservableObject {
         resetPresenceBubbleToLayoutDefault()
         refreshCaptureDisplay()
         log("Applying \u{201C}\(template.name)\u{201D} now\u{2026}")
-        reapplyLayout(userInitiated: false, openApps: true)
+        reapplyLayout(userInitiated: false, openApps: true, trigger: .switchedLayout)
     }
 
     /// A "Use layout" shortcut (Settings -> Shortcuts). While an arranged class is
@@ -2013,7 +2014,7 @@ final class CoordinatorController: ObservableObject {
                 // read the live arrangement, so this is a no-op for those.
                 if displayChangedDuringStart {
                     displayChangedDuringStart = false
-                    if sessionArranges { snapWindowsBack(userInitiated: false) }
+                    if sessionArranges { snapWindowsBack(userInitiated: false, trigger: .displaysConnectedOrDisconnected) }
                 }
             } catch is CancellationError {
                 // Stop abandoned the start on purpose. It closes the panel
@@ -3486,7 +3487,8 @@ final class CoordinatorController: ObservableObject {
             log("No layout is chosen, so there are no apps to open. Pick one in Settings (\u{2318},) \u{2192} Layout.")
             return
         }
-        layoutEngine.openApps(template, hidden: speakerTileQuickHidden, all: true)
+        // The owner's own open: these apps come to the front, as from the Dock.
+        layoutEngine.openApps(template, hidden: speakerTileQuickHidden, all: true, activates: true)
     }
 
     /// The meeting window's Chat button when no panel carries the chat: the
@@ -3548,7 +3550,7 @@ final class CoordinatorController: ObservableObject {
         copyInviteWhenReady()
 
         if sessionArranges {
-            presentMeetingSurfaces()
+            presentMeetingSurfaces(trigger: .start)
             finalizeLayout()
         }
     }
@@ -3611,7 +3613,7 @@ final class CoordinatorController: ObservableObject {
         copyInviteWhenReady()
 
         if sessionArranges {
-            presentMeetingSurfaces()
+            presentMeetingSurfaces(trigger: .start)
             finalizeLayout()
         }
     }
@@ -3619,10 +3621,10 @@ final class CoordinatorController: ObservableObject {
 
     /// Puts Greenroom's meeting window and the chat where the session wants them.
     /// The SDK renders into views we own, so there are no SDK windows to find.
-    private func presentMeetingSurfaces() {
+    private func presentMeetingSurfaces(trigger: PlacementTrigger) {
         ensureMeetingControls()
         startCustomUIGridFollow()
-        placeCustomSurfaces()
+        placeCustomSurfaces(trigger: trigger)
     }
 
     /// Puts Greenroom's meeting window and the chat where the layout wants them
@@ -3630,14 +3632,20 @@ final class CoordinatorController: ObservableObject {
     /// that rectangle; one that fills a display is the full panel there; a layout
     /// without a Meeting piece leaves the window free. Hidden (\u{2325}\u{2318}Z or
     /// "Starts hidden"), the neighbour that joins it has grown into the gap.
-    private func placeCustomSurfaces() {
+    ///
+    /// `trigger` (R45): Start, a switch, Snap Back and a display coming or going
+    /// put every window back; the Meeting coming back (`.meetingShown`) moves
+    /// nothing already up and only opens a view that never opened.
+    private func placeCustomSurfaces(trigger: PlacementTrigger) {
         guard sessionArranges, let template = sessionTemplate else { return }
         if !layoutEngine.hasPlacedSurface(template) { speakerTileQuickHidden = false }
         // A Meeting in a rectangle that the layout hides (or shows) is the speaker tile's hide.
         if layoutEngine.placedMeeting(template) != nil {
             MeetingSurfaceOwner.send(speakerTileQuickHidden ? .tileHidden : .tileShown)
         }
-        layoutEngine.placeMeetingAndChat(template, hidden: speakerTileQuickHidden)
+        // The meeting window's loop takes the layout's form only after a pass like this.
+        if LayoutPlacementRules.isExplicit(trigger) { ParticipantGridWindowController.pendingPlacement = trigger }
+        layoutEngine.placeMeetingAndChat(template, hidden: speakerTileQuickHidden, trigger: trigger)
     }
 
     /// Where Greenroom's meeting window goes right now, and in which form.
@@ -3872,7 +3880,9 @@ final class CoordinatorController: ObservableObject {
         giveRoomBackToMeeting()
         startCustomUIGridFollow()
         if alreadyOpen { ParticipantGridWindowController.show() }
-        placeCustomSurfaces()
+        // R45: it comes back where it was; nothing else moves or comes forward.
+        // (This used to re-place the Chat, every view and the window itself.)
+        placeCustomSurfaces(trigger: .meetingShown)
         MeetingSurfaceOwner.syncWindowFacts()
     }
 
@@ -4295,7 +4305,7 @@ final class CoordinatorController: ObservableObject {
     /// `userInitiated: false` is the same re-tiling after a display change or a
     /// layout edit: it leaves the person's \u{2325}\u{2318}Z choice and the usage
     /// count alone.
-    func snapWindowsBack(userInitiated: Bool = true) {
+    func snapWindowsBack(userInitiated: Bool = true, trigger: PlacementTrigger = .snapBack) {
         guard layoutToolsAvailable else {
             log("Snap Windows Back skipped \u{2014} this session arranges no windows.")
             return
@@ -4304,14 +4314,19 @@ final class CoordinatorController: ObservableObject {
             log("Snap Windows Back skipped \u{2014} the layout moves no windows.")
             return
         }
-        reapplyLayout(userInitiated: userInitiated, openApps: false)
+        reapplyLayout(userInitiated: userInitiated, openApps: false, trigger: trigger)
     }
 
     /// Re-places everything from the session's layout (or, outside a class, the
     /// one chosen in Settings), re-resolved against the displays as they are NOW.
     /// `openApps` also opens the apps that open at start (Apply now).
-    private func reapplyLayout(userInitiated: Bool, openApps: Bool) {
+    ///
+    /// Only the passes the owner asked for come here (R45): Snap Back, Apply now
+    /// and a display plugged in or pulled out. `LayoutPlacementRules` says so.
+    private func reapplyLayout(userInitiated: Bool, openApps: Bool, trigger: PlacementTrigger) {
+        guard LayoutPlacementRules.isExplicit(trigger) else { return }
         guard let template = sessionTemplate ?? layoutLibrary.active, template.movesWindows else { return }
+        liveEditWaitingForSnap = false
         if userInitiated {
             Analytics.feature("snap_back")
             // Back to the layout's own starting state: hidden if the Meeting
@@ -4335,7 +4350,7 @@ final class CoordinatorController: ObservableObject {
         // The meeting's own windows exist only while a class does.
         guard phase.isInMeeting else { return }
         // Our own windows: re-place them.
-        presentMeetingSurfaces()
+        presentMeetingSurfaces(trigger: trigger)
     }
 
     // MARK: Displays coming and going
@@ -4398,8 +4413,17 @@ final class CoordinatorController: ObservableObject {
 
         if isRunning {
             displayChangedDuringStart = true
-        } else if stageLive, zoomChatClient.isJoined, sessionArranges {
-            snapWindowsBack(userInitiated: false)
+            return
+        }
+        guard stageLive, zoomChatClient.isJoined, sessionArranges else { return }
+        // R45: a display plugged in or pulled out places everything again, as
+        // before. The same displays with a new resolution, arrangement or Dock
+        // move nothing (stranded windows were rescued above); Snap Back does.
+        let trigger: PlacementTrigger = change.displaySetChanged ? .displaysConnectedOrDisconnected : .displaySettingsChanged
+        if LayoutPlacementRules.isExplicit(trigger) {
+            snapWindowsBack(userInitiated: false, trigger: trigger)
+        } else {
+            log("Your windows stay where they are. \(ShortcutStore.phrase(.snapBack)) or Snap Windows Back places the layout again.")
         }
     }
 
@@ -4735,7 +4759,7 @@ final class CoordinatorController: ObservableObject {
             window.orderBack(nil)
         }
         // The largest App piece on the main display is what the teacher works in.
-        if let template = sessionTemplate { layoutEngine.activateLargestApp(template) }
+        if let template = sessionTemplate { layoutEngine.activateLargestApp(template, after: .start) }
     }
 
     private func runPipeline() async throws {

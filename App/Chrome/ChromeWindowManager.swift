@@ -33,7 +33,10 @@ enum ChromeWindowManager {
     /// own startup window to appear and take that one over instead.
     @discardableResult
     /// `rect` is in top-left (AX / AppleScript) coordinates.
-    static func openWindow(bundleID: String = chromeBundleID, occupying rect: CGRect, urlString: String = "") async -> String? {
+    /// `activate` false (a layout placing it, R45): the window is made, framed and
+    /// raised inside the browser, but the browser is not brought to the front.
+    static func openWindow(bundleID: String = chromeBundleID, occupying rect: CGRect, urlString: String = "",
+                           activate: Bool = true) async -> String? {
         let appName = AppCatalog.displayName(forBundleID: bundleID) ?? bundleID
         let wasRunning = !NSRunningApplication.runningApplications(withBundleIdentifier: bundleID).isEmpty
         let boundsList = "{\(Int(rect.minX)), \(Int(rect.minY)), \(Int(rect.maxX)), \(Int(rect.maxY))}"
@@ -70,7 +73,7 @@ enum ChromeWindowManager {
             set bounds of targetWindow to \(boundsList)
             \(urlLine)
             set index of targetWindow to 1
-            activate
+            \(activate ? "activate" : "")
             return id of targetWindow
         end tell
         """

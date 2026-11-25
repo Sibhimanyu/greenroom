@@ -36,7 +36,7 @@ Status: built (sink and rule); the coordinator line is pending.
 The sink's queue runs at `.userInteractive` so the downscale is not starved behind the compositor and Vision.
 
 Acceptance: `StagePreviewSink` queue QoS is `.userInteractive`.
-Status: open.
+Status: built.
 
 ### R3. Cheaper open mask
 

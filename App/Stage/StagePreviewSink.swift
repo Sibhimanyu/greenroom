@@ -35,7 +35,7 @@ final class StagePreviewSink: StageFrameSink {
     private var live = false
     private let fixedRate: Double?
     private let width: CGFloat
-    private let queue = DispatchQueue(label: "greenroom.stage.preview", qos: .utility)
+    private let queue = DispatchQueue(label: "greenroom.stage.preview", qos: .userInteractive)
     private let context = CIContext(options: [.cacheIntermediates: false])
     private let lock = NSLock()
     private var lastTaken: UInt64 = 0

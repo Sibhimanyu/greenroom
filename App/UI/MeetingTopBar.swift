@@ -199,13 +199,14 @@ final class MeetingTopBarView: NSView {
         shield.frame = NSRect(x: left, y: (h - 26) / 2, width: 30, height: 26)
 
         viewButton.sizeToFit()
-        let viewWidth = viewButton.frame.width + 14
-        viewButton.frame = NSRect(x: bounds.width - 10 - viewWidth, y: (h - 26) / 2, width: viewWidth, height: 26)
-        var rightEdge = viewButton.frame.minX - 4
         shrinkButton.sizeToFit()
-        let shrinkWidth = shrinkButton.frame.width + 14
-        shrinkButton.frame = NSRect(x: rightEdge - shrinkWidth, y: (h - 26) / 2, width: shrinkWidth, height: 26)
-        if !shrinkButton.isHidden { rightEdge = shrinkButton.frame.minX - 4 }
+        let right = MeetingTopBarLayout.right(width: bounds.width, height: h,
+                                              viewWidth: viewButton.frame.width, shrinkWidth: shrinkButton.frame.width,
+                                              shrinkShown: !shrinkButton.isHidden,
+                                              trailingReserve: WindowShareController.trailingTitleReserve(in: window))
+        viewButton.frame = right.view
+        shrinkButton.frame = right.shrink
+        let rightEdge = right.rightEdge
 
         var leftEdge = shield.frame.maxX + 12
         recordingDot.frame = NSRect(x: leftEdge, y: (h - 8) / 2, width: 8, height: 8)

@@ -61,7 +61,7 @@ Read `DESIGN.md` before any visual change.
 - `GLOSSARY.md` holds the agreed words for layouts and visibility; use them in code and UI text.
 - `docs/adr/` records decisions that are hard to reverse; read it before reopening one.
 - `scripts/check.sh`: generate, Debug build and the full tests in one command; `scripts/run-debug.sh`: quit all Greenroom and open this worktree's Debug build.
-- `scripts/render/`: off-screen PNG renders of Layouts, Home panels and light/dark, for UI review without launching the app (`scripts/render/layouts.sh [outdir]`, `home-panels.sh`, `appearance.sh`).
+- `scripts/render/`: off-screen PNG renders of Layouts, Home panels and light/dark, for UI review without launching the app (`scripts/render/layouts.sh [outdir]`, `home-panels.sh`, `appearance.sh`, `meeting-topbar.sh`).
 - Building alongside another agent: use `scripts/check.sh` (its own derived-data path under `.build/`), never the shared default DerivedData.
 - `Greenroom.xcodeproj` is generated: edit `project.yml` and run `xcodegen generate`.
   `Vendor/ZoomSDK` is gitignored; worktrees need it symlinked in.

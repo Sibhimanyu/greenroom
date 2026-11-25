@@ -98,6 +98,20 @@ final class WindowShareController: NSObject {
         controller.layoutAttribute = .trailing
         window.addTitlebarAccessoryViewController(controller)
         addButton(button, pointSize: 11, showsTitle: false)
+        // Content drawn under a see-through title bar (the Meeting window's top bar)
+        // lays its controls out again, left of the eye (trailingTitleReserve).
+        window.contentView?.needsLayout = true
+    }
+
+    /// How far from the right edge the title bar's trailing accessories (the eye,
+    /// a view window's picker) reach. A window whose own controls sit in the title
+    /// bar area (full-size content) ends them before this, so the eye has its own
+    /// place after them and never covers a button.
+    static func trailingTitleReserve(in window: NSWindow?) -> CGFloat {
+        guard let window else { return 0 }
+        return window.titlebarAccessoryViewControllers
+            .filter { $0.layoutAttribute == .trailing && !$0.isHidden }
+            .reduce(0) { $0 + $1.view.frame.width }
     }
 
     /// A switch someone else laid out (the view windows' title bar).

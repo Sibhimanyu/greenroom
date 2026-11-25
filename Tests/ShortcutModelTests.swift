@@ -117,7 +117,7 @@ final class ShortcutModelTests: XCTestCase {
                 XCTAssertNil(ReservedShortcuts.reason(for: d), "\(action) default \(d.glyphs) is refused")
             }
         }
-        XCTAssertEqual(seen.count, 11)
+        XCTAssertEqual(seen.count, 12, "eleven before, and Stop video's Control-Option-Command-V (R49)")
     }
 
     func testRecorderRules() {
@@ -196,7 +196,25 @@ final class ShortcutModelTests: XCTestCase {
         let groups = ShortcutCatalog.grouped(layouts: [])
         XCTAssertEqual(groups.map(\.group.title), ["Session", "Meeting", "Layout", "Greenroom"])
         XCTAssertEqual(groups[0].slots.count, 8)
-        XCTAssertEqual(groups[1].slots.count, 10 + MeetingView.allCases.count, "the ten meeting actions and one per view")
+        XCTAssertEqual(groups[1].slots.count, 11 + MeetingView.allCases.count, "the eleven meeting actions and one per view")
+    }
+
+    // R49: Stop or start video, rebindable, default Control-Option-Command-V (checked free 2026-11-26:
+    // no Greenroom default, no macOS symbolic hotkey, nothing in Safari, Chrome, Finder or Zoom; Zoom's
+    // own video key is Shift-Command-V, its minimal window Control-Command-V, Finder's Move Here Option-Command-V).
+    func testStopVideoShortcutIsControlOptionCommandV() {
+        let a = ShortcutAction.toggleVideoStopped
+        XCTAssertEqual(a.defaultCombo, .controlOptionCommand(kVK_ANSI_V))
+        XCTAssertEqual(ShortcutBindings().combo(for: .action(a)), .controlOptionCommand(kVK_ANSI_V))
+        XCTAssertEqual(a.group, .meeting)
+        XCTAssertEqual(a.scope, .global)
+        XCTAssertEqual(a.title, "Stop or start video")
+        XCTAssertFalse(a.detail.localizedCaseInsensitiveContains("class"))
+        XCTAssertEqual(a.symbol, VisibilitySymbol.videoStopped.name)
+        XCTAssertNil(ReservedShortcuts.reason(for: .controlOptionCommand(kVK_ANSI_V)))
+        let others = ShortcutAction.allCases.filter { $0 != a }.compactMap(\.defaultCombo)
+        XCTAssertFalse(others.contains(.controlOptionCommand(kVK_ANSI_V)), "no other default takes it")
+        XCTAssertNil(ShortcutAction.toggleCamera.defaultCombo, "the camera shortcut is unchanged: unbound")
     }
 
     // MARK: Shrink meeting to the Control bar

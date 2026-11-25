@@ -254,6 +254,8 @@ enum ShortcutAction: String, CaseIterable {
     case clip5 = "clip5"
     case toggleMic = "mic"
     case toggleCamera = "camera"
+    /// Stop video (R49): Zoom's own full video off, not a camera state.
+    case toggleVideoStopped = "stopVideo"
     case toggleChat = "chat"
     case toggleNotes = "notes"
     case showMeetingWindow = "meetingWindow"
@@ -286,7 +288,7 @@ enum ShortcutAction: String, CaseIterable {
         if meetingView != nil { return .meeting }
         switch self {
         case .startClass, .endSession, .toggleRecording, .togglePause, .toggleDrawing, .clip1, .clip2, .clip5: return .classGroup
-        case .toggleMic, .toggleCamera, .toggleChat, .toggleNotes, .showMeetingWindow,
+        case .toggleMic, .toggleCamera, .toggleVideoStopped, .toggleChat, .toggleNotes, .showMeetingWindow,
              .toggleMeetingBar, .shrinkMeeting, .shrinkToBar, .cycleMeetingView, .toggleMeeting: return .meeting
         case .snapBack: return .layout
         case .openGreenroom, .openSessions: return .greenroom
@@ -307,6 +309,7 @@ enum ShortcutAction: String, CaseIterable {
         case .clip5: return "Clip the last 5 minutes"
         case .toggleMic: return "Mute or unmute microphone"
         case .toggleCamera: return "Camera on or off"
+        case .toggleVideoStopped: return "Stop or start video"
         case .toggleChat: return "Show or hide chat"
         case .toggleNotes: return "Show or hide notes"
         case .showMeetingWindow: return "Show the meeting window"
@@ -335,6 +338,7 @@ enum ShortcutAction: String, CaseIterable {
         case .clip5: return "Saves a clip of what just happened, the last 5 minutes."
         case .toggleMic: return "Your microphone in the meeting."
         case .toggleCamera: return "Your camera in the meeting."
+        case .toggleVideoStopped: return "Zoom\u{2019}s own video off: everyone sees your name, nothing is sent. Again to start it."
         case .toggleChat: return "Opens or closes the meeting chat."
         case .toggleNotes: return "The notes bar, for this session only."
         case .showMeetingWindow: return "Brings the meeting back without moving your slides."
@@ -361,6 +365,7 @@ enum ShortcutAction: String, CaseIterable {
         case .clip1, .clip2, .clip5: return "scissors"
         case .toggleMic: return "mic.fill"
         case .toggleCamera: return VisibilitySymbol.cameraOn.name
+        case .toggleVideoStopped: return VisibilitySymbol.videoStopped.name
         case .toggleChat: return "bubble.left.fill"
         case .toggleNotes: return "note.text"
         case .showMeetingWindow: return "macwindow"
@@ -411,6 +416,9 @@ enum ShortcutAction: String, CaseIterable {
         case .clip1: return .controlOptionCommand(kVK_ANSI_1)
         case .clip2: return .controlOptionCommand(kVK_ANSI_2)
         case .clip5: return .controlOptionCommand(kVK_ANSI_5)
+        // Stop video (R49, owner 2026-11-26). Checked free: no other default, no macOS hotkey; Zoom's own
+        // video key is Shift-Command-V, its minimal window Control-Command-V, Finder's Move Here Option-Command-V.
+        case .toggleVideoStopped: return .controlOptionCommand(kVK_ANSI_V)
         case .toggleMic, .toggleCamera, .toggleChat, .toggleNotes, .showMeetingWindow,
              .toggleMeetingBar, .shrinkMeeting, .cycleMeetingView, .openGreenroom, .openSessions: return nil
         default: return nil

@@ -53,6 +53,11 @@ struct MenuBarState: Equatable {
     /// The Cues line, already worded (CuesStatus), so this file needs no Cues code.
     var cuesStatusText = ""
 
+    /// A Zoom meeting is live (not a record-only session): Stop video applies (R49).
+    var inMeeting = false
+    /// Zoom's own video is off (Stop video), as Zoom last said.
+    var videoStopped = false
+
     /// A session of any kind is under way.
     var inSession: Bool { isLive || isStarting }
 }
@@ -82,6 +87,8 @@ enum MenuBarAction: Equatable {
     case showGreenroom, openGreenroomWindow, checkForUpdates, howItWorks, quit
     case toggleRecording, togglePause
     case toggleNotes, snapBack, toggleSpeakerTile, toggleDrawing
+    /// Stop video / Start video (R49).
+    case toggleStopVideo
     case endSession
     /// The live header: brings the meeting (or the control bar) forward.
     case showMeeting
@@ -158,6 +165,12 @@ enum MenuBarModel {
             if out.last?.isSeparator == false { out.append(.separator) }
 
             var tools: [MenuBarItem] = []
+            // Stop video (R49): only in a live Zoom meeting; the label follows Zoom's status.
+            if state.isLive && state.inMeeting {
+                tools.append(action(.toggleStopVideo, StopVideoRules.menuBarTitle(videoStopped: state.videoStopped),
+                                    state.videoStopped ? VisibilitySymbol.cameraOn.name : VisibilitySymbol.videoStopped.name,
+                                    key(.toggleVideoStopped)))
+            }
             tools.append(action(.toggleNotes, state.notesShown ? "Hide Notes" : "Show Notes",
                                 "note.text", key(.toggleNotes)))
             if state.layoutToolsAvailable {

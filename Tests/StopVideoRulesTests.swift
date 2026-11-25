@@ -123,6 +123,27 @@ final class StopVideoRulesTests: XCTestCase {
         }
     }
 
+    // R49: the shortcut does what the menu row does; its toast says the outcome, quietly outside a meeting.
+    func testTheShortcutsToast() {
+        typealias T = StopVideoRules.ShortcutToast
+        XCTAssertEqual(R.shortcutToast(.asked(.stop, accepted: true)), T(title: "Video stopped", style: .done))
+        XCTAssertEqual(R.shortcutToast(.asked(.start, accepted: true)), T(title: "Video on", style: .done))
+        XCTAssertEqual(R.shortcutToast(.asked(.stop, accepted: false)),
+                       T(title: "Stop video: Zoom refused. Nothing changed.", style: .refused))
+        XCTAssertEqual(R.shortcutToast(.asked(.start, accepted: false)),
+                       T(title: "Start video: Zoom refused. Nothing changed.", style: .refused))
+        let outside = R.shortcutToast(.notInMeeting)
+        XCTAssertEqual(outside.style, .quiet)
+        XCTAssertFalse(outside.title.localizedCaseInsensitiveContains("class"))
+        XCTAssertTrue(outside.title.contains("meeting"), outside.title)
+    }
+
+    // R49: the menu-bar item's words, in menu-bar title case.
+    func testTheMenuBarTitles() {
+        XCTAssertEqual(R.menuBarTitle(videoStopped: false), "Stop Video")
+        XCTAssertEqual(R.menuBarTitle(videoStopped: true), "Start Video")
+    }
+
     // What asking Zoom means: Stop asks for video off, Start for on; a refusal leaves the UI as it was.
     func testARefusalLeavesTheStateAndLogsALine() {
         XCTAssertEqual(R.request(videoStopped: false), .stop)

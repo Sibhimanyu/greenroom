@@ -136,6 +136,14 @@ final class ShortcutRuntime {
                 // The same click as the camera button: the camera state, never Zoom's own video mute.
                 controls.toggleCameraState()
                 ToastController.show(MeetingBarModel.cameraShortcutToast(c.cameraState), kind: .success)
+            case .toggleVideoStopped:
+                // The same path as the camera menu's last row (R49): one setMyVideo call.
+                let toast = StopVideoRules.shortcutToast(c.toggleStopVideo())
+                switch toast.style {
+                case .done: ToastController.show(toast.title, kind: .success)
+                case .refused: ToastController.show(toast.title, kind: .failure)
+                case .quiet: ToastController.show(toast.title, kind: .info)
+                }
             case .toggleChat:
                 guard let controls = c.meetingControls, controls.inMeeting else { return }
                 controls.toggleChat()

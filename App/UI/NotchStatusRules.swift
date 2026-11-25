@@ -277,13 +277,15 @@ enum CountdownPhase: Equatable {
 }
 
 enum IslandToastKind: Equatable {
-    case working, success, failure
+    /// A quiet word: nothing happened and nothing is wrong (a meeting shortcut outside a meeting).
+    case working, success, failure, info
 
     var symbol: String {
         switch self {
         case .working: return "hourglass"
         case .success: return "checkmark.circle.fill"
         case .failure: return "exclamationmark.triangle.fill"
+        case .info: return "info.circle"
         }
     }
 }
@@ -380,7 +382,7 @@ enum IslandRules {
     static func toastDuration(kind: IslandToastKind, hasAction: Bool) -> TimeInterval? {
         switch kind {
         case .failure: return hasAction ? nil : failureHold
-        case .working, .success: return toastHold
+        case .working, .success, .info: return toastHold
         }
     }
 

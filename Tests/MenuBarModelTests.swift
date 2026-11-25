@@ -110,6 +110,28 @@ final class MenuBarModelTests: XCTestCase {
         XCTAssertFalse(a.contains(.togglePause))
     }
 
+    // R49: Stop Video / Start Video sits first among the live tools, only while a Zoom meeting is live
+    // (not a record-only session, not idle). Its label follows Zoom's status; the shortcut shows.
+    func testStopVideoItemOnlyInALiveMeetingAndFollowsZoom() {
+        let bound = ShortcutBindings()
+        for stopped in [false, true] {
+            let items = build(live { $0.inMeeting = true; $0.videoStopped = stopped })
+            guard let item = items.first(where: { $0.action == .toggleStopVideo }) else {
+                return XCTFail("no Stop video item while live, stopped \(stopped)")
+            }
+            XCTAssertEqual(item.title, stopped ? "Start Video" : "Stop Video")
+            XCTAssertEqual(item.symbol, stopped ? VisibilitySymbol.cameraOn.name : VisibilitySymbol.videoStopped.name)
+            XCTAssertEqual(item.shortcut, bound.combo(for: .action(.toggleVideoStopped)))
+            let a = actions(items)
+            XCTAssertEqual(a.firstIndex(of: .toggleStopVideo).map { $0 + 1 }, a.firstIndex(of: .toggleNotes),
+                           "right before the other tools")
+        }
+        XCTAssertFalse(actions(build(live())).contains(.toggleStopVideo), "a record-only session has no Zoom video")
+        XCTAssertFalse(actions(build(MenuBarState())).contains(.toggleStopVideo), "idle")
+        var starting = MenuBarState(); starting.isStarting = true; starting.inMeeting = false
+        XCTAssertFalse(actions(build(starting)).contains(.toggleStopVideo), "starting")
+    }
+
     func testLiveItemsAndOrder() {
         let a = actions(build(live { $0.canDraw = true }))
         XCTAssertEqual(a, [.showMeeting, .toggleRecording, .toggleNotes, .snapBack, .toggleSpeakerTile, .toggleDrawing,

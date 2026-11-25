@@ -790,7 +790,7 @@ private struct NotchPillView: View {
     private func toastRow(_ toast: IslandToast) -> some View {
         let tint: Color = {
             switch toast.kind {
-            case .working: return Color.white.opacity(0.7)
+            case .working, .info: return Color.white.opacity(0.7)
             case .success: return Brand.green
             case .failure: return Brand.net
             }

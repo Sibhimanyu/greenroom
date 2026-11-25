@@ -433,10 +433,19 @@ control bar is what should be the default, unless the Zoom-like UI was set in th
   row is struck (it follows Zoom's flag, `SelfViewRules.ownRowCameraOff`).
 - R49.8 A layout switch, Snap Back or a camera-state change never starts the video by itself. Start begins with video
   on, as today; the end of the meeting clears it (`StopVideoRules.videoStopped(after: Moment)`).
+- R49.10 (owner, 2026-11-26, option A) A rebindable shortcut "Stop or start video" (`ShortcutAction.toggleVideoStopped`,
+  saved id `stopVideo`), default ⌃⌥⌘V. Checked free: no other Greenroom default, no macOS symbolic hotkey, nothing in
+  Safari, Chrome, Finder or Zoom (Zoom's video key is ⇧⌘V, its minimal window ⌃⌘V; Finder's Move Here is ⌥⌘V). It runs
+  the menu row's path (`CoordinatorController.toggleStopVideo`, the one `setMyVideo` call). Its toast says "Video
+  stopped" / "Video on", or Zoom's refusal; outside a meeting a quiet toast ("Stop video works during a meeting") and
+  nothing else (`StopVideoRules.shortcutToast`, island kind `.info`). The camera shortcut stays as it was.
+- R49.11 The menu-bar menu has "Stop Video" / "Start Video" first among the live tools, only while a Zoom meeting is
+  live (not a record-only session); the label follows Zoom's status and shows ⌃⌥⌘V (`MenuBarModel.items`). It has
+  no camera items, so this is the nearest place.
 - R49.9 `SourceScanTests` allows exactly one `.setMyVideo(` call, in `CoordinatorController+StopVideo.swift`, with its
   reason. Every other control still goes through the camera state (R6.8).
 - Tests: `Tests/StopVideoRulesTests.swift` (state x stopped table), `Tests/CameraMatrixTests.swift` (videoStopped
-  dimension). Render: `scripts/render/stop-video.sh`.
+  dimension), `ShortcutModelTests` (the default), `MenuBarModelTests` (the item). Render: `scripts/render/stop-video.sh`.
 
 **R17. One icon language.** (Q28 to Q33)
 - R17.1 The eye means "everyone sees it" and nothing else: `eye` amber (`Brand.netText` / `MeetingTheme.netNS`)
@@ -773,7 +782,8 @@ what everyone sees. Record the date and the R numbers against each line.
 12. Stop video from the bar's camera menu: the other person sees your name tile, not
     the screen; the button turns red, the "You" tile shows your name with the mark.
     Press the button: your picture comes back in the camera state you had. Have a
-    co-host stop your video: the button shows stopped too. (R49)
+    co-host stop your video: the button shows stopped too. Press ⌃⌥⌘V twice from another
+    app: "Video stopped" then "Video on"; the menu-bar menu's item follows. (R49)
 
 ## Contradictions found while merging
 

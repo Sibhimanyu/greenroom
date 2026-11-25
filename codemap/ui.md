@@ -135,7 +135,7 @@ Record is `MeetingMode.record` (enum in CoordinatorController.swift; Create / Sc
 - Watch page toolbar (watching): Get feedback (`SessionAnalyseButton`, which also anchors the one Ready/progress popover as a `.background`, so no width change) is its own glass capsule, then a fixed `ToolbarSpacer`, then Share… / More / side-panel toggle as one capsule; editing has just the one group.
 - Change watch page layout -> `SessionDetailContent.SessionDetailPage` + `SessionDetailRules` (when the rail drops under the picture).
 - Change the timeline/marks -> `SessionTimeline`, `SessionMarkStyle`.
-- Change a menu bar item -> `MenuBarModel.items` (order/titles/shortcuts), drawn by `MenuBarStatusItem`; test `Tests/MenuBarModelTests.swift`.
+- Change a menu bar item -> `MenuBarModel.items` (order/titles/shortcuts), drawn by `MenuBarStatusItem`; test `Tests/MenuBarModelTests.swift`. Stop Video / Start Video (R49) shows only in a live Zoom meeting (`MenuBarState.inMeeting`, `videoStopped`).
 - Change menu bar icon/REC label -> `MenuBarStatusItem.renderLabel()`.
 - Add an island message / change sizes -> `NotchStatusRules.swift` (`IslandMessage`, `IslandContent`, `NotchGeometry`), drawing in `NotchStatusController` (`statusRow/failureLine/countdownRow/toastRow/promptRow`).
 - Show a toast / ask an upload question -> `ToastController.show`, `UploadPromptCard.show`.

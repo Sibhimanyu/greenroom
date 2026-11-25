@@ -56,6 +56,33 @@ enum StopVideoRules {
         return "\(request == .stop ? stopTitle : startTitle): Zoom refused. Nothing changed."
     }
 
+    /// What the shortcut ran into (`CoordinatorController.toggleStopVideo`'s answer).
+    enum ShortcutOutcome: Equatable {
+        case notInMeeting
+        case asked(Request, accepted: Bool)
+    }
+
+    /// The shortcut's toast.
+    struct ShortcutToast: Equatable {
+        enum Style: Equatable { case done, refused, quiet }
+        var title: String
+        var style: Style
+    }
+
+    /// "Video stopped" / "Video on"; a refusal says so; outside a meeting a quiet word and nothing else.
+    static func shortcutToast(_ outcome: ShortcutOutcome) -> ShortcutToast {
+        switch outcome {
+        case .notInMeeting:
+            return ShortcutToast(title: "Stop video works during a meeting", style: .quiet)
+        case let .asked(request, accepted):
+            if let line = refusalLine(request, accepted: accepted) { return ShortcutToast(title: line, style: .refused) }
+            return ShortcutToast(title: request == .stop ? stoppedWords : "Video on", style: .done)
+        }
+    }
+
+    /// The menu-bar menu's item, in its title case.
+    static func menuBarTitle(videoStopped: Bool) -> String { videoStopped ? "Start Video" : "Stop Video" }
+
     // MARK: Zoom's state, and the moments
 
     /// Zoom's callback is the truth. An unknown status changes nothing.

@@ -158,6 +158,8 @@ final class MenuBarStatusItem: NSObject {
         s.canToggleSpeakerTile = coordinator.canToggleMeeting
         s.canDraw = coordinator.canDraw
         s.isDrawing = coordinator.isDrawing
+        s.inMeeting = coordinator.zoomChatClient.myUserID != nil
+        s.videoStopped = coordinator.videoStopped
         s.layoutName = coordinator.layoutChoiceName
         s.layoutLocked = coordinator.layoutChoiceLocked
         s.uploadProgress = coordinator.youtubeUploadProgress
@@ -327,6 +329,7 @@ final class MenuBarStatusItem: NSObject {
         case .snapBack: coordinator.snapWindowsBack()
         case .toggleSpeakerTile: coordinator.toggleSpeakerTile()
         case .toggleDrawing: coordinator.toggleDrawing()
+        case .toggleStopVideo: coordinator.toggleStopVideo()
         case .endSession: coordinator.confirmAndStop()
         case .stopCues: coordinator.stopCuesForClass()
         case .fix(let fix):

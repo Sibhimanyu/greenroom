@@ -33,14 +33,17 @@ extension CoordinatorController {
                  : "Video started. Everyone sees your picture again (\(cameraState.name)).")
     }
 
-    /// The camera menu's last row: Stop video, or Start video while stopped. In a meeting only.
-    func toggleStopVideo() {
-        guard zoomChatClient.myUserID != nil else { return }
+    /// The camera menu's last row, the menu-bar item and the shortcut: Stop video, or Start video while
+    /// stopped. In a meeting only. The answer is what the request met, for the shortcut's toast.
+    @discardableResult
+    func toggleStopVideo() -> StopVideoRules.ShortcutOutcome {
+        guard zoomChatClient.myUserID != nil else { return .notInMeeting }
         let request = StopVideoRules.request(videoStopped: videoStopped)
         let accepted = zoomChatClient.setMyVideo(on: request == .start)
         Analytics.track(.controlAction, [.action: request == .stop ? "stop_video" : "start_video",
                                          .refused: accepted ? "no" : "yes"])
         if let line = StopVideoRules.refusalLine(request, accepted: accepted) { log(line) }
+        return .asked(request, accepted: accepted)
     }
 
     /// The one camera button's click (bar, Meeting toolbar, the "You" tile's hover button). Stopped, it

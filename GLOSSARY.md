@@ -92,7 +92,7 @@ While a meeting is live, the controls are in exactly one place. Code:
 
 ## Layouts
 
-**Layout**: an arrangement of the owner's screen (or two screens) for a meeting: where each window goes and where the owner's camera sits. What the owner arranges is what everyone in the meeting sees, except windows hidden from everyone. The camera is the one piece that can be in everyone's picture without being on the owner's screen. Exactly one layout is active at a time.
+**Layout**: a main-display arrangement, plus optionally a second-display arrangement used only when that display is connected: where each window goes and where the owner's camera sits. What the owner arranges is what everyone in the meeting sees, except windows hidden from everyone. The camera is the one piece that can be in everyone's picture without being on the owner's screen. Exactly one layout is active at a time.
 
 **Piece**: one thing placed in a layout: an app, the Meeting window, Chat, a meeting view, the Room screen, or the camera.
 

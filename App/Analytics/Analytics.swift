@@ -172,7 +172,7 @@ enum Analytics {
     /// or "none". Never the template's name, an app's bundle ID or a website.
     static func layoutPieceKinds(_ template: LayoutTemplate?) -> String {
         guard let template else { return "none" }
-        let pieces = template.oneDisplay + (template.twoDisplays.map { $0.main + $0.second } ?? [])
+        let pieces = template.oneDisplay + (template.twoDisplays?.second ?? [])
         let kinds = Set(pieces.map { piece -> String in
             switch piece.kind {
             case .meeting: return "meeting"

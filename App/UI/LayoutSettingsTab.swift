@@ -170,7 +170,7 @@ struct LayoutPageContent: View {
     /// The global share target, shown for a layout that has saved none.
     var fallbackShare = ShareTarget()
     /// Where the editor opens, for the off-screen render (.context/lr). Nil in the app.
-    var opensOn: (selection: UUID?, showsTwo: Bool, slot: LayoutSlot)?
+    var opensOn: (selection: UUID?, slot: LayoutSlot)?
     /// Draws the Add panel in place under the row, for the off-screen render.
     var previewsAddPanel = false
     /// A deep link asked for the camera piece with its look open (Settings sets it, this clears it).
@@ -180,10 +180,11 @@ struct LayoutPageContent: View {
     @State private var lookOpen = false
 
     @State private var selection: UUID?
-    @State private var showsTwo = false
+    /// The width the canvases may use (R29), read from the page.
+    @State private var panelWidth: CGFloat = 0
     /// Preview: My screen (false, the default) or Everyone. View state only.
     @State private var previewEveryone = false
-    @State private var activeSlot: LayoutSlot = .one
+    @State private var activeSlot: LayoutSlot = .main
     @State private var renamingID: UUID?
     @State private var renameDraft = ""
     @State private var notice: String?
@@ -191,6 +192,8 @@ struct LayoutPageContent: View {
     @State private var deleteCandidate: UUID?
     @State private var restoreCandidate: UUID?
     @State private var confirmReset = false
+    /// "Remove second display" on a second display that has pieces asks first (R30.2).
+    @State private var confirmRemoveSecond = false
     /// The canvas whose + panel is open.
     @State private var addPanelSlot: LayoutSlot?
     // Dragging a piece between the two displays' canvases.
@@ -256,7 +259,7 @@ struct LayoutPageContent: View {
                                           nameOf: { look($0).name })
             recorder?.didRestore = { reconcileEditor() }
             focus = nil
-            if let o = opensOn { selection = o.selection; showsTwo = o.showsTwo; activeSlot = o.slot }
+            if let o = opensOn { selection = o.selection; activeSlot = o.slot }
             lookOpen = opensLookGroup
             openCameraIfRequested()
             syncCameraPreview()
@@ -283,6 +286,12 @@ struct LayoutPageContent: View {
             }
         } message: {
             Text("This layout is removed. The windows it describes are not touched.")
+        }
+        .confirmationDialog("Remove the second display?",
+                            isPresented: $confirmRemoveSecond, titleVisibility: .visible) {
+            Button(LayoutEditorRules.removeSecondTitle, role: .destructive) { removeSecondDisplay() }
+        } message: {
+            Text("Its pieces are removed from this layout. Undo brings them back.")
         }
         .confirmationDialog("Restore \u{201C}\(restoreCandidateName)\u{201D} to the original?",
                             isPresented: Binding(get: { restoreCandidate != nil },
@@ -328,8 +337,7 @@ struct LayoutPageContent: View {
 
     private func resetEditorState() {
         selection = nil
-        showsTwo = false
-        activeSlot = .one
+        activeSlot = .main
         renamingID = nil
     }
 
@@ -431,7 +439,8 @@ struct LayoutPageContent: View {
         }
         // A built-in as shipped says what it is in its own one line (R12.1).
         if template.isAsShipped, let line = LayoutLibrary.description(forStarter: template.starter ?? "") { return line }
-        let pieces = template.oneDisplay + (template.twoDisplays.map { $0.main + $0.second } ?? [])
+        // One display uses the main arrangement alone, so the sentence is about that one (ADR 0002).
+        let pieces = template.oneDisplay
         var opens: [String] = []
         for piece in template.oneDisplay {
             if let app = piece.kind.app, app.opensAtStart { opens.append(look(piece).name) }
@@ -441,13 +450,6 @@ struct LayoutPageContent: View {
             pieces.contains { $0.kind.isChat } ? "chat" : nil,
         ].compactMap { $0 } + (MeetingViewPieces.enabled ? pieces.compactMap { $0.kind.view?.title.lowercased() } : [])
         var sentence: String
-        // Raj San Mode as shipped: the Active speaker view is the speaker (a Meeting window
-        // stands in for it where views cannot open).
-        if isRajAsShipped(template), let browser = opens.first {
-            sentence = "Greenroom opens \(browser), puts the active speaker top right with chat below, and your camera sits \((template.camera ?? LayoutCamera()).cornerPhrase)."
-            sentence += " With a second display connected it uses the two-display version."
-            return sentence
-        }
         switch (opens.isEmpty, places.isEmpty) {
         case (true, true):
             return "This layout is empty, so nothing moves yet. Add pieces below."
@@ -458,24 +460,12 @@ struct LayoutPageContent: View {
         case (false, false):
             sentence = "Greenroom opens \(list(opens)) and places the \(list(places))."
         }
-        if template.twoDisplays != nil {
-            sentence += " With a second display connected it uses the two-display version."
+        if let second = template.twoDisplays?.second, !second.isEmpty {
+            sentence += " With a second display connected it also arranges that one."
         }
         return sentence
     }
 
-    private func isRajAsShipped(_ template: LayoutTemplate) -> Bool {
-        guard template.starter == LayoutLibrary.rajMode,
-              let shipped = LayoutLibrary.starters().first(where: { $0.starter == LayoutLibrary.rajMode }) else { return false }
-        // The sentence also promises the two-display version, so removing it counts as an edit.
-        guard template.twoDisplays != nil else { return false }
-        let now = template.oneDisplay
-        let was = shipped.oneDisplay
-        guard now.count == was.count else { return false }
-        for (a, b) in zip(now, was) where a.rect != b.rect || a.kind.isChat != b.kind.isChat
-            || a.kind.view != b.kind.view || a.kind.isMeeting != b.kind.isMeeting { return false }
-        return true
-    }
 
     private var meetingWord: String { "meeting window" }
 
@@ -510,7 +500,7 @@ struct LayoutPageContent: View {
             Button {
                 showOnScreen(template, look)
                 if template.twoDisplays != nil, secondSize(template.twoDisplays?.secondUUID ?? "") == nil {
-                    say("No second display is connected, so this shows the one-display version.")
+                    say("No second display is connected, so this shows the main display only.")
                 }
             } label: {
                 Image(systemName: VisibilitySymbol.showOnScreen.name)
@@ -575,15 +565,6 @@ struct LayoutPageContent: View {
             // Preview and Show on screen belong to the shared canvas; they sit here so every canvas
             // header stays one line.
             previewControls(template)
-            if template.twoDisplays != nil {
-                GreenroomSegmented("Layout for", selection: Binding(get: { showsTwo },
-                                                        set: { v in
-                                                            withAnimation(anim) { showsTwo = v; activeSlot = v ? .main : .one; selection = nil }
-                                                        }),
-                                   options: [false, true]) { two in
-                    Text(two ? "Two displays" : "One display")
-                }
-            }
         }
     }
 
@@ -647,53 +628,50 @@ struct LayoutPageContent: View {
         slot == .second ? secondSpace(template.twoDisplays ?? TwoDisplay()) : mainSpace
     }
 
+    /// The gap between the two canvases of a layout with a second display.
+    private static let canvasGap: CGFloat = 12
+
+    /// R29: the main canvas always shows and fills the panel (its width less the strip that adds a second
+    /// display); with a second arrangement both sit side by side, sharing the width at one height, so
+    /// neither is cut off.
     @ViewBuilder
     private func canvases(_ template: LayoutTemplate) -> some View {
-        if showsTwo, let two = template.twoDisplays {
-            HStack(alignment: .top, spacing: 12) {
+        Group {
+            if let two = template.twoDisplays {
+                let secondSpace = secondSpace(two)
+                let widths = LayoutEditorRules.canvasWidths(
+                    panelWidth: panelWidth > 0 ? panelWidth : 640, gap: Self.canvasGap, stripWidth: 0,
+                    mainAspect: mainSpace.aspect, secondAspect: secondSpace.aspect, inset: LayoutCanvas.bezelInset)
+                HStack(alignment: .top, spacing: Self.canvasGap) {
+                    canvas(.main, space: mainSpace, template: template)
+                        .frame(width: widths.main)
+                    canvas(.second, space: secondSpace, template: template)
+                        .frame(width: widths.second)
+                }
+                .coordinateSpace(name: LayoutCrossing.space)
+                .onPreferenceChange(LayoutCanvasFrames.self) { canvasFrames = $0 }
+            } else {
                 canvas(.main, space: mainSpace, template: template)
-                canvas(.second, space: secondSpace(two), template: template)
             }
-            .coordinateSpace(name: LayoutCrossing.space)
-            .onPreferenceChange(LayoutCanvasFrames.self) { canvasFrames = $0 }
-        } else if LayoutEditorRules.showsGhostSecondCanvas(hasTwoDisplays: template.twoDisplays != nil), template.movesWindows {
-            HStack(alignment: .top, spacing: 12) {
-                canvas(.one, space: mainSpace, template: template)
-                ghostSecondCanvas
-            }
-            .frame(maxWidth: 760)
-        } else {
-            canvas(.one, space: mainSpace, template: template)
-                .frame(maxWidth: 560)
-                .frame(maxWidth: .infinity, alignment: .leading)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(GeometryReader { geo in
+            Color.clear.preference(key: LayoutPanelWidth.self, value: geo.size.width)
+        })
+        .onPreferenceChange(LayoutPanelWidth.self) { panelWidth = $0 }
     }
 
-    /// "+ Second display": a dashed canvas where the two-display version would be.
-    private var ghostSecondCanvas: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Color.clear.frame(height: 22)
-            Button {
-                withAnimation(anim) {
-                    if let i = activeIndex { library.templates[i].addTwoDisplayVersion() }
-                    showsTwo = true
-                    activeSlot = .main
-                    selection = nil
-                }
-            } label: {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 10)
-                        .strokeBorder(Color.secondary.opacity(0.5), style: StrokeStyle(lineWidth: 1, dash: [5, 4]))
-                    Label("Second display", systemImage: "plus")
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                }
-                .aspectRatio(mainSpace.aspect, contentMode: .fit)
-                .contentShape(Rectangle())
+    /// R29.3: the thin dashed strip at the main canvas's right edge that adds a second display.
+    private func addSecondStrip(_ template: LayoutTemplate) -> AnyView? {
+        guard LayoutEditorRules.showsAddSecondStrip(hasSecondDisplay: template.twoDisplays != nil),
+              template.movesWindows else { return nil }
+        return AnyView(AddSecondStrip(width: LayoutEditorRules.stripWidth) {
+            withAnimation(anim) {
+                if let i = activeIndex { library.templates[i].addSecondDisplay() }
+                activeSlot = .main
+                selection = nil
             }
-            .buttonStyle(.plain)
-            .help("A second arrangement for when a reference display is connected.")
-        }
+        })
     }
 
     // MARK: Canvas header controls
@@ -717,7 +695,7 @@ struct LayoutPageContent: View {
         let set: (ShareTarget) -> Void = { new in
             if let i = activeIndex { library.templates[i].share = new }
         }
-        let rows = LayoutEditorRules.sharedMenu(hasTwoDisplays: showsTwo && template.twoDisplays != nil,
+        let rows = LayoutEditorRules.sharedMenu(hasTwoDisplays: template.twoDisplays != nil,
                                                 kind: current.kind == .app ? .display : current.kind)
         return AnyView(Menu {
             ForEach(rows, id: \.self) { row in
@@ -763,11 +741,11 @@ struct LayoutPageContent: View {
         .menuStyle(.borderlessButton)
         .fixedSize()
         .help("What everyone sees when you start this layout: \(current.kind == .app ? ShareTarget.Kind.display.label : current.kind.label)"
-              + (showsTwo ? ", from the display marked here. Recordings film it too." : ".")
+              + (template.twoDisplays != nil ? ", from the display marked here. Recordings film it too." : ".")
               + " Changing it in Home or on the bar during a meeting does not change what is saved here."))
     }
 
-    /// "Second": the second display's picker and Remove two-display version.
+    /// "Second": the second display's picker and Remove second display.
     private func secondMenu(_ two: TwoDisplay) -> AnyView {
         let others = displays.filter { !$0.isMain }
         let items = LayoutEditorRules.secondMenu(connectedNonMainIDs: others.map(\.id), savedUUID: two.secondUUID)
@@ -785,12 +763,11 @@ struct LayoutPageContent: View {
             }
             .pickerStyle(.inline)
             Divider()
-            Button("Remove two-display version", role: .destructive) {
-                withAnimation(anim) {
-                    if let i = activeIndex { library.templates[i].removeTwoDisplayVersion() }
-                    showsTwo = false
-                    activeSlot = .one
-                    selection = nil
+            Button(LayoutEditorRules.removeSecondTitle, role: .destructive) {
+                if LayoutEditorRules.removeSecondNeedsConfirmation(secondPieceCount: two.second.count) {
+                    confirmRemoveSecond = true
+                } else {
+                    removeSecondDisplay()
                 }
             }
         } label: {
@@ -800,7 +777,7 @@ struct LayoutPageContent: View {
         }
         .menuStyle(.borderlessButton)
         .fixedSize()
-        .help("Which display is the second one (Automatic is the first that is not your main one), or remove the two-display version."))
+        .help("Which display is the second one (Automatic is the first that is not your main one), or remove the second display."))
     }
 
     /// The + on one canvas: it adds to that canvas's display.
@@ -813,7 +790,7 @@ struct LayoutPageContent: View {
                     if library.forkLeaveAlone() != nil {
                         resetEditorState()
                         say("Made a new layout")
-                        addPanelSlot = .one
+                        addPanelSlot = .main
                     }
                 }
                 return
@@ -832,7 +809,7 @@ struct LayoutPageContent: View {
     }
 
     private func canvas(_ slot: LayoutSlot, space: LayoutDisplaySpace, template: LayoutTemplate? = nil) -> some View {
-        let two = template?.twoDisplays != nil && slot != .one
+        let two = template?.twoDisplays != nil
         let sharedSlot = template.map {
             LayoutSharedDisplay.cameraSlot(template: $0, secondConnected: secondSize($0.twoDisplays?.secondUUID ?? "") != nil)
         } ?? .main
@@ -846,13 +823,14 @@ struct LayoutPageContent: View {
                      onNotice: { say($0) },
                      // The camera sits on the display everyone sees ("Everyone sees"); it is
                      // not a piece, so it never crosses displays by itself.
-                     camera: slot == sharedSlot || slot == .one ? camera : nil,
+                     camera: slot == sharedSlot ? camera : nil,
                      slot: slot,
                      isShared: two && slot == (template?.effectiveSharedSlot ?? .main),
                      titleMenu: (two && slot == .second) ? template?.twoDisplays.map { secondMenu($0) } : nil,
                      sharedTag: template.flatMap { t in
                          LayoutEditorRules.carriesSharedControls(slot: slot, template: t) ? sharedTag(t) : nil },
                      headerAdd: template.map { addButton(slot: slot, template: $0) },
+                     trailingStrip: slot == .main ? template.flatMap { addSecondStrip($0) } : nil,
                      crossing: two ? crossing(from: slot) : nil,
                      incoming: incoming?.slot == slot ? incoming?.preview : nil,
                      refusal: refusal?.slot == slot ? refusal?.text : nil,
@@ -863,6 +841,15 @@ struct LayoutPageContent: View {
     }
 
     // MARK: Between the two displays
+
+    /// R30: drops the second arrangement; one undo step ("Remove Second Display") puts it back.
+    private func removeSecondDisplay() {
+        withAnimation(anim) {
+            if let i = activeIndex { library.templates[i].removeSecondDisplay() }
+            activeSlot = .main
+            selection = nil
+        }
+    }
 
     private func otherSlot(_ slot: LayoutSlot) -> LayoutSlot { slot == .main ? .second : .main }
 
@@ -935,7 +922,7 @@ struct LayoutPageContent: View {
     /// Notices from the canvases, and (off-screen render only) the Add panel drawn in place.
     @ViewBuilder
     private func noticeRow(_ template: LayoutTemplate) -> some View {
-        let slot = showsTwo ? activeSlot : .one
+        let slot = activeSlot
         if previewsAddPanel {
             // The off-screen render cannot show a popover window, so it draws
             // the same panel in place.
@@ -1086,8 +1073,7 @@ struct LayoutPageContent: View {
 
     private func selected(in template: LayoutTemplate) -> (slot: LayoutSlot, piece: LayoutPiece)? {
         guard let id = selection else { return nil }
-        let slots: [LayoutSlot] = showsTwo ? [.main, .second] : [.one]
-        return template.placedPieces.first { $0.piece.id == id && slots.contains($0.slot) }
+        return template.placedPieces.first { $0.piece.id == id }
     }
 
     /// Home's Look / Share "More...", "Adjust webcam..." and the old Webcam deep links: the camera
@@ -1150,7 +1136,7 @@ struct LayoutPageContent: View {
                     .font(.callout)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
-                    .help(LayoutEditorRules.keyboardHelp(twoDisplays: showsTwo))
+                    .help(LayoutEditorRules.keyboardHelp(twoDisplays: template.twoDisplays != nil))
             }
         }
         .padding(12)
@@ -1214,9 +1200,8 @@ struct LayoutPageContent: View {
     /// An undo or redo wrote the library: the editor's own state follows it.
     private func reconcileEditor() {
         let next = LayoutEditorRules.reconciled(
-            .init(showsTwo: showsTwo, activeSlot: activeSlot, selection: selection),
+            .init(activeSlot: activeSlot, selection: selection),
             in: library.active, cameraID: LayoutCameraModel.selectionID)
-        showsTwo = next.showsTwo
         activeSlot = next.activeSlot
         selection = next.selection
     }

@@ -320,14 +320,13 @@ struct HomeView: View {
     /// Start uses, against the displays connected now); nil when it places no windows.
     private var previewRow: PreviewSecondDisplayRules.Row? {
         guard let template = coordinator.layoutLibrary.active else { return nil }
-        var second: [Bool] = []
-        if template.twoDisplays != nil {
-            let result = LayoutResolver.resolve(
-                template, screens: LayoutEngine.connectedScreens(),
-                primaryHeight: DisplayResolver.mainDisplayScreen()?.frame.height ?? 0)
-            second = result.placed.filter { $0.slot == .second }.map { $0.piece.kind.isMeeting }
-        }
-        return PreviewSecondDisplayRules.row(for: template, secondPieceIsMeeting: second)
+        // ADR 0002: only what is placed now counts, so pieces on a second display that is not
+        // connected do not make a row.
+        let result = LayoutResolver.resolve(
+            template, screens: LayoutEngine.connectedScreens(),
+            primaryHeight: DisplayResolver.mainDisplayScreen()?.frame.height ?? 0)
+        let second = result.placed.filter { $0.slot == .second }.map { $0.piece.kind.isMeeting }
+        return PreviewSecondDisplayRules.row(for: template, secondPieceIsMeeting: second, placedPieceCount: result.placed.count)
     }
 
     /// Under the picture, never over it: the second-display note, and the

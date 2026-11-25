@@ -23,7 +23,7 @@ final class LayoutMigrationTests: XCTestCase {
                                oneDisplay: [hidden(.meeting(fillsDisplay: false, startsHidden: false)), hidden(.chat),
                                             hidden(.view(.activeSpeaker, startsHidden: false)),
                                             hidden(.app(AppPiece(bundleID: "com.apple.Safari")))],
-                               twoDisplays: TwoDisplay(main: [hidden(.chat)], second: [hidden(.meeting(fillsDisplay: true, startsHidden: false))]))
+                               twoDisplays: TwoDisplay(second: [hidden(.meeting(fillsDisplay: true, startsHidden: false))]))
         return LayoutLibrary(templates: [t])
     }
 
@@ -32,7 +32,7 @@ final class LayoutMigrationTests: XCTestCase {
         var lib = hiddenLibrary()
         lib.showEverythingToEveryone()
         let t = lib.templates[0]
-        for p in t.oneDisplay + t.twoDisplays!.main + t.twoDisplays!.second where p.kind.app == nil {
+        for p in t.oneDisplay + t.twoDisplays!.second where p.kind.app == nil {
             XCTAssertTrue(p.showsToEveryone)
         }
     }
@@ -138,24 +138,18 @@ final class LayoutMigrationTests: XCTestCase {
         XCTAssertEqual(lib.active?.starter, LayoutLibrary.leaveAlone, "arrange was off, so Leave my windows alone")
         let t = try XCTUnwrap(lib.templates.last)
 
-        XCTAssertEqual(t.oneDisplay.count, 3)
+        // ADR 0002: with the participant view on a second display, the main arrangement is the one that
+        // was shown on the main display there: the app and the full-column Chat.
+        XCTAssertEqual(t.oneDisplay.count, 2)
         let app = try XCTUnwrap(t.oneDisplay.first { $0.kind.app != nil })
         XCTAssertEqual(app.kind.app?.bundleID, "com.primeum.Browser")
         XCTAssertEqual(app.kind.app?.url, "https://www.bookfusion.com")
         XCTAssertEqual(app.kind.app?.closesOnStop, true)
         XCTAssertEqual(app.kind.app?.opensAtStart, true)
         XCTAssertEqual(app.rect, UnitRect(x: 0, y: 0, w: 0.75, h: 1))
-        let meeting = try XCTUnwrap(t.oneDisplay.first { $0.kind.isMeeting })
-        XCTAssertEqual(meeting.rect.x, 0.75, accuracy: 1e-9)
-        XCTAssertEqual(meeting.rect.w, 0.25, accuracy: 1e-9)
-        XCTAssertEqual(meeting.rect.h, 0.29933763586956524, accuracy: 1e-9)
-        let chat = try XCTUnwrap(t.oneDisplay.first { $0.kind.isChat })
-        XCTAssertEqual(chat.rect.y, meeting.rect.maxY, accuracy: 1e-9)
-        XCTAssertEqual(chat.rect.maxY, 1, accuracy: 1e-9)
+        XCTAssertEqual(t.oneDisplay.first { $0.kind.isChat }?.rect, UnitRect(x: 0.75, y: 0, w: 0.25, h: 1))
 
         let two = try XCTUnwrap(t.twoDisplays)
-        XCTAssertEqual(two.main.count, 2)   // app + full-column chat
-        XCTAssertEqual(two.main.first { $0.kind.isChat }?.rect, UnitRect(x: 0.75, y: 0, w: 0.25, h: 1))
         XCTAssertEqual(two.second.count, 1)
         XCTAssertEqual(two.second.first?.kind, .meeting(fillsDisplay: true, startsHidden: false))
     }
@@ -197,7 +191,7 @@ final class LayoutMigrationTests: XCTestCase {
 
     func testRoundTrip() throws {
         var lib = LayoutLibrary(templates: LayoutLibrary.starters())
-        lib.templates[0].addTwoDisplayVersion()
+        lib.templates[0].addSecondDisplay()
         lib.select(lib.templates[0].id)
         let data = try JSONEncoder().encode(lib)
         XCTAssertEqual(try JSONDecoder().decode(LayoutLibrary.self, from: data), lib)
@@ -232,25 +226,23 @@ final class LayoutMigrationTests: XCTestCase {
         for t in s {
             XCTAssertFalse(t.oneDisplay.contains { $0.kind.isMeeting }, t.name)
             let speakers = t.oneDisplay.filter { $0.kind.view == .activeSpeaker }.count
-            XCTAssertEqual(speakers, [LayoutLibrary.roomLaptop, LayoutLibrary.leaveAlone].contains(t.starter ?? "") ? 0 : 1, t.name)
+            XCTAssertEqual(speakers, [LayoutLibrary.roomLaptop, LayoutLibrary.leaveAlone, LayoutLibrary.rajMode].contains(t.starter ?? "") ? 0 : 1, t.name)
         }
     }
 
     func testRajModeGeometryIsValid() throws {
         let raj = starter(LayoutLibrary.rajMode)
         func cells(_ r: UnitRect) -> [Int] { [r.x, r.y, r.w, r.h].map { Int(($0 * 12).rounded()) } }
-        XCTAssertEqual(raj.oneDisplay.map { cells($0.rect) }, [[0, 0, 9, 12], [9, 0, 3, 5], [9, 5, 3, 7]])
+        XCTAssertEqual(raj.oneDisplay.map { cells($0.rect) }, [[0, 0, 9, 12], [9, 0, 3, 12]])
         XCTAssertEqual(raj.oneDisplay.first?.kind.app?.bundleID, LayoutLibrary.builtInBrowserBundleID)
         XCTAssertEqual(raj.oneDisplay.first?.kind.app?.opensAtStart, true)
-        XCTAssertEqual(raj.oneDisplay[1].kind, .view(.activeSpeaker, startsHidden: false))
-        XCTAssertTrue(raj.oneDisplay[2].kind.isChat)
+        XCTAssertTrue(raj.oneDisplay[1].kind.isChat)
         let two = try XCTUnwrap(raj.twoDisplays)
-        XCTAssertEqual(two.main.map { cells($0.rect) }, [[0, 0, 9, 12], [9, 0, 3, 12]])
         XCTAssertEqual(two.second.first?.kind, .meeting(fillsDisplay: true, startsHidden: false))
         XCTAssertEqual(two.second.first?.rect, .full)
 
         // No overlap and the minimums hold, on a laptop and a large display.
-        let versions = [raj.oneDisplay, two.main, two.second]
+        let versions = [raj.oneDisplay, two.second]
         for display in [CGSize(width: 1280, height: 720), CGSize(width: 1440, height: 900), CGSize(width: 2560, height: 1440)] {
             for pieces in versions {
                 for (i, p) in pieces.enumerated() {
@@ -347,33 +339,24 @@ final class LayoutMigrationTests: XCTestCase {
 
     func testPieceLimits() {
         var t = LayoutTemplate(name: "t")
-        XCTAssertTrue(t.canAdd(.meeting(fillsDisplay: false, startsHidden: false), to: .one))
+        XCTAssertTrue(t.canAdd(.meeting(fillsDisplay: false, startsHidden: false), to: .main))
         t.oneDisplay.append(LayoutPiece(kind: .meeting(fillsDisplay: false, startsHidden: false), rect: .full))
-        XCTAssertFalse(t.canAdd(.meeting(fillsDisplay: false, startsHidden: false), to: .one))
+        XCTAssertFalse(t.canAdd(.meeting(fillsDisplay: false, startsHidden: false), to: .main))
         t.oneDisplay.append(LayoutPiece(kind: .app(AppPiece(bundleID: "a")), rect: .full))
-        XCTAssertFalse(t.canAdd(.app(AppPiece(bundleID: "a")), to: .one), "one piece per app")
+        XCTAssertFalse(t.canAdd(.app(AppPiece(bundleID: "a")), to: .main), "one piece per app")
         for id in ["b", "c", "d"] { t.oneDisplay.append(LayoutPiece(kind: .app(AppPiece(bundleID: id)), rect: .full)) }
-        XCTAssertFalse(t.canAdd(.app(AppPiece(bundleID: "e")), to: .one), "four apps at most")
-    }
-
-    func testTwoDisplayVersionMovesMeetingToTheSecond() throws {
-        var t = LayoutLibrary.starters().first { $0.starter == LayoutLibrary.teachFromBrowser }!
-        t.addTwoDisplayVersion()
-        let two = try XCTUnwrap(t.twoDisplays)
-        XCTAssertFalse(two.main.contains { $0.kind.isMeeting })
-        XCTAssertEqual(two.main.first { $0.kind.isChat }?.rect.h ?? 0, 1, accuracy: 1e-9, "chat takes the column")
-        XCTAssertEqual(two.second.first?.kind, .meeting(fillsDisplay: true, startsHidden: false))
-        XCTAssertFalse(t.canAdd(.meeting(fillsDisplay: false, startsHidden: false), to: .main), "one Meeting across the pair")
+        XCTAssertFalse(t.canAdd(.app(AppPiece(bundleID: "e")), to: .main), "four apps at most")
     }
 
     func testReplaceAppSwapsOnlyThatAppInEveryVersion() {
         var t = LayoutLibrary.starters().first { $0.starter == LayoutLibrary.teachFromBrowser }!
-        t.addTwoDisplayVersion()
+        t.addSecondDisplay()
+        t.setPieces([LayoutPiece(kind: .app(AppPiece(bundleID: LayoutLibrary.builtInBrowserBundleID)), rect: .full)], for: .second)
         XCTAssertEqual(t.firstAppBundleID, LayoutLibrary.builtInBrowserBundleID)
         t.replaceApp(LayoutLibrary.builtInBrowserBundleID, with: "com.apple.Safari")
-        let all = t.oneDisplay + (t.twoDisplays?.main ?? []) + (t.twoDisplays?.second ?? [])
+        let all = t.oneDisplay + (t.twoDisplays?.second ?? [])
         XCTAssertEqual(all.compactMap { $0.kind.app?.bundleID }, ["com.apple.Safari", "com.apple.Safari"])
-        XCTAssertEqual(all.filter { $0.kind.isChat }.count, 2, "other pieces untouched")
+        XCTAssertEqual(all.filter { $0.kind.isChat }.count, 1, "other pieces untouched")
     }
 
     func testChromeOnlyEraLayoutKeyStillMigrates() {
@@ -395,13 +378,13 @@ final class LayoutMigrationTests: XCTestCase {
         var t = lib.template(id: id)!
         var moved = t.oneDisplay
         moved[0].rect = UnitRect(x: 0.1, y: 0.1, w: 0.2, h: 0.2)
-        t.setPieces(moved, for: .one)
+        t.setPieces(moved, for: .main)
         XCTAssertEqual(t.oneDisplay[0].rect, moved[0].rect)
-        t.setPieces(Array(t.oneDisplay.dropFirst()), for: .one)
+        t.setPieces(Array(t.oneDisplay.dropFirst()), for: .main)
         XCTAssertEqual(t.oneDisplay.count, moved.count - 1)
-        t.removeTwoDisplayVersion()
+        t.removeSecondDisplay()
         XCTAssertNil(t.twoDisplays)
-        t.addTwoDisplayVersion()
+        t.addSecondDisplay()
         XCTAssertNotNil(t.twoDisplays)
         lib.update(t)
         XCTAssertEqual(lib.template(id: id), t)
@@ -416,7 +399,7 @@ final class LayoutMigrationTests: XCTestCase {
         XCTAssertEqual(copy.name, "Raj San Mode copy")
         lib.rename(copyID, to: "Mine")
         XCTAssertEqual(lib.template(id: copyID)?.name, "Mine")
-        copy.setPieces(Array(copy.oneDisplay.dropFirst()), for: .one)
+        copy.setPieces(Array(copy.oneDisplay.dropFirst()), for: .main)
         XCTAssertEqual(copy.oneDisplay.count, raj.oneDisplay.count - 1)
         XCTAssertEqual(lib.template(id: raj.id), raj, "the original is untouched")
     }

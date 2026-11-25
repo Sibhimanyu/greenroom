@@ -15,9 +15,9 @@ final class LayoutDisplayCrossingTests: XCTestCase {
     }
 
     private func template(main: [LayoutPiece] = [], second: [LayoutPiece] = [], shared: LayoutSlot = .main) -> LayoutTemplate {
-        var two = TwoDisplay(main: main, second: second)
+        var two = TwoDisplay(second: second)
         two.sharedSlot = shared
-        return LayoutTemplate(name: "T", oneDisplay: [], twoDisplays: two)
+        return LayoutTemplate(name: "T", oneDisplay: main, twoDisplays: two)
     }
 
     private func move(_ t: LayoutTemplate, _ id: UUID, from: LayoutSlot, to: LayoutSlot,
@@ -31,7 +31,7 @@ final class LayoutDisplayCrossingTests: XCTestCase {
         let p = app("com.apple.Safari", at: UnitRect(x: 0, y: 0, w: 0.5, h: 0.5), shows: false)
         let t = template(main: [p])
         let out = try move(t, p.id, from: .main, to: .second).get()
-        XCTAssertTrue(out.twoDisplays!.main.isEmpty)
+        XCTAssertTrue(out.oneDisplay.isEmpty)
         let landed = try XCTUnwrap(out.twoDisplays?.second.first)
         XCTAssertEqual(landed.id, p.id)
         XCTAssertEqual(landed.kind, p.kind)
@@ -104,7 +104,7 @@ final class LayoutDisplayCrossingTests: XCTestCase {
     func testFillingMeetingStopsFillingOnMain() throws {
         let m = LayoutPiece(kind: fillingMeeting, rect: .full)
         let out = try move(template(main: [], second: [m]), m.id, from: .second, to: .main).get()
-        let landed = try XCTUnwrap(out.twoDisplays?.main.first)
+        let landed = try XCTUnwrap(out.oneDisplay.first)
         XCTAssertEqual(landed.kind, meeting)
         XCTAssertLessThan(landed.rect.w, 1)
         XCTAssertLessThan(landed.rect.h, 1)
@@ -116,14 +116,14 @@ final class LayoutDisplayCrossingTests: XCTestCase {
         XCTAssertEqual(move(t, p.id, from: .main, to: .main).failureValue, .sameDisplay)
         XCTAssertEqual(move(t, UUID(), from: .main, to: .second).failureValue, .notFound)
         let one = LayoutTemplate(name: "One", oneDisplay: [p])
-        XCTAssertEqual(move(one, p.id, from: .one, to: .second).failureValue, .needsTwoDisplays)
+        XCTAssertEqual(move(one, p.id, from: .main, to: .second).failureValue, .needsTwoDisplays)
     }
 
     func testMovingLeavesTheOtherPiecesAlone() throws {
         let a = app("a", at: UnitRect(x: 0, y: 0, w: 0.25, h: 0.25))
         let b = app("b", at: UnitRect(x: 0.5, y: 0.5, w: 0.25, h: 0.25))
         let out = try move(template(main: [a, b]), a.id, from: .main, to: .second).get()
-        XCTAssertEqual(out.twoDisplays?.main, [b])
+        XCTAssertEqual(out.oneDisplay, [b])
     }
 
     // MARK: Everyone sees
@@ -170,9 +170,9 @@ final class LayoutDisplayCrossingTests: XCTestCase {
         XCTAssertEqual(LayoutSharedDisplay.cameraSlot(template: template(shared: .second), secondConnected: false), .main)
     }
 
-    func testCameraOnOneDisplayLayoutIsTheOneSlot() {
+    func testCameraOnALayoutWithNoSecondIsOnMain() {
         let one = LayoutTemplate(name: "One", oneDisplay: [], twoDisplays: nil)
-        XCTAssertEqual(LayoutSharedDisplay.cameraSlot(template: one, secondConnected: true), .one)
+        XCTAssertEqual(LayoutSharedDisplay.cameraSlot(template: one, secondConnected: true), .main)
     }
 
     private let main = LayoutScreen(id: "MAIN", name: "Laptop", visibleFrame: CGRect(x: 0, y: 0, width: 1440, height: 875), isMain: true)

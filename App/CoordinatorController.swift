@@ -3471,8 +3471,7 @@ final class CoordinatorController: ObservableObject {
     /// runs (or of the one chosen in Settings, before a class). nil when there is
     /// none, which means the system's default browser.
     var cueCardAppBundleID: String? {
-        (sessionTemplate ?? layoutLibrary.active)?.oneDisplay.compactMap { $0.kind.app?.bundleID }.first
-            ?? (sessionTemplate ?? layoutLibrary.active)?.twoDisplays?.main.compactMap { $0.kind.app?.bundleID }.first
+        (sessionTemplate ?? layoutLibrary.active)?.firstAppBundleID
     }
 
     /// The Layout chip's "Open This Layout's Apps": opens the apps of the layout this class runs, or

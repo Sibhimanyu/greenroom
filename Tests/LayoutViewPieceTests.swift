@@ -63,34 +63,34 @@ final class LayoutViewPieceTests: XCTestCase {
 
     func testOneOfEachView() {
         for v in MeetingView.allCases {
-            XCTAssertTrue(template([]).canAdd(view(v), to: .one), "\(v)")
-            XCTAssertFalse(template([view(v)]).canAdd(view(v), to: .one), "\(v) twice")
+            XCTAssertTrue(template([]).canAdd(view(v), to: .main), "\(v)")
+            XCTAssertFalse(template([view(v)]).canAdd(view(v), to: .main), "\(v) twice")
         }
     }
 
     func testViewsCountAcrossBothDisplays() {
         var t = template([view(.people)])
-        t.twoDisplays = TwoDisplay(main: [piece(view(.people))], second: [])
+        t.twoDisplays = TwoDisplay(second: [])
         XCTAssertFalse(t.canAdd(view(.people), to: .second))
         XCTAssertTrue(t.canAdd(view(.gallery), to: .second))
     }
 
     func testMeetingWindowExcludesGalleryAndSpeakerStrip() {
         let withMeeting = template([meeting])
-        XCTAssertFalse(withMeeting.canAdd(view(.gallery), to: .one))
-        XCTAssertFalse(withMeeting.canAdd(view(.speakerStrip), to: .one))
+        XCTAssertFalse(withMeeting.canAdd(view(.gallery), to: .main))
+        XCTAssertFalse(withMeeting.canAdd(view(.speakerStrip), to: .main))
         for v in [MeetingView.activeSpeaker, .multiSpeaker, .selfView, .people, .sharedScreen, .spotlight, .handsUp] {
-            XCTAssertTrue(withMeeting.canAdd(view(v), to: .one), "\(v)")
+            XCTAssertTrue(withMeeting.canAdd(view(v), to: .main), "\(v)")
         }
-        XCTAssertFalse(template([view(.gallery)]).canAdd(meeting, to: .one))
-        XCTAssertFalse(template([view(.speakerStrip)]).canAdd(meeting, to: .one))
-        XCTAssertTrue(template([view(.activeSpeaker), view(.people)]).canAdd(meeting, to: .one))
+        XCTAssertFalse(template([view(.gallery)]).canAdd(meeting, to: .main))
+        XCTAssertFalse(template([view(.speakerStrip)]).canAdd(meeting, to: .main))
+        XCTAssertTrue(template([view(.activeSpeaker), view(.people)]).canAdd(meeting, to: .main))
     }
 
     func testActiveSpeakerAndSpeakerStripExcludeEachOther() {
-        XCTAssertFalse(template([view(.activeSpeaker)]).canAdd(view(.speakerStrip), to: .one))
-        XCTAssertFalse(template([view(.speakerStrip)]).canAdd(view(.activeSpeaker), to: .one))
-        XCTAssertTrue(template([view(.gallery)]).canAdd(view(.activeSpeaker), to: .one))
+        XCTAssertFalse(template([view(.activeSpeaker)]).canAdd(view(.speakerStrip), to: .main))
+        XCTAssertFalse(template([view(.speakerStrip)]).canAdd(view(.activeSpeaker), to: .main))
+        XCTAssertTrue(template([view(.gallery)]).canAdd(view(.activeSpeaker), to: .main))
     }
 
     /// Every pair of the nine, and the Meeting window: only these are refused.
@@ -101,7 +101,7 @@ final class LayoutViewPieceTests: XCTestCase {
         XCTAssertEqual(kinds.count, 10)
         for a in kinds {
             for b in kinds where name(a) != name(b) {
-                let allowed = template([a]).canAdd(b, to: .one)
+                let allowed = template([a]).canAdd(b, to: .main)
                 XCTAssertEqual(allowed, !refused.contains([name(a), name(b)]), "\(name(a)) then \(name(b))")
             }
         }
@@ -109,9 +109,9 @@ final class LayoutViewPieceTests: XCTestCase {
     }
 
     func testHandsUpAndPeopleListCoexist() {
-        XCTAssertTrue(template([view(.people)]).canAdd(view(.handsUp), to: .one))
-        XCTAssertTrue(template([view(.handsUp)]).canAdd(view(.people), to: .one))
-        XCTAssertTrue(template([view(.spotlight), view(.activeSpeaker)]).canAdd(view(.sharedScreen), to: .one))
+        XCTAssertTrue(template([view(.people)]).canAdd(view(.handsUp), to: .main))
+        XCTAssertTrue(template([view(.handsUp)]).canAdd(view(.people), to: .main))
+        XCTAssertTrue(template([view(.spotlight), view(.activeSpeaker)]).canAdd(view(.sharedScreen), to: .main))
     }
 
     func testNewKindsRoundTrip() throws {
@@ -133,8 +133,8 @@ final class LayoutViewPieceTests: XCTestCase {
 
     func testChatAndAppsUnaffectedByViews() {
         let t = template([view(.gallery), view(.people)])
-        XCTAssertTrue(t.canAdd(.chat, to: .one))
-        XCTAssertTrue(t.canAdd(.app(AppPiece(bundleID: "com.apple.Notes")), to: .one))
+        XCTAssertTrue(t.canAdd(.chat, to: .main))
+        XCTAssertTrue(t.canAdd(.app(AppPiece(bundleID: "com.apple.Notes")), to: .main))
     }
 
     // MARK: Minimums and defaults
@@ -185,23 +185,14 @@ final class LayoutViewPieceTests: XCTestCase {
 
     func testStartsHiddenReachesTheSecondDisplay() {
         var t = template([])
-        t.twoDisplays = TwoDisplay(main: [piece(view(.selfView))], second: [piece(view(.people))])
+        t.oneDisplay = [piece(view(.selfView))]
+        t.twoDisplays = TwoDisplay(second: [piece(view(.people))])
         t.setMeetingStartsHidden(true)
-        XCTAssertEqual(t.twoDisplays?.main.first?.kind, view(.selfView, hidden: true))
+        XCTAssertEqual(t.oneDisplay.first?.kind, view(.selfView, hidden: true))
         XCTAssertEqual(t.twoDisplays?.second.first?.kind, view(.people, hidden: true))
     }
 
     // MARK: Two displays
-
-    func testTwoDisplayVersionMovesOnlyTheMeetingWindow() {
-        var t = template([meeting, view(.people), .chat])
-        t.addTwoDisplayVersion()
-        let main = t.twoDisplays?.main.map(\.kind) ?? []
-        XCTAssertTrue(main.contains(view(.people)))
-        XCTAssertFalse(main.contains { $0.isMeeting })
-        XCTAssertTrue(t.twoDisplays?.second.first?.kind.isMeeting == true)
-        XCTAssertEqual(t.twoDisplays?.second.count, 1)
-    }
 
     func testViewsAreNotMeetingOrChatOrApp() {
         let k = view(.gallery)
@@ -213,14 +204,14 @@ final class LayoutViewPieceTests: XCTestCase {
     // MARK: Fallback where views cannot open
 
     func testActiveSpeakerBecomesTheMeetingWindowWhereViewsCannotOpen() {
-        let raj = LayoutLibrary.starters().first { $0.starter == LayoutLibrary.rajMode }!
+        let raj = LayoutLibrary.starters().first { $0.starter == LayoutLibrary.present }!
         let rect = raj.oneDisplay.first { $0.kind.view == .activeSpeaker }!.rect
         let out = LayoutResolver.substitutingMeetingForActiveSpeaker(raj, viewsCanOpen: false)
         let m = out.oneDisplay.first { $0.kind.isMeeting }
         XCTAssertEqual(m?.rect, rect, "same rectangle")
         XCTAssertEqual(m?.kind, .meeting(fillsDisplay: false, startsHidden: false))
         XCTAssertFalse(out.oneDisplay.contains { $0.kind.isView })
-        XCTAssertEqual(out.twoDisplays, raj.twoDisplays, "the second display's full Meeting is untouched")
+        XCTAssertEqual(out.twoDisplays, raj.twoDisplays, "nothing on a second display to touch")
         XCTAssertEqual(out.oneDisplay.count, raj.oneDisplay.count)
     }
 
@@ -245,11 +236,13 @@ final class LayoutViewPieceTests: XCTestCase {
 
     func testActiveSpeakerStaysOutWhenAnotherDisplayHoldsTheMeeting() {
         var t = LayoutTemplate(name: "x", oneDisplay: [piece(view(.activeSpeaker))])
-        t.twoDisplays = TwoDisplay(main: [piece(view(.activeSpeaker))], second: [piece(meeting)])
+        t.twoDisplays = TwoDisplay(second: [piece(meeting)])
         let out = LayoutResolver.substitutingMeetingForActiveSpeaker(t, viewsCanOpen: false)
-        XCTAssertEqual(out.twoDisplays?.main, t.twoDisplays?.main, "no second Meeting in the two-display version")
+        XCTAssertEqual(out.oneDisplay, t.oneDisplay, "no second Meeting while the second display holds it")
         XCTAssertEqual(out.twoDisplays?.second, t.twoDisplays?.second)
-        XCTAssertTrue(out.oneDisplay[0].kind.isMeeting, "the one-display version is its own version")
+        // R26.4: with no second display connected, main's Active speaker stands in.
+        let alone = LayoutResolver.substitutingMeetingForActiveSpeaker(t, viewsCanOpen: false, secondConnected: false)
+        XCTAssertTrue(alone.oneDisplay[0].kind.isMeeting)
     }
 
     func testRuntimeCustomUIBeatsTheSavedSetting() {

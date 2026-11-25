@@ -109,6 +109,13 @@ different order; this table is the authority.
 | R22 | Mirror my camera: the bubble only | P8 | built, 2834566 |
 | R23 | Home's preview row: second-display note and Show on screen | none (owner fix) | built, 06a7f30; hidden when no windows are tiled (review fixes) |
 | R24 | Room screen is true full screen when the piece fills the display | P10 | built, fb70689 (needs a check on the real big screen) |
+| R25 | One arrangement per display: the model ([ADR 0002](../adr/0002-one-arrangement-per-display.md)) | P12 | built |
+| R26 | One display connected: main only, the second's pieces ignored | P12 | built |
+| R27 | Migration of existing layouts to one arrangement per display | P12 | built |
+| R28 | Built-ins fit the model (Raj San Mode, Room + laptop) | P12 | built |
+| R29 | Editor: main canvas full width, a dashed strip adds the second, both side by side | P12 | built |
+| R30 | Remove second display (SECOND menu, confirmed, undoable) | P12 | built |
+| R31 | Display crossing, Preview, badges, camera, Home and the Room screen keep working | P12 | built |
 
 **R1. One rule for who sees what.** (Q1, Q14)
 - R1.1 `Visibility.everyoneSees` and `Visibility.onMyScreen` are the only place
@@ -195,7 +202,7 @@ different order; this table is the authority.
   its empty state is the layout's description.
 - R8.2 Each canvas has its own +. A ghost "+ Second display" canvas adds the
   two-display version.
-- R8.3 "Second ▾" holds the display picker and Remove two-display version.
+- R8.3 "Second ▾" holds the display picker and Remove two-display version (superseded by R30: Remove second display).
 - R8.4 One ⋯ menu holds Rename, Duplicate (⌘D) and Delete.
 - R8.5 Every canvas header is one line. The shared canvas's holds "Everyone sees this ▾",
   which also marks it as the shared display (no separate SHARED tag); the Preview switch and
@@ -325,6 +332,86 @@ different order; this table is the authority.
   never Share's glyph) and `noPieces` (`rectangle.dashed`, an empty layout or canvas, "Nothing moves").
 - R17.6 Tooltips and VoiceOver say "Everyone sees this" / "Only you" and "Starts hidden on your screen". Never "class".
 
+**R25. One arrangement per display.** ([ADR 0002](../adr/0002-one-arrangement-per-display.md), owner, 2026-11-25)
+- R25.1 A layout holds a main arrangement and, optionally, a second-display arrangement. There is no
+  separate one-display and two-display version. The main arrangement is stored under the old key
+  `oneDisplay`; the second is `twoDisplays.second` (with its display choice and "Everyone sees").
+  `twoDisplays.main` no longer exists. `LayoutSlot` has two cases, `.main` and `.second`.
+- R25.2 `pieces(for: .main)` is the main arrangement; `.second` is the second (empty when there is none).
+  `placedPieces`, `pieceCount`, `firstAppBundleID`, the Meeting-starts-hidden flag and the app swap
+  walk both arrangements once each.
+- R25.3 `addSecondDisplay()` adds an empty second arrangement (nothing is copied or moved from main);
+  `removeSecondDisplay()` drops it with its pieces. Both are no-ops when there is nothing to do.
+- R25.4 A file saved by an older build still loads: its `oneDisplay` is the main arrangement, its
+  `twoDisplays.second` is the second, its old `twoDisplays.main` is read (decode only, never written)
+  so R27 can keep it.
+- R25.5 Meeting and Chat limits ("one Meeting, one Chat, up to four apps") count across both arrangements.
+
+**R26. One display connected.**
+- R26.1 With one display connected, `LayoutResolver.resolve` places the main arrangement on the main
+  display and nothing from the second: no frame, no window, no note about a missing display.
+- R26.2 With two connected, main goes on the main display and second on the second display (the saved
+  one, else the first that is not main).
+- R26.3 A Meeting that sits only on the second arrangement, with no second display, places no Meeting
+  window (the owner accepted this).
+- R26.4 `substitutingMeetingForActiveSpeaker` counts only the arrangements that are placed: with no
+  second display connected, a Meeting on second does not stop main's Active speaker standing in.
+- R26.5 The Room screen, the shared display and the camera slot are second-display things: with no
+  second display connected they resolve to nothing, to main and to main.
+
+**R27. Migration.** (its own key, run once)
+- R27.1 One time, with its own key `layoutLibrary.oneArrangementMigrated`, set only after the library
+  saved: each layout keeps `oneDisplay` as main and `twoDisplays.second` as second.
+- R27.2 If the old `twoDisplays.main` differs from `oneDisplay` in pieces (kind, rectangle, eye) or
+  settings (camera and share are shared by both, so the pieces are what can differ), it is saved as the
+  owner's own layout named "<name> (old two-display)" straight after the original: its main is that old
+  main, its second is the same second, its camera and share are the original's, `starter` is nil.
+- R27.3 An identical main makes no copy. A layout with no second display makes no copy.
+- R27.4 An untouched Raj San Mode as the last build shipped it becomes the new Raj San Mode in place
+  (same id, no copy); an edited one follows R27.2.
+- R27.5 A second run does nothing, even if the library has changed in between. A failed save leaves
+  the key unset, so the next launch tries again.
+- R27.6 A brand-new install has nothing to migrate and has the key set.
+
+**R28. Built-ins.**
+- R28.1 Raj San Mode: main is the browser on the left and Chat in the right column; second is the
+  Meeting filling the display. (Laptop only, it shows the browser and Chat and places no Meeting window.)
+- R28.2 Room + laptop: main is the browser and Chat; second is the Room screen, Main shared.
+- R28.3 Teach, Talk, Present and Leave my windows alone have a main arrangement and no second.
+- R28.4 `isAsShipped` compares both arrangements and the shared slot.
+
+**R29. Editor canvases.**
+- R29.1 There is no One display / Two displays toggle. The main canvas always shows.
+- R29.2 With no second arrangement, the main canvas fills the panel's width and its height follows the
+  display's aspect, so no empty band is left on its right (`LayoutEditorRules.canvasWidths`).
+- R29.3 Also then, a thin vertical dashed strip, 28pt wide and as tall as the canvas, sits at the main
+  canvas's right edge with a + and the tooltip "Add a second display"
+  (`LayoutEditorRules.showsAddSecondStrip(hasSecondDisplay:)`, true only without a second).
+  Clicking it adds an empty second arrangement.
+- R29.4 With a second arrangement the strip is gone and the two canvases sit side by side, both fully
+  visible; the main canvas shrinks so both fit the panel width (`canvasWidths` sums to the width minus
+  the gap, each follows its own display's aspect).
+- R29.5 Preview, the "Everyone sees this" tag, per-canvas + and the camera are unchanged.
+
+**R30. Remove second display.**
+- R30.1 The SECOND menu has "Remove second display" (`LayoutEditorRules.secondMenu`); the old
+  "Remove two-display version" is gone.
+- R30.2 If the second arrangement has pieces, a confirmation comes first
+  (`LayoutEditorRules.removeSecondNeedsConfirmation`); an empty one goes without asking.
+- R30.3 Removing it is one undo step named "Remove Second Display"; Undo brings the pieces back.
+  Adding is "Add Second Display".
+- R30.4 After removal the editor shows main alone with the strip, and the active canvas is main.
+
+**R31. Everything else keeps working.**
+- R31.1 Dragging a piece to the other canvas and Option-left/right still send it across (R9.x), and
+  need a second arrangement: with none, there is no other display to drop on.
+- R31.2 Badges, Preview: My screen / Everyone, the camera overlay and "Everyone sees" behave as before.
+  The camera sits on the shared canvas: second only when shared and connected, else main.
+- R31.3 Home's preview, thumbnails and the two-display badge read the second arrangement; the
+  second-display note and Show on screen (R23) follow it. Home's picture shows the main arrangement.
+- R31.4 The Room screen can be added only to the second arrangement; the Add panel says to add a second
+  display first when there is none.
+
 ## Guarantees
 
 - **One truth.** The 👁 and 📡 badges, Preview: Everyone and the capture's
@@ -357,6 +444,7 @@ different order; this table is the authority.
 | P9 Built-ins, Leave my windows alone, Restore original | R12, R13, R14, R16 | built | f4222d7 |
 | P10 Room + laptop | R15 | partial (Room + laptop ships; Home's "Connect the room display" is missing) | |
 | P11 One icon language | R17 | built | 71a76b5 |
+| P12 One arrangement per display (ADR 0002) | R25 to R31 | built | (this commit) |
 
 ## Known gaps
 

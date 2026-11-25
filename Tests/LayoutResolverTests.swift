@@ -13,8 +13,9 @@ final class LayoutResolverTests: XCTestCase {
         let chat = LayoutPiece(kind: .chat, rect: UnitRect(x: 0.5, y: 0.4, w: 0.5, h: 0.6))
         var t = LayoutTemplate(name: "T", oneDisplay: [app, meeting, chat])
         if two {
+            // ADR 0002: main is the browser and a full-height Chat, second is the Meeting.
+            t.oneDisplay = [app, LayoutPiece(kind: .chat, rect: UnitRect(x: 0.5, y: 0, w: 0.5, h: 1))]
             t.twoDisplays = TwoDisplay(
-                main: [app, LayoutPiece(kind: .chat, rect: UnitRect(x: 0.5, y: 0, w: 0.5, h: 1))],
                 second: [LayoutPiece(kind: .meeting(fillsDisplay: true, startsHidden: false), rect: .full)],
                 secondUUID: secondUUID)
         }
@@ -32,12 +33,12 @@ final class LayoutResolverTests: XCTestCase {
         XCTAssertTrue(r.notes.isEmpty)
     }
 
-    func testOneDisplayVersionWhenNoSecondDisplay() {
+    func testMainOnlyWhenNoSecondDisplay() {
         let r = LayoutResolver.resolve(template(), screens: [main], primaryHeight: primaryHeight)
         XCTAssertEqual(r.variant, .oneDisplay)
-        XCTAssertEqual(r.placed.count, 3)
-        XCTAssertFalse(r.meeting?.fillsDisplay ?? true)
-        XCTAssertEqual(r.notes.count, 1, "the fallback is logged")
+        XCTAssertEqual(r.placed.count, 2, "the second's Meeting is ignored")
+        XCTAssertNil(r.meeting)
+        XCTAssertTrue(r.notes.isEmpty, "a missing display is not news (R26.1)")
     }
 
     func testReResolvesOnEveryCall() {
@@ -160,7 +161,7 @@ final class LayoutResolverTests: XCTestCase {
         let big = LayoutPiece(kind: .app(AppPiece(bundleID: "b")), rect: UnitRect(x: 0.3, y: 0, w: 0.7, h: 1))
         let onSecond = LayoutPiece(kind: .app(AppPiece(bundleID: "c")), rect: .full)
         var t = LayoutTemplate(name: "T", oneDisplay: [small, big])
-        t.twoDisplays = TwoDisplay(main: [small, big], second: [onSecond], secondUUID: "")
+        t.twoDisplays = TwoDisplay(second: [onSecond], secondUUID: "")
         let r = LayoutResolver.resolve(t, screens: [main, second], primaryHeight: primaryHeight)
         XCTAssertEqual(LayoutResolver.largestAppOnMain(r)?.piece.kind.app?.bundleID, "b")
         let none = LayoutResolver.resolve(LayoutTemplate(name: "Empty"), screens: [main], primaryHeight: primaryHeight)

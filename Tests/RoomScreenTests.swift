@@ -10,7 +10,7 @@ final class RoomScreenTests: XCTestCase {
 
     private func piece(_ kind: LayoutPiece.Kind) -> LayoutPiece { LayoutPiece(kind: kind, rect: .full) }
     private func twoDisplay(second pieces: [LayoutPiece] = [], main mainPieces: [LayoutPiece] = []) -> LayoutTemplate {
-        LayoutTemplate(name: "T", oneDisplay: [piece(meeting)], twoDisplays: TwoDisplay(main: mainPieces, second: pieces))
+        LayoutTemplate(name: "T", oneDisplay: mainPieces, twoDisplays: TwoDisplay(second: pieces))
     }
 
     // MARK: Codec
@@ -57,7 +57,6 @@ final class RoomScreenTests: XCTestCase {
         let t = twoDisplay()
         XCTAssertTrue(t.canAdd(room, to: .second))
         XCTAssertFalse(t.canAdd(room, to: .main))
-        XCTAssertFalse(t.canAdd(room, to: .one))
     }
 
     func testAtMostOnePerVersion() {
@@ -76,7 +75,7 @@ final class RoomScreenTests: XCTestCase {
     func testPaletteReasons() {
         XCTAssertNil(RoomScreenRules.blockReason(slot: .second, existing: []))
         XCTAssertEqual(RoomScreenRules.blockReason(slot: .second, existing: [room]), "Already in this layout")
-        let one = RoomScreenRules.blockReason(slot: .one, existing: [])
+        let one = RoomScreenRules.blockReason(slot: .main, existing: [])
         XCTAssertTrue(one?.contains("second display") == true)
         XCTAssertTrue(one?.contains("extended, not mirrored") == true)
         XCTAssertNotNil(RoomScreenRules.blockReason(slot: .main, existing: []))

@@ -54,5 +54,16 @@ final class PreviewRowNoTilingTests: XCTestCase {
         XCTAssertEqual(R.row(for: teach, secondPieceIsMeeting: []), R.Row(note: nil))
     }
 
+    // R31.3, R23.2: a layout whose only pieces sit on a second display that is not connected tiles no window now.
+    func testPiecesOnlyOnAMissingSecondDisplayMakeNoRow() {
+        var t = LayoutTemplate(name: "Second only")
+        t.addSecondDisplay()
+        t.setPieces([LayoutPiece(kind: .meeting(fillsDisplay: true, startsHidden: false), rect: .full)], for: .second)
+        XCTAssertGreaterThan(t.pieceCount, 0)
+        XCTAssertNil(R.row(for: t, secondPieceIsMeeting: [], placedPieceCount: 0))
+        XCTAssertEqual(R.row(for: t, secondPieceIsMeeting: [true], placedPieceCount: 1),
+                       R.Row(note: "Meeting window on your second display"))
+    }
+
     func testNoLayoutHasNoRow() { XCTAssertNil(R.row(for: nil, secondPieceIsMeeting: [])) }
 }

@@ -47,9 +47,36 @@ enum LayoutEditorRules {
 
     // MARK: The second display
 
-    /// The ghost "+ Second display" canvas: only while the layout has no
-    /// two-display version.
-    static func showsGhostSecondCanvas(hasTwoDisplays: Bool) -> Bool { !hasTwoDisplays }
+    /// R29.3: the thin dashed strip at the main canvas's right edge that adds a second display. Only while
+    /// the layout has no second arrangement.
+    static func showsAddSecondStrip(hasSecondDisplay: Bool) -> Bool { !hasSecondDisplay }
+
+    static let addSecondTooltip = "Add a second display"
+    /// R30.1: the row in the SECOND menu.
+    static let removeSecondTitle = "Remove second display"
+    static let stripWidth: CGFloat = 28
+
+    /// R30.2: an empty second display goes without asking.
+    static func removeSecondNeedsConfirmation(secondPieceCount: Int) -> Bool { secondPieceCount > 0 }
+
+    struct CanvasWidths: Equatable { var main: CGFloat; var second: CGFloat? }
+
+    /// R29.2, R29.4: how the panel's width is shared. `*Aspect` is width over height of that display.
+    /// With no second (`secondAspect` nil) the main canvas takes everything the strip and its gap leave, so
+    /// no band is left on the right. With a second both canvases get the same height, so the two widths
+    /// plus the gap fill the panel exactly and each keeps its own display's shape. `inset` is the padding
+    /// around each drawn display.
+    static func canvasWidths(panelWidth: CGFloat, gap: CGFloat, stripWidth: CGFloat,
+                             mainAspect: CGFloat, secondAspect: CGFloat?, inset: CGFloat = 0) -> CanvasWidths {
+        guard let secondAspect else {
+            return CanvasWidths(main: max(panelWidth - gap - stripWidth, 0), second: nil)
+        }
+        // `inset` is the padding on each side of the drawn display (the bezel): the pictures, not the
+        // frames around them, get one height.
+        let a1 = max(mainAspect, 0.1), a2 = max(secondAspect, 0.1)
+        let picture = max(panelWidth - gap - 4 * inset, 0) / (a1 + a2)
+        return CanvasWidths(main: picture * a1 + 2 * inset, second: picture * a2 + 2 * inset)
+    }
 
     enum SecondChoice: Hashable {
         case automatic
@@ -60,7 +87,7 @@ enum LayoutEditorRules {
 
     /// The "Second ▾" menu on the second canvas's header: the display picker
     /// (Automatic, each connected non-main display, the saved one if it is
-    /// away). Remove two-display version is a button the view adds under it.
+    /// away). "Remove second display" (`removeSecondTitle`) is a row the view adds under it.
     static func secondMenu(connectedNonMainIDs: [String], savedUUID: String) -> [SecondChoice] {
         var items: [SecondChoice] = [.automatic] + connectedNonMainIDs.map { SecondChoice.display($0) }
         if !savedUUID.isEmpty, !connectedNonMainIDs.contains(savedUUID) {
@@ -72,13 +99,9 @@ enum LayoutEditorRules {
     // MARK: The shared canvas
 
     /// The canvas that carries the "Everyone sees this" tag, the Preview switch
-    /// and Show on screen: the one-display canvas, or the shared display's.
+    /// and Show on screen: the main canvas, or the shared display's.
     static func carriesSharedControls(slot: LayoutSlot, template: LayoutTemplate) -> Bool {
-        switch slot {
-        case .one: return true // the one-display canvas is always the shared one
-        case .main, .second:
-            return template.twoDisplays != nil && slot == template.effectiveSharedSlot
-        }
+        slot == (template.twoDisplays != nil ? template.effectiveSharedSlot : .main)
     }
 
     /// The rows inside "Everyone sees this ▾", in order. The display choice only
@@ -169,20 +192,18 @@ enum LayoutEditorRules {
 
     // MARK: After an undo or redo
 
-    /// The editor's own state: which version is shown, which canvas is active, what is selected.
+    /// The editor's own state: which canvas is active, what is selected.
     struct EditorState: Equatable {
-        var showsTwo: Bool
         var activeSlot: LayoutSlot
         var selection: UUID?
     }
 
     /// The editor state made true to the library: an undo or redo can add or remove the
-    /// two-display version or a piece, and the state must not point at what is no longer there.
+    /// second display or a piece, and the state must not point at what is no longer there.
     static func reconciled(_ state: EditorState, in template: LayoutTemplate?, cameraID: UUID) -> EditorState {
         var next = state
-        guard let template else { return EditorState(showsTwo: false, activeSlot: .one, selection: nil) }
-        next.showsTwo = state.showsTwo && template.twoDisplays != nil
-        if !next.showsTwo { next.activeSlot = .one } else if next.activeSlot == .one { next.activeSlot = .main }
+        guard let template else { return EditorState(activeSlot: .main, selection: nil) }
+        if template.twoDisplays == nil { next.activeSlot = .main }
         if let id = state.selection, id != cameraID, !template.placedPieces.contains(where: { $0.piece.id == id }) {
             next.selection = nil
         }

@@ -447,12 +447,14 @@ enum LayoutResolver {
     /// in that view's rectangle instead, so Zoom-UI mode keeps the tile parking
     /// and hide logic the starters relied on. Anything else is returned as is.
     /// The saved template is never changed; the engine applies this when it resolves.
-    static func substitutingMeetingForActiveSpeaker(_ template: LayoutTemplate, viewsCanOpen: Bool) -> LayoutTemplate {
+    static func substitutingMeetingForActiveSpeaker(_ template: LayoutTemplate, viewsCanOpen: Bool,
+                                                    secondConnected: Bool = true) -> LayoutTemplate {
         guard !viewsCanOpen else { return template }
         func hasMeeting(_ pieces: [LayoutPiece]) -> Bool { pieces.contains { $0.kind.isMeeting } }
-        // A version is the one-display list, or main + second together: a full-display
-        // Meeting on the second display counts for the Active speaker on the main one.
-        let twoHasMeeting = hasMeeting(template.twoDisplays?.main ?? []) || hasMeeting(template.twoDisplays?.second ?? [])
+        // The placed arrangements are one version: a full-display Meeting on the second display counts for
+        // the Active speaker on the main one, but only while that display is connected (R26.4).
+        let second = secondConnected ? template.pieces(for: .second) : []
+        let versionHasMeeting = hasMeeting(template.oneDisplay) || hasMeeting(second)
         func swap(_ pieces: [LayoutPiece], versionHasMeeting: Bool) -> [LayoutPiece] {
             guard !versionHasMeeting,
                   let i = pieces.firstIndex(where: { $0.kind.view == .activeSpeaker }),
@@ -462,13 +464,11 @@ enum LayoutResolver {
             return out
         }
         var copy = template
-        copy.oneDisplay = swap(template.oneDisplay, versionHasMeeting: hasMeeting(template.oneDisplay))
-        if template.twoDisplays != nil {
-            // Only one Meeting may stand in per version: main first, second only if main had no Active speaker.
-            let mainOut = swap(template.twoDisplays?.main ?? [], versionHasMeeting: twoHasMeeting)
-            let mainSwapped = mainOut != (template.twoDisplays?.main ?? [])
-            copy.twoDisplays?.main = mainOut
-            copy.twoDisplays?.second = swap(template.twoDisplays?.second ?? [], versionHasMeeting: twoHasMeeting || mainSwapped)
+        // Only one Meeting may stand in: main first, second only if main had no Active speaker.
+        copy.oneDisplay = swap(template.oneDisplay, versionHasMeeting: versionHasMeeting)
+        let mainSwapped = copy.oneDisplay != template.oneDisplay
+        if secondConnected, template.twoDisplays != nil {
+            copy.twoDisplays?.second = swap(template.pieces(for: .second), versionHasMeeting: versionHasMeeting || mainSwapped)
         }
         return copy
     }
@@ -481,12 +481,19 @@ enum LayoutResolver {
         viewsEnabled && (customUIRuntime ?? customUISaved) && !meetingWindowOnly
     }
 
+    /// Whether the template's second arrangement has a display to go on right now (R26).
+    static func secondIsConnected(_ template: LayoutTemplate, screens: [LayoutScreen]) -> Bool {
+        guard template.twoDisplays != nil, let main = screens.first(where: \.isMain) ?? screens.first else { return false }
+        return screens.contains { $0.id != main.id }
+    }
+
     /// Re-resolved on every call, never cached: displays come and go and a
     /// screen's usable area changes with the Dock and the menu bar.
     ///
-    /// The two-display version is used when the template has one AND a second
-    /// display is connected - `secondUUID` if it is, else the first display that
-    /// is not the main one. Otherwise the one-display version, on the main one.
+    /// One arrangement per display (ADR 0002, R26): the main arrangement goes on the main display. The
+    /// second goes on the second display, `secondUUID` if it is connected, else the first display that is
+    /// not the main one, and only while one is. With no second display connected the second's pieces are
+    /// ignored, with no note: a missing display just drops its part.
     static func resolve(_ template: LayoutTemplate, screens: [LayoutScreen], primaryHeight: CGFloat) -> Result {
         guard let main = screens.first(where: \.isMain) ?? screens.first else {
             return Result(variant: .oneDisplay, placed: [], notes: ["No display is available to place windows on."],
@@ -510,12 +517,11 @@ enum LayoutResolver {
                     notes.append("The saved second display isn\u{2019}t connected; using \u{201C}\(second.name)\u{201D}.")
                 }
                 return Result(variant: .twoDisplays,
-                              placed: place(two.main, .main, on: main) + place(two.second, .second, on: second),
+                              placed: place(template.oneDisplay, .main, on: main) + place(two.second, .second, on: second),
                               notes: notes, primaryHeight: primaryHeight)
             }
-            notes.append("Only one display is connected, so the one-display version of \u{201C}\(template.name)\u{201D} is used.")
         }
-        return Result(variant: .oneDisplay, placed: place(template.oneDisplay, .one, on: main),
+        return Result(variant: .oneDisplay, placed: place(template.oneDisplay, .main, on: main),
                       notes: notes, primaryHeight: primaryHeight)
     }
 
@@ -618,7 +624,7 @@ extension LayoutTemplate {
     /// "Quick-hide mode" row that used to read and write this is gone; the Meeting
     /// piece's own "Starts hidden" in the layout editor is the control.)
     var meetingStartsHidden: Bool? {
-        let flags = (oneDisplay + (twoDisplays.map { $0.main + $0.second } ?? [])).compactMap { piece -> Bool? in
+        let flags = (oneDisplay + (twoDisplays?.second ?? [])).compactMap { piece -> Bool? in
             switch piece.kind {
             case .meeting(_, let hidden), .view(_, let hidden): return hidden
             default: return nil
@@ -641,9 +647,18 @@ extension LayoutTemplate {
         }
         oneDisplay = apply(oneDisplay)
         if var two = twoDisplays {
-            two.main = apply(two.main)
             two.second = apply(two.second)
             twoDisplays = two
         }
     }
+
+    /// A Meeting piece that fills a whole display: the participants form.
+    var hasFillsDisplayMeeting: Bool {
+        (twoDisplays?.second ?? []).contains {
+            if case .meeting(true, _) = $0.kind { return true } else { return false }
+        } || oneDisplay.contains {
+            if case .meeting(true, _) = $0.kind { return true } else { return false }
+        }
+    }
+
 }

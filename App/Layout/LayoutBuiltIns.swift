@@ -59,20 +59,18 @@ extension LayoutLibrary {
         let room = LayoutTemplate(
             name: "Room + laptop", starter: roomLaptop,
             oneDisplay: [browser(width: 9 * third), chat(x: 9 * third, w: 3 * third, top: 0)],
-            twoDisplays: TwoDisplay(
-                main: [browser(width: 9 * third), chat(x: 9 * third, w: 3 * third, top: 0)],
-                second: [LayoutPiece(kind: .roomScreen, rect: .full)], sharedSlot: .main),
+            twoDisplays: TwoDisplay(second: [LayoutPiece(kind: .roomScreen, rect: .full)], sharedSlot: .main),
             camera: camera(.circle, width: 0.12, right: 0.30, bottom: 0.06), share: ShareTarget())
         // No pieces: no window moves. Only the camera has a place.
         let leave = LayoutTemplate(
             name: "Leave my windows alone", starter: leaveAlone,
             camera: camera(.circle, width: 0.12, right: 0.04, bottom: 0.06), share: ShareTarget())
-        // The old fixed arrangement. The second display keeps a full-display Meeting.
+        // The old fixed arrangement. Main is the browser and Chat; the second display keeps a full-display
+        // Meeting (laptop only, no Meeting window opens: the owner accepted that, ADR 0002).
         let raj = LayoutTemplate(
             name: "Raj San Mode", starter: rajMode,
-            oneDisplay: [browser(width: 9 * third), speaker(x: 9 * third, w: 3 * third), chat(x: 9 * third, w: 3 * third)],
+            oneDisplay: [browser(width: 9 * third), chat(x: 9 * third, w: 3 * third, top: 0)],
             twoDisplays: TwoDisplay(
-                main: [browser(width: 9 * third), chat(x: 9 * third, w: 3 * third, top: 0)],
                 second: [LayoutPiece(kind: .meeting(fillsDisplay: true, startsHidden: false), rect: .full)]),
             camera: LayoutCamera(), share: ShareTarget())
         return [teach, talk, presenting, room, leave, raj]
@@ -208,7 +206,7 @@ extension LayoutLibrary {
         case present: return "Share your screen, with you small in a corner. The speaker and chat stay at the side of your screen."
         case roomLaptop: return "People in the room watch the Room screen while you work on the laptop."
         case leaveAlone: return "Moves no windows. It only says where your camera sits. Press + to start your own layout from it."
-        case rajMode: return "The browser on the left, the active speaker top right with chat below, and your camera in the corner."
+        case rajMode: return "The browser on the left with chat beside it. With a second display, the meeting fills it."
         default: return nil
         }
     }
@@ -228,7 +226,7 @@ extension LayoutTemplate {
         guard name == s.name, camera == s.camera, share == s.share, same(oneDisplay, s.oneDisplay) else { return false }
         switch (twoDisplays, s.twoDisplays) {
         case (nil, nil): return true
-        case let (a?, b?): return a.sharedSlot == b.sharedSlot && same(a.main, b.main) && same(a.second, b.second)
+        case let (a?, b?): return a.sharedSlot == b.sharedSlot && same(a.second, b.second)
         default: return false
         }
     }

@@ -19,10 +19,6 @@ final class LayoutEditorRulesTests: XCTestCase {
         XCTAssertEqual(LayoutEditorRules.layoutMenu(isBuiltIn: true, canRestore: false), [.rename, .duplicate, .delete])
     }
 
-    func testGhostSecondCanvasOnlyWithoutATwoDisplayVersion() {
-        XCTAssertTrue(LayoutEditorRules.showsGhostSecondCanvas(hasTwoDisplays: false))
-        XCTAssertFalse(LayoutEditorRules.showsGhostSecondCanvas(hasTwoDisplays: true))
-    }
 
     func testSecondMenuHasAutomaticDisplaysThenRemove() {
         XCTAssertEqual(LayoutEditorRules.secondMenu(connectedNonMainIDs: ["a", "b"], savedUUID: ""),
@@ -37,9 +33,8 @@ final class LayoutEditorRulesTests: XCTestCase {
     }
 
     func testSharedControlsSitOnTheOneCanvas() {
-        XCTAssertTrue(LayoutEditorRules.carriesSharedControls(slot: .one, template: template(two: false)))
-        // Viewing the one-display version of a layout that also has two displays.
-        XCTAssertTrue(LayoutEditorRules.carriesSharedControls(slot: .one, template: template(two: true)))
+        XCTAssertTrue(LayoutEditorRules.carriesSharedControls(slot: .main, template: template(two: false)))
+        XCTAssertFalse(LayoutEditorRules.carriesSharedControls(slot: .second, template: template(two: false)))
     }
 
     func testSharedControlsFollowTheSharedDisplay() {
@@ -54,7 +49,7 @@ final class LayoutEditorRulesTests: XCTestCase {
     func testExactlyOneCanvasCarriesTheSharedControls() {
         for two in [false, true] {
             let t = template(two: two)
-            let slots: [LayoutSlot] = two ? [.main, .second] : [.one]
+            let slots: [LayoutSlot] = two ? [.main, .second] : [.main]
             XCTAssertEqual(slots.filter { LayoutEditorRules.carriesSharedControls(slot: $0, template: t) }.count, 1)
         }
         let shown = template(two: true, shared: .second)
@@ -108,7 +103,7 @@ final class LayoutEditorRulesTests: XCTestCase {
     // R9.4
     func testAChatMenuOffersHideFromEveryoneThenRemove() {
         let chat = LayoutPiece(kind: .chat, rect: UnitRect(x: 0, y: 0, w: 0.25, h: 0.25))
-        XCTAssertEqual(LayoutEditorRules.pieceMenu(piece: chat, target: .wholeScreen, slot: .one, hasOtherDisplay: false),
+        XCTAssertEqual(LayoutEditorRules.pieceMenu(piece: chat, target: .wholeScreen, slot: .main, hasOtherDisplay: false),
                        [.hideFromEveryone, .remove])
     }
 
@@ -125,16 +120,16 @@ final class LayoutEditorRulesTests: XCTestCase {
     func testTheEyeRowIsOfferedOnlyWhereItIsASwitch() {
         let meeting = LayoutPiece(kind: .meeting(fillsDisplay: false, startsHidden: false),
                                   rect: UnitRect(x: 0, y: 0, w: 0.5, h: 0.5))
-        XCTAssertEqual(LayoutEditorRules.pieceMenu(piece: meeting, target: .wholeScreen, slot: .one, hasOtherDisplay: false),
+        XCTAssertEqual(LayoutEditorRules.pieceMenu(piece: meeting, target: .wholeScreen, slot: .main, hasOtherDisplay: false),
                        [.hideFromEveryone, .hideOnMyScreen, .remove])
         var hidden = meeting
         hidden.kind = .meeting(fillsDisplay: false, startsHidden: true)
         hidden.showsToEveryone = false
-        XCTAssertEqual(LayoutEditorRules.pieceMenu(piece: hidden, target: .wholeScreen, slot: .one, hasOtherDisplay: false),
+        XCTAssertEqual(LayoutEditorRules.pieceMenu(piece: hidden, target: .wholeScreen, slot: .main, hasOtherDisplay: false),
                        [.showToEveryone, .showOnMyScreen, .remove])
         let browser = LayoutPiece(kind: .app(AppPiece(bundleID: Visibility.builtInBrowserID)),
                                   rect: UnitRect(x: 0, y: 0, w: 0.5, h: 0.5))
-        XCTAssertEqual(LayoutEditorRules.pieceMenu(piece: browser, target: .wholeScreen, slot: .one, hasOtherDisplay: false),
+        XCTAssertEqual(LayoutEditorRules.pieceMenu(piece: browser, target: .wholeScreen, slot: .main, hasOtherDisplay: false),
                        [.remove])
     }
 
@@ -172,25 +167,23 @@ final class LayoutEditorRulesTests: XCTestCase {
 
     private let cameraID = UUID()
     private func state(two: Bool, slot: LayoutSlot, selection: UUID? = nil) -> LayoutEditorRules.EditorState {
-        .init(showsTwo: two, activeSlot: slot, selection: selection)
+        .init(activeSlot: slot, selection: selection)
     }
 
     // R9.1: undoing "Add Second Display" leaves no two-display version to show.
-    func testNoTwoDisplayVersionDropsBackToOneDisplay() {
+    func testNoSecondDisplayDropsBackToMain() {
         let t = template(two: false)
-        let r = LayoutEditorRules.reconciled(state(two: true, slot: .main), in: t, cameraID: cameraID)
-        XCTAssertEqual(r, state(two: false, slot: .one))
+        let r = LayoutEditorRules.reconciled(state(two: true, slot: .second), in: t, cameraID: cameraID)
+        XCTAssertEqual(r, state(two: false, slot: .main))
     }
 
     // R9.1: redoing "Add Second Display" shows one display at a time on a valid canvas.
-    func testAShownTwoDisplayVersionNeverHasTheOneDisplaySlotActive() {
+    func testASecondDisplayKeepsTheActiveCanvas() {
         let t = template(two: true)
-        XCTAssertEqual(LayoutEditorRules.reconciled(state(two: true, slot: .one), in: t, cameraID: cameraID),
-                       state(two: true, slot: .main))
         XCTAssertEqual(LayoutEditorRules.reconciled(state(two: true, slot: .second), in: t, cameraID: cameraID),
                        state(two: true, slot: .second))
-        XCTAssertEqual(LayoutEditorRules.reconciled(state(two: false, slot: .main), in: t, cameraID: cameraID),
-                       state(two: false, slot: .one))
+        XCTAssertEqual(LayoutEditorRules.reconciled(state(two: true, slot: .main), in: t, cameraID: cameraID),
+                       state(two: true, slot: .main))
     }
 
     // R9.1: a selection whose piece an undo took away is cleared; the camera and live pieces stay.
@@ -198,15 +191,15 @@ final class LayoutEditorRulesTests: XCTestCase {
         let chat = LayoutPiece(kind: .chat, rect: UnitRect(x: 0, y: 0, w: 0.25, h: 0.5))
         var t = template(two: false)
         t.oneDisplay = [chat]
-        XCTAssertEqual(LayoutEditorRules.reconciled(state(two: false, slot: .one, selection: chat.id), in: t, cameraID: cameraID).selection, chat.id)
-        XCTAssertEqual(LayoutEditorRules.reconciled(state(two: false, slot: .one, selection: cameraID), in: t, cameraID: cameraID).selection, cameraID)
-        XCTAssertNil(LayoutEditorRules.reconciled(state(two: false, slot: .one, selection: UUID()), in: t, cameraID: cameraID).selection)
+        XCTAssertEqual(LayoutEditorRules.reconciled(state(two: false, slot: .main, selection: chat.id), in: t, cameraID: cameraID).selection, chat.id)
+        XCTAssertEqual(LayoutEditorRules.reconciled(state(two: false, slot: .main, selection: cameraID), in: t, cameraID: cameraID).selection, cameraID)
+        XCTAssertNil(LayoutEditorRules.reconciled(state(two: false, slot: .main, selection: UUID()), in: t, cameraID: cameraID).selection)
     }
 
     // R9.1: no active layout, nothing to show.
     func testNoActiveLayoutResetsTheEditor() {
         XCTAssertEqual(LayoutEditorRules.reconciled(state(two: true, slot: .second, selection: UUID()), in: nil, cameraID: cameraID),
-                       state(two: false, slot: .one))
+                       state(two: false, slot: .main))
     }
 
     // R9.7: the camera's spoken note follows the camera state, never a fixed "moves for everyone".

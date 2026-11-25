@@ -323,14 +323,15 @@ private struct Lossy<T: Decodable>: Decodable {
 
 // MARK: - Templates
 
-/// Where a set of pieces lives: the only display, or the main / second one of
-/// a two-display version.
+/// Where a set of pieces lives: the main display's arrangement or the second one's
+/// (ADR 0002: one arrangement per display).
 enum LayoutSlot: String, Codable, Hashable, CaseIterable {
-    case one, main, second
+    case main, second
 }
 
+/// The optional second-display arrangement, used only while that display is connected.
+/// (The name is the saved key's; the main arrangement is `LayoutTemplate.oneDisplay`.)
 struct TwoDisplay: Codable, Equatable {
-    var main: [LayoutPiece]
     var second: [LayoutPiece]
     /// A display UUID (DisplayResolver.uuidString), "" = the first display that
     /// is not the main one.
@@ -338,13 +339,20 @@ struct TwoDisplay: Codable, Equatable {
     /// "Everyone sees": the display the meeting sees and recordings film, `.main` or
     /// `.second`. Old files have none and keep the main display. See `LayoutSharedDisplay`.
     var sharedSlot: LayoutSlot = .main
+    /// Read from a file an older build wrote (its separate two-display main arrangement), only so
+    /// the one-arrangement migration can keep it (R25.4, R27). Never written, never compared.
+    var legacyMain: [LayoutPiece]?
 
-    init(main: [LayoutPiece] = [], second: [LayoutPiece] = [], secondUUID: String = "",
-         sharedSlot: LayoutSlot = .main) {
-        self.main = main
+    init(second: [LayoutPiece] = [], secondUUID: String = "", sharedSlot: LayoutSlot = .main,
+         legacyMain: [LayoutPiece]? = nil) {
         self.second = second
         self.secondUUID = secondUUID
         self.sharedSlot = sharedSlot == .second ? .second : .main
+        self.legacyMain = legacyMain
+    }
+
+    static func == (a: TwoDisplay, b: TwoDisplay) -> Bool {
+        a.second == b.second && a.secondUUID == b.secondUUID && a.sharedSlot == b.sharedSlot
     }
 
     private enum CodingKeys: String, CodingKey { case main, second, secondUUID
@@ -353,12 +361,18 @@ struct TwoDisplay: Codable, Equatable {
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
-        self.init(main: ((try? c.decodeIfPresent([Lossy<LayoutPiece>].self, forKey: .main)) ?? [])
-                    .compactMap(\.value),
-                  second: ((try? c.decodeIfPresent([Lossy<LayoutPiece>].self, forKey: .second)) ?? [])
+        self.init(second: ((try? c.decodeIfPresent([Lossy<LayoutPiece>].self, forKey: .second)) ?? [])
                     .compactMap(\.value),
                   secondUUID: (try? c.decodeIfPresent(String.self, forKey: .secondUUID)) ?? "",
-                  sharedSlot: (try? c.decodeIfPresent(LayoutSlot.self, forKey: .sharedSlot)) ?? .main)
+                  sharedSlot: (try? c.decodeIfPresent(LayoutSlot.self, forKey: .sharedSlot)) ?? .main,
+                  legacyMain: (try? c.decodeIfPresent([Lossy<LayoutPiece>].self, forKey: .main))?.compactMap(\.value))
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(second, forKey: .second)
+        try c.encode(secondUUID, forKey: .secondUUID)
+        try c.encode(sharedSlot, forKey: .sharedSlot)
     }
 }
 
@@ -368,7 +382,10 @@ struct LayoutTemplate: Codable, Identifiable, Equatable {
     /// Which starter this began as ("teach-browser", "meeting-chat"), so
     /// a reset can find it again after a rename. nil for your own.
     var starter: String?
+    /// The main-display arrangement (ADR 0002). The name and key are the old "one display" ones, kept so
+    /// every saved file reads.
     var oneDisplay: [LayoutPiece]
+    /// The second-display arrangement, if the layout has one; ignored while that display is not connected.
     var twoDisplays: TwoDisplay?
     /// The camera's spot, size and shape for this layout. nil: the global settings stand
     /// (old files, and layouts made since the migration).
@@ -406,16 +423,14 @@ struct LayoutTemplate: Codable, Identifiable, Equatable {
 
     func pieces(for slot: LayoutSlot) -> [LayoutPiece] {
         switch slot {
-        case .one: return oneDisplay
-        case .main: return twoDisplays?.main ?? []
+        case .main: return oneDisplay
         case .second: return twoDisplays?.second ?? []
         }
     }
 
     mutating func setPieces(_ pieces: [LayoutPiece], for slot: LayoutSlot) {
         switch slot {
-        case .one: oneDisplay = pieces
-        case .main: twoDisplays?.main = pieces
+        case .main: oneDisplay = pieces
         case .second: twoDisplays?.second = pieces
         }
     }
@@ -425,14 +440,13 @@ struct LayoutTemplate: Codable, Identifiable, Equatable {
         LayoutSlot.allCases.flatMap { slot in pieces(for: slot).map { (slot: slot, piece: $0) } }
     }
 
-    /// Every piece of the version the slot belongs to: one display, or both of
-    /// a pair. Meeting and Chat are single windows, so their limits count
-    /// across the pair.
+    /// Every piece of the layout, both arrangements: Meeting and Chat are single windows, so their
+    /// limits count across both. (`slot` is kept for the call sites that ask "where I am adding".)
     func piecesInVersion(of slot: LayoutSlot) -> [LayoutPiece] {
-        slot == .one ? oneDisplay : pieces(for: .main) + pieces(for: .second)
+        pieces(for: .main) + pieces(for: .second)
     }
 
-    var pieceCount: Int { oneDisplay.count + (twoDisplays.map { $0.main.count + $0.second.count } ?? 0) }
+    var pieceCount: Int { oneDisplay.count + (twoDisplays?.second.count ?? 0) }
 
     static let maxApps = 4
 
@@ -474,7 +488,7 @@ struct LayoutTemplate: Codable, Identifiable, Equatable {
     /// The first App piece's bundle ID, in the order a person reads the layout:
     /// one display, then the main display of a pair.
     var firstAppBundleID: String? {
-        (oneDisplay + (twoDisplays?.main ?? []) + (twoDisplays?.second ?? [])).lazy.compactMap { $0.kind.app?.bundleID }.first
+        (oneDisplay + (twoDisplays?.second ?? [])).lazy.compactMap { $0.kind.app?.bundleID }.first
     }
 
     /// Puts another app in the place of one (onboarding's single picker), in every
@@ -491,35 +505,21 @@ struct LayoutTemplate: Codable, Identifiable, Equatable {
         }
         oneDisplay = swap(oneDisplay)
         if var two = twoDisplays {
-            two.main = swap(two.main)
             two.second = swap(two.second)
             twoDisplays = two
         }
     }
 
-    // MARK: Display variants
+    // MARK: The second display
 
-    /// Starts a two-display version from the one-display one: whatever was
-    /// there stays on the main display (without the Meeting), and the Meeting
-    /// fills the second.
-    mutating func addTwoDisplayVersion() {
+    /// R25.3: an empty second-display arrangement; nothing moves out of main.
+    mutating func addSecondDisplay() {
         guard twoDisplays == nil else { return }
-        // The Active speaker view is the starters' speaker, so it moves like the Meeting.
-        func isSpeaker(_ p: LayoutPiece) -> Bool { p.kind.isMeeting || p.kind.view == .activeSpeaker }
-        var main = oneDisplay.filter { !isSpeaker($0) }
-        // The old column the Meeting sat in goes to the Chat, if there is one.
-        if let meeting = oneDisplay.first(where: isSpeaker),
-           let chat = main.firstIndex(where: { $0.kind.isChat }),
-           abs(main[chat].rect.x - meeting.rect.x) < 1e-6, abs(main[chat].rect.w - meeting.rect.w) < 1e-6 {
-            main[chat].rect = UnitRect(x: meeting.rect.x, y: 0, w: meeting.rect.w, h: 1)
-        }
-        twoDisplays = TwoDisplay(
-            main: main,
-            second: [LayoutPiece(kind: .meeting(fillsDisplay: true, startsHidden: false), rect: .full)],
-            secondUUID: "")
+        twoDisplays = TwoDisplay()
     }
 
-    mutating func removeTwoDisplayVersion() {
+    /// R25.3: drops the second-display arrangement with its pieces.
+    mutating func removeSecondDisplay() {
         twoDisplays = nil
     }
 }
@@ -590,7 +590,6 @@ struct LayoutLibrary: Codable, Equatable {
         }
         copy.oneDisplay = fresh(copy.oneDisplay)
         if var two = copy.twoDisplays {
-            two.main = fresh(two.main)
             two.second = fresh(two.second)
             copy.twoDisplays = two
         }
@@ -673,6 +672,70 @@ struct LayoutLibrary: Codable, Equatable {
 
 extension LayoutLibrary {
     static let defaultsKey = "layoutLibrary"
+    static let oneArrangementMigratedKey = "layoutLibrary.oneArrangementMigrated"
+
+    /// One time, with its own key, set only after `save` worked (ADR 0002, R27): `oneDisplay` is the main
+    /// arrangement and `twoDisplays.second` the second. Where an old two-display main differed from
+    /// `oneDisplay` in pieces or their settings, it is kept as the owner's own layout "<name> (old
+    /// two-display)" just after the original, with that main plus the same second. Raj San Mode exactly as
+    /// the last build shipped it simply becomes the new one (camera, share and display choice are kept).
+    /// Returns whether it ran and saved.
+    @discardableResult
+    mutating func migrateOneArrangement(defaults: UserDefaults, save: (LayoutLibrary) -> Bool) -> Bool {
+        guard !defaults.bool(forKey: Self.oneArrangementMigratedKey) else { return false }
+        func reissued(_ pieces: [LayoutPiece]) -> [LayoutPiece] {
+            pieces.map { var p = $0; p.id = UUID(); return p }
+        }
+        var out: [LayoutTemplate] = []
+        for original in templates {
+            var t = original
+            let old = t.twoDisplays?.legacyMain
+            t.twoDisplays?.legacyMain = nil
+            guard let old, !Self.sameArrangement(old, t.oneDisplay) else { out.append(t); continue }
+            if t.starter == Self.rajMode, Self.isOldShippedRaj(main: t.oneDisplay, twoDisplayMain: old, second: t.twoDisplays?.second ?? []),
+               let fresh = Self.shipped(Self.rajMode) {
+                t.oneDisplay = fresh.oneDisplay
+                t.twoDisplays?.second = fresh.twoDisplays?.second ?? []
+                out.append(t)
+                continue
+            }
+            var copy = t
+            copy.id = UUID()
+            copy.starter = nil
+            copy.name = t.name + " (old two-display)"
+            copy.oneDisplay = reissued(old)
+            copy.twoDisplays?.second = reissued(t.twoDisplays?.second ?? [])
+            out.append(t)
+            out.append(copy)
+        }
+        templates = out
+        guard save(self) else { return false }
+        defaults.set(true, forKey: Self.oneArrangementMigratedKey)
+        return true
+    }
+
+    /// Same pieces in the same order: kind, rectangle and eye (ids are ignored).
+    static func sameArrangement(_ a: [LayoutPiece], _ b: [LayoutPiece]) -> Bool {
+        a.count == b.count && zip(a, b).allSatisfy {
+            $0.kind == $1.kind && $0.rect == $1.rect && $0.showsToEveryone == $1.showsToEveryone
+        }
+    }
+
+    /// Raj San Mode as the build before ADR 0002 shipped it: three pieces on the laptop, browser and
+    /// Chat on the main display of the pair, a full-display Meeting on the second.
+    private static func isOldShippedRaj(main: [LayoutPiece], twoDisplayMain: [LayoutPiece], second: [LayoutPiece]) -> Bool {
+        let third = 1.0 / 12
+        func browser() -> LayoutPiece {
+            LayoutPiece(kind: .app(AppPiece(bundleID: builtInBrowserBundleID)), rect: UnitRect(x: 0, y: 0, w: 9 * third, h: 1))
+        }
+        let speaker = LayoutPiece(kind: .view(.activeSpeaker, startsHidden: false), rect: UnitRect(x: 9 * third, y: 0, w: 3 * third, h: 5 * third))
+        let chatBelow = LayoutPiece(kind: .chat, rect: UnitRect(x: 9 * third, y: 5 * third, w: 3 * third, h: 7 * third))
+        let chatFull = LayoutPiece(kind: .chat, rect: UnitRect(x: 9 * third, y: 0, w: 3 * third, h: 1))
+        let meeting = LayoutPiece(kind: .meeting(fillsDisplay: true, startsHidden: false), rect: .full)
+        return sameArrangement(main, [browser(), speaker, chatBelow])
+            && sameArrangement(twoDisplayMain, [browser(), chatFull])
+            && sameArrangement(second, [meeting])
+    }
 
     static func load(from defaults: UserDefaults) -> LayoutLibrary? {
         defaults.data(forKey: defaultsKey).flatMap { try? JSONDecoder().decode(LayoutLibrary.self, from: $0) }
@@ -696,6 +759,9 @@ extension LayoutLibrary {
     /// happens once). The old keys are left exactly as they were.
     static func loadOrMigrate(from defaults: UserDefaults, defaultSiteURL: String) -> LayoutLibrary {
         if var saved = load(from: defaults) {
+            // ADR 0002, once: one arrangement per display. First, while the file's old two-display
+            // mains are still in memory. Saves itself and sets its own key.
+            saved.migrateOneArrangement(defaults: defaults, save: { $0.save(to: defaults) })
             // A starter this library has never had is added once; one the person
             // deleted is in `known` already and stays gone.
             let known = defaults.stringArray(forKey: knownStartersKey).map(Set.init)
@@ -727,6 +793,7 @@ extension LayoutLibrary {
         }
         let library = firstRun(legacy: LegacyLayoutSettings.read(from: defaults, defaultSiteURL: defaultSiteURL))
         if library.save(to: defaults) {
+            defaults.set(true, forKey: oneArrangementMigratedKey)
             defaults.set(true, forKey: builtInsV2MigratedKey)
             defaults.set(true, forKey: shownToEveryoneMigratedKey)
             defaults.set(true, forKey: appsShownMigratedKey)
@@ -763,7 +830,6 @@ extension LayoutLibrary {
         for i in templates.indices {
             templates[i].oneDisplay = flip(templates[i].oneDisplay)
             if var two = templates[i].twoDisplays {
-                two.main = flip(two.main)
                 two.second = flip(two.second)
                 templates[i].twoDisplays = two
             }
@@ -779,7 +845,6 @@ extension LayoutLibrary {
         for i in templates.indices {
             templates[i].oneDisplay = flip(templates[i].oneDisplay)
             if var two = templates[i].twoDisplays {
-                two.main = flip(two.main)
                 two.second = flip(two.second)
                 templates[i].twoDisplays = two
             }
@@ -932,13 +997,13 @@ struct LegacyLayoutSettings: Equatable {
         var template = LayoutTemplate(name: "Your previous layout", oneDisplay: one)
         if peopleViewOnStart {
             // The participant view was the whole second display; the Chat takes
-            // the full column on the main one.
+            // the full column on the main one (ADR 0002: that is the main arrangement now).
             var main = app
             if sideShowsChat {
                 main.append(LayoutPiece(kind: .chat, rect: UnitRect(x: sideX, y: 0, w: sideW, h: 1)))
             }
+            template.oneDisplay = main
             template.twoDisplays = TwoDisplay(
-                main: main,
                 second: [LayoutPiece(kind: .meeting(fillsDisplay: true, startsHidden: false), rect: .full)],
                 secondUUID: peopleViewDisplayUUID)
         }

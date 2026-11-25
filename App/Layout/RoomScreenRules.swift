@@ -21,8 +21,7 @@ enum RoomScreenRules {
     static let title = "Room screen"
     static let symbol = "tv"
 
-    /// At most one per version, and only on the second display of a two-display
-    /// version: on the display it copies it would show itself.
+    /// At most one per layout, and only on the second display's arrangement: on the display it copies it would show itself.
     static func canAdd(to slot: LayoutSlot, existing: [LayoutPiece.Kind]) -> Bool {
         slot == .second && !existing.contains { $0.isRoomScreen }
     }
@@ -32,7 +31,7 @@ enum RoomScreenRules {
     static func blockReason(slot: LayoutSlot, existing: [LayoutPiece.Kind]) -> String? {
         if canAdd(to: slot, existing: existing) { return nil }
         if existing.contains(where: { $0.isRoomScreen }) { return "Already in this layout" }
-        if slot == .one { return "Needs a second display, set as extended, not mirrored. Add the two-display version first." }
+        if slot == .main { return "Needs a second display, set as extended, not mirrored. Add a second display first." }
         return "Put it on the second display: on the main display it would show itself."
     }
 

@@ -37,9 +37,11 @@ enum PreviewSecondDisplayRules {
 
     /// The row for the active layout: none when it tiles no windows, that is no pieces, or a layout
     /// (Leave my windows alone) that moves none. The camera is not a piece and never counts.
-    static func row(for template: LayoutTemplate?, secondPieceIsMeeting: [Bool]) -> Row? {
+    static func row(for template: LayoutTemplate?, secondPieceIsMeeting: [Bool], placedPieceCount: Int? = nil) -> Row? {
         guard let template, template.movesWindows else { return nil }
-        return row(pieceCount: template.pieceCount, secondPieceIsMeeting: secondPieceIsMeeting)
+        // R31.3: what is placed right now counts, not what is saved: pieces on a second display that is
+        // not connected place nothing.
+        return row(pieceCount: placedPieceCount ?? template.pieceCount, secondPieceIsMeeting: secondPieceIsMeeting)
     }
 
     static func row(pieceCount: Int?, secondPieceIsMeeting: [Bool]) -> Row? {

@@ -184,8 +184,8 @@ struct LayoutCanvas: View {
     /// The camera overlay for this display (the shared one); nil on others.
     /// Drawn above every piece, never saved with the template.
     var camera: LayoutCameraModel?
-    /// Which display this is. `.one` on a one-display layout.
-    var slot: LayoutSlot = .one
+    /// Which display this is.
+    var slot: LayoutSlot = .main
     /// This is the display everyone sees (a two-display layout's "Everyone sees"): the header says so.
     var isShared = false
     /// Header pieces the page supplies (Direction A): the second display's "Second" menu
@@ -193,6 +193,9 @@ struct LayoutCanvas: View {
     var titleMenu: AnyView?
     var sharedTag: AnyView?
     var headerAdd: AnyView?
+    /// The dashed strip beside the main canvas that adds a second display (R29.3): as tall as the
+    /// canvas, at its right edge. Only the main canvas has one, and only without a second display.
+    var trailingStrip: AnyView?
     /// Drag between the two displays; nil on a one-display layout.
     var crossing: LayoutCrossing?
     /// A piece from the other display is over this canvas right now.
@@ -217,6 +220,8 @@ struct LayoutCanvas: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private static let space = "LayoutCanvas.space"
+    /// The padding around the drawn display (`LayoutEditorRules.canvasWidths` needs it).
+    static let bezelInset: CGFloat = 8
     private static let handleSize: CGFloat = 8
     private static let tileInset: CGFloat = 1
 
@@ -239,7 +244,14 @@ struct LayoutCanvas: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             if showsHeader { header }
-            bezel
+            if let trailingStrip {
+                HStack(alignment: .top, spacing: 6) {
+                    bezel
+                    trailingStrip
+                }
+            } else {
+                bezel
+            }
         }
     }
 
@@ -279,7 +291,7 @@ struct LayoutCanvas: View {
     private var bezel: some View {
         surface
             .aspectRatio(display.aspect, contentMode: .fit)
-            .padding(8)
+            .padding(Self.bezelInset)
             .background(RoundedRectangle(cornerRadius: 10).fill(Color.secondary.opacity(0.08)))
             .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Color.secondary.opacity(0.25)))
     }
@@ -369,7 +381,7 @@ struct LayoutCanvas: View {
             }
             .coordinateSpace(name: Self.space)
             .accessibilityElement(children: .contain)
-            .accessibilityLabel(LayoutEditorRules.spokenCanvas(name: display.name, isShared: isShared || slot == .one))
+            .accessibilityLabel(LayoutEditorRules.spokenCanvas(name: display.name, isShared: isShared || crossing == nil))
             #if DEBUG
             .onChange(of: previewEveryone) { _, on in
                 if on { ShareVisibleWindows.crossCheck(pieces: pieces) }
@@ -1438,5 +1450,42 @@ private struct CameraStandIn: View {
         .padding(.horizontal, 6)
         .padding(.vertical, 3)
         .background(RoundedRectangle(cornerRadius: 6).fill(Color(nsColor: .windowBackgroundColor).opacity(0.85)))
+    }
+}
+
+// MARK: - Adding a second display
+
+/// The panel's width, so two canvases can share it (`LayoutEditorRules.canvasWidths`).
+struct LayoutPanelWidth: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = max(value, nextValue()) }
+}
+
+/// R29.3: a thin vertical dashed strip with a + at the main canvas's right edge. Clicking it adds an
+/// empty second-display arrangement.
+struct AddSecondStrip: View {
+    let width: CGFloat
+    let action: () -> Void
+    @State private var hovering = false
+
+    var body: some View {
+        Button(action: action) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 10)
+                    .fill(Color.secondary.opacity(hovering ? 0.10 : 0))
+                RoundedRectangle(cornerRadius: 10)
+                    .strokeBorder(Color.secondary.opacity(hovering ? 0.8 : 0.5), style: StrokeStyle(lineWidth: 1, dash: [5, 4]))
+                Image(systemName: "plus")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(hovering ? Brand.text : Color.secondary)
+            }
+            .frame(width: width)
+            .frame(maxHeight: .infinity)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { hovering = $0 }
+        .help(LayoutEditorRules.addSecondTooltip)
+        .accessibilityLabel(LayoutEditorRules.addSecondTooltip)
     }
 }

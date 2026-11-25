@@ -19,7 +19,7 @@ enum LayoutPieceMoveRefusal: Error, Equatable {
     var message: String {
         switch self {
         case .notFound: return "That piece is not in this layout."
-        case .needsTwoDisplays: return "Add the two-display version first."
+        case .needsTwoDisplays: return "Add a second display first."
         case .sameDisplay: return "It is already on that display."
         case .roomScreenOnSecondOnly: return "The Room screen can only sit on the second display."
         case .roomScreenOnSharedDisplay: return "Everyone sees the second display, so the Room screen would show itself."
@@ -39,7 +39,7 @@ extension LayoutTemplate {
     func placementForMove(_ id: UUID, from: LayoutSlot, to: LayoutSlot, at pointer: CGPoint,
                           fromDisplay: CGSize, toDisplay: CGSize,
                           snapThreshold: Double = 0) -> Result<UnitRect, LayoutPieceMoveRefusal> {
-        guard twoDisplays != nil, from != .one, to != .one else { return .failure(.needsTwoDisplays) }
+        guard twoDisplays != nil else { return .failure(.needsTwoDisplays) }
         guard from != to else { return .failure(.sameDisplay) }
         guard let piece = pieces(for: from).first(where: { $0.id == id }) else { return .failure(.notFound) }
         if piece.kind.isRoomScreen {
@@ -129,11 +129,11 @@ enum LayoutSharedDisplay {
         return template.effectiveSharedSlot == .second ? second.id : main.id
     }
 
-    /// The canvas the camera overlay belongs on: the display everyone sees. A one-display
-    /// layout has the one slot; a shared second that is not connected falls back to main,
+    /// The canvas the camera overlay belongs on: the display everyone sees. A layout with no second
+    /// arrangement has only main; a shared second that is not connected falls back to main,
     /// as the capture does (`uuid` is nil then).
     static func cameraSlot(template: LayoutTemplate, secondConnected: Bool) -> LayoutSlot {
-        guard template.twoDisplays != nil else { return .one }
+        guard template.twoDisplays != nil else { return .main }
         return template.effectiveSharedSlot == .second && secondConnected ? .second : .main
     }
 

@@ -57,8 +57,10 @@ final class LayoutEngine {
         let viewsCanOpen = LayoutResolver.viewsCanOpen(viewsEnabled: MeetingViewPieces.enabled, customUISaved: customUI,
                                                        customUIRuntime: Self.customUIRuntime,
                                                        meetingWindowOnly: MeetingViewWindows.meetingWindowOnly)
-        let template = LayoutResolver.substitutingMeetingForActiveSpeaker(template, viewsCanOpen: viewsCanOpen)
-        let result = LayoutResolver.resolve(template, screens: Self.connectedScreens(), primaryHeight: primaryHeight)
+        let screens = Self.connectedScreens()
+        let template = LayoutResolver.substitutingMeetingForActiveSpeaker(
+            template, viewsCanOpen: viewsCanOpen, secondConnected: LayoutResolver.secondIsConnected(template, screens: screens))
+        let result = LayoutResolver.resolve(template, screens: screens, primaryHeight: primaryHeight)
         if logNotes { result.notes.forEach(log) }
         return result
     }
@@ -193,7 +195,7 @@ final class LayoutEngine {
     /// window is remembered by id. Other apps are never closed.
     func closeApps(_ template: LayoutTemplate) async {
         var seen = Set<String>()
-        let all = template.oneDisplay + (template.twoDisplays.map { $0.main + $0.second } ?? [])
+        let all = template.oneDisplay + (template.twoDisplays?.second ?? [])
         for piece in all {
             guard let app = piece.kind.app, app.closesOnStop, seen.insert(app.bundleID).inserted else { continue }
             if AppCatalog.isBuiltInBrowser(app.bundleID) {

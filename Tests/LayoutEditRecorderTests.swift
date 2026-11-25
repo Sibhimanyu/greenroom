@@ -38,6 +38,25 @@ final class LayoutEditRecorderTests: XCTestCase {
         XCTAssertEqual(restored, 2)
     }
 
+    // R30.3: removing the second display, pieces and all, is one named step; undo brings them back.
+    func testRemovingTheSecondDisplayWithPiecesUndoesAndRedoes() {
+        let meeting = LayoutPiece(kind: .meeting(fillsDisplay: true, startsHidden: false), rect: .full)
+        var withSecond = library!
+        withSecond.templates[0].addSecondDisplay()
+        withSecond.templates[0].setPieces([meeting], for: .second)
+        grouped { library = withSecond; recorder.observe(withSecond) }
+        var removed = withSecond
+        removed.templates[0].removeSecondDisplay()
+        grouped { library = removed; recorder.observe(removed) }
+        XCTAssertEqual(manager.undoActionName, "Remove Second Display")
+        XCTAssertNil(library.templates[0].twoDisplays)
+        manager.undo()
+        XCTAssertEqual(library.templates[0].pieces(for: .second), [meeting], "the pieces are back")
+        XCTAssertEqual(library.templates[0].pieces(for: .main), [chat], "main untouched")
+        manager.redo()
+        XCTAssertNil(library.templates[0].twoDisplays)
+    }
+
     // R9.1, R6: the camera state is an undoable step, and redo puts it back.
     func testACameraStateChangeUndoesAndRedoes() {
         var state = CameraState.everyoneAndMe

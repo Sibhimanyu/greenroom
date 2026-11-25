@@ -254,7 +254,7 @@ final class BuiltInLayoutsTests: XCTestCase {
     func testBuiltInGeometryIsValid() {
         for t in LayoutLibrary.starters() {
             var versions = [t.oneDisplay]
-            if let two = t.twoDisplays { versions += [two.main, two.second] }
+            if let two = t.twoDisplays { versions += [two.second] }
             for display in [CGSize(width: 1280, height: 720), CGSize(width: 2560, height: 1440)] {
                 for pieces in versions {
                     for (i, p) in pieces.enumerated() {
@@ -274,8 +274,8 @@ final class BuiltInLayoutsTests: XCTestCase {
     // R12.4 (Q22): the built-in stays clean; nothing can be added to it.
     func testNothingIsAddedToLeaveMyWindowsAlone() {
         let leave = starter(LayoutLibrary.leaveAlone)
-        XCTAssertFalse(leave.canAdd(.chat, to: .one))
-        XCTAssertTrue(starter(LayoutLibrary.present).canAdd(.view(.people, startsHidden: false), to: .one))
+        XCTAssertFalse(leave.canAdd(.chat, to: .main))
+        XCTAssertTrue(starter(LayoutLibrary.present).canAdd(.view(.people, startsHidden: false), to: .main))
     }
 }
 

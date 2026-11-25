@@ -45,9 +45,10 @@ final class LayoutEditHistoryTests: XCTestCase {
 
     // R9.1
     func testMovingToTheOtherDisplayNamesTheDisplay() {
-        var t = LayoutTemplate(name: "T", twoDisplays: TwoDisplay(main: [chat]))
+        var t = LayoutTemplate(name: "T", oneDisplay: [chat], twoDisplays: TwoDisplay())
         let old = LayoutLibrary(templates: [t], activeID: t.id)
-        t.twoDisplays = TwoDisplay(main: [], second: [chat])
+        t.oneDisplay = []
+        t.twoDisplays = TwoDisplay(second: [chat])
         let new = LayoutLibrary(templates: [t], activeID: t.id)
         XCTAssertEqual(LayoutEditHistory.describe(from: old, to: new, pieceName: named)?.name,
                        "Move Chat to Second Display")

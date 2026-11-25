@@ -819,9 +819,6 @@ private struct WebViewHost: NSViewRepresentable {
     }
 }
 
-/// Reports a view's frame in SCREEN coordinates, and its window, whenever
-/// AppKit lays it out. The suggestion panel is a separate window, so it
-/// has to be placed in AppKit's space, not SwiftUI's.
 /// An empty part of the browser's top (the tab strip around the tabs, the
 /// toolbar around its controls): a press moves the window with the system's own
 /// drag, and a double-click does what System Settings says (BrowserChromeDrag).
@@ -864,6 +861,9 @@ private struct WindowDragArea: NSViewRepresentable {
     }
 }
 
+/// Reports a view's frame in SCREEN coordinates, and its window, whenever
+/// AppKit lays it out. The suggestion panel is a separate window, so it
+/// has to be placed in AppKit's space, not SwiftUI's.
 private struct AnchorReporter: NSViewRepresentable {
     let onChange: (NSRect, NSWindow?) -> Void
 

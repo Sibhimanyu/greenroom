@@ -63,6 +63,16 @@ enum DisplayResolver {
         .sorted { ($0.isMain ? 0 : 1) < ($1.isMain ? 0 : 1) }
     }
 
+    /// True when any online display is in a mirror set (R15.2: a mirrored room
+    /// display is invisible to NSScreen, so this is the only way to tell it from none).
+    static func hasMirroredDisplay() -> Bool {
+        var count: UInt32 = 0
+        guard CGGetOnlineDisplayList(0, nil, &count) == .success, count > 0 else { return false }
+        var ids = [CGDirectDisplayID](repeating: 0, count: Int(count))
+        guard CGGetOnlineDisplayList(count, &ids, &count) == .success else { return false }
+        return ids.prefix(Int(count)).contains { CGDisplayIsInMirrorSet($0) != 0 }
+    }
+
     /// The NSScreen a saved UUID currently maps to, or nil if that display
     /// isn't connected right now.
     static func screen(forUUID uuid: String) -> NSScreen? {

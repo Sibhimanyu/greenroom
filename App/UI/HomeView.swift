@@ -334,7 +334,17 @@ struct HomeView: View {
     @ViewBuilder private var previewFooter: some View {
         if let row = previewRow, let template = coordinator.layoutLibrary.active {
             HStack(spacing: 8) {
-                if let note = row.note {
+                if let room = RoomDisplayNote.note(for: template, connectedDisplays: displays.count,
+                                                   isMirrored: DisplayResolver.hasMirroredDisplay()) {
+                    // R15.2: calm, amber small text; Start is never blocked.
+                    Label(room.text, systemImage: "display")
+                        .font(.system(size: 11)).foregroundStyle(Brand.netText).lineLimit(1)
+                        .help(RoomDisplayNote.hint)
+                    Button("Open Displays settings") {
+                        if let url = URL(string: RoomDisplayNote.openDisplaysSettingsURL) { NSWorkspace.shared.open(url) }
+                    }
+                    .buttonStyle(.link).font(.system(size: 11))
+                } else if let note = row.note {
                     Label(note, systemImage: "display")
                         .font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
                 }

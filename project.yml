@@ -292,6 +292,7 @@ targets:
       - path: App/Layout/LayoutBuiltIns.swift
       - path: App/Layout/LayoutGeometry.swift
       - path: App/Layout/RoomScreenRules.swift
+      - path: App/Layout/RoomDisplayNote.swift
       - path: App/Layout/LayoutDisplayCrossing.swift
       - path: App/Layout/LayoutEditorRules.swift
       - path: App/Layout/LayoutEditHistory.swift

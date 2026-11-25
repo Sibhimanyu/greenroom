@@ -100,7 +100,7 @@ different order; this table is the authority.
 | R12 | Six built-in layouts, one always active | P9 | built (needs a live check) |
 | R13 | Restore original and Reset all | P9 | built |
 | R14 | Built-ins on existing installs | P9 | built (key `layoutLibrary.builtInsV2Migrated`); an unedited Teach is compared on every saved field (R14.2); a former None user's camera and share go to Leave my windows alone (R14.3) |
-| R15 | Room + laptop | P10 | partial: Room + laptop ships (R15.1); "Connect the room display" on Home (R15.2) is missing |
+| R15 | Room + laptop | P10 | built: Room + laptop ships (R15.1); Home's "Connect the room display" / mirrored note (R15.2, `RoomDisplayNote`) |
 | R16 | Day one looks the same; downgrade works | P2, P3, P9 | built (migration keys follow a successful save) |
 | R18 | Notes bar: drag, spot per display | none (owner fix) | built, 55f524c; resting display added with the review fixes |
 | R19 | Full-display Meeting is adjustable | P11 | built, 71a76b5 |
@@ -269,8 +269,11 @@ different order; this table is the authority.
 **R15. Room + laptop.** (Q9, Q10)
 - R15.1 Main is shared and the Room screen is on Second.
 - R15.2 With no second display, the one-display version runs and Home says
-  "Connect the room display". Start is never blocked. **Missing:** the one-display
-  version runs and Start is not blocked, but Home has no such line yet.
+  "Connect the room display". Start is never blocked. **Built:** Home's preview footer shows
+  the note in amber (`RoomDisplayNote`, tested), with the hint "Set the room's screen as an extended
+  display (not mirrored) in System Settings → Displays." and an Open Displays settings link. A mirrored
+  second display (`CGDisplayIsInMirrorSet`) says "Your room display is mirrored. Set it to extended to
+  use the Room screen." It goes when a display connects.
 
 **R16. Day one looks the same; downgrade works.** (Q7)
 - R16.1 Each migration runs once, writes its key only after it succeeds, and a
@@ -442,7 +445,7 @@ different order; this table is the authority.
 | P7 Settings reshuffle | R10 | built | f5d4b97 |
 | P8 Camera look into Layouts | R11 | built | 19cf8e0 (review fixes: 7e94902) |
 | P9 Built-ins, Leave my windows alone, Restore original | R12, R13, R14, R16 | built | f4222d7 |
-| P10 Room + laptop | R15 | partial (Room + laptop ships; Home's "Connect the room display" is missing) | |
+| P10 Room + laptop | R15 | built (Room + laptop; Home's "Connect the room display" note) | |
 | P11 One icon language | R17 | built | 71a76b5 |
 | P12 One arrangement per display (ADR 0002) | R25 to R31 | built | (this commit) |
 

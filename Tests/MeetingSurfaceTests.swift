@@ -125,6 +125,17 @@ final class MeetingSurfaceTests: XCTestCase {
         m.apply(.restored)
         XCTAssertEqual(m.surface, .window)
     }
+    // R14: a real minimise (the window cannot shrink) still leaves the Bar, never nothing.
+    func testARealMinimiseLeavesTheBarAndTheScreenMatchesIt() {
+        var m = liveWindow()
+        m.apply(.minimised)
+        m.apply(.morphFinished)
+        XCTAssertEqual(m.visible, [.bar])
+        XCTAssertTrue(m.screenMatches([.bar]))
+        XCTAssertFalse(m.screenMatches([]))
+        // Nothing on screen, which is what a minimise with no Bar built leaves, does not match.
+        XCTAssertFalse(m.screenMatches(Set<M.Surface>()))
+    }
     // R9
     func testCloseQuestionLeavesTheSurface() {
         var m = liveWindow()

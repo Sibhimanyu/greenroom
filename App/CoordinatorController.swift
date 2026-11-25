@@ -1790,6 +1790,9 @@ final class CoordinatorController: ObservableObject {
                 // one built: Greenroom's own window in a layout can go to the
                 // bar too, and every way back must land somewhere.
                 startBarText = nil
+                // Every live meeting has its bar (R14): the controls exist even if
+                // nothing above made them.
+                ensureMeetingControls()
                 if let controls = meetingControls {
                     MeetingControlBarController.install(coordinator: self, model: controls)
                 }
@@ -3468,7 +3471,11 @@ final class CoordinatorController: ObservableObject {
             guard let self else { return false }
             let live = self.phase.isInMeeting
             let canShrink = self.zoomChatClient.didInit && self.meetingWindowOpen
-            guard MeetingMinimize.outcome(meetingLive: live, canShrink: canShrink) == .shrinkToControlBar else { return false }
+            guard MeetingMinimize.outcome(meetingLive: live, canShrink: canShrink) == .shrinkToControlBar else {
+                // A real minimise while live: the bar has to be there to take over (R14).
+                if live { self.ensureMeetingBar() }
+                return false
+            }
             self.collapseMeeting()
             return true
         }
@@ -3500,6 +3507,7 @@ final class CoordinatorController: ObservableObject {
             // when it is wanted (a layout of views alone, or one the teacher closed,
             // has none).
             MeetingViewWindows.tick()
+            self.ensureMeetingBar()
             self.meetingControls?.foldPopOutChatIntoWindow()
             self.growIfSomeoneJoined()
             guard self.meetingWindowWanted || ParticipantGridWindowController.isOpen else { return true }
@@ -3586,6 +3594,16 @@ final class CoordinatorController: ObservableObject {
 
     private func ensureMeetingControls() {
         if meetingControls == nil { meetingControls = MeetingControlsModel(coordinator: self) }
+    }
+
+    /// A live meeting always has a bar to land on: built here if it never was (or was
+    /// dropped). Record-only sessions have no meeting surfaces and never get one.
+    private func ensureMeetingBar() {
+        guard MeetingSurfaceOwner.isLive, zoomChatClient.didInit, !recordOnlyActive,
+              !MeetingControlBarController.isInstalled else { return }
+        ensureMeetingControls()
+        guard let controls = meetingControls else { return }
+        MeetingControlBarController.install(coordinator: self, model: controls)
     }
 
     /// Greenroom's own meeting window exists (on screen or not).

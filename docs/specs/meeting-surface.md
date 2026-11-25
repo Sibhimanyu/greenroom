@@ -90,13 +90,13 @@ Acceptance: Window alone while the target is Bar outside a settle does not match
 Status: built.
 
 ### R13. Wiring: the controllers report events
-The existing functions listed under Wiring send events to the model and draw what it says.
-Status: planned.
+The existing functions listed under Wiring send events to the model and draw what it says. The owner is `MeetingSurfaceOwner` (App/Meeting/MeetingSurfaceOwner.swift). The Bar shows from the model's surface (not while a settle waits or a morph runs or is owed); the settle is the model's, timed by the owner; a morph with no animation is finished on the next turn. The window's own state (covered, other desktop, minimised, gone) is read as events from its notifications. The window itself is shown and hidden by the actions that send the events; the safety check hides one that should not be up, or brings back one that should.
+Status: built (not verified live).
 
 ### R14. Wiring: the zero-surface fixes
 As their own labelled commit: (a) a real minimise when the window cannot shrink goes to the Bar, installing it if needed; (b) an arranged session installs the Bar even if `meetingControls` was nil at install time, by installing on `wentLive`.
 Acceptance: neither case leaves zero surfaces while live; checked by the model's `screenMatches` in DEBUG.
-Status: planned.
+Status: built (not verified live).
 
 ## Wiring (later, after the Zoom-window-mode deletion lands)
 

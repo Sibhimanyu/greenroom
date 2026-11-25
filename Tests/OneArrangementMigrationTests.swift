@@ -15,6 +15,7 @@ final class OneArrangementMigrationTests: XCTestCase {
         d.removePersistentDomain(forName: name)
         d.set(LegacyFile.library(entries, activeID: active), forKey: LayoutLibrary.defaultsKey)
         d.set(true, forKey: LayoutLibrary.builtInsV2MigratedKey)
+        d.set(true, forKey: LayoutLibrary.threeBuiltInsMigratedKey)
         d.set(true, forKey: LayoutLibrary.shownToEveryoneMigratedKey)
         d.set(true, forKey: LayoutLibrary.appsShownMigratedKey)
         d.set(true, forKey: LayoutLibrary.rajRenamedKey)
@@ -115,7 +116,9 @@ final class OneArrangementMigrationTests: XCTestCase {
         let lib = load(d)
         XCTAssertEqual(lib.templates.count, 1)
         XCTAssertEqual(lib.templates[0].id, raj.template.id)
-        XCTAssertTrue(lib.templates[0].isAsShipped)
+        var asShipped = lib.templates[0]
+        asShipped.camera = LayoutLibrary.shipped(LayoutLibrary.rajMode)?.camera   // the owner's own camera shape is kept (R43)
+        XCTAssertTrue(asShipped.isAsShipped, "the pieces are the new Raj San Mode")
     }
 
     // R27.4, R28.1: an edited Raj San Mode keeps its main, and its old two-display main is kept as a copy.

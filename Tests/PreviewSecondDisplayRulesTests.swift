@@ -50,7 +50,7 @@ final class PreviewRowNoTilingTests: XCTestCase {
     }
 
     func testATilingLayoutKeepsItsRow() {
-        let teach = LayoutLibrary.shipped(LayoutLibrary.teachFromBrowser)
+        let teach = LayoutLibrary.shipped(LayoutLibrary.rajMode)
         XCTAssertEqual(R.row(for: teach, secondPieceIsMeeting: []), R.Row(note: nil))
     }
 

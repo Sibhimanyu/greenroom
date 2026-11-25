@@ -132,10 +132,9 @@ final class OneArrangementModelTests: XCTestCase {
     }
 
     // R28.3
-    func testTheOtherFourBuiltInsHaveOnlyAMainArrangement() {
-        for key in [LayoutLibrary.teachFromBrowser, LayoutLibrary.talkToMeeting, LayoutLibrary.present, LayoutLibrary.leaveAlone] {
-            XCTAssertNil(LayoutLibrary.shipped(key)?.twoDisplays, key)
-        }
+    func testLeaveMyWindowsAloneHasOnlyAMainArrangement() throws {
+        XCTAssertNil(try XCTUnwrap(LayoutLibrary.shipped(LayoutLibrary.leaveAlone)).twoDisplays)
+        for key in LayoutLibrary.retiredStarterKeys { XCTAssertNil(LayoutLibrary.shipped(key), "\(key) is no longer built in") }
     }
 
     // R28.4
@@ -178,8 +177,8 @@ final class OneArrangementModelTests: XCTestCase {
     }
 
     func testTheStripOnAnyOtherLayoutAddsTheSecondInPlace() throws {
-        var lib = LayoutLibrary(templates: LayoutLibrary.builtIns())
-        let teach = try XCTUnwrap(lib.templates.first { $0.starter == LayoutLibrary.teachFromBrowser })
+        var lib = LayoutLibrary(templates: LayoutLibrary.builtIns() + [LayoutTemplate(name: "Mine")])
+        let teach = try XCTUnwrap(lib.templates.first { $0.name == "Mine" })
         lib.activeID = teach.id
         let before = lib.templates.count
         XCTAssertEqual(lib.addSecondDisplayToActive(), teach.id)
@@ -192,6 +191,19 @@ final class OneArrangementModelTests: XCTestCase {
         XCTAssertTrue(LayoutEditorRules.showsAddSecondStrip(hasSecondDisplay: false))
         XCTAssertFalse(LayoutEditorRules.showsAddSecondStrip(hasSecondDisplay: true))
         XCTAssertEqual(LayoutEditorRules.addSecondTooltip, "Add a second display")
+    }
+
+    // R29.3 (owner, 2026-11-26): the strip is wide enough to read, and the main canvas stays dominant.
+    func testTheStripIsWideAndTheMainCanvasStaysDominant() {
+        for panel: CGFloat in [640, 760, 1000, 1400] {
+            let w = LayoutEditorRules.stripWidth(panelWidth: panel)
+            XCTAssertGreaterThanOrEqual(w, 120, "panel \(panel)")
+            XCTAssertLessThanOrEqual(w, 140, "panel \(panel)")
+        }
+        let w = LayoutEditorRules.stripWidth(panelWidth: 760)
+        XCTAssertGreaterThan(760 - w - 6, 3.5 * w, "the main canvas is clearly the larger at 760pt")
+        XCTAssertEqual(LayoutEditorRules.stripTitle, "Second display")
+        XCTAssertEqual(LayoutEditorRules.stripDetail, "For a room screen or another monitor")
     }
 
     // R29.4

@@ -37,7 +37,7 @@ struct LayoutEveryonePicture: View {
                     }
                 }
                 if let rect = picture.camera, let camera {
-                    CameraStandIn(shape: StageFrame.cameraShape(camera.shape, showsContent: picture.content != nil), meaning: .camera(camera.state), off: false,
+                    CameraStandIn(shape: StageFrame.cameraShape(camera.shape, showsContent: picture.content != nil), caption: CameraCaptionRules.caption(for: .everyoneAndMe),
                                   size: CGSize(width: rect.width * k, height: rect.height * k))
                         .frame(width: rect.width * k, height: rect.height * k)
                         .offset(x: rect.minX * k, y: rect.minY * k)

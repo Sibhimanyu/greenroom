@@ -492,12 +492,8 @@ struct OnboardingView: View {
                     ForEach(coordinator.layoutLibrary.templates) { template in
                         OnboardingLayoutCard(title: template.name, selected: coordinator.layoutLibrary.activeID == template.id,
                                              select: { chooseLayout(template.id) }) {
-                            if template.movesWindows {
-                                LayoutThumbnail(pieces: template.oneDisplay, aspect: layoutCardWidth / thumbHeight,
-                                                look: LayoutPieceLook.thumbnail)
-                            } else {
-                                LayoutNoneThumbnail(height: thumbHeight)
-                            }
+                            LayoutThumbnail(pieces: template.oneDisplay, aspect: layoutCardWidth / thumbHeight,
+                                            camera: LayoutStripRules.thumbnailCamera(for: template), look: LayoutPieceLook.thumbnail)
                         }
                     }
                 }

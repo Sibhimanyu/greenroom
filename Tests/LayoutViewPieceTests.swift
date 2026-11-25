@@ -204,7 +204,8 @@ final class LayoutViewPieceTests: XCTestCase {
     // MARK: Fallback where views cannot open
 
     func testActiveSpeakerBecomesTheMeetingWindowWhereViewsCannotOpen() {
-        let raj = LayoutLibrary.starters().first { $0.starter == LayoutLibrary.present }!
+        var raj = LayoutLibrary.starters().first { $0.starter == LayoutLibrary.rajMode }!
+        raj.removeSecondDisplay()   // with a Meeting on the second display the speaker is not swapped (R26.4)
         let rect = raj.oneDisplay.first { $0.kind.view == .activeSpeaker }!.rect
         let out = LayoutResolver.substitutingMeetingForActiveSpeaker(raj, viewsCanOpen: false, secondConnected: true)
         let m = out.oneDisplay.first { $0.kind.isMeeting }

@@ -129,7 +129,7 @@ enum CanvasShareRules {
 // MARK: - R35 Every piece inspector
 
 enum PieceInspectorRules {
-    enum Row: Hashable { case whoSees, shapeAndSize, app, opensAtStart, startsHidden, fillDisplay }
+    enum Row: Hashable { case whoSees, shape, app, opensAtStart, startsHidden, fillDisplay }
     enum MenuItem: Hashable { case closesOnStop, opensMinimised, reopenLastTabs, searchSuggestions, remove }
 
     static let maxRowsAtRest = 2
@@ -143,7 +143,7 @@ enum PieceInspectorRules {
         let h = Int((Double(w) / (shape.cropsToSquare ? 1 : 16.0 / 9.0)).rounded())
         return "\(name) \u{00B7} \(w)\u{00D7}\(h)"
     }
-    static let cameraRows: [Row] = [.whoSees, .shapeAndSize]
+    static let cameraRows: [Row] = [.whoSees, .shape]
 
     static func rows(for kind: LayoutPiece.Kind, slot: LayoutSlot) -> [Row] {
         switch kind {

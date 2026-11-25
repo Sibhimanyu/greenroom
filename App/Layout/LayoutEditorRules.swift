@@ -47,14 +47,19 @@ enum LayoutEditorRules {
 
     // MARK: The second display
 
-    /// R29.3: the thin dashed strip at the main canvas's right edge that adds a second display. Only while
+    /// R29.3: the dashed strip (120 to 140pt) at the main canvas's right edge that adds a second display. Only while
     /// the layout has no second arrangement.
     static func showsAddSecondStrip(hasSecondDisplay: Bool) -> Bool { !hasSecondDisplay }
 
     static let addSecondTooltip = "Add a second display"
     /// R30.1: the row in the SECOND menu.
     static let removeSecondTitle = "Remove second display"
-    static let stripWidth: CGFloat = 28
+    /// R29.3: the strip's width, 120 to 140pt, about 18% of the panel, so at 760pt the main canvas stays
+    /// clearly the larger.
+    static func stripWidth(panelWidth: CGFloat) -> CGFloat { min(max(panelWidth * 0.18, 120), 140) }
+    /// The strip's two lines of words, centred under its + (R29.3).
+    static let stripTitle = "Second display"
+    static let stripDetail = "For a room screen or another monitor"
 
     /// R30.2: an empty second display goes without asking.
     static func removeSecondNeedsConfirmation(secondPieceCount: Int) -> Bool { secondPieceCount > 0 }
@@ -254,5 +259,38 @@ enum LayoutEditorRules {
     /// Apply now only while a meeting runs another layout.
     static func offersApplyNow(liveLayoutID: UUID?, templateID: UUID) -> Bool {
         liveLayoutID != nil && liveLayoutID != templateID
+    }
+}
+
+// MARK: - The card strip (R39.1, R41, R42)
+
+/// Pure rules of the layout cards strip in Settings > Layouts.
+enum LayoutStripRules {
+    enum Item: Equatable { case layout(UUID), newLayout }
+
+    /// R39.1: every layout in its order, then the New layout card, always last.
+    static func items(for library: LayoutLibrary) -> [Item] {
+        library.templates.map { .layout($0.id) } + [.newLayout]
+    }
+
+    /// R41.1: the camera a card's picture draws. Only Leave my windows alone has no pieces to draw, so its
+    /// picture is the empty display with the camera; every other card draws its pieces.
+    static func thumbnailCamera(for template: LayoutTemplate) -> LayoutCamera? {
+        template.movesWindows ? nil : template.camera
+    }
+
+    /// Where that camera sits in a picture of `size`, the same placement the canvas uses.
+    static func cameraRect(_ camera: LayoutCamera, in size: CGSize) -> CGRect {
+        let aspect = camera.shape.cropsToSquare ? 1.0 : 16.0 / 9.0   // as LayoutCameraRules.aspect(for:)
+        return PreviewFrameRules.cameraRect(box: camera.box, aspect: aspect, frame: size,
+                                            content: LayoutCameraRules.content(displayAspect: size.width / max(size.height, 1)))
+    }
+
+    struct Fades: Equatable { var leading: Bool; var trailing: Bool }
+
+    /// R42.1: a fade at an edge only when more is scrolled out that way. `offset` is how far the content
+    /// has moved left (0 at rest).
+    static func fades(offset: CGFloat, content: CGFloat, viewport: CGFloat) -> Fades {
+        Fades(leading: offset > 1, trailing: content - viewport - offset > 1)
     }
 }

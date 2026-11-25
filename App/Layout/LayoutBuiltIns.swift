@@ -2,7 +2,7 @@
 //  LayoutBuiltIns.swift
 //  Greenroom
 //
-//  The six built-in layouts (P9, Q4): what each places, its camera piece and its share, plus the
+//  The three built-in layouts (Q28, R39; six from P9 until 2026-11-26): what each places, its camera piece and its share, plus the
 //  one-line description the Layouts inspector shows when nothing is selected. Also Restore original
 //  for one built-in, and what "Leave my windows alone" means for the Start path.
 //
@@ -11,12 +11,14 @@
 import Foundation
 
 extension LayoutLibrary {
+    /// Retired built-ins (Q28): no longer shipped; an install that had them keeps them as the owner's own.
     static let talkToMeeting = "talk-to-meeting"
     static let present = "present"
+    static let retiredStarterKeys = [teachFromBrowser, talkToMeeting, present]
     static let roomLaptop = "room-laptop"
     static let leaveAlone = "leave-alone"
 
-    /// The six, in the order the strip shows them. Each owns a camera and a share.
+    /// The three, in the order the strip shows them (R39.1). Each owns a camera and a share.
     static func builtIns() -> [LayoutTemplate] {
         let third = 1.0 / 12
         func browser(width: Double) -> LayoutPiece {
@@ -36,35 +38,22 @@ extension LayoutLibrary {
             c.bottomInset = bottom
             return c
         }
-        let screen = ShareTarget()   // Present shares the screen, big
-        var nothing = ShareTarget()
-        nothing.kind = .nothing
-
-        // Browser large, the speaker and chat at the side, the camera in the browser's corner.
-        let teach = LayoutTemplate(
-            name: "Teach from a browser", starter: teachFromBrowser,
-            oneDisplay: [browser(width: 8 * third), speaker(x: 8 * third, w: 4 * third), chat(x: 8 * third, w: 4 * third)],
-            camera: camera(.circle, width: 0.12, right: 0.36, bottom: 0.06), share: ShareTarget())
-        // Share Nothing: the camera is the whole picture; the speaker and chat are for the owner's screen.
-        let talk = LayoutTemplate(
-            name: "Talk to the meeting", starter: talkToMeeting,
-            oneDisplay: [speaker(x: 0, w: 9 * third, h: 1), chat(x: 9 * third, w: 3 * third, top: 0)],
-            camera: camera(.roundedRectangle, width: 0.6, right: 0.2, bottom: 0.2), share: nothing)
-        // The screen is shared and fills the picture; the camera is small in the top right.
-        let presenting = LayoutTemplate(
-            name: "Present", starter: present,
-            oneDisplay: [speaker(x: 9 * third, w: 3 * third), chat(x: 9 * third, w: 3 * third)],
-            camera: camera(.roundedRectangle, width: 0.14, right: 0.03, bottom: 0.75), share: screen)
         // The Main display is shared; the Room screen is on Second.
         let room = LayoutTemplate(
             name: "Room + laptop", starter: roomLaptop,
             oneDisplay: [browser(width: 9 * third), chat(x: 9 * third, w: 3 * third, top: 0)],
             twoDisplays: TwoDisplay(second: [LayoutPiece(kind: .roomScreen, rect: .full)], sharedSlot: .main),
-            camera: camera(.circle, width: 0.12, right: 0.30, bottom: 0.06), share: ShareTarget())
+            camera: camera(.roundedRectangle, width: 0.12, right: 0.30, bottom: 0.06), share: ShareTarget())
         // No pieces: no window moves. Only the camera has a place.
         let leave = LayoutTemplate(
             name: "Leave my windows alone", starter: leaveAlone,
-            camera: camera(.circle, width: 0.12, right: 0.04, bottom: 0.06), share: ShareTarget())
+            camera: camera(.roundedRectangle, width: 0.12, right: 0.04, bottom: 0.06), share: ShareTarget())
+        // Raj's camera is the Cutout (owner, 2026-11-26): the person stands at the bottom right at 40% of the
+        // picture's height, keeping clear of the top of Chat where its caption is.
+        var rajCamera = LayoutCamera()
+        rajCamera.shape = .cutout
+        rajCamera.cutoutHeightFraction = 0.4
+        rajCamera.cutoutRightInset = 0.02
         // The old one-display arrangement, kept as main (ADR 0002): the browser, the speaker top right and
         // Chat below, so the laptop alone still has a meeting surface. A second display holds the Meeting.
         let raj = LayoutTemplate(
@@ -72,8 +61,8 @@ extension LayoutLibrary {
             oneDisplay: [browser(width: 9 * third), speaker(x: 9 * third, w: 3 * third), chat(x: 9 * third, w: 3 * third)],
             twoDisplays: TwoDisplay(
                 second: [LayoutPiece(kind: .meeting(fillsDisplay: true, startsHidden: false), rect: .full)]),
-            camera: LayoutCamera(), share: ShareTarget())
-        return [teach, talk, presenting, room, leave, raj]
+            camera: rajCamera, share: ShareTarget())
+        return [leave, raj, room]
     }
 
     /// The id of Leave my windows alone, the layout there is always an answer to fall back to.
@@ -135,31 +124,31 @@ extension LayoutLibrary {
     // MARK: Existing installs (Q8)
 
     static let builtInsV2MigratedKey = "layoutLibrary.builtInsV2Migrated"
+    static let threeBuiltInsMigratedKey = "layoutLibrary.threeBuiltInsMigrated"
 
-    /// Teach from a browser as the last release shipped it, to tell an edited copy from an untouched one.
-    /// Every saved field counts (R14.1): the name, the pieces' kinds, rects and eyes, the share and the
-    /// camera. A camera or share the owner never set is nil or the default. `eyesAreFinal` is false
-    /// while the one-time "show to everyone" flip has not run: a hidden eye then is just the old default.
-    private static func isOldTeachFromABrowser(_ t: LayoutTemplate, eyesAreFinal: Bool) -> Bool {
-        let third = 1.0 / 12
-        let old: [(LayoutPiece.Kind, UnitRect)] = [
-            (.app(AppPiece(bundleID: builtInBrowserBundleID)), UnitRect(x: 0, y: 0, w: 8 * third, h: 1)),
-            (.view(.activeSpeaker, startsHidden: false), UnitRect(x: 8 * third, y: 0, w: 4 * third, h: 5 * third)),
-            (.chat, UnitRect(x: 8 * third, y: 5 * third, w: 4 * third, h: 7 * third)),
-        ]
-        return t.name == "Teach from a browser"
-            && (t.share == nil || t.share == ShareTarget())
-            && (t.camera == nil || t.camera == LayoutCamera())
-            && t.twoDisplays == nil && t.oneDisplay.count == old.count
-            && zip(t.oneDisplay, old).allSatisfy {
-                $0.kind == $1.0 && $0.rect.isClose(to: $1.1) && (!eyesAreFinal || $0.showsToEveryone)
-            }
+    /// One time, with its own key, set only after `save` worked (R40, Q28): Teach from a browser, Talk to the
+    /// meeting and Present lose their built-in tag and are the owner's own layouts, unchanged. Nothing is
+    /// deleted and the active layout is kept. The built-ins this library has go first, in their order, then
+    /// every other layout as it was; Leave my windows alone is always there (a Raj or Room the owner deleted
+    /// stays deleted). Runs after the earlier migrations, so an install that never ran them ends the same.
+    @discardableResult
+    mutating func migrateThreeBuiltIns(defaults: UserDefaults, save: (LayoutLibrary) -> Bool) -> Bool {
+        guard !defaults.bool(forKey: Self.threeBuiltInsMigratedKey) else { return false }
+        for i in templates.indices where Self.retiredStarterKeys.contains(templates[i].starter ?? "") { templates[i].starter = nil }
+        if leaveAloneID == nil, let fresh = Self.shipped(Self.leaveAlone) { templates.append(fresh) }
+        let order = Self.builtIns().compactMap(\.starter)
+        let first = order.compactMap { key in templates.first { $0.starter == key } }
+        templates = first + templates.filter { t in !first.contains { $0.id == t.id } }
+        ensureActive()
+        guard save(self) else { return false }
+        defaults.set(true, forKey: Self.threeBuiltInsMigratedKey)
+        return true
     }
 
     /// One time, with its own key, set only after `save` worked (R16.1):
     /// - Raj stays as the owner edited it;
-    /// - Teach from a browser is replaced in place (an edited one is kept first as the owner's own layout);
-    /// - Meeting and chat stays, as the owner's own (starter tag cleared); Talk to the meeting is its new version;
+    /// - Teach from a browser is left alone (since Q28 it is not built in; `migrateThreeBuiltIns` frees it);
+    /// - Meeting and chat stays, as the owner's own (starter tag cleared);
     /// - the built-ins this library lacks are added; nothing is deleted;
     /// - no active layout (None) becomes Leave my windows alone.
     /// - a former None user's own camera and share go to Leave my windows alone, the layout that replaces
@@ -172,24 +161,8 @@ extension LayoutLibrary {
         guard !defaults.bool(forKey: Self.builtInsV2MigratedKey) else { return false }
         // Meeting and chat is the owner's now.
         for i in templates.indices where templates[i].starter == Self.meetingAndChat { templates[i].starter = nil }
-        // Teach from a browser: the new version, same id and place.
-        if let i = templates.firstIndex(where: { $0.starter == Self.teachFromBrowser }),
-           var fresh = Self.shipped(Self.teachFromBrowser) {
-            let old = templates[i]
-            let eyesFinal = defaults.bool(forKey: Self.shownToEveryoneMigratedKey) && defaults.bool(forKey: Self.appsShownMigratedKey)
-            if !Self.isOldTeachFromABrowser(old, eyesAreFinal: eyesFinal) {
-                var kept = old
-                kept.id = UUID()
-                kept.starter = nil
-                kept.name = "My " + old.name
-                templates.insert(kept, at: i)
-            }
-            let at = templates.firstIndex { $0.id == old.id }!
-            fresh.id = old.id
-            templates[at] = fresh
-        }
-        // Only the four new ones; a Raj San Mode the owner deleted stays deleted.
-        let added = [Self.talkToMeeting, Self.present, Self.roomLaptop, Self.leaveAlone]
+        // Only the new ones (since Q28 that is Room + laptop and Leave my windows alone); a Raj San Mode the owner deleted stays deleted.
+        let added = [Self.roomLaptop, Self.leaveAlone]
         for fresh in Self.builtIns() {
             guard let key = fresh.starter, added.contains(key), !templates.contains(where: { $0.starter == key }) else { continue }
             templates.append(fresh)
@@ -211,9 +184,6 @@ extension LayoutLibrary {
     /// The one line the inspector shows for a built-in that is as shipped.
     static func description(forStarter key: String) -> String? {
         switch key {
-        case teachFromBrowser: return "Teach from a website with the meeting and chat beside it, and you in a small circle."
-        case talkToMeeting: return "A conversation: you large for everyone, the active speaker and chat on your screen."
-        case present: return "Share your screen, with you small in a corner. The speaker and chat stay at the side of your screen."
         case roomLaptop: return "People in the room watch the Room screen while you work on the laptop."
         case leaveAlone: return "Moves no windows. It only says where your camera sits. Press + to start your own layout from it."
         case rajMode: return "The browser with the speaker and chat beside it. With a second display, the meeting fills it."

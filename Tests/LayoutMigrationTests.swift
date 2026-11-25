@@ -216,17 +216,12 @@ final class LayoutMigrationTests: XCTestCase {
 
     func testStartersAreTheDocumentedShapes() {
         let s = LayoutLibrary.starters()
-        XCTAssertEqual(s.compactMap(\.starter), [LayoutLibrary.teachFromBrowser, LayoutLibrary.talkToMeeting, LayoutLibrary.present,
-                                                 LayoutLibrary.roomLaptop, LayoutLibrary.leaveAlone, LayoutLibrary.rajMode])
-        let teach = starter(LayoutLibrary.teachFromBrowser)
-        XCTAssertEqual(teach.oneDisplay.map(\.rect.w).map { ($0 * 12).rounded() }, [8, 4, 4])
-        XCTAssertEqual(teach.oneDisplay[1].rect.h * 12, 5, accuracy: 1e-9)
-        XCTAssertEqual(starter(LayoutLibrary.talkToMeeting).oneDisplay.map(\.rect.w).map { ($0 * 12).rounded() }, [9, 3])
+        XCTAssertEqual(s.compactMap(\.starter), [LayoutLibrary.leaveAlone, LayoutLibrary.rajMode, LayoutLibrary.roomLaptop])
         // The one-display speaker is the Active speaker view, never a Meeting window.
         for t in s {
             XCTAssertFalse(t.oneDisplay.contains { $0.kind.isMeeting }, t.name)
             let speakers = t.oneDisplay.filter { $0.kind.view == .activeSpeaker }.count
-            XCTAssertEqual(speakers, [LayoutLibrary.roomLaptop, LayoutLibrary.leaveAlone].contains(t.starter ?? "") ? 0 : 1, t.name)
+            XCTAssertEqual(speakers, t.starter == LayoutLibrary.rajMode ? 1 : 0, t.name)
         }
     }
 
@@ -281,7 +276,7 @@ final class LayoutMigrationTests: XCTestCase {
 
     func testRajModeIsAppendedOnceToAnExistingLibrary() throws {
         // A library saved before Raj San Mode: the two original starters, one deleted, one of yours.
-        var old = LayoutLibrary(templates: [starter(LayoutLibrary.teachFromBrowser),
+        var old = LayoutLibrary(templates: [LayoutTemplate(name: "Teach from a browser", starter: LayoutLibrary.teachFromBrowser),
                                             LayoutTemplate(name: "Meeting and chat", starter: LayoutLibrary.meetingAndChat)])
         old.delete(old.templates.first { $0.starter == LayoutLibrary.meetingAndChat }!.id)
         let mine = old.addBlank()
@@ -306,7 +301,7 @@ final class LayoutMigrationTests: XCTestCase {
     func testFreshInstallRecordsKnownStartersSoDeletedOnesStayGone() {
         let d = defaults()
         var lib = LayoutLibrary.loadOrMigrate(from: d, defaultSiteURL: site)
-        XCTAssertEqual(lib.templates.compactMap(\.starter).count, 6)
+        XCTAssertEqual(lib.templates.compactMap(\.starter).count, 3)
         lib.delete(lib.templates.first { $0.starter == LayoutLibrary.rajMode }!.id)
         lib.save(to: d)
         XCTAssertNil(LayoutLibrary.loadOrMigrate(from: d, defaultSiteURL: site).templates.first { $0.starter == LayoutLibrary.rajMode })
@@ -314,8 +309,8 @@ final class LayoutMigrationTests: XCTestCase {
 
     func testDeletingTheActiveTemplateMeansLeaveMyWindowsAlone() {
         var lib = LayoutLibrary(templates: LayoutLibrary.starters())
-        lib.select(lib.templates[0].id)
-        lib.delete(lib.templates[0].id)
+        lib.select(lib.templates[1].id)
+        lib.delete(lib.templates[1].id)
         XCTAssertEqual(lib.active?.starter, LayoutLibrary.leaveAlone)
     }
 
@@ -333,7 +328,7 @@ final class LayoutMigrationTests: XCTestCase {
         var lib = LayoutLibrary(templates: LayoutLibrary.starters())
         let id = lib.templates[1].id   // rename an ordinary one
         lib.rename(id, to: "   ")
-        XCTAssertEqual(lib.templates[1].name, "Talk to the meeting")
+        XCTAssertEqual(lib.templates[1].name, "Raj San Mode")
         lib.rename(id, to: "  Mine ")
         XCTAssertEqual(lib.templates[1].name, "Mine")
     }
@@ -350,8 +345,8 @@ final class LayoutMigrationTests: XCTestCase {
     }
 
     func testReplaceAppSwapsOnlyThatAppInEveryVersion() {
-        var t = LayoutLibrary.starters().first { $0.starter == LayoutLibrary.teachFromBrowser }!
-        t.addSecondDisplay()
+        var t = LayoutLibrary.starters().first { $0.starter == LayoutLibrary.rajMode }!
+        if t.twoDisplays == nil { t.addSecondDisplay() }
         t.setPieces([LayoutPiece(kind: .app(AppPiece(bundleID: LayoutLibrary.builtInBrowserBundleID)), rect: .full)], for: .second)
         XCTAssertEqual(t.firstAppBundleID, LayoutLibrary.builtInBrowserBundleID)
         t.replaceApp(LayoutLibrary.builtInBrowserBundleID, with: "com.apple.Safari")

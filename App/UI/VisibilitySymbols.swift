@@ -124,3 +124,24 @@ enum VisibilitySymbol: Equatable {
         }
     }
 }
+
+/// What the camera piece on the Layouts canvas says for each state (owner, 2026-11-26): its own words and icon,
+/// so Off no longer reads like Only the meeting.
+struct CameraCanvasCaption: Equatable {
+    var text: String
+    var symbol: VisibilitySymbol
+    var dashed: Bool
+    var dimmed: Bool
+}
+
+enum CameraCaptionRules {
+    static func caption(for state: CameraState) -> CameraCanvasCaption {
+        let symbol = VisibilitySymbol.camera(state)
+        switch state {
+        case .everyoneAndMe: return CameraCanvasCaption(text: "Your camera", symbol: symbol, dashed: false, dimmed: false)
+        case .onlyEveryone: return CameraCanvasCaption(text: "Hidden on your screen", symbol: symbol, dashed: symbol.dashed, dimmed: false)
+        case .onlyMe: return CameraCanvasCaption(text: "Only you see this", symbol: symbol, dashed: false, dimmed: false)
+        case .off: return CameraCanvasCaption(text: "Camera off", symbol: symbol, dashed: false, dimmed: true)
+        }
+    }
+}

@@ -98,11 +98,11 @@ While a meeting is live, the controls are in exactly one place. Code:
 
 **Camera piece**: the owner's camera as a piece. Its spot, size and shape belong to the layout it sits in.
 
-**Camera state**: who sees the owner's camera, one of four: *Everyone and me*, *Only everyone* (hidden on the owner's screen), *Only me* (a mirror; the meeting does not see the owner), *Off*. The same four everywhere in the app.
+**Camera state**: who sees the owner's camera, one of four: *Everyone & me*, *Only the meeting* (hidden on the owner's screen), *Only me* (a mirror; the meeting does not see the owner), *Off*. The same four everywhere in the app.
 
 **Camera look**: the owner's background, effects and framing. One camera look for all layouts.
 
-**Built-in layout**: a layout Greenroom ships with: Teach from a browser, Talk to the meeting, Present, Room + laptop, Leave my windows alone, and Raj San Mode. Editable like any other; Reset brings the originals back.
+**Built-in layout**: a layout Greenroom ships with. Three, in this order: Leave my windows alone (the default active one), Raj San Mode and Room + laptop (owner decision, 2026-11-26). Teach from a browser, Talk to the meeting and Present are not built in any more; on an install that had them they are the owner's own layouts. Editable like any other; Reset brings the originals back.
 
 **Leave my windows alone**: the built-in layout that does not move the owner's windows and only places the camera. Replaces "None".
 

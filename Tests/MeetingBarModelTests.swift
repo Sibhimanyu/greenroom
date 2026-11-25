@@ -128,7 +128,7 @@ final class MeetingBarModelTests: XCTestCase {
         }
         var picked: [CameraState] = []
         let menu = M.cameraStateMenu(current: .onlyMe, noCameraAllowed: true) { picked.append($0) }
-        XCTAssertEqual(menu.filter { $0.kind == .item }.map(\.title), ["Everyone and me", "Only everyone", "Only me", "Off"])
+        XCTAssertEqual(menu.filter { $0.kind == .item }.map(\.title), ["Everyone & me", "Only the meeting", "Only me", "Off"])
         XCTAssertEqual(menu.filter(\.checked).map(\.title), ["Only me"])
         menu.filter { $0.kind == .item }[3].action?()
         XCTAssertEqual(picked, [.off])

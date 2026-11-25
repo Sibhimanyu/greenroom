@@ -1,6 +1,6 @@
 import XCTest
 
-/// R11: the size presets, the corner picker and Reset, restored from the Webcam tab, now on the
+/// R11: the corner picker and Reset (the S / M / L presets went, owner 2026-11-26), restored from the Webcam tab, now on the
 /// layout's saved camera piece.
 final class CameraPlacementRulesTests: XCTestCase {
     typealias R = CameraPlacementRules
@@ -10,12 +10,6 @@ final class CameraPlacementRulesTests: XCTestCase {
         var c = LayoutCamera()
         c.shape = shape
         return c
-    }
-
-    // R11: S, M, L are shares of the width for a bubble and of the height for a cutout.
-    func testSizePresetsFollowTheShape() {
-        XCTAssertEqual(R.sizePresets(for: .circle), [0.16, 0.24, 0.34])
-        XCTAssertEqual(R.sizePresets(for: .cutout), [0.36, 0.5, 0.7])
     }
 
     // R11: a cutout stands on the bottom edge, so it has three spots; a bubble has four corners.
@@ -63,22 +57,6 @@ final class CameraPlacementRulesTests: XCTestCase {
         var dragged = c
         dragged.rightInset = 0.3
         XCTAssertNil(R.currentSpot(of: dragged, canvasAspect: wide))
-    }
-
-    // R11: a bigger bubble in the left corner stays in the left corner.
-    func testChoosingASizeKeepsTheSideItHugs() {
-        var c = R.placing(camera(.circle), at: .bottomLeft, canvasAspect: wide)
-        c = R.sizing(c, to: 0.34, canvasAspect: wide)
-        XCTAssertEqual(c.widthFraction, 0.34, accuracy: 1e-9)
-        XCTAssertEqual(R.currentSpot(of: c, canvasAspect: wide), .bottomLeft)
-        // Off a spot, only the size changes.
-        var free = camera(.circle)
-        free.rightInset = 0.3
-        let sized = R.sizing(free, to: 0.16, canvasAspect: wide)
-        XCTAssertEqual(sized.rightInset, 0.3)
-        XCTAssertEqual(sized.widthFraction, 0.16, accuracy: 1e-9)
-        // A cutout sizes its height.
-        XCTAssertEqual(R.sizing(camera(.cutout), to: 0.7, canvasAspect: wide).cutoutHeightFraction, 0.7, accuracy: 1e-9)
     }
 
     // R11: Reset puts back the size and spot of the shape on screen, and leaves the shape alone.

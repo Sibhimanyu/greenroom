@@ -580,7 +580,7 @@ struct LayoutLibrary: Codable, Equatable {
         var name = "Layout \(n)"
         var k = n
         while templates.contains(where: { $0.name == name }) { k += 1; name = "Layout \(k)" }
-        let t = LayoutTemplate(name: name, camera: LayoutCamera(), share: ShareTarget())
+        let t = LayoutTemplate(name: name, camera: LayoutCamera.rounded, share: ShareTarget())
         templates.append(t)
         return t.id
     }
@@ -629,7 +629,7 @@ struct LayoutLibrary: Codable, Equatable {
     static let builtInBrowserBundleID = "com.sibhimanyu.greenroom.browser"
 
     /// The ordinary, editable templates every library begins with, in the order the strip shows
-    /// them: the six built-ins (LayoutBuiltIns.swift).
+    /// them: the three built-ins (LayoutBuiltIns.swift).
     static func starters() -> [LayoutTemplate] { builtIns() }
 
 
@@ -777,6 +777,8 @@ extension LayoutLibrary {
             // P9, once: the new built-ins, None becomes Leave my windows alone. Saves itself and sets its own key.
             saved.migrateBuiltInsV2(defaults: defaults, legacyCamera: .global(from: defaults),
                                     legacyShare: LayoutCamera.globalShare(from: defaults), save: { $0.save(to: defaults) })
+            // Q28, once, after the two above: Teach, Talk and Present become the owner's own; the three built-ins lead.
+            saved.migrateThreeBuiltIns(defaults: defaults, save: { $0.save(to: defaults) })
             // The old default was hidden; saved layouts hold it explicitly. Flip once.
             if !defaults.bool(forKey: shownToEveryoneMigratedKey) {
                 saved.showEverythingToEveryone()
@@ -802,6 +804,7 @@ extension LayoutLibrary {
         if library.save(to: defaults) {
             defaults.set(true, forKey: oneArrangementMigratedKey)
             defaults.set(true, forKey: builtInsV2MigratedKey)
+            defaults.set(true, forKey: threeBuiltInsMigratedKey)
             defaults.set(true, forKey: shownToEveryoneMigratedKey)
             defaults.set(true, forKey: appsShownMigratedKey)
             defaults.set(true, forKey: rajRenamedKey)

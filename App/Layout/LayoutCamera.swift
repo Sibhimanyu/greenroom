@@ -25,6 +25,14 @@ struct LayoutCamera: Codable, Equatable {
 
     init() {}
 
+    /// The default for what the owner makes new (R43): the Rounded shape, at the shipped spot and size.
+    /// `init()` and decoding keep Circle, so a saved layout with no shape is not changed.
+    static var rounded: LayoutCamera {
+        var c = LayoutCamera()
+        c.shape = .roundedRectangle
+        return c
+    }
+
     init(shape: WebcamShape, box: PresenceBox) {
         self.shape = shape
         widthFraction = box.widthFraction
@@ -182,7 +190,7 @@ enum PlacementSpot: Hashable {
     }
 }
 
-/// The size presets, the corner picker and Reset in the camera piece's inspector (R11): the
+/// The corner picker and Reset in the camera piece's inspector (R11): the
 /// Webcam tab's quick controls, now on the layout's saved camera. Pure.
 enum CameraPlacementRules {
     /// A camera is 16:9 until the shape crops it square.
@@ -190,11 +198,6 @@ enum CameraPlacementRules {
 
     /// Presenter rebuilds the whole scene rather than placing a source: nothing to size or place.
     static func isAdjustable(shape: WebcamShape) -> Bool { shape != .presenterLarge }
-
-    /// Small, Medium, Large. A bubble's share of the canvas width; a cutout's share of its height.
-    static func sizePresets(for shape: WebcamShape) -> [Double] {
-        shape == .cutout ? [0.36, 0.5, 0.7] : [0.16, 0.24, 0.34]
-    }
 
     static func spots(for shape: WebcamShape) -> [PlacementSpot] {
         shape == .cutout ? [.bottomLeft, .bottom, .bottomRight] : [.topLeft, .topRight, .bottomLeft, .bottomRight]
@@ -232,15 +235,6 @@ enum CameraPlacementRules {
                 ? abs(goal.cutoutRightInset - camera.cutoutRightInset) < 0.01
                 : abs(goal.rightInset - camera.rightInset) < 0.01 && abs(goal.bottomInset - camera.bottomInset) < 0.01
         }
-    }
-
-    /// A preset size. The side it was hugging is kept: a bigger bubble in the left corner stays there.
-    static func sizing(_ camera: LayoutCamera, to size: Double, canvasAspect: Double) -> LayoutCamera {
-        let spot = currentSpot(of: camera, canvasAspect: canvasAspect)
-        var next = camera
-        if camera.shape == .cutout { next.cutoutHeightFraction = size } else { next.widthFraction = size }
-        guard let spot else { return next }
-        return placing(next, at: spot, canvasAspect: canvasAspect)
     }
 
     /// Is the size and spot of the shape on screen still where the app shipped it?

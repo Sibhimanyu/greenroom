@@ -5,7 +5,7 @@
 //  The camera piece's inspector in Settings -> Layouts (R11.1, R35): the same structure as every piece.
 //  A header (the live picture, click to enlarge; name; one readout; a ⋯ menu with the corners and
 //  Reset), then two rows: who sees the camera (four icons) with the "Camera look" fold beside it, and
-//  the shape tiles with S / M / L (fine sizing is a drag on the canvas). Plain values and bindings,
+//  the shape tiles (sizing is a drag on the canvas). Plain values and bindings,
 //  so it renders off screen.
 //
 import SwiftUI
@@ -33,7 +33,7 @@ struct CameraInspector: View {
         VStack(alignment: .leading, spacing: 10) {
             header
             whoSeesRow
-            if let piece { shapeAndSize(piece) }
+            if let piece { shapeRow(piece) }
             if let look = camera.look {
                 // The saved piece's shape, not the live one: the look follows the tiles above.
                 Collapsible(hidden: !lookOpen) {
@@ -104,14 +104,34 @@ struct CameraInspector: View {
         .accessibilityLabel("Camera position")
     }
 
-    /// Row 1: who sees the camera, as four icons (tooltips say which), and the Camera look fold beside it.
+
+    private var whoSeesMenu: some View {
+        Menu {
+            ForEach(PieceInspectorRules.cameraChoices, id: \.self) { state in
+                Button {
+                    camera.setState(state)
+                } label: {
+                    Label(camera.state == state ? "\(state.name) \u{2713}" : state.name, systemImage: VisibilitySymbol.camera(state).name)
+                }
+                .help(PieceInspectorRules.cameraTip(state))
+            }
+        } label: {
+            CameraStateIcon(state: camera.state)
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.visible)
+        .fixedSize()
+        .help(PieceInspectorRules.cameraTip(camera.state))
+        .accessibilityLabel("Who sees my camera")
+        .accessibilityValue(camera.state.name)
+    }
+
     private var whoSeesRow: some View {
         HStack(spacing: 12) {
             Text("Who sees my camera")
                 .font(.system(size: 11)).foregroundStyle(.secondary)
-            GreenroomSegmented("Who sees my camera", selection: Binding(get: { camera.state }, set: { camera.setState($0) }),
-                               options: PieceInspectorRules.cameraChoices) { CameraStateIcon(state: $0) }
-                .segmentHelp { PieceInspectorRules.cameraTip($0) }
+                .fixedSize()
+            whoSeesMenu
             Spacer(minLength: 8)
             if let look = camera.look {
                 Button {
@@ -136,64 +156,42 @@ struct CameraInspector: View {
         }
     }
 
-    /// Row 2: the shape tiles (shared with Home's Look) and S / M / L beside them. Fine sizing is a drag on the canvas.
-    private func shapeAndSize(_ piece: Binding<LayoutCamera>) -> some View {
-        let cam = piece.wrappedValue
-        let size = cam.shape == .cutout ? cam.cutoutHeightFraction : cam.widthFraction
-        let names = ["Small", "Medium", "Large"]
-        let letters = ["S", "M", "L"]
-        return HStack(alignment: .top, spacing: 16) {
-            CameraShapeTiles(selected: cam.shape) { piece.wrappedValue.shape = $0 }
-            if CameraPlacementRules.isAdjustable(shape: cam.shape) {
-                HStack(spacing: HomeTileMetrics.tileGap) {
-                    ForEach(Array(CameraPlacementRules.sizePresets(for: cam.shape).enumerated()), id: \.offset) { index, preset in
-                        let selected = abs(size - preset) < 0.005
-                        Button {
-                            piece.wrappedValue = CameraPlacementRules.sizing(piece.wrappedValue, to: preset, canvasAspect: canvasAspect)
-                        } label: {
-                            VStack(spacing: 6) {
-                                Circle()
-                                    .fill(Color.secondary.opacity(0.55))
-                                    .frame(width: CGFloat(10 + index * 6), height: CGFloat(10 + index * 6))
-                                    .frame(width: 40, height: 40)
-                                Text(letters[index])
-                                    .font(.system(size: 11, weight: selected ? .semibold : .regular))
-                                    .foregroundStyle(selected ? .primary : .secondary)
-                            }
-                            .padding(.vertical, 6)
-                            .frame(width: 48)
-                        }
-                        .greenroomTile(role: .choice(selected: selected), radius: 10)
-                        .help("\(names[index]). Drag a corner of the camera on the canvas for a finer size.")
-                        .accessibilityLabel("\(names[index]) size")
-                        .accessibilityAddTraits(selected ? .isSelected : [])
-                    }
-                }
-            }
+    /// Row 2: the shape tiles (shared with Home's Look). Sizing is a drag on the camera's corner on the canvas.
+    private func shapeRow(_ piece: Binding<LayoutCamera>) -> some View {
+        HStack(alignment: .top, spacing: 16) {
+            CameraShapeTiles(selected: piece.wrappedValue.shape) { piece.wrappedValue.shape = $0 }
             Spacer(minLength: 0)
         }
     }
 }
 
-/// One camera state as an icon: Zoom's camera, struck for Off, wearing the struck eye for Only me, in a dashed
-/// outline for Only everyone (the same marks as the canvas, VisibilitySymbol). Spoken as the state's name.
+/// One camera state as an icon and its short name: Zoom's camera, struck for Off, wearing the struck eye for Only me,
+/// in a dashed outline for Only the meeting (the same marks as the canvas, VisibilitySymbol).
 struct CameraStateIcon: View {
     let state: CameraState
 
     var body: some View {
         let meaning = VisibilitySymbol.camera(state)
-        Image(systemName: meaning.name)
-            .font(.system(size: 12))
-            .symbolBadge(meaning.badge, size: 7)
-            .frame(width: 30, height: 18)
-            .overlay {
-                if meaning.dashed {
-                    RoundedRectangle(cornerRadius: 5, style: .continuous)
-                        .strokeBorder(style: StrokeStyle(lineWidth: 1, dash: [3, 2]))
-                        .padding(1)
+        HStack(spacing: 5) {
+            Image(systemName: meaning.name)
+                .font(.system(size: 12))
+                .symbolBadge(meaning.badge, size: 7)
+                .frame(width: 18, height: 18)
+                .overlay {
+                    if meaning.dashed {
+                        RoundedRectangle(cornerRadius: 5, style: .continuous)
+                            .strokeBorder(style: StrokeStyle(lineWidth: 1, dash: [3, 2]))
+                            .padding(1)
+                    }
                 }
-            }
-            .accessibilityLabel(state.name)
+            Text(state.name)
+                .font(.system(size: 11))
+                .lineLimit(1)
+                .fixedSize()
+        }
+        .padding(.horizontal, 2)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(state.name)
     }
 }
 

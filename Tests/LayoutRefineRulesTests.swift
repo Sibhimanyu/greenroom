@@ -163,7 +163,7 @@ final class PieceInspectorRulesTests: XCTestCase {
 
     // R35.2
     func testTheRowsOfEachKind() {
-        XCTAssertEqual(PieceInspectorRules.cameraRows, [.whoSees, .shapeAndSize])
+        XCTAssertEqual(PieceInspectorRules.cameraRows, [.whoSees, .shape])
         XCTAssertEqual(PieceInspectorRules.rows(for: .chat, slot: .main), [])
         XCTAssertEqual(PieceInspectorRules.rows(for: .roomScreen, slot: .second), [])
         let meeting = LayoutPiece.Kind.meeting(fillsDisplay: false, startsHidden: false)

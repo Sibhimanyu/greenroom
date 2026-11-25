@@ -77,7 +77,7 @@ final class LayoutCameraTests: XCTestCase {
         var lib = library()
         let id = lib.addBlank()
         let t = lib.template(id: id)
-        XCTAssertEqual(t?.camera, LayoutCamera())
+        XCTAssertEqual(t?.camera, LayoutCamera.rounded)
         XCTAssertEqual(t?.share, ShareTarget())
     }
 

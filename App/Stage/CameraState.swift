@@ -58,8 +58,8 @@ enum CameraState: Equatable, CaseIterable {
     /// The same four words in every menu, tooltip and spoken label.
     var name: String {
         switch self {
-        case .everyoneAndMe: return "Everyone and me"
-        case .onlyEveryone: return "Only everyone"
+        case .everyoneAndMe: return "Everyone & me"
+        case .onlyEveryone: return "Only the meeting"
         case .onlyMe: return "Only me"
         case .off: return "Off"
         }
@@ -104,7 +104,7 @@ struct CameraStateSession: Equatable {
         Self.clickTarget(current: current, lastOn: lastOn, noCameraAllowed: noCameraAllowed)
     }
 
-    /// Any "on" state goes Off; Off comes back as `lastOn` (Only everyone returns as Only everyone).
+    /// Any "on" state goes Off; Off comes back as `lastOn` (Only the meeting returns as Only the meeting).
     /// With nothing shared Off would leave an empty picture, so a click then leaves the state alone.
     static func clickTarget(current: CameraState, lastOn: CameraState, noCameraAllowed: Bool) -> CameraState {
         if current == .off { return lastOn == .off ? .everyoneAndMe : lastOn }

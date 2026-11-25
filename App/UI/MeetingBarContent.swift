@@ -339,7 +339,7 @@ struct MeetingBarContent: View {
                 .contentShape(Rectangle())
                 // `.disabled` does not stop an AppKit overlay: outside a meeting it is not there at all.
                 .overlay { if s.inMeeting { MenuPopUpOverlay(label: "Who sees my camera", entries: a.cameraStateMenu) } }
-                .help("Who sees my camera: Everyone and me, Only everyone, Only me, Off")
+                .help("Who sees my camera: Everyone & me, Only the meeting, Only me, Off")
         }
         .frame(width: MeetingBarLayout.camera)
         .disabled(!s.inMeeting)

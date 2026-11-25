@@ -1,34 +1,17 @@
 import XCTest
 
-/// P9: the six built-in layouts, Leave my windows alone, Restore original and the existing-install migration.
+/// P9, Q28: the three built-in layouts, Leave my windows alone, Restore original and the existing-install migration.
 final class BuiltInLayoutsTests: XCTestCase {
     private func starter(_ key: String) -> LayoutTemplate {
         LayoutLibrary.starters().first { $0.starter == key }!
     }
 
-    // R12.1 (Q4): the six built-ins, in the order the strip shows them.
-    func testTheSixBuiltInsInOrder() {
-        XCTAssertEqual(LayoutLibrary.starters().map(\.name),
-                       ["Teach from a browser", "Talk to the meeting", "Present", "Room + laptop",
-                        "Leave my windows alone", "Raj San Mode"])
-        XCTAssertEqual(LayoutLibrary.starters().compactMap(\.starter),
-                       ["teach-browser", "talk-to-meeting", "present", "room-laptop", "leave-alone", "raj"])
-    }
-
-    // R12.1, Q20, Q21: each built-in owns its camera and share. Talk shares Nothing with the camera filling the picture;
-    // Present shares one window, following the slide show, with the camera small.
+    // R12.1: each built-in owns its camera and share.
     func testEveryBuiltInOwnsACameraAndAShare() {
         for t in LayoutLibrary.starters() {
             XCTAssertNotNil(t.camera, t.name)
             XCTAssertNotNil(t.share, t.name)
         }
-        let talk = starter(LayoutLibrary.talkToMeeting)
-        XCTAssertEqual(talk.share?.kind, .nothing)
-        XCTAssertEqual(talk.camera?.widthFraction, PresenceGeometry.widthFractions.upperBound, "the camera fills the picture")
-        XCTAssertTrue(talk.oneDisplay.contains { $0.kind.view == .activeSpeaker }, "Active speaker on my screen")
-        let present = starter(LayoutLibrary.present)
-        XCTAssertEqual(present.share?.kind, .display)
-        XCTAssertLessThanOrEqual(present.camera?.widthFraction ?? 1, 0.2, "small, in a corner")
     }
 
     // R15.1 (Q9): Room + laptop shares Main and puts the Room screen on Second.
@@ -68,8 +51,8 @@ final class BuiltInLayoutsTests: XCTestCase {
         let decoded = try JSONDecoder().decode(LayoutLibrary.self, from: Data(stale.utf8))
         XCTAssertEqual(decoded.active?.starter, LayoutLibrary.leaveAlone)
 
-        lib.select(lib.templates[0].id)
-        lib.delete(lib.templates[0].id)
+        lib.select(lib.templates[1].id)
+        lib.delete(lib.templates[1].id)
         XCTAssertEqual(lib.active?.starter, LayoutLibrary.leaveAlone, "deleting the active layout falls back to it")
 
         lib.select(lib.templates[1].id)
@@ -94,7 +77,7 @@ final class BuiltInLayoutsTests: XCTestCase {
         lib.select(leaveID)
         let second = try XCTUnwrap(lib.forkLeaveAlone())
         XCTAssertEqual(lib.template(id: second)?.name, "My layout 2")
-        lib.select(lib.templates[0].id)
+        lib.select(lib.templates[1].id)
         XCTAssertNil(lib.forkLeaveAlone(), "only Leave my windows alone forks")
     }
 
@@ -102,13 +85,13 @@ final class BuiltInLayoutsTests: XCTestCase {
     func testRestoreOriginalResetsOnlyThatLayout() throws {
         var lib = LayoutLibrary(templates: LayoutLibrary.starters())
         let mine = lib.addBlank()
-        var talk = try XCTUnwrap(lib.templates.first { $0.starter == LayoutLibrary.talkToMeeting })
+        var talk = try XCTUnwrap(lib.templates.first { $0.starter == LayoutLibrary.roomLaptop })
         let talkID = talk.id
         talk.oneDisplay = []
         talk.name = "Renamed"
         talk.camera?.shape = .square
         lib.update(talk)
-        var teach = try XCTUnwrap(lib.templates.first { $0.starter == LayoutLibrary.teachFromBrowser })
+        var teach = try XCTUnwrap(lib.templates.first { $0.starter == LayoutLibrary.rajMode })
         teach.name = "My teach"
         lib.update(teach)
         lib.select(talkID)
@@ -119,7 +102,7 @@ final class BuiltInLayoutsTests: XCTestCase {
         XCTAssertTrue(lib.restoreOriginal(talkID))
 
         let restored = try XCTUnwrap(lib.template(id: talkID))
-        XCTAssertEqual(restored.name, "Talk to the meeting")
+        XCTAssertEqual(restored.name, "Room + laptop")
         XCTAssertTrue(restored.isAsShipped)
         XCTAssertEqual(lib.templates.map(\.id), before.templates.map(\.id), "same place, same id")
         XCTAssertEqual(lib.activeID, talkID)
@@ -167,7 +150,7 @@ final class BuiltInLayoutsTests: XCTestCase {
         return (d, old)
     }
 
-    // R14.1, R12.2, R16.1: once, Raj stays, Teach is replaced, Meeting and chat becomes yours,
+    // R14.1, R12.2, R16.1: once, Raj stays, Teach and Meeting and chat become yours,
     // the new built-ins are added, None becomes Leave my windows alone, and nothing is deleted.
     func testExistingInstallGetsTheBuiltInsOnce() throws {
         let (d, old) = savedOldInstall()
@@ -175,12 +158,13 @@ final class BuiltInLayoutsTests: XCTestCase {
 
         XCTAssertEqual(lib.template(id: old.templates[0].id), old.templates[0], "Raj stays as the owner edited it")
         let teach = try XCTUnwrap(lib.template(id: old.templates[1].id))
-        XCTAssertTrue(teach.isAsShipped, "Teach is replaced in place")
+        XCTAssertNil(teach.starter, "Teach is the owner's own now (Q28)")
+        XCTAssertEqual(teach.oneDisplay, old.templates[1].oneDisplay, "unchanged")
         let mine = try XCTUnwrap(lib.template(id: old.templates[2].id))
         XCTAssertNil(mine.starter)
         XCTAssertEqual(mine.name, "Meeting and chat")
         XCTAssertEqual(mine.oneDisplay, old.templates[2].oneDisplay, "kept as the owner's own")
-        for key in [LayoutLibrary.talkToMeeting, LayoutLibrary.present, LayoutLibrary.roomLaptop, LayoutLibrary.leaveAlone] {
+        for key in [LayoutLibrary.roomLaptop, LayoutLibrary.leaveAlone] {
             XCTAssertNotNil(lib.templates.first { $0.starter == key }, key)
         }
         XCTAssertEqual(lib.active?.starter, LayoutLibrary.leaveAlone, "None maps to Leave my windows alone")
@@ -203,20 +187,6 @@ final class BuiltInLayoutsTests: XCTestCase {
         XCTAssertEqual(again.templates.count, lib.templates.count, "no second copy")
     }
 
-    // R14.1: an edited Teach from a browser is kept as the owner's own layout.
-    func testAnEditedTeachFromABrowserIsKeptAsYours() throws {
-        let d = defaults()
-        var old = oldInstall()
-        old.templates[1].oneDisplay.removeLast()
-        old.save(to: d)
-        d.set(true, forKey: LayoutLibrary.shownToEveryoneMigratedKey)
-        d.set(true, forKey: LayoutLibrary.appsShownMigratedKey)
-        let lib = LayoutLibrary.loadOrMigrate(from: d, defaultSiteURL: site)
-        let kept = try XCTUnwrap(lib.templates.first { $0.starter == nil && $0.oneDisplay == old.templates[1].oneDisplay })
-        XCTAssertNotEqual(kept.id, old.templates[1].id)
-        XCTAssertTrue(lib.template(id: old.templates[1].id)?.isAsShipped ?? false)
-    }
-
     // R16.1: the key is set only after the save worked.
     func testAFailedSaveLeavesTheBuiltInsKeyUnset() {
         let d = defaults()
@@ -235,7 +205,7 @@ final class BuiltInLayoutsTests: XCTestCase {
         var global = LayoutCamera()
         global.shape = .square
         lib.migrateCameraAndShare(camera: global, share: ShareTarget(), defaults: defaults(), save: { _ in true })
-        XCTAssertEqual(lib.templates.first { $0.starter == LayoutLibrary.talkToMeeting }?.camera?.shape, .roundedRectangle)
+        XCTAssertEqual(lib.templates.first { $0.starter == LayoutLibrary.roomLaptop }?.camera?.shape, .roundedRectangle)
         XCTAssertEqual(lib.templates.last?.camera?.shape, .square)
     }
 
@@ -247,7 +217,7 @@ final class BuiltInLayoutsTests: XCTestCase {
                        [.rename, .duplicate, .restoreOriginal, .delete])
         let lib = LayoutLibrary(templates: LayoutLibrary.starters())
         XCTAssertFalse(lib.canDelete(lib.leaveAloneID!))
-        XCTAssertTrue(lib.canDelete(lib.templates[0].id))
+        XCTAssertTrue(lib.canDelete(lib.templates[1].id))
     }
 
     // R12.1: no built-in overlaps itself or breaks a minimum size, on a laptop and a large display.
@@ -275,7 +245,7 @@ final class BuiltInLayoutsTests: XCTestCase {
     func testNothingIsAddedToLeaveMyWindowsAlone() {
         let leave = starter(LayoutLibrary.leaveAlone)
         XCTAssertFalse(leave.canAdd(.chat, to: .main))
-        XCTAssertTrue(starter(LayoutLibrary.present).canAdd(.view(.people, startsHidden: false), to: .main))
+        XCTAssertTrue(starter(LayoutLibrary.rajMode).canAdd(.view(.people, startsHidden: false), to: .main))
     }
 }
 
@@ -300,36 +270,202 @@ extension BuiltInLayoutsTests {
         XCTAssertEqual(leave.camera?.shape, .square)
         XCTAssertEqual(leave.share, share)
     }
+}
 
-    private func oldTeachLibrary(_ edit: (inout LayoutTemplate) -> Void) -> (UserDefaults, LayoutLibrary) {
-        let (d, old) = savedOldInstall()
-        var lib = old
-        edit(&lib.templates[1])
-        lib.save(to: d)
-        return (d, lib)
+// MARK: - Three built-ins (Q28, R39 to R42)
+
+extension BuiltInLayoutsTests {
+    private func suite() -> UserDefaults {
+        let name = "three-builtins-\(UUID().uuidString)"
+        let d = UserDefaults(suiteName: name)!
+        d.removePersistentDomain(forName: name)
+        return d
     }
 
-    private func keptAsYours(_ d: UserDefaults, _ edited: LayoutLibrary) -> Bool {
-        let lib = LayoutLibrary.loadOrMigrate(from: d, defaultSiteURL: site)
-        return lib.templates.contains { $0.starter == nil && $0.name == "My " + edited.templates[1].name }
+    private func markEarlierMigrationsDone(_ d: UserDefaults) {
+        for k in [LayoutLibrary.oneArrangementMigratedKey, LayoutLibrary.builtInsV2MigratedKey, LayoutLibrary.shownToEveryoneMigratedKey,
+                  LayoutLibrary.appsShownMigratedKey, LayoutLibrary.rajRenamedKey] { d.set(true, forKey: k) }
     }
 
-    // R14.1: a renamed Teach from a browser is the owner's, not unedited.
-    func testARenamedTeachIsKept() {
-        let (d, lib) = oldTeachLibrary { $0.name = "Teach from a browser" + " (mine)" }
-        let kept = LayoutLibrary.loadOrMigrate(from: d, defaultSiteURL: site)
-        XCTAssertTrue(kept.templates.contains { $0.starter == nil && $0.name.contains("(mine)") }, "\(lib.templates[1].name)")
+    private func old(_ name: String, _ key: String?, chatAt x: Double) -> LayoutTemplate {
+        LayoutTemplate(name: name, starter: key,
+                       oneDisplay: [LayoutPiece(kind: .chat, rect: UnitRect(x: x, y: 0, w: 0.2, h: 1))],
+                       camera: LayoutCamera(), share: ShareTarget())
     }
 
-    // R14.1: a Teach with a changed share is the owner's.
-    func testATeachWithAChangedShareIsKept() {
-        let (d, lib) = oldTeachLibrary { $0.share?.kind = .whiteboard }
-        XCTAssertTrue(keptAsYours(d, lib))
+    // R39.1: Leave my windows alone, Raj San Mode, Room + laptop, in that order.
+    func testTheThreeBuiltInsInOrder() {
+        XCTAssertEqual(LayoutLibrary.builtIns().map(\.name), ["Leave my windows alone", "Raj San Mode", "Room + laptop"])
+        XCTAssertEqual(LayoutLibrary.builtIns().compactMap(\.starter), ["leave-alone", "raj", "room-laptop"])
     }
 
-    // R14.1: a Teach with a piece's eye turned off (hidden from everyone) is the owner's.
-    func testATeachWithAnEyeTurnedOffIsKept() {
-        let (d, lib) = oldTeachLibrary { $0.oneDisplay[2].showsToEveryone = false }
-        XCTAssertTrue(keptAsYours(d, lib))
+    // R39.2: Reset to defaults gives exactly the three, Leave my windows alone active.
+    func testResetGivesTheThreeWithLeaveMyWindowsAloneActive() {
+        var lib = LayoutLibrary(templates: [old("Mine", nil, chatAt: 0.1)])
+        lib.resetToDefaults()
+        XCTAssertEqual(lib.templates.map(\.name), ["Leave my windows alone", "Raj San Mode", "Room + laptop"])
+        XCTAssertEqual(lib.active?.starter, LayoutLibrary.leaveAlone)
+    }
+
+    // R39.3: Restore original and isAsShipped work for each of the three; a former Teach has no original.
+    func testRestoreAndIsAsShippedWorkForTheThree() throws {
+        var lib = LayoutLibrary(templates: LayoutLibrary.builtIns() + [old("Teach from a browser", nil, chatAt: 0.3)])
+        for t in Array(lib.templates.prefix(3)) {
+            XCTAssertTrue(t.isAsShipped, t.name)
+            var edited = t
+            edited.camera?.shape = .square
+            edited.name = "Edited"
+            lib.update(edited)
+            XCTAssertFalse(try XCTUnwrap(lib.template(id: t.id)).isAsShipped)
+            XCTAssertTrue(lib.canRestore(t.id), t.name)
+            XCTAssertTrue(lib.restoreOriginal(t.id))
+            XCTAssertTrue(try XCTUnwrap(lib.template(id: t.id)).isAsShipped, t.name)
+        }
+        XCTAssertFalse(lib.canRestore(lib.templates[3].id))
+    }
+
+    // R39.1: the New layout card stays at the end.
+    func testTheNewLayoutCardIsLast() {
+        let lib = LayoutLibrary(templates: LayoutLibrary.builtIns() + [old("Mine", nil, chatAt: 0.1)])
+        let items = LayoutStripRules.items(for: lib)
+        XCTAssertEqual(items.count, 5)
+        XCTAssertEqual(items.last, .newLayout)
+        XCTAssertEqual(items.first, .layout(lib.templates[0].id))
+    }
+
+    // R40.1, R40.2: an install that had the six. The three built-ins first; Teach, Talk and Present are the
+    // owner's own, unchanged; nothing is deleted; the active layout is kept.
+    func testAnInstallWithTheSixKeepsTheRemovedThreeAsYours() throws {
+        let d = suite()
+        markEarlierMigrationsDone(d)
+        let teach = old("Teach from a browser", "teach-browser", chatAt: 0.1)
+        var talk = old("Talk to the meeting", "talk-to-meeting", chatAt: 0.2)
+        talk.camera?.shape = .square
+        let present = old("Present", "present", chatAt: 0.3)
+        let room = LayoutLibrary.shipped(LayoutLibrary.roomLaptop)!
+        let leave = LayoutLibrary.shipped(LayoutLibrary.leaveAlone)!
+        let raj = LayoutLibrary.shipped(LayoutLibrary.rajMode)!
+        let mine = old("Mine", nil, chatAt: 0.5)
+        let before = LayoutLibrary(templates: [teach, talk, present, room, leave, raj, mine], activeID: talk.id)
+        before.save(to: d)
+
+        let lib = LayoutLibrary.loadOrMigrate(from: d, defaultSiteURL: "https://example.test")
+        XCTAssertEqual(lib.templates.map(\.name),
+                       ["Leave my windows alone", "Raj San Mode", "Room + laptop",
+                        "Teach from a browser", "Talk to the meeting", "Present", "Mine"])
+        for original in [teach, talk, present] {
+            var expected = original
+            expected.starter = nil
+            XCTAssertEqual(lib.template(id: original.id), expected, original.name)
+        }
+        XCTAssertEqual(lib.activeID, talk.id, "the active layout is kept")
+        XCTAssertTrue(Set(before.templates.map(\.id)).isSubset(of: Set(lib.templates.map(\.id))), "nothing deleted")
+        XCTAssertTrue(d.bool(forKey: LayoutLibrary.threeBuiltInsMigratedKey))
+        XCTAssertEqual(LayoutLibrary.load(from: d), lib, "saved")
+    }
+
+    // R40.3: an install that never ran the P9 migration ends the same way: no Talk or Present appear, the
+    // old Teach is the owner's as it was, and the three built-ins lead.
+    func testAnInstallFromBeforeP9EndsWithTheThreeToo() throws {
+        let d = suite()
+        let teach = old("Teach from a browser", "teach-browser", chatAt: 0.1)
+        let meeting = old("Meeting and chat", "meeting-chat", chatAt: 0.7)
+        LayoutLibrary(templates: [teach, meeting], activeID: teach.id).save(to: d)
+        let lib = LayoutLibrary.loadOrMigrate(from: d, defaultSiteURL: "https://example.test")
+        XCTAssertEqual(lib.templates.compactMap(\.starter), ["leave-alone", "raj", "room-laptop"], "only the three are tagged")
+        XCTAssertEqual(lib.templates.map(\.name), ["Leave my windows alone", "Raj San Mode", "Room + laptop",
+                                                    "Teach from a browser", "Meeting and chat"])
+        var kept = teach
+        kept.starter = nil
+        XCTAssertEqual(lib.template(id: teach.id), kept)
+        XCTAssertEqual(lib.activeID, teach.id)
+    }
+
+    // R40.3: a fresh install has the three and every key set.
+    func testAFreshInstallHasTheThreeAndTheKeySet() {
+        let d = suite()
+        let lib = LayoutLibrary.loadOrMigrate(from: d, defaultSiteURL: "https://example.test")
+        XCTAssertEqual(lib.templates.compactMap(\.starter), ["leave-alone", "raj", "room-laptop"])
+        XCTAssertEqual(lib.active?.starter, LayoutLibrary.leaveAlone)
+        XCTAssertTrue(d.bool(forKey: LayoutLibrary.threeBuiltInsMigratedKey))
+    }
+
+    // R40.1, R40.3: the key follows a successful save; a second run changes nothing; a Raj the owner deleted stays gone.
+    func testTheThreeBuiltInsMigrationFollowsASuccessfulSaveAndRunsOnce() {
+        let d = suite()
+        var lib = LayoutLibrary(templates: [old("Present", "present", chatAt: 0.3), LayoutLibrary.shipped(LayoutLibrary.leaveAlone)!])
+        XCTAssertFalse(lib.migrateThreeBuiltIns(defaults: d, save: { _ in false }))
+        XCTAssertFalse(d.bool(forKey: LayoutLibrary.threeBuiltInsMigratedKey))
+        XCTAssertTrue(lib.migrateThreeBuiltIns(defaults: d, save: { _ in true }))
+        XCTAssertTrue(d.bool(forKey: LayoutLibrary.threeBuiltInsMigratedKey))
+        XCTAssertEqual(lib.templates.map(\.name), ["Leave my windows alone", "Present"], "a deleted Raj stays deleted")
+        let after = lib
+        XCTAssertFalse(lib.migrateThreeBuiltIns(defaults: d, save: { _ in true }))
+        XCTAssertEqual(lib, after)
+    }
+
+    // R41.1: only Leave my windows alone draws the camera, at its saved spot and shape's box.
+    func testOnlyLeaveMyWindowsAloneDrawsACameraOnItsCard() throws {
+        let leave = try XCTUnwrap(LayoutLibrary.shipped(LayoutLibrary.leaveAlone))
+        XCTAssertEqual(LayoutStripRules.thumbnailCamera(for: leave), leave.camera)
+        XCTAssertNil(LayoutStripRules.thumbnailCamera(for: try XCTUnwrap(LayoutLibrary.shipped(LayoutLibrary.rajMode))))
+        let size = CGSize(width: 112, height: 70)
+        let r = LayoutStripRules.cameraRect(try XCTUnwrap(leave.camera), in: size)
+        XCTAssertGreaterThan(r.width, 4)
+        XCTAssertEqual(r.width / r.height, 16.0 / 9.0, accuracy: 0.15, "Rounded keeps the 16:9 box")
+        XCTAssertGreaterThan(r.minX, size.width / 2, "right side")
+        XCTAssertGreaterThan(r.minY, size.height / 2, "bottom")
+        XCTAssertLessThanOrEqual(r.maxX, size.width)
+        XCTAssertLessThanOrEqual(r.maxY, size.height)
+    }
+
+    // R42.1: a fade only on the side that has more.
+    func testTheStripFadesOnlyWhereThereIsMore() {
+        XCTAssertEqual(LayoutStripRules.fades(offset: 0, content: 500, viewport: 600), .init(leading: false, trailing: false), "all fits")
+        XCTAssertEqual(LayoutStripRules.fades(offset: 0, content: 840, viewport: 700), .init(leading: false, trailing: true))
+        XCTAssertEqual(LayoutStripRules.fades(offset: 70, content: 840, viewport: 700), .init(leading: true, trailing: true))
+        XCTAssertEqual(LayoutStripRules.fades(offset: 140, content: 840, viewport: 700), .init(leading: true, trailing: false))
+    }
+}
+
+// MARK: - Rounded camera by default (owner, 2026-11-26)
+
+extension BuiltInLayoutsTests {
+    // R43.1, R43.2: every built-in has the Rounded camera and keeps its own spot and size; Restore and Reset bring it back.
+    func testTheBuiltInsDefaultToTheRoundedCameraAtTheirOwnSpots() throws {
+        let spots = LayoutLibrary.builtIns().map { [$0.camera!.widthFraction, $0.camera!.rightInset, $0.camera!.bottomInset] }
+        XCTAssertEqual(spots, [[0.12, 0.04, 0.06], [0.24, 0.045, 0.06], [0.12, 0.30, 0.06]], "spot and size unchanged")
+        XCTAssertEqual(LayoutLibrary.builtIns().map { $0.camera?.shape }, [.roundedRectangle, .cutout, .roundedRectangle],
+                       "Raj San Mode is the Cutout (owner correction)")
+        let raj = try XCTUnwrap(LayoutLibrary.shipped(LayoutLibrary.rajMode)?.camera)
+        XCTAssertEqual(raj.cutoutHeightFraction, 0.4)
+        XCTAssertEqual(raj.cutoutRightInset, 0.02)
+        XCTAssertLessThan(1 - raj.cutoutHeightFraction, 1.0, "bottom right")
+        XCTAssertGreaterThanOrEqual(1 - raj.cutoutHeightFraction, 5.0 / 12, "clear of Chat's top, where its caption is")
+        var lib = LayoutLibrary(templates: LayoutLibrary.builtIns())
+        var edited = lib.templates[0]
+        edited.camera?.shape = .square
+        lib.update(edited)
+        XCTAssertTrue(lib.restoreOriginal(edited.id))
+        XCTAssertEqual(lib.template(id: edited.id)?.camera?.shape, .roundedRectangle)
+        lib.resetToDefaults()
+        XCTAssertEqual(lib.templates.map { $0.camera?.shape }, [.roundedRectangle, .cutout, .roundedRectangle])
+    }
+
+    // R43.3: a new blank layout is Rounded; a fork keeps the camera it was forked from; an old saved file keeps its circle.
+    func testNewLayoutsAreRoundedButSavedOnesAndForksKeepTheirShape() throws {
+        var lib = LayoutLibrary(templates: LayoutLibrary.builtIns())
+        let blank = lib.addBlank()
+        XCTAssertEqual(lib.template(id: blank)?.camera?.shape, .roundedRectangle)
+        var circle = LayoutTemplate(name: "Mine", camera: LayoutCamera(), share: ShareTarget())
+        circle.camera?.shape = .circle
+        lib.templates.append(circle)
+        let copy = try XCTUnwrap(lib.duplicate(circle.id))
+        XCTAssertEqual(lib.template(id: copy)?.camera?.shape, .circle, "a duplicate keeps its source's camera")
+        lib.select(lib.leaveAloneID)
+        let fork = try XCTUnwrap(lib.forkLeaveAlone())
+        XCTAssertEqual(lib.template(id: fork)?.camera, lib.template(id: lib.leaveAloneID!)?.camera)
+        let old = try JSONDecoder().decode(LayoutCamera.self, from: Data("{}".utf8))
+        XCTAssertEqual(old.shape, .circle, "saved layouts with no shape are not changed")
     }
 }

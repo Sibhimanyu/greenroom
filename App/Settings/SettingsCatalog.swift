@@ -194,6 +194,7 @@ enum SettingsCatalog {
         excluded("layoutShareMigrated", .unset, "One-time migration marker on this Mac."),
         excluded("layoutLibrary.appsShownToEveryoneMigrated", .unset, "One-time migration marker on this Mac."),
         excluded("layoutLibrary.builtInsV2Migrated", .unset, "One-time migration marker on this Mac."),
+        excluded("layoutLibrary.threeBuiltInsMigrated", .unset, "One-time migration marker on this Mac."),
         excluded("layoutLibrary.oneArrangementMigrated", .unset, "One-time migration marker on this Mac."),
         excluded("layoutLibrary.rajSanModeRenamed", .unset, "One-time migration marker on this Mac."),
         excluded("layoutLibrary.shownToEveryoneMigrated", .unset, "One-time migration marker on this Mac."),

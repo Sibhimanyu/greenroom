@@ -38,7 +38,19 @@ final class CameraStateTests: XCTestCase {
     }
 
     func testNamesAreTheFourWordsEverywhere() {
-        XCTAssertEqual(CameraState.allCases.map(\.name), ["Everyone and me", "Only everyone", "Only me", "Off"])
+        XCTAssertEqual(CameraState.allCases.map(\.name), ["Everyone & me", "Only the meeting", "Only me", "Off"])
+    }
+
+    // R6, R17 (owner, 2026-11-26): each state has its own canvas caption and icon; Off is the only dimmed one.
+    func testEachStateHasItsOwnCanvasCaptionAndIcon() {
+        let c = CameraState.allCases.map { CameraCaptionRules.caption(for: $0) }
+        XCTAssertEqual(c.map(\.text), ["Your camera", "Hidden on your screen", "Only you see this", "Camera off"])
+        XCTAssertEqual(c.map(\.symbol), CameraState.allCases.map { VisibilitySymbol.camera($0) }, "icons come from VisibilitySymbols")
+        XCTAssertEqual(c.map(\.symbol.name), ["video.fill", "video.fill", "video.fill", "video.slash"])
+        XCTAssertEqual(c.map(\.dashed), [false, true, false, false], "only Only the meeting is dashed")
+        XCTAssertEqual(c.map(\.dimmed), [false, false, false, true], "only Off dims the whole piece")
+        XCTAssertEqual(Set(c.map(\.text)).count, 4, "no two states share words")
+        XCTAssertEqual(CameraCaptionRules.caption(for: .onlyMe).symbol.badge, "eye.slash")
     }
 
     // MARK: saved default vs the running meeting

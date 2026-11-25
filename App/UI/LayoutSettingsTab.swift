@@ -206,6 +206,7 @@ struct LayoutPageContent: View {
     @State private var focusRequest: LayoutFocusRequest?
     @FocusState private var focus: LayoutFocus?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var stripMetrics = StripMetrics()
     /// The Settings window's undo stack: Cmd-Z, Shift-Cmd-Z and the Edit menu.
     @Environment(\.undoManager) private var undoManager
     @State private var recorder: LayoutEditRecorder?
@@ -347,7 +348,27 @@ struct LayoutPageContent: View {
 
     private var thumbHeight: CGFloat { layoutThumbHeight(for: mainSize) }
 
+    private var stripFades: LayoutStripRules.Fades {
+        LayoutStripRules.fades(offset: stripMetrics.offset, content: stripMetrics.content, viewport: stripMetrics.viewport)
+    }
+
+    /// R42: the strip scrolls; a soft fade at an edge says there is more that way, and the chosen card is
+    /// kept in view.
     private var cardStrip: some View {
+        ScrollViewReader { proxy in
+            cardStripScroller
+                .onChange(of: library.activeID) { _, id in scrollToActive(proxy, id, animated: true) }
+                .onAppear { DispatchQueue.main.async { scrollToActive(proxy, library.activeID, animated: false) } }
+        }
+    }
+
+    private func scrollToActive(_ proxy: ScrollViewProxy, _ id: UUID?, animated: Bool) {
+        guard let id else { return }
+        if animated, let anim { withAnimation(anim) { proxy.scrollTo(id, anchor: .center) } }
+        else { proxy.scrollTo(id, anchor: .center) }
+    }
+
+    private var cardStripScroller: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
                 ForEach(library.templates) { template in
@@ -357,11 +378,9 @@ struct LayoutPageContent: View {
                                beginRename: { beginRename(template) },
                                commitRename: { commitRename() },
                                cancelRename: { renamingID = nil }) {
-                        if template.movesWindows {
-                            LayoutThumbnail(pieces: template.oneDisplay, aspect: layoutCardWidth / thumbHeight, look: look)
-                        } else {
-                            LayoutNoneThumbnail(height: thumbHeight)
-                        }
+                        // Leave my windows alone: an empty display with just the camera (R41).
+                        LayoutThumbnail(pieces: template.oneDisplay, aspect: layoutCardWidth / thumbHeight,
+                                        camera: LayoutStripRules.thumbnailCamera(for: template), look: look)
                     }
                     .contextMenu {
                         Button("Rename") { beginRename(template) }
@@ -374,6 +393,7 @@ struct LayoutPageContent: View {
                             Button("Delete\u{2026}", role: .destructive) { deleteCandidate = template.id }
                         }
                     }
+                    .id(template.id)
                     .transition(.opacity.combined(with: .scale(scale: 0.96)))
                 }
 
@@ -394,8 +414,37 @@ struct LayoutPageContent: View {
                 }
             }
             .padding(3)
+            .background(GeometryReader { g in
+                let frame = g.frame(in: .named(Self.stripSpace))
+                Color.clear
+                    .onAppear { stripMetrics.offset = -frame.minX; stripMetrics.content = frame.width }
+                    .onChange(of: frame) { _, f in stripMetrics.offset = -f.minX; stripMetrics.content = f.width }
+            })
         }
+        .coordinateSpace(name: Self.stripSpace)
         .scrollClipDisabled()
+        .background(GeometryReader { g in
+            Color.clear.onAppear { stripMetrics.viewport = g.size.width }
+                .onChange(of: g.size.width) { _, w in stripMetrics.viewport = w }
+        })
+        // Fade only the scrolling edge, only while more lies that way. The mask reaches past the strip
+        // above and below so the cards' outlines are not clipped.
+        .mask(stripFadeMask)
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.15), value: stripFades)
+    }
+
+    private static let stripSpace = "LayoutStrip"
+    private static let fadeWidth: CGFloat = 28
+
+    private var stripFadeMask: some View {
+        HStack(spacing: 0) {
+            LinearGradient(colors: [stripFades.leading ? .clear : .black, .black], startPoint: .leading, endPoint: .trailing)
+                .frame(width: stripFades.leading ? Self.fadeWidth : 0)
+            Rectangle().fill(.black)
+            LinearGradient(colors: [.black, stripFades.trailing ? .clear : .black], startPoint: .leading, endPoint: .trailing)
+                .frame(width: stripFades.trailing ? Self.fadeWidth : 0)
+        }
+        .padding(.vertical, -10)
     }
 
     private func choose(_ id: UUID?) {
@@ -666,7 +715,7 @@ struct LayoutPageContent: View {
     /// R29.3: the thin dashed strip at the main canvas's right edge that adds a second display.
     private func addSecondStrip(_ template: LayoutTemplate) -> AnyView? {
         guard LayoutEditorRules.showsAddSecondStrip(hasSecondDisplay: template.twoDisplays != nil) else { return nil }
-        return AnyView(AddSecondStrip(width: LayoutEditorRules.stripWidth) {
+        return AnyView(AddSecondStrip {
             withAnimation(anim) {
                 // Leave my windows alone cannot take pieces: like +, the strip makes "My layout" and adds there.
                 let forked = !template.movesWindows
@@ -805,6 +854,7 @@ struct LayoutPageContent: View {
                          LayoutEditorRules.carriesSharedControls(slot: slot, template: t) ? sharedTag(t) : nil },
                      headerAdd: template.map { addButton(slot: slot, template: $0) },
                      trailingStrip: slot == .main ? template.flatMap { addSecondStrip($0) } : nil,
+                     trailingStripWidth: LayoutEditorRules.stripWidth(panelWidth: panelWidth > 0 ? panelWidth : 640),
                      crossing: two ? crossing(from: slot) : nil,
                      incoming: incoming?.slot == slot ? incoming?.preview : nil,
                      refusal: refusal?.slot == slot ? refusal?.text : nil,
@@ -1420,21 +1470,6 @@ func layoutThumbHeight(for mainSize: CGSize) -> CGFloat {
     min(max(layoutCardWidth / max(mainSize.width / max(mainSize.height, 1), 1.2), 44), 84)
 }
 
-/// The None card's picture: a dashed outline and a no-entry sign.
-struct LayoutNoneThumbnail: View {
-    let height: CGFloat
-    var body: some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: 4)
-                .strokeBorder(Color.secondary.opacity(0.5), style: StrokeStyle(lineWidth: 1, dash: [4, 3]))
-            Image(systemName: "nosign")
-                .font(.system(size: 18, weight: .light))
-                .foregroundStyle(.secondary)
-        }
-        .frame(height: height)
-    }
-}
-
 struct LayoutCard<Thumbnail: View>: View {
     let title: String
     let selected: Bool
@@ -1498,4 +1533,12 @@ struct LayoutCard<Thumbnail: View>: View {
         .accessibilityAddTraits(selected ? [.isButton, .isSelected] : .isButton)
         .accessibilityAction(.default, select)
     }
+}
+
+// MARK: - The card strip's scroll position (R42)
+
+struct StripMetrics: Equatable {
+    var offset: CGFloat = 0
+    var content: CGFloat = 0
+    var viewport: CGFloat = 0
 }

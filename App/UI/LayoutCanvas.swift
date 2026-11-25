@@ -196,6 +196,9 @@ struct LayoutCanvas: View {
     /// The dashed strip beside the main canvas that adds a second display (R29.3): as tall as the
     /// canvas, at its right edge. Only the main canvas has one, and only without a second display.
     var trailingStrip: AnyView?
+    /// The strip's width; the header keeps this much (and the 6pt gap) clear at its right edge.
+    var trailingStripWidth: CGFloat = 0
+    private var trailingStripReserve: CGFloat { trailingStrip == nil ? 0 : trailingStripWidth + 6 }
     /// This layout has a second display: the editor's canvases are two (`crossing` is its drag between them).
     private var hasSecondDisplay: Bool { crossing != nil }
     /// A lone canvas is the display everyone sees; with two, only the one marked shared.
@@ -247,11 +250,12 @@ struct LayoutCanvas: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            if showsHeader { header }
+            // The header sits over the canvas, not over the strip: its right edge is the canvas's.
+            if showsHeader { header.padding(.trailing, trailingStripReserve) }
             if let trailingStrip {
                 HStack(alignment: .top, spacing: 6) {
                     bezel
-                    trailingStrip
+                    trailingStrip.frame(width: trailingStripWidth)
                 }
             } else {
                 bezel
@@ -721,6 +725,11 @@ struct LayoutCanvas: View {
         return LayoutCameraRules.clamped(raw, to: LayoutCameraRules.drawable(frame: canvas, space: display.cameraSpace))
     }
 
+    /// My screen: the state's own caption. Preview: Everyone draws what the meeting gets, plainly.
+    private func standInCaption(_ camera: LayoutCameraModel) -> CameraCanvasCaption {
+        CameraCaptionRules.caption(for: previewEveryone ? .everyoneAndMe : camera.state)
+    }
+
     @ViewBuilder
     private func cameraOverlay(_ camera: LayoutCameraModel, canvas: CGSize) -> some View {
         if camera.shape == .presenterLarge {
@@ -734,8 +743,7 @@ struct LayoutCanvas: View {
                 everyoneSees: camera.everyoneSees, onMyScreen: !camera.cameraOff,
                 selected: selection == LayoutCameraModel.selectionID,
                 onSelect: { selection = LayoutCameraModel.selectionID; takeKeyboard(); onActivate() },
-                fill: { size in AnyView(CameraStandIn(shape: camera.shape, meaning: .camera(camera.state), off: camera.cameraOff && !previewEveryone,
-                                                      dashed: camera.cameraOff && camera.everyoneSees && !previewEveryone, size: size)) })
+                fill: { size in AnyView(CameraStandIn(shape: camera.shape, caption: standInCaption(camera), size: size)) })
                 .frame(width: canvas.width, height: canvas.height)
                 .zIndex(6)
         }
@@ -745,8 +753,7 @@ struct LayoutCanvas: View {
     /// right): shown, not draggable, and click-through so the tiles stay usable.
     private func presenterStandIn(_ camera: LayoutCameraModel, canvas: CGSize) -> some View {
         let h = canvas.height, w = min(h * 0.62, canvas.width * 0.3)
-        return CameraStandIn(shape: .presenterLarge, meaning: .camera(camera.state), off: camera.cameraOff && !previewEveryone,
-                             dashed: camera.cameraOff && camera.everyoneSees && !previewEveryone, size: CGSize(width: w, height: h))
+        return CameraStandIn(shape: .presenterLarge, caption: standInCaption(camera), size: CGSize(width: w, height: h))
             .frame(width: w, height: h)
             .position(x: canvas.width * 0.24, y: canvas.height / 2)
             .allowsHitTesting(false)
@@ -1306,12 +1313,23 @@ struct LayoutPieceTile: View {
 struct LayoutThumbnail: View {
     let pieces: [LayoutPiece]
     var aspect: CGFloat = 1.6
+    /// The camera drawn at its saved spot and shape (`LayoutStripRules.thumbnailCamera`): Leave my windows
+    /// alone has no pieces, so its card is the empty display with just this.
+    var camera: LayoutCamera?
     var look: (LayoutPiece) -> LayoutPieceLook
 
     var body: some View {
         GeometryReader { geo in
             ZStack(alignment: .topLeading) {
                 RoundedRectangle(cornerRadius: 4).fill(Color.secondary.opacity(0.10))
+                if let camera {
+                    let r = LayoutStripRules.cameraRect(camera, in: geo.size)
+                    cameraShape(camera.shape, r)
+                        .fill(Brand.green.opacity(0.55))
+                        .overlay { cameraShape(camera.shape, r).stroke(Brand.green, lineWidth: 0.75) }
+                        .frame(width: r.width, height: r.height)
+                        .position(x: r.midX, y: r.midY)
+                }
                 ForEach(pieces) { piece in
                     let r = piece.rect
                     let box = CGRect(x: r.x * geo.size.width, y: r.y * geo.size.height,
@@ -1337,6 +1355,14 @@ struct LayoutThumbnail: View {
         }
         .aspectRatio(aspect, contentMode: .fit)
         .accessibilityHidden(true)
+    }
+
+    private func cameraShape(_ shape: WebcamShape, _ r: CGRect) -> AnyShape {
+        switch shape {
+        case .circle: return AnyShape(Circle())
+        case .roundedRectangle: return AnyShape(RoundedRectangle(cornerRadius: min(r.width, r.height) * 0.22, style: .continuous))
+        default: return AnyShape(RoundedRectangle(cornerRadius: 1.5))
+        }
     }
 }
 
@@ -1430,12 +1456,13 @@ struct MeetingViewDiagram: Shape {
 /// and "Your camera". A Cutout is a person standing on the bottom edge.
 struct CameraStandIn: View {
     let shape: WebcamShape
-    /// Which camera state this stands for: its icon is Zoom's, never the eye (R17.3).
-    let meaning: VisibilitySymbol
-    let off: Bool
-    /// Hidden from me but shown to everyone: a dashed outline says so.
-    var dashed = false
+    /// Which camera state this stands for: its words, Zoom's icon (never the eye, R17.3), the dashed
+    /// outline of Only the meeting and the dimming of Off (`CameraCaptionRules`).
+    let caption: CameraCanvasCaption
     let size: CGSize
+    private var meaning: VisibilitySymbol { caption.symbol }
+    private var off: Bool { caption.dimmed }
+    private var dashed: Bool { caption.dashed }
 
     var body: some View {
         ZStack {
@@ -1496,7 +1523,7 @@ struct CameraStandIn: View {
                 .font(.system(size: small ? 11 : 15, weight: .medium))
                 .symbolBadge(meaning.badge, size: small ? 7 : 9)
             if !small && size.width > 84 {
-                Text(off ? "Hidden on your screen" : "Your camera")
+                Text(caption.text)
                     .font(.system(size: 10, weight: .semibold))
                     .lineLimit(1)
             }
@@ -1517,10 +1544,9 @@ struct LayoutPanelWidth: PreferenceKey {
     static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = max(value, nextValue()) }
 }
 
-/// R29.3: a thin vertical dashed strip with a + at the main canvas's right edge. Clicking it adds an
-/// empty second-display arrangement.
+/// R29.3: a tall dashed strip at the main canvas's right edge. Centred and stacked: a symbol, "Second
+/// display" and a line of what it is for. Clicking adds an empty second-display arrangement.
 struct AddSecondStrip: View {
-    let width: CGFloat
     let action: () -> Void
     @State private var hovering = false
 
@@ -1531,12 +1557,20 @@ struct AddSecondStrip: View {
                     .fill(Color.secondary.opacity(hovering ? 0.10 : 0))
                 RoundedRectangle(cornerRadius: 10)
                     .strokeBorder(Color.secondary.opacity(hovering ? 0.8 : 0.5), style: StrokeStyle(lineWidth: 1, dash: [5, 4]))
-                Image(systemName: "plus")
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(hovering ? Brand.text : Color.secondary)
+                VStack(spacing: 6) {
+                    Image(systemName: "plus")
+                        .font(.system(size: 16, weight: .light))
+                    Text(LayoutEditorRules.stripTitle)
+                        .font(.callout)
+                    Text(LayoutEditorRules.stripDetail)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                }
+                .foregroundStyle(hovering ? Brand.text : Color.secondary)
+                .padding(.horizontal, 10)
             }
-            .frame(width: width)
-            .frame(maxHeight: .infinity)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)

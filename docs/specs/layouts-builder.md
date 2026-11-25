@@ -56,7 +56,7 @@ different order; this table is the authority.
 | Q1 | One canvas, one truth. What you arrange is what everyone sees, except what you hide. |
 | Q2 | Each layout saves its camera piece (spot, size, shape). The camera look is shared by every layout. |
 | Q3 | "None" goes. Leave my windows alone replaces it and only places the camera. One layout is always active. |
-| Q4 | Built-in layouts: Teach from a browser, Talk to the meeting, Present, Room + laptop, Leave my windows alone, Raj San Mode. |
+| Q4 | Built-in layouts: Teach from a browser, Talk to the meeting, Present, Room + laptop, Leave my windows alone, Raj San Mode. **Amended by Q28 (2026-11-26).** |
 | Q5 | The merged tab is called Layouts. The Webcam tab goes away. |
 | Q6 | Each built-in layout has Restore original. Reset all stays as a last resort, behind a confirmation. |
 | Q7 | Migration copies today's camera spot, size and shape into every layout. Nothing looks different on day one. |
@@ -64,7 +64,7 @@ different order; this table is the authority.
 | Q9 | Each layout picks its own shared display, Main by default. Room + laptop shares Main and puts the Room screen on Second. |
 | Q10 | Room + laptop with no second display uses its one-display version, and Home says "Connect the room display". It never blocks Start. |
 | Q11 | Every piece has two badges, 👁 (on your screen) and 📡 (everyone), each a click to flip. 📡 stays amber when on. Hidden from everyone is striped; camera for everyone only is dashed. Only the camera can be "everyone but not me". |
-| Q12 | The camera state is one four-way choice: Everyone and me / Only everyone / Only me / Off, in the camera inspector, the bar's camera button and Home's camera tile. |
+| Q12 | The camera state is one four-way choice (renamed 2026-11-26, R44: Everyone & me / Only the meeting): Everyone and me / Only everyone / Only me / Off, in the camera inspector, the bar's camera button and Home's camera tile. |
 | Q13 | The canvas has a Preview: My screen / Everyone switch, on My screen by default. |
 | Q14 | The glossary's Layout definition says the camera is the one piece that can be in everyone's picture without being on your screen. (Separately, after the live browser bug: Greenroom Browser pieces are always in everyone's picture, so their 📡 is fixed on.) |
 | Q15 | The Webcam controls split: camera look global, camera piece per layout, camera device on Home and in the Devices tab. |
@@ -80,6 +80,7 @@ different order; this table is the authority.
 | Q25 | 👁 off means "starts hidden" for Greenroom windows and "opens minimised" for other apps. |
 | Q26 | Other apps' 📡 is a real switch, on by default, built on the one rule plus an exclusion in the capture filter. |
 | Q27 | Anonymous usage analytics moves to General > Privacy. |
+| Q28 | Owner, 2026-11-26. Amends Q4 and Q8. The built-in set is three: **Leave my windows alone** (first card, and the one active after Reset), **Raj San Mode** and **Room + laptop**, in that order. Teach from a browser, Talk to the meeting and Present are no longer built in. On an existing install they stop being built-ins and become the owner's own layouts, unchanged. |
 
 ## Requirements
 
@@ -96,8 +97,8 @@ different order; this table is the authority.
 | R8 | Direction A canvas | P5 | built |
 | R9 | Mac editor basics | P6 | built (R9.1 to R9.7); review fixes: one undo step per Size drag, camera state and look undoable, the editor follows an undo, VoiceOver follows the camera state and share |
 | R10 | Devices and General tabs | P7 | built |
-| R11 | Camera look in Layouts; Webcam tab gone | P8 | built (Mirror is back, R22); the Webcam tab's live picture, S/M/L sizes, corner and Reset are back in the inspector (needs a live check) |
-| R12 | Six built-in layouts, one always active | P9 | built (needs a live check) |
+| R11 | Camera look in Layouts; Webcam tab gone | P8 | built (Mirror is back, R22); the Webcam tab's live picture, corner and Reset are back in the inspector (the S/M/L sizes were superseded by owner, 2026-11-26: size is a drag on the canvas) (needs a live check) |
+| R12 | Built-in layouts, one always active (six, then three by R39) | P9, P15 | built (needs a live check); the set is R39 |
 | R13 | Restore original and Reset all | P9 | built |
 | R14 | Built-ins on existing installs | P9 | built (key `layoutLibrary.builtInsV2Migrated`); an unedited Teach is compared on every saved field (R14.2); a former None user's camera and share go to Leave my windows alone (R14.3) |
 | R15 | Room + laptop | P10 | built: Room + laptop ships (R15.1); Home's "Connect the room display" / mirrored note (R15.2, `RoomDisplayNote`) |
@@ -123,6 +124,12 @@ different order; this table is the authority.
 | R36 | Home says when the share is not the whole screen; the Screen tile uses the pop-out's short names | P13 | built |
 | R37 | Preview: Everyone draws the meeting's real picture | P14 | built; rects tested against the renderer (needs a live look) |
 | R38 | Bug list: the solid backdrop follows light / dark | bug list | built |
+| R39 | Three built-ins: Leave my windows alone, Raj San Mode, Room + laptop (Q28) | P15 | built |
+| R40 | Existing installs: Teach, Talk and Present become the owner's own, once | P15 | built (key `layoutLibrary.threeBuiltInsMigrated`) |
+| R41 | The Leave my windows alone card draws an empty display with the camera | P15 | built (rendered off screen) |
+| R42 | The card strip fades at a scrolling edge and keeps the chosen card in view | P15 | built (rendered off screen) |
+| R43 | Rounded camera by default (Raj San Mode: Cutout) | P15 | built |
+| R44 | Camera state names and canvas captions | P15 | built (rendered off screen) |
 
 **R38. Bug list: the solid backdrop follows light / dark.** (`SolidSheet`, App/UI/SolidSheet.swift)
 - R38.1 The solid sheet under a window the class sees re-resolves its dynamic colour (`windowBackgroundColor`)
@@ -241,7 +248,7 @@ different order; this table is the authority.
 
 **R11. Camera look in Layouts; Webcam tab gone.** (Q5, Q15)
 - R11.1 Selecting the camera piece shows a header (live thumbnail, ⋯ menu for the corner and
-  Reset size and position), who sees it (camera state), shape and S/M/L size, then
+  Reset size and position), who sees it (camera state), shape (size is a drag on the canvas; the S/M/L tiles were superseded by owner, 2026-11-26), then
   "Camera look · every layout" (background, removal mode, mirror), folded. (Owner, 2026-11-25:
   two rows at rest, no hint paragraph; this replaces "shape, size, camera state".)
 - R11.4 "Mirror my camera" is a plain toggle in the Camera look group and in Home's Camera panel
@@ -392,19 +399,22 @@ different order; this table is the authority.
   below it (3/12 x 7/12), as it was one display; second is the Meeting filling the display. Laptop only,
   the speaker is the meeting surface. Adding an Active speaker on main beside a Meeting on second is allowed.
 - R28.2 Room + laptop: main is the browser and Chat; second is the Room screen, Main shared.
-- R28.3 Teach, Talk, Present and Leave my windows alone have a main arrangement and no second.
+- R28.3 Leave my windows alone has a main arrangement and no second (Teach, Talk and Present are no longer built in, R39).
 - R28.4 `isAsShipped` compares both arrangements and the shared slot.
 
 **R29. Editor canvases.**
 - R29.1 There is no One display / Two displays toggle. The main canvas always shows.
 - R29.2 With no second arrangement, the main canvas fills the panel's width and its height follows the
   display's aspect, so no empty band is left on its right (the view; `canvasWidths` is for two canvases only).
-- R29.3 Also then, a thin vertical dashed strip, 28pt wide and as tall as the canvas, sits at the main
-  canvas's right edge with a + and the tooltip "Add a second display"
+- R29.3 Also then, a dashed strip (owner, 2026-11-26: 120 to 140pt, `LayoutEditorRules.stripWidth(panelWidth:)`,
+  18% of the panel; at 760pt the main canvas is more than 3.5 times its width) as tall as the canvas sits at
+  the main canvas's right edge. Centred and stacked it holds a +, "Second display" and "For a room screen or
+  another monitor", with the tooltip "Add a second display"
   (`LayoutEditorRules.showsAddSecondStrip(hasSecondDisplay:)`, true only without a second).
   Clicking it adds an empty second arrangement. It shows on every layout, Leave my windows alone included:
   that one cannot take pieces, so the strip, like +, first makes "My layout" from it and adds the second there
-  (`LayoutLibrary.addSecondDisplayToActive`).
+  (`LayoutLibrary.addSecondDisplayToActive`). It highlights on hover. The main canvas's own + sits at the
+  canvas header's right edge over the canvas, never over the strip.
 - R29.4 With a second arrangement the strip is gone and the two canvases sit side by side, both fully
   visible; the main canvas shrinks so both fit the panel width (`canvasWidths` sums to the width minus
   the gap, each follows its own display's aspect).
@@ -456,8 +466,9 @@ different order; this table is the authority.
 **R33. Camera shape tiles.**
 - R33.1 Home's Look tiles (Rounded, Circle, Square, Cutout, Presenter) are one shared view (`CameraShapeTiles`),
   used by Home's Look pop-out and by the camera inspector in place of the Shape picker.
-- R33.2 In the inspector the S / M / L tiles sit beside them, in the same row, only for a shape that can be sized
-  (`CameraPlacementRules.isAdjustable`; Presenter has none).
+- R33.2 ~~In the inspector the S / M / L tiles sit beside them.~~ Superseded by owner, 2026-11-26: the tiles, `sizePresets`
+  and `sizing` are gone; the row is the shape tiles alone, and sizing is a drag on the camera's corner. The ⋯ menu's
+  corner picker stays (`isAdjustable`).
 - R33.3 Picking a shape is one undo step; the tile's tooltip and VoiceOver label are the shape's name.
 
 **R34. Canvas honesty.** (My screen only; Preview: Everyone is another change)
@@ -474,7 +485,7 @@ different order; this table is the authority.
   one quiet readout, a ⋯ menu for secondary actions), then at most two rows at rest
   (`PieceInspectorRules.maxRowsAtRest`, `rows`). A notice (an app missing, Accessibility not granted) may add a
   row while it is true; it is not at rest.
-- R35.2 Rows: camera `[whoSees, shapeAndSize]`; Chat and Room screen none; Meeting window `[startsHidden]`, plus
+- R35.2 Rows: camera `[whoSees, shape]`; Chat and Room screen none; Meeting window `[startsHidden]`, plus
   `fillDisplay` first on the second display; a view `[startsHidden]`; an app `[app, opensAtStart]`.
 - R35.3 Secondary actions live in the ⋯ menu (`PieceInspectorRules.menu`), ending with Remove (also ⌫): an app's
   "Close when the meeting ends", "Opens minimised" (not for the Greenroom Browser, whose eye is fixed), and for the
@@ -539,6 +550,54 @@ whose `bounds` is that rect, so the camera never leaves the drawn content.
   the list the capture really uses. A disagreement is logged and hits
   `assertionFailure`. With no capture running it does nothing.
 
+**R39. Three built-ins.** (Q28; amends Q4, R12.1, R13)
+- R39.1 `LayoutLibrary.builtIns()` is Leave my windows alone (`leave-alone`), Raj San Mode (`raj`), Room + laptop
+  (`room-laptop`), in that order, each with its camera and share. The strip shows them first, and the
+  New layout card is always last.
+- R39.2 Reset to defaults gives exactly those three, with Leave my windows alone active.
+- R39.3 Restore original and `isAsShipped` work for each of the three; a layout that began as Teach, Talk or
+  Present has no original to restore.
+- R39.4 Leave my windows alone is still never deleted and still forks on + (R12.3, R12.4).
+
+**R40. Existing installs: the removed three.** (Q28)
+- R40.1 One time, with its own key `layoutLibrary.threeBuiltInsMigrated`, set only after the library saved
+  (R16.1). Teach from a browser, Talk to the meeting and Present lose their built-in tag and are the owner's own
+  layouts, unchanged (same id, name, pieces, camera and share). Nothing is deleted and `activeID` is kept.
+- R40.2 The order after it is the built-ins that are in the library (Leave my windows alone, Raj San Mode, Room + laptop)
+  first, then every other layout in the order it had. A deleted Raj or Room stays deleted; Leave my windows alone is
+  always present.
+- R40.3 It runs after the earlier migrations. The P9 migration no longer replaces Teach or adds Talk and
+  Present: an install that never ran it ends the same as one that did. A fresh install has the key set and the
+  three built-ins. A second run changes nothing.
+
+**R41. The Leave my windows alone card.** (Q28)
+- R41.1 Its picture is the same thumbnail the other cards use: an empty display with the camera at its saved
+  spot and shape (`LayoutStripRules.thumbnailCamera(for:)`, `LayoutThumbnailRules.cameraRect`), no "no entry" sign.
+  Other cards draw their pieces as before.
+
+**R42. The card strip scrolls with a sign of more.** (Q28, DESIGN.md)
+- R42.1 A soft fade shows at the left edge only when more is scrolled out that way, and at the right edge only
+  when more lies that way (`LayoutStripRules.fades`). No fade when everything fits.
+- R42.2 The chosen card scrolls into view when it is chosen and when the tab opens.
+
+**R43. Rounded camera by default.** (owner, 2026-11-26; Raj corrected the same day)
+- R43.1 Leave my windows alone and Room + laptop ship with the Rounded camera shape and keep their spot and size.
+  Raj San Mode ships with the Cutout (height 0.4 of the picture, right inset 0.02: bottom right, clear of the top
+  of Chat where its caption sits). Restore original and Reset to defaults bring these back.
+- R43.2 A new blank layout is Rounded (`LayoutCamera.rounded`). A fork or duplicate keeps the camera it was copied
+  from. `LayoutCamera()` and decoding still say Circle, so layouts already saved are not changed and no migration
+  touches a shape.
+
+**R44. Camera state names and canvas captions.** (owner, 2026-11-26; amends R6, R17)
+- R44.1 The four names, one place (`CameraState.name`), used by the inspector, the bar menu and Home: *Everyone &
+  me*, *Only the meeting*, *Only me*, *Off*. Four labelled segments measured about 550pt and did not fit the
+  inspector's row at 760pt, so the inspector shows a compact menu: the current icon and name, the four choices
+  inside, each with its icon; tooltips keep the long line (`detail`). The bar menu and Home's tile use the same names.
+- R44.2 The camera piece on the canvas has its own caption and icon per state (`CameraCaptionRules.caption(for:)`):
+  Everyone & me "Your camera"; Only the meeting "Hidden on your screen", dashed; Only me "Only you see this" with
+  the struck-eye badge; Off "Camera off" with video.slash and the whole piece dimmed. Preview: Everyone draws
+  "Your camera" plainly.
+
 ## Phases
 
 | Phase | Delivers | Status | Commit |
@@ -557,6 +616,7 @@ whose `bounds` is that rect, so the camera never leaves the drawn content.
 | P12 One arrangement per display (ADR 0002) | R25 to R31 | built | 3aa720a (review fixes: this commit) |
 | P13 Refined share and inspectors | R32 to R36 | built (rules tested; rendered off screen, not driven live) | cb8fdd5 (review fixes: this commit) |
 | P14 Preview: Everyone is the real picture | R37 | built | 58fd53b, fdebb5a (review fixes: this commit) |
+| P15 Three built-ins; strip fade; wider second-display strip (Q28) | R39 to R42, R29.3 | built | this commit |
 
 ## Known gaps
 
@@ -566,8 +626,7 @@ whose `bounds` is that rect, so the camera never leaves the drawn content.
   and Zoom's own video-off state are the parts to watch.
 - **P9 is unverified live.** Leave my windows alone moving no window, + making "My layout", Restore
   original and the one-time migration are tested as pure rules; the Start path and the Layouts tab
-  are not driven. The layout cards strip (7 cards at 112pt + 8pt gaps, about 840pt) is wider than
-  Settings' 760pt, so it scrolls horizontally with no indicator: check it by eye.
+  are not driven. The layout cards strip scrolls horizontally; it now fades at a scrolling edge (R42), checked off screen only.
 - A Present built-in has no slide-show window of its own to share (the share is the screen).
 - **The header fit at 760pt is unverified** (R8.5). Check the shared canvas
   header with two displays at Settings' fixed width.

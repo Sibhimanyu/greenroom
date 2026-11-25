@@ -112,29 +112,45 @@ final class DisplayMonitor {
 
     // MARK: Windows
 
-    /// Moves any window of ours that is stranded - its display gone, or only
-    /// a sliver of it still on a screen - onto a screen that is there, inside
-    /// its visible area. Windows that are meant to fill a display (the
-    /// full-screen participants panel, SDK gallery windows at status-bar
-    /// level) are left to the loops that own them, which re-frame them to the
-    /// right display within a second.
+    private var rescueTask: Task<Void, Never>?
+
+    /// After a display change: once the displays have been quiet for
+    /// `StrandedWindowRule.settleSeconds` (a newer change starts the wait again),
+    /// moves any window of ours whose frame is on no listed screen onto one that
+    /// is there (R45.7). A window on a screen still listed is never moved, however
+    /// little of it shows: AirPlay renegotiating reports "settings changed" with
+    /// both screens listed and their areas briefly wrong.
+    func scheduleRescue(log: @escaping (String) -> Void) {
+        rescueTask?.cancel()
+        rescueTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: UInt64(StrandedWindowRule.settleSeconds * 1_000_000_000))
+            guard !Task.isCancelled, let self, !self.reconfiguring else { return }
+            Self.rescueStrandedWindows(log: log)
+        }
+    }
+
+    /// Moves now any window of ours that is on no listed screen. Windows meant
+    /// to fill a display (the full-screen participants panel, status-bar level
+    /// windows) are left to the loops that own them.
     @discardableResult
     static func rescueStrandedWindows(log: (String) -> Void) -> Int {
-        let screens = NSScreen.screens
+        let screens = NSScreen.screens.map {
+            StrandedWindowRule.Screen(name: $0.localizedName, frame: $0.frame, visibleFrame: $0.visibleFrame)
+        }
         guard !screens.isEmpty else { return 0 }
-        let visible = screens.map(\.visibleFrame)
-        let preferred = DisplayResolver.mainDisplayScreen()?.visibleFrame
+        let preferred = DisplayResolver.mainDisplayScreen().map {
+            StrandedWindowRule.Screen(name: $0.localizedName, frame: $0.frame, visibleFrame: $0.visibleFrame)
+        }
         var moved = 0
         for window in NSApp.windows where window.isVisible && !window.isMiniaturized {
             if window.styleMask.contains(.fullScreen) { continue }
             if window.level.rawValue >= NSWindow.Level.statusBar.rawValue { continue }
-            if screens.contains(where: { $0.frame == window.frame }) { continue }
-            guard let target = WindowRescue.rescuedFrame(for: window.frame, visible: visible, preferred: preferred) else { continue }
+            guard let target = StrandedWindowRule.rescuedFrame(for: window.frame, screens: screens, preferred: preferred) else { continue }
+            let before = window.frame
             window.setFrame(target, display: true)
             moved += 1
-            let name = window.title.isEmpty ? "A Greenroom window" : "\u{201C}\(window.title)\u{201D}"
-            let on = window.screen?.localizedName ?? "a remaining screen"
-            log("\(name) was on a screen that is gone; moved it onto \(on).")
+            log(StrandedWindowRule.logLine(windowTitle: window.title, frame: before, movedTo: target,
+                                           onto: (preferred ?? screens[0]).name, screens: screens))
         }
         return moved
     }

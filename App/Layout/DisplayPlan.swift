@@ -5,7 +5,7 @@
 //  The decisions made when a display is plugged in or pulled out, with no
 //  AppKit in them so they can be checked on their own:
 //   - which display the screen capture should be on, and when to rebuild it;
-//   - where a window goes when the screen it was on has gone.
+//   (where a window goes when its screen has gone is StrandedWindowRule).
 //
 import CoreGraphics
 import Foundation
@@ -79,43 +79,5 @@ enum DisplayPlan {
             return .rebuild("the displays changed, so the shared app may have moved; looking for it again")
         }
         return .keep
-    }
-}
-
-enum WindowRescue {
-
-    /// Where a window should be, or nil when it is fine where it is.
-    ///
-    /// Fine means: a useful part of it is on some screen's visible area, and
-    /// its top edge (the part you grab) is reachable. Otherwise it goes onto
-    /// the screen it overlaps most - or `preferred`, or the first screen when
-    /// it overlaps none - shrunk to fit and moved inside that screen's visible
-    /// frame. Frames are in AppKit's global space; `visible` are the screens'
-    /// visible frames.
-    static func rescuedFrame(for frame: CGRect, visible: [CGRect], preferred: CGRect? = nil) -> CGRect? {
-        guard !visible.isEmpty, frame.width > 0, frame.height > 0 else { return nil }
-        let area = frame.width * frame.height
-        var best: (rect: CGRect, overlap: CGFloat)?
-        for rect in visible {
-            let hit = frame.intersection(rect)
-            let overlap = hit.isNull ? 0 : hit.width * hit.height
-            if best == nil || overlap > best!.overlap { best = (rect, overlap) }
-        }
-        let gripStrip = CGRect(x: frame.minX, y: frame.maxY - 30, width: frame.width, height: 30)
-        let gripReachable = visible.contains { rect in
-            let hit = gripStrip.intersection(rect)
-            return !hit.isNull && hit.width >= 40 && hit.height >= 10
-        }
-        if let best, best.overlap >= 0.25 * area, gripReachable { return nil }
-
-        let target = (best?.overlap ?? 0) > 0 ? best!.rect : (preferred ?? visible[0])
-        let width = min(frame.width, target.width), height = min(frame.height, target.height)
-        // Nowhere near any screen (its own display is gone): centre it. Part
-        // way off one: slide it back in.
-        let lost = (best?.overlap ?? 0) == 0
-        let x = lost ? target.midX - width / 2 : min(max(frame.minX, target.minX), target.maxX - width)
-        let y = lost ? target.midY - height / 2 : min(max(frame.minY, target.minY), target.maxY - height)
-        let moved = CGRect(x: x.rounded(), y: y.rounded(), width: width.rounded(), height: height.rounded())
-        return moved == frame ? nil : moved
     }
 }

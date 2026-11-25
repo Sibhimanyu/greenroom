@@ -81,10 +81,6 @@ final class SourceScanTests: XCTestCase {
         let rule = try NSRegularExpression(pattern:
             #"(?:(?<![\w.$])"# + operand + #"\s*==(?!=))|(?:(?<![=!<>])==\s*"# + operand + #"(?![\w.\[(]|[?!]\.))"#)
         let knownDrift: [Allowance] = [
-            Allowance("App/Layout/DisplayPlan.swift", "return moved == frame ? nil : moved",
-                      "DRIFT: a fractional frame always reads as moved; use LayoutGeometry.differs"),
-            Allowance("App/Layout/DisplayMonitor.swift", "$0.frame == window.frame",
-                      "DRIFT: a window a hair off a screen's frame is treated as stranded; compare with a tolerance"),
         ]
         try check(under: "App/Layout", rule: rule, allowed: knownDrift, what: "exact == on rects; use a tolerance helper") { $0.codeLines }
     }

@@ -4414,7 +4414,8 @@ final class CoordinatorController: ObservableObject {
                                  main: LocalDeviceResolver.mainDisplayUUID,
                                  displaySetChanged: change.displaySetChanged)
         refreshCaptureDisplay()
-        DisplayMonitor.rescueStrandedWindows { [weak self] line in self?.log(line) }
+        // R45.7: only after the displays settle, and only a window on no screen.
+        DisplayMonitor.shared.scheduleRescue { [weak self] line in self?.log(line) }
         syncReadinessHUD()
 
         if isRunning {

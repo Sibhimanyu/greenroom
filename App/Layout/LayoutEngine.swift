@@ -267,7 +267,7 @@ final class LayoutEngine {
     /// is mirrored (no second slot then; `RoomScreenRules.placement`).
     private func placeRoomScreen(_ r: Resolution, frames: [UUID: LayoutFrames], layoutHidden: Bool) {
         guard let room = r.roomScreen, let frame = frames[room.piece.id]?.ns else { RoomScreen.close(); return }
-        RoomScreen.place(frame: frame, screenID: room.screen.id, hidden: RoomScreenRules.isHidden(layoutHidden: layoutHidden))
+        RoomScreen.place(frame: frame, rect: room.piece.rect, screenID: room.screen.id, hidden: RoomScreenRules.isHidden(layoutHidden: layoutHidden))
     }
 
     /// Opens the Chat piece at its frame: the join of a class.

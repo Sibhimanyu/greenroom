@@ -142,4 +142,25 @@ final class RoomScreenTests: XCTestCase {
         XCTAssertFalse(ShareableWindow.allCases.map { "\($0)".lowercased() }.contains { $0.contains("room") })
         XCTAssertEqual(ShowOnShare.exceptionIDs(kind: .display, registry: [3], alwaysShared: [7]), [3, 7])
     }
+
+    // MARK: Fills the whole display (owner bug list, Room screen item)
+
+    func testFullRectIsFullDisplayAndSmallerIsNot() {
+        XCTAssertTrue(RoomScreenRules.isFullDisplay(.full))
+        XCTAssertTrue(RoomScreenRules.isFullDisplay(UnitRect(x: 0.001, y: 0, w: 0.999, h: 1)))
+        XCTAssertFalse(RoomScreenRules.isFullDisplay(UnitRect(x: 0, y: 0, w: 1, h: 0.9)))
+        XCTAssertFalse(RoomScreenRules.isFullDisplay(UnitRect(x: 0.1, y: 0.1, w: 0.5, h: 0.5)))
+    }
+
+    func testFullPieceTakesTheWholeScreenFrameNotTheVisibleFrame() {
+        let screen = CGRect(x: 1440, y: 0, width: 1920, height: 1080)
+        let visible = CGRect(x: 1440, y: 0, width: 1920, height: 1055)   // menu bar strip left out
+        XCTAssertEqual(RoomScreenRules.windowFrame(pieceFrame: visible, rect: .full, screenFrame: screen), screen)
+    }
+
+    func testSmallerPieceKeepsItsOwnFrame() {
+        let screen = CGRect(x: 1440, y: 0, width: 1920, height: 1080)
+        let piece = CGRect(x: 1500, y: 100, width: 800, height: 450)
+        XCTAssertEqual(RoomScreenRules.windowFrame(pieceFrame: piece, rect: UnitRect(x: 0.1, y: 0.1, w: 0.4, h: 0.4), screenFrame: screen), piece)
+    }
 }

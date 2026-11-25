@@ -20,7 +20,8 @@
 //
 //  Out of Greenroom's own share and recordings: the display capture excludes the
 //  whole of Greenroom. Other apps' captures may see it (default sharingType). No chrome, no glass:
-//  the picture on black.
+//  the picture on black. A piece that fills the display covers screen.frame at
+//  .screenSaver level (above the menu bar); the picture is aspect fit on black.
 //
 import AppKit
 import AVFoundation
@@ -155,10 +156,18 @@ enum RoomScreen {
     // MARK: Coordinator and engine API
 
     /// Opens the window at `frame` on the display `screenID`, or moves it there.
-    static func place(frame: NSRect, screenID: String, hidden: Bool) {
-        guard DisplayResolver.screen(forUUID: screenID) != nil else { close(); return }
+    /// A piece that fills the display (`rect` is full) covers `screen.frame`, above the menu bar and
+    /// Dock of that display; any other piece stays a normal-level window at `frame`.
+    static func place(frame: NSRect, rect: UnitRect, screenID: String, hidden: Bool) {
+        guard let screen = DisplayResolver.screen(forUUID: screenID) else { close(); return }
         roomScreenID = screenID
         let panel = window ?? makeWindow()
+        let full = RoomScreenRules.isFullDisplay(rect)
+        let frame = RoomScreenRules.windowFrame(pieceFrame: frame, rect: rect, screenFrame: screen.frame)
+        // .screenSaver sits above .mainMenu; the window only covers the room display, so the owner's
+        // main-display menu bar is untouched.
+        let level: NSWindow.Level = full ? .screenSaver : .normal
+        if panel.level != level { panel.level = level }
         if panel.frame != frame { panel.setFrame(frame, display: false) }
         setHidden(hidden)
         watchDisplays()
@@ -208,7 +217,7 @@ enum RoomScreen {
         panel.hidesOnDeactivate = false
         panel.isReleasedWhenClosed = false
         panel.ignoresMouseEvents = true
-        panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+        panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
         // Default sharingType (RoomScreenRules.sharingForOtherApps): other apps' captures may see it.
         // Greenroom's own capture excludes the whole app, so it never films itself.
         let view = RoomScreenView(frame: NSRect(x: 0, y: 0, width: 640, height: 360))

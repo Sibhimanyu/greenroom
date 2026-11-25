@@ -68,6 +68,19 @@ enum RoomScreenRules {
         return main ?? preferred
     }
 
+    /// True when the piece fills the whole display (the layout builder's "full" rectangle, a hair of
+    /// rounding allowed): the window then covers the display's entire frame, above the menu bar.
+    static func isFullDisplay(_ rect: UnitRect) -> Bool {
+        let t = 0.005
+        return rect.x <= t && rect.y <= t && rect.maxX >= 1 - t && rect.maxY >= 1 - t
+    }
+
+    /// The window's frame: the display's whole frame (menu bar and Dock strips included) for a full
+    /// piece, else the piece's own frame inside the usable area.
+    static func windowFrame(pieceFrame: CGRect, rect: UnitRect, screenFrame: CGRect) -> CGRect {
+        isFullDisplay(rect) ? screenFrame : pieceFrame
+    }
+
     /// The capture's largest size: the room display's pixels.
     static func streamSize(roomPoints: CGSize, scale: CGFloat) -> CGSize {
         CGSize(width: max(2, (roomPoints.width * max(scale, 1)).rounded()),

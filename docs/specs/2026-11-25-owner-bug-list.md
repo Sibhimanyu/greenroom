@@ -87,6 +87,7 @@ Greenroom windows left out. It must be quick, not laggy.
 - R4.3 Private Greenroom windows are left out of it.
 - R4.4 It ignores the layout's hide for itself (it is never hidden from its own
   display).
+- R4.6 A piece set to fill the display is true full screen: the window covers the display's whole frame, above the menu bar and Dock, and the picture is aspect fit on black (no cropping). A smaller piece stays a normal window at its rect. (`isFullDisplay`, `windowFrame`; needs a check on the real big screen.)
 - R4.5 It is low latency. (No number was set; this needs a live check.)
 
 Commits 02169d9 (`RoomScreenWindow`, `RoomScreenRules`), a7e3082 (ignores the

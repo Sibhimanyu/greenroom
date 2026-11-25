@@ -65,7 +65,7 @@ Record is `MeetingMode.record` (enum in CoordinatorController.swift; Create / Sc
 | UI/WebcamPage.swift (+ WebcamShapePreview, CameraSwitchSection, MicrophoneSection, ShareTargetSettings) | Webcam tab: `WebcamSettingsTab` feeds `WebcamPageContent`; `BubbleDragLayer`; `CameraSwitchSection` (two-camera cut) |
 | UI/LayoutSettingsTab.swift (+ LayoutCanvas, LayoutAddPanel, LayoutAppOrdering, LayoutScreenPreview) | Layout creator: `LayoutSettingsTab`/`LayoutPageContent`, `LayoutCanvas`, `LayoutPieceTile`, `LayoutAddPanel` |
 | UI/ShortcutsSettingsTab.swift | `ShortcutRecorderField` |
-| UI/ZoomSettingsTab.swift (Zoom account section, then a folding "Use your own Zoom apps (advanced)" row holding the pasted SDK and Server-to-Server fields), UI/ZoomSignInSection.swift (`ZoomSignInSection`: Sign in with Zoom / Signed in as / Sign out, shared with onboarding; `AdvancedDisclosure`: the animated fold), YouTubeSettingsTab.swift, CuesSettingsTab.swift, TransferSettingsTab.swift (import result: one badge plus a `.waiting` badge per note from `SettingsImportReport`) | other tabs; `Cues*` rows reused by onboarding |
+| UI/ZoomSettingsTab.swift (Zoom account section, then a folding "Use your own Zoom apps (advanced)" row holding the pasted SDK and Server-to-Server fields, each with a Marketplace link, numbered steps and "Show the step-by-step guide"; text and URL in `Zoom/ZoomMarketplaceGuide.swift`, kept in step with `OnboardingView.manualZoomSetup`), UI/ZoomSignInSection.swift (`ZoomSignInSection`: Sign in with Zoom / Signed in as / Sign out, shared with onboarding; `AdvancedDisclosure`: the animated fold), YouTubeSettingsTab.swift, CuesSettingsTab.swift, TransferSettingsTab.swift (import result: one badge plus a `.waiting` badge per note from `SettingsImportReport`) | other tabs; `Cues*` rows reused by onboarding |
 | UI/AccountSettingsTab.swift | DEBUG only (mock Thriveni account) |
 | UI/SettingsKit.swift | Shared Settings parts: `Collapsible`, `Collapse`, `ChoiceTile`, `PictureChip`, `StatusBadge` |
 
@@ -83,7 +83,7 @@ Record is `MeetingMode.record` (enum in CoordinatorController.swift; Create / Sc
 | UI/OnboardingView.swift, OnboardingWindow.swift, OnboardingPlacement.swift | Setup guide: own window, 7 pages | `OnboardingView`, `OnboardingWindowController.shared` |
 | UI/ChatWindow.swift (+ChatGrouping, ChatMessageRow, ChatMessageField) | Chat window | `ChatWindowController`, `ChatWindowView`, `ChatGrouping` |
 | UI/WhiteboardViews.swift, AnnotationToolbar.swift | Whiteboard/annotation (Recorditor port) | `WhiteboardWindowController` (`Mode`: `.presented` share target, `.local` from the tools), `AnnotationToolbarView` |
-| UI/WindowShareController.swift | Per-window "show to class" eye; layout-placed windows start shown (`LayoutPiece.defaultShowsToEveryone` = true, 2026-11-25), the rest hidden; no amber edge | `WindowShareController`, `ShareableWindowAnchor`, `LayoutShareChoice` |
+| UI/WindowShareController.swift | Per-window "show to the meeting" eye; layout-placed windows start shown (`LayoutPiece.defaultShowsToEveryone` = true, 2026-11-25), the rest hidden; no amber edge | `WindowShareController`, `ShareableWindowAnchor`, `LayoutShareChoice` |
 | UI/PresentMenuSpec.swift, PresentMenuLive.swift | Present menu as data + live wiring | `PresentMenu`, `CoordinatorController.presentMenu` ext |
 
 ### Shared components / tokens

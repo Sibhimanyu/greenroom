@@ -242,4 +242,24 @@ final class LayoutViewPieceTests: XCTestCase {
         XCTAssertEqual(LayoutResolver.substitutingMeetingForActiveSpeaker(other, viewsCanOpen: false), other,
                        "only the Active speaker stands in")
     }
+
+    func testActiveSpeakerStaysOutWhenAnotherDisplayHoldsTheMeeting() {
+        var t = LayoutTemplate(name: "x", oneDisplay: [piece(view(.activeSpeaker))])
+        t.twoDisplays = TwoDisplay(main: [piece(view(.activeSpeaker))], second: [piece(meeting)])
+        let out = LayoutResolver.substitutingMeetingForActiveSpeaker(t, viewsCanOpen: false)
+        XCTAssertEqual(out.twoDisplays?.main, t.twoDisplays?.main, "no second Meeting in the two-display version")
+        XCTAssertEqual(out.twoDisplays?.second, t.twoDisplays?.second)
+        XCTAssertTrue(out.oneDisplay[0].kind.isMeeting, "the one-display version is its own version")
+    }
+
+    func testRuntimeCustomUIBeatsTheSavedSetting() {
+        func can(_ saved: Bool, _ runtime: Bool?, only: Bool = false) -> Bool {
+            LayoutResolver.viewsCanOpen(viewsEnabled: true, customUISaved: saved, customUIRuntime: runtime, meetingWindowOnly: only)
+        }
+        XCTAssertTrue(can(true, nil)); XCTAssertFalse(can(false, nil))
+        XCTAssertFalse(can(true, false), "saved on, SDK fell back to Zoom's UI")
+        XCTAssertTrue(can(false, true))
+        XCTAssertFalse(can(true, true, only: true))
+        XCTAssertFalse(LayoutResolver.viewsCanOpen(viewsEnabled: false, customUISaved: true, customUIRuntime: true, meetingWindowOnly: false))
+    }
 }

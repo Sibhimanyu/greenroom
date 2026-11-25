@@ -12,6 +12,10 @@ import Foundation
 
 enum RoomScreenRules {
 
+    /// The hide shortcut and "Starts hidden" are about the owner's own screen; the people in the
+    /// room keep their view from Start to Stop, so the layout's hide never reaches the Room screen.
+    static func isHidden(layoutHidden: Bool) -> Bool { false }
+
     /// The hint under the tile in the Add panel.
     static let hint = "What the meeting sees, for a screen in the room"
     static let title = "Room screen"

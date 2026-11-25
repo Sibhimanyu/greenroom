@@ -172,4 +172,30 @@ enum WhiteboardOpenRules {
     /// Whether a stroke change should re-render the page for the Stage: only
     /// while the whiteboard IS the share target.
     static func feedsStage(shareIsWhiteboard: Bool) -> Bool { shareIsWhiteboard }
+
+    /// What "Back to screen" returns to. When the share becomes the whiteboard, the target it
+    /// replaced is remembered; moving between other targets forgets it, and a change while the
+    /// whiteboard stays the share (or a change out of it) keeps what was remembered.
+    static func remembered<T>(_ current: T?, replaced old: T, oldIsWhiteboard: Bool, newIsWhiteboard: Bool) -> T? {
+        if newIsWhiteboard { return oldIsWhiteboard ? current : old }
+        return oldIsWhiteboard ? current : nil
+    }
+
+    /// Where "Back to screen" goes: the remembered target, else `fallback`.
+    static func returnTarget<T>(remembered: T?, fallback: T) -> T { remembered ?? fallback }
+
+    /// What closing the local whiteboard window does to the drawing state it found.
+    enum CloseOutcome: Equatable {
+        /// The screen canvas had stepped aside for it: it comes back.
+        case resumeCanvas
+        /// Nothing was suspended (or nothing is shared): drawing is simply off again.
+        case drawingOff
+        /// The presented whiteboard owns the drawing state: leave it alone.
+        case untouched
+    }
+
+    static func closeOutcome(wasSuspended: Bool, shareIsWhiteboard: Bool, shareIsNothing: Bool) -> CloseOutcome {
+        if shareIsWhiteboard { return .untouched }
+        return wasSuspended && !shareIsNothing ? .resumeCanvas : .drawingOff
+    }
 }

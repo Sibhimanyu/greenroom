@@ -977,6 +977,7 @@ final class CoordinatorController: ObservableObject {
                 sessionTemplate = edited
                 scheduleLiveLayoutApply()
             }
+            refreshCaptureDisplay()
         }
     }
 
@@ -1026,7 +1027,8 @@ final class CoordinatorController: ObservableObject {
               let template = layoutLibrary.template(id: id) else { return }
         sessionTemplate = template
         speakerTileQuickHidden = layoutEngine.startsHidden(template)
-        presenceBubbleHidden = PresenceVisibility.bubbleStartsHidden(shownOnMyScreen: cameraShownOnMyScreen)
+        resetPresenceBubbleToLayoutDefault()
+        refreshCaptureDisplay()
         log("Applying \u{201C}\(template.name)\u{201D} now\u{2026}")
         reapplyLayout(userInitiated: false, openApps: true)
     }
@@ -1192,11 +1194,17 @@ final class CoordinatorController: ObservableObject {
     /// The whole display, one app or one window. Changes apply live: the
     /// compositor starts the new share beside the old one and swaps when its
     /// first frame arrives.
+    /// What was shared before Share \u{2192} Whiteboard was chosen, for "Back to screen".
+    private var targetBeforeWhiteboard: ShareTarget?
+
     @Published var shareTarget: ShareTarget {
         didSet {
             if let data = try? JSONEncoder().encode(shareTarget) {
                 defaults.set(data, forKey: "shareTarget")
             }
+            targetBeforeWhiteboard = WhiteboardOpenRules.remembered(
+                targetBeforeWhiteboard, replaced: oldValue,
+                oldIsWhiteboard: oldValue.kind == .whiteboard, newIsWhiteboard: shareTarget.kind == .whiteboard)
         }
     }
 
@@ -1306,7 +1314,7 @@ final class CoordinatorController: ObservableObject {
         hideSelfView = (defaults.object(forKey: "hideSelfView") as? Bool) ?? false
         let shownOnMyScreen = (defaults.object(forKey: "cameraShownOnMyScreen") as? Bool) ?? true
         cameraShownOnMyScreen = shownOnMyScreen
-        presenceBubbleHidden = PresenceVisibility.bubbleStartsHidden(shownOnMyScreen: shownOnMyScreen)
+        presenceBubbleHidden = PresenceVisibility.bubbleStartsHidden(shownOnMyScreen: shownOnMyScreen)   // init: no method calls yet
         speakerTileShortcutEnabled = (defaults.object(forKey: "speakerTileShortcutEnabled") as? Bool) ?? true
         // didSet doesn't fire during init, and the SDK isn't up yet anyway
         // - sync just the stored preference; connect-time reads it.
@@ -1490,6 +1498,19 @@ final class CoordinatorController: ObservableObject {
     /// recording still see the camera at its last placement. Back to false when
     /// the stage is torn down (the meeting or recording ends).
     @Published var presenceBubbleHidden = false
+
+    /// The camera bubble goes back to what the layout says: hidden when the layout's
+    /// "Show my camera" is off, shown otherwise.
+    func resetPresenceBubbleToLayoutDefault() {
+        presenceBubbleHidden = PresenceVisibility.bubbleStartsHidden(shownOnMyScreen: cameraShownOnMyScreen)
+    }
+
+    /// Home's camera and Just me controls: camera on again (not "No camera"), then re-preview.
+    /// Same write as Settings > Webcam's camera cards.
+    func turnCameraOnFromHome() {
+        cameraDirectorSettings.noCamera = false
+        previewCamerasChanged()
+    }
     var presenceTimer: Timer?
     /// A refresh is queued (bursts of changes make one); the timer's tick count; whether the stage has the self-view handler.
     var presenceRefreshPending = false
@@ -1507,12 +1528,29 @@ final class CoordinatorController: ObservableObject {
     private var lastReportedStageError: String?
     private var permissionWatcher: Task<Void, Never>?
 
+    /// The display the picture is taken from. A layout's two-display version says which
+    /// display everyone sees ("Everyone sees" in Settings -> Layouts) and that wins over
+    /// the Screen choice for a whole-screen share while that version is in use; with no
+    /// second display connected, a one-display layout or None, the Screen choice stands.
+    /// Recordings film the same picture.
+    var effectiveCaptureDisplayUUID: String {
+        let template = layoutChoiceLocked ? sessionTemplate : layoutLibrary.active
+        let layout = LayoutSharedDisplay.uuid(template: template, screens: LayoutEngine.connectedScreens())
+        return LayoutSharedDisplay.resolved(wholeScreen: shareTarget.kind == .display || shareTarget.kind == .app,
+                                            layout: layout, chosen: screenCaptureDisplayUUID)
+    }
+
+    /// Tells a running picture when the layout (or the displays) changed which display it films.
+    private func refreshCaptureDisplay() {
+        if sceneInUse, let stage { stage.update(makeStageConfiguration()) }
+    }
+
     /// Everything the compositor is told, from the same settings the Layout
     /// and Webcam pages edit.
     func makeStageConfiguration() -> StageConfiguration {
         StageConfiguration(layout: stageLayout,
                            share: shareTarget,
-                           displayUUID: screenCaptureDisplayUUID,
+                           displayUUID: effectiveCaptureDisplayUUID,
                            backgroundRemoval: backgroundRemoval,
                            cameraBackground: cameraBackground,
                            cameraBackgroundImage: cameraBackgroundImage,
@@ -1562,7 +1600,7 @@ final class CoordinatorController: ObservableObject {
         if previewAttached { stage.removeSink(previewSink); previewAttached = false }
         stage.stop()
         self.stage = nil
-        presenceBubbleHidden = PresenceVisibility.bubbleStartsHidden(shownOnMyScreen: cameraShownOnMyScreen)
+        resetPresenceBubbleToLayoutDefault()
         presenceFeedInstalled = false
         stageObservers.removeAll()
         stageCameraUIDs = nil
@@ -1957,6 +1995,7 @@ final class CoordinatorController: ObservableObject {
             zoomChatClient.onParticipantCountChanged = nil
                 if failure == nil { ParticipantGridWindowController.close() }
             RoomScreen.close()
+            LayoutEngine.customUIRuntime = nil
             MeetingViewWindows.reset()
             meetingWindowWanted = true
             zoomChatClient.releaseCustomUIVideo()
@@ -2324,10 +2363,10 @@ final class CoordinatorController: ObservableObject {
         stopDrawing()
     }
 
-    /// The presented whiteboard's "Back to screen": the share goes back to a screen.
+    /// The presented whiteboard's "Back to screen": the share goes back to what it was before.
     func leaveWhiteboardShare() {
         guard shareTarget.kind == .whiteboard else { return }
-        shareTarget = ShareTarget()
+        shareTarget = WhiteboardOpenRules.returnTarget(remembered: targetBeforeWhiteboard, fallback: ShareTarget())
         requestShapeApply(rebuild: true)
     }
 
@@ -2352,11 +2391,22 @@ final class CoordinatorController: ObservableObject {
     /// Done or the window's close button: the canvas comes back over the screen.
     private func closeLocalWhiteboard() {
         localWhiteboardWindow.hide()
-        guard drawingSuspended, shareTarget.kind != .whiteboard, shareTarget.kind != .nothing else { return }
-        drawingSuspended = false
-        if let screen = recordedScreen ?? NSScreen.main {
-            drawing.begin(on: screen, followsWindow: stage?.followsWindow() ?? false)
-            isDrawing = true
+        switch WhiteboardOpenRules.closeOutcome(wasSuspended: drawingSuspended,
+                                                shareIsWhiteboard: shareTarget.kind == .whiteboard,
+                                                shareIsNothing: shareTarget.kind == .nothing) {
+        case .untouched:
+            break
+        case .drawingOff:
+            drawingSuspended = false
+            isDrawing = false
+        case .resumeCanvas:
+            drawingSuspended = false
+            if let screen = recordedScreen ?? NSScreen.main {
+                drawing.begin(on: screen, followsWindow: stage?.followsWindow() ?? false)
+                isDrawing = true
+            } else {
+                isDrawing = false
+            }
         }
     }
 
@@ -3093,7 +3143,7 @@ final class CoordinatorController: ObservableObject {
         recorder?.disarmClipBuffer()
         recorder = nil
         lastCameraLive = nil
-        presenceBubbleHidden = PresenceVisibility.bubbleStartsHidden(shownOnMyScreen: cameraShownOnMyScreen)
+        resetPresenceBubbleToLayoutDefault()
         stopStage()
     }
 
@@ -4120,8 +4170,8 @@ final class CoordinatorController: ObservableObject {
             // Back to the layout's own starting state: hidden if the Meeting
             // starts hidden, shown otherwise.
             speakerTileQuickHidden = layoutEngine.startsHidden(template)
-            presenceBubbleHidden = PresenceVisibility.bubbleStartsHidden(shownOnMyScreen: cameraShownOnMyScreen)
-            } else if !layoutEngine.hasPlacedSurface(template) {
+            resetPresenceBubbleToLayoutDefault()
+        } else if !layoutEngine.hasPlacedSurface(template) {
             // A display change can turn a placed Meeting into a whole-display one
             // (or take it away): nothing is hidden then.
             speakerTileQuickHidden = false
@@ -4193,6 +4243,7 @@ final class CoordinatorController: ObservableObject {
         stage?.displaysDidChange(connected: DisplayMonitor.connectedForCapture(),
                                  main: LocalDeviceResolver.mainDisplayUUID,
                                  displaySetChanged: change.displaySetChanged)
+        refreshCaptureDisplay()
         DisplayMonitor.rescueStrandedWindows { [weak self] line in self?.log(line) }
         syncReadinessHUD()
 

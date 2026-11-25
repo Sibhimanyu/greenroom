@@ -37,9 +37,11 @@ final class RoomFrameFeeder: StageFrameSink {
     private let renderer: AVSampleBufferVideoRenderer
     private let lock = NSLock()
     private var format: CMVideoFormatDescription?   // under lock
+    #if DEBUG
     private let stats = DeliveryStats()
     /// The latest capture frame's own host-clock stamp (capture queue only).
     var captureStamp = CMTime.invalid
+    #endif
 
     init(layer: AVSampleBufferDisplayLayer) {
         renderer = layer.sampleBufferRenderer
@@ -81,6 +83,7 @@ final class RoomFrameFeeder: StageFrameSink {
     }
 }
 
+#if DEBUG
 /// DEBUG only: the average time from a frame's own stamp to the moment it was
 /// handed to the layer, logged every 300 frames with os_log.
 private final class DeliveryStats {
@@ -104,6 +107,8 @@ private final class DeliveryStats {
         }
     }
 }
+
+#endif
 
 // MARK: - The view
 
@@ -159,8 +164,8 @@ enum RoomScreen {
         watchDisplays()
     }
 
-    /// Hides or shows it together with the layout's hide.
-    static func setHidden(_ value: Bool) {
+    /// Only `place` calls this, with `RoomScreenRules.isHidden`: the layout's hide never reaches it.
+    private static func setHidden(_ value: Bool) {
         hidden = value
         guard let window else { return }
         if value {
@@ -257,7 +262,9 @@ enum RoomScreen {
     /// out, "Everyone sees this" windows in), at the display's refresh rate and size.
     private static func startOwnCapture(_ feeder: RoomFrameFeeder) {
         guard let screen = DisplayResolver.screen(forUUID: roomScreenID) else { return }
-        let preferred = UserDefaults.standard.string(forKey: "screenCaptureDisplayUUID") ?? ""
+        // A layout with a Room screen always shares its main display (LayoutTemplate.effectiveSharedSlot),
+        // so the Screen choice is not consulted: the screen shows the main display.
+        let preferred = ""
         let resolved = LocalDeviceResolver.resolveCaptureDisplay(preferred: preferred).uuid
         let target = RoomScreenRules.captureDisplay(preferred: resolved ?? "", roomDisplay: roomScreenID,
                                                     main: LocalDeviceResolver.mainDisplayUUID)
@@ -266,12 +273,16 @@ enum RoomScreen {
         source.framesPerSecond = 60
         source.queueDepth = 3
         source.quietFailures = true
+        #if DEBUG
         // Both callbacks run on the capture queue, one after the other: the stamp is the frame's own.
         source.onFrameTime = { [weak feeder] time in feeder?.captureStamp = time }
         source.onFrame = { [weak feeder] pixels in
             guard let feeder else { return }
             feeder.show(pixels, stampedAt: feeder.captureStamp)
         }
+        #else
+        source.onFrame = { [weak feeder] pixels in feeder?.show(pixels, stampedAt: .invalid) }
+        #endif
         source.onStop = { _ in
             Task { @MainActor in
                 // macOS ended the capture: start it again while the screen is still wanted.

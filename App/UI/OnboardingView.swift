@@ -174,7 +174,7 @@ struct OnboardingView: View {
         var ok: Bool { status == .passed }
     }
 
-    private static let zoomBuilder = URL(string: "https://marketplace.zoom.us/user/build")!
+    private static let zoomBuilder = ZoomMarketplaceGuide.builderURL
     private static let requiredScopes = ZoomScopes.all
 
     private var credentialsStep: some View {

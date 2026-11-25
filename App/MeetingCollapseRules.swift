@@ -104,8 +104,10 @@ enum ShowOnShare {
 
     /// The windows to let through, as window numbers; nil when the switch cannot
     /// work (an app or window share captures only that app or window).
-    static func exceptionIDs(kind: ShareKind, registry: Set<Int>) -> Set<Int>? {
-        kind == .display ? registry : nil
+    /// `alwaysShared`: windows that are in the picture with no switch (the
+    /// Greenroom Browser, ShareVisibilityRules.alwaysShared).
+    static func exceptionIDs(kind: ShareKind, registry: Set<Int>, alwaysShared: Set<Int> = []) -> Set<Int>? {
+        kind == .display ? registry.union(alwaysShared) : nil
     }
 
     static func isAvailable(_ kind: ShareKind) -> Bool { kind == .display }

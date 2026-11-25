@@ -413,7 +413,6 @@ enum MeetingViewWindows {
     /// ⌃⌥⌘H: every view goes out, or comes back, with the Meeting window.
     static func setHiddenTogether(_ hidden: Bool) {
         hiddenTogether = hidden
-        RoomScreen.setHidden(hidden)    // the Room screen goes with the rest
         for controller in controllers.values {
             if hidden { controller.panel.orderOut(nil) } else { controller.panel.orderFrontRegardless() }
         }

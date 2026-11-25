@@ -794,10 +794,7 @@ struct HomeView: View {
     }
 
     /// Same write as Settings > Webcam's camera cards: noCamera false, then re-preview.
-    private func turnCameraOn() {
-        coordinator.cameraDirectorSettings.noCamera = false
-        coordinator.previewCamerasChanged()
-    }
+    private func turnCameraOn() { coordinator.turnCameraOnFromHome() }
 
     /// Camera: the same list and the same rule as the Webcam page's cards.
     private var cameraChip: some View {

@@ -129,6 +129,44 @@ extension LayoutPiece {
     }
 }
 
+// MARK: - Crossing to the other display
+
+/// What the two canvases of a two-display layout share so a piece can be dragged from one to
+/// the other. The page owns the rules (`LayoutTemplate.movingPiece`); a canvas only reports
+/// where the pointer is, in the coordinates of the pair.
+struct LayoutCrossing {
+    static let space = "LayoutCanvasPair"
+    /// This canvas's surface in the pair's space (nil until it has been laid out).
+    var ownFrame: CGRect?
+    /// The pointer is at `point` (pair space) with piece `id`. True while it is over the
+    /// other canvas; the page then shows where the piece would land, or why it cannot.
+    var hover: (_ id: UUID, _ point: CGPoint) -> Bool
+    /// The pointer was let go over the other canvas. True when the piece moved.
+    var drop: (_ id: UUID, _ point: CGPoint) -> Bool
+    /// Send the selected piece to the other display, at the same place (Option-arrow).
+    var send: (_ id: UUID) -> Void
+}
+
+/// A piece being dragged over this canvas from the other one: where it would land, or why not.
+struct LayoutCrossPreview: Equatable {
+    var rect: UnitRect?
+    var reason: String?
+}
+
+/// Each canvas reports its surface frame in the pair's space.
+struct LayoutCanvasFrames: PreferenceKey {
+    static var defaultValue: [LayoutSlot: CGRect] = [:]
+    static func reduce(value: inout [LayoutSlot: CGRect], nextValue: () -> [LayoutSlot: CGRect]) {
+        value.merge(nextValue()) { $1 }
+    }
+}
+
+/// Asks a canvas to take the keyboard (after a piece moved onto it).
+struct LayoutFocusRequest: Equatable {
+    var slot: LayoutSlot
+    var tick: Int
+}
+
 // MARK: - The canvas
 
 struct LayoutCanvas: View {
@@ -147,6 +185,17 @@ struct LayoutCanvas: View {
     /// The camera overlay for this display (the shared one); nil on others.
     /// Drawn above every piece, never saved with the template.
     var camera: LayoutCameraModel?
+    /// Which display this is. `.one` on a one-display layout.
+    var slot: LayoutSlot = .one
+    /// This is the display everyone sees (a two-display layout's "Everyone sees"): the header says so.
+    var isShared = false
+    /// Drag between the two displays; nil on a one-display layout.
+    var crossing: LayoutCrossing?
+    /// A piece from the other display is over this canvas right now.
+    var incoming: LayoutCrossPreview?
+    /// Why the last drop here was refused, shown briefly.
+    var refusal: String?
+    var focusRequest: LayoutFocusRequest?
 
     @State private var drag: DragState?
     @State private var dropTargeted = false
@@ -167,6 +216,8 @@ struct LayoutCanvas: View {
         var guidesY: [Double] = []
         var invalid = false
         var moved = false
+        /// The pointer is over the other display's canvas: the tile waits where it was.
+        var crossing = false
     }
 
     // MARK: Body
@@ -184,6 +235,16 @@ struct LayoutCanvas: View {
                 .font(.system(size: 10, weight: .semibold, design: .monospaced))
                 .tracking(0.8)
                 .foregroundStyle(Brand.text)
+            if isShared {
+                Text("SHARED")
+                    .font(.system(size: 9, weight: .semibold, design: .monospaced))
+                    .tracking(0.6)
+                    .foregroundStyle(Brand.text)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 1.5)
+                    .background(Capsule().strokeBorder(Brand.text.opacity(0.6), lineWidth: 1))
+                    .help("Everyone in the meeting sees this display, and recordings film it.")
+            }
             if !display.connected {
                 Text("not connected")
                     .font(.system(size: 10, design: .monospaced))
@@ -207,6 +268,17 @@ struct LayoutCanvas: View {
     }
 
     private var surface: some View {
+        surfaceBody
+            .background(GeometryReader { geo in
+                Color.clear.preference(key: LayoutCanvasFrames.self,
+                                       value: [slot: geo.frame(in: .named(LayoutCrossing.space))])
+            })
+            .onChange(of: focusRequest) { _, request in
+                if let request, request.slot == slot { focused = true }
+            }
+    }
+
+    private var surfaceBody: some View {
         GeometryReader { geo in
             let canvas = geo.size
             ZStack(alignment: .topLeading) {
@@ -218,9 +290,13 @@ struct LayoutCanvas: View {
                     .focused($focused)
                     .onKeyPress(keys: [.leftArrow, .rightArrow, .upArrow, .downArrow,
                                        .delete, .deleteForward, .tab, .escape], action: handleKey)
+                    // The system's own Delete command, in case the key press is not delivered.
+                    .onDeleteCommand {
+                        if let id = selection, id != LayoutCameraModel.selectionID { remove(id) }
+                    }
                     .onTapGesture {
                         selection = nil
-                        focused = true
+                        takeKeyboard()
                         onActivate()
                     }
 
@@ -247,11 +323,30 @@ struct LayoutCanvas: View {
 
                 if let camera { cameraOverlay(camera, canvas: canvas) }
 
-                // The canvas's own ring: armed for the keyboard, or a drop is coming.
-                if focused || dropTargeted {
+                if let incoming { incomingOverlay(incoming, canvas: canvas) }
+
+                if let refusal {
+                    Text(refusal)
+                        .font(.system(size: 11, weight: .medium))
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 5)
+                        .greenroomGlass(in: Capsule())
+                        .frame(maxWidth: max(canvas.width - 16, 40))
+                        .position(x: canvas.width / 2, y: min(30, canvas.height / 2))
+                        .transition(.opacity)
+                        .zIndex(6)
+                        .allowsHitTesting(false)
+                        .accessibilityAddTraits(.isStaticText)
+                }
+
+                // The canvas's own ring: armed for the keyboard, a drop is coming, or a piece
+                // from the other display is over it.
+                if focused || dropTargeted || incoming != nil {
+                    let active = dropTargeted || incoming != nil
                     RoundedRectangle(cornerRadius: 6)
-                        .strokeBorder(Brand.green.opacity(dropTargeted ? 0.9 : 0.35),
-                                      style: StrokeStyle(lineWidth: 2, dash: dropTargeted ? [5, 3] : []))
+                        .strokeBorder(Brand.green.opacity(active ? 0.9 : 0.35),
+                                      style: StrokeStyle(lineWidth: 2, dash: active ? [5, 3] : []))
                         .allowsHitTesting(false)
                 }
             }
@@ -294,6 +389,7 @@ struct LayoutCanvas: View {
             .onHover { inside in
                 (inside ? (piece.isFixed ? NSCursor.arrow : NSCursor.openHand) : NSCursor.arrow).set()
             }
+            .opacity(isDragging && (drag?.crossing ?? false) ? 0.35 : 1)
             .zIndex(isDragging ? 2 : (isSelected ? 1 : 0))
             .transition(.opacity.combined(with: .scale(scale: 0.96)))
             .position(x: box.midX, y: box.midY)
@@ -319,6 +415,34 @@ struct LayoutCanvas: View {
         .foregroundStyle(.secondary)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .allowsHitTesting(false)
+    }
+
+    /// Where a piece from the other display would land (a soft green box) or, when it cannot
+    /// land, the reason.
+    @ViewBuilder
+    private func incomingOverlay(_ preview: LayoutCrossPreview, canvas: CGSize) -> some View {
+        if let rect = preview.rect {
+            let box = frame(of: rect, canvas: canvas).insetBy(dx: Self.tileInset, dy: Self.tileInset)
+            RoundedRectangle(cornerRadius: 5)
+                .fill(Brand.green.opacity(0.16))
+                .overlay(RoundedRectangle(cornerRadius: 5)
+                    .strokeBorder(Brand.green.opacity(0.9), style: StrokeStyle(lineWidth: 1.5, dash: [4, 3])))
+                .frame(width: box.width, height: box.height)
+                .position(x: box.midX, y: box.midY)
+                .allowsHitTesting(false)
+                .zIndex(3)
+        } else if let reason = preview.reason {
+            Text(reason)
+                .font(.system(size: 11, weight: .medium))
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 5)
+                .greenroomGlass(in: Capsule())
+                .frame(maxWidth: max(canvas.width - 16, 40))
+                .position(x: canvas.width / 2, y: canvas.height / 2)
+                .allowsHitTesting(false)
+                .zIndex(6)
+        }
     }
 
     // MARK: Grid, guides, readout
@@ -411,7 +535,7 @@ struct LayoutCanvas: View {
                 space: display.cameraSpace,
                 onStep: camera.onStep, onCommit: camera.onCommit,
                 selected: selection == LayoutCameraModel.selectionID,
-                onSelect: { selection = LayoutCameraModel.selectionID; focused = true; onActivate() },
+                onSelect: { selection = LayoutCameraModel.selectionID; takeKeyboard(); onActivate() },
                 fill: { size in AnyView(CameraStandIn(shape: camera.shape, off: camera.cameraOff, size: size)) })
                 .frame(width: canvas.width, height: canvas.height)
                 .zIndex(6)
@@ -479,9 +603,22 @@ struct LayoutCanvas: View {
         CGPoint(x: point.x / max(canvas.width, 1), y: point.y / max(canvas.height, 1))
     }
 
+    /// A click on a piece gives this canvas the keys. A text field elsewhere on the page (the
+    /// layout name) may still hold the window's first responder and would eat Delete, so let it go first.
+    private func takeKeyboard() {
+        NSApp.keyWindow?.makeFirstResponder(nil)
+        focused = true
+    }
+
+    /// A point of this canvas in the pair's space, for the other canvas to be found by.
+    private func pairPoint(_ point: CGPoint) -> CGPoint {
+        let origin = crossing?.ownFrame?.origin ?? .zero
+        return CGPoint(x: origin.x + point.x, y: origin.y + point.y)
+    }
+
     private func select(_ id: UUID) {
         selection = id
-        focused = true
+        takeKeyboard()
         onActivate()
     }
 
@@ -490,7 +627,11 @@ struct LayoutCanvas: View {
             .onChanged { value in
                 if drag == nil {
                     select(piece.id)
-                    if !piece.isFixed { drag = DragState(id: piece.id, mode: .move, start: piece.rect, rect: piece.rect) }
+                    // A piece that fills its display stays put here, but can still be
+                    // carried to the other display.
+                    if !piece.isFixed || crossing != nil {
+                        drag = DragState(id: piece.id, mode: .move, start: piece.rect, rect: piece.rect)
+                    }
                 }
                 guard var d = drag, d.id == piece.id, d.mode == .move else { return }
                 let t = value.translation
@@ -498,6 +639,17 @@ struct LayoutCanvas: View {
                 // its numbers until somebody actually moves it.
                 if !d.moved && hypot(t.width, t.height) < 3 { return }
                 d.moved = true
+                // Over the other display's canvas the tile waits where it was; that canvas
+                // shows where it would land.
+                d.crossing = crossing?.hover(piece.id, pairPoint(value.location)) ?? false
+                if d.crossing || piece.isFixed {
+                    d.rect = d.start
+                    d.guidesX = []
+                    d.guidesY = []
+                    d.invalid = false
+                    drag = d
+                    return
+                }
                 let origin = CGPoint(x: d.start.x + t.width / canvas.width, y: d.start.y + t.height / canvas.height)
                 let others = neighbours(of: piece.id)
                 let snap = LayoutGeometry.snapMove(d.start, toOrigin: origin, neighbours: others,
@@ -513,6 +665,13 @@ struct LayoutCanvas: View {
 
     private func finishMove(_ piece: LayoutPiece, pointer: CGPoint, canvas: CGSize) {
         guard let d = drag, d.id == piece.id, d.mode == .move, d.moved else { drag = nil; return }
+        if d.crossing, let crossing {
+            // Over the other display: it moves there, or springs back and that canvas says why.
+            let moved = crossing.drop(piece.id, pairPoint(pointer))
+            withAnimation(animation(moved ? .snappy(duration: 0.25) : .easeInOut(duration: 0.25))) { drag = nil }
+            return
+        }
+        if piece.isFixed { drag = nil; return }
         guard d.invalid else {
             commit(d.rect, for: piece.id)
             drag = nil
@@ -535,7 +694,7 @@ struct LayoutCanvas: View {
         DragGesture(minimumDistance: 0, coordinateSpace: .named(Self.space))
             .onChanged { value in
                 if drag == nil {
-                    focused = true
+                    takeKeyboard()
                     onActivate()
                     drag = DragState(id: piece.id, mode: .resize(handle), start: piece.rect, rect: piece.rect)
                 }
@@ -569,29 +728,27 @@ struct LayoutCanvas: View {
     // MARK: Keyboard and VoiceOver
 
     private func handleKey(_ press: KeyPress) -> KeyPress.Result {
-        let shift = press.modifiers.contains(.shift)
-        switch press.key {
-        case .tab:
-            return cycle(backwards: shift)
-        case .escape:
-            guard selection != nil else { return .ignored }
-            selection = nil
-            return .handled
-        case .delete, .deleteForward:
-            guard let id = selection else { return .ignored }
+        let keys: [KeyEquivalent: LayoutKey] = [.delete: .delete, .deleteForward: .deleteForward, .leftArrow: .left,
+                                                .rightArrow: .right, .upArrow: .up, .downArrow: .down,
+                                                .tab: .tab, .escape: .escape]
+        guard let key = keys[press.key] else { return .ignored }
+        let action = LayoutKeyRules.action(for: key, shift: press.modifiers.contains(.shift),
+                                           option: press.modifiers.contains(.option),
+                                           hasSelection: selection != nil, hasOtherDisplay: crossing != nil)
+        let id = selection
+        switch action {
+        case .ignore: return .ignored
+        case let .cycle(backwards): return cycle(backwards: backwards)
+        case .deselect: selection = nil
+        case .remove:
             // The camera is not a piece: Delete does nothing (Hide is in its card).
-            if id == LayoutCameraModel.selectionID { return .handled }
-            remove(id)
-            return .handled
-        case .leftArrow, .rightArrow, .upArrow, .downArrow:
-            guard let id = selection else { return .ignored }
-            let dx = press.key == .leftArrow ? -1 : (press.key == .rightArrow ? 1 : 0)
-            let dy = press.key == .upArrow ? -1 : (press.key == .downArrow ? 1 : 0)
-            if shift { grow(id, cols: dx, rows: dy) } else { nudge(id, cols: dx, rows: dy) }
-            return .handled
-        default:
-            return .ignored
+            if let id, id != LayoutCameraModel.selectionID { remove(id) }
+        case let .nudge(cols, rows): if let id { nudge(id, cols: cols, rows: rows) }
+        case let .grow(cols, rows): if let id { grow(id, cols: cols, rows: rows) }
+        case .sendToOtherDisplay:
+            if let id, id != LayoutCameraModel.selectionID { crossing?.send(id) }
         }
+        return .handled
     }
 
     /// Reading order, so Tab walks the canvas the way the eye does. Past the

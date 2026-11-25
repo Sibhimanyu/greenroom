@@ -89,3 +89,29 @@ While a meeting is live, the controls are in exactly one place. Code:
 - **Settle**: the 0.5 s wait after a cover or desktop change before the surface
   switches. A new change while it waits starts the wait again.
 - **Morph**: the shrink or expand animation between Meeting window and Bar.
+
+## Layouts
+
+**Layout**: an arrangement of the owner's screen (or two screens) for a meeting: where each window goes and where the owner's camera sits. What the owner arranges is what everyone in the meeting sees, except windows hidden from everyone. The camera is the one piece that can be in everyone's picture without being on the owner's screen. Exactly one layout is active at a time.
+
+**Piece**: one thing placed in a layout: an app, the Meeting window, Chat, a meeting view, the Room screen, or the camera.
+
+**Camera piece**: the owner's camera as a piece. Its spot, size and shape belong to the layout it sits in.
+
+**Camera state**: who sees the owner's camera, one of four: *Everyone and me*, *Only everyone* (hidden on the owner's screen), *Only me* (a mirror; the meeting does not see the owner), *Off*. The same four everywhere in the app.
+
+**Camera look**: the owner's background, effects and framing. One camera look for all layouts.
+
+**Built-in layout**: a layout Greenroom ships with: Teach from a browser, Talk to the meeting, Present, Room + laptop, Leave my windows alone, and Raj Mode. Editable like any other; Reset brings the originals back.
+
+**Leave my windows alone**: the built-in layout that does not move the owner's windows and only places the camera. Replaces "None".
+
+**Everyone sees**: what the meeting gets: the shared display (or window, or whiteboard) with hidden windows left out. "Hidden" here means hidden from everyone, not from the owner.
+
+**Shared display**: the display a layout gives to everyone (Main unless the layout says otherwise). Each layout has its own.
+
+**Restore original**: puts one built-in layout back as Greenroom shipped it, leaving every other layout alone. _Avoid_: reset (that brings back every built-in at once).
+
+**Room screen**: a piece for a second display that people in the room watch. It shows what everyone sees.
+
+**Layouts tab**: the one place to build layouts, camera included. Replaces the separate Webcam and Layout tabs.

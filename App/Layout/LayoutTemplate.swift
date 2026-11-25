@@ -329,14 +329,21 @@ struct TwoDisplay: Codable, Equatable {
     /// A display UUID (DisplayResolver.uuidString), "" = the first display that
     /// is not the main one.
     var secondUUID: String
+    /// "Everyone sees": the display the meeting sees and recordings film, `.main` or
+    /// `.second`. Old files have none and keep the main display. See `LayoutSharedDisplay`.
+    var sharedSlot: LayoutSlot = .main
 
-    init(main: [LayoutPiece] = [], second: [LayoutPiece] = [], secondUUID: String = "") {
+    init(main: [LayoutPiece] = [], second: [LayoutPiece] = [], secondUUID: String = "",
+         sharedSlot: LayoutSlot = .main) {
         self.main = main
         self.second = second
         self.secondUUID = secondUUID
+        self.sharedSlot = sharedSlot == .second ? .second : .main
     }
 
-    private enum CodingKeys: String, CodingKey { case main, second, secondUUID }
+    private enum CodingKeys: String, CodingKey { case main, second, secondUUID
+        case sharedSlot = "sharedDisplay"
+    }
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -344,7 +351,8 @@ struct TwoDisplay: Codable, Equatable {
                     .compactMap(\.value),
                   second: ((try? c.decodeIfPresent([Lossy<LayoutPiece>].self, forKey: .second)) ?? [])
                     .compactMap(\.value),
-                  secondUUID: (try? c.decodeIfPresent(String.self, forKey: .secondUUID)) ?? "")
+                  secondUUID: (try? c.decodeIfPresent(String.self, forKey: .secondUUID)) ?? "",
+                  sharedSlot: (try? c.decodeIfPresent(LayoutSlot.self, forKey: .sharedSlot)) ?? .main)
     }
 }
 
@@ -429,7 +437,9 @@ struct LayoutTemplate: Codable, Identifiable, Equatable {
             case .multiSpeaker, .selfView, .people, .sharedScreen, .spotlight, .handsUp: return true
             }
         case .chat: return !existing.contains { $0.kind.isChat }
-        case .roomScreen: return RoomScreenRules.canAdd(to: slot, existing: existing.map(\.kind))
+        case .roomScreen:
+            return RoomScreenRules.canAdd(to: slot, existing: existing.map(\.kind))
+                && !(slot == .second && twoDisplays?.sharedSlot == .second)
         case let .app(app):
             let apps = existing.compactMap { $0.kind.app }
             return apps.count < Self.maxApps && !apps.contains { $0.bundleID == app.bundleID }

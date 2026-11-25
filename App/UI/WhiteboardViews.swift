@@ -370,10 +370,14 @@ final class WhiteboardWindowController: NSObject, NSWindowDelegate {
                 created.level = .normal
                 created.collectionBehavior.insert(.fullScreenNone)
                 WindowShareController.attach(to: created, dark: false)
+            } else {
+                // The presented whiteboard: other apps record it per the switch; our own capture
+                // excludes the window through the app-wide filter (it is its own share target).
+                // A local window is left out of this: tracking would set sharingType = .none
+                // while the switch is off, which hides it from our own share even with its eye on.
+                // It follows its eye alone.
+                RecorderVisibility.track(created, as: .whiteboard)
             }
-            // Other apps record it per the switch; our own capture excludes the
-            // window through the app-wide filter (it is its own share target).
-            RecorderVisibility.track(created, as: .whiteboard)
             created.contentView = NSHostingView(rootView: WhiteboardWindowView(board: board, onDone: onDone, mode: mode))
             created.center()
             window = created

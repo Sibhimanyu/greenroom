@@ -44,12 +44,19 @@ final class LayoutEngine {
 
     /// `logNotes` is for the moments a layout is actually applied; the loops that
     /// ask every second pass false, or the log would repeat a fallback forever.
+    /// What the SDK reported about custom UI once it initialised; nil before that and after the meeting.
+    /// The coordinator sets it before placing, so a saved-on custom UI that fell back to Zoom's own UI
+    /// resolves with the Meeting window standing in for the Active speaker.
+    static var customUIRuntime: Bool?
+
     func resolve(_ template: LayoutTemplate, logNotes: Bool = false) -> Resolution {
         let primaryHeight = DisplayResolver.mainDisplayScreen()?.frame.height ?? 0
         // Views open only in custom UI with views on (MeetingViewWindows.isEnabled, but read from
         // the saved setting, because the SDK's answer arrives after Start).
         let customUI = (UserDefaults.standard.object(forKey: "customUIMode") as? Bool) ?? true
-        let viewsCanOpen = MeetingViewPieces.enabled && customUI && !MeetingViewWindows.meetingWindowOnly
+        let viewsCanOpen = LayoutResolver.viewsCanOpen(viewsEnabled: MeetingViewPieces.enabled, customUISaved: customUI,
+                                                       customUIRuntime: Self.customUIRuntime,
+                                                       meetingWindowOnly: MeetingViewWindows.meetingWindowOnly)
         let template = LayoutResolver.substitutingMeetingForActiveSpeaker(template, viewsCanOpen: viewsCanOpen)
         let result = LayoutResolver.resolve(template, screens: Self.connectedScreens(), primaryHeight: primaryHeight)
         if logNotes { result.notes.forEach(log) }
@@ -225,7 +232,7 @@ final class LayoutEngine {
             if ChatWindowController.isOpen { ChatWindowController.setFrame(frame) }
         }
         placeViews(r, frames: frames, hidden: hidden)
-        placeRoomScreen(r, frames: frames, hidden: hidden)
+        placeRoomScreen(r, frames: frames, layoutHidden: hidden)
         guard let meeting = r.meeting, !meeting.fillsDisplay else { return }
         if hidden {
             ParticipantGridWindowController.hide()
@@ -251,12 +258,12 @@ final class LayoutEngine {
         }
     }
 
-    /// The Room screen: opens on its display at its rectangle, hides with the layout's
-    /// hide, and closes when the layout has none, the second display is gone or it
+    /// The Room screen: opens on its display at its rectangle, stays up from Start to Stop whatever the
+    /// layout's hide does (it is the room's view, not the owner's), and closes when the layout has none, the second display is gone or it
     /// is mirrored (no second slot then; `RoomScreenRules.placement`).
-    private func placeRoomScreen(_ r: Resolution, frames: [UUID: LayoutFrames], hidden: Bool) {
+    private func placeRoomScreen(_ r: Resolution, frames: [UUID: LayoutFrames], layoutHidden: Bool) {
         guard let room = r.roomScreen, let frame = frames[room.piece.id]?.ns else { RoomScreen.close(); return }
-        RoomScreen.place(frame: frame, screenID: room.screen.id, hidden: hidden)
+        RoomScreen.place(frame: frame, screenID: room.screen.id, hidden: RoomScreenRules.isHidden(layoutHidden: layoutHidden))
     }
 
     /// Opens the Chat piece at its frame: the join of a class.

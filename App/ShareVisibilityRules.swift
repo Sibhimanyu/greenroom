@@ -3,7 +3,7 @@
 //  Greenroom
 //
 //  The plain words behind "Show on my share". Windows a layout places are in the
-//  picture the class sees by default; the rest of Greenroom's windows are hidden
+//  picture the meeting sees by default; the rest of Greenroom's windows are hidden
 //  from it. Which window is marked is ShowOnShare.marksWindow; this file says
 //  what to call each state. (The amber edge and the one-time island explanation
 //  were removed on 2026-11-25, owner's decision.) Foundation only, so the test
@@ -13,7 +13,7 @@ import Foundation
 
 /// The look of a window's background. The rule: a window only you see is
 /// frosted (its background is see-through, its content stays opaque); a window
-/// the class sees is solid.
+/// the meeting sees is solid.
 enum WindowBackdrop: Equatable {
     case frosted, solid
 
@@ -21,7 +21,7 @@ enum WindowBackdrop: Equatable {
     static func transitionDuration(reduceMotion: Bool) -> TimeInterval { reduceMotion ? 0 : 0.2 }
 }
 
-/// What the class gets of one of our windows.
+/// What the meeting gets of one of our windows.
 enum ShareVisibility: Equatable {
     case classSees, onlyYou
 
@@ -33,7 +33,7 @@ enum ShareVisibility: Equatable {
     /// An eye open or struck through.
     var symbol: String { self == .classSees ? "eye" : "eye.slash" }
 
-    /// Frosted while hidden from the class, solid while it is in the picture.
+    /// Frosted while hidden from the meeting, solid while it is in the picture.
     var backdrop: WindowBackdrop { self == .classSees ? .solid : .frosted }
 }
 
@@ -49,7 +49,7 @@ enum ShareableWindow: CaseIterable {
     /// Credentials are typed here (always `sharingType = .none` for other apps,
     /// via RecorderVisibility; our own capture excludes it by filter).
     case setupGuide
-    /// Tools for the person running the class, not content.
+    /// Tools for the person running the meeting, not content.
     case controlBar, island, recordingChrome, annotation, drawingToolbar
     /// The whiteboard is its own share target (our own capture excludes it by
     /// filter; other apps may record it, per PresenceRecorderRules).
@@ -71,10 +71,17 @@ enum ShareableWindow: CaseIterable {
         case .setupGuide: return "Credentials are typed there"
         case .controlBar, .island, .recordingChrome, .annotation, .drawingToolbar: return "A tool, never content"
         case .whiteboard: return "The whiteboard is its own share"
-        case .browser: return "Tab strip fills the title bar"
+        case .browser: return "No eye switch (its tab strip fills the title bar); always in a whole-display share via alwaysShared"
         default: return nil
         }
     }
+}
+
+/// Windows that are in everyone's picture with no switch, whatever a layout placed.
+enum ShareVisibilityRules {
+    /// The Greenroom Browser is what the owner teaches from; the meeting must always
+    /// see it. Credentials (setupGuide) and tools stay out.
+    static func alwaysShared(windowKind: ShareableWindow) -> Bool { windowKind == .browser }
 }
 
 /// What one window's switch looks and says, from the person's choice and what

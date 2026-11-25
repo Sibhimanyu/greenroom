@@ -1601,6 +1601,13 @@ enum BrowserWindowController {
 
     static var isOpen: Bool { window?.isVisible ?? false }
 
+    /// The window's number while it is on screen: it is always in the share
+    /// (ShareVisibilityRules.alwaysShared), so the capture excepts it.
+    static var visibleWindowNumber: Int? {
+        guard let window, window.isVisible, window.windowNumber > 0 else { return nil }
+        return window.windowNumber
+    }
+
     /// Whether a window is ours. The title is the page's, so it can say
     /// anything - "Zoom", "Meeting", even "Greenroom" - and every place that
     /// sorts NSApp.windows by title has to ask this first.

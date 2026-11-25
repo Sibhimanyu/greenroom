@@ -36,7 +36,7 @@ struct LayoutSettingsTab: View {
                                  onCommit: { coordinator.commitPreviewPlacement($0) },
                                  setShown: { on in
                                      coordinator.cameraShownOnMyScreen = on
-                                     coordinator.presenceBubbleHidden = PresenceVisibility.bubbleStartsHidden(shownOnMyScreen: on)
+                                     coordinator.resetPresenceBubbleToLayoutDefault()
                                  },
                                  adjust: {
                                      NotificationCenter.default.post(name: .showWebcamSettings, object: nil)
@@ -163,6 +163,12 @@ struct LayoutPageContent: View {
     @State private var deleteCandidate: UUID?
     @State private var confirmReset = false
     @State private var showsAddPanel = false
+    // Dragging a piece between the two displays' canvases.
+    @State private var canvasFrames: [LayoutSlot: CGRect] = [:]
+    @State private var incoming: (slot: LayoutSlot, preview: LayoutCrossPreview)?
+    @State private var refusal: (slot: LayoutSlot, text: String)?
+    @State private var refusalTask: Task<Void, Never>?
+    @State private var focusRequest: LayoutFocusRequest?
     @FocusState private var focus: LayoutFocus?
     @AppStorage(SessionNotes.enabledKey) private var notesOnStart = false
     @AppStorage(CoordinatorController.copyInviteOnStartKey) private var copyInviteOnStart = true
@@ -515,7 +521,9 @@ struct LayoutPageContent: View {
 
     private func secondSpace(_ two: TwoDisplay) -> LayoutDisplaySpace {
         if let size = secondSize(two.secondUUID) {
-            return LayoutDisplaySpace(name: "Second display", size: size)
+            let screen = LayoutScreenPreview.secondScreen(uuid: two.secondUUID)
+            return LayoutDisplaySpace(name: "Second display", size: size,
+                                      cameraSpace: screen.map { LayoutCameraSpace(frame: $0.frame, visibleFrame: $0.visibleFrame) })
         }
         return LayoutDisplaySpace(name: "Second display", size: CGSize(width: 1440, height: 810), connected: false)
     }
@@ -529,10 +537,12 @@ struct LayoutPageContent: View {
         if showsTwo, let two = template.twoDisplays {
             VStack(alignment: .leading, spacing: 10) {
                 HStack(alignment: .top, spacing: 12) {
-                    canvas(.main, space: mainSpace)
-                    canvas(.second, space: secondSpace(two))
+                    canvas(.main, space: mainSpace, template: template)
+                    canvas(.second, space: secondSpace(two), template: template)
                 }
-                secondDisplayRow(two)
+                .coordinateSpace(name: LayoutCrossing.space)
+                .onPreferenceChange(LayoutCanvasFrames.self) { canvasFrames = $0 }
+                secondDisplayRow(two, template: template)
             }
         } else {
             canvas(.one, space: mainSpace)
@@ -541,8 +551,10 @@ struct LayoutPageContent: View {
         }
     }
 
-    private func canvas(_ slot: LayoutSlot, space: LayoutDisplaySpace) -> some View {
-        LayoutCanvas(pieces: binding(for: slot), selection: $selection, display: space,
+    private func canvas(_ slot: LayoutSlot, space: LayoutDisplaySpace, template: LayoutTemplate? = nil) -> some View {
+        let two = template?.twoDisplays != nil && slot != .one
+        let sharedSlot = template?.effectiveSharedSlot ?? .main
+        return LayoutCanvas(pieces: binding(for: slot), selection: $selection, display: space,
                      look: look,
                      accepts: { kind in
                         if case .view = kind, !MeetingViewPieces.enabled { return false }
@@ -550,13 +562,105 @@ struct LayoutPageContent: View {
                      },
                      onActivate: { activeSlot = slot; showsAddPanel = false },
                      onNotice: { say($0) },
-                     // The main display is the one that is shared; a second
-                     // (reference) display gets participants, not the camera.
-                     camera: slot == .second ? nil : camera)
+                     // The camera sits on the display everyone sees ("Everyone sees"); it is
+                     // not a piece, so it never crosses displays by itself.
+                     camera: slot == (two ? sharedSlot : .main) || slot == .one ? camera : nil,
+                     slot: slot,
+                     isShared: two && slot == sharedSlot,
+                     crossing: two ? crossing(from: slot) : nil,
+                     incoming: incoming?.slot == slot ? incoming?.preview : nil,
+                     refusal: refusal?.slot == slot ? refusal?.text : nil,
+                     focusRequest: focusRequest)
     }
 
-    private func secondDisplayRow(_ two: TwoDisplay) -> some View {
+    // MARK: Between the two displays
+
+    private func otherSlot(_ slot: LayoutSlot) -> LayoutSlot { slot == .main ? .second : .main }
+
+    private func crossing(from slot: LayoutSlot) -> LayoutCrossing {
+        let other = otherSlot(slot)
+        return LayoutCrossing(
+            ownFrame: canvasFrames[slot],
+            hover: { id, point in
+                guard let frame = canvasFrames[other], frame.contains(point) else {
+                    if incoming != nil { incoming = nil }
+                    return false
+                }
+                incoming = (other, preview(id, from: slot, to: other, pair: point))
+                return true
+            },
+            drop: { id, point in
+                incoming = nil
+                guard canvasFrames[other]?.contains(point) == true else { return false }
+                return moveAcross(id, from: slot, to: other, pointer: unitPointer(point, in: other))
+            },
+            send: { id in
+                guard let piece = library.active?.pieces(for: slot).first(where: { $0.id == id }) else { return }
+                moveAcross(id, from: slot, to: other, pointer: CGPoint(x: piece.rect.midX, y: piece.rect.midY))
+            })
+    }
+
+    private func unitPointer(_ point: CGPoint, in slot: LayoutSlot) -> CGPoint {
+        guard let f = canvasFrames[slot], f.width > 0, f.height > 0 else { return CGPoint(x: 0.5, y: 0.5) }
+        return CGPoint(x: (point.x - f.minX) / f.width, y: (point.y - f.minY) / f.height)
+    }
+
+    private func preview(_ id: UUID, from: LayoutSlot, to: LayoutSlot, pair point: CGPoint) -> LayoutCrossPreview {
+        guard let t = library.active else { return LayoutCrossPreview() }
+        switch t.placementForMove(id, from: from, to: to, at: unitPointer(point, in: to),
+                                  fromDisplay: space(for: from, t).size, toDisplay: space(for: to, t).size) {
+        case let .success(rect): return LayoutCrossPreview(rect: rect)
+        case let .failure(why): return LayoutCrossPreview(reason: why.message)
+        }
+    }
+
+    /// Moves the piece to the other display, or says why not on that display's canvas.
+    @discardableResult
+    private func moveAcross(_ id: UUID, from: LayoutSlot, to: LayoutSlot, pointer: CGPoint) -> Bool {
+        guard let i = activeIndex else { return false }
+        let t = library.templates[i]
+        switch t.movingPiece(id, from: from, to: to, at: pointer,
+                             fromDisplay: space(for: from, t).size, toDisplay: space(for: to, t).size) {
+        case let .success(moved):
+            withAnimation(anim) {
+                library.templates[i] = moved
+                selection = id
+                activeSlot = to
+            }
+            focusRequest = LayoutFocusRequest(slot: to, tick: (focusRequest?.tick ?? 0) + 1)
+            return true
+        case let .failure(why):
+            refusalTask?.cancel()
+            withAnimation(anim) { refusal = (to, why.message) }
+            refusalTask = Task { @MainActor in
+                try? await Task.sleep(nanoseconds: 2_500_000_000)
+                if Task.isCancelled { return }
+                withAnimation(anim) { refusal = nil }
+            }
+            return false
+        }
+    }
+
+    private func secondDisplayRow(_ two: TwoDisplay, template: LayoutTemplate) -> some View {
         HStack(spacing: 10) {
+            GreenroomSegmented("Everyone sees", selection: Binding(
+                get: { template.effectiveSharedSlot },
+                set: { v in
+                    guard let i = activeIndex else { return }
+                    if v == .second, !library.templates[i].canShareSecondDisplay {
+                        say("The Room screen is on the second display and would show itself. Remove it first.")
+                        return
+                    }
+                    withAnimation(anim) { library.templates[i].twoDisplays?.sharedSlot = v }
+                }),
+                options: [LayoutSlot.main, .second]) { slot in
+                Text(slot == .main ? "Main display" : "Second display")
+            }
+            .help("The display the meeting sees, and the one recordings film. Needs the second display connected; otherwise the main display is shared.")
+            Text("is what everyone sees")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+            Divider().frame(height: 16)
             Text("Second display")
                 .font(.callout)
             Picker("Second display", selection: Binding(
@@ -667,7 +771,9 @@ struct LayoutPageContent: View {
             if view == .speakerStrip { return "Speaker + strip already shows the active speaker. Remove the Active speaker view first." }
             return "Speaker + strip already shows the active speaker. Remove it first."
         case .chat: return "Already in this layout"
-        case .roomScreen: return RoomScreenRules.blockReason(slot: slot, existing: version.map(\.kind))
+        case .roomScreen:
+            if slot == .second, let why = template.roomScreenBlockReason { return why }
+            return RoomScreenRules.blockReason(slot: slot, existing: version.map(\.kind))
         case let .app(app):
             if version.contains(where: { $0.kind.app?.bundleID == app.bundleID }) { return "Already in this layout" }
             return "A layout holds at most \(LayoutTemplate.maxApps) apps."
@@ -820,7 +926,7 @@ struct LayoutPageContent: View {
                 HStack(spacing: 8) {
                     Image(systemName: "cursorarrow.click.2")
                         .foregroundStyle(.secondary)
-                    Text("Select a piece (or your camera) to change what it does. Arrows move it, \u{21E7}-arrows resize it, \u{232B} removes it.")
+                    Text("Select a piece (or your camera) to change what it does. Arrows move it, \u{21E7}-arrows resize it, \u{232B} removes it\(showsTwo ? ", \u{2325}\u{2190} \u{2325}\u{2192} sends it to the other display" : "").")
                         .font(.callout)
                         .foregroundStyle(.secondary)
                 }

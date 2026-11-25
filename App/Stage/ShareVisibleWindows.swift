@@ -41,7 +41,9 @@ enum ShareVisibleWindows {
     /// really on screen, and nothing at all unless a whole display is shared.
     static var effectiveNumbers: Set<Int> {
         let visible = windowNumbers.filter { NSApp.window(withWindowNumber: $0)?.isVisible ?? false }
-        return ShowOnShare.exceptionIDs(kind: kind, registry: Set(visible)) ?? []
+        let always: Set<Int> = ShareVisibilityRules.alwaysShared(windowKind: .browser)
+            ? Set([BrowserWindowController.visibleWindowNumber].compactMap { $0 }) : []
+        return ShowOnShare.exceptionIDs(kind: kind, registry: Set(visible), alwaysShared: always) ?? []
     }
 }
 

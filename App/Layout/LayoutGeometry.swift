@@ -449,8 +449,12 @@ enum LayoutResolver {
     /// The saved template is never changed; the engine applies this when it resolves.
     static func substitutingMeetingForActiveSpeaker(_ template: LayoutTemplate, viewsCanOpen: Bool) -> LayoutTemplate {
         guard !viewsCanOpen else { return template }
-        func swap(_ pieces: [LayoutPiece]) -> [LayoutPiece] {
-            guard !pieces.contains(where: { $0.kind.isMeeting }),
+        func hasMeeting(_ pieces: [LayoutPiece]) -> Bool { pieces.contains { $0.kind.isMeeting } }
+        // A version is the one-display list, or main + second together: a full-display
+        // Meeting on the second display counts for the Active speaker on the main one.
+        let twoHasMeeting = hasMeeting(template.twoDisplays?.main ?? []) || hasMeeting(template.twoDisplays?.second ?? [])
+        func swap(_ pieces: [LayoutPiece], versionHasMeeting: Bool) -> [LayoutPiece] {
+            guard !versionHasMeeting,
                   let i = pieces.firstIndex(where: { $0.kind.view == .activeSpeaker }),
                   case .view(_, let hidden) = pieces[i].kind else { return pieces }
             var out = pieces
@@ -458,10 +462,23 @@ enum LayoutResolver {
             return out
         }
         var copy = template
-        copy.oneDisplay = swap(template.oneDisplay)
-        copy.twoDisplays?.main = swap(template.twoDisplays?.main ?? [])
-        copy.twoDisplays?.second = swap(template.twoDisplays?.second ?? [])
+        copy.oneDisplay = swap(template.oneDisplay, versionHasMeeting: hasMeeting(template.oneDisplay))
+        if template.twoDisplays != nil {
+            // Only one Meeting may stand in per version: main first, second only if main had no Active speaker.
+            let mainOut = swap(template.twoDisplays?.main ?? [], versionHasMeeting: twoHasMeeting)
+            let mainSwapped = mainOut != (template.twoDisplays?.main ?? [])
+            copy.twoDisplays?.main = mainOut
+            copy.twoDisplays?.second = swap(template.twoDisplays?.second ?? [], versionHasMeeting: twoHasMeeting || mainSwapped)
+        }
         return copy
+    }
+
+    /// Whether view windows can open. `customUIRuntime` is what the SDK reported once it
+    /// initialised (nil before that): it beats the saved setting, so a layout saved for
+    /// custom UI falls back to the Meeting window when Zoom's own UI is what actually runs.
+    static func viewsCanOpen(viewsEnabled: Bool, customUISaved: Bool, customUIRuntime: Bool?,
+                             meetingWindowOnly: Bool) -> Bool {
+        viewsEnabled && (customUIRuntime ?? customUISaved) && !meetingWindowOnly
     }
 
     /// Re-resolved on every call, never cached: displays come and go and a

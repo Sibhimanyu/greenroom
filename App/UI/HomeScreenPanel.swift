@@ -196,8 +196,7 @@ struct HomeScreenPanel: View {
             browsing = false
             // Same write as the Look tile: noCamera false, then re-preview.
             if CameraTileRules.justMeTurnsCameraOn(cameraState) {
-                coordinator.cameraDirectorSettings.noCamera = false
-                coordinator.previewCamerasChanged()
+                coordinator.turnCameraOnFromHome()
             }
             coordinator.shareTarget.kind = .nothing
         }

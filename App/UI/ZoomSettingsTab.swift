@@ -45,7 +45,8 @@ struct ZoomSettingsTab: View {
             s2sClientID: $coordinator.s2sClientID,
             s2sClientSecret: $coordinator.s2sClientSecret,
             displayName: $coordinator.userDisplayName,
-            signIn: ZoomSignInSection.live(coordinator))
+            signIn: ZoomSignInSection.live(coordinator),
+            showGuide: { coordinator.presentOnboarding() })
     }
 }
 
@@ -59,6 +60,8 @@ struct ZoomPageContent: View {
     @Binding var s2sClientSecret: String
     @Binding var displayName: String
     let signIn: ZoomSignInSection
+    /// Opens the setup guide. Nil in the off-screen render, which hides the button.
+    var showGuide: (() -> Void)? = nil
     /// Starts with "Use your own Zoom apps" open; for the off-screen render only.
     var ownAppsOpen = false
     /// Starts with the scope list open; for the off-screen render only.
@@ -96,6 +99,7 @@ struct ZoomPageContent: View {
                             .help("A General App in the Zoom Marketplace \u{2192} Features \u{2192} Embed \u{2192} Meeting SDK. Powers the built-in meeting client and the chat window. Works only in meetings hosted under this Zoom account.")
                             TextField("Client ID", text: $sdkClientID)
                             SecureField("Client Secret", text: $sdkClientSecret)
+                            MarketplaceGuideBlock(steps: ZoomMarketplaceGuide.sdkSteps, showGuide: showGuide)
                         }
                         Divider()
                         VStack(alignment: .leading, spacing: 8) {
@@ -109,6 +113,7 @@ struct ZoomPageContent: View {
                             TextField("Client ID", text: $s2sClientID)
                             SecureField("Client Secret", text: $s2sClientSecret)
                             ScopeList(scopes: Self.scopes, open: scopesOpen)
+                            MarketplaceGuideBlock(steps: ZoomMarketplaceGuide.s2sSteps, showGuide: showGuide)
                         }
                     }
                 }
@@ -140,6 +145,40 @@ private struct CredentialState {
         if missing.isEmpty { return StatusBadge(text: "Ready", tone: .good) }
         if missing.count == total { return StatusBadge(text: "Not set up", tone: .waiting) }
         return StatusBadge(text: "Needs \(missing.joined(separator: ", "))", tone: .problem)
+    }
+}
+
+/// The "where do I get these" help under a block: the Marketplace link,
+/// numbered steps, and a button that opens the setup guide.
+private struct MarketplaceGuideBlock: View {
+    let steps: [String]
+    let showGuide: (() -> Void)?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Link(destination: ZoomMarketplaceGuide.builderURL) {
+                Label(ZoomMarketplaceGuide.linkTitle, systemImage: "arrow.up.right")
+            }
+            .foregroundStyle(Brand.green)
+            .help(ZoomMarketplaceGuide.builderURL.absoluteString)
+            VStack(alignment: .leading, spacing: 3) {
+                ForEach(Array(steps.enumerated()), id: \.offset) { index, step in
+                    HStack(alignment: .firstTextBaseline, spacing: 6) {
+                        Text("\(index + 1).").monospacedDigit()
+                        Text(step)
+                    }
+                }
+            }
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            if let showGuide {
+                Button(ZoomMarketplaceGuide.guideButtonTitle, action: showGuide)
+                    .buttonStyle(.link)
+                    .foregroundStyle(Brand.green)
+                    .font(.caption)
+            }
+        }
+        .padding(.top, 4)
     }
 }
 

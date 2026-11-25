@@ -291,6 +291,7 @@ targets:
       - path: App/Layout/LayoutTemplate.swift
       - path: App/Layout/LayoutGeometry.swift
       - path: App/Layout/RoomScreenRules.swift
+      - path: App/Layout/LayoutDisplayCrossing.swift
       - path: App/Stage/MainPersonSelector.swift
       - path: App/Stage/PresenceGeometry.swift
       - path: App/Stage/PresenceVisibility.swift
@@ -373,6 +374,7 @@ targets:
       - path: App/UI/ChatGrouping.swift
       - path: App/Zoom/NewMeetingRequest.swift
       - path: App/Zoom/ZoomScopes.swift
+      - path: App/Zoom/ZoomMarketplaceGuide.swift
       - path: App/Zoom/ZoomServerToServerClient.swift
     settings:
       base:

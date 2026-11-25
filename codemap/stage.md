@@ -36,7 +36,7 @@ The in-process "class picture" pipeline (it replaced OBS in 1.3.0). `StageCompos
 
 ## How it fits
 
-**Owner.** `CoordinatorController` holds `var stage: StageCompositor?` (made by `ensureStage()`), plus `let cameraDirector = CameraDirector()`, `let cameraProbe = CameraProbe()`, `previewSink = StagePreviewSink()`. Its `runPipeline()` -> `buildScene()` builds a `StageConfiguration` from user settings (shape, `ShareTarget`, `screenCaptureDisplayUUID`, cameras in cut order, background, system-audio flag), calls `stage.start`, then `zoomChatClient.useStageVideo(stage)`; later changes call `stage.update(config)`. Start waits on a `StageFrameProbe` sink (CoordinatorController ~5172) so the meeting never starts on no picture.
+**Owner.** `CoordinatorController` holds `var stage: StageCompositor?` (made by `ensureStage()`), plus `let cameraDirector = CameraDirector()`, `let cameraProbe = CameraProbe()`, `previewSink = StagePreviewSink()`. Its `runPipeline()` -> `buildScene()` builds a `StageConfiguration` from user settings (shape, `ShareTarget`, the capture display = `effectiveCaptureDisplayUUID`: `screenCaptureDisplayUUID`, overridden for a Whole screen share by the layout's "Everyone sees" display while its two-display version runs (see layout.md), cameras in cut order, background, system-audio flag), calls `stage.start`, then `zoomChatClient.useStageVideo(stage)`; later changes call `stage.update(config)`. Start waits on a `StageFrameProbe` sink (CoordinatorController ~5172) so the meeting never starts on no picture.
 
 **Data flow (per tick).**
 1. Inputs arrive on their own queues and drop their newest item into `StageInputBoard` (an NSLock around latest-of-each): `StageScreenSource` (queue `greenroom.stage.screen`) -> `board.offerScreen`; each `CutoutPublisher` (own capture queue) -> `board.setCamera(uid, Frame)`; whiteboard page / marks overlay via `LockedBox`.
@@ -60,7 +60,7 @@ The in-process "class picture" pipeline (it replaced OBS in 1.3.0). `StageCompos
 - Add a share kind -> `ShareTarget.Kind` (+ `capturesScreen`, `resolve`), `StageScreenSource.Target`, `StageCompositor.syncScreen`, `StageConfiguration.normalizedLayout`.
 - Change which windows can be picked -> `ScreenWindowRules.isCandidate/placement`, `ShareTarget.windows()`; how an app is matched -> `ScreenAppMatch.match`.
 - Change slide-show follow -> `SlideShowFollow.decide` (pure) and `StageScreenSource` follow loop (~line 507).
-- Change what Greenroom hides from / shows in a display share -> `StageScreenSource` filter (~line 259) and `ShareVisibleWindows`; the "Show on my share" rule is `ShowOnShare` in App/ShareVisibilityRules.swift.
+- Change what Greenroom hides from / shows in a display share -> `StageScreenSource` filter (~line 259) and `ShareVisibleWindows`; the "Show on my share" rule is `ShowOnShare` in App/ShareVisibilityRules.swift. The Greenroom Browser has no eye switch and is always let in (`ShareVisibilityRules.alwaysShared`, fed by `BrowserWindowController.visibleWindowNumber` via `ShareVisibleWindows`).
 - Change screen-capture retry/backoff -> `ScreenRecovery.retryInterval` / `failed`, `StageCompositor.syncScreen`, `kickScreen`.
 - Handle a display plug/unplug differently -> `StageCompositor.displaysDidChange` and `apply`; the plan -> `DisplayPlan` (codemap/layout.md).
 - Change blur or image backgrounds -> `CameraEffects.apply`, `MaskRefiner`, `CameraBackgroundLibrary`, presets in `App/Stage/Backgrounds/` and `CameraBackgroundPreset`.

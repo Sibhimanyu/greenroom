@@ -120,4 +120,9 @@ final class RoomScreenTests: XCTestCase {
         XCTAssertEqual(RoomScreenRules.streamSize(roomPoints: CGSize(width: 1920, height: 1080), scale: 2),
                        CGSize(width: 3840, height: 2160))
     }
+
+    func testTheLayoutsHideNeverHidesTheRoomScreen() {
+        XCTAssertFalse(RoomScreenRules.isHidden(layoutHidden: true))
+        XCTAssertFalse(RoomScreenRules.isHidden(layoutHidden: false))
+    }
 }

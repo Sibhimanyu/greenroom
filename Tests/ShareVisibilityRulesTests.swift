@@ -62,4 +62,17 @@ final class ShareVisibilityRulesTests: XCTestCase {
             }
         }
     }
+
+    func testOnlyTheBrowserIsAlwaysShared() {
+        for kind in ShareableWindow.allCases {
+            XCTAssertEqual(ShareVisibilityRules.alwaysShared(windowKind: kind), kind == .browser, "\(kind)")
+        }
+        XCTAssertFalse(ShareVisibilityRules.alwaysShared(windowKind: .setupGuide))
+    }
+
+    func testAlwaysSharedWindowsAreExceptedOnAWholeDisplayWithNoSwitch() {
+        XCTAssertEqual(ShowOnShare.exceptionIDs(kind: .display, registry: [], alwaysShared: [7]), [7])
+        XCTAssertEqual(ShowOnShare.exceptionIDs(kind: .display, registry: [3], alwaysShared: [7]), [3, 7])
+        XCTAssertNil(ShowOnShare.exceptionIDs(kind: .app, registry: [], alwaysShared: [7]))
+    }
 }

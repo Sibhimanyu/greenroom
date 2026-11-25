@@ -226,17 +226,18 @@ final class LayoutMigrationTests: XCTestCase {
         for t in s {
             XCTAssertFalse(t.oneDisplay.contains { $0.kind.isMeeting }, t.name)
             let speakers = t.oneDisplay.filter { $0.kind.view == .activeSpeaker }.count
-            XCTAssertEqual(speakers, [LayoutLibrary.roomLaptop, LayoutLibrary.leaveAlone, LayoutLibrary.rajMode].contains(t.starter ?? "") ? 0 : 1, t.name)
+            XCTAssertEqual(speakers, [LayoutLibrary.roomLaptop, LayoutLibrary.leaveAlone].contains(t.starter ?? "") ? 0 : 1, t.name)
         }
     }
 
     func testRajModeGeometryIsValid() throws {
         let raj = starter(LayoutLibrary.rajMode)
         func cells(_ r: UnitRect) -> [Int] { [r.x, r.y, r.w, r.h].map { Int(($0 * 12).rounded()) } }
-        XCTAssertEqual(raj.oneDisplay.map { cells($0.rect) }, [[0, 0, 9, 12], [9, 0, 3, 12]])
+        XCTAssertEqual(raj.oneDisplay.map { cells($0.rect) }, [[0, 0, 9, 12], [9, 0, 3, 5], [9, 5, 3, 7]])
         XCTAssertEqual(raj.oneDisplay.first?.kind.app?.bundleID, LayoutLibrary.builtInBrowserBundleID)
         XCTAssertEqual(raj.oneDisplay.first?.kind.app?.opensAtStart, true)
-        XCTAssertTrue(raj.oneDisplay[1].kind.isChat)
+        XCTAssertEqual(raj.oneDisplay[1].kind.view, .activeSpeaker)
+        XCTAssertTrue(raj.oneDisplay[2].kind.isChat)
         let two = try XCTUnwrap(raj.twoDisplays)
         XCTAssertEqual(two.second.first?.kind, .meeting(fillsDisplay: true, startsHidden: false))
         XCTAssertEqual(two.second.first?.rect, .full)

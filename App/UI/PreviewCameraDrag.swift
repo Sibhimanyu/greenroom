@@ -106,8 +106,9 @@ struct PreviewCameraDragLayer: View {
     // MARK: Placement
 
     private func rect(of box: PresenceBox, frame: CGSize) -> CGRect {
-        if let space { return LayoutCameraRules.rect(box: box, aspect: aspect, frame: frame, space: space) }
-        return PreviewFrameRules.cameraRect(box: box, aspect: aspect, frame: frame, content: content)
+        let raw = space.map { LayoutCameraRules.rect(box: box, aspect: aspect, frame: frame, space: $0) }
+            ?? PreviewFrameRules.cameraRect(box: box, aspect: aspect, frame: frame, content: content)
+        return LayoutCameraRules.clamped(raw, to: LayoutCameraRules.drawable(frame: frame, space: space))
     }
 
     private func boxFor(_ rect: CGRect, from box: PresenceBox, frame: CGSize) -> PresenceBox {

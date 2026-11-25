@@ -377,8 +377,9 @@ different order; this table is the authority.
 - R27.6 A brand-new install has nothing to migrate and has the key set.
 
 **R28. Built-ins.**
-- R28.1 Raj San Mode: main is the browser on the left and Chat in the right column; second is the
-  Meeting filling the display. (Laptop only, it shows the browser and Chat and places no Meeting window.)
+- R28.1 Raj San Mode: main is the browser (9/12), the Active speaker top right (3/12 x 5/12) and Chat
+  below it (3/12 x 7/12), as it was one display; second is the Meeting filling the display. Laptop only,
+  the speaker is the meeting surface. Adding an Active speaker on main beside a Meeting on second is allowed.
 - R28.2 Room + laptop: main is the browser and Chat; second is the Room screen, Main shared.
 - R28.3 Teach, Talk, Present and Leave my windows alone have a main arrangement and no second.
 - R28.4 `isAsShipped` compares both arrangements and the shared slot.

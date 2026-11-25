@@ -662,11 +662,10 @@ struct LayoutCanvas: View {
             return CGRect(x: canvas.width * 0.24 - w / 2, y: 0, width: w, height: h)
         }
         let aspect = LayoutCameraRules.aspect(for: camera.shape)
-        if let space = display.cameraSpace {
-            return LayoutCameraRules.rect(box: camera.box, aspect: aspect, frame: canvas, space: space)
-        }
-        return PreviewFrameRules.cameraRect(box: camera.box, aspect: aspect, frame: canvas,
+        let raw = display.cameraSpace.map { LayoutCameraRules.rect(box: camera.box, aspect: aspect, frame: canvas, space: $0) }
+            ?? PreviewFrameRules.cameraRect(box: camera.box, aspect: aspect, frame: canvas,
                                             content: LayoutCameraRules.content(displayAspect: display.aspect))
+        return LayoutCameraRules.clamped(raw, to: LayoutCameraRules.drawable(frame: canvas, space: display.cameraSpace))
     }
 
     @ViewBuilder

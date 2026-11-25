@@ -147,6 +147,23 @@ enum LayoutCameraRules {
         return rect(box: box, aspect: aspect, frame: full, displayAspect: full.width / max(full.height, 1)).offsetBy(dx: o.x, dy: o.y)
     }
 
+    /// Where the camera layer may be drawn on a canvas of `frame` points: the canvas itself (its content
+    /// rect, inside the bezel padding), widened only by the menu bar / Dock zone of the whole display
+    /// when `space` says the display is bigger than the usable area. Never into the bezel padding.
+    static func drawable(frame: CGSize, space: LayoutCameraSpace?) -> CGRect {
+        let canvas = CGRect(origin: .zero, size: frame)
+        guard let space else { return canvas }
+        return canvas.union(CGRect(origin: space.origin(for: frame), size: space.fullFrame(for: frame)))
+    }
+
+    /// `rect` moved (never resized unless it is larger than `area`) to lie inside `area`.
+    static func clamped(_ rect: CGRect, to area: CGRect) -> CGRect {
+        let w = min(rect.width, area.width), h = min(rect.height, area.height)
+        let x = min(max(rect.minX, area.minX), area.maxX - w)
+        let y = min(max(rect.minY, area.minY), area.maxY - h)
+        return CGRect(x: x, y: y, width: w, height: h)
+    }
+
     /// `box` for a camera moved or resized to `rect` in the builder canvas.
     static func box(applying rect: CGRect, to box: PresenceBox, aspect: Double,
                     frame: CGSize, space: LayoutCameraSpace) -> PresenceBox {

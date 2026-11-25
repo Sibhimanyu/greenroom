@@ -135,6 +135,32 @@ final class LayoutCameraRulesTests: XCTestCase {
         }
     }
 
+    // The camera layer never draws past the canvas's content rect (into the bezel padding).
+    func testCameraRectIsClampedToTheCanvasContentRect() {
+        let canvas = CGSize(width: 320, height: 195)
+        let area = LayoutCameraRules.drawable(frame: canvas, space: nil)
+        XCTAssertEqual(area, CGRect(x: 0, y: 0, width: 320, height: 195))
+        let poking = CGRect(x: 260, y: 150, width: 63, height: 40)      // 3 pt past the right edge
+        let r = LayoutCameraRules.clamped(poking, to: area)
+        XCTAssertEqual(r.maxX, 320, accuracy: 1e-9)
+        XCTAssertEqual(r.size, poking.size)
+        XCTAssertEqual(r.minY, 150)
+        let inside = CGRect(x: 10, y: 10, width: 50, height: 30)
+        XCTAssertEqual(LayoutCameraRules.clamped(inside, to: area), inside)
+        XCTAssertEqual(LayoutCameraRules.clamped(CGRect(x: -5, y: -5, width: 20, height: 20), to: area).origin, .zero)
+    }
+
+    // The menu bar / Dock zone of the whole display is still drawable, the bezel padding is not.
+    func testDrawableAreaKeepsTheMenuBarAndDockZone() {
+        let space = LayoutCameraSpace(frame: CGRect(x: 0, y: 0, width: 1512, height: 982),
+                                      visibleFrame: CGRect(x: 0, y: 65, width: 1512, height: 884))
+        let canvas = CGSize(width: 756, height: 442)
+        let area = LayoutCameraRules.drawable(frame: canvas, space: space)
+        XCTAssertEqual(area.minX, 0); XCTAssertEqual(area.maxX, 756, accuracy: 1e-6)
+        XCTAssertEqual(area.minY, -16.5, accuracy: 1e-6)
+        XCTAssertEqual(area.maxY, 442 + 32.5, accuracy: 1e-6)
+    }
+
     func testMovedBoxStaysInsideTheDisplay() {
         let frame = CGSize(width: 600, height: 375)
         let box = PresenceBox()

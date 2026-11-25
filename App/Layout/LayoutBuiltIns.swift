@@ -65,11 +65,11 @@ extension LayoutLibrary {
         let leave = LayoutTemplate(
             name: "Leave my windows alone", starter: leaveAlone,
             camera: camera(.circle, width: 0.12, right: 0.04, bottom: 0.06), share: ShareTarget())
-        // The old fixed arrangement. Main is the browser and Chat; the second display keeps a full-display
-        // Meeting (laptop only, no Meeting window opens: the owner accepted that, ADR 0002).
+        // The old one-display arrangement, kept as main (ADR 0002): the browser, the speaker top right and
+        // Chat below, so the laptop alone still has a meeting surface. A second display holds the Meeting.
         let raj = LayoutTemplate(
             name: "Raj San Mode", starter: rajMode,
-            oneDisplay: [browser(width: 9 * third), chat(x: 9 * third, w: 3 * third, top: 0)],
+            oneDisplay: [browser(width: 9 * third), speaker(x: 9 * third, w: 3 * third), chat(x: 9 * third, w: 3 * third)],
             twoDisplays: TwoDisplay(
                 second: [LayoutPiece(kind: .meeting(fillsDisplay: true, startsHidden: false), rect: .full)]),
             camera: LayoutCamera(), share: ShareTarget())
@@ -206,7 +206,7 @@ extension LayoutLibrary {
         case present: return "Share your screen, with you small in a corner. The speaker and chat stay at the side of your screen."
         case roomLaptop: return "People in the room watch the Room screen while you work on the laptop."
         case leaveAlone: return "Moves no windows. It only says where your camera sits. Press + to start your own layout from it."
-        case rajMode: return "The browser on the left with chat beside it. With a second display, the meeting fills it."
+        case rajMode: return "The browser with the speaker and chat beside it. With a second display, the meeting fills it."
         default: return nil
         }
     }

@@ -63,6 +63,9 @@ struct MeetingToolbarMenus {
     var security: () -> [MenuEntry] = { [] }
     var react: () -> [MenuEntry] = { [] }
     var share: () -> [MenuEntry] = { [] }
+    /// Zoom-only sharing items (no "What everyone sees", Look or Layout): the
+    /// Meeting menu's "Sharing" submenu.
+    var sharing: () -> [MenuEntry] = { [] }
     /// Given the controls that overflowed (as entries), the whole More menu.
     var more: ([MenuEntry]) -> [MenuEntry] = { $0 }
 }

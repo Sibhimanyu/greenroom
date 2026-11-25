@@ -210,9 +210,13 @@ enum MeetingMenus {
         var setRule: (ShareRule) -> Void = { _ in }
     }
 
-    /// The meeting window's Share menu: the Present entries first (what the class
-    /// sees: PresentMenuSpec.swift), then Zoom's own display share, worded as the
-    /// second, separate option. Zoom's share is a whole display sent as its own
+    /// Why the "When someone is sharing" rows are grey.
+    static let whenSharingNote = "Only while \u{201C}All participants\u{201D} can share"
+
+    /// The Share menu. Given `present` (what everyone sees: PresentMenuSpec.swift)
+    /// the Present entries come first, then Zoom's own display share, worded as the
+    /// second, separate option. The Meeting menu's "Sharing" submenu passes none:
+    /// "What everyone sees" lives on the bar's Share button only. Zoom's share is a whole display sent as its own
     /// thing while Greenroom's camera picture keeps running underneath.
     static func share(_ s: ShareMenuState, _ a: ShareMenuActions,
                       lastConcurrent: ConcurrentShare = .one,
@@ -245,12 +249,15 @@ enum MeetingMenus {
         out.append(.separator)
         out.append(.header("When someone is sharing"))
         let concurrentOn = rule?.who == .everyone
+        let whyOff: String? = concurrentOn ? nil : whenSharingNote
         out.append(.item("One participant can share at a time",
-                         checked: concurrentOn && rule?.concurrent == .one, enabled: concurrentOn) {
+                         checked: concurrentOn && rule?.concurrent == .one, enabled: concurrentOn,
+                         note: whyOff) {
             a.setRule(ShareRule(who: .everyone, concurrent: .one))
         })
         out.append(.item("Multiple participants can share simultaneously",
-                         checked: concurrentOn && rule?.concurrent == .multiple, enabled: concurrentOn) {
+                         checked: concurrentOn && rule?.concurrent == .multiple, enabled: concurrentOn,
+                         note: whyOff) {
             a.setRule(ShareRule(who: .everyone, concurrent: .multiple))
         })
         return out

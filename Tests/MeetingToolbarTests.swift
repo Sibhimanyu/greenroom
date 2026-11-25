@@ -463,6 +463,21 @@ final class MeetingMenuSpecTests: XCTestCase {
                           titles.firstIndex(of: "Who can share")!)
     }
 
+    func testSharingSubmenuHasNoPresentEntries() {
+        let menu = share(.init(displays: [(1, "Display 1")], isHost: true, rule: ShareRule(sdkRaw: 0)))
+        for title in ["What everyone sees", "Whole screen", "One window", "Whiteboard", "Just my camera", "Look", "Layout"] {
+            XCTAssertNil(menu.entry(titled: title), title)
+        }
+        XCTAssertEqual(menu.first?.title, "Also share a display on its own")
+    }
+
+    func testGreyWhenSomeoneIsSharingRowsSayWhy() {
+        let menu = share(.init(isHost: true, rule: ShareRule(who: .hostOnly, concurrent: .one)))
+        let row = menu.entry(titled: "One participant can share at a time")
+        XCTAssertEqual(row?.enabled, false)
+        XCTAssertEqual(row?.note, MeetingMenus.whenSharingNote)
+    }
+
     func testPresentPartStaysEnabledWhenZoomSharingIsNot() {
         let present = PresentMenu.entries(.init(), .init())
         let menu = MeetingMenus.share(.init(inMeeting: false, displays: [(1, "Display 1")]), .init(), present: present)

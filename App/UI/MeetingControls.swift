@@ -433,7 +433,7 @@ final class MeetingControlsModel: ObservableObject {
             extras.append(.submenu("Camera", m.video()))
             extras.append(.submenu("Raise hand and react", m.react()))
             if isHost { extras.append(.submenu("Security", m.security())) }
-            extras.append(.submenu("Share a display", m.share()))
+            extras.append(.submenu("Sharing", m.sharing()))
             let pickers = MeetingViewWindows.pickerMenuEntries()
             if !pickers.isEmpty { extras += [.separator] + pickers }
             extras.append(.separator)
@@ -594,7 +594,7 @@ struct MeetingToolbarView: View {
                                    if let r = ZoomMeetingSDKClient.Reaction(rawValue: name) { model.react(r) }
                                })
         }
-        m.share = {
+        func shareEntries(present: [MenuEntry]) -> [MenuEntry] {
             var s = MeetingMenus.ShareMenuState()
             s.inMeeting = model.inMeeting
             s.sharing = model.sharing
@@ -607,8 +607,10 @@ struct MeetingToolbarView: View {
             a.stop = model.stopShare
             a.setRule = model.setShareRule
             return MeetingMenus.share(s, a, lastConcurrent: model.coordinator.zoomChatClient.roomEvents.lastConcurrent,
-                                      present: model.coordinator.presentMenuEntries())
+                                      present: present)
         }
+        m.share = { shareEntries(present: model.coordinator.presentMenuEntries()) }
+        m.sharing = { shareEntries(present: []) }
         m.more = { overflow in
             var a = MeetingMenus.MoreMenuActions()
             a.copy = model.copy

@@ -1161,7 +1161,7 @@ struct HomeView: View {
             }
             .greenroomGlassButton()
             .tint(coordinator.isRecording && !coordinator.isSavingRecording ? .red : Color(nsColor: .labelColor))
-            .disabled(coordinator.isSavingRecording || !coordinator.stageLive && !coordinator.isRecording)
+            .disabled(coordinator.isSavingRecording || coordinator.phase.hasNoLiveMeetingOrTake)
             .help("Records exactly what participants see \u{2014} your shared screen with you in it. Saved to Documents/Greenroom when stopped.")
         }
         .controlSize(.extraLarge)

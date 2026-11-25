@@ -281,4 +281,14 @@ struct SessionPhase: Equatable {
     /// `hasSessionOrTakeOnScreen`, unless Stop is already under way: what the
     /// End / Quit confirmations ask about (`hasLiveSession`).
     var isLiveAndNotStopping: Bool { !isStopping && hasSessionOrTakeOnScreen }
+
+    /// A Record session's picture is up and its start task has finished (between
+    /// takes, or rolling).
+    var isRecordSessionSettled: Bool { recordOnlyActive && !isRunning }
+
+    /// A start or a stop is in flight.
+    var isStartOrStopInFlight: Bool { isRunning || isStopping }
+
+    /// No meeting picture is up and no take is being made.
+    var hasNoLiveMeetingOrTake: Bool { !stageLive && !isRecording }
 }

@@ -55,3 +55,7 @@ every change to a question is a change to a flag, and the coordinator is its
   without the take: the YouTube "session ended?" check, equal to `isCameraBusy`
   today), and `isLiveAndNotStopping` (the first, unless stopping: `hasLiveSession`,
   the End / Quit confirmations).
+- `isRecordSessionSettled`: `recordOnlyActive && !isRunning`.
+  `isStartOrStopInFlight`: `isRunning || isStopping` (Try again waits on it; Start
+  warm-up skips while it is true). `hasNoLiveMeetingOrTake`: `!stageLive &&
+  !isRecording` (Home's Record button is disabled with it, or while saving).

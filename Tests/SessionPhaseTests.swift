@@ -291,4 +291,13 @@ final class SessionPhaseTests: XCTestCase {
         // The two differ somewhere (a take with no session), so they stay two questions.
         XCTAssertGreaterThan(onlyOnTake, 0)
     }
+
+    func testRemainingQuestionsMatchOldExpressions() {
+        for p in reachableStates() {
+            XCTAssertEqual(p.isRecordSessionSettled, p.recordOnlyActive && !p.isRunning, "\(p.session)")
+            XCTAssertEqual(p.isStartOrStopInFlight, p.isRunning || p.isStopping, "\(p.session)")
+            XCTAssertEqual(!p.isStartOrStopInFlight, !p.isRunning && !p.isStopping)
+            XCTAssertEqual(p.hasNoLiveMeetingOrTake, !p.stageLive && !p.isRecording, "\(p.session)")
+        }
+    }
 }

@@ -940,7 +940,7 @@ final class CoordinatorController: ObservableObject {
         // The Record view applies a camera change at once, like the idle
         // preview: the picture is the thing being set up. With switching on
         // (two or more cameras) the director's own path reopens them.
-        if recordOnlyActive, !isRunning {
+        if phase.isRecordSessionSettled {
             if sessionCameraUIDs(cameraDirectorSettings).count < 2 {
                 stageCameraUIDs = sceneCameraUIDs(limit: 1)
                 requestShapeApply()
@@ -4579,7 +4579,7 @@ final class CoordinatorController: ObservableObject {
     private func retryAfterFailure() {
         dismissStartFailure()
         Task {
-            for _ in 0..<50 where isRunning || isStopping {
+            for _ in 0..<50 where phase.isStartOrStopInFlight {
                 try? await Task.sleep(nanoseconds: 200_000_000)
             }
             if lastStartWasRecordFlow { startRecordingFlow() } else { start() }
@@ -4760,13 +4760,13 @@ final class CoordinatorController: ObservableObject {
     /// secrets are plain UserDefaults, not Keychain. Skipped while a session
     /// is running or starting.
     func warmUpForStart() {
-        guard !isRunning, !isStopping, !isConnectingChat else { return }
+        guard !phase.isStartOrStopInFlight, !isConnectingChat else { return }
         loadSecretsIfNeeded()
         let access = zoomAccess
         Task { [weak self] in
             await access?.warm()
             guard let self, let signer = try? self.zoomSDKSigner() else { return }
-            guard !self.isRunning, !self.isStopping, !self.isConnectingChat else { return }
+            guard !self.phase.isStartOrStopInFlight, !self.isConnectingChat else { return }
             try? await self.zoomChatClient.ensureReady(signer: signer)
         }
     }

@@ -114,3 +114,17 @@ for you to fix. The `/heresay` skill covers it. Before any Heresay task, read th
 - Fix flow: `npx heresay briefs`, `claim <id>`, `brief <id>`, fix and test, `fixed <id> "<note for the reporter>"`.
 - Outside your task (a bug, a risk, an idea)? File it: `file_finding`, or `npx heresay file <type> "<text>" --file <path:line>`.
 <!-- heresay:end -->
+
+## Agent skills
+
+### Issue tracker
+
+Issues live in GitHub Issues on Sibhimanyu/greenroom, worked through the `gh` CLI. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+The five default labels: needs-triage, needs-info, ready-for-agent, ready-for-human, wontfix. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+One glossary and one ADR folder for the whole repo (`GLOSSARY.md` and `docs/adr/` at the root). See `docs/agents/domain.md`.

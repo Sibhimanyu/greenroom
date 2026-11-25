@@ -283,6 +283,12 @@ targets:
   # (.context/layout-creator-plan.md). Like CuesBench, it compiles the real
   # sources it tests and nothing else, so it needs no Zoom SDK and no host
   # app: `xcodebuild test -scheme GreenroomTests`.
+  #
+  # Kept as a curated list, not a glob of App/: most of App/ imports AppKit,
+  # ZoomSDK, Sparkle or Apptics, so `- path: App` would drag the whole app
+  # (and the 600 MB SDK) into the test bundle. A forgotten entry is caught
+  # instead by scripts/check-test-target.py (run by scripts/check.sh): it
+  # fails when a Tests/ file names a type whose source file is not listed.
   GreenroomTests:
     type: bundle.unit-test
     platform: macOS

@@ -11,6 +11,8 @@ mkdir -p .build
 
 fail() { echo "CHECK FAILED: $1"; exit 1; }
 
+python3 scripts/check-test-target.py || fail "a test names a type whose source file is not in GreenroomTests.sources"
+
 xcodegen generate >"$LOG" 2>&1 || { tail -20 "$LOG"; fail "xcodegen generate"; }
 
 xcodebuild build -project Greenroom.xcodeproj -scheme Greenroom -configuration Debug \

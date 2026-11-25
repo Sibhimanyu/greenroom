@@ -310,6 +310,8 @@ targets:
       - path: App/UI/LayoutAppOrdering.swift
       - path: App/Settings/SettingsTransfer.swift
       - path: App/Settings/MeetingPreset.swift
+      - path: App/Settings/SettingsDefaultsBridge.swift
+      - path: App/Settings/SettingsCatalog.swift
       - path: App/Settings/SettingsImportRules.swift
       - path: App/Stage/CameraDirectorSettings.swift
       - path: App/Stage/CameraBackgroundChoice.swift

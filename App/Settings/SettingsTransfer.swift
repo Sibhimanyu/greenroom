@@ -106,6 +106,29 @@ struct SettingsTransfer: Codable, Equatable {
     /// and importing it would point a colleague's Greenroom at a model they
     /// do not have. The receiving Mac picks its own best model.
     var screenroomLanguage: String?
+    // Added with settings-transfer D1 (docs/specs/settings-transfer.md): settings
+    // an export did not carry. All optional, so older files still import and
+    // older builds ignore them.
+    /// "Normal", "Blur" or "Image". Import turns Image into Blur when the
+    /// picture it points at is a file this Mac does not have.
+    var cameraBackground: String?
+    /// A preset's name, or `custom-<stamp>` (the setting travels, the file does not).
+    var cameraBackgroundImage: String?
+    var className: String?
+    /// "create", "join" or "record".
+    var meetingMode: String?
+    /// The microphone's uniqueID. Applied only if it is connected to this Mac.
+    var micDeviceUID: String?
+    var copyInviteOnStart: Bool?
+    var sessionNotesEnabled: Bool?
+    var mirrorSelfView: Bool?
+    var visibleToRecorders: Bool?
+    var meetingWindowView: String?
+    var meetingWindowShareLayout: String?
+    var meetingWindowShareSplit: Double?
+    var meetingWindowHideSelfView: Bool?
+    var meetingWindowHideVideoOff: Bool?
+    var meetingViewsEnabled: Bool?
     // Legacy fields from Chrome-only-era exports - still imported, never
     // written anymore (same as the layout keys above: import-only).
     var chromeLayout: String?

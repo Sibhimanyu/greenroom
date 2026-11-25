@@ -128,3 +128,7 @@ The five default labels: needs-triage, needs-info, ready-for-agent, ready-for-hu
 ### Domain docs
 
 One glossary and one ADR folder for the whole repo (`GLOSSARY.md` and `docs/adr/` at the root). See `docs/agents/domain.md`.
+
+# Verify
+
+gstack:verify: scripts/check.sh

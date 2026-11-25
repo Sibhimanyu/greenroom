@@ -48,3 +48,4 @@ apptics-config.plist
 
 # impeccable design hook: per-session cache (config.json is shared)
 .impeccable/hook.cache.json
+.build/

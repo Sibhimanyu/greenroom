@@ -330,6 +330,7 @@ targets:
       - path: App/StartChoreography.swift
       - path: App/RecordStartFlow.swift
       - path: App/SessionPhase.swift
+      - path: App/Meeting/MeetingSurface.swift
       - path: App/UI/MeetingToolbarLayout.swift
       - path: App/UI/MeetingMenuSpec.swift
       - path: App/Zoom/MeetingShareRules.swift

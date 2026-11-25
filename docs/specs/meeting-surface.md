@@ -127,3 +127,7 @@ Run the Debug build from DerivedData (after wiring) and try:
 - [ ] Press the yellow light: the window shrinks to the Bar. Click the Dock icon: you land on the Bar. Expand: the window.
 - [ ] Close the window: the question appears and the window stays. Cancel keeps everything; Shrink gives the Bar; End and Leave end the meeting.
 - [ ] At no point during the above is there no control surface at all.
+
+### Verification state
+
+The model is built and unit tested (`Tests/MeetingSurfaceTests.swift`, 25 tests, plus the full suite). Nothing is wired or verified live. R13 and R14 stay planned.

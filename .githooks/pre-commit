@@ -1,0 +1,16 @@
+#!/bin/bash
+# Reject staged files that contain merge-conflict markers. Set
+# GREENROOM_PRECOMMIT_CHECK=1 to also run scripts/check.sh (slow, off by default).
+cd "$(git rev-parse --show-toplevel)" || exit 1
+bad=0
+while IFS= read -r -d '' f; do
+  if git show ":$f" 2>/dev/null | grep -aEq '^(<<<<<<< |=======$|>>>>>>> )'; then
+    echo "pre-commit: conflict marker in $f" >&2
+    bad=1
+  fi
+done < <(git diff --cached --name-only --diff-filter=ACM -z)
+[ "$bad" -eq 0 ] || { echo "pre-commit: resolve the markers above, then commit again." >&2; exit 1; }
+if [ "${GREENROOM_PRECOMMIT_CHECK:-0}" = "1" ]; then
+  scripts/check.sh || exit 1
+fi
+exit 0

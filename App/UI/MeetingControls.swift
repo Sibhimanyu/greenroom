@@ -1029,8 +1029,9 @@ enum MeetingControlBarController {
     private static var coordinator: CoordinatorController?
     private static var observers: [NSObjectProtocol] = []
     private static var spaceObserver: NSObjectProtocol?
-    private static var pending: DispatchWorkItem?
     private static var settleTimer: Timer?
+    /// The safety check: while a meeting is live, once a second.
+    private static var safetyTimer: Timer?
     /// The bar is in its Starting state: it stays on screen whatever the Meeting
     /// window does, and keeps the narrow form.
     private(set) static var isStarting = false
@@ -1060,7 +1061,7 @@ enum MeetingControlBarController {
     /// in: the first thing a Start click shows.
     static func install(coordinator: CoordinatorController, model: MeetingControlsModel, starting: Bool = false) {
         if fading { close() }
-        guard panel == nil else { reconcile(immediately: false); return }
+        guard panel == nil else { render(); return }
         guard NSScreen.main ?? NSScreen.screens.first != nil else { return }
         isStarting = starting
         self.model = model
@@ -1110,7 +1111,6 @@ enum MeetingControlBarController {
                     guard let window = note.object as? NSWindow,
                           ParticipantGridWindowController.owns(window) else { return }
                     MeetingSurfaceOwner.syncWindowFacts()
-                    reconcile(immediately: false)
                 }
             })
         }
@@ -1118,10 +1118,7 @@ enum MeetingControlBarController {
         // desktop switch changes the answer without the window changing at all.
         spaceObserver = NSWorkspace.shared.notificationCenter.addObserver(
             forName: NSWorkspace.activeSpaceDidChangeNotification, object: nil, queue: .main) { _ in
-            MainActor.assumeIsolated {
-                MeetingSurfaceOwner.syncWindowFacts()
-                reconcile(immediately: false)
-            }
+            MainActor.assumeIsolated { MeetingSurfaceOwner.syncWindowFacts() }
         }
         // A display unplugged, or the Dock or menu bar moved: a spot that is now
         // off screen goes back to the default, one that is merely close to an
@@ -1133,7 +1130,8 @@ enum MeetingControlBarController {
         if starting {
             // First thing on screen at the click: fades in, no debounce.
             created.alphaValue = reduceMotion ? 1 : 0
-            reconcile(immediately: true)
+            render()
+            startSafetyCheck()
             if !reduceMotion {
                 NSAnimationContext.runAnimationGroup { context in
                     context.duration = StartChoreography.homeSeconds
@@ -1143,9 +1141,11 @@ enum MeetingControlBarController {
             }
             return
         }
-        // A window opened a moment ago has not reported its occlusion yet, which
-        // would flash the pill; let the debounce settle it. With none, show now.
-        reconcile(immediately: !ParticipantGridWindowController.meetingWindowIsOpen)
+        // The model says which surface shows; a window opened a moment ago that has
+        // not reported its occlusion yet is a settle, not a flash.
+        MeetingSurfaceOwner.syncWindowFacts()
+        render()
+        startSafetyCheck()
     }
 
     /// The meeting is live: the bar grows from the Starting state to the live
@@ -1163,55 +1163,75 @@ enum MeetingControlBarController {
         state.collapsed = collapsed
         move(to: target)
         avoidBar(target)
-        reconcile(immediately: windowOpening)
+        render()
     }
 
-    /// Shows the pill when nothing else carries the controls, hides it when the
-    /// meeting window does. Debounced by half a second except the first time.
-    static func reconcile(immediately: Bool) {
-        pending?.cancel()
-        // The morph owns the bar and the window while it runs; deciding now
-        // would fight it (the window is hidden on purpose, the bar mid-fade).
-        guard morphTimeline == nil else { return }
-        let work = DispatchWorkItem {
-            MainActor.assumeIsolated {
-                guard let panel, morphTimeline == nil else { return }
-                // Starting: the bar is the only surface, whatever else is up.
-                if isStarting {
-                    if !panel.isVisible { panel.orderFrontRegardless() }
-                    return
-                }
-                // One control surface at a time: the window carries the controls
-                // when it is up, the bar when it is not.
-                if !MeetingSurfaces.barVisible(windowShowing: ParticipantGridWindowController.meetingWindowIsShowing) {
-                    panel.orderOut(nil)
-                } else if !panel.isVisible {
-                    // Without activating the app: Zoom or the slides stay in front.
-                    panel.orderFrontRegardless()
-                }
-                model?.foldPopOutChatIntoWindow()
-            }
+    /// Draws what `MeetingSurfaceOwner.model` says: the Bar shows when the model's
+    /// surface is the Bar, and steps aside when it is the Window. Not while a morph
+    /// runs or is owed (the morph owns the Bar and the window) and not during a settle (the
+    /// screen stays as it is until `settleElapsed`). The window itself is shown and
+    /// hidden by the actions that change the model (the morph, open, close, hide).
+    static func render() {
+        guard let panel, morphTimeline == nil else { return }
+        // Starting: the bar is the only surface, whatever else is up.
+        if isStarting {
+            if !panel.isVisible { panel.orderFrontRegardless() }
+            return
         }
-        pending = work
-        if immediately {
-            work.perform()
-        } else {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5, execute: work)
+        let model = MeetingSurfaceOwner.model
+        // A morph the model owes is drawn by the morph (or finished on the next turn).
+        guard model.isLive, !model.isSettling, !model.isMorphing else { return }
+        if model.surface == .window {
+            panel.orderOut(nil)
+        } else if !panel.isVisible {
+            // Without activating the app: Zoom or the slides stay in front.
+            panel.orderFrontRegardless()
+        }
+        self.model?.foldPopOutChatIntoWindow()
+    }
+
+    // MARK: The safety check
+
+    /// Starts the once-a-second look at whether the screen agrees with the model.
+    /// It is owned here, not by the coordinator's follow loop, so it also runs after
+    /// the person has closed the Meeting window (that loop stops then).
+    private static func startSafetyCheck() {
+        guard safetyTimer == nil else { return }
+        let timer = Timer(timeInterval: 1, repeats: true) { _ in
+            MainActor.assumeIsolated { safetyCheck() }
+        }
+        timer.tolerance = 0.3
+        RunLoop.main.add(timer, forMode: .common)
+        safetyTimer = timer
+    }
+
+    /// One call to `screenMatches`. Quiet when it agrees. When it does not, the
+    /// model wins: missed window events are read again, the Bar is drawn from the
+    /// model, and a window that should not be up goes (or one that should be, comes
+    /// back). In DEBUG the correction is logged, so a missed event gets found.
+    private static func safetyCheck() {
+        guard let panel, !isStarting, morphTimeline == nil else { return }
+        let model = MeetingSurfaceOwner.model
+        // A settle or a morph legitimately has both up.
+        guard model.isLive, !model.isMorphing, !model.isSettling else { return }
+        var onScreen = Set<MeetingSurface.Surface>()
+        if ParticipantGridWindowController.windowIsOnScreen { onScreen.insert(.window) }
+        if panel.isVisible { onScreen.insert(.bar) }
+        guard !model.screenMatches(onScreen) else { return }
+        #if DEBUG
+        MeetingSurfaceOwner.debugLog("screen did not match the model, corrected. model: \(model). on screen: \(onScreen.map { "\($0)" }.sorted())")
+        #endif
+        MeetingSurfaceOwner.syncWindowFacts()
+        render()
+        let now = MeetingSurfaceOwner.model
+        guard now.isLive, !now.isSettling, !now.isMorphing else { return }
+        if now.surface == .bar, ParticipantGridWindowController.windowIsOnScreen {
+            ParticipantGridWindowController.hide()
+        } else if now.surface == .window, !ParticipantGridWindowController.windowIsOnScreen,
+                  ParticipantGridWindowController.windowFacts == (exists: true, minimised: false, elsewhere: false, covered: false) {
+            ParticipantGridWindowController.show(takingYouThere: false)
         }
     }
-
-    /// A belt for the one-surface rule: called every second by the meeting's
-    /// follow loop. When the pill's state disagrees with what it should be (the
-    /// bar up beside the meeting window, or neither up) because some change
-    /// sent no notification, decide again.
-    static func healIfNeeded() {
-        guard let panel, morphTimeline == nil, !isStarting else { return }
-        let wanted = MeetingSurfaces.barVisible(windowShowing: ParticipantGridWindowController.meetingWindowIsShowing)
-        if wanted != panel.isVisible { reconcile(immediately: false) }
-    }
-
-    /// Draws what `MeetingSurfaceOwner.model` says. (Wired in the next step.)
-    static func render() {}
 
     /// A shrink or expand animation is running.
     static var morphRunning: Bool { morphTimeline != nil }
@@ -1245,10 +1265,9 @@ enum MeetingControlBarController {
         guard let shot = ParticipantGridWindowController.morphSnapshot() else {
             // Nothing to draw: do it plainly.
             if target == 1 { ParticipantGridWindowController.show(); panel.orderOut(nil) }
-            else { ParticipantGridWindowController.hide(); reconcile(immediately: true) }
+            else { ParticipantGridWindowController.hide(); render() }
             return
         }
-        pending?.cancel()
         cancelSettling()
         morphWindowFrame = shot.frame
 
@@ -1318,9 +1337,8 @@ enum MeetingControlBarController {
         } else {
             panel?.orderFrontRegardless()
         }
+        // Tells the model, which draws.
         MeetingSurfaceOwner.send(.morphFinished)
-        // Back to the usual rule, after its usual beat.
-        reconcile(immediately: false)
     }
 
     // MARK: Collapse and expand
@@ -1491,7 +1509,6 @@ enum MeetingControlBarController {
     static func close(fade: Bool) {
         guard fade, !reduceMotion, let panel, panel.isVisible, !fading else { close(); return }
         fading = true
-        pending?.cancel()
         NSAnimationContext.runAnimationGroup({ context in
             context.duration = 0.2
             context.timingFunction = CAMediaTimingFunction(name: .easeIn)
@@ -1512,9 +1529,9 @@ enum MeetingControlBarController {
         morphSnapshot?.orderOut(nil)
         morphSnapshot = nil
         morphTimeline = nil
-        pending?.cancel()
-        pending = nil
         cancelSettling()
+        safetyTimer?.invalidate()
+        safetyTimer = nil
         for observer in observers { NotificationCenter.default.removeObserver(observer) }
         observers = []
         if let spaceObserver { NSWorkspace.shared.notificationCenter.removeObserver(spaceObserver) }

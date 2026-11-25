@@ -414,6 +414,17 @@ enum ParticipantGridWindowController {
     /// unreachable.
     static var meetingWindowIsShowing: Bool {
         guard let panel else { return false }
+        // A live meeting: the surface the model has chosen (it hears covered, minimised
+        // and desktop changes). Before that, what the window says itself.
+        if MeetingSurfaceOwner.isLive { return MeetingSurfaceOwner.model.surface == .window }
+        return panel.isVisible && !panel.isMiniaturized && panel.isOnActiveSpace && panel.occlusionState.contains(.visible)
+    }
+
+    /// On screen the way the window itself reports it: open, not minimised, on the
+    /// desktop in view and with some part of it visible. The safety check compares
+    /// this with the model.
+    static var windowIsOnScreen: Bool {
+        guard let panel else { return false }
         return panel.isVisible && !panel.isMiniaturized && panel.isOnActiveSpace && panel.occlusionState.contains(.visible)
     }
 

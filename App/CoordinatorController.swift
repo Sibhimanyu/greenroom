@@ -3500,7 +3500,6 @@ final class CoordinatorController: ObservableObject {
             // when it is wanted (a layout of views alone, or one the teacher closed,
             // has none).
             MeetingViewWindows.tick()
-            MeetingControlBarController.healIfNeeded()
             self.meetingControls?.foldPopOutChatIntoWindow()
             self.growIfSomeoneJoined()
             guard self.meetingWindowWanted || ParticipantGridWindowController.isOpen else { return true }
@@ -3617,7 +3616,7 @@ final class CoordinatorController: ObservableObject {
         startCustomUIGridFollow()
         if alreadyOpen { ParticipantGridWindowController.show() }
         placeCustomSurfaces()
-        MeetingControlBarController.reconcile(immediately: false)
+        MeetingSurfaceOwner.syncWindowFacts()
     }
 
     // MARK: The two sizes
@@ -3627,9 +3626,11 @@ final class CoordinatorController: ObservableObject {
     /// as the bar.
     var meetingSize: MeetingSize {
         if let heading = MeetingControlBarController.morphTarget { return heading == 1 ? .window : .bar }
-        let window = ParticipantGridWindowController.meetingWindowIsOpen
-            && !ParticipantGridWindowController.meetingWindowIsHidden
-        return window ? .window : .bar
+        guard ParticipantGridWindowController.meetingWindowIsOpen else { return .bar }
+        // A live meeting: the model's answer, where a window that is only covered is
+        // still the window (it is the person's size that counts, not what is in front).
+        if MeetingSurfaceOwner.isLive { return MeetingSurfaceOwner.model.reopenTarget == .window ? .window : .bar }
+        return ParticipantGridWindowController.meetingWindowIsHidden ? .bar : .window
     }
 
     /// What the layout already shows, which changes where a collapse goes.
@@ -3781,7 +3782,6 @@ final class CoordinatorController: ObservableObject {
         }
         ParticipantGridWindowController.close()
         MeetingSurfaceOwner.send(.windowClosedByCode)
-        MeetingControlBarController.reconcile(immediately: false)
     }
 
     /// Whether the follow loop should keep Greenroom's meeting window open. False
@@ -3953,7 +3953,9 @@ final class CoordinatorController: ObservableObject {
         var s = LiveExit.ReopenState()
         s.isLive = hasLiveSession
         s.hasMeetingSurfaces = zoomChatClient.didInit && !recordOnlyActive
-        s.meetingShrunk = ParticipantGridWindowController.meetingWindowIsHidden
+        s.meetingShrunk = MeetingSurfaceOwner.isLive
+            ? MeetingSurfaceOwner.model.reopenTarget == .bar
+            : ParticipantGridWindowController.meetingWindowIsHidden
         return s
     }
 

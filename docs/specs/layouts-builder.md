@@ -97,11 +97,11 @@ different order; this table is the authority.
 | R9 | Mac editor basics | P6 | built (R9.1 to R9.7) |
 | R10 | Devices and General tabs | P7 | built |
 | R11 | Camera look in Layouts; Webcam tab gone | P8 | built (needs a live check) |
-| R12 | Six built-in layouts, one always active | P9 | planned |
-| R13 | Restore original and Reset all | P9 | planned |
-| R14 | Built-ins on existing installs | P9 | planned |
+| R12 | Six built-in layouts, one always active | P9 | built (needs a live check) |
+| R13 | Restore original and Reset all | P9 | built |
+| R14 | Built-ins on existing installs | P9 | built (key `layoutLibrary.builtInsV2Migrated`) |
 | R15 | Room + laptop | P10 | planned |
-| R16 | Day one looks the same; downgrade works | P2, P3, P9 | built for P2, P3 (migration keys follow a successful save) |
+| R16 | Day one looks the same; downgrade works | P2, P3, P9 | built (migration keys follow a successful save) |
 
 **R1. One rule for who sees what.** (Q1, Q14)
 - R1.1 `Visibility.everyoneSees` and `Visibility.onMyScreen` are the only place
@@ -278,7 +278,7 @@ different order; this table is the authority.
 | P6 Basics | R9 | built | |
 | P7 Settings reshuffle | R10 | built | f5d4b97 |
 | P8 Camera look into Layouts | R11 | built | |
-| P9 Built-ins, Leave my windows alone, Restore original | R12, R13, R14, R16 | planned | |
+| P9 Built-ins, Leave my windows alone, Restore original | R12, R13, R14, R16 | built | p9-builtins |
 | P10 Room + laptop | R15 | planned | |
 | P11 One icon language | R17 | built | |
 
@@ -288,8 +288,11 @@ different order; this table is the authority.
   `noCamera` on plus shown on my screen, but the camera now stays open for the
   owner's bubble (`StageLayout.mirrorsCamera`). Camera switching with Only me
   and Zoom's own video-off state are the parts to watch.
-- **Restore original waits for P9.** The ⋯ menu can offer it, but there are no
-  restorable built-ins until P9. Reset all in the ⋯ menu is also P9.
+- **P9 is unverified live.** Leave my windows alone moving no window, + making "My layout", Restore
+  original and the one-time migration are tested as pure rules; the Start path and the Layouts tab
+  are not driven. The layout cards strip (7 cards at 112pt + 8pt gaps, about 840pt) is wider than
+  Settings' 760pt, so it scrolls horizontally with no indicator: check it by eye.
+- A Present built-in has no slide-show window of its own to share (the share is the screen).
 - **The header fit at 760pt is unverified** (R8.5). Check the shared canvas
   header with two displays at Settings' fixed width.
 - **Nothing is verified live.** Every status above is "built" at most.

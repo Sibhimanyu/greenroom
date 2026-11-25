@@ -114,11 +114,12 @@ extension LayoutLibrary {
                                         save: (LayoutLibrary) -> Bool) -> Bool {
         var keys: [String] = []
         if !defaults.bool(forKey: Self.cameraMigratedKey) {
-            for i in templates.indices { templates[i].camera = camera }
+            // Only layouts with no camera of their own: a built-in added since (P9) keeps the one it ships with.
+            for i in templates.indices where templates[i].camera == nil { templates[i].camera = camera }
             keys.append(Self.cameraMigratedKey)
         }
         if !defaults.bool(forKey: Self.shareMigratedKey) {
-            for i in templates.indices { templates[i].share = share }
+            for i in templates.indices where templates[i].share == nil { templates[i].share = share }
             keys.append(Self.shareMigratedKey)
         }
         guard !keys.isEmpty else { return false }

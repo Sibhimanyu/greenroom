@@ -439,6 +439,8 @@ struct LayoutTemplate: Codable, Identifiable, Equatable {
     /// People list and Hands up, a Shared screen beside the Meeting window, a
     /// Spotlight beside Active speaker.
     func canAdd(_ kind: LayoutPiece.Kind, to slot: LayoutSlot) -> Bool {
+        // Leave my windows alone stays clean: + copies it into "My layout" first (LayoutLibrary.forkLeaveAlone).
+        guard movesWindows else { return false }
         let existing = piecesInVersion(of: slot)
         let views = Set(existing.compactMap { $0.kind.view })
         let hasMeeting = existing.contains { $0.kind.isMeeting }
@@ -522,7 +524,7 @@ struct LayoutTemplate: Codable, Identifiable, Equatable {
 struct LayoutLibrary: Codable, Equatable {
     var version = 1
     var templates: [LayoutTemplate]
-    /// The Start layout. nil is None: Greenroom moves nothing.
+    /// The Start layout. There is no None (Q3): nil only in a library without Leave my windows alone.
     var activeID: UUID?
 
     init(templates: [LayoutTemplate] = [], activeID: UUID? = nil) {
@@ -538,8 +540,9 @@ struct LayoutLibrary: Codable, Equatable {
             .compactMap(\.value)
         let active = try? c.decodeIfPresent(UUID.self, forKey: .activeID)
         self.init(templates: templates,
-                  // A saved choice whose template is gone means None.
                   activeID: templates.contains { $0.id == active } ? active : nil)
+        // A saved choice that is missing or whose template is gone means Leave my windows alone (Q3).
+        ensureActive()
         version = (try? c.decodeIfPresent(Int.self, forKey: .version)) ?? 1
     }
 
@@ -551,6 +554,7 @@ struct LayoutLibrary: Codable, Equatable {
 
     mutating func select(_ id: UUID?) {
         activeID = id.flatMap { template(id: $0) }?.id
+        ensureActive()
     }
 
     mutating func update(_ template: LayoutTemplate) {
@@ -592,6 +596,7 @@ struct LayoutLibrary: Codable, Equatable {
     mutating func delete(_ id: UUID) {
         templates.removeAll { $0.id == id }
         if activeID == id { activeID = nil }
+        ensureActive()
     }
 
     /// An empty name is ignored: a layout with no name cannot be found again.
@@ -612,63 +617,21 @@ struct LayoutLibrary: Codable, Equatable {
     /// AppCatalog.builtInBrowserID, repeated because this file must not need AppKit.
     static let builtInBrowserBundleID = "com.sibhimanyu.greenroom.browser"
 
-    /// The ordinary, editable templates every library begins with, in the order
-    /// the strip shows them (right after None). Their one-display Meeting is the
-    /// Active speaker view.
-    static func starters() -> [LayoutTemplate] {
-        let third = 1.0 / 12
-        return [
-            // The old fixed arrangement: the browser, the speaker, the chat.
-            // The speaker is the Active speaker view. Where views cannot open
-            // the runtime puts the Meeting window in its place
-            // (LayoutResolver.substitutingMeetingForActiveSpeaker). The second
-            // display keeps a full-display Meeting: the reference display.
-            LayoutTemplate(
-                name: "Raj San Mode", starter: rajMode,
-                oneDisplay: [
-                    LayoutPiece(kind: .app(AppPiece(bundleID: builtInBrowserBundleID)),
-                                rect: UnitRect(x: 0, y: 0, w: 9 * third, h: 1)),
-                    LayoutPiece(kind: .view(.activeSpeaker, startsHidden: false),
-                                rect: UnitRect(x: 9 * third, y: 0, w: 3 * third, h: 5 * third)),
-                    LayoutPiece(kind: .chat,
-                                rect: UnitRect(x: 9 * third, y: 5 * third, w: 3 * third, h: 7 * third)),
-                ],
-                twoDisplays: TwoDisplay(
-                    main: [
-                        LayoutPiece(kind: .app(AppPiece(bundleID: builtInBrowserBundleID)),
-                                    rect: UnitRect(x: 0, y: 0, w: 9 * third, h: 1)),
-                        LayoutPiece(kind: .chat, rect: UnitRect(x: 9 * third, y: 0, w: 3 * third, h: 1)),
-                    ],
-                    second: [LayoutPiece(kind: .meeting(fillsDisplay: true, startsHidden: false), rect: .full)])),
-            LayoutTemplate(
-                name: "Teach from a browser", starter: teachFromBrowser,
-                oneDisplay: [
-                    LayoutPiece(kind: .app(AppPiece(bundleID: builtInBrowserBundleID)),
-                                rect: UnitRect(x: 0, y: 0, w: 8 * third, h: 1)),
-                    LayoutPiece(kind: .view(.activeSpeaker, startsHidden: false),
-                                rect: UnitRect(x: 8 * third, y: 0, w: 4 * third, h: 5 * third)),
-                    LayoutPiece(kind: .chat,
-                                rect: UnitRect(x: 8 * third, y: 5 * third, w: 4 * third, h: 7 * third)),
-                ]),
-            LayoutTemplate(
-                name: "Meeting and chat", starter: meetingAndChat,
-                oneDisplay: [
-                    LayoutPiece(kind: .view(.activeSpeaker, startsHidden: false),
-                                rect: UnitRect(x: 0, y: 0, w: 9 * third, h: 1)),
-                    LayoutPiece(kind: .chat, rect: UnitRect(x: 9 * third, y: 0, w: 3 * third, h: 1)),
-                ]),
-        ]
-    }
+    /// The ordinary, editable templates every library begins with, in the order the strip shows
+    /// them: the six built-ins (LayoutBuiltIns.swift).
+    static func starters() -> [LayoutTemplate] { builtIns() }
+
 
     /// How many layouts are yours: everything that did not begin as a starter.
     /// A migrated "Your previous layout" counts.
     var userLayoutCount: Int { templates.filter { $0.starter == nil }.count }
 
     /// Replaces the whole library with the default starters and sets the Start
-    /// layout to None. Your own layouts are removed.
+    /// layout to Leave my windows alone. Your own layouts are removed.
     mutating func resetToDefaults() {
         templates = Self.starters()
         activeID = nil
+        ensureActive()
     }
 
     /// Appends any starter whose key is not in `known` (a starter added by a
@@ -733,6 +696,8 @@ extension LayoutLibrary {
             let known = defaults.stringArray(forKey: knownStartersKey).map(Set.init)
                 ?? Set(originalStarterKeys)
             var changed = saved.addStarters(notIn: known)
+            // P9, once: the new built-ins, None becomes Leave my windows alone. Saves itself and sets its own key.
+            saved.migrateBuiltInsV2(defaults: defaults, save: { $0.save(to: defaults) })
             // The old default was hidden; saved layouts hold it explicitly. Flip once.
             if !defaults.bool(forKey: shownToEveryoneMigratedKey) {
                 saved.showEverythingToEveryone()
@@ -756,6 +721,7 @@ extension LayoutLibrary {
         }
         let library = firstRun(legacy: LegacyLayoutSettings.read(from: defaults, defaultSiteURL: defaultSiteURL))
         if library.save(to: defaults) {
+            defaults.set(true, forKey: builtInsV2MigratedKey)
             defaults.set(true, forKey: shownToEveryoneMigratedKey)
             defaults.set(true, forKey: appsShownMigratedKey)
             defaults.set(true, forKey: rajRenamedKey)
@@ -827,6 +793,7 @@ extension LayoutLibrary {
             library.templates.append(previous)
             if legacy.arrangeWindowsOnStart { library.activeID = previous.id }
         }
+        library.ensureActive()
         return library
     }
 }

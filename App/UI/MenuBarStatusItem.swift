@@ -251,10 +251,7 @@ final class MenuBarStatusItem: NSObject {
             return .header(item.title)
         case .layoutMenu:
             let library = coordinator.layoutLibrary
-            var rows: [MenuEntry] = [
-                .item("None", checked: library.activeID == nil) { [weak self] in
-                    self?.coordinator.layoutLibrary.select(nil)
-                }]
+            var rows: [MenuEntry] = []
             for template in library.templates {
                 let id = template.id
                 rows.append(.item(template.name, checked: library.activeID == id) { [weak self] in

@@ -200,6 +200,8 @@ struct LayoutCanvas: View {
     var share: Visibility.Target = .wholeScreen
     /// Preview: Everyone, the meeting's picture, instead of My screen.
     var previewEveryone = false
+    /// What an empty canvas says (Leave my windows alone says where its windows are).
+    var emptyText = "Drag a piece here, or use + above"
 
     @State private var drag: DragState?
     /// Esc cancelled the drag in flight: the gesture keeps reporting until the button
@@ -468,7 +470,7 @@ struct LayoutCanvas: View {
         VStack(spacing: 6) {
             Image(systemName: "rectangle.dashed")
                 .font(.system(size: 22, weight: .light))
-            Text("Drag a piece here, or use + above")
+            Text(emptyText)
                 .font(.callout)
         }
         .foregroundStyle(.secondary)

@@ -31,8 +31,7 @@ struct HomeLayoutPanel: View {
     private var library: LayoutLibrary { coordinator.layoutLibrary }
     private var locked: Bool { coordinator.layoutChoiceLocked }
     private var choices: [Choice] {
-        [Choice(id: "none", template: nil, name: "None")]
-            + library.templates.map { Choice(id: $0.id.uuidString, template: $0, name: $0.name) }
+        library.templates.map { Choice(id: $0.id.uuidString, template: $0, name: $0.name) }
     }
 
     private func isSelected(_ choice: Choice) -> Bool { choice.template?.id == library.activeID }

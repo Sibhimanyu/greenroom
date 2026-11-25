@@ -489,15 +489,15 @@ struct OnboardingView: View {
                 let thumbHeight = layoutThumbHeight(for: setupMainSize)
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: layoutCardWidth + 12), spacing: 8, alignment: .top)],
                           alignment: .leading, spacing: 8) {
-                    OnboardingLayoutCard(title: "None", selected: coordinator.layoutLibrary.activeID == nil,
-                                         select: { chooseLayout(nil) }) {
-                        LayoutNoneThumbnail(height: thumbHeight)
-                    }
                     ForEach(coordinator.layoutLibrary.templates) { template in
                         OnboardingLayoutCard(title: template.name, selected: coordinator.layoutLibrary.activeID == template.id,
                                              select: { chooseLayout(template.id) }) {
-                            LayoutThumbnail(pieces: template.oneDisplay, aspect: layoutCardWidth / thumbHeight,
-                                            look: LayoutPieceLook.thumbnail)
+                            if template.movesWindows {
+                                LayoutThumbnail(pieces: template.oneDisplay, aspect: layoutCardWidth / thumbHeight,
+                                                look: LayoutPieceLook.thumbnail)
+                            } else {
+                                LayoutNoneThumbnail(height: thumbHeight)
+                            }
                         }
                     }
                 }

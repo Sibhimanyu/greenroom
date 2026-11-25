@@ -289,6 +289,7 @@ targets:
     sources:
       - path: Tests
       - path: App/Layout/LayoutTemplate.swift
+      - path: App/Layout/LayoutBuiltIns.swift
       - path: App/Layout/LayoutGeometry.swift
       - path: App/Layout/RoomScreenRules.swift
       - path: App/Layout/LayoutDisplayCrossing.swift

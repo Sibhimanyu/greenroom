@@ -14,7 +14,7 @@
 //
 import SwiftUI
 
-/// None and every template, one checked. Used inside a Menu.
+/// Every layout, one checked (there is no None: Leave my windows alone is the "move nothing" one). Used inside a Menu.
 struct LayoutChoiceItems: View {
     @EnvironmentObject private var coordinator: CoordinatorController
 
@@ -22,7 +22,6 @@ struct LayoutChoiceItems: View {
         Picker("Layout", selection: Binding<UUID?>(
             get: { coordinator.layoutLibrary.activeID },
             set: { coordinator.layoutLibrary.select($0) })) {
-            Text("None").tag(UUID?.none)
             ForEach(coordinator.layoutLibrary.templates) { template in
                 Text(template.name).tag(UUID?.some(template.id))
             }

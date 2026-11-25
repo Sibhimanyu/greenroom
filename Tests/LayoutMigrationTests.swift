@@ -112,8 +112,8 @@ final class LayoutMigrationTests: XCTestCase {
     func testDefaultSettingsMakeOnlyStartersAndNoneIsActive() {
         let d = defaults()
         let lib = LayoutLibrary.loadOrMigrate(from: d, defaultSiteURL: site)
-        XCTAssertEqual(lib.templates.map(\.name), ["Raj San Mode", "Teach from a browser", "Meeting and chat"])
-        XCTAssertNil(lib.activeID)
+        XCTAssertEqual(lib.templates.map(\.name), LayoutLibrary.starters().map(\.name))
+        XCTAssertEqual(lib.active?.starter, LayoutLibrary.leaveAlone)
         XCTAssertNotNil(d.data(forKey: "layoutLibrary"), "written back so it runs once")
     }
 
@@ -134,8 +134,8 @@ final class LayoutMigrationTests: XCTestCase {
         d.set(workspaceJSON(#"{"zoomSlotRatio":0.29933763586956524,"sideShowsZoomTile":true,"mainOnLeft":true,"mainFraction":0.75,"sideShowsChat":true}"#),
               forKey: "workspaceLayout")
         let lib = LayoutLibrary.loadOrMigrate(from: d, defaultSiteURL: site)
-        XCTAssertEqual(lib.templates.map(\.name), ["Raj San Mode", "Teach from a browser", "Meeting and chat", "Your previous layout"])
-        XCTAssertNil(lib.activeID, "arrange was off, so None")
+        XCTAssertEqual(lib.templates.map(\.name), LayoutLibrary.starters().map(\.name) + ["Your previous layout"])
+        XCTAssertEqual(lib.active?.starter, LayoutLibrary.leaveAlone, "arrange was off, so Leave my windows alone")
         let t = try XCTUnwrap(lib.templates.last)
 
         XCTAssertEqual(t.oneDisplay.count, 3)
@@ -222,15 +222,17 @@ final class LayoutMigrationTests: XCTestCase {
 
     func testStartersAreTheDocumentedShapes() {
         let s = LayoutLibrary.starters()
-        XCTAssertEqual(s.compactMap(\.starter), [LayoutLibrary.rajMode, LayoutLibrary.teachFromBrowser, LayoutLibrary.meetingAndChat])
+        XCTAssertEqual(s.compactMap(\.starter), [LayoutLibrary.teachFromBrowser, LayoutLibrary.talkToMeeting, LayoutLibrary.present,
+                                                 LayoutLibrary.roomLaptop, LayoutLibrary.leaveAlone, LayoutLibrary.rajMode])
         let teach = starter(LayoutLibrary.teachFromBrowser)
         XCTAssertEqual(teach.oneDisplay.map(\.rect.w).map { ($0 * 12).rounded() }, [8, 4, 4])
         XCTAssertEqual(teach.oneDisplay[1].rect.h * 12, 5, accuracy: 1e-9)
-        XCTAssertEqual(starter(LayoutLibrary.meetingAndChat).oneDisplay.map(\.rect.w).map { ($0 * 12).rounded() }, [9, 3])
+        XCTAssertEqual(starter(LayoutLibrary.talkToMeeting).oneDisplay.map(\.rect.w).map { ($0 * 12).rounded() }, [9, 3])
         // The one-display speaker is the Active speaker view, never a Meeting window.
         for t in s {
             XCTAssertFalse(t.oneDisplay.contains { $0.kind.isMeeting }, t.name)
-            XCTAssertEqual(t.oneDisplay.filter { $0.kind.view == .activeSpeaker }.count, 1, t.name)
+            let speakers = t.oneDisplay.filter { $0.kind.view == .activeSpeaker }.count
+            XCTAssertEqual(speakers, [LayoutLibrary.roomLaptop, LayoutLibrary.leaveAlone].contains(t.starter ?? "") ? 0 : 1, t.name)
         }
     }
 
@@ -277,7 +279,7 @@ final class LayoutMigrationTests: XCTestCase {
         XCTAssertEqual(lib.userLayoutCount, 2)
         lib.resetToDefaults()
         XCTAssertEqual(lib.userLayoutCount, 0)
-        XCTAssertNil(lib.activeID)
+        XCTAssertEqual(lib.active?.starter, LayoutLibrary.leaveAlone)
         XCTAssertNil(lib.template(id: mine))
         XCTAssertEqual(lib.templates.map(\.starter), LayoutLibrary.starters().map(\.starter))
         XCTAssertEqual(lib.templates.map(\.oneDisplay.count), LayoutLibrary.starters().map(\.oneDisplay.count))
@@ -286,7 +288,8 @@ final class LayoutMigrationTests: XCTestCase {
 
     func testRajModeIsAppendedOnceToAnExistingLibrary() throws {
         // A library saved before Raj San Mode: the two original starters, one deleted, one of yours.
-        var old = LayoutLibrary(templates: LayoutLibrary.starters().filter { $0.starter != LayoutLibrary.rajMode })
+        var old = LayoutLibrary(templates: [starter(LayoutLibrary.teachFromBrowser),
+                                            LayoutTemplate(name: "Meeting and chat", starter: LayoutLibrary.meetingAndChat)])
         old.delete(old.templates.first { $0.starter == LayoutLibrary.meetingAndChat }!.id)
         let mine = old.addBlank()
         old.select(mine)
@@ -294,8 +297,7 @@ final class LayoutMigrationTests: XCTestCase {
         old.save(to: d)
 
         let first = LayoutLibrary.loadOrMigrate(from: d, defaultSiteURL: site)
-        XCTAssertEqual(first.templates.first?.starter, LayoutLibrary.rajMode, "right after None")
-        XCTAssertEqual(first.templates.compactMap(\.starter), [LayoutLibrary.rajMode, LayoutLibrary.teachFromBrowser])
+        XCTAssertEqual(first.templates.filter { $0.starter == LayoutLibrary.rajMode }.count, 1, "added once")
         XCTAssertEqual(first.activeID, mine, "the Start layout is not changed")
         XCTAssertNil(first.templates.first { $0.starter == LayoutLibrary.meetingAndChat }, "a deleted starter stays deleted")
 
@@ -311,33 +313,34 @@ final class LayoutMigrationTests: XCTestCase {
     func testFreshInstallRecordsKnownStartersSoDeletedOnesStayGone() {
         let d = defaults()
         var lib = LayoutLibrary.loadOrMigrate(from: d, defaultSiteURL: site)
-        XCTAssertEqual(lib.templates.compactMap(\.starter).count, 3)
+        XCTAssertEqual(lib.templates.compactMap(\.starter).count, 6)
         lib.delete(lib.templates.first { $0.starter == LayoutLibrary.rajMode }!.id)
         lib.save(to: d)
         XCTAssertNil(LayoutLibrary.loadOrMigrate(from: d, defaultSiteURL: site).templates.first { $0.starter == LayoutLibrary.rajMode })
     }
 
-    func testDeletingTheActiveTemplateMeansNone() {
+    func testDeletingTheActiveTemplateMeansLeaveMyWindowsAlone() {
         var lib = LayoutLibrary(templates: LayoutLibrary.starters())
         lib.select(lib.templates[0].id)
         lib.delete(lib.templates[0].id)
-        XCTAssertNil(lib.activeID)
+        XCTAssertEqual(lib.active?.starter, LayoutLibrary.leaveAlone)
     }
 
     func testDuplicateGivesFreshIDs() throws {
         var lib = LayoutLibrary(templates: LayoutLibrary.starters())
-        let copyID = try XCTUnwrap(lib.duplicate(lib.templates[0].id))
+        let raj = lib.templates.first { $0.starter == LayoutLibrary.rajMode }!
+        let copyID = try XCTUnwrap(lib.duplicate(raj.id))
         let copy = try XCTUnwrap(lib.template(id: copyID))
         XCTAssertEqual(copy.name, "Raj San Mode copy")
         XCTAssertNil(copy.starter)
-        XCTAssertTrue(Set(copy.oneDisplay.map(\.id)).isDisjoint(with: lib.templates[0].oneDisplay.map(\.id)))
+        XCTAssertTrue(Set(copy.oneDisplay.map(\.id)).isDisjoint(with: raj.oneDisplay.map(\.id)))
     }
 
     func testRenameIgnoresEmptyNames() {
         var lib = LayoutLibrary(templates: LayoutLibrary.starters())
         let id = lib.templates[1].id   // rename an ordinary one
         lib.rename(id, to: "   ")
-        XCTAssertEqual(lib.templates[1].name, "Teach from a browser")
+        XCTAssertEqual(lib.templates[1].name, "Talk to the meeting")
         lib.rename(id, to: "  Mine ")
         XCTAssertEqual(lib.templates[1].name, "Mine")
     }

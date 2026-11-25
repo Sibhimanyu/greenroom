@@ -36,12 +36,12 @@ enum LayoutEditorRules {
     }
 
     /// The ⋯ menu beside the layout name. Restore original only for a built-in
-    /// layout that can be restored (`canRestore` is false until P9 builds `restoreOriginal`; kept for it);
-    /// Delete is always last.
-    static func layoutMenu(isBuiltIn: Bool, canRestore: Bool) -> [LayoutAction] {
+    /// layout that can be restored (`LayoutLibrary.canRestore`); Delete is last, and absent for
+    /// Leave my windows alone (`LayoutLibrary.canDelete`: there is always one active layout).
+    static func layoutMenu(isBuiltIn: Bool, canRestore: Bool, canDelete: Bool = true) -> [LayoutAction] {
         var items: [LayoutAction] = [.rename, .duplicate]
         if isBuiltIn && canRestore { items.append(.restoreOriginal) }
-        items.append(.delete)
+        if canDelete { items.append(.delete) }
         return items
     }
 

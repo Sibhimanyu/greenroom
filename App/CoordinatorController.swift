@@ -1839,7 +1839,8 @@ final class CoordinatorController: ObservableObject {
         adoptLayoutPieces(LayoutPieceAdoption.atStart(sessionTemplate, keepingLiveShare: liveShareChosen))
         // R6.3: the camera state a live change set before Start is dropped; the saved default stands.
         resetPresenceBubbleToLayoutDefault()
-        sessionArranges = sessionTemplate != nil
+        // Leave my windows alone places the camera only: it arranges nothing, as None did.
+        sessionArranges = sessionTemplate?.movesWindows ?? false
         if !sessionArranges { LayoutShareChoice.reset() }
         speakerTileQuickHidden = sessionTemplate.map { layoutEngine.startsHidden($0) } ?? false
         // The Meeting window opens at Start unless the layout shows the meeting only as views.
@@ -4288,8 +4289,8 @@ final class CoordinatorController: ObservableObject {
             log("Snap Windows Back skipped \u{2014} this session arranges no windows.")
             return
         }
-        guard sessionTemplate != nil || layoutLibrary.active != nil else {
-            log("Snap Windows Back skipped \u{2014} no layout is chosen.")
+        guard let chosen = sessionTemplate ?? layoutLibrary.active, chosen.movesWindows else {
+            log("Snap Windows Back skipped \u{2014} the layout moves no windows.")
             return
         }
         reapplyLayout(userInitiated: userInitiated, openApps: false)
@@ -4299,7 +4300,7 @@ final class CoordinatorController: ObservableObject {
     /// one chosen in Settings), re-resolved against the displays as they are NOW.
     /// `openApps` also opens the apps that open at start (Apply now).
     private func reapplyLayout(userInitiated: Bool, openApps: Bool) {
-        guard let template = sessionTemplate ?? layoutLibrary.active else { return }
+        guard let template = sessionTemplate ?? layoutLibrary.active, template.movesWindows else { return }
         if userInitiated {
             Analytics.feature("snap_back")
             // Back to the layout's own starting state: hidden if the Meeting

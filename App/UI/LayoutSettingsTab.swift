@@ -181,6 +181,7 @@ struct LayoutPageContent: View {
     @State private var notice: String?
     @State private var noticeTask: Task<Void, Never>?
     @State private var deleteCandidate: UUID?
+    @State private var restoreCandidate: UUID?
     @State private var confirmReset = false
     /// The canvas whose + panel is open.
     @State private var addPanelSlot: LayoutSlot?
@@ -268,6 +269,21 @@ struct LayoutPageContent: View {
         } message: {
             Text("This layout is removed. The windows it describes are not touched.")
         }
+        .confirmationDialog("Restore \u{201C}\(restoreCandidateName)\u{201D} to the original?",
+                            isPresented: Binding(get: { restoreCandidate != nil },
+                                                 set: { if !$0 { restoreCandidate = nil } }),
+                            titleVisibility: .visible) {
+            Button("Restore original", role: .destructive) {
+                if let id = restoreCandidate {
+                    withAnimation(anim) {
+                        if library.restoreOriginal(id) { selection = nil; renamingID = nil }
+                    }
+                }
+                restoreCandidate = nil
+            }
+        } message: {
+            Text("Your changes to this layout are undone. Your other layouts are not touched.")
+        }
         .alert("Reset layouts to the defaults?", isPresented: $confirmReset) {
             Button("Reset", role: .destructive) { withAnimation(anim) { library.resetToDefaults(); resetEditorState() } }
             Button("Cancel", role: .cancel) {}
@@ -282,13 +298,17 @@ struct LayoutPageContent: View {
         let lost = n == 0
             ? "Your edits to the built-in layouts are undone."
             : "This removes your \(n == 1 ? "1 layout" : "\(n) layouts") and brings back the built-in ones."
-        return lost + " The layout used at Start goes back to None."
+        return lost + " The layout used at Start goes back to Leave my windows alone."
     }
 
     private var anim: Animation? { reduceMotion ? nil : .snappy(duration: 0.25) }
 
     private var deleteCandidateName: String {
         deleteCandidate.flatMap { library.template(id: $0)?.name } ?? ""
+    }
+
+    private var restoreCandidateName: String {
+        restoreCandidate.flatMap { LayoutLibrary.shipped(library.template(id: $0)?.starter)?.name } ?? ""
     }
 
     private func resetEditorState() {
@@ -305,13 +325,6 @@ struct LayoutPageContent: View {
     private var cardStrip: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
-                LayoutCard(title: "None", selected: library.activeID == nil, isRenaming: false,
-                           draft: .constant(""), select: { choose(nil) }, beginRename: nil,
-                           commitRename: {}, cancelRename: {}) {
-                    LayoutNoneThumbnail(height: thumbHeight)
-                }
-                .help("Greenroom opens and moves nothing.")
-
                 ForEach(library.templates) { template in
                     LayoutCard(title: template.name, selected: library.activeID == template.id,
                                isRenaming: renamingID == template.id, draft: $renameDraft,
@@ -319,13 +332,22 @@ struct LayoutPageContent: View {
                                beginRename: { beginRename(template) },
                                commitRename: { commitRename() },
                                cancelRename: { renamingID = nil }) {
-                        LayoutThumbnail(pieces: template.oneDisplay, aspect: layoutCardWidth / thumbHeight, look: look)
+                        if template.movesWindows {
+                            LayoutThumbnail(pieces: template.oneDisplay, aspect: layoutCardWidth / thumbHeight, look: look)
+                        } else {
+                            LayoutNoneThumbnail(height: thumbHeight)
+                        }
                     }
                     .contextMenu {
                         Button("Rename") { beginRename(template) }
                         Button("Duplicate") { duplicate(template.id) }
-                        Divider()
-                        Button("Delete\u{2026}", role: .destructive) { deleteCandidate = template.id }
+                        if library.canRestore(template.id) {
+                            Button("Restore original\u{2026}") { restoreCandidate = template.id }
+                        }
+                        if library.canDelete(template.id) {
+                            Divider()
+                            Button("Delete\u{2026}", role: .destructive) { deleteCandidate = template.id }
+                        }
                     }
                     .transition(.opacity.combined(with: .scale(scale: 0.96)))
                 }
@@ -392,6 +414,8 @@ struct LayoutPageContent: View {
         guard let template = library.active else {
             return "Greenroom starts the meeting and leaves your windows where they are."
         }
+        // A built-in as shipped says what it is in its own one line (R12.1).
+        if template.isAsShipped, let line = LayoutLibrary.description(forStarter: template.starter ?? "") { return line }
         let pieces = template.oneDisplay + (template.twoDisplays.map { $0.main + $0.second } ?? [])
         var opens: [String] = []
         for piece in template.oneDisplay {
@@ -551,14 +575,15 @@ struct LayoutPageContent: View {
     /// Rename, Duplicate, Restore original (built-in layouts, when it can be done) and Delete.
     private func layoutMenu(_ template: LayoutTemplate) -> some View {
         Menu {
-            ForEach(LayoutEditorRules.layoutMenu(isBuiltIn: template.starter != nil, canRestore: false), id: \.self) { action in
+            ForEach(LayoutEditorRules.layoutMenu(isBuiltIn: template.starter != nil, canRestore: library.canRestore(template.id),
+                                                 canDelete: library.canDelete(template.id)), id: \.self) { action in
                 switch action {
                 case .rename:
                     Button("Rename") { focus = .name }
                 case .duplicate:
                     Button("Duplicate") { duplicate(template.id) }
                 case .restoreOriginal:
-                    EmptyView()
+                    Button("Restore original\u{2026}") { restoreCandidate = template.id }
                 case .delete:
                     Divider()
                     Button("Delete\u{2026}", role: .destructive) { deleteCandidate = template.id }
@@ -616,7 +641,7 @@ struct LayoutPageContent: View {
             }
             .coordinateSpace(name: LayoutCrossing.space)
             .onPreferenceChange(LayoutCanvasFrames.self) { canvasFrames = $0 }
-        } else if LayoutEditorRules.showsGhostSecondCanvas(hasTwoDisplays: template.twoDisplays != nil) {
+        } else if LayoutEditorRules.showsGhostSecondCanvas(hasTwoDisplays: template.twoDisplays != nil), template.movesWindows {
             HStack(alignment: .top, spacing: 12) {
                 canvas(.one, space: mainSpace, template: template)
                 ghostSecondCanvas
@@ -766,7 +791,20 @@ struct LayoutPageContent: View {
     /// The + on one canvas: it adds to that canvas's display.
     private func addButton(slot: LayoutSlot, template: LayoutTemplate) -> AnyView {
         let target = slot   // each canvas's + adds to its own display
-        return AnyView(Button { addPanelSlot = addPanelSlot == target ? nil : target } label: {
+        return AnyView(Button {
+            // Q22: Leave my windows alone stays clean. + copies it into "My layout" and adds there.
+            if !template.movesWindows {
+                withAnimation(anim) {
+                    if library.forkLeaveAlone() != nil {
+                        resetEditorState()
+                        say("Made a new layout")
+                        addPanelSlot = .one
+                    }
+                }
+                return
+            }
+            addPanelSlot = addPanelSlot == target ? nil : target
+        } label: {
             Image(systemName: "plus")
         }
         .controlSize(.small)
@@ -805,7 +843,8 @@ struct LayoutPageContent: View {
                      refusal: refusal?.slot == slot ? refusal?.text : nil,
                      focusRequest: focusRequest,
                      share: share,
-                     previewEveryone: previewEveryone)
+                     previewEveryone: previewEveryone,
+                     emptyText: template?.movesWindows == false ? "Your windows stay where they are" : "Drag a piece here, or use + above")
     }
 
     // MARK: Between the two displays
